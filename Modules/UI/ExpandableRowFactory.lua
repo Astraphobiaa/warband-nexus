@@ -18,6 +18,7 @@ local UI_SPACING = ns.UI_SPACING  -- Standardized spacing constants
 local COLORS = ns.UI_COLORS  -- Use COLORS table instead of GetColors function
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
+local CreateButton = ns.UI_CreateButton
 local FontManager = ns.FontManager
 
 -- Dependencies will be loaded lazily on first use (deferred loading)
@@ -37,7 +38,10 @@ local FontManager = ns.FontManager
 local function CreateDetailsFrame(row, parentFrame, options)
     local data = options.data
 
-    local detailsFrame = CreateFrame("Frame", nil, parentFrame)
+    local Factory = ns.UI and ns.UI.Factory
+    local detailsW = math.max(50, row:GetWidth() or parentFrame:GetWidth() or 380)
+    local detailsFrame = Factory and Factory.CreateContainer and Factory:CreateContainer(parentFrame, detailsW, 1, false)
+        or CreateFrame("Frame", nil, parentFrame)
     detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, 0)
     detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, 0)
 
@@ -162,10 +166,13 @@ local function CreateDetailsFrame(row, parentFrame, options)
                         
                         local isCompleted = criteriaItem.completed
                         if linkedID and ShowAchievementPopup and not isCompleted then
-                            -- Interactive: Button frame for incomplete achievement-linked criteria
-                            local btn = CreateFrame("Button", nil, detailsFrame)
+                            -- Interactive: clickable row (achievement popup); invisible chrome via CreateButton(noBorder).
+                            local btn = CreateButton(detailsFrame, math.max(8, columnWidth - 8), CRITERIA_LINE_HEIGHT, nil, nil, true)
+                            if not btn then
+                                btn = CreateFrame("Button", nil, detailsFrame)
+                                btn:SetSize(columnWidth - 8, CRITERIA_LINE_HEIGHT)
+                            end
                             btn:SetPoint("TOPLEFT", xPos, yOffset)
-                            btn:SetSize(columnWidth - 8, CRITERIA_LINE_HEIGHT)
                             
                             local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
                             label:SetPoint("LEFT")
@@ -233,9 +240,14 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     if not parent then return nil end
     
     rowHeight = rowHeight or UI_SPACING.CHAR_ROW_HEIGHT  -- Use standardized character row height
+    local FactEr = ns.UI and ns.UI.Factory
+    local wRow = math.max(50, width or 120)
     
     -- Main container (will grow/shrink but header stays at top)
-    local row = CreateFrame("Frame", nil, parent)
+    local row = FactEr and FactEr:CreateContainer(parent, wRow, rowHeight, false)
+    if not row then
+        row = CreateFrame("Frame", nil, parent)
+    end
     row:SetWidth(width)
     row:SetHeight(rowHeight) -- Initial height
     
@@ -249,7 +261,11 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     row.bgColor = COLORS.bgCard
     
     -- Header frame (FIXED HEIGHT, always visible at top) - Button for hover support
-    local headerFrame = CreateFrame("Button", nil, row)
+    local headerFrame = FactEr and FactEr.CreateButton and FactEr:CreateButton(row, wRow, rowHeight, true)
+    if not headerFrame then
+        headerFrame = CreateFrame("Button", nil, row)
+        headerFrame:SetHeight(rowHeight)
+    end
     headerFrame:SetPoint("TOPLEFT", 0, 0)
     headerFrame:SetPoint("TOPRIGHT", 0, 0)
     headerFrame:SetHeight(rowHeight)
@@ -371,7 +387,10 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     local TYPE_BADGE_GAP = 4
     local typeBadgeFrame
     if data.typeAtlas then
-        typeBadgeFrame = CreateFrame("Frame", nil, headerFrame)
+        typeBadgeFrame = FactEr and FactEr:CreateContainer(headerFrame, TYPE_BADGE_SIZE, TYPE_BADGE_SIZE, false)
+        if not typeBadgeFrame then
+            typeBadgeFrame = CreateFrame("Frame", nil, headerFrame)
+        end
         typeBadgeFrame:SetSize(TYPE_BADGE_SIZE, TYPE_BADGE_SIZE)
         if iconFrame then
             typeBadgeFrame:SetPoint("LEFT", iconFrame, "RIGHT", TYPE_BADGE_GAP, rowNudgeY)

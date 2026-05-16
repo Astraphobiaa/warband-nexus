@@ -807,3 +807,17 @@ function WarbandNexus:DrawStatistics(parent)
     return yOffset
 end
 
+--- Minimum scrollChild width where DrawStatistics keeps three collection cards abreast (~220px/card math).
+--- Lower window width still works (two-row layout); this value enables horizontal scroll for that crisp layout.
+--- See `MIN_STAT_CARD_W` in `:DrawStatistics` and `MAIN_SCROLL` in SharedWidgets.lua.
+---@return number
+function ns.ComputeStatisticsMinScrollWidth()
+    local L = ns.UI_LAYOUT or {}
+    local ms = L.MAIN_SCROLL or {}
+    local w = ms.STATISTICS_MIN_SCROLL_CHILD_WIDTH_FOR_THREE_CARDS
+    if type(w) == "number" and w > 0 then
+        return w
+    end
+    return 740
+end
+

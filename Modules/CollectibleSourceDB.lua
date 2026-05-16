@@ -16,6 +16,8 @@
       statisticIds exist + increment chat). CHAT_MSG_LOOT and ENCOUNTER_END (+5s) are debounced fallbacks.
       statisticIds must be GetStatistic() statistics IDs (character Statistics), not achievement IDs;
       verify with /dump GetStatistic(id) when adding bosses.
+      Rows with ambiguous statisticIds benefit from Midnight in-game sanity checks whenever kills do not bump expected stats.
+
       One engine (TryCounterService) handles instance & open world and corpse / chest / personal-style
       delivery; grow data here (sources, encounter_name, object chest rows, instanceBossSlotOutcomeRules) — do not fork per-raid Lua.
 

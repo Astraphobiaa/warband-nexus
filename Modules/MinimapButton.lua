@@ -7,6 +7,8 @@
     - Right-click for quick menu
     - Tooltip with summary info
     - Draggable icon position
+
+    WN_NONUI_UI: `shiftPollFrame` (+ LibDBIcon) owns hidden polling/event frames; unrelated to SharedWidgets tabs.
 ]]
 
 local ADDON_NAME, ns = ...

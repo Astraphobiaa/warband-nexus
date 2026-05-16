@@ -21,6 +21,8 @@ local COLORS = ns.UI_COLORS
 local issecretvalue = issecretvalue
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateExternalWindow = ns.UI_CreateExternalWindow
+local CreateButton = ns.UI_CreateButton
+local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateCard = ns.UI_CreateCard
 
@@ -197,8 +199,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         local radioButton = ns.UI_CreateThemedRadioButton(contentFrame, settings.mode == mode)
         radioButton:SetPoint("TOPLEFT", PADDING + RADIO_INDENT, -yPos)
         
-        local btn = CreateFrame("Button", nil, contentFrame)
-        btn:SetSize(contentWidth - PADDING * 2, 20)
+        local btn = CreateButton(contentFrame, contentWidth - PADDING * 2, 20, nil, nil, true)
         btn:SetPoint("TOPLEFT", PADDING, -yPos)
         btn.radioButton = radioButton
         

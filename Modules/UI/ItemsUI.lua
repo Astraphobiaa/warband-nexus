@@ -1,5 +1,9 @@
 --[[
     Warband Nexus - Items tab + Warband aggregate storage tree (bank subtabs, hierarchical storage).
+
+    WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton` with guarded fallbacks when
+    Factory is unavailable (plain `BackdropTemplate` buttons + ApplyVisuals); item rows/storage use pooled factories elsewhere.
+    WN_PERF: Virtual lists where applicable (`VirtualListModule`); storage warband subtree is profiler-sliced (`Stor_*` timings in DrawStorageResults).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -68,6 +72,9 @@ local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
 --- Storage tree leaf rows only (FramePoolFactory AcquireStorageRow); body-font glyphs need > ROW_HEIGHT so descenders clear the next row background.
 local STORAGE_ROW_HEIGHT = GetLayout().STORAGE_ROW_HEIGHT or GetLayout().storageRowHeight or ROW_HEIGHT
+--- WN-PERF (`WN-PERF-warband-nexus`): Personal/Warband aggregate leaf tables exceed sync cap → `C_Timer.After(0)` chunks + paint generation cancel.
+local STORAGE_LEAF_ROW_CHUNK = 40
+local STORAGE_LEAF_ROW_SYNC_MAX = 40
 --- Bags / Bank / Guild virtual list rows: same stride as storage leaves (BuildItemsVirtualFlatList + VirtualListModule + AcquireItemRow).
 local ITEMS_VIRTUAL_ROW_HEIGHT = STORAGE_ROW_HEIGHT
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
@@ -119,12 +126,20 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         { key = "guild", label = (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank", iconAtlas = "poi-workorders", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01" },
     }
 
-    local bar = CreateFrame("Frame", nil, headerParent)
-    bar:SetHeight(ITEMS_BANK_SUBTAB_BTN_HEIGHT)
+    local Factory = ns.UI and ns.UI.Factory
+
+    local bar = Factory and Factory:CreateContainer(headerParent, 400, ITEMS_BANK_SUBTAB_BTN_HEIGHT, false)
+    if not bar then
+        bar = CreateFrame("Frame", nil, headerParent)
+        bar:SetHeight(ITEMS_BANK_SUBTAB_BTN_HEIGHT)
+    end
     bar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     bar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
 
-    local btnArea = CreateFrame("Frame", nil, bar)
+    local btnArea = Factory and Factory:CreateContainer(bar, 200, ITEMS_BANK_SUBTAB_BTN_HEIGHT, false)
+    if not btnArea then
+        btnArea = CreateFrame("Frame", nil, bar)
+    end
     btnArea:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
     btnArea:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -ITEMS_BANK_SUBTAB_GOLD_RESERVE, 0)
 
@@ -146,15 +161,19 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
     for i = 1, #tabDefs do
         local tabInfo = tabDefs[i]
         local btnWidth = btnWidths[i]
-        local btn = ns.UI.Factory:CreateButton(btnArea, btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT)
+        local btn = Factory and Factory.CreateButton and Factory:CreateButton(btnArea, btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT, false)
+        if not btn then
+            btn = CreateFrame("Button", nil, btnArea, "BackdropTemplate")
+            btn:SetSize(btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT)
+        end
         btn:SetPoint("TOPLEFT", btnArea, "TOPLEFT", xPos, 0)
         btn._tabKey = tabInfo.key
 
         if ApplyVisuals then
             ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc[1], acc[2], acc[3], 0.6})
         end
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-            ns.UI.Factory:ApplyHighlight(btn)
+        if Factory and Factory.ApplyHighlight then
+            Factory:ApplyHighlight(btn)
         end
 
         local activeBarTex = btn:CreateTexture(nil, "OVERLAY")
@@ -820,6 +839,14 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchText)
+    local mfPaint = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local leafPaintGen = 0
+    if mfPaint then
+        leafPaintGen = (mfPaint._wnStorageLeafPaintGen or 0) + 1
+        mfPaint._wnStorageLeafPaintGen = leafPaintGen
+        mfPaint._wnStorageLeafStage = { gen = leafPaintGen, pending = 0 }
+    end
+
     local storageSearchActive = storageSearchText
         and not (issecretvalue and issecretvalue(storageSearchText))
         and storageSearchText ~= ""
@@ -882,8 +909,18 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end
 
     local loadIndicator = nil
-    local function hideDrawIndicator()
+    local function hideWarbandBanner()
         if loadIndicator then loadIndicator:Hide() end
+    end
+    --- Delay hiding the Warband "building" banner while staged leaf renders are pending (same generation).
+    local function hideDrawIndicatorWithStagingGate()
+        if mfPaint and mfPaint._wnStorageLeafStage then
+            local st = mfPaint._wnStorageLeafStage
+            if st.gen == leafPaintGen and (st.pending or 0) > 0 then
+                return
+            end
+        end
+        hideWarbandBanner()
     end
     if embedItemsWarband then
         loadIndicator = EnsureWarbandDrawIndicator(parent)
@@ -1111,9 +1148,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end
 
     --- Type-leaf item rows under a collapsible header (`rowsContainer`).
-    --- Always synchronous: Bags / Bank / Guild tabs use one outer VirtualListModule on the results
-    --- container; the Warband aggregate tree nests many sections under the same scroll. Nested VLM
-    --- per leaf was fragile (viewport offset vs. stacked ChainSectionFrameBelow headers).
+    --- Warband/storage aggregate: small lists sync; larger lists chunked via `STORAGE_LEAF_ROW_*` + paint generation cancel (`WN-PERF-warband-nexus`).
     local function RenderStorageLeafRows(rowsContainer, rowWidth, typeItemsForRows, locTextForItem)
         rowsContainer._wnVirtualContentHeight = nil
         if not rowsContainer then
@@ -1121,30 +1156,149 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         local betweenRows = GetLayout().betweenRows or 0
         local stride = STORAGE_ROW_HEIGHT + betweenRows
-        local y = 0
-        for ti = 1, #typeItemsForRows do
-            local item = typeItemsForRows[ti]
-            if ItemMatchesSearch(item) then
-                globalRowIdxAll = globalRowIdxAll + 1
-                local row = AcquireStorageRow(rowsContainer, rowWidth, STORAGE_ROW_HEIGHT)
-                row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -y)
-                row:Show()
-                pcall(PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
-                row._wnStorageItemRef = item
-                row._wnStorageRowIdx = globalRowIdxAll
-                row._wnStorageLocText = locTextForItem(item) or ""
-                table.insert(parent._wnStorageRowRefs, row)
-                y = y + stride
+
+        local matchN = 0
+        for mxi = 1, #typeItemsForRows do
+            if ItemMatchesSearch(typeItemsForRows[mxi]) then
+                matchN = matchN + 1
             end
         end
-        if y <= 0 then
+        if matchN <= 0 then
             rowsContainer:SetHeight(0.1)
+            rowsContainer._wnStorageLeafStaging = nil
             return 0
         end
-        rowsContainer._wnVirtualContentHeight = y
-        rowsContainer:SetHeight(math.max(0.1, y))
-        return y
+
+        local function finalizeSyncedHeight(yy)
+            if yy <= 0 then
+                rowsContainer:SetHeight(0.1)
+                return 0
+            end
+            rowsContainer._wnVirtualContentHeight = yy
+            rowsContainer:SetHeight(math.max(0.1, yy))
+            return yy
+        end
+
+        if matchN <= STORAGE_LEAF_ROW_SYNC_MAX then
+            local yy = 0
+            for ti = 1, #typeItemsForRows do
+                local item = typeItemsForRows[ti]
+                if ItemMatchesSearch(item) then
+                    globalRowIdxAll = globalRowIdxAll + 1
+                    local row = AcquireStorageRow(rowsContainer, rowWidth, STORAGE_ROW_HEIGHT)
+                    row:ClearAllPoints()
+                    row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -yy)
+                    row:Show()
+                    pcall(PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
+                    row._wnStorageItemRef = item
+                    row._wnStorageRowIdx = globalRowIdxAll
+                    row._wnStorageLocText = locTextForItem(item) or ""
+                    table.insert(parent._wnStorageRowRefs, row)
+                    yy = yy + stride
+                end
+            end
+            rowsContainer._wnStorageLeafStaging = nil
+            return finalizeSyncedHeight(yy)
+        end
+
+        local reservedH = matchN * stride
+        rowsContainer:SetHeight(math.max(0.1, reservedH))
+        rowsContainer._wnVirtualContentHeight = reservedH
+        rowsContainer._wnStorageLeafStaging = true
+
+        local stPatch = mfPaint and mfPaint._wnStorageLeafStage
+        if stPatch and stPatch.gen == leafPaintGen then
+            stPatch.pending = (stPatch.pending or 0) + 1
+        end
+
+        local leafCreditConsumed = false
+        local function consumeLeafStagingCredit()
+            if leafCreditConsumed then return end
+            leafCreditConsumed = true
+            local st = mfPaint and mfPaint._wnStorageLeafStage
+            if st and st.gen == leafPaintGen then
+                st.pending = math.max(0, (st.pending or 1) - 1)
+                if st.pending <= 0 then
+                    hideWarbandBanner()
+                end
+            end
+        end
+
+        local function chromeAfterChunk()
+            WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+            if embedItemsWarband and mfPaint then
+                local sc = parent:GetParent()
+                if sc then
+                    local ext = MeasureStorageResultsContentExtent(parent)
+                    SyncItemsTabScrollChrome(mfPaint, sc, ext or (parent.GetHeight and parent:GetHeight()) or 1)
+                end
+            end
+        end
+
+        local tiCursor = 1
+        local yAcc = 0
+        local function processChunk()
+            if not mfPaint or mfPaint._wnStorageLeafPaintGen ~= leafPaintGen then
+                consumeLeafStagingCredit()
+                return
+            end
+            if InCombatLockdown and InCombatLockdown() then
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(0, processChunk)
+                end
+                return
+            end
+
+            local emittedThis = 0
+            while tiCursor <= #typeItemsForRows do
+                if emittedThis >= STORAGE_LEAF_ROW_CHUNK then
+                    break
+                end
+                local item = typeItemsForRows[tiCursor]
+                tiCursor = tiCursor + 1
+                if ItemMatchesSearch(item) then
+                    globalRowIdxAll = globalRowIdxAll + 1
+                    local row = AcquireStorageRow(rowsContainer, rowWidth, STORAGE_ROW_HEIGHT)
+                    row:ClearAllPoints()
+                    row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -yAcc)
+                    row:Show()
+                    pcall(PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
+                    row._wnStorageItemRef = item
+                    row._wnStorageRowIdx = globalRowIdxAll
+                    row._wnStorageLocText = locTextForItem(item) or ""
+                    table.insert(parent._wnStorageRowRefs, row)
+                    yAcc = yAcc + stride
+                    emittedThis = emittedThis + 1
+                end
+            end
+
+            rowsContainer._wnVirtualContentHeight = math.max(yAcc, 1)
+            rowsContainer:SetHeight(math.max(0.1, reservedH))
+            chromeAfterChunk()
+
+            if tiCursor > #typeItemsForRows then
+                rowsContainer._wnVirtualContentHeight = yAcc
+                rowsContainer:SetHeight(math.max(0.1, yAcc))
+                rowsContainer._wnStorageLeafStaging = nil
+                consumeLeafStagingCredit()
+                chromeAfterChunk()
+                return
+            end
+
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, processChunk)
+            else
+                processChunk()
+            end
+        end
+
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, processChunk)
+        else
+            processChunk()
+        end
+
+        return reservedH
     end
     
     stStart("Stor_scan")
@@ -1237,7 +1391,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- If search is active but no matches, show empty state and return
     if storageSearchActive and not hasAnyMatches then
         stStop("Stor_scan")
-        hideDrawIndicator()
+        hideDrawIndicatorWithStagingGate()
         local height = SearchResultsRenderer:RenderEmptyState(self, parent, storageSearchText, emptyRenderTab)
         -- Update SearchStateManager with result count
         SearchStateManager:UpdateResults(searchResultTabKey, 0)
@@ -1268,7 +1422,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
         if not hasAnyData then
             stStop("Stor_scan")
-            hideDrawIndicator()
+            hideDrawIndicatorWithStagingGate()
             local _, height = CreateEmptyStateCard(parent, "storage", yOffset)
             SearchStateManager:UpdateResults(searchResultTabKey, 0)
             return height
@@ -1937,7 +2091,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end  -- if warbandTotalMatches > 0
     
     stStop("Stor_warband")
-    if parent._wnStorageRowRefs and #parent._wnStorageRowRefs > 0 then
+    local stageNow = mfPaint and mfPaint._wnStorageLeafStage
+    local hasAsyncLeaves = stageNow and stageNow.gen == leafPaintGen and (stageNow.pending or 0) > 0
+    if (parent._wnStorageRowRefs and #parent._wnStorageRowRefs > 0) or hasAsyncLeaves then
         parent._wnStorageApplyRowVisual = function(row, item, rowIdx, rowWidth, locText)
             PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
         end
@@ -1948,7 +2104,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     parent._wnStorageLayoutTail = storageStackAnchor
     local extent = MeasureStorageResultsContentExtent(parent)
     if extent then
-        hideDrawIndicator()
+        hideDrawIndicatorWithStagingGate()
         return math.max(1, extent + pad, yOffset + pad)
     end
     if storageStackAnchor and parent.GetTop and storageStackAnchor.GetBottom then
@@ -1956,11 +2112,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local bot = storageStackAnchor:GetBottom()
         if pTop and bot then
             local measured = pTop - bot + pad
-            hideDrawIndicator()
+            hideDrawIndicatorWithStagingGate()
             return math.max(1, measured, yOffset + pad)
         end
     end
-    hideDrawIndicator()
+    hideDrawIndicatorWithStagingGate()
     return yOffset + pad
 end -- DrawStorageResults
 
@@ -2112,6 +2268,7 @@ function WarbandNexus:DrawItemList(parent)
     local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local accentColor = COLORS.accent
     local headerBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+    local HeaderFact = ns.UI and ns.UI.Factory
     local itemsEcReserve = headerBtnH + ((GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8)
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "items",
@@ -2124,7 +2281,11 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== GOLD MANAGER BUTTON (Header - ALWAYS visible) =====
     local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
-    local goldMgrBtn = ns.UI.Factory:CreateButton(titleCard, 100, headerBtnH)  -- Initial width, will auto-size
+    local goldMgrBtn = HeaderFact and HeaderFact.CreateButton and HeaderFact:CreateButton(titleCard, 100, headerBtnH)
+    if not goldMgrBtn then
+        goldMgrBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
+        goldMgrBtn:SetSize(100, headerBtnH)
+    end
     goldMgrBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
     
     -- Apply border and background
@@ -2133,8 +2294,8 @@ function WarbandNexus:DrawItemList(parent)
     end
     
     -- Apply highlight effect
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(goldMgrBtn)
+    if HeaderFact and HeaderFact.ApplyHighlight then
+        HeaderFact:ApplyHighlight(goldMgrBtn)
     end
     
     -- Button text (no icon)
@@ -2160,7 +2321,11 @@ function WarbandNexus:DrawItemList(parent)
     end)
 
     -- ===== MONEY LOGS BUTTON (Left of Gold Target) =====
-    local moneyLogsBtn = ns.UI.Factory:CreateButton(titleCard, 100, headerBtnH)
+    local moneyLogsBtn = HeaderFact and HeaderFact.CreateButton and HeaderFact:CreateButton(titleCard, 100, headerBtnH)
+    if not moneyLogsBtn then
+        moneyLogsBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
+        moneyLogsBtn:SetSize(100, headerBtnH)
+    end
     local hdrGap = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
     moneyLogsBtn:SetPoint("RIGHT", goldMgrBtn, "LEFT", -hdrGap, 0)
 
@@ -2168,8 +2333,8 @@ function WarbandNexus:DrawItemList(parent)
         ApplyVisuals(moneyLogsBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     end
 
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(moneyLogsBtn)
+    if HeaderFact and HeaderFact.ApplyHighlight then
+        HeaderFact:ApplyHighlight(moneyLogsBtn)
     end
 
     local moneyLogsText = FontManager:CreateFontString(moneyLogsBtn, "body", "OVERLAY")

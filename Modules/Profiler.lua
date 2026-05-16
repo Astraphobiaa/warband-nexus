@@ -6,6 +6,8 @@
     
     NOTE: This module is for LOCAL DEVELOPMENT ONLY. Do not ship to end users.
     The module is completely inert when disabled (near-zero overhead).
+
+    WN_FACTORY: Trace and dev HUD windows use Blizzard `BackdropTemplate` / `UIPanel*Template`; not migrated to SharedWidgets Factory.
     
     Usage:
         local P = ns.Profiler
@@ -377,9 +379,11 @@ function Profiler:EnsureTraceWindow()
         Profiler:_SyncTraceEditBoxText()
     end)
 
+    local scrollLaneReserve = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+        or ((ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26) + 2
     local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 14, -58)
-    scroll:SetPoint("BOTTOMRIGHT", -28, 12)
+    scroll:SetPoint("BOTTOMRIGHT", -scrollLaneReserve, 12)
 
     -- EditBox must be the ScrollFrame's scroll child (AceGUI MultiLineEditBox pattern).
     -- A wrapper Frame as scroll child breaks text rendering on some Midnight builds.

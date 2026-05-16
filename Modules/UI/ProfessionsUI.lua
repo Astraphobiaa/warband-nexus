@@ -19,6 +19,10 @@
     Icon sizes (favIcon, classIcon) match CharactersUI (33px column, visual 65%).
     All data uses "body" font (12px); frozen column headers use subtitle for readability.
     Consistent 8px spacing between all data columns.
+
+    WN_FACTORY: Columns dropdown shell uses Factory + ApplyVisuals (accent rim); pooled profession
+    rows are created via FramePoolFactory (Factory bootstrap Button). Tooltip/equipment hit cells
+    already prefer Factory helpers with CreateFrame fallback.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -1137,32 +1141,37 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
         local dropdown = btn._dropdown
         if not dropdown then
-            dropdown = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+            local FactDd = ns.UI and ns.UI.Factory
+            dropdown = FactDd and FactDd:CreateContainer(btn, 170, 80, false)
+            if not dropdown then
+                dropdown = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+                dropdown:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+                dropdown:SetBackdropColor(0.08, 0.08, 0.1, 1)
+                local pxScale = (ns.GetPixelScale and ns.GetPixelScale(dropdown)) or 1
+                local bR, bG, bB = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+                local bA = 0.7
+                local function MakeBorder(point1, rel1, point2, rel2, isHoriz)
+                    local tex = dropdown:CreateTexture(nil, "BORDER")
+                    tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+                    tex:SetVertexColor(bR, bG, bB, bA)
+                    tex:SetSnapToPixelGrid(false)
+                    tex:SetTexelSnappingBias(0)
+                    tex:SetPoint(point1, dropdown, rel1, 0, 0)
+                    tex:SetPoint(point2, dropdown, rel2, 0, 0)
+                    if isHoriz then tex:SetHeight(pxScale) else tex:SetWidth(pxScale) end
+                    return tex
+                end
+                MakeBorder("TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", true)
+                MakeBorder("BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", true)
+                MakeBorder("TOPLEFT", "TOPLEFT", "BOTTOMLEFT", "BOTTOMLEFT", false)
+                MakeBorder("TOPRIGHT", "TOPRIGHT", "BOTTOMRIGHT", "BOTTOMRIGHT", false)
+            elseif ApplyVisuals then
+                ApplyVisuals(dropdown, { 0.08, 0.08, 0.1, 1 },
+                    { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
+            end
             dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
             dropdown:SetFrameLevel(100)
             dropdown:SetClampedToScreen(true)
-            dropdown:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-            dropdown:SetBackdropColor(0.08, 0.08, 0.1, 1)
-
-            local pxScale = (ns.GetPixelScale and ns.GetPixelScale(dropdown)) or 1
-            local bR, bG, bB = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-            local bA = 0.7
-            local function MakeBorder(point1, rel1, point2, rel2, isHoriz)
-                local tex = dropdown:CreateTexture(nil, "BORDER")
-                tex:SetTexture("Interface\\Buttons\\WHITE8x8")
-                tex:SetVertexColor(bR, bG, bB, bA)
-                tex:SetSnapToPixelGrid(false)
-                tex:SetTexelSnappingBias(0)
-                tex:SetPoint(point1, dropdown, rel1, 0, 0)
-                tex:SetPoint(point2, dropdown, rel2, 0, 0)
-                if isHoriz then tex:SetHeight(pxScale) else tex:SetWidth(pxScale) end
-                return tex
-            end
-            MakeBorder("TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", true)
-            MakeBorder("BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", true)
-            MakeBorder("TOPLEFT", "TOPLEFT", "BOTTOMLEFT", "BOTTOMLEFT", false)
-            MakeBorder("TOPRIGHT", "TOPRIGHT", "BOTTOMRIGHT", "BOTTOMRIGHT", false)
-
             dropdown:EnableMouseWheel(true)
             dropdown:SetScript("OnMouseWheel", function() end)
             btn._dropdown = dropdown
@@ -1179,6 +1188,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
         local ROW_H = (GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (GetLayout().ROW_HEIGHT) or 26
         local PAD = 6
+        local FactDd = ns.UI and ns.UI.Factory
         local contentH = #TOGGLEABLE_COLUMNS * ROW_H + PAD * 2 + ROW_H
         dropdown:SetSize(170, contentH)
         dropdown:ClearAllPoints()
@@ -1196,8 +1206,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
         for tci = 1, #TOGGLEABLE_COLUMNS do
             local tc = TOGGLEABLE_COLUMNS[tci]
             local isVisible = self.db.profile.professionVisibleColumns[tc.key] ~= false
-            local checkRow = CreateFrame("Button", nil, dropdown)
-            checkRow:SetSize(160, ROW_H)
+            local checkRow
+            if FactDd and FactDd.CreateButton then
+                checkRow = FactDd:CreateButton(dropdown, 160, ROW_H, true)
+            end
+            if not checkRow then
+                checkRow = CreateFrame("Button", nil, dropdown)
+                checkRow:SetSize(160, ROW_H)
+            end
             checkRow:SetPoint("TOPLEFT", PAD, yOff)
 
             local checkTex = checkRow:CreateTexture(nil, "ARTWORK")
@@ -1230,8 +1246,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
 
         -- "Show All" / "Reset" row at the bottom
-        local resetRow = CreateFrame("Button", nil, dropdown)
-        resetRow:SetSize(160, ROW_H)
+        local resetRow
+        if FactDd and FactDd.CreateButton then
+            resetRow = FactDd:CreateButton(dropdown, 160, ROW_H, true)
+        end
+        if not resetRow then
+            resetRow = CreateFrame("Button", nil, dropdown)
+            resetRow:SetSize(160, ROW_H)
+        end
         resetRow:SetPoint("TOPLEFT", PAD, yOff)
         local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
         resetLbl:SetPoint("CENTER", 0, 0)
@@ -1252,7 +1274,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
         -- Close dropdown when clicking elsewhere
         if not dropdown._closer then
-            local closer = CreateFrame("Frame", nil, UIParent)
+            local closer = FactDd and FactDd:CreateContainer(UIParent, 1, 1, false)
+            if not closer then
+                closer = CreateFrame("Frame", nil, UIParent)
+            end
             closer:SetAllPoints(UIParent)
             closer:SetFrameStrata("DIALOG")
             closer:SetFrameLevel(math.max(1, (dropdown:GetFrameLevel() or 2) - 1))
@@ -1387,17 +1412,21 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
     local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
     local colHeaderParent = columnHeaderInner or headerParent
+    local hdrScrollChild = mainFrameRef and mainFrameRef.scrollChild
+    local colHeaderInnerW = math.max(1, (hdrScrollChild and hdrScrollChild:GetWidth()) or ((width or 400) + SIDE_MARGIN * 2))
 
     if columnHeaderClip then
         columnHeaderClip:SetHeight(colHeaderStripH)
     end
     if columnHeaderInner then
-        local scrollChild = mainFrameRef.scrollChild
-        local innerWidth = scrollChild and scrollChild:GetWidth() or (width + SIDE_MARGIN * 2)
-        columnHeaderInner:SetWidth(innerWidth)
+        columnHeaderInner:SetWidth(colHeaderInnerW)
     end
 
-    local colHeaderBar = CreateFrame("Frame", nil, colHeaderParent)
+    local FactHdr = ns.UI and ns.UI.Factory
+    local colHeaderBar = FactHdr and FactHdr:CreateContainer(colHeaderParent, colHeaderInnerW, COLUMN_HEADER_HEIGHT, false)
+    if not colHeaderBar then
+        colHeaderBar = CreateFrame("Frame", nil, colHeaderParent)
+    end
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
     if columnHeaderInner then
         colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -COLUMN_HEADER_TOP_GAP)
@@ -1460,8 +1489,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
             local isSorted = sortState and sortState.col == col
 
             if hdef.sortable then
-                local hitBtn = CreateFrame("Button", nil, colHeaderBar)
-                hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
+                local hitBtn
+                if FactHdr and FactHdr.CreateButton then
+                    hitBtn = FactHdr:CreateButton(colHeaderBar, w, COLUMN_HEADER_HEIGHT, true)
+                end
+                if not hitBtn then
+                    hitBtn = CreateFrame("Button", nil, colHeaderBar)
+                    hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
+                end
                 hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
                 hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 1)
 
@@ -1508,8 +1543,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 end)
             else
                 -- Clip so header text cannot draw into the fav/class gap (often misread as "Open I" next to sort arrows).
-                local clip = CreateFrame("Frame", nil, colHeaderBar)
-                clip:SetSize(w, COLUMN_HEADER_HEIGHT)
+                local clip = FactHdr and FactHdr:CreateContainer(colHeaderBar, w, COLUMN_HEADER_HEIGHT, false)
+                if not clip then
+                    clip = CreateFrame("Frame", nil, colHeaderBar)
+                    clip:SetSize(w, COLUMN_HEADER_HEIGHT)
+                end
                 clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", ColOffset(col), 0)
                 clip:SetClipsChildren(true)
                 local lbl = FontManager:CreateFontString(clip, PROF_COLUMN_HEADER_FONT, "OVERLAY")
@@ -1997,9 +2035,18 @@ end
 --============================================================================
 
 local function AcquireColumnHitFrame(row, key, colKey, centerY)
+    local FactHit = ns.UI and ns.UI.Factory
     local frame = row[key]
     if not frame then
-        frame = CreateFrame("Button", nil, row)
+        local colW = ColWidth(colKey)
+        local hitH = ROW_HEIGHT / 2
+        if FactHit and FactHit.CreateButton then
+            frame = FactHit:CreateButton(row, colW, hitH, true)
+        end
+        if not frame then
+            frame = CreateFrame("Button", nil, row)
+            frame:SetSize(colW, hitH)
+        end
         frame:SetFrameLevel(row:GetFrameLevel() + 3)
         frame:EnableMouse(true)
         row[key] = frame
@@ -2213,6 +2260,7 @@ end
 
 function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, isCurrent)
     local p = "l" .. lineIndex
+    local FactRow = ns.UI and ns.UI.Factory
 
     local iconSize = ColWidth("profIcon")
 
@@ -2283,8 +2331,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Know"]:SetMaxLines(1)
     end
     if not row[p.."KnowWarn"] then
-        local warnFrame = CreateFrame("Frame", nil, row)
-        warnFrame:SetSize(16, 16)
+        local warnFrame = FactRow and FactRow:CreateContainer(row, 16, 16, false)
+        if not warnFrame then
+            warnFrame = CreateFrame("Frame", nil, row)
+            warnFrame:SetSize(16, 16)
+        end
         warnFrame:EnableMouse(true)
         local tex = warnFrame:CreateTexture(nil, "OVERLAY")
         tex:SetAllPoints()
@@ -2343,7 +2394,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local function EnsureEquipIcon(fieldKey, iconIndex)
         local key = p .. fieldKey
         if not row[key] then
-            local btn = CreateFrame("Button", nil, row)
+            local btn = FactRow and FactRow:CreateButton(row, EQUIP_ICON_SIZE, EQUIP_ICON_SIZE, true)
+            if not btn then
+                btn = CreateFrame("Button", nil, row)
+                btn:SetSize(EQUIP_ICON_SIZE, EQUIP_ICON_SIZE)
+            end
             btn:EnableMouse(true)
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.icon:SetSize(EQUIP_ICON_SIZE, EQUIP_ICON_SIZE)
@@ -2380,8 +2435,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     -- OPEN BUTTON
     local openX = ColOffset("open")
     if not row[p.."Btn"] then
-        local btn = CreateFrame("Button", nil, row)
-        btn:SetSize(ColWidth("open"), 18)
+        local btn = FactRow and FactRow:CreateButton(row, ColWidth("open"), 18, true)
+        if not btn then
+            btn = CreateFrame("Button", nil, row)
+            btn:SetSize(ColWidth("open"), 18)
+        end
         if ApplyVisuals then
             ApplyVisuals(btn, {0.15, 0.15, 0.18, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
         end
@@ -2397,8 +2455,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     -- INFO BUTTON (read-only detail window)
     local infoX = ColOffset("info")
     if not row[p.."InfoBtn"] then
-        local ibtn = CreateFrame("Button", nil, row)
-        ibtn:SetSize(ColWidth("info"), 18)
+        local ibtn = FactRow and FactRow:CreateButton(row, ColWidth("info"), 18, true)
+        if not ibtn then
+            ibtn = CreateFrame("Button", nil, row)
+            ibtn:SetSize(ColWidth("info"), 18)
+        end
         if ApplyVisuals then
             ApplyVisuals(ibtn, {0.12, 0.12, 0.15, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
         end

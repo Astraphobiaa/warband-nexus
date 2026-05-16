@@ -48,6 +48,17 @@ local tinsert = table.insert
 local wipe = wipe
 local debugprofilestop = debugprofilestop
 
+--[[ WN_FACTORY: `WarbandNexus.toc` loads SharedWidgets.lua before GearUI.lua; `ns.UI.Factory` is mandatory at runtime.
+     Remaining raw `CreateFrame` (BackdropTemplate / UIPanel / wow widget types — not plain layout shells):
+     • EnsureGearContentVeil — HIGH-strata opaque loading blocker + spinner over scrollChild.
+     • CreateSlotButton `borderFrame` — dynamic quality-colored slot rim (`SetBackdropBorderColor`).
+     • paperChrome, storagePanel — paper-band / recommendation card tinted shells.
+     • `_gearPaperdollCenterPlaceholder` — deferred layout chrome on card when doll paints next frame.
+     • `CreateFrame(widgetType, …)` — DressUpModel / PlayerModel (dynamic subtype).
+     • Character selector trigger, Hide-filter opener, dropdown `menu`, hide-threshold popup `row` — custom combobox/popup chrome.
+     • Fullscreen dismiss layers on UIParent — transparent hit targets (see also `GearFact:CreateButton` where used).]]
+local GearFact = ns.UI.Factory
+
 --- Minimum time the gear-tab loading veil stays visible (defer/yield can finish in one frame).
 local GEAR_CONTENT_VEIL_MIN_DISPLAY_SEC = 0.5
 --- Minimum time "Scanning storage…" stays up before swapping to rows/empty (avoids sub-500ms flicker).
@@ -60,6 +71,12 @@ local function GearTabL(key, fallback)
         return v
     end
     return fallback
+end
+
+--- Paperdoll / portrait textures: aligns with `MAIN_SHELL.FRAME_CONTENT_INSET`.
+local function GearGetFrameContentInset()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.FRAME_CONTENT_INSET or 2
 end
 
 --- Visible height of the results scroll viewport (scrollChild is often 1px tall during PopulateContent teardown).
@@ -1096,8 +1113,7 @@ end
 local function PaintGearStorageRecColumnHeader(parent, contentW)
     if not parent or not FontManager then return end
     local lay = GetGearStorageRecColumnLayout(contentW)
-    local hdr = CreateFrame("Frame", nil, parent)
-    hdr:SetSize(contentW, GEAR_STORAGE_REC_TABLE_HDR)
+    local hdr = GearFact:CreateContainer(parent, contentW, GEAR_STORAGE_REC_TABLE_HDR, false)
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     local rule = hdr:CreateTexture(nil, "ARTWORK")
     rule:SetHeight(1)
@@ -1688,10 +1704,10 @@ end
 
 local function EnsureGearOuterSideHost(btn)
     if not btn._gearOuterSideHost then
-        local outer = CreateFrame("Frame", nil, btn)
+        local outer = GearFact:CreateContainer(btn, STATUS_OUTER_COL_W, STATUS_OUTER_COL_H, false)
+        local gemCell = GearFact:CreateContainer(outer, STATUS_OUTER_COL_W, STATUS_OUTER_ICON, false)
+        local encCell = GearFact:CreateContainer(outer, STATUS_OUTER_COL_W, STATUS_OUTER_ICON, false)
         outer:SetFrameLevel((btn.GetFrameLevel and btn:GetFrameLevel() or 0) + 2)
-        local gemCell = CreateFrame("Frame", nil, outer)
-        local encCell = CreateFrame("Frame", nil, outer)
         outer._gemCell = gemCell
         outer._encCell = encCell
         btn._gearOuterSideHost = outer
@@ -1851,7 +1867,7 @@ local function UpdateGearSocketCluster(btn, entries, opts)
     end
     if gemPx < 6 then gemPx = 6 end
     if not btn._gearSocketCluster then
-        local f = CreateFrame("Frame", nil, btn)
+        local f = GearFact:CreateContainer(btn, 24, 24, false)
         f:SetFrameLevel((btn.GetFrameLevel and btn:GetFrameLevel() or 0) + 3)
         btn._gearSocketCluster = f
         f._gemTex = {}
@@ -2057,8 +2073,7 @@ end
 ---@return Frame btn
 local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
     -- Slot her zaman aynı boyutta; ikon görünmese bile boşluk rezerve (empty texture)
-    local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(SLOT_SIZE, SLOT_SIZE)
+    local btn = GearFact:CreateButton(parent, SLOT_SIZE, SLOT_SIZE, true)
     btn:SetPoint("TOPLEFT", x, y)
     if btn.SetClipsChildren then btn:SetClipsChildren(false) end
     btn._slotID = slotID
@@ -2100,19 +2115,20 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     bg:SetColorTexture(0.05, 0.05, 0.07, 0.9)
 
     -- Item / empty slot texture
+    local rimInset = GearGetFrameContentInset()
     local tex = btn:CreateTexture(nil, "ARTWORK")
-    tex:SetPoint("TOPLEFT",     2, -2)
-    tex:SetPoint("BOTTOMRIGHT", -2, 2)
+    tex:SetPoint("TOPLEFT", btn, "TOPLEFT", rimInset, -rimInset)
+    tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
     btn.iconTex = tex
 
     -- ilvl label (bottom-right overlay); font must be set before any SetText (WoW requirement)
     local ilvlLabel = btn:CreateFontString(nil, "OVERLAY")
-    ilvlLabel:SetPoint("BOTTOMRIGHT", -2, 2)
+    ilvlLabel:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
     ilvlLabel:SetFontObject(SystemFont_Tiny)  -- ensure font set before Populate() ever calls SetText
     if FontManager and FontManager.CreateFontString then
         local fs = FontManager:CreateFontString(btn, GFR("gearSlotIlvl"), "OVERLAY")
         if fs and fs.SetFontObject then
-            fs:SetPoint("BOTTOMRIGHT", -2, 2)
+            fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
             fs:SetJustifyH("RIGHT")
             if fs.SetDrawLayer then fs:SetDrawLayer("OVERLAY", 7) end
             btn.ilvlLabel = fs
@@ -2425,8 +2441,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
             else
                 textCenterX = currentTextOffset
             end
-            local textContainer = CreateFrame("Frame", nil, parent)
-            textContainer:SetSize(textWidth or TRACK_TEXT_W, P(42))
+            local textContainer = GearFact:CreateContainer(parent, tW, tH, false)
             textContainer:SetPoint("CENTER", btn, "CENTER", textCenterX, 0)
             
             local blockCenterOffset = 8
@@ -2586,7 +2601,7 @@ local function ApplyGearOfflineCenterChrome(centerRef, classFile)
     if not centerRef then return end
     local chrome = ns._gearOfflineCenterChrome
     if not chrome then
-        chrome = CreateFrame("Frame", nil, centerRef)
+        chrome = GearFact:CreateContainer(centerRef, 100, 100, false)
         chrome:SetAllPoints()
         chrome:EnableMouse(false)
         chrome:EnableMouseWheel(false)
@@ -2596,7 +2611,7 @@ local function ApplyGearOfflineCenterChrome(centerRef, classFile)
         topLine:SetPoint("TOPLEFT", chrome, "TOPLEFT", 0, -1)
         topLine:SetPoint("TOPRIGHT", chrome, "TOPRIGHT", 0, -1)
         chrome._topLine = topLine
-        local bar = CreateFrame("Frame", nil, chrome)
+        local bar = GearFact:CreateContainer(chrome, 100, 36, false)
         bar:SetPoint("BOTTOMLEFT", chrome, "BOTTOMLEFT", 0, 0)
         bar:SetPoint("BOTTOMRIGHT", chrome, "BOTTOMRIGHT", 0, 0)
         bar:SetHeight(36)
@@ -2753,9 +2768,10 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         local pan = ns._gearPortraitPanel
         if not pan then
             pan = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
+            local rimInsetPan = GearGetFrameContentInset()
             local tex = pan:CreateTexture(nil, "ARTWORK", nil, 1)
-            tex:SetPoint("TOPLEFT", pan, "TOPLEFT", 2, -2)
-            tex:SetPoint("BOTTOMRIGHT", pan, "BOTTOMRIGHT", -2, 2)
+            tex:SetPoint("TOPLEFT", pan, "TOPLEFT", rimInsetPan, -rimInsetPan)
+            tex:SetPoint("BOTTOMRIGHT", pan, "BOTTOMRIGHT", -rimInsetPan, rimInsetPan)
             tex:SetSnapToPixelGrid(false)
             tex:SetTexelSnappingBias(0)
             pan._tex = tex
@@ -2896,7 +2912,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
         end)
 
         -- Interaction layer: rotation drag (left/right button) + wheel zoom.
-        local il = CreateFrame("Frame", nil, clip)
+        local il = GearFact:CreateContainer(clip, math.max(1, clip:GetWidth() or MODEL_W), math.max(1, clip:GetHeight() or MODEL_H), false)
         il:SetAllPoints()
         il:SetFrameLevel(m:GetFrameLevel() + 20)
         il:EnableMouse(true)
@@ -3253,8 +3269,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local avgIlvl = charData and charData.itemLevel or 0
     local ilvlFrame = ns._gearIlvlFrame
     if not ilvlFrame then
-        ilvlFrame = CreateFrame("Frame", nil, card)
-        ilvlFrame:SetSize(120, 22)
+        ilvlFrame = GearFact:CreateContainer(card, 120, 22, false)
         local ilvlOverlay = FontManager:CreateFontString(ilvlFrame, GFR("gearIlvlBadge"), "OVERLAY")
         ilvlOverlay:SetPoint("CENTER", 0, 0)
         ilvlOverlay:SetJustifyH("CENTER")
@@ -3268,7 +3283,7 @@ local function DrawPaperDollInCard(card, charData, gearData, upgradeInfo, curren
     local displayName = (charData and charData.name) or ""
     local nameWrapper = ns._gearNameWrapper
     if not nameWrapper then
-        nameWrapper = CreateFrame("Frame", nil, card)
+        nameWrapper = GearFact:CreateContainer(card, 200, 20, false)
         local nameLabel = FontManager:CreateFontString(nameWrapper, GFR("gearCharacterName"), "OVERLAY")
         nameLabel:SetJustifyH("CENTER")
         nameLabel:SetShadowOffset(1, -1)
@@ -3580,16 +3595,14 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     end
 
     -- Plain layout frames (no nested border): avoids “box inside box” next to the gear card chrome.
-    local statPanel = CreateFrame("Frame", nil, card)
-    statPanel:SetSize(midColW, statPanelH)
+    local statPanel = GearFact:CreateContainer(card, midColW, statPanelH, false)
     statPanel:SetPoint("TOPLEFT", card, "TOPLEFT", midLeft, panelTopY)
     statPanel:EnableMouse(false)
     if statPanel.SetFrameLevel then
         statPanel:SetFrameLevel((paperChrome:GetFrameLevel() or 3) + 2)
     end
 
-    local currencyPanel = CreateFrame("Frame", nil, card)
-    currencyPanel:SetSize(midColW, currencyBlockH)
+    local currencyPanel = GearFact:CreateContainer(card, midColW, currencyBlockH, false)
     currencyPanel:SetPoint("TOPLEFT", statPanel, "BOTTOMLEFT", 0, -SECTION_GAP)
     currencyPanel:EnableMouse(false)
     if currencyPanel.SetClipsChildren then
@@ -3743,7 +3756,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         -- Crest rows: icon | name (clipped) | fixed-width amount column (symmetric insets with stats panel).
         local curY = -GEAR_SUBPANEL_HDR
         local iconSize = 24
-        for i = 1, #crestCurrencies do
+for i = 1, #crestCurrencies do
             local cur = crestCurrencies[i]
             -- Alternating row bg
             local rowBg = currencyPanel:CreateTexture(nil, "BACKGROUND")
@@ -3758,7 +3771,8 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             ico:SetTexture(cur.icon or "Interface\\Icons\\INV_Misc_Coin_01")
             ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-            local crestHit = CreateFrame("Frame", nil, currencyPanel)
+            local crestHitW = math.max(1, midColW - currPad * 2)
+            local crestHit = GearFact:CreateContainer(currencyPanel, crestHitW, CREST_ROW_H, false)
             crestHit:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
             crestHit:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
             crestHit:SetHeight(CREST_ROW_H)
@@ -3896,7 +3910,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     local storagePad = 8
     -- Title only (no subtitle): tighter header so the recommendations table gains viewport height.
     local storageHeaderH = 30
-    local storageBarW = 22
+    local storageBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
     local rowH = 34
     -- Storage row data before the panel shell so overflow math matches the deferred row paint pass.
     local storageRows = {}
@@ -3986,15 +4000,14 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                 scroll:SetPoint("BOTTOMRIGHT", -storagePad, storagePad)
                 if sbCol and sbCol.Hide then sbCol:Hide() end
             end
-            local content = CreateFrame("Frame", nil, scroll)
-            recScroll = scroll
-            recContent = content
             local contentW = rowsOverflow
                 and math.max(120, storageW - storagePad * 2 - storageBarW)
                 or  math.max(120, storageW - storagePad * 2)
             storageContentW = contentW
-            content:SetWidth(contentW)
-            content:SetHeight(math.max(#storageRows * rowH + storageHdrScroll, viewportH))
+            local contentH = math.max(#storageRows * rowH + storageHdrScroll, viewportH)
+            local content = GearFact:CreateContainer(scroll, contentW, contentH, false)
+            recScroll = scroll
+            recContent = content
             scroll:SetScrollChild(content)
 
             if #storageRows == 0 then
@@ -5071,8 +5084,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
     local COLORS = ns.UI_COLORS
     local accent = COLORS.accent
-    local layout = ns.UI_LAYOUT or {}
-    local SCROLL_COL_EST = layout.SCROLLBAR_COLUMN_WIDTH or 22
+    local SCROLL_COL_EST = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
     local MENU_EDGE_EST = 4
 
     local btn = gearCharSelectorBtn
@@ -5189,53 +5201,34 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             menu:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.9)
 
             -- Factory scroll + dedicated scrollbar column (matches main window / Collections)
-            local Factory = ns.UI and ns.UI.Factory
-            local layoutLocal = ns.UI_LAYOUT or {}
-            local SCROLL_COL = layoutLocal.SCROLLBAR_COLUMN_WIDTH or 22
+            local SCROLL_COL = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
             local MENU_EDGE = 4
 
-            if Factory and Factory.CreateScrollFrame and Factory.CreateScrollBarColumn and Factory.PositionScrollBarInContainer then
-                menu._barColumn = Factory:CreateScrollBarColumn(menu, SCROLL_COL, MENU_EDGE, MENU_EDGE)
-                local sf = Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
-                sf:SetPoint("TOPLEFT", menu, "TOPLEFT", MENU_EDGE, -MENU_EDGE)
-                sf:SetPoint("BOTTOMRIGHT", menu._barColumn, "BOTTOMLEFT", -2, MENU_EDGE)
-                if sf.SetClipsChildren then
-                    sf:SetClipsChildren(true)
-                end
-                local sc = CreateFrame("Frame", nil, sf)
-                sf:SetScrollChild(sc)
-                menu._charScroll = sf
-                menu._charScrollChild = sc
-                if sf.ScrollBar then
-                    Factory:PositionScrollBarInContainer(sf.ScrollBar, menu._barColumn, 0)
-                end
-                sf:SetScript("OnSizeChanged", function(frame, w)
-                    if sc and w and w > 0 then
-                        sc:SetWidth(w)
-                    end
-                end)
-            else
-                local sf = CreateFrame("ScrollFrame", nil, menu, "UIPanelScrollFrameTemplate")
-                sf:SetPoint("TOPLEFT", 4, -4)
-                sf:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -4, 4)
-                if sf.SetClipsChildren then
-                    sf:SetClipsChildren(true)
-                end
-                local sc = CreateFrame("Frame", nil, sf)
-                sf:SetScrollChild(sc)
-                menu._charScroll = sf
-                menu._charScrollChild = sc
-                menu._barColumn = nil
-                sf:SetScript("OnSizeChanged", function(frame, w)
-                    if sc and w and w > 0 then
-                        sc:SetWidth(w)
-                    end
-                end)
+            menu._barColumn = GearFact:CreateScrollBarColumn(menu, SCROLL_COL, MENU_EDGE, MENU_EDGE)
+            local sf = GearFact:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
+            sf:SetPoint("TOPLEFT", menu, "TOPLEFT", MENU_EDGE, -MENU_EDGE)
+            sf:SetPoint("BOTTOMRIGHT", menu._barColumn, "BOTTOMLEFT", -2, MENU_EDGE)
+            if sf.SetClipsChildren then
+                sf:SetClipsChildren(true)
             end
+            local initScW = math.max(56, GEAR_CHAR_SELECTOR_WIDTH - SCROLL_COL - MENU_EDGE * 2)
+            local initScH = math.max(8, GEAR_CHAR_DROPDOWN_ENTRY_H + 8)
+            local sc = GearFact:CreateContainer(sf, initScW, initScH, false)
+            sf:SetScrollChild(sc)
+            menu._charScroll = sf
+            menu._charScrollChild = sc
+            if sf.ScrollBar then
+                GearFact:PositionScrollBarInContainer(sf.ScrollBar, menu._barColumn, 0)
+            end
+            sf:SetScript("OnSizeChanged", function(frame, w)
+                if sc and w and w > 0 then
+                    sc:SetWidth(w)
+                end
+            end)
             gearCharDropdownMenu = menu
         end
         if not bg then
-            bg = CreateFrame("Button", nil, UIParent)
+            bg = GearFact:CreateButton(UIParent, 64, 64, true)
             bg:SetAllPoints()
             bg:SetFrameStrata("FULLSCREEN_DIALOG")
             bg:SetFrameLevel(499)
@@ -5283,7 +5276,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local charEntry = list[i]
             local entryBtn = gearCharDropdownEntryPool[i]
             if not entryBtn then
-                entryBtn = CreateFrame("Button", nil, entryParent)
+                entryBtn = GearFact:CreateButton(entryParent, math.max(120, btnW - 12), ENTRY_H, true)
                 EnsureGearEntryColumnLabels(entryBtn)
                 local entryHi = entryBtn:CreateTexture(nil, "HIGHLIGHT")
                 entryHi:SetAllPoints()
@@ -5350,15 +5343,14 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             entryY = entryY - ENTRY_H
         end
 
-        local Factory = ns.UI and ns.UI.Factory
         local function SyncDropdownScroll()
             if not menu or not menu:IsShown() or not scroll or not scrollChild then return end
             local sw = scroll:GetWidth()
             if sw and sw > 0 then
                 scrollChild:SetWidth(sw)
             end
-            if Factory and Factory.UpdateScrollBarVisibility then
-                Factory:UpdateScrollBarVisibility(scroll)
+            if GearFact.UpdateScrollBarVisibility then
+                GearFact:UpdateScrollBarVisibility(scroll)
             elseif scroll.UpdateScrollBarVisibility then
                 scroll:UpdateScrollBarVisibility()
             end
@@ -5509,7 +5501,7 @@ local function CreateGearHeaderHideButton(parent)
         menu:Show()
         local catcher = btn._catcher
         if not catcher then
-            catcher = CreateFrame("Button", nil, UIParent)
+            catcher = GearFact:CreateButton(UIParent, 64, 64, true)
             catcher:SetAllPoints(UIParent)
             catcher:SetFrameStrata("FULLSCREEN_DIALOG")
             catcher:SetFrameLevel(5199)

@@ -1,6 +1,9 @@
 --[[
     Warband Nexus - Character Bank Money Logs Popup
     Tabbed view: All / Deposit / Withdraw (transaction log) + Contributions (per-character summary).
+
+    WN_FACTORY: Tabs, scroll hosts, rows, footers prefer `Factory` methods; stretch/scroll-child helpers fall
+    back to plain `CreateFrame` if Factory unavailable. Requires Factory for full themed layout elsewhere in this popup.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -10,6 +13,7 @@ local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateExternalWindow = ns.UI_CreateExternalWindow
+local Factory = ns.UI.Factory
 
 local issecretvalue = issecretvalue
 
@@ -212,9 +216,14 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         { key = "contributions", label = (ns.L and ns.L["MONEY_LOGS_SUMMARY_TITLE"]) or "Contributions" },
     }
 
-    local tabBar = ns.UI.Factory:CreateContainer(contentFrame, math.max(CONTENT_W, SUM_TOTAL_W), 30)
-    tabBar:SetPoint("TOPLEFT", PADDING, -8)
-    tabBar:SetPoint("TOPRIGHT", -PADDING, -8)
+    local tabBarW = math.max(CONTENT_W, SUM_TOTAL_W)
+    local tabBar = Factory and Factory.CreateContainer and Factory:CreateContainer(contentFrame, tabBarW, 30)
+    if not tabBar then
+        tabBar = CreateFrame("Frame", nil, contentFrame)
+        tabBar:SetHeight(30)
+    end
+    tabBar:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PADDING, -8)
+    tabBar:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -PADDING, -8)
 
     local tabButtons = {}
     local function setTabVisuals(btn, selected)
@@ -227,18 +236,21 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     end
 
     local TAB_GAP = 4
-    local tabBarW = math.max(CONTENT_W, SUM_TOTAL_W)
     local tabBtnW = math.max(100, math.floor((tabBarW - (TAB_GAP * (#TAB_DEFS - 1))) / #TAB_DEFS))
     for idx = 1, #TAB_DEFS do
         local def = TAB_DEFS[idx]
-        local btn = ns.UI.Factory:CreateButton(tabBar, tabBtnW, 26)
+        local btn = Factory and Factory.CreateButton and Factory:CreateButton(tabBar, tabBtnW, 26)
+        if not btn then
+            btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
+            btn:SetSize(tabBtnW, 26)
+        end
         if idx == 1 then
             btn:SetPoint("LEFT", 0, 0)
         else
             btn:SetPoint("LEFT", tabButtons[idx - 1], "RIGHT", TAB_GAP, 0)
         end
-        if ns.UI.Factory.ApplyHighlight then
-            ns.UI.Factory:ApplyHighlight(btn)
+        if Factory and Factory.ApplyHighlight then
+            Factory:ApplyHighlight(btn)
         end
         local lbl = FontManager:CreateFontString(btn, "body", "OVERLAY")
         lbl:SetPoint("CENTER")
@@ -249,10 +261,25 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         tabButtons[idx] = btn
     end
 
-    --=========================================================================
-    -- TRANSACTION LOG PANEL (All / Deposit / Withdraw)
-    --=========================================================================
-    local logPanel = CreateFrame("Frame", nil, contentFrame)
+    local function AcquireStretchPanel(parent)
+        if Factory and Factory.CreateContainer then
+            local p = Factory:CreateContainer(parent, 1, 1, false)
+            if p then return p end
+        end
+        return CreateFrame("Frame", nil, parent)
+    end
+
+    local function AcquireScrollChildHost(scroll)
+        if Factory and Factory.CreateContainer then
+            local c = Factory:CreateContainer(scroll, 1, 1, false)
+            if c then return c end
+        end
+        local f = CreateFrame("Frame", nil, scroll)
+        f:SetSize(1, 1)
+        return f
+    end
+
+    local logPanel = AcquireStretchPanel(contentFrame)
     logPanel:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -8)
     logPanel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -PADDING, 10)
 
@@ -308,8 +335,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local logScrollChild = logScroll:GetScrollChild()
     if not logScrollChild then
-        logScrollChild = CreateFrame("Frame", nil, logScroll)
-        logScrollChild:SetSize(1, 1)
+        logScrollChild = AcquireScrollChildHost(logScroll)
         logScroll:SetScrollChild(logScrollChild)
     end
     logScrollChild:SetWidth(CONTENT_W)
@@ -411,7 +437,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     --=========================================================================
     -- CONTRIBUTIONS PANEL
     --=========================================================================
-    local contribPanel = CreateFrame("Frame", nil, contentFrame)
+    local contribPanel = AcquireStretchPanel(contentFrame)
     contribPanel:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -8)
     contribPanel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -PADDING, 10)
 
@@ -459,8 +485,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local contribScrollChild = contribScroll:GetScrollChild()
     if not contribScrollChild then
-        contribScrollChild = CreateFrame("Frame", nil, contribScroll)
-        contribScrollChild:SetSize(1, 1)
+        contribScrollChild = AcquireScrollChildHost(contribScroll)
         contribScroll:SetScrollChild(contribScrollChild)
     end
     contribScrollChild:SetWidth(SUM_TOTAL_W)

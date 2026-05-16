@@ -837,7 +837,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         
         local itemHeight = 28
         local menuPad = 6
-        local scrollBarW = 22
+        local scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
         local contentHeight = math.min(#sortedOptions * itemHeight, 300)
         
         -- Reuse existing menu if available (Factory container for standard compliance)
@@ -899,10 +899,14 @@ local function CreateDropdownWidget(parent, option, yOffset)
         end
 
         local btnWidth = menuWidth - menuPad - scrollBarW
-        
-        local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-        scrollChild:SetWidth(btnWidth)
-        scrollChild:SetHeight(#sortedOptions * itemHeight)
+        local scrollChildH = math.max(1, #sortedOptions * itemHeight)
+
+        local scrollChild = ns.UI.Factory and ns.UI.Factory.CreateContainer and ns.UI.Factory:CreateContainer(scrollFrame, btnWidth, scrollChildH, false)
+        if not scrollChild then
+            scrollChild = CreateFrame("Frame", nil, scrollFrame)
+            scrollChild:SetWidth(btnWidth)
+            scrollChild:SetHeight(scrollChildH)
+        end
         scrollFrame:SetScrollChild(scrollChild)
         
         -- Update scroll bar visibility
@@ -1225,8 +1229,11 @@ end
 local function StackSettingsSubPanel(hostContent, panelWidth, stackY, buildInner, opts)
     opts = opts or {}
     if opts.flat then
-        local anchor = CreateFrame("Frame", nil, hostContent)
-        anchor:SetSize(panelWidth, 1)
+        local anchor = ns.UI.Factory and ns.UI.Factory.CreateContainer and ns.UI.Factory:CreateContainer(hostContent, panelWidth, 1, false)
+        if not anchor then
+            anchor = CreateFrame("Frame", nil, hostContent)
+            anchor:SetSize(panelWidth, 1)
+        end
         anchor:SetPoint("TOPLEFT", hostContent, "TOPLEFT", 0, stackY)
         local iw = panelWidth
         local cy = buildInner(anchor, iw)
@@ -1459,7 +1466,10 @@ local function BuildSettings(parent, containerWidth)
     local isListening = false
     local captureFrame = settingsKeybindCaptureFrame
     if not captureFrame then
-        captureFrame = CreateFrame("Frame", nil, UIParent)
+        captureFrame = ns.UI.Factory and ns.UI.Factory.CreateContainer and ns.UI.Factory:CreateContainer(UIParent, 1, 1, false)
+        if not captureFrame then
+            captureFrame = CreateFrame("Frame", nil, UIParent)
+        end
         captureFrame:SetAllPoints(UIParent)
         captureFrame:Hide()
         settingsKeybindCaptureFrame = captureFrame
@@ -1648,6 +1658,28 @@ local function BuildSettings(parent, containerWidth)
             end,
             valueFormat = function(v) return string.format("%d%%", v * 100) end,
         }, cy, sliderElements)
+
+        cy = select(1, CreateCheckboxGrid(inner, {
+            {
+                key = "mainWindowDense",
+                label = (ns.L and ns.L["SETTINGS_COMPACT_MAIN_WINDOW_LABEL"]) or "Compact main-window footprint",
+                tooltip = (ns.L and ns.L["SETTINGS_COMPACT_MAIN_WINDOW_HINT"])
+                    or "Tighter resize minimums and modest default sizing. Horizontal scroll still covers wide tabs.",
+                get = function()
+                    local p = WarbandNexus.db.profile
+                    return (p.mainWindowDensity or "standard") == "compact"
+                end,
+                set = function(on)
+                    WarbandNexus.db.profile.mainWindowDensity = on and "compact" or "standard"
+                    if WarbandNexus.UI_ClampMainFrameResizeBoundsFromProfile then
+                        WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
+                    end
+                    if WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end,
+            },
+        }, cy, iw, { maxColumns = 1 }))
 
         return cy
     end, { flat = true, noTrailingGap = true })
@@ -3210,29 +3242,6 @@ local function BuildSettings(parent, containerWidth)
             iw, cy, { skipGapBefore = true })
         cy = cy - GetHeaderToolbarGap()
 
-        cy = CreateDropdownWidget(inner, {
-            name = (ns.L and ns.L["ICON_THEME"]) or "Icon Theme",
-            desc = (ns.L and ns.L["ICON_THEME_TOOLTIP"]) or "Classic uses Blizzard icons and top tabs. Modern uses custom PNG plan slots and a sidebar layout.",
-            stackBelowLabel = true,
-            values = {
-                classic = (ns.L and ns.L["ICON_THEME_CLASSIC"]) or "Classic",
-                modern = (ns.L and ns.L["ICON_THEME_MODERN"]) or "Modern",
-            },
-            get = function()
-                return (WarbandNexus.db.profile.iconTheme == "modern") and "modern" or "classic"
-            end,
-            set = function(_, value)
-                if ns.SetIconTheme then
-                    ns.SetIconTheme(value)
-                else
-                    WarbandNexus.db.profile.iconTheme = (value == "modern") and "modern" or "classic"
-                end
-                if WarbandNexus.Print then
-                    WarbandNexus:Print((ns.L and ns.L["ICON_THEME_APPLIED_RELOAD"]) or "Icon theme changed. Sidebar and spacing update immediately; /reload if anything looks stuck.")
-                end
-            end,
-        }, cy)
-
         local pickerH = math.max(SETTINGS_BTN_H + 6, 38)
         local colorPickerBtn = ns.UI.Factory:CreateButton(inner, math.min(280, iw), pickerH, false)
         colorPickerBtn:SetPoint("TOPLEFT", 0, cy)
@@ -4404,13 +4413,17 @@ function WarbandNexus:ShowSettings()
         end)
     end)
     
-    -- Header (Factory container)
-    local header = ns.UI.Factory:CreateContainer(f, 1, 40, false)
+    local settingsMainShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    local settingsChromeInset = settingsMainShell.FRAME_CONTENT_INSET or 2
+    local settingsHeaderH = settingsMainShell.HEADER_BAR_HEIGHT or 40
+
+    -- Header (Factory container) — same inset/header band contract as main `CreateMainWindow`
+    local header = ns.UI.Factory:CreateContainer(f, 1, settingsHeaderH, false)
     if not header then return end
-    header:SetHeight(40)
+    header:SetHeight(settingsHeaderH)
     header:ClearAllPoints()
-    header:SetPoint("TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", -2, -2)
+    header:SetPoint("TOPLEFT", settingsChromeInset, -settingsChromeInset)
+    header:SetPoint("TOPRIGHT", -settingsChromeInset, -settingsChromeInset)
     header:EnableMouse(true)
     if ns.WindowManager and ns.WindowManager.InstallDragHandler then
         ns.WindowManager:InstallDragHandler(header, f)
@@ -4516,7 +4529,8 @@ function WarbandNexus:ShowSettings()
     contentArea:SetPoint("BOTTOMRIGHT", -UI_SPACING.SIDE_MARGIN, UI_SPACING.TOP_MARGIN)
     
     -- ScrollFrame (Collections pattern: bar column + PositionScrollBarInContainer)
-    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(contentArea, 22, SETTINGS_SCROLL_INSET_TOP, SETTINGS_SCROLL_INSET_BOTTOM)
+    local settingsSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(contentArea, settingsSbColW, SETTINGS_SCROLL_INSET_TOP, SETTINGS_SCROLL_INSET_BOTTOM)
     scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:ClearAllPoints()
     scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -SETTINGS_SCROLL_INSET_TOP)

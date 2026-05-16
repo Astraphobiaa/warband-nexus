@@ -17,6 +17,8 @@
     - NO hardcoded iLvl tables (use native APIs only)
     - Event-driven only (no polling/OnUpdate)
     - Safe nil handling for all API calls
+
+    WN_NONUI_UI: `scannerFrame` is an event-host `CreateFrame` only; Vault UI dialogs live in Modules/VaultButton.lua.
 ]]
 
 local addonName, ns = ...

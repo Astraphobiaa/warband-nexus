@@ -376,6 +376,94 @@ local UI_SPACING = {
     titleCardControlRightInset = 20,
     headerToolbarControlGap = 8,
     dropdownMenuRowHeight = 26,
+
+    --- Main addon window geometry (UIParent layout units): resize clamps + sensible defaults per `API_GetScreenInfo().category`.
+    --- Wide tabs use scrollChild minimum widths (`ComputeScrollChildWidth`, StatisticsUI row wrap) rather than inflated window mins.
+    MAIN_WINDOW = {
+        --- Upper bound when clamping saved or live window dimensions (historically 95% viewport).
+        CLAMP_SCREEN_WIDTH_PCT = 0.95,
+        CLAMP_SCREEN_HEIGHT_PCT = 0.95,
+        --- Envelope caps inside optimal-size calculation (`API_CalculateOptimalWindowSize`).
+        OPTIMAL_MAX_SCREEN_WIDTH_PCT = 0.90,
+        OPTIMAL_MAX_SCREEN_HEIGHT_PCT = 0.90,
+        DEFAULT_HEIGHT_SCREEN_PCT = 0.70,
+        --- If numeric for category, replaces aspect-ratio-based default width pct in `API_CalculateOptimalWindowSize`.
+        --- `small`: use most of usable width on laptops (`physWidth < 1600`).
+        DEFAULT_WIDTH_SCREEN_PCT_BY_CATEGORY = {
+            small = 0.88,
+        },
+        --- Min resize / default-floor width and height (`SetResizeBounds`). Scroll handles overflow for wider tab chrome.
+        MIN_WIDTH_HEIGHT_BY_CATEGORY = {
+            small = { w = 680, h = 460 },
+            normal = { w = 840, h = 520 },
+            ultrawide = { w = 860, h = 520 },
+            large = { w = 960, h = 560 },
+            xlarge = { w = 1024, h = 580 },
+        },
+        --- Used when MAIN_WINDOW or category row is unavailable (preload / recovery).
+        FALLBACK_MIN_CONTENT_WIDTH = 840,
+        FALLBACK_MIN_CONTENT_HEIGHT = 520,
+
+        --- `profile.mainWindowDensity == "compact"`: tighter mins + modest default-size shrink (`API_*` wrappers).
+        COMPACT_MIN_DIMENSION_MULT = 0.92,
+        COMPACT_ABS_MIN_WIDTH = 620,
+        COMPACT_ABS_MIN_HEIGHT = 410,
+        COMPACT_OPTIMAL_WIDTH_MULT = 0.95,
+        COMPACT_OPTIMAL_HEIGHT_MULT = 0.93,
+    },
+
+    --- Main window scroll viewport chrome (anchors in `Modules/UI.lua` CreateMainWindow).
+    --- Right inset intentionally larger: reserves `SCROLLBAR_COLUMN_WIDTH` + `SCROLL_GAP` (WN-UI-layout: content never under v-scroll).
+    MAIN_SCROLL = {
+        VIEWPORT_BORDER_INSET = 1,
+        SCROLL_GAP = 2,
+        SCROLL_INSET_LEFT = 4,
+        --- Strip from window bottom edge up to horizontal scroll lane (excluding row height itself).
+        H_BAR_BOTTOM_OFFSET = 6,
+        --- DrawStatistics wide layout wants three ~220px cards abreast (+ margins/spacing aligned with StatisticsUI.lua).
+        STATISTICS_MIN_SCROLL_CHILD_WIDTH_FOR_THREE_CARDS = 740,
+    },
+
+    --- Main shell chrome sizing (tabs / header row). Layout anchors stay in `Modules/UI.lua`.
+    MAIN_SHELL = {
+        HEADER_BAR_HEIGHT = 40, -- also Characters tab stacked Total Gold / Token text column (`CharactersTotalGoldTokenStackTextHeight`)
+        NAV_BAR_HEIGHT = 36, -- also Plans Tracker top chrome (`HEADER_HEIGHT` in `PlansTrackerWindow.lua`)
+        --- Symmetric inset from root `BackdropTemplate` inner edge to header chrome (`CreateMainWindow`).
+        FRAME_CONTENT_INSET = 2,
+        --- Vertical gap between header bottom and nav row top (`CreateMainWindow`).
+        HEADER_TO_NAV_GAP = 4,
+        DEFAULT_TAB_WIDTH = 108,
+        TAB_HEIGHT = 34, -- also Plans Tracker category strip (`CATEGORY_BAR_HEIGHT` in `PlansTrackerWindow.lua`)
+        TAB_PAD = 24,
+        TAB_GAP = 5,
+        --- Nav tab glyphs (Blizzard atlases). Optional IconsAtlas/MIT PNG packs: future `Media/` + SetTexture wiring.
+        TAB_ICON_SIZE = 18,
+        TAB_ICON_LEFT_INSET = 8,
+        TAB_ICON_GAP = 6,
+        TAB_ICON_RIGHT_MARGIN = 8,
+        --- Horizontal strip reserved for optional "(N)" tab counts (currency/rep).
+        TAB_COUNT_RESERVE = 28,
+        --- `WindowFactory` external dialogs (`CreateExternalWindow`): inner side padding vs main shell.
+        EXTERNAL_DIALOG_SIDE_INSET = 8,
+        --- Header band height for external dialogs (distinct from compact main `HEADER_BAR_HEIGHT`).
+        EXTERNAL_DIALOG_HEADER_HEIGHT = 45,
+        --- `InformationDialog` header height (supports 32px logo row vs main chrome).
+        INFO_DIALOG_HEADER_HEIGHT = 50,
+        --- `UI_ShowTryCountPopup`: compact caption band below window chrome (Plans/Collections).
+        TRY_COUNT_POPUP_HEADER_HEIGHT = 32,
+        --- `RecipeCompanionWindow`: draggable title band (narrower than `HEADER_BAR_HEIGHT`).
+        RECIPE_COMPANION_HEADER_HEIGHT = 32,
+        --- BackdropTemplate / SetBackdrop tint targets (Midnight FrameXML docs: warcraft.wiki.gg BackdropTemplate).
+        --- Blizzard tooltip chrome: subtle rounded corners; colors come from SetBackdropColor + SetBackdropBorderColor.
+        MAIN_FRAME_BACKDROP = {
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 256,
+            edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        },
+    },
 }
 
 -- Export to namespace (both names for compatibility)
@@ -384,6 +472,38 @@ ns.UI_LAYOUT = UI_SPACING  -- Alias for backward compatibility
 
 -- Keep old reference
 local UI_LAYOUT = UI_SPACING
+
+--- Read-only inset hints mirroring main window scroll chrome (`Modules/UI.lua` CreateMainWindow).
+---@return table hints
+function ns.UI_GetMainScrollLayoutHints()
+    local L = ns.UI_LAYOUT or {}
+    local ms = L.MAIN_SCROLL or {}
+    return {
+        scrollInsetLeft = ms.SCROLL_INSET_LEFT or 4,
+        scrollGap = ms.SCROLL_GAP or 2,
+        viewportBorderInset = ms.VIEWPORT_BORDER_INSET or 1,
+        scrollbarColumnWidth = L.SCROLLBAR_COLUMN_WIDTH or 26,
+        horizontalLaneBottomOffset = ms.H_BAR_BOTTOM_OFFSET or 6,
+        statisticsMinScrollChildWidth = ms.STATISTICS_MIN_SCROLL_CHILD_WIDTH_FOR_THREE_CARDS or 740,
+    }
+end
+
+--- Vertical scrollbar column lane width (buttons + thumb). Matches `SCROLLBAR_COLUMN_WIDTH` / main window scroll chrome.
+---@return number width
+function ns.UI_GetScrollbarColumnWidth()
+    local h = ns.UI_GetMainScrollLayoutHints and ns.UI_GetMainScrollLayoutHints() or {}
+    return (type(h.scrollbarColumnWidth) == "number" and h.scrollbarColumnWidth > 0) and h.scrollbarColumnWidth or 26
+end
+
+--- Horizontal space reserved beside content for vertical scrollbar lane: `scrollbarColumnWidth + MAIN_SCROLL.SCROLL_GAP`.
+--- Matches `SCROLL_INSET_RIGHT` in `Modules/UI.lua` CreateMainWindow.
+---@return number reserve
+function ns.UI_GetVerticalScrollbarLaneReserve()
+    local h = ns.UI_GetMainScrollLayoutHints and ns.UI_GetMainScrollLayoutHints() or {}
+    local col = (type(h.scrollbarColumnWidth) == "number" and h.scrollbarColumnWidth > 0) and h.scrollbarColumnWidth or 26
+    local gap = (type(h.scrollGap) == "number" and h.scrollGap >= 0) and h.scrollGap or 2
+    return col + gap
+end
 
 --============================================================================
 -- COLLAPSE / EXPAND CHEVRON (shared control — single Button, one texture, state = atlas)
@@ -543,8 +663,27 @@ local function RefreshColors()
     for i = #ns.BORDER_REGISTRY, 1, -1 do
         local frame = ns.BORDER_REGISTRY[i]
         
-        -- Check if frame still exists and has border textures
-        if not frame or not frame.BorderTop then
+        if not frame then
+            table.remove(ns.BORDER_REGISTRY, i)
+        elseif frame._wnMainShellBackdrop and frame.SetBackdropBorderColor and frame.SetBackdropColor then
+            -- Native BackdropTemplate shell (WarbandNexus root): tinted border + bg, no BorderTop quartet.
+            local targetColor = (frame._borderType == "accent") and accentColor or borderColor
+            local alpha = frame._borderAlpha or 0.9
+            frame:SetBackdropBorderColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+
+            local bgTargetColor = (frame._bgType == "accentDark") and accentDarkColor or bgColor
+            local bgAlpha = frame._bgAlpha or 1
+            frame:SetBackdropColor(bgTargetColor[1], bgTargetColor[2], bgTargetColor[3], bgAlpha)
+
+            if frame._thumbTexture then
+                frame._thumbTexture:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.9)
+            end
+            if frame._iconTexture then
+                frame._iconTexture:SetVertexColor(accentColor[1], accentColor[2], accentColor[3], 1)
+            end
+
+            updated = updated + 1
+        elseif not frame.BorderTop then
             table.remove(ns.BORDER_REGISTRY, i)
         else
             -- Get target color based on border type
@@ -669,6 +808,7 @@ ns.UI.Theme = COLORS       -- Direct reference (no copy, always current)
 -- Store in namespace to persist across all contexts (fixes nil errors)
 ns.BORDER_REGISTRY = ns.BORDER_REGISTRY or {}
 local BORDER_REGISTRY = ns.BORDER_REGISTRY
+local MAIN_SHELL_BORDER_QUARTET_KEYS = { "BorderTop", "BorderBottom", "BorderLeft", "BorderRight" }
 
 -- Apply background and 1px borders to any frame (4-texture sandwich method)
 -- Border sits INSIDE the frame, on top of backdrop, below content
@@ -791,8 +931,80 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     end
 end
 
+--- Root shell only (`WarbandNexusFrame`): BackdropTemplate table + vertex tint (BackdropTemplate mixin / wiki.gg).
+--- Strips ApplyVisuals 1px overlays so edgeFile borders are not doubled.
+local function ApplyMainWindowShellBackdrop(frame, bgColor, borderColor)
+    if not frame then return end
+
+    if not frame.SetBackdrop then
+        Mixin(frame, BackdropTemplateMixin)
+    end
+
+    for i = 1, #MAIN_SHELL_BORDER_QUARTET_KEYS do
+        local key = MAIN_SHELL_BORDER_QUARTET_KEYS[i]
+        local tex = frame[key]
+        if tex then
+            tex:Hide()
+            if tex.SetParent then
+                pcall(function() tex:SetParent(nil) end)
+            end
+            frame[key] = nil
+        end
+    end
+
+    local L = UI_SPACING and UI_SPACING.MAIN_SHELL or {}
+    local cfg = L.MAIN_FRAME_BACKDROP or {}
+    local ins = cfg.insets or {}
+    frame:SetBackdrop({
+        bgFile = cfg.bgFile or "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = cfg.edgeFile or "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = cfg.tile ~= false,
+        tileSize = cfg.tileSize or 256,
+        edgeSize = cfg.edgeSize or 16,
+        insets = {
+            left = ins.left or 4,
+            right = ins.right or 4,
+            top = ins.top or 4,
+            bottom = ins.bottom or 4,
+        },
+    })
+
+    if bgColor then
+        frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
+    end
+    if borderColor then
+        frame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
+    end
+
+    frame._wnMainShellBackdrop = true
+
+    if borderColor then
+        local isAccent = (borderColor[1] > 0.3 or borderColor[2] > 0.3)
+        frame._borderType = isAccent and "accent" or "border"
+        frame._borderAlpha = borderColor[4] or 1
+    else
+        frame._borderType = "border"
+        frame._borderAlpha = 0.9
+    end
+
+    if bgColor then
+        local isBgAccent = (bgColor[1] > 0.15 or bgColor[2] > 0.10)
+        frame._bgType = isBgAccent and "accentDark" or "bg"
+        frame._bgAlpha = bgColor[4] or 1
+    else
+        frame._bgType = "bg"
+        frame._bgAlpha = 1
+    end
+
+    if not frame._borderRegistered then
+        frame._borderRegistered = true
+        table.insert(ns.BORDER_REGISTRY, frame)
+    end
+end
+
 -- Export to namespace
 ns.UI_ApplyVisuals = ApplyVisuals
+ns.UI_ApplyMainWindowShellBackdrop = ApplyMainWindowShellBackdrop
 ns.UI_ResetPixelScale = ResetPixelScale
 
 --- Apply detail container styling (bg + accent border) using the shared 4-texture border system.
@@ -814,7 +1026,15 @@ end
     @param borderColor table - Border color {r,g,b,a}
 ]]
 function ns.UI.Factory:UpdateBorderColor(frame, borderColor)
-    if not frame or not frame.BorderTop then return end
+    if not frame or not borderColor then return end
+
+    if frame._wnMainShellBackdrop and frame.SetBackdropBorderColor then
+        local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+        frame:SetBackdropBorderColor(r, g, b, a)
+        return
+    end
+
+    if not frame.BorderTop then return end
     
     local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
     frame.BorderTop:SetVertexColor(r, g, b, a)
@@ -2355,16 +2575,19 @@ ns.UI_CreateRaceIcon = CreateRaceIcon
 -- HEADER ICON SYSTEM (Standardized icon+border for all tab headers)
 -- ============================================================================
 
--- Centralized icon mapping for all tabs
+-- Centralized icon mapping for all tabs (keys match `Modules/UI.lua` MAIN_TAB_ORDER + legacy aliases).
 local TAB_HEADER_ICONS = {
+    chars = "poi-town",
     characters = "poi-town",
     items = "Banker",
     storage = "Quartermaster",
     plans = "poi-workorders",
     currency = "AzeriteReady",
-    -- Fallback when faction is neither Alliance nor Horde (UI_GetTabIcon overrides online).
+    --- Overridden below for reputations vs reputation key
+    reputations = "MajorFactions_MapIcons_Centaur64",
     reputation = "MajorFactions_MapIcons_Centaur64",
     pve = "Tormentors-Boss",
+    stats = "racing",
     statistics = "racing",
     collections = "dragon-rostrum",
     professions = "Vehicle-HammerGold",
@@ -2380,7 +2603,9 @@ local HEADER_ICON_YOFFSET = 0    -- Y position
 
 -- Export icon mapping for external use
 ns.UI_GetTabIcon = function(tabName)
-    if tabName == "reputation" then
+    local key = tabName
+    -- Main window uses `reputations`; some cards use `reputation`.
+    if key == "reputation" or key == "reputations" then
         local ok, fg = pcall(UnitFactionGroup, "player")
         if ok and fg == "Alliance" then
             return "AllianceAssaultsMapBanner"
@@ -2388,9 +2613,14 @@ ns.UI_GetTabIcon = function(tabName)
         if ok and fg == "Horde" then
             return "HordeAssaultsMapBanner"
         end
-        return TAB_HEADER_ICONS.reputation or "MajorFactions_MapIcons_Centaur64"
+        return TAB_HEADER_ICONS.reputations or "MajorFactions_MapIcons_Centaur64"
     end
-    return TAB_HEADER_ICONS[tabName] or "shop-icon-housing-characters-up"
+    if key == "statistics" then
+        key = "stats"
+    end
+    return TAB_HEADER_ICONS[key]
+        or TAB_HEADER_ICONS[tabName]
+        or "shop-icon-housing-characters-up"
 end
 
 ns.UI_GetCharKey = function(char)
@@ -3772,7 +4002,7 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
     local UI_SPACING = ns.UI_SPACING
     local itemPad = (UI_SPACING and UI_SPACING.AFTER_ELEMENT) or 8
     local filterAreaH = 38
-    local scrollBarW = 22
+    local scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
     local ROW = 32
     local SECTION_BAR_H = 28
     local SECTION_AFTER = 10
@@ -5197,219 +5427,7 @@ ns.UI_TOGGLE_SIZE = TOGGLE_SIZE
 -- Table factory exports
 ns.UI_CreateTableRow = CreateTableRow
 
--- ============================================================================
--- CREATE EXTERNAL WINDOW (Unified Dialog System)
--- ============================================================================
---[[
-    Creates a standardized external window/dialog with:
-    - Duplicate prevention
-    - Click outside to close
-    - Draggable header
-    - Modern styling with borders
-    - Close button
-    
-    Parameters:
-    - config = {
-        name = "UniqueDialogName" (required),
-        title = "Dialog Title" (required),
-        icon = "Interface\\Icons\\..." (required),
-        width = 500 (default 400),
-        height = 400 (default 300),
-        onClose = function() end (optional),
-        preventDuplicates = true (default true)
-    }
-    
-    Returns:
-    - dialog: Main dialog frame
-    - contentFrame: Frame where you add your content
-    - header: Header frame (for custom additions)
-]]
-local function CreateExternalWindow(config)
-    -- Validate config
-    if not config or not config.name or not config.title or not config.icon then
-        error("CreateExternalWindow: name, title, and icon are required")
-        return nil
-    end
-    
-    local globalName = "WarbandNexus_" .. config.name
-    local width = config.width or 400
-    local height = config.height or 300
-    local preventDuplicates = (config.preventDuplicates ~= false) -- default true
-    
-    -- Prevent duplicates
-    if preventDuplicates then
-        if _G[globalName] and _G[globalName]:IsShown() then
-            return nil -- Already open
-        end
-    end
-    
-    local COLORS = ns.UI_COLORS
-    
-    -- Create dialog frame
-    local dialog = CreateFrame("Frame", globalName, UIParent)
-    dialog:SetSize(width, height)
-    dialog:SetPoint("CENTER")
-
-    -- WindowManager: standardized strata/level
-    if ns.WindowManager then
-        ns.WindowManager:ApplyStrata(dialog, ns.WindowManager.PRIORITY.POPUP)
-    else
-        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-        dialog:SetFrameLevel(200)
-    end
-    
-    -- Apply border and background
-    if ApplyVisuals then
-        ApplyVisuals(dialog, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
-    
-    dialog:EnableMouse(true)
-    dialog:SetMovable(true)
-    
-    -- Header bar
-    local header = CreateFrame("Frame", nil, dialog)
-    header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 8, -8)
-    header:SetPoint("TOPRIGHT", -8, -8)
-    
-    -- Apply header border
-    if ApplyVisuals then
-        ApplyVisuals(header, COLORS.bgCard, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
-    end
-    
-    -- Make header draggable (combat-safe)
-    if ns.WindowManager then
-        ns.WindowManager:InstallDragHandler(header, dialog)
-    else
-        header:EnableMouse(true)
-        header:SetMovable(true)
-        header:RegisterForDrag("LeftButton")
-        header:SetScript("OnDragStart", function()
-            if not InCombatLockdown() then dialog:StartMoving() end
-        end)
-        header:SetScript("OnDragStop", function()
-            dialog:StopMovingOrSizing()
-        end)
-    end
-    
-    -- Icon (support both texture and atlas)
-    local iconIsAtlas = config.iconIsAtlas or false
-    local iconFrame = CreateIcon(header, config.icon, 28, iconIsAtlas, nil, true)
-    iconFrame:SetPoint("LEFT", 12, 0)
-    iconFrame:Show()  -- CRITICAL: Show the header icon!
-    
-    -- Title
-    local titleText = FontManager:CreateFontString(header, UIFontRole("popupDialogTitle"), "OVERLAY")
-    titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
-    titleText:SetText("|cffffffff" .. config.title .. "|r")
-    
-    -- Close button (X) - Factory pattern with atlas icon
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -8, 0)
-    
-    -- Apply custom visuals (dark background, accent border)
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
-    
-    -- Close icon using WoW atlas
-    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    
-    -- Hover effects
-    closeBtn:SetScript("OnEnter", function(self)
-        closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ApplyVisuals then
-            ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
-        end
-    end)
-    
-    closeBtn:SetScript("OnLeave", function(self)
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then
-            ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-        end
-    end)
-    
-    -- Close function (onClose called once here only; OnHide must not call it again)
-    local function CloseDialog()
-        local bin = ns.UI_RecycleBin
-        local overlay = dialog._clickOutsideFrame
-        if overlay then
-            overlay:Hide()
-            overlay:SetScript("OnMouseDown", nil)
-            if bin then overlay:SetParent(bin) else overlay:SetParent(nil) end
-            dialog._clickOutsideFrame = nil
-        end
-        if config.onClose then
-            config.onClose()
-        end
-        dialog:Hide()
-        if bin then dialog:SetParent(bin) else dialog:SetParent(nil) end
-        _G[globalName] = nil
-    end
-    
-    closeBtn:SetScript("OnClick", CloseDialog)
-    
-    -- Content frame (where users add their content)
-    local contentFrame = CreateFrame("Frame", nil, dialog)
-    contentFrame:SetPoint("TOPLEFT", 8, -53) -- Below header
-    contentFrame:SetPoint("BOTTOMRIGHT", -8, 8)
-    -- Match shell body: content was transparent, so gaps under widgets read as gray seams.
-    local contentFill = contentFrame:CreateTexture(nil, "BACKGROUND")
-    contentFill:SetDrawLayer("BACKGROUND", -8)
-    contentFill:SetAllPoints()
-    contentFill:SetColorTexture(COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], COLORS.bg[4] or 0.98)
-    
-    -- Click-outside overlay (released in CloseDialog to avoid frame buildup)
-    local clickOutsideFrame = CreateFrame("Frame", nil, UIParent)
-    dialog._clickOutsideFrame = clickOutsideFrame
-    clickOutsideFrame:SetAllPoints()
-    clickOutsideFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    clickOutsideFrame:SetFrameLevel(dialog:GetFrameLevel() - 1) -- Just below dialog
-    clickOutsideFrame:EnableMouse(true)
-    clickOutsideFrame:SetScript("OnMouseDown", function()
-        CloseDialog()
-    end)
-    
-    -- OnHide: only hide overlay (do NOT call onClose — CloseDialog already did)
-    dialog:SetScript("OnHide", function()
-        if dialog._clickOutsideFrame then
-            dialog._clickOutsideFrame:Hide()
-        end
-    end)
-    
-    dialog:SetScript("OnShow", function()
-        clickOutsideFrame:Show()
-    end)
-    
-    -- Store close function
-    dialog.Close = CloseDialog
-
-    -- WindowManager: register popup + ESC handler + combat hide
-    if ns.WindowManager then
-        ns.WindowManager:Register(dialog, ns.WindowManager.PRIORITY.POPUP, CloseDialog)
-        ns.WindowManager:InstallESCHandler(dialog)
-    else
-        dialog:SetScript("OnKeyDown", function(self, key)
-            if key == "ESCAPE" then
-                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-                CloseDialog()
-            else
-                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
-            end
-        end)
-        if not InCombatLockdown() then dialog:SetPropagateKeyboardInput(true) end
-    end
-
-    return dialog, contentFrame, header
-end
-
--- External window factory export is owned by WindowFactory.lua (loads after SharedWidgets).
+-- Modal / external dialogs: authoritative shell in Modules/UI/WindowFactory.lua (`ns.UI_CreateExternalWindow`).
 
 --============================================================================
 -- TOOLTIP API
@@ -5713,10 +5731,13 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
 
         ApplyVisuals(f, { 0.04, 0.04, 0.06, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9 })
 
+        local tryShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+        local tryInset = tryShell.FRAME_CONTENT_INSET or 2
+        local tryHdrH = tryShell.TRY_COUNT_POPUP_HEADER_HEIGHT or 32
         local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
-        header:SetHeight(32)
-        header:SetPoint("TOPLEFT", 2, -2)
-        header:SetPoint("TOPRIGHT", -2, -2)
+        header:SetHeight(tryHdrH)
+        header:SetPoint("TOPLEFT", tryInset, -tryInset)
+        header:SetPoint("TOPRIGHT", -tryInset, -tryInset)
         ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
 
         local headerTitle = FontManager:CreateFontString(header, UIFontRole("tryPopupHeader"), "OVERLAY")
@@ -6863,14 +6884,14 @@ end
 --- Create a frame for the vertical scroll bar column (same pattern as Collections: list | bar column | details).
 --- Caller anchors this to the right of the scroll content, then calls PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
 ---@param parent Frame Parent (e.g. content area)
----@param width number Width of the column (e.g. SCROLLBAR_COLUMN_WIDTH or 22)
+---@param width number Width of the column (matches `SCROLLBAR_COLUMN_WIDTH`, default 26)
 ---@param topInset number|nil Inset from parent top (default 0)
 ---@param bottomInset number|nil Inset from parent bottom (default 0)
 ---@return Frame container The frame to pass to PositionScrollBarInContainer
 function ns.UI.Factory:CreateScrollBarColumn(parent, width, topInset, bottomInset)
     if not parent then return nil end
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
-    local w = width or layout.SCROLLBAR_COLUMN_WIDTH or 22
+    local w = width or layout.SCROLLBAR_COLUMN_WIDTH or 26
     local top = (topInset == nil) and 0 or topInset
     local bottom = (bottomInset == nil) and 0 or bottomInset
     local container = CreateFrame("Frame", nil, parent)
@@ -8116,7 +8137,8 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
 
         local closeBtn = self:CreateButton(f, 20, 20, true) or CreateFrame("Button", nil, f)
         closeBtn:SetSize(20, 20)
-        closeBtn:SetPoint("TOPRIGHT", -2, -2)
+        local closeInset = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL and ns.UI_LAYOUT.MAIN_SHELL.FRAME_CONTENT_INSET) or 2
+        closeBtn:SetPoint("TOPRIGHT", -closeInset, -closeInset)
         local closeLbl = FontManager and FontManager:CreateFontString(closeBtn, "body", "OVERLAY") or closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         closeLbl:SetPoint("CENTER")
         closeLbl:SetText("x")

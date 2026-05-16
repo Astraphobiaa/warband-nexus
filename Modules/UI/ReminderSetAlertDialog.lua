@@ -5,6 +5,14 @@ local issecretvalue = issecretvalue
 
 ns.ReminderSetAlertDialog = ns.ReminderSetAlertDialog or {}
 
+--[[ WN_FACTORY: This module loads BEFORE SharedWidgets in `WarbandNexus.toc`. Do **not**
+     read `ns.UI.Factory` at file parse time — it is populated when SharedWidgets runs.
+     The dialog grabs `Factory` inside `Show` on first build (runtime), after full UI stack load.
+
+     Remaining intentional raw `CreateFrame`: modal root `f`, header chrome, ScrollFrame ScrollChild scaffold,
+     nested grid/card layout Frames, Blizzard `EditBox`, UIPanelScrollFrameTemplate-backed inner scroll hosts.
+]]
+
 local reminderDialog = nil
 
 --- Positive integer from edit box; never tonumber() on secret GetText() (Midnight).
@@ -46,13 +54,12 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     end
 
     if not reminderDialog then
-        local Factory = ns.UI and ns.UI.Factory
+        local Factory = ns.UI.Factory -- valid at first dialog build only (SharedWidgets already loaded).
         local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
         local UI_SP = ns.UI_SPACING or {}
         local sideInset = UI_SP.SIDE_MARGIN or 14
         local afterEl = UI_SP.AFTER_ELEMENT or 8
-        local layout = ns.UI_LAYOUT or UI_SP
-        local scrollBarW = layout.SCROLLBAR_COLUMN_WIDTH or 22
+        local scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
         local rowGap = 22
         local zoneSubInset = sideInset + (UI_SP.SUBROW_EXTRA_INDENT or 12)
         local footerH = 52
@@ -85,16 +92,19 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             ApplyVisuals(f, {0.04, 0.04, 0.06, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
         end
 
+        local rdShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+        local rdInset = rdShell.FRAME_CONTENT_INSET or 2
+        local rdHdrH = rdShell.HEADER_BAR_HEIGHT or 40
         local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
-        header:SetHeight(40)
-        header:SetPoint("TOPLEFT", 3, -3)
-        header:SetPoint("TOPRIGHT", -3, -3)
+        header:SetHeight(rdHdrH)
+        header:SetPoint("TOPLEFT", rdInset, -rdInset)
+        header:SetPoint("TOPRIGHT", -rdInset, -rdInset)
         header:SetFrameLevel(f:GetFrameLevel() + 6)
         if ApplyVisuals then
             ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.55})
         end
 
-        local closeBtn = Factory and Factory:CreateButton(header, 28, 28, false) or CreateFrame("Button", nil, header, "BackdropTemplate")
+        local closeBtn = Factory:CreateButton(header, 28, 28, false)
         closeBtn:SetSize(28, 28)
         closeBtn:SetPoint("RIGHT", header, "RIGHT", -afterEl, 0)
         if ApplyVisuals then
@@ -174,29 +184,25 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         bodyHost:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -sideInset, footerH)
         f.reminderBodyHost = bodyHost
 
-        local scrollBarColumn = Factory and Factory:CreateScrollBarColumn(bodyHost, scrollBarW, 0, 0)
+        local scrollBarColumn = Factory:CreateScrollBarColumn(bodyHost, scrollBarW, 0, 0)
         if scrollBarColumn then
             scrollBarColumn:SetPoint("TOPRIGHT", bodyHost, "TOPRIGHT", 0, 0)
             scrollBarColumn:SetPoint("BOTTOMRIGHT", bodyHost, "BOTTOMRIGHT", 0, 0)
         end
 
-        local scrollFrame = Factory and Factory:CreateScrollFrame(bodyHost, "UIPanelScrollFrameTemplate", true)
-        if not scrollFrame then
-            scrollFrame = CreateFrame("ScrollFrame", nil, bodyHost, "UIPanelScrollFrameTemplate")
-        end
+        local scrollFrame = Factory:CreateScrollFrame(bodyHost, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", bodyHost, "TOPLEFT", 0, 0)
         if scrollBarColumn then
             scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", -4, 0)
-            if scrollFrame.ScrollBar and Factory and Factory.PositionScrollBarInContainer then
+            if scrollFrame.ScrollBar then
                 Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
             end
         else
             scrollFrame:SetPoint("BOTTOMRIGHT", bodyHost, "BOTTOMRIGHT", 0, 0)
         end
 
-        local sc = CreateFrame("Frame", nil, scrollFrame)
         local innerW = math.max(120, (dialogW - sideInset * 2) - scrollBarW - 4)
-        sc:SetWidth(innerW)
+        local sc = Factory:CreateContainer(scrollFrame, innerW, 100, false)
         scrollFrame:SetScrollChild(sc)
         f.reminderScrollFrame = scrollFrame
         f.reminderScrollChild = sc
@@ -208,7 +214,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if f._layoutReminderGrids then
                 f._layoutReminderGrids()
             end
-            if Factory and Factory.UpdateScrollBarVisibility then
+            if Factory.UpdateScrollBarVisibility then
                 Factory:UpdateScrollBarVisibility(self)
             end
         end)
@@ -399,7 +405,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end)
         yOff = yOff - rowGap
 
-        local mapGetIdBtn = Factory and Factory:CreateButton(sc, 78, 28, false)
+        local mapGetIdBtn = Factory:CreateButton(sc, 78, 28, false)
         if not mapGetIdBtn then
             mapGetIdBtn = CreateFrame("Button", nil, sc, "BackdropTemplate")
             mapGetIdBtn:SetSize(78, 28)
@@ -413,7 +419,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         mapGetIdTxt:SetText((L and L["REMINDER_ZONE_GET_ID"]) or "Get ID")
         f.mapGetIdBtn = mapGetIdBtn
 
-        local mapEditBg = Factory and Factory:CreateContainer(sc, 120, 28)
+        local mapEditBg = Factory:CreateContainer(sc, 120, 28)
         if not mapEditBg then
             mapEditBg = CreateFrame("Frame", nil, sc)
             mapEditBg:SetHeight(28)
@@ -425,7 +431,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
         mapEditBg:EnableMouse(true)
 
-        local mapEdit = Factory and Factory:CreateEditBox(mapEditBg)
+        local mapEdit = Factory:CreateEditBox(mapEditBg)
         if not mapEdit then
             mapEdit = CreateFrame("EditBox", nil, mapEditBg, "BackdropTemplate")
             mapEdit:SetPoint("LEFT", mapEditBg, "LEFT", 4, 0)
@@ -538,7 +544,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             row.tagFs:SetPoint("LEFT", row, "LEFT", mmPad, 0)
             row.tagFs:SetJustifyH("CENTER")
 
-            row.rmBtn = Factory and Factory:CreateButton(row, MAN_RM_W, 22, false)
+            row.rmBtn = Factory:CreateButton(row, MAN_RM_W, 22, false)
             if not row.rmBtn then
                 row.rmBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
                 row.rmBtn:SetSize(MAN_RM_W, 22)
@@ -774,20 +780,20 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         expPanel:SetPoint("TOPLEFT", zonePickSplit, "TOPLEFT", 0, 0)
         expPanel:SetPoint("BOTTOMLEFT", zonePickSplit, "BOTTOMLEFT", 0, 0)
 
-        local expBarCol = Factory and Factory:CreateScrollBarColumn(expPanel, zbScrollW, 0, 0)
+        local expBarCol = Factory:CreateScrollBarColumn(expPanel, zbScrollW, 0, 0)
         if expBarCol then
             expBarCol:SetPoint("TOPRIGHT", expPanel, "TOPRIGHT", 0, 0)
             expBarCol:SetPoint("BOTTOMRIGHT", expPanel, "BOTTOMRIGHT", 0, 0)
         end
 
-        local expScroll = Factory and Factory:CreateScrollFrame(expPanel, "UIPanelScrollFrameTemplate", true)
+        local expScroll = Factory:CreateScrollFrame(expPanel, "UIPanelScrollFrameTemplate", true)
         if not expScroll then
             expScroll = CreateFrame("ScrollFrame", nil, expPanel, "UIPanelScrollFrameTemplate")
         end
         expScroll:SetPoint("TOPLEFT", expPanel, "TOPLEFT", 0, 0)
         if expBarCol then
             expScroll:SetPoint("BOTTOMRIGHT", expBarCol, "BOTTOMLEFT", -4, 0)
-            if expScroll.ScrollBar and Factory and Factory.PositionScrollBarInContainer then
+            if expScroll.ScrollBar then
                 Factory:PositionScrollBarInContainer(expScroll.ScrollBar, expBarCol, 0)
             end
         else
@@ -807,20 +813,20 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         mapsPanel:SetPoint("TOPLEFT", zonePickSplit, "TOPLEFT", expPanelOuterW + splitGap, 0)
         mapsPanel:SetPoint("BOTTOMRIGHT", zonePickSplit, "BOTTOMRIGHT", 0, 0)
 
-        local mapsBarCol = Factory and Factory:CreateScrollBarColumn(mapsPanel, zbScrollW, 0, 0)
+        local mapsBarCol = Factory:CreateScrollBarColumn(mapsPanel, zbScrollW, 0, 0)
         if mapsBarCol then
             mapsBarCol:SetPoint("TOPRIGHT", mapsPanel, "TOPRIGHT", 0, 0)
             mapsBarCol:SetPoint("BOTTOMRIGHT", mapsPanel, "BOTTOMRIGHT", 0, 0)
         end
 
-        local zScroll = Factory and Factory:CreateScrollFrame(mapsPanel, "UIPanelScrollFrameTemplate", true)
+        local zScroll = Factory:CreateScrollFrame(mapsPanel, "UIPanelScrollFrameTemplate", true)
         if not zScroll then
             zScroll = CreateFrame("ScrollFrame", nil, mapsPanel, "UIPanelScrollFrameTemplate")
         end
         zScroll:SetPoint("TOPLEFT", mapsPanel, "TOPLEFT", 0, 0)
         if mapsBarCol then
             zScroll:SetPoint("BOTTOMRIGHT", mapsBarCol, "BOTTOMLEFT", -4, 0)
-            if zScroll.ScrollBar and Factory and Factory.PositionScrollBarInContainer then
+            if zScroll.ScrollBar then
                 Factory:PositionScrollBarInContainer(zScroll.ScrollBar, mapsBarCol, 0)
             end
         else
@@ -837,7 +843,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         if catalogDef and catalogDef.sections and #catalogDef.sections > 0 then
             for ei = 1, #catalogDef.sections do
                 local sec = catalogDef.sections[ei]
-                local eb = Factory and Factory:CreateButton(expScrollChild, expInnerW, expBtnH, false)
+                local eb = Factory:CreateButton(expScrollChild, expInnerW, expBtnH, false)
                 if not eb then
                     eb = CreateFrame("Button", nil, expScrollChild, "BackdropTemplate")
                     eb:SetSize(expInnerW, expBtnH)
@@ -874,7 +880,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if expScrollChild and w then
                 expScrollChild:SetWidth(math.max(40, w))
             end
-            if Factory and Factory.UpdateScrollBarVisibility then
+            if Factory.UpdateScrollBarVisibility then
                 Factory:UpdateScrollBarVisibility(self)
             end
         end)
@@ -902,7 +908,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                     end
                 end
             end
-            if Factory and Factory.UpdateScrollBarVisibility then
+            if Factory.UpdateScrollBarVisibility then
                 Factory:UpdateScrollBarVisibility(self)
             end
         end)
@@ -940,7 +946,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             row.labelFs:SetWordWrap(false)
             row.labelFs:SetMaxLines(1)
 
-            local addB = Factory and Factory:CreateButton(row, ADD_BTN_W, 22, false)
+            local addB = Factory:CreateButton(row, ADD_BTN_W, 22, false)
             if not addB then
                 addB = CreateFrame("Button", nil, row, "BackdropTemplate")
                 addB:SetSize(ADD_BTN_W, 22)
@@ -1080,7 +1086,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if self.zoneCatalogScroll then
                 self.zoneCatalogScroll:SetVerticalScroll(0)
             end
-            if Factory and Factory.UpdateScrollBarVisibility then
+            if Factory.UpdateScrollBarVisibility then
                 if self.zoneCatalogScroll then Factory:UpdateScrollBarVisibility(self.zoneCatalogScroll) end
                 if self.zoneCatalogExpScroll then Factory:UpdateScrollBarVisibility(self.zoneCatalogExpScroll) end
             end
@@ -1143,7 +1149,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local btnW, btnH = 128, 32
         local btnGap = 10
 
-        local saveBtn = (Factory and Factory:CreateButton(f, btnW, btnH, false))
+        local saveBtn = Factory:CreateButton(f, btnW, btnH, false)
             or CreateFrame("Button", nil, f, "BackdropTemplate")
         saveBtn:SetSize(btnW, btnH)
         saveBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -btnGap * 0.5, 12)
@@ -1157,7 +1163,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
         f.saveBtn = saveBtn
 
-        local removeBtn = (Factory and Factory:CreateButton(f, btnW, btnH, false))
+        local removeBtn = Factory:CreateButton(f, btnW, btnH, false)
             or CreateFrame("Button", nil, f, "BackdropTemplate")
         removeBtn:SetSize(btnW, btnH)
         removeBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", btnGap * 0.5, 12)
@@ -1217,7 +1223,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if zoneMaster and hasCat and self.RefreshZoneCatalogRows then
                 self:RefreshZoneCatalogRows()
             end
-            if Factory and self.reminderScrollFrame and Factory.UpdateScrollBarVisibility then
+            if self.reminderScrollFrame and Factory.UpdateScrollBarVisibility then
                 Factory:UpdateScrollBarVisibility(self.reminderScrollFrame)
             end
         end

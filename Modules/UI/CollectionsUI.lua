@@ -2,6 +2,8 @@
     Warband Nexus - Collections Tab
     Sub-tab system: Mounts, Pets, Toys, etc.
     Mounts tab: Virtual scroll list grouped by Source, Model Viewer, Description panel.
+
+    WN_PERF: Chunked virtual fills (`RUN_CHUNK_SIZE`), sub-tab defer delay (`COLLECTION_HEAVY_DELAY`), avoids blocking first paint where possible.
 ]]
 
 local ns = select(2, ...)
@@ -115,7 +117,7 @@ local SD = ns.CollectionsUI_SourceData
 local Factory = ns.UI.Factory
 local PADDING = SIDE_MARGIN
 -- Single source: bar/button sizes and column width so Mounts/Pets/Toys/Achievements look identical
-local SCROLLBAR_GAP = (ns.UI_LAYOUT and ns.UI_LAYOUT.SCROLLBAR_COLUMN_WIDTH) or 22
+local SCROLLBAR_GAP = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
 local SCROLLBAR_SIDE_GAP = 5  -- Equal gap between list <-> scrollbar and scrollbar <-> details
 -- Match Plans: defer sub-tab draw and heavy work by 0.05s for smooth switching.
 local COLLECTION_HEAVY_DELAY = 0.05
@@ -2065,12 +2067,18 @@ local function CreateModelViewer(parent, width, height)
     ApplyDetailAccentVisuals(panel)
 
     -- Slot: full width from desc bottom to panel bottom; viewport inside is height-capped and vertically centered.
-    local modelViewportSlot = CreateFrame("Frame", nil, panel)
+    local modelViewportSlot = Factory:CreateContainer(panel, math.max(1, width), math.max(1, height), false)
+    if not modelViewportSlot then
+        modelViewportSlot = CreateFrame("Frame", nil, panel)
+    end
     modelViewportSlot:SetFrameLevel(panel:GetFrameLevel() + 1)
     panel.modelViewportSlot = modelViewportSlot
 
     -- Model stage: plain Frame with SetClipsChildren (ScriptRegion child tree); PlayerModel draws past bounds — clip here.
-    local modelViewport = CreateFrame("Frame", nil, modelViewportSlot)
+    local modelViewport = Factory:CreateContainer(modelViewportSlot, math.max(1, width), math.max(1, height), false)
+    if not modelViewport then
+        modelViewport = CreateFrame("Frame", nil, modelViewportSlot)
+    end
     modelViewport:SetFrameLevel(modelViewportSlot:GetFrameLevel() + 1)
     if modelViewport.SetClipsChildren then
         modelViewport:SetClipsChildren(true)
@@ -2190,7 +2198,10 @@ local function CreateModelViewer(parent, width, height)
     panel._dragButton = nil
 
     -- Transparent layer above PlayerModel: reliable hit-testing for wheel + drag (journal-style: right-drag rotate; left-drag also supported).
-    local interactionLayer = CreateFrame("Frame", nil, modelViewport)
+    local interactionLayer = Factory:CreateContainer(modelViewport, math.max(1, width), math.max(1, height), false)
+    if not interactionLayer then
+        interactionLayer = CreateFrame("Frame", nil, modelViewport)
+    end
     interactionLayer:SetAllPoints()
     interactionLayer:SetFrameLevel(model:GetFrameLevel() + 20)
     interactionLayer:EnableMouse(true)
@@ -2380,7 +2391,10 @@ local function CreateModelViewer(parent, width, height)
     end)
 
     -- Text on top of model: overlay frame with higher frame level so text is always in front.
-    local textOverlay = CreateFrame("Frame", nil, panel)
+    local textOverlay = Factory:CreateContainer(panel, math.max(1, width), math.max(1, height), false)
+    if not textOverlay then
+        textOverlay = CreateFrame("Frame", nil, panel)
+    end
     textOverlay:SetFrameLevel(panel:GetFrameLevel() + 10)
     textOverlay:SetAllPoints(panel)
     textOverlay:EnableMouse(false)
@@ -2407,7 +2421,7 @@ local function CreateModelViewer(parent, width, height)
     local whiteR, whiteG, whiteB = 1, 1, 1
 
     -- Sağ üst: Factory sütunu — Wowhead + Add/Added; try satırı yalnızca Add sütunu genişliğinde (hizalı).
-    local addCol = (Factory and Factory.CreateCollectionsDetailRightColumn) and Factory:CreateCollectionsDetailRightColumn(textOverlay, { withTryRow = true })
+    local addCol = Factory.CreateCollectionsDetailRightColumn and Factory:CreateCollectionsDetailRightColumn(textOverlay, { withTryRow = true })
     local addContainer = addCol and addCol.root
     local actionSlot = addCol and addCol.actionSlot
     if addContainer then
@@ -2464,19 +2478,26 @@ local function CreateModelViewer(parent, width, height)
     nameText:SetTextColor(whiteR, whiteG, whiteB)
     panel.nameText = nameText
 
-    local headerRowBottom = CreateFrame("Frame", nil, textOverlay)
+    local headerRowBottom = Factory:CreateContainer(textOverlay, math.max(1, width), 1, false)
+    if not headerRowBottom then
+        headerRowBottom = CreateFrame("Frame", nil, textOverlay)
+        headerRowBottom:SetHeight(1)
+    end
     headerRowBottom:SetPoint("TOPLEFT", iconBorder, "BOTTOMLEFT", 0, 0)
     headerRowBottom:SetPoint("TOPRIGHT", nameText, "BOTTOMRIGHT", 0, 0)
-    headerRowBottom:SetHeight(1)
     if headerRowBottom.EnableMouse then headerRowBottom:EnableMouse(false) end
     panel.headerRowBottom = headerRowBottom
 
-    local sourceContainer = CreateFrame("Frame", nil, textOverlay)
+    local sourceContainer = Factory:CreateContainer(textOverlay, math.max(1, width), 2, false)
+    if not sourceContainer then
+        sourceContainer = CreateFrame("Frame", nil, textOverlay)
+        sourceContainer:SetHeight(1)
+    end
     sourceContainer:SetPoint("TOPLEFT", headerRowBottom, "BOTTOMLEFT", 0, -TEXT_GAP)
     sourceContainer:SetPoint("TOPRIGHT", headerRowBottom, "BOTTOMRIGHT", 0, -TEXT_GAP)
-    sourceContainer:SetHeight(1)
     if sourceContainer.EnableMouse then sourceContainer:EnableMouse(false) end
     panel.sourceContainer = sourceContainer
+
     panel.sourceLines = {}
 
     -- Source label: gold color (consistent with Toy and all collection detail panels)
@@ -3135,7 +3156,10 @@ local function GetOrCreateLoadingPanel(parent)
     if UI_CreateLoadingStatePanel then
         return UI_CreateLoadingStatePanel(parent)
     end
-    local fallback = CreateFrame("Frame", nil, parent)
+    local fallback = Factory:CreateContainer(parent, math.max(1, parent:GetWidth() or 200), math.max(1, parent:GetHeight() or 200), false)
+    if not fallback then
+        fallback = CreateFrame("Frame", nil, parent)
+    end
     fallback:SetAllPoints(parent)
     function fallback:ShowLoading() self:Show() end
     function fallback:HideLoading() self:Hide() end
@@ -3340,10 +3364,15 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         -- Header: same hierarchy as Mounts/Pets (CONTENT_INSET from edges, icon then name)
         local CDH = ns.CollectionsDetailHeaderLayout or {}
         local achRightColMinH = ACH_ROW_ADD_HEIGHT + (CDH.TRY_GAP or 4) + (CDH.TRY_ROW_H or 18)
-        local headerRow = CreateFrame("Frame", nil, content)
+        local achHdrH = math.max(ROW_HEIGHT + SECTION_GAP, DETAIL_ICON_SIZE + SECTION_GAP, achRightColMinH)
+        local achHdrW = math.max(220, (child.GetWidth and child:GetWidth()) or 620)
+        local headerRow = Factory:CreateContainer(content, achHdrW, achHdrH, false)
+        if not headerRow then
+            headerRow = CreateFrame("Frame", nil, content)
+        end
         headerRow:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
         headerRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
-        headerRow:SetHeight(math.max(ROW_HEIGHT + SECTION_GAP, DETAIL_ICON_SIZE + SECTION_GAP, achRightColMinH))
+        headerRow:SetHeight(achHdrH)
         local iconBorder = Factory:CreateContainer(headerRow, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
         if ApplyVisuals then
@@ -3365,7 +3394,10 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             actionSlotHeight = ACH_ROW_ADD_HEIGHT,
         })
         achAddCol.root:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
-        local achControls = CreateFrame("Frame", nil, achAddCol.actionSlot)
+        local achControls = Factory:CreateContainer(achAddCol.actionSlot, ACH_ACTION_GAP + ACH_TRACK_WIDTH + ACH_ROW_ADD_WIDTH, ACH_ROW_ADD_HEIGHT, false)
+        if not achControls then
+            achControls = CreateFrame("Frame", nil, achAddCol.actionSlot)
+        end
         achControls:SetAllPoints(achAddCol.actionSlot)
 
         local headerWowheadBtn = achAddCol.wowheadBtn
@@ -3613,9 +3645,11 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                             local fmt = ns.UI_FormatNumber or tostring
                             progressStr = format(" (%s / %s)", fmt(quantity), fmt(reqQuantity))
                         end
-                        local P = ns.PLAN_UI_COLORS or {}
-                        local color = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
-                        local row = CreateFrame("Frame", nil, content)
+                        local critW = math.max(80, (content.GetWidth and content:GetWidth()) or 400)
+                        local row = Factory:CreateContainer(content, critW, CRITERIA_LINE_HEIGHT, false)
+                        if not row then
+                            row = CreateFrame("Frame", nil, content)
+                        end
                         row:SetPoint("TOPLEFT", lastAnchor, lastPoint, 0, lastY)
                         row:SetPoint("TOPRIGHT", content, "TOPRIGHT", -CONTENT_INSET, lastY)
                         row:SetHeight(CRITERIA_LINE_HEIGHT)
@@ -3664,8 +3698,7 @@ local SUBTAB_TEXT_RIGHT = 10
 local SUBTAB_DEFAULT_WIDTH = 150
 
 local function CreateSubTabBar(parent, onTabSelect)
-    local bar = CreateFrame("Frame", nil, parent)
-    bar:SetHeight(SUBTAB_BTN_HEIGHT)
+    local bar = Factory:CreateContainer(parent, 400, SUBTAB_BTN_HEIGHT, false)
     bar:SetPoint("TOPLEFT", 0, 0)
     bar:SetPoint("TOPRIGHT", 0, 0)
 
@@ -4401,7 +4434,7 @@ local function ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
 
     local hdr = collectionsState._collectionsContentSubHeader
     if not hdr then
-        hdr = CreateFrame("Frame", nil, contentFrame)
+        hdr = Factory:CreateContainer(contentFrame, 120, COLLECTIONS_SUBTAB_HEADER_H, false)
         hdr._title = FontManager:CreateFontString(hdr, "header", "OVERLAY")
         hdr._title:SetPoint("TOPLEFT", hdr, "TOPLEFT", 4, -4)
         hdr._title:SetJustifyH("LEFT")
@@ -4844,11 +4877,14 @@ end
 
 local function EnsureCollectionProgressBar(rightCol)
     if collectionsState.collectionProgressFrame or not rightCol then return end
-    local pr = CreateFrame("Frame", nil, rightCol)
-    pr:SetHeight(PROGRESS_ROW_HEIGHT)
+    local barWidth = (rightCol:GetWidth() and (rightCol:GetWidth() - 4)) or 200
+    local pr = Factory:CreateContainer(rightCol, math.max(64, barWidth), PROGRESS_ROW_HEIGHT, false)
+    if not pr then
+        pr = CreateFrame("Frame", nil, rightCol)
+        pr:SetHeight(PROGRESS_ROW_HEIGHT)
+    end
     pr:SetPoint("TOPLEFT", rightCol, "TOPLEFT", 0, 0)
     pr:SetPoint("TOPRIGHT", rightCol, "TOPRIGHT", 0, 0)
-    local barWidth = (rightCol:GetWidth() and (rightCol:GetWidth() - 4)) or 200
     local barHeight = 22
     local barWrapper = CreateFrame("Frame", nil, pr, "BackdropTemplate")
     barWrapper:SetAllPoints(pr)
@@ -4963,7 +4999,7 @@ local function DrawMountsContent(contentFrame)
     -- RIGHT COLUMN: progress bar (top) + 3D viewer (below)
     local rightCol = collectionsState.collectionRightColumn
     if not rightCol then
-        rightCol = CreateFrame("Frame", nil, contentFrame)
+        rightCol = Factory:CreateContainer(contentFrame, math.max(1, viewerWidth), math.max(1, innerCh or 400), false)
         rightCol:SetPoint("TOPLEFT", collectionsState.mountListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
         rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
         rightCol:Show()
@@ -5303,7 +5339,7 @@ local function DrawPetsContent(contentFrame)
     -- RIGHT COLUMN: progress bar (top) + 3D viewer (below)
     local rightCol = collectionsState.collectionRightColumn
     if not rightCol then
-        rightCol = CreateFrame("Frame", nil, contentFrame)
+        rightCol = Factory:CreateContainer(contentFrame, math.max(1, viewerWidth), math.max(1, innerCh or 400), false)
         rightCol:Show()
         collectionsState.collectionRightColumn = rightCol
     end
@@ -5644,7 +5680,7 @@ local function DrawToysContent(contentFrame)
     -- RIGHT COLUMN: progress bar (top) + toy detail panel (below)
     local rightCol = collectionsState.collectionRightColumn
     if not rightCol then
-        rightCol = CreateFrame("Frame", nil, contentFrame)
+        rightCol = Factory:CreateContainer(contentFrame, math.max(1, detailWidth), math.max(1, innerCh or 400), false)
         rightCol:Show()
         collectionsState.collectionRightColumn = rightCol
     end
@@ -5705,12 +5741,17 @@ local function DrawToysContent(contentFrame)
         end
 
         -- Header row: Mounts/Pets ile aynı sağ sütun (Wowhead + Add + try, try Add genişliğinde).
-        local headerRow = CreateFrame("Frame", nil, scrollChild)
-        headerRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
-        headerRow:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
         local CDL = ns.CollectionsDetailHeaderLayout or {}
         local toyRightColH = (CDL.ACTION_SLOT_H or 28) + (CDL.TRY_GAP or 4) + (CDL.TRY_ROW_H or 18)
-        headerRow:SetHeight(math.max(ROW_HEIGHT + TEXT_GAP_LINE, DETAIL_ICON_SIZE + TEXT_GAP_LINE, toyRightColH))
+        local toyHdrH = math.max(ROW_HEIGHT + TEXT_GAP_LINE, DETAIL_ICON_SIZE + TEXT_GAP_LINE, toyRightColH)
+        local toyHdrW = math.max(200, detailWidth - (CONTAINER_INSET * 2) - SCROLLBAR_GAP)
+        local headerRow = Factory:CreateContainer(scrollChild, toyHdrW, toyHdrH, false)
+        if not headerRow then
+            headerRow = CreateFrame("Frame", nil, scrollChild)
+        end
+        headerRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
+        headerRow:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
+        headerRow:SetHeight(toyHdrH)
         local iconBorder = Factory:CreateContainer(headerRow, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
         if ApplyVisuals then
@@ -5738,7 +5779,7 @@ local function DrawToysContent(contentFrame)
         collectionsState._toyDetailName = nameFs
         collectionsState._toyDetailHeaderRow = headerRow
 
-        local toyAddCol = (Factory and Factory.CreateCollectionsDetailRightColumn) and Factory:CreateCollectionsDetailRightColumn(headerRow, { withTryRow = true })
+        local toyAddCol = Factory.CreateCollectionsDetailRightColumn and Factory:CreateCollectionsDetailRightColumn(headerRow, { withTryRow = true })
         local toyAddContainer = toyAddCol and toyAddCol.root
         local toyActionSlot = toyAddCol and toyAddCol.actionSlot
         if toyAddContainer then
@@ -6152,7 +6193,7 @@ local function DrawAchievementsContent(contentFrame)
     -- RIGHT COLUMN: progress bar (top) + achievement detail panel (below)
     local rightCol = collectionsState.collectionRightColumn
     if not rightCol then
-        rightCol = CreateFrame("Frame", nil, contentFrame)
+        rightCol = Factory:CreateContainer(contentFrame, math.max(1, detailWidth), math.max(1, innerCh or 400), false)
         rightCol:Show()
         collectionsState.collectionRightColumn = rightCol
     end
@@ -6492,15 +6533,22 @@ function WarbandNexus:DrawCollectionsTab(parent)
         headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
         -- ===== SEARCH ROW (in fixedHeader - non-scrolling) =====
-        local searchRow = CreateFrame("Frame", nil, headerParent)
-        searchRow:SetHeight(SEARCH_ROW_HEIGHT)
+        local rowWsr = math.max(200, headerParent:GetWidth() or ((headerParent.GetParent and headerParent:GetParent() and headerParent:GetParent():GetWidth()) or 660))
+        local searchRow = Factory:CreateContainer(headerParent, rowWsr, SEARCH_ROW_HEIGHT, false)
+        if not searchRow then
+            searchRow = CreateFrame("Frame", nil, headerParent)
+            searchRow:SetHeight(SEARCH_ROW_HEIGHT)
+        end
         searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
         searchRow:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         hdrCache.searchRow = searchRow
 
         local FILTER_BLOCK_WIDTH = 200
-        local filterRow = CreateFrame("Frame", nil, searchRow)
-        filterRow:SetSize(FILTER_BLOCK_WIDTH, SEARCH_ROW_HEIGHT)
+        local filterRow = Factory:CreateContainer(searchRow, FILTER_BLOCK_WIDTH, SEARCH_ROW_HEIGHT, false)
+        if not filterRow then
+            filterRow = CreateFrame("Frame", nil, searchRow)
+            filterRow:SetSize(FILTER_BLOCK_WIDTH, SEARCH_ROW_HEIGHT)
+        end
         filterRow:SetPoint("TOPRIGHT", searchRow, "TOPRIGHT", 0, 0)
         hdrCache.filterRow = filterRow
 
@@ -6675,7 +6723,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         contentFrame:Show()
         collectionsState.contentFrame = contentFrame
     else
-        contentFrame = CreateFrame("Frame", nil, parent)
+        contentFrame = Factory:CreateContainer(parent, contentWidth, contentHeight, false)
         contentFrame:SetSize(contentWidth, contentHeight)
         contentFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", sideMargin, -yOffset)
         contentFrame:Show()

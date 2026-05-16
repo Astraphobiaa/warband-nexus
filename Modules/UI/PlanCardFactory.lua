@@ -2,6 +2,9 @@
     Warband Nexus - Plan Card Factory
     Centralized factory for creating plan cards with unified structure
     Supports all plan types: Achievement, Mount, Pet, Toy, Illusion, Title, Weekly Vault, Daily Quest
+
+    WN_FACTORY: Primary surfaces use `ns.UI.Factory`; raw `CreateFrame` paths are defensive fallbacks
+    when Factory nil (Wowhead/link criteria rows, `_planDescUpdateFrame` sizing host).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -405,6 +408,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     card.planNameText = nameText  -- Store reference for overflow checking
     
     -- Wowhead + optional chat link (top-right of name row; name truncates to their left)
+    local Factory = ns.UI and ns.UI.Factory
     local CDL = ns.CollectionsDetailHeaderLayout or {}
     local whW = CDL.WOWHEAD_SIZE or ns.PLAN_CARD_WOWHEAD_SIZE or 18
     local whTop = CDL.CARD_WOWHEAD_TOP_OFFSET or 10
@@ -432,8 +436,13 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     end
 
     if wowheadEntityType and wowheadID and wowheadID > 0 then
-        local whBtn = CreateFrame("Button", nil, card)
-        whBtn:SetSize(whW, whW)
+        local whBtn
+        if Factory and Factory.CreateButton then
+            whBtn = Factory:CreateButton(card, whW, whW, true)
+        else
+            whBtn = CreateFrame("Button", nil, card)
+            whBtn:SetSize(whW, whW)
+        end
         whBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -whInset, -whTop)
         card.wowheadBtn = whBtn
         whBtn:SetNormalAtlas("socialqueuing-icon-eye")
@@ -455,8 +464,13 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     end
 
     if WarbandNexus.PlanSupportsChatLink and WarbandNexus:PlanSupportsChatLink(plan) then
-        local linkBtn = CreateFrame("Button", nil, card)
-        linkBtn:SetSize(whW, whW)
+        local linkBtn
+        if Factory and Factory.CreateButton then
+            linkBtn = Factory:CreateButton(card, whW, whW, true)
+        else
+            linkBtn = CreateFrame("Button", nil, card)
+            linkBtn:SetSize(whW, whW)
+        end
         if card.wowheadBtn then
             linkBtn:SetPoint("TOPRIGHT", card.wowheadBtn, "TOPLEFT", -LINK_GAP, 0)
         else
@@ -1763,7 +1777,8 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     if not expandedContent then 
         return 
     end
-    
+    local Factory = ns.UI and ns.UI.Factory
+
     -- CRITICAL: Re-anchor expandedContent to requirementsHeader to ensure correct positioning
     local anchorFrame = card.requirementsHeader
     if anchorFrame then
@@ -1897,9 +1912,13 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 
                 if linkedID and ShowAchievementPopup and not data.completed then
                     -- Interactive: Button frame for incomplete achievement-linked criteria
-                    local btn = CreateFrame("Button", nil, expandedContent)
+                    local btnW = math.max(8, colWidth - ICON_COL_WIDTH - 4)
+                    local btn = Factory and Factory.CreateButton and Factory:CreateButton(expandedContent, btnW, 16, true)
+                    if not btn then
+                        btn = CreateFrame("Button", nil, expandedContent)
+                        btn:SetSize(btnW, 16)
+                    end
                     btn:SetPoint("TOPLEFT", xPos + ICON_COL_WIDTH, criteriaY)
-                    btn:SetSize(colWidth - ICON_COL_WIDTH - 4, 16)
                     
                     local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
                     label:SetPoint("LEFT")
@@ -2535,8 +2554,13 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
                 -- Reuse a single hidden frame to avoid frame accumulation.
                 local updateFrame = ns._planDescUpdateFrame
                 if not updateFrame then
-                    updateFrame = CreateFrame("Frame", nil, UIParent)
-                    updateFrame:SetSize(1, 1)
+                    local updateFactory = ns.UI and ns.UI.Factory
+                    if updateFactory and updateFactory.CreateContainer then
+                        updateFrame = updateFactory:CreateContainer(UIParent, 1, 1, false)
+                    else
+                        updateFrame = CreateFrame("Frame", nil, UIParent)
+                        updateFrame:SetSize(1, 1)
+                    end
                     updateFrame:Hide()
                     ns._planDescUpdateFrame = updateFrame
                 end

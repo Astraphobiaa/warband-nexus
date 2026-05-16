@@ -7,6 +7,9 @@
     
     Data flow: DB (db.global.plans) → GetActivePlans() [pure read] → UI render
     Completion filter: IsActivePlanComplete() [live CheckPlanProgress + vault/daily rules]
+
+    WN_FACTORY: `ns.UI.Factory` + ApplyVisuals for cards, dropdown, scroll chrome; Blizzard size-grabber
+    on resize grip stays raw toolbar art; expandable row internals owned by SharedWidgets.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -25,8 +28,14 @@ local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
 local PLAN_TYPES = ns.PLAN_TYPES
 local Factory = ns.UI.Factory
+local CreateButton = ns.UI_CreateButton
 local issecretvalue = issecretvalue
 local format = string.format
+
+-- Scrollbar lane: column + gap (aligned with main window SCROLL_INSET_RIGHT).
+local TRACK_SB_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+local TRACK_SCROLL_RIGHT_RESERVE = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+    or (TRACK_SB_COL_W + 2)
 
 -- Import UI spacing constants
 local UI_SPACING = ns.UI_SPACING or {
@@ -36,11 +45,11 @@ local UI_SPACING = ns.UI_SPACING or {
     AFTER_ELEMENT = 8,
 }
 
--- ── Layout constants ──
+-- ── Layout constants (tracker chrome aligns with main shell: NAV_BAR_HEIGHT + TAB_HEIGHT) ──
 local PADDING = UI_SPACING.TOP_MARGIN
-local SCROLLBAR_GAP = 22       -- 16px scrollbar + 6px gap (matches main addon UI.lua pattern)
-local HEADER_HEIGHT = 36  -- Modernized chrome (was UI_SPACING.HEADER_HEIGHT = 32) to match main shell
-local CATEGORY_BAR_HEIGHT = 34
+local MAIN_SHELL_PT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+local HEADER_HEIGHT = MAIN_SHELL_PT.NAV_BAR_HEIGHT or 36
+local CATEGORY_BAR_HEIGHT = MAIN_SHELL_PT.TAB_HEIGHT or 34
 local CARD_HEIGHT = 48         -- Minimum collapsed achievement header (ExpandableRow); standard cards use dynamic height
 local CARD_MARGIN = 8          -- Vertical gap between cards / rows (no overlap)
 local MIN_GRID_CARD_H = 54     -- Minimum height for standard grid cards (icon + wrapped text)
@@ -194,7 +203,7 @@ local function GetContentWidth(frame)
         if w and w > 0 then return w end
     end
     -- Fallback before layout is ready
-    return math.max((frame and frame:GetWidth() or 380) - PADDING - SCROLLBAR_GAP, 200)
+    return math.max((frame and frame:GetWidth() or 380) - PADDING - TRACK_SCROLL_RIGHT_RESERVE, 200)
 end
 
 local function IsPlaceholderSourceText(sourceText)
@@ -651,8 +660,11 @@ local function RefreshTrackerContentImmediate()
 
     if #filtered == 0 then
         -- Wrap empty state in a frame so it gets cleaned up by children cleanup
-        local emptyFrame = CreateFrame("Frame", nil, scrollChild)
-        emptyFrame:SetSize(width, 50)
+        local emptyFrame = Factory and Factory:CreateContainer(scrollChild, width, 50, false)
+        if not emptyFrame then
+            emptyFrame = CreateFrame("Frame", nil, scrollChild)
+            emptyFrame:SetSize(width, 50)
+        end
         emptyFrame:SetPoint("TOPLEFT", 0, -yOffset)
         local empty = FontManager:CreateFontString(emptyFrame, "body", "OVERLAY")
         empty:SetPoint("TOPLEFT", PADDING, -12)
@@ -778,7 +790,11 @@ local function RefreshTrackerContentImmediate()
                 AddTrackerCardAccent(vaultCard)
                 
                 -- Header area (clickable to expand/collapse)
-                local headerFrame = CreateFrame("Frame", nil, vaultCard)
+                local headerFrame = Factory and Factory:CreateContainer(vaultCard, width, VAULT_HEADER_HEIGHT, false)
+                if not headerFrame then
+                    headerFrame = CreateFrame("Frame", nil, vaultCard)
+                    headerFrame:SetHeight(VAULT_HEADER_HEIGHT)
+                end
                 headerFrame:SetPoint("TOPLEFT", 0, 0)
                 headerFrame:SetPoint("TOPRIGHT", 0, 0)
                 headerFrame:SetHeight(VAULT_HEADER_HEIGHT)
@@ -944,8 +960,11 @@ local function RefreshTrackerContentImmediate()
             elseif plan.type == "daily_quests" then
                 -- ── Weekly / daily quest plan: same rich card as main To-Do tab ──
                 local dqH = 170
-                local dqCard = CreateFrame("Frame", nil, scrollChild)
-                dqCard:SetSize(width, dqH)
+                local dqCard = Factory and Factory:CreateContainer(scrollChild, width, dqH, false)
+                if not dqCard then
+                    dqCard = CreateFrame("Frame", nil, scrollChild)
+                    dqCard:SetSize(width, dqH)
+                end
                 dqCard:SetPoint("TOPLEFT", 0, -yOffset)
                 if not dqCard.SetBackdrop then
                     Mixin(dqCard, BackdropTemplateMixin)
@@ -1049,8 +1068,11 @@ local function RefreshTrackerContentImmediate()
                 local ACTION_GAP = 4
                 local rightOffset = 6
                 local function makeAction(normalTex, highlightTex, onClick, tooltipKey, tooltipFallback)
-                    local btn = CreateFrame("Button", nil, row.headerFrame)
-                    btn:SetSize(ACTION_SIZE, ACTION_SIZE)
+                    local btn = Factory and Factory.CreateButton and Factory:CreateButton(row.headerFrame, ACTION_SIZE, ACTION_SIZE, true)
+                    if not btn then
+                        btn = CreateFrame("Button", nil, row.headerFrame)
+                        btn:SetSize(ACTION_SIZE, ACTION_SIZE)
+                    end
                     btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                     btn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
                     btn:SetNormalTexture(normalTex)
@@ -1183,8 +1205,11 @@ end
 local activeDropdownMenu = nil
 
 local function CreateThemedCategoryDropdown(parent, onCategorySelected)
-    local bar = CreateFrame("Frame", nil, parent)
-    bar:SetHeight(CATEGORY_BAR_HEIGHT)
+    local bar = Factory and Factory:CreateContainer(parent, 420, CATEGORY_BAR_HEIGHT, false)
+    if not bar then
+        bar = CreateFrame("Frame", nil, parent)
+        bar:SetHeight(CATEGORY_BAR_HEIGHT)
+    end
     bar:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + PADDING))
     bar:SetPoint("TOPRIGHT", -PADDING, -(HEADER_HEIGHT + PADDING))
 
@@ -1276,7 +1301,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         -- Scroll frame inside menu (for many items)
         local scrollFrame = Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", 4, -4)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -22, 4)
+        scrollFrame:SetPoint("BOTTOMRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, 4)
         scrollFrame:EnableMouseWheel(true)
 
         local scrollChild = Factory:CreateContainer(scrollFrame, menuWidth - UI_SPACING.SIDE_MARGIN, itemCount * itemHeight)
@@ -1342,7 +1367,10 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         -- Create click-catcher (full-screen invisible frame)
         local clickCatcher = dropdown._clickCatcher
         if not clickCatcher then
-            clickCatcher = CreateFrame("Frame", nil, UIParent)
+            clickCatcher = Factory and Factory:CreateContainer(UIParent, 100, 100, false)
+            if not clickCatcher then
+                clickCatcher = CreateFrame("Frame", nil, UIParent)
+            end
             clickCatcher:SetAllPoints()
             clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
             clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
@@ -1401,9 +1429,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local w = db and db.width or 380
     local h = db and db.height or 420
 
-    -- ── Main frame ──
-    frame = CreateFrame("Frame", "WarbandNexus_PlansTracker", UIParent)
-    frame:SetSize(w, h)
+    -- ── Main frame (Factory shell; draggable/resizable behavior unchanged) ──
+    if not Factory or not Factory.CreateContainer then return end
+    frame = Factory:CreateContainer(UIParent, w, h, false, "WarbandNexus_PlansTracker")
+    if not frame then return end
     frame:EnableMouse(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
@@ -1425,11 +1454,11 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end
     frame:SetAlpha(math.max(0.2, math.min(1.0, db and db.opacity or 1.0)))
 
-    -- ── Header (compact, draggable) ──
-    local header = CreateFrame("Frame", nil, frame)
-    header:SetHeight(HEADER_HEIGHT)
+    -- ── Header (compact, draggable; Factory shell, width follows frame) ──
+    local header = Factory:CreateContainer(frame, math.max(1, w), HEADER_HEIGHT, false)
+    if not header then return end
+    frame._plansTrackerHeaderShell = header
     header:SetPoint("TOPLEFT", 0, 0)
-    header:SetPoint("TOPRIGHT", 0, 0)
     header:EnableMouse(true)
     if ns.WindowManager and ns.WindowManager.InstallDragHandler then
         ns.WindowManager:InstallDragHandler(header, frame, function()
@@ -1574,8 +1603,11 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local settingsPopup
     local function BuildSettingsPopup()
         if settingsPopup then return settingsPopup end
-        local popup = CreateFrame("Frame", nil, frame)
-        popup:SetSize(200, 64)
+        local popup = Factory:CreateContainer(frame, 200, 64, false)
+        if not popup then
+            popup = CreateFrame("Frame", nil, frame)
+            popup:SetSize(200, 64)
+        end
         popup:SetPoint("TOPRIGHT", gearBtn, "BOTTOMRIGHT", 0, -4)
         popup:SetFrameStrata(frame:GetFrameStrata())
         popup:SetFrameLevel(frame:GetFrameLevel() + 50)
@@ -1617,6 +1649,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
     gearBtn:SetScript("OnClick", function()
         local popup = BuildSettingsPopup()
+        if not popup then return end
         if popup:IsShown() then popup:Hide() else popup:Show() end
     end)
     gearBtn:SetScript("OnEnter", function()
@@ -1644,7 +1677,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- and anchors them to parent TOPRIGHT/BOTTOMRIGHT. We create an intermediate frame so
     -- the buttons anchor to the scroll region, not the whole window.
     local scrollTopOffset = HEADER_HEIGHT + CATEGORY_BAR_HEIGHT + PADDING
-    local contentArea = CreateFrame("Frame", nil, frame)
+    local contentArea = Factory and Factory:CreateContainer(frame, math.max(1, w), math.max(1, h - scrollTopOffset - TRACKER_RESIZE_STRIP), false)
+    if not contentArea then
+        contentArea = CreateFrame("Frame", nil, frame)
+    end
     contentArea:SetPoint("TOPLEFT", 0, -scrollTopOffset)
     contentArea:SetPoint("BOTTOMRIGHT", 0, TRACKER_RESIZE_STRIP)
     frame.contentArea = contentArea
@@ -1652,19 +1688,22 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- ── Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) ──
     local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", contentArea, "TOPLEFT", PADDING, 0)
-    scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -SCROLLBAR_GAP, 0)
+    scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, 0)
     scrollFrame:SetPoint("BOTTOM", contentArea, "BOTTOM", 0, PADDING)
     scrollFrame:EnableMouseWheel(true)
     frame.contentScrollFrame = scrollFrame
 
-    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, SCROLLBAR_GAP, 0, PADDING)
+    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, TRACK_SB_COL_W, 0, PADDING)
     if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
 
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(1)  -- Temporary, updated dynamically on first refresh
-    scrollChild:SetHeight(1)
+    local scrollChild = Factory:CreateContainer(scrollFrame, 1, 1, false)
+    if not scrollChild then
+        scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        scrollChild:SetWidth(1)
+        scrollChild:SetHeight(1)
+    end
     scrollFrame:SetScrollChild(scrollChild)
     frame.contentScrollChild = scrollChild
 
@@ -1678,8 +1717,14 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end)
 
     -- ── Resize grip (bottom-right): above scroll/scrollbar, never under title bar when collapsed ──
-    local resizer = CreateFrame("Button", nil, frame)
-    resizer:SetSize(18, 18)
+    local resizer = Factory and Factory.CreateButton and Factory:CreateButton(frame, 18, 18, true)
+    if not resizer then
+        resizer = CreateButton(frame, 18, 18, nil, nil, true)
+    end
+    if not resizer then
+        resizer = CreateFrame("Button", nil, frame)
+        resizer:SetSize(18, 18)
+    end
     resizer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -3, 3)
     resizer:SetFrameStrata(frame:GetFrameStrata())
     resizer:SetFrameLevel(frame:GetFrameLevel() + 40)
@@ -1704,6 +1749,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
     -- Resize: only update layout when user releases (no continuous render during drag)
     frame:SetScript("OnSizeChanged", function(self, newW, newH)
+        if frame._plansTrackerHeaderShell then
+            frame._plansTrackerHeaderShell:SetWidth(math.max(1, self:GetWidth()))
+        end
         local sw = scrollFrame and scrollFrame:GetWidth() or nil
         if sw and sw > 0 then
             scrollChild:SetWidth(sw)

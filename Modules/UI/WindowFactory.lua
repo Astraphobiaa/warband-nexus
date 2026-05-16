@@ -12,8 +12,7 @@
     - Modern styling with borders
     - Close button with icon
     
-    Extracted from SharedWidgets.lua (174 lines)
-    Location: Lines 2189-2362
+    Canonical implementation (SharedWidgets retains CreateContainer / ApplyVisuals; duplicate dialog builder was removed from SharedWidgets).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -26,6 +25,8 @@ local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
 local FontManager = ns.FontManager
 local CreateIcon = ns.UI_CreateIcon
+local CreateButton = ns.UI_CreateButton
+local Factory = ns.UI and ns.UI.Factory
 
 --============================================================================
 -- RUNTIME DEPENDENCY VALIDATION
@@ -53,7 +54,7 @@ local CreateIcon = ns.UI_CreateIcon
 ---@return Frame|nil header Header frame (for custom additions)
 local function CreateExternalWindow(config)
     -- Runtime dependency check (deferred to first use)
-    if not COLORS or not ApplyVisuals or not FontManager or not CreateIcon then
+    if not COLORS or not ApplyVisuals or not FontManager or not CreateIcon or not CreateButton or not Factory then
         DebugPrint("|cffff0000[WN WindowFactory ERROR]|r Missing dependencies - SharedWidgets not loaded")
         return nil
     end
@@ -68,6 +69,27 @@ local function CreateExternalWindow(config)
     local width = config.width or 400
     local height = config.height or 300
     local preventDuplicates = (config.preventDuplicates ~= false) -- default true
+    local mainShellLayout = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    local extDlgInset = mainShellLayout.EXTERNAL_DIALOG_SIDE_INSET or 8
+    local extDlgHeaderH = mainShellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT or 45
+    local extInnerShrink = extDlgInset * 2
+    --- Body region below header (`contentFrame` anchors): `height - side - header - side`.
+    local extContentBodyH = math.max(1, height - extInnerShrink - extDlgHeaderH)
+    local extContentTopY = -(extDlgInset + extDlgHeaderH)
+    local recycle = ns.UI_RecycleBin
+    local dialog
+    local function AbortIncompleteExternalWindow(overlayMaybe)
+        if overlayMaybe then
+            overlayMaybe:Hide()
+            overlayMaybe:SetScript("OnMouseDown", nil)
+            if recycle then overlayMaybe:SetParent(recycle) else overlayMaybe:SetParent(nil) end
+        end
+        if dialog then
+            dialog:Hide()
+            if recycle then dialog:SetParent(recycle) else dialog:SetParent(nil) end
+        end
+        _G[globalName] = nil
+    end
     
     -- Prevent duplicates
     if preventDuplicates then
@@ -76,9 +98,9 @@ local function CreateExternalWindow(config)
         end
     end
     
-    -- Create dialog frame
-    local dialog = CreateFrame("Frame", globalName, UIParent)
-    dialog:SetSize(width, height)
+    -- Dialog shell (Factory container; borders from ApplyVisuals below)
+    dialog = Factory:CreateContainer(UIParent, width, height, false, globalName)
+    if not dialog then return nil end
     dialog:SetPoint("CENTER")
 
     -- WindowManager: standardized strata/level
@@ -97,11 +119,10 @@ local function CreateExternalWindow(config)
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     
-    -- Header bar
-    local header = CreateFrame("Frame", nil, dialog)
-    header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 8, -8)
-    header:SetPoint("TOPRIGHT", -8, -8)
+    -- Header bar (inner width subtracts symmetric side insets)
+    local header = Factory:CreateContainer(dialog, math.max(1, width - extInnerShrink), extDlgHeaderH, false)
+    if not header then AbortIncompleteExternalWindow() return nil end
+    header:SetPoint("TOPLEFT", extDlgInset, -extDlgInset)
     
     -- Apply header border
     if ApplyVisuals then
@@ -134,15 +155,12 @@ local function CreateExternalWindow(config)
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetText("|cffffffff" .. config.title .. "|r")
     
-    -- Close button (X) - Factory pattern with atlas icon
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(28, 28)
+    -- Close button (SharedWidgets CreateButton + atlas icon)
+    local closeBtn = CreateButton(header, 28, 28, {0.15, 0.15, 0.15, 0.9}, {
+        COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8,
+    }, false)
+    if not closeBtn then AbortIncompleteExternalWindow() return nil end
     closeBtn:SetPoint("RIGHT", -8, 0)
-    
-    -- Apply custom visuals (dark background, accent border)
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
     
     -- Close icon using WoW atlas
     local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
@@ -152,14 +170,12 @@ local function CreateExternalWindow(config)
     closeIcon:SetVertexColor(0.9, 0.3, 0.3)
     
     -- Hover effects
-    closeBtn:SetScript("OnEnter", function(self)
+    closeBtn:SetScript("OnEnter", function()
         closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ApplyVisuals then
-            ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
-        end
+        if ApplyVisuals then ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
     end)
     
-    closeBtn:SetScript("OnLeave", function(self)
+    closeBtn:SetScript("OnLeave", function()
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         if ApplyVisuals then
             ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
@@ -186,10 +202,10 @@ local function CreateExternalWindow(config)
     
     closeBtn:SetScript("OnClick", CloseDialog)
     
-    -- Content frame (where users add their content)
-    local contentFrame = CreateFrame("Frame", nil, dialog)
-    contentFrame:SetPoint("TOPLEFT", 8, -53) -- Below header
-    contentFrame:SetPoint("BOTTOMRIGHT", -8, 8)
+    -- Content frame (explicit size matches header + margins; dialog size is fixed at creation)
+    local contentFrame = Factory:CreateContainer(dialog, math.max(1, width - extInnerShrink), extContentBodyH, false)
+    if not contentFrame then AbortIncompleteExternalWindow() return nil end
+    contentFrame:SetPoint("TOPLEFT", extDlgInset, extContentTopY)
     -- Match shell body: content was transparent, so gaps under widgets read as gray seams.
     local contentFill = contentFrame:CreateTexture(nil, "BACKGROUND")
     contentFill:SetDrawLayer("BACKGROUND", -8)
@@ -197,7 +213,8 @@ local function CreateExternalWindow(config)
     contentFill:SetColorTexture(COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], COLORS.bg[4] or 0.98)
     
     -- Click-outside overlay (released in CloseDialog to avoid frame buildup)
-    local clickOutsideFrame = CreateFrame("Frame", nil, UIParent)
+    local clickOutsideFrame = Factory:CreateContainer(UIParent, 1, 1, false)
+    if not clickOutsideFrame then AbortIncompleteExternalWindow() return nil end
     dialog._clickOutsideFrame = clickOutsideFrame
     clickOutsideFrame:SetAllPoints()
     clickOutsideFrame:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -252,6 +269,7 @@ local achievementPopup = nil  -- Single shared frame, reused across clicks
 
 local function ShowAchievementPopup(achievementID, anchorFrame)
     if not achievementID or not anchorFrame then return end
+    if not Factory or not CreateButton or not ApplyVisuals or not FontManager or not COLORS then return end
     
     -- Toggle: if popup is already showing this achievement, close it
     if achievementPopup and achievementPopup:IsShown() and achievementPopup._currentID == achievementID then
@@ -276,8 +294,8 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     
     -- Create shared frame on first use
     if not achievementPopup then
-        local popup = CreateFrame("Frame", "WarbandNexus_AchievementPopup", UIParent)
-        popup:SetSize(POPUP_WIDTH, 180)
+        local popup = Factory:CreateContainer(UIParent, POPUP_WIDTH, 180, false, "WarbandNexus_AchievementPopup")
+        if not popup then return end
         popup:EnableMouse(true)
 
         -- WindowManager: standardized strata/level + ESC + combat hide
@@ -308,7 +326,8 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             return false
         end
 
-        local dismissOverlay = CreateFrame("Frame", nil, UIParent)
+        local dismissOverlay = Factory:CreateContainer(UIParent, 1, 1, false)
+        if not dismissOverlay then return end
         dismissOverlay:SetAllPoints(UIParent)
         dismissOverlay:SetFrameStrata("FULLSCREEN_DIALOG")
         dismissOverlay:SetFrameLevel(math.max(1, popup:GetFrameLevel() - 1))
@@ -373,8 +392,8 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._reward:SetWidth(CONTENT_WIDTH)
         
         -- Button row (Track + Add) — Track: Add ile aynı köşesiz stil
-        popup._trackBtn = CreateFrame("Button", nil, popup)
-        popup._trackBtn:SetSize(BTN_WIDTH, BTN_HEIGHT)
+        popup._trackBtn = CreateButton(popup, BTN_WIDTH, BTN_HEIGHT, nil, nil, true)
+        if not popup._trackBtn then return end
         popup._trackBtn:SetPoint("BOTTOMLEFT", PADDING, 10)
         popup._trackLabel = FontManager:CreateFontString(popup._trackBtn, FontManager:GetFontRole("collectionAchievementPopupButton"), "OVERLAY")
         popup._trackLabel:SetPoint("CENTER")
@@ -389,12 +408,11 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             end
         end)
         
-        popup._addBtn = CreateFrame("Button", nil, popup)
-        popup._addBtn:SetSize(BTN_WIDTH, BTN_HEIGHT)
+        popup._addBtn = CreateButton(popup, BTN_WIDTH, BTN_HEIGHT, {0.12, 0.12, 0.15, 1}, {
+            COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6,
+        }, false)
+        if not popup._addBtn then return end
         popup._addBtn:SetPoint("LEFT", popup._trackBtn, "RIGHT", 8, 0)
-        if ApplyVisuals then
-            ApplyVisuals(popup._addBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-        end
         popup._addLabel = FontManager:CreateFontString(popup._addBtn, FontManager:GetFontRole("collectionAchievementPopupButton"), "OVERLAY")
         popup._addLabel:SetPoint("CENTER")
         popup._addBtn:SetScript("OnEnter", function(self)

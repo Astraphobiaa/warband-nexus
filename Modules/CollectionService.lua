@@ -24,6 +24,8 @@
     - WN_COLLECTIBLE_OBTAINED: Real-time detection
     - WN_COLLECTION_SCAN_COMPLETE: Background scan finished
     - WN_COLLECTION_SCAN_PROGRESS: Scan progress updates
+
+    WN_NONUI_UI: `bagScanFrame` (and similar) are background event hosts (`CreateFrame`); Browse UI stays in Modules/UI.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -6121,6 +6123,25 @@ do
     local BAG_SCAN_DEBOUNCE = 0.06
     -- CHAT_MSG_LOOT fires after loot is committed; coalesce multi-line loot spam into one scan.
     local CHAT_LOOT_BAG_SCAN_DEBOUNCE = 0.04
+
+    ---Narrow CHAT_MSG_LOOT to mount/pet/toy candidates (class 0 alone matches all consumables → full-bag scan).
+    local function IsPossibleCollectibleLootItem(itemID)
+        if not itemID then return false end
+        local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(itemID)
+        if not classID then return true end -- cache miss: allow one changed-bag scan only
+        if classID == 17 then return true end
+        if classID == 15 then
+            return subclassID == 5 or subclassID == 2 or subclassID == 0 or subclassID == 4
+        end
+        if classID == 0 then
+            if C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemID) then return true end
+            if C_MountJournal and C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(itemID) then
+                return true
+            end
+            return false
+        end
+        return false
+    end
     local baselineInitialized = false
     local changedBagIDs = {}       -- Tracks which bags changed since last scan {[bagID]=true}
     local suppressUntil = 0        -- Suppress BAG_UPDATE_DELAYED until this GetTime() value
@@ -6176,17 +6197,22 @@ do
             end
             local itemIDStr = message:match("|Hitem:(%d+):")
             local itemID = itemIDStr and tonumber(itemIDStr) or nil
-            if not itemID then return end
-            local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
-            if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
-                return
-            end
+            if not itemID or not IsPossibleCollectibleLootItem(itemID) then return end
             if chatLootScanTimer then chatLootScanTimer:Cancel() end
             chatLootScanTimer = C_Timer.NewTimer(CHAT_LOOT_BAG_SCAN_DEBOUNCE, function()
                 chatLootScanTimer = nil
                 if not WarbandNexus or not WarbandNexus.OnBagUpdateForCollectibles then return end
+                local bagsToScan = {}
+                local hasBags = false
+                for bagID in pairs(changedBagIDs) do
+                    bagsToScan[bagID] = true
+                    hasBags = true
+                end
+                if not hasBags then
+                    bagsToScan[0] = true
+                end
                 lastCollectibleScanTime = 0
-                WarbandNexus:OnBagUpdateForCollectibles()
+                WarbandNexus:OnBagUpdateForCollectibles(bagsToScan)
             end)
             return
         end

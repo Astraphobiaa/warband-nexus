@@ -1,12 +1,16 @@
 --[[
     Warband Nexus - Notification Manager
     Handles in-game notifications and reminders
+
+    WN_FACTORY: Changelog popup scroll-child + themed close use `ns.UI.Factory` / ApplyVisuals; toast layering
+    (effects/backdrop/icon z-order) stays plain `CreateFrame`; screen flash overlay remains an intentional fullscreen host.
 ]]
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Utilities = ns.Utilities
 local FontManager = ns.FontManager  -- Centralized font management
+local ApplyVisuals = ns.UI_ApplyVisuals
 local ToastFactory = ns.NotificationToastFactory
 local DebugPrint = ns.DebugPrint or function() end
 local DebugVerbosePrint = ns.DebugVerbosePrint or DebugPrint
@@ -98,6 +102,18 @@ function WarbandNexus:RefreshNotificationColors()
     
     -- No action needed here - GetThemeAccentColor() will return updated colors
     -- for any new notifications created after theme change
+end
+
+--- Aligns changelog backdrop padding with `MAIN_SHELL` / `UI_SPACING` (SharedWidgets loads before this file).
+local function NM_GetShellContentInset()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.FRAME_CONTENT_INSET or 2
+end
+
+--- Replaces legacy hard-coded horizontal `30` (≈ three × `SIDE_MARGIN` at defaults).
+local function NM_WhatsNewPopupSidePad()
+    local side = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
+    return math.max(side * 3, NM_GetShellContentInset() * 12)
 end
 
 --[[============================================================================
@@ -271,6 +287,11 @@ end
 function WarbandNexus:ShowUpdateNotification(changelogData)
     local accent = GetThemeAccentColor()
     local ar, ag, ab = accent[1], accent[2], accent[3]
+    local changelogSidePad = NM_WhatsNewPopupSidePad()
+    local changelogCloseBottom = math.max(15, NM_GetShellContentInset() * 7 + 1)
+    --- Distinct layout band: separator → label → scroll (must match scrollbar column inset).
+    local changelogScrollTop = 185
+    local changelogScrollBottom = 60
     
     -- Create backdrop frame
     local backdrop = CreateFrame("Frame", "WarbandNexusUpdateBackdrop", UIParent)
@@ -322,8 +343,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     -- Separator line
     local separator = popup:CreateTexture(nil, "ARTWORK")
     separator:SetHeight(1)
-    separator:SetPoint("TOPLEFT", 30, -140)
-    separator:SetPoint("TOPRIGHT", -30, -140)
+    separator:SetPoint("TOPLEFT", changelogSidePad, -140)
+    separator:SetPoint("TOPRIGHT", -changelogSidePad, -140)
     separator:SetColorTexture(ar, ag, ab, 0.6)
     
     if FontManager and FontManager.CreateFontString then
@@ -333,7 +354,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         whatsNewLabel:SetText("|cffffd700" .. whatsNewText .. "|r")
     end
     
-    local CONTENT_WIDTH = 600 - 30 - 52
+    local POPUP_INNER_W = 600
+    local SCROLL_EDGE_GUTTER = 24
+    --- Right inset = scrollbar lane (`column + gap`) + fixed gutter to popup chrome (formerly hard-coded 52).
+    local changelogRightInset = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()
+        or 28) + SCROLL_EDGE_GUTTER
+    local CONTENT_WIDTH = POPUP_INNER_W - changelogSidePad - changelogRightInset
     local TEXT_PAD = 10
     local TEXT_WIDTH = CONTENT_WIDTH - (TEXT_PAD * 2)
     local geometry = {
@@ -348,13 +374,19 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     local scrollFrame, scrollChild
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and FontManager and FontManager.CreateFontString then
         scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetPoint("TOPLEFT", 30, -185)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -52, 60)
+        scrollFrame:SetPoint("TOPLEFT", changelogSidePad, -changelogScrollTop)
+        scrollFrame:SetPoint("BOTTOMRIGHT", -changelogRightInset, changelogScrollBottom)
         if ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
-            local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, 22, 185, 60)
+            local chgSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+            local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, chgSbColW, changelogScrollTop, changelogScrollBottom)
             ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end
-        scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        if ns.UI.Factory.CreateContainer then
+            scrollChild = ns.UI.Factory:CreateContainer(scrollFrame, CONTENT_WIDTH, 8, false)
+        end
+        if not scrollChild then
+            scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        end
         scrollChild:SetWidth(CONTENT_WIDTH)
         scrollFrame:SetScrollChild(scrollChild)
         -- Defer content layout to next frame so fonts/layout are ready (fixes first-time user layout)
@@ -367,8 +399,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     else
         -- Fallback: simple non-scrolling text block so popup never breaks
         scrollChild = CreateFrame("Frame", nil, popup)
-        scrollChild:SetPoint("TOPLEFT", 30, -185)
-        scrollChild:SetPoint("BOTTOMRIGHT", -30, 60)
+        scrollChild:SetPoint("TOPLEFT", changelogSidePad, -changelogScrollTop)
+        scrollChild:SetPoint("BOTTOMRIGHT", -changelogSidePad, changelogScrollBottom)
         scrollFrame = nil
         local fallbackText
         if FontManager and FontManager.CreateFontString then
@@ -387,19 +419,27 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         end)
     end
     
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, popup, "BackdropTemplate")
-    closeBtn:SetSize(120, 35)
-    closeBtn:SetPoint("BOTTOM", 0, 15)
-    closeBtn:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = false,
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    closeBtn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
-    closeBtn:SetBackdropBorderColor(ar, ag, ab, 1)
+    -- Close button (Factory rim + accent fill; preserves hover brighten via ApplyVisuals)
+    local closeBtn
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
+        closeBtn = ns.UI.Factory:CreateButton(popup, 120, 35, false)
+        if ApplyVisuals then
+            ApplyVisuals(closeBtn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+        end
+    end
+    if not closeBtn then
+        closeBtn = CreateFrame("Button", nil, popup, "BackdropTemplate")
+        closeBtn:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false,
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        closeBtn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
+        closeBtn:SetBackdropBorderColor(ar, ag, ab, 1)
+    end
+    closeBtn:SetPoint("BOTTOM", 0, changelogCloseBottom)
     
     local closeBtnText
     if FontManager and FontManager.CreateFontString then
@@ -424,11 +464,19 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     end)
     
     closeBtn:SetScript("OnEnter", function(btn)
-        btn:SetBackdropColor(ar * 0.7, ag * 0.7, ab * 0.7, 1)
+        if ApplyVisuals then
+            ApplyVisuals(btn, { ar * 0.7, ag * 0.7, ab * 0.7, 1 }, { ar, ag, ab, 1 })
+        elseif btn.SetBackdropColor then
+            btn:SetBackdropColor(ar * 0.7, ag * 0.7, ab * 0.7, 1)
+        end
     end)
-    
+
     closeBtn:SetScript("OnLeave", function(btn)
-        btn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
+        if ApplyVisuals then
+            ApplyVisuals(btn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+        elseif btn.SetBackdropColor then
+            btn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
+        end
     end)
     
     -- Escape key to close
@@ -1148,17 +1196,18 @@ function WarbandNexus:ShowModalNotification(config)
             compactGlowAtlas = nil
         end
         if compactGlowAtlas and type(compactGlowAtlas) == "string" and compactGlowAtlas:find("TopBottom:") then
+            local gInset = NM_GetShellContentInset()
             local baseAtlas = compactGlowAtlas:gsub("TopBottom:", "")
             local topLine = contentEffectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
-            topLine:SetPoint("TOPLEFT", contentEffectsFrameCompact, "TOPLEFT", 0, 2)
-            topLine:SetPoint("TOPRIGHT", contentEffectsFrameCompact, "TOPRIGHT", 0, 2)
+            topLine:SetPoint("TOPLEFT", contentEffectsFrameCompact, "TOPLEFT", 0, gInset)
+            topLine:SetPoint("TOPRIGHT", contentEffectsFrameCompact, "TOPRIGHT", 0, gInset)
             topLine:SetHeight(32)
             topLine:SetAtlas(baseAtlas .. "-Top", true)
             topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
             topLine:SetBlendMode("ADD")
             local bottomLine = contentEffectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
-            bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrameCompact, "BOTTOMLEFT", 0, -2)
-            bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrameCompact, "BOTTOMRIGHT", 0, -2)
+            bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrameCompact, "BOTTOMLEFT", 0, -gInset)
+            bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrameCompact, "BOTTOMRIGHT", 0, -gInset)
             bottomLine:SetHeight(32)
             bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
             bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
@@ -1441,17 +1490,18 @@ function WarbandNexus:ShowModalNotification(config)
     
     local popupHeight = 88
     if glowAtlas:find("TopBottom:") then
+        local gInset = NM_GetShellContentInset()
         local baseAtlas = glowAtlas:gsub("TopBottom:", "")
         local topLine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-        topLine:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 0, 2)
-        topLine:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", 0, 2)
+        topLine:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 0, gInset)
+        topLine:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", 0, gInset)
         topLine:SetHeight(56)
         topLine:SetAtlas(baseAtlas .. "-Top", true)
         topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         topLine:SetBlendMode("ADD")
         local bottomLine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-        bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrame, "BOTTOMLEFT", 0, -2)
-        bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", 0, -2)
+        bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrame, "BOTTOMLEFT", 0, -gInset)
+        bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", 0, -gInset)
         bottomLine:SetHeight(56)
         bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
         bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
@@ -1628,8 +1678,11 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- === CIRCULAR PROGRESS TIMER (bottom-right corner) ===
     local timerSize = 24
-    local timerFrame = CreateFrame("Frame", nil, contentFrame)
-    timerFrame:SetSize(timerSize, timerSize)
+    local timerFrame = ns.UI and ns.UI.Factory and ns.UI.Factory:CreateContainer(contentFrame, timerSize, timerSize, false)
+    if not timerFrame then
+        timerFrame = CreateFrame("Frame", nil, contentFrame)
+        timerFrame:SetSize(timerSize, timerSize)
+    end
     timerFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -6, 6)
     
     -- Timer spinner (WoW naval map glow trails)
@@ -2443,7 +2496,7 @@ function WarbandNexus:PlayScreenFlash(duration)
     -- Don't flash during combat
     if InCombatLockdown() then return end
     
-    -- Create frame on first use
+    -- Create frame on first use (intentional fullscreen texture host — not SharedWidgets bordered shell)
     if not screenFlashFrame then
         local f = CreateFrame("Frame", nil, UIParent)
         f:SetAllPoints(UIParent)

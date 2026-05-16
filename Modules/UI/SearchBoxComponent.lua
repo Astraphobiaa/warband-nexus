@@ -2,6 +2,8 @@
     Warband Nexus - Search Box Component
     
     Reusable search box with icon, placeholder, and throttled callback.
+
+    WN_FACTORY: Outer shell uses `Factory:CreateContainer` when available (`ApplyVisuals` on same frame); EditBox stays a native widget.
     
     Features:
     - Search icon with opacity
@@ -65,23 +67,22 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     local delay = throttleDelay or 0.3
     local throttleTimer = nil
     local initialText = initialValue or ""
-    
-    -- Container frame
-    local container = CreateFrame("Frame", nil, parent)
+
+    local Factory = ns.UI and ns.UI.Factory
     local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
-    container:SetSize(width, searchH)
+
+    local container = Factory and Factory.CreateContainer and Factory:CreateContainer(parent, width, searchH, false)
+    if not container then
+        container = CreateFrame("Frame", nil, parent)
+        container:SetSize(width, searchH)
+    end
+    container.searchFrame = container
     
-    -- Background frame with pixel-perfect border
-    local searchFrame = CreateFrame("Frame", nil, container)
-    container.searchFrame = searchFrame  -- Store reference for color updates
-    searchFrame:SetAllPoints()
-    
-    -- Apply pixel-perfect visuals with accent border
     local accentColor = COLORS.accent
-    ApplyVisuals(searchFrame, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
     -- Search icon
-    local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
+    local searchIcon = container:CreateTexture(nil, "ARTWORK")
     searchIcon:SetSize(16, 16)
     searchIcon:SetPoint("LEFT", 10, 0)
     searchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
@@ -91,7 +92,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     searchIcon:SetTexelSnappingBias(0)
     
     -- EditBox
-    local searchBox = CreateFrame("EditBox", nil, searchFrame)
+    local searchBox = CreateFrame("EditBox", nil, container)
     searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 8, 0)
     searchBox:SetPoint("RIGHT", -10, 0)
     searchBox:SetHeight(20)

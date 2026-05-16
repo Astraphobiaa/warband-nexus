@@ -166,8 +166,8 @@ local defaults = {
         -- Display settings
         scrollSpeed = 1.0,         -- Scroll speed multiplier (1.0 = default 28px per step)
         uiScale = 1.0,            -- Global UI scale for the entire addon window (0.6 - 1.5)
-        --- Plan/collection slot icons: classic = Blizzard atlases; modern = Media/Modern PNG (Atlas Icons).
-        iconTheme = "classic",
+        --- "standard" | "compact" --- tighter resize mins + modest default footprints (`API_*` geometry wrappers).
+        mainWindowDensity = "standard",
         vaultButton = {
             enabled = true,
             hideUntilMouseover = false,

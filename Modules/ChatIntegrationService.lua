@@ -37,6 +37,8 @@
     Chattynator TIME_PLAYED: Chattynator.API.FilterTimePlayed when hiding played time.
 
     AceEvent TIME_PLAYED_MSG (DataService) is separate from chat display.
+
+    WN_NONUI_UI: Chat/event hooks use isolated `CreateFrame` hosts (`ev`/`filter` frames); not addon main-window Factory chrome.
 ]]
 
 local ADDON_NAME, ns = ...

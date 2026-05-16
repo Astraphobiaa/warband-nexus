@@ -9,6 +9,15 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+--[[ WN_FACTORY: Loads before `Modules/UI/SharedWidgets.lua` in `WarbandNexus.toc`.
+     Never read `ns.UI.Factory` at chunk load — it appears after SharedWidgets runs.
+     All `ns.UI.Factory` / `VF` usages are inside button/table/menu construction paths (runtime).
+
+     Intentionally raw CreateFrame highlights: vault root dialogs (BackdropTemplate + global names),
+     Blizzard `CheckButton` fallback when themed checkbox is absent, event coalescing frames,
+     resize grip (Blizzard size grabber textures), Saved group header as full-surface `Button`,
+     lockout row inner highlights, main floating vault `WarbandNexusVaultButton`.]]
+
 -- ============================================================================
 -- Constants
 -- ============================================================================
@@ -65,6 +74,38 @@ local function VBFontString(parent, role, drawLayer)
         or "GameFontNormal"
     return parent:CreateFontString(nil, drawLayer or "OVERLAY", fallback)
 end
+
+--- Matches `MAIN_SHELL` in Modules/UI/SharedWidgets.lua (`ns.UI_LAYOUT` is nil until that file loads; safe at runtime when frames build).
+local function VBGetFrameContentInset()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.FRAME_CONTENT_INSET or 2
+end
+
+--- Aligns draggable chrome band height with main window header (`HEADER_BAR_HEIGHT`; fallback preserves legacy CHROME_H).
+local function VBGetChromeBandHeight()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.HEADER_BAR_HEIGHT or CHROME_H
+end
+
+--- Draggable chrome band inside backdrop inner edge (`FRAME_CONTENT_INSET`).
+---@return number bandHeight for stacking header rows below the band.
+local function VBAnchorChromeBandTop(chrome, parentFrame)
+    local inset = VBGetFrameContentInset()
+    local h = VBGetChromeBandHeight()
+    chrome:SetHeight(h)
+    chrome:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", inset, -inset)
+    chrome:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -inset, -inset)
+    return h
+end
+
+--- Full-width row below chrome (`FRAME_CONTENT_INSET` horizontally); adds `belowYOffset` beyond chrome band height.
+local function VBAnchorFullWidthRowBelowChrome(row, rootFrame, chromeBandHeight, belowYOffset)
+    local inset = VBGetFrameContentInset()
+    local y = -(chromeBandHeight + (belowYOffset or 0))
+    row:SetPoint("TOPLEFT", rootFrame, "TOPLEFT", inset, y)
+    row:SetPoint("TOPRIGHT", rootFrame, "TOPRIGHT", -inset, y)
+end
+
 local DASH   = "|cff888888-|r"
 
 -- Maps Easy Access column key -> PvE typeName used by upgrade-detection logic
@@ -730,7 +771,7 @@ local function ApplyTheme()
     local border = colors.border or accent
 
     if S.button and S.button.BorderTop then
-        local Factory = ns.UI and ns.UI.Factory
+        local VF = ns.UI.Factory
         local readyCount = CountReady()
         local r, g, b, a
         if readyCount > 0 then
@@ -738,8 +779,8 @@ local function ApplyTheme()
         else
             r, g, b, a = border[1], border[2], border[3], 0.85
         end
-        if Factory and Factory.UpdateBorderColor then
-            Factory:UpdateBorderColor(S.button, {r, g, b, a})
+        if VF and VF.UpdateBorderColor then
+            VF:UpdateBorderColor(S.button, {r, g, b, a})
         end
     end
     if S.badgeBg then
@@ -822,6 +863,7 @@ local function BuildTableFrame()
     local COLORS = ns.UI_COLORS or {}
     local accent = COLORS.accent or {0.40, 0.20, 0.58}
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
+    local VF = ns.UI.Factory
 
     local f = CreateFrame("Frame", "WarbandNexusVaultTable", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusVaultTable")
@@ -839,10 +881,8 @@ local function BuildTableFrame()
     f:Hide()
 
     -- ===== CHROME HEADER (matches main window) =====
-    local chrome = CreateFrame("Frame", nil, f)
-    chrome:SetHeight(CHROME_H)
-    chrome:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
-    chrome:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    local chrome = VF:CreateContainer(f, 32, 32, false)
+    local chromeBandH = VBAnchorChromeBandTop(chrome, f)
     chrome:EnableMouse(true)
     chrome:RegisterForDrag("LeftButton")
     chrome:SetScript("OnDragStart", function() f:StartMoving() end)
@@ -875,8 +915,7 @@ local function BuildTableFrame()
     S.title = title
 
     -- Close button (atlas style, matches main window)
-    local closeBtn = CreateFrame("Button", nil, chrome)
-    closeBtn:SetSize(28, 28)
+    local closeBtn = VF:CreateButton(chrome, 28, 28, true)
     closeBtn:SetPoint("RIGHT", -8, 0)
     if ApplyVisuals then
         ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
@@ -897,18 +936,16 @@ local function BuildTableFrame()
     end)
 
     -- Settings (gear) button — opens options frame
-    local settingsBtn = CreateFrame("Button", nil, chrome)
-    settingsBtn:SetSize(28, 28)
+    local settingsBtn = VF:CreateButton(chrome, 28, 28, true)
     settingsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
     settingsBtn:SetNormalAtlas("mechagon-projects")
     settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     settingsBtn:SetScript("OnClick", function() ToggleOptionsFrame(f, "RIGHT") end)
 
     -- Column header row
-    local headerY = -(CHROME_H + 6)
-    local hRow = CreateFrame("Frame", nil, f)
+    local headerY = -(chromeBandH + 6)
+    local hRow = VF:CreateContainer(f, tableW - FRAME_PAD * 2, HEADER_H, false)
     hRow:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, headerY)
-    hRow:SetSize(tableW - FRAME_PAD*2, HEADER_H)
     if ApplyVisuals then
         ApplyVisuals(hRow, {0.08, 0.08, 0.10, 1}, {COLORS.border and COLORS.border[1] or 0.20, COLORS.border and COLORS.border[2] or 0.20, COLORS.border and COLORS.border[3] or 0.25, 0.6})
     else
@@ -926,9 +963,8 @@ local function BuildTableFrame()
             icon:SetTexture(iconTex)
             icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             if tooltipTitle then
-                local hover = CreateFrame("Frame", nil, hRow)
+                local hover = VF:CreateContainer(hRow, w, HEADER_H, false)
                 hover:SetPoint("TOPLEFT", hRow, "TOPLEFT", x, 0)
-                hover:SetSize(w, HEADER_H)
                 hover:EnableMouse(true)
                 hover:SetScript("OnEnter", function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -991,12 +1027,11 @@ local function BuildTableFrame()
     sep:SetColorTexture(0.4, 0.3, 0.6, 0.6)
     S.separator = sep
 
-    -- Scroll
-    local scroll = CreateFrame("ScrollFrame", nil, f)
+    -- Scroll (factory-styled scrollbar; matches Saved Instances / main UI)
+    local scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
     scroll:SetPoint("TOPLEFT",     f, "TOPLEFT",     FRAME_PAD, headerY - HEADER_H - 2)
     scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -FRAME_PAD, FRAME_PAD)
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetWidth(tableW - FRAME_PAD*2)
+    local content = VF:CreateContainer(scroll, tableW - FRAME_PAD * 2, 8, false)
     scroll:SetScrollChild(content)
 
     f:EnableMouseWheel(true)
@@ -1014,6 +1049,7 @@ end
 
 RefreshTable = function()
     BuildTableFrame()
+    local VF = ns.UI.Factory
     local tableW = GetTableWidth()
     local content = S.tableContent
     local list    = BuildCharList()
@@ -1022,13 +1058,17 @@ RefreshTable = function()
     S.rows = {}
 
     if #list == 0 then
-        S.tableFrame:SetSize(tableW, CHROME_H + HEADER_H + 80)
+        S.tableFrame:SetSize(tableW, VBGetChromeBandHeight() + HEADER_H + 80)
         content:SetSize(tableW - FRAME_PAD*2, 40)
         local msg = VBFontString(content, "body")
         msg:SetPoint("CENTER", content, "CENTER")
         msg:SetTextColor(0.5, 0.5, 0.5)
         msg:SetText("No vault activity this week.")
         S.tableFrame:Show()
+        local vf0 = ns.UI.Factory
+        if vf0 and vf0.UpdateScrollBarVisibility and S.tableScroll then
+            vf0:UpdateScrollBarVisibility(S.tableScroll)
+        end
         return
     end
 
@@ -1038,8 +1078,7 @@ RefreshTable = function()
     local accent = colors.accent or {0.40, 0.20, 0.58}
 
     for i, e in ipairs(list) do
-        local row = CreateFrame("Frame", nil, content)
-        row:SetSize(tableW - FRAME_PAD*2, ROW_H)
+        local row = VF:CreateContainer(content, tableW - FRAME_PAD * 2, ROW_H, false)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i-1)*ROW_H)
         row:EnableMouse(true)
 
@@ -1299,11 +1338,15 @@ RefreshTable = function()
     local visRows  = math.min(#list, MAX_ROWS)
     local contentH = #list * ROW_H
     local viewH    = visRows * ROW_H
-    local totalH   = CHROME_H + 6 + HEADER_H + 2 + viewH + FRAME_PAD
+    local totalH   = VBGetChromeBandHeight() + 6 + HEADER_H + 2 + viewH + FRAME_PAD
 
     content:SetSize(tableW - FRAME_PAD*2, contentH)
     S.tableFrame:SetSize(tableW, totalH)
     S.tableScroll:SetVerticalScroll(0)
+    local vfTbl = ns.UI.Factory
+    if vfTbl and vfTbl.UpdateScrollBarVisibility and S.tableScroll then
+        vfTbl:UpdateScrollBarVisibility(S.tableScroll)
+    end
     S.tableFrame:Show()
 end
 
@@ -1620,6 +1663,7 @@ local function BuildOptionsFrame()
     local COLORS = ns.UI_COLORS or {}
     local accent = COLORS.accent or {0.40, 0.20, 0.58}
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
+    local VF = ns.UI.Factory
 
     local f = CreateFrame("Frame", "WarbandNexusVaultButtonOptions", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusVaultButtonOptions")
@@ -1638,10 +1682,8 @@ local function BuildOptionsFrame()
     f:Hide()
 
     -- Chrome header
-    local chrome = CreateFrame("Frame", nil, f)
-    chrome:SetHeight(CHROME_H)
-    chrome:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
-    chrome:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    local chrome = VF:CreateContainer(f, 32, 32, false)
+    VBAnchorChromeBandTop(chrome, f)
     chrome:EnableMouse(true)
     chrome:RegisterForDrag("LeftButton")
     chrome:SetScript("OnDragStart", function() f:StartMoving() end)
@@ -1668,8 +1710,7 @@ local function BuildOptionsFrame()
     title:SetTextColor(1, 1, 1)
     f.title = title
 
-    local close = CreateFrame("Button", nil, chrome)
-    close:SetSize(28, 28)
+    local close = VF:CreateButton(chrome, 28, 28, true)
     close:SetPoint("RIGHT", -8, 0)
     if ApplyVisuals then
         ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
@@ -1981,6 +2022,7 @@ local function BuildSavedInstancesFrame()
     local COLORS = ns.UI_COLORS or {}
     local accent = COLORS.accent or {0.40, 0.20, 0.58}
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
+    local VF = ns.UI.Factory
 
     local f = CreateFrame("Frame", "WarbandNexusSavedInstances", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusSavedInstances")
@@ -2010,10 +2052,8 @@ local function BuildSavedInstancesFrame()
         ReleaseSavedInstanceRows()
     end)
 
-    local chrome = CreateFrame("Frame", nil, f)
-    chrome:SetHeight(CHROME_H)
-    chrome:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
-    chrome:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    local chrome = VF:CreateContainer(f, 32, 32, false)
+    local chromeBandH = VBAnchorChromeBandTop(chrome, f)
     chrome:EnableMouse(true)
     chrome:RegisterForDrag("LeftButton")
     chrome:SetScript("OnDragStart", function() f:StartMoving() end)
@@ -2038,8 +2078,7 @@ local function BuildSavedInstancesFrame()
     title:SetText((ns.L and ns.L["SAVED_INSTANCES_TITLE"]) or "Saved Instances")
     title:SetTextColor(1, 1, 1)
 
-    local close = CreateFrame("Button", nil, chrome)
-    close:SetSize(28, 28)
+    local close = VF:CreateButton(chrome, 28, 28, true)
     close:SetPoint("RIGHT", -8, 0)
     if ApplyVisuals then
         ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
@@ -2056,9 +2095,7 @@ local function BuildSavedInstancesFrame()
     -- Filter / search bar
     local filterRow = CreateFrame("Frame", nil, f)
     filterRow:SetHeight(SAVED_FILTER_H)
-    -- Match chrome's 2px window inset for visual symmetry
-    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -(CHROME_H + 4))
-    filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -(CHROME_H + 4))
+    VBAnchorFullWidthRowBelowChrome(filterRow, f, chromeBandH, 4)
     if ApplyVisuals then
         ApplyVisuals(filterRow, {0.06, 0.06, 0.08, 1}, {accent[1], accent[2], accent[3], 0.4})
     end
@@ -2096,9 +2133,9 @@ local function BuildSavedInstancesFrame()
         b._applyState = function()
             local active = S.savedFilters[fb.key]
             if ApplyVisuals then
-                local Factory = ns.UI and ns.UI.Factory
-                if Factory and Factory.UpdateBorderColor then
-                    Factory:UpdateBorderColor(b, {di.color[1], di.color[2], di.color[3], active and 1 or 0.3})
+                local vf = ns.UI.Factory
+                if vf and vf.UpdateBorderColor then
+                    vf:UpdateBorderColor(b, {di.color[1], di.color[2], di.color[3], active and 1 or 0.3})
                 end
             end
             lbl:SetAlpha(active and 1 or 0.45)
@@ -2121,30 +2158,22 @@ local function BuildSavedInstancesFrame()
 
     -- Scroll body + themed scrollbar (same pattern as NotificationManager / main UI)
     local CONTENT_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
-    local SCROLLBAR_COL_W = (ns.UI_LAYOUT and ns.UI_LAYOUT.SCROLLBAR_COLUMN_WIDTH) or 22
-    local scroll = nil
+    local SCROLLBAR_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+
+    local scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
+    scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", CONTENT_PAD, -CONTENT_PAD)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(2 + CONTENT_PAD + SCROLLBAR_COL_W), 2 + CONTENT_PAD)
+
     local scrollBarColumn = nil
-    local Factory = ns.UI and ns.UI.Factory
-
-    if Factory and Factory.CreateScrollFrame then
-        scroll = Factory:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
-        scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", CONTENT_PAD, -CONTENT_PAD)
-        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(2 + CONTENT_PAD + SCROLLBAR_COL_W), 2 + CONTENT_PAD)
-
-        if Factory.CreateScrollBarColumn and Factory.PositionScrollBarInContainer and scroll.ScrollBar then
-            local topInset = CHROME_H + SAVED_FILTER_H + CONTENT_PAD + 2
-            local bottomInset = CONTENT_PAD + 2
-            scrollBarColumn = Factory:CreateScrollBarColumn(f, SCROLLBAR_COL_W, topInset, bottomInset)
-            Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
-        end
-    else
-        scroll = CreateFrame("ScrollFrame", nil, f)
-        scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", CONTENT_PAD, -CONTENT_PAD)
-        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(2 + CONTENT_PAD), 2 + CONTENT_PAD)
+    if scroll.ScrollBar then
+        local topInset = VBGetChromeBandHeight() + SAVED_FILTER_H + CONTENT_PAD + 2
+        local bottomInset = CONTENT_PAD + 2
+        scrollBarColumn = VF:CreateScrollBarColumn(f, SCROLLBAR_COL_W, topInset, bottomInset)
+        VF:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
     end
 
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(math.max(320, SAVED_FRAME_W - 4 - CONTENT_PAD * 2 - SCROLLBAR_COL_W), 1)
+    local contentW = math.max(320, SAVED_FRAME_W - 4 - CONTENT_PAD * 2 - SCROLLBAR_COL_W)
+    local content = VF:CreateContainer(scroll, contentW, 1, false)
     scroll:SetScrollChild(content)
 
     f.savedScrollBarColumn = scrollBarColumn
@@ -2220,8 +2249,7 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
     local k, t = char.killed or 0, char.total or 0
     local diffInfo = GetDiffInfo(group.difficulty)
 
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetSize(totalW, 26)
+    local row = ns.UI.Factory:CreateContainer(parent, totalW, 26, false)
     row:EnableMouse(true)
     if ApplyVisuals then
         ApplyVisuals(row, {0.06, 0.06, 0.09, 0.95}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.28})
@@ -2370,8 +2398,8 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     stripe:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
 
     -- Difficulty badge
-    local badge = CreateFrame("Frame", nil, header)
-    badge:SetSize(diffInfo.short == "LFR" and 36 or 22, 16)
+    local badgeW = diffInfo.short == "LFR" and 36 or 22
+    local badge = ns.UI.Factory:CreateContainer(header, badgeW, 16, false)
     badge:SetPoint("LEFT", 12, 0)
     if ApplyVisuals then
         ApplyVisuals(badge, {diffInfo.color[1] * 0.5, diffInfo.color[2] * 0.5, diffInfo.color[3] * 0.5, 1},
@@ -2734,9 +2762,9 @@ RefreshSavedInstances = function()
         msg:SetJustifyH("CENTER")
         content:SetHeight(80)
         S.savedRows[#S.savedRows + 1] = msg
-        local Factory = ns.UI and ns.UI.Factory
-        if Factory and Factory.UpdateScrollBarVisibility and S.savedScroll then
-            Factory:UpdateScrollBarVisibility(S.savedScroll)
+        local vf = ns.UI.Factory
+        if vf and vf.UpdateScrollBarVisibility and S.savedScroll then
+            vf:UpdateScrollBarVisibility(S.savedScroll)
         end
         S.savedFrame:Show()
         return
@@ -2806,9 +2834,9 @@ RefreshSavedInstances = function()
     local viewportH = (S.savedScroll and S.savedScroll.GetHeight and S.savedScroll:GetHeight()) or 0
     local maxY = math.max(0, (content:GetHeight() or 0) - viewportH)
     S.savedScroll:SetVerticalScroll(math.min(maxY, math.max(0, prevScroll)))
-    local Factory = ns.UI and ns.UI.Factory
-    if Factory and Factory.UpdateScrollBarVisibility and S.savedScroll then
-        Factory:UpdateScrollBarVisibility(S.savedScroll)
+    local vf = ns.UI.Factory
+    if vf and vf.UpdateScrollBarVisibility and S.savedScroll then
+        vf:UpdateScrollBarVisibility(S.savedScroll)
     end
     S.savedFrame:Show()
 end
@@ -2990,9 +3018,10 @@ local function BuildMenu()
 
     -- Header bar (matches main chrome style)
     local header = CreateFrame("Frame", nil, f)
+    local menuInset = VBGetFrameContentInset()
     header:SetHeight(headerH)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -menuInset)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -menuInset)
     if ApplyVisuals then
         ApplyVisuals(header, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
     end

@@ -36,8 +36,19 @@ local RecipeCompanionEvents = {}
 
 -- ── Layout constants ──
 local PADDING = 8
-local SCROLLBAR_GAP = 22
-local HEADER_HEIGHT = 32
+local RC_SB_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+local RC_SCROLL_RIGHT_RESERVE = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+    or (RC_SB_COL_W + 2)
+
+local function RCGetFrameContentInset()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.FRAME_CONTENT_INSET or 2
+end
+
+local function RCGetCompanionHeaderHeight()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.RECIPE_COMPANION_HEADER_HEIGHT or 32
+end
 local WINDOW_WIDTH = 350
 local ICON_SIZE = 20
 local ROW_HEIGHT = 22
@@ -656,7 +667,9 @@ local function RenderContent(scrollChild)
 
     if frame and scrollFrame then
         local frameHeight = frame:GetHeight()
-        local viewportHeight = frameHeight - HEADER_HEIGHT - PADDING - PADDING
+        local inset = RCGetFrameContentInset()
+        local bandH = RCGetCompanionHeaderHeight()
+        local viewportHeight = frameHeight - bandH - (2 * inset) - PADDING - PADDING
         local needsScroll = totalContentHeight > viewportHeight
 
         local scrollBar = scrollFrame.ScrollBar
@@ -666,7 +679,7 @@ local function RenderContent(scrollChild)
                 if scrollBar.ScrollUpBtn  then scrollBar.ScrollUpBtn:Show() end
                 if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Show() end
             end
-            scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -SCROLLBAR_GAP, -PADDING)
+            scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -RC_SCROLL_RIGHT_RESERVE, -PADDING)
         else
             if scrollBar then
                 scrollBar:Hide()
@@ -849,11 +862,14 @@ local function CreateCompanionWindow()
         ApplyVisuals(frame, { 0.04, 0.04, 0.06, 0.97 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
     end
 
+    local bandH = RCGetCompanionHeaderHeight()
+    local frameInset = RCGetFrameContentInset()
+
     -- ── Header (draggable) ──
     local header = CreateFrame("Frame", nil, frame)
-    header:SetHeight(HEADER_HEIGHT)
-    header:SetPoint("TOPLEFT", 0, 0)
-    header:SetPoint("TOPRIGHT", 0, 0)
+    header:SetHeight(bandH)
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", frameInset, -frameInset)
+    header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -frameInset, -frameInset)
     header:EnableMouse(true)
     if ns.WindowManager and ns.WindowManager.InstallDragHandler then
         ns.WindowManager:InstallDragHandler(header, frame, function()
@@ -895,19 +911,19 @@ local function CreateCompanionWindow()
 
     -- ── Content area ──
     local contentArea = CreateFrame("Frame", nil, frame)
-    contentArea:SetPoint("TOPLEFT", 0, -HEADER_HEIGHT)
-    contentArea:SetPoint("BOTTOMRIGHT", 0, 0)
+    contentArea:SetPoint("TOPLEFT", frame, "TOPLEFT", frameInset, -(frameInset + bandH))
+    contentArea:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -frameInset, frameInset)
     frame.contentArea = contentArea
 
     -- ── Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) ──
     local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", contentArea, "TOPLEFT", PADDING, -PADDING)
-    scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -SCROLLBAR_GAP, -PADDING)
+    scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -RC_SCROLL_RIGHT_RESERVE, -PADDING)
     scrollFrame:SetPoint("BOTTOM", contentArea, "BOTTOM", 0, PADDING)
     scrollFrame:EnableMouseWheel(true)
     frame.contentScrollFrame = scrollFrame
 
-    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, SCROLLBAR_GAP, PADDING, PADDING)
+    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, RC_SB_COL_W, PADDING, PADDING)
     if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
@@ -947,7 +963,7 @@ local function CreateCompanionWindow()
     -- ── Resize grip (bottom-right) ──
     local resizer = CreateFrame("Button", nil, frame)
     resizer:SetSize(16, 16)
-    resizer:SetPoint("BOTTOMRIGHT", -2, 2)
+    resizer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -frameInset, frameInset)
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")

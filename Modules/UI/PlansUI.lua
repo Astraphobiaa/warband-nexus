@@ -1,6 +1,10 @@
 --[[
     Warband Nexus - Plans Tab UI
     User-driven goal tracker for mounts, pets, and toys
+
+    WN_FACTORY: Achievement browse root + Vault slot grid use Factory first (`CreateContainer` / `CreateButton`);
+    Custom Plan dialogs (reset-cycle toggles / duration +/-) use Factory-backed buttons where `ApplyVisuals`
+    borders apply; legacy `BackdropTemplate` path kept when Factory returns nil.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -2246,7 +2250,12 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
 
     local rootFrame = parent.plansAchBrowseRoot
     if not rootFrame then
-        rootFrame = CreateFrame("Frame", nil, parent)
+        local rw, rh = math.max(listInnerW, 100), math.max(80, ROW_H * 14)
+        rootFrame = ns.UI.Factory and ns.UI.Factory:CreateContainer(parent, rw, rh, false)
+        if not rootFrame then
+            rootFrame = CreateFrame("Frame", nil, parent)
+            rootFrame:SetSize(rw, rh)
+        end
         parent.plansAchBrowseRoot = rootFrame
     end
     if not parent._plansAchBrowseState then
@@ -3632,32 +3641,50 @@ function WarbandNexus:ShowCustomPlanDialog()
     resetLabel:SetPoint("TOPLEFT", 12, -215)
     resetLabel:SetText("|cff" .. format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["RESET_CYCLE_LABEL"]) or "Reset Cycle:") .. "|r")
     
+    local PlanDlgF = ns.UI and ns.UI.Factory
+    
+    --- Factory rows use BORDER_REGISTRY textures (UpdateBorderColor); legacy uses SetBackdropBorderColor.
+    local function PlanDlgPulseBorder(btn, borderRgb)
+        if not btn then return end
+        if btn.BorderTop and UpdateBorderColor then
+            UpdateBorderColor(btn, borderRgb)
+        elseif btn.SetBackdropBorderColor then
+            local r, g, b, a = borderRgb[1], borderRgb[2], borderRgb[3], borderRgb[4] or 1
+            btn:SetBackdropBorderColor(r, g, b, a)
+        end
+    end
+
     -- Reset cycle toggle state
     local selectedResetType = "none"
     local selectedCycleCount = 7  -- Default cycle count
     local selectedInfiniteRepeat = false
     
-    -- Toggle button factory
     local function CreateResetToggle(parent, label, value, xOffset)
-        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-        btn:SetSize(120, 28)
+        local btn = PlanDlgF and PlanDlgF:CreateButton(parent, 120, 28, false)
+        if btn then btn._wnPlanDlgFactoryToggle = true end
+        if not btn then
+            btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetBackdrop({
+                bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeSize = 1,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
+            btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+        elseif ApplyVisuals then
+            ApplyVisuals(btn, { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1 },
+                { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+        end
         btn:SetPoint("TOPLEFT", xOffset, -237)
-        btn:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
-        })
-        btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
-        btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
-        
+
         local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
         text:SetPoint("CENTER")
         text:SetText(label)
         text:SetTextColor(0.7, 0.7, 0.7)
         btn.label = text
         btn.value = value
-        
+
         return btn
     end
     
@@ -3668,8 +3695,11 @@ function WarbandNexus:ShowCustomPlanDialog()
     local resetButtons = { resetBtnNone, resetBtnDaily, resetBtnWeekly }
     
     -- Duration row (hidden by default, shown when Daily/Weekly selected)
-    local durationRow = CreateFrame("Frame", nil, contentFrame)
-    durationRow:SetSize(420, 54)
+    local durationRow = PlanDlgF and PlanDlgF:CreateContainer(contentFrame, 420, 54, false)
+    if not durationRow then
+        durationRow = CreateFrame("Frame", nil, contentFrame)
+        durationRow:SetSize(420, 54)
+    end
     durationRow:SetPoint("TOPLEFT", 12, -275)
     durationRow:Hide()
     
@@ -3677,18 +3707,23 @@ function WarbandNexus:ShowCustomPlanDialog()
     durationLabel:SetPoint("TOPLEFT", 0, -2)
     durationLabel:SetTextColor(0.7, 0.7, 0.7)
     
-    -- Minus button
-    local minusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
-    minusBtn:SetSize(28, 28)
+    -- Minus button (paired with Factory +plusBtn where SharedWidgets Factory is live)
+    local minusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
+    if minusBtn then minusBtn._wnPlanDlgDurStepper = true end
+    if not minusBtn then
+        minusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
+        minusBtn:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        minusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
+        minusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+    elseif ApplyVisuals then
+        ApplyVisuals(minusBtn, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+    end
     minusBtn:SetPoint("TOPLEFT", 160, -2)
-    minusBtn:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    minusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
-    minusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
     local minusText = FontManager:CreateFontString(minusBtn, "title", "OVERLAY")
     minusText:SetPoint("CENTER", 0, 1)
     minusText:SetText("-")
@@ -3701,18 +3736,22 @@ function WarbandNexus:ShowCustomPlanDialog()
     countDisplay:SetWidth(30)
     countDisplay:SetJustifyH("CENTER")
     
-    -- Plus button
-    local plusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
-    plusBtn:SetSize(28, 28)
+    local plusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
+    if plusBtn then plusBtn._wnPlanDlgDurStepper = true end
+    if not plusBtn then
+        plusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
+        plusBtn:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        plusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
+        plusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+    elseif ApplyVisuals then
+        ApplyVisuals(plusBtn, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+    end
     plusBtn:SetPoint("TOPLEFT", countDisplay, "TOPRIGHT", 12, 0)
-    plusBtn:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    plusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
-    plusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
     local plusText = FontManager:CreateFontString(plusBtn, "title", "OVERLAY")
     plusText:SetPoint("CENTER", 0, 1)
     plusText:SetText("+")
@@ -3761,10 +3800,10 @@ function WarbandNexus:ShowCustomPlanDialog()
         end
     end)
     minusBtn:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+        PlanDlgPulseBorder(self, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end)
     minusBtn:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+        PlanDlgPulseBorder(self, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end)
     
     plusBtn:SetScript("OnClick", function()
@@ -3774,10 +3813,10 @@ function WarbandNexus:ShowCustomPlanDialog()
         end
     end)
     plusBtn:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+        PlanDlgPulseBorder(self, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end)
     plusBtn:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+        PlanDlgPulseBorder(self, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end)
 
     local function UpdateInfiniteDurationUI()
@@ -3817,7 +3856,20 @@ function WarbandNexus:ShowCustomPlanDialog()
     local function UpdateResetButtons()
         for bi = 1, #resetButtons do
             local btn = resetButtons[bi]
-            if btn.value == selectedResetType then
+            if btn._wnPlanDlgFactoryToggle and ApplyVisuals then
+                if btn.value == selectedResetType then
+                    ApplyVisuals(btn,
+                        { COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1 },
+                        { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
+                else
+                    ApplyVisuals(btn,
+                        { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1 },
+                        { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+                end
+                btn.label:SetTextColor((btn.value == selectedResetType) and 1 or 0.7,
+                    (btn.value == selectedResetType) and 1 or 0.7,
+                    (btn.value == selectedResetType) and 1 or 0.7)
+            elseif btn.value == selectedResetType then
                 btn:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
                 btn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
                 btn.label:SetTextColor(1, 1, 1)
@@ -3860,12 +3912,12 @@ function WarbandNexus:ShowCustomPlanDialog()
         end)
         btn:SetScript("OnEnter", function(self)
             if self.value ~= selectedResetType then
-                self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+                PlanDlgPulseBorder(self, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
             end
         end)
         btn:SetScript("OnLeave", function(self)
             if self.value ~= selectedResetType then
-                self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+                PlanDlgPulseBorder(self, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
             end
         end)
     end
@@ -4191,8 +4243,12 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 titleText:SetText(title)
 
                 -- Three vault slots in a row: star + text only (no slot panel background).
-                local slotsBand = CreateFrame("Frame", nil, col)
                 local bandPad = 8
+                local PUF = ns.UI and ns.UI.Factory
+                local slotsBand = PUF and PUF:CreateContainer(col, math.max(40, colWidth - bandPad * 2), slotsBandH, false)
+                if not slotsBand then
+                    slotsBand = CreateFrame("Frame", nil, col)
+                end
                 slotsBand:SetSize(colWidth - bandPad * 2, slotsBandH)
                 slotsBand:SetPoint("TOP", titleText, "BOTTOM", 0, -BAND_TOP_GAP)
 
@@ -4201,7 +4257,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 local slotW = (slotsBand:GetWidth() - (nSlots - 1) * slotGap) / nSlots
 
                 for ti = 1, nSlots do
-                    local box = CreateFrame("Frame", nil, slotsBand)
+                    local box = PUF and PUF:CreateContainer(slotsBand, math.max(8, slotW), slotsBandH, false)
+                    if not box then
+                        box = CreateFrame("Frame", nil, slotsBand)
+                    end
                     box:SetSize(slotW, slotsBandH)
                     box:SetPoint("TOPLEFT", slotsBand, "TOPLEFT", (ti - 1) * (slotW + slotGap), 0)
 
@@ -4232,7 +4291,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     )
                 end
 
-                local clickPad = CreateFrame("Button", nil, col)
+                local clickPad = PUF and PUF:CreateButton(col, math.max(40, colWidth), 120, true)
+                if not clickPad then
+                    clickPad = CreateFrame("Button", nil, col)
+                end
                 clickPad:SetAllPoints()
                 clickPad:SetFrameLevel((col:GetFrameLevel() or 0) + 25)
                 clickPad:RegisterForClicks("LeftButtonUp")

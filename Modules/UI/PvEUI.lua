@@ -14,6 +14,10 @@
     - C_CurrencyInfo.GetCurrencyInfo() - Currency details for display (Midnight)
     - C_Item.GetItemIconByID() - Trovehunter's Bounty icon for Bountiful column header
     
+    WN_FACTORY: Column picker catcher + Hide-menu fullscreen catcher stay raw Buttons (FULLSCREEN_DIALOG
+    strata + propagate flags). Drawer shells use `ns.UI.Factory` where parity allows; Vault slot Buttons
+    and dynamic scroll children keep CreateFrame paths documented inline.
+    
     Event-driven refresh: WN_PVE_UPDATED (see UI.lua listeners; cache writes in PvECacheService.lua).
 ]]
 
@@ -190,7 +194,12 @@ local _pveDrawPool = {
 local function PvE_EnsureDrawPoolHolder()
     local h = _pveDrawPool.holder
     if not h then
-        h = CreateFrame("Frame", nil, UIParent)
+        local PUF = ns.UI and ns.UI.Factory
+        h = PUF and PUF:CreateContainer(UIParent, 1, 1, false)
+        if not h then
+            h = CreateFrame("Frame", nil, UIParent)
+            h:SetSize(1, 1)
+        end
         h:Hide()
         _pveDrawPool.holder = h
     end
@@ -472,6 +481,7 @@ end
 local function PvE_ColumnPickerShowCatcher(menu)
     local c = WarbandNexus._wnPvEColumnPickerCatcher
     if not c then
+        -- Intentionally raw Button: global name for debugging plus plain Button click-dismiss behavior on UIParent.
         c = CreateFrame("Button", "WarbandNexusPvEColumnPickerCatcher", UIParent)
         c:SetFrameStrata(PVE_COLUMN_PICKER_STRATA)
         c:SetFrameLevel(PVE_COLUMN_PICKER_CATCHER_LEVEL)
@@ -527,7 +537,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     local accent = COLORS.accent or { 0.40, 0.20, 0.58 }
     local menuW = 292
     local menuPad = 6
-    local scrollBarW = 22
+    local scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
     local ROW = 26
     local HEADER_H = 22
 
@@ -558,9 +568,15 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     end
 
     local btnWidth = menuW - menuPad * 2 - scrollBarW
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(btnWidth)
-    scrollChild:SetHeight(contentH)
+    local scrollChild
+    if Factory and Factory.CreateContainer then
+        scrollChild = Factory:CreateContainer(scrollFrame, btnWidth, contentH, false)
+    end
+    if not scrollChild then
+        scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        scrollChild:SetWidth(btnWidth)
+        scrollChild:SetHeight(contentH)
+    end
     scrollFrame:SetScrollChild(scrollChild)
 
     if Factory.UpdateScrollBarVisibility then Factory:UpdateScrollBarVisibility(scrollFrame) end
@@ -739,18 +755,34 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     local function HideMenuBuild()
         local menu = hideBtn._menu
         if not menu then
-            menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            menu = Factory:CreateContainer(UIParent, 132, 66, false)
+            if not menu then
+                menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+                menu:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeSize = 1,
+                    insets = { left = 0, right = 0, top = 0, bottom = 0 },
+                })
+                menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
+                menu:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75)
+            elseif ApplyVisuals then
+                ApplyVisuals(menu, { 0.08, 0.08, 0.10, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
+            else
+                if not menu.SetBackdrop and BackdropTemplateMixin then
+                    Mixin(menu, BackdropTemplateMixin)
+                end
+                menu:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeSize = 1,
+                    insets = { left = 0, right = 0, top = 0, bottom = 0 },
+                })
+                menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
+                menu:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75)
+            end
             menu:SetFrameStrata("FULLSCREEN_DIALOG")
             menu:SetFrameLevel(5200)
-            menu:SetSize(132, 66)
-            menu:SetBackdrop({
-                bgFile = "Interface\\Buttons\\WHITE8x8",
-                edgeFile = "Interface\\Buttons\\WHITE8x8",
-                edgeSize = 1,
-                insets = { left = 0, right = 0, top = 0, bottom = 0 },
-            })
-            menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
-            menu:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75)
             hideBtn._menu = menu
         end
         local profile = addon and addon.db and addon.db.profile
@@ -766,15 +798,28 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
             if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
         end
         local rowH = 30
+        local menuInnerW = math.max(42, menu:GetWidth() - 6)
         for i = 1, #options do
             local opt = options[i]
-            local row = CreateFrame("Button", nil, menu, "BackdropTemplate")
+            -- Factory shell + single ApplyVisuals pass (avoid default CreateButton fill before row tint).
+            local row = Factory:CreateButton(menu, menuInnerW, rowH - 2, true)
             row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * rowH)
             row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * rowH)
             row:SetHeight(rowH - 2)
             row:RegisterForClicks("LeftButtonUp")
-            row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-            row:SetBackdropColor((opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.20 or 0.10, 1)
+            local selBg = ((opt.value == cur) and 0.16) or 0.10
+            if ApplyVisuals then
+                ApplyVisuals(row, { selBg, selBg, (opt.value == cur) and 0.20 or 0.10, 1 },
+                    { COLORS.accent[1] * 0.45, COLORS.accent[2] * 0.45, COLORS.accent[3] * 0.45, 0.45 })
+            else
+                if not row.SetBackdrop and BackdropTemplateMixin then
+                    Mixin(row, BackdropTemplateMixin)
+                end
+                if row.SetBackdrop then
+                    row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+                    row:SetBackdropColor(selBg, selBg, (opt.value == cur) and 0.20 or 0.10, 1)
+                end
+            end
             local cb = ns.UI_CreateThemedCheckbox and ns.UI_CreateThemedCheckbox(row, opt.value == cur)
             if not cb then return menu end
             cb:SetSize(16, 16)
@@ -808,6 +853,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
         menu:Show()
         local catcher = hideBtn._catcher
         if not catcher then
+            -- Intentionally raw fullscreen dismiss layer (parity with Columns picker catcher; strata/order).
             catcher = CreateFrame("Button", nil, UIParent)
             catcher:SetAllPoints(UIParent)
             catcher:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -1674,6 +1720,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
             local xOffset = leftPad + slotIndex * (VAULT_COL_W + vaultColGap)
             local yOffset = -(cellHeight - btnH) / 2  -- vertically centered
 
+            -- Intentionally raw: per-slot vault glyph + stripe + WeeklyRewards toggle (heavy state branching).
             local slotFrame = CreateFrame("Button", nil, rowFrame)
             slotFrame:SetSize(VAULT_SLOT_W, btnH)
             slotFrame:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", xOffset, yOffset)
@@ -3682,8 +3729,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local colCenterX = colX + col.width * 0.5
 
         if col.icon or col.iconAtlas then
-            local hitFrame = CreateFrame("Frame", nil, colHeaderRow)
-            hitFrame:SetSize(COL_ICON_SIZE + 4, COL_ICON_SIZE + 4)
+            local hitW, hitH = COL_ICON_SIZE + 4, COL_ICON_SIZE + 4
+            local PUFHdr = L.ns.UI and L.ns.UI.Factory
+            local hitFrame = PUFHdr and PUFHdr:CreateContainer(colHeaderRow, hitW, hitH, false)
+            if not hitFrame then
+                hitFrame = CreateFrame("Frame", nil, colHeaderRow)
+                hitFrame:SetSize(hitW, hitH)
+            end
             hitFrame:SetPoint("RIGHT", colHeaderRow, "RIGHT", colCenterX + COL_ICON_SIZE * 0.5 + 2, 6)
 
             local iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
@@ -4474,7 +4526,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     if val.tooltip and L.ShowTooltip then
                         local hit = cell.hit
                         if not hit then
-                            hit = CreateFrame("Frame", nil, charHeader)
+                            local PUF = L.ns.UI and L.ns.UI.Factory
+                            local cw0, ch0 = cw, math.max(L.ROW_HEIGHT or 26, charHeader:GetHeight() or 46)
+                            hit = PUF and PUF:CreateContainer(charHeader, cw0, ch0, false)
+                            if not hit then
+                                hit = CreateFrame("Frame", nil, charHeader)
+                            end
                             cell.hit = hit
                             hit:EnableMouse(true)
                             L.BindForwardScrollWheel(hit)

@@ -108,6 +108,8 @@
       ITEM_LOCK_CHANGED, PLAYER_ENTERING_WORLD, PLAYER_REGEN_ENABLED,
       CRITERIA_UPDATE,
       PLAYER_INTERACTION_MANAGER, PLAYER_TARGET_CHANGED, QUEST_LOG_UPDATE
+
+    WN_NONUI_UI: `tryCounterFrame` (near RAW EVENT FRAMES) is an AceEvent-only host (`CreateFrame`); owns no Visible UI chrome.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -759,6 +761,8 @@ local lastSafeMapID = nil  -- cached last known good mapID for fallback when API
 -- CHAT_MSG_LOOT fallback: itemID → npcID when loot window doesn't fire (direct loot, world boss, etc.).
 -- Built from npcDropDB in BuildReverseIndices; hardcoded entries merged so they take precedence.
 local chatLootItemToNpc = {}
+--- O(1) set of every itemID in eligible try-counter drop tables (CHAT fast-reject for junk loot).
+local chatLootTrackedItems = {}
 local lastTryCountSourceKey = nil
 local lastTryCountSourceTime = 0
 --- Primary loot source GUID from the last try-counter NPC/object route (CLOSED-path debounce vs next corpse).
@@ -1330,8 +1334,10 @@ function Fns.BuildReverseIndices()
     -- Same shared table (e.g. BfA zone-drop mounts: many NPCs → one _drops array) → keep first npcID;
     -- try counts use the same drops/mount key regardless of which spawner dropped loot.
     chatLootItemToNpc = {}
+    wipe(chatLootTrackedItems)
     local function MergeChatLootItemToNpc(itemID, npcID)
         if not itemID or not npcID then return end
+        chatLootTrackedItems[itemID] = true
         local ex = chatLootItemToNpc[itemID]
         if not ex then
             chatLootItemToNpc[itemID] = npcID
@@ -4806,6 +4812,20 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     if not itemID then return end
 
     local now = GetTime()
+
+    -- Fast bail: junk loot (e.g. zone mats) must not walk recentKills / drop tables (100ms+ spikes).
+    if not repeatableItemDrops[itemID] then
+        if chatLootItemToNpc[itemID] == false then return end
+        if not chatLootItemToNpc[itemID] and not chatLootTrackedItems[itemID] then
+            local fishingMaybe = fishingCtx.active
+                and (now - fishingCtx.castTime) <= FISHING_CAST_CONTEXT_TTL
+                and Fns.IsInTrackableFishingZone()
+                and not Fns.CurrentUnitsHaveMobLootContext()
+            if not fishingMaybe then
+                return
+            end
+        end
+    end
 
     -- Global debounce: any route that already ran within the window blocks all CHAT paths.
     if lastTryCountSourceKey and (now - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then

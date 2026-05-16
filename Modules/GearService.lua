@@ -39,6 +39,8 @@
     Item Upgrade NPC window is open. We detect gold-only upgrades offline via persisted
     watermarks (per-slot max ilvl this character has ever had). Upgrades to ilvl <= watermark
     are treated as gold-only; no API cost query needed.
+
+    WN_NONUI_UI: Transient DressUp/model preview frames constructed in this module are helpers only; Gear tab visuals live in Modules/UI/GearUI.lua.
 ]]
 
 local ADDON_NAME, ns = ...

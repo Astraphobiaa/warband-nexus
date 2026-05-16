@@ -22,8 +22,16 @@ function WarbandNexus:ShowInfoDialog()
         return
     end
     
-    local dialog = CreateFrame("Frame", "WarbandNexusInfoDialog", UIParent)
-    dialog:SetSize(650, 650)  -- Standard size for full content
+    local Factory = ns.UI and ns.UI.Factory
+
+    local dialog
+    if Factory and Factory.CreateContainer then
+        dialog = Factory:CreateContainer(UIParent, 650, 650, false, "WarbandNexusInfoDialog")
+    end
+    if not dialog then
+        dialog = CreateFrame("Frame", "WarbandNexusInfoDialog", UIParent)
+        dialog:SetSize(650, 650)
+    end
     dialog:SetPoint("CENTER")
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
@@ -51,16 +59,20 @@ function WarbandNexus:ShowInfoDialog()
         )
     end
     
-    -- Header frame (using Factory pattern)
+    local infoMainShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    local infoChromeInset = infoMainShell.FRAME_CONTENT_INSET or 2
+    local infoHeaderH = infoMainShell.INFO_DIALOG_HEADER_HEIGHT or 50
+
+    -- Header strip (Factory shell — fixed width matches dialog; dialog size is not user-resized)
     local header
-    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
-        header = ns.UI.Factory:CreateContainer(dialog)
-    else
-        header = CreateFrame("Frame", nil, dialog)
+    if Factory and Factory.CreateContainer then
+        header = Factory:CreateContainer(dialog, math.max(1, dialog:GetWidth() - infoChromeInset * 2), infoHeaderH, false)
     end
-    header:SetHeight(50)
-    header:SetPoint("TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", -2, -2)
+    if not header then
+        header = CreateFrame("Frame", nil, dialog)
+        header:SetHeight(infoHeaderH)
+    end
+    header:SetPoint("TOPLEFT", infoChromeInset, -infoChromeInset)
     header:SetFrameLevel(dialog:GetFrameLevel() + 10)  -- Ensure header is above scroll frame
     
     -- Apply custom theme to header
@@ -129,7 +141,11 @@ function WarbandNexus:ShowInfoDialog()
     end)
     
     -- Scroll Frame (Collections pattern: bar column + PositionScrollBarInContainer)
-    -- 8px from dialog edges; 64px top = header + borders + gap; 30px right = 22px bar + 8px margin
+    -- Horizontal 8 keeps legacy content gutter; vertical follows `MAIN_SHELL` header + gap under header band.
+    local infoDlgScrollGap = UI_SPACING.SCROLL_CONTENT_TOP_PADDING or 12
+    local infoScrollTopY = -(infoChromeInset + infoHeaderH + infoDlgScrollGap)
+    local infoSbColTopInset = infoChromeInset + infoHeaderH + infoDlgScrollGap - 2
+    local infoSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
     local scrollFrame
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollFrame then
         scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate", true)
@@ -138,25 +154,30 @@ function WarbandNexus:ShowInfoDialog()
     end
     scrollFrame:SetParent(dialog)
     scrollFrame:SetFrameLevel(dialog:GetFrameLevel() + 1)
-    scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, -64)
-    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -30, 8)
+    scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, infoScrollTopY)
+    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -(infoSbColW + 8), 8)
 
-    -- Bar column: 12px below header (62 from top), 24px from bottom (for down button)
+    -- Bar column: ~2px above scroll top (legacy shim), symmetric bottom inset for thumb buttons.
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer then
-        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(dialog, 22, 62, 24)
+        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(dialog, infoSbColW, infoSbColTopInset, 24)
         if scrollFrame.ScrollBar then
             ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end
     end
 
     local scrollChild
-    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
-        scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
-    else
+    local scrollW = scrollFrame:GetWidth()
+    if not scrollW or scrollW < 2 then
+        scrollW = math.max(1, (dialog:GetWidth() or 650) - 60)
+    end
+    if Factory and Factory.CreateContainer then
+        scrollChild = Factory:CreateContainer(scrollFrame, scrollW, 1, false)
+    end
+    if not scrollChild then
         scrollChild = CreateFrame("Frame", nil, scrollFrame)
     end
-    -- Width matches scroll frame (no extra padding needed)
-    scrollChild:SetSize(scrollFrame:GetWidth() or (dialog:GetWidth() - 60), 1) -- Height will be set dynamically
+    scrollChild:SetWidth(scrollW)
+    scrollChild:SetHeight(1)
     scrollFrame:SetScrollChild(scrollChild)
     
     -- Content card (everything inside a bordered card)

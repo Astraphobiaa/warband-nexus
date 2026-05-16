@@ -1,7 +1,10 @@
 --[[
     Warband Nexus - Reputation Tab
     Display all reputations across characters with progress bars, Renown, and Paragon support
-    
+
+    WN_FACTORY: Row progress bar shells use `Factory:CreateContainer` when available (inline pooled bar has
+    custom BORDER/ARTWORK textures; fall back to plain `CreateFrame` if Factory absent).
+
     Hierarchy (All Characters view - matches Filtered View):
     - Character Header (0px) → HEADER_SPACING (40px)
       - Expansion Header (BASE_INDENT = 15px) → HEADER_HEIGHT (32px)
@@ -778,7 +781,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     if not row._progressBar then
         local pb = {}
-        pb.bg = CreateFrame("Frame", nil, row)
+        pb.bg = (ns.UI.Factory and ns.UI.Factory:CreateContainer(row, 200, 19, false))
+            or CreateFrame("Frame", nil, row)
         pb.bg:SetFrameLevel(row:GetFrameLevel() + 10)
         
         pb.bgTexture = pb.bg:CreateTexture(nil, "BACKGROUND")
@@ -1311,7 +1315,8 @@ local function PopulateReputationRow(row, entry)
 
     if not row._progressBar then
         local pb = {}
-        pb.bg = CreateFrame("Frame", nil, row)
+        pb.bg = (ns.UI.Factory and ns.UI.Factory:CreateContainer(row, 200, 19, false))
+            or CreateFrame("Frame", nil, row)
         pb.bg:SetFrameLevel(row:GetFrameLevel() + 10)
 
         pb.bgTexture = pb.bg:CreateTexture(nil, "BACKGROUND")

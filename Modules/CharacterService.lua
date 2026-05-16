@@ -2,6 +2,8 @@
     Warband Nexus - Character Service
     Manages character tracking, favorites, and character-specific operations
     Extracted from Core.lua for proper separation of concerns
+
+    WN_NONUI_UI: Tracking dialogs (`WarbandNexusTrackingDialog` / `_Change`) are BackdropTemplate surfaces owned here, not SharedWidgets tab chrome.
 ]]
 
 local ADDON_NAME, ns = ...

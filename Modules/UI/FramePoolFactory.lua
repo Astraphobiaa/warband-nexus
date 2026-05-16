@@ -3,6 +3,9 @@
     
     Performance optimization system that reuses UI frames instead of creating new ones
     on every refresh. Dramatically reduces memory churn and GC pressure.
+
+    WN_FACTORY: Pool rows are native `CreateFrame("Button")` shells for hit-testing + row chrome;
+    keep creation out of SharedWidgets Factory (pool identity and reuse semantics).
     
     Provides pooling for:
     - Character rows (CharactersUI)
@@ -287,7 +290,13 @@ local function AcquireProfessionRow(parent)
         MarkRowOutOfPool(row)
     end
     if not row then
-        row = CreateFrame("Button", nil, parent)
+        -- Bootstrap size is overridden every draw by ProfessionsUI:DrawProfessionRow (width + ROW_HEIGHT 52).
+        local Fact = ns.UI and ns.UI.Factory
+        local bootW = math.max((parent and parent.GetWidth and parent:GetWidth()) or 0, 520)
+        row = Fact and Fact:CreateButton(parent, bootW, 52, true)
+        if not row then
+            row = CreateFrame("Button", nil, parent)
+        end
         row.isPooled = true
         row.rowType = "profession"
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then

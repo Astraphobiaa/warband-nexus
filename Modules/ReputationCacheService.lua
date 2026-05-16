@@ -27,6 +27,8 @@
     
     Architecture: Event → Parse/API → Chat + Snapshot Update
                   UPDATE_FACTION → FullScan → DB → UI
+
+    WN_NONUI_UI: `repEventFrame` (AceEvent host) uses a hidden `CreateFrame` root; reputations UI is ReputationUI.lua.
 ]]
 
 local ADDON_NAME, ns = ...

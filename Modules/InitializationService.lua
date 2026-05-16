@@ -18,6 +18,8 @@
     - PLAYER_ENTERING_WORLD payload (Warcraft Wiki): login, /reload, or instance zoning; Patch 8.0.1 adds
       isInitialLogin and isReloadingUi (AceEvent: event, isInitialLogin, isReloadingUi). Cold prefetch runs only
       when either flag is true (login/reload), not on zoning-only transitions.
+
+    WN_NONUI_UI: `combatSafetyFrame` bootstrap uses a hidden CreateFrame shell (see SetupCombatSafety) — not addon tab UI.
 ]]
 
 local ADDON_NAME, ns = ...

@@ -1,6 +1,11 @@
 --[[
     Warband Nexus - Characters Tab
     Display all tracked characters with gold, level, and last seen info
+
+    WN_FACTORY: Gold/token text blocks and collapsible section hosts use `Factory:CreateContainer`; row chrome
+    and delete icon buttons use `CreateButton`. Delete-confirm dialog prefers `UI_CreateThemedButton`, else
+    Factory + ApplyVisuals; custom header dialogs fall back to plain `CreateFrame` only if Factory is absent.
+    WN_PERF: Leaf rows virtualized (`VirtualListModule`); WoW Token request + lastSeen SavedVariables bumps throttled.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -31,6 +36,12 @@ local WN_CHARS_TAB_TOKEN_REQ_INTERVAL = 600
 local _wnCharsTabLastSeenBump = {}
 local WN_CHARS_TAB_LAST_SEEN_INTERVAL = 90
 
+--- Narrow layout: stacked Total Gold / WoW Token subtitle+body column height (`MAIN_SHELL.HEADER_BAR_HEIGHT` rhythm).
+local function CharactersTotalGoldTokenStackTextHeight()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.HEADER_BAR_HEIGHT or 40
+end
+
 local DebugPrint = ns.DebugPrint
 
 -- Tooltip API
@@ -45,6 +56,62 @@ local FormatMoney = ns.UI_FormatMoney
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 local ApplyVisuals = ns.UI_ApplyVisuals
+--- When `UI_CreateThemedButton` is missing, prefer Factory + ApplyVisuals; else legacy panel textures.
+local function CreateCharacterDeleteDialogButton(parent, label, width, destructive)
+    local themed = ns.UI_CreateThemedButton
+    if themed then
+        return themed(parent, label, width)
+    end
+    local Factory = ns.UI and ns.UI.Factory
+    local ac = COLORS and COLORS.accent or { 0.4, 0.2, 0.58 }
+    local ar, ag, ab = ac[1] or 0.4, ac[2] or 0.2, ac[3] or 0.58
+    local btnH = 36
+    if Factory and Factory.CreateButton then
+        local btn = Factory:CreateButton(parent, width, btnH, false)
+        if ApplyVisuals then
+            if destructive then
+                ApplyVisuals(btn, { 0.22, 0.06, 0.07, 1 }, { 0.75, 0.18, 0.2, 1 })
+            else
+                ApplyVisuals(btn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+            end
+        end
+        if Factory.ApplyHighlight then
+            Factory:ApplyHighlight(btn)
+        end
+        local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        btnText:SetPoint("CENTER")
+        btnText:SetText(label)
+        btn.text = btnText
+        if ApplyVisuals then
+            if destructive then
+                btn:SetScript("OnEnter", function(self)
+                    ApplyVisuals(self, { 0.55, 0.1, 0.12, 1 }, { 0.95, 0.25, 0.28, 1 })
+                end)
+                btn:SetScript("OnLeave", function(self)
+                    ApplyVisuals(self, { 0.22, 0.06, 0.07, 1 }, { 0.75, 0.18, 0.2, 1 })
+                end)
+            else
+                btn:SetScript("OnEnter", function(self)
+                    ApplyVisuals(self, { ar * 0.7, ag * 0.7, ab * 0.7, 1 }, { ar, ag, ab, 1 })
+                end)
+                btn:SetScript("OnLeave", function(self)
+                    ApplyVisuals(self, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+                end)
+            end
+        end
+        return btn
+    end
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(width, btnH)
+    btn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
+    btn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-Button-Highlight")
+    btn:SetPushedTexture("Interface\\Buttons\\UI-Panel-Button-Down")
+    local btnText = btn:CreateFontString(nil, "OVERLAY")
+    btnText:SetPoint("CENTER")
+    FontManager:SafeSetFont(btnText, "body")
+    btnText:SetText(label)
+    return btn
+end
 local CreateFactionIcon = ns.UI_CreateFactionIcon
 local CreateRaceIcon = ns.UI_CreateRaceIcon
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
@@ -615,7 +682,8 @@ function WarbandNexus:DrawCharacterList(parent)
     local tgIcon = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)
     tgIcon:Show()
 
-    local tgTextContainer = CreateFrame("Frame", nil, totalGoldCard)
+    local tgTextContainer = (ns.UI.Factory and ns.UI.Factory:CreateContainer(totalGoldCard, 220, 64, false))
+        or CreateFrame("Frame", nil, totalGoldCard)
 
     local tgLabel = FontManager:CreateFontString(tgTextContainer, "subtitle", "OVERLAY")
     tgLabel:SetText((ns.L and ns.L["HEADER_TOTAL_GOLD"]) or "TOTAL GOLD")
@@ -640,7 +708,8 @@ function WarbandNexus:DrawCharacterList(parent)
     tkIcon:SetTexture("Interface\\Icons\\WoW_Token01")
     tkIcon:Show()
 
-    local tkTextContainer = CreateFrame("Frame", nil, totalGoldCard)
+    local tkTextContainer = (ns.UI.Factory and ns.UI.Factory:CreateContainer(totalGoldCard, 220, 64, false))
+        or CreateFrame("Frame", nil, totalGoldCard)
 
     local tkLabel = FontManager:CreateFontString(tkTextContainer, "subtitle", "OVERLAY")
     tkLabel:SetText((ns.L and ns.L["WOW_TOKEN_LABEL"]) or "WOW TOKEN")
@@ -662,7 +731,7 @@ function WarbandNexus:DrawCharacterList(parent)
         tgTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -10)
         tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 10, 0)
         tgTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
-        tgTextContainer:SetHeight(40)
+        tgTextContainer:SetHeight(CharactersTotalGoldTokenStackTextHeight())
 
         local midRule = totalGoldCard:CreateTexture(nil, "ARTWORK")
         midRule:SetHeight(1)
@@ -676,7 +745,7 @@ function WarbandNexus:DrawCharacterList(parent)
         tkTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -56)
         tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
         tkTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
-        tkTextContainer:SetHeight(40)
+        tkTextContainer:SetHeight(CharactersTotalGoldTokenStackTextHeight())
     else
         divider:Show()
         divider:SetPoint("CENTER", totalGoldCard, "CENTER", 0, 0)
@@ -2290,9 +2359,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local charName = self.charName
                 
                 -- Get UI functions from namespace
-                local COLORS = ns.UI_COLORS
                 local CreateExternalWindow = ns.UI_CreateExternalWindow
-                local CreateThemedButton = ns.UI_CreateThemedButton
                 local FontManager = ns.FontManager
                 
                 if not CreateExternalWindow then
@@ -2337,18 +2404,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 
                 -- Delete button (LEFT)
                 local deleteBtnLabel = (ns.L and ns.L["DELETE"]) or "Delete"
-                local deleteBtn = CreateThemedButton and CreateThemedButton(btnContainer, deleteBtnLabel, 150, 36) or CreateFrame("Button", nil, btnContainer)
-                if not CreateThemedButton then
-                    deleteBtn:SetSize(150, 36)
-                    deleteBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
-                    deleteBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-Button-Highlight")
-                    deleteBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-Button-Down")
-                    
-                    local deleteBtnText = deleteBtn:CreateFontString(nil, "OVERLAY")
-                    deleteBtnText:SetPoint("CENTER")
-                    FontManager:SafeSetFont(deleteBtnText, "body")
-                    deleteBtnText:SetText(deleteBtnLabel)
-                end
+                local deleteBtn = CreateCharacterDeleteDialogButton(btnContainer, deleteBtnLabel, 150, true)
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
                 deleteBtn:SetScript("OnClick", function()
                     local success = WarbandNexus:DeleteCharacter(charKey)
@@ -2361,18 +2417,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 
                 -- Cancel button (RIGHT)
                 local cancelBtnLabel = (ns.L and ns.L["CANCEL"]) or "Cancel"
-                local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, cancelBtnLabel, 150, 36) or CreateFrame("Button", nil, btnContainer)
-                if not CreateThemedButton then
-                    cancelBtn:SetSize(150, 36)
-                    cancelBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
-                    cancelBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-Button-Highlight")
-                    cancelBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-Button-Down")
-                    
-                    local cancelBtnText = cancelBtn:CreateFontString(nil, "OVERLAY")
-                    cancelBtnText:SetPoint("CENTER")
-                    FontManager:SafeSetFont(cancelBtnText, "body")
-                    cancelBtnText:SetText(cancelBtnLabel)
-                end
+                local cancelBtn = CreateCharacterDeleteDialogButton(btnContainer, cancelBtnLabel, 150, false)
                 cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
                 cancelBtn:SetScript("OnClick", function()
                     if dialog.Close then
@@ -2632,7 +2677,11 @@ function WarbandNexus:OpenCustomCharacterHeaderDialog()
     local okLbl = (L and L["CUSTOM_HEADER_NEW_DIALOG_CREATE"]) or "Create section"
     local cancelLbl = CANCEL or "Cancel"
 
-    local host = CreateFrame("Frame", nil, contentFrame)
+    local HF = ns.UI and ns.UI.Factory
+    local host = HF and HF:CreateContainer(contentFrame, math.max(1, innerW), 420, false)
+    if not host then
+        host = CreateFrame("Frame", nil, contentFrame)
+    end
     host:SetPoint("LEFT", contentFrame, "LEFT", 16, 0)
     host:SetPoint("RIGHT", contentFrame, "RIGHT", -16, 0)
     host:SetPoint("TOP", editBg, "BOTTOM", 0, -10)
@@ -2743,7 +2792,11 @@ function WarbandNexus:OpenCustomHeaderRosterWindow(groupId)
     local addLbl = (L and L["CUSTOM_HEADER_ADD_SELECTED"]) or "Add selected"
     local closeLbl = (L and L["CUSTOM_HEADER_ROSTER_CLOSE"]) or "Close"
 
-    local host = CreateFrame("Frame", nil, contentFrame)
+    local HF = ns.UI and ns.UI.Factory
+    local host = HF and HF:CreateContainer(contentFrame, math.max(1, innerW), 480, false)
+    if not host then
+        host = CreateFrame("Frame", nil, contentFrame)
+    end
     host:SetPoint("LEFT", contentFrame, "LEFT", 16, 0)
     host:SetPoint("RIGHT", contentFrame, "RIGHT", -16, 0)
     host:SetPoint("TOP", hint, "BOTTOM", 0, -10)

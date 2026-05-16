@@ -86,6 +86,7 @@ end
 local function ArmPostCombatUIRefresh()
     if not InCombatLockdown or not InCombatLockdown() then return end
     if not postCombatUIFrame then
+        -- Intentionally raw: invisible PLAYER_REGEN_ENABLED listener only (no layout role).
         postCombatUIFrame = CreateFrame("Frame", nil, UIParent)
         postCombatUIFrame:Hide()
         postCombatUIFrame:SetScript("OnEvent", function(self, event)
@@ -114,9 +115,15 @@ local function ArmPostCombatUIRefresh()
     end
 end
 
--- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 1280   -- Minimum to fit Statistics 3-card row + character/gear layouts without overflow
-local CONTENT_MIN_HEIGHT = 650   -- Multi-level structures minimum
+-- Main window sizing: authoritative numbers live on `ns.UI_LAYOUT.MAIN_WINDOW` (SharedWidgets.lua).
+local function GetMainWindowGeometryBounds()
+    local screen = WarbandNexus:API_GetScreenInfo()
+    local mw = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_WINDOW) or {}
+    local minW, minH = WarbandNexus:API_GetMainWindowContentMinimums()
+    local cw = mw.CLAMP_SCREEN_WIDTH_PCT or 0.95
+    local ch = mw.CLAMP_SCREEN_HEIGHT_PCT or 0.95
+    return minW, minH, math.floor(screen.width * cw), math.floor(screen.height * ch)
+end
 
 -- Window geometry helpers
 local function GetWindowProfile()
@@ -125,41 +132,33 @@ local function GetWindowProfile()
 end
 
 local function GetWindowDimensions()
+    local minW, minH, maxW, maxH = GetMainWindowGeometryBounds()
+
     local profile = GetWindowProfile()
     if profile and profile.windowWidth then
         local savedWidth = profile.windowWidth
         local savedHeight = profile.windowHeight
-        
-        -- Validate saved values are within bounds
-        local screen = WarbandNexus:API_GetScreenInfo()
-        local maxWidth = math.floor(screen.width * 0.95)
-        local maxHeight = math.floor(screen.height * 0.95)
-        
-        savedWidth = math.max(CONTENT_MIN_WIDTH, math.min(savedWidth, maxWidth))
-        savedHeight = math.max(CONTENT_MIN_HEIGHT, math.min(savedHeight, maxHeight))
-        
+
+        savedWidth = math.max(minW, math.min(savedWidth, maxW))
+        savedHeight = math.max(minH, math.min(savedHeight, maxH))
+
         return savedWidth, savedHeight
     end
-    
-    -- First time: calculate optimal size
-    local defaultWidth, defaultHeight = 
-        WarbandNexus:API_CalculateOptimalWindowSize(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT)
-    
+
+    local defaultWidth, defaultHeight =
+        WarbandNexus:API_CalculateOptimalWindowSize(minW, minH)
+
     return defaultWidth, defaultHeight
 end
 
--- Convert frame top-left to UIParent offset space using physical-pixel conversion.
--- This avoids coordinate drift when frame scale differs from UIParent scale.
-local function GetFrameTopLeftInParentCoords(frame)
+--- Offsets (x, y) for `SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)` after layout settles.
+--- Uses `Region:GetLeft` / `:GetTop`; same numeric space as that anchor chain (WoW anchors are UI-scale / widget-scale aware — see wiki `ScriptRegionResizing:SetPoint` Details).
+--- This path does not multiply by `GetEffectiveScale`; conversions belong only next to APIs in pixel space (`GetCursorPosition` in drag), not alongside GetLeft/GetTop.
+local function GetUIParentBOTTOMLEFTAnchorOffsets(frame)
     if not frame then return nil, nil end
     local left = frame:GetLeft()
     local top = frame:GetTop()
     if left == nil or top == nil then return nil, nil end
-
-    -- GetLeft() and GetTop() are already in the frame's effective scale coordinate space.
-    -- When using SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y), the x and y offsets
-    -- are also interpreted in the frame's effective scale coordinate space.
-    -- Therefore, we can use GetLeft/GetTop directly without any scale conversion.
     return left, top
 end
 
@@ -175,10 +174,8 @@ local function SaveWindowGeometry(frame)
     profile.windowWidth = frame:GetWidth()
     profile.windowHeight = frame:GetHeight()
     
-    -- Save absolute position using GetLeft/GetTop (anchor-independent).
-    -- This is immune to anchor point changes caused by StartMoving().
-    -- Convert from frame's effective scale to UIParent's coordinate space.
-    local left, top = GetFrameTopLeftInParentCoords(frame)
+    -- Save TOPLEFT offsets vs UIParent BOTTOMLEFT (anchor-independent reads).
+    local left, top = GetUIParentBOTTOMLEFTAnchorOffsets(frame)
     if left and top then
         if not profile.windowPosition then
             profile.windowPosition = {}
@@ -269,15 +266,11 @@ local function StopCustomDrag(frame)
     frame:SetScript("OnUpdate", nil)
 end
 
--- Re-anchor frame to its current visual position using TOPLEFT.
--- Ensures consistent anchor state before save/restore.
---
--- IMPORTANT: GetLeft()/GetTop() return coordinates in the frame's effective scale
--- space, but SetPoint offsets are in UIParent's coordinate space. We must convert
--- between the two when they differ (e.g., due to UI scale, custom frame scale).
+-- Re-anchor with TOPLEFT to UIParent BOTTOMLEFT using current GetLeft/GetTop.
+-- Keeps a single anchor family after arbitrary drag/resize internals.
 local function NormalizeFramePosition(frame)
     if not frame or not frame.GetLeft or not frame.GetTop then return end
-    local left, top = GetFrameTopLeftInParentCoords(frame)
+    local left, top = GetUIParentBOTTOMLEFTAnchorOffsets(frame)
     if left == nil or top == nil then return end
 
     frame:ClearAllPoints()
@@ -287,9 +280,10 @@ end
 -- Reset window to default center position and size
 local function ResetWindowGeometry(frame)
     if not frame then return end
-    
-    local defaultWidth, defaultHeight = 
-        WarbandNexus:API_CalculateOptimalWindowSize(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT)
+
+    local minW, minH = WarbandNexus:API_GetMainWindowContentMinimums()
+    local defaultWidth, defaultHeight =
+        WarbandNexus:API_CalculateOptimalWindowSize(minW, minH)
     
     frame:ClearAllPoints()
     frame:SetPoint("CENTER")
@@ -307,9 +301,8 @@ local function ResetWindowGeometry(frame)
     WarbandNexus:PopulateContent()
 end
 
--- Compute the correct scrollChild width for the current tab.
--- Tabs with wide inline layouts (gear, professions, pve) enforce a minimum width
--- so horizontal scrollbar kicks in instead of squeezing content.
+-- Compute scrollChild logical width for the current tab.
+-- Tabs with wide inline layouts enforce a minimum so horizontal scrollbar appears instead of squashed chrome.
 local function ComputeScrollChildWidth(frame)
     if not frame or not frame.scroll then return 0 end
     local w = frame.scroll:GetWidth()
@@ -322,6 +315,12 @@ local function ComputeScrollChildWidth(frame)
     elseif tab == "pve" and ns.ComputePvEMinScrollWidth then
         local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
         if pveW > 0 then w = math.max(w, pveW) end
+    elseif tab == "chars" and ns.UI_GetCharRowTotalWidth then
+        local charW = ns.UI_GetCharRowTotalWidth()
+        if charW and charW > 0 then w = math.max(w, charW) end
+    elseif tab == "stats" and ns.ComputeStatisticsMinScrollWidth then
+        local stW = ns.ComputeStatisticsMinScrollWidth()
+        if stW > 0 then w = math.max(w, stW) end
     end
     return w
 end
@@ -336,6 +335,19 @@ local function UpdateScrollLayout(frame)
     end
 end
 
+--- Resize bounds honor `profile.mainWindowDensity`; clamps current footprint into [min,max] after prefs change.
+function WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
+    local mf = mainFrame or (self.UI and self.UI.mainFrame)
+    if not mf then return end
+    local minW, minH, maxW, maxH = GetMainWindowGeometryBounds()
+    mf:SetResizeBounds(minW, minH, maxW, maxH)
+    local cw, ch = mf:GetWidth() or minW, mf:GetHeight() or minH
+    local nw = math.min(maxW, math.max(minW, cw))
+    local nh = math.min(maxH, math.max(minH, ch))
+    mf:SetSize(nw, nh)
+    UpdateScrollLayout(mf)
+end
+
 local mainFrame = nil
 -- REMOVED: local currentTab - now using mainFrame.currentTab (fixes tab switching bug)
 local currentItemsSubTab = "inventory" -- Default: Bags (current character); Warband sub-tab shows account-wide tree (former Storage tab).
@@ -344,7 +356,7 @@ local expandedGroups = {} -- Persisted expand/collapse state for item groups
 -- Hidden frame that collects orphaned non-pooled UI elements.
 -- WoW frames are NEVER garbage collected — SetParent(nil) leaves them permanently
 -- in memory with a nil parent. The recycleBin gives them a valid hidden parent
--- so they at least have proper frame hierarchy.
+-- so they at least have proper frame hierarchy (see WN_FACTORY block on `WarbandNexusRecycleBin`).
 local recycleBin = CreateFrame("Frame", "WarbandNexusRecycleBin", UIParent)
 recycleBin:Hide()
 recycleBin:SetSize(1, 1)
@@ -435,6 +447,7 @@ local function ResolveMainWindowOpenTab()
     return (p and p.lastTab) or "chars"
 end
 
+-- Intentionally raw: /reload sets next main open to Characters (ENTERING_WORLD flag).
 local reloadMainTabFrame = CreateFrame("Frame")
 reloadMainTabFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 reloadMainTabFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
@@ -602,6 +615,7 @@ local TAB_TO_MODULE = {
 }
 
 -- Canonical tab order: single source of truth for visibility, creation, and navigation.
+-- QA smoke (/reload): open each MAIN_TAB_ORDER tab once with default modules enabled; confirms PopulateContent paints without errors.
 local MAIN_TAB_ORDER = { "chars", "items", "gear", "currency", "reputations", "pve", "professions", "collections", "plans", "stats" }
 
 local function IsTabModuleEnabled(key)
@@ -658,6 +672,7 @@ local function UpdateTabButtonStates(f)
                 end
             end
             if btn.activeBar then btn.activeBar:SetAlpha(1) end
+            if btn.tabIcon then btn.tabIcon:SetVertexColor(1, 1, 1, 1) end
             if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1}) end
             if btn.SetBackdropColor then btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1) end
         else
@@ -672,6 +687,7 @@ local function UpdateTabButtonStates(f)
                 end
             end
             if btn.activeBar then btn.activeBar:SetAlpha(0) end
+            if btn.tabIcon then btn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92) end
             if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1}) end
             if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
         end
@@ -682,6 +698,26 @@ end
 --============================================================================
 -- CREATE MAIN WINDOW
 --============================================================================
+--[[ WN_FACTORY — Main window raw `CreateFrame` inventory (this file loads after SharedWidgets).
+  Main vertical scroll + scrollbar column + horizontal bar already use `ns.UI.Factory`.
+
+  Intentionally raw (keep unless product calls for a redesign):
+  - `WarbandNexusFrame` root: global name for zombie cleanup, `BackdropTemplate`, drag/resize, WindowManager strata.
+  - `postCombatUIFrame`, `reloadMainTabFrame`, `UIEvents._itemInfoFrame`, loading-overlay `eventFrame`:
+    invisible event hosts (no tab layout).
+  - `WarbandNexusRecycleBin`: long-lived orphan reparent bucket.
+  - Resize corner strip: Blizzard size-grabber textures on a capturing `Frame` (not Factory button).
+  - Header utility buttons (close/reload/settings/info/Patreon/Discord): custom atlas + tooltips +
+    copy-to-clipboard `EditBox` popups (`FULLSCREEN_DIALOG`).
+  - `trackingChip` + nested `BackdropTemplate` hosts: compact tracking strip.
+  - `CreateTabButton` inner `Button`: main nav tabs (custom width math + atlas + `ApplyHighlight`).
+  - `WarbandNexusLoadingOverlay`: standalone init bar (named, draggable, polling lifecycle).
+
+  Factory candidates (later PRs; match anchors/levels exactly):
+  - Layout shells: `header`, `nav`, `content`, `viewportBorder`, `fixedHeader`, `columnHeaderClip` /
+    `columnHeaderInner`, `scrollChild`, `hScrollContainer`, footer bar, `scrollChild._wnScrollBottomFill`.
+  - Header buttons: `ns.UI.Factory:CreateButton(..., true)` + existing `ApplyVisuals`/atlas (parity with Vault/Gear).
+]]
 function WarbandNexus:CreateMainWindow()
     -- ZOMBIE FRAME CLEANUP: Check for orphaned frames from failed initialization
     -- If a frame exists in global namespace but we don't have a reference, it's a zombie
@@ -726,20 +762,17 @@ function WarbandNexus:CreateMainWindow()
     
     -- Calculate window dimensions dynamically
     local windowWidth, windowHeight = GetWindowDimensions()
-    
-    -- Calculate bounds
-    local screen = self:API_GetScreenInfo()
-    local maxWidth = math.floor(screen.width * 0.95)
-    local maxHeight = math.floor(screen.height * 0.95)
-    
-    -- Main frame
-    local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent)
+
+    local minW, minH, maxWidth, maxHeight = GetMainWindowGeometryBounds()
+
+    -- Intentionally raw: global `WarbandNexusFrame` + `BackdropTemplate` root shell (see WN_FACTORY block above).
+    local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent, "BackdropTemplate")
     f:Hide()  -- CRITICAL: Hide immediately to prevent position flash (frame inherits UIParent visibility)
     f:SetSize(windowWidth, windowHeight)
     f:SetMovable(true)
     f:SetResizable(true)
     -- Dynamic bounds based on screen
-    f:SetResizeBounds(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT, maxWidth, maxHeight)
+    f:SetResizeBounds(minW, minH, maxWidth, maxHeight)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self)
@@ -774,12 +807,14 @@ function WarbandNexus:CreateMainWindow()
     
     -- NOTE: Master OnHide is set later (after tab system creation) to consolidate all cleanup
     
-    -- Apply pixel-perfect visuals (dark background, accent border)
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    if ApplyVisuals then
-        local COLORS = ns.UI_COLORS
-        local shellBg = COLORS and COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
-        ApplyVisuals(f, shellBg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+    -- Shell: BackdropTemplate chrome (MAIN_SHELL tokens) — theme tint tracks BORDER_REGISTRY RefreshColors path.
+    local COLORS = ns.UI_COLORS
+    local shellBg = COLORS and COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
+    local ac = COLORS and COLORS.accent or { 0.40, 0.20, 0.58 }
+    if ns.UI_ApplyMainWindowShellBackdrop then
+        ns.UI_ApplyMainWindowShellBackdrop(f, shellBg, { ac[1], ac[2], ac[3], 1 })
+    elseif ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(f, shellBg, { ac[1], ac[2], ac[3], 1 })
     end
     
     -- OnSizeChanged handler - Update borders and scrollChild width
@@ -820,7 +855,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    -- Resize handle — anchored exactly at BOTTOMRIGHT to prevent size jump on click
+    -- Intentionally raw: Blizzard chat size-grabber art on a `Frame` mouse sink (not UIPanel resize template).
     local resizeBtn = CreateFrame("Frame", nil, f)
     resizeBtn:SetSize(16, 16)
     resizeBtn:SetPoint("BOTTOMRIGHT", 0, 0)
@@ -859,25 +894,28 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    -- ===== SCALE / DISPLAY CHANGE HANDLER =====
+    -- Intentionally raw: `UI_SCALE_CHANGED` / `DISPLAY_SIZE_CHANGED` listener only.
     local scaleFrame = CreateFrame("Frame")
     scaleFrame:RegisterEvent("UI_SCALE_CHANGED")
     scaleFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
     scaleFrame:SetScript("OnEvent", function()
         C_Timer.After(0, function()
             if not f then return end
-            local screen = WarbandNexus:API_GetScreenInfo()
-            local newMaxW = math.floor(screen.width * 0.95)
-            local newMaxH = math.floor(screen.height * 0.95)
-            f:SetResizeBounds(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT, newMaxW, newMaxH)
+            if WarbandNexus.UI_ClampMainFrameResizeBoundsFromProfile then
+                WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
+            end
         end)
     end)
 
-    -- ===== HEADER BAR =====
+    local MAIN_SHELL_LAYOUT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    local frameChromeInset = MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET or 2
+    local headerNavGap = MAIN_SHELL_LAYOUT.HEADER_TO_NAV_GAP or 4
+
+    -- Factory candidate: `Factory:CreateContainer` host — keep anchors + `EnableMouse` for drag.
     local header = CreateFrame("Frame", nil, f)
-    header:SetHeight(40)
-    header:SetPoint("TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", -2, -2)
+    header:SetHeight(MAIN_SHELL_LAYOUT.HEADER_BAR_HEIGHT or 40)
+    header:SetPoint("TOPLEFT", frameChromeInset, -frameChromeInset)
+    header:SetPoint("TOPRIGHT", -frameChromeInset, -frameChromeInset)
     header:EnableMouse(true)
     f.header = header  -- Store reference for color updates
     
@@ -1238,25 +1276,33 @@ function WarbandNexus:CreateMainWindow()
         ns.WindowManager:InstallESCHandler(f)
     end
     
-    -- ===== NAV BAR (tabs only; utility buttons are in header to avoid overlap when minimized) =====
+    -- Factory candidate: `Factory:CreateContainer` — tab row host only.
     local nav = CreateFrame("Frame", nil, f)
-    nav:SetHeight(36)
-    nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4) -- 4px gap below header
-    nav:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -4)
+    nav:SetHeight(MAIN_SHELL_LAYOUT.NAV_BAR_HEIGHT or 36)
+    nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -headerNavGap)
+    nav:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -headerNavGap)
     f.nav = nav
     -- Default tab set here; overridden by ShowMainWindow with persisted lastTab
     f.currentTab = "chars"
     f.tabButtons = {}
     f._tabScrollPositions = {}
     
-    -- Tab styling function (default width fits 10 tabs in CONTENT_MIN_WIDTH without overflow)
-    local DEFAULT_TAB_WIDTH = 108
-    local TAB_HEIGHT = 34
-    local TAB_PAD = 24  -- text padding inside button (12px each side)
-    local TAB_GAP = 5   -- gap between tabs
+    -- Tab sizing (defaults from MAIN_SHELL; narrow windows rely on horizontal scroll / padding)
+    local DEFAULT_TAB_WIDTH = MAIN_SHELL_LAYOUT.DEFAULT_TAB_WIDTH or 108
+    local TAB_HEIGHT = MAIN_SHELL_LAYOUT.TAB_HEIGHT or 34
+    local TAB_PAD = MAIN_SHELL_LAYOUT.TAB_PAD or 24
+    local TAB_GAP = MAIN_SHELL_LAYOUT.TAB_GAP or 5
     
     local function CreateTabButton(parent, text, key)
+        -- Intentionally raw: main nav tabs (dynamic width + atlas glyph + `ApplyHighlight`); Factory optional later (WN_FACTORY block).
         local btn = CreateFrame("Button", nil, parent)
+        local shellIco = MAIN_SHELL_LAYOUT
+        local iconSz = shellIco.TAB_ICON_SIZE or 18
+        local iconInsetL = shellIco.TAB_ICON_LEFT_INSET or 8
+        local iconGap = shellIco.TAB_ICON_GAP or 6
+        local iconRight = shellIco.TAB_ICON_RIGHT_MARGIN or 8
+        local iconBlock = iconInsetL + iconSz + iconGap
+
         btn:SetSize(DEFAULT_TAB_WIDTH, TAB_HEIGHT)
         btn.key = key
 
@@ -1280,23 +1326,41 @@ function WarbandNexus:CreateMainWindow()
         activeBar:SetAlpha(0)
         btn.activeBar = activeBar
 
+        -- Left nav glyph (WOW atlas bundle — crisp at any UI scale vs ad-hoc PNG)
+        local tabIcon = btn:CreateTexture(nil, "ARTWORK")
+        tabIcon:SetSize(iconSz, iconSz)
+        tabIcon:SetPoint("LEFT", iconInsetL, 1)
+        if tabIcon.SetSnapToPixelGrid then tabIcon:SetSnapToPixelGrid(false) end
+        if tabIcon.SetTexelSnappingBias then tabIcon:SetTexelSnappingBias(0) end
+        btn.tabIcon = tabIcon
+        local atlasNm = ns.UI_GetTabIcon and ns.UI_GetTabIcon(key) or nil
+        local atlasOk = atlasNm and type(atlasNm) == "string" and pcall(tabIcon.SetAtlas, tabIcon, atlasNm, false)
+        if not atlasOk then
+            tabIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            tabIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+
         local label = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabLabel"), "OVERLAY")
-        label:SetPoint("CENTER", 0, 1)
+        label:SetPoint("LEFT", tabIcon, "RIGHT", iconGap, 1)
+        local countReserve = shellIco.TAB_COUNT_RESERVE or 28
+        label:SetPoint("RIGHT", btn, "RIGHT", -(iconRight + countReserve), 1)
+        label:SetJustifyH("LEFT")
         label:SetText(text)
         btn.label = label
 
-        -- Row count badge (dimmed, right of label)
+        -- Row count badge (dimmed), right edge — reserved strip keeps long labels from overlapping "(N)"
         local countLabel = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
-        countLabel:SetPoint("LEFT", label, "RIGHT", 3, 0)
+        countLabel:SetPoint("RIGHT", btn, "RIGHT", -iconRight, 1)
+        countLabel:SetJustifyH("RIGHT")
         countLabel:SetTextColor(0.5, 0.5, 0.5, 0.8)
         countLabel:SetText("")
         countLabel:Hide()
         btn.countLabel = countLabel
-        
-        -- Keep default 95px, only expand if text doesn't fit
+
         local textWidth = label:GetStringWidth() or 0
-        if textWidth + TAB_PAD > DEFAULT_TAB_WIDTH then
-            btn:SetWidth(textWidth + TAB_PAD)
+        local reserve = iconBlock + textWidth + iconRight + countReserve + 4
+        if textWidth + TAB_PAD > DEFAULT_TAB_WIDTH or reserve > DEFAULT_TAB_WIDTH then
+            btn:SetWidth(math.max(DEFAULT_TAB_WIDTH, reserve))
         end
 
         btn:SetScript("OnClick", function(self)
@@ -1599,6 +1663,7 @@ function WarbandNexus:CreateMainWindow()
     local CONTENT_BOTTOM_OFFSET = FOOTER_BOTTOM_OFFSET + MAIN_FOOTER_H + CONTENT_GAP_ABOVE_FOOTER
 
     -- ===== CONTENT AREA =====
+    -- Factory candidate: `Factory:CreateContainer` — inherits `BackdropTemplate` mixin immediately below for panel BG tint.
     local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
     content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, CONTENT_BOTTOM_OFFSET)
@@ -1615,20 +1680,24 @@ function WarbandNexus:CreateMainWindow()
         content:SetBackdropColor(bc[1], bc[2], bc[3], bc[4] or 0.98)
     end
 
-    -- Scroll layout: UI_LAYOUT; 2–3px gap between viewport and scrollbars so they don’t sit too close
+    -- Scroll layout: MAIN_SCROLL tokens + scrollbar column (WN-UI-layout: reserve v-bar column).
+    -- Keep defaults aligned with `ns.UI_GetMainScrollLayoutHints` (Plans Tracker + popups parity).
     local LAYOUT = ns.UI_LAYOUT or ns.UI_SPACING or {}
-    local SCROLL_COLUMN_W = LAYOUT.SCROLLBAR_COLUMN_WIDTH or 22
-    local SCROLL_GAP = 2
+    local scrollHints = ns.UI_GetMainScrollLayoutHints and ns.UI_GetMainScrollLayoutHints() or {}
+    local MSC = LAYOUT.MAIN_SCROLL or {}
+    local SCROLL_COLUMN_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+    local SCROLL_GAP = MSC.SCROLL_GAP or scrollHints.scrollGap or 2
     local SCROLL_INSET_TOP = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
-    local H_BAR_H = LAYOUT.SCROLL_BAR_WIDTH or 16
-    -- Tight strip above window bottom: h-bar row + small margin (was SIDE_MARGIN 10 → excess empty padding).
-    local H_BAR_BOTTOM = 6
     local H_ROW_H = SCROLL_COLUMN_W
+    local H_BAR_BOTTOM = MSC.H_BAR_BOTTOM_OFFSET or 6
     local SCROLL_INSET_BOTTOM = H_BAR_BOTTOM + H_ROW_H + SCROLL_GAP
-    local SCROLL_INSET_LEFT = 4
-    local SCROLL_INSET_RIGHT = SCROLL_COLUMN_W + SCROLL_GAP
+    local SCROLL_INSET_LEFT = MSC.SCROLL_INSET_LEFT or 4
+    --- Same total as Tracker / Recipe Companion: `scrollbarColumnWidth + MAIN_SCROLL.SCROLL_GAP` via SharedWidgets helper.
+    local SCROLL_INSET_RIGHT = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+        or (SCROLL_COLUMN_W + SCROLL_GAP)
+    local BORDER_INSET = MSC.VIEWPORT_BORDER_INSET or 1
 
-    -- Viewport border frame: only the scroll area gets the border; scrollbars sit outside with SCROLL_GAP
+    -- Factory candidate: `Factory:CreateContainer` — viewport rim (scroll insets anchor to this).
     local viewportBorder = CreateFrame("Frame", nil, content)
     viewportBorder:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT, -SCROLL_INSET_TOP)
     viewportBorder:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_RIGHT, -SCROLL_INSET_TOP)
@@ -1642,9 +1711,7 @@ function WarbandNexus:CreateMainWindow()
     end
     f.viewportBorder = viewportBorder
 
-    -- Fixed header area: title cards, search boxes stay here (non-scrolling)
-    -- Inset by 1px from viewport border so content doesn't overlap the border line
-    local BORDER_INSET = 1
+    -- Factory candidate: `Factory:CreateContainer` — non-scroll title/search host.
     local fixedHeader = CreateFrame("Frame", nil, content)
     fixedHeader:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT + BORDER_INSET, -(SCROLL_INSET_TOP + BORDER_INSET))
     fixedHeader:SetPoint("TOPRIGHT", content, "TOPRIGHT", -(SCROLL_INSET_RIGHT + BORDER_INSET), -(SCROLL_INSET_TOP + BORDER_INSET))
@@ -1652,13 +1719,7 @@ function WarbandNexus:CreateMainWindow()
     fixedHeader:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
     f.fixedHeader = fixedHeader
 
-    -- Column header clip: overlays the top of the scroll area at a higher frame level.
-    -- Clips tab-specific column headers that sync horizontally with the scroll child
-    -- but stay vertically fixed (frozen header pattern).
-    -- Height = 1 when collapsed (invisible); tabs like ProfessionsUI expand it.
-    -- Frame level content+6 ensures the BACKGROUND layer of this frame renders
-    -- AFTER all layers of scroll (content+2), so the opaque backdrop properly
-    -- covers data rows scrolling underneath the frozen column headers.
+    -- Factory candidate: clip host for frozen column headers (`SetClipsChildren`).
     local columnHeaderClip = CreateFrame("Frame", nil, content)
     columnHeaderClip:SetClipsChildren(true)
     columnHeaderClip:SetPoint("TOPLEFT", fixedHeader, "BOTTOMLEFT", 0, 0)
@@ -1675,6 +1736,7 @@ function WarbandNexus:CreateMainWindow()
         columnHeaderBg:SetColorTexture(bc[1], bc[2], bc[3], bc[4] or 0.98)
     end
 
+    -- Factory candidate: scroll-synced inner width host (`SetHorizontalScroll` hook anchors this).
     local columnHeaderInner = CreateFrame("Frame", nil, columnHeaderClip)
     columnHeaderInner:SetPoint("TOPLEFT", 0, 0)
     columnHeaderInner:SetPoint("BOTTOMLEFT", 0, 0)
@@ -1697,13 +1759,15 @@ function WarbandNexus:CreateMainWindow()
         ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
     end
 
+    -- Factory candidate: scroll child is a dumb host; only bottom-fill band (`scrollChild._wnScrollBottomFill`) matters for Factory parity.
     local scrollChild = CreateFrame("Frame", nil, scroll)
     scrollChild:SetWidth(1)
     scrollChild:SetHeight(1)
     scroll:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
 
-    -- Horizontal bar: same strip size as vertical column (H_ROW_H = 22px); same viewport gap (SCROLL_GAP)
+    -- Horizontal bar: strip height tracks vertical scrollbar column width (`H_ROW_H`); viewport gap (`SCROLL_GAP`) matches main scroll chrome.
+    -- Factory candidate: `Factory:CreateContainer` — bar strip host only (`CreateHorizontalScrollBar` does the knob).
     local hScrollContainer = CreateFrame("Frame", nil, content)
     hScrollContainer:SetPoint("LEFT", content, "LEFT", SCROLL_INSET_LEFT, 0)
     hScrollContainer:SetPoint("RIGHT", content, "RIGHT", -SCROLL_INSET_RIGHT, 0)
@@ -2401,6 +2465,7 @@ function WarbandNexus:CreateMainWindow()
     -- so we must re-run the gear scan once the client cache warms — otherwise the
     -- recommendation list stays empty for the entire session.
     if not UIEvents._itemInfoFrame then
+        -- Intentionally raw: `GET_ITEM_INFO_RECEIVED` coalesce host — no visuals (WN_FACTORY inventory).
         local infoFrame = CreateFrame("Frame")
         UIEvents._itemInfoFrame = infoFrame
         infoFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -2481,10 +2546,13 @@ function WarbandNexus:CreateMainWindow()
 
     -- Footer: left disclaimer / hints, right add-on version (TOC metadata).
     do
+        -- Factory candidate: `Factory:CreateContainer` — thin footer lane (scrollbar reserve on right edge).
         local footerBar = CreateFrame("Frame", nil, f)
         footerBar:SetHeight(MAIN_FOOTER_H)
+        local footerLaneReserve = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+            or (((ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26) + 2)
         footerBar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 5)
-        footerBar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 5)
+        footerBar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -footerLaneReserve, 5)
         footerBar:SetFrameLevel((f:GetFrameLevel() or 0) + 4)
         footerBar:EnableMouse(false)
         f.footerBar = footerBar
@@ -2894,6 +2962,7 @@ local function PopulateContentBody(self)
     do
         local fill = scrollChild._wnScrollBottomFill
         if not fill then
+            -- Factory candidate: subtle tone band below short content (`scrollChild._wnScrollBottomFill`); see WN_FACTORY list.
             fill = CreateFrame("Frame", nil, scrollChild)
             fill._wnKeepOnTabSwitch = true
             fill:SetFrameLevel(math.max(0, (scrollChild:GetFrameLevel() or 0) - 5))
@@ -3311,7 +3380,7 @@ function WarbandNexus:ApplyUIScale(newScale)
     if not mainFrame then return end
     newScale = math.max(0.6, math.min(1.5, newScale or 1.0))
 
-    -- Save before scale change (position is in old scale space)
+    -- Persist geometry before SetScale so width/height/anchor offsets snapshot pre-change layout.
     SaveWindowGeometry(mainFrame)
 
     mainFrame:SetScale(newScale)
@@ -3402,6 +3471,7 @@ do
         local C = ns.UI_COLORS
         if not C then return nil end
 
+        -- Intentionally raw: named draggable init bar (`WarbandNexusLoadingOverlay`; see WN_FACTORY block).
         local bar = CreateFrame("Frame", "WarbandNexusLoadingOverlay", UIParent, "BackdropTemplate")
         bar:SetSize(360, 34)
         bar:SetPoint("TOP", UIParent, "TOP", 0, -12)
@@ -3541,6 +3611,7 @@ do
     -- Ticker runs for up to MAX_POLL_LIFETIME seconds, then auto-cancels.
     -- This ensures the overlay detects both initial-login ops AND
     -- post-confirmation ops (user clicks "Tracked" after the dialog).
+    -- Intentionally raw: PLAYER_LOGIN latch for overlay polling ticker (WN_FACTORY inventory).
     local eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("PLAYER_LOGIN")
     eventFrame:SetScript("OnEvent", function()

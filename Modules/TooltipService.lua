@@ -13,6 +13,8 @@
     API:
     WarbandNexus.Tooltip:Show(frame, data)
     WarbandNexus.Tooltip:Hide()
+
+    WN_NONUI_UI: Lazy tooltip singleton and internal helper frames (`CreateFrame`) are intentionally outside SharedWidgets Factory.
 ]]
 
 local ADDON_NAME, ns = ...

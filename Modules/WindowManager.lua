@@ -5,7 +5,7 @@
     Responsibilities:
     - Hierarchical ESC close: popups first, then floating windows, then main window.
     - Combat safety: hide all windows on PLAYER_REGEN_DISABLED, restore on PLAYER_REGEN_ENABLED.
-    - Standardized frame strata/level assignment.
+    - Frame strata tiers + example windows: see PRIORITY/strata contract after `STRATA` in this file (`MAIN_SHELL` chrome is orthogonal—layout only).
     - Single ESC key handler pattern (avoids UISpecialFrames taint issues).
     - ToggleGameMenu: use hooksecurefunc ONLY — never replace the global with addon Lua; that
       taints ESC and Blizzard’s ToggleGameMenu then fails on protected calls (e.g. SpellStopCasting).
@@ -60,6 +60,39 @@ WindowManager.STRATA = {
     [20] = { strata = "HIGH",               level = 120 },
     [30] = { strata = "FULLSCREEN_DIALOG", level = 300 },
 }
+
+--[[============================================================================
+PRIORITY VS STRATA (addon contract — keep new windows consistent)
+
+Who wins on ESC (`CloseTopWindow`): **only** the numeric PRIORITY tier (POPUP >
+FLOATING > MAIN). Tie-breakers: higher `FrameLevel`, then later registration index.
+
+**Drawing order:** **`FrameStrata` first**, then `FrameLevel`. `ApplyStrata`
+implements the tier defaults below; callers may bump `FrameLevel` after `ApplyStrata`
+(e.g. settings panel stacks above other HIGH frames).
+
+Rough map (grep `WindowManager:ApplyStrata` / `:Register` for the live list):
+
+- **MAIN (`PRIORITY.MAIN`):** MEDIUM @ 50 — main Warband Nexus window (`Modules/UI.lua`).
+- **FLOATING (`PRIORITY.FLOATING`):** HIGH @ 120 — detached companions /
+  workspaces that must sit above the main window without blocking the whole UI:
+  Recipe Companion, Profession Info, Plans Tracker (`Modules/UI/*Window.lua`).
+- **POPUP (`PRIORITY.POPUP`):** FULLSCREEN_DIALOG @ 300 — blocking / modal-ish
+  dialogs that should chew ESC before lower tiers: `WindowFactory` dialogs
+  (`Modules/UI/WindowFactory.lua`), InformationDialog, reminder alert shell,
+  schema reload (`Core.lua`), Try Count popup (`UI_ShowTryCountPopup`).
+
+**Mixed case — Settings (`SettingsUI.lua`):** `ApplyStrata(..., FLOATING)` so the
+panel stays **HIGH** (does not obscure other FULLSCREEN_DIALOG content), but
+`Register(..., POPUP)` so ESC ordering still treats closing it like other
+high-priority UI; **keyboard capture stays off** (`EnableKeyboard(false)`) —
+see comments there.
+
+**Outside this registry:** Vault / Saved Instances menus, changelog backdrop, and
+similar frames may choose their own strata and ESC path (`UISpecialFrames` hooks,
+opaque backdrop, etc.) without `Register` — they are intentionally not stacked by
+the hierarchy above.
+============================================================================]]
 
 -- Internal registry: { { frame, priority, closeFunc, wasVisibleBeforeCombat } }
 local registry = {}

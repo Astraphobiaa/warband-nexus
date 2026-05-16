@@ -23,14 +23,21 @@ local function SafeLower(s)
 end
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
+local CreateButton = ns.UI_CreateButton
 local function GetFactory()
     return ns.UI and ns.UI.Factory
 end
 
--- Layout constants
+-- Layout constants (main shell chrome tokens from SharedWidgets `MAIN_SHELL`)
+local PROF_MS = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+local HEADER_HEIGHT = PROF_MS.HEADER_BAR_HEIGHT or 40
+local PROF_CHROME_INSET = PROF_MS.FRAME_CONTENT_INSET or 2
+local PROF_EDGE_PAD = PROF_CHROME_INSET * 2
+--- SharedWidgets scrollbar column + gap (parity with main window MAIN_SCROLL).
+local PROF_SB_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+local PROF_SCROLL_RIGHT_RESERVE = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+    or (PROF_SB_COL_W + 2)
 local PADDING = 12
-local SCROLLBAR_WIDTH = 22
-local HEADER_HEIGHT = 40
 local SECTION_GAP = 10
 local LINE_HEIGHT = 18
 local NODE_LINE_HEIGHT = 16
@@ -41,7 +48,7 @@ local MIN_WIDTH = 350
 local MIN_HEIGHT = 400
 local MAX_WIDTH = 600
 local MAX_HEIGHT = 900
-local CONTENT_WIDTH = DEFAULT_WIDTH - PADDING * 2 - SCROLLBAR_WIDTH  -- Updated dynamically when frame is resized
+local CONTENT_WIDTH = DEFAULT_WIDTH - PADDING * 2 - PROF_SCROLL_RIGHT_RESERVE -- Updated dynamically when frame is resized
 
 -- Tree node layout
 local TREE_NODE_HEIGHT = 24                               -- each tree node row height
@@ -600,7 +607,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     if frame and frame.GetWidth then
         local w = frame:GetWidth()
         if w and w > 0 then
-            CONTENT_WIDTH = w - PADDING * 2 - SCROLLBAR_WIDTH
+            CONTENT_WIDTH = w - PADDING * 2 - PROF_SCROLL_RIGHT_RESERVE
         end
     end
     scrollChild:SetWidth(CONTENT_WIDTH + PADDING * 2)
@@ -949,7 +956,11 @@ end
 local function CreateInfoFrame()
     if infoFrame then return infoFrame end
 
-    local frame = CreateFrame("Frame", "WarbandNexus_ProfessionInfo", UIParent)
+    local factory = GetFactory()
+    if not factory or not factory.CreateContainer then return nil end
+
+    local frame = factory:CreateContainer(UIParent, DEFAULT_WIDTH, DEFAULT_HEIGHT, false, "WarbandNexus_ProfessionInfo")
+    if not frame then return nil end
     frame:EnableMouse(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
@@ -977,11 +988,11 @@ local function CreateInfoFrame()
         ApplyVisuals(frame, {0.03, 0.03, 0.05, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
 
-    -- Header
-    local header = CreateFrame("Frame", nil, frame)
-    header:SetHeight(HEADER_HEIGHT)
-    header:SetPoint("TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", -2, -2)
+    -- Header (Factory shell; width synced on resize — no TOPRIGHT anchor)
+    local header = factory:CreateContainer(frame, math.max(1, frame:GetWidth() - PROF_EDGE_PAD), HEADER_HEIGHT, false)
+    if not header then return nil end
+    frame._profInfoHeaderShell = header
+    header:SetPoint("TOPLEFT", PROF_CHROME_INSET, -PROF_CHROME_INSET)
     header:SetFrameLevel(frame:GetFrameLevel() + 10)
     if ApplyVisuals then
         ApplyVisuals(header, {0.06, 0.06, 0.08, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
@@ -1015,12 +1026,8 @@ local function CreateInfoFrame()
     frame.titleText:SetTextColor(1, 1, 1)
 
     -- Close button
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(24, 24)
+    local closeBtn = CreateButton(header, 24, 24, {0.12, 0.12, 0.14, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}, false)
     closeBtn:SetPoint("RIGHT", -8, 0)
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.12, 0.12, 0.14, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-    end
     local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(14, 14)
     closeIcon:SetPoint("CENTER")
@@ -1034,22 +1041,24 @@ local function CreateInfoFrame()
     end)
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
-    local factory = GetFactory()
     local scrollFrame
     if factory and factory.CreateScrollFrame then
         scrollFrame = factory:CreateScrollFrame(frame, "UIPanelScrollFrameTemplate", true)
     else
         scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
     end
-    scrollFrame:SetPoint("TOPLEFT", 4, -(HEADER_HEIGHT + 4))
-    scrollFrame:SetPoint("BOTTOMRIGHT", -(SCROLLBAR_WIDTH + 4), 4)
+    scrollFrame:SetPoint("TOPLEFT", PROF_EDGE_PAD, -(HEADER_HEIGHT + PROF_EDGE_PAD))
+    scrollFrame:SetPoint("BOTTOMRIGHT", -(PROF_SCROLL_RIGHT_RESERVE + PROF_EDGE_PAD), PROF_EDGE_PAD)
 
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(CONTENT_WIDTH + PADDING * 2)
+    local scrollChild = factory:CreateContainer(scrollFrame, CONTENT_WIDTH + PADDING * 2, 512, false)
+    if not scrollChild then
+        scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        scrollChild:SetWidth(CONTENT_WIDTH + PADDING * 2)
+    end
     scrollFrame:SetScrollChild(scrollChild)
 
     if factory and factory.CreateScrollBarColumn and factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
-        local scrollBarColumn = factory:CreateScrollBarColumn(frame, SCROLLBAR_WIDTH, HEADER_HEIGHT + 4, 4)
+        local scrollBarColumn = factory:CreateScrollBarColumn(frame, PROF_SB_COL_W, HEADER_HEIGHT + PROF_EDGE_PAD, PROF_EDGE_PAD)
         if scrollBarColumn then
             factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end
@@ -1058,10 +1067,9 @@ local function CreateInfoFrame()
     frame.scrollFrame = scrollFrame
     frame.scrollChild = scrollChild
 
-    -- Resize grip (bottom-right)
-    local resizer = CreateFrame("Button", nil, frame)
-    resizer:SetSize(16, 16)
-    resizer:SetPoint("BOTTOMRIGHT", -2, 2)
+    -- Resize grip (bottom-right): plain button chrome; Blizzard grabber textures
+    local resizer = CreateButton(frame, 16, 16, nil, nil, true)
+    resizer:SetPoint("BOTTOMRIGHT", -PROF_CHROME_INSET, PROF_CHROME_INSET)
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
@@ -1080,6 +1088,9 @@ local function CreateInfoFrame()
     end)
 
     frame:SetScript("OnSizeChanged", function()
+        if frame._profInfoHeaderShell then
+            frame._profInfoHeaderShell:SetWidth(math.max(1, frame:GetWidth() - PROF_EDGE_PAD))
+        end
         if frame.scrollFrame and frame.scrollChild then
             frame.scrollChild:SetWidth(frame.scrollFrame:GetWidth())
         end
