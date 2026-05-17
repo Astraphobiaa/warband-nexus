@@ -2018,20 +2018,14 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local planComplete = memoIsActivePlanComplete(plan)
             local hasTry = (not planComplete) and collectibleID and ns.UI.Factory and ns.UI.Factory.CreateTryCountClickable
                 and self.ShouldShowTryCountInUI and self:ShouldShowTryCountInUI(plan.type, collectibleID)
-            -- Estimate before row build; refined after actions anchor via UI_PlansSyncTitleRightInset.
-            local titleRightInset = 6 + ACTION_SIZE + ACTION_GAP -- delete (rightmost)
+            local titleRightInset = 6
             if plan.type == "achievement" and plan.achievementID then
                 titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
             end
-            if not planComplete and PlanCardFactory.CreateReminderAlertButton then
-                titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
-            end
-            if plan.type == "custom" then
-                titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
-            end
-            if hasTry then
-                titleRightInset = titleRightInset + tryW + ACTION_GAP
-            end
+            titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- delete (rightmost)
+            titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- alert
+            if plan.type == "custom" then titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP end
+            if hasTry then titleRightInset = titleRightInset + tryW + ACTION_GAP end
 
             local rowData = {
                 icon = resolvedIcon,
@@ -2171,10 +2165,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                 tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
                 rightOffset = rightOffset + tryW + ACTION_GAP
-            end
-
-            if ns.UI_PlansSyncTitleRightInset then
-                ns.UI_PlansSyncTitleRightInset(row, rightOffset)
             end
 
             row:Show()
@@ -2640,7 +2630,6 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
 
     ns.UI_AchievementBrowse_Populate({
         state = st,
-        achBrowseRootFrame = rootFrame,
         scrollChild = scrollChild,
         listWidth = listInnerW,
         categoryData = categoryData,
@@ -3086,14 +3075,12 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         gridPadH = 12
         cardWidth = ns.UI_PlansCardGridColumnWidth(gridW) or 200
     end
+    local cardHeight = (PCM and PCM.browseCardHeight) or 105
     local browseIconTop = (PCM and PCM.browseIconTopInset) or 10
     local browseIconLeft = (PCM and PCM.browseIconLeftInset) or 10
     local browseIconBox = (PCM and PCM.browseIconContainerSize) or 45
     local todoIconSz = (PCM and PCM.todoIconSize) or 41
     local todoBadgeSz = (PCM and PCM.todoTypeBadgeSize) or 24
-    local browseActionSz = (PCM and PCM.browseActionSize) or 32
-    local browseTitleRightPad = browseActionSz + 20
-    local defaultBrowseCardH = (PCM and PCM.browseCardHeight) or 100
     local col = 0
     
     -- Show truncation message if results were limited
@@ -3109,6 +3096,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
 
     local planBrowseSrcIconSz = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
     local planBrowseTypeBadgeSz = todoBadgeSz
+    
+    local browseRightRailW = (PCM and PCM.browseRightRailW) or 65
+    local browseActionGap = 6
 
     for i = 1, resultsToRender do
         local item = results[i]
@@ -3144,26 +3134,6 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         local firstSource = sources[1] or {}
         
         local xOffset = gridPadH + col * (cardWidth + cardSpacing)
-
-        local srcLineCount = 0
-        if category == "title" and item.sourceAchievement then
-            srcLineCount = 1
-        elseif firstSource.vendor or firstSource.npc or firstSource.faction then
-            srcLineCount = 1
-        end
-        if firstSource.zone then
-            srcLineCount = srcLineCount + 1
-        end
-        local typeMetaH = 0
-        if category == "achievement" and item.points then
-            typeMetaH = 22
-        elseif category ~= "title" then
-            typeMetaH = 22
-        end
-        local cardHeight = math.max(
-            defaultBrowseCardH,
-            browseIconTop + browseIconBox + 6 + typeMetaH + math.max(1, srcLineCount) * 18 + 10
-        )
 
         local card = CreateCard(parent, cardHeight)
         card:SetWidth(cardWidth)
@@ -3207,7 +3177,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- === TITLE ===
         local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
         nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
-        nameText:SetPoint("RIGHT", card, "RIGHT", -browseTitleRightPad, 0)
+        nameText:SetPoint("RIGHT", card, "RIGHT", -(browseRightRailW + 12), 0)
         local displayName = FormatTextNumbers(item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
         if item.isPlanned then
             local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
@@ -3319,11 +3289,20 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             typeBadge:EnableMouse(false)  -- Allow clicks to pass through
         end
         
+        local rightRail = ns.UI.Factory:CreateContainer(card, browseRightRailW, cardHeight - browseIconTop - 8, false)
+        rightRail:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -browseIconTop)
+        rightRail:EnableMouse(false)
+
         -- === LINE 3: Source Info (below icon row — aligned with To-Do chrome) ===
         local line3Y = -(browseIconTop + browseIconBox + 4)
-        local srcRightInset = browseTitleRightPad
+        local srcRightInset = browseRightRailW + 16
         local srcAnchorX = browseIconLeft + browseIconBox + 10
-        local srcTopY = line3Y
+        local srcLineCount = 0
+        if category == "title" and item.sourceAchievement then srcLineCount = 1
+        elseif firstSource.vendor or firstSource.npc or firstSource.faction then srcLineCount = 1 end
+        if firstSource.zone then srcLineCount = srcLineCount + 1 end
+        local srcBlockH = math.max(1, srcLineCount) * 20
+        local srcTopY = line3Y - math.max(0, (cardHeight - browseIconTop - browseIconBox - 20 - srcBlockH) * 0.5)
         
         -- TITLE-SPECIFIC: Show source achievement with clickable link
         if category == "title" and item.sourceAchievement then
@@ -3556,14 +3535,14 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 fontCategory = "body"
             })
         elseif not isCompletedCard then
-            local addBtn = PlanCardFactory.CreateAddButton(card, {
+            local addBtn = PlanCardFactory.CreateAddButton(rightRail, {
                 buttonType = "card",
                 iconOnly = true,
-                anchorPoint = "TOPRIGHT",
-                x = -8,
-                y = -browseIconTop,
-                width = browseActionSz,
-                height = browseActionSz,
+                anchorPoint = "CENTER",
+                x = 0,
+                y = 0,
+                width = 32,
+                height = 32,
                 onClick = function(self)
                     local planData = {
                         -- itemID: for toys (id field), or fallback to item.itemID
@@ -3615,7 +3594,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             if (isDrop and not isGuaranteed) or count > 0 then
                 local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
                 local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                tryText:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 8)
+                tryText:SetPoint("TOP", rightRail, "TOP", 0, -4)
+                tryText:SetPoint("RIGHT", rightRail, "RIGHT", 0, 0)
                 tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
                 tryText:SetJustifyH("RIGHT")
                 tryText:SetWordWrap(false)

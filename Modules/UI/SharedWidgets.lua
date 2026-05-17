@@ -762,32 +762,6 @@ function ns.UI_PlansAnchorHeaderAction(control, headerFrame, fromRight, width)
     control:SetPoint("RIGHT", headerFrame, "RIGHT", -fromRight, 0)
 end
 
---- After header actions are placed, shrink the title to the remaining width (`fromRight` = final rightOffset).
-function ns.UI_PlansSyncTitleRightInset(row, fromRight)
-    if not row or not row.titleText or not row.headerFrame then return end
-    fromRight = fromRight or 6
-    local titleText = row.titleText
-    local data = row.data
-    local titleAnchorFrame, titleAnchorGap = 4, 4
-    if data and data.score and not data.scoreBelow and row.scoreText then
-        titleAnchorFrame = row.scoreText
-    elseif row.typeBadge then
-        titleAnchorFrame = row.typeBadge
-    elseif row.iconFrame then
-        titleAnchorFrame = row.iconFrame
-    end
-    titleText:ClearAllPoints()
-    if titleAnchorFrame then
-        titleText:SetPoint("LEFT", titleAnchorFrame, "RIGHT", titleAnchorGap, 0)
-    else
-        titleText:SetPoint("LEFT", row.headerFrame, "LEFT", 40, 0)
-    end
-    titleText:SetPoint("RIGHT", row.headerFrame, "RIGHT", -fromRight, 0)
-    if row.SyncHeaderToTitle then
-        row:SyncHeaderToTitle()
-    end
-end
-
 --- Chain header controls right-to-left with uniform gap; each control vertically centered on `headerFrame`.
 function ns.UI_PlansChainHeaderActions(headerFrame, controls, opts)
     if not headerFrame or not controls or #controls == 0 then return end
@@ -983,31 +957,35 @@ end
 local PLANS_GRID_SPACING = UI_SPACING.CARD_GAP or 8
 
 --- @class PlansCardMetrics
+local PLANS_ICON_SCALE = 1.25
+local function PlansMetric(n)
+    return math.max(1, math.floor((n or 0) * PLANS_ICON_SCALE + 0.5))
+end
+
 --- Header action buttons (delete / reminder / track) on plan cards and To-Do rows — single size source.
 function ns.UI_PlansHeaderActionSize()
     local PCM = ns.UI_PLANS_CARD_METRICS or {}
-    return PCM.todoTypeBadgeSize or 24
+    return PCM.todoTypeBadgeSize or PlansMetric(24) or 24
 end
 
 ns.UI_PLANS_CARD_METRICS = {
     gridSpacing = PLANS_GRID_SPACING,
     --- CreateExpandableRow rowData (main To-Do tab + tracker): keep in sync with PlansUI rowData
-    todoIconSize = 41,
-    todoTypeBadgeSize = 24,
-    todoExpandableMinHeight = 63,
-    todoExpandableHeightCap = 71,
+    todoIconSize = PlansMetric(41),
+    todoTypeBadgeSize = PlansMetric(24),
+    todoExpandableMinHeight = PlansMetric(63),
+    todoExpandableHeightCap = PlansMetric(71),
     --- Browse mounts/pets/etc. grid: same icon/badge feel as To-Do; fixed card height for two-column grid
-    browseCardHeight = 100,
-    browseActionSize = 32,
+    browseCardHeight = PlansMetric(126),
     --- Vertical gap between To-Do List cards (Currency/Reputation row-gap parity).
     todoListCardGap = 10,
     browseCardPadH = 12,
     plansActionIconInset = 2,
-    browseIconTopInset = 10,
-    browseIconLeftInset = 10,
-    browseIconContainerSize = 45,
-    browseRightRailW = 52,
-    plansChevronSize = 18,
+    browseIconTopInset = PlansMetric(10),
+    browseIconLeftInset = PlansMetric(10),
+    browseIconContainerSize = PlansMetric(45),
+    browseRightRailW = PlansMetric(52),
+    plansChevronSize = PlansMetric(18),
 }
 
 --- Plans / Collections browse grid: card width, spacing, horizontal pad (clamp-safe).
@@ -7442,7 +7420,7 @@ end
 function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, opts)
     opts = type(opts) == "table" and opts or {}
     if not parent or not achievementID or not WarbandNexus then return nil end
-    local sz = tonumber(opts.size) or (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or 24
+    local sz = tonumber(opts.size) or 32
     local btn = self:CreateButton(parent, sz, sz, true)
     if parent.GetFrameLevel then
         btn:SetFrameLevel((parent:GetFrameLevel() or 0) + (tonumber(opts.frameLevelOffset) or 25))

@@ -3629,9 +3629,7 @@ function PlanCardFactory.CreateAddButton(parent, options)
     
     -- Themed button frame (border on) so To-Do reads as a control, not plain text.
     local addBtn = ns.UI.Factory:CreateButton(parent, width, height, false)
-    if anchorPoint == "BOTTOM" or anchorPoint == "TOP" or anchorPoint == "RIGHT" or anchorPoint == "LEFT"
-        or anchorPoint == "TOPRIGHT" or anchorPoint == "TOPLEFT"
-        or anchorPoint == "BOTTOMRIGHT" or anchorPoint == "BOTTOMLEFT" then
+    if anchorPoint == "BOTTOM" or anchorPoint == "TOP" or anchorPoint == "RIGHT" or anchorPoint == "LEFT" then
         addBtn:SetPoint(anchorPoint, parent, anchorPoint, x, y)
     else
         addBtn:SetPoint(anchorPoint, x, y)

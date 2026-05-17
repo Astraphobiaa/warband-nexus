@@ -348,12 +348,17 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     local PCM = ns.UI_PLANS_CARD_METRICS or {}
     local rowNudgeY = tonumber(PCM.rowIconNudgeY) or 0
     local chevronSz = tonumber(data.chevronSize) or tonumber(PCM.plansChevronSize) or 18
-    -- Chevron is visual-only; headerFrame owns the click (avoids double ToggleExpand on chevron hits).
     local expandBtn = ns.UI_CreateCollapseExpandControl(headerFrame, isExpanded, {
-        enableMouse = false,
+        enableMouse = true,
         size = chevronSz,
     })
     expandBtn:SetPoint("LEFT", 6, rowNudgeY)
+
+    expandBtn:RegisterForClicks("LeftButtonUp")
+    expandBtn:SetScript("OnClick", function(_, button)
+        if button ~= "LeftButton" then return end
+        ToggleExpand()
+    end)
     row.expandBtn = expandBtn
     
     -- Header toggles on click release — NOT OnMouseDown. Pairing MouseDown here with the expand

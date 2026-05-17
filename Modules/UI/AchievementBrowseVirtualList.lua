@@ -255,7 +255,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
     end
 
     state._achSectionBodies = {}
-    state._achBrowseRootFrame = opts.achBrowseRootFrame
     local achSectionContentH = {}
     local achHeaderMeta = {}
     for fi = 1, #flatList do
@@ -394,30 +393,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
         return math.max(0.1, bodyH)
     end
 
-    local function SyncAchievementBrowseScrollHeight()
-        local totalY = 0
-        for i = 1, #achHeaderKeys do
-            local key = achHeaderKeys[i]
-            local meta = achHeaderMeta[key]
-            if meta and not meta.parentKey then
-                local wrap = achSectionWraps[key]
-                if wrap and wrap.IsShown and wrap:IsShown() then
-                    if totalY > 0 then
-                        totalY = totalY + SECTION_SPACING
-                    end
-                    totalY = totalY + (wrap:GetHeight() or COLLAPSE_H_COLL)
-                end
-            end
-        end
-        local newH = math.max(1, totalY + PADDING)
-        scrollChild:SetHeight(newH)
-        state._achFlatListTotalHeight = newH
-        local rootFrame = state._achBrowseRootFrame
-        if rootFrame and rootFrame.SetHeight then
-            rootFrame:SetHeight(math.max(1, newH))
-        end
-    end
-
     local function ReflowAchievementSectionHeights(activeAnimKey, activeAnimBodyH)
         for i = 1, #achHeaderKeys do
             local key = achHeaderKeys[i]
@@ -436,7 +411,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 end
             end
         end
-        SyncAchievementBrowseScrollHeight()
     end
 
     for i = 1, #flatList do
@@ -482,7 +456,9 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 applyToggleBeforeCollapseAnimate = true,
                 -- Defer marking collapsed until tween ends — virtual rows stay until animation completes (large sections).
                 persistFn = function(exp)
-                    collapsedHeaders[key] = not exp
+                    if exp then
+                        collapsedHeaders[key] = false
+                    end
                 end,
                 onUpdate = function(drawH)
                     ReflowAchievementSectionHeights(key, drawH)
@@ -491,6 +467,9 @@ function ns.UI_AchievementBrowse_Populate(opts)
                     refreshVisibleInternal()
                 end,
                 onComplete = function(exp)
+                    if not exp then
+                        collapsedHeaders[key] = true
+                    end
                     ReflowAchievementSectionHeights()
                     refreshVisibleInternal()
                 end,
