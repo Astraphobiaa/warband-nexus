@@ -3294,7 +3294,7 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
         br, bgc, bb = row.bg:GetVertexColor()
     end
 
-    local rw = row:GetWidth() or 200
+    local rw = row:GetWidth() or row._wnRowPaintWidth or 200
     local rh = row:GetHeight() or 46
     local w
     if type(gradientWidthPx) == "number" and gradientWidthPx > 1 then
@@ -3305,8 +3305,8 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
 
     local tex = row._wnClassGradientTex
     if not tex then
-        -- BORDER sits above row.bg (BACKGROUND) so the tint is visible; fade still blends into row.bg.
-        tex = row:CreateTexture(nil, "BORDER")
+        -- ARTWORK stays visible on pooled Button rows during scroll (BORDER can drop out with highlight).
+        tex = row:CreateTexture(nil, "ARTWORK")
         row._wnClassGradientTex = tex
     end
     tex:ClearAllPoints()
@@ -3314,6 +3314,12 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
     tex:SetSize(w, rh)
     tex:SetTexture("Interface\\Buttons\\WHITE8x8")
     tex:SetVertexColor(1, 1, 1, 1)
+    if tex.SetDrawLayer then
+        tex:SetDrawLayer("ARTWORK", 0)
+    end
+    if row.GetFrameLevel and tex.SetFrameLevel then
+        tex:SetFrameLevel(row:GetFrameLevel() + 1)
+    end
 
     local ok = false
     if tex.SetGradient and CreateColor then
@@ -3344,6 +3350,248 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
 end
 
 ns.UI_ApplyCharacterRowClassGradientAccent = ApplyCharacterRowClassGradientAccent
+
+--============================================================================
+-- STRETCH ROW VIEWPORT RELAYOUT (shared across tabs)
+-- Tabs register row lists on scrollChild; LayoutCoordinator live resize calls tab adapters
+-- that delegate here. Characters virtual lists use VirtualListModule instead.
+--============================================================================
+
+--- Refresh `_wnGradientRefresh` on visible rows (Characters / Professions / PvE chrome).
+function ns.UI_RefreshRegisteredRowGradients(rows)
+    if not rows then return end
+    for ri = 1, #rows do
+        local row = rows[ri]
+        if row and row:IsShown() and row._wnGradientRefresh then
+            pcall(row._wnGradientRefresh)
+        end
+    end
+end
+
+--- Re-anchor collapsible section bodies under their headers (full scroll width).
+---@param scrollChild Frame
+---@param opts table|nil sections array, sideMargin, anchorKey (default `_wnAnchorHeader`)
+function ns.UI_RelayoutStretchSectionBodies(scrollChild, opts)
+    opts = opts or {}
+    local sections = opts.sections
+    if not sections and scrollChild then
+        sections = scrollChild._wnStretchSectionList
+    end
+    if not sections then return end
+    local side = opts.sideMargin
+    if side == nil then
+        side = (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 10
+    end
+    local anchorKey = opts.anchorKey or "_wnAnchorHeader"
+    for si = 1, #sections do
+        local cf = sections[si]
+        local hdr = cf and cf[anchorKey]
+        if cf and hdr then
+            cf:ClearAllPoints()
+            cf:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", -side, 0)
+            cf:SetPoint("TOPRIGHT", hdr, "BOTTOMRIGHT", side, 0)
+            cf:SetHeight(math.max(0.1, cf._wnSectionFullH or 0.1))
+        end
+    end
+end
+
+--- Stretch TOPLEFT/TOPRIGHT rows to parent width; refresh stripes + class gradients.
+--- opts: rows | rowsKey, sections, rowHeight, yOffsetKey, rowLeftPad, rowRightPad, sideMargin, refreshGradients
+function ns.UI_RelayoutStretchRows(scrollChild, opts)
+    if not scrollChild then return end
+    opts = opts or {}
+    if opts.sections or scrollChild._wnStretchSectionList then
+        ns.UI_RelayoutStretchSectionBodies(scrollChild, opts)
+    end
+    local rows = opts.rows
+    if not rows then
+        local key = opts.rowsKey or "_wnStretchRowList"
+        rows = scrollChild[key]
+    end
+    if not rows then return end
+    local rowH = opts.rowHeight
+    local yKey = opts.yOffsetKey or "_wnYOffset"
+    local leftPad = opts.rowLeftPad or 0
+    local rightPad = opts.rowRightPad or 0
+    local refreshGradients = opts.refreshGradients ~= false
+    for ri = 1, #rows do
+        local row = rows[ri]
+        if row and row:IsShown() then
+            local parent = row:GetParent()
+            if parent then
+                local yOff = row[yKey] or 0
+                row:ClearAllPoints()
+                if rowH and row.SetHeight then
+                    row:SetHeight(rowH)
+                end
+                row:SetPoint("TOPLEFT", parent, "TOPLEFT", leftPad, -yOff)
+                row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightPad, -yOff)
+                local rowW = row:GetWidth()
+                if (not rowW or rowW < 2) and parent.GetWidth then
+                    rowW = parent:GetWidth()
+                end
+                if rowW and rowW >= 2 then
+                    row._wnRowPaintWidth = rowW
+                end
+                if row.bg and row.bg.SetAllPoints then
+                    row.bg:SetAllPoints()
+                end
+                if refreshGradients and row._wnGradientRefresh then
+                    if rowW and rowW >= 2 then
+                        pcall(row._wnGradientRefresh)
+                    elseif C_Timer and C_Timer.After then
+                        local rowRef = row
+                        C_Timer.After(0, function()
+                            if rowRef and rowRef:IsShown() and rowRef._wnGradientRefresh then
+                                pcall(row._wnGradientRefresh)
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end
+
+--- Viewport resize profiles for `UI_RegisterTabViewportResize` (LayoutCoordinator adapters).
+ns.UI_VIEWPORT_RESIZE_MODE = {
+    STRETCH_ROWS = "stretch_rows",
+    RESULTS_CONTAINER = "results",
+    CUSTOM = "custom",
+}
+
+local function ResolveTabSideMargin(mf, fallback)
+    local side = fallback
+    if side == nil then
+        side = (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 12
+    end
+    if mf and ns.UI_GetMainTabLayoutMetrics then
+        local m = ns.UI_GetMainTabLayoutMetrics(mf)
+        if m and m.sideMargin then
+            side = m.sideMargin
+        end
+    end
+    return side
+end
+
+--- Results-annex tabs (Currency, Reputation): widen `resultsContainer` on viewport change.
+---@return boolean handled
+function ns.UI_RelayoutResultsViewport(scrollChild, contentWidth, mf, opts)
+    opts = opts or {}
+    if not scrollChild or not contentWidth or contentWidth < 1 then
+        return false
+    end
+    local getContainer = opts.getContainer
+    local rc = (getContainer and getContainer(scrollChild)) or scrollChild.resultsContainer
+    if not rc then
+        return false
+    end
+    local side = ResolveTabSideMargin(mf, opts.sideMargin)
+    rc:SetWidth(math.max(1, contentWidth - side * 2))
+    if ns.UI_RelayoutResultsContainer then
+        ns.UI_RelayoutResultsContainer(rc, scrollChild, side, opts.bottomInset or 8)
+    end
+    return true
+end
+
+--- Register a tab with the standard viewport resize contract (live + commit via LayoutCoordinator).
+--- Profile:
+---   mode          UI_VIEWPORT_RESIZE_MODE.* (default CUSTOM)
+---   tabKey        mf.currentTab value (default tabId)
+---   freezeWhileResizing  skip live body work during corner-drag (Items/PvE/Chars pattern)
+---   stretch       opts table | fn(scrollChild, contentWidth, mf) -> opts for UI_RelayoutStretchRows
+---   results       { getContainer?, sideMargin?, bottomInset? }
+---   onLive        fn -> boolean|nil handled (CUSTOM or pre-hook)
+---   onLiveAfter   fn after stretch/results live pass
+---   onCommit      fn -> boolean|nil; false/nil = allow PopulateContent on commit
+---   refreshHeader run UI_RefreshFixedHeaderChrome on commit
+function ns.UI_RegisterTabViewportResize(tabId, profile)
+    local LC = ns.UI_LayoutCoordinator
+    if not LC or not tabId or not profile then
+        return
+    end
+    local mode = profile.mode or ns.UI_VIEWPORT_RESIZE_MODE.CUSTOM
+    local tabKey = profile.tabKey or tabId
+
+    local function TabIsActive(mf)
+        return mf and mf.currentTab == tabKey
+    end
+
+    local function ResolveStretchOpts(scrollChild, contentWidth, mf)
+        local stretch = profile.stretch
+        if type(stretch) == "function" then
+            return stretch(scrollChild, contentWidth, mf)
+        end
+        return stretch
+    end
+
+    local function RunStretchLive(scrollChild, contentWidth, mf)
+        if profile.onLive then
+            profile.onLive(scrollChild, contentWidth, mf)
+        end
+        local opts = ResolveStretchOpts(scrollChild, contentWidth, mf)
+        if opts then
+            ns.UI_RelayoutStretchRows(scrollChild, opts)
+        end
+        if profile.onLiveAfter then
+            profile.onLiveAfter(scrollChild, contentWidth, mf)
+        end
+        return true
+    end
+
+    local function RunResultsLive(scrollChild, contentWidth, mf)
+        if profile.onLive then
+            profile.onLive(scrollChild, contentWidth, mf)
+        end
+        local handled = ns.UI_RelayoutResultsViewport(scrollChild, contentWidth, mf, profile.results)
+        if profile.onLiveAfter then
+            profile.onLiveAfter(scrollChild, contentWidth, mf)
+        end
+        return handled
+    end
+
+    LC:RegisterTabAdapter(tabId, {
+        OnViewportWidthChanged = function(scrollChild, contentWidth, mf)
+            if not TabIsActive(mf) then
+                return false
+            end
+            if profile.freezeWhileResizing and ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+                return true
+            end
+            if mode == ns.UI_VIEWPORT_RESIZE_MODE.STRETCH_ROWS then
+                return RunStretchLive(scrollChild, contentWidth, mf)
+            end
+            if mode == ns.UI_VIEWPORT_RESIZE_MODE.RESULTS_CONTAINER then
+                return RunResultsLive(scrollChild, contentWidth, mf)
+            end
+            if profile.onLive then
+                return profile.onLive(scrollChild, contentWidth, mf) == true
+            end
+            return false
+        end,
+        OnViewportLayoutCommit = function(scrollChild, contentWidth, mf)
+            if not TabIsActive(mf) then
+                return false
+            end
+            if profile.onCommit then
+                local commitHandled = profile.onCommit(scrollChild, contentWidth, mf)
+                if commitHandled ~= nil then
+                    return commitHandled == true
+                end
+            end
+            if mode == ns.UI_VIEWPORT_RESIZE_MODE.RESULTS_CONTAINER then
+                return RunResultsLive(scrollChild, contentWidth, mf)
+            end
+            if mode == ns.UI_VIEWPORT_RESIZE_MODE.STRETCH_ROWS and profile.stretchCommitLive ~= false then
+                RunStretchLive(scrollChild, contentWidth, mf)
+            end
+            if profile.refreshHeader and ns.UI_RefreshFixedHeaderChrome then
+                ns.UI_RefreshFixedHeaderChrome(mf)
+            end
+            return profile.handledCommit == true
+        end,
+    })
+end
 
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
 -- noCategoryIcon: when true, skip category icon (e.g. PvE character headers use favorite star only)
@@ -9343,6 +9591,10 @@ function ns.UI.Factory:ApplyOnlineCharacterHighlight(frame, isOnline)
         frame.onlineAccent:Show()
     else
         if frame.onlineAccent then frame.onlineAccent:Hide() end
+        if frame.bg and frame.bgColor then
+            local c = frame.bgColor
+            frame.bg:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+        end
     end
 end
 

@@ -11,6 +11,9 @@
     - `resize_commit`: unfreeze scroll child, `OnViewportLayoutCommit` or full PopulateContent.
     - Tab painters: prefer `UI_GetMainTabLayoutMetrics` (`contentWidth`, `bodyWidth`, `sideMargin`);
       avoid `scrollChild:GetWidth()` for live sizing while a resize session is active.
+    - Tab resize profiles: `ns.UI_RegisterTabViewportResize` (SharedWidgets) -> this coordinator.
+      Primitives: `UI_RelayoutStretchRows`, `UI_RelayoutResultsViewport`, `UI_RefreshRegisteredRowGradients`.
+      Virtual lists: VirtualListModule. Prefer profiles over per-tab copy-paste adapters.
 ]]
 
 local ADDON_NAME, ns = ...

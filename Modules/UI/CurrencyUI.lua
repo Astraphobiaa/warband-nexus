@@ -1538,26 +1538,10 @@ function WarbandNexus:DrawCurrencyTab(parent)
     return 8 + listHeight
 end
 
-if ns.UI_LayoutCoordinator then
-    local function RelayoutCurrencyResultsViewport(scrollChild, contentWidth, mf)
-        if not mf or mf.currentTab ~= "currency" or not scrollChild then return false end
-        local rc = scrollChild.resultsContainer
-        if rc and contentWidth and contentWidth > 0 then
-            local side = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN or 12
-            if ns.UI_GetMainTabLayoutMetrics then
-                local m = ns.UI_GetMainTabLayoutMetrics(mf)
-                if m and m.sideMargin then side = m.sideMargin end
-            end
-            rc:SetWidth(math.max(1, contentWidth - side * 2))
-            if ns.UI_RelayoutResultsContainer then
-                ns.UI_RelayoutResultsContainer(rc, scrollChild, side, 8)
-            end
-            return true
-        end
-        return false
-    end
-    ns.UI_LayoutCoordinator:RegisterTabAdapter("currency", {
-        OnViewportWidthChanged = RelayoutCurrencyResultsViewport,
-        OnViewportLayoutCommit = RelayoutCurrencyResultsViewport,
+if ns.UI_RegisterTabViewportResize then
+    ns.UI_RegisterTabViewportResize("currency", {
+        mode = ns.UI_VIEWPORT_RESIZE_MODE and ns.UI_VIEWPORT_RESIZE_MODE.RESULTS_CONTAINER,
+        tabKey = "currency",
+        results = { bottomInset = 8 },
     })
 end

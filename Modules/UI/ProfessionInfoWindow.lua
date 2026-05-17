@@ -6,7 +6,7 @@
     Shows: expansion skills, concentration, knowledge (spec tabs with node details),
     equipment, recipe list, weekly knowledge progress, cooldowns.
 
-    Opened via "Info" button next to "Open" in ProfessionsUI.
+    Opened via the Info column in ProfessionsUI (character row identity: fav, class, name, Open).
     If no data exists for the character: shows "Please login and open Profession window" message.
 ]]
 

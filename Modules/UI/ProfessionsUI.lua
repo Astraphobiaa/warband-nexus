@@ -8,11 +8,13 @@
     Column header bar sits above all sections with alignment matching data:
         LEFT-aligned:  CHARACTER, PROFESSION
         CENTER-aligned: SKILL, CONCENTRATION, KNOWLEDGE
-    Identity (name/realm) is vertically centered in the row height; a small TOP gap
-    separates the title card from the frozen column header strip (layout clarity).
+    Identity (name/realm) is vertically centered in the row; profession lines sit in
+    symmetric upper/lower bands (ROW_HEIGHT/4 from midline). Uniform COL_SPACING (8px)
+    between all columns. A subtle midline rule separates the two profession bands.
 
-    Column grid (per profession line):
-        [Open] [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] …
+    Column grid (character row + per profession line):
+        [FavIcon] [ClassIcon] [Name/Realm] [Open]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] …
+    Open is one control per character (vertically centered); disabled when no primary profession or not logged in.
 
     Default column visibility matches prior behavior (Columns toggles persist in SavedVariables).
     Skill column has a hover tooltip showing all expansion skill breakdowns.
@@ -156,8 +158,8 @@ local function BuildDynamicExpansionOptions()
 end
 
 local ROW_HEIGHT = 52
-local COL_SPACING = 8                -- Standard spacing between all columns
-local ICON_COL_SPACING = 4           -- Tighter spacing after icon columns
+local COL_SPACING = 8                -- Uniform gap after every column (WN-UI-layout single rhythm)
+local OPEN_PROF_GAP = COL_SPACING + 10  -- Extra air between Open button and profession icon column
 local DATA_FONT = "body"             -- 12px - used for ALL data text
 
 -- Frozen column header: air below title card before header labels (Professions-only tuning).
@@ -166,9 +168,11 @@ local COLUMN_HEADER_HEIGHT = 26
 local COLUMN_HEADER_PAD = 4
 local PROF_COLUMN_HEADER_FONT = "subtitle"
 
--- Vertical positioning (center-relative via LEFT anchor)
-local LINE1_Y = 12                   -- Line 1: above row center
-local LINE2_Y = -12                  -- Line 2: below row center
+-- Two profession bands per row: centers at +/- ROW_HEIGHT/4 from row midline (symmetric halves).
+local PROF_LINE_CENTER_Y = ROW_HEIGHT / 4
+local LINE1_Y = PROF_LINE_CENTER_Y
+local LINE2_Y = -PROF_LINE_CENTER_Y
+local PROF_BAND_HEIGHT = ROW_HEIGHT / 2
 
 --============================================================================
 -- COLUMN DEFINITIONS
@@ -177,16 +181,18 @@ local LINE2_Y = -12                  -- Line 2: below row center
 --============================================================================
 
 local COLUMNS = {
-    favIcon     = { width = 33,  spacing = 5 },                  -- favorite star (matches Characters tab)
-    classIcon   = { width = 33,  spacing = 5 },                  -- class icon (matches Characters tab)
-    name        = { width = 100, spacing = COL_SPACING },         -- character name + realm (matches CharactersUI)
-    profIcon    = { width = 20,  spacing = ICON_COL_SPACING },
-    profName    = { width = 100, spacing = COL_SPACING },         -- fits Blacksmithing/Leatherworking at 12px
+    favIcon     = { width = 33,  spacing = COL_SPACING },
+    classIcon   = { width = 33,  spacing = COL_SPACING },
+    name        = { width = 100, spacing = COL_SPACING },
+    open        = { width = 46,  spacing = OPEN_PROF_GAP },
+    profIcon    = { width = 20,  spacing = COL_SPACING },
+    profName    = { width = 100, spacing = COL_SPACING },
+    equipment   = { width = 76,  spacing = COL_SPACING },
     skill       = { width = 70,  spacing = COL_SPACING },
-    conc        = { width = 120, spacing = ICON_COL_SPACING },    -- bar (wider to match rep bar proportions)
-    recharge    = { width = 65,  spacing = COL_SPACING },         -- timer text
+    conc        = { width = 120, spacing = COL_SPACING },
+    recharge    = { width = 65,  spacing = COL_SPACING },
     knowledge   = { width = 74,  spacing = COL_SPACING },
-    recipes     = { width = 68,  spacing = COL_SPACING },         -- known / total (Midnight only)
+    recipes     = { width = 68,  spacing = COL_SPACING },
     firstCraft  = { width = 68,  spacing = COL_SPACING },
     uniques     = { width = 68,  spacing = COL_SPACING },
     treatise    = { width = 68,  spacing = COL_SPACING },
@@ -194,23 +200,20 @@ local COLUMNS = {
     treasure    = { width = 68,  spacing = COL_SPACING },
     gathering   = { width = 68,  spacing = COL_SPACING },
     catchUp     = { width = 68,  spacing = COL_SPACING },
-    moxie       = { width = 56,  spacing = COL_SPACING },         -- Artisan Moxie currency (Midnight)
-    cooldowns   = { width = 68,  spacing = COL_SPACING },         -- crafting cooldowns (ready / total)
-    equipment   = { width = 76,  spacing = COL_SPACING },         -- tool + acc1 + acc2 (3×22 icons, 4px gaps)
-    open        = { width = 46,  spacing = 4 },
-    info        = { width = 30,  spacing = 0 },                  -- read-only detail window
+    moxie       = { width = 56,  spacing = COL_SPACING },
+    cooldowns   = { width = 68,  spacing = COL_SPACING },
+    info        = { width = 30,  spacing = 0 },
 }
 
 local COLUMN_ORDER = {
-    "open",
-    "favIcon", "classIcon", "name",
+    "favIcon", "classIcon", "name", "open",
     "profIcon", "profName", "equipment", "skill", "conc", "recharge", "knowledge",
     "recipes", "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp", "moxie",
     "cooldowns",
     "info",
 }
 
-local LEFT_PAD = 10
+local LEFT_PAD = 4                   -- In-row inset; row already anchored with SIDE_MARGIN
 
 ns.MIN_PROFESSIONS_GRID_W = 0
 
@@ -389,6 +392,61 @@ local function ColOffset(key)
     return offset
 end
 
+--- Horizontal center of a column (for CENTER anchors / header alignment).
+local function ColCenterX(key)
+    return ColOffset(key) + ColWidth(key) / 2
+end
+
+--- Uniform tint width for every row (fav + class + name + open); avoids per-name width gaps when scrolling horizontally.
+local function GetProfessionIdentityGradientEnd()
+    if IsColumnVisible("profIcon") then
+        return ColOffset("profIcon")
+    end
+    if IsColumnVisible("open") then
+        return ColOffset("open") + ColWidth("open")
+    end
+    if IsColumnVisible("name") then
+        return ColOffset("name") + ColWidth("name")
+    end
+    return ColOffset("classIcon") + ColWidth("classIcon")
+end
+
+--- Anchor a cell to its column: LEFT edge or horizontal CENTER on the row midline.
+local function AnchorCellInColumn(frame, colKey, row, centerY, hAlign)
+    if not frame or not colKey or not row then return end
+    local w = ColWidth(colKey)
+    if w <= 0 then return end
+    frame:ClearAllPoints()
+    if hAlign == "CENTER" then
+        frame:SetPoint("CENTER", row, "LEFT", ColCenterX(colKey), centerY)
+    else
+        frame:SetPoint("LEFT", row, "LEFT", ColOffset(colKey), centerY)
+    end
+end
+
+--- Plain header text (no |c escapes — they wrap as stray "|..." in narrow columns).
+local function StripProfHeaderDisplayText(text)
+    if type(text) ~= "string" then return "" end
+    return text
+        :gsub("|c%x%x%x%x%x%x%x%x", "")
+        :gsub("|r", "")
+        :gsub("|T.-|t", "")
+        :gsub("^%s+", "")
+        :gsub("%s+$", "")
+end
+
+local PROF_HDR_COLOR = { 0.72, 0.72, 0.75 }
+local PROF_HDR_COLOR_HILITE = { 1, 1, 1 }
+
+local function ApplyProfColumnHeaderLabel(lbl, displayText, highlighted)
+    if not lbl then return end
+    if lbl.SetWordWrap then lbl:SetWordWrap(false) end
+    if lbl.SetMaxLines then lbl:SetMaxLines(1) end
+    local c = highlighted and PROF_HDR_COLOR_HILITE or PROF_HDR_COLOR
+    lbl:SetTextColor(c[1], c[2], c[3])
+    lbl:SetText(displayText or "")
+end
+
 -- Column header definitions — alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 -- sortable = true means clicking the header toggles ascending/descending sort
@@ -452,6 +510,11 @@ end
 
 local BAR_HEIGHT = 16
 local BAR_BORDER = 1
+
+--- TOPLEFT Y for concentration bar so its vertical center matches profession line centerY.
+local function ColBarTopY(centerY)
+    return centerY + (BAR_HEIGHT / 2) - (ROW_HEIGHT / 2)
+end
 
 local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth, current, maximum)
     current = current or 0
@@ -871,6 +934,62 @@ local function FormatKnowledge(kd)
     return format("|cff%02x%02x%02x%d|r |cffffffff/|r |cff888888--|r", color[1]*255, color[2]*255, color[3]*255, current)
 end
 
+--- True when char.professions[1|2] has a learned primary profession (matches DrawProfessionLine / DataService).
+local function CharacterHasPrimaryProfession(char)
+    if not char or not char.professions then return false end
+    for pi = 1, 2 do
+        local prof = char.professions[pi]
+        if prof then
+            local nm = prof.name
+            if nm and nm ~= "" then
+                if issecretvalue and issecretvalue(nm) then
+                    if prof.skillLine or prof.skillLineID then return true end
+                else
+                    return true
+                end
+            elseif prof.skillLine or prof.skillLineID then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+--- First primary profession slot for OpenTradeSkill (skillLine / skillLineID from CollectProfessionData).
+local function GetFirstPrimaryProfessionSlot(char)
+    if not char or not char.professions then return nil end
+    for pi = 1, 2 do
+        local prof = char.professions[pi]
+        if prof and (prof.skillLine or prof.skillLineID or prof.name) then
+            return prof
+        end
+    end
+    return nil
+end
+
+local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
+    if not btn then return end
+    btn:Show()
+    btn:EnableMouse(true)
+    if btn.label then
+        btn.label:SetText((ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open")
+    end
+    if enabled then
+        btn:Enable()
+        btn:SetAlpha(1)
+        if btn.label then btn.label:SetTextColor(1, 1, 1) end
+    else
+        btn:Disable()
+        btn:SetAlpha(0.45)
+        if btn.label then btn.label:SetTextColor(0.55, 0.55, 0.58) end
+    end
+    local tipTitle = tooltipTitle or ((ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open recipe list")
+    btn:SetScript("OnEnter", function(self)
+        if ShowTooltip then ShowTooltip(self, { type = "custom", title = tipTitle, lines = {}, anchor = "ANCHOR_TOP" }) end
+    end)
+    btn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+end
+
 local function FormatProgressPair(entry)
     if not entry then return "|cffffffff--|r" end
     local current = tonumber(entry.current or 0) or 0
@@ -1037,6 +1156,106 @@ end
 -- DRAW TAB
 --============================================================================
 
+local PROF_STRETCH_RELAYOUT_OPTS = {
+    rowsKey = "_wnProfNestedRows",
+    rowHeight = ROW_HEIGHT,
+    yOffsetKey = "_wnYOffset",
+    sideMargin = 0,
+}
+
+local function ProfessionStretchRelayoutOpts(scrollChild)
+    local opts = PROF_STRETCH_RELAYOUT_OPTS
+    if scrollChild and scrollChild._wnProfSectionContents then
+        opts = {
+            rowsKey = PROF_STRETCH_RELAYOUT_OPTS.rowsKey,
+            sections = scrollChild._wnProfSectionContents,
+            rowHeight = PROF_STRETCH_RELAYOUT_OPTS.rowHeight,
+            yOffsetKey = PROF_STRETCH_RELAYOUT_OPTS.yOffsetKey,
+            sideMargin = PROF_STRETCH_RELAYOUT_OPTS.sideMargin,
+        }
+    end
+    return opts
+end
+
+local function RefreshVisibleProfessionRowGradients(scrollChild)
+    if scrollChild and scrollChild._wnProfNestedRows and ns.UI_RefreshRegisteredRowGradients then
+        ns.UI_RefreshRegisteredRowGradients(scrollChild._wnProfNestedRows)
+    end
+end
+ns.UI_RefreshProfessionRowGradients = RefreshVisibleProfessionRowGradients
+
+local function RelayoutProfessionRowWidths(scrollChild)
+    if scrollChild and ns.UI_RelayoutStretchRows then
+        ns.UI_RelayoutStretchRows(scrollChild, ProfessionStretchRelayoutOpts(scrollChild))
+    end
+end
+ns.UI_RelayoutProfessionRowWidths = RelayoutProfessionRowWidths
+
+local function EnsureProfessionColumnHeaderStrip(mf, scrollChild)
+    if not mf or not scrollChild then return end
+    local stripH = scrollChild._wnProfColHeaderStripH
+    if stripH and mf.columnHeaderClip and mf.columnHeaderClip.SetHeight then
+        mf.columnHeaderClip:SetHeight(stripH)
+    end
+    if mf.columnHeaderInner and mf.scrollChild and mf.columnHeaderInner.SetWidth then
+        local innerW = mf.scrollChild:GetWidth()
+        if innerW and innerW > 0 then
+            mf.columnHeaderInner:SetWidth(innerW)
+        end
+    end
+end
+
+--- Live viewport resize: stretch rows + gradients only (no PopulateContent mid-drag).
+local function ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
+    if not mf or mf.currentTab ~= "professions" or not scrollChild then return end
+    if contentWidth and contentWidth > 0 then
+        cachedRowWidth = contentWidth
+    elseif mf and ns.UI_GetMainTabViewportWidth then
+        local vp = ns.UI_GetMainTabViewportWidth(mf)
+        if vp and vp > 0 then
+            cachedRowWidth = vp
+        end
+    end
+    EnsureProfessionColumnHeaderStrip(mf, scrollChild)
+    RelayoutProfessionRowWidths(scrollChild)
+end
+
+local function DebounceProfessionRowGradientRefresh(mf)
+    if not mf or mf.currentTab ~= "professions" then return end
+    local sc = mf.scrollChild
+    if not sc then return end
+    if sc._wnProfGradScrollTimer then
+        sc._wnProfGradScrollTimer:Cancel()
+    end
+    if C_Timer and C_Timer.After then
+        sc._wnProfGradScrollTimer = C_Timer.After(0.05, function()
+            sc._wnProfGradScrollTimer = nil
+            if mf.currentTab == "professions" then
+                RelayoutProfessionRowWidths(sc)
+                RefreshVisibleProfessionRowGradients(sc)
+            end
+        end)
+    else
+        RefreshVisibleProfessionRowGradients(sc)
+    end
+end
+
+local function EnsureProfessionRowGradientScrollHook(mf)
+    if not mf or not mf.scroll or mf.scroll._wnProfGradScrollHook then return end
+    mf.scroll._wnProfGradScrollHook = true
+    -- ScrollFrame exposes OnVerticalScroll, not OnScroll (see UI.lua main scroll setup).
+    local ok = pcall(function()
+        mf.scroll:HookScript("OnVerticalScroll", function()
+            DebounceProfessionRowGradientRefresh(mf)
+        end)
+    end)
+    if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
+        DebugPrint("|cffff9900[ProfessionsUI]|r OnVerticalScroll hook skipped for gradient refresh")
+    end
+end
+
+ns.UI_DebounceProfessionRowGradientRefresh = DebounceProfessionRowGradientRefresh
+
 function WarbandNexus:DrawProfessionsTab(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local width = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
@@ -1059,6 +1278,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
     end
     parent._wnProfNestedRows = {}
+    parent._wnProfSectionContents = {}
 
     -- fixedHeader: non-scrolling area for title card + column headers
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
@@ -1445,7 +1665,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
     local colHeaderParent = columnHeaderInner or headerParent
     local hdrScrollChild = mainFrameRef and mainFrameRef.scrollChild
-    local colHeaderInnerW = math.max(1, (hdrScrollChild and hdrScrollChild:GetWidth()) or ((width or 400) + SIDE_MARGIN * 2))
+    local colHeaderInnerW = math.max(1, (hdrScrollChild and hdrScrollChild:GetWidth()) or width or 400)
+    parent._wnProfColHeaderStripH = colHeaderStripH
 
     if columnHeaderClip then
         columnHeaderClip:SetHeight(colHeaderStripH)
@@ -1461,8 +1682,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
     if columnHeaderInner then
-        colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -COLUMN_HEADER_TOP_GAP)
-        colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -COLUMN_HEADER_TOP_GAP)
+        -- Align with data rows (section content x=0; ColOffset uses LEFT_PAD inside the bar).
+        colHeaderBar:SetPoint("TOPLEFT", 0, -COLUMN_HEADER_TOP_GAP)
+        colHeaderBar:SetPoint("TOPRIGHT", 0, -COLUMN_HEADER_TOP_GAP)
     else
         colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
         colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
@@ -1490,33 +1712,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
         local col = hdef.col
         if IsColumnVisible(col) then
             local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
-            local displayText = hdef.text or (ns.L and ns.L[hdef.label]) or ""
-            -- Resolve at draw time so locale is ready; strip escapes (avoids stray "|" / texture junk next to "Open").
-            if col == "open" then
-                displayText = (ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open"
-                if type(displayText) == "string" then
-                    displayText = displayText
-                        :gsub("|c%x%x%x%x%x%x%x%x", "")
-                        :gsub("|r", "")
-                        :gsub("|T.-|t", "")
-                        :gsub("^%s+", "")
-                        :gsub("%s+$", "")
-                end
-                if displayText == "" then
-                    displayText = "Open"
-                end
+            local displayText = StripProfHeaderDisplayText(
+                (hdef.label and ns.L and ns.L[hdef.label]) or hdef.text or ""
+            )
+            if col == "open" and displayText == "" then
+                displayText = StripProfHeaderDisplayText((ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open")
             end
-            -- GROUP_PROFESSION may resolve to BATTLE_PET_SOURCE_4 with |c / |T escapes; strip for a plain header.
-            if col == "profName" and type(displayText) == "string" then
-                displayText = displayText
-                    :gsub("|c%x%x%x%x%x%x%x%x", "")
-                    :gsub("|r", "")
-                    :gsub("|T.-|t", "")
-                    :gsub("^%s+", "")
-                    :gsub("%s+$", "")
-                if displayText == "" then
-                    displayText = "Profession"
-                end
+            if col == "profName" and displayText == "" then
+                displayText = StripProfHeaderDisplayText((ns.L and ns.L["GROUP_PROFESSION"]) or "Profession")
             end
             local isSorted = sortState and sortState.col == col
 
@@ -1529,7 +1732,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     hitBtn = CreateFrame("Button", nil, colHeaderBar)
                     hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
                 end
-                hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+                if (hdef.align or "CENTER") == "CENTER" then
+                    hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+                else
+                    hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+                end
                 hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 1)
 
                 -- Keep the sort arrow inside this column so it cannot sit in the gap left of "Character" (reads as "Open I").
@@ -1549,18 +1756,27 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 end
 
                 local lbl = FontManager:CreateFontString(hitBtn, PROF_COLUMN_HEADER_FONT, "OVERLAY")
-                lbl:SetText("|cffb8b8c0" .. displayText .. "|r")
+                ApplyProfColumnHeaderLabel(lbl, displayText, false)
                 lbl:SetJustifyH(hdef.align or "CENTER")
                 if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
                 lbl:SetPoint("LEFT", hitBtn, "LEFT", 2, 0)
-                lbl:SetPoint("RIGHT", arrow, "LEFT", -4, 0)
+                lbl:SetPoint("RIGHT", hitBtn, "RIGHT", -2, 0)
+
+                local function SetHeaderLabelArrowInset(showArrow)
+                    lbl:ClearAllPoints()
+                    lbl:SetPoint("LEFT", hitBtn, "LEFT", 2, 0)
+                    local rightPad = showArrow and -(SORT_ARROW_SIZE + 4) or -2
+                    lbl:SetPoint("RIGHT", hitBtn, "RIGHT", rightPad, 0)
+                end
+                SetHeaderLabelArrowInset(isSorted)
 
                 local capturedCol = col
                 hitBtn:SetScript("OnClick", function()
                     ToggleColumnSort(capturedCol)
                 end)
                 hitBtn:SetScript("OnEnter", function()
-                    lbl:SetText("|cffffffff" .. displayText .. "|r")
+                    ApplyProfColumnHeaderLabel(lbl, displayText, true)
+                    SetHeaderLabelArrowInset(true)
                     if not isSorted then
                         arrow:SetAtlas("hud-MainMenuBar-arrowup")
                         arrow:SetVertexColor(1, 1, 1, 0.4)
@@ -1568,7 +1784,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     end
                 end)
                 hitBtn:SetScript("OnLeave", function()
-                    lbl:SetText("|cffb8b8c0" .. displayText .. "|r")
+                    ApplyProfColumnHeaderLabel(lbl, displayText, false)
+                    SetHeaderLabelArrowInset(isSorted)
                     if not isSorted then
                         arrow:Hide()
                     end
@@ -1580,10 +1797,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     clip = CreateFrame("Frame", nil, colHeaderBar)
                     clip:SetSize(w, COLUMN_HEADER_HEIGHT)
                 end
-                clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", ColOffset(col), 0)
+                if (hdef.align or "CENTER") == "CENTER" then
+                    clip:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+                else
+                    clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", ColOffset(col), 0)
+                end
                 clip:SetClipsChildren(true)
                 local lbl = FontManager:CreateFontString(clip, PROF_COLUMN_HEADER_FONT, "OVERLAY")
-                lbl:SetText("|cffb8b8c0" .. displayText .. "|r")
+                ApplyProfColumnHeaderLabel(lbl, displayText, false)
                 lbl:SetJustifyH(hdef.align or "CENTER")
                 if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
                 lbl:SetPoint("TOPLEFT", clip, "TOPLEFT", 1, 0)
@@ -1672,32 +1893,28 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local scrollFrameRef = parent.GetParent and parent:GetParent() or nil
 
     local function AcquireSectionContentFrame(anchorHeader)
-        local contentFrame
-        if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
-            contentFrame = ns.UI.Factory:CreateContainer(parent, math.max(1, parent:GetWidth()), 1, false)
-        else
-            contentFrame = CreateFrame("Frame", nil, parent)
-            contentFrame:SetSize(math.max(1, parent:GetWidth()), 1)
-        end
-        contentFrame:ClearAllPoints()
-        contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", -SIDE_MARGIN, 0)
-        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", SIDE_MARGIN, 0)
+        local contentFrame = CreateFrame("Frame", nil, parent)
         contentFrame:SetHeight(0.1)
+        contentFrame._wnAnchorHeader = anchorHeader
         contentFrame._wnSectionFullH = 0
+        contentFrame:ClearAllPoints()
+        contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", 0, 0)
+        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", 0, 0)
+        tinsert(parent._wnProfSectionContents, contentFrame)
         return contentFrame
     end
 
     local function AnchorSectionHeader(headerFrame)
         if isFirstSection then
-            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", 0, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", 0, -yOffset)
             isFirstSection = false
         elseif previousSectionContent then
-            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", SIDE_MARGIN, -4)
-            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", -SIDE_MARGIN, -4)
+            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", 0, -4)
+            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", 0, -4)
         else
-            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", 0, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", 0, -yOffset)
         end
     end
 
@@ -1932,6 +2149,15 @@ function WarbandNexus:DrawProfessionsTab(parent)
         )
     end
 
+    local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    EnsureProfessionRowGradientScrollHook(mfRef)
+    EnsureProfessionColumnHeaderStrip(mfRef, parent)
+    RelayoutProfessionRowWidths(parent)
+    RefreshVisibleProfessionRowGradients(parent)
+    if mfRef and ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mfRef, parent, yOffset)
+    end
+
     return yOffset + 10
 end
 
@@ -1941,15 +2167,21 @@ end
 
 function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, currentPlayerKey)
     local row = AcquireProfessionRow(parent)
+    row._wnYOffset = yOffset
     row:ClearAllPoints()
-    row:SetSize(width, ROW_HEIGHT)
-    row:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    row:SetHeight(ROW_HEIGHT)
+    -- Stretch to full section width (Characters tab parity) so stripe/bg covers the scrollable grid.
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
+    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
     row:EnableMouse(true)
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
-    if row._wnProfMidRule then row._wnProfMidRule:Hide() end
-
+    local rowW = row:GetWidth() or width
+    row._wnRowPaintWidth = rowW
     ns.UI.Factory:ApplyRowBackground(row, index)
+    if row.bg and row.bg.SetAllPoints then
+        row.bg:SetAllPoints()
+    end
 
     local charKey = GetCharKey(char)
     local isCurrent = (charKey == currentPlayerKey)
@@ -1959,7 +2191,6 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
 
     -- FAVORITE ICON (own column, left of class icon)
     -- Visual star size = column width * 0.65, matching CreateFavoriteButton in Characters tab
-    local favX = ColOffset("favIcon")
     local favColW = ColWidth("favIcon")
     local favIconSize = favColW * 0.65
     if not row.favIcon then
@@ -1970,7 +2201,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     end
     row.favIcon:SetSize(favIconSize, favIconSize)
     row.favIcon:ClearAllPoints()
-    row.favIcon:SetPoint("LEFT", favX + (favColW - favIconSize) / 2, 0)
+    row.favIcon:SetPoint("CENTER", row, "LEFT", ColCenterX("favIcon"), 0)
     if isFavorite then
         row.favIcon:Show()
     else
@@ -1978,16 +2209,18 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     end
 
     -- CLASS ICON (vertically centered in row, same size as Characters tab)
-    local classX = ColOffset("classIcon")
     local classSize = ColWidth("classIcon")
+    local classCenterX = ColCenterX("classIcon")
     if not row.classIcon then
         local CreateClassIcon = ns.UI_CreateClassIcon
         if CreateClassIcon and char.classFile then
-            row.classIcon = CreateClassIcon(row, char.classFile, classSize, "LEFT", classX, 0)
+            row.classIcon = CreateClassIcon(row, char.classFile, classSize, "CENTER", classCenterX, 0)
         end
     end
     if row.classIcon then
         row.classIcon:SetSize(classSize, classSize)
+        row.classIcon:ClearAllPoints()
+        row.classIcon:SetPoint("CENTER", row, "LEFT", classCenterX, 0)
         if char.classFile then row.classIcon:SetAtlas("classicon-" .. char.classFile); row.classIcon:Show()
         else row.classIcon:Hide() end
     end
@@ -2034,24 +2267,90 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     if row.nameText.SetJustifyV then row.nameText:SetJustifyV("TOP") end
     if row.realmText.SetJustifyV then row.realmText:SetJustifyV("TOP") end
 
-    -- Class tint gradient (Characters tab parity): ends after name/realm identity block.
-    do
-        local nameLeft = nameX
-        local swName = row.nameText:GetStringWidth() or 0
-        local swRealm = row.realmText:GetStringWidth() or 0
-        local nameBlockRight = nameLeft + math.min(nameW, math.max(swName, swRealm) + 4)
-        local rowW = row:GetWidth() or width
-        if nameBlockRight > rowW - 2 then
-            nameBlockRight = rowW - 2
+    -- Class tint: fixed width through identity strip (fav/class/name/open), same for every row.
+    local function ApplyProfessionRowClassGradient()
+        if not ns.UI_ApplyCharacterRowClassGradientAccent then return end
+        local gradientEnd = GetProfessionIdentityGradientEnd()
+        local rowW = row:GetWidth() or row._wnRowPaintWidth or width
+        if rowW and rowW >= 2 and gradientEnd > rowW - 2 then
+            gradientEnd = rowW - 2
         end
-        if ns.UI_ApplyCharacterRowClassGradientAccent then
-            ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, nameBlockRight)
+        ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
+    end
+    row._wnGradientRefresh = ApplyProfessionRowClassGradient
+
+    -- OPEN (character-level; after identity columns, before profession lines)
+    local FactRow = ns.UI and ns.UI.Factory
+    if not row.openBtn then
+        local btn = FactRow and FactRow:CreateButton(row, ColWidth("open"), 18, true)
+        if not btn then
+            btn = CreateFrame("Button", nil, row)
+            btn:SetSize(ColWidth("open"), 18)
         end
+        if ApplyVisuals then
+            ApplyVisuals(btn, {0.15, 0.15, 0.18, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
+        end
+        btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
+        btn.label:SetPoint("CENTER", 0, 0)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(btn) end
+        row.openBtn = btn
+    end
+    row.openBtn:ClearAllPoints()
+    row.openBtn:SetPoint("CENTER", row, "LEFT", ColCenterX("open"), 0)
+
+    local hasPrimaryProf = CharacterHasPrimaryProfession(char)
+    local canOpenProf = isCurrent and hasPrimaryProf
+    local openTip
+    if not hasPrimaryProf then
+        openTip = (ns.L and ns.L["NO_PROFESSION"]) or "No Profession"
+    elseif not isCurrent then
+        openTip = (ns.L and ns.L["GEAR_NO_PREVIEW_HINT"]) or "Log in on this character to refresh the appearance preview."
+    else
+        openTip = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open recipe list"
+    end
+    SetProfessionOpenButtonState(row.openBtn, canOpenProf, openTip)
+    if canOpenProf then
+        row.openBtn:SetScript("OnClick", function()
+            if InCombatLockdown() then return end
+            local slot = GetFirstPrimaryProfessionSlot(char)
+            if C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill and slot then
+                if slot.skillLine then
+                    C_TradeSkillUI.OpenTradeSkill(slot.skillLine)
+                elseif slot.skillLineID then
+                    C_TradeSkillUI.OpenTradeSkill(slot.skillLineID)
+                else
+                    ToggleProfessionsBook()
+                end
+            else
+                ToggleProfessionsBook()
+            end
+        end)
+    else
+        row.openBtn:SetScript("OnClick", nil)
     end
 
+    ApplyProfessionRowClassGradient()
+
     -- PROFESSION LINES
-    self:DrawProfessionLine(row, char, char.professions and char.professions[1], 1, LINE1_Y, isCurrent)
-    self:DrawProfessionLine(row, char, char.professions and char.professions[2], 2, LINE2_Y, isCurrent)
+    self:DrawProfessionLine(row, char, char.professions and char.professions[1], 1, LINE1_Y)
+    self:DrawProfessionLine(row, char, char.professions and char.professions[2], 2, LINE2_Y)
+
+    -- Midline between profession bands (data grid only; identity columns stay clean).
+    do
+        local rule = row._wnProfMidRule
+        if not rule then
+            rule = row:CreateTexture(nil, "ARTWORK")
+            rule:SetHeight(1)
+            rule:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.14)
+            row._wnProfMidRule = rule
+        end
+        local ruleLeft = ColOffset("profIcon")
+        local ruleRight = ColOffset("info") + ColWidth("info")
+        rule:ClearAllPoints()
+        rule:SetPoint("LEFT", row, "LEFT", ruleLeft, 0)
+        rule:SetPoint("RIGHT", row, "LEFT", ruleRight, 0)
+        rule:Show()
+    end
 
     -- Row hover
     row:SetScript("OnEnter", function(self) self:SetAlpha(0.9) end)
@@ -2071,21 +2370,20 @@ local function AcquireColumnHitFrame(row, key, colKey, centerY)
     local frame = row[key]
     if not frame then
         local colW = ColWidth(colKey)
-        local hitH = ROW_HEIGHT / 2
         if FactHit and FactHit.CreateButton then
-            frame = FactHit:CreateButton(row, colW, hitH, true)
+            frame = FactHit:CreateButton(row, colW, PROF_BAND_HEIGHT, true)
         end
         if not frame then
             frame = CreateFrame("Button", nil, row)
-            frame:SetSize(colW, hitH)
+            frame:SetSize(colW, PROF_BAND_HEIGHT)
         end
         frame:SetFrameLevel(row:GetFrameLevel() + 3)
         frame:EnableMouse(true)
         row[key] = frame
     end
-    frame:SetSize(ColWidth(colKey), ROW_HEIGHT / 2)
+    frame:SetSize(ColWidth(colKey), PROF_BAND_HEIGHT)
     frame:ClearAllPoints()
-    frame:SetPoint("LEFT", ColOffset(colKey), centerY)
+    frame:SetPoint("LEFT", row, "LEFT", ColOffset(colKey), centerY)
     frame:SetScript("OnEnter", nil)
     frame:SetScript("OnLeave", nil)
     frame:Show()
@@ -2290,24 +2588,21 @@ end
 -- DRAW PROFESSION LINE (single profession within a row)
 --============================================================================
 
-function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, isCurrent)
+function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
     local p = "l" .. lineIndex
     local FactRow = ns.UI and ns.UI.Factory
 
     local iconSize = ColWidth("profIcon")
 
     -- ICON
-    local iconX = ColOffset("profIcon")
     if not row[p.."Icon"] then
         row[p.."Icon"] = CreateIcon(row, nil, iconSize)
         row[p.."Icon"]:EnableMouse(true)
         row[p.."Icon"].icon = row[p.."Icon"].texture
     end
-    row[p.."Icon"]:ClearAllPoints()
-    row[p.."Icon"]:SetPoint("LEFT", iconX, centerY)
+    AnchorCellInColumn(row[p.."Icon"], "profIcon", row, centerY, "CENTER")
 
     -- NAME
-    local nameX = ColOffset("profName")
     if not row[p.."Name"] then
         row[p.."Name"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Name"]:SetJustifyH("LEFT")
@@ -2315,13 +2610,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Name"]:SetMaxLines(1)
     end
     row[p.."Name"]:SetWidth(ColWidth("profName"))
-    row[p.."Name"]:ClearAllPoints()
-    row[p.."Name"]:SetPoint("LEFT", nameX, centerY)
+    AnchorCellInColumn(row[p.."Name"], "profName", row, centerY, "LEFT")
     if row[p.."Name"].SetJustifyV then row[p.."Name"]:SetJustifyV("MIDDLE") end
 
     -- SKILL
     local skillVisible = IsColumnVisible("skill")
-    local skillX = ColOffset("skill")
     if not row[p.."Skill"] then
         row[p.."Skill"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Skill"]:SetJustifyH("CENTER")
@@ -2329,8 +2622,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     end
     if skillVisible then
         row[p.."Skill"]:SetWidth(ColWidth("skill"))
-        row[p.."Skill"]:ClearAllPoints()
-        row[p.."Skill"]:SetPoint("LEFT", skillX, centerY)
+        AnchorCellInColumn(row[p.."Skill"], "skill", row, centerY, "CENTER")
         row[p.."Skill"]:Show()
     else
         row[p.."Skill"]:Hide()
@@ -2338,7 +2630,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
 
     -- RECHARGE (timer text, right of bar)
     local rechargeVisible = IsColumnVisible("recharge")
-    local rechargeX = ColOffset("recharge")
     if not row[p.."Recharge"] then
         row[p.."Recharge"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Recharge"]:SetJustifyH("CENTER")
@@ -2346,8 +2637,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     end
     if rechargeVisible then
         row[p.."Recharge"]:SetWidth(ColWidth("recharge"))
-        row[p.."Recharge"]:ClearAllPoints()
-        row[p.."Recharge"]:SetPoint("LEFT", rechargeX, centerY)
+        AnchorCellInColumn(row[p.."Recharge"], "recharge", row, centerY, "CENTER")
         row[p.."Recharge"]:Show()
     else
         row[p.."Recharge"]:Hide()
@@ -2355,7 +2645,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
 
     -- KNOWLEDGE (text + optional unspent warning triangle)
     local knowVisible = IsColumnVisible("knowledge")
-    local knowX = ColOffset("knowledge")
     local knowW = ColWidth("knowledge")
     if not row[p.."Know"] then
         row[p.."Know"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
@@ -2377,11 +2666,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     end
     if knowVisible then
         row[p.."Know"]:SetWidth(knowW - 16)
-        row[p.."Know"]:ClearAllPoints()
-        row[p.."Know"]:SetPoint("LEFT", knowX, centerY)
+        AnchorCellInColumn(row[p.."Know"], "knowledge", row, centerY, "CENTER")
         row[p.."Know"]:Show()
         row[p.."KnowWarn"]:ClearAllPoints()
-        row[p.."KnowWarn"]:SetPoint("RIGHT", row, "LEFT", knowX + knowW - 2, centerY)
+        row[p.."KnowWarn"]:SetPoint("CENTER", row, "LEFT", ColCenterX("knowledge") + (knowW / 2) - 10, centerY)
     else
         row[p.."Know"]:Hide()
         row[p.."KnowWarn"]:Hide()
@@ -2396,8 +2684,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         end
         if IsColumnVisible(colKey) then
             row[key]:SetWidth(ColWidth(colKey))
-            row[key]:ClearAllPoints()
-            row[key]:SetPoint("LEFT", ColOffset(colKey), centerY)
+            AnchorCellInColumn(row[key], colKey, row, centerY, "CENTER")
             row[key]:Show()
         else
             row[key]:Hide()
@@ -2464,28 +2751,15 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local rechargeHit = AcquireColumnHitFrame(row, p.."RechargeHit", "recharge", centerY)
     if rechargeVisible then rechargeHit:Show() else rechargeHit:Hide() end
 
-    -- OPEN BUTTON
-    local openX = ColOffset("open")
-    if not row[p.."Btn"] then
-        local btn = FactRow and FactRow:CreateButton(row, ColWidth("open"), 18, true)
-        if not btn then
-            btn = CreateFrame("Button", nil, row)
-            btn:SetSize(ColWidth("open"), 18)
-        end
-        if ApplyVisuals then
-            ApplyVisuals(btn, {0.15, 0.15, 0.18, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
-        end
-        btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
-        btn.label:SetPoint("CENTER", 0, 0)
-        btn.label:SetText((ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open")
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(btn) end
-        row[p.."Btn"] = btn
+    -- Per-line Open retired (character-level row.openBtn); hide pooled legacy buttons.
+    if row[p.."Btn"] then
+        row[p.."Btn"]:Hide()
+        row[p.."Btn"]:SetScript("OnClick", nil)
+        row[p.."Btn"]:SetScript("OnEnter", nil)
+        row[p.."Btn"]:SetScript("OnLeave", nil)
     end
-    row[p.."Btn"]:ClearAllPoints()
-    row[p.."Btn"]:SetPoint("LEFT", openX, centerY)
 
     -- INFO BUTTON (read-only detail window)
-    local infoX = ColOffset("info")
     if not row[p.."InfoBtn"] then
         local ibtn = FactRow and FactRow:CreateButton(row, ColWidth("info"), 18, true)
         if not ibtn then
@@ -2503,8 +2777,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(ibtn) end
         row[p.."InfoBtn"] = ibtn
     end
-    row[p.."InfoBtn"]:ClearAllPoints()
-    row[p.."InfoBtn"]:SetPoint("LEFT", infoX, centerY)
+    AnchorCellInColumn(row[p.."InfoBtn"], "info", row, centerY, "CENTER")
 
     -- ===== POPULATE =====
     if prof and prof.name then
@@ -2560,9 +2833,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         end
         local concVisible = IsColumnVisible("conc")
         local concX = ColOffset("conc")
-        local barTopY = centerY + BAR_HEIGHT / 2 - ROW_HEIGHT / 2
         if concVisible then
-            UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), concCurrent, concMax)
+            UpdateConcentrationBar(row, p.."ConcBar", concX, ColBarTopY(centerY), ColWidth("conc"), concCurrent, concMax)
         elseif row[p.."ConcBar"] then
             row[p.."ConcBar"]:Hide()
         end
@@ -2795,43 +3067,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             row[p.."Icon"].knowledgeBadge:Hide()
         end
 
-        -- Open: only for the logged-in character (same row); hidden for alts — avoids dead grey controls.
-        local btn = row[p.."Btn"]
-        if isCurrent then
-            btn:Show()
-            btn:EnableMouse(true)
-            if btn.label then
-                btn.label:SetText((ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open")
-            end
-            btn:Enable()
-            btn:SetAlpha(1)
-            if btn.label then btn.label:SetTextColor(1, 1, 1) end
-            btn:SetScript("OnClick", function()
-                if InCombatLockdown() then return end
-                if C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill then
-                    local slot = char.professions and char.professions[lineIndex]
-                    if slot and slot.skillLine then
-                        C_TradeSkillUI.OpenTradeSkill(slot.skillLine)
-                    elseif slot and slot.skillLineID then
-                        C_TradeSkillUI.OpenTradeSkill(slot.skillLineID)
-                    else
-                        ToggleProfessionsBook()
-                    end
-                else
-                    ToggleProfessionsBook()
-                end
-            end)
-            btn:SetScript("OnEnter", function(self)
-                if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open recipe list", lines = {}, anchor = "ANCHOR_TOP" }) end
-            end)
-            btn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
-        else
-            btn:Hide()
-            btn:SetScript("OnClick", nil)
-            btn:SetScript("OnEnter", nil)
-            btn:SetScript("OnLeave", nil)
-        end
-
         -- Info button: always enabled — shows read-only DB data for any character
         local infoBtn = row[p.."InfoBtn"]
         local infoProfSlot = prof
@@ -2963,24 +3198,21 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             end
             row[eqEmptyKey]:SetWidth(equipW)
             row[eqEmptyKey]:ClearAllPoints()
-            row[eqEmptyKey]:SetPoint("CENTER", row, "LEFT", equipX + equipW / 2, centerY)
+            row[eqEmptyKey]:SetPoint("CENTER", row, "LEFT", ColCenterX("equipment"), centerY)
             row[eqEmptyKey]:SetText(emptyCell)
             row[eqEmptyKey]:Show()
         elseif row[p .. "EquipEmpty"] then
             row[p .. "EquipEmpty"]:Hide()
         end
-        -- Open only on current character; no profession line — keep column empty (no ghost button).
-        do
-            local gbtn = row[p.."Btn"]
-            gbtn:Hide()
-            gbtn:SetScript("OnClick", nil)
-            gbtn:SetScript("OnEnter", nil)
-            gbtn:SetScript("OnLeave", nil)
+        if row[p.."Btn"] then
+            row[p.."Btn"]:Hide()
+            row[p.."Btn"]:SetScript("OnClick", nil)
+            row[p.."Btn"]:SetScript("OnEnter", nil)
+            row[p.."Btn"]:SetScript("OnLeave", nil)
         end
         if row[p.."InfoBtn"] then row[p.."InfoBtn"]:Hide() end
         local concX = ColOffset("conc")
-        local barTopY = centerY + BAR_HEIGHT / 2 - ROW_HEIGHT / 2
-        UpdateConcentrationBar(row, p.."ConcBar", concX, barTopY, ColWidth("conc"), 0, 0)
+        UpdateConcentrationBar(row, p.."ConcBar", concX, ColBarTopY(centerY), ColWidth("conc"), 0, 0)
         if row[p.."ConcBar"] then row[p.."ConcBar"]:Hide() end
         if row[p.."Icon"].knowledgeBadge then row[p.."Icon"].knowledgeBadge:Hide() end
         row[p.."Icon"]:SetScript("OnEnter", nil)
@@ -3010,14 +3242,22 @@ do
     end
 end
 
-if ns.UI_LayoutCoordinator then
-    local LC = ns.UI_LayoutCoordinator
-    LC:RegisterTabAdapter("professions", {
-        OnViewportLayoutCommit = function(_scrollChild, _contentWidth, mf)
-            if not mf or mf.currentTab ~= "professions" then return false end
-            if ns.UI_RefreshFixedHeaderChrome then
-                ns.UI_RefreshFixedHeaderChrome(mf)
+if ns.UI_RegisterTabViewportResize then
+    ns.UI_RegisterTabViewportResize("professions", {
+        mode = ns.UI_VIEWPORT_RESIZE_MODE and ns.UI_VIEWPORT_RESIZE_MODE.STRETCH_ROWS,
+        tabKey = "professions",
+        onLive = function(scrollChild, contentWidth, mf)
+            ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
+        end,
+        stretch = ProfessionStretchRelayoutOpts,
+        refreshHeader = true,
+        onCommit = function(scrollChild, contentWidth, mf)
+            if contentWidth and contentWidth > 0 then
+                cachedRowWidth = contentWidth
             end
+            EnsureProfessionColumnHeaderStrip(mf, scrollChild or mf.scrollChild)
+            RelayoutProfessionRowWidths(scrollChild or mf.scrollChild)
+            EnsureProfessionRowGradientScrollHook(mf)
             return false
         end,
     })

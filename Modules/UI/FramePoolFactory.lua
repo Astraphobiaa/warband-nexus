@@ -290,13 +290,8 @@ local function AcquireProfessionRow(parent)
         MarkRowOutOfPool(row)
     end
     if not row then
-        -- Bootstrap size is overridden every draw by ProfessionsUI:DrawProfessionRow (width + ROW_HEIGHT 52).
-        local Fact = ns.UI and ns.UI.Factory
-        local bootW = math.max((parent and parent.GetWidth and parent:GetWidth()) or 0, 520)
-        row = Fact and Fact:CreateButton(parent, bootW, 52, true)
-        if not row then
-            row = CreateFrame("Button", nil, parent)
-        end
+        -- Width comes from TOPLEFT/TOPRIGHT anchors in DrawProfessionRow (Characters tab parity).
+        row = CreateFrame("Button", nil, parent)
         row.isPooled = true
         row.rowType = "profession"
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then

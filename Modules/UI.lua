@@ -671,6 +671,9 @@ local function UpdateScrollLayout(frame)
     if frame.columnHeaderInner and frame.columnHeaderClip and frame.columnHeaderClip:GetHeight() > 1 then
         frame.columnHeaderInner:SetWidth(w)
     end
+    if frame.currentTab == "professions" and ns.UI_RelayoutProfessionRowWidths and frame.scrollChild then
+        ns.UI_RelayoutProfessionRowWidths(frame.scrollChild)
+    end
     if ns.UI_SyncMainScrollBarColumns then
         ns.UI_SyncMainScrollBarColumns(frame)
     end
@@ -2495,6 +2498,14 @@ function WarbandNexus:CreateMainWindow()
             f.columnHeaderInner:ClearAllPoints()
             f.columnHeaderInner:SetPoint("TOPLEFT", f.columnHeaderClip, "TOPLEFT", -(value or 0), 0)
             f.columnHeaderInner:SetPoint("BOTTOMLEFT", f.columnHeaderClip, "BOTTOMLEFT", -(value or 0), 0)
+        end
+        if f.currentTab == "professions" then
+            if ns.UI_RelayoutProfessionRowWidths and f.scrollChild then
+                ns.UI_RelayoutProfessionRowWidths(f.scrollChild)
+            end
+            if ns.UI_DebounceProfessionRowGradientRefresh then
+                ns.UI_DebounceProfessionRowGradientRefresh(f)
+            end
         end
     end
 
