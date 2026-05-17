@@ -321,16 +321,13 @@ local function RefreshCollectionsModelViewerLayout(modelViewer, panelW, panelH)
     if modelViewer.UpdateModelFrameSize then
         modelViewer:UpdateModelFrameSize()
     end
-    if modelViewer.RefreshModelFraming then
-        modelViewer:RefreshModelFraming()
+    if modelViewer._mountDisplayUsesJournalScene and modelViewer._journalMountScene then
+        ApplyJournalModelSceneTransform(modelViewer._journalMountScene, modelViewer.zoomMultiplier, modelViewer.modelRotation)
     end
-    if C_Timer and C_Timer.After then
+    if C_Timer and C_Timer.After and modelViewer.UpdateModelFrameSize then
         C_Timer.After(0, function()
             if modelViewer.UpdateModelFrameSize then
                 modelViewer:UpdateModelFrameSize()
-            end
-            if modelViewer.RefreshModelFraming then
-                modelViewer:RefreshModelFraming()
             end
         end)
     end
@@ -418,7 +415,8 @@ end
 -- ============================================================================
 -- DETAILS WINDOW DIFFERENCES: Mounts vs ToyBox vs Achievement
 -- ============================================================================
--- Mounts/Pets: viewerContainer → modelViewer (text header overlay + 3D stage below description, clipped).
+-- Mounts: viewerContainer (CreateContainer) → mountDetailEmptyOverlay + modelViewer (CreateModelViewer).
+--   Single panel: icon, name, source, description, 3D model. No scroll; content fixed in one panel.
 -- ToyBox: toyDetailContainer (CreateContainer) → toyDetailEmptyOverlay + _toyDetailScroll (ScrollFrame).
 --   ScrollChild has: headerRow (icon, name), collectedBadge, sourceLabel. Scroll-based; no 3D model.
 -- Achievement: achievementDetailContainer (CreateContainer) → achDetailEmptyOverlay + achievementDetailPanel.
@@ -1968,8 +1966,8 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
 end
 
 -- ============================================================================
--- MODEL VIEWER PANEL — Mounts: Blizzard Mount Journal ModelScene (per-mount modelSceneID camera).
--- Pets: PlayerModel + fixed scale 1.0 / cam scale. Viewport below detail text only.
+-- MODEL VIEWER PANEL — Mounts: Blizzard Mount Journal pipeline (ModelScene WrappedAndUnwrappedModelScene + TransitionToModelSceneID).
+-- Pets/fallback: Frame (clip) + PlayerModel + interaction layer. Layout: viewport below descText.
 -- Lua 5.1: isolate locals in do-block (main chunk stays under 200 locals).
 -- ============================================================================
 
@@ -2030,34 +2028,32 @@ end
 
 do
 
+local FIXED_CAM_SCALE = 1.8
+local CAM_SCALE_MIN = 0.6
+local CAM_SCALE_MAX = 6
+local ZOOM_STEP = 0.1
 local ROTATE_SENSITIVITY = 0.02
-local ZOOM_STEP = 0.12
-local ZOOM_MULTIPLIER_MIN = 0.35
-local ZOOM_MULTIPLIER_MAX = 4.0
-local MODEL_VIEWPORT_INSET = 0
-local MODEL_VIEWPORT_TOP_GAP = 10
-local MODEL_VIEWPORT_MIN_HEIGHT = 140
-local MODEL_FALLBACK_TOP_RATIO = 0.34
-local PET_PREVIEW_CAM_SCALE = 1.14
-local MOUNT_FALLBACK_CAM_SCALE = 1.0
--- Our detail viewport is shorter/wider than Mount Journal; nudge preview up (~missing feet at bottom).
-local MOUNT_PREVIEW_VIEW_TRANSLATE_Y_FRAC = 0.11
-local MOUNT_PREVIEW_VIEW_TRANSLATE_Y_MIN = 18
-local MOUNT_PREVIEW_VIEW_TRANSLATE_Y_MAX = 52
-local PET_PREVIEW_VIEW_TRANSLATE_Y_FRAC = 0.06
-local PET_PREVIEW_VIEW_TRANSLATE_Y_MIN = 8
-local PET_PREVIEW_VIEW_TRANSLATE_Y_MAX = 28
-local MODEL_VIEWPORT_BOTTOM_RESERVE = 22
-local MODEL_SCENE_BOTTOM_OVERSCAN = 30
+-- Standard framing: normalize to REFERENCE_RADIUS, center in viewport (UseModelCenterToTransform), pull camera back.
+local REFERENCE_RADIUS = 0.86
+local FIXED_CAM_DISTANCE = 5.35
+local MODEL_VIEWER_CAMERA_FIT_PADDING = 2.35
+local MODEL_VIEWPORT_TOP_GAP = 6
+local MOUNT_VIEWPORT_NUDGE_UP = 18
+local MODEL_VIEWPORT_VERTICAL_BIAS_UP = 0.24
+local MODEL_VIEWPORT_INSET = 2
+local MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH = 0.62
+local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.92
+local MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y = 36
+local MODEL_JOURNAL_ACTOR_Y_OFFSET = 0.14
+local MODEL_SCALE_MIN = 0.15
+local MODEL_SCALE_MAX = 6.0
+local ZOOM_MULTIPLIER_MIN = 0.28
+local ZOOM_MULTIPLIER_MAX = 3.0
+local PET_MODEL_VERTICAL_OFFSET = 0.22
+local MOUNT_PLAYERMODEL_FALLBACK_Y_OFFSET = 0.28
 
-local function ResolveCollectionsPreviewViewTranslateY(viewport, frac, yMin, yMax)
-    local h = viewport and viewport.GetHeight and viewport:GetHeight() or 0
-    if not h or h < 1 then return 0 end
-    local y = math.floor(h * (frac or 0) + 0.5)
-    if yMin and y < yMin then y = yMin end
-    if yMax and y > yMax then y = yMax end
-    return y
-end
+-- Blizzard_Collections Mainline: MountJournal uses ModelScene:TransitionToModelSceneID + GetActorByTag("unwrapped"),
+-- not PlayerModel alone (Blizzard_MountCollection.lua — MountJournal_UpdateMountDisplay).
 
 local function Collections_LoadBlizzardCollections()
     if Utilities and Utilities.SafeLoadAddOn then
@@ -2071,23 +2067,27 @@ local function Collections_SanitizeMountExtra(v, default)
     return v
 end
 
-local function ApplyJournalModelSceneTransform(scene, zoomMultiplier, yaw, viewport)
+local function CenterCollectionsJournalActor(scene)
+    if not scene or not scene.GetActorByTag then return end
+    local actor = scene:GetActorByTag("unwrapped")
+    if not actor then return end
+    if actor.SetPosition then
+        pcall(actor.SetPosition, actor, 0, 0, MODEL_JOURNAL_ACTOR_Y_OFFSET)
+    end
+end
+
+local function ApplyJournalModelSceneTransform(scene, zoomMultiplier, yaw)
     if not scene then return end
-    local z = zoomMultiplier or 1.0
+    CenterCollectionsJournalActor(scene)
+    local mul = MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT * (zoomMultiplier or 1.0)
     if scene.SetCameraDistanceScale then
-        pcall(scene.SetCameraDistanceScale, scene, z)
+        pcall(scene.SetCameraDistanceScale, scene, mul)
     end
     if scene.SetCamDistanceScale then
-        pcall(scene.SetCamDistanceScale, scene, z)
+        pcall(scene.SetCamDistanceScale, scene, mul)
     end
-    local ty = ResolveCollectionsPreviewViewTranslateY(
-        viewport,
-        MOUNT_PREVIEW_VIEW_TRANSLATE_Y_FRAC,
-        MOUNT_PREVIEW_VIEW_TRANSLATE_Y_MIN,
-        MOUNT_PREVIEW_VIEW_TRANSLATE_Y_MAX
-    )
     if scene.SetViewTranslation then
-        pcall(scene.SetViewTranslation, scene, 0, ty)
+        pcall(scene.SetViewTranslation, scene, 0, MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y)
     end
     if yaw and scene.GetActorByTag then
         local actor = scene:GetActorByTag("unwrapped")
@@ -2101,6 +2101,7 @@ local function ApplyJournalModelSceneTransform(scene, zoomMultiplier, yaw, viewp
     end
 end
 
+--- Same pipeline as MountJournal_UpdateMountDisplay (ModelScene path). Returns true if scene was updated.
 local function ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDFromCache, forceSceneChange)
     if not scene or not mountID or not C_MountJournal or not C_MountJournal.GetMountInfoExtraByID then
         return false
@@ -2205,7 +2206,42 @@ local function ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDispla
     end
 
     scene:Show()
+    CenterCollectionsJournalActor(scene)
     return true
+end
+
+-- Fallback when Journal ModelScene is unavailable: PlayerModel + cinematic scene ID (approximate).
+local function TryApplyMountJournalModelScene(pm, panel_)
+    if not pm or not panel_ or not panel_._lastMountID then return false end
+    local sid = panel_._mountUiModelSceneID
+    if type(sid) ~= "number" or sid <= 0 then return false end
+    if pm.ApplyUICinematicCamera then
+        local ok = pcall(pm.ApplyUICinematicCamera, pm, sid)
+        if ok then return true end
+    end
+    if pm.TransitionToModelSceneID then
+        local ok = pcall(pm.TransitionToModelSceneID, pm, sid)
+        if ok then return true end
+    end
+    return false
+end
+
+-- Largest sensible bounding radius for framing. GetModelRadius alone under-reports some flying mounts
+-- (wings above the sphere); GetBoundingRadius (when present) often closer to visible extent — use max().
+local function GetEffectiveModelBoundingRadius(m)
+    if not m then return nil end
+    local best = nil
+    if m.GetModelRadius then
+        local ok, r = pcall(m.GetModelRadius, m)
+        if ok and type(r) == "number" and r > 0 then best = r end
+    end
+    if m.GetBoundingRadius then
+        local ok, r = pcall(m.GetBoundingRadius, m)
+        if ok and type(r) == "number" and r > 0 then
+            best = best and math.max(best, r) or r
+        end
+    end
+    return best
 end
 
 -- Mount API helpers — CreateModelViewer closure'ları bunlara ihtiyaç duyduğu için burada tanımlı.
@@ -2220,46 +2256,14 @@ end
 
 local function SafeGetMountInfoExtra(mountID)
     if not mountID or not C_MountJournal or not C_MountJournal.GetMountInfoExtraByID then
-        return nil, "", ""
+        return nil, "", "", nil
     end
-    local displayID, description, source = C_MountJournal.GetMountInfoExtraByID(mountID)
+    local displayID, description, source, _, _, uiModelSceneID = C_MountJournal.GetMountInfoExtraByID(mountID)
     if issecretvalue and displayID and issecretvalue(displayID) then displayID = nil end
     if issecretvalue and description and issecretvalue(description) then description = "" end
     if issecretvalue and source and issecretvalue(source) then source = "" end
-    return displayID, description or "", source or ""
-end
-
-local function ResolveMountCreatureDisplayID(mountID, fromCache)
-    if type(fromCache) == "number" and fromCache > 0 then
-        if not (issecretvalue and issecretvalue(fromCache)) then
-            return fromCache
-        end
-    end
-    if not mountID or mountID <= 0 then return nil end
-    local displayID = select(1, SafeGetMountInfoExtra(mountID))
-    if displayID and displayID > 0 then return displayID end
-    if C_MountJournal and C_MountJournal.GetMountAllCreatureDisplayInfoByID then
-        local all = C_MountJournal.GetMountAllCreatureDisplayInfoByID(mountID)
-        if all and #all > 0 and all[1] and type(all[1].creatureDisplayID) == "number" then
-            local cid = all[1].creatureDisplayID
-            if not (issecretvalue and issecretvalue(cid)) then
-                return cid
-            end
-        end
-    end
-    return nil
-end
-
-local function ResolvePetCreatureDisplayID(speciesID, fromCache)
-    if type(fromCache) == "number" and fromCache > 0 then
-        if not (issecretvalue and issecretvalue(fromCache)) then
-            return fromCache
-        end
-    end
-    if not speciesID or speciesID <= 0 then return nil end
-    local displayID = select(1, SafeGetPetInfoExtra(speciesID))
-    if displayID and displayID > 0 then return displayID end
-    return nil
+    if issecretvalue and uiModelSceneID and issecretvalue(uiModelSceneID) then uiModelSceneID = nil end
+    return displayID, description or "", source or "", uiModelSceneID
 end
 
 -- Pet API helpers — same pattern as mounts.
@@ -2294,13 +2298,12 @@ CreateModelViewer = function(parent, width, height)
     panel:SetSize(width, height)
     ApplyDetailAccentVisuals(panel)
 
-    -- Slot: region below source/description text only (never under the header block).
+    -- Slot: full width from desc bottom to panel bottom; viewport inside is height-capped and vertically centered.
     local modelViewportSlot = Factory:CreateContainer(panel, math.max(1, width), math.max(1, height), false)
     if not modelViewportSlot then
         modelViewportSlot = CreateFrame("Frame", nil, panel)
     end
     modelViewportSlot:SetFrameLevel(panel:GetFrameLevel() + 1)
-    if modelViewportSlot.EnableMouse then modelViewportSlot:EnableMouse(false) end
     panel.modelViewportSlot = modelViewportSlot
 
     -- Model stage: plain Frame with SetClipsChildren (ScriptRegion child tree); PlayerModel draws past bounds — clip here.
@@ -2323,18 +2326,18 @@ CreateModelViewer = function(parent, width, height)
 
     local function ApplyModelToViewportInsets()
         local inset = MODEL_VIEWPORT_INSET
-        local overscan = MODEL_SCENE_BOTTOM_OVERSCAN
         model:ClearAllPoints()
         model:SetPoint("TOPLEFT", modelViewport, "TOPLEFT", inset, -inset)
-        model:SetPoint("BOTTOMRIGHT", modelViewport, "BOTTOMRIGHT", -inset, inset - overscan)
+        model:SetPoint("BOTTOMRIGHT", modelViewport, "BOTTOMRIGHT", -inset, inset)
         local js = panel._journalMountScene
         if js then
             js:ClearAllPoints()
             js:SetPoint("TOPLEFT", modelViewport, "TOPLEFT", inset, -inset)
-            js:SetPoint("BOTTOMRIGHT", modelViewport, "BOTTOMRIGHT", -inset, inset - overscan)
+            js:SetPoint("BOTTOMRIGHT", modelViewport, "BOTTOMRIGHT", -inset, inset)
         end
     end
 
+    -- Journal-quality mount preview: same ModelScene template as Mount Journal (Blizzard_Collections).
     local function TryInitJournalMountModelScene()
         if panel._journalMountScene then return panel._journalMountScene end
         if panel._journalMountSceneFailed then return nil end
@@ -2348,14 +2351,9 @@ CreateModelViewer = function(parent, width, height)
         scene:SetFrameLevel(model:GetFrameLevel() + 2)
         if scene.SetResetCallback then
             scene:SetResetCallback(function()
-                if panel._mountDisplayUsesJournalScene and panel._lastMountID and panel._journalMountScene then
+                if panel._lastMountID and panel._mountDisplayUsesJournalScene and panel._journalMountScene then
                     ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
-                    ApplyJournalModelSceneTransform(
-                        panel._journalMountScene,
-                        panel.zoomMultiplier,
-                        panel.modelRotation,
-                        panel.modelViewport
-                    )
+                    ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
                 end
             end)
         end
@@ -2367,52 +2365,20 @@ CreateModelViewer = function(parent, width, height)
         return scene
     end
 
-    local function ShowPlayerModelPath(showPlayerModel)
-        if showPlayerModel then
+    -- Defined before interactionLayer exists; use panel._interactionLayer at call time (not local interactionLayer — scope).
+    local function ShowPlayerModelPath(show)
+        local il = panel._interactionLayer
+        if show then
             model:Show()
+            if il then il:Show() end
         else
             model:Hide()
-        end
-        if panel._interactionLayer then
-            panel._interactionLayer:Show()
+            if il then il:Hide() end
         end
     end
 
-    local function ResolveModelSlotTopAnchor()
-        local gap = -MODEL_VIEWPORT_TOP_GAP
-        local desc = panel.descText
-        if desc and desc.IsShown and desc:IsShown() then
-            local txt = desc.GetText and desc:GetText()
-            if txt and txt ~= "" then
-                return desc, "BOTTOMLEFT", 0, gap
-            end
-        end
-        local obt = panel.obtainedAtLine
-        if obt and obt.IsShown and obt:IsShown() then
-            local txt = obt.GetText and obt:GetText()
-            if txt and txt ~= "" then
-                return obt, "BOTTOMLEFT", 0, gap
-            end
-        end
-        local srcLines = panel.sourceLines
-        if srcLines then
-            for i = #srcLines, 1, -1 do
-                local line = srcLines[i]
-                if line and line.IsShown and line:IsShown() then
-                    local txt = line.GetText and line:GetText()
-                    if txt and txt ~= "" then
-                        return line, "BOTTOMLEFT", 0, gap
-                    end
-                end
-            end
-        end
-        if panel.headerRowBottom then
-            return panel.headerRowBottom, "BOTTOMLEFT", 0, gap
-        end
-        return nil
-    end
-
-    -- Layout: model stage in the red-box region (below text, above panel bottom).
+    -- Layout: slot from descText bottom (or fallback) to panel bottom; viewport height capped vs width and centered in slot.
+    local MODEL_FALLBACK_TOP_RATIO = 0.28
     local function UpdateModelFrameSize()
         local w = panel:GetWidth()
         local h = panel:GetHeight()
@@ -2420,30 +2386,49 @@ CreateModelViewer = function(parent, width, height)
         local slot = panel.modelViewportSlot
         if not slot then return end
         slot:ClearAllPoints()
-        local topFrame, topPoint, topX, topY = ResolveModelSlotTopAnchor()
-        if topFrame then
-            slot:SetPoint("TOPLEFT", topFrame, topPoint, topX or 0, topY or -MODEL_VIEWPORT_TOP_GAP)
+        if panel.descText and panel.descText:IsShown() then
+            slot:SetPoint("TOPLEFT", panel.descText, "BOTTOMLEFT", 0, -MODEL_VIEWPORT_TOP_GAP)
+            slot:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
         else
-            slot:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTENT_INSET, -math.floor(h * MODEL_FALLBACK_TOP_RATIO))
+            slot:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTENT_INSET, -h * MODEL_FALLBACK_TOP_RATIO)
+            slot:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -CONTENT_INSET, CONTENT_INSET)
         end
-        local bottomPad = CONTENT_INSET + MODEL_VIEWPORT_BOTTOM_RESERVE
-        local badge = panel.collectedBadge
-        if badge and badge.IsShown and badge:IsShown() then
-            local bh = (badge.GetStringHeight and badge:GetStringHeight()) or 16
-            bottomPad = bottomPad + math.max(14, bh + 6)
-        end
-        slot:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -CONTENT_INSET, bottomPad)
+        local sw = slot:GetWidth()
+        local sh = slot:GetHeight()
+        if not sw or sw < 1 then sw = math.max(1, w - 2 * CONTENT_INSET) end
+        if not sh or sh < 2 then sh = math.max(2, h * (1 - MODEL_FALLBACK_TOP_RATIO)) end
+        -- Mount: tüm slot yüksekliğini model için kullan (Blizzard Mount Journal; 0.62 tavan büyük üst/alt siyah bant yaratıyordu).
+        local isMountView = panel._lastMountID and (not panel._lastPetID)
+        local maxH = sw * MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH
+        local vh = isMountView and sh or math.min(sh, maxH)
+        local totalVPad = math.max(0, sh - vh)
+        local vCenter = totalVPad * 0.5
+        local biasUp = math.floor(sh * MODEL_VIEWPORT_VERTICAL_BIAS_UP)
+        local nudgeUp = (isMountView and MOUNT_VIEWPORT_NUDGE_UP or math.floor(MOUNT_VIEWPORT_NUDGE_UP * 0.5)) + biasUp
+        nudgeUp = math.min(nudgeUp, math.max(0, totalVPad - 2))
+        local vPadTop = math.max(0, vCenter - nudgeUp)
+        local vPadBottom = totalVPad - vPadTop
         modelViewport:ClearAllPoints()
-        modelViewport:SetAllPoints(slot)
+        modelViewport:SetPoint("LEFT", slot, "LEFT", 0, 0)
+        modelViewport:SetPoint("RIGHT", slot, "RIGHT", 0, 0)
+        modelViewport:SetPoint("TOP", slot, "TOP", 0, -vPadTop)
+        modelViewport:SetPoint("BOTTOM", slot, "BOTTOM", 0, vPadBottom)
         ApplyModelToViewportInsets()
     end
     panel.UpdateModelFrameSize = UpdateModelFrameSize
+    panel:SetScript("OnSizeChanged", function()
+        UpdateModelFrameSize()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function() UpdateModelFrameSize() end)
+        end
+    end)
 
     panel.modelRotation = 0
+    panel.camScale = FIXED_CAM_SCALE
+    panel.normalizedRadius = false
+    panel.modelScale = 1.0
     panel.zoomMultiplier = 1.0
-    panel._mountDisplayUsesJournalScene = false
     panel._dragButton = nil
-    panel._modelLoadToken = 0
 
     -- Transparent layer above PlayerModel: reliable hit-testing for wheel + drag (journal-style: right-drag rotate; left-drag also supported).
     local interactionLayer = Factory:CreateContainer(modelViewport, math.max(1, width), math.max(1, height), false)
@@ -2456,96 +2441,117 @@ CreateModelViewer = function(parent, width, height)
     interactionLayer:EnableMouseWheel(true)
     panel._interactionLayer = interactionLayer
 
-  --- PlayerModel path only (pets + mount fallback). Scale always 1.0; camera via SetCamDistanceScale.
-    local function ApplyPlayerModelTransform()
-        model:SetPosition(0, 0, 0)
-        if model.UseModelCenterToTransform then
-            model:UseModelCenterToTransform(true)
-        end
-        if model.SetPitch then
-            pcall(model.SetPitch, model, 0)
-        end
-        model:SetFacing(panel.modelRotation)
-        if model.SetPortraitZoom then
-            model:SetPortraitZoom(0)
-        end
-        local ty = 0
-        if panel.modelViewport then
-            if panel._lastPetID and not panel._lastMountID then
-                ty = ResolveCollectionsPreviewViewTranslateY(
-                    panel.modelViewport,
-                    PET_PREVIEW_VIEW_TRANSLATE_Y_FRAC,
-                    PET_PREVIEW_VIEW_TRANSLATE_Y_MIN,
-                    PET_PREVIEW_VIEW_TRANSLATE_Y_MAX
-                )
-            elseif panel._lastMountID then
-                ty = ResolveCollectionsPreviewViewTranslateY(
-                    panel.modelViewport,
-                    MOUNT_PREVIEW_VIEW_TRANSLATE_Y_FRAC,
-                    MOUNT_PREVIEW_VIEW_TRANSLATE_Y_MIN,
-                    MOUNT_PREVIEW_VIEW_TRANSLATE_Y_MAX
-                )
-            end
-        end
-        if model.SetViewTranslation then
-            pcall(model.SetViewTranslation, model, 0, ty)
-        end
-        if model.SetModelScale then
-            model:SetModelScale(1.0)
-        end
-        local cam = PET_PREVIEW_CAM_SCALE
-        if panel._lastMountID and not panel._lastPetID then
-            cam = MOUNT_FALLBACK_CAM_SCALE
-        end
-        if model.SetCamDistanceScale then
-            model:SetCamDistanceScale(cam * (panel.zoomMultiplier or 1.0))
-        end
-    end
-
-    local function ScheduleJournalSceneFramingRefresh()
-        if not C_Timer or not C_Timer.After then return end
-        for i = 1, 3 do
-            local delay = (i - 1) * 0.08
-            C_Timer.After(delay, function()
-                if not panel._mountDisplayUsesJournalScene or not panel._journalMountScene then return end
-                ApplyJournalModelSceneTransform(
-                    panel._journalMountScene,
-                    panel.zoomMultiplier,
-                    panel.modelRotation,
-                    panel.modelViewport
-                )
-            end)
-        end
-    end
-
-    panel.RefreshModelFraming = function()
+    -- Centered preview: UseModelCenterToTransform + optional pet vertical nudge; idle pose + zero pitch for consistency.
+    local function ApplyTransform()
         if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
-            ApplyJournalModelSceneTransform(
-                panel._journalMountScene,
-                panel.zoomMultiplier,
-                panel.modelRotation,
-                panel.modelViewport
-            )
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
             return
         end
-        ApplyPlayerModelTransform()
+        if panel._usesJournalCamera and panel._lastMountID then
+            model:SetPosition(0, 0, 0)
+            if model.UseModelCenterToTransform then model:UseModelCenterToTransform(true) end
+            if model.SetPitch then pcall(model.SetPitch, model, 0) end
+            model:SetFacing(panel.modelRotation)
+            if model.SetPortraitZoom then model:SetPortraitZoom(0) end
+            if model.SetCamDistanceScale then
+                model:SetCamDistanceScale(FIXED_CAM_SCALE * panel.zoomMultiplier)
+            end
+            if model.SetViewTranslation then model:SetViewTranslation(0, 0) end
+            return
+        end
+        local yOff = 0
+        if panel._lastPetID and not panel._lastMountID then
+            yOff = PET_MODEL_VERTICAL_OFFSET
+        elseif panel._lastMountID and (not panel._lastPetID) and (not panel._mountDisplayUsesJournalScene) then
+            yOff = MOUNT_PLAYERMODEL_FALLBACK_Y_OFFSET
+        end
+        model:SetPosition(0, yOff, 0)
+        if model.UseModelCenterToTransform then model:UseModelCenterToTransform(true) end
+        if model.SetPitch then pcall(model.SetPitch, model, 0) end
+        model:SetFacing(panel.modelRotation)
+        if model.SetPortraitZoom then model:SetPortraitZoom(0) end
+        if panel.normalizedRadius then
+            if model.SetModelScale then model:SetModelScale(panel.modelScale) end
+            if model.SetCameraDistance then
+                local vw, vh = modelViewport:GetWidth(), modelViewport:GetHeight()
+                local aspectPad = 1.0
+                if vw and vh and vw > 1 and vh > 1 then
+                    local ratio = vw / vh
+                    if ratio > 1.12 then
+                        -- Wide preview: tall mounts (banners, wings) clip vertically — pull camera back
+                        -- proportionally to the aspect ratio so they fit.
+                        aspectPad = math.min(1.45, 1.0 + (ratio - 1.0) * 0.35)
+                    elseif ratio < 0.85 then
+                        -- Tall preview: wide mounts clip horizontally — same logic, mirrored.
+                        aspectPad = math.min(1.45, 1.0 + (1.0 / ratio - 1.0) * 0.35)
+                    end
+                end
+                local camDist = FIXED_CAM_DISTANCE
+                    * MODEL_VIEWER_CAMERA_FIT_PADDING
+                    * aspectPad
+                    * panel.zoomMultiplier
+                    * panel.modelScale
+                local ok = pcall(model.SetCameraDistance, model, math.max(0.1, camDist))
+                if not ok and model.SetCamDistanceScale then
+                    model:SetCamDistanceScale(panel.camScale)
+                end
+            end
+        else
+            if model.SetCamDistanceScale then model:SetCamDistanceScale(panel.camScale) end
+        end
+        if model.SetViewTranslation then
+            local viewY = 0
+            if panel._lastPetID and not panel._lastMountID then
+                viewY = 0.06
+            elseif panel._lastMountID and not panel._lastPetID then
+                viewY = 0.08
+            end
+            pcall(model.SetViewTranslation, model, 0, viewY)
+        end
     end
 
-    panel:SetScript("OnSizeChanged", function()
-        UpdateModelFrameSize()
-        panel.RefreshModelFraming()
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                UpdateModelFrameSize()
-                panel.RefreshModelFraming()
+    local function ScheduleJournalSceneAfterMount(midLock)
+        if not midLock then return end
+        local function tryOnce()
+            if panel._lastMountID ~= midLock then return end
+            if TryApplyMountJournalModelScene(model, panel) then
+                panel._usesJournalCamera = true
+                panel.zoomMultiplier = 1.0
+                ApplyTransform()
+            end
+        end
+        C_Timer.After(0, tryOnce)
+        C_Timer.After(0.1, tryOnce)
+    end
+
+    -- Model script OnModelLoaded (Widget script handlers): radius APIs often valid here; complements deferred retries.
+    local function TryApplyBoundingRadiusNormalize(lockMountID, lockCreatureID)
+        if panel._usesJournalCamera then return false end
+        if lockMountID and panel._lastMountID ~= lockMountID then return false end
+        if lockCreatureID and lockCreatureID > 0 and panel._lastCreatureDisplayID ~= lockCreatureID then return false end
+        local r = GetEffectiveModelBoundingRadius(model)
+        if not r or r <= 0 or not model.SetModelScale or not model.SetCameraDistance then return false end
+        local scale = (REFERENCE_RADIUS / r) * 0.86
+        if scale < MODEL_SCALE_MIN then scale = MODEL_SCALE_MIN elseif scale > MODEL_SCALE_MAX then scale = MODEL_SCALE_MAX end
+        panel.normalizedRadius = true
+        panel.modelScale = scale
+        ApplyTransform()
+        return true
+    end
+
+    local FRAMING_RETRY_DELAYS = { 0, 0.06, 0.14, 0.30, 0.60 }
+    local function ScheduleBoundingRadiusRetries(lockMountID, lockCreatureID)
+        for i = 1, #FRAMING_RETRY_DELAYS do
+            local delay = FRAMING_RETRY_DELAYS[i]
+            C_Timer.After(delay, function()
+                TryApplyBoundingRadiusNormalize(lockMountID, lockCreatureID)
             end)
         end
-    end)
+    end
 
     model:SetScript("OnModelLoaded", function()
-        if not panel._mountDisplayUsesJournalScene then
-            ApplyPlayerModelTransform()
-        end
+        TryApplyBoundingRadiusNormalize(panel._lastMountID, panel._lastCreatureDisplayID)
+        ApplyTransform()
     end)
 
     local function InteractionEffectiveScale()
@@ -2573,15 +2579,10 @@ CreateModelViewer = function(parent, width, height)
         panel.modelRotation = (panel._dragRotation or 0) - dx * ROTATE_SENSITIVITY
         panel._dragRotation = panel.modelRotation
         if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
-            ApplyJournalModelSceneTransform(
-                panel._journalMountScene,
-                panel.zoomMultiplier,
-                panel.modelRotation,
-                panel.modelViewport
-            )
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
         else
             model:SetFacing(panel.modelRotation)
-            ApplyPlayerModelTransform()
+            ApplyTransform()
         end
     end
 
@@ -2608,15 +2609,30 @@ CreateModelViewer = function(parent, width, height)
         interactionLayer:SetScript("OnUpdate", nil)
     end)
     interactionLayer:SetScript("OnMouseWheel", function(_, delta)
-        local step = delta > 0 and 0.9 or 1.1
-        local m = (panel.zoomMultiplier or 1.0) * step
-        if m < ZOOM_MULTIPLIER_MIN then
-            m = ZOOM_MULTIPLIER_MIN
-        elseif m > ZOOM_MULTIPLIER_MAX then
-            m = ZOOM_MULTIPLIER_MAX
+        if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
+            local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
+            if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
+            panel.zoomMultiplier = m
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
+            return
         end
-        panel.zoomMultiplier = m
-        panel.RefreshModelFraming()
+        if panel._usesJournalCamera then
+            local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
+            if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
+            panel.zoomMultiplier = m
+            ApplyTransform()
+            return
+        end
+        if panel.normalizedRadius then
+            local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
+            if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
+            panel.zoomMultiplier = m
+        else
+            local v = panel.camScale + (delta > 0 and -ZOOM_STEP or ZOOM_STEP)
+            if v < CAM_SCALE_MIN then v = CAM_SCALE_MIN elseif v > CAM_SCALE_MAX then v = CAM_SCALE_MAX end
+            panel.camScale = v
+        end
+        ApplyTransform()
     end)
 
     -- Text on top of model: overlay frame with higher frame level so text is always in front.
@@ -2767,129 +2783,197 @@ CreateModelViewer = function(parent, width, height)
     collectedBadge:Hide()
     panel.collectedBadge = collectedBadge
 
+    -- descText exists: anchor model viewport below it (first layout; was previously deferred until SetMountInfo).
     UpdateModelFrameSize()
 
     panel.model = model
 
-    local function scheduleModelViewerLayout()
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                UpdateModelFrameSize()
-                panel.RefreshModelFraming()
-            end)
-        else
-            UpdateModelFrameSize()
-            panel.RefreshModelFraming()
-        end
-    end
-
-    local function ShowPetModel(creatureDisplayID, speciesID)
-        panel._mountDisplayUsesJournalScene = false
-        if panel._journalMountScene then
-            panel._journalMountScene:Hide()
-        end
-        panel._lastMountID = nil
-        panel._lastPetID = speciesID
-        panel._lastCreatureDisplayID = creatureDisplayID
-        panel.modelRotation = 0
-        panel.zoomMultiplier = 1.0
-        ShowPlayerModelPath(true)
-        if not creatureDisplayID or creatureDisplayID <= 0 or not model.SetDisplayInfo then
-            model:ClearModel()
-            scheduleModelViewerLayout()
-            return
-        end
-        model:ClearModel()
-        model:SetDisplayInfo(creatureDisplayID)
-        if model.SetAnimation then
-            pcall(model.SetAnimation, model, 0)
-        end
-        ApplyPlayerModelTransform()
-        scheduleModelViewerLayout()
-    end
-
     panel:SetScript("OnShow", function()
         if panel._mountDisplayUsesJournalScene and panel._lastMountID and panel._journalMountScene then
             ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
-            ApplyJournalModelSceneTransform(
-                panel._journalMountScene,
-                panel.zoomMultiplier,
-                panel.modelRotation,
-                panel.modelViewport
-            )
-            ScheduleJournalSceneFramingRefresh()
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
             return
+        end
+        local mid = panel._lastMountID
+        if panel._useSetMountForRestore and mid and type(model.SetMount) == "function" then
+            model:ClearModel()
+            local ok = pcall(model.SetMount, model, mid)
+            if ok then
+                ApplyTransform()
+                ScheduleJournalSceneAfterMount(mid)
+                return
+            end
         end
         local cid = panel._lastCreatureDisplayID
         if cid and cid > 0 and model.SetDisplayInfo then
             model:ClearModel()
             model:SetDisplayInfo(cid)
-            if model.SetAnimation then
-                pcall(model.SetAnimation, model, 0)
-            end
-            ApplyPlayerModelTransform()
+            ApplyTransform()
         end
     end)
 
+    local function scheduleModelViewerLayout()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function() UpdateModelFrameSize() end)
+        else
+            UpdateModelFrameSize()
+        end
+    end
+
     function panel:SetMount(mountID, creatureDisplayIDFromCache)
         if not mountID then
+            if panel._journalMountScene then
+                panel._journalMountScene:Hide()
+            end
             panel._mountDisplayUsesJournalScene = false
-            if panel._journalMountScene then panel._journalMountScene:Hide() end
+            ShowPlayerModelPath(true)
+            model:ClearModel()
             panel._lastMountID = nil
-            panel._lastPetID = nil
             panel._lastCreatureDisplayID = nil
-            model:ClearModel()
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
             scheduleModelViewerLayout()
             return
         end
-        panel._lastPetID = nil
-        panel._lastMountID = mountID
-        panel._lastCreatureDisplayID = ResolveMountCreatureDisplayID(mountID, creatureDisplayIDFromCache)
-        panel.modelRotation = 0
-        panel.zoomMultiplier = 1.0
+        local extraDisplayID, _, _, uiScene = SafeGetMountInfoExtra(mountID)
+        panel._mountUiModelSceneID = uiScene
+        panel._usesJournalCamera = false
+
+        local creatureDisplayID = creatureDisplayIDFromCache
+        if not creatureDisplayID or creatureDisplayID <= 0 then
+            creatureDisplayID = extraDisplayID
+        end
+
+        local journalScene = TryInitJournalMountModelScene()
+        if journalScene then
+            panel._lastPetID = nil
+            panel._lastMountID = mountID
+            panel._lastCreatureDisplayID = (creatureDisplayID and creatureDisplayID > 0) and creatureDisplayID or nil
+            panel._useSetMountForRestore = false
+            local okJournal = ApplyMountJournalModelSceneDisplay(journalScene, mountID, creatureDisplayIDFromCache, true)
+            if okJournal then
+                panel._mountDisplayUsesJournalScene = true
+                panel.zoomMultiplier = 1.0
+                ApplyJournalModelSceneTransform(journalScene, panel.zoomMultiplier, panel.modelRotation)
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(0, function()
+                        if panel._lastMountID ~= mountID or not panel._mountDisplayUsesJournalScene or not panel._journalMountScene then return end
+                        ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
+                    end)
+                end
+                model:ClearModel()
+                ShowPlayerModelPath(false)
+                panel.normalizedRadius = false
+                scheduleModelViewerLayout()
+                return
+            end
+        end
+
         panel._mountDisplayUsesJournalScene = false
-
-        local scene = TryInitJournalMountModelScene()
-        if scene and ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDisplayIDFromCache, true) then
-            panel._mountDisplayUsesJournalScene = true
-            model:ClearModel()
-            ShowPlayerModelPath(false)
-            ApplyJournalModelSceneTransform(scene, panel.zoomMultiplier, panel.modelRotation, panel.modelViewport)
-            scheduleModelViewerLayout()
-            ScheduleJournalSceneFramingRefresh()
-            return
-        end
-
         if panel._journalMountScene then
             panel._journalMountScene:Hide()
         end
-        local creatureDisplayID = panel._lastCreatureDisplayID
         ShowPlayerModelPath(true)
-        if creatureDisplayID and creatureDisplayID > 0 and model.SetDisplayInfo then
+
+        local usedSetMount = false
+        if type(model.SetMount) == "function" then
+            model:ClearModel()
+            usedSetMount = pcall(model.SetMount, model, mountID) == true
+        end
+        if usedSetMount then
+            panel._useSetMountForRestore = true
+            panel._lastMountID = mountID
+            panel._lastCreatureDisplayID = (creatureDisplayID and creatureDisplayID > 0) and creatureDisplayID or nil
+            panel.modelRotation = 0
+            panel.camScale = FIXED_CAM_SCALE
+            panel.normalizedRadius = true
+            panel.modelScale = 1.0
+            panel.zoomMultiplier = 1.0
+            ApplyTransform()
+            if model.SetAnimation then pcall(model.SetAnimation, model, 0) end
+            ScheduleJournalSceneAfterMount(mountID)
+            ScheduleBoundingRadiusRetries(mountID, 0)
+            scheduleModelViewerLayout()
+            return
+        end
+        if creatureDisplayID and creatureDisplayID > 0 then
+            panel._useSetMountForRestore = false
             model:ClearModel()
             model:SetDisplayInfo(creatureDisplayID)
-            if model.SetAnimation then
-                pcall(model.SetAnimation, model, 0)
-            end
-            ApplyPlayerModelTransform()
+            panel._lastMountID = mountID
+            panel._lastCreatureDisplayID = creatureDisplayID
+            panel.modelRotation = 0
+            panel.camScale = FIXED_CAM_SCALE
+            -- İlk frame zoom-in olmasın: başta normalizedRadius=true, modelScale=1 ile sabit kamera kullan; radius gelince güncelle.
+            panel.normalizedRadius = true
+            panel.modelScale = 1.0
+            panel.zoomMultiplier = 1.0
+            ApplyTransform()
+            if model.SetAnimation then pcall(model.SetAnimation, model, 0) end
+            ScheduleJournalSceneAfterMount(mountID)
+            ScheduleBoundingRadiusRetries(mountID, creatureDisplayID)
         else
             model:ClearModel()
+            panel._lastMountID = nil
+            panel._lastCreatureDisplayID = nil
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
+            panel.normalizedRadius = false
         end
         scheduleModelViewerLayout()
     end
 
     function panel:SetPet(speciesID, creatureDisplayIDFromCache)
         if not speciesID then
+            if panel._journalMountScene then
+                panel._journalMountScene:Hide()
+            end
             panel._mountDisplayUsesJournalScene = false
-            if panel._journalMountScene then panel._journalMountScene:Hide() end
-            panel._lastPetID = nil
-            panel._lastMountID = nil
-            panel._lastCreatureDisplayID = nil
+            ShowPlayerModelPath(true)
             model:ClearModel()
+            panel._lastPetID = nil
+            panel._lastCreatureDisplayID = nil
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
             scheduleModelViewerLayout()
             return
         end
-        ShowPetModel(ResolvePetCreatureDisplayID(speciesID, creatureDisplayIDFromCache), speciesID)
+        if panel._journalMountScene then
+            panel._journalMountScene:Hide()
+        end
+        panel._mountDisplayUsesJournalScene = false
+        ShowPlayerModelPath(true)
+        local creatureDisplayID = creatureDisplayIDFromCache
+        if not creatureDisplayID or creatureDisplayID <= 0 then
+            creatureDisplayID = select(1, SafeGetPetInfoExtra(speciesID))
+        end
+        if creatureDisplayID and creatureDisplayID > 0 then
+            panel._useSetMountForRestore = false
+            panel._mountUiModelSceneID = nil
+            panel._usesJournalCamera = false
+            panel._lastMountID = nil
+            model:ClearModel()
+            model:SetDisplayInfo(creatureDisplayID)
+            panel._lastPetID = speciesID
+            panel._lastCreatureDisplayID = creatureDisplayID
+            panel.modelRotation = 0
+            panel.camScale = FIXED_CAM_SCALE
+            panel.normalizedRadius = true
+            panel.modelScale = 1.0
+            panel.zoomMultiplier = 1.0
+            ApplyTransform()
+            if model.SetAnimation then pcall(model.SetAnimation, model, 0) end
+            ScheduleBoundingRadiusRetries(nil, creatureDisplayID)
+        else
+            model:ClearModel()
+            panel._lastPetID = nil
+            panel._lastCreatureDisplayID = nil
+            panel.normalizedRadius = false
+        end
+        scheduleModelViewerLayout()
     end
 
     local DEFAULT_ICON_MOUNT = "Interface\\Icons\\Ability_Mount_RidingHorse"
@@ -2921,9 +3005,6 @@ CreateModelViewer = function(parent, width, height)
             if panel._wowheadBtn then panel._wowheadBtn:Hide() end
             if panel._tryCountRow then panel._tryCountRow:Hide() end
             if panel.obtainedAtLine then panel.obtainedAtLine:Hide() end
-            if panel.UpdateModelFrameSize then
-                panel.UpdateModelFrameSize()
-            end
             return
         end
         if panel._addContainer and panel._addBtn and panel._addedIndicator then
@@ -3099,12 +3180,7 @@ CreateModelViewer = function(parent, width, height)
         end
 
         if C_Timer and C_Timer.After and panel.UpdateModelFrameSize then
-            C_Timer.After(0, function()
-                panel.UpdateModelFrameSize()
-                if panel.RefreshModelFraming then
-                    panel:RefreshModelFraming()
-                end
-            end)
+            C_Timer.After(0, function() panel.UpdateModelFrameSize() end)
         end
     end
 
@@ -3302,12 +3378,7 @@ CreateModelViewer = function(parent, width, height)
         end
 
         if C_Timer and C_Timer.After and panel.UpdateModelFrameSize then
-            C_Timer.After(0, function()
-                panel.UpdateModelFrameSize()
-                if panel.RefreshModelFraming then
-                    panel:RefreshModelFraming()
-                end
-            end)
+            C_Timer.After(0, function() panel.UpdateModelFrameSize() end)
         end
     end
 
