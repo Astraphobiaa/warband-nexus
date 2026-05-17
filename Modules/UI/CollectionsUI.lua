@@ -54,8 +54,8 @@ local function RefreshCollectionsLayout()
 end
 RefreshCollectionsLayout()
 
-local function CollectionsFallbackContentWidth(parent)
-    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+local function CollectionsFallbackContentWidth(parent, mainFrame)
+    local mf = mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
     return (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent)) or 660
 end
 
@@ -79,8 +79,9 @@ local SEARCH_ROW_HEIGHT = math.floor(32 * 1.05 + 0.5)
 -- Title card height matches Characters reference (`TITLE_CARD_DEFAULT_HEIGHT` = 64).
 local COLLECTIONS_TITLE_CARD_HEIGHT = (ns.UI_SPACING and ns.UI_SPACING.TITLE_CARD_DEFAULT_HEIGHT) or 64
 local RECENT_SECTION_ORDER = { "achievement", "mount", "pet", "toy" }
-local RECENT_CARD_ICON = 20
-local RECENT_CARD_HEADER_PAD = 8
+local RECENT_CARD_ICON = 26
+local RECENT_CARD_HEADER_PAD = 10
+local RECENT_ROW_ICON_BORDER_ALPHA = 0.82
 local SUBTAB_BAR_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
 local PROGRESS_ROW_HEIGHT = 28
 local BAR_INSET = 2  -- Bar 2px each side = total 4px inside border
@@ -161,6 +162,176 @@ local ROW_GAP = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (ns.UI_LAYOUT and n
 local ROW_STRIDE = ROW_HEIGHT + ROW_GAP
 -- Mount/Pet/Toy category headers: must match CreateCollapsibleHeader + CollectionVirtual_FillRowScrollIndex (collapsible sections + virtual rows).
 local COLLAPSE_HEADER_HEIGHT_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
+-- List | scrollbar | detail split — single ratio for Mounts, Pets, Toys, Achievements (WN-UI-layout symmetry).
+local COLLECTION_LIST_DETAIL_SPLIT = 0.50
+-- Recent column cards: shrink column count before cards become unreadable (Statistics tab pattern).
+local RECENT_CARD_MIN_WIDTH = 160
+
+-- State for Collections tab (before any function that references collectionsState — Lua 5.1 local scope)
+local VALID_COLLECTIONS_SUBTABS = {
+    recent = true,
+    mounts = true,
+    pets = true,
+    toys = true,
+    achievements = true,
+}
+
+local collectionsState = {
+    currentSubTab = "recent",
+    mountListContainer = nil,
+    mountListScrollFrame = nil,
+    mountListScrollChild = nil,
+    petListContainer = nil,
+    petListScrollFrame = nil,
+    petListScrollChild = nil,
+    modelViewer = nil,
+    descriptionPanel = nil,
+    loadingPanel = nil,
+    searchBox = nil,
+    contentFrame = nil,
+    subTabBar = nil,
+    showCollected = true,
+    showUncollected = true,
+    collapsedHeaders = {},
+    collapsedHeadersMounts = {},
+    collapsedHeadersPets = {},
+    selectedMountID = nil,
+    selectedPetID = nil,
+    selectedAchievementID = nil,
+    achievementListContainer = nil,
+    achievementListScrollFrame = nil,
+    achievementListScrollChild = nil,
+    achievementListScrollBarContainer = nil,
+    achievementDetailContainer = nil,
+    achievementDetailPanel = nil,
+    toyListContainer = nil,
+    toyListScrollFrame = nil,
+    toyListScrollChild = nil,
+    toyListScrollBarContainer = nil,
+    toyDetailContainer = nil,
+    toyDetailScrollBarContainer = nil,
+    collapsedHeadersToys = {},
+    selectedToyID = nil,
+    initialized = false,
+    recentTabPanel = nil,
+    recentViewportCap = nil,
+    _recentEmptyFs = nil,
+}
+
+---@return number listContentWidth, number listWidth, number detailWidth, number scrollBarColumnWidth
+local function ComputeCollectionsListDetailWidths(contentWidth)
+    local cw = math.max(1, contentWidth or 660)
+    local scrollBarColumnWidth = SCROLLBAR_GAP
+    local listContentWidth = math.max(120, math.floor(cw * COLLECTION_LIST_DETAIL_SPLIT) - SCROLLBAR_GAP)
+    local listWidth = listContentWidth + (SCROLLBAR_SIDE_GAP * 2) + scrollBarColumnWidth
+    local detailWidth = math.max(1, cw - listWidth)
+    return listContentWidth, listWidth, detailWidth, scrollBarColumnWidth
+end
+
+local function AnchorCollectionsListPanel(listContainer, contentFrame, headerBlockH, listContentWidth, innerCh)
+    if not listContainer or not contentFrame then return end
+    listContainer:ClearAllPoints()
+    listContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -(headerBlockH or 0))
+    listContainer:SetSize(listContentWidth, innerCh)
+end
+
+--- Viewport height for list/detail sub-tabs (avoids stale tall height after Recent).
+local function ResolveCollectionsViewportHeight(contentFrame, mainFrame)
+    local mf = mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+    if mf and ns.UI_GetMainTabLayoutMetrics then
+        local metrics = ns.UI_GetMainTabLayoutMetrics(mf)
+        local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+        local scrollFrame = mf.scroll
+        local viewHeight = (scrollFrame and scrollFrame:GetHeight()) or 450
+        local bottomPad = (metrics and metrics.contentBottomPad) or 0
+        return math.max(250, viewHeight - yOffset - bottomPad)
+    end
+    local cap = collectionsState.recentViewportCap
+    local ch = contentFrame and contentFrame:GetHeight()
+    if cap and cap > 0 then
+        return cap
+    end
+    if ch and ch > 0 then
+        return ch
+    end
+    local parent = contentFrame and contentFrame:GetParent()
+    return (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
+end
+
+--- Keep contentFrame width/height in sync during live resize (before sub-tab chrome redraw).
+local function SyncCollectionsViewportBeforeRelayout(mainFrame)
+    local cf = collectionsState.contentFrame
+    if not cf or not mainFrame then return end
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mainFrame)
+    local sideMargin = (metrics and metrics.sideMargin) or SIDE_MARGIN
+    local contentWidth = (metrics and metrics.bodyWidth) or math.max(1, (cf:GetWidth() or 660))
+    local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local scrollFrame = mainFrame.scroll
+    local viewHeight = (scrollFrame and scrollFrame:GetHeight()) or 450
+    local bottomPad = (metrics and metrics.contentBottomPad) or 0
+    local contentHeight = math.max(250, viewHeight - yOffset - bottomPad)
+    cf:SetWidth(contentWidth)
+    local sub = collectionsState.currentSubTab or "recent"
+    if sub == "recent" then
+        collectionsState.recentViewportCap = contentHeight
+    else
+        cf:SetHeight(contentHeight)
+    end
+    if cf:GetParent() and sideMargin then
+        cf:ClearAllPoints()
+        cf:SetPoint("TOPLEFT", cf:GetParent(), "TOPLEFT", sideMargin, -yOffset)
+    end
+end
+
+--- Wowhead mount links use spell ID (C_MountJournal.GetMountInfoByID #2); guard secret values.
+local function ResolveCollectionsMountSpellID(mountID)
+    if not mountID or mountID <= 0 or not C_MountJournal or not C_MountJournal.GetMountInfoByID then
+        return nil
+    end
+    local ok, _, spellID = pcall(C_MountJournal.GetMountInfoByID, mountID)
+    if not ok or type(spellID) ~= "number" or spellID <= 0 then return nil end
+    if issecretvalue and issecretvalue(spellID) then return nil end
+    return spellID
+end
+
+--- Wowhead pet links use NPC ID (GetPetInfoBySpeciesID #4 companionID), not species ID.
+local function ResolveCollectionsPetWowheadNpcID(speciesID)
+    if not speciesID or speciesID <= 0 then return nil end
+    if not C_PetJournal or not C_PetJournal.GetPetInfoBySpeciesID then
+        return speciesID
+    end
+    local ok, _, _, _, companionID = pcall(C_PetJournal.GetPetInfoBySpeciesID, speciesID)
+    if ok and type(companionID) == "number" and companionID > 0 then
+        if not (issecretvalue and issecretvalue(companionID)) then
+            return companionID
+        end
+    end
+    return speciesID
+end
+
+--- Keep 3D preview + text overlay in sync after list/detail relayout (OnSizeChanged alone can lag one frame).
+local function RefreshCollectionsModelViewerLayout(modelViewer, panelW, panelH)
+    if not modelViewer then return end
+    panelW = math.max(1, panelW or modelViewer:GetWidth() or 1)
+    panelH = math.max(1, panelH or modelViewer:GetHeight() or 1)
+    modelViewer:SetSize(panelW, panelH)
+    if modelViewer.textOverlay then
+        modelViewer.textOverlay:SetSize(panelW, panelH)
+    end
+    if modelViewer.UpdateModelFrameSize then
+        modelViewer:UpdateModelFrameSize()
+    end
+    if modelViewer._mountDisplayUsesJournalScene and modelViewer._journalMountScene then
+        ApplyJournalModelSceneTransform(modelViewer._journalMountScene, modelViewer.zoomMultiplier, modelViewer.modelRotation)
+    end
+    if C_Timer and C_Timer.After and modelViewer.UpdateModelFrameSize then
+        C_Timer.After(0, function()
+            if modelViewer.UpdateModelFrameSize then
+                modelViewer:UpdateModelFrameSize()
+            end
+        end)
+    end
+end
 
 -- Detail container border: SharedWidgets 4-texture border system (accent)
 local function ApplyDetailAccentVisuals(frame)
@@ -289,59 +460,6 @@ local function CreateDetailEmptyOverlay(parent, typeKey)
     overlay:Hide()
     return overlay
 end
-
--- State for Collections tab (must be defined before PopulateMountList / ApplySessionCollectionsSubTab — Lua 5.1 local scope)
-local VALID_COLLECTIONS_SUBTABS = {
-    recent = true,
-    mounts = true,
-    pets = true,
-    toys = true,
-    achievements = true,
-}
-
--- Must appear before ApplySessionCollectionsSubTab: Lua 5.1 local scope starts after this statement,
--- so a function defined above would otherwise resolve `collectionsState` as a nil global.
-local collectionsState = {
-    currentSubTab = "recent",
-    mountListContainer = nil,
-    mountListScrollFrame = nil,
-    mountListScrollChild = nil,
-    petListContainer = nil,
-    petListScrollFrame = nil,
-    petListScrollChild = nil,
-    modelViewer = nil,
-    descriptionPanel = nil,
-    loadingPanel = nil,
-    searchBox = nil,
-    contentFrame = nil,
-    subTabBar = nil,
-    showCollected = true,
-    showUncollected = true,
-    collapsedHeaders = {},
-    collapsedHeadersMounts = {},
-    collapsedHeadersPets = {},
-    selectedMountID = nil,
-    selectedPetID = nil,
-    selectedAchievementID = nil,
-    achievementListContainer = nil,
-    achievementListScrollFrame = nil,
-    achievementListScrollChild = nil,
-    achievementListScrollBarContainer = nil,
-    achievementDetailPanel = nil,
-    toyListContainer = nil,
-    toyListScrollFrame = nil,
-    toyListScrollChild = nil,
-    toyListScrollBarContainer = nil,
-    toyDetailContainer = nil,
-    toyDetailScrollBarContainer = nil,
-    collapsedHeadersToys = {},
-    selectedToyID = nil,
-    initialized = false,
-    recentTabPanel = nil,
-    --- Last viewport height cap for Recent layout (rows fill vs main-window scroll); refreshed in DrawCollectionsTab.
-    recentViewportCap = nil,
-    _recentEmptyFs = nil,
-}
 
 --- Per login/reload: nil → default Recent. After user picks a sub-tab, restored while the UI session lasts.
 local function ApplySessionCollectionsSubTab()
@@ -1850,45 +1968,89 @@ end
 -- ============================================================================
 -- MODEL VIEWER PANEL — Mounts: Blizzard Mount Journal pipeline (ModelScene WrappedAndUnwrappedModelScene + TransitionToModelSceneID).
 -- Pets/fallback: Frame (clip) + PlayerModel + interaction layer. Layout: viewport below descText.
+-- Lua 5.1: isolate locals in do-block (main chunk stays under 200 locals).
 -- ============================================================================
+
+local CreateModelViewer, CreateDescriptionPanel, GetOrCreateLoadingPanel, CreateAchievementDetailPanel, CreateSubTabBar
+
+-- Sub-tab chrome (file scope: DrawCollectionsTab layout uses SUBTAB_BTN_HEIGHT outside factory do-block)
+local SUB_TABS = {
+    { key = "recent", label = (ns.L and ns.L["COLLECTIONS_SUBTAB_RECENT"]) or "Recent", icon = "Interface\\Icons\\INV_Misc_Note_01" },
+    { key = "achievements", label = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
+    { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
+    { key = "pets", label = (ns.L and ns.L["CATEGORY_PETS"]) or PETS or "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
+    { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), icon = "Interface\\Icons\\INV_Misc_Toy_07" },
+}
+local SUBTAB_BTN_HEIGHT = 40
+local SUBTAB_BTN_SPACING = 8
+local SUBTAB_ICON_SIZE = 28
+local SUBTAB_ICON_LEFT = 10
+local SUBTAB_ICON_TEXT_GAP = 8
+local SUBTAB_TEXT_RIGHT = 10
+local SUBTAB_DEFAULT_WIDTH = 150
+local SUBTAB_MIN_COMPACT_WIDTH = 44
+
+--- Fit sub-tabs inside the fixed header width (compact = icon-only when narrow).
+local function LayoutCollectionsSubTabBar(bar)
+    if not bar or not bar._btnWidths or not bar.buttons then return end
+    local barW = bar:GetWidth()
+    if not barW or barW < 1 then return end
+    local spacing = SUBTAB_BTN_SPACING
+    local n = #SUB_TABS
+    local widths = bar._btnWidths
+    local totalNeed = 0
+    for i = 1, n do
+        totalNeed = totalNeed + widths[i]
+        if i < n then totalNeed = totalNeed + spacing end
+    end
+    local compact = totalNeed > barW
+    local xPos = 0
+    for i = 1, n do
+        local tabInfo = SUB_TABS[i]
+        local btn = bar.buttons[tabInfo.key]
+        if not btn then break end
+        local naturalW = widths[i]
+        local w = naturalW
+        if compact then
+            w = math.floor((barW - (n - 1) * spacing) / n)
+            if w < SUBTAB_MIN_COMPACT_WIDTH then w = SUBTAB_MIN_COMPACT_WIDTH end
+        end
+        btn:SetSize(w, SUBTAB_BTN_HEIGHT)
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", bar, "TOPLEFT", xPos, 0)
+        local iconOnly = compact or w < (naturalW * 0.78)
+        if btn._text then
+            if iconOnly then btn._text:Hide() else btn._text:Show() end
+        end
+        xPos = xPos + w + spacing
+    end
+end
+
+do
 
 local FIXED_CAM_SCALE = 1.8
 local CAM_SCALE_MIN = 0.6
 local CAM_SCALE_MAX = 6
 local ZOOM_STEP = 0.1
 local ROTATE_SENSITIVITY = 0.02
--- Tüm modeller aynı boyut/pozisyon: modeli REFERENCE_RADIUS'a scale ediyoruz, tek sabit kamera mesafesi.
--- Slightly below 1.0 so normalized mounts sit a bit smaller in frame (Mount Journal leaves headroom).
+-- Standard framing: normalize to REFERENCE_RADIUS, center in viewport (UseModelCenterToTransform), pull camera back.
 local REFERENCE_RADIUS = 0.86
--- Base camera distance after radius normalize; multiplied by MODEL_VIEWER_CAMERA_FIT_PADDING so wings/tails
--- that extend outside GetModelRadius() still fit (phoenix-type mounts were clipping the viewport).
-local FIXED_CAM_DISTANCE = 3.55
--- Extra pull-back after normalize (Blizzard journal effectively uses scene-specific framing; we approximate).
--- Bumped from 1.30: tall mounts with banners/wings (e.g. Geargrinder Mk. 11) were drawing
--- past viewport bounds; Model widgets bypass SetClipsChildren, so the framing must do the
--- containment. Higher value = camera pulls back further = model occupies less of the box
--- but stays fully inside it.
-local MODEL_VIEWER_CAMERA_FIT_PADDING = 1.60
--- Viewport üst boşluk (açıklama → model; Mount Journal’e yakın, sıkı)
+local FIXED_CAM_DISTANCE = 5.35
+local MODEL_VIEWER_CAMERA_FIT_PADDING = 2.35
 local MODEL_VIEWPORT_TOP_GAP = 6
--- Pet: ince bant hâlâ hafif yukarı; mount tam yükseklik kullandığında bu px devre dışı kalabilir
-local MOUNT_VIEWPORT_NUDGE_UP = 6
--- Viewport içinde 1–2 px: kenara yapışık görüntüyü yumuşatır (clip rect içinde).
+local MOUNT_VIEWPORT_NUDGE_UP = 18
+local MODEL_VIEWPORT_VERTICAL_BIAS_UP = 0.24
 local MODEL_VIEWPORT_INSET = 2
--- Pet/PlayerModel: geniş yuvarda yükseklik tavanı. Mount’ta bu tavan kaldırılır (aşağıda büyük boşluk + altta kırpma önlendi).
 local MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH = 0.62
--- ModelScene: Mount Journal’e yakın çerçeve; çok büyük mult ayak/alt kesilmesine yol açabiliyordu.
-local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.04
--- ModelScene: içeriği hafif yukarı (ekran; ayak hizası Blizzard journal’e yakın)
-local MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y = 14
+local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.92
+local MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y = 36
+local MODEL_JOURNAL_ACTOR_Y_OFFSET = 0.14
 local MODEL_SCALE_MIN = 0.15
 local MODEL_SCALE_MAX = 6.0
-local ZOOM_MULTIPLIER_MIN = 0.5
-local ZOOM_MULTIPLIER_MAX = 2.0
--- Pet models often sit low in the box vs mounts; small upward offset in model space after centering.
-local PET_MODEL_VERTICAL_OFFSET = 0.12
--- PlayerModel mount yolu (ModelScene yok): dikey hizalama
-local MOUNT_PLAYERMODEL_FALLBACK_Y_OFFSET = 0.16
+local ZOOM_MULTIPLIER_MIN = 0.28
+local ZOOM_MULTIPLIER_MAX = 3.0
+local PET_MODEL_VERTICAL_OFFSET = 0.22
+local MOUNT_PLAYERMODEL_FALLBACK_Y_OFFSET = 0.28
 
 -- Blizzard_Collections Mainline: MountJournal uses ModelScene:TransitionToModelSceneID + GetActorByTag("unwrapped"),
 -- not PlayerModel alone (Blizzard_MountCollection.lua — MountJournal_UpdateMountDisplay).
@@ -1905,8 +2067,18 @@ local function Collections_SanitizeMountExtra(v, default)
     return v
 end
 
-local function ApplyJournalModelSceneZoom(scene, zoomMultiplier)
+local function CenterCollectionsJournalActor(scene)
+    if not scene or not scene.GetActorByTag then return end
+    local actor = scene:GetActorByTag("unwrapped")
+    if not actor then return end
+    if actor.SetPosition then
+        pcall(actor.SetPosition, actor, 0, 0, MODEL_JOURNAL_ACTOR_Y_OFFSET)
+    end
+end
+
+local function ApplyJournalModelSceneTransform(scene, zoomMultiplier, yaw)
     if not scene then return end
+    CenterCollectionsJournalActor(scene)
     local mul = MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT * (zoomMultiplier or 1.0)
     if scene.SetCameraDistanceScale then
         pcall(scene.SetCameraDistanceScale, scene, mul)
@@ -1914,9 +2086,18 @@ local function ApplyJournalModelSceneZoom(scene, zoomMultiplier)
     if scene.SetCamDistanceScale then
         pcall(scene.SetCamDistanceScale, scene, mul)
     end
-    -- Mount Journal: önizleme biraz yukarıda; aksi halde binek+binici frame altında kalıyor
     if scene.SetViewTranslation then
         pcall(scene.SetViewTranslation, scene, 0, MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y)
+    end
+    if yaw and scene.GetActorByTag then
+        local actor = scene:GetActorByTag("unwrapped")
+        if actor then
+            if actor.SetYaw then
+                pcall(actor.SetYaw, actor, yaw)
+            elseif actor.SetFacing then
+                pcall(actor.SetFacing, actor, yaw)
+            end
+        end
     end
 end
 
@@ -2025,6 +2206,7 @@ local function ApplyMountJournalModelSceneDisplay(scene, mountID, creatureDispla
     end
 
     scene:Show()
+    CenterCollectionsJournalActor(scene)
     return true
 end
 
@@ -2110,7 +2292,7 @@ local function SafeGetPetInfoExtra(speciesID)
     return creatureDisplayID, description or "", source or ""
 end
 
-local function CreateModelViewer(parent, width, height)
+CreateModelViewer = function(parent, width, height)
     local panel = Factory:CreateContainer(parent, width, height, false)
     if not panel then return nil end
     panel:SetSize(width, height)
@@ -2171,7 +2353,7 @@ local function CreateModelViewer(parent, width, height)
             scene:SetResetCallback(function()
                 if panel._lastMountID and panel._mountDisplayUsesJournalScene and panel._journalMountScene then
                     ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
-                    ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+                    ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
                 end
             end)
         end
@@ -2196,7 +2378,7 @@ local function CreateModelViewer(parent, width, height)
     end
 
     -- Layout: slot from descText bottom (or fallback) to panel bottom; viewport height capped vs width and centered in slot.
-    local MODEL_FALLBACK_TOP_RATIO = 0.36
+    local MODEL_FALLBACK_TOP_RATIO = 0.28
     local function UpdateModelFrameSize()
         local w = panel:GetWidth()
         local h = panel:GetHeight()
@@ -2221,8 +2403,9 @@ local function CreateModelViewer(parent, width, height)
         local vh = isMountView and sh or math.min(sh, maxH)
         local totalVPad = math.max(0, sh - vh)
         local vCenter = totalVPad * 0.5
-        local nudgeUp = isMountView and MOUNT_VIEWPORT_NUDGE_UP or 0
-        nudgeUp = math.min(nudgeUp, vCenter)
+        local biasUp = math.floor(sh * MODEL_VIEWPORT_VERTICAL_BIAS_UP)
+        local nudgeUp = (isMountView and MOUNT_VIEWPORT_NUDGE_UP or math.floor(MOUNT_VIEWPORT_NUDGE_UP * 0.5)) + biasUp
+        nudgeUp = math.min(nudgeUp, math.max(0, totalVPad - 2))
         local vPadTop = math.max(0, vCenter - nudgeUp)
         local vPadBottom = totalVPad - vPadTop
         modelViewport:ClearAllPoints()
@@ -2261,7 +2444,7 @@ local function CreateModelViewer(parent, width, height)
     -- Centered preview: UseModelCenterToTransform + optional pet vertical nudge; idle pose + zero pitch for consistency.
     local function ApplyTransform()
         if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
-            ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
             return
         end
         if panel._usesJournalCamera and panel._lastMountID then
@@ -2316,7 +2499,15 @@ local function CreateModelViewer(parent, width, height)
         else
             if model.SetCamDistanceScale then model:SetCamDistanceScale(panel.camScale) end
         end
-        if model.SetViewTranslation then model:SetViewTranslation(0, 0) end
+        if model.SetViewTranslation then
+            local viewY = 0
+            if panel._lastPetID and not panel._lastMountID then
+                viewY = 0.06
+            elseif panel._lastMountID and not panel._lastPetID then
+                viewY = 0.08
+            end
+            pcall(model.SetViewTranslation, model, 0, viewY)
+        end
     end
 
     local function ScheduleJournalSceneAfterMount(midLock)
@@ -2340,7 +2531,7 @@ local function CreateModelViewer(parent, width, height)
         if lockCreatureID and lockCreatureID > 0 and panel._lastCreatureDisplayID ~= lockCreatureID then return false end
         local r = GetEffectiveModelBoundingRadius(model)
         if not r or r <= 0 or not model.SetModelScale or not model.SetCameraDistance then return false end
-        local scale = (REFERENCE_RADIUS / r) * 0.94
+        local scale = (REFERENCE_RADIUS / r) * 0.86
         if scale < MODEL_SCALE_MIN then scale = MODEL_SCALE_MIN elseif scale > MODEL_SCALE_MAX then scale = MODEL_SCALE_MAX end
         panel.normalizedRadius = true
         panel.modelScale = scale
@@ -2387,8 +2578,12 @@ local function CreateModelViewer(parent, width, height)
         panel._dragCursorX = x
         panel.modelRotation = (panel._dragRotation or 0) - dx * ROTATE_SENSITIVITY
         panel._dragRotation = panel.modelRotation
-        model:SetFacing(panel.modelRotation)
-        ApplyTransform()
+        if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
+        else
+            model:SetFacing(panel.modelRotation)
+            ApplyTransform()
+        end
     end
 
     interactionLayer:SetScript("OnMouseDown", function(_, button)
@@ -2418,7 +2613,7 @@ local function CreateModelViewer(parent, width, height)
             local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
             if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
             panel.zoomMultiplier = m
-            ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
             return
         end
         if panel._usesJournalCamera then
@@ -2451,7 +2646,7 @@ local function CreateModelViewer(parent, width, height)
     panel.textOverlay = textOverlay
 
     local DETAIL_HEADER_GAP = 10
-    local collectionsDetailIcon = math.floor((DETAIL_ICON_SIZE or 64) * 1.14)
+    local collectionsDetailIcon = math.floor((DETAIL_ICON_SIZE or 64) * 1.22)
     -- Detail icon with border (Factory CreateContainer + accent override)
     local iconBorder = Factory:CreateContainer(textOverlay, collectionsDetailIcon, collectionsDetailIcon, true)
     iconBorder:SetPoint("TOPLEFT", textOverlay, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
@@ -2485,8 +2680,8 @@ local function CreateModelViewer(parent, width, height)
         panel._addBtn = PlanCardFactory.CreateAddButton(actionSlot, {
             buttonType = "row",
             iconOnly = true,
-            width = 28,
-            height = 28,
+            width = 32,
+            height = 32,
             anchorPoint = "TOPRIGHT",
             x = 0,
             y = 0,
@@ -2497,8 +2692,9 @@ local function CreateModelViewer(parent, width, height)
         end
         panel._addedIndicator = PlanCardFactory.CreateAddedIndicator(actionSlot, {
             buttonType = "row",
-            label = (ns.L and ns.L["ADDED"]) or "Added",
-            fontCategory = "body",
+            iconOnly = true,
+            width = 32,
+            height = 32,
             anchorPoint = "TOPRIGHT",
             x = 0,
             y = 0,
@@ -2595,7 +2791,7 @@ local function CreateModelViewer(parent, width, height)
     panel:SetScript("OnShow", function()
         if panel._mountDisplayUsesJournalScene and panel._lastMountID and panel._journalMountScene then
             ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
-            ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
             return
         end
         local mid = panel._lastMountID
@@ -2659,11 +2855,11 @@ local function CreateModelViewer(parent, width, height)
             if okJournal then
                 panel._mountDisplayUsesJournalScene = true
                 panel.zoomMultiplier = 1.0
-                ApplyJournalModelSceneZoom(journalScene, panel.zoomMultiplier)
+                ApplyJournalModelSceneTransform(journalScene, panel.zoomMultiplier, panel.modelRotation)
                 if C_Timer and C_Timer.After then
                     C_Timer.After(0, function()
                         if panel._lastMountID ~= mountID or not panel._mountDisplayUsesJournalScene or not panel._journalMountScene then return end
-                        ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+                        ApplyJournalModelSceneTransform(panel._journalMountScene, panel.zoomMultiplier, panel.modelRotation)
                     end)
                 end
                 model:ClearModel()
@@ -2966,11 +3162,7 @@ local function CreateModelViewer(parent, width, height)
         descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
 
         if panel._wowheadBtn then
-            local spellID = nil
-            if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                local _, sid = C_MountJournal.GetMountInfoByID(mountID)
-                if sid and sid > 0 then spellID = sid end
-            end
+            local spellID = ResolveCollectionsMountSpellID(mountID)
             if spellID then
                 panel._wowheadBtn:SetScript("OnClick", function(self)
                     if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
@@ -3166,12 +3358,17 @@ local function CreateModelViewer(parent, width, height)
         descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
 
         if panel._wowheadBtn and speciesID then
-            panel._wowheadBtn:SetScript("OnClick", function(self)
-                if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
-                    ns.UI.Factory:ShowWowheadCopyURL("pet", speciesID, self)
-                end
-            end)
-            panel._wowheadBtn:Show()
+            local wowheadNpcID = ResolveCollectionsPetWowheadNpcID(speciesID)
+            if wowheadNpcID then
+                panel._wowheadBtn:SetScript("OnClick", function(self)
+                    if ns.UI.Factory and ns.UI.Factory.ShowWowheadCopyURL then
+                        ns.UI.Factory:ShowWowheadCopyURL("pet", wowheadNpcID, self)
+                    end
+                end)
+                panel._wowheadBtn:Show()
+            else
+                panel._wowheadBtn:Hide()
+            end
         elseif panel._wowheadBtn then
             panel._wowheadBtn:Hide()
         end
@@ -3192,7 +3389,7 @@ end
 -- DESCRIPTION PANEL (standalone; used only if we need separate panel elsewhere)
 -- ============================================================================
 
-local function CreateDescriptionPanel(parent, width, height)
+CreateDescriptionPanel = function(parent, width, height)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     panel:SetSize(width, height)
     ApplyVisuals(panel, {0.08, 0.08, 0.10, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
@@ -3204,7 +3401,7 @@ end
 -- LOADING STATE PANEL
 -- ============================================================================
 
-local function GetOrCreateLoadingPanel(parent)
+GetOrCreateLoadingPanel = function(parent)
     local UI_CreateLoadingStatePanel = ns.UI_CreateLoadingStatePanel
     if UI_CreateLoadingStatePanel then
         return UI_CreateLoadingStatePanel(parent)
@@ -3223,7 +3420,7 @@ end
 -- ACHIEVEMENT DETAIL PANEL — Parent/Children, Description, Criteria (replaces model viewer)
 -- ============================================================================
 -- Achievement detail header: icon-only To-Do + Track (same WN vertex icons as list rows).
-local ACH_ACTION_ICON_SZ = 28
+local ACH_ACTION_ICON_SZ = 32
 local ACH_ROW_ADD_WIDTH = ACH_ACTION_ICON_SZ
 local ACH_ROW_ADD_HEIGHT = ACH_ACTION_ICON_SZ
 local ACH_TRACK_WIDTH = ACH_ACTION_ICON_SZ
@@ -3287,7 +3484,7 @@ local function ToggleAchievementTracking(achievementID)
     return false
 end
 
-local function CreateAchievementDetailPanel(parent, width, height, onSelectAchievement)
+CreateAchievementDetailPanel = function(parent, width, height, onSelectAchievement)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     panel:SetSize(width, height)
     ApplyDetailAccentVisuals(panel)
@@ -3481,16 +3678,14 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             end
         end
 
-        local addedLabelText = (ns.L and ns.L["ADDED"]) or "Added"
         local isPlanned = WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievement.id)
         local addBtn, addedIndicator
         if achievement.isCollected then
             addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(achControls, {
                 buttonType = "row",
+                iconOnly = true,
                 width = ACH_ROW_ADD_WIDTH,
                 height = ACH_ROW_ADD_HEIGHT,
-                label = addedLabelText,
-                fontCategory = "body",
                 anchorPoint = "RIGHT",
                 x = 0,
                 y = 0,
@@ -3503,10 +3698,9 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         elseif isPlanned then
             addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(achControls, {
                 buttonType = "row",
+                iconOnly = true,
                 width = ACH_ROW_ADD_WIDTH,
                 height = ACH_ROW_ADD_HEIGHT,
-                label = addedLabelText,
-                fontCategory = "body",
                 anchorPoint = "RIGHT",
                 x = 0,
                 y = 0,
@@ -3698,31 +3892,11 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
     return panel
 end
 
--- ============================================================================
--- SUB-TAB BUTTONS
--- ============================================================================
-
-local SUB_TABS = {
-    { key = "recent", label = (ns.L and ns.L["COLLECTIONS_SUBTAB_RECENT"]) or "Recent", icon = "Interface\\Icons\\INV_Misc_Note_01" },
-    { key = "achievements", label = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
-    { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
-    { key = "pets", label = (ns.L and ns.L["CATEGORY_PETS"]) or PETS or "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
-    { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), icon = "Interface\\Icons\\INV_Misc_Toy_07" },
-}
-
--- Plans category bar ile birebir aynı (catBtnHeight=40, catBtnSpacing=8, DEFAULT_CAT_BTN_WIDTH=150)
-local SUBTAB_BTN_HEIGHT = 40
-local SUBTAB_BTN_SPACING = 8
-local SUBTAB_ICON_SIZE = 28
-local SUBTAB_ICON_LEFT = 10
-local SUBTAB_ICON_TEXT_GAP = 8
-local SUBTAB_TEXT_RIGHT = 10
-local SUBTAB_DEFAULT_WIDTH = 150
-
-local function CreateSubTabBar(parent, onTabSelect)
+CreateSubTabBar = function(parent, onTabSelect)
     local bar = Factory:CreateContainer(parent, 400, SUBTAB_BTN_HEIGHT, false)
     bar:SetPoint("TOPLEFT", 0, 0)
     bar:SetPoint("TOPRIGHT", 0, 0)
+    if bar.SetClipsChildren then bar:SetClipsChildren(true) end
 
     -- Plans gibi metne göre buton genişliği hesapla
     local btnWidths = {}
@@ -3736,17 +3910,15 @@ local function CreateSubTabBar(parent, onTabSelect)
         btnWidths[i] = math.max(needed, SUBTAB_DEFAULT_WIDTH)
     end
 
+    bar._btnWidths = btnWidths
     local buttons = {}
-    local xPos = 0
     local btnHeight = SUBTAB_BTN_HEIGHT
-    local spacing = SUBTAB_BTN_SPACING
 
     local accentColor = COLORS.accent
     for i = 1, #SUB_TABS do
         local tabInfo = SUB_TABS[i]
         local btnWidth = btnWidths[i]
         local btn = ns.UI.Factory:CreateButton(bar, btnWidth, btnHeight)
-        btn:SetPoint("TOPLEFT", xPos, 0)
         btn._tabKey = tabInfo.key
 
         if ApplyVisuals then
@@ -3805,10 +3977,13 @@ local function CreateSubTabBar(parent, onTabSelect)
         end
 
         buttons[tabInfo.key] = btn
-        xPos = xPos + btnWidths[i] + spacing
     end
 
     bar.buttons = buttons
+    bar:SetScript("OnSizeChanged", function()
+        LayoutCollectionsSubTabBar(bar)
+    end)
+    LayoutCollectionsSubTabBar(bar)
 
     function bar:SetActiveTab(key)
         local acc = COLORS.accent
@@ -3845,6 +4020,8 @@ local function CreateSubTabBar(parent, onTabSelect)
 
     return bar
 end
+
+end -- model viewer / achievement detail / sub-tab factories
 
 -- ============================================================================
 -- MOUNT DATA BUILDER (Source Grouped) — From global collection data (DB); fallback to API
@@ -4472,8 +4649,8 @@ local function ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
     end
     hdr:SetParent(contentFrame)
     hdr:ClearAllPoints()
-    hdr:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
-    hdr:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", 0, 0)
+    hdr:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", CONTENT_INSET, 0)
+    hdr:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -CONTENT_INSET, 0)
     hdr:SetHeight(COLLECTIONS_SUBTAB_HEADER_H)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -4517,6 +4694,23 @@ local function HideAllCollectionsResultFrames()
 end
 
 ---Recent sub-tab: four equal cards (Achievements, Mounts, Pets, Toys), recent obtains per column; tall lists extend tab height and use the main window vertical scroll (no nested scrollbars).
+local DrawRecentContent
+do
+
+---@return number cols, number cardW
+local function ComputeRecentCardGrid(innerW, gap)
+    local count = #RECENT_SECTION_ORDER
+    local cols = count
+    while cols > 1 do
+        local w = (innerW - (cols - 1) * gap) / cols
+        if w >= RECENT_CARD_MIN_WIDTH then
+            return cols, w
+        end
+        cols = cols - 1
+    end
+    return 1, innerW
+end
+
 local function RecentEntryNameMatches(e, qlower)
     if not e or type(e.name) ~= "string" or e.name == "" then return false end
     if not qlower then return true end
@@ -4542,18 +4736,108 @@ local function RecentCharacterLabelForDisplay(ob)
     return ob
 end
 
+local function RecentAchievementEarnedByLabel(achievementID, storedObtainedBy)
+    local ob = RecentCharacterLabelForDisplay(storedObtainedBy)
+    if ob and ob ~= "" then return ob end
+    if not achievementID then return nil end
+    local ok, _, _, _, _, _, _, _, _, _, _, _, _, earnedBy = pcall(GetAchievementInfo, achievementID)
+    if not ok or not earnedBy or earnedBy == "" then return nil end
+    if issecretvalue and issecretvalue(earnedBy) then return nil end
+    return RecentCharacterLabelForDisplay(earnedBy)
+end
+
+local function RecentEntryIdKey(typ, id)
+    if id == nil then return nil end
+    return tostring(typ) .. "\31" .. tostring(id)
+end
+
+--- Hide only rows recorded as account-prior (alt re-earn). Do not use current char GetAchievementInfo:
+--- wasEarnedByMe is per logged-in character and would hide other chars' Recent earns.
+local function RecentAchievementHideFromRecent(_achievementID, entry)
+    return entry and entry.accountFirstEarn == false
+end
+
 ---@param maxN number|nil nil = all matches within DB (retention-pruned list)
 local function RecentPickForType(db, typ, qlower, maxN)
     local out = {}
+    local seen = {}
     if type(db) ~= "table" then return out end
     for i = 1, #db do
         local e = db[i]
         if e and e.type == typ and RecentEntryNameMatches(e, qlower) then
-            out[#out + 1] = e
-            if maxN and maxN > 0 and #out >= maxN then break end
+            local key = RecentEntryIdKey(typ, e.id)
+            if key and seen[key] then
+                -- Newest-first list: keep first (latest) row; skip duplicate id.
+            elseif typ == "achievement" and RecentAchievementHideFromRecent(e.id, e) then
+                -- Account already had this achievement; not a first-time earn for Recent.
+            else
+                if key then seen[key] = true end
+                out[#out + 1] = e
+                if maxN and maxN > 0 and #out >= maxN then break end
+            end
         end
     end
     return out
+end
+
+local function ApplyRecentRowIconChrome(row)
+    if not row or not row._iconBorder or not ApplyVisuals then return end
+    local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
+    ApplyVisuals(
+        row._iconBorder,
+        { 0.10, 0.10, 0.12, 0.96 },
+        { bc[1], bc[2], bc[3], RECENT_ROW_ICON_BORDER_ALPHA }
+    )
+end
+
+local function PopulateCollectionsRecentTooltip(tt, ctx)
+    if not tt or not ctx then return end
+    local loc = ns.L
+    local wR, wG, wB = 1, 1, 1
+
+    tt:SetText(ctx.name or "")
+    if ctx.description and ctx.description ~= "" then
+        if issecretvalue and issecretvalue(ctx.description) then
+            ctx.description = nil
+        end
+    end
+    if ctx.description and ctx.description ~= "" then
+        tt:AddLine(ctx.description, wR, wG, wB, true)
+    end
+
+    if ctx.category and ctx.category ~= "" then
+        tt:AddLine(ctx.category, wR, wG, wB)
+    end
+
+    if ctx.typ == "achievement" and ctx.achievementID then
+        if ctx.points and ctx.points > 0 then
+            tt:AddLine(
+                format("%d %s", ctx.points, (loc and loc["POINTS_LABEL"]) or "Points"),
+                wR, wG, wB
+            )
+        end
+        if ctx.completed then
+            tt:AddLine((loc and loc["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"]) or "Completed.", wR, wG, wB)
+        end
+    end
+
+    if ctx.character and ctx.character ~= "" then
+        local fmtKey = (ctx.typ == "achievement") and "RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY" or "RECENT_TOOLTIP_EARNED_BY"
+        local fmt = (loc and loc[fmtKey]) or ((ctx.typ == "achievement") and "Earned by %s" or "Obtained by %s")
+        tt:AddLine(format(fmt, ctx.character), wR, wG, wB)
+    end
+
+    if ctx.ts and ctx.ts > 0 then
+        local abs = date("%Y-%m-%d %H:%M", ctx.ts)
+        local rel = ctx.rel or ""
+        if rel ~= "" then
+            tt:AddLine(format("%s (%s)", abs, rel), wR, wG, wB)
+        else
+            tt:AddLine(abs, wR, wG, wB)
+        end
+    elseif ctx.rel and ctx.rel ~= "" then
+        tt:AddLine(ctx.rel, wR, wG, wB)
+    end
 end
 
 local function ClearRecentPanelChildren(panel)
@@ -4618,26 +4902,23 @@ local function RecentRowNavigateToEntry(ctype, id)
     WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "collections", skipCooldown = true })
 end
 
-local function DrawRecentContent(contentFrame)
+DrawRecentContent = function(contentFrame)
     if not contentFrame then return end
     HideAllCollectionsResultFrames()
     local parent = contentFrame:GetParent()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local cw = contentFrame:GetWidth()
-    local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = CollectionsFallbackContentWidth(parent)
+        cw = CollectionsFallbackContentWidth(parent, mf)
     end
-    if not ch or ch < 1 then
-        ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
-    end
-
+    local ch = ResolveCollectionsViewportHeight(contentFrame, mf)
     local viewCap = collectionsState.recentViewportCap or ch
 
     local headerBlockH = select(1, ApplyCollectionsContentHeader(contentFrame, "recent", viewCap))
 
     local panel = collectionsState.recentTabPanel
     if not panel then
-        panel = Factory:CreateContainer(contentFrame, cw, innerChViewport, false)
+        panel = Factory:CreateContainer(contentFrame, cw, math.max(1, viewCap - headerBlockH), false)
         collectionsState.recentTabPanel = panel
     end
     panel:SetParent(contentFrame)
@@ -4666,22 +4947,15 @@ local function DrawRecentContent(contentFrame)
     ClearRecentPanelChildren(panel)
 
     local innerW = math.max(1, cw - 2 * inset)
-    local cardW = (innerW - 3 * gap) / 4
-    local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6
+    local recentCols, cardW = ComputeRecentCardGrid(innerW, gap)
+    local recentRows = math.ceil(#RECENT_SECTION_ORDER / recentCols)
+    local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 8
     local listTopPad = headerBand + 4
     local RECENT_ROW_H_SUB = math.floor(44 * 1.05 + 0.5)
 
     local pickedLists = {}
     for si = 1, #RECENT_SECTION_ORDER do
         pickedLists[si] = RecentPickForType(db, RECENT_SECTION_ORDER[si], qlower, nil)
-    end
-
-    --- Account-wide achievement completed but not flagged as earned by the current character (hide earner UI).
-    local function RecentAchievementSuppressEarner(achievementID)
-        if not achievementID then return false end
-        local ok, _, _, _, completed, _, _, _, _, _, _, _, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
-        if not ok then return false end
-        return completed == true and wasEarnedByMe == false
     end
 
     --- Pixel height of the scrollable list block inside one Recent card (rows only; excludes header band).
@@ -4694,10 +4968,11 @@ local function DrawRecentContent(contentFrame)
         end
         for j = 1, #picked do
             local e = picked[j]
-            local ob = RecentCharacterLabelForDisplay(e.obtainedBy)
-            local suppressEarner = (typ == "achievement" and e.id and RecentAchievementSuppressEarner(e.id))
+            local ob = (typ == "achievement" and e.id)
+                and RecentAchievementEarnedByLabel(e.id, e.obtainedBy)
+                or RecentCharacterLabelForDisplay(e.obtainedBy)
             local rowH = ROW_HEIGHT
-            if ob and ob ~= "" and not suppressEarner then
+            if ob and ob ~= "" then
                 rowH = RECENT_ROW_H_SUB
             end
             yList = yList + rowH + ROW_GAP
@@ -4716,9 +4991,10 @@ local function DrawRecentContent(contentFrame)
     end
 
     local inner_viewport = math.max(1, viewCap - headerBlockH)
-    local minCardFill = math.max(160, inner_viewport - 2 * inset)
+    local rowGapTotal = (recentRows > 1) and ((recentRows - 1) * gap) or 0
+    local minCardFill = math.max(160, (inner_viewport - 2 * inset - rowGapTotal) / recentRows)
     local cardH = math.max(minCardFill, maxColContent)
-    local finalContentH = math.max(viewCap, headerBlockH + inset + cardH + inset)
+    local finalContentH = math.max(viewCap, headerBlockH + inset + recentRows * cardH + rowGapTotal + inset)
 
     contentFrame:SetHeight(finalContentH)
     ApplyCollectionsContentHeader(contentFrame, "recent", finalContentH)
@@ -4734,10 +5010,18 @@ local function DrawRecentContent(contentFrame)
             or (typ == "pet" and DEFAULT_ICON_PET)
             or DEFAULT_ICON_TOY
 
+        local gridCol = (si - 1) % recentCols
+        local gridRow = math.floor((si - 1) / recentCols)
         local card = CreateCard(panel, cardH)
         card:SetParent(panel)
         card:SetSize(cardW, cardH)
-        card:SetPoint("TOPLEFT", panel, "TOPLEFT", inset + (si - 1) * (cardW + gap), -inset)
+        card:SetPoint(
+            "TOPLEFT",
+            panel,
+            "TOPLEFT",
+            inset + gridCol * (cardW + gap),
+            -(inset + gridRow * (cardH + gap))
+        )
         if ApplyVisuals then
             local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
             ApplyVisuals(card, { bg[1], bg[2], bg[3], 0.96 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
@@ -4745,7 +5029,9 @@ local function DrawRecentContent(contentFrame)
         card:Show()
 
         local headerIconBorder = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
-        local iconFr = CreateIcon(card, iconTex, RECENT_CARD_ICON, iconIsAtlas, headerIconBorder, false)
+        local iconFr = CreateIcon(card, iconTex, RECENT_CARD_ICON, iconIsAtlas, {
+            headerIconBorder[1], headerIconBorder[2], headerIconBorder[3], RECENT_ROW_ICON_BORDER_ALPHA,
+        }, false)
         local headerMidY = -(RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON * 0.5)
         if iconFr then
             iconFr:SetPoint("CENTER", card, "TOPLEFT", RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON * 0.5, headerMidY)
@@ -4788,9 +5074,9 @@ local function DrawRecentContent(contentFrame)
             })
         end)
 
-        local titleFs = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
-        titleFs:SetPoint("LEFT", iconFr or card, "RIGHT", 6, 0)
-        titleFs:SetPoint("RIGHT", resetBtn, "LEFT", -6, 0)
+        local titleFs = FontManager:CreateFontString(card, "header", "OVERLAY")
+        titleFs:SetPoint("LEFT", iconFr or card, "RIGHT", 8, 0)
+        titleFs:SetPoint("RIGHT", resetBtn, "LEFT", -8, 0)
         titleFs:SetJustifyH("LEFT")
         titleFs:SetJustifyV("MIDDLE")
         titleFs:SetText(cat)
@@ -4810,7 +5096,8 @@ local function DrawRecentContent(contentFrame)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", listHost, "TOPLEFT", 0, -yList)
             row:SetWidth(listWInner)
-            Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime, subtitleRich)
+            Factory:ApplyCollectionListRowContent(row, rowVisualIndex, iconPath, nameRich, clickable, false, onClick, rightTime, subtitleRich, nil)
+            ApplyRecentRowIconChrome(row)
             if tooltipBuilder then
                 row:SetScript("OnEnter", function(self)
                     GameTooltip:ClearLines()
@@ -4844,11 +5131,12 @@ local function DrawRecentContent(contentFrame)
                 local rel = FormatCollectionsRecentRelativeTime(e.t)
                 local iconPath = GetRecentEntryDisplayIcon(typ, e.id)
                 local idCopy, typCopy, tsCopy, nmCopy = e.id, typ, e.t, nm
-                local ob = RecentCharacterLabelForDisplay(e.obtainedBy)
-                local suppressEarner = (typCopy == "achievement" and idCopy and RecentAchievementSuppressEarner(idCopy))
+                local ob = (typCopy == "achievement" and idCopy)
+                    and RecentAchievementEarnedByLabel(idCopy, e.obtainedBy)
+                    or RecentCharacterLabelForDisplay(e.obtainedBy)
                 local subLine = nil
                 local rowH = ROW_HEIGHT
-                if ob and ob ~= "" and not suppressEarner then
+                if ob and ob ~= "" then
                     local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(ob))
                         or "|cffaaaaaa"
                     subLine = format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
@@ -4857,38 +5145,34 @@ local function DrawRecentContent(contentFrame)
                 local nameRich = COLLECTED_COLOR .. nm .. "|r"
 
                 local function buildTooltip(tt)
-                    local hdrDim = 0.52
-                    tt:SetText("|cffffd133" .. nmCopy .. "|r")
-                    tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_CATEGORY"]) or "Category", hdrDim, hdrDim, hdrDim)
-                    tt:AddLine(cat, 0.82, 0.82, 0.88)
+                    local description
+                    local points, completed
                     if typCopy == "achievement" and idCopy then
-                        tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_PROGRESS"]) or "Progress", hdrDim, hdrDim, hdrDim)
-                        local ok, _, _, points, completed = pcall(GetAchievementInfo, idCopy)
-                        if ok and points and points > 0 then
-                            tt:AddLine(format("%d %s", points, (loc and loc["POINTS_LABEL"]) or "Points"), 1, 0.85, 0.45)
-                        end
-                        if ok and completed then
-                            tt:AddLine((loc and loc["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"]) or "Completed.", 0.35, 1, 0.45)
-                        end
-                        if suppressEarner then
-                            tt:AddLine((loc and loc["COLLECTIONS_RECENT_ACH_HIDE_ALT_EARNED"]) or "Completed on account before this character.", 0.62, 0.62, 0.68)
+                        local ok, _, _, pts, comp, _, _, _, desc = pcall(GetAchievementInfo, idCopy)
+                        if ok then
+                            if desc and not (issecretvalue and issecretvalue(desc)) then
+                                description = desc
+                            end
+                            if pts and not (issecretvalue and issecretvalue(pts)) then
+                                points = pts
+                            end
+                            if comp and not (issecretvalue and issecretvalue(comp)) then
+                                completed = comp
+                            end
                         end
                     end
-                    if ob and ob ~= "" and not suppressEarner then
-                        tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_CHARACTER"]) or "Character", hdrDim, hdrDim, hdrDim)
-                        local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(ob))
-                            or "|cffaaaaaa"
-                        local fmtKey = (typCopy == "achievement") and "RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY" or "RECENT_TOOLTIP_EARNED_BY"
-                        local fmt = (loc and loc[fmtKey]) or ((typCopy == "achievement") and "Earned by %s" or "Obtained by %s")
-                        tt:AddLine(format(fmt, cc .. ob .. "|r"))
-                    end
-                    tt:AddLine((loc and loc["COLLECTIONS_RECENT_TOOLTIP_SECTION_TIME"]) or "Recorded", hdrDim, hdrDim, hdrDim)
-                    if tsCopy and tsCopy > 0 then
-                        local abs = date("%Y-%m-%d %H:%M", tsCopy)
-                        tt:AddLine(format("%s  |cff888888(%s)|r", abs, rel), 0.72, 0.72, 0.76)
-                    elseif rel and rel ~= "" then
-                        tt:AddLine(rel, 0.72, 0.72, 0.76)
-                    end
+                    PopulateCollectionsRecentTooltip(tt, {
+                        name = nmCopy,
+                        category = cat,
+                        typ = typCopy,
+                        achievementID = idCopy,
+                        description = description,
+                        points = points,
+                        completed = completed,
+                        character = ob,
+                        ts = tsCopy,
+                        rel = rel,
+                    })
                 end
 
                 addRow(iconPath, nameRich, "|cff888888" .. rel .. "|r", true, function()
@@ -4900,6 +5184,8 @@ local function DrawRecentContent(contentFrame)
         listHost:SetHeight(math.max(yList, 1))
     end
 end
+
+end -- Recent sub-tab
 
 local function SetCollectionProgress(current, total)
     local bar = collectionsState.collectionProgressBar
@@ -4975,20 +5261,16 @@ local function DrawMountsContent(contentFrame)
     collectionsState._mountsDrawGen = (collectionsState._mountsDrawGen or 0) + 1
     local drawGen = collectionsState._mountsDrawGen
     local parent = contentFrame:GetParent()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local cw = contentFrame:GetWidth()
-    local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = CollectionsFallbackContentWidth(parent)
+        cw = CollectionsFallbackContentWidth(parent, mf)
     end
-    if not ch or ch < 1 then
-        ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
-    end
+    local ch = ResolveCollectionsViewportHeight(contentFrame, mf)
+    contentFrame:SetHeight(ch)
 
     -- Layout: LEFT = list, gap, scrollbar, gap, RIGHT = 3D viewer (equal SCROLLBAR_SIDE_GAP each side of scrollbar).
-    local listContentWidth = math.floor(cw * 0.50) - SCROLLBAR_GAP
-    local scrollBarColumnWidth = SCROLLBAR_GAP
-    local listWidth = listContentWidth + (SCROLLBAR_SIDE_GAP * 2) + scrollBarColumnWidth
-    local viewerWidth = math.max(1, cw - listWidth)
+    local listContentWidth, listWidth, viewerWidth, scrollBarColumnWidth = ComputeCollectionsListDetailWidths(cw)
 
     HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "mounts", ch)
@@ -5018,7 +5300,7 @@ local function DrawMountsContent(contentFrame)
             Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
         end
     else
-        collectionsState.mountListContainer:SetSize(listContentWidth, innerCh)
+        AnchorCollectionsListPanel(collectionsState.mountListContainer, contentFrame, headerBlockH, listContentWidth, innerCh)
         collectionsState.mountListScrollBarContainer = EnsureListScrollBarContainer(
             collectionsState.mountListScrollBarContainer,
             contentFrame,
@@ -5103,7 +5385,11 @@ local function DrawMountsContent(contentFrame)
                 end
             end
         end
-        collectionsState.modelViewer:SetSize(viewerWidth - (CONTAINER_INSET * 2), detailH - (CONTAINER_INSET * 2))
+        RefreshCollectionsModelViewerLayout(
+            collectionsState.modelViewer,
+            viewerWidth - (CONTAINER_INSET * 2),
+            detailH - (CONTAINER_INSET * 2)
+        )
     end
 
     local function onSelectMount(mountID, name, icon, source, creatureDisplayID, description, isCollected)
@@ -5317,19 +5603,15 @@ local function DrawPetsContent(contentFrame)
     collectionsState._petDrawGen = (collectionsState._petDrawGen or 0) + 1
     local drawGen = collectionsState._petDrawGen
     local parent = contentFrame:GetParent()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local cw = contentFrame:GetWidth()
-    local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = CollectionsFallbackContentWidth(parent)
+        cw = CollectionsFallbackContentWidth(parent, mf)
     end
-    if not ch or ch < 1 then
-        ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
-    end
+    local ch = ResolveCollectionsViewportHeight(contentFrame, mf)
+    contentFrame:SetHeight(ch)
 
-    local listContentWidth = math.floor(cw * 0.50) - SCROLLBAR_GAP
-    local scrollBarColumnWidth = SCROLLBAR_GAP
-    local listWidth = listContentWidth + (SCROLLBAR_SIDE_GAP * 2) + scrollBarColumnWidth
-    local viewerWidth = math.max(1, cw - listWidth)
+    local listContentWidth, listWidth, viewerWidth, scrollBarColumnWidth = ComputeCollectionsListDetailWidths(cw)
 
     HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "pets", ch)
@@ -5358,7 +5640,7 @@ local function DrawPetsContent(contentFrame)
             Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
         end
     else
-        collectionsState.petListContainer:SetSize(listContentWidth, innerCh)
+        AnchorCollectionsListPanel(collectionsState.petListContainer, contentFrame, headerBlockH, listContentWidth, innerCh)
         collectionsState.petListScrollBarContainer = EnsureListScrollBarContainer(
             collectionsState.petListScrollBarContainer,
             contentFrame,
@@ -5441,7 +5723,11 @@ local function DrawPetsContent(contentFrame)
                 end
             end
         end
-        collectionsState.modelViewer:SetSize(viewerWidth - (CONTAINER_INSET * 2), detailH - (CONTAINER_INSET * 2))
+        RefreshCollectionsModelViewerLayout(
+            collectionsState.modelViewer,
+            viewerWidth - (CONTAINER_INSET * 2),
+            detailH - (CONTAINER_INSET * 2)
+        )
     end
 
     local function onSelectPet(speciesID, name, icon, source, creatureDisplayID, description, isCollected)
@@ -5658,19 +5944,15 @@ local function DrawToysContent(contentFrame)
     collectionsState._toysDrawGen = (collectionsState._toysDrawGen or 0) + 1
     local drawGen = collectionsState._toysDrawGen
     local parent = contentFrame:GetParent()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local cw = contentFrame:GetWidth()
-    local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = CollectionsFallbackContentWidth(parent)
+        cw = CollectionsFallbackContentWidth(parent, mf)
     end
-    if not ch or ch < 1 then
-        ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
-    end
+    local ch = ResolveCollectionsViewportHeight(contentFrame, mf)
+    contentFrame:SetHeight(ch)
 
-    local listContentWidth = math.floor(cw * 0.55) - SCROLLBAR_GAP
-    local scrollBarColumnWidth = SCROLLBAR_GAP
-    local listWidth = listContentWidth + (SCROLLBAR_SIDE_GAP * 2) + scrollBarColumnWidth
-    local detailWidth = math.max(1, cw - listWidth)
+    local listContentWidth, listWidth, detailWidth, scrollBarColumnWidth = ComputeCollectionsListDetailWidths(cw)
 
     HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "toys", ch)
@@ -5699,7 +5981,7 @@ local function DrawToysContent(contentFrame)
             Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
         end
     else
-        collectionsState.toyListContainer:SetSize(listContentWidth, innerCh)
+        AnchorCollectionsListPanel(collectionsState.toyListContainer, contentFrame, headerBlockH, listContentWidth, innerCh)
         collectionsState.toyListScrollBarContainer = EnsureListScrollBarContainer(
             collectionsState.toyListScrollBarContainer,
             contentFrame,
@@ -5838,8 +6120,9 @@ local function DrawToysContent(contentFrame)
             end
             collectionsState._toyDetailAddedIndicator = PlanCardFactory.CreateAddedIndicator(toyActionSlot, {
                 buttonType = "row",
-                label = (ns.L and ns.L["ADDED"]) or "Added",
-                fontCategory = "body",
+                iconOnly = true,
+                width = 28,
+                height = 28,
                 anchorPoint = "TOPRIGHT",
                 x = 0,
                 y = 0,
@@ -6172,19 +6455,15 @@ local function DrawAchievementsContent(contentFrame)
     end
     collectionsState._drawAchievementsContentBusy = true
     local parent = contentFrame:GetParent()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local cw = contentFrame:GetWidth()
-    local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = CollectionsFallbackContentWidth(parent)
+        cw = CollectionsFallbackContentWidth(parent, mf)
     end
-    if not ch or ch < 1 then
-        ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
-    end
+    local ch = ResolveCollectionsViewportHeight(contentFrame, mf)
+    contentFrame:SetHeight(ch)
 
-    local listContentWidth = math.floor(cw * 0.55) - SCROLLBAR_GAP
-    local scrollBarColumnWidth = SCROLLBAR_GAP
-    local listWidth = listContentWidth + (SCROLLBAR_SIDE_GAP * 2) + scrollBarColumnWidth
-    local detailWidth = math.max(1, cw - listWidth)
+    local listContentWidth, listWidth, detailWidth, scrollBarColumnWidth = ComputeCollectionsListDetailWidths(cw)
 
     HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = ApplyCollectionsContentHeader(contentFrame, "achievements", ch)
@@ -6207,7 +6486,7 @@ local function DrawAchievementsContent(contentFrame)
         )
     end
     achListContainer = collectionsState.achievementListContainer
-    achListContainer:SetSize(listContentWidth, innerCh)
+    AnchorCollectionsListPanel(achListContainer, contentFrame, headerBlockH, listContentWidth, innerCh)
     achListContainer:Show()
     -- Liste etrafında border yok
     collectionsState.achievementListScrollBarContainer = EnsureListScrollBarContainer(
@@ -6427,6 +6706,9 @@ function ns.Collections_RelayoutActiveSubTabChrome()
     if ns.UI_RefreshFixedHeaderChrome and mf then
         ns.UI_RefreshFixedHeaderChrome(mf)
     end
+    if mf then
+        SyncCollectionsViewportBeforeRelayout(mf)
+    end
     local cf = collectionsState.contentFrame
     if not cf or not cf:IsVisible() then return end
     local sub = collectionsState.currentSubTab or "recent"
@@ -6507,6 +6789,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         hdrCache.subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
         hdrCache.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         hdrCache.subTabBar:SetActiveTab(collectionsState.currentSubTab)
+        LayoutCollectionsSubTabBar(hdrCache.subTabBar)
         hdrCache.subTabBar:Show()
         collectionsState.subTabBar = hdrCache.subTabBar
 
@@ -6603,6 +6886,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
         subTabBar:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
         subTabBar:SetActiveTab(collectionsState.currentSubTab)
+        LayoutCollectionsSubTabBar(subTabBar)
         hdrCache.subTabBar = subTabBar
         collectionsState.subTabBar = subTabBar
 

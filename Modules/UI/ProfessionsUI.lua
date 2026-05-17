@@ -1194,16 +1194,28 @@ ns.UI_RelayoutProfessionRowWidths = RelayoutProfessionRowWidths
 local function EnsureProfessionColumnHeaderStrip(mf, scrollChild)
     if not mf or not scrollChild then return end
     local stripH = scrollChild._wnProfColHeaderStripH
-    if stripH and mf.columnHeaderClip and mf.columnHeaderClip.SetHeight then
-        mf.columnHeaderClip:SetHeight(stripH)
-    end
-    if mf.columnHeaderInner and mf.scrollChild and mf.columnHeaderInner.SetWidth then
-        local innerW = mf.scrollChild:GetWidth()
-        if innerW and innerW > 0 then
-            mf.columnHeaderInner:SetWidth(innerW)
+    if mf.columnHeaderClip and mf.columnHeaderClip.SetHeight then
+        if stripH and stripH > 1 then
+            mf.columnHeaderClip:SetHeight(stripH)
+            mf.columnHeaderClip:Show()
         end
     end
+    local innerW = scrollChild:GetWidth()
+    if not innerW or innerW < 80 then
+        innerW = cachedRowWidth
+    end
+    if not innerW or innerW < 80 then
+        innerW = (ns.UI_GetMainTabViewportWidth and ns.UI_GetMainTabViewportWidth(mf)) or 600
+    end
+    innerW = math.max(1, innerW)
+    if mf.columnHeaderInner and mf.columnHeaderInner.SetWidth then
+        mf.columnHeaderInner:SetWidth(innerW)
+    end
+    if scrollChild._wnProfColHeaderBar and scrollChild._wnProfColHeaderBar.Show then
+        scrollChild._wnProfColHeaderBar:Show()
+    end
 end
+ns.UI_EnsureProfessionColumnHeaderStrip = EnsureProfessionColumnHeaderStrip
 
 --- Live viewport resize: stretch rows + gradients only (no PopulateContent mid-drag).
 local function ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
@@ -1665,7 +1677,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
     local colHeaderParent = columnHeaderInner or headerParent
     local hdrScrollChild = mainFrameRef and mainFrameRef.scrollChild
-    local colHeaderInnerW = math.max(1, (hdrScrollChild and hdrScrollChild:GetWidth()) or width or 400)
+    local colHeaderInnerW = math.max(1, width or (hdrScrollChild and hdrScrollChild:GetWidth()) or 400)
     parent._wnProfColHeaderStripH = colHeaderStripH
 
     if columnHeaderClip then
@@ -1813,6 +1825,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
     end
     colHeaderBar:Show()
+    parent._wnProfColHeaderBar = colHeaderBar
 
     -- Scroll content starts below the column header overlay area.
     -- The overlay covers the full clip height (header row + optional top gap + pad).

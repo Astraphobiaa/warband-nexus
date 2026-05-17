@@ -3618,8 +3618,8 @@ function PlanCardFactory.CreateAddButton(parent, options)
     local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ADD_WIDTH = 60, ADD_HEIGHT = 32, ADD_MARGIN_X = 10, ADD_MARGIN_Y = 8}
     local iconOnly = options.iconOnly == true
     -- Increase hit area: Make button wider for easier clicking
-    local width = options.width or (iconOnly and 32 or (buttonType == "row" and defaultSize.width or CBL.ADD_WIDTH))
-    local height = options.height or (iconOnly and 32 or (buttonType == "row" and defaultSize.height or CBL.ADD_HEIGHT))
+    local width = options.width or (iconOnly and 34 or (buttonType == "row" and defaultSize.width or CBL.ADD_WIDTH))
+    local height = options.height or (iconOnly and 34 or (buttonType == "row" and defaultSize.height or CBL.ADD_HEIGHT))
     -- Standardized label for all button types
     local label = options.label or ((ns.L and ns.L["ADD_BUTTON"]) or "+ Add")
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
@@ -3649,8 +3649,8 @@ function PlanCardFactory.CreateAddButton(parent, options)
     if iconOnly then
         local iconTex = addBtn:CreateTexture(nil, "OVERLAY")
         local PCM = ns.UI_PLANS_CARD_METRICS or {}
-        local pad = PCM.plansActionIconInset or 3
-        local iconSz = math.max(12, math.min(width, height) - pad * 2)
+        local pad = PCM.plansActionIconInset or 2
+        local iconSz = math.max(16, math.min(width, height) - pad * 2)
         iconTex:SetSize(iconSz, iconSz)
         iconTex:SetPoint("CENTER", addBtn, "CENTER", 0, 0)
         if not (ns.UI_ApplyWnActionIcon and ns.UI_ApplyWnActionIcon(iconTex, "todo", false, false))
@@ -3741,16 +3741,36 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     local y = options.y or (buttonType == "row" and 0 or CBL.ADD_MARGIN_Y)
 
     if buttonType == "row" then
+        local iconOnly = options.iconOnly == true
         local addedBtn = ns.UI.Factory:CreateButton(parent, width, height, false)
         addedBtn:SetPoint(anchorPoint, x, y)
         addedBtn:SetFrameLevel((parent:GetFrameLevel() or 0) + 10)
-        -- Display-only: do not eat clicks meant for Track / To-Do beside it.
         addedBtn:EnableMouse(false)
-        local addedText = FontManager:CreateFontString(addedBtn, fontCategory, "OVERLAY")
-        addedText:SetPoint("CENTER")
-        addedText:SetText(label)
-        addedText:SetTextColor(0.38, 0.72, 0.48, 0.78)
-        addedBtn._wnAddedText = addedText
+        if iconOnly then
+            local iconTex = addedBtn:CreateTexture(nil, "OVERLAY")
+            local pad = 2
+            local iconSz = math.max(16, math.min(width, height) - pad * 2)
+            iconTex:SetSize(iconSz, iconSz)
+            iconTex:SetPoint("CENTER", addedBtn, "CENTER", 0, 0)
+            local addedGreen = { 0.38, 0.82, 0.48, 1 }
+            if ns.UI_ApplyWnActionIcon and ns.UI_ApplyWnActionIcon(iconTex, "todo", true, false) then
+                addedBtn._wnIconTex = iconTex
+            elseif ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(iconTex, "todo", { vertexColor = addedGreen }) then
+                addedBtn._wnIconTex = iconTex
+            else
+                local addedText = FontManager:CreateFontString(addedBtn, fontCategory, "OVERLAY")
+                addedText:SetPoint("CENTER")
+                addedText:SetText("+")
+                addedText:SetTextColor(addedGreen[1], addedGreen[2], addedGreen[3], addedGreen[4])
+                addedBtn._wnAddedText = addedText
+            end
+        else
+            local addedText = FontManager:CreateFontString(addedBtn, fontCategory, "OVERLAY")
+            addedText:SetPoint("CENTER")
+            addedText:SetText(label)
+            addedText:SetTextColor(0.38, 0.72, 0.48, 0.78)
+            addedBtn._wnAddedText = addedText
+        end
         return addedBtn
     end
 
