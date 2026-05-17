@@ -630,17 +630,8 @@ local function ComputeScrollChildWidth(frame)
     if not frame or not frame.scroll then return 0 end
     local w = frame.scroll:GetWidth()
     local tab = frame.currentTab
-    if tab == "gear" then
-        local vp = (ns.UI_GetMainTabViewportWidth and frame) and ns.UI_GetMainTabViewportWidth(frame) or 0
-        local absMin = (ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0) and ns.MIN_GEAR_CARD_W or 0
-        if vp > 0 then
-            w = math.max(w, vp)
-            if absMin > vp then
-                w = math.max(w, absMin)
-            end
-        elseif absMin > 0 then
-            w = math.max(w, absMin)
-        end
+    if tab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
+        w = math.max(w, ns.MIN_GEAR_CARD_W)
     elseif tab == "professions" and ns.ComputeProfessionsGridWidth then
         local profW = ns.ComputeProfessionsGridWidth()
         if profW > 0 then w = math.max(w, profW) end

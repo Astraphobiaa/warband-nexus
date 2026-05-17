@@ -513,8 +513,7 @@ local function GetGearTabMinCardInnerW()
     return ns.GearUI_GetGearTabMinCardInnerW()
 end
 
-local gearCardSide = (ns.GEAR_CARD_SIDE_MARGIN ~= nil) and ns.GEAR_CARD_SIDE_MARGIN or 0
-local MIN_GEAR_CARD_W = 2 * gearCardSide + 4 + GetGearTabMinCardInnerW()
+local MIN_GEAR_CARD_W = 2 * (SIDE_MARGIN or 16) + 2 * 12 + GetGearTabMinCardInnerW()
 ns.MIN_GEAR_CARD_W = MIN_GEAR_CARD_W
 
 local GEAR_PAPERDOLL_REFRESH_SLOT_IDS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 }
@@ -915,39 +914,22 @@ local function ClearGearRecScrollContent(recContent)
 end
 
 --- Column layout: Slot | Gear (icon+name) | Recommend (ilvl delta) | Location (widest; long bank labels).
---- Prioritizes gear name + ilvl delta on narrow recommendation panels (1080p / compact window).
 local function GetGearStorageRecColumnLayout(contentW)
     local pad = 8
     local gap = 6
     local inner = math.max(40, contentW - pad * 2)
-    local gapTotal = 3 * gap
-    local slotW, gearW, recommendW, locationW
-
-    if inner >= 520 then
-        slotW = math.min(100, math.max(72, math.floor(inner * 0.16 + 0.5)))
-        recommendW = math.min(132, math.max(88, math.floor(inner * 0.22 + 0.5)))
-        locationW = math.min(160, math.max(88, math.floor(inner * 0.24 + 0.5)))
-        gearW = inner - slotW - recommendW - locationW - gapTotal
-    elseif inner >= 380 then
-        slotW = math.max(58, math.floor(inner * 0.14 + 0.5))
-        recommendW = math.max(80, math.floor(inner * 0.24 + 0.5))
-        locationW = math.max(72, math.floor(inner * 0.22 + 0.5))
-        gearW = inner - slotW - recommendW - locationW - gapTotal
-    else
-        recommendW = math.max(72, math.floor(inner * 0.28 + 0.5))
-        slotW = math.max(50, math.floor(inner * 0.13 + 0.5))
-        locationW = math.max(64, math.floor(inner * 0.20 + 0.5))
-        gearW = inner - slotW - recommendW - locationW - gapTotal
-    end
-
+    -- Slot: fit "Main Hand" / localized long labels without ellipsis.
+    local slotW = math.min(108, math.max(86, math.floor(inner * 0.20 + 0.5)))
+    local recommendW = math.min(128, math.max(76, math.floor(inner * 0.20 + 0.5)))
+    local locationW = math.min(168, math.max(88, math.floor(inner * 0.28 + 0.5)))
+    local gearW = inner - slotW - recommendW - locationW - 3 * gap
     local rw, lw = recommendW, locationW
     local gw = gearW
-    if gw < 64 then
-        local deficit = 64 - gw
-        lw = math.max(52, lw - math.ceil(deficit * 0.50))
-        slotW = math.max(48, slotW - math.floor(deficit * 0.22))
-        rw = math.max(72, rw - math.floor(deficit * 0.28))
-        gw = inner - slotW - rw - lw - gapTotal
+    if gw < 72 then
+        local deficit = 72 - gw
+        rw = math.max(58, rw - math.floor(deficit * 0.40))
+        lw = math.max(80, lw - math.ceil(deficit * 0.60))
+        gw = inner - slotW - rw - lw - 3 * gap
     end
     local iconSz = math.min(26, math.max(20, math.floor(24 * 0.92)))
     local xSlot = pad
@@ -1048,11 +1030,7 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
         fs:SetPoint("TOPRIGHT", hdr, "TOPLEFT", lay.xRecommend + lay.recommendW, 1)
         fs:SetJustifyH("CENTER")
         fs:SetWordWrap(false)
-        local recHdr = GetLocalizedText("GEAR_STORAGE_TABLE_HDR_RECOMMEND", "Recommend")
-        if lay.recommendW < 92 then
-            recHdr = "Rec"
-        end
-        fs:SetText(recHdr)
+        fs:SetText(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_RECOMMEND", "Recommend"))
         fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
     end
     do
