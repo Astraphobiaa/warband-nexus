@@ -881,8 +881,8 @@ function ns.UI_VirtualListRelayoutVisibleRowsOnly(container, flatList)
                     local pointY = it.yOffset or 0
                     local xOff = it.xOffset or 0
                     frame:ClearAllPoints()
-                    local rowH = it.height or DEFAULT_ROW_HEIGHT
-                    if frame.SetHeight then frame:SetHeight(rowH) end
+                    local paintH = ResolveRowPaintHeight(it)
+                    if frame.SetHeight then frame:SetHeight(paintH) end
                     AnchorVirtualRowGeometry(frame, rowParent, container, it, pointY)
                     frame:Show()
                     if frame._wnGradientRefresh then

@@ -2744,7 +2744,13 @@ function WarbandNexus:RedrawItemsResultsOnly()
     if not scrollChild then return end
     local rc = scrollChild.resultsContainer
     if not rc or rc:GetParent() ~= scrollChild then return end
+    if ns.UI_EnsureMainScrollLayout then
+        ns.UI_EnsureMainScrollLayout()
+    end
     local width = ResolveItemsTabScrollContentWidth(scrollChild)
+    if rc.SetWidth and width and width >= 1 then
+        rc:SetWidth(math.max(1, width))
+    end
     local q = ""
     if SearchStateManager and SearchStateManager.GetQuery then
         q = SearchStateManager:GetQuery("items") or ""
@@ -3127,6 +3133,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             populateRowFn = function(frame, entry, _idx)
                 PopulateRow(frame, entry.data, entry.rowIdx, entry.rowIdx)
             end,
+            layoutRowFn = function(frame, entry, _idx)
+                ApplyItemRowInteriorLayout(frame)
+            end,
             createHeaderFn = function(container, entry)
                 local d = entry.data
                 local gKey = d.group.groupKey
@@ -3229,24 +3238,143 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     return yOffset + GetLayout().minBottomSpacing
 end -- DrawItemsResults
 
+local function ApplyItemRowInteriorLayout(row)
+    if not row then return end
+    if row.SetHeight then
+        row:SetHeight(ITEMS_VIRTUAL_ROW_HEIGHT)
+    end
+    if row.bg and row.bg.SetAllPoints then
+        row.bg:SetAllPoints()
+    end
+    if row.locationText and row.nameText then
+        local layout = GetLayout()
+        local li = layout.LIST_ROW_LOCATION_RIGHT_INSET or 28
+        local lw = layout.LIST_ROW_LOCATION_MAX_WIDTH or 120
+        row.locationText:ClearAllPoints()
+        row.locationText:SetPoint("RIGHT", row, "RIGHT", -li, 0)
+        row.locationText:SetWidth(lw)
+        row.locationText:SetJustifyH("RIGHT")
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", row, "LEFT", 98, 0)
+        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
+        row.nameText:SetJustifyH("LEFT")
+    end
+end
+
+local function RelayoutItemsGroupWrapWidths(resultsContainer, listW)
+    if not resultsContainer or not listW or listW < 1 then return end
+    listW = math.max(1, listW)
+    local headers = resultsContainer._vlm_chainHeaders
+    if headers then
+        for i = 1, #headers do
+            local wrap = headers[i]
+            if wrap and wrap.SetWidth then
+                wrap:SetWidth(listW)
+            end
+        end
+    end
+    local shells = resultsContainer._vlm_groupShellByKey
+    if shells then
+        for _, shell in pairs(shells) do
+            if shell and shell.SetWidth then
+                shell:SetWidth(listW)
+            end
+        end
+    end
+end
+
+local function RelayoutItemsResultsViewport(scrollChild, contentWidth, mf)
+    if not mf or mf.currentTab ~= "items" or not scrollChild then
+        return false
+    end
+    local rc = scrollChild.resultsContainer
+    if not rc then
+        return false
+    end
+    local side = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN
+    if ns.UI_GetMainTabLayoutMetrics then
+        local m = ns.UI_GetMainTabLayoutMetrics(mf)
+        if m and m.sideMargin then
+            side = m.sideMargin
+        end
+    end
+    if contentWidth and contentWidth > 0 then
+        rc:SetWidth(math.max(1, contentWidth - side * 2))
+    end
+    if ns.UI_RefreshFixedHeaderChrome then
+        ns.UI_RefreshFixedHeaderChrome(mf)
+    end
+    if ItemsWarbandUsesStorageTree() then
+        if WarbandNexus.RedrawStorageResultsOnly then
+            WarbandNexus:RedrawStorageResultsOnly()
+        end
+        return true
+    end
+    local VLM = ns.VirtualListModule
+    local fl = rc._vlm_flatList
+    if not fl or not VLM then
+        return false
+    end
+    local listW = (ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(rc, ResolveItemsTabScrollContentWidth(scrollChild), 0))
+        or rc:GetWidth()
+        or contentWidth
+    RelayoutItemsGroupWrapWidths(rc, listW)
+    local totalH, forceFull = VLM.RefreshVirtualListFlatList(mf, rc, fl)
+    if forceFull then
+        if WarbandNexus.RedrawItemsResultsOnly then
+            WarbandNexus:RedrawItemsResultsOnly()
+        end
+        return true
+    end
+    if totalH and rc.SetHeight then
+        rc:SetHeight(math.max(1, totalH))
+    end
+    if ns.UI_RelayoutResultsContainer then
+        ns.UI_RelayoutResultsContainer(rc, scrollChild, side, 8)
+    end
+    rc._vlm_remeasureTopOffset = true
+    if rc._virtualUpdater then
+        rc._virtualUpdater()
+    end
+    if mf.scroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+    return true
+end
+
+local function ItemsTabViewportRelayout(scrollChild, contentWidth, mf)
+    if not mf or mf.currentTab ~= "items" or not scrollChild then
+        return false
+    end
+    -- Corner-drag: freeze virtual list until resize commit (Characters tab parity).
+    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+        return true
+    end
+    return RelayoutItemsResultsViewport(scrollChild, contentWidth, mf)
+end
+
+local function ItemsTabResizeCommitRedraw(scrollChild, contentWidth, mf)
+    if not mf or mf.currentTab ~= "items" then
+        return false
+    end
+    if ns.UI_RefreshFixedHeaderChrome then
+        ns.UI_RefreshFixedHeaderChrome(mf)
+    end
+    if ns.UI_EnsureMainScrollLayout then
+        ns.UI_EnsureMainScrollLayout()
+    end
+    -- Single full results redraw after corner-drag (virtual list + section headers).
+    if WarbandNexus.RedrawItemsResultsOnly then
+        WarbandNexus:RedrawItemsResultsOnly()
+    end
+    return true
+end
+
 if ns.UI_LayoutCoordinator then
     local LC = ns.UI_LayoutCoordinator
     LC:RegisterTabAdapter("items", {
-        OnViewportLayoutCommit = function(_scrollChild, _contentWidth, mf)
-            if not mf or mf.currentTab ~= "items" then return false end
-            if ns.UI_RefreshFixedHeaderChrome then
-                ns.UI_RefreshFixedHeaderChrome(mf)
-            end
-            if ItemsWarbandUsesStorageTree() and WarbandNexus.RedrawStorageResultsOnly then
-                WarbandNexus:RedrawStorageResultsOnly()
-                return true
-            end
-            if WarbandNexus.ApplyItemsVirtualFlatListOnly then
-                WarbandNexus:ApplyItemsVirtualFlatListOnly()
-                return true
-            end
-            return false
-        end,
+        OnViewportWidthChanged = ItemsTabViewportRelayout,
+        OnViewportLayoutCommit = ItemsTabResizeCommitRedraw,
     })
 end
 

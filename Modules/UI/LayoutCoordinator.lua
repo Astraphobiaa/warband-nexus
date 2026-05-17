@@ -49,7 +49,13 @@ local function IsMainFrameResizeSession(frame)
     return frame and (frame._resizeActive or frame._resizeCommitPending)
 end
 
+--- True only while the corner grip is held (not during debounced post-release commit).
 function ns.UI_IsMainFrameResizing(frame)
+    return frame and frame._resizeActive == true
+end
+
+--- Drag active or debounced commit pending (scroll-child width freeze, defer PopulateContent).
+function ns.UI_IsMainFrameResizeSession(frame)
     return IsMainFrameResizeSession(frame)
 end
 
@@ -383,6 +389,10 @@ function LayoutCoordinator:HookMainFrameResizeCommitOnMouseUp(frame, resizeBtn, 
     local tokens = GetResizeTokens()
     resizeBtn:SetScript("OnMouseUp", function(_, button)
         if button ~= "LeftButton" then return end
+        -- Stop OnUpdate sizing immediately; debounce only the heavy tab relayout commit.
+        if onCommitExtra then
+            onCommitExtra()
+        end
         CancelTimer(commitDebounceTimer)
         commitDebounceGen = commitDebounceGen + 1
         local myGen = commitDebounceGen
@@ -390,11 +400,9 @@ function LayoutCoordinator:HookMainFrameResizeCommitOnMouseUp(frame, resizeBtn, 
             commitDebounceTimer = C_Timer.NewTimer(tokens.commitDebounce, function()
                 if myGen ~= commitDebounceGen then return end
                 commitDebounceTimer = nil
-                if onCommitExtra then onCommitExtra() end
                 LayoutCoordinator:OnMainFrameResizeCommit(frame)
             end)
         else
-            if onCommitExtra then onCommitExtra() end
             LayoutCoordinator:OnMainFrameResizeCommit(frame)
         end
     end)

@@ -567,6 +567,15 @@ local function StartCustomResize(frame)
             self:SetScript("OnUpdate", nil)
             return
         end
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            local finish = self._wnResizeFinishOnRelease
+            if finish then
+                finish()
+            else
+                StopCustomResize(self)
+            end
+            return
+        end
         local x, y = GetCursorPosition()
         local sc = self._resizeScale or 1
         local dw = (x - (self._resizeStartCX or x)) / sc
@@ -1326,6 +1335,7 @@ function WarbandNexus:CreateMainWindow()
         SaveWindowGeometry(f)
         NormalizeFramePosition(f)
     end
+    f._wnResizeFinishOnRelease = FinishMainFrameResizeMouseUp
     local LCResize = ns.UI_LayoutCoordinator
     if LCResize and LCResize.HookMainFrameResizeCommitOnMouseUp then
         LCResize:HookMainFrameResizeCommitOnMouseUp(f, resizeBtn, FinishMainFrameResizeMouseUp)
