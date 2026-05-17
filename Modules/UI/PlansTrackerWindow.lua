@@ -746,8 +746,18 @@ local function RefreshTrackerContentImmediate()
                             return WarbandNexus.IsActivePlanComplete and WarbandNexus:IsActivePlanComplete(plan) or false
                         end,
                     })
+                local achPinInset = 6
                 if achPin then
-                    achPin:SetPoint("RIGHT", row.headerFrame, "RIGHT", -4, 0)
+                    local pinW = (achPin.GetWidth and achPin:GetWidth()) or 28
+                    achPinInset = 4 + pinW
+                    if ns.UI_PlansAnchorHeaderAction then
+                        ns.UI_PlansAnchorHeaderAction(achPin, row.headerFrame, 4, pinW)
+                    else
+                        achPin:SetPoint("RIGHT", row.headerFrame, "RIGHT", -4, 0)
+                    end
+                end
+                if ns.UI_PlansSyncTitleRightInset then
+                    ns.UI_PlansSyncTitleRightInset(row, achPinInset)
                 end
 
                 -- Achievement tooltip on header hover (Frame may have no prior OnEnter/OnLeave — guard GetScript)
@@ -1145,6 +1155,10 @@ local function RefreshTrackerContentImmediate()
                     tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                     tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
                     rightOffset = rightOffset + tryW + ACTION_GAP
+                end
+
+                if ns.UI_PlansSyncTitleRightInset then
+                    ns.UI_PlansSyncTitleRightInset(row, rightOffset)
                 end
 
                 -- Tooltip on header hover (preserve any prior OnEnter/OnLeave for hover highlight)
