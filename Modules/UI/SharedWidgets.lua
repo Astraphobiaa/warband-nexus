@@ -980,7 +980,7 @@ ns.UI_PLANS_CARD_METRICS = {
     --- Vertical gap between To-Do List cards (Currency/Reputation row-gap parity).
     todoListCardGap = 10,
     browseCardPadH = 12,
-    plansActionIconInset = 2,
+    plansActionIconInset = 3,
     browseIconTopInset = PlansMetric(10),
     browseIconLeftInset = PlansMetric(10),
     browseIconContainerSize = PlansMetric(45),
@@ -7420,7 +7420,7 @@ end
 function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, opts)
     opts = type(opts) == "table" and opts or {}
     if not parent or not achievementID or not WarbandNexus then return nil end
-    local sz = tonumber(opts.size) or 32
+    local sz = tonumber(opts.size) or 28
     local btn = self:CreateButton(parent, sz, sz, true)
     if parent.GetFrameLevel then
         btn:SetFrameLevel((parent:GetFrameLevel() or 0) + (tonumber(opts.frameLevelOffset) or 25))
@@ -7488,12 +7488,12 @@ end
 
 -- Collections detail header: action slot (+ try row) + Wowhead (eye always flush right) — same geometry for Mounts / Pets / Toy Box.
 ns.CollectionsDetailHeaderLayout = {
-    WOWHEAD_SIZE = 22,
-    ACTION_SLOT_W = 36,
-    ACTION_SLOT_H = 36,
+    WOWHEAD_SIZE = 18,
+    ACTION_SLOT_W = 74,
+    ACTION_SLOT_H = 28,
     TRY_GAP = 4,
     TRY_ROW_H = 18,
-    WOWHEAD_GAP = 8,
+    WOWHEAD_GAP = 10,
     -- Plan cards / other tabs: Wowhead eye inset from card top (aligns with Collections detail feel)
     CARD_WOWHEAD_TOP_OFFSET = 10,
 }
@@ -7525,26 +7525,9 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     wowheadBtn:SetSize(L.WOWHEAD_SIZE, L.WOWHEAD_SIZE)
     local vOff = math.max(0, (actionSlotH - L.WOWHEAD_SIZE) / 2)
     wowheadBtn:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -vOff)
-    local whPad = 2
-    local whIconSz = math.max(14, L.WOWHEAD_SIZE - whPad * 2)
     local whTex = wowheadBtn:CreateTexture(nil, "ARTWORK")
-    whTex:SetSize(whIconSz, whIconSz)
-    whTex:SetPoint("CENTER", wowheadBtn, "CENTER", 0, 0)
-    local whIconOk = false
-    if wowheadBtn.SetNormalAtlas then
-        whIconOk = pcall(wowheadBtn.SetNormalAtlas, wowheadBtn, "socialqueuing-icon-eye")
-    end
-    if not whIconOk and whTex.SetAtlas then
-        whIconOk = pcall(whTex.SetAtlas, whTex, "socialqueuing-icon-eye", true)
-    end
-    if whIconOk then
-        whTex:SetVertexColor(1, 1, 1, 1)
-        whTex:SetAlpha(1)
-    elseif not ns.UI_SetWnIconTexture(whTex, "link", { vertexColor = { 1, 1, 1, 1 } }) then
-        whTex:SetTexture("Interface\\MINIMAP\\TRACKING\\Auctioneer")
-        whTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        whTex:SetVertexColor(1, 1, 1, 1)
-    end
+    whTex:SetAllPoints()
+    ns.UI_SetWnIconTexture(whTex, "link", { vertexColor = ns.WN_ICON_VERTEX_WHITE })
     wowheadBtn._wnIconTex = whTex
     wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     wowheadBtn:SetFrameLevel((root:GetFrameLevel() or 0) + 8)

@@ -3728,10 +3728,6 @@ local function PopulateContentBody(self)
     local totalScrollH = math.max(contentBottom, viewportH)
     scrollChild:SetHeight(totalScrollH)
 
-    if tab == "professions" and ns.UI_EnsureProfessionColumnHeaderStrip then
-        ns.UI_EnsureProfessionColumnHeaderStrip(mainFrame, scrollChild)
-    end
-
     if ns.UI_ConfigureMainScrollViewportForTab then
         ns.UI_ConfigureMainScrollViewportForTab(mainFrame, tab)
     end
