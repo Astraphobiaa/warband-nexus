@@ -4500,11 +4500,15 @@ function WarbandNexus:ShowSettings()
         end
     end)
     
-    -- Resize grip (Factory button)
-    local resizer = ns.UI.Factory:CreateButton(f, 16, 16, true)
+    -- Resize grip (Factory button) — inset above footer / scrollbar lane
+    local shellGrip = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local gripSize = shellGrip.RESIZE_GRIP_SIZE or 18
+    local scrollLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
+    local resizer = ns.UI.Factory:CreateButton(f, gripSize, gripSize, true)
     if not resizer then return end
-    resizer:SetSize(16, 16)
-    resizer:SetPoint("BOTTOMRIGHT", -2, 2)
+    resizer:SetSize(gripSize, gripSize)
+    resizer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(scrollLane + 6), shellGrip.RESIZE_GRIP_INSET_Y or 8)
+    resizer:SetFrameLevel((f:GetFrameLevel() or 0) + 40)
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")

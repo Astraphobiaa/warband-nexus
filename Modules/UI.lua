@@ -635,9 +635,14 @@ local function ComputeScrollChildWidth(frame)
     elseif tab == "professions" and ns.ComputeProfessionsGridWidth then
         local profW = ns.ComputeProfessionsGridWidth()
         if profW > 0 then w = math.max(w, profW) end
-    elseif tab == "pve" and ns.ComputePvEMinScrollWidth then
-        local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
-        if pveW > 0 then w = math.max(w, pveW) end
+    elseif tab == "pve" then
+        local painted = frame._pveMinScrollWidth
+        if type(painted) == "number" and painted > 0 then
+            w = math.max(w, painted)
+        elseif ns.ComputePvEMinScrollWidth then
+            local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
+            if pveW > 0 then w = math.max(w, pveW) end
+        end
     elseif tab == "chars" then
         local minW = frame._charsMinScrollWidth
         if (not minW or minW < 1) and ns.UI_ComputeCharactersMinScrollWidth then
@@ -665,6 +670,9 @@ local function UpdateScrollLayout(frame)
     frame.scrollChild:SetWidth(w)
     if frame.columnHeaderInner and frame.columnHeaderClip and frame.columnHeaderClip:GetHeight() > 1 then
         frame.columnHeaderInner:SetWidth(w)
+    end
+    if ns.UI_SyncMainScrollBarColumns then
+        ns.UI_SyncMainScrollBarColumns(frame)
     end
 end
 
@@ -1303,10 +1311,14 @@ function WarbandNexus:CreateMainWindow()
     end)
     
     -- Intentionally raw: Blizzard chat size-grabber art on a `Frame` mouse sink (not UIPanel resize template).
+    local shellLayoutEarly = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local resizeGripSize = shellLayoutEarly.RESIZE_GRIP_SIZE or 18
     local resizeBtn = CreateFrame("Frame", nil, f)
-    resizeBtn:SetSize(16, 16)
-    resizeBtn:SetPoint("BOTTOMRIGHT", 0, 0)
+    resizeBtn:SetSize(resizeGripSize, resizeGripSize)
+    resizeBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(shellLayoutEarly.RESIZE_GRIP_INSET_X or 4), shellLayoutEarly.RESIZE_GRIP_INSET_Y or 4)
     resizeBtn:EnableMouse(true)
+    resizeBtn:SetFrameLevel((f:GetFrameLevel() or 0) + (shellLayoutEarly.RESIZE_GRIP_FRAMELEVEL_BOOST or 80))
+    f.resizeGrip = resizeBtn
     
     local resizeNormal = resizeBtn:CreateTexture(nil, "ARTWORK")
     resizeNormal:SetAllPoints()
@@ -3321,6 +3333,17 @@ function WarbandNexus:CreateMainWindow()
         footerLeft:SetTextColor(0.5, 0.52, 0.56, 0.92)
         footerLeft:SetText((L and L["MAIN_FOOTER_LEFT"]) or "Crafted with care, for everyone who plays.")
         f.footerLeftText = footerLeft
+
+        if f.resizeGrip then
+            local grip = f.resizeGrip
+            local gripSize = MAIN_SHELL_LAYOUT.RESIZE_GRIP_SIZE or 18
+            local gripInsetX = MAIN_SHELL_LAYOUT.RESIZE_GRIP_INSET_X or 4
+            local gripInsetY = MAIN_SHELL_LAYOUT.RESIZE_GRIP_INSET_Y or 4
+            grip:SetSize(gripSize, gripSize)
+            grip:ClearAllPoints()
+            grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -gripInsetX, gripInsetY)
+            grip:SetFrameLevel((f:GetFrameLevel() or 0) + (MAIN_SHELL_LAYOUT.RESIZE_GRIP_FRAMELEVEL_BOOST or 80))
+        end
     end
     
     -- Master OnHide: cleanup when addon window closes
@@ -3490,6 +3513,7 @@ local function PopulateContentBody(self)
     end
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_teardownUI")
+    mainFrame._pveMinScrollWidth = nil
     -- Clear fixed header area and reset to minimal height
     local fixedHeader = mainFrame.fixedHeader
     if fixedHeader then
@@ -3769,6 +3793,8 @@ local function PopulateContentBody(self)
     if mainFrame._virtualScrollUpdate then
         mainFrame._virtualScrollUpdate()
     end
+
+    UpdateScrollLayout(mainFrame)
 
     self:UpdateTabCountBadges()
     _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_postLayout")

@@ -71,8 +71,8 @@ local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().sideMargin or 10
 local TOP_MARGIN = GetLayout().topMargin or 8
 
--- PvE inline grid: min width for horizontal scroll + columnHeaderInner (see ProfessionsUI / UI.lua).
--- Left prefix through iLvl matches Characters row chrome (see PvE_ComputeCharacterRowPrefixToGoldPx).
+-- PvE inline grid: min width for horizontal scroll; column headers live in scrollChild (not columnHeaderClip).
+-- Left prefix through iLvl matches Characters row chrome; inline grid starts at PvE_ComputeInlineColumnsStartPx.
 local PVE_CHAR_HEADER_H_MARGIN = 20                -- char row inset 10 + 10
 local PVE_COLUMN_HEADER_PAD = 2
 local PVE_COL_SPACING = 4                        -- uniform baseline spacing for symmetric header rhythm
@@ -989,6 +989,7 @@ function ns.ComputePvEMinScrollWidth(self)
         slot2 = PVE_VAULT_COL_W,
         slot3 = PVE_VAULT_COL_W,
         bountiful = PVE_BOUNTIFUL_COL_W,
+        vault_status = PVE_STATUS_COL_W,
     }
     local inlineTotal = 0
     for i = 1, #columnSeq do
@@ -2111,24 +2112,79 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
     return cardHeight, cardWidth
 end
 
+--- Viewport width for expanded PvE detail cards (row width / scroll viewport — not min scrollChild width).
+function ns.PvEUI_ResolveExpandedDetailWidth(charDetailContent, mainFrame, scrollParent)
+    if charDetailContent then
+        local left = charDetailContent:GetLeft()
+        local right = charDetailContent:GetRight()
+        if left and right and right > left then
+            return right - left
+        end
+        local w = charDetailContent:GetWidth() or 0
+        if w > 80 then
+            return w
+        end
+    end
+    local mf = mainFrame or (WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+    if ns.UI_GetMainTabViewportWidth and mf then
+        local vw = ns.UI_GetMainTabViewportWidth(mf)
+        if vw and vw > 80 then
+            return math.max(200, vw - 20)
+        end
+    end
+    local scroll = mf and mf.scroll
+    if scroll then
+        local vw = scroll:GetWidth()
+        if vw and vw > 80 then
+            return math.max(200, vw - 20)
+        end
+    end
+    return 600
+end
+
+local function PvEUI_WipeExpandedDetailSurface(charDetailContent)
+    if not charDetailContent then return end
+    local children = { charDetailContent:GetChildren() }
+    for i = 1, #children do
+        local ch = children[i]
+        ch:Hide()
+        ch:SetParent(nil)
+    end
+    charDetailContent._pveCardContainer = nil
+end
+
+local function PvEUI_ExpandedDetailHasCards(charDetailContent)
+    local cc = charDetailContent and charDetailContent._pveCardContainer
+    if not cc then return false end
+    local kids = { cc:GetChildren() }
+    return #kids > 0
+end
+
 --- Populates expanded PvE per-character detail (M+, keystone, vault grid).
 --- Extracted from DrawPvEProgress to avoid Lua 5.1 "more than 60 upvalues" on nested closures.
 local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
-            if not charDetailContent or charDetailContent._wnPopulateKey == charExpandKey then
+            if not charDetailContent then return end
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            local bodyW = ns.PvEUI_ResolveExpandedDetailWidth(charDetailContent, mf, parent)
+            if charDetailContent._wnPopulateKey == charExpandKey
+                and charDetailContent._wnPopulateBodyW
+                and math.abs(charDetailContent._wnPopulateBodyW - bodyW) < 4
+                and PvEUI_ExpandedDetailHasCards(charDetailContent) then
                 return
             end
+            PvEUI_WipeExpandedDetailSurface(charDetailContent)
             charDetailContent._wnPopulateKey = charExpandKey
+            charDetailContent._wnPopulateBodyW = bodyW
 
             local cardContainer = ns.UI.Factory:CreateContainer(charDetailContent)
+            charDetailContent._pveCardContainer = cardContainer
             cardContainer:SetPoint("TOPLEFT", charDetailContent, "TOPLEFT", 0, 0)
             cardContainer:SetPoint("TOPRIGHT", charDetailContent, "TOPRIGHT", 0, 0)
 
             -- Calculate responsive card widths (pixel-snapped)
             -- Order: Overall Score (35%) → Keystone+Affixes (35%) → Vault (30%)
             local PixelSnap = ns.PixelSnap or function(v) return v end
-            local totalWidth = PixelSnap((ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(
-                L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame, parent))
-                or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2))
+            local totalWidth = PixelSnap(bodyW)
             -- Vault card: 4 equal columns (Label + 3 slots), each needs room for "Dungeons" + icon
             local card3Width = PixelSnap(math.max(360, totalWidth * 0.40))  -- Vault (min 360px)
             local remaining  = totalWidth - card3Width
@@ -2712,7 +2768,11 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             vaultCard:SetHeight(unifiedRowH)
             cardContainer:SetHeight(unifiedRowH)
             charDetailContent._wnSectionFullH = unifiedRowH
+            if charDetailContent._pveOnLayoutChanged then
+                charDetailContent._pveOnLayoutChanged(unifiedRowH)
+            end
 end
+ns.PvEUI_PopulateExpandedCharacterDetail = PvEUI_PopulateExpandedCharacterDetail
 
 --- Group id from secKey "pve_grp:<id>". Prefix is 8 chars ("pve_grp:"); using sub(10) strips the first id character and breaks lookups.
 local function PveGroupIdFromSectionSecKey(secKey)
@@ -2928,6 +2988,7 @@ if not ns.PvEDrawLibs then
         TOP_MARGIN = TOP_MARGIN,
         PVE_CHAR_HEADER_H_MARGIN = PVE_CHAR_HEADER_H_MARGIN,
         PvE_ComputeCharacterRowPrefixToGoldPx = ns.PvE_ComputeCharacterRowPrefixToGoldPx,
+        PvE_ComputeInlineColumnsStartPx = ns.PvE_ComputeInlineColumnsStartPx,
         PvEUI_ApplyCharacterListRowChrome = ns.PvEUI_ApplyCharacterListRowChrome,
         PVE_COLUMN_HEADER_PAD = PVE_COLUMN_HEADER_PAD,
         PVE_COL_SPACING = PVE_COL_SPACING,
@@ -2970,7 +3031,7 @@ if not ns.PvEDrawLibs then
         expandedStates = expandedStates,
         IsExpanded = IsExpanded,
         PvEUI_CreatePvETabSectionShell = PvEUI_CreatePvETabSectionShell,
-        PvEUI_PopulateExpandedCharacterDetail = PvEUI_PopulateExpandedCharacterDetail,
+        PvEUI_PopulateExpandedCharacterDetail = ns.PvEUI_PopulateExpandedCharacterDetail,
         PvE_FormatVaultTrackColumn = PvE_FormatVaultTrackColumn,
         BindForwardScrollWheel = BindForwardScrollWheel,
     }
@@ -3684,37 +3745,31 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         inlineTotal = inlineTotal + GapBetweenColumns(gi)
     end
     inlineTotal = inlineTotal + COL_RIGHT_MARGIN
-    local prefixW = (L.PvE_ComputeCharacterRowPrefixToGoldPx and L.PvE_ComputeCharacterRowPrefixToGoldPx(nameWidth)) or 400
-    local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + prefixW + inlineTotal
-    parent:SetWidth(math.max(viewportW, minScrollW))
-
-    -- Frozen column header strip (scrolls horizontally with data — same pattern as ProfessionsUI)
-    local mainFrameRef = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
-    local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
-    local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
-    local colHeaderParent = columnHeaderInner or headerParent
-    local colHeaderOverlayH = 0
-
-    if columnHeaderClip then
-        columnHeaderClip:Show()
-        columnHeaderClip:SetHeight(COL_HEADER_HEIGHT + L.PVE_COLUMN_HEADER_PAD)
-        colHeaderOverlayH = COL_HEADER_HEIGHT + L.PVE_COLUMN_HEADER_PAD
+    local gridInlineStartX = (L.PvE_ComputeInlineColumnsStartPx and L.PvE_ComputeInlineColumnsStartPx(nameWidth)) or 400
+    local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + gridInlineStartX + inlineTotal
+    local colHeaderInnerW = math.max(viewportW, minScrollW)
+    parent:SetWidth(colHeaderInnerW)
+    if mf then
+        mf._pveMinScrollWidth = colHeaderInnerW
     end
-    if columnHeaderInner then
-        columnHeaderInner:SetWidth(parent:GetWidth())
+
+    -- Crest/vault column headers live in scrollChild (scroll with the list). Not columnHeaderClip (Professions frozen strip).
+    local mainFrameRef = mf or (L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame)
+    local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
+    if columnHeaderClip then
+        columnHeaderClip:SetHeight(1)
+        columnHeaderClip:Hide()
     end
 
     -- ===== COLUMN HEADER ROW (icon + compact two-line labels) =====
-    local colHeaderRow = L.ns.UI.Factory:CreateContainer(colHeaderParent, 10, COL_HEADER_HEIGHT)
-    if columnHeaderInner then
-        colHeaderRow:SetPoint("TOPLEFT", L.SIDE_MARGIN, 0)
-        colHeaderRow:SetPoint("TOPRIGHT", -L.SIDE_MARGIN, 0)
-    else
-        colHeaderRow:SetPoint("TOPLEFT", headerParent, "TOPLEFT", L.SIDE_MARGIN, -headerYOffset)
-        colHeaderRow:SetPoint("TOPRIGHT", headerParent, "TOPRIGHT", -L.SIDE_MARGIN, -headerYOffset)
-        headerYOffset = headerYOffset + COL_HEADER_HEIGHT + 2
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    local colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, colHeaderInnerW, COL_HEADER_HEIGHT)
+    if not colHeaderRow then
+        colHeaderRow = CreateFrame("Frame", nil, parent)
+        colHeaderRow:SetSize(colHeaderInnerW, COL_HEADER_HEIGHT)
     end
+    colHeaderRow:SetHeight(COL_HEADER_HEIGHT)
+    colHeaderRow:SetPoint("TOPLEFT", parent, "TOPLEFT", L.SIDE_MARGIN, -yOffset)
+    colHeaderRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -L.SIDE_MARGIN, -yOffset)
 
     local PVE_COMPACT_HEADER_BY_KEY = {
         coffer_shards = { text = L.GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), hex = "ffffff" },
@@ -3755,11 +3810,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         return "", "ffffff"
     end
 
-    local colX = -COL_RIGHT_MARGIN
-    for hci = #PVE_COLUMNS, 1, -1 do
+    local colX = gridInlineStartX
+    for hci = 1, #PVE_COLUMNS do
         local col = PVE_COLUMNS[hci]
-        colX = colX - col.width
-        local colCenterX = colX + col.width * 0.5
 
         if col.icon or col.iconAtlas then
             local hitW, hitH = COL_ICON_SIZE + 4, COL_ICON_SIZE + 4
@@ -3769,7 +3822,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 hitFrame = CreateFrame("Frame", nil, colHeaderRow)
                 hitFrame:SetSize(hitW, hitH)
             end
-            hitFrame:SetPoint("RIGHT", colHeaderRow, "RIGHT", colCenterX + COL_ICON_SIZE * 0.5 + 2, 6)
+            hitFrame:SetPoint("LEFT", colHeaderRow, "LEFT", colX + (col.width - hitW) * 0.5, 6)
 
             local iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
             iconTex:SetSize(COL_ICON_SIZE, COL_ICON_SIZE)
@@ -3821,15 +3874,14 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             end
         end
 
-        if hci > 1 then
-            colX = colX - GapBetweenColumns(hci - 1)
+        colX = colX + col.width
+        if hci < #PVE_COLUMNS then
+            colX = colX + GapBetweenColumns(hci)
         end
     end
 
     colHeaderRow:Show()
-
-    -- Push scroll content below frozen column header overlay (ProfessionsUI pattern)
-    yOffset = yOffset + colHeaderOverlayH
+    yOffset = yOffset + COL_HEADER_HEIGHT + L.PVE_COLUMN_HEADER_PAD
 
     local totalLHBox = { v = yOffset }
     -- Same vertical rhythm as Characters virtual rows: `betweenRows` (often 0) after each 46px row.
@@ -4304,8 +4356,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 return lines
             end
 
-            -- Render inline values (right to left, matching column header positions)
-            local inlineX = -COL_RIGHT_MARGIN
+            -- Shared grid X: header + every row (see PvE_ComputeInlineColumnsStartPx / row chrome).
+            local inlineX = gridInlineStartX
             local colValuesByKey = {}
 
             -- |cff888888 parity with FormatHelpers CC_MUTED / Utilities (placeholder & EM dash)
@@ -4531,15 +4583,15 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             }
 
             local UnbindSeason = L.ns.UI_UnbindSeasonProgressAmount
-            for ci = #PVE_COLUMNS, 1, -1 do
+            for ci = 1, #PVE_COLUMNS do
                 local col = PVE_COLUMNS[ci]
                 local val = colValuesByKey[col.key]
                 if val then
                     local cw = col.width
-                    inlineX = inlineX - cw
+                    local colCenterX = inlineX + cw * 0.5
                     local cell = L.PvEAcquireInlineCell(charHeader, charKey, col.key)
                     local colText = cell.fs
-                    colText:SetPoint("CENTER", charHeader, "RIGHT", inlineX + cw * 0.5, 0)
+                    colText:SetPoint("CENTER", charHeader, "LEFT", colCenterX, 0)
                     colText:SetWidth(cw)
                     colText:SetJustifyH("CENTER")
                     if colText.SetJustifyV then colText:SetJustifyV("MIDDLE") end
@@ -4570,7 +4622,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                             L.BindForwardScrollWheel(hit)
                         end
                         hit:SetParent(charHeader)
-                        hit:SetPoint("CENTER", charHeader, "RIGHT", inlineX + cw * 0.5, 0)
+                        hit:SetPoint("CENTER", charHeader, "LEFT", colCenterX, 0)
                         hit:SetSize(cw, math.max(L.ROW_HEIGHT or 26, charHeader:GetHeight() or 46))
                         hit:Show()
                         hit:SetScript("OnEnter", function(self)
@@ -4605,8 +4657,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                         cell.hit:SetScript("OnLeave", nil)
                         cell.hit:SetScript("OnMouseUp", nil)
                     end
-                    if ci > 1 then
-                        inlineX = inlineX - GapBetweenColumns(ci - 1)
+                    inlineX = inlineX + cw
+                    if ci < #PVE_COLUMNS then
+                        inlineX = inlineX + GapBetweenColumns(ci)
                     end
                 end
             end
@@ -4624,9 +4677,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         if charDetailContent.SetClipsChildren then
             charDetailContent:SetClipsChildren(true)
         end
+        charDetailContent._pveOnLayoutChanged = accVisual.onUpdate
+        charDetailContent._pveLayoutHost = rowHost
 
         buildPvEDetailIfNeeded = function()
-            L.PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
+            ns.PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
         end
 
 
@@ -4668,6 +4723,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
     local coreH = totalLHBox.v + 12
     parent._pvePaintedCoreH = coreH
+    if mf and ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mf, parent, coreH)
+    end
     return coreH
 end
 
@@ -4850,13 +4908,25 @@ end
 
 if ns.UI_LayoutCoordinator then
     local LC = ns.UI_LayoutCoordinator
+    local function PveTabViewportRelayout(_scrollChild, _contentWidth, mf)
+        if not mf or mf.currentTab ~= "pve" then return false end
+        if ns.UI_RefreshFixedHeaderChrome then
+            ns.UI_RefreshFixedHeaderChrome(mf)
+        end
+        if ns.UI_SyncMainScrollBarColumns then
+            ns.UI_SyncMainScrollBarColumns(mf)
+        end
+        return false
+    end
     LC:RegisterTabAdapter("pve", {
-        OnViewportLayoutCommit = function(_scrollChild, _contentWidth, mf)
+        OnViewportWidthChanged = function(scrollChild, contentWidth, mf)
             if not mf or mf.currentTab ~= "pve" then return false end
-            if ns.UI_RefreshFixedHeaderChrome then
-                ns.UI_RefreshFixedHeaderChrome(mf)
+            -- Characters / Professions: no tab body work while corner grip is held.
+            if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+                return true
             end
-            return false
+            return PveTabViewportRelayout(scrollChild, contentWidth, mf)
         end,
+        OnViewportLayoutCommit = PveTabViewportRelayout,
     })
 end

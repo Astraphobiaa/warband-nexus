@@ -523,6 +523,12 @@ local UI_SPACING = {
         --- Inset from root shell edge to body chrome (`CreateMainWindow`). Horizontal 0 = no side gutters on `BackdropTemplate`-less fill.
         FRAME_CONTENT_INSET = 0,
         FRAME_CONTENT_INSET_BOTTOM = 4,
+        --- Corner resize grip (main window bottom-right; sits above footer chrome).
+        RESIZE_GRIP_SIZE = 18,
+        RESIZE_GRIP_INSET_X = 4,
+        RESIZE_GRIP_INSET_Y = 4,
+        RESIZE_GRIP_FRAMELEVEL_BOOST = 80,
+        --- PvE tab: debounced PopulateContent after non-drag viewport width changes (Collections-style).
         --- Vertical gap between header bottom and nav row top (`CreateMainWindow`).
         HEADER_TO_NAV_GAP = 4,
         --- Gap below shell header before tab title card (fixedHeader top inset).
@@ -1779,6 +1785,47 @@ function ns.UI_CommitTabFixedHeader(mainFrame, yOffset)
         end
     end
     return yOffset or 0
+end
+
+--- Re-anchor main-window scrollbar lanes (matches CreateMainWindow in Modules/UI.lua).
+function ns.UI_SyncMainScrollBarColumns(mainFrame)
+    if not mainFrame or not mainFrame.scroll then return end
+    local content = mainFrame.content
+    local col = mainFrame.scrollBarColumn
+    if not content or not col then return end
+
+    local layout = ns.UI_LAYOUT or {}
+    local ms = layout.MAIN_SCROLL or {}
+    local hints = ns.UI_GetMainScrollLayoutHints and ns.UI_GetMainScrollLayoutHints() or {}
+    local colW = (col.GetWidth and col:GetWidth()) or hints.scrollbarColumnWidth or 26
+    local scrollGap = hints.scrollGap or ms.SCROLL_GAP or 2
+    local scrollInsetTop = ms.CONTENT_PAD_TOP or layout.SCROLL_CONTENT_TOP_PADDING or 10
+    local hBarBottom = hints.horizontalLaneBottomOffset or ms.H_BAR_BOTTOM_OFFSET or 6
+    local scrollInsetBottom = hBarBottom + colW + scrollGap
+    local scrollInsetLeft = hints.scrollInsetLeft or ms.SCROLL_INSET_LEFT or 4
+    local scrollInsetRight = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+        or (colW + scrollGap)
+    local hRowH = colW
+
+    col:ClearAllPoints()
+    col:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -scrollInsetTop)
+    col:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, scrollInsetBottom)
+    col:SetWidth(colW)
+    if mainFrame.scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+        ns.UI.Factory:PositionScrollBarInContainer(mainFrame.scroll.ScrollBar, col, 0)
+    end
+
+    local hCont = mainFrame.hScrollContainer
+    if hCont then
+        hCont:ClearAllPoints()
+        hCont:SetPoint("LEFT", content, "LEFT", scrollInsetLeft, 0)
+        hCont:SetPoint("RIGHT", content, "RIGHT", -scrollInsetRight, 0)
+        hCont:SetPoint("BOTTOM", content, "BOTTOM", 0, hBarBottom)
+        hCont:SetHeight(hRowH)
+        if mainFrame.hScroll and mainFrame.hScroll.PositionInContainer then
+            mainFrame.hScroll:PositionInContainer(hCont, 0)
+        end
+    end
 end
 
 --- First Y offset inside scrollChild for tab body content (below fixedHeader).
@@ -4096,8 +4143,11 @@ local function CreateStandardTabTitleCard(headerParent, opts)
     subtitleFs:SetText(opts.subtitleText or "")
     subtitleFs:SetTextColor(0.88, 0.88, 0.90)
     subtitleFs:SetJustifyH("LEFT")
+    subtitleFs:SetWordWrap(false)
+    subtitleFs:SetNonSpaceWrap(false)
+    if subtitleFs.SetMaxLines then subtitleFs:SetMaxLines(1) end
     subtitleFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
-    subtitleFs:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
+    subtitleFs:SetPoint("TOPRIGHT", textContainer, "TOPRIGHT", 0, 0)
 
     local rin = opts.textRightInset
     textContainer:ClearAllPoints()

@@ -425,7 +425,6 @@ local function ReleaseCurrencyRow(row)
     if row.amountText and ns.UI_UnbindSeasonProgressAmount then
         ns.UI_UnbindSeasonProgressAmount(row.amountText)
     end
-
     row:Hide()
     row:ClearAllPoints()
     

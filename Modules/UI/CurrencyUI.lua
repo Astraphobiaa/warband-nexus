@@ -323,7 +323,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     else
         row.amountText:SetTextColor(1, 1, 1, zeroAlpha)
     end
-    
+
     -- Hover effect (use new tooltip system)
     row:SetScript("OnEnter", function(self)
         if not ShowTooltip then

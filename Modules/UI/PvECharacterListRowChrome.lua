@@ -9,15 +9,23 @@ local FontManager = ns.FontManager
 local max = math.max
 local issecretvalue = issecretvalue
 
---- Pixels from row inner left (0) to where inline PvE cells start (Characters "gold" column, minus guild width).
-function ns.PvE_ComputeCharacterRowPrefixToGoldPx(nameW)
+local PVE_ILVL_TO_INLINE_GAP = 6
+
+--- Pixels from row inner left (0) to the first inline PvE column (matches tight row chrome after iLvl).
+function ns.PvE_ComputeInlineColumnsStartPx(nameW)
     local crc = ns.UI_CHAR_ROW_COLUMNS or {}
-    local baseName = crc.name and crc.name.width or 100
-    local nw = math.max(baseName, tonumber(nameW) or baseName)
-    local extra = nw - baseName
-    local goldOff = (ns.UI_GetColumnOffset and ns.UI_GetColumnOffset("gold")) or 655
-    local guildTotal = (crc.guild and crc.guild.total) or 145
-    return (goldOff - 10) + extra - guildTotal
+    local nw = math.max(crc.name and crc.name.width or 100, tonumber(nameW) or 100)
+    local classOff = (ns.UI_GetColumnOffset and ns.UI_GetColumnOffset("class")) or 162
+    local iconEnd = classOff + (crc.class and crc.class.width or 33)
+    local nameLeft = iconEnd + 8
+    local levelOffset = nameLeft + nw + 2
+    local itemLevelOffset = levelOffset + (crc.level and crc.level.total or 97)
+    return itemLevelOffset + (crc.itemLevel and crc.itemLevel.width or 75) + PVE_ILVL_TO_INLINE_GAP
+end
+
+--- Scroll/min-width prefix through identity + iLvl (same start as inline grid).
+function ns.PvE_ComputeCharacterRowPrefixToGoldPx(nameW)
+    return ns.PvE_ComputeInlineColumnsStartPx(nameW)
 end
 
 --- Match `WarbandNexus:DrawCharacterRow` identity stack through iLvl; caller paints PvE columns on the right.
@@ -248,4 +256,6 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     else
         itemLevelText:SetText("|cff666666--|r")
     end
+
+    charHeader._pveInlineStartPx = itemLevelOffset + (CRC.itemLevel and CRC.itemLevel.width or 75) + PVE_ILVL_TO_INLINE_GAP
 end

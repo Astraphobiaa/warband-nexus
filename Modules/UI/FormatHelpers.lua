@@ -194,10 +194,13 @@ end
 -- Matches Gear tab: bag qty colored by earn room; "/ seasonMax" muted.
 --============================================================================
 
-local CC_CAP_OPEN = "|cff80ff80"
-local CC_CAPPED   = "|cffff5959"
+local CC_CAP_OPEN = "|cff6ee7a0"
+local CC_CAPPED   = "|cffff6b6b"
 local CC_WHITE    = "|cffffffff"
-local CC_MUTED    = "|cff888888"
+local CC_AMOUNT   = "|cfff0f4ff"
+local CC_CAP_VAL  = "|cffb4bcc8"
+local CC_MUTED    = "|cff7a8494"
+local CC_SEP      = "|cff5c6570"
 local EM_DASH_U   = "\226\128\148"
 
 ---@param cd table|nil GetCurrencyData result (quantity, maxQuantity, totalEarned, seasonMax)
@@ -227,10 +230,10 @@ local function FormatSeasonProgressCurrencyLine(cd)
                 progressColor .. FormatNumber(teNum) .. "|r" ..
                 CC_MUTED .. " / " .. FormatNumber(cap) .. "|r"
         end
-        return progressColor .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "/ " .. FormatNumber(cap) .. "|r"
+        return CC_AMOUNT .. FormatNumber(qty) .. "|r " .. CC_SEP .. "/|r " .. CC_CAP_VAL .. FormatNumber(cap) .. "|r"
     end
     if qty > 0 then
-        return CC_WHITE .. FormatNumber(qty) .. "|r"
+        return CC_AMOUNT .. FormatNumber(qty) .. "|r"
     end
     return CC_MUTED .. EM_DASH_U .. "|r"
 end
@@ -256,21 +259,21 @@ end
 local function FormatSeasonProgressShiftAware(cd, expanded)
     if not cd then return CC_MUTED .. "0|r" end
     local qty, progress, cap, capped = ResolveSeasonCapState(cd)
-    local color = (cap > 0) and (capped and CC_CAPPED or CC_CAP_OPEN) or CC_WHITE
+    local color = (cap > 0) and (capped and CC_CAPPED or CC_CAP_OPEN) or CC_AMOUNT
     if not expanded then
         if cap > 0 or qty > 0 then
-            return color .. FormatNumber(qty) .. "|r"
+            return CC_AMOUNT .. FormatNumber(qty) .. "|r"
         end
         return CC_MUTED .. EM_DASH_U .. "|r"
     end
     if cap > 0 then
         local progressTxt = (progress ~= qty)
-            and (CC_MUTED .. "\194\183|r " .. color .. FormatNumber(progress) .. "|r ")
+            and (CC_SEP .. " \194\183|r " .. color .. FormatNumber(progress) .. "|r ")
             or ""
-        return color .. FormatNumber(qty) .. "|r " ..
-            progressTxt .. CC_MUTED .. "/ " .. FormatNumber(cap) .. "|r"
+        return CC_AMOUNT .. FormatNumber(qty) .. "|r " ..
+            progressTxt .. CC_SEP .. "/|r " .. CC_CAP_VAL .. FormatNumber(cap) .. "|r"
     end
-    if qty > 0 then return CC_WHITE .. FormatNumber(qty) .. "|r" end
+    if qty > 0 then return CC_AMOUNT .. FormatNumber(qty) .. "|r" end
     return CC_MUTED .. EM_DASH_U .. "|r"
 end
 

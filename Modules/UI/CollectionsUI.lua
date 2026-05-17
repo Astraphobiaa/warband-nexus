@@ -61,6 +61,18 @@ end
 
 -- Symmetric layout: all panels use same inset; no magic numbers.
 local CONTENT_INSET = LAYOUT.CONTENT_INSET or LAYOUT.CARD_GAP or 8
+
+--- Mount/pet detail description: single line (TOPLEFT+TOPRIGHT); RIGHT-only anchor wraps to two lines in WoW.
+local function PinCollectionsDetailDescriptionLine(fs, textOverlay, anchorFrame, anchorPoint, anchorX, anchorY)
+    if not fs or not textOverlay or not anchorFrame then return end
+    fs:ClearAllPoints()
+    fs:SetPoint("TOPLEFT", anchorFrame, anchorPoint, anchorX or 0, anchorY or 0)
+    fs:SetPoint("TOPRIGHT", textOverlay, "TOPRIGHT", -CONTENT_INSET, 0)
+    fs:SetJustifyH("LEFT")
+    fs:SetWordWrap(false)
+    fs:SetNonSpaceWrap(false)
+    if fs.SetMaxLines then fs:SetMaxLines(1) end
+end
 local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
 local TEXT_GAP = AFTER_ELEMENT
 local SEARCH_ROW_HEIGHT = math.floor(32 * 1.05 + 0.5)
@@ -2555,7 +2567,9 @@ local function CreateModelViewer(parent, width, height)
     descText:SetPoint("TOPLEFT", sourceContainer, "BOTTOMLEFT", 0, -TEXT_GAP)
     descText:SetPoint("TOPRIGHT", sourceContainer, "BOTTOMRIGHT", 0, -TEXT_GAP)
     descText:SetJustifyH("LEFT")
-    descText:SetWordWrap(true)
+    descText:SetWordWrap(false)
+    descText:SetNonSpaceWrap(false)
+    if descText.SetMaxLines then descText:SetMaxLines(1) end
     descText:SetTextColor(whiteR, whiteG, whiteB)
     panel.descText = descText
 
@@ -2944,12 +2958,11 @@ local function CreateModelViewer(parent, width, height)
             end
         end
 
-        descText:ClearAllPoints()
-        descText:SetPoint("TOPLEFT", anchorBeforeDesc, pointBeforeDesc, 0, yBeforeDesc)
-        descText:SetPoint("TOPRIGHT", anchorBeforeDesc, "BOTTOMRIGHT", 0, yBeforeDesc)
+        PinCollectionsDetailDescriptionLine(descText, textOverlay, anchorBeforeDesc, pointBeforeDesc, 0, yBeforeDesc)
 
         description = (description or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        -- API'den gelen description olduğu gibi, beyaz
+        description = description:gsub("[%c\r\n]+", " ")
+        -- API'den gelen description: tek satir, beyaz
         descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
 
         if panel._wowheadBtn then
@@ -3147,10 +3160,9 @@ local function CreateModelViewer(parent, width, height)
             end
         end
 
-        descText:ClearAllPoints()
-        descText:SetPoint("TOPLEFT", anchorBeforeDescP, pointBeforeDescP, 0, yBeforeDescP)
-        descText:SetPoint("TOPRIGHT", anchorBeforeDescP, "BOTTOMRIGHT", 0, yBeforeDescP)
+        PinCollectionsDetailDescriptionLine(descText, textOverlay, anchorBeforeDescP, pointBeforeDescP, 0, yBeforeDescP)
         description = (description or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        description = description:gsub("[%c\r\n]+", " ")
         descText:SetText(description ~= "" and (whiteHex .. description .. "|r") or "")
 
         if panel._wowheadBtn and speciesID then
@@ -3582,12 +3594,14 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             local descLabel = (rawLabel and rawLabel ~= "" and (string.upper(string.sub(rawLabel, 1, 1)) .. string.lower(string.sub(rawLabel, 2)))) or "Description"
             local goldHex = format("|cff%02x%02x%02x", goldR * 255, goldG * 255, goldB * 255)
             local descFs = FontManager:CreateFontString(content, "body", "OVERLAY")
-            descFs:SetPoint("TOP", lastAnchor, "BOTTOM", 0, lastY)
-            descFs:SetPoint("LEFT", content, "LEFT", CONTENT_COLUMN_LEFT, 0)
-            descFs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)
+            descFs:SetPoint("TOPLEFT", lastAnchor, "BOTTOMLEFT", CONTENT_COLUMN_LEFT, lastY)
+            descFs:SetPoint("TOPRIGHT", content, "TOPRIGHT", -CONTENT_INSET, 0)
             descFs:SetJustifyH("LEFT")
-            descFs:SetWordWrap(true)
-            descFs:SetText(goldHex .. descLabel .. ":|r " .. (achievement.description or ""))
+            descFs:SetWordWrap(false)
+            descFs:SetNonSpaceWrap(false)
+            if descFs.SetMaxLines then descFs:SetMaxLines(1) end
+            local descOneLine = (achievement.description or ""):gsub("[%c\r\n]+", " ")
+            descFs:SetText(goldHex .. descLabel .. ":|r " .. descOneLine)
             addDetailElement(descFs)
             lastAnchor = descFs
             lastPoint = "BOTTOMLEFT"
@@ -4448,7 +4462,11 @@ local function ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
         hdr._title:SetJustifyH("LEFT")
         hdr._subtitle = FontManager:CreateFontString(hdr, "subtitle", "OVERLAY")
         hdr._subtitle:SetPoint("TOPLEFT", hdr._title, "BOTTOMLEFT", 0, -2)
+        hdr._subtitle:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", -4, 0)
         hdr._subtitle:SetJustifyH("LEFT")
+        hdr._subtitle:SetWordWrap(false)
+        hdr._subtitle:SetNonSpaceWrap(false)
+        hdr._subtitle:SetMaxLines(1)
         hdr._subtitle:SetTextColor(1, 1, 1, 1)
         collectionsState._collectionsContentSubHeader = hdr
     end
@@ -6467,7 +6485,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 COLLECTIONS_TITLE_CARD_HEIGHT)
             hdrCache.collectionsTextContainer:Show()
             if hdrCache.collectionsTitleText then hdrCache.collectionsTitleText:Show() end
-            if hdrCache.collectionsSubtitleText then hdrCache.collectionsSubtitleText:Show() end
+            if hdrCache.collectionsSubtitleText then
+                hdrCache.collectionsSubtitleText:SetWordWrap(false)
+                hdrCache.collectionsSubtitleText:SetMaxLines(1)
+                hdrCache.collectionsSubtitleText:Show()
+            end
         end
         if hdrCache.collectionsHeaderIcon then
             if hdrCache.collectionsHeaderIcon.border then hdrCache.collectionsHeaderIcon.border:Show() end

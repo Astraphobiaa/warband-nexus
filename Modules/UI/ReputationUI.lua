@@ -138,14 +138,267 @@ end
 ---@param max number Max value
 ---@return string Formatted text
 local function FormatReputationProgress(current, max)
-    -- If maxed (1/1 means completed reputation), show "Max." instead of numbers
     if current == 1 and max == 1 then
-        return "|cffffffff" .. ((ns.L and ns.L["REP_MAX"]) or "Max.") .. "|r"  -- White "Max." text
+        return "|cffffffff" .. ((ns.L and ns.L["REP_MAX"]) or "Max.") .. "|r"
     elseif max > 0 then
         return format("%s / %s", FormatNumber(current), FormatNumber(max))
     else
         return FormatNumber(current)
     end
+end
+
+---@param reputation table
+---@return boolean baseMaxed
+local function ComputeBaseReputationMaxed(reputation)
+    local isParagon = reputation.hasParagon or false
+    if isParagon then return true end
+    local currentValue = reputation.currentValue or 0
+    local maxValue = reputation.maxValue or 1
+    if reputation.type == "renown" and reputation.renown then
+        if reputation.renown.maxLevel and reputation.renown.maxLevel > 0 then
+            return ((reputation.renown.level or 0) >= reputation.renown.maxLevel)
+        elseif reputation.maxValue == 1 and currentValue >= 1 then
+            return true
+        end
+    elseif reputation.type == "friendship" and reputation.friendship then
+        if reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
+            return ((reputation.friendship.level or 0) >= reputation.friendship.maxLevel)
+        elseif reputation.maxValue == 1 and currentValue >= 1 then
+            return true
+        end
+    elseif reputation.standingID == 8 then
+        return (reputation.maxValue == 1 or currentValue >= maxValue)
+    end
+    return false
+end
+
+---Progress bar, paragon icon, checkmark (inline pooled bar — pre-MetricBar style).
+---@return Frame|nil progressBg
+local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
+    local currentValue = reputation.currentValue or 0
+    local maxValue = reputation.maxValue or 1
+    local isParagon = reputation.hasParagon or false
+    local baseReputationMaxed = ComputeBaseReputationMaxed(reputation)
+
+    local standingID = reputation.standingID or 4
+    local hasRenown = (reputation.type == "renown") or false
+
+    -- Drop MetricBar-era holder so pooled rows rebuild classic textures.
+    if row._progressBar and row._progressBar.wrapper then
+        if row._progressBar.wrapper.Hide then row._progressBar.wrapper:Hide() end
+        row._progressBar = nil
+    end
+    if row.repMetricAmount then row.repMetricAmount:Hide() end
+
+    if not row._progressBar then
+        local pb = {}
+        pb.bg = (ns.UI.Factory and ns.UI.Factory:CreateContainer(row, 200, 19, false))
+            or CreateFrame("Frame", nil, row)
+        pb.bg:SetFrameLevel(row:GetFrameLevel() + 10)
+
+        pb.bgTexture = pb.bg:CreateTexture(nil, "BACKGROUND")
+        pb.bgTexture:SetSnapToPixelGrid(false)
+        pb.bgTexture:SetTexelSnappingBias(0)
+
+        pb.fill = pb.bg:CreateTexture(nil, "ARTWORK")
+        pb.fill:SetSnapToPixelGrid(false)
+        pb.fill:SetTexelSnappingBias(0)
+
+        local function MakeBorder()
+            local t = pb.bg:CreateTexture(nil, "BORDER")
+            t:SetTexture("Interface\\Buttons\\WHITE8x8")
+            t:SetSnapToPixelGrid(false)
+            t:SetTexelSnappingBias(0)
+            t:SetDrawLayer("BORDER", 0)
+            return t
+        end
+        pb.borderTop = MakeBorder()
+        pb.borderBottom = MakeBorder()
+        pb.borderLeft = MakeBorder()
+        pb.borderRight = MakeBorder()
+
+        row._progressBar = pb
+    end
+
+    local pb = row._progressBar
+    local barWidth, barHeight = 200, 19
+    local borderInset = 1
+    local fillInset = borderInset + 1
+    local contentWidth = barWidth - (borderInset * 2)
+
+    pb.bg:SetSize(barWidth, barHeight)
+    pb.bg:ClearAllPoints()
+    pb.bg:SetPoint("RIGHT", -10, 0)
+    pb.bg:Show()
+
+    local bgColor = COLORS.bgCard or { COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.8 }
+    pb.bgTexture:ClearAllPoints()
+    pb.bgTexture:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", borderInset, -borderInset)
+    pb.bgTexture:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", -borderInset, borderInset)
+    pb.bgTexture:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.8)
+
+    local progress = 0
+    if maxValue > 0 then
+        progress = math.min(1, math.max(0, currentValue / maxValue))
+    end
+    if baseReputationMaxed and not isParagon then progress = 1 end
+
+    local fillWidth = math.max((contentWidth - 2) * progress, 0.001)
+    pb.fill:ClearAllPoints()
+    pb.fill:SetPoint("LEFT", pb.bg, "LEFT", fillInset, 0)
+    pb.fill:SetPoint("TOP", pb.bg, "TOP", 0, -fillInset)
+    pb.fill:SetPoint("BOTTOM", pb.bg, "BOTTOM", 0, fillInset)
+    pb.fill:SetWidth(fillWidth)
+    pb.fill:Show()
+
+    if baseReputationMaxed and not isParagon then
+        pb.fill:SetColorTexture(0, 0.8, 0, 1)
+    elseif isParagon then
+        pb.fill:SetColorTexture(1, 0.4, 1, 1)
+    elseif (not hasRenown and reputation.type ~= "friendship") and standingID then
+        local standingColors = {
+            [1] = {0.8, 0.13, 0.13}, [2] = {0.8, 0.13, 0.13},
+            [3] = {0.75, 0.27, 0},    [4] = {0.9, 0.7, 0},
+            [5] = {0, 0.6, 0.1},      [6] = {0, 0.6, 0.1},
+            [7] = {0, 0.6, 0.1},      [8] = {0, 0.6, 0.1},
+        }
+        local c = standingColors[standingID] or {0.9, 0.7, 0}
+        pb.fill:SetColorTexture(c[1], c[2], c[3], 1)
+    else
+        local goldColor = COLORS.gold or {1, 0.82, 0, 1}
+        pb.fill:SetColorTexture(goldColor[1], goldColor[2], goldColor[3], goldColor[4] or 1)
+    end
+
+    local accentColor = COLORS.accent or {0.4, 0.6, 1}
+    local br, bgc, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.6
+
+    pb.borderTop:ClearAllPoints()
+    pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
+    pb.borderTop:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, 0)
+    pb.borderTop:SetHeight(1)
+    pb.borderTop:SetVertexColor(br, bgc, bb, ba)
+
+    pb.borderBottom:ClearAllPoints()
+    pb.borderBottom:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 0)
+    pb.borderBottom:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 0)
+    pb.borderBottom:SetHeight(1)
+    pb.borderBottom:SetVertexColor(br, bgc, bb, ba)
+
+    pb.borderLeft:ClearAllPoints()
+    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -1)
+    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 1)
+    pb.borderLeft:SetWidth(1)
+    pb.borderLeft:SetVertexColor(br, bgc, bb, ba)
+
+    pb.borderRight:ClearAllPoints()
+    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -1)
+    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 1)
+    pb.borderRight:SetWidth(1)
+    pb.borderRight:SetVertexColor(br, bgc, bb, ba)
+
+    local progressBg = pb.bg
+
+    if isParagon then
+        local hasReward = rewardPending
+        local iconCreated = false
+        local CreateParagonIcon = ns.UI_CreateParagonIcon
+        if CreateParagonIcon then
+            if not row.paragonFrame then
+                local success, pFrame = pcall(CreateParagonIcon, row, 18, hasReward)
+                if success and pFrame then
+                    row.paragonFrame = pFrame
+                    row.paragonFrame:EnableMouse(true)
+                end
+            end
+            if row.paragonFrame then
+                row.paragonFrame:ClearAllPoints()
+                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
+                row.paragonFrame:SetScript("OnEnter", function(self)
+                    local tooltipData = {
+                        type = "custom",
+                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
+                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
+                        lines = {}
+                    }
+                    if hasReward then
+                        table.insert(tooltipData.lines, { text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = { 0, 1, 0 } })
+                    else
+                        table.insert(tooltipData.lines, { text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = { 0.8, 0.8, 0.8 } })
+                    end
+                    if reputation.paragon then
+                        table.insert(tooltipData.lines, { text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = { 0.8, 0.8, 0.8 } })
+                    end
+                    ns.TooltipService:Show(self, tooltipData)
+                end)
+                row.paragonFrame:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                row.paragonFrame:Show()
+                iconCreated = true
+            end
+        end
+        if not iconCreated then
+            if not row.paragonFrame then
+                row.paragonFrame = CreateIcon(row, "Interface\\Icons\\INV_Misc_Bag_10", 18, false, nil, true)
+                if row.paragonFrame then row.paragonFrame:EnableMouse(true) end
+            end
+            if row.paragonFrame then
+                row.paragonFrame:ClearAllPoints()
+                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
+                if row.paragonFrame.texture then
+                    local dim = not rewardPending
+                    row.paragonFrame.texture:SetVertexColor(dim and 0.5 or 1, dim and 0.5 or 1, dim and 0.5 or 1, 1)
+                end
+                row.paragonFrame:SetScript("OnEnter", function(self)
+                    local tooltipData = {
+                        type = "custom",
+                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
+                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
+                        lines = {}
+                    }
+                    if hasReward then
+                        table.insert(tooltipData.lines, { text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = { 0, 1, 0 } })
+                    else
+                        table.insert(tooltipData.lines, { text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = { 0.8, 0.8, 0.8 } })
+                    end
+                    if reputation.paragon then
+                        table.insert(tooltipData.lines, { text = string.format((ns.L and ns.L["REP_PROGRESS_HEADER"]) or "Progress: %d / %d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = { 0.8, 0.8, 0.8 } })
+                        table.insert(tooltipData.lines, { text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = { 0.8, 0.8, 0.8 } })
+                    end
+                    ns.TooltipService:Show(self, tooltipData)
+                end)
+                row.paragonFrame:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                row.paragonFrame:Show()
+            end
+        end
+    else
+        if row.paragonFrame then row.paragonFrame:Hide() end
+    end
+
+    if baseReputationMaxed then
+        if not row.checkFrame then
+            row.checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)
+        end
+        row.checkFrame:ClearAllPoints()
+        row.checkFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -4, 0)
+        row.checkFrame:Show()
+    else
+        if row.checkFrame then row.checkFrame:Hide() end
+    end
+
+    if progressBg then
+        if not row.progressText then
+            row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
+            row.progressText:SetJustifyH("CENTER")
+            row.progressText:SetJustifyV("MIDDLE")
+        end
+        row.progressText:SetParent(progressBg)
+        row.progressText:ClearAllPoints()
+        row.progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)
+        row.progressText:SetText(FormatReputationProgress(currentValue, maxValue))
+        row.progressText:SetTextColor(1, 1, 1)
+        row.progressText:Show()
+    end
+
+    return progressBg
 end
 
 ---Check if reputation matches search text
@@ -749,281 +1002,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         row.badgeText:Show()
     end
     
-    -- ===== PROGRESS DATA =====
-    local currentValue = reputation.currentValue or 0
-    local maxValue = reputation.maxValue or 1
-    local isParagon = reputation.hasParagon or false
-    
-    -- Check if BASE reputation is maxed (for checkmark display)
-    local baseReputationMaxed = false
-    if isParagon then
-        baseReputationMaxed = true
-    elseif reputation.type == "renown" and reputation.renown then
-        if reputation.renown.maxLevel and reputation.renown.maxLevel > 0 then
-            baseReputationMaxed = ((reputation.renown.level or 0) >= reputation.renown.maxLevel)
-        elseif reputation.maxValue == 1 and currentValue >= 1 then
-            baseReputationMaxed = true
-        end
-    elseif reputation.type == "friendship" and reputation.friendship then
-        if reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
-            baseReputationMaxed = ((reputation.friendship.level or 0) >= reputation.friendship.maxLevel)
-        elseif reputation.maxValue == 1 and currentValue >= 1 then
-            baseReputationMaxed = true
-        end
-    elseif reputation.standingID == 8 then
-        baseReputationMaxed = (reputation.maxValue == 1 or currentValue >= maxValue)
-    end
-    
-    -- ===== PROGRESS BAR (lazy-created, reused across pool cycles) =====
-    -- PERFORMANCE FIX: Inline progress bar creation instead of CreateReputationProgressBar()
-    -- Old approach created a NEW Frame + 6 textures per row per refresh (~150 rows = ~1050 objects!)
-    -- New approach: lazy-create ONCE on the row, then just update values on reuse
-    local standingID = reputation.standingID or 4
-    local hasRenown = (reputation.type == "renown") or false
-    
-    if not row._progressBar then
-        local pb = {}
-        pb.bg = (ns.UI.Factory and ns.UI.Factory:CreateContainer(row, 200, 19, false))
-            or CreateFrame("Frame", nil, row)
-        pb.bg:SetFrameLevel(row:GetFrameLevel() + 10)
-        
-        pb.bgTexture = pb.bg:CreateTexture(nil, "BACKGROUND")
-        pb.bgTexture:SetSnapToPixelGrid(false)
-        pb.bgTexture:SetTexelSnappingBias(0)
-        
-        pb.fill = pb.bg:CreateTexture(nil, "ARTWORK")
-        pb.fill:SetSnapToPixelGrid(false)
-        pb.fill:SetTexelSnappingBias(0)
-        
-        -- Create all 4 borders once
-        local function MakeBorder()
-            local t = pb.bg:CreateTexture(nil, "BORDER")
-            t:SetTexture("Interface\\Buttons\\WHITE8x8")
-            t:SetSnapToPixelGrid(false)
-            t:SetTexelSnappingBias(0)
-            t:SetDrawLayer("BORDER", 0)
-            return t
-        end
-        pb.borderTop = MakeBorder()
-        pb.borderBottom = MakeBorder()
-        pb.borderLeft = MakeBorder()
-        pb.borderRight = MakeBorder()
-        
-        row._progressBar = pb
-    end
-    
-    -- Update progress bar with current data (no frame creation on reuse!)
-    local pb = row._progressBar
-    local barWidth, barHeight = 200, 19
-    local borderInset = 1
-    local fillInset = borderInset + 1
-    local contentWidth = barWidth - (borderInset * 2)
-    
-    pb.bg:SetSize(barWidth, barHeight)
-    pb.bg:ClearAllPoints()
-    pb.bg:SetPoint("RIGHT", -10, 0)
-    pb.bg:Show()
-    
-    -- Background
-    local bgColor = COLORS.bgCard or {COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.8}
-    pb.bgTexture:ClearAllPoints()
-    pb.bgTexture:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", borderInset, -borderInset)
-    pb.bgTexture:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", -borderInset, borderInset)
-    pb.bgTexture:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.8)
-    
-    -- Calculate progress
-    local progress = 0
-    if maxValue > 0 then
-        progress = math.min(1, math.max(0, currentValue / maxValue))
-    end
-    if baseReputationMaxed and not isParagon then progress = 1 end
-    
-    -- Fill bar
-    local fillWidth = math.max((contentWidth - 2) * progress, 0.001)
-    pb.fill:ClearAllPoints()
-    pb.fill:SetPoint("LEFT", pb.bg, "LEFT", fillInset, 0)
-    pb.fill:SetPoint("TOP", pb.bg, "TOP", 0, -fillInset)
-    pb.fill:SetPoint("BOTTOM", pb.bg, "BOTTOM", 0, fillInset)
-    pb.fill:SetWidth(fillWidth)
-    pb.fill:Show()
-    
-    -- Fill color based on reputation type
-    if baseReputationMaxed and not isParagon then
-        pb.fill:SetColorTexture(0, 0.8, 0, 1)
-    elseif isParagon then
-        pb.fill:SetColorTexture(1, 0.4, 1, 1)
-    elseif (not hasRenown and reputation.type ~= "friendship") and standingID then
-        local standingColors = {
-            [1] = {0.8, 0.13, 0.13}, [2] = {0.8, 0.13, 0.13},
-            [3] = {0.75, 0.27, 0},    [4] = {0.9, 0.7, 0},
-            [5] = {0, 0.6, 0.1},      [6] = {0, 0.6, 0.1},
-            [7] = {0, 0.6, 0.1},      [8] = {0, 0.6, 0.1},
-        }
-        local c = standingColors[standingID] or {0.9, 0.7, 0}
-        pb.fill:SetColorTexture(c[1], c[2], c[3], 1)
-    else
-        local goldColor = COLORS.gold or {1, 0.82, 0, 1}
-        pb.fill:SetColorTexture(goldColor[1], goldColor[2], goldColor[3], goldColor[4] or 1)
-    end
-    
-    -- Border color
-    local accentColor = COLORS.accent or {0.4, 0.6, 1}
-    local br, bgc, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.6
-    
-    pb.borderTop:ClearAllPoints()
-    pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
-    pb.borderTop:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, 0)
-    pb.borderTop:SetHeight(1)
-    pb.borderTop:SetVertexColor(br, bgc, bb, ba)
-    
-    pb.borderBottom:ClearAllPoints()
-    pb.borderBottom:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 0)
-    pb.borderBottom:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 0)
-    pb.borderBottom:SetHeight(1)
-    pb.borderBottom:SetVertexColor(br, bgc, bb, ba)
-    
-    pb.borderLeft:ClearAllPoints()
-    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -1)
-    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 1)
-    pb.borderLeft:SetWidth(1)
-    pb.borderLeft:SetVertexColor(br, bgc, bb, ba)
-    
-    pb.borderRight:ClearAllPoints()
-    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -1)
-    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 1)
-    pb.borderRight:SetWidth(1)
-    pb.borderRight:SetVertexColor(br, bgc, bb, ba)
-    
-    -- Alias for backward compatibility with anchoring below
-    local progressBg = pb.bg
-    
-    -- ===== PARAGON ICON (conditional: only for paragon factions) =====
-    if isParagon then
-        local iconCreated = false
-        
-        -- Try layered paragon icon (lazy create)
-        local CreateParagonIcon = ns.UI_CreateParagonIcon
-        if CreateParagonIcon then
-            local hasReward = reputation.paragon and reputation.paragon.hasRewardPending or false
-            
-            if not row.paragonFrame then
-                local success, pFrame = pcall(CreateParagonIcon, row, 18, hasReward)
-                if success and pFrame then
-                    row.paragonFrame = pFrame
-                    row.paragonFrame:EnableMouse(true)
-                end
-            end
-            
-            if row.paragonFrame then
-                row.paragonFrame:ClearAllPoints()
-                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
-                
-                -- Update tooltip for current data
-                row.paragonFrame:SetScript("OnEnter", function(self)
-                    local tooltipData = {
-                        type = "custom",
-                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
-                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
-                        lines = {}
-                    }
-                    if reputation.paragon and reputation.paragon.hasRewardPending then
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
-                    else
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
-                    end
-                    if reputation.paragon then
-                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
-                    end
-                    ns.TooltipService:Show(self, tooltipData)
-                end)
-                row.paragonFrame:SetScript("OnLeave", function(self)
-                    ns.TooltipService:Hide()
-                end)
-                row.paragonFrame:Show()
-                iconCreated = true
-            end
-        end
-        
-        -- Fallback: Simple bag icon
-        if not iconCreated then
-            if not row.paragonFrame then
-                row.paragonFrame = CreateIcon(row, "Interface\\Icons\\INV_Misc_Bag_10", 18, false, nil, true)
-                if row.paragonFrame then
-                    row.paragonFrame:EnableMouse(true)
-                end
-            end
-            if row.paragonFrame then
-                row.paragonFrame:ClearAllPoints()
-                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
-                if not (reputation.paragon and reputation.paragon.hasRewardPending) then
-                    if row.paragonFrame.texture then
-                        row.paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
-                    end
-                else
-                    if row.paragonFrame.texture then
-                        row.paragonFrame.texture:SetVertexColor(1, 1, 1, 1)
-                    end
-                end
-                row.paragonFrame:SetScript("OnEnter", function(self)
-                    local tooltipData = {
-                        type = "custom",
-                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
-                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
-                        lines = {}
-                    }
-                    if reputation.paragon and reputation.paragon.hasRewardPending then
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
-                    else
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
-                    end
-                    if reputation.paragon then
-                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_PROGRESS_HEADER"]) or "Progress: %d / %d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
-                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
-                    end
-                    ns.TooltipService:Show(self, tooltipData)
-                end)
-                row.paragonFrame:SetScript("OnLeave", function(self)
-                    ns.TooltipService:Hide()
-                end)
-                row.paragonFrame:Show()
-                iconCreated = true
-            end
-        end
-        
-        if not iconCreated and IsDebugModeEnabled and IsDebugModeEnabled() then
-            local repLabel = "Unknown"
-            local n = reputation.name
-            if n and type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
-                repLabel = n
-            end
-            DebugPrint("|cffff0000[RepUI ERROR]|r Failed to create paragon icon for " .. repLabel)
-        end
-    end
-    
-    -- ===== CHECKMARK (conditional: only for maxed base reputations) =====
-    if baseReputationMaxed then
-        if not row.checkFrame then
-            row.checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)
-        end
-        row.checkFrame:ClearAllPoints()
-        row.checkFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -4, 0)
-        row.checkFrame:Show()
-    end
-    
-    -- ===== PROGRESS TEXT (inside progress bar) =====
-    if progressBg then
-        if not row.progressText then
-            row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
-            row.progressText:SetJustifyH("CENTER")
-            row.progressText:SetJustifyV("MIDDLE")
-        end
-        row.progressText:SetParent(progressBg)
-        row.progressText:ClearAllPoints()
-        row.progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)
-        row.progressText:SetText(FormatReputationProgress(currentValue, maxValue))
-        row.progressText:SetTextColor(1, 1, 1)
-        row.progressText:Show()
-    end
+    ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     
     -- ===== TOOLTIPS =====
     row:SetScript("OnEnter", function(self)
@@ -1287,260 +1266,7 @@ local function PopulateReputationRow(row, entry)
         if row.badgeText then row.badgeText:Hide() end
     end
 
-    -- ===== PROGRESS DATA =====
-    local currentValue = reputation.currentValue or 0
-    local maxValue = reputation.maxValue or 1
-    local isParagon = reputation.hasParagon or false
-
-    local baseReputationMaxed = false
-    if isParagon then
-        baseReputationMaxed = true
-    elseif reputation.type == "renown" and reputation.renown then
-        if reputation.renown.maxLevel and reputation.renown.maxLevel > 0 then
-            baseReputationMaxed = ((reputation.renown.level or 0) >= reputation.renown.maxLevel)
-        elseif reputation.maxValue == 1 and currentValue >= 1 then
-            baseReputationMaxed = true
-        end
-    elseif reputation.type == "friendship" and reputation.friendship then
-        if reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
-            baseReputationMaxed = ((reputation.friendship.level or 0) >= reputation.friendship.maxLevel)
-        elseif reputation.maxValue == 1 and currentValue >= 1 then
-            baseReputationMaxed = true
-        end
-    elseif reputation.standingID == 8 then
-        baseReputationMaxed = (reputation.maxValue == 1 or currentValue >= maxValue)
-    end
-
-    -- ===== PROGRESS BAR =====
-    local standingID = reputation.standingID or 4
-    local hasRenown = (reputation.type == "renown") or false
-
-    if not row._progressBar then
-        local pb = {}
-        pb.bg = (ns.UI.Factory and ns.UI.Factory:CreateContainer(row, 200, 19, false))
-            or CreateFrame("Frame", nil, row)
-        pb.bg:SetFrameLevel(row:GetFrameLevel() + 10)
-
-        pb.bgTexture = pb.bg:CreateTexture(nil, "BACKGROUND")
-        pb.bgTexture:SetSnapToPixelGrid(false)
-        pb.bgTexture:SetTexelSnappingBias(0)
-
-        pb.fill = pb.bg:CreateTexture(nil, "ARTWORK")
-        pb.fill:SetSnapToPixelGrid(false)
-        pb.fill:SetTexelSnappingBias(0)
-
-        local function MakeBorder()
-            local t = pb.bg:CreateTexture(nil, "BORDER")
-            t:SetTexture("Interface\\Buttons\\WHITE8x8")
-            t:SetSnapToPixelGrid(false)
-            t:SetTexelSnappingBias(0)
-            t:SetDrawLayer("BORDER", 0)
-            return t
-        end
-        pb.borderTop = MakeBorder()
-        pb.borderBottom = MakeBorder()
-        pb.borderLeft = MakeBorder()
-        pb.borderRight = MakeBorder()
-
-        row._progressBar = pb
-    end
-
-    local pb = row._progressBar
-    local barWidth, barHeight = 200, 19
-    local borderInset = 1
-    local fillInset = borderInset + 1
-    local contentWidth = barWidth - (borderInset * 2)
-
-    pb.bg:SetSize(barWidth, barHeight)
-    pb.bg:ClearAllPoints()
-    pb.bg:SetPoint("RIGHT", -10, 0)
-    pb.bg:Show()
-
-    local bgColor = COLORS.bgCard or {COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.8}
-    pb.bgTexture:ClearAllPoints()
-    pb.bgTexture:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", borderInset, -borderInset)
-    pb.bgTexture:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", -borderInset, borderInset)
-    pb.bgTexture:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.8)
-
-    local progress = 0
-    if maxValue > 0 then
-        progress = math.min(1, math.max(0, currentValue / maxValue))
-    end
-    if baseReputationMaxed and not isParagon then progress = 1 end
-
-    local fillWidth = math.max((contentWidth - 2) * progress, 0.001)
-    pb.fill:ClearAllPoints()
-    pb.fill:SetPoint("LEFT", pb.bg, "LEFT", fillInset, 0)
-    pb.fill:SetPoint("TOP", pb.bg, "TOP", 0, -fillInset)
-    pb.fill:SetPoint("BOTTOM", pb.bg, "BOTTOM", 0, fillInset)
-    pb.fill:SetWidth(fillWidth)
-    pb.fill:Show()
-
-    if baseReputationMaxed and not isParagon then
-        pb.fill:SetColorTexture(0, 0.8, 0, 1)
-    elseif isParagon then
-        pb.fill:SetColorTexture(1, 0.4, 1, 1)
-    elseif (not hasRenown and reputation.type ~= "friendship") and standingID then
-        local standingColors = {
-            [1] = {0.8, 0.13, 0.13}, [2] = {0.8, 0.13, 0.13},
-            [3] = {0.75, 0.27, 0},    [4] = {0.9, 0.7, 0},
-            [5] = {0, 0.6, 0.1},      [6] = {0, 0.6, 0.1},
-            [7] = {0, 0.6, 0.1},      [8] = {0, 0.6, 0.1},
-        }
-        local c = standingColors[standingID] or {0.9, 0.7, 0}
-        pb.fill:SetColorTexture(c[1], c[2], c[3], 1)
-    else
-        local goldColor = COLORS.gold or {1, 0.82, 0, 1}
-        pb.fill:SetColorTexture(goldColor[1], goldColor[2], goldColor[3], goldColor[4] or 1)
-    end
-
-    local accentColor = COLORS.accent or {0.4, 0.6, 1}
-    local br, bgc, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.6
-
-    pb.borderTop:ClearAllPoints()
-    pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
-    pb.borderTop:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, 0)
-    pb.borderTop:SetHeight(1)
-    pb.borderTop:SetVertexColor(br, bgc, bb, ba)
-
-    pb.borderBottom:ClearAllPoints()
-    pb.borderBottom:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 0)
-    pb.borderBottom:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 0)
-    pb.borderBottom:SetHeight(1)
-    pb.borderBottom:SetVertexColor(br, bgc, bb, ba)
-
-    pb.borderLeft:ClearAllPoints()
-    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -1)
-    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 1)
-    pb.borderLeft:SetWidth(1)
-    pb.borderLeft:SetVertexColor(br, bgc, bb, ba)
-
-    pb.borderRight:ClearAllPoints()
-    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -1)
-    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 1)
-    pb.borderRight:SetWidth(1)
-    pb.borderRight:SetVertexColor(br, bgc, bb, ba)
-
-    local progressBg = pb.bg
-
-    -- ===== PARAGON ICON =====
-    if isParagon then
-        local iconCreated = false
-        local CreateParagonIcon = ns.UI_CreateParagonIcon
-        if CreateParagonIcon then
-            local hasReward = reputation.paragon and reputation.paragon.hasRewardPending or false
-
-            if not row.paragonFrame then
-                local success, pFrame = pcall(CreateParagonIcon, row, 18, hasReward)
-                if success and pFrame then
-                    row.paragonFrame = pFrame
-                    row.paragonFrame:EnableMouse(true)
-                end
-            end
-
-            if row.paragonFrame then
-                row.paragonFrame:ClearAllPoints()
-                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
-
-                row.paragonFrame:SetScript("OnEnter", function(self)
-                    local tooltipData = {
-                        type = "custom",
-                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
-                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
-                        lines = {}
-                    }
-                    if reputation.paragon and reputation.paragon.hasRewardPending then
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
-                    else
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
-                    end
-                    if reputation.paragon then
-                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
-                    end
-                    ns.TooltipService:Show(self, tooltipData)
-                end)
-                row.paragonFrame:SetScript("OnLeave", function(self)
-                    ns.TooltipService:Hide()
-                end)
-                row.paragonFrame:Show()
-                iconCreated = true
-            end
-        end
-
-        if not iconCreated then
-            if not row.paragonFrame then
-                row.paragonFrame = CreateIcon(row, "Interface\\Icons\\INV_Misc_Bag_10", 18, false, nil, true)
-                if row.paragonFrame then
-                    row.paragonFrame:EnableMouse(true)
-                end
-            end
-            if row.paragonFrame then
-                row.paragonFrame:ClearAllPoints()
-                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
-                if not (reputation.paragon and reputation.paragon.hasRewardPending) then
-                    if row.paragonFrame.texture then
-                        row.paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
-                    end
-                else
-                    if row.paragonFrame.texture then
-                        row.paragonFrame.texture:SetVertexColor(1, 1, 1, 1)
-                    end
-                end
-                row.paragonFrame:SetScript("OnEnter", function(self)
-                    local tooltipData = {
-                        type = "custom",
-                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
-                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
-                        lines = {}
-                    }
-                    if reputation.paragon and reputation.paragon.hasRewardPending then
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
-                    else
-                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
-                    end
-                    if reputation.paragon then
-                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_PROGRESS_HEADER"]) or "Progress: %d / %d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
-                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
-                    end
-                    ns.TooltipService:Show(self, tooltipData)
-                end)
-                row.paragonFrame:SetScript("OnLeave", function(self)
-                    ns.TooltipService:Hide()
-                end)
-                row.paragonFrame:Show()
-                iconCreated = true
-            end
-        end
-    else
-        if row.paragonFrame then row.paragonFrame:Hide() end
-    end
-
-    -- ===== CHECKMARK =====
-    if baseReputationMaxed then
-        if not row.checkFrame then
-            row.checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)
-        end
-        row.checkFrame:ClearAllPoints()
-        row.checkFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -4, 0)
-        row.checkFrame:Show()
-    else
-        if row.checkFrame then row.checkFrame:Hide() end
-    end
-
-    -- ===== PROGRESS TEXT =====
-    if progressBg then
-        if not row.progressText then
-            row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
-            row.progressText:SetJustifyH("CENTER")
-            row.progressText:SetJustifyV("MIDDLE")
-        end
-        row.progressText:SetParent(progressBg)
-        row.progressText:ClearAllPoints()
-        row.progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)
-        row.progressText:SetText(FormatReputationProgress(currentValue, maxValue))
-        row.progressText:SetTextColor(1, 1, 1)
-        row.progressText:Show()
-    end
+    ApplyReputationRowProgressChrome(row, reputation, rowWidth)
 
     -- ===== TOOLTIPS =====
     row:SetScript("OnEnter", function(self)

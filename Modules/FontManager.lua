@@ -44,6 +44,8 @@ FontManager.FONT_ROLE = {
     noticeTitle = "body",
     noticeBody = "small",
     statsBarText = "small",
+    --- Progress bar center labels (Reputation/Currency): no OUTLINE — fits narrow bars + |cff tokens.
+    metricBarOverlay = "small",
     emptyStateTitle = "title",
     emptyStateBody = "body",
     emptyCardTitle = "header",
@@ -586,6 +588,48 @@ end
     @param fontString FontString - Target font string
     @param category string - Font category
 ]]
+---Bar overlay labels: same face/size as `small` but **no** outline (OUTLINE reads heavy inside 22–26px bars).
+---@param fontString FontString
+function FontManager:ApplyBarOverlayFont(fontString)
+    if not fontString or not fontString.SetFont then return end
+    local fontFace = self:GetFontFace()
+    local fontSize = self:GetFontSize("small")
+    if type(fontFace) ~= "string" or fontFace == "" then
+        fontFace = BUILTIN_FALLBACK_FONT_PATH
+    end
+    if type(fontSize) ~= "number" or fontSize <= 0 then
+        fontSize = 11
+    end
+    local existingText = fontString:GetText()
+    local ok = false
+    pcall(function()
+        ok = fontString:SetFont(fontFace, fontSize, "")
+    end)
+    if not ok then
+        pcall(function()
+            fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, "")
+        end)
+    end
+    if existingText and not (issecretvalue and issecretvalue(existingText)) and existingText ~= "" then
+        fontString:SetText(existingText)
+    end
+end
+
+---@param parent Frame
+---@param layer string|nil
+---@return FontString|nil
+function FontManager:CreateBarOverlayFontString(parent, layer)
+    if not parent then return nil end
+    layer = layer or "OVERLAY"
+    local fs = parent:CreateFontString(nil, layer)
+    if not fs then return nil end
+    fs._fontCategory = "metricBarOverlay"
+    fs._fontOverlay = true
+    self:ApplyBarOverlayFont(fs)
+    table.insert(FONT_REGISTRY, fs)
+    return fs
+end
+
 function FontManager:ApplyFont(fontString, category)
     if not fontString then
         return
@@ -665,8 +709,12 @@ local function ApplyToAllRegistered()
             table.remove(FONT_REGISTRY, i)
             removed = removed + 1
         else
-            local category = fs._fontCategory or "body"
-            FontManager:ApplyFont(fs, category)
+            if fs._fontOverlay then
+                FontManager:ApplyBarOverlayFont(fs)
+            else
+                local category = fs._fontCategory or "body"
+                FontManager:ApplyFont(fs, category)
+            end
             updated = updated + 1
         end
     end
