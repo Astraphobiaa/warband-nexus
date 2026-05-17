@@ -84,6 +84,38 @@ local options = {
                 end
             end,
         },
+        mainNavLayout = {
+            order = 13.5,
+            type = "select",
+            width = "full",
+            name = function() return (ns.L and ns.L["CONFIG_MAIN_NAV_LAYOUT"]) or "Main window navigation layout" end,
+            desc = function()
+                return (ns.L and ns.L["CONFIG_MAIN_NAV_LAYOUT_DESC"])
+                    or 'Top row or left icon strip for main tabs. Applies after UI reload (/reload).'
+            end,
+            values = function()
+                return {
+                    ["top"] = ((ns.L and ns.L["CONFIG_MAIN_NAV_LAYOUT_TOP"]) or "Horizontal tabs (top row)"),
+                    ["rail"] = ((ns.L and ns.L["CONFIG_MAIN_NAV_LAYOUT_RAIL"]) or "Left icon rail"),
+                }
+            end,
+            get = function()
+                local p = WarbandNexus.db.profile
+                local v = p and p.mainNavLayout
+                if v == "rail" or v == "top" then return v end
+                local st = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL and ns.UI_LAYOUT.MAIN_SHELL.NAV_LAYOUT_MODE
+                if st == "rail" or st == "top" then return st end
+                return "rail"
+            end,
+            set = function(_, value)
+                if value ~= "rail" and value ~= "top" then return end
+                WarbandNexus.db.profile.mainNavLayout = value
+                if WarbandNexus.Print then
+                    WarbandNexus:Print("|cffbbbbbb"
+                        .. ((ns.L and ns.L["CONFIG_MAIN_NAV_LAYOUT_RELOAD_NOTICE"]) or "Main navigation applies after UI reload.") .. "|r")
+                end
+            end,
+        },
         currentLanguageInfo = {
             order = 14,
             type = "description",

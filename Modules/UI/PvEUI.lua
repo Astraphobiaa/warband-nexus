@@ -75,18 +75,18 @@ local TOP_MARGIN = GetLayout().topMargin or 8
 -- Left prefix through iLvl matches Characters row chrome (see PvE_ComputeCharacterRowPrefixToGoldPx).
 local PVE_CHAR_HEADER_H_MARGIN = 20                -- char row inset 10 + 10
 local PVE_COLUMN_HEADER_PAD = 2
-local PVE_COL_SPACING = 6                        -- uniform baseline spacing for symmetric header rhythm
-local PVE_KEY_TO_VAULT_GAP = 8                   -- currency block ↔ vault block
-local PVE_VAULT_CLUSTER_GAP = 8                  -- Raid | Dungeon | World internal spacing
-local PVE_COL_RIGHT_MARGIN = 8
-local PVE_DAWNCREST_COL_W = 128                  -- qty/max (R:rem)
-local PVE_COFFER_COL_W = 148
-local PVE_KEY_COL_W = 100
-local PVE_VAULT_COL_W = 92                       -- keep Raid/Dungeon/World header labels untruncated
-local PVE_BOUNTIFUL_COL_W = 64                   -- enough for "Map" label under icon
-local PVE_STATUS_COL_W    = 150                  -- enough for "N Slots Ready" values
-local PVE_VOIDCORE_COL_W = 72
-local PVE_MANAFLUX_COL_W = 72
+local PVE_COL_SPACING = 4                        -- uniform baseline spacing for symmetric header rhythm
+local PVE_KEY_TO_VAULT_GAP = 6                   -- currency block ↔ vault block
+local PVE_VAULT_CLUSTER_GAP = 6                  -- Raid | Dungeon | World internal spacing
+local PVE_COL_RIGHT_MARGIN = 6
+local PVE_DAWNCREST_COL_W = 112                  -- qty/max (R:rem)
+local PVE_COFFER_COL_W = 132
+local PVE_KEY_COL_W = 88
+local PVE_VAULT_COL_W = 84                       -- keep Raid/Dungeon/World header labels untruncated
+local PVE_BOUNTIFUL_COL_W = 58                   -- enough for "Bounty" label under icon
+local PVE_STATUS_COL_W    = 128                  -- enough for "N Slots Ready" values
+local PVE_VOIDCORE_COL_W = 64
+local PVE_MANAFLUX_COL_W = 64
 local PVE_VOIDCORE_ID = 3418
 local PVE_MANAFLUX_ID = 3378
 
@@ -740,7 +740,12 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     hideBtnText:SetTextColor(0.9, 0.9, 0.9)
     hideBtnText:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"))
     if Factory.ApplyHighlight then Factory:ApplyHighlight(hideBtn) end
-    hideBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -8, 0)
+    local hdrGapPicker = (ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics().gap) or 8
+    if ns.UI_AnchorTitleCardToolbarControl then
+        ns.UI_AnchorTitleCardToolbarControl(hideBtn, titleCard, sortAnchor, "LEFT", -hdrGapPicker)
+    else
+        hideBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -hdrGapPicker, 0)
+    end
 
     local function HideMenuClose()
         if hideBtn._menu and hideBtn._menu:IsShown() then hideBtn._menu:Hide() end
@@ -2121,7 +2126,9 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             -- Calculate responsive card widths (pixel-snapped)
             -- Order: Overall Score (35%) → Keystone+Affixes (35%) → Vault (30%)
             local PixelSnap = ns.PixelSnap or function(v) return v end
-            local totalWidth = PixelSnap(parent:GetWidth() - 20)
+            local totalWidth = PixelSnap((ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(
+                L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame, parent))
+                or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2))
             -- Vault card: 4 equal columns (Label + 3 slots), each needs room for "Dungeons" + icon
             local card3Width = PixelSnap(math.max(360, totalWidth * 0.40))  -- Vault (min 360px)
             local remaining  = totalWidth - card3Width
@@ -2971,11 +2978,15 @@ end
 
 local function PvEUI_DrawPvEProgressBody(self, parent, L)
     parent._pvePaintedCoreH = nil
-    local width = parent:GetWidth() - 20
+    local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
+    local width = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+        or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
 
-    local fixedHeader = L.WarbandNexus.UI.mainFrame and L.WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = 8
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local fixedHeader = mf and mf.fixedHeader
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    local headerYOffset = (chrome and chrome.yOffset) or 0
+    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
@@ -3065,24 +3076,31 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local titleTextContent = "|cff" .. hexColor .. ((L.ns.L and L.ns.L["PVE_TITLE"]) or "PvE Progress") .. "|r"
     local subtitleTextContent = (L.ns.L and L.ns.L["PVE_SUBTITLE"]) or "Great Vault, Raid Lockouts & Mythic+ across your Warband"
-    -- Room for weekly reset + sort/section filter + column picker (approximate, avoids overlap)
-    local PVE_TITLE_RIGHT_RESERVE = 620
+    local tm = L.ns.UI_GetTitleCardToolbarMetrics and L.ns.UI_GetTitleCardToolbarMetrics() or {}
+    local hdrGapPve = tm.gap or (L.GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
+    local pveToolbarReserve = (L.ns.UI_ComputeTitleToolbarReserve and L.ns.UI_ComputeTitleToolbarReserve({
+        168, tm.filterW or 96, 84,
+    })) or (640 + hdrGapPve)
     local titleCard = select(1, L.ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "pve",
         titleText = titleTextContent,
         subtitleText = subtitleTextContent,
-        textRightInset = PVE_TITLE_RIGHT_RESERVE,
+        textRightInset = pveToolbarReserve,
     }))
-    titleCard:SetPoint("TOPLEFT", L.SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -L.SIDE_MARGIN, -headerYOffset)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:SetPoint("TOPLEFT", L.SIDE_MARGIN, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -L.SIDE_MARGIN, -headerYOffset)
+    end
     
     -- Weekly reset timer (standardized widget)
     local CreateResetTimer = L.ns.UI_CreateResetTimer
-    local titleCardRightInset = L.GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+    local titleEdgeInset = tm.edgeInset or 0
     local resetTimer = CreateResetTimer(
         titleCard,
         "RIGHT",
-        -titleCardRightInset,
+        -titleEdgeInset,
         0,
         function()
             -- Use centralized GetWeeklyResetTime from PlansManager
@@ -3127,14 +3145,24 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             -- PvE: section filter only — roster edits (delete custom header) stay on Character tab.
         })
         if sortBtn then
-            sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
+            local hdrGap = tm.gap or 8
+            if L.ns.UI_AnchorTitleCardToolbarControl then
+                L.ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, resetTimer.container, "LEFT", -hdrGap)
+            else
+                sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -hdrGap, 0)
+            end
             sortAnchor = sortBtn
         end
     elseif L.ns.UI_CreateCharacterSortDropdown then
         local sortBtn = L.ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
             L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
         end)
-        sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
+        local hdrGap = tm.gap or 8
+        if L.ns.UI_AnchorTitleCardToolbarControl then
+            L.ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, resetTimer.container, "LEFT", -hdrGap)
+        else
+            sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -hdrGap, 0)
+        end
         sortAnchor = sortBtn
     end
 
@@ -3142,9 +3170,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     sortAnchor = L.PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
 
     titleCard:Show()
-    headerYOffset = headerYOffset + L.GetLayout().afterHeader
-    -- Title only; column headers live in columnHeaderClip (horizontal sync with scroll child)
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    else
+        headerYOffset = headerYOffset + (L.GetLayout().afterHeader or 72)
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    end
 
     -- ===== COLUMN HEADER ROW (inline PvE status summary) =====
     -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
@@ -3276,7 +3308,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             width = L.PVE_BOUNTIFUL_COL_W,
             icon = L.GetTrovehunterBountyColumnIcon(),
             tooltipTitle = (L.ns.L and L.ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
-            headerLabel = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"),
+            headerLabel = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"),
         }
     end
     -- Vault Status — same Ready/Slots Earned/Pending readout as the Vault Tracker quick window.
@@ -3285,9 +3317,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             key = "vault_status",
             label = "",
             width = L.PVE_STATUS_COL_W,
-            icon = "Interface\\Icons\\Achievement_Boss_Argus",
+            icon = "Interface\\RaidFrame\\ReadyCheck-Ready",
             tooltipTitle = (L.ns.L and L.ns.L["PVE_COL_VAULT_STATUS"]) or "Vault Status",
             headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
+            headerIconIsAtlas = false,
         }
     end
 
@@ -3317,7 +3350,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         return L.PVE_COL_SPACING
     end
 
-    local yOffset = 8
+    local yOffset = scrollTopY
 
     -- Check if module is disabled - show beautiful disabled state card (before column strip / scroll width)
     if not L.ns.Utilities:IsModuleEnabled("pve") then
@@ -3691,8 +3724,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         slot1 = { text = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), hex = "ffffff" },
         slot2 = { text = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"), hex = "ffffff" },
         slot3 = { text = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"), hex = "ffffff" },
-        bountiful = { text = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Map"), hex = "ffffff" },
-        vault_status = { text = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), hex = "ffffff" },
+        bountiful = { text = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"), hex = "ffffff" },
+        vault_status = { text = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), hex = "ffffff", icon = "Interface\\RaidFrame\\ReadyCheck-Ready" },
     }
     local PVE_COMPACT_CREST_BY_ID = {
         [3383] = { text = L.GetLocalizedText("PVE_CREST_ADV", "Adventurer"), hex = "9d9d9d" },
@@ -4812,5 +4845,18 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
         lines = lines,
         anchor = "ANCHOR_RIGHT",
         maxWidth = maxW,
+    })
+end
+
+if ns.UI_LayoutCoordinator then
+    local LC = ns.UI_LayoutCoordinator
+    LC:RegisterTabAdapter("pve", {
+        OnViewportLayoutCommit = function(_scrollChild, _contentWidth, mf)
+            if not mf or mf.currentTab ~= "pve" then return false end
+            if ns.UI_RefreshFixedHeaderChrome then
+                ns.UI_RefreshFixedHeaderChrome(mf)
+            end
+            return false
+        end,
     })
 end

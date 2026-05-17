@@ -250,7 +250,10 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     end
     row:SetWidth(width)
     row:SetHeight(rowHeight) -- Initial height
-    
+    if row.SetClipsChildren then
+        row:SetClipsChildren(true)
+    end
+
     -- Store state
     row.isExpanded = isExpanded or false
     row.data = data

@@ -21,7 +21,8 @@ end
 
 local LAYOUT = GetLayout()
 --- Shared by Plans (To-Do ▸ Achievements) and Collections ▸ Achievements virtual rows.
-ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE = 1.1
+ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE = 1.155
+local ACH_ROW_GAP = 4
 local SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
 local PADDING = SIDE_MARGIN
 local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
@@ -81,6 +82,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
     local baseRowH = LAYOUT.ROW_HEIGHT or 26
     local scale = (listOpts and type(listOpts.rowHeightScale) == "number") and listOpts.rowHeightScale or 1
     local achRowH = math.max(18, math.floor(baseRowH * scale + 0.5))
+    local achRowStride = achRowH + ACH_ROW_GAP
     local rD, gD, bD = (COLORS.textDim[1] or 0.55), (COLORS.textDim[2] or 0.55), (COLORS.textDim[3] or 0.55)
     local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
     local rB, gB, bB = (COLORS.textBright[1] or 1), (COLORS.textBright[2] or 1), (COLORS.textBright[3] or 1)
@@ -131,10 +133,11 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
                 achievement = ach,
                 rowIndex = rowCounter,
                 yOffset = yOffset,
-                height = achRowH,
+                height = achRowStride,
+                rowPaintHeight = achRowH,
                 indent = rowIndent,
             }
-            yOffset = yOffset + achRowH
+            yOffset = yOffset + achRowStride
         end
 
         local children = cat.children or {}

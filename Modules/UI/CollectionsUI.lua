@@ -43,7 +43,7 @@ local LAYOUT, SIDE_MARGIN, TOP_MARGIN, CARD_GAP, AFTER_ELEMENT, ROW_ICON_SIZE
 local DETAIL_ICON_SIZE, STATUS_ICON_SIZE, SCROLL_CONTENT_TOP_PADDING
 local function RefreshCollectionsLayout()
     LAYOUT = GetLayout()
-    SIDE_MARGIN = LAYOUT.SIDE_MARGIN or 10
+    SIDE_MARGIN = LAYOUT.SIDE_MARGIN or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
     TOP_MARGIN = LAYOUT.TOP_MARGIN or 8
     CARD_GAP = LAYOUT.CARD_GAP or 8
     AFTER_ELEMENT = LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8
@@ -53,13 +53,19 @@ local function RefreshCollectionsLayout()
     SCROLL_CONTENT_TOP_PADDING = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
 end
 RefreshCollectionsLayout()
+
+local function CollectionsFallbackContentWidth(parent)
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    return (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent)) or 660
+end
+
 -- Symmetric layout: all panels use same inset; no magic numbers.
 local CONTENT_INSET = LAYOUT.CONTENT_INSET or LAYOUT.CARD_GAP or 8
 local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
 local TEXT_GAP = AFTER_ELEMENT
-local SEARCH_ROW_HEIGHT = 32  -- Plans ile birebir aynı
--- Title card: 70px + text block 200x40 + icon gap 12 — birebir CurrencyUI / ItemsUI.
-local COLLECTIONS_TITLE_CARD_HEIGHT = 70
+local SEARCH_ROW_HEIGHT = math.floor(32 * 1.05 + 0.5)
+-- Title card height matches Characters reference (`TITLE_CARD_DEFAULT_HEIGHT` = 64).
+local COLLECTIONS_TITLE_CARD_HEIGHT = (ns.UI_SPACING and ns.UI_SPACING.TITLE_CARD_DEFAULT_HEIGHT) or 64
 local RECENT_SECTION_ORDER = { "achievement", "mount", "pet", "toy" }
 local RECENT_CARD_ICON = 20
 local RECENT_CARD_HEADER_PAD = 8
@@ -138,7 +144,9 @@ end
 -- Process this many mounts/pets per frame to avoid 1s freeze (spread over multiple frames).
 local RUN_CHUNK_SIZE = 100
 -- Same row/header dimensions for all three sub-tabs (Mounts, Pets, Achievements); matches SharedWidgets/UI_SPACING
-local ROW_HEIGHT = LAYOUT.ROW_HEIGHT or 26
+local ROW_HEIGHT = math.floor(32 * 1.05 * 1.25 + 0.5)
+local ROW_GAP = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (ns.UI_LAYOUT and ns.UI_LAYOUT.dataRowGap) or 4
+local ROW_STRIDE = ROW_HEIGHT + ROW_GAP
 -- Mount/Pet/Toy category headers: must match CreateCollapsibleHeader + CollectionVirtual_FillRowScrollIndex (collapsible sections + virtual rows).
 local COLLAPSE_HEADER_HEIGHT_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT) or 36
 
@@ -398,8 +406,8 @@ local function BuildFlatMountList(groupedData, collapsedHeaders)
             local nItems = #items
             for ji = 1, nItems do
                 rowCounter = rowCounter + 1
-                flat[#flat + 1] = { type = "row", mount = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
-                yOffset = yOffset + ROW_HEIGHT
+                flat[#flat + 1] = { type = "row", mount = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_STRIDE, rowPaintHeight = ROW_HEIGHT }
+                yOffset = yOffset + ROW_STRIDE
             end
         end
     end
@@ -444,8 +452,8 @@ local function BuildFlatPetList(groupedData, collapsedHeaders)
             local nItems = #items
             for ji = 1, nItems do
                 rowCounter = rowCounter + 1
-                flat[#flat + 1] = { type = "row", pet = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
-                yOffset = yOffset + ROW_HEIGHT
+                flat[#flat + 1] = { type = "row", pet = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_STRIDE, rowPaintHeight = ROW_HEIGHT }
+                yOffset = yOffset + ROW_STRIDE
             end
         end
     end
@@ -493,8 +501,8 @@ local function BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverrid
             local nItems = #items
             for ji = 1, nItems do
                 rowCounter = rowCounter + 1
-                flat[#flat + 1] = { type = "row", toy = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_HEIGHT }
-                yOffset = yOffset + ROW_HEIGHT
+                flat[#flat + 1] = { type = "row", toy = items[ji], rowIndex = rowCounter, yOffset = yOffset, height = ROW_STRIDE, rowPaintHeight = ROW_HEIGHT }
+                yOffset = yOffset + ROW_STRIDE
             end
         end
     end
@@ -506,8 +514,8 @@ local function BuildFlatToyListOnly(items)
     local flat = {}
     local yOffset = 0
     for i = 1, #items do
-        flat[#flat + 1] = { type = "row", toy = items[i], rowIndex = i, yOffset = yOffset, height = ROW_HEIGHT }
-        yOffset = yOffset + ROW_HEIGHT
+        flat[#flat + 1] = { type = "row", toy = items[i], rowIndex = i, yOffset = yOffset, height = ROW_STRIDE, rowPaintHeight = ROW_HEIGHT }
+        yOffset = yOffset + ROW_STRIDE
     end
     return flat, math.max(yOffset + PADDING, 1)
 end
@@ -632,7 +640,7 @@ local function CollectionVirtual_FillRowScrollIndex(flatList, sectionContentH, c
             local key = it.key
             local secH = (sectionContentH and sectionContentH[key]) or 0
             if secH <= 0 and it.itemCount then
-                secH = (it.itemCount * ROW_HEIGHT)
+                secH = (it.itemCount * ROW_STRIDE)
             end
             local expanded = collapsedHeaders and (collapsedHeaders[key] == false)
             local bodyH = expanded and math.max(0.1, secH) or 0.1
@@ -809,18 +817,29 @@ local function CollectionRowTrackSlotTooltip(achCollected, onTrack)
 end
 
 -- Acquire a collection list row (SharedWidgets layout: status icon + icon + label). Used by Mounts, Pets, Achievements.
+local function CollectionRowPaintHeight(item)
+    if item and item.rowPaintHeight and item.rowPaintHeight > 0 then
+        return item.rowPaintHeight
+    end
+    return ROW_HEIGHT
+end
+
 local function AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState)
     if not rowParent then return nil end
-    local rowH = (item and type(item.height) == "number" and item.height > 0) and item.height or ROW_HEIGHT
+    local rowH = CollectionRowPaintHeight(item)
     local f = table.remove(CollectionRowPool)
     if not f then
         f = Factory:CreateCollectionListRow(rowParent, rowH)
         f:ClearAllPoints()
     end
     f:SetParent(rowParent)
+    local rightPad = 4
     f:SetPoint("TOPLEFT", rowParent, "TOPLEFT", leftIndent or 0, -(item.yOffset or 0))
-    f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", 0, -(item.yOffset or 0))
+    f:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", -rightPad, -(item.yOffset or 0))
     f:SetHeight(rowH)
+    if f.SetClipsChildren then
+        f:SetClipsChildren(true)
+    end
     local onClick
     if onSelect or refreshFn then
         onClick = function()
@@ -843,7 +862,7 @@ local function AcquireMountRow(scrollChild, listWidth, item, selectedMountID, on
     end
     local rowItem = item
     if item._collRelY then
-        rowItem = { mount = item.mount, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
+        rowItem = { mount = item.mount, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height, rowPaintHeight = item.rowPaintHeight }
     end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsMountPlanned and WN:IsMountPlanned(mount.id) or false
@@ -895,7 +914,7 @@ local function AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSele
     end
     local rowItem = item
     if item._collRelY then
-        rowItem = { pet = item.pet, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
+        rowItem = { pet = item.pet, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height, rowPaintHeight = item.rowPaintHeight }
     end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsPetPlanned and WN:IsPetPlanned(pet.id) or false
@@ -947,7 +966,7 @@ local function AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSele
     end
     local rowItem = item
     if item._collRelY then
-        rowItem = { toy = item.toy, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height }
+        rowItem = { toy = item.toy, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height, rowPaintHeight = item.rowPaintHeight }
     end
     local WN = WarbandNexus
     local onTodo = WN and WN.IsItemPlanned and WN:IsItemPlanned("toy", toy.id) or false
@@ -1007,6 +1026,7 @@ local function AcquireAchievementRow(scrollChild, listWidth, item, selectedAchie
             rowIndex = item.rowIndex,
             yOffset = item._collRelY,
             height = item.height,
+            rowPaintHeight = item.rowPaintHeight,
             indent = item.indent,
         }
     end
@@ -1152,7 +1172,8 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
     local cf = contentFrameForRefresh
     local redraw = redrawFn or function() end
 
-    listWidth = listWidth or 260
+    listWidth = ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(scrollChild, listWidth or 260, 0)
+        or (listWidth or 260)
     scrollChild:SetWidth(listWidth)
 
     -- Release any visible row frames back to pool before clearing
@@ -1220,7 +1241,7 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
             local sectionBody
             local secH = mountSectionContentH[key] or 0
             if secH <= 0 then
-                secH = ((it.itemCount or 0) * ROW_HEIGHT) or 0
+                secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 -- Pre-populate visible rows before expand tween so first open is animated with content.
@@ -1253,8 +1274,13 @@ local function PopulateMountList(scrollChild, listWidth, groupedData, collapsedH
                     UpdateMountListVisibleRange()
                 end,
             }))
-            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-            header:SetWidth(listWidth)
+            if ns.UI_AnchorSectionHeaderInWrap then
+                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)
+            else
+                header:ClearAllPoints()
+                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+                header:SetWidth(listWidth)
+            end
             header:SetHeight(it.height)
 
             sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
@@ -1388,7 +1414,8 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
     local cf = contentFrameForRefresh
     local redraw = redrawFn or function() end
 
-    listWidth = listWidth or 260
+    listWidth = ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(scrollChild, listWidth or 260, 0)
+        or (listWidth or 260)
     scrollChild:SetWidth(listWidth)
 
     local visible = collectionsState._petVisibleRowFrames
@@ -1454,7 +1481,7 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
             local sectionBody
             local secH = petSectionContentH[key] or 0
             if secH <= 0 then
-                secH = ((it.itemCount or 0) * ROW_HEIGHT) or 0
+                secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 -- Pre-populate visible rows before expand tween so first open is animated with content.
@@ -1485,8 +1512,13 @@ local function PopulatePetList(scrollChild, listWidth, groupedData, collapsedHea
                     UpdatePetListVisibleRange()
                 end,
             }))
-            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-            header:SetWidth(listWidth)
+            if ns.UI_AnchorSectionHeaderInWrap then
+                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)
+            else
+                header:ClearAllPoints()
+                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+                header:SetWidth(listWidth)
+            end
             header:SetHeight(it.height)
 
             sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
@@ -1619,7 +1651,8 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
     local cf = contentFrameForRefresh
     local redraw = redrawFn or function() end
 
-    listWidth = listWidth or 260
+    listWidth = ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(scrollChild, listWidth or 260, 0)
+        or (listWidth or 260)
     scrollChild:SetWidth(listWidth)
 
     local visible = collectionsState._toyVisibleRowFrames
@@ -1685,7 +1718,7 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
             local sectionBody
             local secH = toySectionContentH[key] or 0
             if secH <= 0 then
-                secH = ((it.itemCount or 0) * ROW_HEIGHT) or 0
+                secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
                 -- Pre-populate visible rows before expand tween so first open is animated with content.
@@ -1716,8 +1749,13 @@ local function PopulateToyList(scrollChild, listWidth, groupedData, collapsedHea
                     UpdateToyListVisibleRange()
                 end,
             }))
-            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-            header:SetWidth(listWidth)
+            if ns.UI_AnchorSectionHeaderInWrap then
+                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)
+            else
+                header:ClearAllPoints()
+                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+                header:SetWidth(listWidth)
+            end
             header:SetHeight(it.height)
 
             sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
@@ -1793,7 +1831,7 @@ local function PopulateAchievementList(scrollChild, listWidth, categoryData, roo
         scheduleVisibleSync = function(fn)
             ScheduleCollectionsVisibleSync("achievements", fn)
         end,
-        rowHeightScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.1,
+        rowHeightScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.155,
     })
 end
 
@@ -2434,6 +2472,9 @@ local function CreateModelViewer(parent, width, height)
     if PlanCardFactory and actionSlot then
         panel._addBtn = PlanCardFactory.CreateAddButton(actionSlot, {
             buttonType = "row",
+            iconOnly = true,
+            width = 28,
+            height = 28,
             anchorPoint = "TOPRIGHT",
             x = 0,
             y = 0,
@@ -3169,11 +3210,12 @@ end
 -- ============================================================================
 -- ACHIEVEMENT DETAIL PANEL — Parent/Children, Description, Criteria (replaces model viewer)
 -- ============================================================================
--- Achievement detail header: matched heights so To-Do + Track align; width fits localized labels.
-local ACH_ROW_ADD_WIDTH = 84
-local ACH_ROW_ADD_HEIGHT = 30
-local ACH_TRACK_WIDTH = 64
-local ACH_TRACK_HEIGHT = 30
+-- Achievement detail header: icon-only To-Do + Track (same WN vertex icons as list rows).
+local ACH_ACTION_ICON_SZ = 28
+local ACH_ROW_ADD_WIDTH = ACH_ACTION_ICON_SZ
+local ACH_ROW_ADD_HEIGHT = ACH_ACTION_ICON_SZ
+local ACH_TRACK_WIDTH = ACH_ACTION_ICON_SZ
+local ACH_TRACK_HEIGHT = ACH_ACTION_ICON_SZ
 local ACH_ACTION_GAP = 6
 
 -- Build full achievement series (e.g. Level 10, 20, 30... 80): walk to root via GetPreviousAchievement, then collect all via GetSupercedingAchievements.
@@ -3319,10 +3361,11 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             end
         end
         if ApplyVisuals then
+            local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
             if isCurrent then
                 ApplyVisuals(row, {0.1, 0.08, 0.05, 0.9}, {goldR, goldG, goldB, 0.85})
             else
-                ApplyVisuals(row, {0.06, 0.06, 0.08, 0.5}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4})
+                ApplyVisuals(row, {bg[1], bg[2], bg[3], 0.92}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35})
             end
         end
         local icon = row:CreateTexture(nil, "ARTWORK")
@@ -3413,55 +3456,19 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             headerWowheadBtn:Hide()
         end
 
-        local trackBtn = Factory:CreateButton(achControls, ACH_TRACK_WIDTH, ACH_TRACK_HEIGHT, false)
-        trackBtn:SetPoint("TOPRIGHT", achControls, "TOPRIGHT", 0, 0)
-        trackBtn:SetFrameLevel(headerRow:GetFrameLevel() + 25)
-        trackBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        local trackLabel = FontManager:CreateFontString(trackBtn, "body", "OVERLAY")
-        trackLabel:SetPoint("CENTER")
-        if trackLabel.EnableMouse then
-            trackLabel:EnableMouse(false)
-        end
-        local trackedStr = (ns.L and ns.L["TRACKED"]) or "Tracked"
-        local trackStr = (ns.L and ns.L["TRACK"]) or "Track"
-        local function UpdateTrackButton()
-            if achievement.isCollected then
-                trackLabel:SetText(trackStr)
-                trackLabel:SetTextColor(0.52, 0.54, 0.58, 0.72)
-                trackBtn:SetAlpha(0.4)
-                trackBtn:EnableMouse(false)
-            elseif IsAchievementTracked(achievement.id) then
-                trackLabel:SetText(trackedStr)
-                trackLabel:SetTextColor(0.42, 0.68, 0.52, 0.78)
-                trackBtn:SetAlpha(0.68)
-                trackBtn:EnableMouse(true)
-            else
-                trackLabel:SetText(trackStr)
-                trackLabel:SetTextColor(1, 0.84, 0.28, 1)
-                trackBtn:SetAlpha(1)
-                trackBtn:EnableMouse(true)
+        local trackBtn = Factory.CreateAchievementTrackPinButton
+            and Factory:CreateAchievementTrackPinButton(achControls, achievement.id, {
+                size = ACH_TRACK_WIDTH,
+                frameLevelOffset = 25,
+                isDisabled = function() return achievement.isCollected == true end,
+            })
+        if trackBtn then
+            trackBtn:SetPoint("TOPRIGHT", achControls, "TOPRIGHT", 0, 0)
+            if trackBtn.WnRefreshAchievementTrackPin then
+                trackBtn:WnRefreshAchievementTrackPin()
             end
         end
-        trackBtn:SetScript("OnClick", function()
-            if achievement.id then
-                ToggleAchievementTracking(achievement.id)
-                UpdateTrackButton()
-            end
-        end)
-        trackBtn:SetScript("OnEnter", function()
-            if trackBtn:IsMouseEnabled() then
-                if trackLabel then trackLabel:SetTextColor(1, 1, 1, 1) end
-                GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
-                GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
-                GameTooltip:Show()
-            end
-        end)
-        trackBtn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-            UpdateTrackButton()
-        end)
 
-        local addLabelText = (ns.L and ns.L["ADD_BUTTON"]) or "To-Do"
         local addedLabelText = (ns.L and ns.L["ADDED"]) or "Added"
         local isPlanned = WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievement.id)
         local addBtn, addedIndicator
@@ -3476,7 +3483,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                 x = 0,
                 y = 0,
             })
-            if addedIndicator then
+            if addedIndicator and trackBtn then
                 addedIndicator:ClearAllPoints()
                 addedIndicator:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
                 addedIndicator:SetAlpha(0.45)
@@ -3492,16 +3499,15 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                 x = 0,
                 y = 0,
             })
-            if addedIndicator then
+            if addedIndicator and trackBtn then
                 addedIndicator:ClearAllPoints()
                 addedIndicator:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
             end
         else
             addBtn = PlanCardFactory and PlanCardFactory.CreateAddButton(achControls, {
-                buttonType = "row",
+                iconOnly = true,
                 width = ACH_ROW_ADD_WIDTH,
                 height = ACH_ROW_ADD_HEIGHT,
-                label = addLabelText,
                 anchorPoint = "RIGHT",
                 x = 0,
                 y = 0,
@@ -3523,17 +3529,16 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                     })
                 end,
             })
-            if addBtn then
+            if addBtn and trackBtn then
                 addBtn:ClearAllPoints()
                 addBtn:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
                 addBtn:SetFrameLevel(headerRow:GetFrameLevel() + 25)
-                if addBtn.text then
-                    addBtn.text:SetTextColor(0.98, 0.94, 0.72, 1)
-                end
             end
         end
 
-        UpdateTrackButton()
+        panel._achDetailTrackBtn = trackBtn
+        panel._achDetailAddBtn = addBtn
+        panel._achDetailAddedIndicator = addedIndicator
 
         if achAddCol.tryCountRow and achAddCol.tryCountRow.WnUpdateTryCount then
             achAddCol.tryCountRow:WnUpdateTryCount("achievement", achievement.id, achievement.name)
@@ -3659,7 +3664,10 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                         critFs:SetPoint("RIGHT", row, "RIGHT", -CONTENT_INSET, 0)
                         critFs:SetJustifyH("LEFT")
                         critFs:SetWordWrap(true)
-                        critFs:SetText(color .. (criteriaName or "") .. progressStr .. "|r")
+                        local planColors = ns.PLAN_UI_COLORS or {}
+                        local critColor = completed and (planColors.completed or "|cff44ff44")
+                            or (planColors.incomplete or "|cffffffff")
+                        critFs:SetText(critColor .. (criteriaName or "") .. progressStr .. "|r")
                         addDetailElement(row)
                         lastAnchor = row
                         lastPoint = "BOTTOMLEFT"
@@ -4599,7 +4607,7 @@ local function DrawRecentContent(contentFrame)
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = (parent and parent:GetWidth() and (parent:GetWidth() - 20)) or 660
+        cw = CollectionsFallbackContentWidth(parent)
     end
     if not ch or ch < 1 then
         ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
@@ -4643,7 +4651,7 @@ local function DrawRecentContent(contentFrame)
     local cardW = (innerW - 3 * gap) / 4
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6
     local listTopPad = headerBand + 4
-    local RECENT_ROW_H_SUB = ROW_HEIGHT + 14
+    local RECENT_ROW_H_SUB = math.floor(44 * 1.05 + 0.5)
 
     local pickedLists = {}
     for si = 1, #RECENT_SECTION_ORDER do
@@ -4662,9 +4670,9 @@ local function DrawRecentContent(contentFrame)
     local function RecentColumnListPixelHeight(typ, picked)
         local yList = 0
         if qlower and #picked == 0 then
-            return ROW_HEIGHT + 2
+            return ROW_STRIDE
         elseif #picked == 0 then
-            return ROW_HEIGHT + 2
+            return ROW_STRIDE
         end
         for j = 1, #picked do
             local e = picked[j]
@@ -4674,7 +4682,7 @@ local function DrawRecentContent(contentFrame)
             if ob and ob ~= "" and not suppressEarner then
                 rowH = RECENT_ROW_H_SUB
             end
-            yList = yList + rowH + 2
+            yList = yList + rowH + ROW_GAP
         end
         return yList
     end
@@ -4712,16 +4720,22 @@ local function DrawRecentContent(contentFrame)
         card:SetParent(panel)
         card:SetSize(cardW, cardH)
         card:SetPoint("TOPLEFT", panel, "TOPLEFT", inset + (si - 1) * (cardW + gap), -inset)
+        if ApplyVisuals then
+            local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
+            ApplyVisuals(card, { bg[1], bg[2], bg[3], 0.96 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
+        end
         card:Show()
 
-        local iconFr = CreateIcon(card, iconTex, RECENT_CARD_ICON, iconIsAtlas, nil, true)
+        local headerIconBorder = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
+        local iconFr = CreateIcon(card, iconTex, RECENT_CARD_ICON, iconIsAtlas, headerIconBorder, false)
+        local headerMidY = -(RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON * 0.5)
         if iconFr then
-            iconFr:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD, -RECENT_CARD_HEADER_PAD)
+            iconFr:SetPoint("CENTER", card, "TOPLEFT", RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON * 0.5, headerMidY)
             iconFr:Show()
         end
 
         local resetBtn = Factory:CreateButton(card, 22, 22, true)
-        resetBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -RECENT_CARD_HEADER_PAD, -RECENT_CARD_HEADER_PAD + 1)
+        resetBtn:SetPoint("CENTER", card, "TOPRIGHT", -(RECENT_CARD_HEADER_PAD + 11), headerMidY)
         resetBtn:SetFrameLevel((card:GetFrameLevel() or 0) + 8)
         local resetTex = resetBtn:CreateTexture(nil, "ARTWORK")
         resetTex:SetAllPoints()
@@ -4729,7 +4743,9 @@ local function DrawRecentContent(contentFrame)
         if not resetAtlasOk then
             resetTex:SetTexture("Interface\\Buttons\\UI-RefreshButton")
         end
+        resetTex:SetVertexColor(1, 1, 1, 1)
         resetBtn:SetScript("OnEnter", function(self)
+            resetTex:SetVertexColor(1, 0.95, 0.45, 1)
             GameTooltip:ClearLines()
             if ns.UI_SetGameTooltipSmartOwner then
                 ns.UI_SetGameTooltipSmartOwner(self, 0, 0)
@@ -4739,7 +4755,10 @@ local function DrawRecentContent(contentFrame)
             GameTooltip:SetText((loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"]) or "Clear recent entries for this category", 1, 1, 1)
             GameTooltip:Show()
         end)
-        resetBtn:SetScript("OnLeave", GameTooltip_Hide)
+        resetBtn:SetScript("OnLeave", function()
+            resetTex:SetVertexColor(1, 1, 1, 1)
+            GameTooltip_Hide()
+        end)
         resetBtn:SetScript("OnClick", function()
             if WarbandNexus.ClearCollectionsRecentObtainedForType then
                 WarbandNexus:ClearCollectionsRecentObtainedForType(typ)
@@ -4752,9 +4771,10 @@ local function DrawRecentContent(contentFrame)
         end)
 
         local titleFs = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
-        titleFs:SetPoint("TOPLEFT", card, "TOPLEFT", RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 6, -RECENT_CARD_HEADER_PAD - 2)
-        titleFs:SetPoint("TOPRIGHT", resetBtn, "TOPLEFT", -6, -2)
+        titleFs:SetPoint("LEFT", iconFr or card, "RIGHT", 6, 0)
+        titleFs:SetPoint("RIGHT", resetBtn, "LEFT", -6, 0)
         titleFs:SetJustifyH("LEFT")
+        titleFs:SetJustifyV("MIDDLE")
         titleFs:SetText(cat)
         titleFs:SetTextColor(1, 0.85, 0.45, 1)
 
@@ -4789,7 +4809,7 @@ local function DrawRecentContent(contentFrame)
                 row:SetScript("OnEnter", nil)
                 row:SetScript("OnLeave", nil)
             end
-            yList = yList + rowH + 2
+            yList = yList + rowH + ROW_GAP
         end
 
         if qlower and #picked == 0 then
@@ -4940,7 +4960,7 @@ local function DrawMountsContent(contentFrame)
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = (parent and parent:GetWidth() and (parent:GetWidth() - 20)) or 660
+        cw = CollectionsFallbackContentWidth(parent)
     end
     if not ch or ch < 1 then
         ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
@@ -5282,7 +5302,7 @@ local function DrawPetsContent(contentFrame)
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = (parent and parent:GetWidth() and (parent:GetWidth() - 20)) or 660
+        cw = CollectionsFallbackContentWidth(parent)
     end
     if not ch or ch < 1 then
         ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
@@ -5623,7 +5643,7 @@ local function DrawToysContent(contentFrame)
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = (parent and parent:GetWidth() and (parent:GetWidth() - 20)) or 660
+        cw = CollectionsFallbackContentWidth(parent)
     end
     if not ch or ch < 1 then
         ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
@@ -6137,7 +6157,7 @@ local function DrawAchievementsContent(contentFrame)
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
     if not cw or cw < 1 then
-        cw = (parent and parent:GetWidth() and (parent:GetWidth() - 20)) or 660
+        cw = CollectionsFallbackContentWidth(parent)
     end
     if not ch or ch < 1 then
         ch = (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
@@ -6383,16 +6403,40 @@ end
 -- DRAW COLLECTIONS TAB (Main Entry)
 -- ============================================================================
 
+--- Live resize: relayout active sub-tab split chrome without full main-window PopulateContent.
+function ns.Collections_RelayoutActiveSubTabChrome()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if ns.UI_RefreshFixedHeaderChrome and mf then
+        ns.UI_RefreshFixedHeaderChrome(mf)
+    end
+    local cf = collectionsState.contentFrame
+    if not cf or not cf:IsVisible() then return end
+    local sub = collectionsState.currentSubTab or "recent"
+    if sub == "recent" then
+        DrawRecentContent(cf)
+    elseif sub == "mounts" then
+        DrawMountsContent(cf)
+    elseif sub == "pets" then
+        DrawPetsContent(cf)
+    elseif sub == "toys" then
+        DrawToysContent(cf)
+    elseif sub == "achievements" then
+        DrawAchievementsContent(cf)
+    end
+end
+
 function WarbandNexus:DrawCollectionsTab(parent)
     RefreshCollectionsLayout()
     ApplySessionCollectionsSubTab()
 
-    local sideMargin = (LAYOUT.SIDE_MARGIN or 10)
-    local width = (parent:GetWidth() or 680) - 20
-
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = (LAYOUT.TOP_MARGIN or 8)
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local fixedHeader = mf and mf.fixedHeader
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    local headerYOffset = (chrome and chrome.yOffset) or 0
+    local sideMargin = (chrome and chrome.side) or (metrics and metrics.sideMargin) or (LAYOUT.SIDE_MARGIN or 12)
+    local width = (metrics and metrics.contentWidth) or ((parent:GetWidth() or 680) - 20)
 
     HideEmptyStateCard(parent, "collections")
 
@@ -6401,10 +6445,14 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
     if hdrCache and hdrCache.titleCard then
         hdrCache.titleCard:SetParent(headerParent)
-        hdrCache.titleCard:ClearAllPoints()
-        hdrCache.titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        hdrCache.titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
-        hdrCache.titleCard:SetHeight(COLLECTIONS_TITLE_CARD_HEIGHT)
+        if chrome and ns.UI_AnchorTabTitleCard then
+            ns.UI_AnchorTabTitleCard(hdrCache.titleCard, chrome)
+        else
+            hdrCache.titleCard:ClearAllPoints()
+            hdrCache.titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+            hdrCache.titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        end
+        if ns.UI_HideTitleCardUnderline then ns.UI_HideTitleCardUnderline(hdrCache.titleCard) end
         hdrCache.titleCard:Show()
 
         if hdrCache.recentObtainedPanel then
@@ -6412,16 +6460,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end
 
         if hdrCache.collectionsTextContainer and hdrCache.collectionsHeaderIcon and ns.UI_ReanchorStandardTabTitleLayout then
-            hdrCache.collectionsTextContainer:SetSize(200, 40)
-            if hdrCache.collectionsTitleText and hdrCache.collectionsSubtitleText then
-                hdrCache.collectionsTitleText:ClearAllPoints()
-                hdrCache.collectionsTitleText:SetPoint("BOTTOM", hdrCache.collectionsTextContainer, "CENTER", 0, 0)
-                hdrCache.collectionsTitleText:SetPoint("LEFT", hdrCache.collectionsTextContainer, "LEFT", 0, 0)
-                hdrCache.collectionsSubtitleText:ClearAllPoints()
-                hdrCache.collectionsSubtitleText:SetPoint("TOP", hdrCache.collectionsTextContainer, "CENTER", 0, -4)
-                hdrCache.collectionsSubtitleText:SetPoint("LEFT", hdrCache.collectionsTextContainer, "LEFT", 0, 0)
-            end
-            ns.UI_ReanchorStandardTabTitleLayout(hdrCache.collectionsHeaderIcon, hdrCache.titleCard, hdrCache.collectionsTextContainer, COLLECTIONS_TITLE_CARD_HEIGHT)
+            ns.UI_ReanchorStandardTabTitleLayout(
+                hdrCache.collectionsHeaderIcon,
+                hdrCache.titleCard,
+                hdrCache.collectionsTextContainer,
+                COLLECTIONS_TITLE_CARD_HEIGHT)
             hdrCache.collectionsTextContainer:Show()
             if hdrCache.collectionsTitleText then hdrCache.collectionsTitleText:Show() end
             if hdrCache.collectionsSubtitleText then hdrCache.collectionsSubtitleText:Show() end
@@ -6431,7 +6474,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
             if hdrCache.collectionsHeaderIcon.icon then hdrCache.collectionsHeaderIcon.icon:Show() end
         end
 
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
+        if ns.UI_AdvanceTabChromeYOffset then
+            headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, hdrCache.titleCard and hdrCache.titleCard:GetHeight())
+        else
+            headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        end
 
         hdrCache.subTabBar:SetParent(headerParent)
         hdrCache.subTabBar:ClearAllPoints()
@@ -6468,13 +6515,16 @@ function WarbandNexus:DrawCollectionsTab(parent)
         local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
         local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
         local titleCard, headerIcon, textContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
-            cardHeight = COLLECTIONS_TITLE_CARD_HEIGHT,
             tabKey = "collections",
             titleText = "|cff" .. hexColor .. ((ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections") .. "|r",
             subtitleText = (ns.L and ns.L["COLLECTIONS_SUBTITLE"]) or "Mounts, pets, toys, and transmog overview",
         })
-        titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        if chrome and ns.UI_AnchorTabTitleCard then
+            ns.UI_AnchorTabTitleCard(titleCard, chrome)
+        else
+            titleCard:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+            titleCard:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+        end
         hdrCache.titleCard = titleCard
 
         hdrCache.collectionsHeaderIcon = headerIcon
@@ -6483,7 +6533,11 @@ function WarbandNexus:DrawCollectionsTab(parent)
         hdrCache.collectionsSubtitleText = subtitleText
 
         titleCard:Show()
-        headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
+        if ns.UI_AdvanceTabChromeYOffset then
+            headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        else
+            headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        end
 
         -- ===== SUB-TAB BAR (in fixedHeader - non-scrolling) =====
         local subTabBar = CreateSubTabBar(headerParent, function(tabKey)
@@ -6702,9 +6756,13 @@ function WarbandNexus:DrawCollectionsTab(parent)
         headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     end
 
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    if ns.UI_CommitTabFixedHeader then
+        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+    elseif fixedHeader then
+        fixedHeader:SetHeight(headerYOffset)
+    end
 
-    local yOffset = 8
+    local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
 
     -- ===== CONTENT AREA =====
     local scrollFrame = parent:GetParent()
@@ -6950,4 +7008,30 @@ function WarbandNexus:DrawCollectionsTab(parent)
     end
 
     return yOffset
+end
+
+if ns.UI_LayoutCoordinator then
+    local LC = ns.UI_LayoutCoordinator
+    local function CollectionsViewportRelayout(_scrollChild, _contentWidth, mf)
+        if not mf or mf.currentTab ~= "collections" then return false end
+        if ns.Collections_RelayoutActiveSubTabChrome then
+            ns.Collections_RelayoutActiveSubTabChrome()
+            return true
+        end
+        return false
+    end
+    LC:RegisterTabAdapter("collections", {
+        OnViewportWidthChanged = function(scrollChild, contentWidth, mf)
+            if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+                return CollectionsViewportRelayout(scrollChild, contentWidth, mf)
+            end
+            local tokens = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SCROLL or {}
+            local delay = tokens.COLLECTIONS_LIVE_RELAYOUT_DEBOUNCE_SEC or 0.12
+            LC:ScheduleTabLiveRelayout("collections_live", delay, function()
+                CollectionsViewportRelayout(scrollChild, contentWidth, mf)
+            end)
+            return true
+        end,
+        OnViewportLayoutCommit = CollectionsViewportRelayout,
+    })
 end

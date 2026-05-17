@@ -130,12 +130,369 @@ local ReleaseCharacterRow = ns.UI_ReleaseCharacterRow
 --- Virtual-scroll tabs: refresh row culling after collapsible section layout (ReputationUI parity).
 local function CharactersVirtualScrollBump()
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    if mf and mf._virtualScrollUpdate then
+    if not mf then return end
+    -- Corner-drag: freeze list until resize commit (no interval column/gold/gradient churn).
+    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+        return
+    end
+    if mf._virtualScrollUpdate then
         mf._virtualScrollUpdate()
     end
 end
 
+local CHAR_GOLD_ROW_MIN_WIDTH = 500
+local GOLD_CARD_STD_HEIGHT = 90
+local GOLD_CARD_TALL_HEIGHT = 108
+local GOLD_TOKEN_MIN_SPLIT_WIDTH = 300
+
+local CHAR_GOLD_STACK_HYSTERESIS = 24
+
+local function ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, cardSpacing, layoutState)
+    local innerGoldW = math.max(1, hostW - leftMargin - rightMargin)
+    local totalSpacing = cardSpacing * 2
+    local stackGoldCards
+    if layoutState and layoutState.stackGoldCards ~= nil then
+        if layoutState.stackGoldCards then
+            stackGoldCards = innerGoldW < (CHAR_GOLD_ROW_MIN_WIDTH + CHAR_GOLD_STACK_HYSTERESIS)
+        else
+            stackGoldCards = innerGoldW < (CHAR_GOLD_ROW_MIN_WIDTH - CHAR_GOLD_STACK_HYSTERESIS)
+        end
+    else
+        stackGoldCards = innerGoldW < CHAR_GOLD_ROW_MIN_WIDTH
+    end
+    local goldCardW1, goldCardW2, goldCardW3
+    if stackGoldCards then
+        goldCardW1 = innerGoldW
+        goldCardW2 = innerGoldW
+        goldCardW3 = innerGoldW
+    else
+        goldCardW1 = math.floor((innerGoldW - totalSpacing) / 3)
+        goldCardW2 = goldCardW1
+        goldCardW3 = innerGoldW - totalSpacing - goldCardW1 - goldCardW2
+    end
+    local stackGoldTokenInCard3
+    if layoutState and layoutState.stackGoldTokenInCard3 ~= nil then
+        if layoutState.stackGoldTokenInCard3 then
+            stackGoldTokenInCard3 = goldCardW3 < (GOLD_TOKEN_MIN_SPLIT_WIDTH + CHAR_GOLD_STACK_HYSTERESIS)
+        else
+            stackGoldTokenInCard3 = goldCardW3 < (GOLD_TOKEN_MIN_SPLIT_WIDTH - CHAR_GOLD_STACK_HYSTERESIS)
+        end
+    else
+        stackGoldTokenInCard3 = goldCardW3 < GOLD_TOKEN_MIN_SPLIT_WIDTH
+    end
+    local card12H = GOLD_CARD_STD_HEIGHT
+    local card3H = stackGoldTokenInCard3 and GOLD_CARD_TALL_HEIGHT or GOLD_CARD_STD_HEIGHT
+    return {
+        innerGoldW = innerGoldW,
+        stackGoldCards = stackGoldCards,
+        stackGoldTokenInCard3 = stackGoldTokenInCard3,
+        goldCardW1 = goldCardW1,
+        goldCardW2 = goldCardW2,
+        goldCardW3 = goldCardW3,
+        card12H = card12H,
+        card3H = card3H,
+        cardSpacing = cardSpacing,
+    }
+end
+
+local function ApplyTotalGoldCardInterior(bundle, stackToken)
+    local totalGoldCard = bundle.total
+    local divider = bundle.divider
+    local tgIcon = bundle.tgIcon
+    local tgTextContainer = bundle.tgTextContainer
+    local tkIcon = bundle.tkIcon
+    local tkTextContainer = bundle.tkTextContainer
+    if not totalGoldCard or not divider or not tgIcon or not tgTextContainer or not tkIcon or not tkTextContainer then
+        return
+    end
+    if stackToken then
+        divider:Hide()
+        tgIcon:ClearAllPoints()
+        tgIcon:SetPoint("TOPLEFT", totalGoldCard, "TOPLEFT", 12, -12)
+        tgTextContainer:ClearAllPoints()
+        tgTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -10)
+        tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 10, 0)
+        tgTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
+        tgTextContainer:SetHeight(CharactersTotalGoldTokenStackTextHeight())
+        local midRule = bundle.midRule
+        if not midRule then
+            midRule = totalGoldCard:CreateTexture(nil, "ARTWORK")
+            midRule:SetHeight(1)
+            midRule:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35)
+            bundle.midRule = midRule
+        end
+        midRule:ClearAllPoints()
+        midRule:SetPoint("LEFT", totalGoldCard, "LEFT", 10, 0)
+        midRule:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
+        midRule:SetPoint("TOP", totalGoldCard, "TOP", 0, -52)
+        midRule:Show()
+        tkIcon:ClearAllPoints()
+        tkIcon:SetPoint("TOPLEFT", totalGoldCard, "TOPLEFT", 14, -58)
+        tkTextContainer:ClearAllPoints()
+        tkTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -56)
+        tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
+        tkTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
+        tkTextContainer:SetHeight(CharactersTotalGoldTokenStackTextHeight())
+    else
+        if bundle.midRule then
+            bundle.midRule:Hide()
+        end
+        divider:Show()
+        divider:ClearAllPoints()
+        divider:SetPoint("CENTER", totalGoldCard, "CENTER", 0, 0)
+        tgIcon:ClearAllPoints()
+        tgIcon:SetPoint("CENTER", totalGoldCard, "LEFT", 15 + 18, 0)
+        tgTextContainer:ClearAllPoints()
+        tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 12, 0)
+        tgTextContainer:SetPoint("RIGHT", divider, "LEFT", -8, 0)
+        tgTextContainer:SetPoint("TOP", tgIcon, "TOP", 0, 0)
+        tgTextContainer:SetPoint("BOTTOM", tgIcon, "BOTTOM", 0, 0)
+        tkIcon:ClearAllPoints()
+        tkIcon:SetPoint("LEFT", divider, "RIGHT", 14, 0)
+        tkTextContainer:ClearAllPoints()
+        tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
+        tkTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -12, 0)
+        tkTextContainer:SetPoint("TOP", tkIcon, "TOP", 0, 0)
+        tkTextContainer:SetPoint("BOTTOM", tkIcon, "BOTTOM", 0, 0)
+    end
+end
+
+local function ApplyCharactersGoldCardsGeometry(bundle, hostW)
+    if not bundle or not bundle.char or not bundle.wb or not bundle.total then
+        return false
+    end
+    local leftMargin = bundle.leftMargin or 12
+    local rightMargin = bundle.rightMargin or 12
+    local cardSpacing = bundle.cardSpacing or 10
+    local yAnchor = bundle.yOffset or 0
+    local gm = ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, cardSpacing, bundle._layoutState)
+    local charGoldCard = bundle.char
+    local wbGoldCard = bundle.wb
+    local totalGoldCard = bundle.total
+
+    charGoldCard:SetHeight(gm.card12H)
+    charGoldCard:SetWidth(gm.goldCardW1)
+    charGoldCard:ClearAllPoints()
+    charGoldCard:SetPoint("TOPLEFT", bundle.parent, "TOPLEFT", leftMargin, -yAnchor)
+
+    wbGoldCard:SetHeight(gm.card12H)
+    wbGoldCard:SetWidth(gm.goldCardW2)
+    wbGoldCard:ClearAllPoints()
+    if gm.stackGoldCards then
+        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+    else
+        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "TOPRIGHT", cardSpacing, 0)
+    end
+
+    totalGoldCard:SetHeight(gm.card3H)
+    totalGoldCard:SetWidth(gm.goldCardW3)
+    totalGoldCard:ClearAllPoints()
+    if gm.stackGoldCards then
+        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+    else
+        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "TOPRIGHT", cardSpacing, 0)
+    end
+
+    ApplyTotalGoldCardInterior(bundle, gm.stackGoldTokenInCard3)
+    bundle._gm = gm
+    bundle._layoutState = {
+        stackGoldCards = gm.stackGoldCards,
+        stackGoldTokenInCard3 = gm.stackGoldTokenInCard3,
+    }
+    return true
+end
+
+--- Corner-drag: card widths only; layout mode, anchors, and heights stay frozen until commit.
+local function ApplyCharactersGoldCardsWidthOnly(bundle, hostW)
+    if not bundle or not bundle.char or not bundle.wb or not bundle.total then
+        return false
+    end
+    local gm = bundle._gm
+    local layoutState = bundle._layoutState
+    if not gm or not layoutState then
+        return ApplyCharactersGoldCardsGeometry(bundle, hostW)
+    end
+    local leftMargin = bundle.leftMargin or 12
+    local rightMargin = bundle.rightMargin or 12
+    local cardSpacing = bundle.cardSpacing or gm.cardSpacing or 10
+    local innerGoldW = math.max(1, hostW - leftMargin - rightMargin)
+    if layoutState.stackGoldCards then
+        bundle.char:SetWidth(innerGoldW)
+        bundle.wb:SetWidth(innerGoldW)
+        bundle.total:SetWidth(innerGoldW)
+    else
+        local totalSpacing = cardSpacing * 2
+        local w1 = math.floor((innerGoldW - totalSpacing) / 3)
+        local w2 = w1
+        local w3 = innerGoldW - totalSpacing - w1 - w2
+        bundle.char:SetWidth(w1)
+        bundle.wb:SetWidth(w2)
+        bundle.total:SetWidth(w3)
+        if bundle._layoutState.stackGoldTokenInCard3 ~= nil then
+            ApplyTotalGoldCardInterior(bundle, bundle._layoutState.stackGoldTokenInCard3)
+        end
+    end
+    return true
+end
+
+--- True when commit would change gold stack mode or card heights (section yOffset chain must rebuild).
+local function CharactersGoldLayoutNeedsFullRedraw(bundle, hostW)
+    if not bundle or hostW < 1 then return false end
+    local leftMargin = bundle.leftMargin or 12
+    local rightMargin = bundle.rightMargin or 12
+    local cardSpacing = bundle.cardSpacing or 10
+    local gm = ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, cardSpacing, bundle._layoutState)
+    local prevState = bundle._layoutState
+    local prevGm = bundle._gm
+    if prevState then
+        if gm.stackGoldCards ~= prevState.stackGoldCards then return true end
+        if gm.stackGoldTokenInCard3 ~= prevState.stackGoldTokenInCard3 then return true end
+    end
+    if prevGm then
+        if gm.card3H ~= prevGm.card3H or gm.card12H ~= prevGm.card12H then return true end
+    end
+    return false
+end
+
+--- Live resize: three gold cards track viewport width (scrollChild width stays frozen mid-drag).
+local function RelayoutCharactersGoldCards(scrollChild, contentWidth, mf)
+    if not scrollChild then return false end
+    local bundle = scrollChild._wnCharsGoldBundle
+    if not bundle then return false end
+    local hostW = contentWidth or 0
+    if hostW < 1 and mf and ns.UI_GetMainTabViewportWidth then
+        hostW = ns.UI_GetMainTabViewportWidth(mf)
+    elseif hostW < 1 and mf and ns.UI_GetMainScrollContentWidth then
+        hostW = ns.UI_GetMainScrollContentWidth(mf)
+    end
+    if hostW < 1 then return false end
+    return ApplyCharactersGoldCardsGeometry(bundle, hostW)
+end
+
+ns.UI_RelayoutCharactersGoldCards = RelayoutCharactersGoldCards
+
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
+
+--- Live resize: reposition width-dependent columns + class gradient (no full DrawCharacterRow).
+local function ApplyCharacterRowInteriorLayout(row, rowW)
+    if not row or not rowW or rowW < 1 then return end
+    if row.GetWidth then
+        local frameW = row:GetWidth()
+        if frameW and frameW > 1 then
+            rowW = frameW
+        end
+    end
+    local addon = WarbandNexus
+    local guildColW = addon._charsListStableGuildColW or addon._charListMaxGuildWidth
+    if ns.UI_ComputeCharRowGuildColumnWidth and addon._charListMaxGuildWidth then
+        local newGuildW = ns.UI_ComputeCharRowGuildColumnWidth(rowW, addon._charListMaxGuildWidth)
+        if newGuildW and newGuildW > 0 then
+            guildColW = newGuildW
+            addon._charsListStableGuildColW = newGuildW
+        end
+    end
+
+    local nameOffset = GetColumnOffset("name")
+    local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
+    local guildSpacing = (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.spacing) or 15
+    local rowH = row:GetHeight() or 46
+    local centerY = -rowH / 2
+
+    if row.guildText and guildColW then
+        row.guildText:ClearAllPoints()
+        row.guildText:SetPoint("CENTER", row, "TOPLEFT", guildOffset + (guildColW - 4) / 2, centerY)
+        row.guildText:SetWidth(math.max(1, guildColW - 4))
+    end
+
+    local guildTotal = guildColW + guildSpacing
+    local levelOffset = guildOffset + guildTotal
+    local levelColW = CHAR_ROW_COLUMNS.level.width
+
+    if row.levelText then
+        row.levelText:ClearAllPoints()
+        if row.levelRestedText and row.levelRestedText:IsShown() then
+            row.levelText:SetPoint("TOP", row, "TOPLEFT", levelOffset + (levelColW / 2), -7)
+        else
+            row.levelText:SetPoint("LEFT", levelOffset, 0)
+        end
+    end
+
+    local itemLevelOffset = levelOffset + (CHAR_ROW_COLUMNS.level.total or 97)
+    if row.itemLevelText then
+        row.itemLevelText:ClearAllPoints()
+        row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
+    end
+
+    local goldOffset = itemLevelOffset + (CHAR_ROW_COLUMNS.itemLevel.total or 90)
+    if row.goldText then
+        row.goldText:ClearAllPoints()
+        row.goldText:SetPoint("LEFT", goldOffset, 0)
+    end
+
+    local profOffset = goldOffset + (CHAR_ROW_COLUMNS.gold.total or 205)
+    if row.profIcons then
+        local shown = {}
+        for i = 1, #row.profIcons do
+            local pFrame = row.profIcons[i]
+            if pFrame and pFrame.IsShown and pFrame:IsShown() then
+                shown[#shown + 1] = pFrame
+            end
+        end
+        local numProfs = #shown
+        if numProfs > 0 then
+            local iconSize = 39
+            local iconSpacing = 5
+            local profColumnWidth = CHAR_ROW_COLUMNS.professions.width
+            local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)
+            local leftPadding = (profColumnWidth - totalIconWidth) / 2
+            local currentProfX = profOffset + leftPadding
+            for i = 1, numProfs do
+                local pFrame = shown[i]
+                pFrame:ClearAllPoints()
+                pFrame:SetPoint("LEFT", currentProfX, 0)
+                currentProfX = currentProfX + iconSize + iconSpacing
+            end
+        end
+    end
+
+    local mythicKeyOffset = profOffset + (CHAR_ROW_COLUMNS.professions.total or 150)
+    if row.keystoneIcon then
+        row.keystoneIcon:ClearAllPoints()
+        row.keystoneIcon:SetPoint("LEFT", mythicKeyOffset + 5, 0)
+    end
+    if row.keystoneText then
+        row.keystoneText:ClearAllPoints()
+        row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)
+    end
+
+    if row._wnRightRail then
+        local railW = (ns.UI_GetCharRowRightRailWidth and ns.UI_GetCharRowRightRailWidth())
+            or row._wnRightRail:GetWidth()
+        row._wnRightRail:SetSize(railW, rowH)
+        row._wnRightRail:ClearAllPoints()
+        local R_MARGIN = ns.UI_CHAR_ROW_RIGHT_MARGIN or 6
+        row._wnRightRail:SetPoint("TOPRIGHT", row, "TOPRIGHT", -R_MARGIN, 0)
+    end
+
+    row._wnRowPaintWidth = rowW
+    if row._wnGradientRefresh then
+        pcall(row._wnGradientRefresh)
+    end
+end
+
+ns.UI_ApplyCharacterRowInteriorLayout = ApplyCharacterRowInteriorLayout
+
+local function StyleCharacterDeleteIcon(icon, highlighted)
+    if not icon then return end
+    icon:SetDesaturated(false)
+    if highlighted then
+        icon:SetVertexColor(1, 0.5, 0.5)
+        icon:SetAlpha(1)
+    else
+        icon:SetVertexColor(0.95, 0.35, 0.35)
+        icon:SetAlpha(0.98)
+    end
+end
 
 local GetCharKey = ns.UI_GetCharKey
 local tinsert = table.insert
@@ -304,11 +661,19 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
 
-    local width = parent:GetWidth() - 20
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local width = (metrics and metrics.contentWidth)
+        or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
+        or (ns.UI_GetMainScrollContentWidth and mf and ns.UI_GetMainScrollContentWidth(mf))
+        or (parent:GetWidth() or 600)
 
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = 8
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local fixedHeader = mf and mf.fixedHeader
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    local headerYOffset = (chrome and chrome.yOffset) or (metrics and metrics.topMargin) or TOP_MARGIN
+    local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or SIDE_MARGIN
+    local sectionGap = (metrics and metrics.sectionGap) or SECTION_SPACING
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
@@ -350,7 +715,8 @@ function WarbandNexus:DrawCharacterList(parent)
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — shared Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local CHAR_TITLE_RIGHT_RESERVE = 256
+    local CHAR_TITLE_RIGHT_RESERVE = (ns.UI_ComputeCharactersTitleToolbarReserve and ns.UI_ComputeCharactersTitleToolbarReserve())
+        or 256
     local subtitleLine = (ns.L and ns.L["CHARACTERS_SUBTITLE"])
         or "A scrollable list of your characters with gold, level, gear, and key stats in one place."
     local titleCard, headerIcon, titleTextContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
@@ -359,10 +725,15 @@ function WarbandNexus:DrawCharacterList(parent)
         subtitleText = subtitleLine,
         textRightInset = CHAR_TITLE_RIGHT_RESERVE,
     })
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        local contentSide = (metrics and metrics.sideMargin) or SIDE_MARGIN
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    end
 
-    local titleControlInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+    local titleControlInset = (ns.UI_SPACING and ns.UI_SPACING.TITLE_CARD_TOOLBAR_EDGE_INSET) or 0
 
     -- Sort dropdown anchors at card top-right; expand/collapse sit to its left (no overlap).
     local sortAnchorFrame = titleCard
@@ -399,7 +770,12 @@ function WarbandNexus:DrawCharacterList(parent)
             end,
         })
         if sortBtn then
-            sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleControlInset, 0)
+            if ns.UI_AnchorTitleCardToolbarControl then
+                ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, titleCard, "RIGHT", -titleControlInset)
+            else
+                sortBtn:ClearAllPoints()
+                sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleControlInset, 0)
+            end
             sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
             -- Match Filter row height (Factory advanced filter uses BUTTON_HEIGHT).
             local sectionToolbarBtnSize = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
@@ -443,8 +819,12 @@ function WarbandNexus:DrawCharacterList(parent)
                 secQuick:SetSize(sectionToolbarBtnSize, sectionToolbarBtnSize)
             end
             if titleCard._wnCharCustomSectionBtn then
-                titleCard._wnCharCustomSectionBtn:ClearAllPoints()
-                titleCard._wnCharCustomSectionBtn:SetPoint("RIGHT", sortBtn, "LEFT", -8, 0)
+                if ns.UI_AnchorTitleCardToolbarControl then
+                    ns.UI_AnchorTitleCardToolbarControl(titleCard._wnCharCustomSectionBtn, titleCard, sortBtn, "LEFT", -8)
+                else
+                    titleCard._wnCharCustomSectionBtn:ClearAllPoints()
+                    titleCard._wnCharCustomSectionBtn:SetPoint("RIGHT", sortBtn, "LEFT", -8, 0)
+                end
                 titleCard._wnCharCustomSectionBtn:Show()
                 sortAnchorFrame = titleCard._wnCharCustomSectionBtn
             else
@@ -470,7 +850,12 @@ function WarbandNexus:DrawCharacterList(parent)
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
         end)
-        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleControlInset, 0)
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, titleCard, "RIGHT", -titleControlInset)
+        else
+            sortBtn:ClearAllPoints()
+            sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleControlInset, 0)
+        end
         sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
         sortAnchorFrame = sortBtn
         sortAnchorPoint = "LEFT"
@@ -485,8 +870,12 @@ function WarbandNexus:DrawCharacterList(parent)
             local function charSectionCollapseMode()
                 return CharactersUISectionAllExpanded(WarbandNexus.db.profile.ui or {})
             end
-            toggleBtn:ClearAllPoints()
-            toggleBtn:SetPoint("RIGHT", sortAnchorFrame, sortAnchorPoint, sortAnchorX, 0)
+            if ns.UI_AnchorTitleCardToolbarControl then
+                ns.UI_AnchorTitleCardToolbarControl(toggleBtn, titleCard, sortAnchorFrame, sortAnchorPoint, sortAnchorX)
+            else
+                toggleBtn:ClearAllPoints()
+                toggleBtn:SetPoint("RIGHT", sortAnchorFrame, sortAnchorPoint, sortAnchorX, 0)
+            end
             ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggleBtn, charSectionCollapseMode)
             toggleBtn:SetScript("OnEnter", function(btnFrame)
                 GameTooltip:SetOwner(btnFrame, "ANCHOR_BOTTOMRIGHT")
@@ -531,11 +920,20 @@ function WarbandNexus:DrawCharacterList(parent)
     -- NO TRACKING: Static text, never overflows
     
     titleCard:Show()
-    headerYOffset = headerYOffset + 75
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    else
+        headerYOffset = headerYOffset + (titleCard:GetHeight() or 64) + 8
+    end
+    if ns.UI_CommitTabFixedHeader then
+        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+    elseif fixedHeader then
+        fixedHeader:SetHeight(headerYOffset)
+    end
 
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-
-    local yOffset = 8
+    local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local titleBodyGap = (GetLayout().TAB_TITLE_TO_BODY_GAP) or (ns.UI_LAYOUT and ns.UI_LAYOUT.TAB_TITLE_TO_BODY_GAP) or 6
+    yOffset = yOffset + titleBodyGap
 
     -- ===== TOTAL GOLD DISPLAY =====
     -- Get current character's gold (only if tracked)
@@ -576,27 +974,28 @@ function WarbandNexus:DrawCharacterList(parent)
     local warbandBankGold = ns.Utilities:GetWarbandBankMoney() or 0
     local totalWithWarband = totalCharGold + warbandBankGold
     
-    -- Calculate card width for 3 cards in a row (same as Statistics)
-    local leftMargin = SIDE_MARGIN
-    local rightMargin = SIDE_MARGIN
+    -- Three equal gold summary cards (full scroll width; stack vertically when narrow).
+    local leftMargin = contentSide
+    local rightMargin = contentSide
     local cardSpacing = 10
-    local totalSpacing = cardSpacing * 2  -- 2 gaps between 3 cards
-    local threeCardWidth = (width - leftMargin - rightMargin - totalSpacing) / 3
-    local card3Width = width - leftMargin - rightMargin - 2 * threeCardWidth - 2 * cardSpacing
-    -- Side-by-side Total Gold + Token needs ~460px+ on the third card; below that, stack vertically
-    local GOLD_TOKEN_MIN_SPLIT_WIDTH = 460
-    local stackGoldToken = card3Width < GOLD_TOKEN_MIN_SPLIT_WIDTH
-    local goldRowHeight = stackGoldToken and 108 or 90
-    
-    -- Characters Gold Card (Left)
-    local charGoldCard = CreateCard(parent, goldRowHeight)
-    charGoldCard:SetWidth(threeCardWidth)
-    charGoldCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
-    
-    -- Apply visuals with accent border
-    if ApplyVisuals then
-        ApplyVisuals(charGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-    end
+    local hostW = (metrics and metrics.contentWidth)
+        or (mf and ns.UI_GetMainTabViewportWidth and ns.UI_GetMainTabViewportWidth(mf))
+        or (parent.GetWidth and parent:GetWidth())
+        or width
+        or 600
+    local gm = ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, cardSpacing)
+    local stackGoldCards = gm.stackGoldCards
+    local stackGoldTokenInCard3 = gm.stackGoldTokenInCard3
+    local goldCardW1 = gm.goldCardW1
+    local goldCardW2 = gm.goldCardW2
+    local goldCardW3 = gm.goldCardW3
+    local card12H = gm.card12H
+    local card3H = gm.card3H
+
+    -- Characters Gold Card (left)
+    local charGoldCard = CreateCard(parent, card12H)
+    charGoldCard:SetWidth(goldCardW1)
+    charGoldCard:SetPoint("TOPLEFT", parent, "TOPLEFT", leftMargin, -yOffset)
     
     -- Current Character icon (same as Characters header)
     -- Use factory for standardized card header layout
@@ -639,14 +1038,13 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
-    -- Warband Gold Card (Middle)
-    local wbGoldCard = CreateCard(parent, goldRowHeight)
-    wbGoldCard:SetWidth(threeCardWidth)
-    wbGoldCard:SetPoint("LEFT", charGoldCard, "RIGHT", cardSpacing, 0)
-    
-    -- Apply visuals with accent border
-    if ApplyVisuals then
-        ApplyVisuals(wbGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    -- Warband Gold Card (middle)
+    local wbGoldCard = CreateCard(parent, card12H)
+    wbGoldCard:SetWidth(goldCardW2)
+    if stackGoldCards then
+        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+    else
+        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "TOPRIGHT", cardSpacing, 0)
     end
     
     -- Use factory for standardized card header layout
@@ -663,14 +1061,13 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
-    -- Total Gold + Token Card (Right — wider card spanning remaining space)
-    local totalGoldCard = CreateCard(parent, goldRowHeight)
-    totalGoldCard:SetPoint("LEFT", wbGoldCard, "RIGHT", cardSpacing, 0)
-    totalGoldCard:SetPoint("RIGHT", -rightMargin, 0)
-
-    -- Apply visuals with accent border
-    if ApplyVisuals then
-        ApplyVisuals(totalGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    -- Total Gold + Token Card (right; same width as siblings in row mode)
+    local totalGoldCard = CreateCard(parent, card3H)
+    totalGoldCard:SetWidth(goldCardW3)
+    if stackGoldCards then
+        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+    else
+        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "TOPRIGHT", cardSpacing, 0)
     end
 
     -- Vertical divider (hidden when Total Gold + Token are stacked)
@@ -724,45 +1121,24 @@ function WarbandNexus:DrawCharacterList(parent)
     tkValue:SetPoint("LEFT", tkTextContainer, "LEFT", 0, 0)
     tkValue:SetNonSpaceWrap(false)
 
-    if stackGoldToken then
-        divider:Hide()
-        tgIcon:SetPoint("TOPLEFT", totalGoldCard, "TOPLEFT", 12, -12)
-        tgTextContainer:ClearAllPoints()
-        tgTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -10)
-        tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 10, 0)
-        tgTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
-        tgTextContainer:SetHeight(CharactersTotalGoldTokenStackTextHeight())
-
-        local midRule = totalGoldCard:CreateTexture(nil, "ARTWORK")
-        midRule:SetHeight(1)
-        midRule:SetPoint("LEFT", totalGoldCard, "LEFT", 10, 0)
-        midRule:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
-        midRule:SetPoint("TOP", totalGoldCard, "TOP", 0, -52)
-        midRule:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35)
-
-        tkIcon:SetPoint("TOPLEFT", totalGoldCard, "TOPLEFT", 14, -58)
-        tkTextContainer:ClearAllPoints()
-        tkTextContainer:SetPoint("TOP", totalGoldCard, "TOP", 0, -56)
-        tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
-        tkTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -10, 0)
-        tkTextContainer:SetHeight(CharactersTotalGoldTokenStackTextHeight())
-    else
-        divider:Show()
-        divider:SetPoint("CENTER", totalGoldCard, "CENTER", 0, 0)
-        tgIcon:SetPoint("CENTER", totalGoldCard, "LEFT", 15 + 18, 0)
-        tgTextContainer:ClearAllPoints()
-        tgTextContainer:SetPoint("LEFT", tgIcon, "RIGHT", 12, 0)
-        tgTextContainer:SetPoint("RIGHT", divider, "LEFT", -8, 0)
-        tgTextContainer:SetPoint("TOP", tgIcon, "TOP", 0, 0)
-        tgTextContainer:SetPoint("BOTTOM", tgIcon, "BOTTOM", 0, 0)
-
-        tkIcon:SetPoint("LEFT", divider, "RIGHT", 14, 0)
-        tkTextContainer:ClearAllPoints()
-        tkTextContainer:SetPoint("LEFT", tkIcon, "RIGHT", 10, 0)
-        tkTextContainer:SetPoint("RIGHT", totalGoldCard, "RIGHT", -12, 0)
-        tkTextContainer:SetPoint("TOP", tkIcon, "TOP", 0, 0)
-        tkTextContainer:SetPoint("BOTTOM", tkIcon, "BOTTOM", 0, 0)
-    end
+    parent._wnCharsGoldBundle = {
+        parent = parent,
+        char = charGoldCard,
+        wb = wbGoldCard,
+        total = totalGoldCard,
+        yOffset = yOffset,
+        leftMargin = leftMargin,
+        rightMargin = rightMargin,
+        cardSpacing = cardSpacing,
+        divider = divider,
+        tgIcon = tgIcon,
+        tgTextContainer = tgTextContainer,
+        tkIcon = tkIcon,
+        tkTextContainer = tkTextContainer,
+        midRule = nil,
+        _gm = gm,
+    }
+    ApplyTotalGoldCardInterior(parent._wnCharsGoldBundle, stackGoldTokenInCard3)
 
     if tokenPrice and tokenPrice > 0 then
         local affordableCount = math.floor(totalWithWarband / tokenPrice)
@@ -795,7 +1171,11 @@ function WarbandNexus:DrawCharacterList(parent)
     wbGoldCard:Show()
     totalGoldCard:Show()
 
-    yOffset = yOffset + (stackGoldToken and 118 or 100)
+    if stackGoldCards then
+        yOffset = yOffset + card12H + cardSpacing + card12H + cardSpacing + card3H + 8
+    else
+        yOffset = yOffset + math.max(card12H, card3H) + 10
+    end
     
     local sortOptions = {
         {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
@@ -1069,6 +1449,21 @@ function WarbandNexus:DrawCharacterList(parent)
         end
         self._charListMaxGuildWidth = math.min(math.max(maxW + GUILD_PADDING, GUILD_MIN), GUILD_MAX)
     end
+
+    local rowDrawWidth = width
+    if ns.UI_ResolveCharactersTabRowWidth then
+        rowDrawWidth = ns.UI_ResolveCharactersTabRowWidth(mf, parent, metrics, self._charListMaxGuildWidth)
+    end
+    local sectionStackW = math.max(1, rowDrawWidth or width or 1)
+    parent._charsSectionStackW = sectionStackW
+    if mf and ns.UI_ComputeCharactersMinScrollWidth then
+        mf._charsMinScrollWidth = ns.UI_ComputeCharactersMinScrollWidth(self, self._charListMaxGuildWidth)
+    end
+    if ns.UI_ComputeCharRowGuildColumnWidth then
+        self._charsListStableGuildColW = ns.UI_ComputeCharRowGuildColumnWidth(rowDrawWidth, self._charListMaxGuildWidth)
+    else
+        self._charsListStableGuildColW = self._charListMaxGuildWidth
+    end
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
@@ -1089,22 +1484,25 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== COLLAPSIBLE CHARACTER SECTIONS (instant expand/collapse; no height tween) =====
     local SECTION_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
-    local SECTION_HEADER_GAP = 12
+    local SECTION_HEADER_GAP = GetLayout().SECTION_STACK_GAP_UNDER_HEADER or sectionGap or 12
+    local SECTION_HEADER_TEXT_INSET = 12
     local previousSectionContent = nil
     local isFirstSection = true
 
     local function AcquireSectionContentFrame(anchorHeader)
         local contentFrame = nil
+        local hostW = math.max(1, sectionStackW or width or (parent.GetWidth and parent:GetWidth()) or 1)
         if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
-            contentFrame = ns.UI.Factory:CreateContainer(parent, math.max(1, parent:GetWidth()), 1, false)
+            -- Parent = section header so virtual-scroll offset walks header -> scrollChild correctly.
+            contentFrame = ns.UI.Factory:CreateContainer(anchorHeader, hostW, 1, false)
         else
-            contentFrame = CreateFrame("Frame", nil, parent)
-            contentFrame:SetSize(math.max(1, parent:GetWidth()), 1)
+            contentFrame = CreateFrame("Frame", nil, anchorHeader)
+            contentFrame:SetSize(hostW, 1)
         end
 
         contentFrame:ClearAllPoints()
-        contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", -SIDE_MARGIN, 0)
-        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", SIDE_MARGIN, 0)
+        contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", 0, 0)
+        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", 0, 0)
         contentFrame:SetHeight(0.1)
         contentFrame._wnSectionFullH = 0
         contentFrame._wnVirtualContentHeight = nil
@@ -1128,15 +1526,18 @@ function WarbandNexus:DrawCharacterList(parent)
                 local flatList = {}
                 local rowY = 0
                 for i = 1, n do
+                    local char = list[i]
+                    local charKey = GetCharKey(char)
                     flatList[i] = {
                         type = "row",
                         yOffset = rowY,
                         height = stride,
-                        xOffset = SIDE_MARGIN,
+                        xOffset = 0,
+                        rowReuseSig = (listKey or "section") .. ":" .. (charKey or tostring(i)),
                         populateEntry = {
-                            char = list[i],
+                            char = char,
                             index = i,
-                            rowWidth = width,
+                            rowWidth = rowDrawWidth,
                             isFavorite = isFavorite,
                             showReorder = showReorder,
                             charList = list,
@@ -1149,6 +1550,9 @@ function WarbandNexus:DrawCharacterList(parent)
                     rowY = rowY + stride
                 end
 
+                local scrollChildForOff = (mf.scroll.GetScrollChild and mf.scroll:GetScrollChild()) or mf.scrollChild
+
+                -- Offset remeasured every scroll paint (anchor walk); avoid stale GetTop snap at setup.
                 local totalHeight = VLM.SetupVirtualList(mf, contentFrame, nil, flatList, {
                     createRowFn = function(container, _it, _idx)
                         return AcquireCharacterRow(container)
@@ -1162,11 +1566,24 @@ function WarbandNexus:DrawCharacterList(parent)
                                 pe.positionInList, pe.totalInList, pe.currentPlayerKey, row)
                         end)
                     end,
+                    layoutRowFn = function(row, it, _idx)
+                        local pe = it.populateEntry
+                        if pe and pe.rowWidth then
+                            ApplyCharacterRowInteriorLayout(row, pe.rowWidth)
+                        end
+                    end,
+                    resizeLayoutOnly = true,
+                    fixedRowWidthFromEntry = true,
+                    rowSpanContainerWidth = true,
+                    rowPaintRightPad = 0,
                     releaseRowFn = ReleaseCharacterRow,
                 })
                 contentFrame._wnVirtualContentHeight = totalHeight
                 sectionYOffset = totalHeight
                 contentFrame:SetHeight(math.max(0.1, totalHeight))
+                if scrollChildForOff and VLM.RefreshContainerTopOffsetCache then
+                    VLM.RefreshContainerTopOffsetCache(contentFrame, scrollChildForOff, contentTopOff)
+                end
             else
                 local yAcc = 0
                 for i = 1, #list do
@@ -1177,7 +1594,7 @@ function WarbandNexus:DrawCharacterList(parent)
                         contentFrame,
                         char,
                         i,
-                        width,
+                        rowDrawWidth,
                         yAcc,
                         isFavorite,
                         showReorder,
@@ -1205,7 +1622,7 @@ function WarbandNexus:DrawCharacterList(parent)
             local emptyText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
             emptyText:SetPoint("TOP", contentFrame, "TOP", 0, -20)
             emptyText:SetText("|cff999999" .. emptyMessage .. "|r")
-            emptyText:SetWidth(width - 40)
+            emptyText:SetWidth(math.max(200, (sectionStackW or width or 400) - 40))
             emptyText:SetJustifyH("CENTER")
             sectionYOffset = sectionYOffset + 50
             contentFrame:SetHeight(math.max(0.1, sectionYOffset))
@@ -1217,16 +1634,16 @@ function WarbandNexus:DrawCharacterList(parent)
 
     local function AnchorSectionHeader(headerFrame)
         headerFrame:SetHeight(SECTION_H)
+        if headerFrame.SetWidth then
+            headerFrame:SetWidth(math.max(1, sectionStackW))
+        end
         if isFirstSection then
-            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
             isFirstSection = false
         elseif previousSectionContent then
-            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", SIDE_MARGIN, -SECTION_HEADER_GAP)
-            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", -SIDE_MARGIN, -SECTION_HEADER_GAP)
+            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
         else
-            headerFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
         end
     end
 
@@ -1247,6 +1664,8 @@ function WarbandNexus:DrawCharacterList(parent)
             animatedContent = function() return favoritesContent end,
         }
         favoritesVisualOpts.sectionPreset = "gold"
+        favoritesVisualOpts.useFullParentWidth = true
+        favoritesVisualOpts.sectionStackWidth = sectionStackW
         local favHeader, _, favIcon = CreateCollapsibleHeader(
             parent,
             ((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites"),
@@ -1271,10 +1690,10 @@ function WarbandNexus:DrawCharacterList(parent)
             favoritesVisualOpts
         )
         AnchorSectionHeader(favHeader)
-        if favIcon then favIcon:SetSize(28, 28) end
+        if favIcon then favIcon:SetSize(24, 24) end
 
         local favCount = FontManager:CreateFontString(favHeader, "header", "OVERLAY")
-        favCount:SetPoint("RIGHT", -14, 0)
+        favCount:SetPoint("RIGHT", favHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         favCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedFavorites) .. "|r")
 
         favoritesContent = AcquireSectionContentFrame(favHeader)
@@ -1317,6 +1736,8 @@ function WarbandNexus:DrawCharacterList(parent)
                 updateVisibleFn = CharactersVirtualScrollBump,
             }) or { animatedContent = function() return grpContent end }
             grpVisualOpts.sectionPreset = isFavHeader and "gold" or "accent"
+            grpVisualOpts.useFullParentWidth = true
+            grpVisualOpts.sectionStackWidth = sectionStackW
             local grpTitle = gMeta.name or gid
             local grpHeaderAtlas = isFavHeader and "GM-icon-assistActive-hover" or "GM-icon-headCount"
             local grpHeader, grpExpandIcon, grpIcon, grpHeaderText = CreateCollapsibleHeader(
@@ -1386,6 +1807,13 @@ function WarbandNexus:DrawCharacterList(parent)
     if drawRegular then
         local charactersExpanded = self.db.profile.ui.charactersExpanded
         local charactersContent
+        local charVisualOpts = BuildCollapsibleSectionOpts({
+            bodyGetter = function() return charactersContent end,
+            updateVisibleFn = CharactersVirtualScrollBump,
+        }) or {}
+        charVisualOpts.sectionPreset = "accent"
+        charVisualOpts.useFullParentWidth = true
+        charVisualOpts.sectionStackWidth = sectionStackW
         local charHeader, _, charIcon = CreateCollapsibleHeader(
             parent,
             ((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters"),
@@ -1407,16 +1835,13 @@ function WarbandNexus:DrawCharacterList(parent)
             true,
             nil,
             nil,
-            BuildCollapsibleSectionOpts({
-                bodyGetter = function() return charactersContent end,
-                updateVisibleFn = CharactersVirtualScrollBump,
-            }) or { animatedContent = function() return charactersContent end }
+            charVisualOpts
         )
         AnchorSectionHeader(charHeader)
         if charIcon then charIcon:SetSize(24, 24) end
 
         local charCount = FontManager:CreateFontString(charHeader, "header", "OVERLAY")
-        charCount:SetPoint("RIGHT", -14, 0)
+        charCount:SetPoint("RIGHT", charHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         charCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedRegular) .. "|r")
 
         charactersContent = AcquireSectionContentFrame(charHeader)
@@ -1456,6 +1881,8 @@ function WarbandNexus:DrawCharacterList(parent)
             animatedContent = function() return untrackedContent end,
         }
         untrackedVisualOpts.sectionPreset = "danger"
+        untrackedVisualOpts.useFullParentWidth = true
+        untrackedVisualOpts.sectionStackWidth = sectionStackW
         local untrackedHeader, _, untrackedIcon = CreateCollapsibleHeader(
             parent,
             ((ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters"),
@@ -1483,7 +1910,7 @@ function WarbandNexus:DrawCharacterList(parent)
         if untrackedIcon then untrackedIcon:SetSize(24, 24) end
 
         local untrackedCount = FontManager:CreateFontString(untrackedHeader, "header", "OVERLAY")
-        untrackedCount:SetPoint("RIGHT", -14, 0)
+        untrackedCount:SetPoint("RIGHT", untrackedHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
         untrackedCount:SetText("|cff888888" .. FormatNumber(#untracked) .. "|r")
 
         untrackedContent = AcquireSectionContentFrame(untrackedHeader)
@@ -1504,7 +1931,19 @@ function WarbandNexus:DrawCharacterList(parent)
         previousSectionContent = untrackedContent
         yOffset = yOffset + SECTION_H + (untrackedExpanded and untrackedHeight or 0)
     end
-    
+
+    if ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mf, parent, yOffset)
+    end
+
+    if mf and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if mf.currentTab == "chars" then
+                CharactersVirtualScrollBump()
+            end
+        end)
+    end
+
     return yOffset
 end
 
@@ -1524,8 +1963,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if row.anim then row.anim:Stop() end
     end
     row:ClearAllPoints()
-    row:SetSize(width, 46)  -- Increased 20% (38 → 46)
-    row:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    row:SetHeight(46)
+    if not existingRow then
+        row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
+        row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
+    end
+    if row.SetClipsChildren then
+        row:SetClipsChildren(not existingRow)
+    end
     row:EnableMouse(true)
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
@@ -1683,7 +2128,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- COLUMN: Guild — width from max guild name; text centered; strictly between Name and Level
     local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
-    local guildColW = self._charListMaxGuildWidth or (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.width) or 130
+    local guildColW = self._charsListStableGuildColW
+        or self._charListMaxGuildWidth
+        or (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.width)
+        or 130
     local guildSpacing = (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.spacing) or 15
     if not row.guildText then
         row.guildText = FontManager:CreateFontString(row, "body", "OVERLAY")
@@ -1701,27 +2149,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.guildText:SetText(BuildGuildText(char, isCurrent))
     row.guildText:Show()
 
-    -- Left class tint: ends at name/realm column only (does not extend under guild column).
-    do
-        local nameLeft = nameOffset + nameLeftPadding
-        local nameColW = CHAR_ROW_COLUMNS.name.width
-        local swName = row.nameText:GetStringWidth() or 0
-        local swRealm = row.realmText:GetStringWidth() or 0
-        local mailExtra = 0
-        if row.mailIcon and row.mailIcon:IsShown() then
-            mailExtra = (row.mailIcon:GetWidth() or 14) + 4
-        end
-        local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + mailExtra + 4)
-        local gradientEnd = nameBlockRight
-        local rowW = row:GetWidth() or 800
-        if gradientEnd > rowW - 2 then
-            gradientEnd = rowW - 2
-        end
-        if ns.UI_ApplyCharacterRowClassGradientAccent then
-            ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
-        end
-    end
-    
     -- Level column: level + rested line (DB-driven).
     local guildTotal = guildColW + guildSpacing
     local levelOffset = guildOffset + guildTotal
@@ -2195,36 +2622,54 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.keystoneIcon:Show()
     row.keystoneText:Show()
     
-    -- RIGHT-ANCHORED COLUMNS: [Delete] [Header assign] [LastSeen] [Reorder]
-    local R_MARGIN = 6
-    local R_GAP = 6
-    local deleteRight = R_MARGIN
-    local headerAssignRight = deleteRight + CHAR_ROW_COLUMNS.delete.width + R_GAP
-    local lastSeenRight = headerAssignRight + (CHAR_ROW_COLUMNS.headerAssign and CHAR_ROW_COLUMNS.headerAssign.total or 26) + R_GAP
-    local reorderRight = lastSeenRight + CHAR_ROW_COLUMNS.lastSeen.width + R_GAP
-    
+    -- RIGHT RAIL: fixed slot positions (no per-row width reflow flicker on resize)
+    local R_MARGIN = ns.UI_CHAR_ROW_RIGHT_MARGIN or 6
+    local R_GAP = ns.UI_CHAR_ROW_RIGHT_GAP or 6
+    local delW = CHAR_ROW_COLUMNS.delete and CHAR_ROW_COLUMNS.delete.width or 24
+    local haTot = CHAR_ROW_COLUMNS.headerAssign and CHAR_ROW_COLUMNS.headerAssign.total or 26
+    local lsW = CHAR_ROW_COLUMNS.lastSeen and CHAR_ROW_COLUMNS.lastSeen.width or 60
+    local reoW = CHAR_ROW_COLUMNS.reorder and CHAR_ROW_COLUMNS.reorder.width or 44
+    local railW = (ns.UI_GetCharRowRightRailWidth and ns.UI_GetCharRowRightRailWidth()) or (R_MARGIN * 2 + delW + R_GAP + haTot + R_GAP + lsW + R_GAP + reoW)
+    local insetDelete = 0
+    local insetHeader = delW + R_GAP
+    local insetLastSeen = insetHeader + haTot + R_GAP
+    local insetReorder = insetLastSeen + lsW + R_GAP
+
+    if not row._wnRightRail then
+        row._wnRightRail = CreateFrame("Frame", nil, row)
+        row._wnRightRail.isPersistentRowElement = true
+    end
+    local rail = row._wnRightRail
+    rail:SetSize(railW, 46)
+    rail:ClearAllPoints()
+    rail:SetPoint("TOPRIGHT", row, "TOPRIGHT", -R_MARGIN, 0)
+    rail:Show()
+
     if row.trackingIcon then
         row.trackingIcon:Hide()
     end
-    
-    -- Reorder Buttons (right-aligned column, centered content)
+
+    -- Reorder Buttons (leftmost slot in the right rail)
     if not row.reorderButtons then
-        local rb = ns.UI.Factory:CreateContainer(row, CHAR_ROW_COLUMNS.reorder.width, 46)
-        rb:SetAlpha(0.7)
+        local rb = ns.UI.Factory:CreateContainer(rail, CHAR_ROW_COLUMNS.reorder.width, 46)
         rb.isPersistentRowElement = true
-        
+
         rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)
+        if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(rb.up) end
         rb.up:SetPoint("CENTER", -11, 0)
         rb.up:SetNormalAtlas("housing-floor-arrow-up-default")
         rb.up:EnableMouse(true)
         rb.down = ns.UI.Factory:CreateButton(rb, 18, 18, true)
+        if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(rb.down) end
         rb.down:SetPoint("CENTER", 11, 0)
         rb.down:SetNormalAtlas("housing-floor-arrow-down-default")
         rb.down:EnableMouse(true)
         row.reorderButtons = rb
+    else
+        row.reorderButtons:SetParent(rail)
     end
     row.reorderButtons:ClearAllPoints()
-    row.reorderButtons:SetPoint("RIGHT", row, "RIGHT", -reorderRight, 0)
+    row.reorderButtons:SetPoint("RIGHT", rail, "RIGHT", -insetReorder, 0)
     
     if showReorder and charList then
         row.reorderButtons:Show()
@@ -2254,7 +2699,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.onlineText:SetTextColor(0, 1, 0) 
         end
         row.onlineText:ClearAllPoints()
-        row.onlineText:SetPoint("RIGHT", -lastSeenRight, 0)
+        row.onlineText:SetPoint("RIGHT", rail, "RIGHT", -insetLastSeen, 0)
         row.onlineText:Show()
         if row.lastSeenText then row.lastSeenText:Hide() end
     else
@@ -2268,7 +2713,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.lastSeenText:SetJustifyH("CENTER")
         end
         row.lastSeenText:ClearAllPoints()
-        row.lastSeenText:SetPoint("RIGHT", -lastSeenRight, 0)
+        row.lastSeenText:SetPoint("RIGHT", rail, "RIGHT", -insetLastSeen, 0)
         
         local lastSeenStr = ""
         if timeDiff < 60 then
@@ -2294,7 +2739,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         and (listKey == "regular" or (ns.CharacterService and ns.CharacterService.ParseCustomGroupIdFromListKey(listKey)))
     if showHeaderAssign then
         if not row.headerAssignBtn then
-            local hb = ns.UI.Factory:CreateButton(row, 22, 22, true)
+            local hb = ns.UI.Factory:CreateButton(rail, 22, 22, true)
+            if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(hb) end
             hb.isPersistentRowElement = true
             local htex = hb.GetNormalTexture and hb:GetNormalTexture()
             if htex then
@@ -2302,9 +2748,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 htex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
             row.headerAssignBtn = hb
+        else
+            row.headerAssignBtn:SetParent(rail)
         end
         row.headerAssignBtn:ClearAllPoints()
-        row.headerAssignBtn:SetPoint("CENTER", row, "RIGHT", -(headerAssignRight + 11), 0)
+        row.headerAssignBtn:SetPoint("RIGHT", rail, "RIGHT", -(insetHeader + 11), 0)
+        if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(row.headerAssignBtn) end
         row.headerAssignBtn:Show()
         row.headerAssignBtn:SetScript("OnClick", function(selfBtn)
             if ns.UI_ShowCharacterSectionAssignMenu then
@@ -2331,22 +2780,25 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN: Delete button (RIGHT-anchored, compact)
     if not isCurrent then
         if not row.deleteBtn then
-            local deleteBtn = ns.UI.Factory:CreateButton(row, 24, 24, true)
+            local deleteBtn = ns.UI.Factory:CreateButton(rail, 24, 24, true)
+            if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(deleteBtn) end
             deleteBtn.isPersistentRowElement = true
             
             -- Add icon texture
             local icon = deleteBtn:CreateTexture(nil, "ARTWORK")
             icon:SetAllPoints()
             icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-            icon:SetDesaturated(true)
-            icon:SetVertexColor(0.8, 0.2, 0.2)
+            StyleCharacterDeleteIcon(icon, false)
             deleteBtn.texture = icon
             deleteBtn.icon = icon
             
             row.deleteBtn = deleteBtn
+        else
+            row.deleteBtn:SetParent(rail)
         end
         row.deleteBtn:ClearAllPoints()
-        row.deleteBtn:SetPoint("CENTER", row, "RIGHT", -(deleteRight + 12), 0)
+        row.deleteBtn:SetPoint("RIGHT", rail, "RIGHT", -(insetDelete + 12), 0)
+        if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(row.deleteBtn) end
         
         row.deleteBtn.charKey = charKey
         row.deleteBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
@@ -2437,9 +2889,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end)
         end
         
+        if row.deleteBtn.icon then
+            StyleCharacterDeleteIcon(row.deleteBtn.icon, false)
+        end
+
         -- Tooltip for delete button
         if ShowTooltip and row.deleteBtn.SetScript then
             row.deleteBtn:SetScript("OnEnter", function(self)
+                if self.icon then
+                    StyleCharacterDeleteIcon(self.icon, true)
+                end
                 local removeFromTrackingFmt = (ns.L and ns.L["REMOVE_FROM_TRACKING_FORMAT"]) or "Remove %s from tracking"
                 ShowTooltip(self, {
                     type = "custom",
@@ -2457,6 +2916,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end)
             
             row.deleteBtn:SetScript("OnLeave", function(self)
+                if self.icon then
+                    StyleCharacterDeleteIcon(self.icon, false)
+                end
                 if HideTooltip then
                     HideTooltip()
                 end
@@ -2476,6 +2938,37 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
 
     
+    row._wnGradientRefresh = function()
+        if not row.nameText or not row.realmText or not ns.UI_ApplyCharacterRowClassGradientAccent then
+            return
+        end
+        local nameLeft = nameOffset + nameLeftPadding
+        local nameColW = CHAR_ROW_COLUMNS.name.width
+        local swName = row.nameText:GetStringWidth() or 0
+        local swRealm = row.realmText:GetStringWidth() or 0
+        local mailExtra = 0
+        if row.mailIcon and row.mailIcon:IsShown() then
+            mailExtra = (row.mailIcon:GetWidth() or 14) + 4
+        end
+        local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + mailExtra + 4)
+        local gradientEnd = nameBlockRight
+        local rowW = row._wnRowPaintWidth
+        if not rowW or rowW < 2 then
+            rowW = row:GetWidth() or 0
+        end
+        if rowW < 2 and parent and parent.GetWidth then
+            rowW = parent:GetWidth() or rowW
+        end
+        if rowW < 2 then
+            rowW = width or 800
+        end
+        if gradientEnd > rowW - 2 then
+            gradientEnd = rowW - 2
+        end
+        ns.UI_ApplyCharacterRowClassGradientAccent(row, char.classFile, gradientEnd)
+    end
+    row._wnGradientRefresh()
+
     local betweenRows = GetLayout().betweenRows or 0
     return yOffset + 46 + betweenRows, row  -- Row 46px + spacing + row ref for pool tracking
 end
@@ -2873,4 +3366,164 @@ function WarbandNexus:ConfirmDeleteCustomCharacterHeader(groupId, groupName)
         end)
     end
     dialog:Show()
+end
+
+--- Section headers created by `CreateCollapsibleHeader` (stripe texture marker).
+local function ForEachCharactersSectionHeader(scrollChild, fn)
+    if not scrollChild or not fn or not scrollChild.GetNumChildren then return end
+    local n = scrollChild:GetNumChildren() or 0
+    for i = 1, n do
+        local ch = select(i, scrollChild:GetChildren())
+        if ch and ch._wnSectionStripe then
+            fn(ch)
+        end
+    end
+end
+
+--- Walk scroll subtree for section virtual-list containers (`contentFrame._vlm_flatList`).
+local function ForEachCharactersVirtualContainer(root, fn)
+    if not root or type(fn) ~= "function" then return end
+    if root._vlm_flatList and root._virtualUpdater then
+        fn(root)
+    end
+    if not root.GetNumChildren then return end
+    local n = root:GetNumChildren() or 0
+    for i = 1, n do
+        ForEachCharactersVirtualContainer(select(i, root:GetChildren()), fn)
+    end
+end
+
+--- Resize: refresh section stack + virtual row widths without full tab rebuild when possible.
+local function RelayoutCharactersSectionBodyWidths(scrollChild, viewportW, sideMargin)
+    if not scrollChild or not viewportW or viewportW < 1 then return end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local guildW = WarbandNexus and WarbandNexus._charListMaxGuildWidth
+    local stackW
+    if ns.UI_ResolveCharactersTabRowWidth then
+        stackW = ns.UI_ResolveCharactersTabRowWidth(mf, scrollChild, metrics, guildW)
+    else
+        stackW = math.max(1, viewportW - (sideMargin or 12) * 2)
+    end
+    if (not stackW or stackW < 1) and viewportW then
+        stackW = math.max(1, viewportW - (sideMargin or 12) * 2)
+    end
+    stackW = math.max(1, stackW or 1)
+    scrollChild._charsSectionStackW = stackW
+    ForEachCharactersSectionHeader(scrollChild, function(header)
+        if header.SetWidth then
+            header:SetWidth(stackW)
+        end
+    end)
+    ForEachCharactersVirtualContainer(scrollChild, function(container)
+        if container.SetWidth then
+            container:SetWidth(stackW)
+        end
+    end)
+end
+
+local function ResolveCharactersTabRowPaintWidth(mf, scrollChild, contentWidth, metrics, forLiveResize)
+    if forLiveResize and ns.UI_ResolveCharactersTabRowWidthForLive then
+        local liveW = ns.UI_ResolveCharactersTabRowWidthForLive(mf, scrollChild, metrics, WarbandNexus._charListMaxGuildWidth)
+        if liveW and liveW >= 1 then
+            return liveW
+        end
+    end
+    local addon = WarbandNexus
+    local guildW = addon and addon._charListMaxGuildWidth
+    local rowW
+    if ns.UI_ResolveCharactersTabRowWidth then
+        rowW = ns.UI_ResolveCharactersTabRowWidth(mf, scrollChild, metrics, guildW)
+    else
+        rowW = (ns.UI_ComputeCharactersMinScrollWidth and ns.UI_ComputeCharactersMinScrollWidth(addon, guildW))
+            or contentWidth
+            or (scrollChild and scrollChild:GetWidth())
+            or 0
+    end
+    if rowW < 1 then
+        rowW = 1100
+    end
+    return rowW
+end
+
+local function RefreshCharactersVirtualLayout(scrollChild, contentWidth)
+    if not scrollChild then return false end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local VLM = ns.VirtualListModule
+    if not mf or not VLM then return false end
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local side = (metrics and metrics.sideMargin) or 12
+    local viewportW = contentWidth
+    if (not viewportW or viewportW < 1) and mf and ns.UI_GetMainTabViewportWidth then
+        viewportW = ns.UI_GetMainTabViewportWidth(mf)
+    end
+    RelayoutCharactersSectionBodyWidths(scrollChild, viewportW, side)
+    local rowW = ResolveCharactersTabRowPaintWidth(mf, scrollChild, contentWidth, metrics)
+    if ns.UI_CloseCharacterTabFlyoutMenus then
+        ns.UI_CloseCharacterTabFlyoutMenus()
+    end
+    if ns.UI_EnsureMainScrollLayout then
+        ns.UI_EnsureMainScrollLayout()
+    end
+    local any = false
+    ForEachCharactersVirtualContainer(scrollChild, function(container)
+        local fl = container._vlm_flatList
+        if fl then
+            container._vlm_layoutTopOffset = nil
+            for j = 1, #fl do
+                local it = fl[j]
+                if it and it.type == "row" and it.populateEntry then
+                    it.populateEntry.rowWidth = rowW
+                end
+            end
+            if VLM.RefreshVirtualListFlatList then
+                VLM.RefreshVirtualListFlatList(mf, container, fl)
+            elseif container._virtualUpdater then
+                container._virtualUpdater()
+            end
+            any = true
+        end
+    end)
+    CharactersVirtualScrollBump()
+    if ns.UI_RefreshFixedHeaderChrome and mf then
+        ns.UI_RefreshFixedHeaderChrome(mf)
+    end
+    if mf and mf.scrollChild and ns.UI_SyncMainTabScrollChrome then
+        local bodyH = 0
+        if scrollChild.GetHeight then
+            bodyH = math.max(0, (scrollChild:GetHeight() or 0) - ((ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8))
+        end
+        ns.UI_SyncMainTabScrollChrome(mf, scrollChild, bodyH)
+    end
+    if mf and mf.scroll and ns.UI and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+    end
+    return any
+end
+
+ns.UI_RefreshCharactersTabLiveLayout = RefreshCharactersVirtualLayout
+ns.UI_ForEachCharactersVirtualContainer = ForEachCharactersVirtualContainer
+
+local function CharactersTabViewportRelayout(scrollChild, contentWidth, mf)
+    if not mf or mf.currentTab ~= "chars" then return false end
+    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+        return true
+    end
+    RelayoutCharactersGoldCards(scrollChild, contentWidth, mf)
+    if RefreshCharactersVirtualLayout(scrollChild, contentWidth) then
+        return true
+    end
+    return false
+end
+
+if ns.UI_LayoutCoordinator then
+    ns.UI_LayoutCoordinator:RegisterTabAdapter("chars", {
+        OnViewportWidthChanged = CharactersTabViewportRelayout,
+        OnViewportLayoutCommit = function(scrollChild, contentWidth, mf)
+            if not mf or mf.currentTab ~= "chars" then return false end
+            mf._wnCharsLiveRelayoutW = nil
+            -- Single full redraw after corner-drag (gold mode, section offsets, columns, gradient).
+            return false
+        end,
+    })
 end

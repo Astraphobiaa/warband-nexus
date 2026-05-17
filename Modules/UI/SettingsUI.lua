@@ -4449,7 +4449,7 @@ function WarbandNexus:ShowSettings()
     local icon = header:CreateTexture(nil, "ARTWORK")
     icon:SetSize(24, 24)
     icon:SetPoint("LEFT", 15, 0)
-    icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    icon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
     
     -- Title
     local title = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
@@ -4509,15 +4509,24 @@ function WarbandNexus:ShowSettings()
     resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
     resizer:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
+    local function SettingsSatelliteCommitLayout()
+        if not scrollChild or not scrollFrame then return end
+        local newScrollWidth = scrollFrame:GetWidth() or 640
+        scrollChild:SetWidth(newScrollWidth)
+        BuildSettings(scrollChild, newScrollWidth)
+        lastWidth = newScrollWidth
+        if ns.UI.Factory.UpdateScrollBarVisibility then
+            ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+        end
+    end
+
     resizer:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
-        if scrollChild and scrollFrame then
-            local newScrollWidth = scrollFrame:GetWidth() or 640
-            scrollChild:SetWidth(newScrollWidth)
-            BuildSettings(scrollChild, newScrollWidth)
-            if ns.UI.Factory.UpdateScrollBarVisibility then
-                ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
-            end
+        local LC = ns.UI_LayoutCoordinator
+        if LC and LC.OnSatelliteMetricsChanged then
+            LC:OnSatelliteMetricsChanged(f, f:GetWidth(), f:GetHeight(), true)
+        else
+            SettingsSatelliteCommitLayout()
         end
     end)
     
@@ -4548,11 +4557,22 @@ function WarbandNexus:ShowSettings()
     scrollChild:EnableMouse(true)
     scrollFrame:SetScrollChild(scrollChild)
     
-    -- Resize: only update scroll width during drag; full rebuild on mouse release (no continuous render)
-    f:SetScript("OnSizeChanged", function(self, width, height)
-        local newScrollWidth = scrollFrame:GetWidth() or 640
-        scrollChild:SetWidth(newScrollWidth)
-    end)
+    local function SettingsSatelliteLiveLayout()
+        if not scrollChild or not scrollFrame then return end
+        scrollChild:SetWidth(scrollFrame:GetWidth() or 640)
+    end
+
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.RegisterSatelliteFrame then
+        LC:RegisterSatelliteFrame(f, {
+            onLive = SettingsSatelliteLiveLayout,
+            onCommit = SettingsSatelliteCommitLayout,
+        })
+    else
+        f:SetScript("OnSizeChanged", function()
+            SettingsSatelliteLiveLayout()
+        end)
+    end
     
     -- Mouse wheel scrolling (uses dynamic scroll speed)
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)

@@ -77,6 +77,8 @@ local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
+local REP_ROW_HEIGHT = 30
+local REP_ROW_GAP = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (ns.UI_LAYOUT and ns.UI_LAYOUT.dataRowGap) or 4
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
@@ -583,7 +585,7 @@ end
 ---@return boolean|nil isExpanded
 local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
     -- PERFORMANCE: Acquire from pool instead of creating new frames every refresh
-    local row = AcquireReputationRow(parent, rowWidth, ROW_HEIGHT)
+    local row = AcquireReputationRow(parent, rowWidth, REP_ROW_HEIGHT)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", indent, -yOffset)
     
@@ -1116,7 +1118,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     end)
     
     -- ===== ANIMATION: Staggered fade-in (centralized helper) =====
-    return yOffset + ROW_HEIGHT + GetLayout().betweenRows, isExpanded
+    return yOffset + REP_ROW_HEIGHT + REP_ROW_GAP, isExpanded
 end
 
 ---Populate a reputation row frame with data (for virtual list reuse)
@@ -1889,7 +1891,7 @@ function WarbandNexus:DrawReputationList(container, width)
     end
     
     local Factory = ns.UI.Factory
-    local betweenRows = GetLayout().betweenRows or 0
+    local rowGap = REP_ROW_GAP
     local globalRowIdx = 0
 
     local function MeasureChildrenHeight(frame)
@@ -1953,6 +1955,9 @@ function WarbandNexus:DrawReputationList(container, width)
         body:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, -COLLAPSE_H_REP)
         body:SetWidth(math.max(1, bodyWidth))
         body:SetHeight(0.1)
+        if body.SetClipsChildren then
+            body:SetClipsChildren(true)
+        end
         body:Hide()
         return body
     end
@@ -2045,9 +2050,11 @@ function WarbandNexus:DrawReputationList(container, width)
             return
         end
 
-        local stride = ROW_HEIGHT + betweenRows
+        local stride = REP_ROW_HEIGHT + rowGap
+        local clampW = ns.UI_ClampRowPaintWidth
         local flatList = {}
         local rowY = 0
+        local parentRowWidth = clampW and clampW(body, 0, bodyWidth) or bodyWidth
 
         for ri = 1, #filteredFactionList do
             local item = filteredFactionList[ri]
@@ -2069,13 +2076,14 @@ function WarbandNexus:DrawReputationList(container, width)
                 type = "row",
                 yOffset = rowY,
                 height = stride,
+                rowPaintHeight = REP_ROW_HEIGHT,
                 xOffset = 0,
-                rowWidth = bodyWidth,
+                rowWidth = parentRowWidth,
                 populateEntry = {
                     data = item.faction.data,
                     factionID = item.faction.factionID,
                     rowIdx = globalRowIdx,
-                    rowWidth = bodyWidth,
+                    rowWidth = parentRowWidth,
                     isSubfaction = false,
                     subfactions = subsToRender,
                     characterInfo = charInfo,
@@ -2087,7 +2095,7 @@ function WarbandNexus:DrawReputationList(container, width)
 
             if showSubs and subsToRender and #subsToRender > 0 then
                 local subIndent = BASE_INDENT + SUBROW_EXTRA_INDENT
-                local subRowWidth = math.max(1, bodyWidth - subIndent)
+                local subRowWidth = clampW and clampW(body, subIndent, bodyWidth - subIndent) or math.max(1, bodyWidth - subIndent)
                 for si = 1, #subsToRender do
                     local subFaction = subsToRender[si]
                     globalRowIdx = globalRowIdx + 1
@@ -2095,6 +2103,7 @@ function WarbandNexus:DrawReputationList(container, width)
                         type = "row",
                         yOffset = rowY,
                         height = stride,
+                        rowPaintHeight = REP_ROW_HEIGHT,
                         xOffset = subIndent,
                         rowWidth = subRowWidth,
                         populateEntry = {
@@ -2128,7 +2137,7 @@ function WarbandNexus:DrawReputationList(container, width)
 
         local totalHeight = VLM.SetupVirtualList(mf, body, nil, flatList, {
             createRowFn = function(container, it, _idx)
-                return AcquireReputationRow(container, it.rowWidth, ROW_HEIGHT)
+                return AcquireReputationRow(container, it.rowWidth, REP_ROW_HEIGHT)
             end,
             populateRowFn = function(row, it, _idx)
                 local ok, err = pcall(PopulateReputationRow, row, it.populateEntry)
@@ -2359,7 +2368,8 @@ function WarbandNexus:RedrawReputationResultsOnly(animateHeight)
     if not scrollChild then return end
     local rc = scrollChild.resultsContainer
     if not rc or rc:GetParent() ~= scrollChild then return end
-    local width = scrollChild:GetWidth() - 20
+    local width = (ns.UI_ResolveResultsContainerPaintWidth and ns.UI_ResolveResultsContainerPaintWidth(mf, rc))
+        or math.max(1, (scrollChild:GetWidth() or 0) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
     if width < 1 then return end
 
     if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
@@ -2482,14 +2492,22 @@ function WarbandNexus:DrawReputationTab(parent)
 
     -- Fast path: cache still loading — skip expensive scroll-child purge + full header rebuild every tick.
     if ns.ReputationLoadingState and ns.ReputationLoadingState.isLoading then
-        local fixedHeaderEarly = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-        local headerH = 8 + (GetLayout().afterHeader or 75)
-        if fixedHeaderEarly then
+        local mfEarly = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local metricsEarly = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mfEarly)
+        local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+        local titleH = (metricsEarly and metricsEarly.titleCardHeight) or 64
+        local blockGap = (metricsEarly and metricsEarly.blockGap) or 8
+        local topM = (metricsEarly and metricsEarly.topMargin) or 0
+        local headerH = topM + titleH + blockGap
+        local fixedHeaderEarly = mfEarly and mfEarly.fixedHeader
+        if ns.UI_CommitTabFixedHeader then
+            ns.UI_CommitTabFixedHeader(mfEarly, headerH)
+        elseif fixedHeaderEarly then
             fixedHeaderEarly:SetHeight(headerH)
         end
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
-            return UI_CreateLoadingStateCard(parent, 8, ns.ReputationLoadingState, (ns.L and ns.L["REP_LOADING_TITLE"]) or "Loading Reputation Data")
+            return UI_CreateLoadingStateCard(parent, scrollTopY, ns.ReputationLoadingState, (ns.L and ns.L["REP_LOADING_TITLE"]) or "Loading Reputation Data")
         end
         return 120
     end
@@ -2520,10 +2538,20 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end
     
-    local width = parent:GetWidth() - 20
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = 8
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local contentWidth = (metrics and metrics.contentWidth)
+        or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
+        or (parent:GetWidth() or 600)
+    local bodyWidth = (metrics and metrics.bodyWidth)
+        or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+        or math.max(200, contentWidth - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local fixedHeader = mf and mf.fixedHeader
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    local headerYOffset = (chrome and chrome.yOffset) or 0
+    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local contentSide = (metrics and metrics.sideMargin) or SIDE_MARGIN
     
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
@@ -2532,17 +2560,21 @@ function WarbandNexus:DrawReputationTab(parent)
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local repHdrBtnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
-    local repHdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
-    local repRightReserve = repHdrBtnH + repHdrGap + (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20)
+    local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
+    local repRightReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ tm.squareBtn or 32 }))
+        or ((tm.squareBtn or 32) + (tm.gap or 8))
     local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local titleCard
     if mfRef and mfRef._wnReputationTitleCard then
         titleCard = mfRef._wnReputationTitleCard
         titleCard:SetParent(headerParent)
         titleCard:ClearAllPoints()
-        titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+        if chrome and ns.UI_AnchorTabTitleCard then
+            ns.UI_AnchorTabTitleCard(titleCard, chrome)
+        else
+            titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+            titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        end
         titleCard:Show()
     else
         titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
@@ -2551,8 +2583,12 @@ function WarbandNexus:DrawReputationTab(parent)
             subtitleText = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband",
             textRightInset = repRightReserve,
         }))
-        titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+        if chrome and ns.UI_AnchorTabTitleCard then
+            ns.UI_AnchorTabTitleCard(titleCard, chrome)
+        else
+            titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+            titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        end
         if mfRef then
             mfRef._wnReputationTitleCard = titleCard
         end
@@ -2563,7 +2599,7 @@ function WarbandNexus:DrawReputationTab(parent)
     titleCard:Show()
 
     if moduleEnabled and ns.UI_EnsureTitleCardExpandCollapseButtons then
-        local inset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
+        local inset = tm.edgeInset or 0
         ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, titleCard, "RIGHT", -inset, 0, {
             getIsCollapseMode = function()
                 return WarbandNexus.db.profile.reputationExpandOverride ~= "all_collapsed"
@@ -2595,38 +2631,46 @@ function WarbandNexus:DrawReputationTab(parent)
     if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
     if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
     
-    headerYOffset = headerYOffset + GetLayout().afterHeader
-    
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    else
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+    end
+
     -- If module is disabled, show disabled state card in scroll area
     if not moduleEnabled then
         if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
         if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
         if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
-        return 8 + cardHeight
+        local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
+        return scrollTopY + cardHeight
     end
 
     -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
-    local searchBox = CreateSearchBox(headerParent, width, (ns.L and ns.L["REP_SEARCH"]) or "Search reputations...", function(text)
+    local searchBox = CreateSearchBox(headerParent, contentWidth, (ns.L and ns.L["REP_SEARCH"]) or "Search reputations...", function(text)
         SearchStateManager:SetSearchQuery("reputation", text)
         if parent.resultsContainer then
             self:RedrawReputationResultsOnly(false)
         end
     end, 0.4, reputationSearchText)
     
-    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+    searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     
     local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
     headerYOffset = headerYOffset + searchH + GetLayout().afterElement
 
     -- Set fixedHeader height so scroll area starts below it
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    if ns.UI_CommitTabFixedHeader then
+        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+    elseif fixedHeader then
+        fixedHeader:SetHeight(headerYOffset)
+    end
     
     -- Results Container (in scroll area)
     if not parent.resultsContainer then
@@ -2637,13 +2681,37 @@ function WarbandNexus:DrawReputationTab(parent)
     local container = parent.resultsContainer
     container:SetParent(parent)
     container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -8)
-    container:SetWidth(width)
+    container:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -scrollTopY)
+    container:SetWidth(bodyWidth)
     container:SetHeight(1)
     container:Show()
     
-    local listHeight = self:DrawReputationList(container, width)
+    local listHeight = self:DrawReputationList(container, bodyWidth)
     ApplyReputationResultsHeight(WarbandNexus.UI and WarbandNexus.UI.mainFrame, parent, container, listHeight, false)
     
-    return 8 + listHeight
+    return scrollTopY + listHeight
+end
+
+if ns.UI_LayoutCoordinator then
+    local function RelayoutReputationResultsViewport(scrollChild, contentWidth, mf)
+        if not mf or mf.currentTab ~= "reputations" or not scrollChild then return false end
+        local rc = scrollChild.resultsContainer
+        if rc and contentWidth and contentWidth > 0 then
+            local side = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN or 12
+            if ns.UI_GetMainTabLayoutMetrics then
+                local m = ns.UI_GetMainTabLayoutMetrics(mf)
+                if m and m.sideMargin then side = m.sideMargin end
+            end
+            rc:SetWidth(math.max(1, contentWidth - side * 2))
+            if ns.UI_RelayoutResultsContainer then
+                ns.UI_RelayoutResultsContainer(rc, scrollChild, side, 8)
+            end
+            return true
+        end
+        return false
+    end
+    ns.UI_LayoutCoordinator:RegisterTabAdapter("reputations", {
+        OnViewportWidthChanged = RelayoutReputationResultsViewport,
+        OnViewportLayoutCommit = RelayoutReputationResultsViewport,
+    })
 end

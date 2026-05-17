@@ -1038,7 +1038,9 @@ end
 --============================================================================
 
 function WarbandNexus:DrawProfessionsTab(parent)
-    local width = parent:GetWidth() - 20
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local width = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+        or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
     cachedRowWidth = width
     profEquipResolveCache = {}
 
@@ -1059,16 +1061,20 @@ function WarbandNexus:DrawProfessionsTab(parent)
     parent._wnProfNestedRows = {}
 
     -- fixedHeader: non-scrolling area for title card + column headers
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = 8
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local fixedHeader = mf and mf.fixedHeader
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    local headerYOffset = (chrome and chrome.yOffset) or 0
+    local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or SIDE_MARGIN
+    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
 
     -- If module is disabled, show disabled state card
     if not ns.Utilities:IsModuleEnabled("professions") then
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["PROFESSIONS_DISABLED_TITLE"]) or "Professions")
-        return 8 + cardHeight
+        local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["PROFESSIONS_DISABLED_TITLE"]) or "Professions")
+        return scrollTopY + cardHeight
     end
 
     local characters = self:GetAllCharacters()
@@ -1082,22 +1088,29 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local expBadgeWidth = 100
     local filterBtnW = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH_DEFAULT) or 80
     local btnHH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
-    local hdrGapEc = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
-    local ecReserve = btnHH + hdrGapEc
+    local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
+    local hdrGapEc = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
+    local profToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
+        expBadgeWidth,
+        filterBtnW,
+        tm.filterW or 96,
+        tm.squareBtn or btnHH,
+    })) or (expBadgeWidth + filterBtnW + 40 + btnHH + hdrGapEc)
 
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — single subtitle line (tracked count only) =====
-    local titleCardH = 70
     local subLine = format((ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s characters with professions", FormatNumber(totalProfChars))
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
-        cardHeight = titleCardH,
-        textContainerWidth = 250,
-        atlasName = (ns.UI_GetTabIcon and ns.UI_GetTabIcon("professions")) or "Vehicle-HammerGold",
+        tabKey = "professions",
         titleText = "|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["YOUR_PROFESSIONS"]) or "Warband Professions") .. "|r",
         subtitleText = subLine,
-        textRightInset = expBadgeWidth + filterBtnW + 40 + ecReserve,
+        textRightInset = profToolbarReserve,
     }))
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    end
 
     -- Force fixed expansion view: Midnight only (filter selector removed).
     self.db.profile.professionExpansionFilter = "Midnight"
@@ -1114,8 +1127,12 @@ function WarbandNexus:DrawProfessionsTab(parent)
     expBadge:SetScript("OnClick", nil)
     expBadge:SetScript("OnEnter", nil)
     expBadge:SetScript("OnLeave", nil)
-    local titleCardRightInset = (GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET) or 20
-    expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
+    local titleEdgeInset = tm.edgeInset or 0
+    if ns.UI_AnchorTitleCardToolbarControl then
+        ns.UI_AnchorTitleCardToolbarControl(expBadge, titleCard, titleCard, "RIGHT", -titleEdgeInset)
+    else
+        expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
+    end
     
     -- ===== COLUMNS BUTTON (column visibility toggle) =====
     local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
@@ -1129,8 +1146,12 @@ function WarbandNexus:DrawProfessionsTab(parent)
     filterBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
     filterBtnText:SetTextColor(0.9, 0.9, 0.9)
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(filterBtn) end
-    local hdrGap = (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
-    filterBtn:SetPoint("RIGHT", expBadge, "LEFT", -hdrGap, 0)
+    local hdrGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
+    if ns.UI_AnchorTitleCardToolbarControl then
+        ns.UI_AnchorTitleCardToolbarControl(filterBtn, titleCard, expBadge, "LEFT", -hdrGap)
+    else
+        filterBtn:SetPoint("RIGHT", expBadge, "LEFT", -hdrGap, 0)
+    end
 
     filterBtn:SetScript("OnClick", function(btn)
         -- Toggle dropdown: close if already open, open if not
@@ -1333,7 +1354,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
             end,
         })
         if sortBtn then
-            sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -(GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8), 0)
+            if ns.UI_AnchorTitleCardToolbarControl then
+                ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, filterBtn, "LEFT", -hdrGap)
+            else
+                sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -hdrGap, 0)
+            end
         end
     elseif ns.UI_CreateCharacterSortDropdown then
         local sortOptions = {
@@ -1348,12 +1373,16 @@ function WarbandNexus:DrawProfessionsTab(parent)
         sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
         end)
-        sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -(GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8), 0)
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, filterBtn, "LEFT", -hdrGap)
+        else
+            sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -hdrGap, 0)
+        end
     end
 
     local ecAnchor = sortBtn or filterBtn
     if ns.UI_EnsureTitleCardExpandCollapseButtons and ecAnchor then
-        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -((GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)), 0, {
+        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -hdrGap, 0, {
             getIsCollapseMode = function()
                 local ui = WarbandNexus.db.profile.ui or {}
                 local fav = ui.profFavoritesExpanded
@@ -1401,10 +1430,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     
     titleCard:Show()
-    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
-
-    -- Set fixedHeader height (title card only; column headers go in columnHeaderClip)
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    else
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    end
 
     -- ===== COLUMN HEADER BAR (in columnHeaderClip — scrolls horizontally with data) =====
     local colHeaderStripH = COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD + COLUMN_HEADER_TOP_GAP
@@ -1564,7 +1596,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     -- Scroll content starts below the column header overlay area.
     -- The overlay covers the full clip height (header row + optional top gap + pad).
     local colHeaderOverlayH = columnHeaderClip and colHeaderStripH or 0
-    local yOffset = 8 + colHeaderOverlayH
+    local yOffset = scrollTopY + colHeaderOverlayH
 
     -- ===== EMPTY STATE =====
     if totalProfChars == 0 then
@@ -2976,4 +3008,17 @@ do
         WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.PROFESSION_EQUIPMENT_UPDATED, InvalidateProfessionsTradeSessionCaches)
         WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.CRAFTING_ORDERS_UPDATED, InvalidateProfessionsTradeSessionCaches)
     end
+end
+
+if ns.UI_LayoutCoordinator then
+    local LC = ns.UI_LayoutCoordinator
+    LC:RegisterTabAdapter("professions", {
+        OnViewportLayoutCommit = function(_scrollChild, _contentWidth, mf)
+            if not mf or mf.currentTab ~= "professions" then return false end
+            if ns.UI_RefreshFixedHeaderChrome then
+                ns.UI_RefreshFixedHeaderChrome(mf)
+            end
+            return false
+        end,
+    })
 end

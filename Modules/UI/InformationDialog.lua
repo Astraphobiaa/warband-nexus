@@ -87,7 +87,7 @@ function WarbandNexus:ShowInfoDialog()
     local logo = header:CreateTexture(nil, "ARTWORK")
     logo:SetSize(32, 32)
     logo:SetPoint("LEFT", header, "LEFT", 15, 0)
-    logo:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    logo:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
     
     -- Title (centered) (WHITE - never changes with theme)
     local title = FontManager:CreateFontString(header, FontManager:GetFontRole("tabTitlePrimary"), "OVERLAY")

@@ -28,7 +28,7 @@ local HEADER_H      = 24
 local CHROME_H      = 40
 local FRAME_PAD     = 8
 local MAX_ROWS      = 20
-local ICON_TEXTURE  = "Interface\\AddOns\\WarbandNexus\\Media\\icon"
+local ICON_TEXTURE  = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga"
 local ICON_FALLBACK = "Interface\\Icons\\INV_Misc_TreasureChest02"
 local VOIDCORE_ID   = 3418
 local MANAFLUX_ID   = 3378
@@ -872,7 +872,9 @@ local function BuildTableFrame()
     f:SetFrameLevel(200)
     f:SetMovable(true)
     f:EnableMouse(true)
-    if ApplyVisuals then
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(f)
+    elseif ApplyVisuals then
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
     else
         f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
@@ -1673,7 +1675,9 @@ local function BuildOptionsFrame()
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
     f:SetMovable(true)
-    if ApplyVisuals then
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(f)
+    elseif ApplyVisuals then
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
     else
         f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
@@ -2039,7 +2043,9 @@ local function BuildSavedInstancesFrame()
         f:SetMinResize(560, 420)
     end
     f:EnableMouse(true)
-    if ApplyVisuals then
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(f)
+    elseif ApplyVisuals then
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
     end
     f:Hide()
@@ -3010,7 +3016,9 @@ local function BuildMenu()
     f:SetFrameLevel(220)
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
-    if ApplyVisuals then
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(f)
+    elseif ApplyVisuals then
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
     end
     f:Hide()
@@ -3042,8 +3050,12 @@ local function BuildMenu()
     headerIcon:SetSize(16, 16)
     headerIcon:SetPoint("LEFT", 8, 0)
     headerIcon:SetTexture(ICON_TEXTURE)
-    if not headerIcon:GetTexture() then headerIcon:SetTexture(ICON_FALLBACK) end
-    headerIcon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+    if not headerIcon:GetTexture() then
+        headerIcon:SetTexture(ICON_FALLBACK)
+        headerIcon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+    else
+        headerIcon:SetTexCoord(0, 1, 0, 1)
+    end
 
     local FontManager = ns.FontManager
     local titleFS
@@ -3234,8 +3246,10 @@ local function BuildButton()
     icon:SetTexture(ICON_TEXTURE)
     if not icon:GetTexture() then
         icon:SetTexture(ICON_FALLBACK)
+        icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)  -- Blizzard inventory icons: slight inset
+    else
+        icon:SetTexCoord(0, 1, 0, 1) -- packaged square `Media/icon.tga`: full UV (inset distorted the glyph)
     end
-    icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)  -- trim default texture bezel
     S.icon = icon
 
     local badgeBg = btn:CreateTexture(nil, "OVERLAY")

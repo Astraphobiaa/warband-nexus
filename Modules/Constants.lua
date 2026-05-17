@@ -82,6 +82,21 @@ local Constants = {
     ITEMS_CACHE_VERSION = "1.0.0",       -- Items (lean itemID+stack+quality; metadata on-demand)
     
     --==========================================================================
+    -- PACKAGED MEDIA (minimap / Easy Access / header / dialogs)
+    --==========================================================================
+    --- Shipped `Media/icon.tga` — explicit extension; basename `Media\\icon` can bind to the wrong asset on some clients.
+    ADDON_MEDIA_ICON = "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga",
+
+    --- UI chrome icons (stroke TGAs; MIT-style assets under Media/, tinted via SetVertexColor).
+    WN_ICON_REMINDER = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Reminder.tga",
+    WN_ICON_TODO = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Todo.tga",
+    WN_ICON_PIN = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Pin.tga",
+    WN_ICON_BLOCK = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Block.tga",
+    WN_ICON_CHEVRON_UP = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronUp.tga",
+    WN_ICON_CHEVRON_DOWN = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronDown.tga",
+    WN_ICON_LINK = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Link.tga",
+    
+    --==========================================================================
     -- DATABASE VERSIONS
     --==========================================================================
     
@@ -416,6 +431,9 @@ ns.Constants = Constants
 -- Backwards compatibility exports
 ns.ADDON_VERSION = Constants.ADDON_VERSION
 ns.Events = Constants.EVENTS
+
+--- Launcher chrome (minimap LDB, Easy Access / Vault button, main header): shipped `Media/icon.tga`.
+ns.WARBAND_ADDON_MEDIA_ICON = Constants.ADDON_MEDIA_ICON
 
 -- REMOVED: Verbose load messages - only show in debug mode via DebugService
 -- Print load message with all version info (debug mode only)

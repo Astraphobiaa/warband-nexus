@@ -984,7 +984,9 @@ local function CreateInfoFrame()
         frame:SetFrameLevel(120)
     end
 
-    if ApplyVisuals then
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    elseif ApplyVisuals then
         ApplyVisuals(frame, {0.03, 0.03, 0.05, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
 

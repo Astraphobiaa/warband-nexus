@@ -42,6 +42,18 @@ local ICON_SIZE = 32
 local ICON_PADDING = 8
 local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
+local function TintTooltipAccentLines(frame)
+    if not frame then return end
+    local c = ns.UI_COLORS or COLORS or {}
+    local ac = c.accent or { 0.45, 0.35, 0.72 }
+    if frame.separator then
+        frame.separator:SetColorTexture(ac[1], ac[2], ac[3], 0.42)
+    end
+    if frame.iconFrame and frame.iconFrame.border then
+        frame.iconFrame.border:SetColorTexture(ac[1], ac[2], ac[3], 0.42)
+    end
+end
+
 -- Wide tooltips (e.g. PvE vault summary): TooltipService may preset frame.fixedWidth before layout.
 local WIDTH_CAP_TOP = 820
 local VAULT_GRID_GAP_NAME_REALM = 10
@@ -59,6 +71,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     COLORS = ns.UI_COLORS or {
         bgCard = {0.08, 0.08, 0.10, 1},
         border = {0.20, 0.20, 0.25, 1},
+        accent = {0.45, 0.35, 0.72},
     }
     
     -- Create frame
@@ -68,15 +81,19 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame:SetSize(250, 100)
     frame:Hide()
     
-    -- Backdrop with theme colors (minimalist design)
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    frame:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98)
-    frame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+    -- Phase 2: elevated surface + atlas underlay + accent inset border (parity with tab cards).
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    else
+        frame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = { left = 0, right = 0, top = 0, bottom = 0 }
+        })
+        frame:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98)
+        frame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+    end
     
     -- Icon (top-left, created once, reused)
     local iconFrame = CreateFrame("Frame", nil, frame)
@@ -91,7 +108,6 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     local iconBorder = iconFrame:CreateTexture(nil, "OVERLAY")
     iconBorder:SetPoint("TOPLEFT", -1, 1)
     iconBorder:SetPoint("BOTTOMRIGHT", 1, -1)
-    iconBorder:SetColorTexture(0.3, 0.3, 0.3, 0.8)
     iconFrame.border = iconBorder
     
     -- Icon sits behind the texture (border effect)
@@ -103,8 +119,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- Separator line (thin horizontal line between header and body)
     local separator = frame:CreateTexture(nil, "ARTWORK")
     separator:SetHeight(1)
-    separator:SetColorTexture(0.3, 0.3, 0.3, 0.6)
     frame.separator = separator
+    
+    TintTooltipAccentLines(frame)
     
     -- FontString pools (recycled for performance)
     frame.lines = {}
@@ -735,10 +752,22 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         COLORS = ns.UI_COLORS or {
             bgCard = {0.08, 0.08, 0.10, 1},
             border = {0.20, 0.20, 0.25, 1},
+            accent = {0.45, 0.35, 0.72},
         }
-        
-        self:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4])
-        self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+
+        if ns.UI_ApplyStandardCardElevatedChrome then
+            ns.UI_ApplyStandardCardElevatedChrome(self)
+        else
+            self:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 }
+            })
+            self:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98)
+            self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+        end
+        TintTooltipAccentLines(self)
     end
     
     return frame

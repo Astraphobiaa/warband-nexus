@@ -116,6 +116,18 @@ local function NM_WhatsNewPopupSidePad()
     return math.max(side * 3, NM_GetShellContentInset() * 12)
 end
 
+--- Toast / flat-panel fill RGBA (Phase 2: theme `surfaceElevated`, not magic grays).
+local function NM_GetElevatedBackdropFillRGBA()
+    local c = ns.UI_COLORS or {}
+    local s = c.surfaceElevated or c.bgLight or c.bg
+    if s then
+        local a = s[4]
+        if type(a) ~= "number" or a ~= a or a <= 0 or a > 1 then a = 0.94 end
+        return s[1], s[2], s[3], a
+    end
+    return 0.03, 0.03, 0.05, 0.98
+end
+
 --[[============================================================================
     NOTIFICATION QUEUE
 ============================================================================]]
@@ -310,28 +322,36 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     local popup = CreateFrame("Frame", nil, backdrop, "BackdropTemplate")
     popup:SetSize(600, 550)  -- Increased from 450x400 to 600x550
     popup:SetPoint("CENTER", 0, 50)
-    popup:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = false,
-        tileSize = 16,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    popup:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    popup:SetBackdropBorderColor(ar, ag, ab, 1)
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(popup)
+    else
+        popup:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false,
+            tileSize = 16,
+            edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        popup:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        popup:SetBackdropBorderColor(ar, ag, ab, 1)
+    end
     
     -- Logo/Icon
     local logo = popup:CreateTexture(nil, "ARTWORK")
     logo:SetSize(64, 64)
     logo:SetPoint("TOP", 0, -20)
-    logo:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    logo:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
     
     -- Title (nil-guard FontManager for first load)
     if FontManager and FontManager.CreateFontString then
         local title = FontManager:CreateFontString(popup, "header", "OVERLAY")
         title:SetPoint("TOP", logo, "BOTTOM", 0, -10)
-        title:SetText("|cff9966ff" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r")
+        local function ARGBByte(x)
+            return math.max(0, math.min(255, math.floor((tonumber(x) or 0) * 255 + 0.5)))
+        end
+        title:SetText(string.format("|cff%02x%02x%02x%s|r", ARGBByte(ar), ARGBByte(ag), ARGBByte(ab),
+            ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")))
         
         local versionText = FontManager:CreateFontString(popup, "body", "OVERLAY")
         versionText:SetPoint("TOP", title, "BOTTOM", 0, -5)
@@ -1144,7 +1164,7 @@ function WarbandNexus:ShowModalNotification(config)
             edgeSize = 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
-        backdropFrameCompact:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+        backdropFrameCompact:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
         if laneUsesProgressSizing then
             backdropFrameCompact:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 0.58)
         else
@@ -1422,7 +1442,7 @@ function WarbandNexus:ShowModalNotification(config)
         edgeSize = 1,
         insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
-    backdropFrame:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+    backdropFrame:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
     backdropFrame:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     
     -- Layer 2: icon slot (icon + bling only; rings live in iconEffectsFrame)

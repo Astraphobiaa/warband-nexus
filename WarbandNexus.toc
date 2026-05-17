@@ -27,6 +27,8 @@ Locales\ruRU.lua
 Locales\zhCN.lua
 Locales\zhTW.lua
 
+# Media: `Media/icon.tga` (addon list + chrome). UI stroke icons: Icon-*.tga (todo, reminder, pin, block, chevrons, link).
+
 # Packaging / QA
 # Locale key parity vs enUS: python scripts/check_locales.py  (optional: --strict-en-us-ascii once enUS ASCII cleanup lands)
 # Smoke: after /reload, walk MAIN_TAB_ORDER in Modules/UI.lua with default modules enabled
@@ -93,6 +95,7 @@ Modules\GearService.lua
 # UI Modules (FormatHelpers before SharedWidgets — ns.UI_Format* / money helpers)
 Modules\UI\FormatHelpers.lua
 Modules\UI\SharedWidgets.lua
+Modules\UI\LayoutCoordinator.lua
 Modules\UI\NotificationToastFactory.lua
 Modules\NotificationManager.lua
 Modules\UI\AchievementBrowseVirtualList.lua
@@ -122,7 +125,9 @@ Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua
 Modules\UI\ProfessionInfoWindow.lua
 Modules\UI\ProfessionsUI.lua
+Modules\UI\GearUI_Paperdoll.lua
 Modules\UI\GearUI.lua
+Modules\UI\GearUI_Layout.lua
 Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
 Modules\UI\CharacterBankMoneyLogPopup.lua

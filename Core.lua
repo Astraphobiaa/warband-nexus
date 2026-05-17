@@ -168,6 +168,9 @@ local defaults = {
         uiScale = 1.0,            -- Global UI scale for the entire addon window (0.6 - 1.5)
         --- "standard" | "compact" --- tighter resize mins + modest default footprints (`API_*` geometry wrappers).
         mainWindowDensity = "standard",
+        --- Main window nav: vertical "rail" icon column (left) | horizontal "top" strip (Settings; /reload).
+        mainNavLayout = "rail",
+
         vaultButton = {
             enabled = true,
             hideUntilMouseover = false,

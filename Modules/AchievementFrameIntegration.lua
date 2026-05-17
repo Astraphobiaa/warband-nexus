@@ -11,7 +11,7 @@ local Constants = ns.Constants
 local E = Constants and Constants.EVENTS
 local issecretvalue = issecretvalue
 
-local ICON_PATH = "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga"
+local ICON_PATH = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga"
 local HOOKED = {}
 
 ---@type table<Button, boolean>

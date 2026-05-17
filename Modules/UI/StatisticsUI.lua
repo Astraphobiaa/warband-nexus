@@ -118,12 +118,19 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStatistics(parent)
-    local width = parent:GetWidth() - 20
-    local cardWidth = (width - 15) / 2
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local SIDE = metrics and metrics.sideMargin or SIDE_MARGIN
+    local CARD_GAP_M = metrics and metrics.cardGap or (GetLayout().CARD_GAP or 10)
+    local width = (metrics and metrics.contentWidth)
+        or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
+        or (parent:GetWidth() or 600)
+    local cardWidth = (width - CARD_GAP_M) / 2
 
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = 8
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local fixedHeader = mf and mf.fixedHeader
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    local headerYOffset = (chrome and chrome.yOffset) or (metrics and metrics.topMargin) or TOP_MARGIN
 
     -- Hide previous empty state
     HideEmptyStateCard(parent, "statistics")
@@ -144,16 +151,27 @@ function WarbandNexus:DrawStatistics(parent)
         tabKey = "statistics",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ACCOUNT_STATISTICS"]) or "Account Statistics") .. "|r",
         subtitleText = (ns.L and ns.L["STATISTICS_SUBTITLE"]) or "Collection progress, gold, and storage overview",
+        showUnderline = false,
     }))
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
-    
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:SetPoint("TOPLEFT", SIDE, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -SIDE, -headerYOffset)
+    end
+
     titleCard:Show()
-    headerYOffset = headerYOffset + (GetLayout().afterHeader or 75)
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    else
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    end
 
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-
-    local yOffset = 8
+    local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local sectionGap = (metrics and metrics.sectionGap) or CARD_GAP_M or 10
+    local ApplyPanelCardChrome = ns.UI_ApplyStandardCardElevatedChrome
 
     -- Get statistics
     local stats = self:GetBankStatistics()
@@ -174,9 +192,9 @@ function WarbandNexus:DrawStatistics(parent)
     local numTotalToys = collectionStats.toys.total
     
     -- Collection row: 3 cards (Mount, Pet, Toy). Dar pencerede taşmayı önlemek için 2 satıra geçer.
-    local leftMargin = 10
-    local rightMargin = 10
-    local cardSpacing = 10
+    local leftMargin = SIDE
+    local rightMargin = SIDE
+    local cardSpacing = CARD_GAP_M
     local MIN_STAT_CARD_W = 220  -- Kartın kesilmeden görünmesi için minimum genişlik
     local availableW = width - leftMargin - rightMargin
     local totalSpacing = cardSpacing * 2
@@ -186,7 +204,7 @@ function WarbandNexus:DrawStatistics(parent)
     if useTwoRows then
         -- İlk satır: Mount + Pet yan yana; ikinci satır: Toy tam genişlik (taşma yok)
         cardW = (availableW - cardSpacing) / 2
-        secondRowY = 100  -- ilk satır yüksekliği
+        secondRowY = 90 + sectionGap  -- ilk satır yüksekliği
     else
         cardW = threeCardWidth
         secondRowY = nil
@@ -194,8 +212,9 @@ function WarbandNexus:DrawStatistics(parent)
     
     -- Achievement Card (Account-wide since TWW) - Full width
     local achCard = CreateCard(parent, 90)
-    achCard:SetPoint("TOPLEFT", 10, -yOffset)
-    achCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    achCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+    achCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(achCard) end
     
     -- Use factory pattern for standardized card header layout
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
@@ -223,8 +242,8 @@ function WarbandNexus:DrawStatistics(parent)
     
     achCard:Show()
 
-    yOffset = yOffset + 100
-    
+    yOffset = yOffset + 90 + sectionGap
+
     -- Mount Card (collection row)
     local mountCard = CreateCard(parent, 90)
     mountCard:SetWidth(cardW)
@@ -251,6 +270,7 @@ function WarbandNexus:DrawStatistics(parent)
     mountNote:SetText(accountWideLabel)
     mountNote:SetTextColor(1, 1, 1)  -- White
     
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(mountCard) end
     mountCard:Show()
 
     -- Pet Card (collection row)
@@ -296,6 +316,7 @@ function WarbandNexus:DrawStatistics(parent)
     petNote:SetText(accountWideLabel)
     petNote:SetTextColor(1, 1, 1)
     
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(petCard) end
     petCard:Show()
 
     -- Toys Card: dar alanda ikinci satırda, geniş alanda aynı satırda
@@ -305,8 +326,7 @@ function WarbandNexus:DrawStatistics(parent)
         toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(yOffset + secondRowY))
     else
         toyCard:SetWidth(cardW)
-        toyCard:SetPoint("LEFT", petCard, "RIGHT", cardSpacing, 0)
-        toyCard:SetPoint("RIGHT", parent, "RIGHT", -rightMargin, 0)
+        toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -yOffset)
     end
     
     -- Use factory pattern for standardized card header layout
@@ -330,9 +350,10 @@ function WarbandNexus:DrawStatistics(parent)
     toyNote:SetText(accountWideLabel)
     toyNote:SetTextColor(1, 1, 1)  -- White
     
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(toyCard) end
     toyCard:Show()
 
-    yOffset = yOffset + (useTwoRows and 200 or 100)  -- 2 satırda 200, tek satırda 100
+    yOffset = yOffset + (useTwoRows and (90 + 90 + sectionGap) or 90) + sectionGap
     
     -- ===== WARBAND WEALTH =====
     local GW_VISIBLE_ROWS = 5
@@ -378,8 +399,9 @@ function WarbandNexus:DrawStatistics(parent)
         end
         
         local goldCard = CreateCard(parent, goldCardHeight)
-        goldCard:SetPoint("TOPLEFT", 10, -yOffset)
-        goldCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        goldCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+        goldCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
+        if ApplyPanelCardChrome then ApplyPanelCardChrome(goldCard) end
         
         local gwIcon = CreateIcon(goldCard, "BonusLoot-Chest", 28, true, nil, true)
         gwIcon:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 15, -10)
@@ -410,7 +432,8 @@ function WarbandNexus:DrawStatistics(parent)
                 rowBg:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 10, rowTop)
                 rowBg:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -10, rowTop)
                 rowBg:SetHeight(GW_ROW_HEIGHT)
-                rowBg:SetColorTexture(1, 1, 1, 0.03)
+                local stripe = COLORS.surfaceRowEven or { 0.112, 0.112, 0.138, 0.96 }
+                rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.96)
             end
             
             local classR, classG, classB = 0.8, 0.8, 0.8
@@ -516,7 +539,7 @@ function WarbandNexus:DrawStatistics(parent)
         end
         
         goldCard:Show()
-        yOffset = yOffset + goldCardHeight + 10
+        yOffset = yOffset + goldCardHeight + sectionGap
     end
     
     -- ===== MOST PLAYED CARD =====
@@ -613,9 +636,10 @@ function WarbandNexus:DrawStatistics(parent)
         
         -- Full-width card (not half)
         local mpCard = CreateCard(parent, cardHeight)
-        mpCard:SetPoint("TOPLEFT", 10, -yOffset)
-        mpCard:SetPoint("TOPRIGHT", -10, -yOffset)
-        
+        mpCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+        mpCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
+        if ApplyPanelCardChrome then ApplyPanelCardChrome(mpCard) end
+
         -- ── Header: Icon + "MOST PLAYED" at top-left ──
         local mpIcon = CreateIcon(mpCard, "Interface\\Icons\\Spell_Holy_BorrowedTime", 28, false, nil, true)
         mpIcon:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 15, -10)
@@ -668,7 +692,8 @@ function WarbandNexus:DrawStatistics(parent)
                 rowBg:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 10, rowTop)
                 rowBg:SetPoint("TOPRIGHT", mpCard, "TOPRIGHT", -10, rowTop)
                 rowBg:SetHeight(MP_ROW_HEIGHT)
-                rowBg:SetColorTexture(1, 1, 1, 0.03)
+                local stripe = COLORS.surfaceRowEven or { 0.112, 0.112, 0.138, 0.96 }
+                rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.96)
             end
             
             -- Class color bar (3px wide vertical line)
@@ -752,13 +777,14 @@ function WarbandNexus:DrawStatistics(parent)
         end
         
         mpCard:Show()
-        yOffset = yOffset + cardHeight + 10
+        yOffset = yOffset + cardHeight + sectionGap
     end
     
     -- ===== STORAGE STATS (bottom) =====
     local storageCard = CreateCard(parent, 100)
-    storageCard:SetPoint("TOPLEFT", 10, -yOffset)
-    storageCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    storageCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+    storageCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(storageCard) end
     
     local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
     stTitle:SetPoint("TOPLEFT", 15, -12)
@@ -801,7 +827,7 @@ function WarbandNexus:DrawStatistics(parent)
     yOffset = yOffset + 110
 
     if ns.UI_AnnexResultsToScrollBottom then
-        ns.UI_AnnexResultsToScrollBottom(storageCard, parent, SIDE_MARGIN, 8)
+        ns.UI_AnnexResultsToScrollBottom(storageCard, parent, SIDE, 8)
     end
 
     return yOffset
@@ -819,5 +845,15 @@ function ns.ComputeStatisticsMinScrollWidth()
         return w
     end
     return 740
+end
+
+if ns.UI_LayoutCoordinator then
+    local LC = ns.UI_LayoutCoordinator
+    LC:RegisterTabAdapter("stats", {
+        OnViewportLayoutCommit = function(_scrollChild, _contentWidth, mf)
+            if not mf or mf.currentTab ~= "stats" then return false end
+            return false
+        end,
+    })
 end
 

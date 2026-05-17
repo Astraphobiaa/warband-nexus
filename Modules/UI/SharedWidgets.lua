@@ -89,7 +89,7 @@ scaleHandler:SetScript("OnEvent", function(self, event)
         if ns.UI_UpdateBorderColor and ns.BORDER_REGISTRY then
             for i = 1, #ns.BORDER_REGISTRY do
                 local frame = ns.BORDER_REGISTRY[i]
-                if frame and frame.BorderTop then
+                if frame and frame.BorderTop and not frame._wnMainShellBackdrop and not frame._wnBorderlessSurface then
                     local pixelScale = GetPixelScale(frame)
                     frame.BorderTop:SetHeight(pixelScale)
                     frame.BorderBottom:SetHeight(pixelScale)
@@ -217,9 +217,14 @@ end
 -- Panel surfaces: keep bg / bgCard / list rows on one family so scroll canvas, cards, and
 -- rows do not read as mismatched "black vs charcoal" (Plans, Currency, etc.).
 local COLORS = {
-    bg = {0.04, 0.04, 0.05, 0.98},
-    bgLight = {0.052, 0.052, 0.064, 0.98},
-    bgCard = {0.04, 0.04, 0.05, 0.98},
+    --- Surface ladder (borderless UX): wide steps so OLED/SDR both read zones without borders.
+    bg = {0.042, 0.042, 0.055, 0.98},
+    surfaceViewport = {0.068, 0.068, 0.086, 0.98},
+    bgLight = {0.108, 0.108, 0.132, 0.98},
+    bgCard = {0.118, 0.118, 0.145, 0.98},
+    surfaceHeaderChrome = {0.098, 0.098, 0.122, 0.97},
+    surfaceRowEven = {0.112, 0.112, 0.138, 0.96},
+    surfaceRowOdd = {0.090, 0.090, 0.112, 0.96},
     border = {0.20, 0.20, 0.25, 1},
     borderLight = {0.30, 0.30, 0.38, 1},
     accent = {0.40, 0.20, 0.58, 1},
@@ -254,7 +259,43 @@ end
 
 -- Apply theme colors on initial load
 UpdateColorsFromTheme()
+
+--- Wire semantic aliases to live color rows (called after any in-place COLORS mutation).
+local function SyncSemanticColorAliases()
+    COLORS.surface = COLORS.bg
+    COLORS.surfaceElevated = COLORS.bgLight
+    COLORS.surfaceCard = COLORS.bgCard
+    COLORS.textPrimary = COLORS.textBright
+    COLORS.textSecondary = COLORS.textNormal
+    COLORS.textTertiary = COLORS.textDim
+    COLORS.chromeBorder = COLORS.border
+    local even = COLORS.surfaceRowEven
+    local odd = COLORS.surfaceRowOdd
+    if even and UI_SPACING and UI_SPACING.ROW_COLOR_EVEN then
+        for i = 1, 4 do UI_SPACING.ROW_COLOR_EVEN[i] = even[i] end
+    end
+    if odd and UI_SPACING and UI_SPACING.ROW_COLOR_ODD then
+        for i = 1, 4 do UI_SPACING.ROW_COLOR_ODD[i] = odd[i] end
+    end
+end
+
+SyncSemanticColorAliases()
 ns.UI_COLORS = COLORS -- Export immediately
+
+--- Canonical main window tab sequence (indexed hot paths avoid pairs() on nav refresh).
+--- Keep in sync with `Modules/UI.lua` smoke MAIN_TAB_ORDER.
+ns.UI_MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
+    "chars",
+    "items",
+    "gear",
+    "currency",
+    "reputations",
+    "pve",
+    "professions",
+    "collections",
+    "plans",
+    "stats",
+}
 
 --============================================================================
 -- PLAN UI COLORS (factory-standardized for Plans, WN Plan, Collections achievement UIs)
@@ -290,15 +331,15 @@ local UI_SPACING = {
     SUBROW_EXTRA_INDENT = 10,  -- Extra indent for sub-rows (total Level 2 = 40px)
     -- Usage: Level 0 = 0px, Level 1 = BASE_INDENT (15px), Level 2 = BASE_INDENT * 2 + SUBROW_EXTRA_INDENT (40px)
     
-    -- Margins
-    SIDE_MARGIN = 10,          -- Left/right content margin
-    TOP_MARGIN = 8,            -- Top content margin
+    -- Margins (aligned with MAIN_SHELL.CONTENT_PAD_*)
+    SIDE_MARGIN = 12,          -- Left/right content margin
+    TOP_MARGIN = 10,           -- Top content margin
     
     -- Vertical spacing (between elements)
     HEADER_SPACING = 44,       -- After CreateCollapsibleHeader (SECTION_COLLAPSE_HEADER_HEIGHT + SECTION_SPACING)
     SUBHEADER_SPACING = 44,    -- Same as HEADER_SPACING for nested collapsible headers
     ROW_SPACING = 26,          -- Space after rows (26px height + 0px gap for tight layout)
-    SECTION_SPACING = 8,       -- Space between sections (expansion/type spacing, smaller than HEADER_SPACING)
+    SECTION_SPACING = 12,      -- Space between sections (matches MAIN_SHELL.CONTENT_SECTION_GAP)
     EMPTY_STATE_SPACING = 100, -- Empty state message spacing
     MIN_BOTTOM_SPACING = 20,   -- Minimum bottom padding
     SCROLL_CONTENT_TOP_PADDING = 12,    -- Padding above scroll content (so rows/headers don't touch border)
@@ -307,15 +348,48 @@ local UI_SPACING = {
     SCROLL_SPEED_DEFAULT = 1.0,          -- Default speed multiplier (profile.scrollSpeed)
     AFTER_HEADER = 75,         -- Space after main header
     AFTER_ELEMENT = 8,         -- Space after generic element
-    CARD_GAP = 8,              -- Gap between cards
+    CARD_GAP = 10,             -- Gap between cards
     
     -- Row dimensions
     ROW_HEIGHT = 26,           -- Standard row height
     --- Bank/storage aggregate leaf rows (ItemsUI DrawStorageResults): taller than ROW_HEIGHT so body-font descenders are not covered by the next row's bg.
     STORAGE_ROW_HEIGHT = 30,
     CHAR_ROW_HEIGHT = 36,      -- Character row height (+20% from 30)
-    HEADER_HEIGHT = 32,        -- Legacy row strip (Collections virtual rows); collapsible sections use SECTION_COLLAPSE_HEADER_HEIGHT
-    SECTION_COLLAPSE_HEADER_HEIGHT = 36, -- CreateCollapsibleHeader (compact; was 44)
+    HEADER_HEIGHT = 32,        -- Legacy row strip (Collections virtual rows); collapsible + Factory section headers use SECTION_COLLAPSE_HEADER_HEIGHT
+    SECTION_COLLAPSE_HEADER_HEIGHT = 36, -- CreateCollapsibleHeader + Factory `CreateSectionHeader` default (compact; was 44)
+    --- Stripe + chevron inset tokens: `CreateCollapsibleHeader` / `Factory:CreateSectionHeader` (Phase 2 alignment)
+    SECTION_HEADER_STRIPE_WIDTH = 3,
+    SECTION_HEADER_STRIPE_V_INSET = 4,
+    SECTION_HEADER_COLLAPSE_CHEVRON_LEFT = 12,
+    SECTION_HEADER_FACTORY_CHEVRON_LEFT = 10,
+    SECTION_HEADER_CATEGORY_ICON_GAP = 8,
+    SECTION_HEADER_TITLE_AFTER_ICON = 12,
+    --- `CreateSection` settings / card chrome (replaces magic 15 / -12 / -40)
+    SECTION_CARD_PADDING_X = 15,
+    SECTION_CARD_TITLE_TOP = -12,
+    SECTION_CARD_BODY_TOP_WITH_TITLE = -40,
+    SECTION_CARD_BODY_TOP_NO_TITLE = -15,
+
+    --- Standard tab title card (`CreateStandardTabTitleCard`): Characters + Items/Bank chrome
+    TITLE_CARD_DEFAULT_HEIGHT = 64,
+    --- Fixed square tile (glyph centered inside; never stretch with card height).
+    TITLE_CARD_ICON_TILE_OUTER = 44,
+    --- Glyph fills icon tile (no inner border frame on title cards).
+    TITLE_CARD_ICON_GLYPH_SIZE = 38,
+    TITLE_CARD_ICON_SIZE = 44,
+    TITLE_CARD_ICON_PAD = 5,
+    TITLE_CARD_ICON_INSET = 12,
+    --- Title card: icon block flush to card LEFT (0 = edge-aligned inside card).
+    TITLE_CARD_ICON_SIDE_INSET = 0,
+    TITLE_CARD_TOOLBAR_EDGE_INSET = 10,
+    TITLE_CARD_ICON_BORDER_ALPHA = 0.45,
+    TITLE_CARD_UNDERLINE_ALPHA = 0.5,
+    TITLE_CARD_RING_TEXT_GAP = 12,
+    TITLE_CARD_TEXT_PAD_V = 8,
+    --- Legacy alias: icon block center X from card left (`inset + pad + iconSize/2`).
+    TITLE_CARD_RING_CENTER_X = 12 + 5 + 22,
+    --- Vertical gap below a collapsible band before the next sibling (`CharactersUI` section stacks)
+    SECTION_STACK_GAP_UNDER_HEADER = 12,
 
     -- Icon standardization
     HEADER_ICON_SIZE = 24,     -- Header icon size (reduced from 28 for better balance)
@@ -324,6 +398,8 @@ local UI_SPACING = {
 
     --- Collapse/expand chevron: one `Button` + single inner texture (`_wnCollapseTex`), same size everywhere.
     COLLAPSE_EXPAND_BUTTON_SIZE = 22,
+    --- Section headers (`CreateCollapsibleHeader`): slightly larger than generic collapse controls.
+    SECTION_COLLAPSE_CHEVRON_SIZE = 26,
     COLLAPSE_EXPAND_ATLAS_EXPANDED = "UI-HUD-ActionBar-PageUpArrow-Mouseover",
     COLLAPSE_EXPAND_ATLAS_COLLAPSED = "UI-HUD-ActionBar-PageDownArrow-Mouseover",
 
@@ -332,14 +408,15 @@ local UI_SPACING = {
     --- Max width for "Bag N" / "Tab N" / localized bank strings; name column ends at `LEFT` of this.
     LIST_ROW_LOCATION_MAX_WIDTH = 120,
     
-    -- Row colors (match main canvas; borders/separators carry structure)
-    ROW_COLOR_EVEN = {0.04, 0.04, 0.05, 0.98},
-    ROW_COLOR_ODD = {0.04, 0.04, 0.05, 0.98},
+    --- Row striping (synced from COLORS.surfaceRow* in SyncSemanticColorAliases).
+    ROW_COLOR_EVEN = {0.112, 0.112, 0.138, 0.96},
+    ROW_COLOR_ODD = {0.090, 0.090, 0.112, 0.96},
     
     -- Backward compatibility aliases (camelCase)
-    afterHeader = 75,
     betweenSections = 8,
     betweenRows = 0,
+    --- Vertical gap between sibling **data rows** only (never section/category headers or card grids).
+    dataRowGap = 4,
     --- Plans ▸ Achievements expandable rows: vertical gap below each row (betweenRows is 0 for tight lists).
     achievementRowGapBelow = 8,
     headerSpacing = 44,
@@ -350,8 +427,14 @@ local UI_SPACING = {
     charRowHeight = 36,
     headerHeight = 32,
     rowSpacing = 26,
-    sideMargin = 10,
-    topMargin = 8,
+    sideMargin = 12,
+    topMargin = 0,
+    --- Tab chrome rhythm (fixedHeader + scroll body); use helpers below — do not hardcode 75/8.
+    TAB_CHROME_BLOCK_GAP = 8,
+    TAB_TITLE_TO_BODY_GAP = 6,
+    TAB_CHROME_SCROLL_TOP = 8,
+    TAB_CHROME_CONTENT_BOTTOM_PAD = 12,
+    afterHeader = 72,
     subHeaderSpacing = 44,
     emptyStateSpacing = 100,
     minBottomSpacing = 20,
@@ -367,13 +450,14 @@ local UI_SPACING = {
     HORIZONTAL_SCROLL_BAR_HEIGHT = 16,
 
     --- Title card toolbar: inset from RIGHT edge for the rightmost control (sort, timer, primary button)
-    TITLE_CARD_CONTROL_RIGHT_INSET = 20,
+    TITLE_CARD_CONTROL_RIGHT_INSET = 0,
+    TITLE_CARD_ICON_BORDER_ALPHA = 0.55,
     --- Horizontal gap between adjacent controls on a title card toolbar row
     HEADER_TOOLBAR_CONTROL_GAP = 8,
     --- Sort-style dropdown menus: height of one option row (matches ROW_HEIGHT)
     DROPDOWN_MENU_ROW_HEIGHT = 26,
 
-    titleCardControlRightInset = 20,
+    titleCardControlRightInset = 0,
     headerToolbarControlGap = 8,
     dropdownMenuRowHeight = 26,
 
@@ -415,11 +499,19 @@ local UI_SPACING = {
     --- Main window scroll viewport chrome (anchors in `Modules/UI.lua` CreateMainWindow).
     --- Right inset intentionally larger: reserves `SCROLLBAR_COLUMN_WIDTH` + `SCROLL_GAP` (WN-UI-layout: content never under v-scroll).
     MAIN_SCROLL = {
-        VIEWPORT_BORDER_INSET = 1,
+        --- LayoutCoordinator: ignore sub-pixel resize noise; corner-drag uses live shell-only + commit populate.
+        LIVE_RELAYOUT_MIN_SIZE_DELTA_PX = 2,
+        RESIZE_COMMIT_DEBOUNCE_SEC = 0.15,
+        COLLECTIONS_LIVE_RELAYOUT_DEBOUNCE_SEC = 0.12,
+        ITEMS_LIVE_RELAYOUT_DEBOUNCE_SEC = 0.12,
+        VIEWPORT_BORDER_INSET = 0,
+        VIEWPORT_BORDER_ALPHA = 0.52,
         SCROLL_GAP = 2,
         SCROLL_INSET_LEFT = 4,
-        --- Strip from window bottom edge up to horizontal scroll lane (excluding row height itself).
-        H_BAR_BOTTOM_OFFSET = 6,
+        CONTENT_PAD_X = 12,
+        CONTENT_PAD_TOP = 0,
+        --- Strip from content bottom to horizontal scroll lane (row height added in UI.lua).
+        H_BAR_BOTTOM_OFFSET = 2,
         --- DrawStatistics wide layout wants three ~220px cards abreast (+ margins/spacing aligned with StatisticsUI.lua).
         STATISTICS_MIN_SCROLL_CHILD_WIDTH_FOR_THREE_CARDS = 740,
     },
@@ -428,21 +520,62 @@ local UI_SPACING = {
     MAIN_SHELL = {
         HEADER_BAR_HEIGHT = 40, -- also Characters tab stacked Total Gold / Token text column (`CharactersTotalGoldTokenStackTextHeight`)
         NAV_BAR_HEIGHT = 36, -- also Plans Tracker top chrome (`HEADER_HEIGHT` in `PlansTrackerWindow.lua`)
-        --- Symmetric inset from root `BackdropTemplate` inner edge to header chrome (`CreateMainWindow`).
-        FRAME_CONTENT_INSET = 2,
+        --- Inset from root shell edge to body chrome (`CreateMainWindow`). Horizontal 0 = no side gutters on `BackdropTemplate`-less fill.
+        FRAME_CONTENT_INSET = 0,
+        FRAME_CONTENT_INSET_BOTTOM = 4,
         --- Vertical gap between header bottom and nav row top (`CreateMainWindow`).
         HEADER_TO_NAV_GAP = 4,
+        --- Gap below shell header before tab title card (fixedHeader top inset).
+        TAB_CHROME_TITLE_TOP_GAP = 10,
+        --- Main header utility cluster inset from frame right (larger = buttons shift left).
+        HEADER_UTILITY_CLUSTER_RIGHT_INSET = 18,
         DEFAULT_TAB_WIDTH = 108,
         TAB_HEIGHT = 34, -- also Plans Tracker category strip (`CATEGORY_BAR_HEIGHT` in `PlansTrackerWindow.lua`)
         TAB_PAD = 24,
         TAB_GAP = 5,
-        --- Nav tab glyphs (Blizzard atlases). Optional IconsAtlas/MIT PNG packs: future `Media/` + SetTexture wiring.
+        --- Main window nav: vertical text rail (left); horizontal `top` remains in Settings.
+        NAV_LAYOUT_MODE = "rail",
+
+        --- Left text rail: ~16% of body width, clamped (readable labels; content keeps majority).
+        GOLDEN_RATIO = 1.6180339887,
+        NAV_RAIL_WIDTH_RATIO = 0.17,
+        NAV_RAIL_WIDTH_MIN = 148,
+        NAV_RAIL_WIDTH_MAX = 192,
+        NAV_RAIL_CONTENT_GAP = 10,
+        NAV_RAIL_PAD = 6,
+        NAV_RAIL_TOP_INSET = 8,
+        NAV_RAIL_TAB_V_GAP = 4,
+        NAV_RAIL_TAB_HEIGHT = 38,
+        NAV_RAIL_LABEL_PAD_H = 6,
+        RAIL_TAB_ICON_SIZE = 22,
+        NAV_RAIL_BORDER_ALPHA = 0.28,
+        NAV_RAIL_DIVIDER_ALPHA = 0.55,
+        NAV_RAIL_TAB_SEP_HEIGHT = 1,
+        NAV_RAIL_TAB_SEP_ALPHA = 0.4,
+        NAV_RAIL_ACTIVE_BG_ALPHA = 0.52,
+        NAV_RAIL_ACTIVE_GLOW_ALPHA = 0.42,
+        NAV_RAIL_ACTIVE_GLOW_INNER_ALPHA = 0.28,
+        NAV_RAIL_ACTIVE_GLOW_EXPAND = 2,
+        --- Fallback when width helper unavailable.
+        NAV_RAIL_WIDTH = 160,
+        CONTENT_PAD_X = 12,
+        CONTENT_PAD_TOP = 0,
+        CONTENT_GAP_ABOVE_FOOTER = 0,
+        FOOTER_BOTTOM_OFFSET = 4,
+        CONTENT_SECTION_GAP = 12,
+        SURFACE_HAIRLINE_ALPHA = 0.40,
+        CARD_TOP_HIGHLIGHT_ALPHA = 0.30,
+        CARD_BOTTOM_SHADE_ALPHA = 0.22,
+
+        --- Nav tab glyphs: Blizzard atlases first (`UI_ApplyMainNavTabGlyph`); packaged `Media/*.tga` only if SetAtlas fails.
         TAB_ICON_SIZE = 18,
         TAB_ICON_LEFT_INSET = 8,
         TAB_ICON_GAP = 6,
         TAB_ICON_RIGHT_MARGIN = 8,
         --- Horizontal strip reserved for optional "(N)" tab counts (currency/rep).
         TAB_COUNT_RESERVE = 28,
+        --- Reserved for layouts that want fixed pill widths; default `top` nav uses dynamic width (`Modules/UI.lua`).
+        TOP_TAB_UNIFORM_WIDTH = 112,
         --- `WindowFactory` external dialogs (`CreateExternalWindow`): inner side padding vs main shell.
         EXTERNAL_DIALOG_SIDE_INSET = 8,
         --- Header band height for external dialogs (distinct from compact main `HEADER_BAR_HEIGHT`).
@@ -453,16 +586,28 @@ local UI_SPACING = {
         TRY_COUNT_POPUP_HEADER_HEIGHT = 32,
         --- `RecipeCompanionWindow`: draggable title band (narrower than `HEADER_BAR_HEIGHT`).
         RECIPE_COMPANION_HEADER_HEIGHT = 32,
-        --- BackdropTemplate / SetBackdrop tint targets (Midnight FrameXML docs: warcraft.wiki.gg BackdropTemplate).
-        --- Blizzard tooltip chrome: subtle rounded corners; colors come from SetBackdropColor + SetBackdropBorderColor.
+        --- Root shell: flat fill only (no tooltip 9-slice edge).
         MAIN_FRAME_BACKDROP = {
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 256,
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            insets = { left = 0, right = 0, top = 0, bottom = 0 },
         },
+        NAV_RAIL_ICON_INSET = 8,
+
+        --- Main scroll viewport inner rim (`viewportBorder`): atlas/tile UNDER the 1px border quartet.
+        --- When `sliceData` exists on the chosen atlas, `TextureBase:SetTextureSliceMargins` is applied (nine-slice); effect is subtle at low alpha.
+        VIEWPORT_UNDERLAY_EDGE_INSET = 1,
+        VIEWPORT_UNDERLAY_VERTEX_ALPHA = 0.52,
+        VIEWPORT_UNDERLAY_FALLBACK_TEXTURE = "Interface\\Tooltips\\UI-Tooltip-Background",
+        --- First atlas with `GetAtlasInfo` (+ optional `sliceData`) wins; reorder to adjust look (no per-row cost).
+        VIEWPORT_ATLAS_CANDIDATES = {
+            "collections-background-pearl",
+            "collections-background-parchment",
+            "auctionhouse-background-index",
+        },
+        --- Collapsible / Factory section headers + `CreateSection` card shells: shared atlas probe as viewport, lower alpha.
+        SECTION_HEADER_UNDERLAY_EDGE_INSET = 1,
+        SECTION_HEADER_UNDERLAY_VERTEX_ALPHA = 0.42,
+        --- Omit or `{}` to reuse `VIEWPORT_ATLAS_CANDIDATES`.
     },
 }
 
@@ -483,7 +628,7 @@ function ns.UI_GetMainScrollLayoutHints()
         scrollGap = ms.SCROLL_GAP or 2,
         viewportBorderInset = ms.VIEWPORT_BORDER_INSET or 1,
         scrollbarColumnWidth = L.SCROLLBAR_COLUMN_WIDTH or 26,
-        horizontalLaneBottomOffset = ms.H_BAR_BOTTOM_OFFSET or 6,
+        horizontalLaneBottomOffset = ms.H_BAR_BOTTOM_OFFSET or 2,
         statisticsMinScrollChildWidth = ms.STATISTICS_MIN_SCROLL_CHILD_WIDTH_FOR_THREE_CARDS or 740,
     }
 end
@@ -506,15 +651,256 @@ function ns.UI_GetVerticalScrollbarLaneReserve()
 end
 
 --============================================================================
--- COLLAPSE / EXPAND CHEVRON (shared control — single Button, one texture, state = atlas)
+-- PACKAGED UI ICONS (Media/*.tga — vertex-tinted stroke art)
+--============================================================================
+
+local WN_ICON_PATHS = nil
+
+--- Packaged WN action icons: white when idle, yellow when active, grey only when disabled (completed / locked).
+ns.WN_ICON_VERTEX_WHITE = { 1, 1, 1, 1 }
+ns.WN_ICON_VERTEX_YELLOW = { 1, 0.88, 0.08, 1 }
+ns.WN_ICON_VERTEX_RED = { 1, 0.28, 0.22, 1 }
+ns.WN_ICON_VERTEX_DISABLED = { 0.45, 0.48, 0.52, 0.75 }
+
+function ns.UI_WnIconVertexForState(active, disabled)
+    if disabled then
+        return ns.WN_ICON_VERTEX_DISABLED
+    end
+    if active then
+        return ns.WN_ICON_VERTEX_YELLOW
+    end
+    return ns.WN_ICON_VERTEX_WHITE
+end
+
+--- Vertex tint: todo/alert/track/pin — active=yellow, idle=white; delete/block=red; disabled=grey.
+function ns.UI_WnIconVertexForKey(iconKey, active, disabled)
+    if disabled then
+        return ns.WN_ICON_VERTEX_DISABLED
+    end
+    if iconKey == "delete" or iconKey == "block" then
+        return ns.WN_ICON_VERTEX_RED
+    end
+    if active then
+        return ns.WN_ICON_VERTEX_YELLOW
+    end
+    return ns.WN_ICON_VERTEX_WHITE
+end
+
+--- Apply WN packaged icon with canonical active/idle/disabled coloring (never desaturate idle white).
+function ns.UI_ApplyWnActionIcon(tex, iconKey, active, disabled)
+    if not tex or not iconKey then return false end
+    disabled = disabled == true
+    active = active == true and not disabled
+    local vc = ns.UI_WnIconVertexForKey(iconKey, active, disabled)
+    return ns.UI_SetWnIconTexture(tex, iconKey, {
+        vertexColor = vc,
+        desaturate = disabled,
+    })
+end
+
+local function GetWnIconPaths()
+    if WN_ICON_PATHS then return WN_ICON_PATHS end
+    local C = ns.Constants
+    WN_ICON_PATHS = {
+        todo = (C and C.WN_ICON_TODO) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Todo.tga",
+        reminder = (C and C.WN_ICON_REMINDER) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Reminder.tga",
+        alert = (C and C.WN_ICON_REMINDER) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Reminder.tga",
+        pin = (C and C.WN_ICON_PIN) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Pin.tga",
+        track = (C and C.WN_ICON_PIN) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Pin.tga",
+        block = (C and C.WN_ICON_BLOCK) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Block.tga",
+        delete = (C and C.WN_ICON_BLOCK) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Block.tga",
+        chevron_up = (C and C.WN_ICON_CHEVRON_UP) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronUp.tga",
+        chevron_down = (C and C.WN_ICON_CHEVRON_DOWN) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronDown.tga",
+        link = (C and C.WN_ICON_LINK) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Link.tga",
+    }
+    return WN_ICON_PATHS
+end
+
+--- Apply a packaged WN icon texture. `iconKey`: todo | alert | reminder | track | pin | delete | block | chevron_* | link
+--- opts: vertexColor {r,g,b,a?}, desaturate bool, texCoord {l,r,t,b} (optional)
+function ns.UI_SetWnIconTexture(tex, iconKey, opts)
+    if not tex or not iconKey then return false end
+    opts = type(opts) == "table" and opts or {}
+    local paths = GetWnIconPaths()
+    local path = paths[iconKey]
+    if not path then return false end
+    tex:SetTexture(path)
+    local tc = opts.texCoord
+    if tc and #tc >= 4 then
+        tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
+    else
+        tex:SetTexCoord(0, 1, 0, 1)
+    end
+    if opts.desaturate then
+        tex:SetDesaturated(true)
+    else
+        tex:SetDesaturated(false)
+    end
+    local vc = opts.vertexColor
+    if vc then
+        tex:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 1)
+    else
+        tex:SetVertexColor(1, 1, 1, 1)
+    end
+    tex:SetSnapToPixelGrid(false)
+    tex:SetTexelSnappingBias(0)
+    return true
+end
+
+--- Anchor a square header action on the right edge, vertically centered on `headerFrame` (y=0).
+function ns.UI_PlansAnchorHeaderAction(control, headerFrame, fromRight, width)
+    if not control or not headerFrame then return end
+    width = width or (control.GetWidth and control:GetWidth()) or 24
+    fromRight = fromRight or 6
+    control:ClearAllPoints()
+    control:SetPoint("RIGHT", headerFrame, "RIGHT", -fromRight, 0)
+end
+
+--- Chain header controls right-to-left with uniform gap; each control vertically centered on `headerFrame`.
+function ns.UI_PlansChainHeaderActions(headerFrame, controls, opts)
+    if not headerFrame or not controls or #controls == 0 then return end
+    opts = type(opts) == "table" and opts or {}
+    local gap = opts.gap or 8
+    local fromRight = opts.fromRight or 6
+    local prev
+    for ci = 1, #controls do
+        local ctrl = controls[ci]
+        if ctrl then
+            ctrl:ClearAllPoints()
+            if prev then
+                ctrl:SetPoint("RIGHT", prev, "LEFT", -gap, 0)
+            else
+                ctrl:SetPoint("RIGHT", headerFrame, "RIGHT", -fromRight, 0)
+            end
+            prev = ctrl
+        end
+    end
+end
+
+--- Gap between sibling data rows (not headers/sections). See `UI_LAYOUT.dataRowGap`.
+function ns.UI_DataRowGap()
+    local layout = ns.UI_LAYOUT or {}
+    return layout.dataRowGap or 4
+end
+
+--- Scroll stride for one data row: paint height + row-only gap.
+function ns.UI_DataRowStride(rowPaintHeight)
+    local layout = ns.UI_LAYOUT or {}
+    local h = rowPaintHeight or layout.rowHeight or 26
+    return h + (layout.dataRowGap or 4)
+end
+
+--- Measured inner width for list chrome (headers/sections) inside a scroll child or results container.
+function ns.UI_ResolveListContentWidth(scrollChild, fallbackWidth, extraPad)
+    extraPad = extraPad or 0
+    local pw = scrollChild and scrollChild.GetWidth and scrollChild:GetWidth()
+    if pw and pw > 1 then
+        return math.max(80, math.floor(pw - extraPad))
+    end
+    return fallbackWidth or 260
+end
+
+--- Flush section header to wrap edges (no extra side inset — parent scroll/results already has tab margin).
+---@param header Frame
+---@param wrap Frame
+---@param stackW number|nil explicit width; else wrap:GetWidth()
+function ns.UI_AnchorSectionHeaderInWrap(header, wrap, stackW)
+    if not header or not wrap then return end
+    local w = stackW
+    if not w or w < 1 then
+        w = wrap.GetWidth and wrap:GetWidth()
+    end
+    w = math.max(1, w or 1)
+    header:ClearAllPoints()
+    header:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
+    if header.SetWidth then
+        header:SetWidth(w)
+    end
+end
+
+--- Clamp virtual-list row paint width so TOPRIGHT anchors stay inside the list body.
+function ns.UI_ClampRowPaintWidth(rowParent, xOffset, requestedWidth, rightPad)
+    local pw = rowParent and rowParent.GetWidth and rowParent:GetWidth()
+    if not pw or pw < 1 then
+        return requestedWidth
+    end
+    return math.max(1, math.min(requestedWidth or pw, pw - (xOffset or 0) - (rightPad or 4)))
+end
+
+--- Square icon action button (reminder / track / delete / todo / link).
+function ns.UI_CreateIconActionButton(parent, size, iconKey, opts)
+    if not parent or not iconKey then return nil end
+    opts = type(opts) == "table" and opts or {}
+    size = size or 24
+    local btn = ns.UI.Factory and ns.UI.Factory.CreateButton and ns.UI.Factory:CreateButton(parent, size, size, true)
+    if not btn then
+        btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetSize(size, size)
+    end
+    local tex = btn._wnIconTex
+    if not tex then
+        tex = btn:CreateTexture(nil, "OVERLAY")
+        btn._wnIconTex = tex
+    end
+    tex:ClearAllPoints()
+    local PCM = ns.UI_PLANS_CARD_METRICS
+    local pad = opts.iconInset or (PCM and PCM.plansActionIconInset) or math.max(3, math.floor(size * 0.14))
+    local iconSz = math.max(12, size - pad * 2)
+    tex:SetSize(iconSz, iconSz)
+    tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    local disabled = opts.disabled == true
+    local active = opts.active == true and not disabled
+    btn._wnIconKey = iconKey
+    btn._wnIconActive = active
+    btn._wnIconDisabled = disabled
+    function btn:WnRefreshIconAction(refActive, refDisabled)
+        refDisabled = refDisabled == true
+        refActive = refActive == true and not refDisabled
+        self._wnIconActive = refActive
+        self._wnIconDisabled = refDisabled
+        local t = self._wnIconTex
+        if t and ns.UI_ApplyWnActionIcon then
+            ns.UI_ApplyWnActionIcon(t, self._wnIconKey or iconKey, refActive, refDisabled)
+        end
+    end
+    btn:WnRefreshIconAction(active, disabled)
+    if opts.frameLevelOffset and btn.SetFrameLevel then
+        btn:SetFrameLevel(parent:GetFrameLevel() + opts.frameLevelOffset)
+    end
+    if opts.onClick then
+        btn:RegisterForClicks("LeftButtonUp")
+        btn:SetScript("OnClick", opts.onClick)
+    end
+    if opts.tooltipTitle and ns.TooltipService and ns.TooltipService.Show then
+        btn:SetScript("OnEnter", function(self)
+            ns.TooltipService:Show(self, {
+                type = "custom",
+                title = opts.tooltipTitle,
+                icon = false,
+                anchor = opts.tooltipAnchor or "ANCHOR_RIGHT",
+                lines = opts.tooltipLines or {},
+            })
+        end)
+        btn:SetScript("OnLeave", function()
+            if ns.TooltipService.Hide then ns.TooltipService:Hide() end
+        end)
+    end
+    return btn
+end
+
+--============================================================================
+-- COLLAPSE / EXPAND CHEVRON (shared control — single Button, one texture, state = packaged icon)
 --============================================================================
 
 local function WnCollapseExpandApply(tex, isExpanded)
     if not tex then return end
-    local sp = UI_SPACING
-    local up = sp.COLLAPSE_EXPAND_ATLAS_EXPANDED
-    local down = sp.COLLAPSE_EXPAND_ATLAS_COLLAPSED
-    tex:SetAtlas(isExpanded and up or down, false)
+    local key = isExpanded and "chevron_up" or "chevron_down"
+    if not ns.UI_SetWnIconTexture(tex, key, nil) then
+        local sp = UI_SPACING
+        local up = sp.COLLAPSE_EXPAND_ATLAS_EXPANDED
+        local down = sp.COLLAPSE_EXPAND_ATLAS_COLLAPSED
+        tex:SetAtlas(isExpanded and up or down, false)
+    end
 end
 
 function ns.UI_CollapseExpandSetState(btn, isExpanded)
@@ -532,7 +918,7 @@ end
 ---@return Button btn Child has `_wnCollapseTex` (Texture). Mouse defaults to enabled; pass `enableMouse = false` when the parent header handles clicks.
 function ns.UI_CreateCollapseExpandControl(parent, isExpanded, opts)
     opts = type(opts) == "table" and opts or {}
-    local sz = UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE or 22
+    local sz = tonumber(opts.size) or UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE or 22
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(sz, sz)
     local tex = btn:CreateTexture(nil, "ARTWORK")
@@ -565,25 +951,52 @@ end
 local PLANS_GRID_SPACING = UI_SPACING.CARD_GAP or 8
 
 --- @class PlansCardMetrics
+local PLANS_ICON_SCALE = 1.25
+local function PlansMetric(n)
+    return math.max(1, math.floor((n or 0) * PLANS_ICON_SCALE + 0.5))
+end
+
+--- Header action buttons (delete / reminder / track) on plan cards and To-Do rows — single size source.
+function ns.UI_PlansHeaderActionSize()
+    local PCM = ns.UI_PLANS_CARD_METRICS or {}
+    return PCM.todoTypeBadgeSize or PlansMetric(24) or 24
+end
+
 ns.UI_PLANS_CARD_METRICS = {
     gridSpacing = PLANS_GRID_SPACING,
     --- CreateExpandableRow rowData (main To-Do tab + tracker): keep in sync with PlansUI rowData
-    todoIconSize = 41,
-    todoTypeBadgeSize = 24,
-    todoExpandableMinHeight = 60,
-    todoExpandableHeightCap = 68,
+    todoIconSize = PlansMetric(41),
+    todoTypeBadgeSize = PlansMetric(24),
+    todoExpandableMinHeight = PlansMetric(63),
+    todoExpandableHeightCap = PlansMetric(71),
     --- Browse mounts/pets/etc. grid: same icon/badge feel as To-Do; fixed card height for two-column grid
-    browseCardHeight = 105,
-    browseIconTopInset = 10,
-    browseIconLeftInset = 10,
-    browseIconContainerSize = 45,
+    browseCardHeight = PlansMetric(126),
+    --- Vertical gap between To-Do List cards (Currency/Reputation row-gap parity).
+    todoListCardGap = 10,
+    browseCardPadH = 12,
+    plansActionIconInset = 3,
+    browseIconTopInset = PlansMetric(10),
+    browseIconLeftInset = PlansMetric(10),
+    browseIconContainerSize = PlansMetric(45),
+    browseRightRailW = PlansMetric(52),
+    plansChevronSize = PlansMetric(18),
 }
 
---- Half-width column for Plans 2-column grids (`width` = scroll content inner width, e.g. parent:GetWidth() - 20).
+--- Plans / Collections browse grid: card width, spacing, horizontal pad (clamp-safe).
+function ns.UI_PlansCardGridLayout(contentInnerWidth, columns)
+    columns = columns or 2
+    local PCM = ns.UI_PLANS_CARD_METRICS
+    local padH = (PCM and PCM.browseCardPadH) or 12
+    local sp = (PCM and PCM.todoListCardGap) or (PCM and PCM.gridSpacing) or PLANS_GRID_SPACING
+    local w = math.max(200, (contentInnerWidth or 400) - 2 * padH)
+    local cardW = math.max(100, (w - (columns - 1) * sp) / columns)
+    return cardW, sp, padH
+end
+
+--- Half-width column for Plans 2-column grids (`width` = scroll body inner width; use `UI_ResolveMainTabBodyWidth`).
 function ns.UI_PlansCardGridColumnWidth(contentInnerWidth)
-    local w = contentInnerWidth or 400
-    local sp = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.gridSpacing) or PLANS_GRID_SPACING
-    return math.max(100, (w - sp) / 2)
+    local cardW = ns.UI_PlansCardGridLayout(contentInnerWidth, 2)
+    return cardW
 end
 
 --- Collapsed expandable header height (To-Do List + tracker rows); scales slightly with panel width.
@@ -644,8 +1057,18 @@ ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP = 6
 local function RefreshColors()
     -- Update theme-derived colors in-place
     UpdateColorsFromTheme()
+    SyncSemanticColorAliases()
     -- Ensure namespace reference is current
     ns.UI_COLORS = COLORS
+
+    local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local sc = mf and mf.scrollChild
+    if sc and ns.UI_EnsureScrollChildViewportFill then
+        ns.UI_EnsureScrollChildViewportFill(sc)
+    end
+    if sc and ns.UI_RefreshScrollAnnexLayout then
+        ns.UI_RefreshScrollAnnexLayout(sc)
+    end
     
     -- Safety check (use namespace reference)
     if not ns.BORDER_REGISTRY then
@@ -695,6 +1118,14 @@ local function RefreshColors()
             frame.BorderBottom:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
             frame.BorderLeft:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
             frame.BorderRight:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+
+            if frame._wnViewportAtlasUnderlay and ns.UI_RefreshViewportAtlasUnderlayTint then
+                ns.UI_RefreshViewportAtlasUnderlayTint(frame)
+            end
+
+            if frame._wnSectionChromeUnderlay and ns.UI_RefreshSectionChromeUnderlayTint then
+                ns.UI_RefreshSectionChromeUnderlayTint(frame)
+            end
             
             -- Update backdrop color (for headers and other frames with backgrounds)
             if frame.SetBackdropColor and frame._bgType then
@@ -727,26 +1158,40 @@ local function RefreshColors()
         ns.FontManager:RefreshAccentColors()
     end
     
-    -- Update main tab buttons (activeBar highlight and glow) if main frame exists
+    -- Main window chrome: title icon atlas, nav strip metrics, tab backdrops/outline (exported from `Modules/UI.lua`).
     if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
         local f = WarbandNexus.UI.mainFrame
-        
-        if f.tabButtons then
-            for tabKey, btn in pairs(f.tabButtons) do
-                local isActive = f.currentTab == tabKey
-                
-                -- Update activeBar (bottom highlight line)
-                if btn.activeBar then
-                    btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-                end
-                
-                -- Update glow
-                if btn.glow then
-                    btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
+
+        if ns.UI_ApplyMainWindowTitleIcon and f.addonTitleIcon then
+            ns.UI_ApplyMainWindowTitleIcon(f.addonTitleIcon)
+        end
+        if ns.UI_RefreshMainNavTabStrip then
+            ns.UI_RefreshMainNavTabStrip(f)
+        end
+        if ns.UI_UpdateMainFrameTabButtonStates then
+            ns.UI_UpdateMainFrameTabButtonStates(f)
+        elseif f.tabButtons and ns.UI_MAIN_TAB_ORDER then
+            local order = ns.UI_MAIN_TAB_ORDER
+            for ti = 1, #order do
+                local tabKey = order[ti]
+                local btn = f.tabButtons[tabKey]
+                if btn then
+                    local isActive = f.currentTab == tabKey
+
+                    if btn.activeBar then
+                        btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+                    end
+
+                    if btn.glow then
+                        btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
+                    end
                 end
             end
         end
-        
+        if ns.UI_ScrollMainNavEnsureTabVisible and f.currentTab then
+            ns.UI_ScrollMainNavEnsureTabVisible(f, f.currentTab)
+        end
+
         -- Refresh content to update dynamic elements (moved AFTER RefreshAccentColors)
         if f:IsShown() and WarbandNexus.SendMessage then
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
@@ -769,6 +1214,53 @@ local QUALITY_COLORS = {
 -- Export to namespace
 ns.UI_COLORS = COLORS
 ns.UI_QUALITY_COLORS = QUALITY_COLORS
+
+--- PvE upgrade track tier -> |cffRRGGBB| hex (6 digits only; never prefix alpha `ff` — |cff supplies opacity).
+ns.GEAR_UPGRADE_TRACK_TIER_HEX = {
+    Adventurer = "9d9d9d",
+    Explorer   = "9d9d9d",
+    Veteran    = "1eff00",
+    Champion   = "0070dd",
+    Hero       = "a335ee",
+    Myth       = "ff8000",
+}
+
+local function NormalizeColorMarkupHex(hex)
+    if not hex or hex == "" then return "ffffff" end
+    if issecretvalue and issecretvalue(hex) then return "ffffff" end
+    hex = tostring(hex):gsub("^#", ""):lower()
+    if #hex == 8 and hex:sub(1, 2) == "ff" then
+        hex = hex:sub(3, 8)
+    elseif #hex > 6 then
+        hex = hex:sub(-6)
+    end
+    return hex
+end
+
+---@param englishName string|nil Adventurer, Veteran, Champion, Hero, Myth, …
+---@return string|nil six-digit RRGGBB
+function ns.UI_GetUpgradeTrackTierHex(englishName)
+    if not englishName or englishName == "" then return nil end
+    if issecretvalue and issecretvalue(englishName) then return nil end
+    local trimmed = englishName:match("^%s*(.-)%s*$") or englishName
+    return ns.GEAR_UPGRADE_TRACK_TIER_HEX and ns.GEAR_UPGRADE_TRACK_TIER_HEX[trimmed] or nil
+end
+
+--- Safe |cff…|r for upgrade-track labels (gear slots, crest rows).
+---@param englishName string|nil
+---@param displayText string
+---@param fallbackQuality number|nil item quality when track name unknown
+---@return string
+function ns.UI_FormatUpgradeTrackMarkup(englishName, displayText, fallbackQuality)
+    if not displayText or displayText == "" then return "" end
+    if issecretvalue and issecretvalue(displayText) then return displayText end
+    local hex = ns.UI_GetUpgradeTrackTierHex(englishName)
+    if not hex and fallbackQuality ~= nil then
+        hex = GetQualityHex(fallbackQuality)
+    end
+    hex = NormalizeColorMarkupHex(hex or "ffffff")
+    return "|cff" .. hex .. displayText .. "|r"
+end
 
 --============================================================================
 -- FACTORY PATTERN (Service-Oriented Architecture)
@@ -931,81 +1423,654 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     end
 end
 
---- Root shell only (`WarbandNexusFrame`): BackdropTemplate table + vertex tint (BackdropTemplate mixin / wiki.gg).
---- Strips ApplyVisuals 1px overlays so edgeFile borders are not doubled.
-local function ApplyMainWindowShellBackdrop(frame, bgColor, borderColor)
-    if not frame then return end
+--- Pixel border quartet on root shell (accent on all four sides; complements SetBackdrop edgeFile).
+local function ApplyMainWindowShellBorderQuartet(frame, borderColor)
+    if not frame or not borderColor then return end
+    local pixelScale = GetPixelScale(frame)
+    if not frame.BorderTop then
+        frame.BorderTop = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        frame.BorderTop:SetHeight(pixelScale)
+        frame.BorderTop:SetSnapToPixelGrid(false)
+        frame.BorderTop:SetTexelSnappingBias(0)
 
-    if not frame.SetBackdrop then
-        Mixin(frame, BackdropTemplateMixin)
-    end
+        frame.BorderBottom = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        frame.BorderBottom:SetHeight(pixelScale)
 
-    for i = 1, #MAIN_SHELL_BORDER_QUARTET_KEYS do
-        local key = MAIN_SHELL_BORDER_QUARTET_KEYS[i]
-        local tex = frame[key]
-        if tex then
-            tex:Hide()
-            if tex.SetParent then
-                pcall(function() tex:SetParent(nil) end)
-            end
-            frame[key] = nil
-        end
-    end
+        frame.BorderLeft = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        frame.BorderLeft:SetWidth(pixelScale)
 
-    local L = UI_SPACING and UI_SPACING.MAIN_SHELL or {}
-    local cfg = L.MAIN_FRAME_BACKDROP or {}
-    local ins = cfg.insets or {}
-    frame:SetBackdrop({
-        bgFile = cfg.bgFile or "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = cfg.edgeFile or "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = cfg.tile ~= false,
-        tileSize = cfg.tileSize or 256,
-        edgeSize = cfg.edgeSize or 16,
-        insets = {
-            left = ins.left or 4,
-            right = ins.right or 4,
-            top = ins.top or 4,
-            bottom = ins.bottom or 4,
-        },
-    })
-
-    if bgColor then
-        frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
-    end
-    if borderColor then
-        frame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
-    end
-
-    frame._wnMainShellBackdrop = true
-
-    if borderColor then
-        local isAccent = (borderColor[1] > 0.3 or borderColor[2] > 0.3)
-        frame._borderType = isAccent and "accent" or "border"
-        frame._borderAlpha = borderColor[4] or 1
+        frame.BorderRight = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        frame.BorderRight:SetWidth(pixelScale)
     else
-        frame._borderType = "border"
-        frame._borderAlpha = 0.9
+        frame.BorderTop:SetHeight(pixelScale)
+        frame.BorderBottom:SetHeight(pixelScale)
+        frame.BorderLeft:SetWidth(pixelScale)
+        frame.BorderRight:SetWidth(pixelScale)
     end
-
-    if bgColor then
-        local isBgAccent = (bgColor[1] > 0.15 or bgColor[2] > 0.10)
-        frame._bgType = isBgAccent and "accentDark" or "bg"
-        frame._bgAlpha = bgColor[4] or 1
-    else
-        frame._bgType = "bg"
-        frame._bgAlpha = 1
-    end
-
+    local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+    frame.BorderTop:SetVertexColor(r, g, b, a)
+    frame.BorderBottom:SetVertexColor(r, g, b, a)
+    frame.BorderLeft:SetVertexColor(r, g, b, a)
+    frame.BorderRight:SetVertexColor(r, g, b, a)
+    frame.BorderTop:Show()
+    frame.BorderBottom:Show()
+    frame.BorderLeft:Show()
+    frame.BorderRight:Show()
+    frame._borderType = "accent"
+    frame._borderAlpha = a
     if not frame._borderRegistered then
         frame._borderRegistered = true
         table.insert(ns.BORDER_REGISTRY, frame)
     end
 end
 
+--- Hide 1px border quartet on a frame (flat chrome).
+local function HideFrameBorderQuartet(frame)
+    if not frame then return end
+    for bi = 1, #MAIN_SHELL_BORDER_QUARTET_KEYS do
+        local tex = frame[MAIN_SHELL_BORDER_QUARTET_KEYS[bi]]
+        if tex and tex.Hide then
+            tex:Hide()
+        end
+    end
+end
+
+--- Flat panel: WHITE8x8 fill only, no nested border textures.
+local function ApplyBorderlessSurface(frame, bgColor)
+    if not frame then return end
+    if not frame.SetBackdrop then
+        Mixin(frame, BackdropTemplateMixin)
+    end
+    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    if bgColor then
+        frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
+    end
+    HideFrameBorderQuartet(frame)
+    frame._wnBorderlessSurface = true
+end
+
+ns.UI_ApplyBorderlessSurface = ApplyBorderlessSurface
+ns.UI_HideFrameBorderQuartet = HideFrameBorderQuartet
+
+--- Resolve a surface tier color (borderless depth ladder).
+---@param tier string|nil "canvas"|"viewport"|"card"|"section"|"rowEven"|"rowOdd"|"elevated"
+---@return table rgba
+local function ResolveSurfaceTierColor(tier)
+    local C = COLORS or {}
+    if tier == "viewport" then
+        return C.surfaceViewport or C.bg or { 0.078, 0.078, 0.096, 0.98 }
+    elseif tier == "card" or tier == "elevated" then
+        return C.bgCard or C.bgLight or C.bg or { 0.09, 0.09, 0.11, 0.98 }
+    elseif tier == "section" or tier == "headerChrome" then
+        return C.surfaceHeaderChrome or C.bgLight or C.bg or { 0.092, 0.092, 0.112, 0.97 }
+    elseif tier == "rowEven" then
+        return C.surfaceRowEven or UI_SPACING and UI_SPACING.ROW_COLOR_EVEN or { 0.084, 0.084, 0.104, 0.96 }
+    elseif tier == "rowOdd" then
+        return C.surfaceRowOdd or UI_SPACING and UI_SPACING.ROW_COLOR_ODD or { 0.073, 0.073, 0.091, 0.96 }
+    end
+    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
+end
+
+--- Flat fill for a semantic surface tier (no 1px border quartet).
+---@param frame Frame
+---@param tier string|nil
+function ns.UI_ApplySurfaceTier(frame, tier)
+    if not frame then return end
+    local rgba = ResolveSurfaceTierColor(tier)
+    ApplyBorderlessSurface(frame, rgba)
+    frame._wnSurfaceTier = tier or "canvas"
+end
+
+--- 1px accent/neutral separator on a frame edge (replaces box borders for zone splits).
+---@param frame Frame
+---@param edge string|nil "bottom"|"top"
+---@param useAccent boolean|nil
+function ns.UI_EnsureChromeHairline(frame, edge, useAccent)
+    if not frame then return end
+    edge = edge or "bottom"
+    local key = "_wnHairline" .. edge
+    local line = frame[key]
+    if not line then
+        line = frame:CreateTexture(nil, "ARTWORK", nil, 7)
+        frame[key] = line
+    end
+    local shell = (UI_SPACING and UI_SPACING.MAIN_SHELL) or {}
+    local alpha = shell.SURFACE_HAIRLINE_ALPHA or 0.24
+    local ac = COLORS and COLORS.accent or { 0.4, 0.2, 0.58 }
+    if useAccent == false then
+        line:SetColorTexture(1, 1, 1, alpha * 0.35)
+    else
+        line:SetColorTexture(ac[1], ac[2], ac[3], alpha)
+    end
+    line:SetHeight(1)
+    line:ClearAllPoints()
+    if edge == "top" then
+        line:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        line:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    else
+        line:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        line:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    end
+    line:Show()
+end
+
+--- Root shell only (`WarbandNexusFrame`): full-bleed color fill — no `BackdropTemplate` / backdrop insets (avoids side gutters).
+local function ApplyMainWindowShellFill(frame, bgColor, _borderColor)
+    if not frame then return end
+    local c = bgColor or (COLORS and COLORS.bg) or { 0.042, 0.042, 0.055, 0.98 }
+    local tex = frame._wnShellFill
+    if not tex then
+        tex = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+        frame._wnShellFill = tex
+        tex:SetAllPoints()
+    end
+    tex:SetColorTexture(c[1], c[2], c[3], c[4] or 0.98)
+    tex:Show()
+    if frame.SetBackdrop then
+        pcall(frame.SetBackdrop, frame, nil)
+    end
+    HideFrameBorderQuartet(frame)
+    frame._wnMainShellBackdrop = true
+    frame._wnBorderlessSurface = true
+    frame._bgType = "bg"
+    frame._bgAlpha = c[4] or 0.98
+end
+
+--- Legacy name: routes to flat fill (no `BackdropTemplate`).
+local function ApplyMainWindowShellBackdrop(frame, bgColor, borderColor)
+    ApplyMainWindowShellFill(frame, bgColor, borderColor)
+end
+
 -- Export to namespace
 ns.UI_ApplyVisuals = ApplyVisuals
+ns.UI_ApplyMainWindowShellFill = ApplyMainWindowShellFill
 ns.UI_ApplyMainWindowShellBackdrop = ApplyMainWindowShellBackdrop
 ns.UI_ResetPixelScale = ResetPixelScale
+
+--- Compact rail width for main shell body (below header): ratio of inner width, clamped.
+---@param innerBodyWidth number Usable width below header (frame width minus chrome insets).
+---@param shell table|nil MAIN_SHELL layout slice
+---@return number railWidth
+function ns.UI_ComputeGoldenRailWidth(innerBodyWidth, shell)
+    shell = shell or (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local ratio = shell.NAV_RAIL_WIDTH_RATIO or 0.17
+    local minW = shell.NAV_RAIL_WIDTH_MIN or 148
+    local maxW = shell.NAV_RAIL_WIDTH_MAX or 192
+    local usable = math.max(360, tonumber(innerBodyWidth) or 800)
+    local railW = math.floor(usable * ratio + 0.5)
+    if railW < minW then railW = minW end
+    if railW > maxW then railW = maxW end
+    return railW
+end
+
+--- Unified scroll-area metrics for tab painters (header, results, cards).
+---@param mainFrame Frame|nil
+---@return table|nil metrics { contentWidth, sideMargin, topMargin, sectionGap }
+function ns.UI_GetMainTabLayoutMetrics(mainFrame)
+    if not mainFrame then return nil end
+    local layout = ns.UI_LAYOUT or {}
+    local shell = layout.MAIN_SHELL or {}
+    local scroll = layout.MAIN_SCROLL or {}
+    local side = shell.CONTENT_PAD_X or scroll.CONTENT_PAD_X or layout.SIDE_MARGIN or 12
+    local titleTopGap = shell.TAB_CHROME_TITLE_TOP_GAP or layout.TAB_CHROME_TITLE_TOP_GAP or 0
+    local top = (shell.CONTENT_PAD_TOP or scroll.CONTENT_PAD_TOP or layout.topMargin or 0) + titleTopGap
+    local gap = shell.CONTENT_SECTION_GAP or layout.SECTION_SPACING or 10
+    local contentW = (ns.UI_GetMainScrollContentWidth and ns.UI_GetMainScrollContentWidth(mainFrame)) or 600
+    local titleH = layout.TITLE_CARD_DEFAULT_HEIGHT or 64
+    local blockGap = layout.TAB_CHROME_BLOCK_GAP or 8
+    local scrollTop = layout.TAB_CHROME_SCROLL_TOP or 8
+    local bottomPad = layout.TAB_CHROME_CONTENT_BOTTOM_PAD or 12
+    return {
+        contentWidth = contentW,
+        bodyWidth = math.max(200, contentW - side * 2),
+        sideMargin = side,
+        topMargin = top,
+        sectionGap = gap,
+        cardGap = layout.CARD_GAP or 10,
+        titleCardHeight = titleH,
+        blockGap = blockGap,
+        scrollTop = scrollTop,
+        contentBottomPad = bottomPad,
+        goldenRatio = shell.GOLDEN_RATIO or 1.6180339887,
+    }
+end
+
+--- Top inset inside Items resultsContainer before list or empty card (parity across Bags / Warband / Guild).
+---@param baseYOffset number|nil
+---@return number
+function ns.UI_ItemsResultsTopGap(baseYOffset)
+    local layout = ns.UI_LAYOUT or {}
+    return (baseYOffset or 0) + (layout.SECTION_SPACING or 8)
+end
+
+--- Symmetric horizontal inset for tab body (MAIN_SHELL.CONTENT_PAD_X / SIDE_MARGIN).
+---@return number
+function ns.UI_GetTabSideMargin()
+    local layout = ns.UI_LAYOUT or {}
+    local shell = layout.MAIN_SHELL or {}
+    local scroll = layout.MAIN_SCROLL or {}
+    return shell.CONTENT_PAD_X or scroll.CONTENT_PAD_X or layout.SIDE_MARGIN or layout.sideMargin or 12
+end
+
+--- Scroll viewport width (between scroll chrome). Replaces legacy full-width guesses.
+---@param mainFrame Frame|nil
+---@param parent Frame|nil scrollChild fallback when metrics unavailable
+---@return number contentWidth
+---@return table|nil metrics
+function ns.UI_ResolveMainTabContentWidth(mainFrame, parent)
+    if mainFrame and ns.UI_GetMainTabLayoutMetrics then
+        local m = ns.UI_GetMainTabLayoutMetrics(mainFrame)
+        if m and m.contentWidth and m.contentWidth > 0 then
+            return m.contentWidth, m
+        end
+    end
+    if mainFrame and ns.UI_GetMainScrollContentWidth then
+        local vw = ns.UI_GetMainScrollContentWidth(mainFrame)
+        if vw and vw > 0 then
+            return vw, nil
+        end
+    end
+    if parent and parent.GetWidth then
+        local pw = parent:GetWidth()
+        if pw and pw > 0 then
+            return pw, nil
+        end
+    end
+    return 600, nil
+end
+
+--- Inner body width after symmetric side insets (`bodyWidth` in metrics). Replaces `parent:GetWidth() - 20`.
+---@param mainFrame Frame|nil
+---@param parent Frame|nil
+---@return number bodyWidth
+---@return table|nil metrics
+function ns.UI_ResolveMainTabBodyWidth(mainFrame, parent)
+    if mainFrame and ns.UI_GetMainTabLayoutMetrics then
+        local m = ns.UI_GetMainTabLayoutMetrics(mainFrame)
+        if m and m.bodyWidth and m.bodyWidth > 0 then
+            return m.bodyWidth, m
+        end
+        if m and m.contentWidth and m.contentWidth > 0 then
+            local side = m.sideMargin or ns.UI_GetTabSideMargin()
+            return math.max(200, m.contentWidth - side * 2), m
+        end
+    end
+    local side = ns.UI_GetTabSideMargin()
+    local contentW = (ns.UI_ResolveMainTabContentWidth(mainFrame, parent))
+    return math.max(200, contentW - side * 2), nil
+end
+
+--- List paint width inside `resultsContainer` (incremental redraw / Draw*List).
+---@param mainFrame Frame|nil
+---@param resultsContainer Frame|nil
+---@return number
+function ns.UI_ResolveResultsContainerPaintWidth(mainFrame, resultsContainer)
+    if resultsContainer and resultsContainer.GetWidth then
+        local rw = resultsContainer:GetWidth()
+        if rw and rw > 1 then
+            return rw
+        end
+    end
+    local scrollChild = mainFrame and mainFrame.scrollChild
+    return ns.UI_ResolveMainTabBodyWidth(mainFrame, scrollChild)
+end
+
+--- Begin fixedHeader layout pass for a tab (unified top inset + side margins).
+---@param mainFrame Frame|nil
+---@return table|nil chrome { mainFrame, headerParent, metrics, yOffset, side }
+function ns.UI_BeginTabChromeLayout(mainFrame)
+    if not mainFrame then return nil end
+    local headerParent = mainFrame.fixedHeader
+    if not headerParent then return nil end
+    local metrics = ns.UI_GetMainTabLayoutMetrics(mainFrame)
+    if not metrics then return nil end
+    return {
+        mainFrame = mainFrame,
+        headerParent = headerParent,
+        metrics = metrics,
+        yOffset = metrics.topMargin or 0,
+        side = metrics.sideMargin or 12,
+    }
+end
+
+--- Anchor a title card on the fixedHeader chrome row.
+function ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    if not titleCard or not chrome or not chrome.headerParent then return end
+    local y = chrome.yOffset or 0
+    local side = chrome.side or 12
+    titleCard:ClearAllPoints()
+    titleCard:SetPoint("TOPLEFT", chrome.headerParent, "TOPLEFT", side, -y)
+    titleCard:SetPoint("TOPRIGHT", chrome.headerParent, "TOPRIGHT", -side, -y)
+end
+
+--- Advance chrome Y after a fixedHeader block (title card, sub-tab bar, search row, …).
+---@param yOffset number
+---@param blockHeight number|nil
+---@param gapAfter number|nil
+---@return number
+function ns.UI_AdvanceTabChromeYOffset(yOffset, blockHeight, gapAfter)
+    local sp = UI_SPACING or {}
+    gapAfter = gapAfter or sp.TAB_CHROME_BLOCK_GAP or 8
+    return (yOffset or 0) + (blockHeight or 0) + gapAfter
+end
+
+--- Commit fixedHeader height after laying out chrome blocks.
+---@param mainFrame Frame|nil
+---@param yOffset number
+---@return number
+function ns.UI_CommitTabFixedHeader(mainFrame, yOffset)
+    if mainFrame and mainFrame.fixedHeader then
+        mainFrame.fixedHeader:SetHeight(math.max(1, yOffset or 1))
+        local fh = mainFrame.fixedHeader
+        if fh._wnHairlinebottom and fh._wnHairlinebottom.Hide then
+            fh._wnHairlinebottom:Hide()
+        end
+    end
+    return yOffset or 0
+end
+
+--- First Y offset inside scrollChild for tab body content (below fixedHeader).
+---@return number
+function ns.UI_GetTabScrollContentStartY()
+    local sp = UI_SPACING or {}
+    return sp.TAB_CHROME_SCROLL_TOP or 8
+end
+
+--- Scroll child bottom padding (PopulateContent post-layout).
+---@return number
+function ns.UI_GetTabScrollContentBottomPad()
+    local sp = UI_SPACING or {}
+    return sp.TAB_CHROME_CONTENT_BOTTOM_PAD or 12
+end
+
+--- Scroll body height between fixedHeader and footer (viewport minus top/bottom chrome insets).
+---@param mainFrame Frame|nil
+---@return number
+function ns.UI_GetMainTabScrollBodyHeight(mainFrame)
+    if not mainFrame or not mainFrame.scroll then return 0 end
+    local viewportH = mainFrame.scroll:GetHeight() or 0
+    if viewportH < 2 and mainFrame.fixedHeader then
+        local fhBot = mainFrame.fixedHeader:GetBottom()
+        local sb = mainFrame.scroll:GetBottom()
+        if fhBot and sb and fhBot > sb then
+            viewportH = fhBot - sb
+        end
+    end
+    local scrollTop = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local bottomPad = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
+    return math.max(0, viewportH - scrollTop - bottomPad)
+end
+
+--- Rail tab active / idle visuals (subtle outer glow on selected tab).
+---@param btn Button
+---@param isActive boolean
+---@param accentColor table|nil {r,g,b}
+function ns.UI_ApplyRailTabActiveVisuals(btn, isActive, accentColor)
+    if not btn or not btn._wnRailTextMode then return end
+    local shell = (UI_SPACING and UI_SPACING.MAIN_SHELL) or {}
+    local ac = accentColor or (COLORS and COLORS.accent) or { 0.6, 0.4, 1 }
+    local glow = btn._wnRailActiveGlow
+    local glowInner = btn._wnRailActiveGlowInner
+    if isActive then
+        -- Text rail already paints a flat active backdrop on the button; stacked halos read as dual-tone (e.g. Gear tab).
+        if glow then glow:Hide() end
+        if glowInner then glowInner:Hide() end
+    else
+        if glow then glow:Hide() end
+        if glowInner then glowInner:Hide() end
+    end
+end
+
+--- Scroll viewport width for active main tab (after golden rail + insets).
+---@param mainFrame Frame|nil
+---@return number
+--- Shell / content / scroll canvas background (unified panel tone).
+---@return table {r,g,b,a}
+function ns.UI_GetMainPanelBackgroundColor()
+    local C = COLORS or ns.UI_COLORS
+    return (C and C.bg) or { 0.042, 0.042, 0.055, 0.98 }
+end
+
+--- Live viewport width for responsive tab layout (scroll frame, not frozen scrollChild).
+--- Prefer over `scrollChild:GetWidth()` during corner-drag resize sessions.
+function ns.UI_GetMainTabViewportWidth(mainFrame)
+    return (ns.UI_GetMainScrollContentWidth and ns.UI_GetMainScrollContentWidth(mainFrame)) or 0
+end
+
+function ns.UI_GetMainScrollContentWidth(mainFrame)
+    if not mainFrame then return 0 end
+    if mainFrame.scroll and mainFrame.scroll.GetWidth then
+        local w = mainFrame.scroll:GetWidth()
+        if w and w > 0 then return w end
+    end
+    if mainFrame.scrollChild and mainFrame.scrollChild.GetWidth then
+        local w = mainFrame.scrollChild:GetWidth()
+        if w and w > 0 then return w end
+    end
+    if mainFrame.content and mainFrame.content.GetWidth then
+        local layout = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+        local gap = layout.NAV_RAIL_CONTENT_GAP or 10
+        local reserve = 32 + gap
+        return math.max(200, (mainFrame.content:GetWidth() or 0) - reserve)
+    end
+    return 600
+end
+
+--- Shader nineslice margins on a long-lived Texture/TextureBase (`TextureBase:SetTextureSliceMargins`, 10.2.0+, warcraft.wiki.gg).
+--- Do not call per pooled list row — prefer Blizzard atlas slice metadata or one chrome texture per shell.
+---@return boolean ok
+function ns.UI_SetTextureSliceMarginsSafe(tex, left, top, right, bottom)
+    if not tex then return false end
+    local fn = tex.SetTextureSliceMargins
+    if type(fn) ~= "function" then return false end
+    return select(1, pcall(fn, tex, left, top, right, bottom))
+end
+
+--- Undo `SetTextureSliceMargins` when reusing a pooled texture (`TextureBase:ClearTextureSlice`).
+---@return boolean ok
+function ns.UI_ClearTextureSliceSafe(tex)
+    if not tex then return false end
+    local fn = tex.ClearTextureSlice
+    if type(fn) ~= "function" then return false end
+    return select(1, pcall(fn, tex))
+end
+
+--- Shared atlas/tile mid-layer (viewport + section chrome); one texture per frame.
+---@param frame Frame
+---@param texKey string
+---@param nameKey string
+---@param inset number
+---@param candidates string[]|nil
+---@param fallbackTex string|nil
+local function WnApplyAtlasChromeUnderlayCore(frame, texKey, nameKey, inset, candidates, fallbackTex)
+    if not frame or not texKey or not nameKey then return end
+
+    local tex = frame[texKey]
+    if not tex then
+        tex = frame:CreateTexture(nil, "BORDER")
+        frame[texKey] = tex
+        tex:SetSnapToPixelGrid(false)
+        tex:SetTexelSnappingBias(0)
+        tex:SetDrawLayer("BORDER", -8)
+    end
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
+    tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
+
+    local C_tex = C_Texture
+    local atlasOk = false
+
+    if type(candidates) == "table" and C_tex and type(C_tex.GetAtlasInfo) == "function" then
+        local nCand = #candidates
+        for ci = 1, nCand do
+            local name = candidates[ci]
+            if type(name) == "string" and name ~= "" then
+                local okMeta, meta = pcall(C_tex.GetAtlasInfo, C_tex, name)
+                if okMeta and type(meta) == "table" and (meta.file or meta.width or meta.filename) then
+                    ns.UI_ClearTextureSliceSafe(tex)
+                    local okAtlas = pcall(function()
+                        tex:SetAtlas(name, false)
+                    end)
+                    if okAtlas then
+                        local fnHx = tex.SetHorizTile
+                        if type(fnHx) == "function" then
+                            pcall(fnHx, tex, false)
+                        end
+                        local fnVx = tex.SetVertTile
+                        if type(fnVx) == "function" then
+                            pcall(fnVx, tex, false)
+                        end
+                        local sd = meta.sliceData
+                        if type(sd) == "table" then
+                            local ml, mt, mr, mb = sd.marginLeft, sd.marginTop, sd.marginRight, sd.marginBottom
+                            if type(ml) == "number" and type(mt) == "number" and type(mr) == "number" and type(mb) == "number" then
+                                ns.UI_SetTextureSliceMarginsSafe(tex, ml, mt, mr, mb)
+                            else
+                                ns.UI_ClearTextureSliceSafe(tex)
+                            end
+                        else
+                            ns.UI_ClearTextureSliceSafe(tex)
+                        end
+                        frame[nameKey] = name
+                        atlasOk = true
+                        break
+                    end
+                    ns.UI_ClearTextureSliceSafe(tex)
+                end
+            end
+        end
+    end
+
+    if not atlasOk then
+        frame[nameKey] = nil
+        ns.UI_ClearTextureSliceSafe(tex)
+        tex:SetTexture(fallbackTex or "Interface\\Tooltips\\UI-Tooltip-Background")
+        local fnH = tex.SetHorizTile
+        if type(fnH) == "function" then
+            pcall(fnH, tex, true)
+        end
+        local fnV = tex.SetVertTile
+        if type(fnV) == "function" then
+            pcall(fnV, tex, true)
+        end
+        tex:SetTexCoord(0, 1, 0, 1)
+    end
+end
+
+---@param frame Frame
+---@param texKey string
+---@param alphaShellKey string
+local function WnRefreshAtlasChromeUnderlayTint(frame, texKey, alphaShellKey)
+    local tex = frame and texKey and frame[texKey]
+    if not tex or not alphaShellKey then return end
+
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local shell = layout.MAIN_SHELL or {}
+    local baseA = tonumber(shell[alphaShellKey])
+    if not baseA or baseA < 0 then
+        baseA = (alphaShellKey == "SECTION_HEADER_UNDERLAY_VERTEX_ALPHA") and 0.34 or 0.44
+    end
+
+    local bgcol = COLORS and COLORS.bg or { 0.04, 0.04, 0.05, 1 }
+    local accent = COLORS and COLORS.accent or { 0.25, 0.55, 0.98 }
+
+    local r = bgcol[1] * 1.08 + accent[1] * 0.10
+    local g = bgcol[2] * 1.08 + accent[2] * 0.10
+    local b = bgcol[3] * 1.08 + accent[3] * 0.10
+    if r > 1 then r = 1 end
+    if g > 1 then g = 1 end
+    if b > 1 then b = 1 end
+
+    tex:SetVertexColor(r, g, b, baseA > 1 and 1 or baseA)
+end
+
+--- Theme tint for `UI_ApplyViewportAtlasUnderlay` mid-layer (`ns.UI_RefreshColors`).
+---@param frame Frame
+function ns.UI_RefreshViewportAtlasUnderlayTint(frame)
+    WnRefreshAtlasChromeUnderlayTint(frame, "_wnViewportAtlasUnderlay", "VIEWPORT_UNDERLAY_VERTEX_ALPHA")
+end
+
+--- Theme tint for section / card atlas underlay (`ns.UI_RefreshColors`).
+---@param frame Frame
+function ns.UI_RefreshSectionChromeUnderlayTint(frame)
+    WnRefreshAtlasChromeUnderlayTint(frame, "_wnSectionChromeUnderlay", "SECTION_HEADER_UNDERLAY_VERTEX_ALPHA")
+end
+
+--- Main viewport mid-layer atlas/tile (`viewportBorder`): `C_Texture.GetAtlasInfo` + `sliceData` -> SetTextureSliceMargins (TextureBase wiki); fallback tooltip tile + tint.
+---@param frame Frame
+function ns.UI_ApplyViewportAtlasUnderlay(frame)
+    if not frame then return end
+
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local shell = layout.MAIN_SHELL or {}
+    local inset = tonumber(shell.VIEWPORT_UNDERLAY_EDGE_INSET) or 1
+    if inset < 0 then inset = 0 end
+
+    WnApplyAtlasChromeUnderlayCore(
+        frame,
+        "_wnViewportAtlasUnderlay",
+        "_wnViewportAtlasUnderlayName",
+        inset,
+        shell.VIEWPORT_ATLAS_CANDIDATES,
+        shell.VIEWPORT_UNDERLAY_FALLBACK_TEXTURE or "Interface\\Tooltips\\UI-Tooltip-Background"
+    )
+    ns.UI_RefreshViewportAtlasUnderlayTint(frame)
+end
+
+--- Collapsible headers, Factory section headers, `CreateSection` cards: same probe as viewport + lower alpha (`MAIN_SHELL`).
+---@param frame Frame
+function ns.UI_ApplySectionChromeUnderlay(frame)
+    if not frame then return end
+
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local shell = layout.MAIN_SHELL or {}
+    local inset = tonumber(shell.SECTION_HEADER_UNDERLAY_EDGE_INSET) or 1
+    if inset < 0 then inset = 0 end
+
+    local cand = shell.SECTION_HEADER_ATLAS_CANDIDATES
+    if type(cand) ~= "table" or #cand < 1 then
+        cand = shell.VIEWPORT_ATLAS_CANDIDATES
+    end
+
+    WnApplyAtlasChromeUnderlayCore(
+        frame,
+        "_wnSectionChromeUnderlay",
+        "_wnSectionChromeUnderlayName",
+        inset,
+        cand,
+        shell.VIEWPORT_UNDERLAY_FALLBACK_TEXTURE or "Interface\\Tooltips\\UI-Tooltip-Background"
+    )
+    ns.UI_RefreshSectionChromeUnderlayTint(frame)
+end
+
+--- Raised surface + accent border (Plans / To-Do card parity via `ApplyVisuals`).
+local function ApplyStandardCardElevatedChrome(frame)
+    if not frame or not COLORS or not ApplyVisuals then return end
+    local ac = COLORS.accent
+    local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
+    ApplyVisuals(frame, bg, { ac[1], ac[2], ac[3], 0.7 })
+    frame._wnBorderlessSurface = nil
+    if frame._wnCardTopHighlight and frame._wnCardTopHighlight.Hide then
+        frame._wnCardTopHighlight:Hide()
+    end
+    if frame._wnCardBottomShade and frame._wnCardBottomShade.Hide then
+        frame._wnCardBottomShade:Hide()
+    end
+end
+
+ns.UI_ApplyStandardCardElevatedChrome = ApplyStandardCardElevatedChrome
 
 --- Apply detail container styling (bg + accent border) using the shared 4-texture border system.
 --- Use for Collections right panel (viewer/detail), or any "detail" panel that should match.
@@ -1154,7 +2219,7 @@ end
 local function CreateResultsContainer(parent, yOffset, sideMargin)
     if not parent then return nil end
     
-    local margin = sideMargin or 10
+    local margin = sideMargin or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
     
     local container = CreateFrame("Frame", nil, parent)
     container:SetPoint("TOPLEFT", margin, -yOffset)
@@ -1172,7 +2237,9 @@ end
 ---@param bottomInset number|nil
 function ns.UI_AnnexResultsToScrollBottom(resultsContainer, scrollParent, sideMargin, bottomInset)
     if not resultsContainer or not scrollParent then return end
-    sideMargin = sideMargin or 10
+    local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and mf.currentTab == "items" then return end
+    sideMargin = sideMargin or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
     bottomInset = bottomInset or 8
     local key = "_wnResultsAnnexSheet"
     local annex = scrollParent[key]
@@ -1183,7 +2250,13 @@ function ns.UI_AnnexResultsToScrollBottom(resultsContainer, scrollParent, sideMa
         annex:EnableMouse(false)
         local tex = annex:CreateTexture(nil, "BACKGROUND", nil, -6)
         tex:SetAllPoints()
-        tex:SetColorTexture(0.06, 0.06, 0.072, 0.94)
+        annex._wnAnnexTex = tex
+    end
+    annex._wnAnnexAnchorFrame = resultsContainer
+    annex._wnAnnexSideMargin = sideMargin
+    annex._wnAnnexBottomInset = bottomInset
+    if annex._wnAnnexTex and ns.UI_RefreshScrollAnnexChrome then
+        ns.UI_RefreshScrollAnnexChrome(annex)
     end
     annex:SetFrameLevel(math.max(0, (resultsContainer:GetFrameLevel() or 0) - 3))
     annex:ClearAllPoints()
@@ -1192,6 +2265,88 @@ function ns.UI_AnnexResultsToScrollBottom(resultsContainer, scrollParent, sideMa
     annex:SetPoint("BOTTOMLEFT", scrollParent, "BOTTOMLEFT", sideMargin, bottomInset)
     annex:SetPoint("BOTTOMRIGHT", scrollParent, "BOTTOMRIGHT", -sideMargin, bottomInset)
     annex:Show()
+end
+
+--- Full scrollChild canvas fill (viewport tone) so short tabs do not show a dead black band above the footer.
+---@param scrollChild Frame
+function ns.UI_EnsureScrollChildViewportFill(scrollChild)
+    if not scrollChild then return end
+    local fill = scrollChild._wnViewportCanvasFill
+    if not fill then
+        fill = scrollChild:CreateTexture(nil, "BACKGROUND", nil, -8)
+        scrollChild._wnViewportCanvasFill = fill
+    end
+    fill:ClearAllPoints()
+    fill:SetAllPoints(scrollChild)
+    local c = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+        or ResolveSurfaceTierColor("viewport")
+    fill:SetColorTexture(c[1], c[2], c[3], c[4] or 0.98)
+    fill:Show()
+end
+
+--- Characters / list tabs: scrollChild fills viewport between title chrome and footer.
+---@param mainFrame Frame|nil
+---@param scrollChild Frame|nil
+---@param tabBodyHeight number|nil content extent below scroll top inset
+function ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, tabBodyHeight)
+    if not mainFrame or not scrollChild or not mainFrame.scroll then return end
+    local bottomPad = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
+    local scrollTop = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local bodyH = scrollTop + (tabBodyHeight or 0)
+    local viewportH = mainFrame.scroll:GetHeight() or 0
+    if viewportH < 2 and mainFrame.fixedHeader then
+        local fhBot = mainFrame.fixedHeader:GetBottom()
+        local sb = mainFrame.scroll:GetBottom()
+        if fhBot and sb and fhBot > sb then
+            viewportH = fhBot - sb
+        end
+    end
+    scrollChild:SetHeight(math.max(bodyH + bottomPad, viewportH))
+    local Factory = ns.UI and ns.UI.Factory
+    if Factory and Factory.UpdateScrollBarVisibility then
+        Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+    end
+    if Factory and Factory.UpdateHorizontalScrollBarVisibility then
+        Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+    end
+    local sc = mainFrame.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+    if mainFrame._virtualScrollUpdate then
+        mainFrame._virtualScrollUpdate()
+    end
+end
+
+--- Tint annex sheet to match viewport (visible on OLED).
+---@param annex Frame|nil
+function ns.UI_RefreshScrollAnnexChrome(annex)
+    if not annex or not annex._wnAnnexTex then return end
+    local c = ResolveSurfaceTierColor("viewport")
+    annex._wnAnnexTex:SetColorTexture(c[1], c[2], c[3], c[4] or 0.98)
+end
+
+--- Re-anchor annex after PopulateContent sets scrollChild height.
+---@param scrollParent Frame
+function ns.UI_RefreshScrollAnnexLayout(scrollParent)
+    if not scrollParent then return end
+    local annex = scrollParent._wnResultsAnnexSheet
+    local anchor = annex and annex._wnAnnexAnchorFrame
+    if not annex or not anchor or not annex:IsShown() then return end
+    local sideMargin = annex._wnAnnexSideMargin or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
+    local bottomInset = annex._wnAnnexBottomInset or 8
+    annex:ClearAllPoints()
+    annex:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 0)
+    annex:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
+    annex:SetPoint("BOTTOMLEFT", scrollParent, "BOTTOMLEFT", sideMargin, bottomInset)
+    annex:SetPoint("BOTTOMRIGHT", scrollParent, "BOTTOMRIGHT", -sideMargin, bottomInset)
+    if ns.UI_RefreshScrollAnnexChrome then
+        ns.UI_RefreshScrollAnnexChrome(annex)
+    end
 end
 
 --[[
@@ -1468,11 +2623,15 @@ local function CreateButton(parent, width, height, bgColor, borderColor, noBorde
     end
     button:EnableMouse(true)
     
-    -- Apply pixel-perfect border (unless noBorder is true)
     if not noBorder then
         ApplyVisuals(button, bgColor, borderColor)
+    else
+        -- Icon-only hit target: no opaque panel (row delete / header assign / reorder arrows).
+        if button.SetBackdrop then
+            pcall(button.SetBackdrop, button, nil)
+        end
     end
-    
+
     return button
 end
 
@@ -1511,6 +2670,9 @@ local function AcquireCharacterRow(parent)
     
     row:SetParent(parent)
     row:Show()
+    if row.SetClipsChildren then
+        row:SetClipsChildren(true)
+    end
     
     -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
@@ -2018,9 +3180,13 @@ local function CreateCard(parent, height)
     
     card:SetHeight(height or 100)
     
-    -- Apply pixel-perfect visuals with accent border (4-texture sandwich method)
-    local accentColor = COLORS.accent
-    ApplyVisuals(card, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(card)
+    elseif ApplyVisuals then
+        local ac = COLORS.accent
+        local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
+        ApplyVisuals(card, bg, { ac[1], ac[2], ac[3], 0.7 })
+    end
     
     -- Caller will Show() when fully setup
     return card
@@ -2092,8 +3258,8 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
 
     local tex = row._wnClassGradientTex
     if not tex then
-        -- Draw above row.bg so transparent gradient fade reveals row.bg beneath (no second opaque layer).
-        tex = row:CreateTexture(nil, "BACKGROUND", nil, 3)
+        -- BORDER sits above row.bg (BACKGROUND) so the tint is visible; fade still blends into row.bg.
+        tex = row:CreateTexture(nil, "BORDER")
         row._wnClassGradientTex = tex
     end
     tex:ClearAllPoints()
@@ -2108,7 +3274,7 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
         local tR = math.min(1, r * 0.58)
         local tG = math.min(1, g * 0.58)
         local tB = math.min(1, b * 0.58)
-        local cL = CreateColor(tR, tG, tB, 0.38)
+        local cL = CreateColor(tR, tG, tB, 0.42)
         local cR = CreateColor(br, bgc, bb, 0)
         ok = pcall(function()
             tex:SetGradient("HORIZONTAL", cL, cR)
@@ -2243,8 +3409,19 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         or (UI_LAYOUT and UI_LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT)
         or 36
     local suppressSectionChrome = visualOpts and visualOpts.suppressSectionChrome == true
+    local sideInset = (UI_SPACING and UI_SPACING.SIDE_MARGIN) or (UI_LAYOUT and UI_LAYOUT.SIDE_MARGIN) or 12
+    local useFullParentWidth = visualOpts and visualOpts.useFullParentWidth == true
+    local stackWidth = visualOpts and tonumber(visualOpts.sectionStackWidth)
     local header = CreateFrame("Button", nil, parent)
-    header:SetSize(math.max(1, parentW - 20 - indent), sectionH)
+    local headerW
+    if stackWidth and stackWidth > 0 then
+        headerW = math.max(1, stackWidth - indent)
+    elseif useFullParentWidth then
+        headerW = math.max(1, parentW - indent)
+    else
+        headerW = math.max(1, parentW - (sideInset * 2) - indent)
+    end
+    header:SetSize(headerW, sectionH)
     header:EnableMouse(true)
     if header.RegisterForClicks then
         header:RegisterForClicks("LeftButtonUp")
@@ -2261,28 +3438,56 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         br, bg, bb = 0.8, 0.25, 0.25
         sr, sg, sb = 0.8, 0.25, 0.25
     end
+    local ly = UI_LAYOUT or UI_SPACING
+    local stripeW = (ly and ly.SECTION_HEADER_STRIPE_WIDTH) or 3
+    local stripeVInset = (ly and ly.SECTION_HEADER_STRIPE_V_INSET) or 4
+    local chevLeft = (ly and ly.SECTION_HEADER_COLLAPSE_CHEVRON_LEFT) or 12
+    local catIconGap = (ly and ly.SECTION_HEADER_CATEGORY_ICON_GAP) or 8
+    local titleAfterIcon = (ly and ly.SECTION_HEADER_TITLE_AFTER_ICON) or 12
+
     if not suppressSectionChrome then
-        ApplyVisuals(header, {0.06, 0.06, 0.08, 0.95}, {br, bg, bb, ba})
+        if preset == "gold" or preset == "danger" then
+            ApplyVisuals(header, {0.06, 0.06, 0.08, 0.95}, {br, bg, bb, ba})
+        else
+            local surf = COLORS.surfaceElevated or COLORS.bgLight
+            ApplyVisuals(header, {surf[1], surf[2], surf[3], 0.96}, {br, bg, bb, ba})
+        end
 
         local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
-        stripe:SetSize(3, sectionH - 8)
+        stripe:SetSize(stripeW, math.max(4, sectionH - stripeVInset - stripeVInset))
         stripe:SetPoint("LEFT", 4, 0)
         stripe:SetColorTexture(sr, sg, sb, sa)
         header._wnSectionStripe = stripe
+        if header._wnHairlinebottom and header._wnHairlinebottom.Hide then
+            header._wnHairlinebottom:Hide()
+        end
+        -- Soft join into first row (same accent; lower alpha than header border).
+        if not header._wnSectionRowJoin then
+            local join = header:CreateTexture(nil, "BORDER", nil, 1)
+            join:SetHeight(1)
+            join:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", stripeW + 8, 1)
+            join:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 1)
+            header._wnSectionRowJoin = join
+        end
+        header._wnSectionRowJoin:SetColorTexture(br, bg, bb, 0.28)
+        header._wnSectionRowJoin:Show()
     else
         header._wnSectionStripe = nil
+        if header._wnSectionRowJoin then header._wnSectionRowJoin:Hide() end
     end
     
     -- Expand/collapse: shared Button + single texture (parent header handles click)
     local iconTint = COLORS.accent
+    local chevSz = (ly and ly.SECTION_COLLAPSE_CHEVRON_SIZE) or (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
     local expandIcon = ns.UI_CreateCollapseExpandControl(header, isExpanded, {
         enableMouse = false,
+        size = chevSz,
         vertexColor = { iconTint[1] * 1.5, iconTint[2] * 1.5, iconTint[3] * 1.5, 1 },
     })
-    expandIcon:SetPoint("LEFT", 12 + indent, 0)
+    expandIcon:SetPoint("LEFT", chevLeft + indent, 0)
 
     local textAnchor = expandIcon
-    local textOffset = 12  -- Increased spacing between icon and text
+    local textOffset = titleAfterIcon
     
     -- Category icon: skip when noCategoryIcon (e.g. PvE uses favorite star in that slot)
     if noCategoryIcon then
@@ -2295,7 +3500,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         categoryIcon = header:CreateTexture(nil, "ARTWORK")
         local iconSize = (UI_LAYOUT and UI_LAYOUT.HEADER_ICON_SIZE) or 24
         categoryIcon:SetSize(iconSize, iconSize)
-        categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
+        categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", catIconGap, 0)
         
         -- Use atlas only (isAtlas=true from Collections); texture path fallback for legacy callers
         if isAtlas then
@@ -2317,7 +3522,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         categoryIcon:SetTexelSnappingBias(0)
         
         textAnchor = categoryIcon
-        textOffset = 12  -- Increased spacing between icon and text
+        textOffset = titleAfterIcon
     end
     
     -- Header text (title font — matches Characters tab section labels)
@@ -2577,8 +3782,8 @@ ns.UI_CreateRaceIcon = CreateRaceIcon
 
 -- Centralized icon mapping for all tabs (keys match `Modules/UI.lua` MAIN_TAB_ORDER + legacy aliases).
 local TAB_HEADER_ICONS = {
-    chars = "poi-town",
-    characters = "poi-town",
+    chars = "warbands-icon",
+    characters = "warbands-icon",
     items = "Banker",
     storage = "Quartermaster",
     plans = "poi-workorders",
@@ -2595,11 +3800,36 @@ local TAB_HEADER_ICONS = {
     qol = "Soulbinds_Tree_Conduit_Icon_Utility",
 }
 
--- Centralized size configuration
-local HEADER_ICON_SIZE = 41      -- Icon size
-local HEADER_BORDER_SIZE = 51    -- Border size
-local HEADER_ICON_XOFFSET = 18   -- X position
-local HEADER_ICON_YOFFSET = 0    -- Y position
+--- Blizzard `Interface\\Icons\\...` fallback when atlases reject (broken/missing art in some patches).
+local TAB_NAV_TEXTURE_FALLBACK = {
+    chars = "Interface\\Icons\\Achievement_Character_Human_Male",
+    items = "Interface\\Icons\\INV_Misc_Bag_08",
+    gear = "Interface\\Icons\\INV_Chest_Chain_06",
+    currency = "Interface\\Icons\\INV_Misc_Coin_02",
+    reputations = "Interface\\Icons\\Achievement_Reputation_01",
+    pve = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+    professions = "Interface\\Icons\\Trade_Engineering",
+    collections = "Interface\\Icons\\INV_Misc_Head_Dragon_Nexus",
+    plans = "Interface\\Icons\\INV_Misc_Map_01",
+    stats = "Interface\\Icons\\Achievement_General_StayClassy",
+}
+
+ns.UI_MAIN_TAB_NAV_MEDIA = TAB_NAV_TEXTURE_FALLBACK
+
+local function NormalizeMainNavTabMediaKey(tabKey)
+    if not tabKey then return nil end
+    local k = tabKey
+    if k == "statistics" then return "stats" end
+    if k == "reputation" then return "reputations" end
+    if k == "characters" then return "chars" end
+    if k == "storage" then return "items" end
+    return k
+end
+
+-- Tab title header icon (CreateHeaderIcon)
+local HEADER_ICON_SIZE = 44
+local HEADER_ICON_PAD = 5
+local HEADER_ICON_INSET = 12
 
 -- Export icon mapping for external use
 ns.UI_GetTabIcon = function(tabName)
@@ -2618,9 +3848,62 @@ ns.UI_GetTabIcon = function(tabName)
     if key == "statistics" then
         key = "stats"
     end
+    if key == "characters" then
+        key = "chars"
+    end
     return TAB_HEADER_ICONS[key]
         or TAB_HEADER_ICONS[tabName]
         or "shop-icon-housing-characters-up"
+end
+
+--- Main nav strip / rail: Blizzard atlas (`UI_GetTabIcon`) then built-in texture paths (packaged TGAs optional).
+---@param tex Texture
+---@param tabKey string
+---@return boolean usedPackaged Unused; kept for call-site compatibility (always false when Media lacks matching files).
+--- Title card glyph: atlas/tab icon with uniform inset crop (consistent visual weight per tab).
+---@param tex Texture
+---@param tabKey string|nil
+---@param atlasName string|nil
+function ns.UI_ApplyTitleCardGlyph(tex, tabKey, atlasName)
+    if not tex then return end
+    local applied = false
+    if atlasName and atlasName ~= "" then
+        applied = pcall(tex.SetAtlas, tex, atlasName, false) or pcall(tex.SetAtlas, tex, atlasName, true)
+    end
+    if not applied and tabKey and ns.UI_ApplyMainNavTabGlyph then
+        ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
+    elseif not applied then
+        if not pcall(tex.SetAtlas, tex, "shop-icon-housing-characters-up", false) then
+            tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        end
+    end
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+end
+
+function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
+    if not tex or not tabKey then return false end
+
+    local atlasNm = ns.UI_GetTabIcon(tabKey)
+    if atlasNm and type(atlasNm) == "string" then
+        if pcall(tex.SetAtlas, tex, atlasNm, false) then
+            return false
+        end
+        if pcall(tex.SetAtlas, tex, atlasNm, true) then
+            return false
+        end
+    end
+
+    local canon = NormalizeMainNavTabMediaKey(tabKey)
+    local iconPath = canon and TAB_NAV_TEXTURE_FALLBACK[canon]
+    if type(iconPath) == "string" and iconPath ~= "" then
+        tex:SetTexture(iconPath)
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        return false
+    end
+
+    tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    return false
 end
 
 ns.UI_GetCharKey = function(char)
@@ -2636,63 +3919,121 @@ ns.UI_GetCharKey = function(char)
     return nil
 end
 
--- Export size configuration
+---@return number centerX Icon block center offset from parent LEFT (for CENTER anchor).
+function ns.UI_GetTitleCardIconCenterX(iconSize, pad, inset)
+    iconSize = iconSize or HEADER_ICON_SIZE or 44
+    pad = pad or HEADER_ICON_PAD or 5
+    inset = inset or HEADER_ICON_INSET or 14
+    return inset + pad + (iconSize * 0.5)
+end
+
+-- Export size configuration (legacy callers: size, outerSize, inset, 0).
 ns.UI_GetHeaderIconSize = function()
-    return HEADER_ICON_SIZE, HEADER_BORDER_SIZE, HEADER_ICON_XOFFSET, HEADER_ICON_YOFFSET
+    local outer = HEADER_ICON_SIZE + (HEADER_ICON_PAD * 2)
+    return HEADER_ICON_SIZE, outer, HEADER_ICON_INSET, 0
 end
 
 --[[
-    Create a standardized header icon with character-style ring border
-    This creates the same icon+border style used in "Your Characters" and "Current Character"
-    Border color adapts to theme accent color
-    @param parent frame - Parent frame (typically a card/header)
-    @param atlasName string - Atlas name for the inner icon (e.g., "charactercreate-gendericon-female-selected")
-    @param size number - Icon size (default: from HEADER_ICON_SIZE)
-    @param borderSize number - Border size (default: from HEADER_BORDER_SIZE)
-    @param point string - Anchor point (default: "LEFT")
-    @param x number - X offset (default: from HEADER_ICON_XOFFSET)
-    @param y number - Y offset (default: from HEADER_ICON_YOFFSET)
-    @return table - {icon=texture, border=texture} for further manipulation if needed
+    Tab title icon: fixed square tile + centered glyph (does not stretch with card height).
+    @param parent Frame
+    @param atlasName string|nil
+    @param options table|nil { tabKey, tileOuter, glyphSize }
+    @return table { icon, border } — border is the outer host frame (layout anchor)
 ]]
-local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y)
-    size = size or HEADER_ICON_SIZE
-    borderSize = borderSize or HEADER_BORDER_SIZE
-    point = point or "LEFT"
-    x = x or HEADER_ICON_XOFFSET
-    y = y or HEADER_ICON_YOFFSET
-    
-    -- Create container frame for border
+local function CreateHeaderIcon(parent, atlasName, options)
+    if type(atlasName) == "table" and options == nil then
+        options = atlasName
+        atlasName = options.atlasName
+    end
+    options = type(options) == "table" and options or {}
+    local sp = UI_SPACING or {}
+    local tileOuter = options.tileOuter or sp.TITLE_CARD_ICON_TILE_OUTER or 44
+    local glyphSize = options.glyphSize or sp.TITLE_CARD_ICON_GLYPH_SIZE or 30
+
     local container = CreateFrame("Frame", nil, parent)
-    container:SetSize(size + 4, size + 4)  -- Slightly larger for border
-    container:SetPoint(point, x, y)
-    
-    -- Apply border with theme color
-    ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-    
-    -- Inner icon (inset scales with UI scale for crisp borders)
-    local pixelScale = GetPixelScale and GetPixelScale() or 1.0
-    local iconInset = pixelScale * 2
-    local icon = container:CreateTexture(nil, "ARTWORK", nil, 0)
-    icon:SetPoint("TOPLEFT", iconInset, -iconInset)
-    icon:SetPoint("BOTTOMRIGHT", -iconInset, iconInset)
-    local iconApplied = false
-    if atlasName and atlasName ~= "" then
-        local ok = pcall(icon.SetAtlas, icon, atlasName, false)
-        if ok then
-            iconApplied = true
-        end
+    container:SetSize(tileOuter, tileOuter)
+    container:EnableMouse(false)
+
+    local icon = container:CreateTexture(nil, "ARTWORK")
+    local glyphPad = sp.TITLE_CARD_ICON_GLYPH_PAD or 3
+    local glyphSz = options.glyphSize or glyphSize
+    if not glyphSz or glyphSz <= 0 then
+        glyphSz = math.max(28, tileOuter - (glyphPad * 2))
     end
-    if not iconApplied then
-        icon:SetAtlas("icons_64x64_important", false)
+    icon:SetSize(glyphSz, glyphSz)
+    icon:SetPoint("CENTER", container, "CENTER", 0, 0)
+    if icon.SetSnapToPixelGrid then icon:SetSnapToPixelGrid(false) end
+    if icon.SetTexelSnappingBias then icon:SetTexelSnappingBias(0) end
+
+    if ns.UI_ApplyTitleCardGlyph then
+        ns.UI_ApplyTitleCardGlyph(icon, options.tabKey, atlasName)
     end
-    -- Anti-flicker optimization
-    icon:SetSnapToPixelGrid(false)
-    icon:SetTexelSnappingBias(0)
-    
+    icon:SetVertexColor(1, 1, 1, 1)
+
     return {
         icon = icon,
-        border = container  -- Return container as "border" for positioning compatibility
+        border = container,
+        tileOuter = tileOuter,
+        glyphSize = glyphSz,
     }
+end
+
+--- Items / Gear: open result lists on content tone (no viewport rim box or scroll fill band).
+---@param mainFrame Frame|nil
+---@param tab string|nil
+function ns.UI_ConfigureMainScrollViewportForTab(mainFrame, tab)
+    if not mainFrame then return end
+    local vp = mainFrame.viewportBorder
+    local sc = mainFrame.scrollChild
+    local borderless = (tab == "items" or tab == "gear")
+    if not vp then return end
+
+    if borderless then
+        vp:SetBackdropColor(0, 0, 0, 0)
+        if vp._wnViewportAtlasUnderlay and vp._wnViewportAtlasUnderlay.Hide then
+            vp._wnViewportAtlasUnderlay:Hide()
+        end
+        if sc and sc._wnViewportCanvasFill and sc._wnViewportCanvasFill.Hide then
+            sc._wnViewportCanvasFill:Hide()
+        end
+        if sc and sc._wnResultsAnnexSheet and sc._wnResultsAnnexSheet.Hide then
+            sc._wnResultsAnnexSheet:Hide()
+        end
+        if sc and sc._wnScrollBottomFill and sc._wnScrollBottomFill.Hide then
+            sc._wnScrollBottomFill:Hide()
+        end
+    else
+        local vpColor = ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor()
+            or (COLORS and COLORS.bg) or { 0.042, 0.042, 0.055, 0.98 }
+        vp:SetBackdropColor(vpColor[1], vpColor[2], vpColor[3], vpColor[4] or 0.98)
+        if ns.UI_ApplyViewportAtlasUnderlay and not vp._wnViewportAtlasUnderlay then
+            ns.UI_ApplyViewportAtlasUnderlay(vp)
+        elseif vp._wnViewportAtlasUnderlay and vp._wnViewportAtlasUnderlay.Show then
+            vp._wnViewportAtlasUnderlay:Show()
+            if ns.UI_RefreshViewportAtlasUnderlayTint then
+                ns.UI_RefreshViewportAtlasUnderlayTint(vp)
+            end
+        end
+    end
+end
+
+--- Accent rule under title icon + text block.
+local function ApplyTitleCardUnderline(titleCard, leftAnchor, rightAnchor, sp)
+    if not titleCard or not leftAnchor or not rightAnchor then return end
+    sp = sp or UI_SPACING or {}
+    local ac = COLORS and COLORS.accent or { 0.5, 0.4, 0.7 }
+    local ruleA = sp.TITLE_CARD_UNDERLINE_ALPHA or 0.5
+    local rule = titleCard._wnTitleUnderline
+    if not rule then
+        rule = titleCard:CreateTexture(nil, "ARTWORK")
+        titleCard._wnTitleUnderline = rule
+    end
+    rule:SetColorTexture(ac[1], ac[2], ac[3], ruleA)
+    rule:SetHeight(1)
+    rule:ClearAllPoints()
+    rule:SetPoint("BOTTOMLEFT", leftAnchor, "BOTTOMLEFT", 0, -5)
+    rule:SetPoint("BOTTOMRIGHT", rightAnchor, "BOTTOMRIGHT", 0, -5)
+    rule:Show()
 end
 
 -- Export header icon system
@@ -2715,59 +4056,102 @@ ns.UI_CreateHeaderIcon = CreateHeaderIcon
 ]]
 local function CreateStandardTabTitleCard(headerParent, opts)
     if not headerParent or type(opts) ~= "table" then return nil end
-    local cardH = opts.cardHeight or 70
+    local sp = UI_SPACING or {}
+    local cardH = opts.cardHeight or sp.TITLE_CARD_DEFAULT_HEIGHT or 64
     local textW = opts.textContainerWidth or 200
+    local tileOuter = opts.tileOuter or sp.TITLE_CARD_ICON_TILE_OUTER or 44
+    local glyphSize = opts.glyphSize or sp.TITLE_CARD_ICON_GLYPH_SIZE or 30
+    local iconSideInset = opts.iconSideInset
+    if iconSideInset == nil then
+        iconSideInset = sp.TITLE_CARD_ICON_SIDE_INSET or 0
+    end
+    local ringGap = sp.TITLE_CARD_RING_TEXT_GAP or 12
+    local textPadV = sp.TITLE_CARD_TEXT_PAD_V or 8
+    local iconTopInset = math.max(0, math.floor((cardH - tileOuter) * 0.5))
+
     local titleCard = CreateCard(headerParent, cardH)
-    if not opts.skipApplyVisuals and ApplyVisuals and COLORS and COLORS.accent then
-        ApplyVisuals(titleCard, COLORS.bg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+    if not opts.skipApplyVisuals then
+        ApplyStandardCardElevatedChrome(titleCard)
     end
     local atlas = opts.atlasName
     if (not atlas or atlas == "") and opts.tabKey and ns.UI_GetTabIcon then
         atlas = ns.UI_GetTabIcon(opts.tabKey)
     end
-    local headerIcon = CreateHeaderIcon(titleCard, atlas)
+    local headerIcon = CreateHeaderIcon(titleCard, atlas, {
+        tabKey = opts.tabKey,
+        tileOuter = tileOuter,
+        glyphSize = glyphSize,
+    })
     headerIcon.border:ClearAllPoints()
-    headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)
+    headerIcon.border:SetPoint("TOPLEFT", titleCard, "TOPLEFT", iconSideInset, -iconTopInset)
 
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, textW, 40)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, textW, math.max(36, cardH - textPadV * 2))
     local titleFs = FontManager:CreateFontString(textContainer, UIFontRole("tabTitlePrimary"), "OVERLAY")
     titleFs:SetText(opts.titleText or "")
     titleFs:SetJustifyH("LEFT")
-    titleFs:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)
-    titleFs:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    titleFs:SetPoint("TOPLEFT", textContainer, "TOPLEFT", 0, -2)
+    titleFs:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
 
     local subtitleFs = FontManager:CreateFontString(textContainer, UIFontRole("tabSubtitle"), "OVERLAY")
     subtitleFs:SetText(opts.subtitleText or "")
-    subtitleFs:SetTextColor(1, 1, 1)
+    subtitleFs:SetTextColor(0.88, 0.88, 0.90)
     subtitleFs:SetJustifyH("LEFT")
-    subtitleFs:SetPoint("TOP", textContainer, "CENTER", 0, -4)
-    subtitleFs:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
+    subtitleFs:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
 
     local rin = opts.textRightInset
     textContainer:ClearAllPoints()
-    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", ringGap, 0)
     if type(rin) == "number" and rin > 0 then
         textContainer:SetPoint("RIGHT", titleCard, "RIGHT", -rin, 0)
-        textContainer:SetPoint("TOP", titleCard, "TOP", 0, -(cardH - 40) / 2)
+        textContainer:SetPoint("TOP", titleCard, "TOP", 0, -textPadV)
+        textContainer:SetPoint("BOTTOM", titleCard, "BOTTOM", 0, textPadV)
     else
-        textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+        textContainer:SetPoint("TOP", titleCard, "TOP", 0, -textPadV)
+        textContainer:SetPoint("BOTTOM", titleCard, "BOTTOM", 0, textPadV)
+    end
+
+    if opts.showUnderline == true then
+        ApplyTitleCardUnderline(titleCard, headerIcon.border, textContainer, sp)
+    elseif titleCard._wnTitleUnderline then
+        titleCard._wnTitleUnderline:Hide()
     end
 
     return titleCard, headerIcon, textContainer, titleFs, subtitleFs
 end
 
+--- Hide accent rule on a title card (e.g. cached headers rebuilt before underline removal).
+function ns.UI_HideTitleCardUnderline(titleCard)
+    if titleCard and titleCard._wnTitleUnderline then
+        titleCard._wnTitleUnderline:Hide()
+    end
+end
+
 ns.UI_CreateStandardTabTitleCard = CreateStandardTabTitleCard
 
 --- Reapply icon + text layout after reparenting a cached title card (Collections, Storage).
-function ns.UI_ReanchorStandardTabTitleLayout(headerIcon, titleCard, textContainer, cardHeight)
+function ns.UI_ReanchorStandardTabTitleLayout(headerIcon, titleCard, textContainer, cardHeight, textRightInset)
     if not headerIcon or not headerIcon.border or not titleCard then return end
-    cardHeight = cardHeight or 70
+    local sp = UI_SPACING or {}
+    cardHeight = cardHeight or sp.TITLE_CARD_DEFAULT_HEIGHT or 64
+    local tileOuter = sp.TITLE_CARD_ICON_TILE_OUTER or 44
+    local iconSideInset = sp.TITLE_CARD_ICON_SIDE_INSET or 0
+    local ringGap = sp.TITLE_CARD_RING_TEXT_GAP or 12
+    local textPadV = sp.TITLE_CARD_TEXT_PAD_V or 8
+    local iconTopInset = math.max(0, math.floor((cardHeight - tileOuter) * 0.5))
     headerIcon.border:ClearAllPoints()
-    headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)
+    headerIcon.border:SetPoint("TOPLEFT", titleCard, "TOPLEFT", iconSideInset, -iconTopInset)
     if textContainer then
         textContainer:ClearAllPoints()
-        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
-        textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+        textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", ringGap, 0)
+        if type(textRightInset) == "number" and textRightInset > 0 then
+            textContainer:SetPoint("RIGHT", titleCard, "RIGHT", -textRightInset, 0)
+        end
+        textContainer:SetPoint("TOP", titleCard, "TOP", 0, -textPadV)
+        textContainer:SetPoint("BOTTOM", titleCard, "BOTTOM", 0, textPadV)
+    end
+    if titleCard._wnTitleUnderline then
+        titleCard._wnTitleUnderline:Hide()
     end
 end
 
@@ -3179,6 +4563,170 @@ local function GetCharRowTotalWidth()
     return width
 end
 
+--- Row minimum width when guild column is wider than `CHAR_ROW_COLUMNS.guild` (Characters tab measure pass).
+---@param guildColW number|nil measured guild column width (defaults to layout guild.width)
+---@return number
+local function GetCharRowTotalWidthForGuild(guildColW)
+    local base = GetCharRowTotalWidth()
+    local gCol = CHAR_ROW_COLUMNS.guild or {}
+    local gTot = gCol.total or 145
+    local actual = (guildColW or gCol.width or 130) + (gCol.spacing or 15)
+    return base + math.max(0, actual - gTot)
+end
+
+local CHAR_ROW_RIGHT_MARGIN = 6
+local CHAR_ROW_RIGHT_GAP = 6
+
+--- Fixed-width right block for character rows (delete / header / last seen / reorder).
+---@return number
+local function GetCharRowRightRailWidth()
+    local c = CHAR_ROW_COLUMNS
+    return CHAR_ROW_RIGHT_MARGIN
+        + (c.delete and c.delete.width or 24)
+        + CHAR_ROW_RIGHT_GAP
+        + (c.headerAssign and c.headerAssign.total or 26)
+        + CHAR_ROW_RIGHT_GAP
+        + (c.lastSeen and c.lastSeen.width or 60)
+        + CHAR_ROW_RIGHT_GAP
+        + (c.reorder and c.reorder.width or 44)
+        + CHAR_ROW_RIGHT_MARGIN
+end
+
+--- Width of level + itemLevel + gold + professions + mythicKey column run (left of right rail).
+---@return number
+local function GetCharRowMiddleBlockWidth()
+    local c = CHAR_ROW_COLUMNS
+    return (c.level and c.level.total or 97)
+        + (c.itemLevel and c.itemLevel.total or 90)
+        + (c.gold and c.gold.total or 205)
+        + (c.professions and c.professions.total or 150)
+        + (c.mythicKey and c.mythicKey.total or 135)
+end
+
+--- Guild column width capped once per list layout (stable while row width changes).
+---@param listRowW number
+---@param measuredGuildW number|nil
+---@return number
+local function ComputeCharRowGuildColumnWidth(listRowW, measuredGuildW)
+    local guildOffset = GetColumnOffset("guild")
+    local railW = GetCharRowRightRailWidth()
+    local middleW = GetCharRowMiddleBlockWidth()
+    local maxGuild = (listRowW or 800) - guildOffset - middleW - railW - 4
+    local gCol = CHAR_ROW_COLUMNS.guild or {}
+    local measured = measuredGuildW or gCol.width or 130
+    return math.min(measured, math.max(60, maxGuild))
+end
+
+--- Minimum scroll width for Characters rows (fixed column grid; horizontal scroll when viewport is narrower).
+---@param _addon table|nil
+---@param guildColW number|nil measured guild column width from DrawCharacterList
+---@return number
+local function ComputeCharactersMinScrollWidth(_addon, guildColW)
+    if GetCharRowTotalWidthForGuild then
+        return math.max(720, GetCharRowTotalWidthForGuild(guildColW))
+    end
+    if GetCharRowTotalWidth then
+        return math.max(720, GetCharRowTotalWidth())
+    end
+    return 1100
+end
+
+--- Characters row paint width: at least the fixed column grid; grows with viewport (no empty band on the right).
+--- Horizontal scroll still uses `ComputeCharactersMinScrollWidth` on scrollChild when viewport is narrower.
+---@param mainFrame Frame|nil
+---@param scrollParent Frame|nil
+---@param metrics table|nil
+---@param guildColW number|nil
+---@return number
+local function ResolveCharactersTabRowWidth(mainFrame, scrollParent, metrics, guildColW)
+    local minW = ComputeCharactersMinScrollWidth(WarbandNexus, guildColW)
+    local viewportW = minW
+    if metrics and metrics.bodyWidth and metrics.bodyWidth > 0 then
+        viewportW = metrics.bodyWidth
+    elseif mainFrame and ns.UI_GetMainTabLayoutMetrics then
+        local m = ns.UI_GetMainTabLayoutMetrics(mainFrame)
+        if m and m.bodyWidth and m.bodyWidth > 0 then
+            viewportW = m.bodyWidth
+        end
+    elseif scrollParent and scrollParent.GetWidth then
+        viewportW = scrollParent:GetWidth() or minW
+    end
+    return math.max(minW, viewportW)
+end
+
+--- Live corner-drag row width: viewport body only (no jump to min scroll-child width while frozen).
+---@param mainFrame Frame|nil
+---@param scrollParent Frame|nil
+---@param metrics table|nil
+---@param guildColW number|nil
+---@return number
+function ns.UI_ResolveCharactersTabRowWidthForLive(mainFrame, scrollParent, metrics, guildColW)
+    local viewportW = 200
+    if metrics and metrics.bodyWidth and metrics.bodyWidth > 0 then
+        viewportW = metrics.bodyWidth
+    elseif mainFrame and ns.UI_GetMainTabLayoutMetrics then
+        local m = ns.UI_GetMainTabLayoutMetrics(mainFrame)
+        if m and m.bodyWidth and m.bodyWidth > 0 then
+            viewportW = m.bodyWidth
+        end
+    elseif scrollParent and scrollParent.GetWidth then
+        viewportW = scrollParent:GetWidth() or 200
+    else
+        viewportW = 200
+    end
+    return math.max(200, viewportW)
+end
+
+--- Title-card toolbar: horizontal anchor from `anchorTo` (RIGHT/LEFT); vertical centers with anchor target.
+function ns.UI_AnchorTitleCardToolbarControl(btn, _titleCard, anchorTo, anchorPoint, offsetX)
+    if not btn or not anchorTo then return end
+    btn:ClearAllPoints()
+    btn:SetPoint("RIGHT", anchorTo, anchorPoint or "RIGHT", offsetX or 0, 0)
+end
+
+--- Characters-reference toolbar metrics (64px card, 32px controls, 8px gaps, 0 edge inset).
+---@return table metrics { btnH, squareBtn, gap, edgeInset, filterW, trailingGap }
+function ns.UI_GetTitleCardToolbarMetrics()
+    local sp = UI_SPACING or {}
+    local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+    return {
+        btnH = btnH,
+        squareBtn = btnH,
+        gap = sp.HEADER_TOOLBAR_CONTROL_GAP or 8,
+        edgeInset = sp.TITLE_CARD_TOOLBAR_EDGE_INSET or 0,
+        filterW = 96,
+        trailingGap = 10,
+    }
+end
+
+--- Reserve width for title/subtitle text (right-to-left control chain on title card).
+---@param widths number[]|nil control widths outermost (card edge) to innermost
+---@param opts table|nil `{ extraTrailingGap = number }`
+---@return number
+function ns.UI_ComputeTitleToolbarReserve(widths, opts)
+    local m = ns.UI_GetTitleCardToolbarMetrics()
+    opts = opts or {}
+    local total = m.edgeInset
+    local n = widths and #widths or 0
+    for i = 1, n do
+        total = total + (widths[i] or 0)
+        if i < n then
+            total = total + m.gap
+        end
+    end
+    if n > 0 then
+        total = total + (opts.extraTrailingGap or m.trailingGap)
+    end
+    return total
+end
+
+--- Title-card toolbar reserve for Characters (Filter + section + expand + gaps + right inset).
+---@return number
+local function ComputeCharactersTitleToolbarReserve()
+    local m = ns.UI_GetTitleCardToolbarMetrics()
+    return ns.UI_ComputeTitleToolbarReserve({ m.filterW, m.squareBtn, m.squareBtn })
+end
+
 --[[
     Create column divider at specified offset
     @param parent frame - Parent frame
@@ -3198,6 +4746,7 @@ end
 --============================================================================
 
 local activeSortDropdownMenu = nil
+local activePickMenu = nil
 
 local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged)
     -- Symmetric Filter button: fixed size, icon + text centered as a group
@@ -3399,19 +4948,32 @@ end
 -- CHARACTERS / PROFESSIONS: Filter + sort + section view (nested flyouts)
 --============================================================================
 
----@param ownerBtn Button
+---@param ownerBtn Button|nil
 local function WnCloseFullAdvFilter(ownerBtn)
-    if not ownerBtn then return end
-    if ownerBtn._wnAdvSub and ownerBtn._wnAdvSub.Hide then
-        ownerBtn._wnAdvSub:Hide()
+    if ownerBtn then
+        if ownerBtn._wnAdvSub and ownerBtn._wnAdvSub.Hide then
+            ownerBtn._wnAdvSub:Hide()
+        end
+        ownerBtn._wnAdvSub = nil
+        if ownerBtn._wnAdvRoot and ownerBtn._wnAdvRoot.Hide then
+            ownerBtn._wnAdvRoot:Hide()
+        end
+        ownerBtn._wnAdvRoot = nil
+        if ownerBtn._sortClickCatcher then ownerBtn._sortClickCatcher:Hide() end
     end
-    ownerBtn._wnAdvSub = nil
-    if ownerBtn._wnAdvRoot and ownerBtn._wnAdvRoot.Hide then
-        ownerBtn._wnAdvRoot:Hide()
+    if activeSortDropdownMenu and activeSortDropdownMenu.Hide then
+        activeSortDropdownMenu:Hide()
     end
-    ownerBtn._wnAdvRoot = nil
-    if ownerBtn._sortClickCatcher then ownerBtn._sortClickCatcher:Hide() end
     activeSortDropdownMenu = nil
+end
+
+--- Close Filter flyouts and row pick menus (resize / scroll / tab rebuild).
+function ns.UI_CloseCharacterTabFlyoutMenus()
+    WnCloseFullAdvFilter(nil)
+    if activePickMenu and activePickMenu.Hide then
+        activePickMenu:Hide()
+    end
+    activePickMenu = nil
 end
 
 --- Characters / Professions title card: sort modes + section filter + optional delete custom header.
@@ -3527,7 +5089,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             ns.UI_ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
         end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText((ns.L and ns.L["FILTER_MENU_TOOLTIP"]) or "Sort, filter by section, and delete custom headers.", 1, 1, 1)
+        GameTooltip:SetText((ns.L and ns.L["FILTER_MENU_TOOLTIP"]) or "Sort and filter which sections are visible.", 1, 1, 1)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(self)
@@ -3551,18 +5113,12 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         WnCloseFullAdvFilter(self)
 
         local L = ns.L
-        local customsPreview = getCustomSections and getCustomSections() or {}
-        local showDeleteRow = (#customsPreview > 0) and (onDeleteSection ~= nil)
         local rootLabels = {
             (L and L["FILTER_SUBMENU_SORT"]) or "Sort…",
             (L and L["FILTER_SUBMENU_VIEW"]) or "Show section…",
         }
-        local deletePickLabel = (L and L["CUSTOM_HEADER_DELETE_PICK"]) or "Delete custom header…"
-        if showDeleteRow then
-            rootLabels[#rootLabels + 1] = deletePickLabel
-        end
         local rw = math.max(btn:GetWidth(), math.ceil(measureMaxLabelWidth(rootLabels)) + sideMargin * 2 + 24)
-        local rootRowCount = 2 + (showDeleteRow and 1 or 0)
+        local rootRowCount = 2
         local rh = rootRowCount * itemHeight + ((UI_SPACING and UI_SPACING.AFTER_ELEMENT) or 8)
         local root = ns.UI.Factory:CreateContainer(UIParent, rw, rh, true)
         root._wnAdvRoot = true
@@ -3649,27 +5205,6 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             openFlyoutFrom(root, rows, 0)
         end)
 
-        if showDeleteRow then
-            makeRootRow(3, deletePickLabel, function()
-                local customs = getCustomSections and getCustomSections() or {}
-                if #customs == 0 then
-                    return
-                end
-                local rows = {}
-                for ci = 1, #customs do
-                    local g = customs[ci]
-                    rows[#rows + 1] = {
-                        label = g.name or g.id,
-                        selected = false,
-                        onPick = function()
-                            if onDeleteSection then onDeleteSection(g.id, g.name) end
-                        end,
-                    }
-                end
-                openFlyoutFrom(root, rows, 0)
-            end)
-        end
-
         root:Show()
 
         local clickCatcher = btn._sortClickCatcher
@@ -3724,8 +5259,12 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
     for i = 1, #rows do
         totalH = totalH + (rows[i].isHeader and (itemHeight - 6) or itemHeight)
     end
+    if activePickMenu and activePickMenu.Hide then
+        activePickMenu:Hide()
+    end
     local catcher = CreateFrame("Frame", nil, UIParent)
     local menu = ns.UI.Factory:CreateContainer(UIParent, mw, totalH, true)
+    activePickMenu = menu
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(320)
     menu:SetPoint("TOPLEFT", anchorFrame, "BOTTOMRIGHT", 4, -2)
@@ -3801,6 +5340,9 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
     catcher:Show()
     menu:SetScript("OnHide", function()
         catcher:Hide()
+        if activePickMenu == menu then
+            activePickMenu = nil
+        end
     end)
     menu:Show()
 end
@@ -3811,14 +5353,17 @@ function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onD
     ns.CharacterService:EnsureCustomCharacterSectionsProfile(profile)
     local L = ns.L
     local rows = {}
-    rows[#rows + 1] = {
-        label = (L and L["CUSTOM_HEADER_REMOVE_ASSIGN"]) or "Remove from custom header",
-        selected = false,
-        noRadio = true,
-        onPick = function()
-            ns.CharacterService:SetCharacterCustomSection(_G.WarbandNexus or ns.WarbandNexus, charKey, nil)
-        end,
-    }
+    local assignedGroupId = profile.characterGroupAssignments and profile.characterGroupAssignments[charKey]
+    if assignedGroupId then
+        rows[#rows + 1] = {
+            label = (L and L["CUSTOM_HEADER_REMOVE_ASSIGN"]) or "Remove from custom header",
+            selected = false,
+            noRadio = true,
+            onPick = function()
+                ns.CharacterService:SetCharacterCustomSection(_G.WarbandNexus or ns.WarbandNexus, charKey, nil)
+            end,
+        }
+    end
     local groups = profile.characterCustomGroups or {}
     for i = 1, #groups do
         local g = groups[i]
@@ -4606,13 +6151,14 @@ function ns.UI_DecorateCustomHeader(headerFrame, opts)
     -- ===== UNIFIED ANCHOR LAYOUT =====
     -- Right edge:    [add-btn?]  [count]   (count anchored to header right; add-btn left of count)
     -- Left of title: [chevron]   [icon]    [gold-star]   [title]
+    local headerSide = (UI_SPACING and UI_SPACING.SIDE_MARGIN) or (UI_LAYOUT and UI_LAYOUT.SIDE_MARGIN) or 12
     countFs:ClearAllPoints()
     if addBtn and addBtn:IsShown() then
-        countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -8, 0)
+        countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -headerSide, 0)
         addBtn:ClearAllPoints()
         addBtn:SetPoint("RIGHT", countFs, "LEFT", -6, 0)
     else
-        countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -14, 0)
+        countFs:SetPoint("RIGHT", headerFrame, "RIGHT", -headerSide, 0)
     end
 
     if allowSectionHighlightToggle and goldStar then
@@ -4730,8 +6276,16 @@ function ns.UI_EnsureTitleCardExpandCollapseButtons(ownerFrame, titleCard, ancho
 
     local toggle = ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle(ownerFrame, titleCard)
     if not toggle then return end
-    toggle:ClearAllPoints()
-    toggle:SetPoint("RIGHT", anchorFrame, anchorPoint, anchorOffsetX or 0, anchorOffsetY or 0)
+    if ns.UI_AnchorTitleCardToolbarControl then
+        ns.UI_AnchorTitleCardToolbarControl(toggle, titleCard, anchorFrame, anchorPoint, anchorOffsetX)
+        if anchorOffsetY and anchorOffsetY ~= 0 then
+            local p, rel, rp, x, y = toggle:GetPoint(1)
+            if p then toggle:SetPoint(p, rel, rp, x, (y or 0) + anchorOffsetY) end
+        end
+    else
+        toggle:ClearAllPoints()
+        toggle:SetPoint("RIGHT", anchorFrame, anchorPoint, anchorOffsetX or 0, anchorOffsetY or 0)
+    end
 
     local function collapseModeNow()
         if opts.getIsCollapseMode then
@@ -4771,6 +6325,15 @@ end
 ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
 ns.UI_GetColumnOffset = GetColumnOffset
 ns.UI_GetCharRowTotalWidth = GetCharRowTotalWidth
+ns.UI_GetCharRowTotalWidthForGuild = GetCharRowTotalWidthForGuild
+ns.UI_GetCharRowRightRailWidth = GetCharRowRightRailWidth
+ns.UI_ComputeCharRowGuildColumnWidth = ComputeCharRowGuildColumnWidth
+ns.UI_CHAR_ROW_RIGHT_MARGIN = CHAR_ROW_RIGHT_MARGIN
+ns.UI_CHAR_ROW_RIGHT_GAP = CHAR_ROW_RIGHT_GAP
+ns.UI_ResolveCharactersTabRowWidth = ResolveCharactersTabRowWidth
+ns.UI_ComputeCharactersMinScrollWidth = ComputeCharactersMinScrollWidth
+ns.UI_ComputeCharactersTitleToolbarReserve = ComputeCharactersTitleToolbarReserve
+-- UI_GetTitleCardToolbarMetrics / UI_ComputeTitleToolbarReserve exported above
 ns.UI_CreateCharRowColumnDivider = CreateCharRowColumnDivider
 ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown
 ns.UI_CreateCharacterTabAdvancedFilterButton = CreateCharacterTabAdvancedFilterButton
@@ -4785,7 +6348,8 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText, tabCo
         return startY or 0
     end
     
-    local yOffset = startY + 50
+    local topGap = (ns.UI_ItemsResultsTopGap and ns.UI_ItemsResultsTopGap(startY)) or ((startY or 0) + 50)
+    local yOffset = topGap
     tabContext = tabContext or ""
     
     -- Reuse existing container or create new one
@@ -5565,9 +7129,12 @@ function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, op
     end
     btn:RegisterForClicks("LeftButtonUp")
     local tex = btn:CreateTexture(nil, "OVERLAY")
-    tex:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
-    tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
     btn._wnTrackPinTex = tex
+    local PCM = ns.UI_PLANS_CARD_METRICS
+    local pad = (PCM and PCM.plansActionIconInset) or 3
+    local iconSz = math.max(12, sz - pad * 2)
+    tex:SetSize(iconSz, iconSz)
+    tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
 
     local function pinDisabled()
         if type(opts.isDisabled) == "function" then
@@ -5579,19 +7146,16 @@ function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, op
 
     local function applyVisual(tracked, disabled)
         tex:SetTexCoord(0, 1, 0, 1)
-        if not (tex.SetAtlas and pcall(tex.SetAtlas, tex, "PetJournal-FavoritesIcon", true)) then
-            tex:SetTexture("Interface\\Icons\\INV_Misc_GroupLooking")
-            tex:SetTexCoord(0.12, 0.88, 0.12, 0.88)
-        end
-        tex:SetDesaturated(false)
-        if disabled then
-            tex:SetVertexColor(0.34, 0.35, 0.38, 0.42)
-        elseif tracked then
-            -- On Blizzard objectives: clear green star
-            tex:SetVertexColor(0.35, 0.95, 0.55, 1)
-        else
-            -- Not tracked: gold (same family as other plan chrome)
-            tex:SetVertexColor(1, 0.86, 0.32, 1)
+        local usedWnPin = ns.UI_ApplyWnActionIcon
+            and ns.UI_ApplyWnActionIcon(tex, "track", tracked, disabled)
+        if not usedWnPin then
+            if not (tex.SetAtlas and pcall(tex.SetAtlas, tex, "PetJournal-FavoritesIcon", true)) then
+                tex:SetTexture("Interface\\Icons\\INV_Misc_GroupLooking")
+                tex:SetTexCoord(0.12, 0.88, 0.12, 0.88)
+            end
+            tex:SetDesaturated(disabled)
+            local vc = ns.UI_WnIconVertexForState(tracked and not disabled, disabled)
+            tex:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 1)
         end
     end
 
@@ -5663,13 +7227,17 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     wowheadBtn:SetSize(L.WOWHEAD_SIZE, L.WOWHEAD_SIZE)
     local vOff = math.max(0, (actionSlotH - L.WOWHEAD_SIZE) / 2)
     wowheadBtn:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -vOff)
-    wowheadBtn:SetNormalAtlas("socialqueuing-icon-eye")
+    local whTex = wowheadBtn:CreateTexture(nil, "ARTWORK")
+    whTex:SetAllPoints()
+    ns.UI_SetWnIconTexture(whTex, "link", { vertexColor = ns.WN_ICON_VERTEX_WHITE })
+    wowheadBtn._wnIconTex = whTex
     wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     wowheadBtn:SetFrameLevel((root:GetFrameLevel() or 0) + 8)
+    local loc = ns.L
     wowheadBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine((L and L["WOWHEAD_LABEL"]) or "Wowhead", 1, 0.82, 0)
-        GameTooltip:AddLine((L and L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6, true)
+        GameTooltip:AddLine((loc and loc["WOWHEAD_LABEL"]) or "Wowhead", 1, 0.82, 0)
+        GameTooltip:AddLine((loc and loc["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6, true)
         GameTooltip:Show()
     end)
     wowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5882,17 +7450,27 @@ ns.SafeColorArray = SafeColorArray
 ]]
 local function CreateSection(parent, title, width)
     local COLORS = GetColors()
+    local sp = UI_SPACING
+    local px = sp.SECTION_CARD_PADDING_X or 15
+    local titleTop = sp.SECTION_CARD_TITLE_TOP or -12
+    local bodyWithTitle = sp.SECTION_CARD_BODY_TOP_WITH_TITLE or -40
+    local bodyNoTitle = sp.SECTION_CARD_BODY_TOP_NO_TITLE or -15
     
     local section = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     section:SetSize(width or 640, 1)  -- Height will be calculated
     
     -- Use ApplyVisuals for centralized border management
-    ApplyVisuals(section, {COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.3}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    local surf = COLORS.surfaceElevated or COLORS.bgLight
+    ApplyVisuals(section, {surf[1], surf[2], surf[3], 0.35}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+
+    if ns.UI_ApplySectionChromeUnderlay then
+        ns.UI_ApplySectionChromeUnderlay(section)
+    end
     
     -- Title (if provided) - inside card
     if title then
         local titleText = FontManager:CreateFontString(section, UIFontRole("settingsSectionTitle"), "OVERLAY", "accent")
-        titleText:SetPoint("TOPLEFT", 15, -12)  -- Inside card
+        titleText:SetPoint("TOPLEFT", px, titleTop)
         titleText:SetText(title)
         titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         section.titleText = titleText
@@ -5900,8 +7478,9 @@ local function CreateSection(parent, title, width)
     
     -- Content container (inset from border with proper padding)
     local content = CreateFrame("Frame", nil, section)
-    content:SetPoint("TOPLEFT", 15, title and -40 or -15)
-    content:SetPoint("TOPRIGHT", -15, title and -40 or -15)
+    local bodyTop = title and bodyWithTitle or bodyNoTitle
+    content:SetPoint("TOPLEFT", px, bodyTop)
+    content:SetPoint("TOPRIGHT", -px, bodyTop)
     section.content = content
     
     return section
@@ -6010,7 +7589,7 @@ end
 local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     local COLORS = ns.UI_COLORS
     local FontManager = ns.FontManager
-    local SIDE_MARGIN = 10
+    local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
     
     -- Calculate parent height dynamically
     local parentHeight = parent:GetHeight() or 600
@@ -6020,10 +7599,8 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     card:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     card:SetPoint("BOTTOMRIGHT", -SIDE_MARGIN, SIDE_MARGIN)
     
-    -- Apply 1px border using ApplyVisuals (4-texture sandwich method)
-    local bgColor = {0.1, 0.1, 0.12, 1}  -- Card background
-    local borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4}  -- Thin accent border
-    ApplyVisuals(card, bgColor, borderColor)
+    ApplyStandardCardElevatedChrome(card)
+    local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.72 }
     
     -- Content container (vertically centered)
     local contentContainer = CreateFrame("Frame", nil, card)
@@ -6039,7 +7616,7 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     local iconSize = 80
     local icon = iconContainer:CreateTexture(nil, "OVERLAY", nil, 7)
     icon:SetAllPoints(iconContainer)
-    icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    icon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
     icon:SetTexCoord(0, 1, 0, 1)
     
     -- Icon border frame (thin 1px accent ring) - behind the icon
@@ -6194,6 +7771,13 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "No Items in Guild Bank",
         descFallback = "Open your Guild Bank to scan items.\nItems are cached automatically on first visit.",
     },
+    items_search = {
+        atlas = "talents-search",
+        titleKey = "NO_RESULTS",
+        descKey = "NO_ITEMS_MATCH_GENERIC",
+        titleFallback = "No results",
+        descFallback = "No items match your search.",
+    },
     storage = {
         atlas = "Quartermaster",
         titleKey = "EMPTY_STORAGE_TITLE",
@@ -6258,12 +7842,20 @@ local EMPTY_STATE_CONFIG = {
 -- @param parent: Parent frame to attach to
 -- @param tabName: string - Tab identifier (e.g., "characters", "items", "pve")
 -- @param yOffset: number - Y offset from top (default 0)
+-- @param opts table|nil { fillParent = true } fills parent width (use inside resultsContainer); { sideInset = n }
 -- @return Frame - The empty state frame (shown automatically)
 -- @return number - Height delta below yOffset (callers use: return yOffset + secondReturn)
-local function CreateEmptyStateCard(parent, tabName, yOffset)
+local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     yOffset = yOffset or 0
+    opts = opts or {}
     local FontManager = ns.FontManager
-    local SIDE_MARGIN = 10
+    local fillParent = opts.fillParent == true
+    local sideInset = opts.sideInset
+    if sideInset == nil then
+        sideInset = fillParent and 0 or UI_SPACING.SIDE_MARGIN
+    end
+    local layout = ns.UI_LAYOUT or {}
+    local bottomPad = layout.SECTION_SPACING or UI_SPACING.SIDE_MARGIN or 8
 
     -- Walk up the parent chain to find the actual ScrollFrame viewport
     -- parent may be a resultsContainer nested inside the scrollChild, so parent:GetParent() alone is unreliable
@@ -6308,25 +7900,41 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
     local card = parent[cacheKey]
     if card then
         local visibleHeight = GetScrollViewportHeight(parent)
-        local cardHeight = math.max(visibleHeight - yOffset - SIDE_MARGIN, 200)
+        local heightTrim = yOffset + sideInset + bottomPad
+        if not fillParent then
+            heightTrim = heightTrim + sideInset
+        end
+        local cardHeight = math.max(visibleHeight - heightTrim, 200)
         card:SetParent(parent)
         card:ClearAllPoints()
-        card:SetPoint("TOPLEFT", 0, -yOffset)
-        card:SetPoint("TOPRIGHT", 0, -yOffset)
+        card:SetPoint("TOPLEFT", sideInset, -yOffset)
+        card:SetPoint("TOPRIGHT", -sideInset, -yOffset)
         card:SetHeight(cardHeight)
+        if fillParent then
+            card._wnExcludedFromStorageExtent = true
+        end
+        ApplyStandardCardElevatedChrome(card)
         card:Show()
-        return card, cardHeight + SIDE_MARGIN
+        return card, cardHeight + bottomPad
     end
 
     local visibleHeight = GetScrollViewportHeight(parent)
-    local cardHeight = math.max(visibleHeight - yOffset - SIDE_MARGIN, 200)
+    local heightTrim = yOffset + sideInset + bottomPad
+    if not fillParent then
+        heightTrim = heightTrim + sideInset
+    end
+    local cardHeight = math.max(visibleHeight - heightTrim, 200)
 
-    -- Create transparent container that fills the result area (no background, no border)
-    card = CreateFrame("Frame", nil, parent)
-    card:SetPoint("TOPLEFT", 0, -yOffset)
-    card:SetPoint("TOPRIGHT", 0, -yOffset)
+    -- Filled elevated card matching tab title chrome (section atlas underlay)
+    card = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
+    card:SetPoint("TOPLEFT", sideInset, -yOffset)
+    card:SetPoint("TOPRIGHT", -sideInset, -yOffset)
     card:SetHeight(cardHeight)
     parent[cacheKey] = card
+    if fillParent then
+        card._wnExcludedFromStorageExtent = true
+    end
+    ApplyStandardCardElevatedChrome(card)
 
     -- Content container (truly centered in card)
     local contentContainer = CreateFrame("Frame", nil, card)
@@ -6360,7 +7968,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
 
     card:Show()
     -- Second value is delta only (callers do: return yOffset + height)
-    return card, cardHeight + SIDE_MARGIN
+    return card, cardHeight + bottomPad
 end
 
 -- Hide empty state card for a specific tab
@@ -7285,6 +8893,7 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
     local CARD_H = 108
     local loadingCard = CreateCard(parent, CARD_H)
+    ApplyStandardCardElevatedChrome(loadingCard)
     loadingCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     loadingCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
@@ -7387,6 +8996,7 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     
     local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
     local errorCard = CreateCard(parent, 60)
+    ApplyStandardCardElevatedChrome(errorCard)
     errorCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     errorCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
@@ -7442,7 +9052,7 @@ end
 local function UI_CreateLoadingStatePanel(parent)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     panel:SetAllPoints(parent)
-    ApplyVisuals(panel, {0.06, 0.06, 0.08, 0.98}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4})
+    ApplyStandardCardElevatedChrome(panel)
     panel:SetFrameLevel(parent:GetFrameLevel() + 10)
     panel:Hide()
 
@@ -7554,6 +9164,12 @@ function ns.UI.Factory:CreateButton(parent, width, height, noBorder)
     return CreateButton(parent, width, height, nil, nil, noBorder)
 end
 
+--- Strip panel backdrop from icon-only row controls (pooled rows may predate transparent noBorder).
+function ns.UI.Factory:ApplyIconOnlyButtonChrome(btn)
+    if not btn or not btn.SetBackdrop then return end
+    pcall(btn.SetBackdrop, btn, nil)
+end
+
 --- Create a themed horizontal slider (accent-colored thumb + border).
 --- Single source of truth for slider styling; SettingsUI and tracker popups both use this
 --- so the look stays consistent and we don't reinvent the widget for each call site.
@@ -7641,7 +9257,8 @@ end
 ---@param rowIndex number - Row index for even/odd alternation (1-based)
 function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     if not row then return end
-    local bgColor = (rowIndex % 2 == 0) and UI_SPACING.ROW_COLOR_EVEN or UI_SPACING.ROW_COLOR_ODD
+    local tier = (rowIndex % 2 == 0) and "rowEven" or "rowOdd"
+    local bgColor = ResolveSurfaceTierColor(tier)
     if not row.bg then
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
@@ -7711,13 +9328,14 @@ end
 ---@param titleStr string - Formatted title string (with color codes)
 ---@param rightStr string|nil - Optional right-aligned text
 ---@param onToggle function - Callback when header is clicked
----@param height number|nil - Header height (defaults to UI_SPACING.HEADER_HEIGHT = 32)
+---@param height number|nil - Header height (defaults to `SECTION_COLLAPSE_HEADER_HEIGHT`)
 ---@param leftIndent number|nil - Left indent in pixels (for sub-headers, e.g. 15 or 30)
----@return number newYOffset
+---@return number newYOffset, Frame header
 function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleStr, rightStr, onToggle, height, leftIndent)
-    if not parent then return yOffset end
+    if not parent then return yOffset, nil end
 
-    local h = height or UI_SPACING.HEADER_HEIGHT
+    local sp = UI_SPACING
+    local h = height or sp.SECTION_COLLAPSE_HEADER_HEIGHT or sp.HEADER_HEIGHT
     local indent = leftIndent or 0
     local header = CreateFrame("Button", nil, parent)
     header:SetHeight(h)
@@ -7727,12 +9345,19 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:SetFrameLevel((parent:GetFrameLevel() or 0) + 10)
     header:Show()
 
+    local surf = COLORS.surfaceElevated or COLORS.bgLight
     -- Opaque background (1.0) so row text does not show through behind header
-    ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
+
+    if ns.UI_ApplySectionChromeUnderlay then
+        ns.UI_ApplySectionChromeUnderlay(header)
+    end
 
     -- Collapse/expand chevron (same control as tab section headers)
     local collapseBtn = ns.UI_CreateCollapseExpandControl(header, not isCollapsed, { enableMouse = true })
-    collapseBtn:SetPoint("LEFT", UI_SPACING.SIDE_MARGIN - 2, 0)
+    local chevLeft = sp.SECTION_HEADER_FACTORY_CHEVRON_LEFT or 10
+    collapseBtn:SetPoint("LEFT", chevLeft + indent, 0)
 
     -- Title text
     local title = FontManager:CreateFontString(header, UIFontRole("factorySectionHeaderTitle"), "OVERLAY")
@@ -7744,7 +9369,7 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     -- Right-side text (optional)
     if rightStr then
         local rightLabel = FontManager:CreateFontString(header, UIFontRole("factorySectionHeaderRight"), "OVERLAY")
-        rightLabel:SetPoint("RIGHT", header, "RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
+        rightLabel:SetPoint("RIGHT", header, "RIGHT", -sp.SIDE_MARGIN, 0)
         rightLabel:SetJustifyH("RIGHT")
         rightLabel:SetText(rightStr)
         title:SetPoint("RIGHT", rightLabel, "LEFT", -6, 0)
@@ -7756,22 +9381,29 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:SetScript("OnClick", onToggle)
     collapseBtn:SetScript("OnClick", onToggle)
 
-    -- Hover highlight
+    -- Hover highlight (token-driven base from `surfaceElevated`)
     header:SetScript("OnEnter", function()
-        if header.SetBackdropColor then
-            header:SetBackdropColor(0.12, 0.12, 0.15, 1)
+        if header.SetBackdropColor and header._wnSectionHeaderBaseBg then
+            local b = header._wnSectionHeaderBaseBg
+            header:SetBackdropColor(
+                math.min(1, b[1] * 1.12),
+                math.min(1, b[2] * 1.12),
+                math.min(1, b[3] * 1.12),
+                b[4] or 1
+            )
         end
     end)
     header:SetScript("OnLeave", function()
-        if header.SetBackdropColor then
-            header:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        if header.SetBackdropColor and header._wnSectionHeaderBaseBg then
+            local b = header._wnSectionHeaderBaseBg
+            header:SetBackdropColor(b[1], b[2], b[3], b[4] or 1)
         end
     end)
 
-    return yOffset + h
+    return yOffset + h, header
 end
 
-local COLLECTION_PLAN_SLOT_SIZE = 19
+local COLLECTION_PLAN_SLOT_SIZE = math.floor(19 * 1.25 + 0.5)
 
 local function SetCollectionPlanSlotTooltip(btn, text)
     if not btn then return end
@@ -7832,8 +9464,9 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
 
     local pad = UI_SPACING.SIDE_MARGIN or 10
     local gap = 4
-    local statusSize = 16
-    local iconSize = UI_SPACING.ROW_ICON_SIZE or 20
+    local collIconScale = 1.25
+    local statusSize = math.floor(16 * collIconScale + 0.5)
+    local iconSize = math.floor((UI_SPACING.ROW_ICON_SIZE or 20) * collIconScale + 0.5)
 
     local statusIcon = row:CreateTexture(nil, "ARTWORK")
     statusIcon:SetSize(statusSize, statusSize)
@@ -7843,21 +9476,32 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
     row.todoSlotBtn = CreateCollectionPlanSlotButton(row)
     row.trackSlotBtn = CreateCollectionPlanSlotButton(row)
 
-    local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(iconSize, iconSize)
-    icon:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
+    local iconBorder = self:CreateContainer(row, iconSize, iconSize, true)
+    if iconBorder then
+        local bg = { 0.12, 0.12, 0.14, 0.95 }
+        local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
+        if ApplyVisuals then
+            ApplyVisuals(iconBorder, bg, { bc[1], bc[2], bc[3], 0.72 })
+        end
+        iconBorder:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
+        row._iconBorder = iconBorder
+    end
+    local iconHost = row._iconBorder or row
+    local icon = iconHost:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", iconHost, "TOPLEFT", 1, -1)
+    icon:SetPoint("BOTTOMRIGHT", iconHost, "BOTTOMRIGHT", -1, 1)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     row.icon = icon
 
     local label = FontManager:CreateFontString(row, UIFontRole("factoryDataRowLabel"), "OVERLAY")
-    label:SetPoint("LEFT", icon, "RIGHT", gap, 0)
-    label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+    label:SetPoint("LEFT", iconHost, "RIGHT", gap, 0)
+    label:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
     label:SetJustifyH("LEFT")
     label:SetWordWrap(false)
     row.label = label
 
     local rightLabel = FontManager:CreateFontString(row, UIFontRole("factoryDataRowRight"), "OVERLAY")
-    rightLabel:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+    rightLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
     rightLabel:SetJustifyH("RIGHT")
     rightLabel:SetWordWrap(false)
     rightLabel:Hide()
@@ -7869,15 +9513,95 @@ end
 local COLLECTION_ROW_ICON_READY = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local COLLECTION_ROW_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady"
 
+local function CollectionListRowIconHost(row)
+    return row._iconBorder or row.icon
+end
+
+local function CollectionRowTextLeftX(row, pad, gap, slotGap)
+    local x = pad or 10
+    gap = gap or 4
+    slotGap = slotGap or 3
+    if row.statusIcon and row.statusIcon:IsShown() then
+        x = x + (row.statusIcon:GetWidth() or 0) + gap
+    end
+    if row.todoSlotBtn and row.todoSlotBtn:IsShown() then
+        x = x + COLLECTION_PLAN_SLOT_SIZE + slotGap
+        if row.trackSlotBtn and row.trackSlotBtn:IsShown() then
+            x = x + COLLECTION_PLAN_SLOT_SIZE + slotGap
+        end
+    end
+    local iconHost = CollectionListRowIconHost(row)
+    if iconHost and iconHost.GetWidth then
+        x = x + (iconHost:GetWidth() or 0) + gap
+    end
+    return x
+end
+
+--- Vertically center label (and optional subtitle) in the row; two-line block height never exceeds item icon.
+local function LayoutCollectionListRowText(row, pad, gap, slotGap)
+    if not row or not row.label then return end
+    pad = pad or 10
+    gap = gap or 4
+    slotGap = slotGap or 3
+    local iconHost = CollectionListRowIconHost(row)
+    if not iconHost then return end
+    local rowH = row:GetHeight() or (UI_SPACING.ROW_HEIGHT or 32)
+    local iconH = iconHost:GetHeight() or 25
+    local textX = CollectionRowTextLeftX(row, pad, gap, slotGap)
+    local hasSub = row.subtitle and row.subtitle:IsShown() and (row.subtitle:GetText() or "") ~= ""
+    row.label:ClearAllPoints()
+    if hasSub and row.subtitle then
+        row.subtitle:ClearAllPoints()
+        local lineGap = 2
+        local lh = row.label:GetStringHeight() or 12
+        local sh = row.subtitle:GetStringHeight() or 10
+        local blockH = lh + lineGap + sh
+        if blockH > iconH then
+            lineGap = 1
+            blockH = lh + lineGap + sh
+        end
+        if blockH > iconH then
+            blockH = iconH
+            lineGap = math.max(0, blockH - lh - sh)
+        end
+        local blockTop = (rowH - blockH) * 0.5
+        row.label:SetJustifyH("LEFT")
+        row.label:SetJustifyV("TOP")
+        row.subtitle:SetJustifyH("LEFT")
+        row.subtitle:SetJustifyV("TOP")
+        row.label:SetPoint("TOPLEFT", row, "TOPLEFT", textX, -blockTop)
+        row.subtitle:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -lineGap)
+        if row.rightLabel and row.rightLabel:IsShown() then
+            row.subtitle:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
+        else
+            row.subtitle:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+        end
+    else
+        local lh = row.label:GetStringHeight() or 12
+        local blockTop = (rowH - lh) * 0.5
+        row.label:SetJustifyH("LEFT")
+        row.label:SetJustifyV("TOP")
+        row.label:SetPoint("TOPLEFT", row, "TOPLEFT", textX, -blockTop)
+    end
+    if row.rightLabel and row.rightLabel:IsShown() then
+        row.rightLabel:ClearAllPoints()
+        row.rightLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
+        row.rightLabel:SetJustifyV("MIDDLE")
+        row.label:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
+    else
+        row.label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+    end
+end
+
 --- To-Do / Track column beside collected check (Collections + To-Do browse). `planSlotState` nil = hidden (e.g. Recent cards).
 --- planSlotState: `onTodo`, `onTrack`, optional `achievementRow`, `achievementCollected`, optional `showTrackSlot`, optional `onTodoClick` / `onTrackClick` (toggle supported by caller), optional `todoTooltip` / `trackTooltip` (hover; non-interactive slots still show tooltip when text set and mouse enabled).
 local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotGap)
     EnsureCollectionRowPlanSlotButtons(row)
     local todoBtn = row.todoSlotBtn
     local trackBtn = row.trackSlotBtn
-    local icon = row and row.icon
+    local iconHost = row and CollectionListRowIconHost(row)
     local statusIcon = row and row.statusIcon
-    if not todoBtn or not trackBtn or not icon or not statusIcon then return end
+    if not todoBtn or not trackBtn or not iconHost or not statusIcon then return end
     gap = gap or 4
     slotGap = slotGap or 3
     if not planSlotState then
@@ -7891,8 +9615,8 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
         trackBtn:EnableMouse(false)
         todoBtn:ClearAllPoints()
         trackBtn:ClearAllPoints()
-        icon:ClearAllPoints()
-        icon:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
+        iconHost:ClearAllPoints()
+        iconHost:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
         return
     end
     local onTodo = planSlotState.onTodo == true
@@ -7919,22 +9643,14 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
     todoBtn:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
     todoBtn:Show()
 
-    local plansTodoAtlas = (ns.UI_GetTabIcon and ns.UI_GetTabIcon("plans")) or "poi-workorders"
-    todoTex:SetDesaturated(false)
-    if not pcall(todoTex.SetAtlas, todoTex, plansTodoAtlas, true) then
-        todoTex:SetTexture("Interface\\Icons\\INV_Inscription_Scroll")
-        todoTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local todoDisabled = achCollected == true
+    if ns.UI_ApplyWnActionIcon then
+        ns.UI_ApplyWnActionIcon(todoTex, "todo", onTodo, todoDisabled)
     else
-        todoTex:SetTexCoord(0, 1, 0, 1)
-    end
-    -- To-Do slot: vivid only when addable (not completed and not already on list); grey otherwise — same idea as track pin.
-    local todoGrey = achCollected or onTodo
-    if todoGrey then
-        todoTex:SetDesaturated(true)
-        todoTex:SetVertexColor(0.52, 0.54, 0.58, 0.48)
-    else
-        todoTex:SetDesaturated(false)
-        todoTex:SetVertexColor(1, 0.95, 0.55, 1)
+        ns.UI_SetWnIconTexture(todoTex, "todo", {
+            desaturate = todoDisabled,
+            vertexColor = ns.UI_WnIconVertexForKey("todo", onTodo, todoDisabled),
+        })
     end
 
     local todoClickable = (type(planSlotState.onTodoClick) == "function") and (onTodo or not achCollected)
@@ -7951,30 +9667,18 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
     end
     SetCollectionPlanSlotTooltip(todoBtn, todoMouse and todoTipStr ~= "" and todoTipStr or nil)
 
-    icon:ClearAllPoints()
+    iconHost:ClearAllPoints()
     if showTrackSlot then
         trackBtn:SetPoint("LEFT", todoBtn, "RIGHT", slotGap, 0)
         trackBtn:Show()
-        local pinAtlas = onTrack and "Waypoint-MapPin-Tracked" or "Waypoint-MapPin-Untracked"
-        trackTex:SetDesaturated(false)
-        if not pcall(trackTex.SetAtlas, trackTex, pinAtlas, true) then
-            if not pcall(trackTex.SetAtlas, trackTex, pinAtlas, false) then
-                trackTex:SetTexture("Interface\\Icons\\INV_Misc_Map_01")
-                trackTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            else
-                trackTex:SetTexCoord(0, 1, 0, 1)
-            end
+        local trackDisabled = achCollected == true
+        if ns.UI_ApplyWnActionIcon then
+            ns.UI_ApplyWnActionIcon(trackTex, "track", onTrack, trackDisabled)
         else
-            trackTex:SetTexCoord(0, 1, 0, 1)
-        end
-        -- Track pin: vivid only when track can be turned on (incomplete + not tracking); grey if completed or already tracking.
-        local trackGrey = achCollected or onTrack
-        if trackGrey then
-            trackTex:SetDesaturated(true)
-            trackTex:SetVertexColor(0.55, 0.58, 0.62, 0.5)
-        else
-            trackTex:SetDesaturated(false)
-            trackTex:SetVertexColor(1, 0.82, 0.18, 1)
+            ns.UI_SetWnIconTexture(trackTex, "track", {
+                desaturate = trackDisabled,
+                vertexColor = ns.UI_WnIconVertexForKey("track", onTrack, trackDisabled),
+            })
         end
         local trackClickable = (type(planSlotState.onTrackClick) == "function") and (not achCollected)
         local trackTip = planSlotState.trackTooltip
@@ -7989,13 +9693,13 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
             trackBtn:SetScript("OnClick", nil)
         end
         SetCollectionPlanSlotTooltip(trackBtn, trackMouse and trackTipStr ~= "" and trackTipStr or nil)
-        icon:SetPoint("LEFT", trackBtn, "RIGHT", gap, 0)
+        iconHost:SetPoint("LEFT", trackBtn, "RIGHT", gap, 0)
     else
         trackBtn:Hide()
         trackBtn:SetScript("OnClick", nil)
         SetCollectionPlanSlotTooltip(trackBtn, nil)
         trackBtn:EnableMouse(false)
-        icon:SetPoint("LEFT", todoBtn, "RIGHT", gap, 0)
+        iconHost:SetPoint("LEFT", todoBtn, "RIGHT", gap, 0)
     end
 end
 
@@ -8031,24 +9735,19 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
     end
     local hasSub = subtitleText and subtitleText ~= ""
     if row.label then
-        row.label:ClearAllPoints()
-        if hasSub then
-            row.label:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", gap, 2)
-        else
-            row.label:SetPoint("LEFT", row.icon, "RIGHT", gap, 0)
-        end
+        row.label:SetText(labelText or "")
         row.label:SetJustifyH("LEFT")
+        row.label:SetJustifyV("MIDDLE")
         row.label:SetWordWrap(false)
     end
     if hasSub then
         if not row.subtitle then
             row.subtitle = FontManager:CreateFontString(row, UIFontRole("small"), "OVERLAY")
             row.subtitle:SetJustifyH("LEFT")
+            row.subtitle:SetJustifyV("MIDDLE")
             row.subtitle:SetWordWrap(false)
             row.subtitle:SetTextColor(0.65, 0.68, 0.74, 1)
         end
-        row.subtitle:ClearAllPoints()
-        row.subtitle:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -3)
         row.subtitle:SetText(subtitleText)
         row.subtitle:Show()
     elseif row.subtitle then
@@ -8057,26 +9756,17 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
     end
     if row.rightLabel and rightAlignedText and rightAlignedText ~= "" then
         row.rightLabel:SetText(rightAlignedText)
+        row.rightLabel:SetJustifyV("MIDDLE")
         row.rightLabel:Show()
-        if row.label then
-            row.label:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
-        end
-        if hasSub and row.subtitle then
-            row.subtitle:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
-        end
     else
         if row.rightLabel then
             row.rightLabel:SetText("")
             row.rightLabel:Hide()
         end
-        if row.label then
-            row.label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
-        end
-        if hasSub and row.subtitle then
-            row.subtitle:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
-        end
     end
-    if row.label then row.label:SetText(labelText or "") end
+    if row.label and CollectionListRowIconHost(row) then
+        LayoutCollectionListRowText(row, pad, gap, slotGap)
+    end
     row:SetScript("OnMouseDown", onClick)
     if not row.selBg then
         row.selBg = row:CreateTexture(nil, "BORDER")

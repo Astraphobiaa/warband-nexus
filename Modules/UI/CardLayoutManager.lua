@@ -27,6 +27,22 @@ local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled
 local CardLayoutManager = {}
 CardLayoutManager.instances = {}  -- Track layout instances per parent
 
+local function ResolveGridCardWidth(instance, card)
+    local parentWidth = instance.parent and instance.parent:GetWidth() or 0
+    if parentWidth <= 0 then
+        return 200
+    end
+    local padH = instance.padH or 10
+    local sp = instance.cardSpacing or 8
+    local cols = instance.columns or 2
+    local computed = math.max(100, (parentWidth - 2 * padH - (cols - 1) * sp) / cols)
+    local cw = card and card.GetWidth and card:GetWidth()
+    if cw and cw > 0 then
+        return math.min(cw, computed)
+    end
+    return computed
+end
+
 --[[
     Create a new card layout manager for a parent container
     @param parent Frame - Parent container
@@ -40,10 +56,16 @@ function CardLayoutManager:Create(parent, columns, cardSpacing, startYOffset)
     cardSpacing = cardSpacing or 8
     startYOffset = startYOffset or 0
     
+    local padH = 10
+    if ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.browseCardPadH then
+        padH = ns.UI_PLANS_CARD_METRICS.browseCardPadH
+    end
+
     local instance = {
         parent = parent,
         columns = columns,
         cardSpacing = cardSpacing,
+        padH = padH,
         cards = {},  -- Array of {card, col, rowIndex}
         currentYOffsets = {},  -- Track Y offset for each column
         startYOffset = startYOffset,
@@ -88,14 +110,14 @@ function CardLayoutManager:AddCard(instance, card, col, baseHeight)
     -- Get current Y offset for this column
     local yOffset = instance.currentYOffsets[col] or instance.startYOffset
     
-    -- Calculate X offset
-    local parentWidth = instance.parent:GetWidth()
-    local cardWidth = parentWidth > 0 and (parentWidth - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns or 200
-    local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
-    
+    local cardWidth = ResolveGridCardWidth(instance, card)
+    local padH = instance.padH or 10
+    local xOffset = padH + col * (cardWidth + instance.cardSpacing)
+
     -- Position card
     card:ClearAllPoints()
     card:SetPoint("TOPLEFT", xOffset, -yOffset)
+    card:SetWidth(cardWidth)
     
     -- Store card info
     local cardInfo = {
@@ -173,10 +195,9 @@ function CardLayoutManager:RecalculateAllPositions(instance)
         return
     end
     
-    -- Recalculate card width based on current parent width
     local parentWidth = instance.parent:GetWidth()
     if parentWidth <= 0 then return end
-    local cardWidth = (parentWidth - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
+    local padH = instance.padH or 10
     
     -- Reset column Y offsets
     for col = 0, instance.columns - 1 do
@@ -221,8 +242,8 @@ function CardLayoutManager:RecalculateAllPositions(instance)
             
             local yOffset = instance.currentYOffsets[0] or instance.startYOffset
             cardInfo.card:ClearAllPoints()
-            cardInfo.card:SetPoint("TOPLEFT", instance.parent, "TOPLEFT", 10, -yOffset)
-            cardInfo.card:SetPoint("TOPRIGHT", instance.parent, "TOPRIGHT", -10, -yOffset)
+            cardInfo.card:SetPoint("TOPLEFT", instance.parent, "TOPLEFT", padH, -yOffset)
+            cardInfo.card:SetPoint("TOPRIGHT", instance.parent, "TOPRIGHT", -padH, -yOffset)
             for c = 0, instance.columns - 1 do
                 instance.currentYOffsets[c] = yOffset + currentHeight + instance.cardSpacing
             end
@@ -230,8 +251,9 @@ function CardLayoutManager:RecalculateAllPositions(instance)
         else
             -- Masonry: place card at this column's current Y offset
             local yOffset = instance.currentYOffsets[col] or instance.startYOffset
-            local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
-            
+            local cardWidth = ResolveGridCardWidth(instance, cardInfo.card)
+            local xOffset = padH + col * (cardWidth + instance.cardSpacing)
+
             cardInfo.card:ClearAllPoints()
             cardInfo.card:SetPoint("TOPLEFT", xOffset, -yOffset)
             cardInfo.card:SetWidth(cardWidth)

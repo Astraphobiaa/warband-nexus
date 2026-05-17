@@ -79,7 +79,16 @@ function WarbandNexus:InitializeMinimapButton()
     local function UpdateTooltip(tooltip)
         if not tooltip or not tooltip.AddLine then return end
         
-        tooltip:SetText("|cff6a0dad[" .. ((L and L["ADDON_NAME"]) or "Warband Nexus") .. "]|r", 1, 1, 1)
+        local addonNamePlain = (L and L["ADDON_NAME"]) or "Warband Nexus"
+        local titleHex = "6a0dad"
+        local tc = ns.UI_COLORS and ns.UI_COLORS.accent
+        if tc and tc[1] and tc[2] and tc[3] then
+            local function ch(x)
+                return math.max(0, math.min(255, math.floor((tonumber(x) or 0) * 255 + 0.5)))
+            end
+            titleHex = string.format("%02x%02x%02x", ch(tc[1]), ch(tc[2]), ch(tc[3]))
+        end
+        tooltip:SetText("|cff" .. titleHex .. "[" .. addonNamePlain .. "]|r", 1, 1, 1)
         tooltip:AddLine(" ")
 
         local totalCopper = 0
@@ -147,7 +156,7 @@ function WarbandNexus:InitializeMinimapButton()
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
         text = (ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus",
-        icon = "Interface\\AddOns\\WarbandNexus\\Media\\icon",
+        icon = ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga",
         
         OnClick = function(clickedframe, button)
             if InCombatLockdown() then return end

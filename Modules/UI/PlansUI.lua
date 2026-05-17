@@ -68,6 +68,17 @@ local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local CardLayoutManager = ns.UI_CardLayoutManager
 local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 
+--- Prefer measured parent width over PopulateContent `width` (browse results container is inset).
+local function ResolvePlansContentWidth(parent, fallbackWidth)
+    if parent and parent.GetWidth then
+        local pw = parent:GetWidth()
+        if pw and pw > 1 then
+            return pw
+        end
+    end
+    return fallbackWidth or 400
+end
+
 -- Loading state for collection scanning (per-category)
 ns.PlansLoadingState = ns.PlansLoadingState or {
     -- Structure: { mount = { isLoading, loader }, pet = { isLoading, loader }, toy = { isLoading, loader } }
@@ -211,6 +222,27 @@ end
 
 --- Browse subtabs only: merge collected + uncollected using isPlanned and the two checkboxes.
 --- To-Do List / Weekly Progress do not use this — they filter plans in DrawActivePlans (Show Completed only).
+local function ClearPlanReminderForBrowseItem(addon, category, itemID)
+    if not addon or not itemID or not addon.RemovePlanReminder then return end
+    local plans = addon.db and addon.db.global and addon.db.global.plans
+    if not plans then return end
+    for _, plan in pairs(plans) do
+        if plan and plan.id and plan.type == category then
+            local match = false
+            if category == "mount" and plan.mountID == itemID then match = true
+            elseif category == "pet" and plan.speciesID == itemID then match = true
+            elseif category == "toy" and plan.itemID == itemID then match = true
+            elseif category == "illusion" and (plan.illusionID == itemID or plan.sourceID == itemID) then match = true
+            elseif category == "achievement" and plan.achievementID == itemID then match = true
+            elseif category == "title" and plan.titleID == itemID then match = true
+            end
+            if match then
+                addon:RemovePlanReminder(plan.id)
+            end
+        end
+    end
+end
+
 local function MergePlansBrowseResults(collectedList, uncollectedList, showPlanned, showCompleted)
     if showCompleted and showPlanned then
         local seen, out = {}, {}
@@ -431,11 +463,17 @@ function WarbandNexus:DrawPlansTab(parent)
         ns._plansAchOuterVirtualState = nil
     end
 
-    local width = parent:GetWidth() - 20
-
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerParent = fixedHeader or parent
-    local headerYOffset = 8
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local fixedHeader = mf and mf.fixedHeader
+    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+    local headerYOffset = (chrome and chrome.yOffset) or 0
+    local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or SIDE_MARGIN
+    local width = (metrics and metrics.contentWidth)
+        or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
+        or (parent:GetWidth() or 600)
+    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
 
     -- Check if module is enabled (early check for buttons)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false
@@ -456,15 +494,22 @@ function WarbandNexus:DrawPlansTab(parent)
         and format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
         or format((ns.L and ns.L["ACTIVE_PLAN_FORMAT"]) or "%d active plan", activePlanCount)
     local subtitleTextContent = plansSubtitle .. " • " .. activePlanText
-    local PLANS_TITLE_RIGHT_RESERVE = 560
+    local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
+    local plansToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
+        100, 100, 100, 80, tm.squareBtn or 32, 120, tm.squareBtn or 32, 100,
+    })) or 560
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "plans",
         titleText = titleTextContent,
         subtitleText = subtitleTextContent,
-        textRightInset = PLANS_TITLE_RIGHT_RESERVE,
+        textRightInset = plansToolbarReserve,
     }))
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    end
     
     -- Only show buttons and "Show Completed" checkbox if module is enabled
     if moduleEnabled then
@@ -475,10 +520,14 @@ function WarbandNexus:DrawPlansTab(parent)
         end
 
         -- Add Custom button (using shared widget)
-        local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
-        local hdrToolbarGap = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
+        local titleEdgeInset = tm.edgeInset or 0
+        local hdrToolbarGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
         local addCustomBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_CUSTOM"]) or "Add Custom", 100)
-        addCustomBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(addCustomBtn, titleCard, titleCard, "RIGHT", -titleEdgeInset)
+        else
+            addCustomBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
+        end
         -- Store reference for state management
         self.addCustomBtn = addCustomBtn
         addCustomBtn:SetScript("OnClick", function()
@@ -487,14 +536,22 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- Add Vault button (using shared widget)
         local addWeeklyBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_VAULT"]) or "Add Vault", 100)
-        addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -hdrToolbarGap, 0)
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(addWeeklyBtn, titleCard, addCustomBtn, "LEFT", -hdrToolbarGap)
+        else
+            addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -hdrToolbarGap, 0)
+        end
         addWeeklyBtn:SetScript("OnClick", function()
             self:ShowWeeklyPlanDialog()
         end)
         
         -- Add Quest button (opens Daily Plan dialog)
         local addDailyBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 100)
-        addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -hdrToolbarGap, 0)
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(addDailyBtn, titleCard, addWeeklyBtn, "LEFT", -hdrToolbarGap)
+        else
+            addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -hdrToolbarGap, 0)
+        end
         addDailyBtn:SetScript("OnClick", function()
             self:ShowDailyPlanDialog()
         end)
@@ -521,10 +578,18 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- Reset Completed Plans button (left of Add Quest button)
         local resetBtn = CreateThemedButton(titleCard, (ns.L and ns.L["RESET_LABEL"]) or "Reset", 80)
-        resetBtn:SetPoint("RIGHT", addDailyBtn, "LEFT", -hdrToolbarGap, 0)
-        
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(resetBtn, titleCard, addDailyBtn, "LEFT", -hdrToolbarGap)
+        else
+            resetBtn:SetPoint("RIGHT", addDailyBtn, "LEFT", -hdrToolbarGap, 0)
+        end
+
         -- Checkbox (left of Reset button)
-        checkbox:SetPoint("RIGHT", resetBtn, "LEFT", -hdrToolbarGap, 0)
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(checkbox, titleCard, resetBtn, "LEFT", -hdrToolbarGap)
+        else
+            checkbox:SetPoint("RIGHT", resetBtn, "LEFT", -hdrToolbarGap, 0)
+        end
         resetBtn:SetScript("OnClick", function()
             -- Confirmation via StaticPopup
             StaticPopupDialogs["WN_RESET_COMPLETED_PLANS"] = {
@@ -555,7 +620,11 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- Add text label for "Show Completed" checkbox (left of checkbox)
         local checkboxLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-        checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -hdrToolbarGap, 0)
+        if ns.UI_AnchorTitleCardToolbarControl then
+            ns.UI_AnchorTitleCardToolbarControl(checkboxLabel, titleCard, checkbox, "LEFT", -hdrToolbarGap)
+        else
+            checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -hdrToolbarGap, 0)
+        end
         checkboxLabel:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed")
         checkboxLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         
@@ -615,10 +684,18 @@ function WarbandNexus:DrawPlansTab(parent)
             if plannedCheckbox.innerDot then
                 plannedCheckbox.innerDot:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             end
-            plannedCheckbox:SetPoint("RIGHT", checkboxLabel, "LEFT", -16, 0)
+            if ns.UI_AnchorTitleCardToolbarControl then
+                ns.UI_AnchorTitleCardToolbarControl(plannedCheckbox, titleCard, checkboxLabel, "LEFT", -hdrToolbarGap)
+            else
+                plannedCheckbox:SetPoint("RIGHT", checkboxLabel, "LEFT", -hdrToolbarGap, 0)
+            end
 
             local plannedLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-            plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -hdrToolbarGap, 0)
+            if ns.UI_AnchorTitleCardToolbarControl then
+                ns.UI_AnchorTitleCardToolbarControl(plannedLabel, titleCard, plannedCheckbox, "LEFT", -hdrToolbarGap)
+            else
+                plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -hdrToolbarGap, 0)
+            end
             plannedLabel:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned")
             plannedLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
 
@@ -677,15 +754,25 @@ function WarbandNexus:DrawPlansTab(parent)
     -- Check if module is disabled (before showing controls)
     if not moduleEnabled then
         titleCard:Show()
-        headerYOffset = headerYOffset + GetLayout().afterHeader
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        if ns.UI_AdvanceTabChromeYOffset then
+            headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        else
+            headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        end
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List")
-        return 8 + cardHeight
+        local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List")
+        return scrollTopY + cardHeight
     end
 
     titleCard:Show()
-    headerYOffset = headerYOffset + GetLayout().afterHeader
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
+    else
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    end
     
     -- One-time event registration (following CurrencyUI pattern)
     if not self._plansEventRegistered then
@@ -702,7 +789,11 @@ function WarbandNexus:DrawPlansTab(parent)
                 
                 if not self:IsStillOnTab("plans") then return end
                 local scanCategory = data and data.category
-                if scanCategory ~= currentCategory and currentCategory ~= "active" then return end
+                if currentCategory == "active" or currentCategory == "daily_tasks" then
+                    if scanCategory and scanCategory ~= currentCategory then return end
+                elseif scanCategory and scanCategory ~= currentCategory and scanCategory ~= "all" and scanCategory ~= "build" then
+                    return
+                end
                 
                 lastUIRefresh = now
                 C_Timer.After(0.05, function()
@@ -721,8 +812,8 @@ function WarbandNexus:DrawPlansTab(parent)
     
     -- ===== CATEGORY BUTTONS (in fixedHeader - non-scrolling) =====
     local categoryBar = ns.UI.Factory:CreateContainer(headerParent, nil, nil, false)
-    categoryBar:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    categoryBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+    categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     
     local DEFAULT_CAT_BTN_WIDTH = 150
     local catBtnHeight = 40
@@ -731,7 +822,8 @@ function WarbandNexus:DrawPlansTab(parent)
     local catIconLeftPad = 10
     local catIconTextGap = 8
     local catTextRightPad = 10
-    local maxWidth = parent:GetWidth() - 20  -- Available width
+    local maxWidth = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+        or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
     
     -- Pre-calculate button widths based on text (icon + padding + text + padding)
     local catBtnWidths = {}
@@ -859,11 +951,16 @@ function WarbandNexus:DrawPlansTab(parent)
     local totalHeight = (currentRow + 1) * catBtnHeight + currentRow * catBtnSpacing
     categoryBar:SetHeight(totalHeight)
     
-    headerYOffset = headerYOffset + totalHeight + GetLayout().afterElement
+    local blockGap = (metrics and metrics.blockGap) or (GetLayout().TAB_CHROME_BLOCK_GAP) or (GetLayout().afterElement) or 8
+    headerYOffset = headerYOffset + totalHeight + blockGap
 
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    if ns.UI_CommitTabFixedHeader then
+        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+    elseif fixedHeader then
+        fixedHeader:SetHeight(headerYOffset)
+    end
 
-    local yOffset = 8
+    local yOffset = scrollTopY
 
     -- ===== SEARCH BAR FOR MY PLANS (active tab only) =====
     if currentCategory == "active" then
@@ -1118,7 +1215,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     resetBar:SetPoint("TOPLEFT", 10, -yOffset)
     resetBar:SetPoint("TOPRIGHT", -10, -yOffset)
     if ApplyVisuals then
-        ApplyVisuals(resetBar, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
+        local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
+        ApplyVisuals(resetBar, bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
     end
 
     local resetIcon = resetBar:CreateTexture(nil, "ARTWORK")
@@ -1743,35 +1841,26 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     
     -- === 2-COLUMN CARD GRID (same column math + chrome as Browse — ns.UI_PlansCardGridColumnWidth) ===
     local PCM = ns.UI_PLANS_CARD_METRICS
-    local cardSpacing = (PCM and PCM.gridSpacing) or 8
-    local cardWidth = ns.UI_PlansCardGridColumnWidth and ns.UI_PlansCardGridColumnWidth(width)
-        or math.max(100, (width - cardSpacing) / 2)
-    local todoHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width) or 60
+    local gridW = ResolvePlansContentWidth(parent, width)
+    local cardWidth, cardSpacing, gridPadH
+    if ns.UI_PlansCardGridLayout then
+        cardWidth, cardSpacing, gridPadH = ns.UI_PlansCardGridLayout(gridW, 2)
+    else
+        cardSpacing = (PCM and PCM.todoListCardGap) or 10
+        gridPadH = 12
+        cardWidth = ns.UI_PlansCardGridColumnWidth(gridW) or 200
+    end
+    local todoHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(gridW) or 63
     
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
     -- Always point at the active layout: PopulateContent rebuilds cards but OnSizeChanged is only hooked once;
     -- a stale closure capture would RefreshLayout the wrong (old) instance and corrupt positions after resize/scroll.
     parent._plansCardLayoutManager = layoutManager
-
-    -- Resize: defer layout refresh until resize ends (no continuous render during drag)
-    if not parent._layoutManagerResizeHandler then
-        local layoutResizeTimer = nil
-        parent:SetScript("OnSizeChanged", function(resizeParent)
-            if layoutResizeTimer then
-                layoutResizeTimer:Cancel()
-            end
-            layoutResizeTimer = C_Timer.NewTimer(0.15, function()
-                layoutResizeTimer = nil
-                local lm = resizeParent and resizeParent._plansCardLayoutManager
-                if lm then
-                    CardLayoutManager:RefreshLayout(lm)
-                end
-            end)
-        end)
-        parent._layoutManagerResizeHandler = true
+    if parent.SetClipsChildren then
+        parent:SetClipsChildren(true)
     end
-    
+
     for i = 1, #plans do
         local plan = plans[i]
         local progress = self:GetResolvedPlanProgress(plan)
@@ -1918,19 +2007,20 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 criteriaHeader = false
             end
 
-            -- Right-side actions (R→L: Delete, Alert, Complete?, Tries). Sizes match type badge (todoTypeBadgeSize).
-            local typeBadgeSz = (PCM and PCM.todoTypeBadgeSize) or 24
+            -- Right-side actions (LTR: Alert | Track | Delete | Complete? | Tries). Sizes match type badge (todoTypeBadgeSize).
+            local typeBadgeSz = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize())
+                or (PCM and PCM.todoTypeBadgeSize) or 24
             local ACTION_SIZE, ACTION_GAP = typeBadgeSz, 4
             local tryW = 88
             local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
             local idKey = tryCountTypes[plan.type]
             local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
-            local hasTry = collectibleID and ns.UI.Factory and ns.UI.Factory.CreateTryCountClickable
+            local planComplete = memoIsActivePlanComplete(plan)
+            local hasTry = (not planComplete) and collectibleID and ns.UI.Factory and ns.UI.Factory.CreateTryCountClickable
                 and self.ShouldShowTryCountInUI and self:ShouldShowTryCountInUI(plan.type, collectibleID)
             local titleRightInset = 6
             if plan.type == "achievement" and plan.achievementID then
-                local trackSz = math.max(28, ACTION_SIZE)
-                titleRightInset = titleRightInset + trackSz + ACTION_GAP -- Blizzard track control (left of delete)
+                titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
             end
             titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- delete (rightmost)
             titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP -- alert
@@ -1970,66 +2060,95 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 ApplyVisuals(row, COLORS.bgCard, borderColor)
             end
 
-            -- Header right-side actions (Delete + optional Complete) sit above the headerFrame's
-            -- expand-toggle handler so clicks reach the action button, not the toggle.
+            -- Header right-side actions (LTR: Alert | Track | Delete | Complete?) sit above expand-toggle.
             local rightOffset = 6
-            local function makeAction(normalTex, highlightTex, onClick, tooltipKey, tooltipFallback)
-                local btn = ns.UI.Factory:CreateButton(row.headerFrame, ACTION_SIZE, ACTION_SIZE, true)
-                btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
-                btn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
-                btn:SetNormalTexture(normalTex)
-                btn:SetHighlightTexture(highlightTex)
-                btn:SetScript("OnMouseDown", function() end)
-                btn:RegisterForClicks("AnyUp")
-                btn:SetScript("OnClick", onClick)
-                btn:SetScript("OnEnter", function(b)
-                    ns.TooltipService:Show(b, {
-                        type = "custom",
-                        title = (ns.L and ns.L[tooltipKey]) or tooltipFallback,
-                        icon = false, anchor = "ANCHOR_TOP", lines = {},
-                    })
-                end)
-                btn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+            local function makeIconAction(iconKey, onClick, tooltipKey, tooltipFallback, active)
+                local vc = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey(iconKey, active, false)
+                    or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 })
+                local btn = ns.UI_CreateIconActionButton and ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, iconKey, {
+                    frameLevelOffset = 10,
+                    vertexColor = vc,
+                    onClick = onClick,
+                    tooltipTitle = (ns.L and ns.L[tooltipKey]) or tooltipFallback,
+                    tooltipAnchor = "ANCHOR_TOP",
+                })
+                if not btn then return nil end
+                if ns.UI_PlansAnchorHeaderAction then
+                    ns.UI_PlansAnchorHeaderAction(btn, row.headerFrame, rightOffset, ACTION_SIZE)
+                else
+                    btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                end
                 rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
                 return btn
             end
 
-            makeAction(
-                "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
-                "Interface\\Buttons\\UI-GroupLoot-Pass-Highlight",
+            local function anchorRightControl(control, width)
+                if not control then return end
+                width = width or ACTION_SIZE
+                if ns.UI_PlansAnchorHeaderAction then
+                    ns.UI_PlansAnchorHeaderAction(control, row.headerFrame, rightOffset, width)
+                else
+                    control:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                end
+                rightOffset = rightOffset + width + ACTION_GAP
+            end
+
+            -- Delete (rightmost): prohibited/block icon
+            makeIconAction(
+                "delete",
                 function() if plan.id then self:RemovePlan(plan.id) end end,
-                "PLAN_ACTION_DELETE", "Delete the Plan"
+                "PLAN_ACTION_DELETE", "Delete the Plan",
+                false
             )
 
+            -- Track: Atlas pin (achievement Blizzard objectives)
             if plan.type == "achievement" and plan.achievementID and ns.UI.Factory and ns.UI.Factory.CreateAchievementTrackPinButton then
-                local trackSz = math.max(28, ACTION_SIZE)
                 local achPin = ns.UI.Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
-                    size = trackSz,
+                    size = ACTION_SIZE,
                     frameLevelOffset = 30,
                     isDisabled = function() return memoIsActivePlanComplete(plan) end,
                 })
-                if achPin then
-                    achPin:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
-                    rightOffset = rightOffset + trackSz + ACTION_GAP
+                if achPin and achPin.WnRefreshAchievementTrackPin then
+                    achPin:WnRefreshAchievementTrackPin()
                 end
+                anchorRightControl(achPin, ACTION_SIZE)
             end
 
-            if PlanCardFactory.CreateReminderAlertButton then
+            -- Alert: reminder / bell icon
+            if PlanCardFactory.CreateReminderAlertButton and not memoIsActivePlanComplete(plan) then
                 local remBtn = PlanCardFactory.CreateReminderAlertButton(row.headerFrame, plan)
                 if remBtn then
-                    remBtn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                     remBtn:SetFrameLevel((row.headerFrame:GetFrameLevel() or 0) + 12)
-                    rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
+                    if remBtn.WnRefreshReminderIcon then
+                        remBtn:WnRefreshReminderIcon()
+                    end
+                    anchorRightControl(remBtn, ACTION_SIZE)
                 end
             end
 
-            if plan.type == "custom" then
-                makeAction(
-                    "Interface\\RaidFrame\\ReadyCheck-Ready",
-                    "Interface\\RaidFrame\\ReadyCheck-Ready",
-                    function() if self.CompleteCustomPlan then self:CompleteCustomPlan(plan.id) end end,
-                    "PLAN_ACTION_COMPLETE", "Complete the Plan"
-                )
+            -- Custom complete: checkmark (not the alert bell)
+            if plan.type == "custom" and ns.UI.Factory and ns.UI.Factory.CreateButton then
+                local completeBtn = ns.UI.Factory:CreateButton(row.headerFrame, ACTION_SIZE, ACTION_SIZE, true)
+                completeBtn:SetFrameLevel((row.headerFrame:GetFrameLevel() or 0) + 10)
+                completeBtn:RegisterForClicks("LeftButtonUp")
+                completeBtn:SetScript("OnClick", function()
+                    if self.CompleteCustomPlan then self:CompleteCustomPlan(plan.id) end
+                end)
+                completeBtn:SetScript("OnEnter", function(btn)
+                    GameTooltip:SetOwner(btn, "ANCHOR_TOP")
+                    GameTooltip:SetText((ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan", 1, 1, 1)
+                    GameTooltip:Show()
+                end)
+                completeBtn:SetScript("OnLeave", GameTooltip_Hide)
+                local tex = completeBtn:CreateTexture(nil, "OVERLAY")
+                tex:SetSize(math.max(14, ACTION_SIZE - 6), math.max(14, ACTION_SIZE - 6))
+                tex:SetPoint("CENTER")
+                local ok = tex.SetAtlas and pcall(tex.SetAtlas, tex, "common-icon-checkmark", false)
+                if ok then
+                    tex:SetTexCoord(0, 1, 0, 1)
+                    tex:SetVertexColor(0.35, 0.95, 0.45, 1)
+                end
+                anchorRightControl(completeBtn, ACTION_SIZE)
             end
 
             if hasTry then
@@ -2119,7 +2238,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     local resultsYOffset = 0
     local actualResultsHeight = self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, searchText)
 
-    return yOffset + (actualResultsHeight or 1800)  -- Use actual height with 1800 fallback
+    local measuredH = (resultsContainer and resultsContainer.GetHeight and resultsContainer:GetHeight()) or actualResultsHeight
+    return yOffset + math.max(measuredH or 0, actualResultsHeight or 0, 1)
 end
 
 -- ============================================================================
@@ -2242,7 +2362,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     })
 
     local layout = GetLayout()
-    local achRowScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.1
+    local achRowScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.155
     local baseRowH = layout.rowHeight or layout.ROW_HEIGHT or 26
     local ROW_H = math.max(18, math.floor(baseRowH * achRowScale + 0.5))
     local innerPad = 8
@@ -2381,20 +2501,25 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                 rowIndex = item.rowIndex,
                 yOffset = item._collRelY,
                 height = item.height,
+                rowPaintHeight = item.rowPaintHeight,
                 indent = indent,
             }
         end
 
+        local paintH = (rowItem.rowPaintHeight and rowItem.rowPaintHeight > 0) and rowItem.rowPaintHeight or ROW_H
         local row = table.remove(rowPool)
         if not row then
-            row = Factory:CreateCollectionListRow(rowParent, ROW_H)
+            row = Factory:CreateCollectionListRow(rowParent, paintH)
         else
             row:SetParent(rowParent)
         end
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", indent, -(rowItem.yOffset or 0))
-        row:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", 0, -(rowItem.yOffset or 0))
-        row:SetHeight(ROW_H)
+        row:SetPoint("TOPRIGHT", rowParent, "TOPRIGHT", -4, -(rowItem.yOffset or 0))
+        row:SetHeight(paintH)
+        if row.SetClipsChildren then
+            row:SetClipsChildren(true)
+        end
 
         local title = FormatTextNumbers(ach.name or "")
         if ach.isPlanned and showAchievementPlannedSuffix then
@@ -2540,6 +2665,47 @@ local MAX_BROWSE_RESULTS = 100
 -- Collected fetch for Plans browse: Show Completed filters collected rows by isPlanned. A low cap (e.g. 50)
 -- leaves tabs empty when the user's planned-completed entries are not among the first N collected (Achievements already used 99999).
 local COLLECTED_BROWSE_FETCH_LIMIT = 99999
+
+local PLANS_BROWSE_STORE_CATEGORIES = {
+    mount = true, pet = true, toy = true, illusion = true, title = true,
+}
+
+local function PlansBrowseCategoryStoreEmpty(category)
+    local store = WarbandNexus and WarbandNexus.collectionStore
+    if not store then return true end
+    local tbl = store[category]
+    return not tbl or next(tbl) == nil
+end
+
+local function DrawPlansBrowseLoadingCard(parent, yOffset, category, categoryState)
+    local collLoading = ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading
+    local state = collLoading and ns.CollectionLoadingState or categoryState
+    local loadingStateData = {
+        isLoading = true,
+        loadingProgress = (state and state.loadingProgress) or 0,
+        currentStage = (state and state.currentStage) or ((ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."),
+    }
+    local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+    if not UI_CreateLoadingStateCard then
+        return yOffset + 120
+    end
+    local categoryNameMap = {
+        mount = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts",
+        pet = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets",
+        toy = (ns.L and ns.L["CATEGORY_TOYS"]) or "Toys",
+        achievement = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements",
+        illusion = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
+        title = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
+        transmog = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog",
+    }
+    local displayName = categoryNameMap[category] or (category and (category:gsub("^%l", string.upper) .. "s")) or "Items"
+    return UI_CreateLoadingStateCard(
+        parent,
+        yOffset,
+        loadingStateData,
+        format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName)
+    )
+end
 
 local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlanned, showCompleted)
     local L = ns.L
@@ -2868,6 +3034,19 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local results = MergePlansBrowseResults(resultsCollected, resultsUncollected, showPlannedBrowse, showCompletedBrowse)
 
     if #results == 0 then
+        if PLANS_BROWSE_STORE_CATEGORIES[category] then
+            if (ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading) or categoryState.isLoading then
+                return DrawPlansBrowseLoadingCard(parent, yOffset, category, categoryState)
+            end
+            if PlansBrowseCategoryStoreEmpty(category) then
+                if ns.ScheduleEnsureCollectionDataDeferred then
+                    ns.ScheduleEnsureCollectionDataDeferred()
+                elseif WarbandNexus.EnsureCollectionData then
+                    WarbandNexus:EnsureCollectionData()
+                end
+                return DrawPlansBrowseLoadingCard(parent, yOffset, category, categoryState)
+            end
+        end
         if dbgPlansBrowse then
         end
         return DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlannedBrowse, showCompletedBrowse)
@@ -2881,11 +3060,21 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local totalResults = #results
     local resultsToRender = math.min(totalResults, MAX_BROWSE_RESULTS)
     
+    if parent and parent.SetClipsChildren then
+        parent:SetClipsChildren(true)
+    end
+
     -- === 2-COLUMN CARD GRID (metrics match To-Do expandable rows — SharedWidgets ns.UI_PLANS_CARD_METRICS) ===
     local PCM = ns.UI_PLANS_CARD_METRICS
-    local cardSpacing = (PCM and PCM.gridSpacing) or 8
-    local cardWidth = ns.UI_PlansCardGridColumnWidth and ns.UI_PlansCardGridColumnWidth(width)
-        or math.max(100, (width - cardSpacing) / 2)
+    local gridW = ResolvePlansContentWidth(parent, width)
+    local cardWidth, cardSpacing, gridPadH
+    if ns.UI_PlansCardGridLayout then
+        cardWidth, cardSpacing, gridPadH = ns.UI_PlansCardGridLayout(gridW, 2)
+    else
+        cardSpacing = (PCM and PCM.gridSpacing) or 8
+        gridPadH = 12
+        cardWidth = ns.UI_PlansCardGridColumnWidth(gridW) or 200
+    end
     local cardHeight = (PCM and PCM.browseCardHeight) or 105
     local browseIconTop = (PCM and PCM.browseIconTopInset) or 10
     local browseIconLeft = (PCM and PCM.browseIconLeftInset) or 10
@@ -2908,9 +3097,16 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local planBrowseSrcIconSz = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
     local planBrowseTypeBadgeSz = todoBadgeSz
     
+    local browseRightRailW = (PCM and PCM.browseRightRailW) or 65
+    local browseActionGap = 6
+
     for i = 1, resultsToRender do
         local item = results[i]
         item.category = category
+        local isCompletedCard = (item.isCollected == true)
+        if isCompletedCard and item.isPlanned and item.id then
+            ClearPlanReminderForBrowseItem(WarbandNexus, category, item.id)
+        end
         -- Resolve empty source from API so browser shows same source as collection tabs (e.g. Voidstorm Fishing).
         local sourceMissing = not item.source
         if not sourceMissing and item.source then
@@ -2937,12 +3133,14 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         local sources = self:ParseMultipleSources(item.source)
         local firstSource = sources[1] or {}
         
-        -- Calculate position
-        local xOffset = col * (cardWidth + cardSpacing)
-        
+        local xOffset = gridPadH + col * (cardWidth + cardSpacing)
+
         local card = CreateCard(parent, cardHeight)
         card:SetWidth(cardWidth)
         card:SetPoint("TOPLEFT", xOffset, -yOffset)
+        if card.SetClipsChildren then
+            card:SetClipsChildren(true)
+        end
         card:EnableMouse(true)
         
         -- Apply color-coded border based on status
@@ -2979,7 +3177,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- === TITLE ===
         local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
         nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
-        nameText:SetPoint("RIGHT", card, "RIGHT", -10, 0)
+        nameText:SetPoint("RIGHT", card, "RIGHT", -(browseRightRailW + 12), 0)
         local displayName = FormatTextNumbers(item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
         if item.isPlanned then
             local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
@@ -3091,14 +3289,26 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             typeBadge:EnableMouse(false)  -- Allow clicks to pass through
         end
         
+        local rightRail = ns.UI.Factory:CreateContainer(card, browseRightRailW, cardHeight - browseIconTop - 8, false)
+        rightRail:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -browseIconTop)
+        rightRail:EnableMouse(false)
+
         -- === LINE 3: Source Info (below icon row — aligned with To-Do chrome) ===
         local line3Y = -(browseIconTop + browseIconBox + 4)
+        local srcRightInset = browseRightRailW + 16
+        local srcAnchorX = browseIconLeft + browseIconBox + 10
+        local srcLineCount = 0
+        if category == "title" and item.sourceAchievement then srcLineCount = 1
+        elseif firstSource.vendor or firstSource.npc or firstSource.faction then srcLineCount = 1 end
+        if firstSource.zone then srcLineCount = srcLineCount + 1 end
+        local srcBlockH = math.max(1, srcLineCount) * 20
+        local srcTopY = line3Y - math.max(0, (cardHeight - browseIconTop - browseIconBox - 20 - srcBlockH) * 0.5)
         
         -- TITLE-SPECIFIC: Show source achievement with clickable link
         if category == "title" and item.sourceAchievement then
             local achievementText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            achievementText:SetPoint("TOPLEFT", 10, line3Y)
-            achievementText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+            achievementText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
+            achievementText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
             -- Use localized strings for Source label and Achievement type
             local sourceLabel = NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:")
             local achievementType = (ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or (BATTLE_PET_SOURCE_6 or "Achievement")
@@ -3146,8 +3356,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             end)
         elseif firstSource.vendor then
             local vendorText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            vendorText:SetPoint("TOPLEFT", 10, line3Y)
-            vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
+            vendorText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
+            vendorText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
             vendorText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. firstSource.vendor)
             vendorText:SetTextColor(1, 1, 1)
             vendorText:SetJustifyH("LEFT")
@@ -3156,8 +3366,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             vendorText:SetNonSpaceWrap(false)
         elseif firstSource.npc then
             local npcText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            npcText:SetPoint("TOPLEFT", 10, line3Y)
-            npcText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
+            npcText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
+            npcText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
             local _srcIcon = ns.UI_PlanSourceIconMarkup
             local _lootMark = _srcIcon and _srcIcon("loot", planBrowseSrcIconSz) or format("|A:Banker:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
             npcText:SetText(_lootMark .. " " .. NormalizeColonLabelSpacing((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. firstSource.npc)
@@ -3168,8 +3378,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             npcText:SetNonSpaceWrap(false)
         elseif firstSource.faction then
             local factionText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            factionText:SetPoint("TOPLEFT", 10, line3Y)
-            factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
+            factionText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
+            factionText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
             local factionLabel = NormalizeColonLabelSpacing((ns.L and ns.L["FACTION_LABEL"]) or "Faction:")
             local displayText = (ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " " .. factionLabel .. firstSource.faction
             if firstSource.renown then
@@ -3188,9 +3398,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         if firstSource.zone then
             local zoneText = FontManager:CreateFontString(card, "body", "OVERLAY")
             -- Use line3Y if no vendor/NPC/faction above it, otherwise -76 (adjusted for bigger font)
-            local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and (line3Y - 22) or line3Y
-            zoneText:SetPoint("TOPLEFT", 10, zoneY)
-            zoneText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
+            local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and (srcTopY - 22) or srcTopY
+            zoneText:SetPoint("TOPLEFT", srcAnchorX, zoneY)
+            zoneText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
             local _srcIconZ = ns.UI_PlanSourceIconMarkup
             local _locMark = _srcIconZ and _srcIconZ("location", planBrowseSrcIconSz) or format("|A:poi-islands-table:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)
             zoneText:SetText(_locMark .. " " .. NormalizeColonLabelSpacing((ns.L and ns.L["ZONE_LABEL"]) or "Zone:") .. firstSource.zone)
@@ -3227,8 +3437,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 -- === INFORMATION (Description) - BELOW icon, WHITE color ===
                 if description and not (issecretvalue and issecretvalue(description)) and description ~= "" then
                     local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                    infoText:SetPoint("TOPLEFT", 10, line3Y)
-                    infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    infoText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
+                    infoText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
                     infoText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. description .. "|r")
                     infoText:SetJustifyH("LEFT")
                     infoText:SetWordWrap(true)
@@ -3237,8 +3447,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     lastElement = infoText
                 elseif item.description and not (issecretvalue and issecretvalue(item.description)) and item.description ~= "" then
                     local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                    infoText:SetPoint("TOPLEFT", 10, line3Y)
-                    infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    infoText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
+                    infoText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
                     infoText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(item.description) .. "|r")
                     infoText:SetJustifyH("LEFT")
                     infoText:SetWordWrap(true)
@@ -3253,9 +3463,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     if lastElement then
                         progressText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -2)
                     else
-                        progressText:SetPoint("TOPLEFT", 10, line3Y)
+                        progressText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
                     end
-                    progressText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    progressText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
                     local progressLabelRaw = (ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:"
                     local cleanProgress = progress:gsub(progressLabelRaw:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. "%s*", "")
                     progressText:SetText("|cffffcc00" .. NormalizeColonLabelSpacing(progressLabelRaw) .. "|r |cffffffff" .. cleanProgress .. "|r")
@@ -3283,9 +3493,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     if lastElement then
                         rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -14)
                     else
-                        rewardText:SetPoint("TOPLEFT", 10, line3Y)
+                        rewardText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
                     end
-                    rewardText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    rewardText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
                     rewardText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. displayRewardText .. "|r")
                     rewardText:SetJustifyH("LEFT")
                     rewardText:SetWordWrap(true)
@@ -3304,8 +3514,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     else
                         -- Fallback if factory not available
                         local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                        sourceText:SetPoint("TOPLEFT", 10, line3Y)
-                        sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)
+                        sourceText:SetPoint("TOPLEFT", srcAnchorX, srcTopY)
+                        sourceText:SetPoint("RIGHT", card, "RIGHT", -srcRightInset, 0)
                         sourceText:SetText((ns.UI_PlanSourceIconMarkup and ns.UI_PlanSourceIconMarkup("class", planBrowseSrcIconSz) or format("|A:Class:%d:%d|a", planBrowseSrcIconSz, planBrowseSrcIconSz)) .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. (item.source or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
                         sourceText:SetJustifyH("LEFT")
                         sourceText:SetWordWrap(true)
@@ -3324,9 +3534,15 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 label = (ns.L and ns.L["ADDED"]) or "Added",
                 fontCategory = "body"
             })
-        else
-            local addBtn = PlanCardFactory.CreateAddButton(card, {
+        elseif not isCompletedCard then
+            local addBtn = PlanCardFactory.CreateAddButton(rightRail, {
                 buttonType = "card",
+                iconOnly = true,
+                anchorPoint = "CENTER",
+                x = 0,
+                y = 0,
+                width = 32,
+                height = 32,
                 onClick = function(self)
                     local planData = {
                         -- itemID: for toys (id field), or fallback to item.itemID
@@ -3370,7 +3586,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         -- Try count badge: only for drop-source collectibles (rare, container, fishing, etc.), not vendor/achievement/guaranteed.
         local browserTryTypes = { mount = true, pet = true, toy = true, illusion = true }
-        if browserTryTypes[category] and item.id and WarbandNexus and WarbandNexus.GetTryCount then
+        if (not isCompletedCard) and browserTryTypes[category] and item.id and WarbandNexus and WarbandNexus.GetTryCount then
             local count = WarbandNexus:GetTryCount(category, item.id)
             if count == nil then count = 0 end
             local isDrop = WarbandNexus.IsDropSourceCollectible and WarbandNexus:IsDropSourceCollectible(category, item.id)
@@ -3378,7 +3594,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             if (isDrop and not isGuaranteed) or count > 0 then
                 local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
                 local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -10)
+                tryText:SetPoint("TOP", rightRail, "TOP", 0, -4)
+                tryText:SetPoint("RIGHT", rightRail, "RIGHT", 0, 0)
                 tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
                 tryText:SetJustifyH("RIGHT")
                 tryText:SetWordWrap(false)
@@ -3386,7 +3603,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
 
         -- Right-click: set try count (same rules as My Plans), including Mounts/Pets/Toys/Illusions browser cards
-        if browserTryTypes[category] and item.id then
+        if (not isCompletedCard) and browserTryTypes[category] and item.id then
             local tryId = item.id
             local tryName = item.name
             local tryCat = category
@@ -3428,8 +3645,12 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
 
     local searchId = "plans_" .. (category or "unknown"):lower()
     SearchStateManager:UpdateResults(searchId, #results)
-    
-    return yOffset + 10
+
+    local totalH = yOffset + 10
+    if parent and parent.SetHeight then
+        parent:SetHeight(math.max(totalH, 1))
+    end
+    return totalH
 end
 
 -- ============================================================================
@@ -4617,5 +4838,23 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     wipIconFrame2:Show()
     
     return yOffset + 250  -- Return yOffset + card height + spacing
+end
+
+if ns.UI_LayoutCoordinator and CardLayoutManager then
+    local LC = ns.UI_LayoutCoordinator
+    LC:RegisterTabAdapter("plans", {
+        OnViewportLayoutCommit = function(scrollChild, _contentWidth, mf)
+            if not mf or mf.currentTab ~= "plans" or not scrollChild then return false end
+            if ns.UI_RefreshFixedHeaderChrome then
+                ns.UI_RefreshFixedHeaderChrome(mf)
+            end
+            local lm = scrollChild._plansCardLayoutManager
+            if lm then
+                CardLayoutManager:RefreshLayout(lm)
+                return true
+            end
+            return false
+        end,
+    })
 end
 

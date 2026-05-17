@@ -828,8 +828,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
     local Factory = ns.UI.Factory
     local COLLAPSE_H_CUR = SECTION_COLLAPSE_HEADER_HEIGHT
-    local betweenRows = GetLayout().betweenRows or 0
-    local rowGap = (betweenRows > 0) and betweenRows or 2
+    local rowGap = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (GetLayout().dataRowGap) or 4
     local topChainTail = nil
 
     local function MeasureChildrenHeight(frame)
@@ -893,6 +892,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
         body:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, -COLLAPSE_H_CUR)
         body:SetWidth(math.max(1, bodyWidth))
         body:SetHeight(0.1)
+        if body.SetClipsChildren then
+            body:SetClipsChildren(true)
+        end
         body:Hide()
         return body
     end
@@ -1262,7 +1264,8 @@ function WarbandNexus:RedrawCurrencyResultsOnly(animateHeight)
     if not scrollChild then return end
     local rc = scrollChild.resultsContainer
     if not rc or rc:GetParent() ~= scrollChild then return end
-    local width = scrollChild:GetWidth() - 20
+    local width = (ns.UI_ResolveResultsContainerPaintWidth and ns.UI_ResolveResultsContainerPaintWidth(mf, rc))
+        or math.max(1, (scrollChild:GetWidth() or 0) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
     if width < 1 then return end
 
     if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
@@ -1364,9 +1367,17 @@ function WarbandNexus:DrawCurrencyTab(parent)
         end
     end
     
-    local width = parent:GetWidth() - 20
-    local fixedHeader = WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.fixedHeader
-    local headerYOffset = 8
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local contentWidth = (metrics and metrics.contentWidth)
+        or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
+        or (parent:GetWidth() or 600)
+    local bodyWidth = (metrics and metrics.bodyWidth)
+        or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+        or math.max(200, contentWidth - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
+    local fixedHeader = mf and mf.fixedHeader
+    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local headerYOffset = (chrome and chrome.yOffset) or (metrics and metrics.topMargin) or 0
     
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
@@ -1382,19 +1393,29 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local subtitle = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters"
     local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
     subtitle = subtitle .. "  |cff666666\194\183|r  |cff888888" .. shiftHintText .. "|r"
-    local currencyEcReserve = ((ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32) + ((GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8)
+    local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
+    local currencyToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 118, tm.squareBtn or 32 }))
+        or (118 + (tm.squareBtn or 32) + (tm.gap or 8))
     local titleCard, _, _, _, _ = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "currency",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r",
         subtitleText = subtitle,
-        textRightInset = 118 + currencyEcReserve,
+        textRightInset = currencyToolbarReserve,
     })
-    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+    end
     
     local showZeroBtn = CreateThemedButton(titleCard, showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"), 100)
-    local titleCardRightInset = GetLayout().TITLE_CARD_CONTROL_RIGHT_INSET or 20
-    showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleCardRightInset, 0)
+    local titleEdgeInset = tm.edgeInset or 0
+    if ns.UI_AnchorTitleCardToolbarControl then
+        ns.UI_AnchorTitleCardToolbarControl(showZeroBtn, titleCard, titleCard, "RIGHT", -titleEdgeInset)
+    else
+        showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
+    end
     if not moduleEnabled then showZeroBtn:Hide() end
     showZeroBtn:SetScript("OnClick", function(btn)
         showZero = not showZero
@@ -1441,7 +1462,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
 
     titleCard:Show()
     
-    headerYOffset = headerYOffset + GetLayout().afterHeader
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    else
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+    end
     
     -- If module is disabled, show disabled state card (in scroll area)
     if not moduleEnabled then
@@ -1468,7 +1493,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local CreateSearchBox = ns.UI_CreateSearchBox
     local currencySearchText = SearchStateManager:GetQuery("currency")
     
-    local searchBox = CreateSearchBox(headerParent, width, (ns.L and ns.L["CURRENCY_SEARCH"]) or "Search currencies...", function(text)
+    local searchBox = CreateSearchBox(headerParent, contentWidth, (ns.L and ns.L["CURRENCY_SEARCH"]) or "Search currencies...", function(text)
         SearchStateManager:SetSearchQuery("currency", text)
         if parent.resultsContainer then
             SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
@@ -1483,7 +1508,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
     headerYOffset = headerYOffset + searchH + GetLayout().afterElement
     
     -- Set fixedHeader height so scroll area starts below it
-    if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    if ns.UI_CommitTabFixedHeader then
+        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+    elseif fixedHeader then
+        fixedHeader:SetHeight(headerYOffset)
+    end
     
     -- Results container starts at top of scrollChild (scroll area)
     local container
@@ -1499,12 +1528,36 @@ function WarbandNexus:DrawCurrencyTab(parent)
     container:ClearAllPoints()
     container:SetPoint("TOPLEFT", parent, "TOPLEFT", SIDE_MARGIN, -8)
     container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, -8)
-    container:SetWidth(width)
+    container:SetWidth(bodyWidth)
     container:SetHeight(1)
     container:Show()
     
-    local listHeight = self:DrawCurrencyList(container, width)
+    local listHeight = self:DrawCurrencyList(container, bodyWidth)
     ApplyCurrencyResultsHeight(WarbandNexus.UI and WarbandNexus.UI.mainFrame, parent, container, listHeight, false)
     
     return 8 + listHeight
+end
+
+if ns.UI_LayoutCoordinator then
+    local function RelayoutCurrencyResultsViewport(scrollChild, contentWidth, mf)
+        if not mf or mf.currentTab ~= "currency" or not scrollChild then return false end
+        local rc = scrollChild.resultsContainer
+        if rc and contentWidth and contentWidth > 0 then
+            local side = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN or 12
+            if ns.UI_GetMainTabLayoutMetrics then
+                local m = ns.UI_GetMainTabLayoutMetrics(mf)
+                if m and m.sideMargin then side = m.sideMargin end
+            end
+            rc:SetWidth(math.max(1, contentWidth - side * 2))
+            if ns.UI_RelayoutResultsContainer then
+                ns.UI_RelayoutResultsContainer(rc, scrollChild, side, 8)
+            end
+            return true
+        end
+        return false
+    end
+    ns.UI_LayoutCoordinator:RegisterTabAdapter("currency", {
+        OnViewportWidthChanged = RelayoutCurrencyResultsViewport,
+        OnViewportLayoutCommit = RelayoutCurrencyResultsViewport,
+    })
 end

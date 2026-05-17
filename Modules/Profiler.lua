@@ -45,6 +45,10 @@
         /wn profiler dock     - Toggle dock-left layout for dev window
         /wn profiler gearonly on|off - Record only Gear-related slices (UI/Pop_* only on Gear tab populate)
         /wn profiler events on|off [minMs] - Log slow event handlers to WN_TRACE (WN_TRACE_EVT; needs measuring ON)
+
+    Heavy-tab QA (see WN-PERF-warband-nexus Heavy tab first paint): enable measuring (`/wn profiler on`) plus
+    tab perf traces (`/wn debug` + verbose) to log `Pop_drawTab`/`DrawTab <tab> ...ms`; exercise Items/Warband tree,
+    Collections, Plans, Characters. Main-tab switch uses staged pool (`C_Timer.After`) then `PopulateContent` (UI.lua).
 ============================================================================]]
 
 local ADDON_NAME, ns = ...

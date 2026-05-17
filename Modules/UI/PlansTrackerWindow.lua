@@ -1064,16 +1064,36 @@ local function RefreshTrackerContentImmediate()
 
                 -- Right-side actions (delete + optional complete for custom). Frame level above headerFrame
                 -- so the buttons consume clicks before headerFrame's expand-toggle handler.
-                local ACTION_SIZE = typeBadgeSz
+                local ACTION_SIZE = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or typeBadgeSz
                 local ACTION_GAP = 4
                 local rightOffset = 6
+                local function anchorHeaderAction(btn, width)
+                    width = width or ACTION_SIZE
+                    if ns.UI_PlansAnchorHeaderAction then
+                        ns.UI_PlansAnchorHeaderAction(btn, row.headerFrame, rightOffset, width)
+                    else
+                        btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                    end
+                    rightOffset = rightOffset + width + ACTION_GAP
+                end
+                local function makeIconAction(iconKey, onClick, tooltipKey, tooltipFallback)
+                    local btn = ns.UI_CreateIconActionButton and ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, iconKey, {
+                        frameLevelOffset = 10,
+                        onClick = onClick,
+                        tooltipTitle = (ns.L and ns.L[tooltipKey]) or tooltipFallback,
+                        tooltipAnchor = "ANCHOR_TOP",
+                    })
+                    if not btn then return nil end
+                    anchorHeaderAction(btn, ACTION_SIZE)
+                    return btn
+                end
                 local function makeAction(normalTex, highlightTex, onClick, tooltipKey, tooltipFallback)
                     local btn = Factory and Factory.CreateButton and Factory:CreateButton(row.headerFrame, ACTION_SIZE, ACTION_SIZE, true)
                     if not btn then
                         btn = CreateFrame("Button", nil, row.headerFrame)
                         btn:SetSize(ACTION_SIZE, ACTION_SIZE)
                     end
-                    btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                    anchorHeaderAction(btn, ACTION_SIZE)
                     btn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
                     btn:SetNormalTexture(normalTex)
                     btn:SetHighlightTexture(highlightTex)
@@ -1088,21 +1108,15 @@ local function RefreshTrackerContentImmediate()
                         })
                     end)
                     btn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
-                    rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
                     return btn
                 end
 
-                makeAction(
-                    "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
-                    "Interface\\Buttons\\UI-GroupLoot-Pass-Highlight",
-                    function()
-                        if plan.id then
-                            WarbandNexus:RemovePlan(plan.id)
-                            RefreshTrackerContent()
-                        end
-                    end,
-                    "PLAN_ACTION_DELETE", "Delete the Plan"
-                )
+                makeIconAction("delete", function()
+                    if plan.id then
+                        WarbandNexus:RemovePlan(plan.id)
+                        RefreshTrackerContent()
+                    end
+                end, "PLAN_ACTION_DELETE", "Delete the Plan")
 
                 if plan.type == "custom" then
                     makeAction(
@@ -1449,7 +1463,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
         frame:SetFrameLevel(120)
     end
 
-    if ApplyVisuals then
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    elseif ApplyVisuals then
         ApplyVisuals(frame, { 0.04, 0.04, 0.06, 0.97 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
     end
     frame:SetAlpha(math.max(0.2, math.min(1.0, db and db.opacity or 1.0)))
@@ -1486,7 +1502,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local hIcon = header:CreateTexture(nil, "ARTWORK")
     hIcon:SetSize(22, 22)
     hIcon:SetPoint("LEFT", PADDING + 2, 0)
-    hIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    hIcon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
     if not hIcon:GetTexture() then
         hIcon:SetTexture("Interface\\Icons\\INV_Inscription_Scroll")
     end
@@ -1736,27 +1752,42 @@ function WarbandNexus:CreatePlansTrackerWindow()
             frame:StartSizing("BOTTOMRIGHT")
         end
     end)
+    local function TrackerSatelliteLiveLayout(fr)
+        if fr._plansTrackerHeaderShell then
+            fr._plansTrackerHeaderShell:SetWidth(math.max(1, fr:GetWidth()))
+        end
+        local sw = scrollFrame and scrollFrame:GetWidth() or nil
+        if sw and sw > 0 and scrollChild then
+            scrollChild:SetWidth(sw)
+        end
+    end
+
     resizer:SetScript("OnMouseUp", function()
         frame:StopMovingOrSizing()
         SavePosition(frame)
-        local sw = scrollFrame and scrollFrame:GetWidth() or nil
-        if sw and sw > 0 then
-            scrollChild:SetWidth(sw)
+        TrackerSatelliteLiveLayout(frame)
+        local LC = ns.UI_LayoutCoordinator
+        if LC and LC.OnSatelliteMetricsChanged then
+            LC:OnSatelliteMetricsChanged(frame, frame:GetWidth(), frame:GetHeight(), true)
+        else
+            RefreshTrackerContent()
         end
-        RefreshTrackerContent()
     end)
     frame.resizeGrip = resizer
 
-    -- Resize: only update layout when user releases (no continuous render during drag)
-    frame:SetScript("OnSizeChanged", function(self, newW, newH)
-        if frame._plansTrackerHeaderShell then
-            frame._plansTrackerHeaderShell:SetWidth(math.max(1, self:GetWidth()))
-        end
-        local sw = scrollFrame and scrollFrame:GetWidth() or nil
-        if sw and sw > 0 then
-            scrollChild:SetWidth(sw)
-        end
-    end)
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.RegisterSatelliteFrame then
+        LC:RegisterSatelliteFrame(frame, {
+            onLive = TrackerSatelliteLiveLayout,
+            onCommit = function()
+                RefreshTrackerContent()
+            end,
+        })
+    else
+        frame:SetScript("OnSizeChanged", function()
+            TrackerSatelliteLiveLayout(frame)
+        end)
+    end
 
     -- ── Keyboard: ESC does NOT close window (close only via X button). ESC only closes dropdown if open. ──
     if not InCombatLockdown() then

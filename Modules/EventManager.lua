@@ -359,6 +359,11 @@ function WarbandNexus:OnUIScaleChanged()
         if ns.FontManager and ns.FontManager.RefreshAllFonts then
             ns.FontManager:RefreshAllFonts()
         end
+        local LC = ns.UI_LayoutCoordinator
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if LC and LC.OnDisplayMetricsChanged and mf and mf:IsShown() then
+            LC:OnDisplayMetricsChanged(mf)
+        end
     end)
 end
 

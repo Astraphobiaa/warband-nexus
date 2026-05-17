@@ -858,7 +858,9 @@ local function CreateCompanionWindow()
     frame:SetClampedToScreen(true)
     frame:Hide()
 
-    if ApplyVisuals then
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    elseif ApplyVisuals then
         ApplyVisuals(frame, { 0.04, 0.04, 0.06, 0.97 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
     end
 
@@ -972,24 +974,40 @@ local function CreateCompanionWindow()
             frame:StartSizing("BOTTOMRIGHT")
         end
     end)
-    resizer:SetScript("OnMouseUp", function()
-        frame:StopMovingOrSizing()
-        SavePosition(frame)
-        local sw = scrollFrame:GetWidth()
-        if sw and sw > 0 and scrollChild then
-            scrollChild:SetWidth(sw)
-        end
-        if companionFrame and companionFrame:IsShown() and companionFrame.contentScrollChild then
-            RenderContent(companionFrame.contentScrollChild)
-        end
-    end)
-
-    frame:SetScript("OnSizeChanged", function(self, newW, newH)
+    local function CompanionSatelliteLiveLayout(fr)
         local sw = scrollFrame and scrollFrame:GetWidth() or nil
         if sw and sw > 0 and scrollChild then
             scrollChild:SetWidth(sw)
         end
+    end
+
+    resizer:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        SavePosition(frame)
+        CompanionSatelliteLiveLayout(frame)
+        local LC = ns.UI_LayoutCoordinator
+        if LC and LC.OnSatelliteMetricsChanged then
+            LC:OnSatelliteMetricsChanged(frame, frame:GetWidth(), frame:GetHeight(), true)
+        elseif companionFrame and companionFrame:IsShown() and companionFrame.contentScrollChild then
+            RenderContent(companionFrame.contentScrollChild)
+        end
     end)
+
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.RegisterSatelliteFrame then
+        LC:RegisterSatelliteFrame(frame, {
+            onLive = CompanionSatelliteLiveLayout,
+            onCommit = function()
+                if companionFrame and companionFrame:IsShown() and companionFrame.contentScrollChild then
+                    RenderContent(companionFrame.contentScrollChild)
+                end
+            end,
+        })
+    else
+        frame:SetScript("OnSizeChanged", function()
+            CompanionSatelliteLiveLayout(frame)
+        end)
+    end
 
     -- ── Escape key: close companion and profession window together ──
     local function SetupKeyboard()

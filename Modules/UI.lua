@@ -55,6 +55,265 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 
+--- Canonical tab order: `ns.UI_MAIN_TAB_ORDER` in SharedWidgets.lua — must precede timers that reference it (Lua local scope).
+--- QA smoke: open each entry once after /reload (`ShowMainWindow` deferred tab label pass uses this index).
+local MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
+    "chars",
+    "items",
+    "gear",
+    "currency",
+    "reputations",
+    "pve",
+    "professions",
+    "collections",
+    "plans",
+    "stats",
+}
+
+--- Horizontal `top` nav: first-tab inset (must match anchoring inside `UpdateTabVisibility`).
+local MAIN_TAB_STRIP_EDGE_INSET = 10
+
+--- Main-window chrome: packaged **`Media/icon.tga`** (`ns.WARBAND_ADDON_MEDIA_ICON`). Extension-less paths broke minimap/Easy Access on some builds.
+function ns.UI_ApplyMainWindowTitleIcon(tex)
+    if not tex then return end
+    tex:SetBlendMode("BLEND")
+    tex:SetVertexColor(1, 1, 1, 1)
+    tex:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
+    if tex.SetDesaturated then
+        tex:SetDesaturated(false)
+    end
+end
+
+--- Golden-ratio rail width + strip/button sync (text rail below header).
+local function ApplyMainNavGoldenShellLayout(f)
+    if not f or f._wnMainNavLayout ~= "rail" or not f.navRail then return end
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local inset = shell.FRAME_CONTENT_INSET or 6
+    local innerW = math.max(360, (f:GetWidth() or 800) - inset * 2)
+    local railW = (ns.UI_ComputeGoldenRailWidth and ns.UI_ComputeGoldenRailWidth(innerW, shell))
+        or shell.NAV_RAIL_WIDTH or 168
+    f.navRail:SetWidth(railW)
+    f._wnGoldenRailWidth = railW
+
+    local pad = shell.NAV_RAIL_PAD or 6
+    local stripW = math.max(80, railW - pad * 2)
+    if f.navRailStrip then
+        f.navRailStrip:SetWidth(stripW)
+    end
+    if f.tabButtons then
+        for ti = 1, #MAIN_TAB_ORDER do
+            local btn = f.tabButtons[MAIN_TAB_ORDER[ti]]
+            if btn and btn._wnRailTextMode then
+                btn:SetWidth(stripW)
+            end
+        end
+    end
+end
+
+local function RefreshMainNavRailStrip(f)
+    if not f or f._wnMainNavLayout ~= "rail" then return end
+    ApplyMainNavGoldenShellLayout(f)
+    local scroll = f.navRailScroll
+    local strip = f.navRailStrip
+    if not scroll or not strip or not f.tabButtons then return end
+
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local vGap = f._wnNavTabVGap or shell.NAV_RAIL_TAB_V_GAP or 4
+    local topInset = f._wnNavRailTopInset or shell.NAV_RAIL_TOP_INSET or 6
+    local tabH = shell.NAV_RAIL_TAB_HEIGHT or 34
+    local pad = shell.NAV_RAIL_PAD or 6
+    local railW = f._wnGoldenRailWidth or (f.navRail and f.navRail:GetWidth()) or shell.NAV_RAIL_WIDTH or 168
+    local stripW = math.max(80, railW - pad * 2)
+
+    local h = topInset
+    local prevShown = nil
+    for ti = 1, #MAIN_TAB_ORDER do
+        local key = MAIN_TAB_ORDER[ti]
+        local btn = f.tabButtons[key]
+        if btn and btn:IsShown() then
+            if btn._wnRailTextMode then
+                btn:SetWidth(stripW)
+            end
+            if prevShown then
+                local sepH = shell.NAV_RAIL_TAB_SEP_HEIGHT or 1
+                h = h + vGap + sepH
+            end
+            h = h + (btn:GetHeight() or tabH)
+            prevShown = true
+        end
+    end
+    h = h + topInset
+
+    local viewH = scroll:GetHeight()
+    if (not viewH) or viewH <= 0 then
+        viewH = 1
+    end
+    strip:SetWidth(stripW)
+    strip:SetHeight(math.max(h, viewH))
+
+    local maxScroll = strip:GetHeight() - viewH
+    if maxScroll < 0 then
+        maxScroll = 0
+    end
+    local cur = scroll:GetVerticalScroll() or 0
+    if cur > maxScroll then
+        scroll:SetVerticalScroll(maxScroll)
+    end
+end
+
+local function RefreshMainNavTabStrip(f)
+    if not f or f._wnMainNavLayout ~= "top" then return end
+    local scroll = f.tabNavScroll
+    local strip = f.tabNavStrip
+    if not scroll or not strip or not f.tabButtons then return end
+
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local TAB_GAP_H = shell.TAB_GAP or 5
+    local navH = (f.nav and f.nav:GetHeight()) or shell.NAV_BAR_HEIGHT or 36
+    strip:SetHeight(navH)
+
+    local w = MAIN_TAB_STRIP_EDGE_INSET
+    local prevShown = nil
+    for ti = 1, #MAIN_TAB_ORDER do
+        local key = MAIN_TAB_ORDER[ti]
+        local btn = f.tabButtons[key]
+        if btn and btn:IsShown() then
+            if prevShown then
+                w = w + TAB_GAP_H
+            end
+            w = w + (btn:GetWidth() or shell.DEFAULT_TAB_WIDTH or 108)
+            prevShown = true
+        end
+    end
+    w = w + MAIN_TAB_STRIP_EDGE_INSET
+
+    local viewW = scroll:GetWidth()
+    if (not viewW) or viewW <= 0 then
+        viewW = 1
+    end
+    --- At least viewport width keeps left-anchored tabs stable in a wide shell.
+    strip:SetWidth(math.max(w, viewW))
+
+    local maxScroll = strip:GetWidth() - viewW
+    if maxScroll < 0 then
+        maxScroll = 0
+    end
+    local cur = scroll:GetHorizontalScroll() or 0
+    if cur > maxScroll then
+        scroll:SetHorizontalScroll(maxScroll)
+    end
+end
+
+local function RefreshMainNavLayout(f)
+    if not f then return end
+    if f._wnMainNavLayout == "rail" then
+        RefreshMainNavRailStrip(f)
+    else
+        RefreshMainNavTabStrip(f)
+    end
+end
+
+local function ScrollMainNavEnsureTabVisible(f, tabKey)
+    if not f or not tabKey then return end
+
+    if f._wnMainNavLayout == "rail" then
+        local scroll = f.navRailScroll
+        local btn = f.tabButtons and f.tabButtons[tabKey]
+        if not scroll or not btn or not btn:IsShown() then return end
+
+        local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+        local vGap = f._wnNavTabVGap or shell.NAV_RAIL_TAB_V_GAP or 4
+        local topInset = f._wnNavRailTopInset or shell.NAV_RAIL_TOP_INSET or 6
+        local tabH = shell.NAV_RAIL_TAB_HEIGHT or 28
+        local pad = 6
+        local y = topInset
+        for ti = 1, #MAIN_TAB_ORDER do
+            local k = MAIN_TAB_ORDER[ti]
+            local b = f.tabButtons[k]
+            if b and b:IsShown() then
+                if k == tabKey then
+                    break
+                end
+                y = y + (b:GetHeight() or tabH) + vGap
+            end
+        end
+
+        local btnH = btn:GetHeight() or tabH
+        local viewH = scroll:GetHeight() or 0
+        local vs = scroll:GetVerticalScroll() or 0
+        if y - pad < vs then
+            vs = y - pad
+        end
+        if y + btnH + pad > vs + viewH then
+            vs = y + btnH + pad - viewH
+        end
+
+        local strip = f.navRailStrip
+        local stripH = (strip and strip:GetHeight()) or viewH
+        local range = scroll.GetVerticalScrollRange and scroll:GetVerticalScrollRange()
+            or math.max(stripH - viewH, 0)
+        if vs < 0 then vs = 0 end
+        if vs > range then vs = range end
+        scroll:SetVerticalScroll(vs)
+        return
+    end
+
+    if f._wnMainNavLayout ~= "top" then return end
+    local scroll = f.tabNavScroll
+    local btn = f.tabButtons and f.tabButtons[tabKey]
+    if not scroll or not btn or not btn:IsShown() then return end
+
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local TAB_GAP = shell.TAB_GAP or 5
+    local pad = 8
+    local x = MAIN_TAB_STRIP_EDGE_INSET
+    for ti = 1, #MAIN_TAB_ORDER do
+        local k = MAIN_TAB_ORDER[ti]
+        local b = f.tabButtons[k]
+        if b and b:IsShown() then
+            if k == tabKey then
+                break
+            end
+            x = x + b:GetWidth() + TAB_GAP
+        end
+    end
+
+    local btnW = btn:GetWidth() or 0
+    local viewW = scroll:GetWidth() or 0
+    local hs = scroll:GetHorizontalScroll() or 0
+    if x - pad < hs then
+        hs = x - pad
+    end
+    if x + btnW + pad > hs + viewW then
+        hs = x + btnW + pad - viewW
+    end
+
+    local stripW = (f.tabNavStrip and f.tabNavStrip:GetWidth()) or viewW
+    local range = scroll.GetHorizontalScrollRange and scroll:GetHorizontalScrollRange()
+        or math.max(stripW - viewW, 0)
+    if hs < 0 then hs = 0 end
+    if hs > range then hs = range end
+    scroll:SetHorizontalScroll(hs)
+end
+
+ns.UI_RefreshMainNavTabStrip = RefreshMainNavLayout
+ns.UI_RefreshMainNavLayout = RefreshMainNavLayout
+ns.UI_ScrollMainNavEnsureTabVisible = ScrollMainNavEnsureTabVisible
+
+--- Wall-time DrawTab trace (GetTime) when debug+verbose tab perf monitor is on; aligns with WN-PERF heavy-tab inventory.
+local TAB_DRAW_PERF_TRACE = {
+    chars = true,
+    items = true,
+    gear = true,
+    currency = true,
+    reputations = true,
+    pve = true,
+    professions = true,
+    collections = true,
+    plans = true,
+    stats = true,
+}
+
 local format = string.format
 local wipe = wipe
 local debugprofilestart = debugprofilestart
@@ -268,6 +527,7 @@ end
 
 -- Re-anchor with TOPLEFT to UIParent BOTTOMLEFT using current GetLeft/GetTop.
 -- Keeps a single anchor family after arbitrary drag/resize internals.
+-- Defined before StartCustomResize (resize OnUpdate calls this).
 local function NormalizeFramePosition(frame)
     if not frame or not frame.GetLeft or not frame.GetTop then return end
     local left, top = GetUIParentBOTTOMLEFTAnchorOffsets(frame)
@@ -275,6 +535,60 @@ local function NormalizeFramePosition(frame)
 
     frame:ClearAllPoints()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+end
+
+--- Scale-aware BOTTOMRIGHT resize: keeps TOPLEFT anchor stable (avoids StartSizing cursor jump on scaled frames).
+local function StartCustomResize(frame)
+    if not frame or (InCombatLockdown and InCombatLockdown()) then return end
+    NormalizeFramePosition(frame)
+    local scale = frame:GetEffectiveScale()
+    if not scale or scale <= 0 then scale = 1 end
+    local cx, cy = GetCursorPosition()
+    frame._resizeScale = scale
+    frame._resizeStartCX = cx
+    frame._resizeStartCY = cy
+    frame._resizeOrigW = frame:GetWidth() or 0
+    frame._resizeOrigH = frame:GetHeight() or 0
+    frame._resizeActive = true
+    frame._resizeCommitPending = nil
+    frame._wnResizeLiveGen = (frame._wnResizeLiveGen or 0) + 1
+    if frame.scrollChild and frame.scrollChild.GetWidth then
+        frame._wnResizeFreezeScrollChildW = frame.scrollChild:GetWidth()
+    end
+    if ns.UI_CloseCharacterTabFlyoutMenus then
+        ns.UI_CloseCharacterTabFlyoutMenus()
+    end
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.CancelAllTabLiveRelayoutTimers then
+        LC:CancelAllTabLiveRelayoutTimers()
+    end
+    frame:SetScript("OnUpdate", function(self)
+        if not self._resizeActive then
+            self:SetScript("OnUpdate", nil)
+            return
+        end
+        local x, y = GetCursorPosition()
+        local sc = self._resizeScale or 1
+        local dw = (x - (self._resizeStartCX or x)) / sc
+        local dh = ((self._resizeStartCY or y) - y) / sc
+        local minW, minH, maxW, maxH = GetMainWindowGeometryBounds()
+        local nw = math.min(maxW, math.max(minW, (self._resizeOrigW or 0) + dw))
+        local nh = math.min(maxH, math.max(minH, (self._resizeOrigH or 0) + dh))
+        self:SetSize(nw, nh)
+    end)
+end
+
+local function StopCustomResize(frame)
+    if not frame then return end
+    frame._resizeActive = false
+    frame._resizeCommitPending = true
+    frame._wnResizeLiveGen = (frame._wnResizeLiveGen or 0) + 1
+    frame._resizeStartCX = nil
+    frame._resizeStartCY = nil
+    frame._resizeOrigW = nil
+    frame._resizeOrigH = nil
+    frame._resizeScale = nil
+    frame:SetScript("OnUpdate", nil)
 end
 
 -- Reset window to default center position and size
@@ -315,9 +629,16 @@ local function ComputeScrollChildWidth(frame)
     elseif tab == "pve" and ns.ComputePvEMinScrollWidth then
         local pveW = ns.ComputePvEMinScrollWidth(WarbandNexus)
         if pveW > 0 then w = math.max(w, pveW) end
-    elseif tab == "chars" and ns.UI_GetCharRowTotalWidth then
-        local charW = ns.UI_GetCharRowTotalWidth()
-        if charW and charW > 0 then w = math.max(w, charW) end
+    elseif tab == "chars" then
+        local minW = frame._charsMinScrollWidth
+        if (not minW or minW < 1) and ns.UI_ComputeCharactersMinScrollWidth then
+            local addon = WarbandNexus
+            local guildW = addon and addon._charListMaxGuildWidth
+            minW = ns.UI_ComputeCharactersMinScrollWidth(addon, guildW)
+        end
+        if minW and minW > 0 then
+            w = math.max(w, minW)
+        end
     elseif tab == "stats" and ns.ComputeStatisticsMinScrollWidth then
         local stW = ns.ComputeStatisticsMinScrollWidth()
         if stW > 0 then w = math.max(w, stW) end
@@ -328,12 +649,52 @@ end
 -- Update scrollChild and frozen column header widths in one call.
 local function UpdateScrollLayout(frame)
     if not frame or not frame.scrollChild or not frame.scroll then return end
+    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(frame) then
+        return
+    end
     local w = ComputeScrollChildWidth(frame)
     frame.scrollChild:SetWidth(w)
     if frame.columnHeaderInner and frame.columnHeaderClip and frame.columnHeaderClip:GetHeight() > 1 then
         frame.columnHeaderInner:SetWidth(w)
     end
 end
+
+--- Re-anchor fixedHeader children (title cards, toolbars) after viewport width changes.
+local function RefreshFixedHeaderChrome(frame)
+    if not frame or not frame.fixedHeader then return end
+    local fh = frame.fixedHeader
+    local fhW = fh:GetWidth()
+    if not fhW or fhW < 1 then return end
+    local side = 12
+    if ns.UI_GetMainTabLayoutMetrics then
+        local m = ns.UI_GetMainTabLayoutMetrics(frame)
+        if m and m.sideMargin then side = m.sideMargin end
+    end
+    local n = 0
+    if fh.GetNumChildren then
+        n = fh:GetNumChildren() or 0
+    end
+    for i = 1, n do
+        local child = select(i, fh:GetChildren())
+        if child and child.IsShown and child:IsShown() and child.GetPoint then
+            local p1, rel1, rp1, x1, y1 = child:GetPoint(1)
+            local p2, rel2, rp2, x2, y2 = child:GetPoint(2)
+            if p1 == "TOPLEFT" and p2 == "TOPRIGHT" then
+                child:ClearAllPoints()
+                child:SetPoint("TOPLEFT", fh, "TOPLEFT", side, y1 or 0)
+                child:SetPoint("TOPRIGHT", fh, "TOPRIGHT", -side, y2 or y1 or 0)
+            elseif p1 == "TOPLEFT" and rel1 == fh and rp1 == "TOPLEFT" and x1 then
+                child:ClearAllPoints()
+                child:SetPoint("TOPLEFT", fh, "TOPLEFT", side, y1 or 0)
+                if p2 == "TOPRIGHT" then
+                    child:SetPoint("TOPRIGHT", fh, "TOPRIGHT", -side, y2 or y1 or 0)
+                end
+            end
+        end
+    end
+end
+
+ns.UI_RefreshFixedHeaderChrome = RefreshFixedHeaderChrome
 
 --- Resize bounds honor `profile.mainWindowDensity`; clamps current footprint into [min,max] after prefs change.
 function WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
@@ -346,6 +707,12 @@ function WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
     local nh = math.min(maxH, math.max(minH, ch))
     mf:SetSize(nw, nh)
     UpdateScrollLayout(mf)
+    ApplyMainNavGoldenShellLayout(mf)
+    RefreshFixedHeaderChrome(mf)
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.ForceMainFrameMetrics and mf:IsShown() then
+        LC:ForceMainFrameMetrics(mf, "display_changed")
+    end
 end
 
 local mainFrame = nil
@@ -365,7 +732,7 @@ ns.UI_RecycleBin = recycleBin
 
 --- Items / Warband aggregate: sync scrollChild width from scroll viewport before reading content width.
 ns.UI_EnsureMainScrollLayout = function()
-    if mainFrame then
+    if mainFrame and not (ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mainFrame)) then
         UpdateScrollLayout(mainFrame)
     end
 end
@@ -532,6 +899,21 @@ function WarbandNexus:ShowMainWindow()
     -- Same pointer action that opened the window (LDB/minimap) can release over the nav row → spurious tab click.
     mainFrame._wnMainTabInputGraceUntil = GetTime() + 0.2
     mainFrame:Show()
+    ApplyMainNavGoldenShellLayout(mainFrame)
+    UpdateScrollLayout(mainFrame)
+    RefreshFixedHeaderChrome(mainFrame)
+    RefreshMainNavLayout(mainFrame)
+    if mainFrame.currentTab then
+        ScrollMainNavEnsureTabVisible(mainFrame, mainFrame.currentTab)
+    end
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.ForceMainFrameMetrics then
+        C_Timer.After(0, function()
+            if mainFrame and mainFrame:IsShown() then
+                LC:ForceMainFrameMetrics(mainFrame, "display_changed")
+            end
+        end)
+    end
     -- One-shot collectible tooltip precache after the user actually opens the UI (avoids background work on login-only sessions).
     if not ns._wnTooltipPrecacheDone and not ns._wnTooltipPrecachePending then
         ns._wnTooltipPrecachePending = true
@@ -563,8 +945,9 @@ function WarbandNexus:ShowMainWindow()
             if mainFrame and mainFrame:IsShown() and mainFrame.tabButtons then
                 local fm = GetFontManager()
                 local anyFixed = false
-                for _, btn in pairs(mainFrame.tabButtons) do
-                    if btn.label then
+                for ti = 1, #MAIN_TAB_ORDER do
+                    local btn = mainFrame.tabButtons[MAIN_TAB_ORDER[ti]]
+                    if btn and btn.label and (btn._wnRailTextMode or not btn._wnRailCompact) then
                         local font, size = btn.label:GetFont()
                         if not font or not size then
                             if fm then fm:ApplyFont(btn.label, "body") end
@@ -614,10 +997,6 @@ local TAB_TO_MODULE = {
     plans = "plans",
 }
 
--- Canonical tab order: single source of truth for visibility, creation, and navigation.
--- QA smoke (/reload): open each MAIN_TAB_ORDER tab once with default modules enabled; confirms PopulateContent paints without errors.
-local MAIN_TAB_ORDER = { "chars", "items", "gear", "currency", "reputations", "pve", "professions", "collections", "plans", "stats" }
-
 local function IsTabModuleEnabled(key)
     local moduleKey = TAB_TO_MODULE[key]
     if not moduleKey then return true end
@@ -628,24 +1007,61 @@ end
 
 local function UpdateTabVisibility(f)
     if not f or not f.tabButtons or not f.tabButtons.chars then return end
-    local TAB_GAP = 5
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local TAB_GAP_H = shell.TAB_GAP or 5
+    local vGap = f._wnNavTabVGap or shell.NAV_RAIL_TAB_V_GAP or 4
+    local topInset = f._wnNavRailTopInset or shell.NAV_RAIL_TOP_INSET or 6
+    local railPad = shell.NAV_RAIL_PAD or 6
+    local sepH = shell.NAV_RAIL_TAB_SEP_HEIGHT or 1
+    local sepA = shell.NAV_RAIL_TAB_SEP_ALPHA or 0.4
+    local ac = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.4, 1 }
+
     local prevBtn = nil
+    local railHost = (f._wnMainNavLayout == "rail") and (f.navRailStrip or f.navRail)
+
     for i = 1, #MAIN_TAB_ORDER do
         local key = MAIN_TAB_ORDER[i]
         local btn = f.tabButtons[key]
         if btn then
             local show = IsTabModuleEnabled(key)
             btn:SetShown(show)
+            if btn._wnRailSepAbove then
+                btn._wnRailSepAbove:SetShown(show and prevBtn ~= nil)
+            end
             if show then
-                if prevBtn then
-                    btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
+                if railHost then
+                    if prevBtn then
+                        local sep = btn._wnRailSepAbove
+                        if not sep then
+                            sep = railHost:CreateTexture(nil, "ARTWORK")
+                            btn._wnRailSepAbove = sep
+                        end
+                        sep:SetColorTexture(ac[1], ac[2], ac[3], sepA)
+                        sep:SetHeight(sepH)
+                        sep:ClearAllPoints()
+                        sep:SetPoint("LEFT", railHost, "LEFT", railPad, 0)
+                        sep:SetPoint("RIGHT", railHost, "RIGHT", -railPad, 0)
+                        local gapAbove = math.floor(vGap * 0.5)
+                        local gapBelow = vGap - gapAbove
+                        sep:SetPoint("TOP", prevBtn, "BOTTOM", 0, -gapAbove)
+                        sep:Show()
+                        btn:SetPoint("TOP", sep, "BOTTOM", 0, -gapBelow)
+                    else
+                        btn:SetPoint("TOP", railHost, "TOP", 0, -topInset)
+                    end
                 else
-                    btn:SetPoint("LEFT", f.nav or btn:GetParent(), "LEFT", 10, 0)
+                    local strip = f.tabNavStrip or f.nav
+                    if prevBtn then
+                        btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP_H, 0)
+                    else
+                        btn:SetPoint("LEFT", strip, "LEFT", MAIN_TAB_STRIP_EDGE_INSET, 0)
+                    end
                 end
                 prevBtn = btn
             end
         end
     end
+    RefreshMainNavLayout(f)
 end
 
 local function UpdateTabButtonStates(f)
@@ -654,49 +1070,93 @@ local function UpdateTabButtonStates(f)
     local accentColor = freshColors and freshColors.accent
     if not accentColor then return end
     local fm = GetFontManager()
-    for key, btn in pairs(f.tabButtons) do
-        if not btn:IsShown() then
-            -- Skip hidden (module-disabled) tabs
+    for i = 1, #MAIN_TAB_ORDER do
+        local key = MAIN_TAB_ORDER[i]
+        local btn = f.tabButtons[key]
+        if not btn or not btn:IsShown() then
+            -- Skip unknown or hidden (module-disabled) tabs
         else
-        if key == f.currentTab then
-            btn.active = true
-            if btn.label then
-                btn.label:SetTextColor(1, 1, 1)
-                local font, size = btn.label:GetFont()
-                if font and size then
-                    btn.label:SetFont(font, size, "OUTLINE")
-                elseif fm then
-                    fm:ApplyFont(btn.label, "body")
-                    font, size = btn.label:GetFont()
-                    if font and size then btn.label:SetFont(font, size, "OUTLINE") end
+            local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+            local railFlat = btn._wnRailTextMode
+            local railBorderA = shell.NAV_RAIL_BORDER_ALPHA or 0.18
+            local railActiveA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.28
+            if key == f.currentTab then
+                btn.active = true
+                if btn.label and (btn._wnRailTextMode or not btn._wnRailCompact) then
+                    btn.label:SetTextColor(1, 1, 1)
+                    local font, size = btn.label:GetFont()
+                    if font and size then
+                        btn.label:SetFont(font, size, "OUTLINE")
+                    elseif fm then
+                        fm:ApplyFont(btn.label, "body")
+                        font, size = btn.label:GetFont()
+                        if font and size then btn.label:SetFont(font, size, "OUTLINE") end
+                    end
+                end
+                if btn.activeBar then btn.activeBar:SetAlpha(1) end
+                if btn.tabIcon then btn.tabIcon:SetVertexColor(1, 1, 1, 1) end
+                if UpdateBorderColor and not railFlat then
+                    UpdateBorderColor(btn, { accentColor[1], accentColor[2], accentColor[3], 1 })
+                elseif railFlat and ns.UI_HideFrameBorderQuartet then
+                    ns.UI_HideFrameBorderQuartet(btn)
+                end
+                if btn.SetBackdropColor then
+                    if railFlat then
+                        local railA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.52
+                        btn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+                    else
+                        btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
+                    end
+                end
+                if ns.UI_ApplyRailTabActiveVisuals then
+                    ns.UI_ApplyRailTabActiveVisuals(btn, true, accentColor)
+                end
+            else
+                btn.active = false
+                if btn.label and (btn._wnRailTextMode or not btn._wnRailCompact) then
+                    if railFlat then
+                        btn.label:SetTextColor(0.92, 0.92, 0.94)
+                    else
+                        btn.label:SetTextColor(0.7, 0.7, 0.7)
+                    end
+                    local font, size = btn.label:GetFont()
+                    if font and size then
+                        btn.label:SetFont(font, size, "")
+                    elseif fm then
+                        fm:ApplyFont(btn.label, "body")
+                    end
+                end
+                if btn.activeBar then btn.activeBar:SetAlpha(0) end
+                if btn.tabIcon then
+                    if railFlat then
+                        btn.tabIcon:SetVertexColor(0.88, 0.88, 0.92, 1)
+                    else
+                        btn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92)
+                    end
+                end
+                if UpdateBorderColor and not railFlat then
+                    UpdateBorderColor(btn, { accentColor[1], accentColor[2], accentColor[3], 0.6 })
+                elseif railFlat and ns.UI_HideFrameBorderQuartet then
+                    ns.UI_HideFrameBorderQuartet(btn)
+                end
+                if btn.SetBackdropColor then
+                    if railFlat then
+                        btn:SetBackdropColor(0.08, 0.08, 0.10, 0.4)
+                    else
+                        btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                    end
+                end
+                if ns.UI_ApplyRailTabActiveVisuals then
+                    ns.UI_ApplyRailTabActiveVisuals(btn, false, accentColor)
                 end
             end
-            if btn.activeBar then btn.activeBar:SetAlpha(1) end
-            if btn.tabIcon then btn.tabIcon:SetVertexColor(1, 1, 1, 1) end
-            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1}) end
-            if btn.SetBackdropColor then btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1) end
-        else
-            btn.active = false
-            if btn.label then
-                btn.label:SetTextColor(0.7, 0.7, 0.7)
-                local font, size = btn.label:GetFont()
-                if font and size then
-                    btn.label:SetFont(font, size, "")
-                elseif fm then
-                    fm:ApplyFont(btn.label, "body")
-                end
-            end
-            if btn.activeBar then btn.activeBar:SetAlpha(0) end
-            if btn.tabIcon then btn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92) end
-            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1}) end
-            if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
-        end
         end
     end
 end
 
+ns.UI_UpdateMainFrameTabButtonStates = UpdateTabButtonStates
+
 --============================================================================
--- CREATE MAIN WINDOW
 --============================================================================
 --[[ WN_FACTORY — Main window raw `CreateFrame` inventory (this file loads after SharedWidgets).
   Main vertical scroll + scrollbar column + horizontal bar already use `ns.UI.Factory`.
@@ -765,8 +1225,8 @@ function WarbandNexus:CreateMainWindow()
 
     local minW, minH, maxWidth, maxHeight = GetMainWindowGeometryBounds()
 
-    -- Intentionally raw: global `WarbandNexusFrame` + `BackdropTemplate` root shell (see WN_FACTORY block above).
-    local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent, "BackdropTemplate")
+    -- Intentionally raw: global `WarbandNexusFrame` — flat shell fill only (no `BackdropTemplate` side gutters).
+    local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent)
     f:Hide()  -- CRITICAL: Hide immediately to prevent position flash (frame inherits UIParent visibility)
     f:SetSize(windowWidth, windowHeight)
     f:SetMovable(true)
@@ -794,6 +1254,9 @@ function WarbandNexus:CreateMainWindow()
         f:SetToplevel(true)
     end
     f:SetClampedToScreen(true)
+    if f.SetClipsChildren then
+        f:SetClipsChildren(true)
+    end
     
     -- Apply user-configured UI scale (scales entire addon window + children)
     local uiScale = (WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.uiScale) or 1.0
@@ -807,50 +1270,25 @@ function WarbandNexus:CreateMainWindow()
     
     -- NOTE: Master OnHide is set later (after tab system creation) to consolidate all cleanup
     
-    -- Shell: BackdropTemplate chrome (MAIN_SHELL tokens) — theme tint tracks BORDER_REGISTRY RefreshColors path.
+    -- Shell: full-bleed panel fill (MAIN_SHELL) — no backdrop insets.
     local COLORS = ns.UI_COLORS
     local shellBg = COLORS and COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
-    local ac = COLORS and COLORS.accent or { 0.40, 0.20, 0.58 }
-    if ns.UI_ApplyMainWindowShellBackdrop then
-        ns.UI_ApplyMainWindowShellBackdrop(f, shellBg, { ac[1], ac[2], ac[3], 1 })
-    elseif ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(f, shellBg, { ac[1], ac[2], ac[3], 1 })
+    if ns.UI_ApplyMainWindowShellFill then
+        ns.UI_ApplyMainWindowShellFill(f, shellBg)
+    elseif ns.UI_ApplyMainWindowShellBackdrop then
+        ns.UI_ApplyMainWindowShellBackdrop(f, shellBg)
     end
     
-    -- OnSizeChanged handler - Update borders and scrollChild width
-    -- Content will refresh on OnMouseUp (when resize is complete)
-    local lastSizeW, lastSizeH = 0, 0
+    -- OnSizeChanged: shell + tab live relayout via LayoutCoordinator (commit on resize mouse-up).
     f:SetScript("OnSizeChanged", function(self, width, height)
-        local PixelSnap = ns.PixelSnap
-        if PixelSnap then
-            width = PixelSnap(width)
-            height = PixelSnap(height)
-        end
-
-        local dw = width - lastSizeW
-        local dh = height - lastSizeH
-        if dw < 1 and dw > -1 and dh < 1 and dh > -1 then return end
-        lastSizeW, lastSizeH = width, height
-
-        if self.BorderTop then
-            local pixelScale = (ns.GetPixelScale and ns.GetPixelScale(self)) or 1
-            self.BorderTop:SetHeight(pixelScale)
-            self.BorderBottom:SetHeight(pixelScale)
-            self.BorderLeft:SetWidth(pixelScale)
-            self.BorderRight:SetWidth(pixelScale)
-        end
-
-        UpdateScrollLayout(self)
-        if self.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
-            ns.UI.Factory:UpdateHorizontalScrollBarVisibility(self.scroll)
-        end
-        -- Collections tab: scrollChild width updates live but tab renderers size from last PopulateContent.
-        -- Debounced full refresh keeps Recent cards / split layouts aligned during resize (mouse-up still repaints too).
-        if self.currentTab == "collections" then
-            local C = ns.Constants
-            local ev = C and C.EVENTS and C.EVENTS.UI_MAIN_REFRESH_REQUESTED
-            if ev and WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage(ev, { tab = "collections", skipCooldown = true })
+        local LC = ns.UI_LayoutCoordinator
+        if LC and LC.OnMainFrameResizeLive then
+            LC:OnMainFrameResizeLive(self, width, height)
+        else
+            UpdateScrollLayout(self)
+            RefreshMainNavLayout(self)
+            if self.currentTab then
+                ScrollMainNavEnsureTabVisible(self, self.currentTab)
             end
         end
     end)
@@ -877,22 +1315,36 @@ function WarbandNexus:CreateMainWindow()
             end
             isResizing = true
             resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-            f:StartSizing("BOTTOMRIGHT")
+            StartCustomResize(f)
         end
     end)
-    resizeBtn:SetScript("OnMouseUp", function(self, button)
-        if button == "LeftButton" and isResizing then
-            isResizing = false
-            resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-            f:StopMovingOrSizing()
-            SaveWindowGeometry(f)
-            UpdateScrollLayout(f)
-            if f.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
-                ns.UI.Factory:UpdateHorizontalScrollBarVisibility(f.scroll)
+    local function FinishMainFrameResizeMouseUp()
+        if not isResizing then return end
+        isResizing = false
+        resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        StopCustomResize(f)
+        SaveWindowGeometry(f)
+        NormalizeFramePosition(f)
+    end
+    local LCResize = ns.UI_LayoutCoordinator
+    if LCResize and LCResize.HookMainFrameResizeCommitOnMouseUp then
+        LCResize:HookMainFrameResizeCommitOnMouseUp(f, resizeBtn, FinishMainFrameResizeMouseUp)
+    else
+        resizeBtn:SetScript("OnMouseUp", function(self, button)
+            if button == "LeftButton" then
+                FinishMainFrameResizeMouseUp()
+                UpdateScrollLayout(f)
+                RefreshMainNavLayout(f)
+                if f.currentTab then
+                    ScrollMainNavEnsureTabVisible(f, f.currentTab)
+                end
+                if f.scroll and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
+                    ns.UI.Factory:UpdateHorizontalScrollBarVisibility(f.scroll)
+                end
+                WarbandNexus:PopulateContent()
             end
-            WarbandNexus:PopulateContent()
-        end
-    end)
+        end)
+    end
     
     -- Intentionally raw: `UI_SCALE_CHANGED` / `DISPLAY_SIZE_CHANGED` listener only.
     local scaleFrame = CreateFrame("Frame")
@@ -901,23 +1353,29 @@ function WarbandNexus:CreateMainWindow()
     scaleFrame:SetScript("OnEvent", function()
         C_Timer.After(0, function()
             if not f then return end
-            if WarbandNexus.UI_ClampMainFrameResizeBoundsFromProfile then
+            local LC = ns.UI_LayoutCoordinator
+            if LC and LC.OnDisplayMetricsChanged then
+                LC:OnDisplayMetricsChanged(f)
+            elseif WarbandNexus.UI_ClampMainFrameResizeBoundsFromProfile then
                 WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
             end
         end)
     end)
 
     local MAIN_SHELL_LAYOUT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
-    local frameChromeInset = MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET or 2
+    local frameChromeInset = MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET or 0
+    local frameChromeInsetBottom = MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET_BOTTOM
+        or MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET
+        or 0
     local headerNavGap = MAIN_SHELL_LAYOUT.HEADER_TO_NAV_GAP or 4
+    local headerUtilityRight = MAIN_SHELL_LAYOUT.HEADER_UTILITY_CLUSTER_RIGHT_INSET or 18
 
     -- Factory candidate: `Factory:CreateContainer` host — keep anchors + `EnableMouse` for drag.
     local header = CreateFrame("Frame", nil, f)
     header:SetHeight(MAIN_SHELL_LAYOUT.HEADER_BAR_HEIGHT or 40)
-    header:SetPoint("TOPLEFT", frameChromeInset, -frameChromeInset)
-    header:SetPoint("TOPRIGHT", -frameChromeInset, -frameChromeInset)
     header:EnableMouse(true)
     f.header = header  -- Store reference for color updates
+    f._wnHeaderUtilityRightInset = headerUtilityRight
     
     -- Header dragging via RegisterForDrag (fires only on actual drag, not plain click).
     -- Custom drag preserves click offset so the clicked point stays under the cursor.
@@ -928,6 +1386,7 @@ function WarbandNexus:CreateMainWindow()
     end)
     header:SetScript("OnDragStop", function()
         StopCustomDrag(f)
+        NormalizeFramePosition(f)
         SaveWindowGeometry(f)
     end)
     
@@ -937,15 +1396,20 @@ function WarbandNexus:CreateMainWindow()
         ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
 
-    -- Icon
-    local icon = header:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(24, 24)
-    icon:SetPoint("LEFT", 15, 0)
-    icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    -- Addon `Media` branding (see `ns.UI_ApplyMainWindowTitleIcon`). `SetFrameLevel` exists on Frame only, not Texture;
+    -- host frame keeps the icon above sibling header art without calling a nil Texture method.
+    local iconHolder = CreateFrame("Frame", nil, header)
+    iconHolder:SetSize(24, 24)
+    iconHolder:SetPoint("LEFT", 15, 0)
+    iconHolder:SetFrameLevel((header:GetFrameLevel() or 0) + 8)
+    local icon = iconHolder:CreateTexture(nil, "OVERLAY", nil, 1)
+    icon:SetAllPoints(iconHolder)
+    ns.UI_ApplyMainWindowTitleIcon(icon)
+    f.addonTitleIcon = icon
 
-    -- Title (WHITE - never changes with theme)
+    -- Title (WHITE); RIGHT edge clamps against `trackingChip` after chip width is finalized.
     local title = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
-    title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    title:SetPoint("LEFT", iconHolder, "RIGHT", 8, 0)
     title:SetText((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
     title:SetTextColor(1, 1, 1)  -- Always white
     f.title = title  -- Store reference
@@ -953,7 +1417,7 @@ function WarbandNexus:CreateMainWindow()
     -- Close button (Factory pattern with atlas icon)
     local closeBtn = CreateFrame("Button", nil, header)
     closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -8, 0)
+    closeBtn:SetPoint("RIGHT", -headerUtilityRight, 0)
     
     -- Apply custom visuals
     if ns.UI_ApplyVisuals then
@@ -1063,7 +1527,7 @@ function WarbandNexus:CreateMainWindow()
         GameTooltip:Hide()
     end)
 
-    -- Patreon (same copy-to-clipboard UX as Discord); sits left of Discord
+    -- Patreon (`Media/donateicon.png`); sits between Info and Discord.
     local patreonBtn = CreateFrame("Button", nil, header)
     patreonBtn:SetSize(30, 30)
     patreonBtn:SetPoint("RIGHT", infoBtn, "LEFT", -6, 0)
@@ -1071,6 +1535,7 @@ function WarbandNexus:CreateMainWindow()
     patreonIcon:SetAllPoints()
     patreonIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\donateicon.png")
     patreonIcon:SetTexCoord(0, 1, 0, 1)
+    patreonIcon:SetVertexColor(1, 1, 1, 1)
     patreonCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
     patreonCopyFrame:SetSize(440, 28)
     patreonCopyFrame:SetPoint("TOPRIGHT", patreonBtn, "BOTTOMRIGHT", 0, -4)
@@ -1131,7 +1596,7 @@ function WarbandNexus:CreateMainWindow()
     end)
     f.patreonBtn = patreonBtn
 
-    -- Discord button (tracking status is to its left)
+    -- Discord (`Media/discord.tga`); Tracking chip attaches to Discord's left edge.
     local discordBtn = CreateFrame("Button", nil, header)
     discordBtn:SetSize(30, 30)
     discordBtn:SetPoint("RIGHT", patreonBtn, "LEFT", -6, 0)
@@ -1139,6 +1604,7 @@ function WarbandNexus:CreateMainWindow()
     discordIcon:SetAllPoints()
     discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
     discordIcon:SetTexCoord(0, 1, 0, 1)
+    discordIcon:SetVertexColor(1, 1, 1, 1)
     discordCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
     discordCopyFrame:SetSize(240, 28)
     discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
@@ -1198,7 +1664,7 @@ function WarbandNexus:CreateMainWindow()
         discordCopyBox:HighlightText()
     end)
 
-    -- Tracking status: compact chip (accent rail + icon + single-line label), left of Discord
+    -- Tracking status: compact chip (accent rail + icon + single-line label), immediately left of Discord
     -- Match header accentDark family — avoid flat black (0.06…) which clashes with the title bar
     local trackingChip = CreateFrame("Frame", nil, header, "BackdropTemplate")
     trackingChip:SetHeight(30)
@@ -1263,7 +1729,9 @@ function WarbandNexus:CreateMainWindow()
     f.statusText = statusText
     trackingChip:SetWidth(112)
 
-    -- Window Manager: register main window + ESC hierarchy + combat hide/restore
+    title:SetPoint("RIGHT", trackingChip, "LEFT", -12, 0)
+    title:SetJustifyH("LEFT")
+    if title.SetWordWrap then title:SetWordWrap(false) end
     if ns.WindowManager then
         ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.MAIN, function()
             if WarbandNexus.HideMainWindow then
@@ -1276,12 +1744,154 @@ function WarbandNexus:CreateMainWindow()
         ns.WindowManager:InstallESCHandler(f)
     end
     
-    -- Factory candidate: `Factory:CreateContainer` — tab row host only.
+    -- Footer gutter (above bottom chrome strip): must exist before rail height + content anchors.
+    local MAIN_FOOTER_H = 26
+    local FOOTER_BOTTOM_OFFSET = MAIN_SHELL_LAYOUT.FOOTER_BOTTOM_OFFSET or 4
+    local CONTENT_GAP_ABOVE_FOOTER = MAIN_SHELL_LAYOUT.CONTENT_GAP_ABOVE_FOOTER or 0
+    local CONTENT_BOTTOM_OFFSET = FOOTER_BOTTOM_OFFSET + MAIN_FOOTER_H + CONTENT_GAP_ABOVE_FOOTER
+
+    local function GetProfileMainNavLayout()
+        local p = WarbandNexus.db and WarbandNexus.db.profile
+        local v = p and p.mainNavLayout
+        if v == "rail" or v == "top" then return v end
+        local st = MAIN_SHELL_LAYOUT.NAV_LAYOUT_MODE
+        if st == "rail" or st == "top" then return st end
+        return "rail"
+    end
+
+    local navLayoutMode = GetProfileMainNavLayout()
+    f._wnMainNavLayout = navLayoutMode
+    local frameInnerW = math.max(360, (f:GetWidth() or 800) - frameChromeInset * 2)
+    local railW = (navLayoutMode == "rail" and ns.UI_ComputeGoldenRailWidth)
+        and ns.UI_ComputeGoldenRailWidth(frameInnerW, MAIN_SHELL_LAYOUT)
+        or (MAIN_SHELL_LAYOUT.NAV_RAIL_WIDTH or 168)
+    local RAIL_TAB_H = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_HEIGHT or 34
+    local RAIL_TOP_INSET = MAIN_SHELL_LAYOUT.NAV_RAIL_TOP_INSET or 8
+    local RAIL_TAB_V_GAP = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_V_GAP or 3
+    local RAIL_CONTENT_GAP = MAIN_SHELL_LAYOUT.NAV_RAIL_CONTENT_GAP or 10
+    local RAIL_PAD = MAIN_SHELL_LAYOUT.NAV_RAIL_PAD or 6
+    f._wnNavRailTopInset = RAIL_TOP_INSET
+    f._wnNavTabVGap = RAIL_TAB_V_GAP
+
+    local navRail = nil
+    local navRailScroll = nil
+    local navRailStrip = nil
+    -- Full-width title bar at the top of the shell (above rail + content). Top Y = 0 avoids a dead band above the header.
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", frameChromeInset, 0)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -frameChromeInset, 0)
+
+    if navLayoutMode == "rail" then
+        navRail = CreateFrame("Frame", nil, f)
+        navRail:SetWidth(railW)
+        navRail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -headerNavGap)
+        navRail:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, CONTENT_BOTTOM_OFFSET)
+        do
+            local C = ns.UI_COLORS
+            local railBg = C and C.bg or { 0.04, 0.04, 0.05, 0.98 }
+            if ns.UI_ApplyBorderlessSurface then
+                ns.UI_ApplyBorderlessSurface(navRail, { railBg[1], railBg[2], railBg[3], railBg[4] or 0.98 })
+            elseif ApplyVisuals then
+                ApplyVisuals(navRail, { railBg[1], railBg[2], railBg[3], railBg[4] or 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.12 })
+                if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(navRail) end
+            end
+        end
+        local railDivider = navRail:CreateTexture(nil, "OVERLAY")
+        local ac = COLORS.accent or { 0.6, 0.4, 1 }
+        local divA = MAIN_SHELL_LAYOUT.NAV_RAIL_DIVIDER_ALPHA or 0.55
+        railDivider:SetColorTexture(ac[1], ac[2], ac[3], divA)
+        railDivider:SetWidth(1)
+        railDivider:SetPoint("TOPRIGHT", navRail, "TOPRIGHT", 0, -4)
+        railDivider:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 4)
+        f._wnNavRailDivider = railDivider
+        f.navRail = navRail
+        f._wnGoldenRailWidth = railW
+        if navRail.SetClipsChildren then
+            navRail:SetClipsChildren(true)
+        end
+
+        local railPad = RAIL_PAD
+        navRailScroll = CreateFrame("ScrollFrame", nil, navRail)
+        navRailScroll:SetPoint("TOPLEFT", navRail, "TOPLEFT", railPad, -railPad)
+        navRailScroll:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", -railPad, railPad)
+        navRailScroll:EnableMouseWheel(true)
+        navRailScroll:SetScript("OnMouseWheel", function(scrollSelf, delta)
+            local rng = scrollSelf.GetVerticalScrollRange and scrollSelf:GetVerticalScrollRange() or 0
+            if rng <= 0 then return end
+            local step = math.max(RAIL_TAB_H + RAIL_TAB_V_GAP, 24)
+            local cur = scrollSelf:GetVerticalScroll() or 0
+            local nxt = cur + (delta > 0 and -step or step)
+            if nxt < 0 then nxt = 0 end
+            if nxt > rng then nxt = rng end
+            scrollSelf:SetVerticalScroll(nxt)
+        end)
+
+        navRailStrip = CreateFrame("Frame", nil, navRailScroll)
+        navRailStrip:SetWidth(math.max(80, railW - (railPad * 2)))
+        navRailStrip:SetHeight(1)
+        navRailScroll:SetScrollChild(navRailStrip)
+
+        navRailScroll:SetScript("OnSizeChanged", function()
+            RefreshMainNavRailStrip(f)
+            if f.currentTab then
+                ScrollMainNavEnsureTabVisible(f, f.currentTab)
+            end
+        end)
+        navRailStrip:SetScript("OnSizeChanged", function()
+            RefreshMainNavRailStrip(f)
+        end)
+
+        f.navRailScroll = navRailScroll
+        f.navRailStrip = navRailStrip
+    else
+        f.navRail = nil
+        f.navRailScroll = nil
+        f.navRailStrip = nil
+    end
+
+    -- Horizontal strip host (`top`) or discarded placeholder (`rail`; tabs attach to navRail).
     local nav = CreateFrame("Frame", nil, f)
-    nav:SetHeight(MAIN_SHELL_LAYOUT.NAV_BAR_HEIGHT or 36)
-    nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -headerNavGap)
-    nav:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -headerNavGap)
+    if navLayoutMode == "rail" then
+        nav:SetHeight(1)
+        nav:Hide()
+    else
+        nav:SetHeight(MAIN_SHELL_LAYOUT.NAV_BAR_HEIGHT or 36)
+        nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -headerNavGap)
+        nav:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -headerNavGap)
+    end
     f.nav = nav
+    f.tabNavScroll = nil
+    f.tabNavStrip = nil
+    if navLayoutMode ~= "rail" then
+        local tabNavScroll = CreateFrame("ScrollFrame", nil, nav)
+        tabNavScroll:SetPoint("TOPLEFT", nav, "TOPLEFT", 0, 0)
+        tabNavScroll:SetPoint("BOTTOMRIGHT", nav, "BOTTOMRIGHT", 0, 0)
+        tabNavScroll:EnableMouseWheel(true)
+        tabNavScroll:SetScript("OnMouseWheel", function(scrollSelf, delta)
+            local rng = scrollSelf.GetHorizontalScrollRange and scrollSelf:GetHorizontalScrollRange() or 0
+            if rng <= 0 then return end
+            local step = math.max(48, math.floor((scrollSelf:GetWidth() or 400) * 0.22))
+            local cur = scrollSelf:GetHorizontalScroll() or 0
+            local nxt = cur + (delta > 0 and -step or step)
+            if nxt < 0 then nxt = 0 end
+            if nxt > rng then nxt = rng end
+            scrollSelf:SetHorizontalScroll(nxt)
+        end)
+
+        local navBarStripH = nav:GetHeight() or MAIN_SHELL_LAYOUT.NAV_BAR_HEIGHT or 36
+        local tabNavStrip = CreateFrame("Frame", nil, tabNavScroll)
+        tabNavStrip:SetHeight(navBarStripH)
+        tabNavScroll:SetScrollChild(tabNavStrip)
+
+        tabNavScroll:SetScript("OnSizeChanged", function()
+            RefreshMainNavLayout(f)
+        end)
+        tabNavStrip:SetScript("OnSizeChanged", function()
+            RefreshMainNavLayout(f)
+        end)
+
+        f.tabNavScroll = tabNavScroll
+        f.tabNavStrip = tabNavStrip
+    end
     -- Default tab set here; overridden by ShowMainWindow with persisted lastTab
     f.currentTab = "chars"
     f.tabButtons = {}
@@ -1292,23 +1902,39 @@ function WarbandNexus:CreateMainWindow()
     local TAB_HEIGHT = MAIN_SHELL_LAYOUT.TAB_HEIGHT or 34
     local TAB_PAD = MAIN_SHELL_LAYOUT.TAB_PAD or 24
     local TAB_GAP = MAIN_SHELL_LAYOUT.TAB_GAP or 5
+    local railLayout = navLayoutMode == "rail"
+    local railInnerBtnW = railLayout and math.max(80, railW - (RAIL_PAD * 2)) or 0
+    local RAIL_LABEL_PAD = MAIN_SHELL_LAYOUT.NAV_RAIL_LABEL_PAD_H or 6
+    local RAIL_ICON_INSET = MAIN_SHELL_LAYOUT.NAV_RAIL_ICON_INSET or 8
     
-    local function CreateTabButton(parent, text, key)
-        -- Intentionally raw: main nav tabs (dynamic width + atlas glyph + `ApplyHighlight`); Factory optional later (WN_FACTORY block).
+        local function CreateTabButton(parent, text, key)
+        -- Main nav tabs: icon + label (`rail` and `top`).
         local btn = CreateFrame("Button", nil, parent)
         local shellIco = MAIN_SHELL_LAYOUT
-        local iconSz = shellIco.TAB_ICON_SIZE or 18
-        local iconInsetL = shellIco.TAB_ICON_LEFT_INSET or 8
+        local iconSz = railLayout and (shellIco.RAIL_TAB_ICON_SIZE or 22) or (shellIco.TAB_ICON_SIZE or 18)
+        local iconInsetL = railLayout and RAIL_ICON_INSET or (shellIco.TAB_ICON_LEFT_INSET or 8)
         local iconGap = shellIco.TAB_ICON_GAP or 6
         local iconRight = shellIco.TAB_ICON_RIGHT_MARGIN or 8
         local iconBlock = iconInsetL + iconSz + iconGap
 
-        btn:SetSize(DEFAULT_TAB_WIDTH, TAB_HEIGHT)
+        if railLayout then
+            btn:SetSize(railInnerBtnW, RAIL_TAB_H)
+        else
+            btn:SetSize(DEFAULT_TAB_WIDTH, TAB_HEIGHT)
+        end
         btn.key = key
+        btn._wnRailTextMode = railLayout or nil
 
-        -- Apply border and background
-        if ApplyVisuals then
-            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        -- Background (rail: flat; top: standard chrome)
+        if railLayout then
+            if ns.UI_ApplyBorderlessSurface then
+                ns.UI_ApplyBorderlessSurface(btn, { 0.08, 0.08, 0.10, 0.45 })
+            elseif ApplyVisuals then
+                ApplyVisuals(btn, { 0.08, 0.08, 0.10, 0.45 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.1 })
+                if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(btn) end
+            end
+        elseif ApplyVisuals then
+            ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
         end
         
         -- Apply highlight effect (safe check for Factory)
@@ -1316,51 +1942,76 @@ function WarbandNexus:CreateMainWindow()
             ns.UI.Factory:ApplyHighlight(btn)
         end
         
-        -- Active indicator bar (bottom, rounded) (dynamic color)
+        -- Active indicator strip: bottom (`top`) or leading edge (`rail`)
+        local accentColorLine = COLORS.accent
         local activeBar = btn:CreateTexture(nil, "OVERLAY")
-        activeBar:SetHeight(3)
-        activeBar:SetPoint("BOTTOMLEFT", 8, 4)
-        activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
-        local accentColor = COLORS.accent
-        activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+        activeBar:SetColorTexture(accentColorLine[1], accentColorLine[2], accentColorLine[3], 1)
         activeBar:SetAlpha(0)
         btn.activeBar = activeBar
+        if railLayout then
+            activeBar:SetWidth(3)
+            activeBar:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, -3)
+            activeBar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 3)
+        else
+            activeBar:SetHeight(3)
+            activeBar:SetPoint("BOTTOMLEFT", 8, 4)
+            activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
+        end
 
-        -- Left nav glyph (WOW atlas bundle — crisp at any UI scale vs ad-hoc PNG)
+        -- Left nav glyph (WOW atlas bundle)
         local tabIcon = btn:CreateTexture(nil, "ARTWORK")
         tabIcon:SetSize(iconSz, iconSz)
-        tabIcon:SetPoint("LEFT", iconInsetL, 1)
+        tabIcon:SetPoint("LEFT", btn, "LEFT", iconInsetL, 0)
         if tabIcon.SetSnapToPixelGrid then tabIcon:SetSnapToPixelGrid(false) end
         if tabIcon.SetTexelSnappingBias then tabIcon:SetTexelSnappingBias(0) end
         btn.tabIcon = tabIcon
-        local atlasNm = ns.UI_GetTabIcon and ns.UI_GetTabIcon(key) or nil
-        local atlasOk = atlasNm and type(atlasNm) == "string" and pcall(tabIcon.SetAtlas, tabIcon, atlasNm, false)
-        if not atlasOk then
-            tabIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            tabIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if ns.UI_ApplyMainNavTabGlyph then
+            ns.UI_ApplyMainNavTabGlyph(tabIcon, key)
+        else
+            local atlasNm = ns.UI_GetTabIcon and ns.UI_GetTabIcon(key) or nil
+            local atlasOk = atlasNm and type(atlasNm) == "string" and pcall(tabIcon.SetAtlas, tabIcon, atlasNm, false)
+            if not atlasOk then
+                tabIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+                tabIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
         end
 
         local label = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabLabel"), "OVERLAY")
-        label:SetPoint("LEFT", tabIcon, "RIGHT", iconGap, 1)
         local countReserve = shellIco.TAB_COUNT_RESERVE or 28
-        label:SetPoint("RIGHT", btn, "RIGHT", -(iconRight + countReserve), 1)
-        label:SetJustifyH("LEFT")
-        label:SetText(text)
+        if railLayout then
+            label:SetPoint("LEFT", tabIcon, "RIGHT", iconGap, 0)
+            label:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+            label:SetJustifyH("LEFT")
+            label:SetWordWrap(false)
+            label:SetText(text)
+            label:SetTextColor(1, 1, 1)
+        else
+            label:SetPoint("LEFT", tabIcon, "RIGHT", iconGap, 1)
+            label:SetPoint("RIGHT", btn, "RIGHT", -(iconRight + countReserve), 1)
+            label:SetJustifyH("LEFT")
+            label:SetText(text)
+        end
         btn.label = label
 
-        -- Row count badge (dimmed), right edge — reserved strip keeps long labels from overlapping "(N)"
+        -- Row count badge (dimmed)
         local countLabel = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
-        countLabel:SetPoint("RIGHT", btn, "RIGHT", -iconRight, 1)
         countLabel:SetJustifyH("RIGHT")
         countLabel:SetTextColor(0.5, 0.5, 0.5, 0.8)
         countLabel:SetText("")
         countLabel:Hide()
         btn.countLabel = countLabel
+        if railLayout then
+            countLabel:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+        else
+            countLabel:SetPoint("RIGHT", btn, "RIGHT", -iconRight, 1)
+        end
 
-        local textWidth = label:GetStringWidth() or 0
-        local reserve = iconBlock + textWidth + iconRight + countReserve + 4
-        if textWidth + TAB_PAD > DEFAULT_TAB_WIDTH or reserve > DEFAULT_TAB_WIDTH then
-            btn:SetWidth(math.max(DEFAULT_TAB_WIDTH, reserve))
+        if not railLayout then
+            local tw = label:GetStringWidth() or 0
+            local reserve = iconBlock + tw + iconRight + countReserve + 4
+            if tw + TAB_PAD > DEFAULT_TAB_WIDTH or reserve > DEFAULT_TAB_WIDTH then
+                btn:SetWidth(math.max(DEFAULT_TAB_WIDTH, reserve))
+            end
         end
 
         btn:SetScript("OnClick", function(self)
@@ -1417,6 +2068,7 @@ function WarbandNexus:CreateMainWindow()
 
             -- PERFORMANCE: Update tab bar visuals immediately so user sees switch without waiting for content
             UpdateTabButtonStates(f)
+            ScrollMainNavEnsureTabVisible(f, targetTab)
 
             -- Persist selected tab (profile + session: session drives same-login hide/show)
             if WarbandNexus.db and WarbandNexus.db.profile then
@@ -1619,55 +2271,76 @@ function WarbandNexus:CreateMainWindow()
         stats       = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics",
     }
     
-    -- Create tabs: default 95px + 5px gap, expand only when needed
+    -- Create tabs: horizontal strip (`top`) or compact vertical rail (`rail` + vertical scroll).
+    local navHostForTabs = (navLayoutMode == "rail" and navRailStrip) or f.tabNavStrip or nav
     local prevBtn = nil
     for i = 1, #MAIN_TAB_ORDER do
         local key = MAIN_TAB_ORDER[i]
-        local btn = CreateTabButton(nav, TAB_LABELS[key], key)
+        local btn = CreateTabButton(navHostForTabs, TAB_LABELS[key], key)
         if prevBtn then
-            btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
+            if railLayout then
+                btn:SetPoint("TOP", prevBtn, "BOTTOM", 0, -RAIL_TAB_V_GAP)
+            else
+                btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
+            end
         else
-            btn:SetPoint("LEFT", nav, "LEFT", 10, 0)
+            if railLayout then
+                btn:SetPoint("TOP", navHostForTabs, "TOP", 0, -RAIL_TOP_INSET)
+            else
+                btn:SetPoint("LEFT", navHostForTabs, "LEFT", 10, 0)
+            end
         end
         f.tabButtons[key] = btn
         prevBtn = btn
     end
     
     UpdateTabVisibility(f)
-    
+    if railLayout then
+        ApplyMainNavGoldenShellLayout(f)
+        RefreshMainNavRailStrip(f)
+    else
+        RefreshMainNavTabStrip(f)
+    end
+
     -- Function to update tab colors dynamically
     f.UpdateTabColors = function()
         local freshColors = ns.UI_COLORS
         local accentColor = freshColors.accent
-        for _, btn in pairs(f.tabButtons) do
-            if btn.activeBar then
-                btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-            end
-            
-            -- Update colors based on active state (same as Plans tabs)
-            if btn.active then
-                btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
-                btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
-            else
-                btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-                btn:SetBackdropBorderColor(accentColor[1] * 0.8, accentColor[2] * 0.8, accentColor[3] * 0.8, 1)
+        for ti = 1, #MAIN_TAB_ORDER do
+            local btn = f.tabButtons[MAIN_TAB_ORDER[ti]]
+            if btn then
+                if btn.activeBar then
+                    btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+                end
+
+                -- Update colors based on active state (same as Plans tabs)
+                if btn.active then
+                    btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
+                    btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+                else
+                    btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                    btn:SetBackdropBorderColor(accentColor[1] * 0.8, accentColor[2] * 0.8, accentColor[3] * 0.8, 1)
+                end
             end
         end
     end
     
-    -- Footer strip (text + version): bottom offset 5, height MAIN_FOOTER_H. Content must end just above it —
-    -- using a fixed ~45px inset left a dead band (~10px) between footer top and content bottom.
-    local MAIN_FOOTER_H = 26
-    local FOOTER_BOTTOM_OFFSET = 5
-    local CONTENT_GAP_ABOVE_FOOTER = 4
-    local CONTENT_BOTTOM_OFFSET = FOOTER_BOTTOM_OFFSET + MAIN_FOOTER_H + CONTENT_GAP_ABOVE_FOOTER
+    -- Footer strip (text + version): MAIN_FOOTER_H + CONTENT_BOTTOM_OFFSET defined above rail shell.
 
     -- ===== CONTENT AREA =====
     -- Factory candidate: `Factory:CreateContainer` — inherits `BackdropTemplate` mixin immediately below for panel BG tint.
     local content = CreateFrame("Frame", nil, f)
-    content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
-    content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, CONTENT_BOTTOM_OFFSET)
+    if navLayoutMode == "rail" and navRail then
+        content:SetPoint("TOPLEFT", navRail, "TOPRIGHT", RAIL_CONTENT_GAP, 0)
+        content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, CONTENT_BOTTOM_OFFSET)
+    else
+        content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
+        content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, CONTENT_BOTTOM_OFFSET)
+    end
     f.content = content
+    if content.SetClipsChildren then
+        content:SetClipsChildren(true)
+    end
 
     -- Background only on content (no border); border will be on viewport frame so scrollbars sit outside it
     if not content.SetBackdrop then
@@ -1675,8 +2348,9 @@ function WarbandNexus:CreateMainWindow()
     end
     content:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     do
-        local C = ns.UI_COLORS
-        local bc = C and C.bg or { 0.04, 0.04, 0.05, 0.98 }
+        local bc = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+            or (ns.UI_COLORS and ns.UI_COLORS.bg)
+            or { 0.042, 0.042, 0.055, 0.98 }
         content:SetBackdropColor(bc[1], bc[2], bc[3], bc[4] or 0.98)
     end
 
@@ -1687,7 +2361,7 @@ function WarbandNexus:CreateMainWindow()
     local MSC = LAYOUT.MAIN_SCROLL or {}
     local SCROLL_COLUMN_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
     local SCROLL_GAP = MSC.SCROLL_GAP or scrollHints.scrollGap or 2
-    local SCROLL_INSET_TOP = LAYOUT.SCROLL_CONTENT_TOP_PADDING or 12
+    local SCROLL_INSET_TOP = MSC.CONTENT_PAD_TOP or LAYOUT.SCROLL_CONTENT_TOP_PADDING or 10
     local H_ROW_H = SCROLL_COLUMN_W
     local H_BAR_BOTTOM = MSC.H_BAR_BOTTOM_OFFSET or 6
     local SCROLL_INSET_BOTTOM = H_BAR_BOTTOM + H_ROW_H + SCROLL_GAP
@@ -1704,17 +2378,26 @@ function WarbandNexus:CreateMainWindow()
     viewportBorder:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
     viewportBorder:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_RIGHT, SCROLL_INSET_BOTTOM)
     viewportBorder:SetFrameLevel(content:GetFrameLevel() + 1)
-    if ApplyVisuals and ns.UI_COLORS then
-        local COLORS = ns.UI_COLORS
-        local bc = COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
-        ApplyVisuals(viewportBorder, bc, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    if not viewportBorder.SetBackdrop then
+        Mixin(viewportBorder, BackdropTemplateMixin)
     end
+    viewportBorder:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    do
+        local vp = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+            or (ns.UI_COLORS and ns.UI_COLORS.bg)
+            or { 0.042, 0.042, 0.055, 0.98 }
+        viewportBorder:SetBackdropColor(vp[1], vp[2], vp[3], vp[4] or 0.98)
+    end
+    if ns.UI_ApplyViewportAtlasUnderlay then
+        ns.UI_ApplyViewportAtlasUnderlay(viewportBorder)
+    end
+    if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(viewportBorder) end
     f.viewportBorder = viewportBorder
 
     -- Factory candidate: `Factory:CreateContainer` — non-scroll title/search host.
     local fixedHeader = CreateFrame("Frame", nil, content)
-    fixedHeader:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT + BORDER_INSET, -(SCROLL_INSET_TOP + BORDER_INSET))
-    fixedHeader:SetPoint("TOPRIGHT", content, "TOPRIGHT", -(SCROLL_INSET_RIGHT + BORDER_INSET), -(SCROLL_INSET_TOP + BORDER_INSET))
+    fixedHeader:SetPoint("TOPLEFT", content, "TOPLEFT", SCROLL_INSET_LEFT, 0)
+    fixedHeader:SetPoint("TOPRIGHT", content, "TOPRIGHT", -SCROLL_INSET_RIGHT, 0)
     fixedHeader:SetHeight(1)
     fixedHeader:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
     f.fixedHeader = fixedHeader
@@ -1730,11 +2413,7 @@ function WarbandNexus:CreateMainWindow()
 
     local columnHeaderBg = columnHeaderClip:CreateTexture(nil, "BACKGROUND")
     columnHeaderBg:SetAllPoints()
-    do
-        local C = ns.UI_COLORS
-        local bc = (C and (C.bgCard or C.bg)) or { 0.04, 0.04, 0.05, 0.98 }
-        columnHeaderBg:SetColorTexture(bc[1], bc[2], bc[3], bc[4] or 0.98)
-    end
+    columnHeaderBg:SetColorTexture(0, 0, 0, 0)
 
     -- Factory candidate: scroll-synced inner width host (`SetHorizontalScroll` hook anchors this).
     local columnHeaderInner = CreateFrame("Frame", nil, columnHeaderClip)
@@ -1746,8 +2425,8 @@ function WarbandNexus:CreateMainWindow()
     local scroll = ns.UI.Factory:CreateScrollFrame(content, "UIPanelScrollFrameTemplate", true)
     scroll:SetPoint("TOPLEFT", fixedHeader, "BOTTOMLEFT", 0, 0)
     scroll:SetPoint("TOPRIGHT", fixedHeader, "BOTTOMRIGHT", 0, 0)
-    scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT + BORDER_INSET, SCROLL_INSET_BOTTOM + BORDER_INSET)
-    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -(SCROLL_INSET_RIGHT + BORDER_INSET), SCROLL_INSET_BOTTOM + BORDER_INSET)
+    scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", SCROLL_INSET_LEFT, SCROLL_INSET_BOTTOM)
+    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -SCROLL_INSET_RIGHT, SCROLL_INSET_BOTTOM)
     scroll:SetFrameLevel(viewportBorder:GetFrameLevel() + 1)
     f.scroll = scroll
 
@@ -1803,6 +2482,11 @@ function WarbandNexus:CreateMainWindow()
     local origOnScroll = scroll:GetScript("OnVerticalScroll")
     local isSnappingScroll = false
     scroll:SetScript("OnVerticalScroll", function(self, offset)
+        if not (ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(f)) then
+            if f.currentTab == "chars" and ns.UI_CloseCharacterTabFlyoutMenus then
+                ns.UI_CloseCharacterTabFlyoutMenus()
+            end
+        end
         local PixelSnap = ns.PixelSnap
         if PixelSnap and not isSnappingScroll then
             local snapped = PixelSnap(offset)
@@ -1814,7 +2498,11 @@ function WarbandNexus:CreateMainWindow()
             end
         end
         if origOnScroll then origOnScroll(self, offset) end
-        if f._virtualScrollUpdate then
+        -- Characters corner-drag: live adapter relayouts visible rows; full VLM cull causes flicker.
+        local skipVirtualOnScroll = f.currentTab == "chars"
+            and ns.UI_IsMainFrameResizing
+            and ns.UI_IsMainFrameResizing(f)
+        if f._virtualScrollUpdate and not skipVirtualOnScroll then
             f._virtualScrollUpdate()
         end
     end)
@@ -1938,6 +2626,10 @@ function WarbandNexus:CreateMainWindow()
         pendingPopulateTimer = nil
         if myGen ~= populateDebounceGen then return end
         if not f or not f:IsShown() then return end
+        if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(f) then
+            f._wnDeferredPopulateAfterResize = true
+            return
+        end
         -- Read once up-front: gear+defer gate used to clear this before evaluating skipCooldown,
         -- which dropped GET_ITEM_INFO_RECEIVED / ITEM_METADATA repaints for the entire storage defer window.
         local useSkip = pendingPopulateSkipCooldown
@@ -2037,6 +2729,26 @@ function WarbandNexus:CreateMainWindow()
             gearTabInvNarrowTimer:Cancel()
         end
         gearTabInvNarrowTimer = nil
+    end
+
+    if ns.UI_LayoutCoordinator then
+        ns.UI_LayoutCoordinator:RegisterShellCallbacks({
+            updateScrollLayout = UpdateScrollLayout,
+            applyGoldenRailLayout = ApplyMainNavGoldenShellLayout,
+            refreshFixedHeaderChrome = RefreshFixedHeaderChrome,
+            refreshNavTabStrip = RefreshMainNavLayout,
+            scrollNavEnsureTabVisible = ScrollMainNavEnsureTabVisible,
+            computeScrollContentWidth = ComputeScrollChildWidth,
+            clampResizeBounds = function()
+                if WarbandNexus.UI_ClampMainFrameResizeBoundsFromProfile then
+                    WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
+                end
+            end,
+            scheduleGeometryCommit = function(skipCooldown)
+                SchedulePopulateContent(skipCooldown ~= false)
+            end,
+            schedulePopulateContent = SchedulePopulateContent,
+        })
     end
 
     --- Coalesce rapid item-cache resolution events on the Gear tab (GET_ITEM_INFO_RECEIVED / metadata).
@@ -2522,6 +3234,9 @@ function WarbandNexus:CreateMainWindow()
         -- Map module name to tab key (currencies -> currency; others same)
         local tabKey = (moduleName == "currencies") and "currency" or moduleName
         UpdateTabVisibility(f)
+        if f.currentTab then
+            ScrollMainNavEnsureTabVisible(f, f.currentTab)
+        end
         -- Only leave the tab when the module is turned off (enabling must not bounce to Characters).
         if enabled == false and f.currentTab == tabKey then
             f.currentTab = "chars"
@@ -2529,6 +3244,7 @@ function WarbandNexus:CreateMainWindow()
                 WarbandNexus.db.profile.lastTab = "chars"
             end
             UpdateTabButtonStates(f)
+            ScrollMainNavEnsureTabVisible(f, f.currentTab)
             SchedulePopulateContent()
         elseif f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband"
             and (moduleName == "items" or moduleName == "storage") then
@@ -2685,6 +3401,14 @@ local function PopulateContentBody(self)
 
     if mainFrame.SyncMainHeaderDebugReloadLayout then
         mainFrame:SyncMainHeaderDebugReloadLayout()
+    end
+
+    -- Live resize: shell stretches via anchors; tab content redraw runs once on resize commit (LayoutCoordinator).
+    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mainFrame) then
+        if ns.UI_EnsureMainScrollLayout then
+            ns.UI_EnsureMainScrollLayout()
+        end
+        return
     end
 
     -- Persisted lastTab can point at a tab whose module is disabled (hidden nav button).
@@ -2848,8 +3572,10 @@ local function PopulateContentBody(self)
     -- Update status
     self:UpdateStatus()
     
-    -- Tab bar: always sync highlight with currentTab (first open via ShowMainWindow has no tab OnClick).
+    -- Tab bar: sync highlight before draw (profiler slice: rail + top layouts both hit this path every populate).
+    _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_syncTabButtons")
     UpdateTabButtonStates(mainFrame)
+    _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_syncTabButtons")
     
     -- Set scrollChild width once (ComputeScrollChildWidth handles tab-specific minimums)
     scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))
@@ -2874,8 +3600,8 @@ local function PopulateContentBody(self)
     }
 
     local tab = mainFrame.currentTab
-    -- Dev-only: wall time for heavy inventory tabs (debug + verbose). Complements tab-switch click→populate log.
-    local drawPerfT0 = (isTracked and IsTabPerfMonitorEnabled() and (tab == "items" or tab == "gear" or tab == "professions" or tab == "collections" or tab == "plans")) and GetTime() or nil
+    -- Dev-only: wall time for scroll-heavy mains (WN-PERF checklist). Complements tab-switch click→populate log + `Pop_drawTab`.
+    local drawPerfT0 = (isTracked and IsTabPerfMonitorEnabled() and TAB_DRAW_PERF_TRACE[tab]) and GetTime() or nil
     if not isTracked and trackedOnlyTabs[tab] then
         height = self:DrawTrackingRequiredBanner(scrollChild)
     elseif tab == "chars" then
@@ -2942,7 +3668,7 @@ local function PopulateContentBody(self)
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_postLayout")
     -- Set scrollChild height based on content + bottom padding
-    local CONTENT_BOTTOM_PADDING = 8
+    local CONTENT_BOTTOM_PADDING = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
     local contentBottom = height + CONTENT_BOTTOM_PADDING
     -- Gear tab: extend scrollChild to viewport so the gear card can fill downward (see DrawPaperDollCard fill).
     local viewportH = mainFrame.scroll and mainFrame.scroll:GetHeight() or 0
@@ -2957,31 +3683,43 @@ local function PopulateContentBody(self)
     local totalScrollH = math.max(contentBottom, viewportH)
     scrollChild:SetHeight(totalScrollH)
 
-    -- When content is shorter than the viewport, paint a subtle bottom band so the scroll area matches
-    -- the main panel tone (avoids a tall empty strip above the window footer across tabs).
+    if ns.UI_ConfigureMainScrollViewportForTab then
+        ns.UI_ConfigureMainScrollViewportForTab(mainFrame, tab)
+    end
+    if tab == "gear" and ns.GearUI_RelayoutGearTabViewportFill then
+        ns.GearUI_RelayoutGearTabViewportFill(mainFrame)
+    end
+    if tab ~= "items" and tab ~= "gear" and ns.UI_EnsureScrollChildViewportFill then
+        ns.UI_EnsureScrollChildViewportFill(scrollChild)
+    end
+    if tab ~= "items" and tab ~= "gear" and ns.UI_RefreshScrollAnnexLayout then
+        ns.UI_RefreshScrollAnnexLayout(scrollChild)
+    end
+
+    -- When content is shorter than the viewport, paint a viewport-tone band below short content.
     do
         local fill = scrollChild._wnScrollBottomFill
         if not fill then
-            -- Factory candidate: subtle tone band below short content (`scrollChild._wnScrollBottomFill`); see WN_FACTORY list.
             fill = CreateFrame("Frame", nil, scrollChild)
             fill._wnKeepOnTabSwitch = true
             fill:SetFrameLevel(math.max(0, (scrollChild:GetFrameLevel() or 0) - 5))
             local tex = fill:CreateTexture(nil, "BACKGROUND", nil, -8)
             tex:SetAllPoints()
-            do
-                local C = ns.UI_COLORS
-                local bc = C and C.bg or { 0.04, 0.04, 0.05, 0.98 }
-                tex:SetColorTexture(bc[1], bc[2], bc[3], bc[4] or 0.98)
-            end
+            fill._wnBottomFillTex = tex
             scrollChild._wnScrollBottomFill = fill
         end
+        if fill._wnBottomFillTex then
+            local C = ns.UI_COLORS
+            local fillBg = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+                or (C and C.bg) or { 0.042, 0.042, 0.055, 0.98 }
+            fill._wnBottomFillTex:SetColorTexture(fillBg[1], fillBg[2], fillBg[3], fillBg[4] or 0.98)
+        end
         local slack = totalScrollH - contentBottom
-        -- Storage / Items attach a dedicated sheet from results to scroll bottom (see UI_AnnexResultsToScrollBottom).
-        local skipGlobalFill = (tab == "items" or tab == "stats")
+        local skipGlobalFill = (tab == "items")
         if not skipGlobalFill and slack > 1 then
             fill:ClearAllPoints()
-            fill:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 6, -contentBottom)
-            fill:SetPoint("BOTTOMRIGHT", scrollChild, "BOTTOMRIGHT", -6, 0)
+            fill:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -contentBottom)
+            fill:SetPoint("BOTTOMRIGHT", scrollChild, "BOTTOMRIGHT", 0, 0)
             fill:Show()
         else
             fill:ClearAllPoints()
@@ -3009,19 +3747,12 @@ local function PopulateContentBody(self)
         ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
     end
     
-    -- Scroll position persistence: restore saved position on main tab switch,
-    -- or reset to 0 if no saved position exists for this tab.
-    if mainFrame.isMainTabSwitch then
-        local savedScroll = mainFrame._tabScrollPositions and mainFrame._tabScrollPositions[mainFrame.currentTab]
-        local restoreY = (savedScroll and savedScroll.v) or 0
-        local restoreH = (savedScroll and savedScroll.h) or 0
-        -- Clamp to valid range
-        local maxV = mainFrame.scroll:GetVerticalScrollRange() or 0
-        restoreY = math.max(0, math.min(restoreY, maxV))
-        mainFrame.scroll:SetVerticalScroll(restoreY)
-        mainFrame.scroll:SetHorizontalScroll(restoreH)
-        if mainFrame.hScroll then
-            mainFrame.hScroll:SetValue(restoreH)
+    -- Tab switch: always open at top for consistent scroll chrome across pages.
+    if mainFrame.isMainTabSwitch and mainFrame.scroll then
+        mainFrame.scroll:SetVerticalScroll(0)
+        mainFrame.scroll:SetHorizontalScroll(0)
+        if mainFrame.hScroll and mainFrame.hScroll.SetValue then
+            mainFrame.hScroll:SetValue(0)
         end
     end
 
@@ -3071,7 +3802,7 @@ local function PopulateContentBody(self)
         local wallMs = (GetTime() - populateWallStart) * 1000
         if wallMs > 400 then
             DebugPrint(format(
-                "[WN UI] PopulateContent slow: %.0fms tab=%s (combat defer does not apply mid-draw; use /wn profiler + steps to narrow)",
+                "[WN UI] PopulateContent slow: %.0fms tab=%s (/wn profiler on | trace: Pop_* + DrawTab lines with /wn debug + verbose)",
                 wallMs,
                 tostring(mainFrame.currentTab)
             ))
@@ -3128,8 +3859,10 @@ function WarbandNexus:UpdateTabCountBadges(whichTab)
         return
     end
 
-    for key, btn in pairs(mainFrame.tabButtons) do
-        local cl = btn.countLabel
+    for ti = 1, #MAIN_TAB_ORDER do
+        local key = MAIN_TAB_ORDER[ti]
+        local btn = mainFrame.tabButtons[key]
+        local cl = btn and btn.countLabel
         if cl then
             local c = counts[key]
             if c and c > 0 then
@@ -3389,8 +4122,10 @@ function WarbandNexus:ApplyUIScale(newScale)
     NormalizeFramePosition(mainFrame)
     SaveWindowGeometry(mainFrame)
 
-    -- Rebuild content so scroll dimensions and scrollbar visibility are recalculated
-    if mainFrame:IsShown() then
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.OnAddonUIScaleChanged then
+        LC:OnAddonUIScaleChanged(mainFrame)
+    elseif mainFrame:IsShown() then
         self:PopulateContent()
     end
 end

@@ -23,6 +23,7 @@ local DebugPrint = ns.DebugPrint
 -- Import dependencies from namespace
 local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
+local ApplyStandardCardElevatedChrome = ns.UI_ApplyStandardCardElevatedChrome
 local FontManager = ns.FontManager
 local CreateIcon = ns.UI_CreateIcon
 local CreateButton = ns.UI_CreateButton
@@ -111,8 +112,10 @@ local function CreateExternalWindow(config)
         dialog:SetFrameLevel(200)
     end
     
-    -- Apply border and background
-    if ApplyVisuals then
+    -- Apply border + background (Phase 2: elevated shell + section atlas underlay, same as main tab cards)
+    if ApplyStandardCardElevatedChrome then
+        ApplyStandardCardElevatedChrome(dialog)
+    elseif ApplyVisuals then
         ApplyVisuals(dialog, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
     
@@ -312,7 +315,9 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             end
         end
         
-        if ApplyVisuals then
+        if ApplyStandardCardElevatedChrome then
+            ApplyStandardCardElevatedChrome(popup)
+        elseif ApplyVisuals then
             ApplyVisuals(popup, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
         end
         

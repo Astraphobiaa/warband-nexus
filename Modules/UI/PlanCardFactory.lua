@@ -28,8 +28,19 @@ local REMINDER_ALERT_TEX = (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TE
 local REMINDER_ALERT_ATLAS = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager"
 local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
 
-local function ApplyReminderCardButtonIcon(tex)
+local function ApplyReminderCardButtonIcon(tex, hasReminder)
     if not tex then return end
+    if ns.UI_ApplyWnActionIcon then
+        ns.UI_ApplyWnActionIcon(tex, "alert", hasReminder == true, false)
+        return
+    end
+    if ns.UI_SetWnIconTexture then
+        local vc = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("alert", hasReminder, false)
+            or (ns.UI_WnIconVertexForState and ns.UI_WnIconVertexForState(hasReminder, false))
+            or (hasReminder and (ns.WN_ICON_VERTEX_YELLOW or REMINDER_HORN_UI_COLOR) or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 }))
+        ns.UI_SetWnIconTexture(tex, "alert", { vertexColor = { vc[1], vc[2], vc[3], vc[4] or 1 }, desaturate = false })
+        return
+    end
     local ok = pcall(function()
         tex:SetAtlas(REMINDER_ALERT_ATLAS, false)
     end)
@@ -83,38 +94,24 @@ local function CreatePlanReminderAlertButton(card, plan)
     local hasReminder = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
     local PCM = ns.UI_PLANS_CARD_METRICS or {}
     local alertSz = (PCM.todoTypeBadgeSize) or 24
-    local bellInner = math.max(14, math.floor(alertSz * 0.88))
+    local pad = (PCM.plansActionIconInset) or 3
+    local bellInner = math.max(12, alertSz - pad * 2)
     local alertBtn = ns.UI.Factory:CreateButton(card, alertSz, alertSz, true)
     alertBtn:SetFrameLevel(card:GetFrameLevel() + 18)
     alertBtn:RegisterForClicks("LeftButtonUp")
     alertBtn._planID = plan.id
-    -- Active reminder: Lighttrait-glow behind horn (ARTWORK under OVERLAY); sized to frame the icon, not full-card.
-    if hasReminder then
-        local glowSz = math.max(math.floor(alertSz * 1.62 + 0.5), 36)
-        local glowTex = alertBtn:CreateTexture(nil, "ARTWORK", nil, -8)
-        glowTex:SetSize(glowSz, glowSz)
-        glowTex:SetPoint("CENTER", alertBtn, "CENTER", 0, 0)
-        local okGlow = pcall(function()
-            glowTex:SetAtlas("Lighttrait-glow", false)
-        end)
-        if okGlow then
-            glowTex:SetBlendMode("ADD")
-            glowTex:SetVertexColor(REMINDER_HORN_UI_COLOR[1], REMINDER_HORN_UI_COLOR[2], REMINDER_HORN_UI_COLOR[3], 0.55)
-            glowTex:Show()
-            alertBtn._alertFlashTex = glowTex
-        else
-            glowTex:Hide()
-        end
-    end
     local bellTex = alertBtn:CreateTexture(nil, "OVERLAY")
     bellTex:SetSize(bellInner, bellInner)
     bellTex:SetPoint("CENTER", alertBtn, "CENTER", 0, 0)
-    ApplyReminderCardButtonIcon(bellTex)
+    ApplyReminderCardButtonIcon(bellTex, hasReminder)
     bellTex:Show()
-    -- Single neutral treatment: no orange/yellow state tint, no alpha pulse (reset/dismiss stay calm).
-    local bellIdle = hasReminder and 0.78 or 0.68
-    bellTex:SetVertexColor(bellIdle, bellIdle, bellIdle + 0.02)
     alertBtn._bellTex = bellTex
+
+    function alertBtn:WnRefreshReminderIcon()
+        if not self._bellTex or not plan or not plan.id then return end
+        local reminderSet = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
+        ApplyReminderCardButtonIcon(self._bellTex, reminderSet)
+    end
 
     alertBtn:SetScript("OnClick", function()
         if WarbandNexus.ShowSetAlertDialog then
@@ -122,9 +119,7 @@ local function CreatePlanReminderAlertButton(card, plan)
         end
     end)
     alertBtn:SetScript("OnEnter", function(btn)
-        if btn._bellTex then
-            btn._bellTex:SetVertexColor(0.92, 0.92, 0.95)
-        end
+        btn:WnRefreshReminderIcon()
         local tooltipTitle, tooltipLines
         local activeReminders = WarbandNexus.GetActiveReminders and WarbandNexus:GetActiveReminders(plan.id)
         if activeReminders then
@@ -153,11 +148,7 @@ local function CreatePlanReminderAlertButton(card, plan)
     alertBtn:SetScript("OnLeave", function(btn)
         if btn._bellTex then
             local reminderSet = WarbandNexus.HasPlanReminder and WarbandNexus:HasPlanReminder(plan.id)
-            local idle = reminderSet and 0.78 or 0.68
-            btn._bellTex:SetVertexColor(idle, idle, idle + 0.02)
-        end
-        if btn._alertFlashTex and btn._planID and WarbandNexus.HasPlanReminder then
-            btn._alertFlashTex:SetShown(WarbandNexus:HasPlanReminder(btn._planID))
+            ApplyReminderCardButtonIcon(btn._bellTex, reminderSet)
         end
         if ns.TooltipService then
             ns.TooltipService:Hide()
@@ -165,6 +156,132 @@ local function CreatePlanReminderAlertButton(card, plan)
     end)
 
     return alertBtn
+end
+
+--- Canonical delete control for vault / weekly progress / custom plan cards (WN block icon, red).
+local function CreatePlanCardDeleteButton(parent, plan, opts)
+    if not parent or not plan or not plan.id then return nil end
+    opts = type(opts) == "table" and opts or {}
+    local sz = opts.size or (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize())
+        or ((ns.UI_PLANS_CARD_METRICS or {}).todoTypeBadgeSize)
+        or 24
+    local onRemove = function()
+        if WarbandNexus.RemovePlan then
+            WarbandNexus:RemovePlan(plan.id)
+        end
+    end
+    local tip = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan"
+    if ns.UI_CreateIconActionButton then
+        local btn = ns.UI_CreateIconActionButton(parent, sz, "delete", {
+            frameLevelOffset = opts.frameLevelOffset or 18,
+            onClick = onRemove,
+            tooltipTitle = tip,
+            tooltipAnchor = "ANCHOR_TOP",
+        })
+        if btn then
+            btn:ClearAllPoints()
+            if opts.relativeTo then
+                local pt = opts.point or "RIGHT"
+                local rpt = opts.relativePoint or "RIGHT"
+                btn:SetPoint(pt, opts.relativeTo, rpt, opts.x or 0, opts.y or 0)
+            else
+                btn:SetPoint(opts.point or "TOPRIGHT", parent, opts.point or "TOPRIGHT", opts.x or -8, opts.y or -8)
+            end
+        end
+        return btn
+    end
+    local removeBtn = ns.UI.Factory and ns.UI.Factory:CreateButton(parent, sz, sz, true)
+    if not removeBtn then return nil end
+    removeBtn:ClearAllPoints()
+    if opts.relativeTo then
+        local pt = opts.point or "RIGHT"
+        local rpt = opts.relativePoint or "RIGHT"
+        removeBtn:SetPoint(pt, opts.relativeTo, rpt, opts.x or 0, opts.y or 0)
+    else
+        removeBtn:SetPoint(opts.point or "TOPRIGHT", parent, opts.point or "TOPRIGHT", opts.x or -8, opts.y or -8)
+    end
+    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+    removeBtn:SetScript("OnClick", onRemove)
+    removeBtn:SetScript("OnEnter", function(self)
+        if ns.TooltipService and ns.TooltipService.Show then
+            ns.TooltipService:Show(self, { type = "custom", title = tip, icon = false, anchor = "ANCHOR_TOP", lines = {} })
+        end
+    end)
+    removeBtn:SetScript("OnLeave", function()
+        if ns.TooltipService and ns.TooltipService.Hide then ns.TooltipService:Hide() end
+    end)
+    return removeBtn
+end
+
+--- Right-aligned header rail: [Reset?][Alert][Delete] vertically centered on icon band.
+---@return table|nil { rail, removeBtn, alertBtn, resetTimer, titleAnchor, titleGap }
+local function AttachPlanCardHeaderActions(card, plan, opts)
+    if not card or not plan then return nil end
+    opts = type(opts) == "table" and opts or {}
+    local iconBorder = opts.iconBorder
+    local gap = opts.actionGap or 8
+    local insetR = opts.insetRight or 8
+    local titleGap = opts.titleGap or 12
+
+    local rail = ns.UI.Factory and ns.UI.Factory:CreateContainer(card, 4, 4, false)
+    if not rail then
+        rail = CreateFrame("Frame", nil, card)
+    end
+    rail:EnableMouse(false)
+    if iconBorder then
+        rail:SetPoint("TOP", iconBorder, "TOP", 0, 0)
+        rail:SetPoint("BOTTOM", iconBorder, "BOTTOM", 0, 0)
+        rail:SetPoint("RIGHT", card, "RIGHT", -insetR, 0)
+    else
+        rail:SetPoint("TOPRIGHT", card, "TOPRIGHT", -insetR, -8)
+        local actionSz = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or 24
+        rail:SetHeight(actionSz)
+    end
+
+    local removeBtn = CreatePlanCardDeleteButton(card, plan, {
+        relativeTo = rail,
+        point = "RIGHT",
+        relativePoint = "RIGHT",
+        x = 0,
+        y = 0,
+    })
+
+    local alertBtn = CreatePlanReminderAlertButton(card, plan)
+    if alertBtn then
+        alertBtn:ClearAllPoints()
+        if removeBtn then
+            alertBtn:SetPoint("RIGHT", removeBtn, "LEFT", -gap, 0)
+        else
+            alertBtn:SetPoint("RIGHT", rail, "RIGHT", 0, 0)
+        end
+    end
+
+    local resetTimer
+    local titleAnchor = alertBtn or removeBtn or rail
+    if opts.getResetSeconds and ns.UI_CreateResetTimer then
+        resetTimer = ns.UI_CreateResetTimer(card, "TOPRIGHT", 0, 0, opts.getResetSeconds)
+        if resetTimer and resetTimer.container then
+            resetTimer.container:ClearAllPoints()
+            if alertBtn then
+                resetTimer.container:SetPoint("RIGHT", alertBtn, "LEFT", -gap, 0)
+            elseif removeBtn then
+                resetTimer.container:SetPoint("RIGHT", removeBtn, "LEFT", -gap, 0)
+            else
+                resetTimer.container:SetPoint("RIGHT", rail, "RIGHT", 0, 0)
+            end
+            titleAnchor = resetTimer.container
+        end
+    end
+
+    return {
+        rail = rail,
+        removeBtn = removeBtn,
+        alertBtn = alertBtn,
+        resetTimer = resetTimer,
+        titleAnchor = titleAnchor,
+        titleGap = titleGap,
+    }
 end
 
 local PlanCardFactory = {}
@@ -2153,36 +2270,16 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
             local CreateResetTimer = ns.UI_CreateResetTimer
             if CreateResetTimer then
                 if isCompleted then
-                    -- Completed layout: [Timer] [Delete X] — delete at top-right, timer to its left
-                    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
-                    removeBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -8)
-                    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-                    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-                    removeBtn:SetScript("OnClick", function()
-                        WarbandNexus:RemovePlan(plan.id)
-                    end)
-                    removeBtn:SetScript("OnEnter", function(self)
-                        ns.TooltipService:Show(
-                            self,
-                            {
-                                type = "custom",
-                                title = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
-                                icon = false,
-                                anchor = "ANCHOR_TOP",
-                                lines = {}
-                            }
-                        )
-                    end)
-                    removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
-                    
-                    -- Timer anchored to the left of delete button
-                    local resetTimer = CreateResetTimer(card, "TOPRIGHT", -32, -10, function()
-                        if plan.resetCycle.resetType == "weekly" then
-                            return WarbandNexus:GetWeeklyResetTime() - GetServerTime()
-                        else
+                    local hdr = AttachPlanCardHeaderActions(card, plan, {
+                        iconBorder = card.iconBorder,
+                        getResetSeconds = function()
+                            if plan.resetCycle.resetType == "weekly" then
+                                return WarbandNexus:GetWeeklyResetTime() - GetServerTime()
+                            end
                             return C_DateAndTime.GetSecondsUntilDailyReset()
-                        end
-                    end)
+                        end,
+                    })
+                    local resetTimer = hdr and hdr.resetTimer
                     card.resetTimer = resetTimer
                     
                     -- Cycle progress below timer
@@ -3069,42 +3166,18 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     end
     charText:SetText(characterDisplay)
     
-    -- Header controls: right edge = delete, then reminder horn, then reset timer (no overlap).
-    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
-    removeBtn:SetPoint("TOPRIGHT", -8, -8)
-    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-    removeBtn:SetScript("OnClick", function()
-        WarbandNexus:RemovePlan(plan.id)
-    end)
-    
-    local vaultAlertBtn = CreatePlanReminderAlertButton(card, plan)
-    card.reminderAlertBtn = vaultAlertBtn
-    if vaultAlertBtn then
-        vaultAlertBtn:SetPoint("TOPRIGHT", removeBtn, "TOPLEFT", -8, 0)
-    end
-    
-    local CreateResetTimer = ns.UI_CreateResetTimer
-    local resetTimer = CreateResetTimer(
-        card,
-        "TOPRIGHT",
-        -8,
-        -10,
-        function()
+    local hdr = AttachPlanCardHeaderActions(card, plan, {
+        iconBorder = iconBorder,
+        getResetSeconds = function()
             local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
             return resetTimestamp - GetServerTime()
-        end
-    )
-    resetTimer.container:ClearAllPoints()
-    resetTimer.container:SetPoint("TOP", removeBtn, "TOP", 0, 0)
-    if vaultAlertBtn then
-        resetTimer.container:SetPoint("RIGHT", vaultAlertBtn, "LEFT", -10, 0)
-    else
-        resetTimer.container:SetPoint("RIGHT", removeBtn, "LEFT", -10, 0)
+        end,
+    })
+    card.reminderAlertBtn = hdr and hdr.alertBtn
+    card.resetTimer = hdr and hdr.resetTimer
+    if hdr and hdr.titleAnchor then
+        titleText:SetPoint("RIGHT", hdr.titleAnchor, "LEFT", -(hdr.titleGap or 12), 0)
     end
-    card.resetTimer = resetTimer
-    
-    titleText:SetPoint("RIGHT", resetTimer.container, "LEFT", -12, 0)
     
     -- === 3 PROGRESS SLOTS ===
     local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
@@ -3381,21 +3454,11 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     end
     charText:SetText(charDisplay)
     
-    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
-    removeBtn:SetPoint("TOPRIGHT", -8, -8)
-    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-    removeBtn:SetScript("OnClick", function()
-        WarbandNexus:RemovePlan(plan.id)
-    end)
-    
-    local dqAlertBtn = CreatePlanReminderAlertButton(card, plan)
-    card.reminderAlertBtn = dqAlertBtn
-    if dqAlertBtn then
-        dqAlertBtn:SetPoint("TOPRIGHT", removeBtn, "TOPLEFT", -8, 0)
+    local hdr = AttachPlanCardHeaderActions(card, plan, { iconBorder = iconBorder })
+    card.reminderAlertBtn = hdr and hdr.alertBtn
+    if hdr and hdr.titleAnchor then
+        titleText:SetPoint("RIGHT", hdr.titleAnchor, "LEFT", -(hdr.titleGap or 12), 0)
     end
-    
-    titleText:SetPoint("RIGHT", dqAlertBtn or removeBtn, "LEFT", -12, 0)
     
     -- === CATEGORY PROGRESS SLOTS ===
     local contentY = -70
@@ -3553,9 +3616,10 @@ function PlanCardFactory.CreateAddButton(parent, options)
     
     -- Use standardized card button layout constants
     local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ADD_WIDTH = 60, ADD_HEIGHT = 32, ADD_MARGIN_X = 10, ADD_MARGIN_Y = 8}
+    local iconOnly = options.iconOnly == true
     -- Increase hit area: Make button wider for easier clicking
-    local width = options.width or (buttonType == "row" and defaultSize.width or CBL.ADD_WIDTH)
-    local height = options.height or (buttonType == "row" and defaultSize.height or CBL.ADD_HEIGHT)
+    local width = options.width or (iconOnly and 32 or (buttonType == "row" and defaultSize.width or CBL.ADD_WIDTH))
+    local height = options.height or (iconOnly and 32 or (buttonType == "row" and defaultSize.height or CBL.ADD_HEIGHT))
     -- Standardized label for all button types
     local label = options.label or ((ns.L and ns.L["ADD_BUTTON"]) or "+ Add")
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
@@ -3565,7 +3629,11 @@ function PlanCardFactory.CreateAddButton(parent, options)
     
     -- Themed button frame (border on) so To-Do reads as a control, not plain text.
     local addBtn = ns.UI.Factory:CreateButton(parent, width, height, false)
-    addBtn:SetPoint(anchorPoint, x, y)
+    if anchorPoint == "BOTTOM" or anchorPoint == "TOP" or anchorPoint == "RIGHT" or anchorPoint == "LEFT" then
+        addBtn:SetPoint(anchorPoint, parent, anchorPoint, x, y)
+    else
+        addBtn:SetPoint(anchorPoint, x, y)
+    end
     addBtn:SetFrameLevel(parent:GetFrameLevel() + 10)
     addBtn:EnableMouse(true)
     addBtn:RegisterForClicks("LeftButtonUp")
@@ -3577,26 +3645,57 @@ function PlanCardFactory.CreateAddButton(parent, options)
     end
     
     local FontManager = ns.FontManager
-    local btnText = FontManager:CreateFontString(addBtn, "body", "OVERLAY")
-    if buttonType == "card" then
-        btnText:SetPoint("CENTER", 0, 0)
+    addBtn.text = nil
+    if iconOnly then
+        local iconTex = addBtn:CreateTexture(nil, "OVERLAY")
+        local PCM = ns.UI_PLANS_CARD_METRICS or {}
+        local pad = PCM.plansActionIconInset or 3
+        local iconSz = math.max(12, math.min(width, height) - pad * 2)
+        iconTex:SetSize(iconSz, iconSz)
+        iconTex:SetPoint("CENTER", addBtn, "CENTER", 0, 0)
+        if not (ns.UI_ApplyWnActionIcon and ns.UI_ApplyWnActionIcon(iconTex, "todo", false, false))
+            and not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(iconTex, "todo", {
+                vertexColor = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("todo", false, false)
+                    or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 }),
+            })) then
+            local btnText = FontManager:CreateFontString(addBtn, "subtitle", "OVERLAY")
+            btnText:SetPoint("CENTER")
+            btnText:SetText("+")
+            btnText:SetTextColor(1, 0.95, 0.55, 1)
+            if btnText.EnableMouse then
+                btnText:EnableMouse(false)
+            end
+            addBtn._wnAddPlusText = btnText
+        else
+            addBtn._wnIconTex = iconTex
+        end
+        local todoTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_ADD"]) or "Add to your To-Do list."
+        addBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(todoTip, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     else
-        btnText:SetPoint("CENTER")
+        local btnText = FontManager:CreateFontString(addBtn, "body", "OVERLAY")
+        if buttonType == "card" then
+            btnText:SetPoint("CENTER", 0, 0)
+        else
+            btnText:SetPoint("CENTER")
+        end
+        btnText:SetText(label)
+        btnText:SetTextColor(0.92, 0.94, 0.98, 1)
+        if btnText.EnableMouse then
+            btnText:EnableMouse(false)
+        end
+        addBtn.text = btnText
+        addBtn:SetScript("OnEnter", function(self)
+            if self.text then self.text:SetTextColor(1, 1, 1, 1) end
+        end)
+        addBtn:SetScript("OnLeave", function(self)
+            if self.text then self.text:SetTextColor(0.92, 0.94, 0.98, 1) end
+        end)
     end
-    btnText:SetText(label)
-    btnText:SetTextColor(0.92, 0.94, 0.98, 1)
-    if btnText.EnableMouse then
-        btnText:EnableMouse(false)
-    end
-    addBtn.text = btnText
-    
-    addBtn:SetScript("OnEnter", function(self)
-        self.text:SetTextColor(1, 1, 1, 1)
-    end)
-    
-    addBtn:SetScript("OnLeave", function(self)
-        self.text:SetTextColor(0.92, 0.94, 0.98, 1)
-    end)
     
     if options.onClick then
         addBtn:SetScript("OnClick", function(self, button)
