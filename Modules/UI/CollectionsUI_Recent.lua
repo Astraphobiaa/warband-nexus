@@ -176,49 +176,38 @@ function M.PopulateCollectionsRecentTooltip(tt, ctx)
     if not tt or not ctx then return end
     local loc = ns.L
     local wR, wG, wB = 1, 1, 1
+    local earnedFmt = (loc and loc["COLLECTIONS_RECENT_TOOLTIP_EARNED_BY"]) or "Earned by %s"
+    local recordedFmt = (loc and loc["COLLECTIONS_RECENT_TOOLTIP_RECORDED"]) or "Recorded: %s"
 
-    tt:SetText(ctx.name or "")
-    if ctx.description and ctx.description ~= "" then
-        if issecretvalue and issecretvalue(ctx.description) then
-            ctx.description = nil
-        end
-    end
-    if ctx.description and ctx.description ~= "" then
-        tt:AddLine(ctx.description, wR, wG, wB, true)
-    end
-
-    if ctx.category and ctx.category ~= "" then
-        tt:AddLine(ctx.category, wR, wG, wB)
-    end
-
-    if ctx.typ == "achievement" and ctx.achievementID then
-        if ctx.points and ctx.points > 0 then
-            tt:AddLine(
-                format("%d %s", ctx.points, (loc and loc["POINTS_LABEL"]) or "Points"),
-                wR, wG, wB
-            )
-        end
-        if ctx.completed then
-            tt:AddLine((loc and loc["ACHIEVEMENT_FRAME_WN_TOOLTIP_COMPLETE"]) or "Completed.", wR, wG, wB)
-        end
-    end
-
-    if ctx.character and ctx.character ~= "" then
-        local fmtKey = (ctx.typ == "achievement") and "RECENT_TOOLTIP_ACHIEVEMENT_EARNED_BY" or "RECENT_TOOLTIP_EARNED_BY"
-        local fmt = (loc and loc[fmtKey]) or ((ctx.typ == "achievement") and "Earned by %s" or "Obtained by %s")
-        tt:AddLine(format(fmt, ctx.character), wR, wG, wB)
-    end
-
+    local timeValue
     if ctx.ts and ctx.ts > 0 then
-        local abs = date("%Y-%m-%d %H:%M", ctx.ts)
         local rel = ctx.rel or ""
         if rel ~= "" then
-            tt:AddLine(format("%s (%s)", abs, rel), wR, wG, wB)
+            timeValue = rel
         else
-            tt:AddLine(abs, wR, wG, wB)
+            timeValue = date("%Y-%m-%d %H:%M", ctx.ts)
         end
     elseif ctx.rel and ctx.rel ~= "" then
-        tt:AddLine(ctx.rel, wR, wG, wB)
+        timeValue = ctx.rel
+    end
+
+    local character = ctx.character
+    if character and character ~= "" and issecretvalue and issecretvalue(character) then
+        character = nil
+    end
+
+    local lineCount = 0
+    if character and character ~= "" then
+        tt:SetText(format(earnedFmt, character), wR, wG, wB)
+        lineCount = 1
+    end
+    if timeValue and timeValue ~= "" then
+        local recordedLine = format(recordedFmt, timeValue)
+        if lineCount > 0 then
+            tt:AddLine(recordedLine, wR, wG, wB)
+        else
+            tt:SetText(recordedLine, wR, wG, wB)
+        end
     end
 end
 
@@ -438,7 +427,12 @@ function M.DrawRecentContent(contentFrame)
             else
                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             end
-            GameTooltip:SetText((loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"]) or "Clear recent entries for this category", 1, 1, 1)
+            GameTooltip:SetText((loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP"]) or "Clear recent list", 1, 1, 1)
+            GameTooltip:AddLine(
+                (loc and loc["COLLECTIONS_RECENT_CARD_RESET_TOOLTIP_BODY"])
+                    or "Removes entries from this Recent category only. Your collection data is not deleted.",
+                1, 1, 1, true
+            )
             GameTooltip:Show()
         end)
         resetBtn:SetScript("OnLeave", function()
@@ -500,9 +494,9 @@ function M.DrawRecentContent(contentFrame)
         end
 
         if qlower and #picked == 0 then
-            addRow(defaultEmptyIcon, "|cff888888" .. searchEmptyTxt .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
+            addRow(defaultEmptyIcon, "|cffffffff" .. searchEmptyTxt .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         elseif #picked == 0 then
-            addRow(defaultEmptyIcon, "|cff888888" .. noneLine .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
+            addRow(defaultEmptyIcon, "|cffffffff" .. noneLine .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         else
             for j = 1, #picked do
                 local e = picked[j]
@@ -520,44 +514,21 @@ function M.DrawRecentContent(contentFrame)
                 local rowH = ROW_HEIGHT
                 if ob and ob ~= "" then
                     local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(ob))
-                        or "|cffaaaaaa"
+                        or "|cffffffff"
                     subLine = format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
                     rowH = RECENT_ROW_H_SUB
                 end
                 local nameRich = COLLECTED_COLOR .. nm .. "|r"
 
                 local function buildTooltip(tt)
-                    local description
-                    local points, completed
-                    if typCopy == "achievement" and idCopy then
-                        local ok, _, _, pts, comp, _, _, _, desc = pcall(GetAchievementInfo, idCopy)
-                        if ok then
-                            if desc and not (issecretvalue and issecretvalue(desc)) then
-                                description = desc
-                            end
-                            if pts and not (issecretvalue and issecretvalue(pts)) then
-                                points = pts
-                            end
-                            if comp and not (issecretvalue and issecretvalue(comp)) then
-                                completed = comp
-                            end
-                        end
-                    end
                     M.PopulateCollectionsRecentTooltip(tt, {
-                        name = nmCopy,
-                        category = cat,
-                        typ = typCopy,
-                        achievementID = idCopy,
-                        description = description,
-                        points = points,
-                        completed = completed,
                         character = ob,
                         ts = tsCopy,
                         rel = rel,
                     })
                 end
 
-                addRow(iconPath, nameRich, "|cff888888" .. rel .. "|r", true, function()
+                addRow(iconPath, nameRich, "|cffffffff" .. rel .. "|r", true, function()
                     M.RecentRowNavigateToEntry(typCopy, idCopy)
                 end, buildTooltip, subLine, rowH)
             end

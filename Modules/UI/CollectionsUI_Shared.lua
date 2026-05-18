@@ -130,6 +130,40 @@ function M.FormatCollectionsAcquiredDetail(ts)
     return format((loc and loc["COLLECTIONS_ACQUIRED_LINE"]) or "%s: %s", label, rel)
 end
 
+local COLLECTIONS_TT_WHITE_R, COLLECTIONS_TT_WHITE_G, COLLECTIONS_TT_WHITE_B = 1, 1, 1
+
+--- Labeled line for Collections GameTooltip (always white).
+function M.AddCollectionsTooltipLine(tt, label, value, wrap)
+    if not tt or not value or value == "" then return end
+    if issecretvalue and issecretvalue(value) then return end
+    local text = value
+    if label and label ~= "" then
+        text = label .. ": " .. value
+    end
+    tt:AddLine(text, COLLECTIONS_TT_WHITE_R, COLLECTIONS_TT_WHITE_G, COLLECTIONS_TT_WHITE_B, wrap == true)
+end
+
+function M.CollectionPlanSlotTooltipHasContent(tip)
+    if type(tip) == "string" then
+        return tip ~= ""
+    end
+    if type(tip) ~= "table" then
+        return false
+    end
+    if tip.title and tip.title ~= "" then
+        return true
+    end
+    local lines = tip.lines
+    if type(lines) == "table" then
+        for i = 1, #lines do
+            if lines[i] and lines[i] ~= "" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local SD = ns.CollectionsUI_SourceData
 
 -- ============================================================================
@@ -289,7 +323,7 @@ function M.CreateDetailEmptyOverlay(parent, typeKey)
     fs:SetPoint("CENTER", overlay, "CENTER", 0, 0)
     fs:SetJustifyH("CENTER")
     fs:SetJustifyV("MIDDLE")
-    fs:SetText("|cff888888" .. text .. "|r")
+    fs:SetText("|cffffffff" .. text .. "|r")
     fs:SetWordWrap(true)
     overlay.text = fs
     overlay:Hide()
@@ -472,3 +506,52 @@ M.COLLECTION_LIST_DETAIL_SPLIT = COLLECTION_LIST_DETAIL_SPLIT
 M.DETAIL_SCROLLBAR_VERTICAL_INSET = DETAIL_SCROLLBAR_VERTICAL_INSET
 M.BORDER_INSET = BORDER_INSET
 M.VALID_COLLECTIONS_SUBTABS = M.VALID_COLLECTIONS_SUBTABS
+
+function M.ResetSessionCollapsedHeaders()
+    if not M.state then return end
+    M.state._mountListCollapsedHeaders = nil
+    M.state._petListCollapsedHeaders = nil
+    M.state._toyListCollapsedHeaders = nil
+end
+
+local function CollectionsCollapsedHeadersAnyExpanded()
+    local function anyExpanded(tbl)
+        if not tbl then return false end
+        for _, v in pairs(tbl) do
+            if v == false then return true end
+        end
+        return false
+    end
+    local st = M.state
+    return anyExpanded(st._mountListCollapsedHeaders)
+        or anyExpanded(st._petListCollapsedHeaders)
+        or anyExpanded(st._toyListCollapsedHeaders)
+end
+
+local function CollectionsExpandAllCategoryHeaders()
+    local SD = M.SD
+    if not SD or not M.state then return end
+    local function fillFrom(cats)
+        local out = {}
+        if not cats then return out end
+        for i = 1, #cats do
+            out[cats[i].key] = false
+        end
+        return out
+    end
+    M.state._mountListCollapsedHeaders = fillFrom(SD.SOURCE_CATEGORIES)
+    M.state._petListCollapsedHeaders = fillFrom(SD.PET_SOURCE_CATEGORIES)
+    M.state._toyListCollapsedHeaders = fillFrom(SD.SOURCE_CATEGORIES)
+end
+
+function M.CollectionsToolbarAnyExpanded()
+    return CollectionsCollapsedHeadersAnyExpanded()
+end
+
+function M.CollectionsToolbarExpandAll()
+    CollectionsExpandAllCategoryHeaders()
+end
+
+function M.CollectionsToolbarCollapseAll()
+    M.ResetSessionCollapsedHeaders()
+end

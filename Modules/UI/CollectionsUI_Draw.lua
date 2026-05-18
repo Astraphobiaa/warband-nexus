@@ -1021,7 +1021,7 @@ function M.DrawToysContent(contentFrame)
         local toyObtainedLine = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
         toyObtainedLine:SetJustifyH("LEFT")
         toyObtainedLine:SetWordWrap(true)
-        toyObtainedLine:SetTextColor(0.68, 0.70, 0.74, 1)
+        toyObtainedLine:SetTextColor(1, 1, 1, 1)
         toyObtainedLine:Hide()
         M.state._toyDetailObtainedLine = toyObtainedLine
     else

@@ -7618,7 +7618,11 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
             else
                 hint = (ns.L and ns.L["TRY_COUNT_CLICK_HINT"]) or "Click to edit attempt count."
             end
-            GameTooltip:AddLine(hint, 0.7, 0.7, 0.7, true)
+            local hintR, hintG, hintB = 0.7, 0.7, 0.7
+            if options.tooltipHintWhite then
+                hintR, hintG, hintB = 1, 1, 1
+            end
+            GameTooltip:AddLine(hint, hintR, hintG, hintB, true)
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -7705,7 +7709,7 @@ function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, op
         applyVisual(tracked, disabled)
         -- NOTE: (not disabled) and WarbandNexus.ToggleAchievementTracking is a function, never == true — must test type.
         local canToggle = (not disabled) and type(WarbandNexus.ToggleAchievementTracking) == "function"
-        btn:EnableMouse(canToggle)
+        btn:EnableMouse(true)
         if canToggle then
             btn:SetScript("OnClick", function()
                 WarbandNexus:ToggleAchievementTracking(achievementID)
@@ -7717,9 +7721,23 @@ function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, op
     end
 
     btn:SetScript("OnEnter", function(b)
-        if pinDisabled() then return end
+        local L = ns.L
+        local title = (L and L["COLLECTIONS_TT_TRACK_TITLE"]) or "Objectives tracker"
+        local body
+        if pinDisabled() then
+            body = (L and L["COLLECTIONS_TT_TRACK_COMPLETED"])
+                or "This achievement is already completed. Tracking is not available."
+        elseif WarbandNexus.IsAchievementTracked and WarbandNexus:IsAchievementTracked(achievementID) then
+            body = (L and L["COLLECTIONS_TT_TRACK_DISABLE"])
+                or "Left-click to stop tracking in Blizzard objectives."
+        else
+            body = (L and L["COLLECTIONS_TT_TRACK_ENABLE"])
+                or "Left-click to show progress in Blizzard objectives (up to 10 at once)."
+        end
         GameTooltip:SetOwner(b, "ANCHOR_TOP")
-        GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)", 1, 1, 1)
+        GameTooltip:ClearLines()
+        GameTooltip:SetText(title, 1, 1, 1)
+        GameTooltip:AddLine(body, 1, 1, 1, true)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -7830,8 +7848,9 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     local loc = ns.L
     wowheadBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine((loc and loc["WOWHEAD_LABEL"]) or "Wowhead", 1, 0.82, 0)
-        GameTooltip:AddLine((loc and loc["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6, true)
+        GameTooltip:ClearLines()
+        GameTooltip:SetText((loc and loc["WOWHEAD_LABEL"]) or "Wowhead", 1, 1, 1)
+        GameTooltip:AddLine((loc and loc["CLICK_TO_COPY_LINK"]) or "Left-click to copy the Wowhead link.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
     wowheadBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -7843,6 +7862,7 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
             height = L.TRY_ROW_H,
             frameLevelOffset = 10,
             justifyH = "RIGHT",
+            tooltipHintWhite = true,
         })
         if tryCountRow then
             tryCountRow:SetPoint("TOPLEFT", actionSlot, "BOTTOMLEFT", 0, -L.TRY_GAP)
@@ -10004,9 +10024,14 @@ end
 
 local COLLECTION_PLAN_SLOT_SIZE = math.floor(19 * 1.25 + 0.5)
 
-local function SetCollectionPlanSlotTooltip(btn, text)
+local function SetCollectionPlanSlotTooltip(btn, tip)
     if not btn then return end
-    if not text or text == "" then
+    local hasTip = ns.CollectionsUI and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent
+        and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent(tip)
+    if not hasTip and type(tip) == "string" and tip ~= "" then
+        hasTip = true
+    end
+    if not hasTip then
         btn:SetScript("OnEnter", nil)
         btn:SetScript("OnLeave", nil)
         return
@@ -10015,7 +10040,24 @@ local function SetCollectionPlanSlotTooltip(btn, text)
         GameTooltip:SetOwner(self, "ANCHOR_NONE")
         GameTooltip:ClearAllPoints()
         GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", 4, 6)
-        GameTooltip:SetText(text, 1, 1, 1)
+        GameTooltip:ClearLines()
+        local wR, wG, wB = 1, 1, 1
+        if type(tip) == "table" then
+            if tip.title and tip.title ~= "" then
+                GameTooltip:SetText(tip.title, wR, wG, wB)
+            end
+            local lines = tip.lines
+            if type(lines) == "table" then
+                for i = 1, #lines do
+                    local line = lines[i]
+                    if line and line ~= "" then
+                        GameTooltip:AddLine(line, wR, wG, wB, true)
+                    end
+                end
+            end
+        else
+            GameTooltip:SetText(tip, wR, wG, wB)
+        end
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()
@@ -10254,8 +10296,12 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
 
     local todoClickable = (type(planSlotState.onTodoClick) == "function") and (onTodo or not achCollected)
     local todoTip = planSlotState.todoTooltip
-    local todoTipStr = (type(todoTip) == "string") and todoTip or ""
-    local todoMouse = todoClickable or (todoTipStr ~= "")
+    local todoHasTip = ns.CollectionsUI and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent
+        and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent(todoTip)
+    if not todoHasTip and type(todoTip) == "string" and todoTip ~= "" then
+        todoHasTip = true
+    end
+    local todoMouse = todoClickable or todoHasTip
     todoBtn:EnableMouse(todoMouse)
     if todoClickable then
         todoBtn:SetScript("OnClick", function()
@@ -10264,7 +10310,7 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
     else
         todoBtn:SetScript("OnClick", nil)
     end
-    SetCollectionPlanSlotTooltip(todoBtn, todoMouse and todoTipStr ~= "" and todoTipStr or nil)
+    SetCollectionPlanSlotTooltip(todoBtn, todoMouse and todoHasTip and todoTip or nil)
 
     iconHost:ClearAllPoints()
     if showTrackSlot then
@@ -10281,8 +10327,12 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
         end
         local trackClickable = (type(planSlotState.onTrackClick) == "function") and (not achCollected)
         local trackTip = planSlotState.trackTooltip
-        local trackTipStr = (type(trackTip) == "string") and trackTip or ""
-        local trackMouse = trackClickable or (trackTipStr ~= "")
+        local trackHasTip = ns.CollectionsUI and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent
+            and ns.CollectionsUI.CollectionPlanSlotTooltipHasContent(trackTip)
+        if not trackHasTip and type(trackTip) == "string" and trackTip ~= "" then
+            trackHasTip = true
+        end
+        local trackMouse = trackClickable or trackHasTip
         trackBtn:EnableMouse(trackMouse)
         if trackClickable then
             trackBtn:SetScript("OnClick", function()
@@ -10291,7 +10341,7 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
         else
             trackBtn:SetScript("OnClick", nil)
         end
-        SetCollectionPlanSlotTooltip(trackBtn, trackMouse and trackTipStr ~= "" and trackTipStr or nil)
+        SetCollectionPlanSlotTooltip(trackBtn, trackMouse and trackHasTip and trackTip or nil)
         iconHost:SetPoint("LEFT", trackBtn, "RIGHT", gap, 0)
     else
         trackBtn:Hide()
@@ -10345,7 +10395,7 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
             row.subtitle:SetJustifyH("LEFT")
             row.subtitle:SetJustifyV("MIDDLE")
             row.subtitle:SetWordWrap(false)
-            row.subtitle:SetTextColor(0.65, 0.68, 0.74, 1)
+            row.subtitle:SetTextColor(1, 1, 1, 1)
         end
         row.subtitle:SetText(subtitleText)
         row.subtitle:Show()

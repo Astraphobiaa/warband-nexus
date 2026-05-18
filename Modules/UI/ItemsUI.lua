@@ -2514,7 +2514,7 @@ function WarbandNexus:DrawItemList(parent)
                 local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
                 local prefix = sub .. "_"
                 for k, v in pairs(eg) do
-                    if type(k) == "string" and k:sub(1, #prefix) == prefix and v ~= false then
+                    if type(k) == "string" and k:sub(1, #prefix) == prefix and v == true then
                         return true
                     end
                 end
@@ -2529,17 +2529,7 @@ function WarbandNexus:DrawItemList(parent)
                     WarbandNexus:RedrawItemsResultsOnly()
                     return
                 end
-                local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                local prefix = sub .. "_"
-                local rm = {}
-                for k in pairs(eg) do
-                    if type(k) == "string" and k:sub(1, #prefix) == prefix then
-                        rm[#rm + 1] = k
-                    end
-                end
-                for i = 1, #rm do
-                    eg[rm[i]] = nil
-                end
+                WarbandNexus.itemsExpandAllActive = true
                 WarbandNexus:ApplyItemsVirtualFlatListOnly()
             end,
             onCollapseClick = function()
@@ -2552,6 +2542,7 @@ function WarbandNexus:DrawItemList(parent)
                     WarbandNexus:RedrawItemsResultsOnly()
                     return
                 end
+                WarbandNexus.itemsExpandAllActive = false
                 local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
                 local prefix = sub .. "_"
                 for k in pairs(eg) do
@@ -2859,8 +2850,6 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
             local groupKey = currentItemsSubTab .. "_" .. typeName
             if hasSearchFilter then
                 expandedGroups[groupKey] = true
-            elseif expandedGroups[groupKey] == nil then
-                expandedGroups[groupKey] = true
             end
             groups[typeName] = { name = typeName, items = {}, groupKey = groupKey }
             table.insert(groupOrder, typeName)
@@ -2877,11 +2866,7 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
     for typeIndex = 1, #groupOrder do
         local typeName = groupOrder[typeIndex]
         local group = groups[typeName]
-        local isExpanded = self.itemsExpandAllActive or expandedGroups[group.groupKey]
-        if isExpanded == nil then
-            isExpanded = true
-            expandedGroups[group.groupKey] = true
-        end
+        local isExpanded = (self.itemsExpandAllActive == true) or (expandedGroups[group.groupKey] == true)
 
         local typeIcon = nil
         if group.items[1] and group.items[1].classID then

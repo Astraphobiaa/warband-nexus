@@ -63,7 +63,23 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local rowGap = 22
         local zoneSubInset = sideInset + (UI_SP.SUBROW_EXTRA_INDENT or 12)
         local footerH = 52
-        local dialogW, dialogH = 760, 748
+        -- Wide enough for expansion list + map names + Add column (avoid clipping under scroll bars).
+        local dialogW, dialogH = 960, 800
+        local RD = {
+            cardPad = 10,
+            sectionGap = 10,
+            whenCardH = 76,
+            locationBaseH = 120,
+            selectedBlockMinH = 36,
+            catalogMinH = 340,
+            expColW = 212,
+            splitGap = 10,
+            addBtnW = 64,
+            tagColW = 56,
+            catalogRowH = 26,
+            catalogHdrH = 22,
+            compactOptH = 28,
+        }
         local CreateIcon = ns.UI_CreateIcon
         local bcRaw = COLORS.border or { 0.22, 0.22, 0.28 }
         local borderCol = { bcRaw[1], bcRaw[2], bcRaw[3], bcRaw[4] or 0.65 }
@@ -183,6 +199,11 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         bodyHost:SetPoint("TOPLEFT", planRow, "BOTTOMLEFT", 0, -8)
         bodyHost:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -sideInset, footerH)
         f.reminderBodyHost = bodyHost
+        bodyHost:SetScript("OnSizeChanged", function()
+            if f.LayoutDialogHeights then
+                f:LayoutDialogHeights()
+            end
+        end)
 
         local scrollBarColumn = Factory:CreateScrollBarColumn(bodyHost, scrollBarW, 0, 0)
         if scrollBarColumn then
@@ -241,160 +262,218 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end)
         end
 
-        local yOff = -4
-        local cardPad = 10
+        local cardPad = RD.cardPad
         local bgCardCol = COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
 
-        local scheduleCard = CreateFrame("Frame", nil, sc)
-        scheduleCard:SetPoint("TOPLEFT", sideInset, yOff)
-        scheduleCard:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -sideInset, yOff)
-        scheduleCard:SetHeight(68)
-        if ApplyVisuals then
-            ApplyVisuals(scheduleCard,
-                { bgCardCol[1], bgCardCol[2], bgCardCol[3], bgCardCol[4] or 1 },
-                { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
-        end
-
-        local scheduleInner = CreateFrame("Frame", nil, scheduleCard)
-        scheduleInner:SetPoint("TOPLEFT", scheduleCard, "TOPLEFT", cardPad, -cardPad)
-        scheduleInner:SetPoint("BOTTOMRIGHT", scheduleCard, "BOTTOMRIGHT", -cardPad, cardPad)
-
-        local schedCols = {}
-        for si = 1, 2 do
-            schedCols[si] = CreateFrame("Frame", nil, scheduleInner)
-        end
-
-        local function LayoutScheduleGrid()
-            local rw = scheduleInner:GetWidth()
-            local rh = scheduleInner:GetHeight()
-            if not rw or rw < 80 or not rh or rh < 8 then return end
-            local gap = 10
-            local cw = (rw - gap) / 2
-            schedCols[1]:ClearAllPoints()
-            schedCols[1]:SetPoint("TOPLEFT", scheduleInner, "TOPLEFT", 0, 0)
-            schedCols[1]:SetSize(cw, rh)
-            schedCols[2]:ClearAllPoints()
-            schedCols[2]:SetPoint("TOPLEFT", scheduleInner, "TOPLEFT", cw + gap, 0)
-            schedCols[2]:SetSize(cw, rh)
-        end
-
-        scheduleInner:SetScript("OnSizeChanged", LayoutScheduleGrid)
-
-        local dailyCheck = CreateThemedCheckbox(schedCols[1], false)
-        dailyCheck:SetPoint("TOP", schedCols[1], "TOP", 0, -8)
-        local dailyLabel = FontManager:CreateFontString(schedCols[1], "body", "OVERLAY")
-        dailyLabel:SetPoint("TOPLEFT", schedCols[1], "TOPLEFT", 4, -38)
-        dailyLabel:SetPoint("TOPRIGHT", schedCols[1], "TOPRIGHT", -4, -38)
-        dailyLabel:SetJustifyH("CENTER")
-        dailyLabel:SetWordWrap(true)
-        dailyLabel:SetMaxLines(2)
-        dailyLabel:SetText((L and L["REMINDER_OPT_DAILY"]) or "Daily Login")
-        dailyLabel:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
-        WireLabelToggle(dailyLabel, dailyCheck)
-        f.dailyCheck = dailyCheck
-
-        local weeklyCheck = CreateThemedCheckbox(schedCols[2], false)
-        weeklyCheck:SetPoint("TOP", schedCols[2], "TOP", 0, -8)
-        local weeklyLabel = FontManager:CreateFontString(schedCols[2], "body", "OVERLAY")
-        weeklyLabel:SetPoint("TOPLEFT", schedCols[2], "TOPLEFT", 4, -38)
-        weeklyLabel:SetPoint("TOPRIGHT", schedCols[2], "TOPRIGHT", -4, -38)
-        weeklyLabel:SetJustifyH("CENTER")
-        weeklyLabel:SetWordWrap(true)
-        weeklyLabel:SetMaxLines(2)
-        weeklyLabel:SetText((L and L["REMINDER_OPT_WEEKLY"]) or "Weekly Reset")
-        weeklyLabel:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
-        WireLabelToggle(weeklyLabel, weeklyCheck)
-        f.weeklyCheck = weeklyCheck
-
-        yOff = yOff - 68 - 10
-
-        local secDays = FontManager:CreateFontString(sc, "subtitle", "OVERLAY")
-        secDays:SetPoint("TOPLEFT", sideInset, yOff)
-        secDays:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -sideInset, yOff)
-        secDays:SetJustifyH("LEFT")
-        secDays:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        secDays:SetText((L and L["SET_ALERT_BEFORE_RESET_GROUP"]) or "Days before weekly reset")
-        yOff = yOff - 18
-
-        local daysBeforeCard = CreateFrame("Frame", nil, sc)
-        daysBeforeCard:SetPoint("TOPLEFT", sideInset, yOff)
-        daysBeforeCard:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -sideInset, yOff)
-        daysBeforeCard:SetHeight(80)
-        if ApplyVisuals then
-            ApplyVisuals(daysBeforeCard,
-                { bgCardCol[1], bgCardCol[2], bgCardCol[3], bgCardCol[4] or 1 },
-                { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
-        end
-
-        local daysBeforeInner = CreateFrame("Frame", nil, daysBeforeCard)
-        daysBeforeInner:SetPoint("TOPLEFT", daysBeforeCard, "TOPLEFT", cardPad, -cardPad)
-        daysBeforeInner:SetPoint("BOTTOMRIGHT", daysBeforeCard, "BOTTOMRIGHT", -cardPad, cardPad)
-
-        local dayCols = {}
-        for ci = 1, 3 do
-            dayCols[ci] = CreateFrame("Frame", nil, daysBeforeInner)
-        end
-
-        local dayGridGap = 8
-
-        local function LayoutDaysBeforeGrid()
-            local rw = daysBeforeInner:GetWidth()
-            local rh = daysBeforeInner:GetHeight()
-            if not rw or rw < 120 or not rh or rh < 8 then return end
-            local gaps = dayGridGap * 2
-            local cw = (rw - gaps) / 3
-            for ci = 1, 3 do
-                local col = dayCols[ci]
-                col:ClearAllPoints()
-                col:SetPoint("TOPLEFT", daysBeforeInner, "TOPLEFT", (ci - 1) * (cw + dayGridGap), 0)
-                col:SetSize(cw, rh)
+        local function StyleCard(card)
+            if ApplyVisuals then
+                ApplyVisuals(card,
+                    { bgCardCol[1], bgCardCol[2], bgCardCol[3], bgCardCol[4] or 1 },
+                    { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
             end
         end
 
-        daysBeforeInner:SetScript("OnSizeChanged", LayoutDaysBeforeGrid)
+        local function ReflowReminderScrollHeight()
+            local scH = 8
+            if f.whenCard and f.whenCard:IsShown() then
+                scH = scH + (f.whenCard:GetHeight() or RD.whenCardH) + RD.sectionGap
+            end
+            if f.locationCard and f.locationCard:IsShown() then
+                scH = scH + (f.locationCard:GetHeight() or RD.locationBaseH) + RD.sectionGap
+            end
+            if f.zoneCatalogCard and f.zoneCatalogCard:IsShown() then
+                scH = scH + (f.zoneCatalogCard:GetHeight() or RD.catalogMinH) + RD.sectionGap
+            end
+            if f.reminderScrollChild then
+                local bodyH = (f.reminderBodyHost and f.reminderBodyHost:GetHeight()) or 0
+                f.reminderScrollChild:SetHeight(math.max(bodyH, scH + 16))
+            end
+        end
+        f.ReflowReminderScrollHeight = ReflowReminderScrollHeight
 
-        local function AddDaysBeforeCell(col, daysN)
+        function f:LayoutDialogHeights()
+            local bodyH = self.reminderBodyHost and self.reminderBodyHost:GetHeight()
+            if not bodyH or bodyH < 120 then return end
+            local whenH = (self.whenCard and self.whenCard:IsShown() and self.whenCard:GetHeight()) or 0
+            local locH = (self.locationCard and self.locationCard:IsShown() and self.locationCard:GetHeight()) or 0
+            local gaps = RD.sectionGap * 2 + 12
+            if self.zoneCatalogCard and self.zoneCatalogCard:IsShown() then
+                local catalogH = math.max(RD.catalogMinH, bodyH - whenH - locH - gaps)
+                self.zoneCatalogCard:SetHeight(catalogH)
+            end
+            if self.ReflowReminderScrollHeight then
+                self:ReflowReminderScrollHeight()
+            end
+            if self.LayoutZoneCatalogSplit then
+                self:LayoutZoneCatalogSplit()
+            end
+        end
+
+        local whenCard = CreateFrame("Frame", nil, sc)
+        whenCard:SetPoint("TOPLEFT", sideInset, -4)
+        whenCard:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -sideInset, -4)
+        whenCard:SetHeight(RD.whenCardH)
+        StyleCard(whenCard)
+        f.whenCard = whenCard
+
+        local whenInner = CreateFrame("Frame", nil, whenCard)
+        whenInner:SetPoint("TOPLEFT", whenCard, "TOPLEFT", cardPad, -cardPad)
+        whenInner:SetPoint("BOTTOMRIGHT", whenCard, "BOTTOMRIGHT", -cardPad, cardPad)
+
+        local secSchedule = FontManager:CreateFontString(whenInner, "subtitle", "OVERLAY")
+        secSchedule:SetPoint("TOPLEFT", whenInner, "TOPLEFT", 0, 0)
+        secSchedule:SetPoint("TOPRIGHT", whenInner, "TOPRIGHT", 0, 0)
+        secSchedule:SetJustifyH("LEFT")
+        secSchedule:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        secSchedule:SetText((L and L["SET_ALERT_SECTION_SCHEDULE"]) or "Login & resets")
+
+        local whenOptsRow = CreateFrame("Frame", nil, whenInner)
+        whenOptsRow:SetPoint("TOPLEFT", secSchedule, "BOTTOMLEFT", 0, -8)
+        whenOptsRow:SetPoint("TOPRIGHT", secSchedule, "BOTTOMRIGHT", 0, -8)
+        whenOptsRow:SetPoint("BOTTOMLEFT", whenInner, "BOTTOMLEFT", 0, 0)
+        whenOptsRow:SetPoint("BOTTOMRIGHT", whenInner, "BOTTOMRIGHT", 0, 0)
+        whenOptsRow:SetHeight(RD.compactOptH)
+        f.whenOptsRow = whenOptsRow
+
+        local whenOptCols = {}
+        for wi = 1, 3 do
+            whenOptCols[wi] = CreateFrame("Frame", nil, whenOptsRow)
+        end
+
+        local function LayoutWhenOptsRow()
+            local rw = whenOptsRow:GetWidth()
+            local rh = whenOptsRow:GetHeight()
+            if not rw or rw < 200 or not rh or rh < 8 then return end
+            local gap = 8
+            local dayColW = math.min(220, math.max(150, rw * 0.38))
+            local remW = rw - dayColW - gap * 2
+            local simpleW = remW / 2
+            whenOptCols[1]:ClearAllPoints()
+            whenOptCols[1]:SetPoint("TOPLEFT", whenOptsRow, "TOPLEFT", 0, 0)
+            whenOptCols[1]:SetSize(simpleW, rh)
+            whenOptCols[2]:ClearAllPoints()
+            whenOptCols[2]:SetPoint("TOPLEFT", whenOptsRow, "TOPLEFT", simpleW + gap, 0)
+            whenOptCols[2]:SetSize(simpleW, rh)
+            whenOptCols[3]:ClearAllPoints()
+            whenOptCols[3]:SetPoint("TOPLEFT", whenOptsRow, "TOPLEFT", simpleW + gap + simpleW + gap, 0)
+            whenOptCols[3]:SetSize(dayColW, rh)
+        end
+
+        whenOptsRow:SetScript("OnSizeChanged", LayoutWhenOptsRow)
+
+        local function AddCompactWhenOpt(col, labelText, assignKey)
             local cb = CreateThemedCheckbox(col, false)
-            cb:SetPoint("TOP", col, "TOP", 0, -8)
-            local lbl = FontManager:CreateFontString(col, "body", "OVERLAY")
-            lbl:SetPoint("TOPLEFT", col, "TOPLEFT", 2, -38)
-            lbl:SetPoint("TOPRIGHT", col, "TOPRIGHT", -2, -38)
-            lbl:SetJustifyH("CENTER")
-            lbl:SetJustifyV("TOP")
-            lbl:SetWordWrap(true)
-            lbl:SetMaxLines(4)
-            lbl:SetText(string.format((L and L["REMINDER_OPT_DAYS_BEFORE"]) or "%d days before reset", daysN))
+            cb:SetPoint("LEFT", col, "LEFT", 0, 0)
+            local lbl = FontManager:CreateFontString(col, "small", "OVERLAY")
+            lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+            lbl:SetPoint("RIGHT", col, "RIGHT", -2, 0)
+            lbl:SetJustifyH("LEFT")
+            lbl:SetMaxLines(1)
+            lbl:SetWordWrap(false)
+            lbl:SetText(labelText)
             lbl:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
             WireLabelToggle(lbl, cb)
-            return cb
+            f[assignKey] = cb
         end
 
-        f.days5Check = AddDaysBeforeCell(dayCols[1], 5)
-        f.days3Check = AddDaysBeforeCell(dayCols[2], 3)
-        f.days1Check = AddDaysBeforeCell(dayCols[3], 1)
+        AddCompactWhenOpt(whenOptCols[1], (L and L["REMINDER_OPT_DAILY_SHORT"]) or "Daily", "dailyCheck")
+        AddCompactWhenOpt(whenOptCols[2], (L and L["REMINDER_OPT_WEEKLY_SHORT"]) or "Weekly", "weeklyCheck")
 
-        local function LayoutReminderOptionGrids()
-            LayoutScheduleGrid()
-            LayoutDaysBeforeGrid()
+        local daysCol = whenOptCols[3]
+        f.daysBeforeCheck = CreateThemedCheckbox(daysCol, false)
+        f.daysBeforeCheck:SetPoint("LEFT", daysCol, "LEFT", 0, 0)
+
+        local daysEditBg = Factory:CreateContainer(daysCol, 40, 24)
+        if not daysEditBg then
+            daysEditBg = CreateFrame("Frame", nil, daysCol)
+            daysEditBg:SetSize(40, 24)
         end
+        daysEditBg:SetPoint("LEFT", f.daysBeforeCheck, "RIGHT", 6, 0)
+        if ApplyVisuals then
+            ApplyVisuals(daysEditBg, { 0.08, 0.08, 0.10, 1 }, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
+        end
+        daysEditBg:EnableMouse(true)
 
-        f._layoutReminderGrids = LayoutReminderOptionGrids
-        LayoutReminderOptionGrids()
+        local daysBeforeEdit = Factory:CreateEditBox(daysEditBg)
+        if not daysBeforeEdit then
+            daysBeforeEdit = CreateFrame("EditBox", nil, daysEditBg, "BackdropTemplate")
+            daysBeforeEdit:SetFontObject(GameFontHighlightSmall)
+            daysBeforeEdit:SetTextInsets(4, 4, 1, 1)
+        end
+        daysBeforeEdit:SetPoint("LEFT", daysEditBg, "LEFT", 4, 0)
+        daysBeforeEdit:SetPoint("RIGHT", daysEditBg, "RIGHT", -4, 0)
+        daysBeforeEdit:SetHeight(20)
+        daysBeforeEdit:SetNumeric(true)
+        daysBeforeEdit:SetMaxLetters(2)
+        daysBeforeEdit:SetText("3")
+        daysBeforeEdit:SetTextColor(1, 1, 1, 1)
+        daysBeforeEdit:SetAutoFocus(false)
+        daysEditBg:SetScript("OnMouseDown", function()
+            daysBeforeEdit:SetFocus()
+        end)
+        f.daysBeforeEdit = daysBeforeEdit
 
-        yOff = yOff - 80 - 12
+        local daysSuffix = FontManager:CreateFontString(daysCol, "small", "OVERLAY")
+        daysSuffix:SetPoint("LEFT", daysEditBg, "RIGHT", 6, 0)
+        daysSuffix:SetPoint("RIGHT", daysCol, "RIGHT", -2, 0)
+        daysSuffix:SetJustifyH("LEFT")
+        daysSuffix:SetMaxLines(1)
+        daysSuffix:SetWordWrap(false)
+        daysSuffix:SetText((L and L["REMINDER_OPT_DAYS_BEFORE_SUFFIX"]) or "days before reset")
+        daysSuffix:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
+        WireLabelToggle(daysSuffix, f.daysBeforeCheck)
 
-        local secLocation = FontManager:CreateFontString(sc, "subtitle", "OVERLAY")
-        secLocation:SetPoint("TOPLEFT", sideInset, yOff)
-        secLocation:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -sideInset, yOff)
+        local function SyncDaysBeforeEditEnabled()
+            local on = f.daysBeforeCheck and f.daysBeforeCheck:GetChecked()
+            if f.daysBeforeEdit then
+                if on then
+                    if f.daysBeforeEdit.Enable then f.daysBeforeEdit:Enable() end
+                    f.daysBeforeEdit:SetAlpha(1)
+                else
+                    if f.daysBeforeEdit.Disable then f.daysBeforeEdit:Disable() end
+                    f.daysBeforeEdit:SetAlpha(0.45)
+                end
+            end
+            if daysEditBg then
+                daysEditBg:SetAlpha(on and 1 or 0.45)
+            end
+        end
+        f.SyncDaysBeforeEditEnabled = SyncDaysBeforeEditEnabled
+        f.daysBeforeCheck:HookScript("OnClick", SyncDaysBeforeEditEnabled)
+
+        f._layoutReminderGrids = LayoutWhenOptsRow
+        LayoutWhenOptsRow()
+        SyncDaysBeforeEditEnabled()
+
+        local locationCard = CreateFrame("Frame", nil, sc)
+        locationCard:SetPoint("TOPLEFT", whenCard, "BOTTOMLEFT", 0, -RD.sectionGap)
+        locationCard:SetPoint("TOPRIGHT", whenCard, "BOTTOMRIGHT", 0, -RD.sectionGap)
+        locationCard:SetHeight(RD.locationBaseH)
+        StyleCard(locationCard)
+        f.locationCard = locationCard
+
+        local locInner = CreateFrame("Frame", nil, locationCard)
+        locInner:SetPoint("TOPLEFT", locationCard, "TOPLEFT", cardPad, -cardPad)
+        locInner:SetPoint("BOTTOMRIGHT", locationCard, "BOTTOMRIGHT", -cardPad, cardPad)
+        f.locationInner = locInner
+
+        local secLocation = FontManager:CreateFontString(locInner, "subtitle", "OVERLAY")
+        secLocation:SetPoint("TOPLEFT", locInner, "TOPLEFT", 0, 0)
+        secLocation:SetPoint("TOPRIGHT", locInner, "TOPRIGHT", 0, 0)
         secLocation:SetJustifyH("LEFT")
         secLocation:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         secLocation:SetText((L and L["SET_ALERT_SECTION_LOCATION"]) or "Zone & Instance")
-        yOff = yOff - 18
 
-        local zoneCheck = CreateThemedCheckbox(sc, false)
-        zoneCheck:SetPoint("TOPLEFT", sideInset, yOff)
-        local zoneLabel = FontManager:CreateFontString(sc, "body", "OVERLAY")
-        AttachOptionLabel(zoneLabel, zoneCheck, (L and L["REMINDER_OPT_ZONE_ENTER_MATCHING"]) or (L and L["REMINDER_OPT_ZONE"]) or "Remind me when enter to matching zone")
+        local zoneCheck = CreateThemedCheckbox(locInner, false)
+        zoneCheck:SetPoint("TOPLEFT", secLocation, "BOTTOMLEFT", 0, -8)
+        local zoneLabel = FontManager:CreateFontString(locInner, "body", "OVERLAY")
+        zoneLabel:SetPoint("LEFT", zoneCheck, "RIGHT", 8, 0)
+        zoneLabel:SetPoint("RIGHT", locInner, "RIGHT", 0, 0)
+        zoneLabel:SetJustifyH("LEFT")
+        zoneLabel:SetWordWrap(true)
+        zoneLabel:SetMaxLines(2)
+        zoneLabel:SetText((L and L["REMINDER_OPT_ZONE_ENTER_MATCHING"]) or (L and L["REMINDER_OPT_ZONE"]) or "Remind me when enter to matching zone")
+        zoneLabel:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
         WireLabelToggle(zoneLabel, zoneCheck)
         f.zoneCheck = zoneCheck
         f.zoneLabel = zoneLabel
@@ -403,29 +482,54 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 f:ApplyZoneDependentControlsState()
             end
         end)
-        yOff = yOff - rowGap
 
-        local mapGetIdBtn = Factory:CreateButton(sc, 78, 28, false)
+        f.selectedZonesBlock = CreateFrame("Frame", nil, locInner)
+        f.selectedZonesBlock:SetPoint("TOPLEFT", zoneCheck, "BOTTOMLEFT", 0, -10)
+        f.selectedZonesBlock:SetPoint("TOPRIGHT", locInner, "TOPRIGHT", 0, -10)
+
+        local selectedToolbar = CreateFrame("Frame", nil, f.selectedZonesBlock)
+        selectedToolbar:SetPoint("TOPLEFT", f.selectedZonesBlock, "TOPLEFT", 0, 0)
+        selectedToolbar:SetPoint("TOPRIGHT", f.selectedZonesBlock, "TOPRIGHT", 0, 0)
+        selectedToolbar:SetHeight(28)
+        f.selectedToolbar = selectedToolbar
+
+        f.mapsManualTitle = FontManager:CreateFontString(selectedToolbar, "subtitle", "OVERLAY")
+        f.mapsManualTitle:SetPoint("LEFT", selectedToolbar, "LEFT", 0, 0)
+        f.mapsManualTitle:SetPoint("RIGHT", selectedToolbar, "CENTER", -100, 0)
+        f.mapsManualTitle:SetJustifyH("LEFT")
+        f.mapsManualTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        f.mapsManualTitle:SetText(string.format(
+            (L and L["REMINDER_ZONE_SELECTED_COUNT"]) or (L and L["REMINDER_ZONE_MANUAL_COUNT"]) or "Selected zones (%d)",
+            0
+        ))
+
+        local mapIdRow = CreateFrame("Frame", nil, selectedToolbar)
+        mapIdRow:SetPoint("RIGHT", selectedToolbar, "RIGHT", 0, 0)
+        mapIdRow:SetSize(220, 28)
+        f.mapIdRow = mapIdRow
+
+        local mapGetIdBtn = Factory:CreateButton(mapIdRow, 72, 26, false)
         if not mapGetIdBtn then
-            mapGetIdBtn = CreateFrame("Button", nil, sc, "BackdropTemplate")
-            mapGetIdBtn:SetSize(78, 28)
+            mapGetIdBtn = CreateFrame("Button", nil, mapIdRow, "BackdropTemplate")
+            mapGetIdBtn:SetSize(72, 26)
             if ApplyVisuals then
                 ApplyVisuals(mapGetIdBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
             end
         end
-        mapGetIdBtn:SetPoint("TOPLEFT", sideInset, yOff)
+        mapGetIdBtn:SetPoint("LEFT", mapIdRow, "LEFT", 0, 0)
         local mapGetIdTxt = FontManager:CreateFontString(mapGetIdBtn, "small", "OVERLAY")
         mapGetIdTxt:SetPoint("CENTER")
         mapGetIdTxt:SetText((L and L["REMINDER_ZONE_GET_ID"]) or "Get ID")
         f.mapGetIdBtn = mapGetIdBtn
 
-        local mapEditBg = Factory:CreateContainer(sc, 120, 28)
+        local mapEditBg = Factory:CreateContainer(mapIdRow, 120, 28)
         if not mapEditBg then
-            mapEditBg = CreateFrame("Frame", nil, sc)
+            mapEditBg = CreateFrame("Frame", nil, mapIdRow)
             mapEditBg:SetHeight(28)
         end
-        mapEditBg:SetPoint("TOPLEFT", mapGetIdBtn, "TOPRIGHT", 8, 0)
-        mapEditBg:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -sideInset, yOff)
+        mapEditBg:SetPoint("LEFT", mapGetIdBtn, "RIGHT", 6, 0)
+        mapEditBg:SetPoint("RIGHT", mapIdRow, "RIGHT", 0, 0)
+        mapEditBg:SetHeight(26)
         if ApplyVisuals then
             ApplyVisuals(mapEditBg, { 0.08, 0.08, 0.10, 1 }, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
         end
@@ -461,58 +565,32 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end)
         f.mapEdit = mapEdit
 
-        local belowMapRow = CreateFrame("Frame", nil, sc)
-        belowMapRow:SetPoint("TOPLEFT", mapGetIdBtn, "BOTTOMLEFT", 0, -8)
-        belowMapRow:SetPoint("TOPRIGHT", mapEditBg, "BOTTOMRIGHT", 0, -8)
-        belowMapRow:SetHeight(1)
-
-        f.mapFieldHint = FontManager:CreateFontString(sc, "small", "OVERLAY")
-        f.mapFieldHint:SetPoint("TOPLEFT", belowMapRow, "BOTTOMLEFT", 0, -4)
-        f.mapFieldHint:SetPoint("TOPRIGHT", belowMapRow, "BOTTOMRIGHT", 0, -4)
-        f.mapFieldHint:SetJustifyH("LEFT")
-        f.mapFieldHint:SetWordWrap(true)
-        f.mapFieldHint:SetMaxLines(2)
-        f.mapFieldHint:SetTextColor(0.55, 0.58, 0.64)
-        f.mapFieldHint:SetText((L and L["REMINDER_ZONE_FIELD_SAVED_WITH_ALERT"]) or "")
-
-        f.mapIdZonePreview = FontManager:CreateFontString(sc, "small", "OVERLAY")
-        f.mapIdZonePreview:SetPoint("TOPLEFT", f.mapFieldHint, "BOTTOMLEFT", 0, -6)
-        f.mapIdZonePreview:SetPoint("TOPRIGHT", f.mapFieldHint, "BOTTOMRIGHT", 0, -6)
-        f.mapIdZonePreview:SetJustifyH("LEFT")
+        f.mapIdZonePreview = FontManager:CreateFontString(f.selectedZonesBlock, "small", "OVERLAY")
+        f.mapIdZonePreview:SetPoint("TOPLEFT", selectedToolbar, "BOTTOMLEFT", 0, -2)
+        f.mapIdZonePreview:SetPoint("TOPRIGHT", selectedToolbar, "BOTTOMRIGHT", 0, -2)
+        f.mapIdZonePreview:SetJustifyH("RIGHT")
         f.mapIdZonePreview:SetWordWrap(false)
         f.mapIdZonePreview:SetMaxLines(1)
         f.mapIdZonePreview:SetTextColor(labelMuted[1], labelMuted[2], labelMuted[3])
+        f.mapIdZonePreview:Hide()
 
-        f.mapsManualCard = CreateFrame("Frame", nil, sc)
-        f.mapsManualCard:SetPoint("TOPLEFT", f.mapIdZonePreview, "BOTTOMLEFT", 0, -10)
-        f.mapsManualCard:SetPoint("TOPRIGHT", f.mapIdZonePreview, "BOTTOMRIGHT", 0, -10)
-        f.mapsManualCard:SetHeight(96)
-        if ApplyVisuals then
-            ApplyVisuals(f.mapsManualCard,
-                { bgCardCol[1], bgCardCol[2], bgCardCol[3], bgCardCol[4] or 1 },
-                { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
-        end
+        f.mapsManualCard = f.selectedZonesBlock
+        local mmPad = 0
 
-        local mmPad = cardPad
-        f.mapsManualTitle = FontManager:CreateFontString(f.mapsManualCard, "subtitle", "OVERLAY")
-        f.mapsManualTitle:SetPoint("TOPLEFT", f.mapsManualCard, "TOPLEFT", mmPad, -mmPad)
-        f.mapsManualTitle:SetPoint("TOPRIGHT", f.mapsManualCard, "TOPRIGHT", -mmPad, -mmPad)
-        f.mapsManualTitle:SetJustifyH("LEFT")
-        f.mapsManualTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        f.mapsManualTitle:SetText(string.format((L and L["REMINDER_ZONE_MANUAL_COUNT"]) or "Manual maps: %d", 0))
-
-        f.mapsManualEmpty = FontManager:CreateFontString(f.mapsManualCard, "small", "OVERLAY")
-        f.mapsManualEmpty:SetPoint("TOPLEFT", f.mapsManualTitle, "BOTTOMLEFT", 0, -8)
-        f.mapsManualEmpty:SetPoint("TOPRIGHT", f.mapsManualTitle, "BOTTOMRIGHT", 0, -8)
+        f.mapsManualEmpty = FontManager:CreateFontString(f.selectedZonesBlock, "small", "OVERLAY")
+        f.mapsManualEmpty:SetPoint("TOPLEFT", selectedToolbar, "BOTTOMLEFT", 0, -4)
+        f.mapsManualEmpty:SetPoint("TOPRIGHT", f.selectedZonesBlock, "TOPRIGHT", 0, -4)
         f.mapsManualEmpty:SetJustifyH("LEFT")
         f.mapsManualEmpty:SetWordWrap(true)
         f.mapsManualEmpty:SetMaxLines(2)
         f.mapsManualEmpty:SetTextColor(0.55, 0.58, 0.64)
-        f.mapsManualEmpty:SetText((L and L["REMINDER_ZONE_MANUAL_EMPTY"]) or "No maps saved yet. Use Get ID, press Enter in the field, or Add from the list below.")
+        f.mapsManualEmpty:SetText((L and L["REMINDER_ZONE_SELECTED_EMPTY"])
+            or (L and L["REMINDER_ZONE_MANUAL_EMPTY"])
+            or "No zones selected. Add from the browser below or enter a map ID.")
 
-        f.mapsManualRowsHost = CreateFrame("Frame", nil, f.mapsManualCard)
-        f.mapsManualRowsHost:SetPoint("TOPLEFT", f.mapsManualTitle, "BOTTOMLEFT", 0, -6)
-        f.mapsManualRowsHost:SetPoint("TOPRIGHT", f.mapsManualTitle, "BOTTOMRIGHT", 0, -6)
+        f.mapsManualRowsHost = CreateFrame("Frame", nil, f.selectedZonesBlock)
+        f.mapsManualRowsHost:SetPoint("TOPLEFT", selectedToolbar, "BOTTOMLEFT", 0, -4)
+        f.mapsManualRowsHost:SetPoint("TOPRIGHT", f.selectedZonesBlock, "TOPRIGHT", 0, -4)
         f.mapsManualRowsHost:SetClipsChildren(true)
 
         local MAN_ROW_H = 26
@@ -603,7 +681,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             local unk = (Lz and Lz["UNKNOWN"]) or "?"
 
             if self.mapsManualTitle then
-                self.mapsManualTitle:SetText(string.format((Lz and Lz["REMINDER_ZONE_MANUAL_COUNT"]) or "Manual maps: %d", n))
+                local cntKey = (Lz and Lz["REMINDER_ZONE_SELECTED_COUNT"]) or (Lz and Lz["REMINDER_ZONE_MANUAL_COUNT"])
+                self.mapsManualTitle:SetText(string.format(cntKey or "Selected zones (%d)", n))
             end
 
             local rows = self._manualMapRows or {}
@@ -666,29 +745,43 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 if self.mapsManualRowsHost then
                     self.mapsManualRowsHost:Show()
                     self.mapsManualRowsHost:ClearAllPoints()
-                    self.mapsManualRowsHost:SetPoint("TOPLEFT", self.mapsManualTitle, "BOTTOMLEFT", 0, -6)
-                    self.mapsManualRowsHost:SetPoint("TOPRIGHT", self.mapsManualTitle, "BOTTOMRIGHT", 0, -6)
+                    local anchorBelow = self.selectedToolbar or self.mapsManualTitle
+                    if self.mapIdZonePreview and self.mapIdZonePreview:IsShown() then
+                        anchorBelow = self.mapIdZonePreview
+                    end
+                    self.mapsManualRowsHost:SetPoint("TOPLEFT", anchorBelow, "BOTTOMLEFT", 0, -4)
+                    self.mapsManualRowsHost:SetPoint("TOPRIGHT", self.selectedZonesBlock or anchorBelow, "TOPRIGHT", 0, -4)
                     local rowsH = n * MAN_ROW_H + math.max(0, n - 1) * MAN_ROW_GAP
                     self.mapsManualRowsHost:SetHeight(rowsH)
                 end
                 emptyH = 0
             end
 
-            local cardH
+            local blockH = 28
             if n == 0 then
-                cardH = mmPad + titleH + 6 + emptyH + mmPad
+                blockH = blockH + emptyH
             else
                 local rh = (self.mapsManualRowsHost and self.mapsManualRowsHost:GetHeight()) or 0
-                cardH = mmPad + titleH + 6 + rh + mmPad
+                blockH = blockH + rh + 4
             end
-            if self.mapsManualCard then
-                self.mapsManualCard:SetHeight(math.max(88, cardH))
+            if self.mapIdZonePreview and self.mapIdZonePreview:IsShown() then
+                blockH = blockH + 14
+            end
+            if self.selectedZonesBlock then
+                self.selectedZonesBlock:SetHeight(math.max(RD.selectedBlockMinH, blockH))
             end
 
-            if self.reminderScrollChild then
-                local catBoost = (self.zoneCatalogCard and self.zoneCatalogCard:IsShown()) and 300 or 0
-                local mh = (self.mapsManualCard and self.mapsManualCard:GetHeight()) or 40
-                self.reminderScrollChild:SetHeight(math.max(560, 440 + mh + catBoost))
+            local locCard = self.locationCard
+            if locCard then
+                local pad = RD.cardPad
+                local topBlock = 22 + 8 + 22 + 10
+                local selH = (self.selectedZonesBlock and self.selectedZonesBlock:GetHeight()) or RD.selectedBlockMinH
+                locCard:SetHeight(math.max(RD.locationBaseH, pad + topBlock + selH + pad))
+            end
+            if self.LayoutDialogHeights then
+                self:LayoutDialogHeights()
+            elseif self.ReflowReminderScrollHeight then
+                self:ReflowReminderScrollHeight()
             end
         end
 
@@ -716,9 +809,9 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local bgCardColCatalog = COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
         f.zoneCatalogCard = CreateFrame("Frame", nil, sc)
-        f.zoneCatalogCard:SetPoint("TOPLEFT", f.mapsManualCard, "BOTTOMLEFT", 0, -12)
-        f.zoneCatalogCard:SetPoint("TOPRIGHT", f.mapsManualCard, "BOTTOMRIGHT", 0, -12)
-        f.zoneCatalogCard:SetHeight(416)
+        f.zoneCatalogCard:SetPoint("TOPLEFT", f.locationCard, "BOTTOMLEFT", 0, -RD.sectionGap)
+        f.zoneCatalogCard:SetPoint("TOPRIGHT", f.locationCard, "BOTTOMRIGHT", 0, -RD.sectionGap)
+        f.zoneCatalogCard:SetHeight(RD.catalogMinH)
 
         if ApplyVisuals then
             ApplyVisuals(f.zoneCatalogCard,
@@ -739,23 +832,27 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         zoneCatHint:SetPoint("TOPRIGHT", zoneCatTitle, "BOTTOMRIGHT", 0, -4)
         zoneCatHint:SetJustifyH("LEFT")
         zoneCatHint:SetWordWrap(true)
-        zoneCatHint:SetMaxLines(3)
+        zoneCatHint:SetMaxLines(2)
         zoneCatHint:SetTextColor(0.55, 0.58, 0.64)
-        zoneCatHint:SetText((L and L["REMINDER_ZONE_CATALOG_HINT"]) or "Choose an expansion, tap Add on zones, then Save.")
+        zoneCatHint:SetText((L and L["REMINDER_ZONE_CATALOG_HINT_SHORT"])
+            or (L and L["REMINDER_ZONE_CATALOG_HINT"])
+            or "Pick an expansion, then Add on the zones you need.")
 
         local zbScrollW = scrollBarW
-        local expInnerW = 154
-        local splitGap = 10
-        local expPanelOuterW = expInnerW + zbScrollW + 4
+        local splitGap = RD.splitGap
+        local expInnerW = RD.expColW
+        local expPanelOuterW = expInnerW + zbScrollW + 6
 
         local mapsBody = CreateFrame("Frame", nil, f.zoneCatalogCard)
         mapsBody:SetPoint("TOPLEFT", zoneCatHint, "BOTTOMLEFT", 0, -8)
         mapsBody:SetPoint("BOTTOMRIGHT", f.zoneCatalogCard, "BOTTOMRIGHT", -cardPad, zcPad)
+        f.zoneMapsBody = mapsBody
 
         local colHeadRow = CreateFrame("Frame", nil, mapsBody)
         colHeadRow:SetPoint("TOPLEFT", mapsBody, "TOPLEFT", 0, 0)
         colHeadRow:SetPoint("TOPRIGHT", mapsBody, "TOPRIGHT", 0, 0)
         colHeadRow:SetHeight(18)
+        f.zoneColHeadRow = colHeadRow
 
         local expHead = FontManager:CreateFontString(colHeadRow, "subtitle", "OVERLAY")
         expHead:SetPoint("TOPLEFT", colHeadRow, "TOPLEFT", 0, 0)
@@ -763,6 +860,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         expHead:SetJustifyH("LEFT")
         expHead:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         expHead:SetText((L and L["REMINDER_ZONE_CATALOG_EXPANSIONS_LABEL"]) or "Expansion")
+        f.zoneExpHead = expHead
 
         local mapsHead = FontManager:CreateFontString(colHeadRow, "subtitle", "OVERLAY")
         mapsHead:SetPoint("TOPLEFT", colHeadRow, "TOPLEFT", expPanelOuterW + splitGap, 0)
@@ -770,15 +868,21 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         mapsHead:SetJustifyH("LEFT")
         mapsHead:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         mapsHead:SetText((L and L["REMINDER_ZONE_CATALOG_MAPS_LABEL"]) or "Maps")
+        f.mapsHead = mapsHead
 
         local zonePickSplit = CreateFrame("Frame", nil, mapsBody)
         zonePickSplit:SetPoint("TOPLEFT", colHeadRow, "BOTTOMLEFT", 0, -8)
         zonePickSplit:SetPoint("BOTTOMRIGHT", mapsBody, "BOTTOMRIGHT", 0, 0)
+        f.zonePickSplit = zonePickSplit
 
         local expPanel = CreateFrame("Frame", nil, zonePickSplit)
         expPanel:SetWidth(expPanelOuterW)
         expPanel:SetPoint("TOPLEFT", zonePickSplit, "TOPLEFT", 0, 0)
         expPanel:SetPoint("BOTTOMLEFT", zonePickSplit, "BOTTOMLEFT", 0, 0)
+        if expPanel.SetClipsChildren then
+            expPanel:SetClipsChildren(true)
+        end
+        f.zoneExpPanel = expPanel
 
         local expBarCol = Factory:CreateScrollBarColumn(expPanel, zbScrollW, 0, 0)
         if expBarCol then
@@ -802,16 +906,52 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local expScrollChild = CreateFrame("Frame", nil, expScroll)
         expScroll:SetScrollChild(expScrollChild)
+        f.zoneExpScrollChild = expScrollChild
 
         local splitLine = zonePickSplit:CreateTexture(nil, "ARTWORK")
         splitLine:SetWidth(1)
         splitLine:SetColorTexture(borderCol[1], borderCol[2], borderCol[3], 0.45)
         splitLine:SetPoint("TOPLEFT", expPanel, "TOPRIGHT", math.floor(splitGap * 0.5), 0)
         splitLine:SetPoint("BOTTOMLEFT", expPanel, "BOTTOMRIGHT", math.ceil(splitGap * 0.5), 0)
+        f.zoneSplitLine = splitLine
 
         local mapsPanel = CreateFrame("Frame", nil, zonePickSplit)
         mapsPanel:SetPoint("TOPLEFT", zonePickSplit, "TOPLEFT", expPanelOuterW + splitGap, 0)
         mapsPanel:SetPoint("BOTTOMRIGHT", zonePickSplit, "BOTTOMRIGHT", 0, 0)
+        if mapsPanel.SetClipsChildren then
+            mapsPanel:SetClipsChildren(true)
+        end
+        if zonePickSplit.SetClipsChildren then
+            zonePickSplit:SetClipsChildren(true)
+        end
+        f.zoneMapsPanel = mapsPanel
+
+        local mapsListColHead = CreateFrame("Frame", nil, mapsPanel)
+        mapsListColHead:SetPoint("TOPLEFT", mapsPanel, "TOPLEFT", 0, 0)
+        mapsListColHead:SetPoint("TOPRIGHT", mapsPanel, "TOPRIGHT", 0, 0)
+        mapsListColHead:SetHeight(16)
+        f.mapsListColHead = mapsListColHead
+
+        local tagColHead = FontManager:CreateFontString(mapsListColHead, "small", "OVERLAY")
+        tagColHead:SetWidth(RD.tagColW)
+        tagColHead:SetPoint("LEFT", mapsListColHead, "LEFT", 8, 0)
+        tagColHead:SetJustifyH("CENTER")
+        tagColHead:SetTextColor(0.55, 0.58, 0.64)
+        tagColHead:SetText((L and L["REMINDER_ZONE_CATALOG_COL_TYPE"]) or "Type")
+
+        local addColHead = FontManager:CreateFontString(mapsListColHead, "small", "OVERLAY")
+        addColHead:SetWidth(RD.addBtnW)
+        addColHead:SetPoint("RIGHT", mapsListColHead, "RIGHT", -6, 0)
+        addColHead:SetJustifyH("CENTER")
+        addColHead:SetTextColor(0.55, 0.58, 0.64)
+        addColHead:SetText((L and L["REMINDER_ZONE_CATALOG_ADD"]) or "Add")
+
+        local nameColHead = FontManager:CreateFontString(mapsListColHead, "small", "OVERLAY")
+        nameColHead:SetPoint("LEFT", tagColHead, "RIGHT", 6, 0)
+        nameColHead:SetPoint("RIGHT", addColHead, "LEFT", -8, 0)
+        nameColHead:SetJustifyH("LEFT")
+        nameColHead:SetTextColor(0.55, 0.58, 0.64)
+        nameColHead:SetText((L and L["REMINDER_ZONE_CATALOG_COL_MAP"]) or "Map")
 
         local mapsBarCol = Factory:CreateScrollBarColumn(mapsPanel, zbScrollW, 0, 0)
         if mapsBarCol then
@@ -823,7 +963,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         if not zScroll then
             zScroll = CreateFrame("ScrollFrame", nil, mapsPanel, "UIPanelScrollFrameTemplate")
         end
-        zScroll:SetPoint("TOPLEFT", mapsPanel, "TOPLEFT", 0, 0)
+        zScroll:SetPoint("TOPLEFT", mapsListColHead, "BOTTOMLEFT", 0, -4)
         if mapsBarCol then
             zScroll:SetPoint("BOTTOMRIGHT", mapsBarCol, "BOTTOMLEFT", -4, 0)
             if zScroll.ScrollBar then
@@ -875,51 +1015,118 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             expScrollChild:SetHeight(math.max(totalExpH, 40))
         end
 
-        expScroll:SetScript("OnSizeChanged", function(self)
+        expScroll:SetScript("OnSizeChanged", function()
+            local lay = f._zoneCatalogLayout
+            local ew = lay and lay.expInnerW
+            if expScrollChild and ew and ew > 0 then
+                expScrollChild:SetWidth(ew)
+            end
+            if Factory.UpdateScrollBarVisibility then
+                Factory:UpdateScrollBarVisibility(expScroll)
+            end
+        end)
+
+        local zChild = CreateFrame("Frame", nil, zScroll)
+        local zListInitialW = math.max(200, innerW - cardPad * 2 - expPanelOuterW - splitGap - zbScrollW - 16)
+        zChild:SetWidth(zListInitialW)
+        zScroll:SetScrollChild(zChild)
+        f.zoneCatalogScroll = zScroll
+        f.zoneCatalogScrollChild = zChild
+        f._zoneCatalogLayout = {
+            scrollBarW = zbScrollW,
+            splitGap = splitGap,
+            addBtnW = RD.addBtnW,
+            tagColW = RD.tagColW,
+            rowH = RD.catalogRowH,
+            hdrH = RD.catalogHdrH,
+            expInnerW = expInnerW,
+            expPanelOuterW = expPanelOuterW,
+        }
+
+        local function LayoutZoneCatalogSplit()
+            if not f.zoneMapsBody or not f.zoneExpPanel or not f.zoneMapsPanel then return end
+            local lay = f._zoneCatalogLayout
+            if not lay then return end
+            local expW = RD.expColW
+            local outerW = expW + lay.scrollBarW + 6
+            lay.expInnerW = expW
+            lay.expPanelOuterW = outerW
+
+            f.zoneExpPanel:SetWidth(outerW)
+            f.zoneExpPanel:ClearAllPoints()
+            f.zoneExpPanel:SetPoint("TOPLEFT", f.zonePickSplit, "TOPLEFT", 0, 0)
+            f.zoneExpPanel:SetPoint("BOTTOMLEFT", f.zonePickSplit, "BOTTOMLEFT", 0, 0)
+
+            if f.zoneExpScrollChild then
+                f.zoneExpScrollChild:SetWidth(expW)
+            end
+            local btns = f._catalogExpBtns
+            if btns then
+                for bi = 1, #btns do
+                    local eb = btns[bi]
+                    if eb then
+                        eb:SetWidth(expW)
+                    end
+                end
+            end
+            if f.zoneExpHead then
+                f.zoneExpHead:SetWidth(expW)
+            end
+
+            f.zoneMapsPanel:ClearAllPoints()
+            f.zoneMapsPanel:SetPoint("TOPLEFT", f.zonePickSplit, "TOPLEFT", outerW + lay.splitGap, 0)
+            f.zoneMapsPanel:SetPoint("BOTTOMRIGHT", f.zonePickSplit, "BOTTOMRIGHT", 0, 0)
+
+            if f.zoneSplitLine and f.zoneExpPanel then
+                f.zoneSplitLine:ClearAllPoints()
+                local halfGap = math.floor(lay.splitGap * 0.5)
+                f.zoneSplitLine:SetPoint("TOPLEFT", f.zoneExpPanel, "TOPRIGHT", halfGap, 0)
+                f.zoneSplitLine:SetPoint("BOTTOMLEFT", f.zoneExpPanel, "BOTTOMRIGHT", halfGap, 0)
+            end
+
+            if f.mapsHead and f.zoneColHeadRow then
+                f.mapsHead:ClearAllPoints()
+                f.mapsHead:SetPoint("TOPLEFT", f.zoneColHeadRow, "TOPLEFT", outerW + lay.splitGap, 0)
+                f.mapsHead:SetPoint("TOPRIGHT", f.zoneColHeadRow, "TOPRIGHT", 0, 0)
+            end
+
+            if f.zoneCatalogScroll then
+                local vw = f.zoneCatalogScroll:GetWidth()
+                if f.zoneCatalogScrollChild and vw and vw > 0 then
+                    f.zoneCatalogScrollChild:SetWidth(math.max(160, vw))
+                end
+            end
+            if f.RefreshZoneCatalogRows then
+                f:RefreshZoneCatalogRows()
+            end
+        end
+        f.LayoutZoneCatalogSplit = LayoutZoneCatalogSplit
+
+        zScroll:SetScript("OnSizeChanged", function(self)
+            local child = self:GetScrollChild()
             local w = self:GetWidth()
-            if expScrollChild and w then
-                expScrollChild:SetWidth(math.max(40, w))
+            if child and w and w > 0 then
+                child:SetWidth(math.max(120, w))
+            end
+            if f.RefreshZoneCatalogRows then
+                f:RefreshZoneCatalogRows()
             end
             if Factory.UpdateScrollBarVisibility then
                 Factory:UpdateScrollBarVisibility(self)
             end
         end)
 
-        local zChild = CreateFrame("Frame", nil, zScroll)
-        local zListInitialW = math.max(140, innerW - cardPad * 2 - expPanelOuterW - splitGap - zbScrollW - 12)
-        zChild:SetWidth(zListInitialW)
-        zScroll:SetScrollChild(zChild)
-        f.zoneCatalogScroll = zScroll
-        f.zoneCatalogScrollChild = zChild
-
-        zScroll:SetScript("OnSizeChanged", function(self)
-            local child = self:GetScrollChild()
-            local w = self:GetWidth()
-            if child and w then
-                local nw = math.max(80, w)
-                child:SetWidth(nw)
-                local pool = f._zoneCatalogRows
-                if pool then
-                    for pi = 1, #pool do
-                        local rw = pool[pi]
-                        if rw and rw:IsShown() then
-                            rw:SetWidth(nw)
-                        end
-                    end
-                end
-            end
-            if Factory.UpdateScrollBarVisibility then
-                Factory:UpdateScrollBarVisibility(self)
-            end
+        mapsBody:SetScript("OnSizeChanged", function()
+            LayoutZoneCatalogSplit()
         end)
 
         BindCatalogMouseWheel(expScroll)
         BindCatalogMouseWheel(zScroll)
 
-        local ADD_BTN_W = 52
-        local TAG_COL_W = 54
-        local ROW_H = 24
-        local HDR_H = 22
+        local ADD_BTN_W = f._zoneCatalogLayout.addBtnW
+        local TAG_COL_W = f._zoneCatalogLayout.tagColW
+        local ROW_H = f._zoneCatalogLayout.rowH
+        local HDR_H = f._zoneCatalogLayout.hdrH
 
         local MAX_CAT_ROWS = math.min(680, math.max(120, (catalogDef and catalogDef.GetMaxDisplayRowCount and catalogDef.GetMaxDisplayRowCount()) or 520))
         f._zoneCatalogRows = {}
@@ -927,13 +1134,14 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             local row = CreateFrame("Frame", nil, zChild)
             row:SetHeight(ROW_H)
             row:SetWidth(zChild:GetWidth())
-            row:SetClipsChildren(true)
+            if row.SetClipsChildren then
+                row:SetClipsChildren(false)
+            end
 
             row.headerBar = row:CreateTexture(nil, "BACKGROUND")
             row.headerBar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-            row.headerBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-            row.headerBar:SetWidth(3)
-            row.headerBar:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
+            row.headerBar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+            row.headerBar:SetColorTexture(COLORS.accent[1] * 0.35, COLORS.accent[2] * 0.35, COLORS.accent[3] * 0.35, 0.55)
             row.headerBar:Hide()
 
             row.tagFs = FontManager:CreateFontString(row, "small", "OVERLAY")
@@ -1011,7 +1219,14 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 end
             end
 
-            local zw = self.zoneCatalogScrollChild and self.zoneCatalogScrollChild:GetWidth() or 320
+            local lay = self._zoneCatalogLayout or {}
+            local addBtnW = lay.addBtnW or 56
+            local tagColW = lay.tagColW or 54
+            local hdrRowH = lay.hdrH or 22
+            local dataRowH = lay.rowH or 24
+            local zw = (self.zoneCatalogScroll and self.zoneCatalogScroll:GetWidth())
+                or (self.zoneCatalogScrollChild and self.zoneCatalogScrollChild:GetWidth())
+                or 320
             local unk = (Lz and Lz["UNKNOWN"]) or "?"
 
             for ri = 1, #(self._zoneCatalogRows or {}) do
@@ -1025,12 +1240,13 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                         if row.tagFs then row.tagFs:Hide() end
                         if row.headerBar then row.headerBar:Show() end
                         row.labelFs:ClearAllPoints()
-                        row.labelFs:SetPoint("LEFT", row, "LEFT", 12, 0)
+                        row.labelFs:SetPoint("LEFT", row, "LEFT", 10, 0)
                         row.labelFs:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+                        row.labelFs:SetJustifyH("LEFT")
                         local hk = entry.headerKey or ""
                         local ht = (Lz and hk ~= "" and Lz[hk]) or hk
-                        row.labelFs:SetText("|cffaaaaaa" .. ht .. "|r")
-                        row:SetHeight(HDR_H)
+                        row.labelFs:SetText("|cffcccccc" .. ht .. "|r")
+                        row:SetHeight(hdrRowH)
                     elseif entry.id then
                         row._isCatalogHeader = false
                         if row.headerBar then row.headerBar:Hide() end
@@ -1053,14 +1269,14 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                         end
                         local labelMax = 48
                         if zw and zw > 0 then
-                            labelMax = math.max(48, math.min(84, math.floor((zw - TAG_COL_W - ADD_BTN_W - 36) / 6.3)))
+                            labelMax = math.max(36, math.floor((zw - tagColW - addBtnW - 34) / 6.2))
                         end
                         row.labelFs:SetText(string.format(
                             "|cffffffff%s|r |cff888888— %d|r",
                             TruncatePickerLabel(nm, labelMax),
                             entry.id
                         ))
-                        row:SetHeight(ROW_H)
+                        row:SetHeight(dataRowH)
                     end
                     row:SetWidth(zw)
                     row:Show()
@@ -1079,7 +1295,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 local estH = 0
                 for si = 1, shown do
                     local e = rows[si]
-                    estH = estH + (e and e.headerKey and HDR_H or ROW_H) + 2
+                    estH = estH + (e and e.headerKey and hdrRowH or dataRowH) + 2
                 end
                 self.zoneCatalogScrollChild:SetHeight(math.max(28, estH))
             end
@@ -1142,9 +1358,12 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             f:RefreshMapIdZonePreview()
         end)
 
-        f._zoneDetailWidgets = { mapGetIdBtn, mapEditBg, mapEdit, f.mapFieldHint, f.mapIdZonePreview, f.mapsManualCard, f.zoneCatalogCard }
+        f._zoneDetailWidgets = {
+            f.selectedZonesBlock, f.mapIdRow, mapGetIdBtn, mapEditBg, mapEdit,
+            f.mapIdZonePreview, f.zoneCatalogCard,
+        }
 
-        sc:SetHeight(math.max(720, math.abs(yOff) + 440))
+        f:LayoutDialogHeights()
 
         local btnW, btnH = 128, 32
         local btnGap = 10
@@ -1222,6 +1441,11 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
             if zoneMaster and hasCat and self.RefreshZoneCatalogRows then
                 self:RefreshZoneCatalogRows()
+            end
+            if self.LayoutDialogHeights then
+                self:LayoutDialogHeights()
+            elseif self.ReflowReminderScrollHeight then
+                self:ReflowReminderScrollHeight()
             end
             if self.reminderScrollFrame and Factory.UpdateScrollBarVisibility then
                 Factory:UpdateScrollBarVisibility(self.reminderScrollFrame)
@@ -1336,6 +1560,9 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     if f.RefreshManualMapList then
         f:RefreshManualMapList()
     end
+    if f.LayoutZoneCatalogSplit then
+        f:LayoutZoneCatalogSplit()
+    end
     if f.RefreshZoneCatalogRows and ns.ReminderZoneCatalog and ns.ReminderZoneCatalog.sections and #ns.ReminderZoneCatalog.sections > 0 then
         f:RefreshZoneCatalogRows()
     end
@@ -1368,19 +1595,27 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     SyncThemedCheck(f.dailyCheck, r.onDailyLogin or false)
     SyncThemedCheck(f.weeklyCheck, r.onWeeklyReset or false)
 
-    local has5, has3, has1 = false, false, false
+    local savedDayN = nil
     if r.daysBeforeReset then
         local dbr = r.daysBeforeReset
         for di = 1, #dbr do
-            local d = dbr[di]
-            if d == 5 then has5 = true end
-            if d == 3 then has3 = true end
-            if d == 1 then has1 = true end
+            local d = tonumber(dbr[di])
+            if d and d > 0 and (not savedDayN or d > savedDayN) then
+                savedDayN = d
+            end
         end
     end
-    SyncThemedCheck(f.days5Check, has5)
-    SyncThemedCheck(f.days3Check, has3)
-    SyncThemedCheck(f.days1Check, has1)
+    SyncThemedCheck(f.daysBeforeCheck, savedDayN ~= nil)
+    if f.daysBeforeEdit then
+        if savedDayN then
+            f.daysBeforeEdit:SetText(tostring(savedDayN))
+        else
+            f.daysBeforeEdit:SetText("3")
+        end
+    end
+    if f.SyncDaysBeforeEditEnabled then
+        f:SyncDaysBeforeEditEnabled()
+    end
 
     SyncThemedCheck(f.zoneCheck, r.onZoneEnter == true)
     f.zoneCheck:Enable()
@@ -1392,13 +1627,20 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     if f.ApplyZoneDependentControlsState then
         f:ApplyZoneDependentControlsState()
     end
+    if f.LayoutDialogHeights then
+        f:LayoutDialogHeights()
+    elseif f.ReflowReminderScrollHeight then
+        f:ReflowReminderScrollHeight()
+    end
 
     f.saveBtn:SetScript("OnClick", function()
         local days = {}
-        if f.days5Check:GetChecked() then days[#days + 1] = 5 end
-        if f.days3Check:GetChecked() then days[#days + 1] = 3 end
-        if f.days1Check:GetChecked() then days[#days + 1] = 1 end
-        table.sort(days, function(a, b) return a > b end)
+        if f.daysBeforeCheck and f.daysBeforeCheck:GetChecked() and f.daysBeforeEdit then
+            local n = SafePositiveIntFromMapEdit(f.daysBeforeEdit)
+            if n and n >= 1 and n <= 14 then
+                days[#days + 1] = math.floor(n)
+            end
+        end
 
         local zoneOn = f.zoneCheck:GetChecked() == true
         local zoneHintsSaved = (zoneOn and hintsOk) or false
@@ -1473,4 +1715,14 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     end
 
     f:Show()
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if not f:IsShown() then return end
+            if f.LayoutDialogHeights then
+                f:LayoutDialogHeights()
+            elseif f.LayoutZoneCatalogSplit then
+                f:LayoutZoneCatalogSplit()
+            end
+        end)
+    end
 end

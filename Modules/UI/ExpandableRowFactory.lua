@@ -140,7 +140,8 @@ local function CreateDetailsFrame(row, parentFrame, options)
         -- Render criteria grid (fixed line height for even two-column alignment, no wrap to avoid "0 / \n1)")
         if #criteriaItems > 0 then
             local CRITERIA_LINE_HEIGHT = 16
-            local availableWidth = row:GetWidth() - leftMargin - rightMargin
+            local rowW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
+            local availableWidth = math.max(60, rowW - leftMargin - rightMargin)
             local columnsPerRow = data.criteriaColumns or 2
             if #criteriaItems <= 2 then
                 columnsPerRow = 1
@@ -218,6 +219,91 @@ local function CreateDetailsFrame(row, parentFrame, options)
     detailsFrame:SetHeight(detailsHeight)
     
     return detailsFrame
+end
+
+--- Bottom extent of painted content (guards lazy GetStringHeight / anchor width drift).
+local function MeasureDetailsContentHeight(detailsFrame)
+    if not detailsFrame then return 8 end
+    local top = detailsFrame:GetTop()
+    if not top then
+        return math.max(8, detailsFrame:GetHeight() or 8)
+    end
+    local maxExtent = 8
+    local numRegions = detailsFrame:GetNumRegions()
+    for ri = 1, numRegions do
+        local r = select(ri, detailsFrame:GetRegions())
+        if r and r.IsShown and r:IsShown() then
+            local bottom = r:GetBottom()
+            if bottom then
+                maxExtent = math.max(maxExtent, top - bottom)
+            end
+        end
+    end
+    local numChildren = detailsFrame:GetNumChildren()
+    for ci = 1, numChildren do
+        local ch = select(ci, detailsFrame:GetChildren())
+        if ch and ch.IsShown and ch:IsShown() then
+            local bottom = ch:GetBottom()
+            if bottom then
+                maxExtent = math.max(maxExtent, top - bottom)
+            end
+        end
+    end
+    return maxExtent + 4
+end
+
+local function DestroyRowDetailsFrame(row)
+    if row.detailsFrame then
+        row.detailsFrame:Hide()
+        row.detailsFrame:SetParent(nil)
+        row.detailsFrame = nil
+    end
+    row._fullDetailsH = nil
+end
+
+local function SafeOnExpandPopulate(data, row)
+    local fn = data and data.onExpandPopulate
+    if type(fn) == "function" then
+        fn(data, row)
+    end
+end
+
+local function BuildRowDetailsFrame(row)
+    local data = row.data
+    if not data then return 0 end
+    DestroyRowDetailsFrame(row)
+    SafeOnExpandPopulate(data, row)
+    row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
+    if not row.detailsFrame then
+        row._fullDetailsH = 0
+        return 0
+    end
+    local layoutH = row.detailsFrame:GetHeight() or 8
+    local paintedH = MeasureDetailsContentHeight(row.detailsFrame)
+    row._fullDetailsH = math.max(layoutH, paintedH)
+    row.detailsFrame:SetHeight(row._fullDetailsH)
+    return row._fullDetailsH
+end
+
+local function ApplyRowExpandedGeometry(row, detailsH)
+    if not row or not row.headerFrame then return end
+    detailsH = detailsH or 0
+    local headerH = row.headerFrame:GetHeight() or row.rowHeight or 32
+    if row.isExpanded and row.detailsFrame and detailsH > 0 then
+        row.detailsFrame:SetAlpha(1)
+        row.detailsFrame:Show()
+        row.detailsFrame:SetHeight(math.max(0.1, detailsH))
+        row:SetHeight(headerH + detailsH)
+    else
+        if row.detailsFrame then
+            row.detailsFrame:Hide()
+        end
+        row:SetHeight(headerH)
+    end
+    local data = row.data
+    if data and data.onSectionResize then
+        data.onSectionResize(row, row:GetHeight())
+    end
 end
 
 local function ApplyTypeAtlasTexture(tex, parent, atlas, size)
@@ -416,7 +502,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         return nil
     end
     
-    if not parent then return nil end
+    if not parent or not data then return nil end
     
     local PCM0 = ns.UI_PLANS_CARD_METRICS or {}
     if data and data.todoUnifiedHeader then
@@ -442,7 +528,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     row:SetWidth(width)
     row:SetHeight(rowHeight) -- Initial height
     if row.SetClipsChildren then
-        row:SetClipsChildren(true)
+        row:SetClipsChildren(false)
     end
 
     -- Store state
@@ -481,59 +567,22 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         ns.UI.Factory:ApplyHighlight(headerFrame)
     end
     
-    local function AnimateRowHeight(fromDetailsH, toDetailsH, onComplete)
-        local headerH = headerFrame:GetHeight()
-        if not row.detailsFrame then
-            row:SetHeight(headerH + math.max(0, toDetailsH))
-            if data.onSectionResize then
-                data.onSectionResize(row, headerH + math.max(0, toDetailsH))
-            end
-            if onComplete then onComplete() end
-            return
-        end
-
-        local detailsFrame = row.detailsFrame
-        detailsFrame:SetHeight(math.max(0.1, toDetailsH))
-        row:SetHeight(headerH + math.max(0, toDetailsH))
-        if data.onSectionResize then
-            data.onSectionResize(row, headerH + math.max(0, toDetailsH))
-        end
-        if onComplete then onComplete() end
-    end
-    row._animateRowHeight = AnimateRowHeight
-
-    -- Single-step height apply: onToggle (rebuild signal) runs when the expand callback completes.
+    -- Single-step height apply: onToggle runs when geometry + layout are committed.
     local function ToggleExpand()
         if data.canExpand == false then return end
         local newExpanded = not row.isExpanded
         row.isExpanded = newExpanded
-        ns.UI_CollapseExpandSetState(row.expandBtn, newExpanded)
-
-        -- Lazily build the details panel and cache its natural height ONCE — querying it
-        -- mid-toggle returns whatever transient SetHeight value we set on a prior tween,
-        -- which is what was making the animation a no-op (fromH==toH).
-        if not row.detailsFrame then
-            if data.onExpandPopulate then
-                data.onExpandPopulate(data, row)
-            end
-            row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
-            row._fullDetailsH = row.detailsFrame:GetHeight()
-            row.detailsFrame:Hide()
+        if ns.UI_CollapseExpandSetState and row.expandBtn then
+            ns.UI_CollapseExpandSetState(row.expandBtn, newExpanded)
         end
-        local fullDetailsH = row._fullDetailsH or row.detailsFrame:GetHeight()
 
         if newExpanded then
-            row.detailsFrame:SetAlpha(1)
-            row.detailsFrame:Show()
-            AnimateRowHeight(0, fullDetailsH, function()
-                if row.onToggle then row.onToggle(true) end
-            end)
+            local fullDetailsH = BuildRowDetailsFrame(row)
+            ApplyRowExpandedGeometry(row, fullDetailsH)
+            if row.onToggle then row.onToggle(true) end
         else
-            local fromH = (row.detailsFrame and row.detailsFrame:IsShown()) and row.detailsFrame:GetHeight() or fullDetailsH
-            AnimateRowHeight(fromH, 0, function()
-                if row.detailsFrame then row.detailsFrame:Hide() end
-                if row.onToggle then row.onToggle(false) end
-            end)
+            ApplyRowExpandedGeometry(row, 0)
+            if row.onToggle then row.onToggle(false) end
         end
     end
     
@@ -542,10 +591,13 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     local chevronSz = tonumber(data.chevronSize) or tonumber(PCM.plansChevronSize) or 18
     local canExpandRow = data.canExpand ~= false
     local chevronInteractive = canExpandRow and (not data.todoUnifiedHeader or canExpandRow)
-    local expandBtn = ns.UI_CreateCollapseExpandControl(headerFrame, isExpanded, {
+    local expandBtn = (ns.UI_CreateCollapseExpandControl and ns.UI_CreateCollapseExpandControl(headerFrame, isExpanded, {
         enableMouse = chevronInteractive,
         size = chevronSz,
-    })
+    })) or CreateFrame("Button", nil, headerFrame)
+    if expandBtn and not expandBtn._wnCollapseTex then
+        expandBtn:SetSize(chevronSz, chevronSz)
+    end
     if data.todoUnifiedHeader then
         if not canExpandRow then
             expandBtn:Hide()
@@ -710,23 +762,24 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     SyncHeaderToTitle()
     end
 
-    -- Expanded details container (created on demand)
-        row.detailsFrame = nil
-        
-        -- Initialize expanded state (without triggering callbacks - CRITICAL for preventing infinite loops)
-        if isExpanded then
-            row.isExpanded = true
-            ns.UI_CollapseExpandSetState(row.expandBtn, true)
+    row.detailsFrame = nil
 
-            if data.onExpandPopulate then
-                data.onExpandPopulate(data, row)
-            end
-            row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
-        row._fullDetailsH = row.detailsFrame:GetHeight()  -- cache before any transient resizes
-        row.detailsFrame:Show()
-        row:SetHeight(headerFrame:GetHeight() + row._fullDetailsH)
+    -- Initialize expanded state (without row.onToggle — avoids populate loops)
+    if isExpanded then
+        row.isExpanded = true
+        if ns.UI_CollapseExpandSetState and row.expandBtn then
+            ns.UI_CollapseExpandSetState(row.expandBtn, true)
+        end
+        local fullDetailsH = BuildRowDetailsFrame(row)
+        ApplyRowExpandedGeometry(row, fullDetailsH)
     end
-    
+
+    row.RebuildDetails = function()
+        if not row.isExpanded then return end
+        local fullDetailsH = BuildRowDetailsFrame(row)
+        ApplyRowExpandedGeometry(row, fullDetailsH)
+    end
+
     return row
 end
 
@@ -736,5 +789,24 @@ end
 
 -- Export to namespace
 ns.UI_CreateExpandableRow = CreateExpandableRow
+
+--- Remeasure expanded body + reflow masonry (Plans To-Do rows; no card.plan).
+function ns.UI_ReflowExpandableTodoRow(row, opts)
+    if not row or not row.data then return end
+    if row.isExpanded then
+        local fullDetailsH = BuildRowDetailsFrame(row)
+        ApplyRowExpandedGeometry(row, fullDetailsH)
+    else
+        ApplyRowExpandedGeometry(row, 0)
+    end
+    if opts and opts.deferLayout then
+        return
+    end
+    local lm = row._layoutManager
+    local CLM = ns.UI_CardLayoutManager
+    if lm and CLM then
+        CLM:RecalculateAllPositions(lm)
+    end
+end
 
 -- Module loaded - verbose logging hidden (debug mode only)

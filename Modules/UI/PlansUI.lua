@@ -175,6 +175,63 @@ local function EnsurePlansAchievementExpandCache(achievementID)
 end
 ns.UI_EnsurePlansAchievementExpandCache = EnsurePlansAchievementExpandCache
 
+--- After expand/collapse, grow scrollChild so SetClipsChildren on the grid does not clip tall cards.
+local function ReflowPlansCardLayout(layoutManager)
+    if not layoutManager then return end
+    local CLM = CardLayoutManager or ns.UI_CardLayoutManager
+    if not CLM then return end
+    local PCF = PlanCardFactory or ns.UI_PlanCardFactory
+    if PCF and PCF.ReflowAllPlanCards then
+        PCF:ReflowAllPlanCards(layoutManager)
+    else
+        CLM:RecalculateAllPositions(layoutManager)
+    end
+end
+
+function ns.UI_SyncPlansScrollContentHeight(scrollChild)
+    if not scrollChild then return end
+    local lm = scrollChild._plansCardLayoutManager or scrollChild._plansBrowseLayoutManager
+    local CLM = CardLayoutManager or ns.UI_CardLayoutManager
+    if not lm or not CLM then return end
+    local pad = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
+    local contentBottom = CLM:GetFinalYOffset(lm) + pad
+    local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local viewportH = (mf and mf.scroll and mf.scroll:GetHeight()) or 0
+    if viewportH < 2 and mf and mf.scroll and mf.fixedHeader then
+        local fhBot = mf.fixedHeader:GetBottom()
+        local sb = mf.scroll:GetBottom()
+        if fhBot and sb and fhBot > sb then
+            viewportH = fhBot - sb
+        end
+    end
+    local totalScrollH = math.max(contentBottom, viewportH)
+    scrollChild:SetHeight(totalScrollH)
+    local fill = scrollChild._wnScrollBottomFill
+    if fill then
+        local slack = totalScrollH - contentBottom
+        if slack > 1 then
+            fill:ClearAllPoints()
+            fill:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -contentBottom)
+            fill:SetPoint("BOTTOMRIGHT", scrollChild, "BOTTOMRIGHT", 0, 0)
+            fill:Show()
+        else
+            fill:ClearAllPoints()
+            fill:Hide()
+        end
+    end
+    local sc = mf and mf.scroll
+    if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+        local maxV = sc:GetVerticalScrollRange() or 0
+        local cur = sc:GetVerticalScroll() or 0
+        if cur > maxV then
+            sc:SetVerticalScroll(maxV)
+        end
+    end
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility and mf and mf.scroll then
+        ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+    end
+end
+
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 local format = string.format
 
@@ -756,6 +813,42 @@ function WarbandNexus:DrawPlansTab(parent)
                 if origPlannedLeave then origPlannedLeave(self) end
                 GameTooltip:Hide()
             end)
+        end
+
+        local ecAnchor = plannedLabel or checkboxLabel or resetBtn
+        if ns.UI_EnsureTitleCardExpandCollapseButtons and ecAnchor then
+            ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -hdrToolbarGap, 0, {
+                getIsCollapseMode = function()
+                    if self.achievementsExpandAllActive then return true end
+                    local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
+                    for _, v in pairs(eg) do
+                        if v == true then return true end
+                    end
+                    return false
+                end,
+                expandTooltip = (ns.L and ns.L["PLANS_EXPAND_ALL_TOOLTIP"]) or "Expand all To-Do sections and groups.",
+                collapseTooltip = (ns.L and ns.L["PLANS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all To-Do sections and groups.",
+                onExpandClick = function()
+                    self.achievementsExpandAllActive = true
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                        tab = "plans",
+                        skipCooldown = true,
+                        instantPopulate = true,
+                    })
+                end,
+                onCollapseClick = function()
+                    self.achievementsExpandAllActive = false
+                    local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
+                    for k in pairs(eg) do
+                        eg[k] = false
+                    end
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                        tab = "plans",
+                        skipCooldown = true,
+                        instantPopulate = true,
+                    })
+                end,
+            })
         end
     end
     
@@ -1375,7 +1468,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         )
 
         local charGroupKey = "weekly_char_" .. tostring(plan.id)
-        local charExpanded = (expandedGroups[charGroupKey] ~= false)
+        local charExpanded = (expandedGroups[charGroupKey] == true)
 
         local charSectionBody
         local charHeader, charHdrExpandIcon, _, charHdrTitleFs = CreateCollapsibleHeader(
@@ -1481,7 +1574,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
                 local completed, total = GetCategoryStats(plan, catKey)
                 local groupKey = "dq_" .. tostring(plan.id) .. "_" .. catKey
-                local isExpanded = (expandedGroups[groupKey] ~= false)
+                local isExpanded = (expandedGroups[groupKey] == true)
 
                 local SECTION_HDR_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
                 local catAtlas = (display and display.atlas) or "questlog-questtypeicon-weekly"
@@ -1860,6 +1953,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     end
     local todoHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(gridW) or 63
     
+    if not CardLayoutManager or not CardLayoutManager.Create then
+        return yOffset + 10
+    end
+
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
     -- Always point at the active layout: PopulateContent rebuilds cards but OnSizeChanged is only hooked once;
@@ -1867,7 +1964,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     parent._plansCardLayoutManager = layoutManager
     parent._plansBrowseLayoutManager = nil
     if parent.SetClipsChildren then
-        parent:SetClipsChildren(true)
+        parent:SetClipsChildren(false)
     end
 
     for i = 1, #plans do
@@ -2075,7 +2172,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 criteriaShowHeader = criteriaHeader,
                 titleRightInset = titleRightInset,
                 onSectionResize = function(rowFrame, currentH)
-                    CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
+                    if CardLayoutManager and CardLayoutManager.UpdateCardHeight then
+                        CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
+                    end
+                    if ns.UI_SyncPlansScrollContentHeight then
+                        ns.UI_SyncPlansScrollContentHeight(parent)
+                    end
                 end,
                 onExpandPopulate = achievementOnExpandPopulate,
             }
@@ -2083,9 +2185,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local row = CreateExpandableRow(parent, listCardWidth, collapsedH, rowData, isExpanded, function(expanded)
                 expandedPlans[plan.id] = expanded
             end)
-
+            if row then
             row:SetWidth(listCardWidth)
             CardLayoutManager:AddCard(layoutManager, row, col, collapsedH)
+            if row.isExpanded then
+                CardLayoutManager:UpdateCardHeight(row, row:GetHeight())
+            end
 
             if ApplyVisuals then
                 local borderColor = { COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4 }
@@ -2191,12 +2296,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
 
             row:Show()
+            end
         end
     end
 
     -- Sync row offsets after all cards are added (prevents gaps from mixed-height cards)
-    CardLayoutManager:RecalculateAllPositions(layoutManager)
-    PlanCardFactory:ReflowAllPlanCards(layoutManager)
+    ReflowPlansCardLayout(layoutManager)
+    if ns.UI_SyncPlansScrollContentHeight then
+        ns.UI_SyncPlansScrollContentHeight(parent)
+    end
 
     -- Get final Y offset from layout manager
     local finalYOffset = CardLayoutManager:GetFinalYOffset(layoutManager)
@@ -2375,7 +2483,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             local r = rawget(t, k)
             if r ~= nil then return r end
             if achExpandAll or searchActive then return false end
-            if expandedGroups[k] then return false end
+            if expandedGroups[k] == true then return false end
             return true
         end,
         __newindex = function(t, k, v)
@@ -2864,7 +2972,12 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         criteriaShowHeader = false,
         titleRightInset = titleRightInset,
         onSectionResize = function(rowFrame, currentH)
-            CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
+            if CardLayoutManager and CardLayoutManager.UpdateCardHeight then
+                CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
+            end
+            if ns.UI_SyncPlansScrollContentHeight then
+                ns.UI_SyncPlansScrollContentHeight(parent)
+            end
         end,
         onExpandPopulate = function(data)
             local all = ns.UI_BuildBrowseSourceCriteriaItems and ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources) or {}
@@ -2884,13 +2997,19 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
 
     local row = CreateExpandableRow(parent, cardWidth, collapsedH, rowData, isExpanded, function(expanded)
         browseExpanded[expandKey] = expanded
-        if layoutManager then
+        if layoutManager and CardLayoutManager then
             CardLayoutManager:RecalculateAllPositions(layoutManager)
+            if ns.UI_SyncPlansScrollContentHeight then
+                ns.UI_SyncPlansScrollContentHeight(parent)
+            end
         end
     end)
     if not row then return end
     row:SetWidth(cardWidth)
     CardLayoutManager:AddCard(layoutManager, row, col, collapsedH)
+    if row.isExpanded then
+        CardLayoutManager:UpdateCardHeight(row, row:GetHeight())
+    end
 
     if ApplyVisuals then
         local borderColor
@@ -3304,7 +3423,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local resultsToRender = math.min(totalResults, MAX_BROWSE_RESULTS)
     
     if parent and parent.SetClipsChildren then
-        parent:SetClipsChildren(true)
+        parent:SetClipsChildren(false)
     end
 
     -- === 2-COLUMN CARD GRID (metrics match To-Do expandable rows — SharedWidgets ns.UI_PLANS_CARD_METRICS) ===
@@ -3350,8 +3469,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         self:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, category, i, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
     end
 
-    CardLayoutManager:RecalculateAllPositions(layoutManager)
-    yOffset = CardLayoutManager:GetFinalYOffset(layoutManager)
+    ReflowPlansCardLayout(layoutManager)
+    if ns.UI_SyncPlansScrollContentHeight then
+        ns.UI_SyncPlansScrollContentHeight(parent)
+    end
+    yOffset = CardLayoutManager and CardLayoutManager:GetFinalYOffset(layoutManager) or yOffset
 
     local searchId = "plans_" .. (category or "unknown"):lower()
     SearchStateManager:UpdateResults(searchId, #results)

@@ -1691,12 +1691,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
         ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -hdrGap, 0, {
             getIsCollapseMode = function()
                 local ui = WarbandNexus.db.profile.ui or {}
-                local fav = ui.profFavoritesExpanded
-                if fav == nil then fav = true end
-                local ch = ui.profCharactersExpanded
-                if ch == nil then ch = true end
-                local unt = ui.profUntrackedExpanded
-                if unt == nil then unt = false end
+                local fav = ui.profFavoritesExpanded == true
+                local ch = ui.profCharactersExpanded == true
+                local unt = ui.profUntrackedExpanded == true
                 if not (fav and ch and unt) then return false end
                 local profile = WarbandNexus.db.profile
                 local groups = profile.characterCustomGroups or {}
@@ -1718,7 +1715,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 for ei = 1, #cg do
                     self.db.profile.characterGroupExpanded[cg[ei].id] = true
                 end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "professions",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
             end,
             onCollapseClick = function()
                 if not self.db.profile.ui then self.db.profile.ui = {} end
@@ -1730,7 +1731,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 for ei = 1, #cg do
                     self.db.profile.characterGroupExpanded[cg[ei].id] = false
                 end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "professions",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
             end,
         })
     end
@@ -2238,7 +2243,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             trackedFavorites,
             (ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites",
             "profFavoritesExpanded",
-            true,
+            false,
             "GM-icon-assistActive-hover",
             { sectionPreset = "gold" }
         )
@@ -2257,7 +2262,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 gList,
                 gMeta.name or gid,
                 "profCGrp_" .. tostring(gid),
-                true,
+                false,
                 goldStyle and "GM-icon-assistActive-hover" or "GM-icon-headCount",
                 { sectionPreset = goldStyle and "gold" or "accent", useCharacterGroupExpand = true, groupId = gid }
             )
@@ -2269,7 +2274,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             trackedRegular,
             (ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters",
             "profCharactersExpanded",
-            true,
+            false,
             "GM-icon-headCount",
             nil
         )

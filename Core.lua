@@ -853,6 +853,13 @@ function WarbandNexus:OnInitialize()
     self:ResetStorageTreeExpandState()
 end
 
+--- Collapsible section trees (Bank, Currency, Reputation, PvE, Professions, Collections, To-Do): collapsed at login.
+function WarbandNexus:OnPlayerLoginSectionExpandReset()
+    if ns.UI_ResetSessionSectionExpandState then
+        ns.UI_ResetSessionSectionExpandState()
+    end
+end
+
 ---Apply (or clear) the toggle keybind from db.profile.toggleKeybind using override binding.
 ---Safe to call multiple times; clears previous binding first.
 function WarbandNexus:ApplyToggleKeybind()
@@ -1021,6 +1028,7 @@ function WarbandNexus:OnEnable()
     
     -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    self:RegisterEvent("PLAYER_LOGIN", "OnPlayerLoginSectionExpandReset")
     
     -- Initialize Chat Message Service (reputation/currency gain notifications)
     C_Timer.After(0.6, function()

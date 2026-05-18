@@ -768,18 +768,11 @@ ns.UI_SetItemsSubTab = function(val)
     if val ~= "warband" and WarbandNexus then
         WarbandNexus.storageExpandAllActive = false
     end
-    -- Entering Warband from another Bank sub-tab: reset expand-all + session tree state, then open both
-    -- major section bodies (Personal Items + Warband Bank) so counts match visible rows without an extra click.
-    -- Nested char/type keys stay default-collapsed until expand-all or explicit toggle (ItemsUI.lua).
+    -- Entering Warband from another Bank sub-tab: reset expand-all + session tree (default collapsed).
     if val == "warband" and WarbandNexus and previousSub ~= "warband" then
         WarbandNexus.storageExpandAllActive = false
         if WarbandNexus.ResetStorageTreeExpandState then
             WarbandNexus:ResetStorageTreeExpandState()
-        end
-        if WarbandNexus.GetStorageTreeExpandState then
-            local st = WarbandNexus:GetStorageTreeExpandState()
-            st.warband = true
-            st.personal = true
         end
     end
     currentItemsSubTab = val
@@ -787,6 +780,43 @@ ns.UI_SetItemsSubTab = function(val)
 end
 ns.UI_GetExpandedGroups = function() return expandedGroups end
 ns.UI_GetExpandAllActive = function() return WarbandNexus.itemsExpandAllActive end
+
+--- Reset collapsible section trees to default collapsed at login (session persistence until logout).
+function ns.UI_ResetSessionSectionExpandState()
+    wipe(expandedGroups)
+    local addon = WarbandNexus
+    if not addon then return end
+    addon.itemsExpandAllActive = false
+    addon.storageExpandAllActive = false
+    addon.pveExpandAllActive = false
+    addon.currencyExpandAllActive = false
+    addon.achievementsExpandAllActive = false
+    if addon.ResetStorageTreeExpandState then
+        addon:ResetStorageTreeExpandState()
+    end
+    local p = addon.db and addon.db.profile
+    if p then
+        p.currencyExpandOverride = "all_collapsed"
+        p.currencyExpanded = {}
+        p.reputationExpandOverride = "all_collapsed"
+        p.reputationExpanded = {}
+        p.characterGroupExpanded = {}
+        if not p.ui then p.ui = {} end
+        p.ui.profFavoritesExpanded = false
+        p.ui.profCharactersExpanded = false
+        p.ui.profUntrackedExpanded = false
+        p.ui.pveFavoritesExpanded = false
+        p.ui.pveCharactersExpanded = false
+    end
+    if ns.PvE_ResetSessionExpandState then
+        ns.PvE_ResetSessionExpandState()
+    end
+    local coll = ns.CollectionsUI
+    if coll and coll.ResetSessionCollapsedHeaders then
+        coll.ResetSessionCollapsedHeaders()
+    end
+end
+ns.UI_ResetSessionSectionExpandState = ns.UI_ResetSessionSectionExpandState
 
 --============================================================================
 -- UI-SPECIFIC HELPERS

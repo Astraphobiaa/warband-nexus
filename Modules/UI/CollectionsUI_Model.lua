@@ -339,13 +339,16 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
     addBtn:Show()
     addBtn:SetAlpha(1)
     local L = ns.L
+    local todoTitle = (L and L["COLLECTIONS_TT_TODO_TITLE"]) or "To-Do list"
     if onTodo then
         addBtn:EnableMouse(true)
         addBtn:RegisterForClicks()
-        local tip = (L and L["PLANNED"]) or "On your To-Do list"
+        local body = (L and L["COLLECTIONS_DETAIL_TT_ON_TODO"]) or "Left-click to remove from your To-Do list."
         addBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText(tip, 1, 1, 1)
+            GameTooltip:ClearLines()
+            GameTooltip:SetText(todoTitle, 1, 1, 1)
+            GameTooltip:AddLine(body, 1, 1, 1, true)
             GameTooltip:Show()
         end)
         addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -357,10 +360,12 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
         addBtn:SetScript("OnLeave", nil)
         addBtn:SetScript("OnClick", nil)
     else
-        local todoTip = (L and L["TODO_SLOT_TOOLTIP_ADD"]) or "Add to your To-Do list."
+        local body = (L and L["COLLECTIONS_DETAIL_TT_ADD_TODO"]) or "Left-click to add to your To-Do list."
         addBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText(todoTip, 1, 1, 1)
+            GameTooltip:ClearLines()
+            GameTooltip:SetText(todoTitle, 1, 1, 1)
+            GameTooltip:AddLine(body, 1, 1, 1, true)
             GameTooltip:Show()
         end)
         addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -851,7 +856,7 @@ function M.CreateModelViewer(parent, width, height)
     local obtainedAtLine = FontManager:CreateFontString(textOverlay, "small", "OVERLAY")
     obtainedAtLine:SetJustifyH("LEFT")
     obtainedAtLine:SetWordWrap(true)
-    obtainedAtLine:SetTextColor(0.68, 0.70, 0.74, 1)
+    obtainedAtLine:SetTextColor(1, 1, 1, 1)
     obtainedAtLine:Hide()
     panel.obtainedAtLine = obtainedAtLine
 
@@ -1062,7 +1067,7 @@ function M.CreateModelViewer(parent, width, height)
         if not mountID then
             local placeholder = (ns.L and ns.L["SELECT_MOUNT_FROM_LIST"]) or "Select a mount from the list"
             if placeholder == "" or placeholder == "SELECT_MOUNT_FROM_LIST" then placeholder = "Select a mount from the list" end
-            nameText:SetText("|cff888888" .. placeholder .. "|r")
+            nameText:SetText("|cffffffff" .. placeholder .. "|r")
             if panel.detailIconTexture then
                 panel.detailIconTexture:SetTexture(DEFAULT_ICON_MOUNT)
                 panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1259,7 +1264,7 @@ function M.CreateModelViewer(parent, width, height)
         if not speciesID then
             local placeholder = (ns.L and ns.L["SELECT_PET_FROM_LIST"]) or "Select a pet from the list"
             if placeholder == "" or placeholder == "SELECT_PET_FROM_LIST" then placeholder = "Select a pet from the list" end
-            nameText:SetText("|cff888888" .. placeholder .. "|r")
+            nameText:SetText("|cffffffff" .. placeholder .. "|r")
             if panel.detailIconTexture then
                 panel.detailIconTexture:SetTexture(DEFAULT_ICON_PET)
                 panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1589,8 +1594,8 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
     local goldR = (COLORS.gold and COLORS.gold[1]) or 1
     local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
     local goldB = (COLORS.gold and COLORS.gold[3]) or 0
-    local bodyR, bodyG, bodyB = 0.86, 0.88, 0.91
-    local mutedR, mutedG, mutedB = 0.62, 0.64, 0.68
+    local bodyR, bodyG, bodyB = 1, 1, 1
+    local mutedR, mutedG, mutedB = 1, 1, 1
     local completeR, completeG, completeB = 0.35, 0.88, 0.45
 
     local function addSection(title, fn)
@@ -1841,7 +1846,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
                 obtFs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)
                 obtFs:SetJustifyH("LEFT")
                 obtFs:SetWordWrap(true)
-                obtFs:SetTextColor(0.68, 0.70, 0.74, 1)
+                obtFs:SetTextColor(1, 1, 1, 1)
                 obtFs:SetText(obtStr)
                 addDetailElement(obtFs)
                 lastAnchor = obtFs

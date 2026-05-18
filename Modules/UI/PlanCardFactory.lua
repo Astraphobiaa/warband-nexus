@@ -1478,9 +1478,14 @@ function PlanCardFactory:ReflowAllPlanCards(layoutInstance)
             elseif t == "mount" or t == "pet" or t == "toy" or t == "illusion" or t == "title" or t == "transmog" then
                 self:ReflowSourcePlanCard(c, { deferLayout = true })
             end
+        elseif c and c.headerFrame and ns.UI_ReflowExpandableTodoRow then
+            ns.UI_ReflowExpandableTodoRow(c, { deferLayout = true })
         end
     end
-    CardLayoutManager:RecalculateAllPositions(layoutInstance)
+    local CLM = CardLayoutManager or ns.UI_CardLayoutManager
+    if CLM and CLM.RecalculateAllPositions then
+        CLM:RecalculateAllPositions(layoutInstance)
+    end
 end
 
 --[[

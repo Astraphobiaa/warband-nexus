@@ -851,7 +851,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     if hasSubfactions then
         local collapseKey = "rep-subfactions-" .. factionID
-        isExpanded = IsExpanded(collapseKey, true)
+        isExpanded = IsExpanded(collapseKey, false)
         
         -- Lazy create collapse button (reused across pool cycles)
         if not row.collapseBtn then
@@ -1122,7 +1122,7 @@ local function PopulateReputationRow(row, entry)
 
     if hasSubfactions then
         local collapseKey = "rep-subfactions-" .. factionID
-        isExpanded = IsExpanded(collapseKey, true)
+        isExpanded = IsExpanded(collapseKey, false)
 
         if not row.collapseBtn then
             row.collapseBtn = ns.UI_CreateCollapseExpandControl(row, isExpanded, { enableMouse = true })
@@ -1794,7 +1794,7 @@ function WarbandNexus:DrawReputationList(container, width)
                 allCharData = item.faction.allCharData or {}
             }
             local collapseKey = "rep-subfactions-" .. tostring(item.faction.factionID or 0)
-            local subExpanded = IsExpanded(collapseKey, true)
+            local subExpanded = IsExpanded(collapseKey, false)
             local subsToRender = item.subfactions
             local showSubs = subExpanded or item._forceExpand
 
@@ -1879,7 +1879,7 @@ function WarbandNexus:DrawReputationList(container, width)
     end
 
     local function RenderSection(sectionKey, sectionTitle, iconTexture, isAtlas, headers, scopeTag)
-        local sectionExpanded = IsExpanded(sectionKey, true)
+        local sectionExpanded = IsExpanded(sectionKey, false)
         local sectionWrap = CreateWrap(parent, width)
         local sectionBody = CreateBody(sectionWrap, width)
         if not (sectionWrap and sectionBody) then return end
@@ -1948,7 +1948,7 @@ function WarbandNexus:DrawReputationList(container, width)
                 local factionList, filteredFactionList, isSearching = BuildFilteredList(headerData, scopeTag)
                 if not isSearching or #filteredFactionList > 0 then
                     local headerKey = (scopeTag == "AW" and "filtered-header-" or "filtered-cb-header-") .. (headerData.name or "")
-                    local headerExpanded = isSearching and true or IsExpanded(headerKey, true)
+                    local headerExpanded = isSearching and true or IsExpanded(headerKey, false)
                     local headerWrap = CreateWrap(sectionBody, width - BASE_INDENT)
                     local headerBody = CreateBody(headerWrap, width - BASE_INDENT)
                     if headerWrap and headerBody then

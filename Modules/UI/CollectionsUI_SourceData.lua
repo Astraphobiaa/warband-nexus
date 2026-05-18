@@ -183,7 +183,7 @@ local function FormatMountPetToyListTrySuffix(collectibleType, id)
     if not id or not WarbandNexus or not WarbandNexus.ShouldShowTryCountInUI or not WarbandNexus:ShouldShowTryCountInUI(collectibleType, id) then return "" end
     local c = WarbandNexus:GetTryCount(collectibleType, id) or 0
     local fmt = (ns.L and ns.L["COLLECTION_LIST_ATTEMPTS_FMT"]) or "%d Attempts"
-    return " |cff888888(" .. format(fmt, c) .. ")|r"
+    return " |cffffffff(" .. format(fmt, c) .. ")|r"
 end
 
 -- Para birimi ikonu: cost/amount satırlarında fiyat yanında gösterilir.

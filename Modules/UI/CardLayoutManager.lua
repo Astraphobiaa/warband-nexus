@@ -281,6 +281,10 @@ function CardLayoutManager:RefreshLayout(instance)
         PCF:ReflowAllPlanCards(instance)
     end
     self:RecalculateAllPositions(instance)
+    local parent = instance.parent
+    if parent and ns.UI_SyncPlansScrollContentHeight then
+        ns.UI_SyncPlansScrollContentHeight(parent)
+    end
 end
 
 --============================================================================

@@ -1225,6 +1225,9 @@ local function RefreshTrackerContentImmediate()
                     expandedPlans[plan.id] = expanded
                 end
             end)
+            if not row then
+                yOffset = yOffset + headerH + 8
+            else
             row:SetPoint("TOPLEFT", 0, -yOffset)
             if ApplyVisuals then
                 ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
@@ -1277,8 +1280,8 @@ local function RefreshTrackerContentImmediate()
             yOffset = yOffset + headerH + LIST_GAP
             end
         end
+        end
     end
-
 
     -- Update count label
     local frame = GetTrackerFrame()

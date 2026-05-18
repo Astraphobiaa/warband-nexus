@@ -502,24 +502,41 @@ end
 
 function M.CollectionRowTodoSlotTooltip(onTodo, canInteract)
     local L = ns.L
+    local title = (L and L["COLLECTIONS_TT_TODO_TITLE"]) or "To-Do list"
     if onTodo then
-        return (L and L["TODO_SLOT_TOOLTIP_REMOVE"]) or "Click to remove from your To-Do list."
+        return {
+            title = title,
+            lines = { (L and L["COLLECTIONS_TT_TODO_REMOVE"]) or "Left-click to remove this entry from your To-Do list." },
+        }
     end
     if canInteract then
-        return (L and L["TODO_SLOT_TOOLTIP_ADD"]) or "Click to add to your To-Do list."
+        return {
+            title = title,
+            lines = { (L and L["COLLECTIONS_TT_TODO_ADD"]) or "Left-click to add this entry to your To-Do list." },
+        }
     end
-    return ""
+    return nil
 end
 
 function M.CollectionRowTrackSlotTooltip(achCollected, onTrack)
     local L = ns.L
+    local title = (L and L["COLLECTIONS_TT_TRACK_TITLE"]) or "Objectives tracker"
     if achCollected then
-        return (L and L["TRACK_SLOT_DISABLED_COMPLETED"]) or "Completed achievements cannot be tracked in objectives."
+        return {
+            title = title,
+            lines = { (L and L["COLLECTIONS_TT_TRACK_COMPLETED"]) or "This achievement is already completed. Tracking is not available." },
+        }
     end
     if onTrack then
-        return (L and L["TRACK_SLOT_TOOLTIP_UNTRACK"]) or "Click to stop tracking in Blizzard objectives."
+        return {
+            title = title,
+            lines = { (L and L["COLLECTIONS_TT_TRACK_DISABLE"]) or "Left-click to stop tracking in Blizzard objectives." },
+        }
     end
-    return (L and L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)"
+    return {
+        title = title,
+        lines = { (L and L["COLLECTIONS_TT_TRACK_ENABLE"]) or "Left-click to show progress in Blizzard objectives (up to 10 at once)." },
+    }
 end
 
 -- Acquire a collection list row (SharedWidgets layout: status icon + icon + label). Used by Mounts, Pets, Achievements.

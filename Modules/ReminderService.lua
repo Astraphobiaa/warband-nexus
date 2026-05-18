@@ -1270,16 +1270,28 @@ local reminderPlanRescheduleTimer = nil
 --- Coalesce rapid reminder config writes (Set Alert toggles, bulk UI) per WN-PERF.
 local REMINDER_PLAN_RESCHEDULE_DEBOUNCE = 0.25
 local OnLoginRemindersCheck
+local ScheduleCalendarResetReminderTimer
 
 local function RequestReminderScheduleCoalesced()
     if reminderPlanRescheduleTimer then
         reminderPlanRescheduleTimer:Cancel()
         reminderPlanRescheduleTimer = nil
     end
+    local function RunReminderSchedulePass()
+        if ScheduleCalendarResetReminderTimer then
+            ScheduleCalendarResetReminderTimer()
+        end
+        if OnLoginRemindersCheck then
+            OnLoginRemindersCheck()
+        end
+    end
+    if not (C_Timer and C_Timer.NewTimer) then
+        RunReminderSchedulePass()
+        return
+    end
     reminderPlanRescheduleTimer = C_Timer.NewTimer(REMINDER_PLAN_RESCHEDULE_DEBOUNCE, function()
         reminderPlanRescheduleTimer = nil
-        ScheduleCalendarResetReminderTimer()
-        OnLoginRemindersCheck()
+        RunReminderSchedulePass()
     end)
 end
 
@@ -1317,7 +1329,7 @@ local function CancelCalendarResetReminderTimer()
     end
 end
 
-local function ScheduleCalendarResetReminderTimer()
+ScheduleCalendarResetReminderTimer = function()
     CancelCalendarResetReminderTimer()
     if not (C_DateAndTime and (C_DateAndTime.GetSecondsUntilDailyReset or C_DateAndTime.GetSecondsUntilWeeklyReset)) then
         return
@@ -1326,10 +1338,20 @@ local function ScheduleCalendarResetReminderTimer()
     if not delay then
         return
     end
+    if not (C_Timer and C_Timer.NewTimer) then
+        if OnLoginRemindersCheck then
+            OnLoginRemindersCheck()
+        end
+        return
+    end
     calendarResetReminderTimer = C_Timer.NewTimer(delay, function()
         calendarResetReminderTimer = nil
-        OnLoginRemindersCheck()
-        ScheduleCalendarResetReminderTimer()
+        if OnLoginRemindersCheck then
+            OnLoginRemindersCheck()
+        end
+        if ScheduleCalendarResetReminderTimer then
+            ScheduleCalendarResetReminderTimer()
+        end
     end)
 end
 
@@ -1346,6 +1368,10 @@ local function OnZoneOrInstanceChanged()
     if zoneChangeTimer then
         zoneChangeTimer:Cancel()
         zoneChangeTimer = nil
+    end
+    if not (C_Timer and C_Timer.NewTimer) then
+        RunZoneOrInstanceChangedNow()
+        return
     end
     zoneChangeTimer = C_Timer.NewTimer(0.12, function()
         zoneChangeTimer = nil
@@ -1369,6 +1395,10 @@ end
 function WarbandNexus:InitializeReminderService()
     if not self.db or not self.db.global then return end
 
+    if reminderPlanRescheduleTimer then
+        reminderPlanRescheduleTimer:Cancel()
+        reminderPlanRescheduleTimer = nil
+    end
     CancelCalendarResetReminderTimer()
 
     self.db.global.reminderSettings = self.db.global.reminderSettings or {
@@ -1392,19 +1422,25 @@ function WarbandNexus:InitializeReminderService()
                 ns.ReminderZoneCatalog.InvalidateZoneApiCache()
             end
             BeginReminderLoginBurst()
-            OnLoginRemindersCheck()
+            if OnLoginRemindersCheck then
+                OnLoginRemindersCheck()
+            end
             RunZoneOrInstanceChangedNow()
         end
 
         WarbandNexus.RegisterEvent(ReminderEvents, "PLAYER_ENTERING_WORLD", OnPlayerEnteringWorldReminders)
 
-        C_Timer.After(3, function()
-            OnLoginRemindersCheck()
-        end)
+        if C_Timer and C_Timer.After then
+            C_Timer.After(3, function()
+                if OnLoginRemindersCheck then
+                    OnLoginRemindersCheck()
+                end
+            end)
 
-        C_Timer.After(5, function()
-            RunZoneOrInstanceChangedNow()
-        end)
+            C_Timer.After(5, function()
+                RunZoneOrInstanceChangedNow()
+            end)
+        end
 
         if WarbandNexus.RegisterMessage then
             WarbandNexus.RegisterMessage(ReminderPlansMessageSink, E.PLANS_UPDATED, function(_, payload)
@@ -1416,9 +1452,13 @@ function WarbandNexus:InitializeReminderService()
         end
     end
 
-    ScheduleCalendarResetReminderTimer()
+    if ScheduleCalendarResetReminderTimer then
+        ScheduleCalendarResetReminderTimer()
+    end
     -- Service starts deferred (InitializationService); first PEW may have fired already — run one pass now.
-    OnLoginRemindersCheck()
+    if OnLoginRemindersCheck then
+        OnLoginRemindersCheck()
+    end
 end
 
 

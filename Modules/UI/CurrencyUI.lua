@@ -1039,7 +1039,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- Section 1: Warband Transferable
     if #aggregated.warbandTransferable > 0 then
         local sectionKey = "currency-warband"
-        local sectionExpanded = IsExpanded(sectionKey, true)
+        local sectionExpanded = IsExpanded(sectionKey, false)
         local sectionWrap = CreateWrap(parent, width)
         local sectionBody = CreateBody(sectionWrap, width)
         if sectionWrap and sectionBody then
@@ -1092,7 +1092,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 end
             end
             local sectionCtx = { body = sectionBody, wrap = sectionWrap }
-            BuildCurrencyCategoryTree(sectionCtx, roots, "all-warband-", true, sectionBody, width, function(curr)
+            BuildCurrencyCategoryTree(sectionCtx, roots, "all-warband-", false, sectionBody, width, function(curr)
                 local displayData = {}
                 for k, v in pairs(curr.data or {}) do displayData[k] = v end
                 displayData.quantity = curr.quantity
@@ -1117,7 +1117,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- Section 2: Character-Specific
     if #aggregated.characterSpecific > 0 then
         local sectionKey = "currency-char-specific"
-        local sectionExpanded = IsExpanded(sectionKey, true)
+        local sectionExpanded = IsExpanded(sectionKey, false)
         local sectionWrap = CreateWrap(parent, width)
         local sectionBody = CreateBody(sectionWrap, width)
         if sectionWrap and sectionBody then
@@ -1166,7 +1166,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 end
             end
             local sectionCtx = { body = sectionBody, wrap = sectionWrap }
-            BuildCurrencyCategoryTree(sectionCtx, roots, "all-char-", true, sectionBody, width, function(curr)
+            BuildCurrencyCategoryTree(sectionCtx, roots, "all-char-", false, sectionBody, width, function(curr)
                 local displayData = {}
                 for k, v in pairs(curr.data or {}) do displayData[k] = v end
                 local bestCharacter = curr.bestCharacter or {}
@@ -1439,6 +1439,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
             onExpandClick = function()
                 self.db.profile.currencyExpandOverride = nil
                 self.db.profile.currencyExpanded = {}
+                self.currencyExpandAllActive = true
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
                     tab = "currency",
                     skipCooldown = true,
@@ -1447,6 +1448,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
             end,
             onCollapseClick = function()
                 self.db.profile.currencyExpandOverride = "all_collapsed"
+                self.db.profile.currencyExpanded = {}
+                self.currencyExpandAllActive = false
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
                     tab = "currency",
                     skipCooldown = true,

@@ -1032,9 +1032,16 @@ local function IsExpanded(key, defaultState)
         return true
     end
     if expandedStates[key] == nil then
-        expandedStates[key] = defaultState
+        expandedStates[key] = defaultState == true
     end
-    return expandedStates[key]
+    return expandedStates[key] == true
+end
+
+function ns.PvE_ResetSessionExpandState()
+    wipe(expandedStates)
+    if WarbandNexus then
+        WarbandNexus.pveExpandAllActive = false
+    end
 end
 
 -- PvE event refresh is centralized in UI.lua SchedulePopulateContent (WN_PVE_UPDATED).
@@ -2788,7 +2795,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     local chars = opts.chars
     local headerLabel = opts.headerLabel
     local sectionUiKey = opts.sectionUiKey -- profile.ui key when not using characterGroupExpanded
-    local defaultExpanded = opts.defaultExpanded ~= false
+    local defaultExpanded = opts.defaultExpanded == true
     local headerAtlas = opts.headerAtlas
     local visualOpts = opts.visualOpts
     local layoutTailFrame = opts.layoutTailFrame
@@ -3228,8 +3235,62 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         sortAnchor = sortBtn
     end
 
+    local profile = self.db and self.db.profile
+
     -- Column visibility (vault columns + PvE crest/shard/key toggles)
     sortAnchor = L.PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
+
+    if L.ns.UI_EnsureTitleCardExpandCollapseButtons and sortAnchor and profile then
+        local hdrGapEc = hdrGapPve
+        L.ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, sortAnchor, "LEFT", -hdrGapEc, 0, {
+            getIsCollapseMode = function()
+                if WarbandNexus.pveExpandAllActive then return true end
+                local ui = profile.ui or {}
+                if ui.pveFavoritesExpanded == true or ui.pveCharactersExpanded == true then
+                    return true
+                end
+                local cg = profile.characterGroupExpanded or {}
+                for _, v in pairs(cg) do
+                    if v == true then return true end
+                end
+                for _, v in pairs(expandedStates) do
+                    if v == true then return true end
+                end
+                return false
+            end,
+            expandTooltip = (L.ns.L and L.ns.L["PVE_EXPAND_ALL_TOOLTIP"]) or "Expand all PvE sections and character rows.",
+            collapseTooltip = (L.ns.L and L.ns.L["PVE_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all PvE sections and character rows.",
+            onExpandClick = function()
+                if not profile.ui then profile.ui = {} end
+                profile.ui.pveFavoritesExpanded = true
+                profile.ui.pveCharactersExpanded = true
+                WarbandNexus.pveExpandAllActive = true
+                local groups = profile.characterCustomGroups or {}
+                if not profile.characterGroupExpanded then profile.characterGroupExpanded = {} end
+                for gi = 1, #groups do
+                    profile.characterGroupExpanded[groups[gi].id] = true
+                end
+                L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "pve",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
+            end,
+            onCollapseClick = function()
+                if not profile.ui then profile.ui = {} end
+                profile.ui.pveFavoritesExpanded = false
+                profile.ui.pveCharactersExpanded = false
+                WarbandNexus.pveExpandAllActive = false
+                wipe(expandedStates)
+                profile.characterGroupExpanded = {}
+                L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, {
+                    tab = "pve",
+                    skipCooldown = true,
+                    instantPopulate = true,
+                })
+            end,
+        })
+    end
 
     titleCard:Show()
     if ns.UI_AdvanceTabChromeYOffset then
@@ -3255,7 +3316,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         PVE_RESTORED_KEY_ID = PVE_RESTORED_KEY_FALLBACK_ID
     end
 
-    local profile = self.db and self.db.profile
+    profile = profile or (self.db and self.db.profile)
     local vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
     local pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
     local PVE_COLUMNS = {}
@@ -3996,11 +4057,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local h = body._pveRunningH or 0.1
         body._wnSectionFullH = h
         if not profile.ui then profile.ui = {} end
-        local expanded = true
+        local expanded = false
         if secKey == "pve_fav" then
-            expanded = profile.ui.pveFavoritesExpanded ~= false
+            expanded = profile.ui.pveFavoritesExpanded == true
         elseif secKey == "pve_reg" then
-            expanded = profile.ui.pveCharactersExpanded ~= false
+            expanded = profile.ui.pveCharactersExpanded == true
         elseif PveGroupIdFromSectionSecKey(secKey) then
             local gidStr = tostring(PveGroupIdFromSectionSecKey(secKey))
             if not profile.characterGroupExpanded then profile.characterGroupExpanded = {} end
@@ -4012,7 +4073,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     ev = cg[asNum]
                 end
             end
-            expanded = ev ~= false
+            expanded = ev == true
         end
         if expanded then
             body:Show()
@@ -4049,7 +4110,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     chars = favoritesDisplay,
                     headerLabel = (L.ns.L and L.ns.L["HEADER_FAVORITES"]) or "Favorites",
                     sectionUiKey = "pveFavoritesExpanded",
-                    defaultExpanded = true,
+                    defaultExpanded = false,
                     headerAtlas = "GM-icon-assistActive-hover",
                     visualOpts = { sectionPreset = "gold" },
                     layoutTailFrame = layoutTailForShell,
@@ -4066,7 +4127,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     chars = regularDisplay,
                     headerLabel = (L.ns.L and L.ns.L["HEADER_CHARACTERS"]) or "Characters",
                     sectionUiKey = "pveCharactersExpanded",
-                    defaultExpanded = true,
+                    defaultExpanded = false,
                     headerAtlas = "GM-icon-headCount",
                     visualOpts = nil,
                     layoutTailFrame = layoutTailForShell,
@@ -4093,7 +4154,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     chars = groupedDisplay[tostring(gid4)] or {},
                     headerLabel = gName,
                     sectionUiKey = nil,
-                    defaultExpanded = true,
+                    defaultExpanded = false,
                     headerAtlas = goldStyle and "GM-icon-assistActive-hover" or "GM-icon-headCount",
                     visualOpts = {
                         sectionPreset = goldStyle and "gold" or "accent",
@@ -4136,7 +4197,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local isCurrentChar = (charKey == currentPlayerKey)
         local hasVaultReward = pve.hasUnclaimedRewards or false
         
-        local charExpanded = L.IsExpanded(charExpandKey, isCurrentChar)
+        local charExpanded = L.IsExpanded(charExpandKey, false)
 
         local charDetailContent
         local buildPvEDetailIfNeeded
