@@ -119,6 +119,11 @@ Modules\UI\PveUI.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
 Modules\UI\CollectionsUI_SourceData.lua
+Modules\UI\CollectionsUI_Shared.lua
+Modules\UI\CollectionsUI_Lists.lua
+Modules\UI\CollectionsUI_Model.lua
+Modules\UI\CollectionsUI_Recent.lua
+Modules\UI\CollectionsUI_Draw.lua
 Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua

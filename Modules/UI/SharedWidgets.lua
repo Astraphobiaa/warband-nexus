@@ -7730,15 +7730,56 @@ end
 
 -- Collections detail header: action slot (+ try row) + Wowhead (eye always flush right) — same geometry for Mounts / Pets / Toy Box.
 ns.CollectionsDetailHeaderLayout = {
-    WOWHEAD_SIZE = 18,
+    DETAIL_ACTION_SIZE = 32,
+    WOWHEAD_SIZE = 32,
     ACTION_SLOT_W = 74,
-    ACTION_SLOT_H = 28,
+    ACTION_SLOT_H = 32,
     TRY_GAP = 4,
     TRY_ROW_H = 18,
-    WOWHEAD_GAP = 10,
+    WOWHEAD_GAP = 6,
+    DETAIL_ICON_PAD = 2,
     -- Plan cards / other tabs: Wowhead eye inset from card top (aligns with Collections detail feel)
     CARD_WOWHEAD_TOP_OFFSET = 10,
 }
+
+--- Shared edge color for Collections detail icon shells (Plan / Track / Wowhead / series rows).
+function ns.UI.Factory:GetCollectionsDetailIconBorderColor()
+    local b = COLORS.border or { 0.45, 0.48, 0.52, 0.75 }
+    return { b[1], b[2], b[3], b[4] or 0.75 }
+end
+
+--- Bordered square host for Collections detail action icons (Plan / Track / Wowhead).
+function ns.UI.Factory:CreateCollectionsDetailIconShell(parent, size, opts)
+    if not parent then return nil end
+    opts = type(opts) == "table" and opts or {}
+    local L = ns.CollectionsDetailHeaderLayout
+    size = math.floor(tonumber(size) or (L and L.DETAIL_ACTION_SIZE) or 32)
+    local shell = self:CreateContainer(parent, size, size, true)
+    if shell and ApplyVisuals then
+        local edge = opts.borderColor or self:GetCollectionsDetailIconBorderColor()
+        ApplyVisuals(shell, { 0.12, 0.12, 0.14, 0.95 }, edge)
+    end
+    if shell and shell.EnableMouse then
+        shell:EnableMouse(false)
+    end
+    return shell
+end
+
+--- Center a borderless icon button inside a detail icon shell (visible chrome on shell only).
+function ns.UI.Factory:CenterCollectionsDetailActionButton(shell, btn)
+    if not shell or not btn then return end
+    local L = ns.CollectionsDetailHeaderLayout
+    local pad = (L and L.DETAIL_ICON_PAD) or 2
+    btn:SetParent(shell)
+    btn:ClearAllPoints()
+    local shellSz = shell:GetWidth() or (L and L.DETAIL_ACTION_SIZE) or 28
+    local inner = math.max(12, shellSz - pad * 2)
+    btn:SetSize(inner, inner)
+    btn:SetPoint("CENTER", shell, "CENTER", 0, 0)
+    if self.ApplyIconOnlyButtonChrome then
+        self:ApplyIconOnlyButtonChrome(btn)
+    end
+end
 
 ---Right column: [action slot][Wowhead] with optional try row aligned to the action slot only (not full column width).
 ---@param parent Frame
@@ -7750,7 +7791,8 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     local L = ns.CollectionsDetailHeaderLayout
     local actionSlotW = opts.actionSlotWidth or L.ACTION_SLOT_W
     local actionSlotH = opts.actionSlotHeight or L.ACTION_SLOT_H
-    local w = L.WOWHEAD_SIZE + L.WOWHEAD_GAP + actionSlotW
+    local whSize = L.WOWHEAD_SIZE or L.DETAIL_ACTION_SIZE or actionSlotH
+    local w = whSize + L.WOWHEAD_GAP + actionSlotW
     local h = actionSlotH
     if withTryRow then
         h = h + L.TRY_GAP + L.TRY_ROW_H
@@ -7761,18 +7803,30 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
 
     local actionSlot = CreateFrame("Frame", nil, root)
     actionSlot:SetSize(actionSlotW, actionSlotH)
-    actionSlot:SetPoint("TOPRIGHT", root, "TOPRIGHT", -(L.WOWHEAD_SIZE + L.WOWHEAD_GAP), 0)
+    actionSlot:SetPoint("TOPRIGHT", root, "TOPRIGHT", -(whSize + L.WOWHEAD_GAP), 0)
 
-    local wowheadBtn = CreateFrame("Button", nil, root)
-    wowheadBtn:SetSize(L.WOWHEAD_SIZE, L.WOWHEAD_SIZE)
-    local vOff = math.max(0, (actionSlotH - L.WOWHEAD_SIZE) / 2)
-    wowheadBtn:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -vOff)
-    local whTex = wowheadBtn:CreateTexture(nil, "ARTWORK")
-    whTex:SetAllPoints()
-    ns.UI_SetWnIconTexture(whTex, "link", { vertexColor = ns.WN_ICON_VERTEX_WHITE })
-    wowheadBtn._wnIconTex = whTex
+    local detailBorder = self.GetCollectionsDetailIconBorderColor and self:GetCollectionsDetailIconBorderColor()
+    local whShell = self:CreateCollectionsDetailIconShell(root, whSize, { borderColor = detailBorder })
+    local vOff = math.max(0, (actionSlotH - whSize) / 2)
+    if whShell then
+        whShell:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -vOff)
+    end
+    local wowheadParent = whShell or root
+    local whPad = (L.DETAIL_ICON_PAD or 2)
+    local whInner = math.max(12, whSize - whPad * 2)
+    local wowheadBtn = CreateFrame("Button", nil, wowheadParent)
+    wowheadBtn:SetSize(whInner, whInner)
+    wowheadBtn:SetPoint("CENTER", wowheadParent, "CENTER", 0, 0)
+    local whAtlasOk = pcall(function() wowheadBtn:SetNormalAtlas("socialqueuing-icon-eye") end)
+    if not whAtlasOk then
+        local whTex = wowheadBtn:CreateTexture(nil, "ARTWORK")
+        whTex:SetAllPoints()
+        ns.UI_SetWnIconTexture(whTex, "link", { vertexColor = ns.WN_ICON_VERTEX_WHITE })
+        wowheadBtn._wnIconTex = whTex
+    end
     wowheadBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    wowheadBtn:SetFrameLevel((root:GetFrameLevel() or 0) + 8)
+    wowheadBtn:SetFrameLevel((wowheadParent:GetFrameLevel() or 0) + 8)
+    wowheadBtn._wnDetailIconShell = whShell
     local loc = ns.L
     wowheadBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -7800,6 +7854,7 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
         root = root,
         actionSlot = actionSlot,
         wowheadBtn = wowheadBtn,
+        wowheadShell = whShell,
         tryCountRow = tryCountRow,
     }
 end

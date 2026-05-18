@@ -2738,6 +2738,10 @@ function WarbandNexus:AppendCollectionsRecentObtained(data)
         displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
     end
     if not displayName or displayName == "" then return end
+    -- Achievements: only first account completion belongs in Recent (alt re-earn / prior store completion).
+    if data.type == "achievement" and data.accountFirstEarn == false then
+        return
+    end
     -- One Recent row per type+id (account-wide collectibles; stops relog/alt duplicate lines).
     local priorTs = self:GetCollectionsAcquiredAt(data.type, data.id)
     if priorTs ~= nil then
@@ -2754,12 +2758,17 @@ function WarbandNexus:AppendCollectionsRecentObtained(data)
     if first and first.type == data.type and first.id == data.id and (now - (first.t or 0)) < 5 then
         return
     end
+    local accountFirstEarn = true
+    if data.type == "achievement" then
+        accountFirstEarn = (data.accountFirstEarn ~= false)
+    end
     table.insert(list, 1, {
         t = now,
         type = data.type,
         id = data.id,
         name = displayName,
         obtainedBy = data.obtainedBy,
+        accountFirstEarn = accountFirstEarn,
     })
     self:PruneCollectionsRecentObtained()
 
@@ -3066,6 +3075,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
             icon = displayIcon,
             achievementPoints = (type(achPoints) == "number" and achPoints > 0) and achPoints or nil,
             obtainedBy = CollectiblePayloadObtainedBy(),
+            accountFirstEarn = true,
         })
     end
 end
@@ -3091,6 +3101,11 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         displayIcon = nil
     end
     MarkAsPermanentlyNotified("achievement", achievementID)
+    local accountFirstEarn = true
+    local okEarn, _, _, _, completed, _, _, _, _, _, _, _, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
+    if okEarn and completed == true and wasEarnedByMe == false then
+        accountFirstEarn = false
+    end
     self:SendMessage(E.COLLECTIBLE_OBTAINED, {
         type = "achievement",
         id = achievementID,
@@ -3098,6 +3113,7 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         icon = displayIcon,
         achievementPoints = (type(achPoints) == "number" and achPoints > 0) and achPoints or nil,
         obtainedBy = CollectiblePayloadObtainedBy(),
+        accountFirstEarn = accountFirstEarn,
     })
 end
 

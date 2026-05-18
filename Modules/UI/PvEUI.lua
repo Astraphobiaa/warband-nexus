@@ -36,6 +36,7 @@ local function CompareCharNameLower(a, b)
 end
 
 local WarbandNexus = ns.WarbandNexus
+local E = ns.Constants and ns.Constants.EVENTS
 local FontManager = ns.FontManager  -- Centralized font management
 
 -- Tooltip API

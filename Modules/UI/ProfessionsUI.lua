@@ -1886,15 +1886,26 @@ function WarbandNexus:DrawProfessionsTab(parent)
         clearProfSortKeys(untrackedChars)
     end
 
-    -- Grouped sections with collapsible headers (SharedWidgets instant expand + scroll extent sync)
+    -- Grouped sections with collapsible headers (Characters-tab stack: header chain respects collapsed body height)
+    local SECTION_HEADER_GAP = 6
     local previousSectionContent = nil
+    local previousSectionHeader = nil
+    local previousSectionExpanded = false
     local isFirstSection = true
     local sectionRows = parent._wnProfNestedRows
-    local scrollFrameRef = parent.GetParent and parent:GetParent() or nil
+    parent._wnProfSectionHeaders = {}
+    parent:SetHeight(1)
+
+    local function RequestProfessionsTabRelayout()
+        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+    end
 
     local function AcquireSectionContentFrame(anchorHeader)
         local contentFrame = CreateFrame("Frame", nil, parent)
         contentFrame:SetHeight(0.1)
+        if contentFrame.SetClipsChildren then
+            contentFrame:SetClipsChildren(true)
+        end
         contentFrame._wnAnchorHeader = anchorHeader
         contentFrame._wnSectionFullH = 0
         contentFrame:ClearAllPoints()
@@ -1905,16 +1916,20 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     local function AnchorSectionHeader(headerFrame)
+        headerFrame:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
         if isFirstSection then
-            headerFrame:SetPoint("TOPLEFT", 0, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", 0, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
             isFirstSection = false
-        elseif previousSectionContent then
-            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", 0, -4)
-            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", 0, -4)
+        elseif previousSectionExpanded and previousSectionContent then
+            headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
+            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
+        elseif previousSectionHeader then
+            headerFrame:SetPoint("TOPLEFT", previousSectionHeader, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
+            headerFrame:SetPoint("TOPRIGHT", previousSectionHeader, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
         else
-            headerFrame:SetPoint("TOPLEFT", 0, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", 0, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
+            headerFrame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
         end
     end
 
@@ -1945,33 +1960,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     self.db.profile.ui[sectionKey] = exp
                     if exp then self.profRecentlyExpanded[sectionKey] = GetTime() end
                 end
-            end,
-            onUpdate = function(drawH)
-                if not sectionContent then return end
-                if not sectionContent._profAnimScrollInit then
-                    sectionContent._profAnimScrollInit = true
-                    sectionContent._profScrollH0 = parent:GetHeight()
-                    sectionContent._profDetailH0 = drawH
-                end
-                local delta = drawH - sectionContent._profDetailH0
-                parent:SetHeight(math.max(1, sectionContent._profScrollH0 + delta))
-                if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                    local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                    local cur = scrollFrameRef:GetVerticalScroll() or 0
-                    scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                end
-            end,
-            onComplete = function()
-                if sectionContent then
-                    sectionContent._profAnimScrollInit = nil
-                    sectionContent._profScrollH0 = nil
-                    sectionContent._profDetailH0 = nil
-                end
-                if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                    local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                    local cur = scrollFrameRef:GetVerticalScroll() or 0
-                    scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                end
+                RequestProfessionsTabRelayout()
             end,
         }) or {}
         if visualOpts and visualOpts.sectionPreset then
@@ -1989,8 +1978,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
                         sectionContent:Show()
                         sectionContent:SetHeight(math.max(0.1, sectionContent._wnSectionFullH or 0.1))
                     else
-                        sectionContent:Hide()
                         sectionContent:SetHeight(0.1)
+                        sectionContent:Hide()
                     end
                 end
             end,
@@ -2049,13 +2038,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
             end
         end
 
-        sectionContent._wnSectionFullH = sectionYOffset
+        sectionContent._wnSectionFullH = math.max(0.1, sectionYOffset)
         if isExpanded then
+            sectionContent:SetHeight(sectionContent._wnSectionFullH)
             sectionContent:Show()
-            sectionContent:SetHeight(math.max(0.1, sectionYOffset))
         else
-            sectionContent:Hide()
             sectionContent:SetHeight(0.1)
+            sectionContent:Hide()
         end
 
         if isCustomRosterSection and ns.UI_DecorateCustomHeader then
@@ -2081,9 +2070,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
             profSectionCount:SetPoint("RIGHT", header, "RIGHT", -14, 0)
         end
 
+        tinsert(parent._wnProfSectionHeaders, header)
+        previousSectionHeader = header
         previousSectionContent = sectionContent
-        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT + (isExpanded and sectionYOffset or 0)
-        yOffset = yOffset + 6  -- breathing room between sections
+        previousSectionExpanded = isExpanded == true
+        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT + (isExpanded and sectionYOffset or 0) + SECTION_HEADER_GAP
     end
 
     local sectionFilter = "all"
