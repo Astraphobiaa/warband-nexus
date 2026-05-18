@@ -1956,6 +1956,7 @@ L["STORAGE_COLLAPSE_ALL_TOOLTIP"] = "折叠所有存储分类和嵌套类别。"
 L["STORAGE_EXPAND_ALL_TOOLTIP"] = "展开所有存储分类（个人银行、战团银行、公会银行及嵌套类别）。"
 L["TODO_SLOT_TOOLTIP_ADD"] = "点击添加到你的待办列表。"
 L["TODO_SLOT_TOOLTIP_REMOVE"] = "点击从你的待办列表中移除。"
+L["TODO_SUMMARY_MORE_SOURCES"] = "+%d more"
 L["TRACK_SLOT_DISABLED_COMPLETED"] = "已完成的成就无法在列表中追踪。"
 L["TRACK_SLOT_TOOLTIP_UNTRACK"] = "点击停止在暴雪任务框中追踪。"
 

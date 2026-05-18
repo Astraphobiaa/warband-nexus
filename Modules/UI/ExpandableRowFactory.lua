@@ -220,6 +220,185 @@ local function CreateDetailsFrame(row, parentFrame, options)
     return detailsFrame
 end
 
+local function ApplyTypeAtlasTexture(tex, parent, atlas, size)
+    size = size or 24
+    tex:SetSize(size, size)
+    tex:ClearAllPoints()
+    tex:SetPoint("CENTER", parent, "CENTER", 0, 0)
+    tex:SetSnapToPixelGrid(false)
+    tex:SetTexelSnappingBias(0)
+    return pcall(function() tex:SetAtlas(atlas, false) end)
+end
+
+local function CreateSquareTypeBadge(parent, atlas, badgeSize, FactEr)
+    badgeSize = badgeSize or 24
+    local frame = FactEr and FactEr:CreateContainer(parent, badgeSize, badgeSize, false)
+    if not frame then
+        frame = CreateFrame("Frame", nil, parent)
+        frame:SetSize(badgeSize, badgeSize)
+    end
+    local tex = frame:CreateTexture(nil, "ARTWORK")
+    if ApplyTypeAtlasTexture(tex, frame, atlas, badgeSize) then
+        frame:Show()
+        return frame
+    end
+    frame:Hide()
+    return nil
+end
+
+--- Fixed To-Do header: title (large), points under title (achievements), summaries under icon.
+local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
+    local PCM = ns.UI_PLANS_CARD_METRICS or {}
+    local ICON_LEFT = 8
+    local ICON_SIZE = tonumber(data.iconSize) or PCM.todoUnifiedIconSize or PCM.todoIconSize or 40
+    local titleInset = data.titleRightInset or 90
+    local FactEr = ns.UI and ns.UI.Factory
+    local TYPE_BADGE_SIZE = data.typeBadgeSize or PCM.todoTypeBadgeSize or 24
+    local iconTop = -(tonumber(PCM.todoIconRowTop) or 8)
+    local metaGap = tonumber(PCM.todoMetaGap) or 6
+    local titleGap = tonumber(PCM.todoTitleGap) or 6
+    local summaryGap = tonumber(PCM.todoSummaryGap) or 4
+    local summaryLineGap = tonumber(PCM.todoSummaryLineGap) or 3
+    local chevronSz = tonumber(data.chevronSize) or tonumber(PCM.plansChevronSize) or 18
+    local hasPoints = data.achievementPoints and tonumber(data.achievementPoints) and tonumber(data.achievementPoints) > 0
+    local summaryRight = titleInset
+    if data.canExpand ~= false then
+        summaryRight = summaryRight + chevronSz + 4
+    end
+
+    row._todoIconLeft = ICON_LEFT
+    row._todoTitleGap = titleGap
+    row._todoSummaryGap = summaryGap
+    row._todoMetaRowCentered = true
+    row._todoSummaryAnchor = nil
+    row._todoSummaryBandTopGap = tonumber(PCM.todoSummaryBandTopGap) or 6
+    row._todoSummaryRightInset = summaryRight
+
+    local iconFrame
+    if data.icon then
+        iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, false)
+        iconFrame:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", ICON_LEFT, iconTop)
+        iconFrame:Show()
+        row.iconFrame = iconFrame
+    end
+    row._todoSummaryAnchor = iconFrame or headerFrame
+
+    local function AnchorBadgeOnIcon(badge, icon)
+        if not badge or not icon then return end
+        badge:SetPoint("LEFT", icon, "RIGHT", metaGap, 0)
+        badge:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    end
+
+    local titleAnchor = iconFrame or headerFrame
+    if hasPoints and iconFrame then
+        local shieldFrame = CreateSquareTypeBadge(headerFrame, "UI-Achievement-Shield-NoPoints", TYPE_BADGE_SIZE, FactEr)
+        if shieldFrame then
+            AnchorBadgeOnIcon(shieldFrame, iconFrame)
+            row.typeBadge = shieldFrame
+            titleAnchor = shieldFrame
+        end
+    elseif data.typeAtlas and iconFrame then
+        local typeBadgeFrame = CreateSquareTypeBadge(headerFrame, data.typeAtlas, TYPE_BADGE_SIZE, FactEr)
+        if typeBadgeFrame then
+            AnchorBadgeOnIcon(typeBadgeFrame, iconFrame)
+            row.typeBadge = typeBadgeFrame
+            titleAnchor = typeBadgeFrame
+        end
+    end
+    row._todoTitleAnchor = titleAnchor
+
+    local metaRightText
+    if data.metaRightText and data.metaRightText ~= "" then
+        metaRightText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+        metaRightText:SetJustifyH("RIGHT")
+        metaRightText:SetWordWrap(false)
+        metaRightText:SetMaxLines(1)
+        metaRightText:SetText(data.metaRightText)
+        row.metaRightText = metaRightText
+    end
+
+    local titleText = FontManager:CreateFontString(headerFrame, "title", "OVERLAY")
+    titleText:SetPoint("LEFT", titleAnchor, "RIGHT", titleGap, 0)
+    if metaRightText then
+        metaRightText:SetPoint("RIGHT", headerFrame, "RIGHT", -titleInset, 0)
+        if iconFrame then
+            metaRightText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
+        end
+        titleText:SetPoint("RIGHT", metaRightText, "LEFT", -titleGap, 0)
+    else
+        titleText:SetPoint("RIGHT", headerFrame, "RIGHT", -titleInset, 0)
+    end
+    if iconFrame then
+        titleText:SetPoint("TOP", iconFrame, "TOP", 0, 0)
+        if not hasPoints then
+            titleText:SetPoint("BOTTOM", iconFrame, "BOTTOM", 0, 0)
+            titleText:SetJustifyV("MIDDLE")
+        else
+            titleText:SetJustifyV("TOP")
+        end
+    end
+    titleText:SetJustifyH("LEFT")
+    titleText:SetWordWrap(false)
+    titleText:SetMaxLines(1)
+    titleText:SetNonSpaceWrap(false)
+    titleText:SetText("|cffffffff" .. (data.title or (ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r")
+    row.titleText = titleText
+
+    if hasPoints then
+        local pts = data.achievementPoints
+        local pointsText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+        pointsText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
+        pointsText:SetPoint("RIGHT", titleText, "RIGHT", 0, 0)
+        pointsText:SetJustifyH("LEFT")
+        pointsText:SetWordWrap(false)
+        pointsText:SetMaxLines(1)
+        local ptsStr = ns.UI_FormatPlanPoints and ns.UI_FormatPlanPoints(pts)
+        if ptsStr then
+            pointsText:SetText(ptsStr)
+        else
+            pointsText:SetText("|cffffd700" .. tostring(tonumber(pts) or 0) .. " " .. ((ns.L and ns.L["POINTS_LABEL"]) or "Points") .. "|r")
+        end
+        row.pointsSubText = pointsText
+    end
+    row._todoSummaryTopRef = iconFrame
+
+    local summaryLines = data.summaryLines
+    if (not summaryLines or #summaryLines == 0) and data.summaryLine and data.summaryLine ~= "" then
+        summaryLines = { data.summaryLine }
+    end
+    if summaryLines and #summaryLines > 0 and iconFrame then
+        row.summaryTexts = {}
+        local layout = ns.UI_PlansTodoSummaryLayout and ns.UI_PlansTodoSummaryLayout(rowHeight, #summaryLines, hasPoints)
+        for li = 1, #summaryLines do
+            local line = summaryLines[li]
+            if line and line ~= "" then
+                local summaryText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+                summaryText:SetJustifyH("LEFT")
+                summaryText:SetJustifyV("MIDDLE")
+                summaryText:SetWordWrap(false)
+                summaryText:SetMaxLines(1)
+                summaryText:SetNonSpaceWrap(false)
+                summaryText:SetText(line)
+                summaryText:SetPoint("LEFT", row._todoSummaryAnchor, "LEFT", 0, 0)
+                if layout then
+                    local slotY = -(layout.startFromIconBottom + (li - 1) * (layout.lineH + layout.lineGap))
+                    summaryText:SetPoint("TOPLEFT", iconFrame, "BOTTOMLEFT", 0, slotY)
+                    summaryText:SetHeight(layout.lineH)
+                end
+                summaryText:SetPoint("RIGHT", headerFrame, "RIGHT", -summaryRight, 0)
+                row.summaryTexts[#row.summaryTexts + 1] = summaryText
+                if li == 1 then
+                    row.summaryText = summaryText
+                end
+            end
+        end
+    end
+
+    headerFrame:SetHeight(rowHeight)
+    row:SetHeight(rowHeight)
+    row.SyncHeaderToTitle = function() end
+end
+
 --[[
     Create an expandable row for achievements/collections
     @param parent - Parent frame
@@ -239,7 +418,19 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     
     if not parent then return nil end
     
-    rowHeight = rowHeight or UI_SPACING.CHAR_ROW_HEIGHT  -- Use standardized character row height
+    local PCM0 = ns.UI_PLANS_CARD_METRICS or {}
+    if data and data.todoUnifiedHeader then
+        if data.collapsedHeight then
+            rowHeight = data.collapsedHeight
+        elseif ns.UI_PlansTodoFixedCollapsedHeight then
+            local hasPts = data.achievementPoints and tonumber(data.achievementPoints) and tonumber(data.achievementPoints) > 0
+            rowHeight = ns.UI_PlansTodoFixedCollapsedHeight(hasPts)
+        else
+            rowHeight = rowHeight or PCM0.todoUnifiedHeaderHeight
+        end
+    else
+        rowHeight = rowHeight or UI_SPACING.CHAR_ROW_HEIGHT
+    end
     local FactEr = ns.UI and ns.UI.Factory
     local wRow = math.max(50, width or 120)
     
@@ -313,6 +504,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
 
     -- Single-step height apply: onToggle (rebuild signal) runs when the expand callback completes.
     local function ToggleExpand()
+        if data.canExpand == false then return end
         local newExpanded = not row.isExpanded
         row.isExpanded = newExpanded
         ns.UI_CollapseExpandSetState(row.expandBtn, newExpanded)
@@ -348,28 +540,60 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     local PCM = ns.UI_PLANS_CARD_METRICS or {}
     local rowNudgeY = tonumber(PCM.rowIconNudgeY) or 0
     local chevronSz = tonumber(data.chevronSize) or tonumber(PCM.plansChevronSize) or 18
+    local canExpandRow = data.canExpand ~= false
+    local chevronInteractive = canExpandRow and (not data.todoUnifiedHeader or canExpandRow)
     local expandBtn = ns.UI_CreateCollapseExpandControl(headerFrame, isExpanded, {
-        enableMouse = true,
+        enableMouse = chevronInteractive,
         size = chevronSz,
     })
-    expandBtn:SetPoint("LEFT", 6, rowNudgeY)
-
-    expandBtn:RegisterForClicks("LeftButtonUp")
-    expandBtn:SetScript("OnClick", function(_, button)
-        if button ~= "LeftButton" then return end
-        ToggleExpand()
-    end)
+    if data.todoUnifiedHeader then
+        if not canExpandRow then
+            expandBtn:Hide()
+        end
+    else
+        expandBtn:SetPoint("LEFT", 6, rowNudgeY)
+        if not canExpandRow then
+            expandBtn:Hide()
+        elseif chevronInteractive then
+            expandBtn:RegisterForClicks("LeftButtonUp")
+            expandBtn:SetScript("OnClick", function(_, button)
+                if button ~= "LeftButton" then return end
+                ToggleExpand()
+            end)
+        end
+    end
     row.expandBtn = expandBtn
-    
-    -- Header toggles on click release — NOT OnMouseDown. Pairing MouseDown here with the expand
-    -- button's OnClick (fires on MouseUp) caused double ToggleExpand → instant re-close / broken tween.
-    headerFrame:EnableMouse(true)
-    headerFrame:RegisterForClicks("LeftButtonUp")
-    headerFrame:SetScript("OnClick", function(_, button)
-        if button ~= "LeftButton" then return end
-        ToggleExpand()
-    end)
-    
+
+    if canExpandRow then
+        headerFrame:EnableMouse(true)
+        headerFrame:RegisterForClicks("LeftButtonUp")
+        headerFrame:SetScript("OnClick", function(_, button)
+            if button ~= "LeftButton" then return end
+            ToggleExpand()
+        end)
+    else
+        headerFrame:SetScript("OnClick", nil)
+    end
+
+    if data.todoUnifiedHeader then
+        ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
+        if canExpandRow and row.expandBtn then
+            row._todoChevronBottomRight = true
+            local chevIn = tonumber(PCM.todoChevronInset) or 6
+            row.expandBtn:ClearAllPoints()
+            row.expandBtn:SetPoint("BOTTOMRIGHT", headerFrame, "BOTTOMRIGHT", -chevIn, chevIn)
+            row.expandBtn:Show()
+            row.expandBtn:EnableMouse(true)
+            if row.expandBtn.RegisterForClicks then
+                row.expandBtn:RegisterForClicks("LeftButtonUp")
+            end
+            row.expandBtn:SetScript("OnClick", function(_, button)
+                if button ~= "LeftButton" then return end
+                ToggleExpand()
+            end)
+            row.expandBtn:Raise()
+        end
+    else
     -- Item Icon (after expand button). data.iconSize overrides the default for callers that
     -- want a chunkier portrait. Title and type badge anchor to this frame so they stay aligned
     -- regardless of icon size. Supports atlas icons via data.iconIsAtlas.
@@ -484,7 +708,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     end
     row.SyncHeaderToTitle = SyncHeaderToTitle
     SyncHeaderToTitle()
-    
+    end
+
     -- Expanded details container (created on demand)
         row.detailsFrame = nil
         

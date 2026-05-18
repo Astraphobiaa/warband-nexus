@@ -1,11 +1,11 @@
---[[
+﻿--[[
     Warband Nexus - Plans Tracker Window
     Standalone floating window opened via /wn todo.
     Resizable, movable, responsive. Shows active plans by category.
     Card layout: Icon | Name \n Description (source/vendor/zone).
     Achievements: expandable requirements + Blizzard Track button.
     
-    Data flow: DB (db.global.plans) → GetActivePlans() [pure read] → UI render
+    Data flow: DB (db.global.plans) â†’ GetActivePlans() [pure read] â†’ UI render
     Completion filter: IsActivePlanComplete() [live CheckPlanProgress + vault/daily rules]
 
     WN_FACTORY: `ns.UI.Factory` + ApplyVisuals for cards, dropdown, scroll chrome; Blizzard size-grabber
@@ -23,7 +23,11 @@ local PLAN_COLORS = ns.PLAN_UI_COLORS or {}
 local PlansTrackerEvents = {}
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
-local CreateExpandableRow = ns.UI_CreateExpandableRow
+local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
+    local fn = ns.UI_CreateExpandableRow
+    if not fn then return nil end
+    return fn(parent, width, rowHeight, data, isExpanded, onToggle)
+end
 local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
 local PLAN_TYPES = ns.PLAN_TYPES
@@ -45,7 +49,7 @@ local UI_SPACING = ns.UI_SPACING or {
     AFTER_ELEMENT = 8,
 }
 
--- ── Layout constants (tracker chrome aligns with main shell: NAV_BAR_HEIGHT + TAB_HEIGHT) ──
+-- â”€â”€ Layout constants (tracker chrome aligns with main shell: NAV_BAR_HEIGHT + TAB_HEIGHT) â”€â”€
 local PADDING = UI_SPACING.TOP_MARGIN
 local MAIN_SHELL_PT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
 local HEADER_HEIGHT = MAIN_SHELL_PT.NAV_BAR_HEIGHT or 36
@@ -121,12 +125,12 @@ local function AddTrackerCardAccent(card)
     strip:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45)
 end
 
--- ── Refresh debounce ──
+-- â”€â”€ Refresh debounce â”€â”€
 local pendingRefresh = false
 
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 -- DB helpers
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 local function GetTrackerFrame()
     return _G.WarbandNexus_PlansTracker
 end
@@ -192,9 +196,9 @@ local function GetAchievementRequirementsText(achievementID)
     return header .. table.concat(parts, "\n")
 end
 
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 -- Content helpers
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 --- Content width: derived from scrollFrame (already accounts for scrollbar gap)
 local function GetContentWidth(frame)
     local sf = frame and frame.contentScrollFrame
@@ -238,7 +242,7 @@ local function GetPlanDescription(plan)
         end
         parts[#parts + 1] = typeLabel
     end
-    local text = table.concat(parts, " · ")
+    local text = table.concat(parts, " Â· ")
     -- Card UI uses word wrap; keep a generous cap for performance only
     if #text > 240 then text = text:sub(1, 237) .. "..." end
     return text
@@ -383,7 +387,7 @@ end
 
 --- Build expanded-row criteria items (Drop / Vendor / Quest / Location lines as criteriaData entries).
 --- Exposed as ns.UI_BuildPlanCriteriaItems so the To-Do tab (PlansUI) can reuse the same parsed
---- source pipeline — single source of truth for the tracker and the in-window list.
+--- source pipeline â€” single source of truth for the tracker and the in-window list.
 local function BuildPlanCriteriaItems(plan)
     local items = {}
     local sources = ResolveTrackerPlanSources(plan)
@@ -424,6 +428,260 @@ local function BuildPlanCriteriaItems(plan)
 end
 ns.UI_BuildPlanCriteriaItems = BuildPlanCriteriaItems
 
+--- All parsed source lines for expanded collectible rows (collapsed header shows first line only).
+function ns.UI_BuildPlanCriteriaItemsAll(plan)
+    local items = {}
+    local sources = ResolveTrackerPlanSources(plan)
+    if not sources or #sources == 0 then return items end
+    local L = ns.L
+    local labCol = (PLAN_COLORS.sourceLabel or "|cff99ccff")
+    local body = (PLAN_COLORS.body or "|cffffffff")
+    local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
+    local IconMk = ns.UI_PlanSourceIconMarkup
+    local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
+    local lootMk14 = IconMk and IconMk("loot", szMd) or format("|A:Banker:%d:%d|a", szMd, szMd)
+    local questMk14 = IconMk and IconMk("quest", szMd) or format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
+    local locMk14 = IconMk and IconMk("location", szMd) or format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
+    local function row(iconMarkup, key, fallback, value)
+        if not value or value == "" then return end
+        local label = ns.UI_NormalizeColonLabelSpacing((L and L[key]) or fallback)
+        items[#items + 1] = { text = (iconMarkup or "") .. " " .. labCol .. label .. "|r " .. body .. tostring(value) .. "|r" }
+    end
+    for si = 1, #sources do
+        local src = sources[si]
+        if src.vendor then
+            row(classMk14, "VENDOR_LABEL", "Vendor:", src.vendor)
+        elseif src.npc then
+            row(lootMk14, "DROP_LABEL", "Drop:", src.npc)
+        elseif src.quest then
+            row(questMk14, "QUEST_LABEL", "Quest:", src.quest)
+        end
+        if src.zone then
+            local zoneSuffix = ""
+            if plan.type == "mount" and plan.mountID and WarbandNexus and WarbandNexus.GetDropDifficulty then
+                local diff = WarbandNexus:GetDropDifficulty("mount", plan.mountID)
+                if diff and not src.zone:find("(" .. diff .. ")", 1, true) then
+                    zoneSuffix = " (" .. diff .. ")"
+                end
+            end
+            row(locMk14, "LOCATION_LABEL", "Location:", src.zone .. zoneSuffix)
+        end
+    end
+    return items
+end
+
+--- One-line summary under the portrait (collapsed To-Do row). Expand shows full criteria/sources.
+function ns.UI_BuildPlanTodoSummaryLine(plan, opts)
+    if not plan then return "" end
+    opts = type(opts) == "table" and opts or {}
+    local L = ns.L
+    local P = PLAN_COLORS or {}
+    local labCol = P.sourceLabel or "|cff99ccff"
+    local body = P.body or "|cffffffff"
+    local dim = P.descDim or "|cff888888"
+
+    if plan.type == "achievement" and plan.achievementID then
+        local achID = plan.achievementID
+        local numCriteria = (GetAchievementNumCriteria and GetAchievementNumCriteria(achID)) or 0
+        if issecretvalue and issecretvalue(numCriteria) then numCriteria = 0 end
+        numCriteria = tonumber(numCriteria) or 0
+        if numCriteria > 0 then
+            local completed = 0
+            for cidx = 1, numCriteria do
+                local cName, _, cDone = GetAchievementCriteriaInfo(achID, cidx)
+                if cName and cName ~= "" and cDone then completed = completed + 1 end
+            end
+            local pct = numCriteria > 0 and math.floor((completed / numCriteria) * 100) or 0
+            local reqLab = ns.UI_NormalizeColonLabelSpacing((L and L["REQUIREMENTS_LABEL"]) or "Requirements:")
+            local achFmt = (L and L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
+            local progress = format(achFmt, FormatNumber(completed), FormatNumber(numCriteria), FormatNumber(pct))
+            return (P.progressLabel or "|cffffcc00") .. reqLab .. "|r " .. (P.incomplete or "|cffffffff") .. progress .. "|r"
+        end
+        local _, _, _, _, _, _, _, achDesc = GetAchievementInfo(achID)
+        if achDesc and achDesc ~= "" and not (issecretvalue and issecretvalue(achDesc)) then
+            local descLab = ns.UI_NormalizeColonLabelSpacing((L and L["DESCRIPTION_LABEL"]) or "Description:")
+            local d = achDesc:gsub("\n", " "):gsub("%s+", " ")
+            if #d > 72 then d = d:sub(1, 69) .. "..." end
+            return labCol .. descLab .. "|r " .. body .. d .. "|r"
+        end
+        return ""
+    end
+
+    if plan.type == "custom" then
+        local d = plan.description or plan.note or ""
+        if d ~= "" and d ~= "Custom plan" then
+            if #d > 72 then d = d:sub(1, 69) .. "..." end
+            return dim .. d .. "|r"
+        end
+        return ""
+    end
+
+    local items = BuildPlanCriteriaItems(plan)
+    if #items == 0 then return "" end
+    local line = items[1].text or ""
+    if #items > 1 then
+        local moreFmt = "+%d more"
+        local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
+        if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
+            moreFmt = locMore
+        end
+        line = line .. " " .. dim .. format(moreFmt, #items - 1) .. "|r"
+    end
+
+    if opts.trySuffix and opts.trySuffix ~= "" then
+        line = line .. " " .. opts.trySuffix
+    end
+    return line
+end
+
+--- Collapsed To-Do row: up to `maxLines` criteria/source lines (drop, location, …).
+function ns.UI_BuildPlanTodoSummaryLines(plan, opts)
+    opts = type(opts) == "table" and opts or {}
+    local maxLines = tonumber(opts.maxLines) or 2
+    if plan and plan.type == "achievement" then
+        maxLines = 1
+    end
+    if maxLines < 1 then maxLines = 1 end
+    local one = ns.UI_BuildPlanTodoSummaryLine and ns.UI_BuildPlanTodoSummaryLine(plan, opts) or ""
+    if not plan then return {} end
+    if plan.type == "achievement" or plan.type == "custom" then
+        return one ~= "" and { one } or {}
+    end
+    local items = BuildPlanCriteriaItems(plan)
+    if #items == 0 then return {} end
+    local lines = {}
+    local limit = math.min(#items, maxLines)
+    for i = 1, limit do
+        local t = items[i].text
+        if t and t ~= "" then lines[#lines + 1] = t end
+    end
+    if #items > maxLines and #lines > 0 then
+        local L = ns.L
+        local dim = (PLAN_COLORS and PLAN_COLORS.descDim) or "|cff888888"
+        local moreFmt = "+%d more"
+        local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
+        if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
+            moreFmt = locMore
+        end
+        lines[#lines] = lines[#lines] .. " " .. dim .. format(moreFmt, #items - maxLines) .. "|r"
+    end
+    return lines
+end
+
+--- Browse grid: all source lines for expanded rows (Mounts / Pets / Toys / etc.).
+function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
+    local items = {}
+    if not sources or #sources == 0 then return items end
+    local L = ns.L
+    local labCol = (PLAN_COLORS.sourceLabel or "|cff99ccff")
+    local body = (PLAN_COLORS.body or "|cffffffff")
+    local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
+    local IconMk = ns.UI_PlanSourceIconMarkup
+    local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
+    local lootMk14 = IconMk and IconMk("loot", szMd) or format("|A:Banker:%d:%d|a", szMd, szMd)
+    local questMk14 = IconMk and IconMk("quest", szMd) or format("|A:Islands-QuestTurnin:%d:%d|a", szMd, szMd)
+    local locMk14 = IconMk and IconMk("location", szMd) or format("|A:poi-islands-table:%d:%d|a", szMd, szMd)
+    local function row(iconMarkup, key, fallback, value)
+        if not value or value == "" then return end
+        local label = ns.UI_NormalizeColonLabelSpacing((L and L[key]) or fallback)
+        items[#items + 1] = { text = (iconMarkup or "") .. " " .. labCol .. label .. "|r " .. body .. tostring(value) .. "|r" }
+    end
+    for si = 1, #sources do
+        local src = sources[si]
+        if src.vendor then
+            row(classMk14, "VENDOR_LABEL", "Vendor:", src.vendor)
+        elseif src.npc then
+            row(lootMk14, "DROP_LABEL", "Drop:", src.npc)
+        elseif src.quest then
+            row(questMk14, "QUEST_LABEL", "Quest:", src.quest)
+        elseif src.faction then
+            local factionLabel = ns.UI_NormalizeColonLabelSpacing((L and L["FACTION_LABEL"]) or "Faction:")
+            local displayText = classMk14 .. " " .. factionLabel .. src.faction
+            if src.renown then
+                local repType = src.isFriendship and ((L and L["FRIENDSHIP_LABEL"]) or "Friendship") or ((L and L["RENOWN_TYPE_LABEL"]) or "Renown")
+                displayText = displayText .. " |cffffcc00(" .. repType .. " " .. src.renown .. ")|r"
+            end
+            items[#items + 1] = { text = displayText }
+        end
+        if src.zone then
+            row(locMk14, "LOCATION_LABEL", "Location:", src.zone)
+        end
+    end
+    if #items == 0 and category ~= "title" and item.source and item.source ~= "" then
+        if not (issecretvalue and issecretvalue(item.source)) then
+            local srcLab = ns.UI_NormalizeColonLabelSpacing((L and L["SOURCE_LABEL"]) or "Source:")
+            items[#items + 1] = { text = labCol .. srcLab .. "|r " .. body .. tostring(item.source) .. "|r" }
+        end
+    end
+    return items
+end
+
+--- One-line collapsed summary for Plans browse cards (To-Do unified header).
+function ns.UI_BuildBrowseTodoSummaryLine(item, category, sources, opts)
+    if not item then return "" end
+    opts = type(opts) == "table" and opts or {}
+    local L = ns.L
+    local P = PLAN_COLORS or {}
+    local dim = P.descDim or "|cff888888"
+    local labCol = P.sourceLabel or "|cff99ccff"
+    local body = P.body or "|cffffffff"
+
+    if category == "title" and item.sourceAchievement then
+        local sourceLabel = ns.UI_NormalizeColonLabelSpacing((L and L["SOURCE_LABEL"]) or "Source:")
+        local achievementType = (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement"
+        local srcFmt = (L and L["SOURCE_ACHIEVEMENT_FORMAT"]) or "%s %s"
+        local line = format(srcFmt, sourceLabel, achievementType .. " " .. tostring(item.sourceAchievement))
+        if #line > 72 then line = line:sub(1, 69) .. "..." end
+        return labCol .. line .. "|r"
+    end
+
+    local criteriaItems = ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
+    if #criteriaItems == 0 then return "" end
+    local line = criteriaItems[1].text or ""
+    if #criteriaItems > 1 then
+        local moreFmt = "+%d more"
+        local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
+        if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
+            moreFmt = locMore
+        end
+        line = line .. " " .. dim .. format(moreFmt, #criteriaItems - 1) .. "|r"
+    end
+    return line
+end
+
+--- Collapsed browse card: up to `maxLines` source lines (no tries — use metaRightText on row 1).
+function ns.UI_BuildBrowseTodoSummaryLines(item, category, sources, opts)
+    opts = type(opts) == "table" and opts or {}
+    local maxLines = tonumber(opts.maxLines) or 2
+    if maxLines < 1 then maxLines = 1 end
+    if category == "title" and item and item.sourceAchievement then
+        local one = ns.UI_BuildBrowseTodoSummaryLine and ns.UI_BuildBrowseTodoSummaryLine(item, category, sources, opts) or ""
+        return one ~= "" and { one } or {}
+    end
+    local criteriaItems = ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
+    if #criteriaItems == 0 then return {} end
+    local lines = {}
+    local limit = math.min(#criteriaItems, maxLines)
+    for i = 1, limit do
+        local t = criteriaItems[i].text
+        if t and t ~= "" then lines[#lines + 1] = t end
+    end
+    if #criteriaItems > maxLines and #lines > 0 then
+        local L = ns.L
+        local dim = (PLAN_COLORS and PLAN_COLORS.descDim) or "|cff888888"
+        local moreFmt = "+%d more"
+        local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
+        if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
+            moreFmt = locMore
+        end
+        lines[#lines] = lines[#lines] .. " " .. dim .. format(moreFmt, #criteriaItems - maxLines) .. "|r"
+    end
+    return lines
+end
+
+local PlanCardFactory = ns.UI_PlanCardFactory
+local CreateCard = ns.UI_CreateCard
+
 --- Full tooltip for plan card hover (uses addon's custom TooltipService)
 local function ShowPlanTooltip(anchor, plan, isExpanded)
     local TooltipService = ns.TooltipService
@@ -435,7 +693,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
 
     local lines = {}
 
-    -- Achievement points (right under the title) — pulled from live API, not duplicated state.
+    -- Achievement points (right under the title) â€” pulled from live API, not duplicated state.
     if plan.type == "achievement" and plan.achievementID then
         local ok, _, _, points = pcall(GetAchievementInfo, plan.achievementID)
         if ok and points and points > 0 then
@@ -492,7 +750,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         lines[#lines + 1] = { left = reqLabel, right = plan.requirement, leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.5, 0.5} }
     end
 
-    -- Achievement requirements (only when collapsed — expanded cards already show them)
+    -- Achievement requirements (only when collapsed â€” expanded cards already show them)
     if plan.type == "achievement" and plan.achievementID and not isExpanded then
         local numCriteria = GetAchievementNumCriteria(plan.achievementID)
         if numCriteria and numCriteria > 0 then
@@ -559,9 +817,9 @@ local function HidePlanTooltip()
     end
 end
 
--- ══════════════════════════════════════════
--- RefreshTrackerContent (debounced) – forward declaration
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+-- RefreshTrackerContent (debounced) â€“ forward declaration
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 local RefreshTrackerContent  -- forward declare so inner functions can reference it
 
 -- Track rows in vertical order so expand/collapse can reposition siblings per layout pass
@@ -654,7 +912,7 @@ local function RefreshTrackerContentImmediate()
     end
 
     local yOffset = 0
-    -- Single-column list: full width, predictable vertical rhythm (no 2×2 grid)
+    -- Single-column list: full width, predictable vertical rhythm (no 2Ã—2 grid)
     local LIST_GAP = 8
     local colWidth = width
 
@@ -677,119 +935,21 @@ local function RefreshTrackerContentImmediate()
     else
         for i = 1, #filtered do
             local plan = filtered[i]
-            local isAchievement = (plan.type == "achievement")
-
-            if isAchievement and plan.achievementID then
-                -- ── Achievement: expandable row ──
-                local isExpanded = expandedAchievements[plan.achievementID]
-                local infoText = GetAchievementDescriptionForRow(plan)
-                if infoText == "" then infoText = GetPlanDescription(plan) end
-                if infoText ~= "" then infoText = "|cff99ccff" .. infoText .. "|r" end
-                local requirementsText = GetAchievementRequirementsText(plan.achievementID)
-                -- Border-framed collectible icon stays as the achievement portrait. The TYPE atlas
-                -- (shield) is rendered separately as a small badge before the name (handled below
-                -- by ExpandableRow via data.typeAtlas). Score moves under the title (data.scoreBelow).
-                local PCF = ns.UI_PlanCardFactory
-                local achAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS.achievement or "UI-Achievement-Shield-NoPoints"
-                local resolvedTitle = FormatTextNumbers((WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement"))
-                local pts = plan.points
-                if (not pts or pts == 0) and plan.achievementID then
-                    local ok, _, _, p = pcall(GetAchievementInfo, plan.achievementID)
-                    if ok and p then pts = p end
-                end
-                local titleWithPoints = resolvedTitle
-                if pts and pts > 0 then
-                    titleWithPoints = resolvedTitle .. format(" - |cffffd700(%d pts)|r", pts)
-                end
-                local rowData = {
-                    icon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
-                    iconSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoIconSize) or 41,
-                    typeAtlas = achAtlas,
-                    typeBadgeSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoTypeBadgeSize) or 24,
-                    title = titleWithPoints,
-                    information = infoText,
-                    criteria = requirementsText,
-                    criteriaColumns = 2,  -- Tracker uses 2 columns (compact layout)
-                    titleRightInset = 44,  -- symmetric track star (replaces wide text button)
-                    onSectionResize = RepositionTrackerRows,
-                }
-                local achHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width)
-                    or math.max(60, math.min(68, math.floor(width * 0.10)))
-                local row = CreateExpandableRow(scrollChild, width, achHeaderH, rowData, isExpanded, function(expanded)
-                    -- Persist state only — the row's height is already final and siblings have
-                    -- been kept in sync per-frame by RepositionTrackerRows. No full rebuild here.
-                    expandedAchievements[plan.achievementID] = expanded
-                end)
-                row:SetPoint("TOPLEFT", 0, -yOffset)
-                if ApplyVisuals then
-                    ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
-                end
-                AddTrackerCardAccent(row)
-                -- Add accent border to achievement icon (Factory creates it noBorder)
-                if row.iconFrame and ApplyVisuals then
-                    ApplyVisuals(row.iconFrame, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-                    -- Inset texture so it doesn't bleed into border
-                    if row.iconFrame.texture then
-                        local inset = 2
-                        row.iconFrame.texture:ClearAllPoints()
-                        row.iconFrame.texture:SetPoint("TOPLEFT", inset, -inset)
-                        row.iconFrame.texture:SetPoint("BOTTOMRIGHT", -inset, inset)
-                    end
-                end
-
-                -- Blizzard objectives track: symmetric star (same atlas as vault milestones / pet favorites).
-                local achPin = Factory and Factory.CreateAchievementTrackPinButton
-                    and Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
-                        size = 28,
-                        frameLevelOffset = 30,
-                        isDisabled = function()
-                            return WarbandNexus.IsActivePlanComplete and WarbandNexus:IsActivePlanComplete(plan) or false
-                        end,
-                    })
-                if achPin then
-                    achPin:SetPoint("RIGHT", row.headerFrame, "RIGHT", -4, 0)
-                end
-
-                -- Achievement tooltip on header hover (Frame may have no prior OnEnter/OnLeave — guard GetScript)
-                local origOnEnter, origOnLeave = nil, nil
-                do
-                    local ok, res = pcall(function() return row.headerFrame:GetScript("OnEnter") end)
-                    if ok then origOnEnter = res end
-                    ok, res = pcall(function() return row.headerFrame:GetScript("OnLeave") end)
-                    if ok then origOnLeave = res end
-                end
-                row.headerFrame:SetScript("OnEnter", function(self)
-                    if origOnEnter then origOnEnter(self) end
-                    ShowPlanTooltip(row.headerFrame, plan, isExpanded)
-                end)
-                row.headerFrame:SetScript("OnLeave", function(self)
-                    if origOnLeave then origOnLeave(self) end
-                    HidePlanTooltip()
-                end)
-
-                trackerRowOrder[#trackerRowOrder + 1] = row
-                yOffset = yOffset + row:GetHeight() + LIST_GAP
-            elseif plan.type == "weekly_vault" then
-                -- ── Weekly Vault: expandable full-width card ──
+            if plan.type == "weekly_vault" then
+                -- â”€â”€ Weekly Vault (unchanged custom card) â”€â”€
                 local isExpanded = expandedVaults[plan.id]
-                -- Room for 2-line character name + "Weekly Vault" subtitle without clipping
                 local VAULT_HEADER_HEIGHT = math.max(CARD_HEIGHT, 56)
                 local VAULT_ROW_HEIGHT = 22
                 local VAULT_PADDING = 8
                 local NUM_VAULT_PROGRESS_ROWS = 4
-                
-                -- Expanded: header + one row per vault track (raid / dungeon / world / SA)
                 local expandedHeight = VAULT_HEADER_HEIGHT + VAULT_PADDING + (VAULT_ROW_HEIGHT * NUM_VAULT_PROGRESS_ROWS) + VAULT_PADDING + 4
                 local cardHeight = isExpanded and expandedHeight or VAULT_HEADER_HEIGHT
-                
                 local vaultCard = Factory:CreateContainer(scrollChild, width, cardHeight)
                 vaultCard:SetPoint("TOPLEFT", 0, -yOffset)
                 if ApplyVisuals then
                     ApplyVisuals(vaultCard, GetCardColors().bg, GetCardColors().border)
                 end
                 AddTrackerCardAccent(vaultCard)
-                
-                -- Header area (clickable to expand/collapse)
                 local headerFrame = Factory and Factory:CreateContainer(vaultCard, width, VAULT_HEADER_HEIGHT, false)
                 if not headerFrame then
                     headerFrame = CreateFrame("Frame", nil, vaultCard)
@@ -799,63 +959,43 @@ local function RefreshTrackerContentImmediate()
                 headerFrame:SetPoint("TOPRIGHT", 0, 0)
                 headerFrame:SetHeight(VAULT_HEADER_HEIGHT)
                 headerFrame:EnableMouse(true)
-                
-                -- Vault icon (atlas)
                 local iconFrame = CreateIcon(headerFrame, "greatVault-whole-normal", ICON_SIZE, true, nil, false)
                 iconFrame:SetPoint("LEFT", PADDING, 0)
-                iconFrame:SetFrameLevel(headerFrame:GetFrameLevel() + 5)
                 iconFrame:Show()
-                
-                -- Character name with class color
                 local classColor = {1, 1, 1}
                 if plan.characterClass then
                     local cc = RAID_CLASS_COLORS[plan.characterClass]
                     if cc then classColor = {cc.r, cc.g, cc.b} end
                 end
-                
                 local nameText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
                 nameText:SetPoint("TOPLEFT", iconFrame, "TOPRIGHT", 6, -2)
                 nameText:SetPoint("RIGHT", headerFrame, "RIGHT", -70, 0)
                 nameText:SetJustifyH("LEFT")
-                nameText:SetJustifyV("TOP")
-                nameText:SetWordWrap(true)
                 nameText:SetMaxLines(2)
-                nameText:SetNonSpaceWrap(false)
                 local charDisplay = plan.characterName or ""
                 if plan.characterRealm and plan.characterRealm ~= "" then
                     local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
                     charDisplay = charDisplay .. "-" .. rShown
                 end
-                nameText:SetText(format("|cff%02x%02x%02x%s|r", 
-                    math.floor(classColor[1]*255), math.floor(classColor[2]*255), math.floor(classColor[3]*255), 
+                nameText:SetText(format("|cff%02x%02x%02x%s|r",
+                    math.floor(classColor[1]*255), math.floor(classColor[2]*255), math.floor(classColor[3]*255),
                     charDisplay))
-                
-                -- "Weekly Vault" subtitle
                 local subtitleText = FontManager:CreateFontString(headerFrame, "small", "OVERLAY")
                 subtitleText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -1)
                 subtitleText:SetText("|cff888888" .. ((ns.L and ns.L["WEEKLY_VAULT"]) or "Weekly Vault") .. "|r")
-                
-                -- Reset timer (compact, right side of header) — reuse shared Utilities formatter
                 local resetLabel = FontManager:CreateFontString(headerFrame, "small", "OVERLAY")
                 resetLabel:SetPoint("RIGHT", headerFrame, "RIGHT", -PADDING, 0)
                 resetLabel:SetJustifyH("RIGHT")
                 local resetTimestamp = WarbandNexus.GetWeeklyResetTime and WarbandNexus:GetWeeklyResetTime() or 0
-                local resetStr = ns.Utilities:FormatTimeUntilReset(resetTimestamp)
-                resetLabel:SetText("|cff66cc66" .. resetStr .. "|r")
-                
-                -- Expand/collapse arrow
+                resetLabel:SetText("|cff66cc66" .. ns.Utilities:FormatTimeUntilReset(resetTimestamp) .. "|r")
                 local arrow = headerFrame:CreateTexture(nil, "OVERLAY")
                 arrow:SetSize(12, 12)
                 arrow:SetPoint("RIGHT", resetLabel, "LEFT", -4, 0)
                 arrow:SetAtlas(isExpanded and "campaign-headericon-open" or "campaign-headericon-closed")
-                
-                -- Click to expand/collapse
                 headerFrame:SetScript("OnMouseDown", function()
                     expandedVaults[plan.id] = not expandedVaults[plan.id]
                     RefreshTrackerContentImmediate()
                 end)
-                
-                -- Hover effect
                 headerFrame:SetScript("OnEnter", function()
                     if ApplyVisuals then
                         ApplyVisuals(vaultCard, GetCardColors().hoverBg, GetCardColors().hoverBorder)
@@ -866,52 +1006,41 @@ local function RefreshTrackerContentImmediate()
                         ApplyVisuals(vaultCard, GetCardColors().bg, GetCardColors().border)
                     end
                 end)
-                
-                -- Expanded content: Raid / Dungeon / World progress
                 if isExpanded then
                     local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
                         dungeonCount = 0, raidBossCount = 0, worldActivityCount = 0, specialAssignmentCount = 0, specialAssignmentTotal = 2,
                         dungeonSlots = {}, raidSlots = {}, worldSlots = {}
                     }
-
                     local vaultLootReady = false
                     if WarbandNexus.HasUnclaimedVaultRewards then
                         local ok, v = pcall(WarbandNexus.HasUnclaimedVaultRewards, WarbandNexus)
                         vaultLootReady = ok and v == true
                     end
-
                     local saMax = currentProgress.specialAssignmentTotal or 2
                     local progressRows = {
-                        { label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",     current = currentProgress.raidBossCount,       max = 6, thresholds = {2, 4, 6} },
-                        { label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon",  current = currentProgress.dungeonCount,        max = 8, thresholds = {1, 4, 8} },
-                        { label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",      current = currentProgress.worldActivityCount,  max = 8, thresholds = {2, 4, 8} },
-                        { label = (ns.L and ns.L["VAULT_SLOT_SA"]) or "SA",            current = currentProgress.specialAssignmentCount or 0, max = saMax, thresholds = {1, saMax} },
+                        { label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids", current = currentProgress.raidBossCount, max = 6, thresholds = {2, 4, 6} },
+                        { label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon", current = currentProgress.dungeonCount, max = 8, thresholds = {1, 4, 8} },
+                        { label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World", current = currentProgress.worldActivityCount, max = 8, thresholds = {2, 4, 8} },
+                        { label = (ns.L and ns.L["VAULT_SLOT_SA"]) or "SA", current = currentProgress.specialAssignmentCount or 0, max = saMax, thresholds = {1, saMax} },
                     }
-                    
                     local contentY = -(VAULT_HEADER_HEIGHT + VAULT_PADDING)
                     local barAreaWidth = width - PADDING * 2
                     local labelWidth = 55
                     local barWidth = barAreaWidth - labelWidth - 8
-                    
+                    local readyLabel = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
                     for ri = 1, #progressRows do
                         local row = progressRows[ri]
                         local rowY = contentY - ((ri - 1) * VAULT_ROW_HEIGHT)
-                        
-                        -- Row label
                         local lbl = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
                         lbl:SetPoint("TOPLEFT", vaultCard, "TOPLEFT", PADDING, rowY)
                         lbl:SetWidth(labelWidth)
                         lbl:SetJustifyH("LEFT")
                         lbl:SetText("|cffcccccc" .. row.label .. "|r")
-                        
-                        -- Progress bar background
                         local barBg = Factory:CreateContainer(vaultCard, barWidth, 14)
                         barBg:SetPoint("TOPLEFT", vaultCard, "TOPLEFT", PADDING + labelWidth + 4, rowY - 1)
                         if ApplyVisuals then
                             ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.6}, {0.3, 0.3, 0.3, 0.4})
                         end
-                        
-                        -- Progress fill
                         local fillPct = math.min(1.0, row.current / row.max)
                         local fillW = (barWidth - 2) * fillPct
                         if fillW > 0 then
@@ -921,9 +1050,6 @@ local function RefreshTrackerContentImmediate()
                             fill:SetTexture("Interface\\Buttons\\WHITE8x8")
                             fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
                         end
-                        
-                        -- Threshold markers — or "Ready!" at each slot when vault loot is claimable
-                        local readyLabel = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
                         for ti = 1, #row.thresholds do
                             local threshold = row.thresholds[ti]
                             local markerPct = threshold / row.max
@@ -946,19 +1072,15 @@ local function RefreshTrackerContentImmediate()
                                 end
                             end
                         end
-                        
-                        -- Progress text on bar
                         local progText = FontManager:CreateFontString(barBg, "small", "OVERLAY")
                         progText:SetPoint("CENTER", barBg, "CENTER", 0, 0)
                         progText:SetText("|cffffffff" .. row.current .. "/" .. row.max .. "|r")
                     end
                 end
-                
                 vaultCard:Show()
                 trackerRowOrder[#trackerRowOrder + 1] = vaultCard
                 yOffset = yOffset + cardHeight + LIST_GAP
             elseif plan.type == "daily_quests" then
-                -- ── Weekly / daily quest plan: same rich card as main To-Do tab ──
                 local dqH = 170
                 local dqCard = Factory and Factory:CreateContainer(scrollChild, width, dqH, false)
                 if not dqCard then
@@ -966,209 +1088,197 @@ local function RefreshTrackerContentImmediate()
                     dqCard:SetSize(width, dqH)
                 end
                 dqCard:SetPoint("TOPLEFT", 0, -yOffset)
-                if not dqCard.SetBackdrop then
-                    Mixin(dqCard, BackdropTemplateMixin)
-                end
-                if ApplyVisuals then
-                    ApplyVisuals(dqCard, GetCardColors().bg, GetCardColors().border)
-                end
+                if ApplyVisuals then ApplyVisuals(dqCard, GetCardColors().bg, GetCardColors().border) end
                 local PCF = ns.UI_PlanCardFactory
-                if PCF and PCF.CreateDailyQuestCard then
-                    PCF:CreateDailyQuestCard(dqCard, plan)
-                end
+                if PCF and PCF.CreateDailyQuestCard then PCF:CreateDailyQuestCard(dqCard, plan) end
                 AddTrackerCardAccent(dqCard)
                 dqCard:Show()
                 trackerRowOrder[#trackerRowOrder + 1] = dqCard
                 yOffset = yOffset + dqH + LIST_GAP
             else
-                -- ── Standard plan: collapsible row matching the achievement layout ──
-                local isExpanded = expandedPlans[plan.id] or false
+            local PCM = ns.UI_PLANS_CARD_METRICS
+            local PCF = ns.UI_PlanCardFactory
+            local isExpanded
+            if plan.type == "achievement" and plan.achievementID then
+                isExpanded = expandedAchievements[plan.achievementID]
+            else
+                isExpanded = false
+                if plan.id then expandedPlans[plan.id] = false end
+            end
 
-                local iconTexture = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
-                local iconIsAtlas = false
-                if type(iconTexture) == "number" then
-                    iconIsAtlas = false
-                elseif plan.iconAtlas then
-                    iconIsAtlas = true
-                elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then
-                    iconIsAtlas = true
-                elseif type(iconTexture) == "string" and ns.Utilities:IsAtlasName(iconTexture) then
-                    iconIsAtlas = true
+            local resolvedName = FormatTextNumbers((WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
+            local resolvedIcon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
+            local iconIsAtlas = plan.iconAtlas ~= nil
+            if plan.type == "custom" and plan.icon and plan.icon ~= "" then iconIsAtlas = true end
+            if type(resolvedIcon) == "string" and ns.Utilities and ns.Utilities.IsAtlasName and ns.Utilities:IsAtlasName(resolvedIcon) then
+                iconIsAtlas = true
+            end
+
+            local trySuffix = ""
+            local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
+            local idKey = tryCountTypes[plan.type]
+            local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
+            if collectibleID and WarbandNexus.ShouldShowTryCountInUI and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
+                and WarbandNexus.GetTryCount then
+                local count = WarbandNexus:GetTryCount(plan.type, collectibleID) or 0
+                trySuffix = "|cffaaddff" .. ((ns.L and ns.L["TRIES"]) or "Tries") .. ":|r |cffffffff" .. tostring(count) .. "|r"
+            end
+
+            local allSourceItems = ns.UI_BuildPlanCriteriaItemsAll and ns.UI_BuildPlanCriteriaItemsAll(plan) or BuildPlanCriteriaItems(plan)
+            local summaryMax = (plan.type == "achievement") and 1 or 2
+            local summaryLines = ns.UI_BuildPlanTodoSummaryLines and ns.UI_BuildPlanTodoSummaryLines(plan, { maxLines = summaryMax }) or {}
+
+            local achievementPoints, information, criteriaItems, criteriaText, criteriaHeader
+            local onExpandPopulate
+            if plan.type == "achievement" and plan.achievementID then
+                local achID = plan.achievementID
+                local entry = ns.UI_EnsurePlansAchievementExpandCache and ns.UI_EnsurePlansAchievementExpandCache(achID)
+                achievementPoints = ns.UI_ResolveAchievementPlanPoints and ns.UI_ResolveAchievementPlanPoints(plan, entry) or 0
+                criteriaHeader = true
+                if isExpanded and entry then
+                    information = entry.information
+                    criteriaText = entry.criteriaText
+                    criteriaItems = entry.criteriaItems
                 end
-                if not iconTexture or iconTexture == "" then
-                    iconTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
-                    iconIsAtlas = false
-                end
-
-                local PCF = ns.UI_PlanCardFactory
-                local typeAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS[plan.type]
-                local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-
-                -- Reserve right-side space for action buttons (delete + optional complete)
-                -- and the optional Tries pill so the title never overlaps them.
-                local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
-                local idKey = tryCountTypes[plan.type]
-                local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
-                local showTryRow = collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus and WarbandNexus.ShouldShowTryCountInUI
-                    and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
-                local typeBadgeSz = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoTypeBadgeSize) or 24
-                local tryW = 88
-                local titleRightInset = 6
-                titleRightInset = titleRightInset + typeBadgeSz + 4 -- delete (rightmost)
-                if plan.type == "custom" then titleRightInset = titleRightInset + typeBadgeSz + 4 end
-                if showTryRow then titleRightInset = titleRightInset + tryW + 4 end
-
-                -- Custom plans show their user-entered note as description; collectibles already
-                -- surface Drop/Vendor/Quest/Location through criteriaData, so don't duplicate
-                -- the same parsed source as a Description line above the Requirements block.
-                local information
-                if plan.type == "custom" then
-                    local descRaw = GetPlanDescription(plan)
-                    if descRaw and descRaw ~= "" then information = descRaw end
-                end
-
-                local rowData = {
-                    icon = iconTexture,
-                    iconSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoIconSize) or 41,
-                    iconIsAtlas = iconIsAtlas,
-                    typeAtlas = typeAtlas,
-                    typeBadgeSize = (ns.UI_PLANS_CARD_METRICS and ns.UI_PLANS_CARD_METRICS.todoTypeBadgeSize) or 24,
-                    title = FormatTextNumbers(resolvedName),
-                    information = information,
-                    criteriaData = BuildPlanCriteriaItems(plan),
-                    criteriaColumns = 1,
-                    criteriaShowHeader = false,  -- collectibles: bare Drop/Location rows, no "Requirements:" header
-                    titleRightInset = titleRightInset,
-                    onSectionResize = RepositionTrackerRows,
-                }
-
-                local headerH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width)
-                    or math.max(60, math.min(68, math.floor(width * 0.10)))
-                local row = CreateExpandableRow(scrollChild, width, headerH, rowData, isExpanded, function(expanded)
-                    expandedPlans[plan.id] = expanded
-                end)
-                row:SetPoint("TOPLEFT", 0, -yOffset)
-                if ApplyVisuals then
-                    ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
-                end
-                AddTrackerCardAccent(row)
-                if row.iconFrame and ApplyVisuals then
-                    ApplyVisuals(row.iconFrame, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-                    if row.iconFrame.texture then
-                        local inset = 2
-                        row.iconFrame.texture:ClearAllPoints()
-                        row.iconFrame.texture:SetPoint("TOPLEFT", inset, -inset)
-                        row.iconFrame.texture:SetPoint("BOTTOMRIGHT", -inset, inset)
+                if not isExpanded then
+                    onExpandPopulate = function(data)
+                        local e = ns.UI_EnsurePlansAchievementExpandCache and ns.UI_EnsurePlansAchievementExpandCache(achID)
+                        if not e then return end
+                        data.information = e.information
+                        data.criteria = e.criteriaText
+                        data.criteriaData = e.criteriaItems
+                        data.criteriaShowHeader = true
+                        data.summaryInHeader = true
                     end
                 end
-
-                -- Right-side actions (delete + optional complete for custom). Frame level above headerFrame
-                -- so the buttons consume clicks before headerFrame's expand-toggle handler.
-                local ACTION_SIZE = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or typeBadgeSz
-                local ACTION_GAP = 4
-                local rightOffset = 6
-                local function anchorHeaderAction(btn, width)
-                    width = width or ACTION_SIZE
-                    if ns.UI_PlansAnchorHeaderAction then
-                        ns.UI_PlansAnchorHeaderAction(btn, row.headerFrame, rightOffset, width)
+            else
+                if plan.type == "custom" then
+                    local d = GetPlanDescription(plan)
+                    if d and d ~= "" then information = d end
+                end
+                criteriaItems = isExpanded and allSourceItems or {}
+                criteriaHeader = false
+                onExpandPopulate = function(data)
+                    local all = ns.UI_BuildPlanCriteriaItemsAll and ns.UI_BuildPlanCriteriaItemsAll(plan) or BuildPlanCriteriaItems(plan)
+                    if #all > 1 then
+                        local rest = {}
+                        for si = 2, #all do
+                            rest[#rest + 1] = all[si]
+                        end
+                        data.criteriaData = rest
                     else
-                        btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+                        data.criteriaData = all
                     end
-                    rightOffset = rightOffset + width + ACTION_GAP
+                    data.criteriaShowHeader = false
+                    data.summaryInHeader = true
                 end
-                local function makeIconAction(iconKey, onClick, tooltipKey, tooltipFallback)
-                    local btn = ns.UI_CreateIconActionButton and ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, iconKey, {
-                        frameLevelOffset = 10,
-                        onClick = onClick,
-                        tooltipTitle = (ns.L and ns.L[tooltipKey]) or tooltipFallback,
-                        tooltipAnchor = "ANCHOR_TOP",
-                    })
-                    if not btn then return nil end
-                    anchorHeaderAction(btn, ACTION_SIZE)
-                    return btn
-                end
-                local function makeAction(normalTex, highlightTex, onClick, tooltipKey, tooltipFallback)
-                    local btn = Factory and Factory.CreateButton and Factory:CreateButton(row.headerFrame, ACTION_SIZE, ACTION_SIZE, true)
-                    if not btn then
-                        btn = CreateFrame("Button", nil, row.headerFrame)
-                        btn:SetSize(ACTION_SIZE, ACTION_SIZE)
-                    end
-                    anchorHeaderAction(btn, ACTION_SIZE)
-                    btn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
-                    btn:SetNormalTexture(normalTex)
-                    btn:SetHighlightTexture(highlightTex)
-                    btn:SetScript("OnMouseDown", function() end)
-                    btn:RegisterForClicks("AnyUp")
-                    btn:SetScript("OnClick", onClick)
-                    btn:SetScript("OnEnter", function(self)
-                        ns.TooltipService:Show(self, {
-                            type = "custom",
-                            title = (ns.L and ns.L[tooltipKey]) or tooltipFallback,
-                            icon = false, anchor = "ANCHOR_TOP", lines = {},
-                        })
-                    end)
-                    btn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
-                    return btn
-                end
+            end
 
-                makeIconAction("delete", function()
-                    if plan.id then
-                        WarbandNexus:RemovePlan(plan.id)
-                        RefreshTrackerContent()
-                    end
-                end, "PLAN_ACTION_DELETE", "Delete the Plan")
+            local canExpand = false
+            if plan.type == "achievement" and plan.achievementID then
+                local nc = (GetAchievementNumCriteria and GetAchievementNumCriteria(plan.achievementID)) or 0
+                if issecretvalue and issecretvalue(nc) then nc = 0 end
+                canExpand = (tonumber(nc) or 0) > 0
+                if not canExpand and information and information ~= "" then canExpand = true end
+            end
 
-                if plan.type == "custom" then
-                    makeAction(
-                        "Interface\\RaidFrame\\ReadyCheck-Ready",
-                        "Interface\\RaidFrame\\ReadyCheck-Ready",
-                        function()
-                            if WarbandNexus.CompleteCustomPlan then
-                                WarbandNexus:CompleteCustomPlan(plan.id)
-                            end
-                        end,
-                        "PLAN_ACTION_COMPLETE", "Complete the Plan"
-                    )
+            local typeBadgeSz = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or 24
+            local ACTION_SIZE, ACTION_GAP = typeBadgeSz, 4
+            local titleRightInset = 6 + ACTION_SIZE + ACTION_GAP
+            if plan.type == "achievement" and plan.achievementID then
+                titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
+            end
+            if trySuffix ~= "" then
+                titleRightInset = titleRightInset + ((PCM and PCM.todoMetaRightReserve) or 76)
+            end
+
+            local typeAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS[plan.type]
+
+            local headerH = ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)
+                or (ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width) or 92)
+            local rowData = {
+                todoUnifiedHeader = true,
+                summaryInHeader = true,
+                canExpand = canExpand,
+                icon = resolvedIcon,
+                iconIsAtlas = iconIsAtlas,
+                iconSize = (PCM and PCM.todoUnifiedIconSize) or 40,
+                typeAtlas = (plan.type ~= "achievement") and typeAtlas or nil,
+                achievementPoints = achievementPoints,
+                title = resolvedName,
+                summaryLines = summaryLines,
+                metaRightText = (trySuffix ~= "") and trySuffix or nil,
+                information = isExpanded and information or nil,
+                criteria = isExpanded and criteriaText or nil,
+                criteriaData = criteriaItems,
+                criteriaColumns = 2,
+                criteriaShowHeader = criteriaHeader,
+                titleRightInset = titleRightInset,
+                onSectionResize = RepositionTrackerRows,
+                onExpandPopulate = onExpandPopulate,
+            }
+
+            local row = CreateExpandableRow(scrollChild, width, headerH, rowData, isExpanded, function(expanded)
+                if plan.type == "achievement" and plan.achievementID then
+                    expandedAchievements[plan.achievementID] = expanded
+                else
+                    expandedPlans[plan.id] = expanded
                 end
+            end)
+            row:SetPoint("TOPLEFT", 0, -yOffset)
+            if ApplyVisuals then
+                ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
+            end
+            AddTrackerCardAccent(row)
+            if row.iconFrame and ApplyVisuals then
+                ApplyVisuals(row.iconFrame, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+            end
 
-                if showTryRow then
-                    local tryRowH = math.max(22, ACTION_SIZE)
-                    local tryRow = Factory:CreateTryCountClickable(row.headerFrame, {
-                        height = tryRowH,
-                        fontCategory = "body",
-                        frameLevelOffset = 15,
-                        showTooltip = true,
-                        popupOnRightClick = false,
-                    })
-                    tryRow:SetSize(tryW, tryRowH)
-                    tryRow:ClearAllPoints()
-                    tryRow:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
-                    tryRow:WnUpdateTryCount(plan.type, collectibleID, resolvedName)
-                    rightOffset = rightOffset + tryW + ACTION_GAP
+            local rightOffset = 6
+            row._todoActionControls = {}
+            row._todoActionOffsets = {}
+            local function anchorHeaderAction(btn, w)
+                if not btn then return end
+                w = w or ACTION_SIZE
+                row._todoActionControls[#row._todoActionControls + 1] = btn
+                row._todoActionOffsets[#row._todoActionOffsets + 1] = rightOffset
+                if ns.UI_PlansAnchorHeaderAction then
+                    ns.UI_PlansAnchorHeaderAction(btn, row.headerFrame, rightOffset, w, 0, row.iconFrame)
+                else
+                    btn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
                 end
-
-                -- Tooltip on header hover (preserve any prior OnEnter/OnLeave for hover highlight)
-                local origOnEnter, origOnLeave = nil, nil
-                do
-                    local ok, res = pcall(function() return row.headerFrame:GetScript("OnEnter") end)
-                    if ok then origOnEnter = res end
-                    ok, res = pcall(function() return row.headerFrame:GetScript("OnLeave") end)
-                    if ok then origOnLeave = res end
-                end
-                row.headerFrame:SetScript("OnEnter", function(self)
-                    if origOnEnter then origOnEnter(self) end
-                    ShowPlanTooltip(self, plan, isExpanded)
-                end)
-                row.headerFrame:SetScript("OnLeave", function(self)
-                    if origOnLeave then origOnLeave(self) end
-                    HidePlanTooltip()
-                end)
-
-                trackerRowOrder[#trackerRowOrder + 1] = row
-                yOffset = yOffset + row:GetHeight() + LIST_GAP
+                rightOffset = rightOffset + w + ACTION_GAP
+            end
+            local delBtn = ns.UI_CreateIconActionButton and ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, "delete", {
+                frameLevelOffset = 10,
+                onClick = function()
+                    WarbandNexus:RemovePlan(plan.id)
+                    RefreshTrackerContent()
+                end,
+                tooltipTitle = (ns.L and ns.L["PLAN_ACTION_DELETE"]) or "Delete the Plan",
+                tooltipAnchor = "ANCHOR_TOP",
+            })
+            if delBtn then anchorHeaderAction(delBtn) end
+            if plan.type == "achievement" and plan.achievementID and Factory.CreateAchievementTrackPinButton then
+                local achPin = Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
+                    size = ACTION_SIZE,
+                    frameLevelOffset = 30,
+                    isDisabled = function() return memoIsPlanDone(plan) end,
+                })
+                if achPin then anchorHeaderAction(achPin) end
+            end
+            if ns.UI_PlansSyncTitleRightInset then
+                ns.UI_PlansSyncTitleRightInset(row, rightOffset)
+            end
+            row.headerFrame:SetScript("OnEnter", function() ShowPlanTooltip(row.headerFrame, plan, isExpanded) end)
+            row.headerFrame:SetScript("OnLeave", HidePlanTooltip)
+            row:Show()
+            trackerRowOrder[#trackerRowOrder + 1] = row
+            yOffset = yOffset + headerH + LIST_GAP
             end
         end
     end
+
 
     -- Update count label
     local frame = GetTrackerFrame()
@@ -1213,9 +1323,9 @@ RefreshTrackerContent = function()
     end)
 end
 
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 -- Custom themed dropdown (matches SettingsUI pattern)
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 local activeDropdownMenu = nil
 
 local function CreateThemedCategoryDropdown(parent, onCategorySelected)
@@ -1422,9 +1532,9 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     return bar, dropdown
 end
 
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 -- Window creation
--- ══════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function WarbandNexus:CreatePlansTrackerWindow()
     local frame = GetTrackerFrame()
     if frame then
@@ -1443,7 +1553,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local w = db and db.width or 380
     local h = db and db.height or 420
 
-    -- ── Main frame (Factory shell; draggable/resizable behavior unchanged) ──
+    -- â”€â”€ Main frame (Factory shell; draggable/resizable behavior unchanged) â”€â”€
     if not Factory or not Factory.CreateContainer then return end
     frame = Factory:CreateContainer(UIParent, w, h, false, "WarbandNexus_PlansTracker")
     if not frame then return end
@@ -1470,7 +1580,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end
     frame:SetAlpha(math.max(0.2, math.min(1.0, db and db.opacity or 1.0)))
 
-    -- ── Header (compact, draggable; Factory shell, width follows frame) ──
+    -- â”€â”€ Header (compact, draggable; Factory shell, width follows frame) â”€â”€
     local header = Factory:CreateContainer(frame, math.max(1, w), HEADER_HEIGHT, false)
     if not header then return end
     frame._plansTrackerHeaderShell = header
@@ -1546,7 +1656,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
     end)
 
-    -- ── Collapse/Expand toggle button ──
+    -- â”€â”€ Collapse/Expand toggle button â”€â”€
     local collapseBtn = Factory:CreateButton(header, 22, 22, true)
     collapseBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
     collapseBtn:SetFrameLevel(header:GetFrameLevel() + 5)
@@ -1568,7 +1678,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
             if frame.categoryBar then frame.categoryBar:Hide() end
             frame:SetResizable(false)
             frame:SetHeight(HEADER_HEIGHT)
-            -- Grip would sit inside the title bar and cover collapse/close — hide when collapsed
+            -- Grip would sit inside the title bar and cover collapse/close â€” hide when collapsed
             if frame.resizeGrip then frame.resizeGrip:Hide() end
         else
             collapseTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
@@ -1602,7 +1712,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
     end)
 
-    -- ── Settings (gear) button + opacity popup ──
+    -- â”€â”€ Settings (gear) button + opacity popup â”€â”€
     local gearBtn = Factory:CreateButton(header, 22, 22, true)
     gearBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -4, 0)
     gearBtn:SetFrameLevel(header:GetFrameLevel() + 5)
@@ -1681,14 +1791,14 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
     end)
 
-    -- ── Custom themed category dropdown ──
+    -- â”€â”€ Custom themed category dropdown â”€â”€
     local catBar, dropdown = CreateThemedCategoryDropdown(frame, function()
         RefreshTrackerContent()
     end)
     frame.categoryDropdown = dropdown
     frame.categoryBar = catBar
 
-    -- ── Content area: region below header+category, above bottom ──
+    -- â”€â”€ Content area: region below header+category, above bottom â”€â”€
     -- Factory's CreateScrollFrame parents ScrollUpBtn/ScrollDownBtn to scrollFrame:GetParent()
     -- and anchors them to parent TOPRIGHT/BOTTOMRIGHT. We create an intermediate frame so
     -- the buttons anchor to the scroll region, not the whole window.
@@ -1701,7 +1811,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     contentArea:SetPoint("BOTTOMRIGHT", 0, TRACKER_RESIZE_STRIP)
     frame.contentArea = contentArea
 
-    -- ── Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) ──
+    -- â”€â”€ Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) â”€â”€
     local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", contentArea, "TOPLEFT", PADDING, 0)
     scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, 0)
@@ -1732,7 +1842,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         self:SetVerticalScroll(newScroll)
     end)
 
-    -- ── Resize grip (bottom-right): above scroll/scrollbar, never under title bar when collapsed ──
+    -- â”€â”€ Resize grip (bottom-right): above scroll/scrollbar, never under title bar when collapsed â”€â”€
     local resizer = Factory and Factory.CreateButton and Factory:CreateButton(frame, 18, 18, true)
     if not resizer then
         resizer = CreateButton(frame, 18, 18, nil, nil, true)
@@ -1789,7 +1899,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end)
     end
 
-    -- ── Keyboard: ESC does NOT close window (close only via X button). ESC only closes dropdown if open. ──
+    -- â”€â”€ Keyboard: ESC does NOT close window (close only via X button). ESC only closes dropdown if open. â”€â”€
     if not InCombatLockdown() then
         frame:EnableKeyboard(true)
         frame:SetPropagateKeyboardInput(true)
@@ -1801,7 +1911,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
                 activeDropdownMenu:Hide()
                 activeDropdownMenu = nil
             end
-            -- Do not call SetPropagateKeyboardInput(false) — let ESC propagate to game
+            -- Do not call SetPropagateKeyboardInput(false) â€” let ESC propagate to game
         end
         if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
     end)
@@ -1844,7 +1954,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         wipe(expandedAchievements)
     end)
 
-    -- ── Listen for plan updates ──
+    -- â”€â”€ Listen for plan updates â”€â”€
     -- NOTE: Uses PlansTrackerEvents as 'self' key to avoid overwriting PlansUI's handler.
     local function OnPlansUpdated()
         if frame:IsShown() then
@@ -1854,7 +1964,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     WarbandNexus.RegisterMessage(PlansTrackerEvents, E.PLANS_UPDATED, OnPlansUpdated)
     frame._plansUpdatedHandler = OnPlansUpdated
 
-    -- ── Listen for font changes ──
+    -- â”€â”€ Listen for font changes â”€â”€
     WarbandNexus.RegisterMessage(PlansTrackerEvents, E.FONT_CHANGED, function()
         if frame and frame:IsShown() then
             RefreshTrackerContent()
@@ -1871,7 +1981,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local initDB = GetDB()
     ApplyCollapsedState(initDB and initDB.collapsed or false)
     
-    -- Mark initial show as done — subsequent OnShow will handle itself
+    -- Mark initial show as done â€” subsequent OnShow will handle itself
     frame._initialShowDone = true
     
     -- Delay first refresh to let scroll frame dimensions settle after layout

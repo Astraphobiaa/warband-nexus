@@ -710,6 +710,7 @@ L["ADD_BUTTON"] = "To-Do"
 L["ADDED_LABEL"] = "Added"
 L["TODO_SLOT_TOOLTIP_ADD"] = "Click to add to your To-Do list."
 L["TODO_SLOT_TOOLTIP_REMOVE"] = "Click to remove from your To-Do list."
+L["TODO_SUMMARY_MORE_SOURCES"] = "+%d more"
 L["TRACK_SLOT_TOOLTIP_UNTRACK"] = "Click to stop tracking in Blizzard objectives."
 L["TRACK_SLOT_DISABLED_COMPLETED"] = "Completed achievements cannot be tracked in objectives."
 

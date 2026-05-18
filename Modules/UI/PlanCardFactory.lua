@@ -1521,7 +1521,11 @@ function PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, 
     -- Create type-specific content
     if plan.type == "achievement" then
         local success, err = pcall(function()
-            self:CreateAchievementCard(card, plan, progress, nameText)
+            if cardUIOptions and cardUIOptions.achievementSimple then
+                self:CreateAchievementSimpleCard(card, plan, progress, nameText)
+            else
+                self:CreateAchievementCard(card, plan, progress, nameText)
+            end
         end)
         if not success then
             WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create achievement card: " .. tostring(err))
@@ -1775,6 +1779,71 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     end
 
     self:ReflowAchievementCard(card)
+end
+
+--[[
+    Achievement with no API criteria: fixed To-Do card (description/reward under icon, no expand/criteria UI).
+]]
+function PlanCardFactory:CreateAchievementSimpleCard(card, plan, progress, nameText)
+    local P = ns.PLAN_UI_COLORS or {}
+    if plan.points then
+        self:CreateAchievementPointsBadge(card, plan, nameText)
+    end
+
+    local line3Y = -60
+    local lastElement = nil
+    local achievementID = plan.achievementID
+    local description = nil
+
+    if achievementID then
+        local success, _, _, _, _, _, _, _, achievementDescription = pcall(GetAchievementInfo, achievementID)
+        if success and achievementDescription and not (issecretvalue and issecretvalue(achievementDescription)) and achievementDescription ~= "" then
+            description = achievementDescription
+        end
+    end
+    if (not description or description == "") and plan.description then
+        local pd = plan.description
+        if type(pd) == "string" and not (issecretvalue and issecretvalue(pd)) then
+            description = pd
+        end
+    end
+
+    if description and description ~= "" then
+        description = description:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+        local labCol = P.infoLabel or "|cff88ff88"
+        local bodyCol = P.body or "|cffffffff"
+        local descLab = NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:")
+        local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
+        infoText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
+        infoText:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
+        infoText:SetText(labCol .. descLab .. "|r " .. bodyCol .. FormatTextNumbers(description) .. "|r")
+        infoText:SetJustifyH("LEFT")
+        infoText:SetWordWrap(true)
+        infoText:SetMaxLines(3)
+        infoText:SetNonSpaceWrap(false)
+        lastElement = infoText
+    end
+
+    local displayReward = plan.rewardText
+    if (not displayReward or displayReward == "") and achievementID and WarbandNexus.GetAchievementRewardInfo then
+        local ri = WarbandNexus:GetAchievementRewardInfo(achievementID)
+        if ri then displayReward = ri.title or ri.itemName end
+    end
+    if displayReward and displayReward ~= "" and not (issecretvalue and issecretvalue(displayReward)) then
+        local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
+        if lastElement then
+            rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -4)
+        else
+            rewardText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
+        end
+        rewardText:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
+        rewardText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. displayReward .. "|r")
+        rewardText:SetJustifyH("LEFT")
+        rewardText:SetWordWrap(true)
+        rewardText:SetMaxLines(2)
+        rewardText:SetNonSpaceWrap(false)
+        card.rewardTextFS = rewardText
+    end
 end
 
 --[[
@@ -3617,6 +3686,7 @@ function PlanCardFactory.CreateAddButton(parent, options)
     -- Use standardized card button layout constants
     local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ADD_WIDTH = 60, ADD_HEIGHT = 32, ADD_MARGIN_X = 10, ADD_MARGIN_Y = 8}
     local iconOnly = options.iconOnly == true
+    local plannedState = options.plannedState == true
     -- Increase hit area: Make button wider for easier clicking
     local width = options.width or (iconOnly and 32 or (buttonType == "row" and defaultSize.width or CBL.ADD_WIDTH))
     local height = options.height or (iconOnly and 32 or (buttonType == "row" and defaultSize.height or CBL.ADD_HEIGHT))
@@ -3653,9 +3723,10 @@ function PlanCardFactory.CreateAddButton(parent, options)
         local iconSz = math.max(12, math.min(width, height) - pad * 2)
         iconTex:SetSize(iconSz, iconSz)
         iconTex:SetPoint("CENTER", addBtn, "CENTER", 0, 0)
-        if not (ns.UI_ApplyWnActionIcon and ns.UI_ApplyWnActionIcon(iconTex, "todo", false, false))
+        local todoActive = plannedState
+        if not (ns.UI_ApplyWnActionIcon and ns.UI_ApplyWnActionIcon(iconTex, "todo", todoActive, false))
             and not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(iconTex, "todo", {
-                vertexColor = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("todo", false, false)
+                vertexColor = ns.UI_WnIconVertexForKey and ns.UI_WnIconVertexForKey("todo", todoActive, false)
                     or (ns.WN_ICON_VERTEX_WHITE or { 1, 1, 1, 1 }),
             })) then
             local btnText = FontManager:CreateFontString(addBtn, "subtitle", "OVERLAY")
@@ -3669,13 +3740,26 @@ function PlanCardFactory.CreateAddButton(parent, options)
         else
             addBtn._wnIconTex = iconTex
         end
-        local todoTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_ADD"]) or "Add to your To-Do list."
-        addBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText(todoTip, 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        if plannedState then
+            addBtn:EnableMouse(true)
+            addBtn:RegisterForClicks()
+            local plannedTip = (ns.L and ns.L["PLANNED"]) or "On your To-Do list"
+            addBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                GameTooltip:SetText(plannedTip, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            addBtn:SetScript("OnClick", nil)
+        else
+            local todoTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_ADD"]) or "Add to your To-Do list."
+            addBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                GameTooltip:SetText(todoTip, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
     else
         local btnText = FontManager:CreateFontString(addBtn, "body", "OVERLAY")
         if buttonType == "card" then
