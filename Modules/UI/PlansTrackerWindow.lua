@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Plans Tracker Window
     Standalone floating window opened via /wn todo.
     Resizable, movable, responsive. Shows active plans by category.
