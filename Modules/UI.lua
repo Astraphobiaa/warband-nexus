@@ -3469,6 +3469,9 @@ local function PopulateContentBody(self)
 
     local prevPopTab = mainFrame._prevPopulatedTab
     local isTabSwitch = (prevPopTab ~= mainFrame.currentTab)
+    if mainFrame.currentTab ~= "professions" and WarbandNexus.HideProfessionColumnPicker then
+        WarbandNexus:HideProfessionColumnPicker()
+    end
     local scrollChild = mainFrame.scrollChild
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_clearVLM")

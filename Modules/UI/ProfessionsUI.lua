@@ -276,18 +276,246 @@ local COLUMN_DEFAULT_VISIBLE = {
     cooldowns = false,
 }
 
+--- Merge toggleable keys + defaults; migrate legacy tool/acc* slots to `equipment`.
+local function EnsureProfessionVisibleColumns(profile)
+    if not profile then return nil end
+    profile.professionVisibleColumns = profile.professionVisibleColumns or {}
+    local vis = profile.professionVisibleColumns
+    if vis.tool == false or vis.acc1 == false or vis.acc2 == false then
+        vis.equipment = false
+    end
+    vis.tool, vis.acc1, vis.acc2 = nil, nil, nil
+    for tci = 1, #TOGGLEABLE_COLUMNS do
+        local colKey = TOGGLEABLE_COLUMNS[tci].key
+        if vis[colKey] == nil then
+            local def = COLUMN_DEFAULT_VISIBLE[colKey]
+            vis[colKey] = (def == nil)
+        end
+    end
+    return vis
+end
+
 local function IsColumnVisible(key)
-    local vis = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-        and WarbandNexus.db.profile.professionVisibleColumns
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if not profile then
+        local def = COLUMN_DEFAULT_VISIBLE[key]
+        return def == nil
+    end
+    local vis = EnsureProfessionVisibleColumns(profile)
     if not vis then
         local def = COLUMN_DEFAULT_VISIBLE[key]
-        return def == nil and true or def
+        return def == nil
     end
-    if vis[key] == nil then
-        local def = COLUMN_DEFAULT_VISIBLE[key]
-        return def == nil and true or def
+    return vis[key] ~= false
+end
+
+local function RequestProfessionColumnsRefresh()
+    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+        tab = "professions",
+        skipCooldown = true,
+        instantPopulate = true,
+    })
+end
+
+local function ProfColumnPickerHide()
+    local menu = WarbandNexus._wnProfColumnPickerMenu
+    if menu then menu:Hide() end
+    local catcher = WarbandNexus._wnProfColumnPickerCatcher
+    if catcher then catcher:Hide() end
+end
+
+local function ProfColumnPickerPositionMenu(menu, anchorBtn)
+    if not menu or not anchorBtn then return end
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", anchorBtn, "BOTTOMLEFT", 0, -4)
+end
+
+local function ProfColumnPickerShowCatcher(menu)
+    local catcher = WarbandNexus._wnProfColumnPickerCatcher
+    if not catcher then
+        local FactDd = ns.UI and ns.UI.Factory
+        catcher = FactDd and FactDd:CreateContainer(UIParent, 1, 1, false)
+        if not catcher then
+            catcher = CreateFrame("Button", "WarbandNexusProfColumnPickerCatcher", UIParent)
+        end
+        catcher:SetAllPoints(UIParent)
+        catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+        catcher:SetFrameLevel(math.max(1, (menu:GetFrameLevel() or 100) - 1))
+        catcher:EnableMouse(true)
+        catcher:Hide()
+        catcher:SetScript("OnMouseDown", function()
+            if not menu:IsShown() then
+                catcher:Hide()
+                return
+            end
+            local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
+            if menu:IsMouseOver() or (anchor and anchor.IsMouseOver and anchor:IsMouseOver()) then
+                return
+            end
+            menu:Hide()
+        end)
+        WarbandNexus._wnProfColumnPickerCatcher = catcher
     end
-    return vis[key] == true
+    catcher:SetFrameLevel(math.max(1, (menu:GetFrameLevel() or 100) - 1))
+    catcher:Show()
+end
+
+local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
+    if not menu or not anchorBtn then return end
+    local profile = WarbandNexus.db and WarbandNexus.db.profile
+    if not profile then return end
+    local vis = EnsureProfessionVisibleColumns(profile)
+    if not vis then return end
+
+    local ROW_H = (GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (GetLayout().ROW_HEIGHT) or 26
+    local PAD = 6
+    local FactDd = ns.UI and ns.UI.Factory
+    local contentH = #TOGGLEABLE_COLUMNS * ROW_H + PAD * 2 + ROW_H
+    menu:SetSize(170, contentH)
+
+    local bin = ns.UI_RecycleBin
+    local kids = { menu:GetChildren() }
+    for i = 1, #kids do
+        kids[i]:Hide()
+        if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end
+    end
+
+    local yOff = -PAD
+    for tci = 1, #TOGGLEABLE_COLUMNS do
+        local tc = TOGGLEABLE_COLUMNS[tci]
+        local isVisible = IsColumnVisible(tc.key)
+        local checkRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 160, ROW_H, true)
+        if not checkRow then
+            checkRow = CreateFrame("Button", nil, menu)
+            checkRow:SetSize(160, ROW_H)
+        end
+        checkRow:SetPoint("TOPLEFT", PAD, yOff)
+
+        local checkTex = checkRow:CreateTexture(nil, "ARTWORK")
+        checkTex:SetSize(14, 14)
+        checkTex:SetPoint("LEFT", 4, 0)
+        if isVisible then
+            checkTex:SetAtlas("common-icon-checkmark")
+            checkTex:SetVertexColor(0.3, 0.9, 0.3)
+        else
+            checkTex:SetAtlas("common-icon-redx")
+            checkTex:SetVertexColor(0.5, 0.5, 0.5)
+        end
+
+        local lbl = FontManager:CreateFontString(checkRow, "small", "OVERLAY")
+        lbl:SetPoint("LEFT", checkTex, "RIGHT", 6, 0)
+        lbl:SetText(isVisible and ("|cffffffff" .. tc.label .. "|r") or ("|cff888888" .. tc.label .. "|r"))
+        lbl:SetJustifyH("LEFT")
+
+        local capturedKey = tc.key
+        checkRow:SetScript("OnClick", function()
+            vis[capturedKey] = not IsColumnVisible(capturedKey)
+            RequestProfessionColumnsRefresh()
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    local picker = WarbandNexus._wnProfColumnPickerMenu
+                    local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
+                    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                    if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
+                        ProfColumnPickerHide()
+                        return
+                    end
+                    if not anchor.GetTop or not anchor:GetTop() then
+                        ProfColumnPickerHide()
+                        return
+                    end
+                    ProfColumnPickerPopulateMenu(picker, anchor)
+                    ProfColumnPickerPositionMenu(picker, anchor)
+                    picker:Show()
+                    ProfColumnPickerShowCatcher(picker)
+                end)
+            end
+        end)
+        checkRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
+        checkRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
+        checkRow:Show()
+
+        yOff = yOff - ROW_H
+    end
+
+    local resetRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 160, ROW_H, true)
+    if not resetRow then
+        resetRow = CreateFrame("Button", nil, menu)
+        resetRow:SetSize(160, ROW_H)
+    end
+    resetRow:SetPoint("TOPLEFT", PAD, yOff)
+    local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
+    resetLbl:SetPoint("CENTER", 0, 0)
+    resetLbl:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["SHOW_ALL"]) or "Show All") .. "|r")
+    resetLbl:SetJustifyH("CENTER")
+    resetRow:SetScript("OnClick", function()
+        for ri = 1, #TOGGLEABLE_COLUMNS do
+            vis[TOGGLEABLE_COLUMNS[ri].key] = true
+        end
+        RequestProfessionColumnsRefresh()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                local picker = WarbandNexus._wnProfColumnPickerMenu
+                local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
+                local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
+                    ProfColumnPickerHide()
+                    return
+                end
+                if not anchor.GetTop or not anchor:GetTop() then
+                    ProfColumnPickerHide()
+                    return
+                end
+                ProfColumnPickerPopulateMenu(picker, anchor)
+                ProfColumnPickerPositionMenu(picker, anchor)
+                picker:Show()
+                ProfColumnPickerShowCatcher(picker)
+            end)
+        end
+    end)
+    resetRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
+    resetRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
+    resetRow:Show()
+end
+
+function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
+    if not anchorBtn then return end
+    WarbandNexus._wnProfColumnPickerAnchorBtn = anchorBtn
+    local FactDd = ns.UI and ns.UI.Factory
+    local menu = WarbandNexus._wnProfColumnPickerMenu
+    if not menu then
+        menu = FactDd and FactDd:CreateContainer(UIParent, 170, 80, false)
+        if not menu then
+            menu = CreateFrame("Frame", "WarbandNexusProfColumnPickerMenu", UIParent, "BackdropTemplate")
+            menu:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+            menu:SetBackdropColor(0.08, 0.08, 0.1, 1)
+        elseif ApplyVisuals then
+            ApplyVisuals(menu, { 0.08, 0.08, 0.1, 1 },
+                { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
+        end
+        menu:SetFrameStrata("FULLSCREEN_DIALOG")
+        menu:SetFrameLevel(120)
+        menu:SetClampedToScreen(true)
+        menu:EnableMouse(true)
+        menu:EnableMouseWheel(true)
+        menu:SetScript("OnMouseWheel", function() end)
+        menu:SetScript("OnHide", function()
+            local catcher = WarbandNexus._wnProfColumnPickerCatcher
+            if catcher then catcher:Hide() end
+        end)
+        WarbandNexus._wnProfColumnPickerMenu = menu
+    end
+    if WarbandNexus.db and WarbandNexus.db.profile then
+        EnsureProfessionVisibleColumns(WarbandNexus.db.profile)
+    end
+    ProfColumnPickerPopulateMenu(menu, anchorBtn)
+    ProfColumnPickerPositionMenu(menu, anchorBtn)
+    menu:Show()
+    ProfColumnPickerShowCatcher(menu)
+end
+
+function WarbandNexus:HideProfessionColumnPicker()
+    ProfColumnPickerHide()
 end
 
 -- Text columns scale with effective font size; icon/bar/button columns stay fixed
@@ -1374,175 +1602,33 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     filterBtn:SetScript("OnClick", function(btn)
-        -- Toggle dropdown: close if already open, open if not
-        if btn._dropdown and btn._dropdown:IsShown() then
-            btn._dropdown:Hide()
+        local menu = WarbandNexus._wnProfColumnPickerMenu
+        if menu and menu:IsShown() and WarbandNexus._wnProfColumnPickerAnchorBtn == btn then
+            menu:Hide()
             return
         end
-
-        local dropdown = btn._dropdown
-        if not dropdown then
-            local FactDd = ns.UI and ns.UI.Factory
-            dropdown = FactDd and FactDd:CreateContainer(btn, 170, 80, false)
-            if not dropdown then
-                dropdown = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-                dropdown:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-                dropdown:SetBackdropColor(0.08, 0.08, 0.1, 1)
-                local pxScale = (ns.GetPixelScale and ns.GetPixelScale(dropdown)) or 1
-                local bR, bG, bB = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-                local bA = 0.7
-                local function MakeBorder(point1, rel1, point2, rel2, isHoriz)
-                    local tex = dropdown:CreateTexture(nil, "BORDER")
-                    tex:SetTexture("Interface\\Buttons\\WHITE8x8")
-                    tex:SetVertexColor(bR, bG, bB, bA)
-                    tex:SetSnapToPixelGrid(false)
-                    tex:SetTexelSnappingBias(0)
-                    tex:SetPoint(point1, dropdown, rel1, 0, 0)
-                    tex:SetPoint(point2, dropdown, rel2, 0, 0)
-                    if isHoriz then tex:SetHeight(pxScale) else tex:SetWidth(pxScale) end
-                    return tex
-                end
-                MakeBorder("TOPLEFT", "TOPLEFT", "TOPRIGHT", "TOPRIGHT", true)
-                MakeBorder("BOTTOMLEFT", "BOTTOMLEFT", "BOTTOMRIGHT", "BOTTOMRIGHT", true)
-                MakeBorder("TOPLEFT", "TOPLEFT", "BOTTOMLEFT", "BOTTOMLEFT", false)
-                MakeBorder("TOPRIGHT", "TOPRIGHT", "BOTTOMRIGHT", "BOTTOMRIGHT", false)
-            elseif ApplyVisuals then
-                ApplyVisuals(dropdown, { 0.08, 0.08, 0.1, 1 },
-                    { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
-            end
-            dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
-            dropdown:SetFrameLevel(100)
-            dropdown:SetClampedToScreen(true)
-            dropdown:EnableMouseWheel(true)
-            dropdown:SetScript("OnMouseWheel", function() end)
-            btn._dropdown = dropdown
-        end
-
-        if not self.db.profile.professionVisibleColumns then
-            self.db.profile.professionVisibleColumns = {}
-            for tci = 1, #TOGGLEABLE_COLUMNS do
-                local tc = TOGGLEABLE_COLUMNS[tci]
-                local def = COLUMN_DEFAULT_VISIBLE[tc.key]
-                self.db.profile.professionVisibleColumns[tc.key] = (def == nil) and true or def
-            end
-        end
-
-        local ROW_H = (GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (GetLayout().ROW_HEIGHT) or 26
-        local PAD = 6
-        local FactDd = ns.UI and ns.UI.Factory
-        local contentH = #TOGGLEABLE_COLUMNS * ROW_H + PAD * 2 + ROW_H
-        dropdown:SetSize(170, contentH)
-        dropdown:ClearAllPoints()
-        dropdown:SetPoint("TOP", btn, "BOTTOM", 0, -4)
-
-        -- Clear old children
-        local bin = ns.UI_RecycleBin
-        local kids = { dropdown:GetChildren() }
-        for i = 1, #kids do
-            kids[i]:Hide()
-            if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end
-        end
-
-        local yOff = -PAD
-        for tci = 1, #TOGGLEABLE_COLUMNS do
-            local tc = TOGGLEABLE_COLUMNS[tci]
-            local isVisible = self.db.profile.professionVisibleColumns[tc.key] ~= false
-            local checkRow
-            if FactDd and FactDd.CreateButton then
-                checkRow = FactDd:CreateButton(dropdown, 160, ROW_H, true)
-            end
-            if not checkRow then
-                checkRow = CreateFrame("Button", nil, dropdown)
-                checkRow:SetSize(160, ROW_H)
-            end
-            checkRow:SetPoint("TOPLEFT", PAD, yOff)
-
-            local checkTex = checkRow:CreateTexture(nil, "ARTWORK")
-            checkTex:SetSize(14, 14)
-            checkTex:SetPoint("LEFT", 4, 0)
-            if isVisible then
-                checkTex:SetAtlas("common-icon-checkmark")
-                checkTex:SetVertexColor(0.3, 0.9, 0.3)
-            else
-                checkTex:SetAtlas("common-icon-redx")
-                checkTex:SetVertexColor(0.5, 0.5, 0.5)
-            end
-
-            local lbl = FontManager:CreateFontString(checkRow, "small", "OVERLAY")
-            lbl:SetPoint("LEFT", checkTex, "RIGHT", 6, 0)
-            lbl:SetText(isVisible and ("|cffffffff" .. tc.label .. "|r") or ("|cff888888" .. tc.label .. "|r"))
-            lbl:SetJustifyH("LEFT")
-
-            local capturedKey = tc.key
-            checkRow:SetScript("OnClick", function()
-                self.db.profile.professionVisibleColumns[capturedKey] = not isVisible
-                dropdown:Hide()
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
-            end)
-            checkRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
-            checkRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
-            checkRow:Show()
-
-            yOff = yOff - ROW_H
-        end
-
-        -- "Show All" / "Reset" row at the bottom
-        local resetRow
-        if FactDd and FactDd.CreateButton then
-            resetRow = FactDd:CreateButton(dropdown, 160, ROW_H, true)
-        end
-        if not resetRow then
-            resetRow = CreateFrame("Button", nil, dropdown)
-            resetRow:SetSize(160, ROW_H)
-        end
-        resetRow:SetPoint("TOPLEFT", PAD, yOff)
-        local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
-        resetLbl:SetPoint("CENTER", 0, 0)
-        resetLbl:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["SHOW_ALL"]) or "Show All") .. "|r")
-        resetLbl:SetJustifyH("CENTER")
-        resetRow:SetScript("OnClick", function()
-            for tci = 1, #TOGGLEABLE_COLUMNS do
-                self.db.profile.professionVisibleColumns[TOGGLEABLE_COLUMNS[tci].key] = true
-            end
-            dropdown:Hide()
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
-        end)
-        resetRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
-        resetRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
-        resetRow:Show()
-
-        dropdown:Show()
-
-        -- Close dropdown when clicking elsewhere
-        if not dropdown._closer then
-            local closer = FactDd and FactDd:CreateContainer(UIParent, 1, 1, false)
-            if not closer then
-                closer = CreateFrame("Frame", nil, UIParent)
-            end
-            closer:SetAllPoints(UIParent)
-            closer:SetFrameStrata("DIALOG")
-            closer:SetFrameLevel(math.max(1, (dropdown:GetFrameLevel() or 2) - 1))
-            closer:EnableMouse(true)
-            closer:Hide()
-            closer:SetScript("OnMouseDown", function()
-                if not dropdown:IsShown() then
-                    closer:Hide()
-                    return
-                end
-                if dropdown:IsMouseOver() or btn:IsMouseOver() then
-                    return
-                end
-                dropdown:Hide()
-            end)
-            dropdown._closer = closer
-        end
-        dropdown._closer:Show()
-        dropdown:SetScript("OnHide", function()
-            if dropdown._closer then
-                dropdown._closer:Hide()
-            end
-        end)
+        if not WarbandNexus.ShowProfessionColumnPicker then return end
+        WarbandNexus:ShowProfessionColumnPicker(btn)
     end)
+
+    if WarbandNexus._wnProfColumnPickerMenu and WarbandNexus._wnProfColumnPickerMenu:IsShown() then
+        WarbandNexus._wnProfColumnPickerAnchorBtn = filterBtn
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                local picker = WarbandNexus._wnProfColumnPickerMenu
+                local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
+                local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
+                    ProfColumnPickerHide()
+                    return
+                end
+                ProfColumnPickerPopulateMenu(picker, anchor)
+                ProfColumnPickerPositionMenu(picker, anchor)
+                picker:Show()
+                ProfColumnPickerShowCatcher(picker)
+            end)
+        end
+    end
 
     local sortBtn
     if ns.UI_CreateCharacterTabAdvancedFilterButton then
@@ -1894,10 +1980,68 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local isFirstSection = true
     local sectionRows = parent._wnProfNestedRows
     parent._wnProfSectionHeaders = {}
+    parent._wnProfSectionStack = {}
+    parent._wnProfSectionStackTopY = yOffset
     parent:SetHeight(1)
 
-    local function RequestProfessionsTabRelayout()
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+    local function SectionExpandedNow(sectionKey, defaultExpanded, visualOpts)
+        if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
+            local gid = visualOpts.groupId
+            local ge = self.db.profile.characterGroupExpanded
+            if ge and ge[gid] ~= nil then
+                return ge[gid] == true
+            end
+            return defaultExpanded == true
+        end
+        local ui = self.db.profile.ui
+        if ui and ui[sectionKey] ~= nil then
+            return ui[sectionKey] == true
+        end
+        return defaultExpanded == true
+    end
+
+    local function RelayoutProfessionsSectionStack()
+        local stack = parent._wnProfSectionStack
+        if not stack or #stack == 0 then return end
+        local y = parent._wnProfSectionStackTopY or 0
+        local prevHeader, prevContent, prevExpanded
+        for si = 1, #stack do
+            local entry = stack[si]
+            local header = entry.header
+            local content = entry.content
+            if not header or not content then
+                break
+            end
+            local expanded = SectionExpandedNow(entry.sectionKey, entry.defaultExpanded, entry.visualOpts)
+            header:ClearAllPoints()
+            header:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
+            if si == 1 then
+                header:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
+                header:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -y)
+            elseif prevExpanded and prevContent then
+                header:SetPoint("TOPLEFT", prevContent, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
+                header:SetPoint("TOPRIGHT", prevContent, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
+            elseif prevHeader then
+                header:SetPoint("TOPLEFT", prevHeader, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
+                header:SetPoint("TOPRIGHT", prevHeader, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
+            end
+            local bodyH = math.max(0.1, content._wnSectionFullH or 0.1)
+            if expanded then
+                content:SetHeight(bodyH)
+                content:Show()
+            else
+                content:SetHeight(0.1)
+                content:Hide()
+            end
+            y = y + SECTION_COLLAPSE_HEADER_HEIGHT + (expanded and bodyH or 0) + SECTION_HEADER_GAP
+            prevHeader = header
+            prevContent = content
+            prevExpanded = expanded
+        end
+        local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mfRef and ns.UI_SyncMainTabScrollChrome then
+            ns.UI_SyncMainTabScrollChrome(mfRef, parent, y)
+        end
     end
 
     local function AcquireSectionContentFrame(anchorHeader)
@@ -1950,6 +2094,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
         local sectionContent
         local headerVisualOpts = BuildCollapsibleSectionOpts({
             bodyGetter = function() return sectionContent end,
+            hideOnCollapse = true,
+            showOnExpand = true,
             persistFn = function(exp)
                 if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
                     local gid = visualOpts.groupId
@@ -1960,7 +2106,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     self.db.profile.ui[sectionKey] = exp
                     if exp then self.profRecentlyExpanded[sectionKey] = GetTime() end
                 end
-                RequestProfessionsTabRelayout()
             end,
         }) or {}
         if visualOpts and visualOpts.sectionPreset then
@@ -1972,16 +2117,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
             headerLabel,
             sectionKey,
             isExpanded,
-            function(expanded)
-                if sectionContent then
-                    if expanded then
-                        sectionContent:Show()
-                        sectionContent:SetHeight(math.max(0.1, sectionContent._wnSectionFullH or 0.1))
-                    else
-                        sectionContent:SetHeight(0.1)
-                        sectionContent:Hide()
-                    end
-                end
+            function(_expanded)
+                RelayoutProfessionsSectionStack()
             end,
             headerAtlas,
             true,  -- isAtlas
@@ -2071,6 +2208,15 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
 
         tinsert(parent._wnProfSectionHeaders, header)
+        tinsert(parent._wnProfSectionStack, {
+            header = header,
+            content = sectionContent,
+            sectionKey = sectionKey,
+            defaultExpanded = defaultExpanded,
+            visualOpts = visualOpts,
+        })
+        header._wnProfSectionContent = sectionContent
+        sectionContent._wnProfSectionHeader = header
         previousSectionHeader = header
         previousSectionContent = sectionContent
         previousSectionExpanded = isExpanded == true
@@ -2139,6 +2285,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
             { sectionPreset = "danger" }
         )
     end
+
+    RelayoutProfessionsSectionStack()
 
     local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     EnsureProfessionRowGradientScrollHook(mfRef)

@@ -295,9 +295,7 @@ local defaults = {
             catchUp     = true,
             moxie       = true,
             cooldowns   = false,
-            tool        = false,
-            acc1        = false,
-            acc2        = false,
+            equipment   = true,
         },
         
         -- PvE list sorting preferences
