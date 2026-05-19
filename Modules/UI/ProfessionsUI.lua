@@ -10,7 +10,7 @@
         CENTER-aligned: SKILL, CONCENTRATION, KNOWLEDGE
     Identity (name/realm) is vertically centered in the row; profession lines sit in
     symmetric upper/lower bands (ROW_HEIGHT/4 from midline). Uniform COL_SPACING (8px)
-    between all columns. A subtle midline rule separates the two profession bands.
+    between all columns. Vertical rules only in the profession data grid (not identity columns).
 
     Column grid (character row + per profession line):
         [FavIcon] [ClassIcon] [Name/Realm] [Open]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] …
@@ -20,7 +20,7 @@
     Skill column has a hover tooltip showing all expansion skill breakdowns.
     Icon sizes (favIcon, classIcon) match CharactersUI (33px column, visual 65%).
     All data uses "body" font (12px); frozen column headers use subtitle for readability.
-    Consistent 8px spacing between all data columns.
+    Consistent 8px spacing between all data columns; subtle vertical rules in each gap (header + rows).
 
     WN_FACTORY: Columns dropdown shell uses Factory + ApplyVisuals (accent rim); pooled profession
     rows are created via FramePoolFactory (Factory bootstrap Button). Tooltip/equipment hit cells
@@ -60,6 +60,7 @@ local FormatNumber = ns.UI_FormatNumber
 local GetAccentHexColor = ns.UI_GetAccentHexColor
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
+local SyncGridColumnDividers = ns.UI_SyncGridColumnDividers
 
 -- Pooling
 local AcquireProfessionRow = ns.UI_AcquireProfessionRow
@@ -623,6 +624,54 @@ end
 --- Horizontal center of a column (for CENTER anchors / header alignment).
 local function ColCenterX(key)
     return ColOffset(key) + ColWidth(key) / 2
+end
+
+--- Center X of gaps in the profession data grid only (not fav/class/name — avoids visual clutter).
+--- One rule after Open when the profession block is visible (OPEN_PROF_GAP).
+local function BuildProfessionColumnDividerXs()
+    local xs = {}
+    if IsColumnVisible("open") and IsColumnVisible("profIcon") then
+        xs[#xs + 1] = ColOffset("open") + ColWidth("open") + (COLUMNS.open.spacing or OPEN_PROF_GAP) * 0.5
+    end
+    local inDataGrid = false
+    for ki = 1, #COLUMN_ORDER - 1 do
+        local k = COLUMN_ORDER[ki]
+        if k == "profIcon" then
+            inDataGrid = true
+        end
+        if not inDataGrid or not IsColumnVisible(k) then
+            -- identity columns: no per-column dividers
+        else
+            local hasNextVisible = false
+            for kj = ki + 1, #COLUMN_ORDER do
+                if IsColumnVisible(COLUMN_ORDER[kj]) then
+                    hasNextVisible = true
+                    break
+                end
+            end
+            if hasNextVisible then
+                local nextKey
+                for kj = ki + 1, #COLUMN_ORDER do
+                    if IsColumnVisible(COLUMN_ORDER[kj]) then
+                        nextKey = COLUMN_ORDER[kj]
+                        break
+                    end
+                end
+                -- No rule before the info (?) column — too tight against the button.
+                if nextKey ~= "info" then
+                    local spacing = (COLUMNS[k] and COLUMNS[k].spacing) or COL_SPACING
+                    xs[#xs + 1] = ColOffset(k) + ColWidth(k) + spacing * 0.5
+                end
+            end
+        end
+    end
+    return xs
+end
+
+local function ApplyProfessionColumnDividers(parent, height)
+    if SyncGridColumnDividers and parent then
+        SyncGridColumnDividers(parent, BuildProfessionColumnDividerXs(), height)
+    end
 end
 
 --- Uniform tint width for every row (fav + class + name + open); avoids per-name width gaps when scrolling horizontally.
@@ -1413,39 +1462,122 @@ end
 ns.UI_RefreshProfessionRowGradients = RefreshVisibleProfessionRowGradients
 
 local function RelayoutProfessionRowWidths(scrollChild)
-    if scrollChild and ns.UI_RelayoutStretchRows then
-        ns.UI_RelayoutStretchRows(scrollChild, ProfessionStretchRelayoutOpts(scrollChild))
+    if not scrollChild then return end
+    local bodyW = scrollChild._wnProfStackWidth or scrollChild._wnProfBodyWidth
+    local rows = scrollChild._wnProfNestedRows
+    if not rows then return end
+    local rowH = ROW_HEIGHT
+    local yKey = "_wnYOffset"
+    for ri = 1, #rows do
+        local row = rows[ri]
+        if row and row:IsShown() then
+            local rowParent = row:GetParent()
+            if rowParent then
+                local yOff = row[yKey] or 0
+                row:ClearAllPoints()
+                if rowH and row.SetHeight then
+                    row:SetHeight(rowH)
+                end
+                row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -yOff)
+                if bodyW and bodyW > 0 then
+                    row:SetWidth(bodyW)
+                    row._wnRowPaintWidth = bodyW
+                elseif rowParent.GetWidth then
+                    local pw = rowParent:GetWidth()
+                    if pw and pw > 0 then
+                        row:SetWidth(pw)
+                        row._wnRowPaintWidth = pw
+                    end
+                end
+                if row.SetClipsChildren then
+                    row:SetClipsChildren(false)
+                end
+                if row.bg and row.bg.SetAllPoints then
+                    row.bg:SetAllPoints()
+                end
+                if row._wnGradientRefresh then
+                    pcall(row._wnGradientRefresh)
+                end
+            end
+        end
+    end
+    if scrollChild._wnProfSectionContents and ns.UI_RelayoutStretchSectionBodies then
+        ns.UI_RelayoutStretchSectionBodies(scrollChild, ProfessionStretchRelayoutOpts(scrollChild))
     end
 end
 ns.UI_RelayoutProfessionRowWidths = RelayoutProfessionRowWidths
 
-local function EnsureProfessionColumnHeaderStrip(mf, scrollChild)
+local function ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyWidth)
+    local w = tonumber(bodyWidth) or 0
+    if mf and mf.scroll and mf.scroll.GetWidth then
+        local sw = mf.scroll:GetWidth()
+        if sw and sw > 1 then
+            w = math.max(w, sw)
+        end
+    end
+    if scrollChild and scrollChild.GetWidth then
+        local scw = scrollChild:GetWidth()
+        if scw and scw > 1 then
+            w = math.max(w, scw)
+        end
+    end
+    if ns.ComputeProfessionsGridWidth then
+        w = math.max(w, ns.ComputeProfessionsGridWidth())
+    end
+    return math.max(1, w)
+end
+
+local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
     if not mf or not scrollChild then return end
     local stripH = scrollChild._wnProfColHeaderStripH
-    if stripH and mf.columnHeaderClip and mf.columnHeaderClip.SetHeight then
-        mf.columnHeaderClip:SetHeight(stripH)
-    end
-    if mf.columnHeaderInner and mf.scrollChild and mf.columnHeaderInner.SetWidth then
-        local innerW = mf.scrollChild:GetWidth()
-        if innerW and innerW > 0 then
-            mf.columnHeaderInner:SetWidth(innerW)
+    local stackW = bodyWidth or scrollChild._wnProfStackWidth or scrollChild._wnProfBodyWidth
+    local side = scrollChild._wnProfContentSide or SIDE_MARGIN
+    local clip = mf.columnHeaderClip
+    if stripH and clip and clip.SetHeight then
+        clip:SetHeight(stripH)
+        clip:Show()
+        local clipBg = clip._wnProfColumnHeaderBg
+        if clipBg and stackW and stackW > 0 then
+            clipBg:ClearAllPoints()
+            clipBg:SetPoint("TOPLEFT", clip, "TOPLEFT", side, -COLUMN_HEADER_TOP_GAP)
+            clipBg:SetSize(stackW, COLUMN_HEADER_HEIGHT)
+            clipBg:Show()
         end
+    end
+    if mf.columnHeaderInner and mf.columnHeaderInner.SetWidth then
+        mf.columnHeaderInner:SetWidth(ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, stackW))
     end
 end
 
 --- Live viewport resize: stretch rows + gradients only (no PopulateContent mid-drag).
+local function ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
+    local side = (scrollChild and scrollChild._wnProfContentSide)
+        or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin())
+        or SIDE_MARGIN
+    if contentWidth and contentWidth > 0 then
+        return math.max(200, contentWidth - side * 2)
+    end
+    return nil
+end
+
 local function ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
     if not mf or mf.currentTab ~= "professions" or not scrollChild then return end
-    if contentWidth and contentWidth > 0 then
-        cachedRowWidth = contentWidth
+    local bodyW = ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
+    if bodyW and bodyW > 0 then
+        cachedRowWidth = bodyW
+        scrollChild._wnProfBodyWidth = bodyW
+        scrollChild._wnProfStackWidth = bodyW
     elseif mf and ns.UI_GetMainTabViewportWidth then
         local vp = ns.UI_GetMainTabViewportWidth(mf)
         if vp and vp > 0 then
             cachedRowWidth = vp
         end
     end
-    EnsureProfessionColumnHeaderStrip(mf, scrollChild)
+    EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyW)
     RelayoutProfessionRowWidths(scrollChild)
+    if scrollChild._wnProfRelayoutSectionStack then
+        scrollChild._wnProfRelayoutSectionStack()
+    end
 end
 
 local function DebounceProfessionRowGradientRefresh(mf)
@@ -1486,9 +1618,6 @@ ns.UI_DebounceProfessionRowGradientRefresh = DebounceProfessionRowGradientRefres
 
 function WarbandNexus:DrawProfessionsTab(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local width = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
-        or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
-    cachedRowWidth = width
     profEquipResolveCache = {}
 
     RegisterProfessionEvents(parent)
@@ -1508,14 +1637,22 @@ function WarbandNexus:DrawProfessionsTab(parent)
     parent._wnProfNestedRows = {}
     parent._wnProfSectionContents = {}
 
-    -- fixedHeader: non-scrolling area for title card + column headers
+      -- fixedHeader: non-scrolling area for title card + column headers
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
-    local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
+    local metrics = (chrome and chrome.metrics) or (ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf))
     local fixedHeader = mf and mf.fixedHeader
     local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
     local headerYOffset = (chrome and chrome.yOffset) or 0
     local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or SIDE_MARGIN
     local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+  -- Single stack width for title card, column headers, sections, and row chrome (Characters-tab parity).
+    local stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
+        or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+        or math.max(200, ((mf and mf.scroll and mf.scroll:GetWidth()) or 600) - contentSide * 2)
+    cachedRowWidth = stackWidth
+    parent._wnProfStackWidth = stackWidth
+    parent._wnProfBodyWidth = stackWidth
+    parent._wnProfContentSide = contentSide
 
     -- If module is disabled, show disabled state card
     if not ns.Utilities:IsModuleEnabled("professions") then
@@ -1756,11 +1893,22 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
     local colHeaderParent = columnHeaderInner or headerParent
     local hdrScrollChild = mainFrameRef and mainFrameRef.scrollChild
-    local colHeaderInnerW = math.max(1, (hdrScrollChild and hdrScrollChild:GetWidth()) or width or 400)
+    local colHeaderInnerW = ResolveProfessionColumnHeaderInnerWidth(mainFrameRef, hdrScrollChild, stackWidth)
     parent._wnProfColHeaderStripH = colHeaderStripH
 
     if columnHeaderClip then
         columnHeaderClip:SetHeight(colHeaderStripH)
+        columnHeaderClip:Show()
+        local clipBg = columnHeaderClip._wnProfColumnHeaderBg
+        if not clipBg then
+            clipBg = columnHeaderClip:CreateTexture(nil, "BACKGROUND", nil, 0)
+            columnHeaderClip._wnProfColumnHeaderBg = clipBg
+        end
+        clipBg:ClearAllPoints()
+        clipBg:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 0.95)
+        clipBg:SetPoint("TOPLEFT", columnHeaderClip, "TOPLEFT", contentSide, -COLUMN_HEADER_TOP_GAP)
+        clipBg:SetSize(stackWidth, COLUMN_HEADER_HEIGHT)
+        clipBg:Show()
     end
     if columnHeaderInner then
         columnHeaderInner:SetWidth(colHeaderInnerW)
@@ -1773,19 +1921,16 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
     if columnHeaderInner then
-        -- Align with data rows (section content x=0; ColOffset uses LEFT_PAD inside the bar).
-        colHeaderBar:SetPoint("TOPLEFT", 0, -COLUMN_HEADER_TOP_GAP)
-        colHeaderBar:SetPoint("TOPRIGHT", 0, -COLUMN_HEADER_TOP_GAP)
+        -- Same horizontal inset as title card / section rows (ColOffset is relative to this bar).
+        colHeaderBar:ClearAllPoints()
+        colHeaderBar:SetPoint("TOPLEFT", columnHeaderInner, "TOPLEFT", contentSide, -COLUMN_HEADER_TOP_GAP)
+        colHeaderBar:SetWidth(stackWidth)
     else
-        colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
-        colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
+        colHeaderBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        colHeaderBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
         headerYOffset = headerYOffset + COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
-
-    local colHeaderBg = colHeaderBar:CreateTexture(nil, "BACKGROUND")
-    colHeaderBg:SetAllPoints()
-    colHeaderBg:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 0.95)
 
     local accentR = COLORS.accent[1] or 0.40
     local accentG = COLORS.accent[2] or 0.20
@@ -1903,6 +2048,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             end
         end
     end
+    ApplyProfessionColumnDividers(colHeaderBar, COLUMN_HEADER_HEIGHT)
     colHeaderBar:Show()
 
     -- Scroll content starts below the column header overlay area.
@@ -1913,8 +2059,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     -- ===== EMPTY STATE =====
     if totalProfChars == 0 then
         local emptyText = FontManager:CreateFontString(parent, DATA_FONT, "OVERLAY")
-        emptyText:SetPoint("TOPLEFT", SIDE_MARGIN + 20, -yOffset - 30)
-        emptyText:SetWidth(width - 40)
+        emptyText:SetPoint("TOPLEFT", contentSide + 20, -yOffset - 30)
+        emptyText:SetWidth(stackWidth - 40)
         emptyText:SetJustifyH("CENTER")
         emptyText:SetText("|cffffffff" .. ((ns.L and ns.L["NO_PROFESSIONS_DATA"]) or "No profession data available yet. Open your profession window (default: K) on each character to collect data.") .. "|r")
         return yOffset + 100
@@ -2008,6 +2154,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local function RelayoutProfessionsSectionStack()
         local stack = parent._wnProfSectionStack
         if not stack or #stack == 0 then return end
+        local w = parent._wnProfStackWidth or stackWidth
+        local side = parent._wnProfContentSide or contentSide
         local y = parent._wnProfSectionStackTopY or 0
         local prevHeader, prevContent, prevExpanded
         for si = 1, #stack do
@@ -2020,16 +2168,19 @@ function WarbandNexus:DrawProfessionsTab(parent)
             local expanded = SectionExpandedNow(entry.sectionKey, entry.defaultExpanded, entry.visualOpts)
             header:ClearAllPoints()
             header:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
+            if header.SetWidth then
+                header:SetWidth(math.max(1, w))
+            end
             if si == 1 then
-                header:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
-                header:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -y)
+                header:SetPoint("TOPLEFT", parent, "TOPLEFT", side, -y)
             elseif prevExpanded and prevContent then
                 header:SetPoint("TOPLEFT", prevContent, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
-                header:SetPoint("TOPRIGHT", prevContent, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
             elseif prevHeader then
                 header:SetPoint("TOPLEFT", prevHeader, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
-                header:SetPoint("TOPRIGHT", prevHeader, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
             end
+            content:ClearAllPoints()
+            content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+            content:SetWidth(w)
             local bodyH = math.max(0.1, content._wnSectionFullH or 0.1)
             if expanded then
                 content:SetHeight(bodyH)
@@ -2048,37 +2199,37 @@ function WarbandNexus:DrawProfessionsTab(parent)
             ns.UI_SyncMainTabScrollChrome(mfRef, parent, y)
         end
     end
+    parent._wnProfRelayoutSectionStack = RelayoutProfessionsSectionStack
 
     local function AcquireSectionContentFrame(anchorHeader)
         local contentFrame = CreateFrame("Frame", nil, parent)
         contentFrame:SetHeight(0.1)
         if contentFrame.SetClipsChildren then
-            contentFrame:SetClipsChildren(true)
+            contentFrame:SetClipsChildren(false)
         end
         contentFrame._wnAnchorHeader = anchorHeader
         contentFrame._wnSectionFullH = 0
         contentFrame:ClearAllPoints()
         contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", 0, 0)
-        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", 0, 0)
+        contentFrame:SetWidth(stackWidth)
         tinsert(parent._wnProfSectionContents, contentFrame)
         return contentFrame
     end
 
     local function AnchorSectionHeader(headerFrame)
         headerFrame:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
+        if headerFrame.SetWidth then
+            headerFrame:SetWidth(math.max(1, stackWidth))
+        end
         if isFirstSection then
-            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
             isFirstSection = false
         elseif previousSectionExpanded and previousSectionContent then
             headerFrame:SetPoint("TOPLEFT", previousSectionContent, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
-            headerFrame:SetPoint("TOPRIGHT", previousSectionContent, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
         elseif previousSectionHeader then
             headerFrame:SetPoint("TOPLEFT", previousSectionHeader, "BOTTOMLEFT", 0, -SECTION_HEADER_GAP)
-            headerFrame:SetPoint("TOPRIGHT", previousSectionHeader, "BOTTOMRIGHT", 0, -SECTION_HEADER_GAP)
         else
-            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
-            headerFrame:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
+            headerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
         end
     end
 
@@ -2116,6 +2267,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if visualOpts and visualOpts.sectionPreset then
             headerVisualOpts.sectionPreset = visualOpts.sectionPreset
         end
+        headerVisualOpts.useFullParentWidth = true
+        headerVisualOpts.sectionStackWidth = stackWidth
 
         local header, headerExpandIcon, hdrIcon, headerText = CreateCollapsibleHeader(
             parent,
@@ -2166,7 +2319,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         for chi = 1, #chars do
             local char = chars[chi]
             rowIndex = rowIndex + 1
-            local ok, nextYOffset, rowFrame = pcall(self.DrawProfessionRow, self, sectionContent, char, rowIndex, width, sectionYOffset, currentPlayerKey)
+            local ok, nextYOffset, rowFrame = pcall(self.DrawProfessionRow, self, sectionContent, char, rowIndex, stackWidth, sectionYOffset, currentPlayerKey)
             if ok and nextYOffset then
                 sectionYOffset = nextYOffset
                 if rowFrame then
@@ -2295,7 +2448,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     EnsureProfessionRowGradientScrollHook(mfRef)
-    EnsureProfessionColumnHeaderStrip(mfRef, parent)
+    EnsureProfessionColumnHeaderStrip(mfRef, parent, stackWidth)
     RelayoutProfessionRowWidths(parent)
     RefreshVisibleProfessionRowGradients(parent)
     if mfRef and ns.UI_SyncMainTabScrollChrome then
@@ -2314,14 +2467,16 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     row._wnYOffset = yOffset
     row:ClearAllPoints()
     row:SetHeight(ROW_HEIGHT)
-    -- Stretch to full section width (Characters tab parity) so stripe/bg covers the scrollable grid.
+    -- Row chrome matches title card body width; column cells may extend right (horizontal scroll).
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -yOffset)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -yOffset)
+    row:SetWidth(width)
+    if row.SetClipsChildren then
+        row:SetClipsChildren(false)
+    end
     row:EnableMouse(true)
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
-    local rowW = row:GetWidth() or width
-    row._wnRowPaintWidth = rowW
+    row._wnRowPaintWidth = width
     ns.UI.Factory:ApplyRowBackground(row, index)
     if row.bg and row.bg.SetAllPoints then
         row.bg:SetAllPoints()
@@ -2479,22 +2634,11 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     self:DrawProfessionLine(row, char, char.professions and char.professions[1], 1, LINE1_Y)
     self:DrawProfessionLine(row, char, char.professions and char.professions[2], 2, LINE2_Y)
 
-    -- Midline between profession bands (data grid only; identity columns stay clean).
-    do
-        local rule = row._wnProfMidRule
-        if not rule then
-            rule = row:CreateTexture(nil, "ARTWORK")
-            rule:SetHeight(1)
-            rule:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.14)
-            row._wnProfMidRule = rule
-        end
-        local ruleLeft = ColOffset("profIcon")
-        local ruleRight = ColOffset("info") + ColWidth("info")
-        rule:ClearAllPoints()
-        rule:SetPoint("LEFT", row, "LEFT", ruleLeft, 0)
-        rule:SetPoint("RIGHT", row, "LEFT", ruleRight, 0)
-        rule:Show()
+    if row._wnProfMidRule then
+        row._wnProfMidRule:Hide()
     end
+
+    ApplyProfessionColumnDividers(row, ROW_HEIGHT)
 
     -- Row hover
     row:SetScript("OnEnter", function(self) self:SetAlpha(0.9) end)
@@ -3396,11 +3540,18 @@ if ns.UI_RegisterTabViewportResize then
         stretch = ProfessionStretchRelayoutOpts,
         refreshHeader = true,
         onCommit = function(scrollChild, contentWidth, mf)
-            if contentWidth and contentWidth > 0 then
-                cachedRowWidth = contentWidth
+            local bodyW = ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
+            if bodyW and bodyW > 0 then
+                cachedRowWidth = bodyW
+                scrollChild._wnProfBodyWidth = bodyW
+                scrollChild._wnProfStackWidth = bodyW
             end
-            EnsureProfessionColumnHeaderStrip(mf, scrollChild or mf.scrollChild)
+            EnsureProfessionColumnHeaderStrip(mf, scrollChild or mf.scrollChild, bodyW)
             RelayoutProfessionRowWidths(scrollChild or mf.scrollChild)
+            local sc = scrollChild or mf.scrollChild
+            if sc and sc._wnProfRelayoutSectionStack then
+                sc._wnProfRelayoutSectionStack()
+            end
             EnsureProfessionRowGradientScrollHook(mf)
             return false
         end,

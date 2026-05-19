@@ -5277,18 +5277,53 @@ local function ComputeCharactersTitleToolbarReserve()
     return ns.UI_ComputeTitleToolbarReserve({ m.filterW, m.squareBtn, m.squareBtn })
 end
 
+local GRID_COL_DIVIDER_RGBA = { 0.3, 0.3, 0.35, 0.4 }
+
+--- Reuse or create one vertical grid column rule (centered on parent at x).
+local function EnsureGridColumnDivider(parent, index, x, height)
+    if not parent or not x then return nil end
+    parent._wnGridColDividers = parent._wnGridColDividers or {}
+    local divider = parent._wnGridColDividers[index]
+    if not divider then
+        divider = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+        parent._wnGridColDividers[index] = divider
+    end
+    divider:SetColorTexture(GRID_COL_DIVIDER_RGBA[1], GRID_COL_DIVIDER_RGBA[2], GRID_COL_DIVIDER_RGBA[3], GRID_COL_DIVIDER_RGBA[4])
+    divider:SetWidth(1)
+    divider:SetHeight(height or 38)
+    divider:ClearAllPoints()
+    divider:SetPoint("CENTER", parent, "LEFT", x, 0)
+    divider:Show()
+    return divider
+end
+
+--- Place 1px vertical rules between grid columns; hides unused pooled slots.
+---@param parent Frame
+---@param xPositions number[] center X of each gap (parent-local)
+---@param height number|nil
+local function SyncGridColumnDividers(parent, xPositions, height)
+    if not parent then return end
+    local positions = xPositions or {}
+    local h = height or 38
+    for i = 1, #positions do
+        EnsureGridColumnDivider(parent, i, positions[i], h)
+    end
+    local dividers = parent._wnGridColDividers
+    if dividers then
+        for i = #positions + 1, #dividers do
+            dividers[i]:Hide()
+        end
+    end
+end
+
 --[[
-    Create column divider at specified offset
+    Create column divider at specified offset (legacy single-slot API).
     @param parent frame - Parent frame
     @param xOffset number - X position for divider
     @return texture - Created divider texture
 ]]
 local function CreateCharRowColumnDivider(parent, xOffset)
-    local divider = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
-    divider:SetColorTexture(0.3, 0.3, 0.35, 0.4)
-    divider:SetSize(1, 38)
-    divider:SetPoint("LEFT", xOffset, 0)
-    return divider
+    return EnsureGridColumnDivider(parent, 1, xOffset, 38)
 end
 
 --============================================================================
@@ -6885,6 +6920,7 @@ ns.UI_ComputeCharactersMinScrollWidth = ComputeCharactersMinScrollWidth
 ns.UI_ComputeCharactersTitleToolbarReserve = ComputeCharactersTitleToolbarReserve
 -- UI_GetTitleCardToolbarMetrics / UI_ComputeTitleToolbarReserve exported above
 ns.UI_CreateCharRowColumnDivider = CreateCharRowColumnDivider
+ns.UI_SyncGridColumnDividers = SyncGridColumnDividers
 ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown
 ns.UI_CreateCharacterTabAdvancedFilterButton = CreateCharacterTabAdvancedFilterButton
 

@@ -17,6 +17,7 @@
     WN_FACTORY: Column picker catcher + Hide-menu fullscreen catcher stay raw Buttons (FULLSCREEN_DIALOG
     strata + propagate flags). Drawer shells use `ns.UI.Factory` where parity allows; Vault slot Buttons
     and dynamic scroll children keep CreateFrame paths documented inline.
+    Inline crest/vault columns: vertical 1px rules in each gap via `ns.UI_SyncGridColumnDividers` (header + rows).
     
     Event-driven refresh: WN_PVE_UPDATED (see UI.lua listeners; cache writes in PvECacheService.lua).
 ]]
@@ -450,6 +451,20 @@ local function PvE_GetGapAfterColumnKey(leftKey, visibleKeySet)
         return PVE_KEY_TO_VAULT_GAP
     end
     return PVE_COL_SPACING
+end
+
+--- Center X of each gap between inline PvE columns (parent-local).
+local function BuildPvEInlineColumnDividerXs(startX, columns, gapAfterIndex)
+    local xs = {}
+    if not startX or not columns or #columns < 2 then return xs end
+    local x = startX
+    for ci = 1, #columns - 1 do
+        local col = columns[ci]
+        local gap = (gapAfterIndex and gapAfterIndex(ci)) or PVE_COL_SPACING
+        xs[#xs + 1] = x + col.width + gap * 0.5
+        x = x + col.width + gap
+    end
+    return xs
 end
 
 -- PvE Columns dropdown: fullscreen dialog layer for interactive menus (avoid tooltip strata misuse).
@@ -3027,6 +3042,8 @@ if not ns.PvEDrawLibs then
         PvE_GetDrawPoolMeasureFS = PvE_GetDrawPoolMeasureFS,
         PvEAcquireColHeaderLabel = PvEAcquireColHeaderLabel,
         PvEAcquireInlineCell = PvEAcquireInlineCell,
+        UI_SyncGridColumnDividers = ns.UI_SyncGridColumnDividers,
+        BuildPvEInlineColumnDividerXs = BuildPvEInlineColumnDividerXs,
         GetPvECachedCurrencyDisplay = GetPvECachedCurrencyDisplay,
         EnsureVaultButtonColumnsForPvE = EnsureVaultButtonColumnsForPvE,
         EnsurePvEExtraVisibleColumns = EnsurePvEExtraVisibleColumns,
@@ -3808,6 +3825,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
     inlineTotal = inlineTotal + COL_RIGHT_MARGIN
     local gridInlineStartX = (L.PvE_ComputeInlineColumnsStartPx and L.PvE_ComputeInlineColumnsStartPx(nameWidth)) or 400
+    local pveColumnDividerXs = (L.BuildPvEInlineColumnDividerXs and L.BuildPvEInlineColumnDividerXs(gridInlineStartX, PVE_COLUMNS, GapBetweenColumns)) or {}
     local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + gridInlineStartX + inlineTotal
     local colHeaderInnerW = math.max(viewportW, minScrollW)
     parent:SetWidth(colHeaderInnerW)
@@ -3940,6 +3958,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         if hci < #PVE_COLUMNS then
             colX = colX + GapBetweenColumns(hci)
         end
+    end
+
+    if L.UI_SyncGridColumnDividers and #pveColumnDividerXs > 0 then
+        L.UI_SyncGridColumnDividers(colHeaderRow, pveColumnDividerXs, COL_HEADER_HEIGHT)
     end
 
     colHeaderRow:Show()
@@ -4724,6 +4746,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                         inlineX = inlineX + GapBetweenColumns(ci)
                     end
                 end
+            end
+            if L.UI_SyncGridColumnDividers and #pveColumnDividerXs > 0 then
+                L.UI_SyncGridColumnDividers(charHeader, pveColumnDividerXs, charHeader:GetHeight() or PVE_CHAR_ROW_HEADER_H)
             end
         end
         

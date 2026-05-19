@@ -2,7 +2,7 @@
     WarbandNexus - Vault Ready Button
     Draggable button showing Great Vault status across all characters.
     - Hover: compact list of ready/pending characters
-    - Click: full table view (Name | iLvl | Raid | Dungeon | World | Status)
+    - Click: full table view (Name | iLvl | Raid | Dungeon | World | Status) with column separators
     - Row hover: tooltip showing iLvl reward per vault slot
 ]]
 
@@ -238,6 +238,35 @@ local function GetEnabledCategoryDefs()
         table.insert(defs, { key="world", width=width or COL_WORLD, label="World", icon=TRACK_ICONS.world, tooltip="World" })
     end
     return defs
+end
+
+--- Column boundary X positions for Vault Tracker grid separators (matches header/row layout).
+local function BuildVaultTableColumnDividerXs(catDefs, columns)
+    local xs = {}
+    local x = COL_NAME
+    xs[#xs + 1] = x
+    x = x + COL_ILVL
+    for ci = 1, #catDefs do
+        xs[#xs + 1] = x
+        x = x + catDefs[ci].width
+    end
+    if columns.bounty ~= false then
+        xs[#xs + 1] = x
+        x = x + COL_BOUNTY
+    end
+    if columns.gildedStash == true then
+        xs[#xs + 1] = x
+        x = x + COL_STASH
+    end
+    if columns.voidcore ~= false then
+        xs[#xs + 1] = x
+        x = x + COL_VOIDCORE
+    end
+    if columns.manaflux == true then
+        xs[#xs + 1] = x
+        x = x + COL_MANAFLUX
+    end
+    return xs
 end
 
 local function GetTableWidth()
@@ -1021,6 +1050,11 @@ local function BuildTableFrame()
     end
     HCell("Status",     hx, COL_STATUS,  false)
 
+    local dividerXs = BuildVaultTableColumnDividerXs(GetEnabledCategoryDefs(), columns)
+    if ns.UI_SyncGridColumnDividers and #dividerXs > 0 then
+        ns.UI_SyncGridColumnDividers(hRow, dividerXs, HEADER_H)
+    end
+
     -- Separator
     local sep = f:CreateTexture(nil, "BORDER")
     sep:SetHeight(1)
@@ -1076,6 +1110,7 @@ RefreshTable = function()
 
     local catDefs = GetEnabledCategoryDefs()
     local columns = GetSettings().columns or {}
+    local vaultColumnDividerXs = BuildVaultTableColumnDividerXs(catDefs, columns)
     local colors = GetThemeColors()
     local accent = colors.accent or {0.40, 0.20, 0.58}
 
@@ -1233,6 +1268,10 @@ RefreshTable = function()
             statusFS:SetText("|cff66ddff" .. slotsReadyLabel .. "|r")
         else
             statusFS:SetText("|cffffd700" .. pendingLabel .. "|r")
+        end
+
+        if ns.UI_SyncGridColumnDividers and #vaultColumnDividerXs > 0 then
+            ns.UI_SyncGridColumnDividers(row, vaultColumnDividerXs, ROW_H)
         end
 
         -- Row tooltip: iLvl per slot + bounty status (themed)
