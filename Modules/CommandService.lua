@@ -30,6 +30,7 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
     addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
+    addon:Print("  |cff00ccff/wn gearstash|r — Gear stash recommendations diagnose + rescan (chat)")
     addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
     if IsDebugOn() then
@@ -93,6 +94,16 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:OpenOptions()
         return
         
+    elseif cmd == "gearstash" or cmd == "stashrec" or cmd == "gearrec" then
+        local _, itemArg = addon:GetArgs(input, 2)
+        local probeID = itemArg and tonumber(itemArg) or nil
+        if addon.DiagnoseGearStorageRecToChat then
+            addon:DiagnoseGearStorageRecToChat(nil, probeID)
+        else
+            addon:Print("|cffff6600[WN]|r Gear stash diagnostic not loaded.")
+        end
+        return
+
     elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
         if addon.ShowUpdateNotification and ns.CHANGELOG then
             local ok, err = pcall(function()

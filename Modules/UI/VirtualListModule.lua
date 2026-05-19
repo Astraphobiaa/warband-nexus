@@ -573,7 +573,7 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
 
     local function UpdateVisible()
         if not container:IsVisible() then return end
-        local resizing = mainFrame and ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mainFrame)
+        local resizing = mainFrame and ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mainFrame)
         local flEarly = container._vlm_flatList or flatList
         if resizing and container._vlm_resizeLayoutOnly then
             return

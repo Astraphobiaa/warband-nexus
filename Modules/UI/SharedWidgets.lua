@@ -3805,7 +3805,7 @@ function ns.UI_RegisterTabViewportResize(tabId, profile)
             if not TabIsActive(mf) then
                 return false
             end
-            if profile.freezeWhileResizing and ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+            if profile.freezeWhileResizing and ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mf) then
                 return true
             end
             if mode == ns.UI_VIEWPORT_RESIZE_MODE.STRETCH_ROWS then

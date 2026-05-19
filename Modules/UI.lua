@@ -655,14 +655,36 @@ local function ResetWindowGeometry(frame)
     WarbandNexus:PopulateContent()
 end
 
+--- Per-tab minimum scroll content width (viewport can be narrower; horizontal scroll instead of squeeze).
+local tabMinScrollWidthFns = {}
+
+---@param tabId string
+---@param fn fun(): number|nil
+function ns.UI_RegisterTabMinScrollWidth(tabId, fn)
+    if tabId and type(fn) == "function" then
+        tabMinScrollWidthFns[tabId] = fn
+    end
+end
+
 -- Compute scrollChild logical width for the current tab.
 -- Tabs with wide inline layouts enforce a minimum so horizontal scrollbar appears instead of squashed chrome.
 local function ComputeScrollChildWidth(frame)
     if not frame or not frame.scroll then return 0 end
     local w = frame.scroll:GetWidth()
     local tab = frame.currentTab
-    if tab == "gear" and ns.MIN_GEAR_CARD_W and ns.MIN_GEAR_CARD_W > 0 then
-        w = math.max(w, ns.MIN_GEAR_CARD_W)
+    local regFn = tab and tabMinScrollWidthFns[tab]
+    if regFn then
+        local tabMin = regFn()
+        if tabMin and tabMin > 0 then
+            w = math.max(w, tabMin)
+        end
+    end
+    if tab == "gear" then
+        local gearMin = (ns.GearUI_GetGearTabMinScrollWidth and ns.GearUI_GetGearTabMinScrollWidth())
+            or ns.MIN_GEAR_CARD_W
+        if gearMin and gearMin > 0 then
+            w = math.max(w, gearMin)
+        end
     elseif tab == "professions" and ns.ComputeProfessionsGridWidth then
         local profW = ns.ComputeProfessionsGridWidth()
         if profW > 0 then w = math.max(w, profW) end
@@ -694,7 +716,7 @@ end
 -- Update scrollChild and frozen column header widths in one call.
 local function UpdateScrollLayout(frame)
     if not frame or not frame.scrollChild or not frame.scroll then return end
-    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(frame) then
+    if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(frame) then
         return
     end
     local w = ComputeScrollChildWidth(frame)
@@ -783,7 +805,7 @@ ns.UI_RecycleBin = recycleBin
 
 --- Items / Warband aggregate: sync scrollChild width from scroll viewport before reading content width.
 ns.UI_EnsureMainScrollLayout = function()
-    if mainFrame and not (ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mainFrame)) then
+    if mainFrame and not (ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mainFrame)) then
         UpdateScrollLayout(mainFrame)
     end
 end
@@ -2691,8 +2713,8 @@ function WarbandNexus:CreateMainWindow()
         if origOnScroll then origOnScroll(self, offset) end
         -- Characters corner-drag: live adapter relayouts visible rows; full VLM cull causes flicker.
         local skipVirtualOnScroll = f.currentTab == "chars"
-            and ns.UI_IsMainFrameResizing
-            and ns.UI_IsMainFrameResizing(f)
+            and ns.UI_IsMainFrameResizeSession
+            and ns.UI_IsMainFrameResizeSession(f)
         if f._virtualScrollUpdate and not skipVirtualOnScroll then
             f._virtualScrollUpdate()
         end
@@ -2740,6 +2762,11 @@ function WarbandNexus:CreateMainWindow()
     local GEAR_TAB_INV_NARROW_DEBOUNCE = 0.08
     local gearTabInvNarrowTimer = nil
 
+    local function IsGearTabPopulateQuiet()
+        local untilT = ns._gearTabPopulateQuietUntil
+        return untilT and GetTime() < untilT
+    end
+
     local function TryRunGearTabInventoryNarrowRefresh()
         if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
         if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
@@ -2759,9 +2786,6 @@ function WarbandNexus:CreateMainWindow()
                 ns._gearStorageAllowEquipSigInvBypass = true
                 WarbandNexus:RedrawGearStorageRecommendationsOnly(canon, gen, true)
                 ns._gearStorageAllowEquipSigInvBypass = false
-            end
-            if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
-                WarbandNexus:TryRefreshAllGearEquipSlotIcons()
             end
             return
         end
@@ -2792,8 +2816,11 @@ function WarbandNexus:CreateMainWindow()
             SchedulePopulateContent(true)
             return
         end
-        if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
-            WarbandNexus:TryRefreshAllGearEquipSlotIcons()
+        if not IsGearTabPopulateQuiet() and not ns._gearStorageYieldCo
+            and not (f._gearDeferChainActive == true) then
+            if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
+                WarbandNexus:TryRefreshAllGearEquipSlotIcons()
+            end
         end
     end
 
@@ -2817,7 +2844,7 @@ function WarbandNexus:CreateMainWindow()
         pendingPopulateTimer = nil
         if myGen ~= populateDebounceGen then return end
         if not f or not f:IsShown() then return end
-        if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(f) then
+        if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(f) then
             f._wnDeferredPopulateAfterResize = true
             return
         end
@@ -2825,7 +2852,10 @@ function WarbandNexus:CreateMainWindow()
         -- which dropped GET_ITEM_INFO_RECEIVED / ITEM_METADATA repaints for the entire storage defer window.
         local useSkip = pendingPopulateSkipCooldown
         pendingPopulateSkipCooldown = false
-        if f.currentTab == "gear" and ns._gearStorageDeferAwaiting then
+        if f.currentTab == "gear" and IsGearTabPopulateQuiet() and not useSkip then
+            return
+        end
+        if f.currentTab == "gear" and (ns._gearStorageDeferAwaiting or f._gearDeferChainActive) then
             local ac = ns._gearStorageDeferAwaitCanon
             local fc = f._gearPopulateCanonKey
             if ac and fc and ac == fc then
@@ -2840,6 +2870,8 @@ function WarbandNexus:CreateMainWindow()
                 if not allowEquipRefresh and not useSkip then
                     return
                 end
+            elseif not useSkip then
+                return
             end
         end
         if f._wnLastMainTabSwitchAt and f._wnLastMainTabSwitchKey == f.currentTab
@@ -2978,6 +3010,9 @@ function WarbandNexus:CreateMainWindow()
             if f._gearCharUpdSuppressUntil and GetTime() < f._gearCharUpdSuppressUntil then
                 return
             end
+            if IsGearTabPopulateQuiet() then
+                return
+            end
             SchedulePopulateContent()
         end
     end)
@@ -2998,6 +3033,7 @@ function WarbandNexus:CreateMainWindow()
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GEAR_UPDATED, function(_, payload)
         if f and f:IsShown() and f.currentTab == "gear" then
+            local gearQuiet = IsGearTabPopulateQuiet()
             -- ScanEquippedGear always reports the logged-in character. If the Gear tab is showing
             -- another roster entry (offline alt), a full PopulateContent here only bumps drawGen,
             -- aborts in-flight storage Find, and leaves recommendations / loading veil stuck.
@@ -3066,22 +3102,18 @@ function WarbandNexus:CreateMainWindow()
                     runGearStorageRecRefreshNow()
                 end
             end
-            local function redrawStorageRecAfterEquipOnly()
-                local gearCanon = f._gearPopulateCanonKey
-                local gen = ns._gearTabDrawGen or 0
-                if gearCanon and WarbandNexus.TryRedrawGearStorageRecAfterEquipChange then
-                    if WarbandNexus:TryRedrawGearStorageRecAfterEquipChange(gearCanon, gen) then
-                        return
-                    end
+            local function redrawStorageRecAfterEquipChange()
+                -- Unequip-to-bag / new loot: persisted itemStorage can lag; live scan needs a full Find.
+                if recEnabled then
+                    ScheduleGearTabInventoryNarrowRefresh()
                 end
-                refreshStorageRec(true)
             end
             local recEnabled = WarbandNexus.IsGearStorageRecommendationsEnabled
                 and WarbandNexus:IsGearStorageRecommendationsEnabled()
             local function trySlotRefresh(pl)
                 if WarbandNexus.TryRefreshGearEquipSlotsOnly and WarbandNexus:TryRefreshGearEquipSlotsOnly(pl) then
                     if recEnabled then
-                        redrawStorageRecAfterEquipOnly()
+                        redrawStorageRecAfterEquipChange()
                     end
                     return true
                 end
@@ -3090,7 +3122,7 @@ function WarbandNexus:CreateMainWindow()
                         if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
                         if WarbandNexus:TryRefreshGearEquipSlotsOnly(pl) then
                             if recEnabled then
-                                redrawStorageRecAfterEquipOnly()
+                                redrawStorageRecAfterEquipChange()
                             end
                         else
                             SchedulePopulateContent(true)
@@ -3101,6 +3133,12 @@ function WarbandNexus:CreateMainWindow()
                 return false
             end
             if trySlotRefresh(payload) then
+                return
+            end
+            if gearQuiet then
+                if recEnabled then
+                    redrawStorageRecAfterEquipChange()
+                end
                 return
             end
             SchedulePopulateContent(true)
@@ -3241,7 +3279,12 @@ function WarbandNexus:CreateMainWindow()
     -- Money: chars Total Gold card, gear-tab affordability (gold-only upgrades).
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MONEY_UPDATED, function()
         if not f or not f:IsShown() then return end
-        if f.currentTab == "chars" or f.currentTab == "gear" then
+        if f.currentTab == "gear" then
+            if WarbandNexus.TryRefreshGearUpgradeEconomy and WarbandNexus:TryRefreshGearUpgradeEconomy() then
+                return
+            end
+            SchedulePopulateContent(true)
+        elseif f.currentTab == "chars" then
             SchedulePopulateContent(true)
         end
     end)
@@ -3250,6 +3293,9 @@ function WarbandNexus:CreateMainWindow()
     local function refreshCurrency()
         if not f or not f:IsShown() then return end
         if f.currentTab == "gear" then
+            if WarbandNexus.TryRefreshGearUpgradeEconomy and WarbandNexus:TryRefreshGearUpgradeEconomy() then
+                return
+            end
             SchedulePopulateContent(true)
         elseif f.currentTab == "currency" then
             SchedulePopulateContent()
@@ -3394,7 +3440,8 @@ function WarbandNexus:CreateMainWindow()
                     if gearCanon and WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then
                         invInvalidated = WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(gearCanon) == true
                     end
-                    if not invInvalidated then
+                    -- Avoid invGen-only bumps during first paint (forces redundant full scans); soft invalidate covers ilvl warm-up.
+                    if not invInvalidated and not IsGearTabPopulateQuiet() then
                         ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
                     end
                 end
@@ -3412,10 +3459,11 @@ function WarbandNexus:CreateMainWindow()
                     ThrottledScheduleGearAsyncRepaint()
                 end
             end
+            local infoDelay = IsGearTabPopulateQuiet() and 0.38 or 0.08
             if C_Timer and C_Timer.NewTimer then
-                gearItemInfoCoalesceTimer = C_Timer.NewTimer(0.08, runGearItemInfoBatch)
+                gearItemInfoCoalesceTimer = C_Timer.NewTimer(infoDelay, runGearItemInfoBatch)
             else
-                C_Timer.After(0.08, runGearItemInfoBatch)
+                C_Timer.After(infoDelay, runGearItemInfoBatch)
             end
         end)
     end
@@ -3603,8 +3651,8 @@ local function PopulateContentBody(self)
         mainFrame:SyncMainHeaderDebugReloadLayout()
     end
 
-    -- Live resize: shell stretches via anchors; tab content redraw runs once on resize commit (LayoutCoordinator).
-    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mainFrame) then
+    -- Live resize + debounced commit: shell only; tab body relayout runs once on resize_commit (LayoutCoordinator).
+    if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mainFrame) then
         if ns.UI_EnsureMainScrollLayout then
             ns.UI_EnsureMainScrollLayout()
         end
@@ -3831,6 +3879,10 @@ local function PopulateContentBody(self)
     elseif tab == "gear" then
         -- Full-tab loading veil removed: recommendations panel shows its own "Scanning..." state; smoother tab open.
         mainFrame._wnGearPaintShowVeil = false
+        -- Split DB read (frame N) from paperdoll card build (frame N+1) to avoid ~20ms Pop_drawTab spikes (WN-PERF).
+        if isTabSwitch then
+            mainFrame._wnGearSplitPaperDollNext = true
+        end
         local P = ns.Profiler
         if gearPopulatePrefixT0 and P and P.AppendUserTraceLine then
             P:AppendUserTraceLine(string.format(

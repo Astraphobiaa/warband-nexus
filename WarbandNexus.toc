@@ -131,7 +131,9 @@ Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua
 Modules\UI\ProfessionInfoWindow.lua
 Modules\UI\ProfessionsUI.lua
+Modules\UI\GearUI_Chrome.lua
 Modules\UI\GearUI_Paperdoll.lua
+Modules\UI\GearUI_LayoutGrid.lua
 Modules\UI\GearUI.lua
 Modules\UI\GearUI_Layout.lua
 Modules\UI\InformationDialog.lua

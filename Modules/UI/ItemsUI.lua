@@ -3331,8 +3331,8 @@ local function ItemsTabViewportRelayout(scrollChild, contentWidth, mf)
     if not mf or mf.currentTab ~= "items" or not scrollChild then
         return false
     end
-    -- Corner-drag: freeze virtual list until resize commit (Characters tab parity).
-    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+    -- Corner-drag + commit debounce: freeze virtual list until resize_commit (Characters tab parity).
+    if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mf) then
         return true
     end
     return RelayoutItemsResultsViewport(scrollChild, contentWidth, mf)

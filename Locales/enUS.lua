@@ -996,7 +996,7 @@ L["INFO_TAB_PROFESSIONS"] = "Professions"
 L["PROFESSIONS_INFO_DESC"] = "See every tracked character's crafting professions in one sortable grid: skill level, equipped tools, concentration and recharge, knowledge points, recipe coverage, and weekly knowledge progress. Data updates when you open each character's profession panel (default K). While a profession window stays open, Recipe Companion shows how many of each reagent you carry in bags."
 
 -- Information Dialog - Gear & Collections Tabs
-L["GEAR_DESC"] = "View equipped gear, upgrade opportunities, storage recommendations (BoE/Warbound), and cross-character upgrade candidates with item level tracking."
+L["GEAR_DESC"] = "Paperdoll, character stats, upgrade crests, and stash recommendations in a single modern layout."
 L["COLLECTIONS_DESC"] = "Overview of mounts, pets, toys, transmog, and other collectibles across your account. Track collection progress and find missing items."
 
 -- Command Help Strings
@@ -1816,6 +1816,7 @@ L["GEAR_TT_NEXT_STEP_GOLD_ONLY"] = "Next step: gold only (you already reached th
 L["GEAR_TT_REMAINING_TRACK_CRESTS"] = "Remaining crest steps on track: %d (%d %s total)."
 L["GEAR_TT_CRAFTED_NEXT_RECAST"] = "Next recraft target: %s (item level %d), %d %s."
 L["GEAR_TT_UPGRADE_FALLBACK_LEAD"] = "Upgrades use Dawncrest (amounts on the currency panel). Examples by tier:"
+L["GEAR_LAYOUT_SCROLL_HINT"] = "Narrow window: scroll horizontally or widen the frame."
 L["GEAR_CHARACTER_STATS"] = "Character Stats"
 L["GEAR_SECTION_CHARACTER"] = "Character"
 L["GEAR_NO_ITEM_EQUIPPED"] = "No item equipped in this slot."
@@ -1964,7 +1965,7 @@ L["TAB_REPUTATION"] = REPUTATION or "Reputation"
 L["TAB_STATISTICS"] = STATISTICS or "Statistics"
 
 L["GEAR_TAB_TITLE"] = "Gear Management"
-L["GEAR_TAB_DESC"] = "Equipped gear, upgrade options, and cross-character upgrade candidates"
+L["GEAR_TAB_DESC"] = "Paperdoll, stats, crests, and stash upgrade picks in one view"
 L["GEAR_STORAGE_WARBOUND"] = "Warbound"
 L["GEAR_STORAGE_BOE"] = "BoE"
 L["GEAR_STORAGE_WARBOUND_UNTIL_EQUIPPED"] = "Warbound until equipped"

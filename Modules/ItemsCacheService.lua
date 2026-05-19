@@ -566,6 +566,42 @@ local function HasBagChanged(bagID)
     return false
 end
 
+--- Snapshot ilvl at scan time so Gear storage recommendations do not depend on cold GetItemInfo.
+---@param bagID number
+---@param slot number
+---@param itemID number|nil
+---@param itemLink string|nil
+---@return number
+local function CaptureContainerSlotItemLevel(bagID, slot, itemID, itemLink)
+    if bagID ~= nil and slot and ItemLocation and ItemLocation.CreateFromBagAndSlot
+        and C_Item and C_Item.GetCurrentItemLevel then
+        local okLoc, ilFromLoc = pcall(function()
+            local loc = ItemLocation:CreateFromBagAndSlot(bagID, slot)
+            if loc and loc.IsValid and loc:IsValid() then
+                local v = C_Item.GetCurrentItemLevel(loc)
+                if type(v) == "number" and v > 0 and not (issecretvalue and issecretvalue(v)) then
+                    return v
+                end
+            end
+            return 0
+        end)
+        if okLoc and ilFromLoc and ilFromLoc > 0 then return ilFromLoc end
+    end
+    if itemLink and not (issecretvalue and issecretvalue(itemLink)) and C_Item and C_Item.GetDetailedItemLevelInfo then
+        local okD, det = pcall(C_Item.GetDetailedItemLevelInfo, itemLink)
+        if okD and type(det) == "number" and det > 0 and not (issecretvalue and issecretvalue(det)) then
+            return det
+        end
+    end
+    if itemID and C_Item and C_Item.GetDetailedItemLevelInfo then
+        local okI, detI = pcall(C_Item.GetDetailedItemLevelInfo, itemID)
+        if okI and type(detI) == "number" and detI > 0 and not (issecretvalue and issecretvalue(detI)) then
+            return detI
+        end
+    end
+    return 0
+end
+
 ---Scan a specific bag and return LEAN item data (metadata stripped).
 ---Reuses cached slot data from GenerateItemHash when available (single pass).
 ---Only stores: itemID, stackCount, quality, isBound, positional fields.
@@ -589,6 +625,7 @@ local function ScanBag(bagID)
                     local itemID = C_Item.GetItemInfoInstant(hl)
                     if itemID then
                         n = n + 1
+                        local snapIlvl = CaptureContainerSlotItemLevel(bagID, slot, itemID, hl)
                         items[n] = {
                             actualBagID = bagID,
                             bagID = bagID,
@@ -599,6 +636,7 @@ local function ScanBag(bagID)
                             stackCount = itemInfo.stackCount or 1,
                             quality = itemInfo.quality,
                             isBound = itemInfo.isBound or false,
+                            itemLevel = (snapIlvl > 0) and snapIlvl or nil,
                         }
                     end
                 end
@@ -616,6 +654,7 @@ local function ScanBag(bagID)
                     local itemID = C_Item.GetItemInfoInstant(hl)
                     if itemID then
                         n = n + 1
+                        local snapIlvl = CaptureContainerSlotItemLevel(bagID, slot, itemID, hl)
                         items[n] = {
                             actualBagID = bagID,
                             bagID = bagID,
@@ -626,6 +665,7 @@ local function ScanBag(bagID)
                             stackCount = itemInfo.stackCount or 1,
                             quality = itemInfo.quality,
                             isBound = itemInfo.isBound or false,
+                            itemLevel = (snapIlvl > 0) and snapIlvl or nil,
                         }
                     end
                 end

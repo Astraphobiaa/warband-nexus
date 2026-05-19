@@ -4984,7 +4984,7 @@ if ns.UI_LayoutCoordinator then
         OnViewportWidthChanged = function(scrollChild, contentWidth, mf)
             if not mf or mf.currentTab ~= "pve" then return false end
             -- Characters / Professions: no tab body work while corner grip is held.
-            if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+            if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mf) then
                 return true
             end
             return PveTabViewportRelayout(scrollChild, contentWidth, mf)

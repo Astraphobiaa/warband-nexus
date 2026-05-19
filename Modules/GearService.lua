@@ -23,6 +23,7 @@
     Storage upgrade findings are cached per (character, equipped signature, inventory epoch);
     see FindGearStorageUpgrades, GetGearStorageFindingsIfCached (UI fast path), and ns._gearStorageInvGen bumps
     (real bag/bank/warband persistence edits in ItemsCacheService Save* paths; UI.lua CHARACTER_TRACKING_CHANGED;
+    logged-in player bags/bank in Find also read live C_Container so loot and unequip-to-bag surface before itemStorage save).
     GET_ITEM_INFO when no cache to Invalidate). ITEM_METADATA_READY does not bump invGen (coalesced Invalidate on Gear).
     GET_ITEM_INFO coalesced batches prefer InvalidateGearStorageFindingsCacheForCanon (gear tab) over a blind invGen bump so strict cache is not dirtied without a storage edit.
     Post-yield redraw may use ns._gearStorageAllowEquipSigInvBypass (one frame) when invGen drifts
@@ -48,6 +49,14 @@ local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 local issecretvalue = issecretvalue
 local wipe = table.wipe
+local debugprofilestop = debugprofilestop
+
+--- Yielded storage scan: max CPU per frame (debugprofilestop; GetTime() does not advance within a frame).
+local GEAR_STORAGE_PUMP_BUDGET_MS = 12
+local GEAR_STORAGE_PUMP_MAX_RESUMES = 48
+local GEAR_STORAGE_EVAL_ITEMS_PER_YIELD = 14
+local GEAR_STORAGE_WARBANK_ITEMS_PER_YIELD = 24
+local GEAR_STORAGE_CHAR_LOOP_EVERY = 3
 
 local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00BFFF[GearService]|r"))
     or ns.DebugPrint
@@ -85,10 +94,11 @@ function WarbandNexus:SetGearStoragePanelDebug(enabled)
     else
         ns.WN_GEAR_STORAGE_PANEL_DEBUG = nil
     end
+    self:Print("|cff00ccff[WN]|r Stash-rec panel debug " .. (enabled and "ON" or "OFF")
+        .. " — trace in |cff00ccff/wn profiler trace|r; chat dump: |cff00ccff/wn gearstash|r")
     local P = ns.Profiler
     if P and P.AppendUserTraceLine then
-        P:AppendUserTraceLine("[WN StashRec] panel debug " .. (enabled and "ON" or "OFF")
-            .. " — use |cff00ccff/wn profiler trace|r to view.")
+        P:AppendUserTraceLine("[WN StashRec] panel debug " .. (enabled and "ON" or "OFF"))
     end
 end
 
@@ -206,7 +216,12 @@ function WarbandNexus:OnGearStorageYieldedScanComplete(canonKey, paintGen, after
         end
     end
     if action == "rescan" and self.ScheduleGearStorageFindingsResolve then
-        self:ScheduleGearStorageFindingsResolve(canonKey, paintGen, runTail)
+        -- Never chain a second full Find in the same frame as scan completion (avoids 30–80ms doubles).
+        C_Timer.After(0.04, function()
+            if paintGen ~= (ns._gearTabDrawGen or 0) then return end
+            if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+            self:ScheduleGearStorageFindingsResolve(canonKey, paintGen, runTail)
+        end)
     else
         runTail()
     end
@@ -223,6 +238,7 @@ local GEAR_CRAFTED_PROBE_CACHE_CAP = 512
 
 -- Session-only: canonical gear row key -> { lastScan = number, upgrades = table } for GetPersistedUpgradeInfo.
 local persistedUpgradeInfoSessionCache = {}
+local PERSISTED_UPGRADE_INFO_LOGIC_VER = 3
 
 -- Session-only: offline-view canonical key -> currency array from GetGearUpgradeCurrenciesFromDB (amounts follow Currency UI snapshot).
 local gearUpgradeCurrencyOfflineCache = {}
@@ -869,7 +885,26 @@ local function IsCosmeticGearCandidate(itemID, itemLink)
     return ok and isCosmetic == true
 end
 
---- Item Upgrade / storage recommendations only surface own bags+bank or transferable BoE / warband binds.
+--- Bump when storage recommendation bind / owner-key rules change (invalidates strict findings cache).
+local GEAR_STORAGE_FINDINGS_LOGIC_VER = 10
+
+--- Count slot buckets and total candidate rows in a findings table (debug / cache gate).
+---@param findings table|nil
+---@return number slots
+---@return number candidates
+local function GearStorageFindingsCount(findings)
+    if not findings or type(findings) ~= "table" then return 0, 0 end
+    local slots, cand = 0, 0
+    for _, list in pairs(findings) do
+        slots = slots + 1
+        if type(list) == "table" then
+            cand = cand + #list
+        end
+    end
+    return slots, cand
+end
+
+--- Cross-char: self_bag/self_bank or transferable BoE / warbound only.
 local function IsAllowedStorageRecommendationBindLabel(sourceType)
     if sourceType == "self_bag" or sourceType == "self_bank" then
         return true
@@ -878,6 +913,65 @@ local function IsAllowedStorageRecommendationBindLabel(sourceType)
         return true
     end
     return false
+end
+
+--- True when Gear tab selection is the logged-in session character (live bag APIs apply).
+---@param charKey string|nil
+---@return boolean
+local function IsViewingLivePlayerGear(charKey)
+    if not charKey then return false end
+    local U = ns.Utilities
+    local function canon(k)
+        if not k or k == "" then return "" end
+        if U and U.GetCanonicalCharacterKey then
+            return U:GetCanonicalCharacterKey(k) or k
+        end
+        return k
+    end
+    local view = canon(charKey)
+    if view == "" then return false end
+    if WarbandNexus.IsGearTabCharacterLoggedInPlayer
+        and WarbandNexus:IsGearTabCharacterLoggedInPlayer(charKey) then
+        return true
+    end
+    if U and U.GetCharacterStorageKey then
+        local live = U:GetCharacterStorageKey(WarbandNexus)
+        if live and canon(live) == view then return true end
+    end
+    if UnitGUID then
+        local pg = UnitGUID("player")
+        if pg and not (issecretvalue and issecretvalue(pg)) and canon(pg) == view then
+            return true
+        end
+    end
+    return false
+end
+
+--- Selected character's own bags or personal bank (Soulbound, BoE, Warbound — anything they can equip).
+---@param sourceCharKey string|nil
+---@param selectedCharKey string
+---@param storageType string|nil "bag"|"bank"
+---@param getCanonicalKey function
+---@param forceOwn boolean|nil when true (selected char bag/bank scan), accept any bind on own storage
+---@return boolean
+local function IsSelectedCharacterOwnStorage(sourceCharKey, selectedCharKey, storageType, getCanonicalKey, forceOwn)
+    if storageType ~= "bag" and storageType ~= "bank" then return false end
+    if forceOwn == true then return true end
+    if not sourceCharKey or not selectedCharKey then return false end
+    local src = getCanonicalKey(sourceCharKey) or sourceCharKey
+    local sel = getCanonicalKey(selectedCharKey) or selectedCharKey
+    if src ~= "" and sel ~= "" and src == sel then return true end
+    return false
+end
+
+---@param storageType string|nil
+---@return string label
+---@return string sourceType
+local function OwnStorageSourceLabels(storageType)
+    if storageType == "bank" then
+        return "Your Bank", "self_bank"
+    end
+    return "Your Bag", "self_bag"
 end
 
 local GEAR_DATA_VERSION = "1.1.0"
@@ -985,6 +1079,32 @@ local TRACK_ILVLS = {
 }
 local TRACK_ORDER = { "Adventurer", "Veteran", "Champion", "Hero", "Myth" }
 
+--- Map API / tooltip track labels to English TRACK_ILVLS keys (localized names, "Veteran Dawncrest", etc.).
+---@param raw string|nil
+---@return string|nil
+local function NormalizeUpgradeTrackName(raw)
+    if not raw or raw == "" then return nil end
+    if issecretvalue and issecretvalue(raw) then return nil end
+    if TRACK_ILVLS[raw] then return raw end
+    local firstWord = raw:match("^([%a]+)")
+    if firstWord and TRACK_ILVLS[firstWord] then return firstWord end
+    for ti = 1, #TRACK_ORDER do
+        local eng = TRACK_ORDER[ti]
+        if raw:find(eng, 1, true) then return eng end
+    end
+    local L = ns.L
+    local labelKeys = Constants and Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.PVE_LABEL_KEYS
+    if L and labelKeys then
+        for eng, key in pairs(labelKeys) do
+            local loc = L[key]
+            if loc and loc ~= "" and (raw == loc or raw:find(loc, 1, true)) then
+                return eng
+            end
+        end
+    end
+    return raw
+end
+
 -- Reverse map: ilvl → { trackName, tier, maxTier }.
 -- Overlapping ilvls: higher tracks overwrite lower, so 233 → Veteran 1/6 (not Adventurer 5/6).
 local ILVL_TO_UPGRADE = {}
@@ -996,8 +1116,32 @@ for i = 1, #TRACK_ORDER do
     end
 end
 
+--- Tier index within a known track (never jumps to a higher track at overlap ilvls).
+---@param trackName string
+---@param itemLevel number
+---@return number|nil currTier
+---@return number|nil maxTier
+local function InferTierWithinTrack(trackName, itemLevel)
+    local tiers = TRACK_ILVLS[trackName]
+    if not tiers then return nil, nil end
+    local ilvl = tonumber(itemLevel)
+    if not ilvl then return nil, nil end
+    for t = 1, #tiers do
+        if tiers[t] == ilvl then
+            return t, #tiers
+        end
+    end
+    local best = 1
+    for t = 1, #tiers do
+        if ilvl >= tiers[t] then
+            best = t
+        end
+    end
+    return best, #tiers
+end
+
 --- Infer upgrade track and level from item level only (no API). Returns nil if not in Midnight upgrade range.
---- NOTE: unreliable for overlapping ilvls (233, 237, 246, 250, 259, 263, 272, 276).
+--- Overlap ilvls (233, 237, …): prefer the track where this ilvl is the highest tier reached (e.g. 276 → Hero 6/6, not Myth 2/6).
 ---@param itemLevel number
 ---@return string|nil trackName
 ---@return number|nil currUpgrade 1-6
@@ -1005,14 +1149,36 @@ end
 local function InferUpgradeFromIlvl(itemLevel)
     local ilvl = tonumber(itemLevel)
     if not ilvl or ilvl < 220 or ilvl > 289 then return nil, nil, nil end
+
+    local bestTrack, bestTier, bestMax = nil, -1, 6
+    for ti = 1, #TRACK_ORDER do
+        local trackName = TRACK_ORDER[ti]
+        local tiers = TRACK_ILVLS[trackName]
+        if tiers then
+            for tier = 1, #tiers do
+                if tiers[tier] == ilvl and tier > bestTier then
+                    bestTier = tier
+                    bestTrack = trackName
+                    bestMax = #tiers
+                end
+            end
+        end
+    end
+    if bestTrack then
+        return bestTrack, bestTier, bestMax
+    end
+
     local entry = ILVL_TO_UPGRADE[ilvl]
     if entry then return entry[1], entry[2], entry[3] end
-    local best, bestDiff = nil, 999
+    local nearest, bestDiff = nil, 999
     for k, v in pairs(ILVL_TO_UPGRADE) do
         local d = math.abs(k - ilvl)
-        if d < bestDiff then bestDiff = d; best = v end
+        if d < bestDiff then
+            bestDiff = d
+            nearest = v
+        end
     end
-    if best then return best[1], best[2], best[3] end
+    if nearest then return nearest[1], nearest[2], nearest[3] end
     return nil, nil, nil
 end
 
@@ -1038,6 +1204,43 @@ local TRACK_NAME_TO_CURRENCY_ID = {
     Myth       = 3347,
 }
 
+local UPGRADE_CURRENCY_ID_SET_EARLY = {}
+for _, cid in pairs(TRACK_NAME_TO_CURRENCY_ID) do
+    UPGRADE_CURRENCY_ID_SET_EARLY[cid] = true
+end
+
+--- Next-step costs: prefer persisted C_ItemUpgrade scan; fallback flat S1 defaults.
+---@param slot table persisted gear slot row
+---@param trackName string
+---@param hasNext boolean
+---@return number currencyID
+---@return number crestCost
+---@return number moneyCost copper
+local function ResolveNextUpgradeCosts(slot, trackName, hasNext)
+    local currencyID = TRACK_NAME_TO_CURRENCY_ID[trackName] or 0
+    local crestCost = hasNext and (ns.UPGRADE_CREST_PER_LEVEL or 20) or 0
+    local moneyCost = hasNext and (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000) or 0
+    if not hasNext or not slot then
+        return currencyID, crestCost, moneyCost
+    end
+    if slot.nextUpgradeMoneyCost and slot.nextUpgradeMoneyCost > 0 then
+        moneyCost = slot.nextUpgradeMoneyCost
+    end
+    local costs = slot.nextUpgradeCosts
+    if costs then
+        for i = 1, #costs do
+            local entry = costs[i]
+            local cid = entry and entry.currencyID
+            local amt = entry and (entry.amount or entry.cost)
+            if cid and amt and UPGRADE_CURRENCY_ID_SET_EARLY[cid] then
+                currencyID = cid
+                crestCost = amt
+            end
+        end
+    end
+    return currencyID, crestCost, moneyCost
+end
+
 -- Crafted items: recraft with crests to reach higher ilvl tiers.
 -- Crafted gear caps at 5/6 (285 for Myth, 272 for Hero) — NOT 6/6 like dropped gear.
 -- Hero/Myth crafted ilvls are offset: Hero 259-272 (not 263-276), Myth 272-285 (not 276-289).
@@ -1051,6 +1254,23 @@ local CRAFTED_CREST_TIERS = {
     { crestID = 3383, name = "Adventurer", maxIlvl = 237, cost = 30 },
 }
 ns.CRAFTED_CREST_TIERS = CRAFTED_CREST_TIERS
+
+--- Midnight crafted gear shows Myth track in UI but caps below dropped 6/6 (285 vs 289).
+---@param slot table|nil persisted slot row
+---@param trackName string|nil
+---@param itemLevel number
+---@return boolean
+local function InferSlotIsCraftedGear(slot, trackName, itemLevel)
+    if slot and slot.isCrafted then return true end
+    if trackName == "Crafted" then return true end
+    local mythTiers = TRACK_ILVLS and TRACK_ILVLS.Myth
+    local droppedMythMax = (mythTiers and mythTiers[6]) or 289
+    local craftedMythCap = CRAFTED_CREST_TIERS[1].maxIlvl
+    if trackName == "Myth" and itemLevel >= craftedMythCap and itemLevel < droppedMythMax then
+        return true
+    end
+    return false
+end
 
 -- Export slot definitions and upgrade tables for use by GearUI
 ns.GEAR_SLOTS              = GEAR_SLOTS
@@ -1214,14 +1434,18 @@ local function ScanUpgradeFromTooltip(slotID)
                         }
                     end
                 end
-                if not isCrafted and text:find("Crafted") then
-                    isCrafted = true
+                if not isCrafted then
+                    local lower = string.lower(text)
+                    if lower:find("crafted", 1, true) or lower:find("radiance crafted", 1, true) then
+                        isCrafted = true
+                    end
                 end
             end
         end
     end
 
     if result then
+        result.trackName = NormalizeUpgradeTrackName(result.trackName) or result.trackName
         result.isCrafted = isCrafted or (result.trackName == "Crafted")
     end
     return result
@@ -1248,11 +1472,16 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
 
         local currUpgrade = info.currUpgrade or 0
         local maxUpgrade  = info.maxUpgrade or 0
+        if info.itemUpgradeable == false then
+            slotEntry.notUpgradeable = true
+            slotEntry.itemUpgradeable = false
+        elseif info.itemUpgradeable == true then
+            slotEntry.itemUpgradeable = true
+        end
+
         if currUpgrade == 0 and maxUpgrade == 0 then
             -- API returned data but no track info.
             if info.itemUpgradeable == false then
-                -- Explicitly marked as not upgradeable by API
-                slotEntry.notUpgradeable = true
                 return
             end
             -- API simply hasn't populated the slot yet — try tooltip fallback
@@ -1279,10 +1508,14 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
                 trackName = nil
             end
         end
+        trackName = NormalizeUpgradeTrackName(trackName)
         slotEntry.upgradeTrack = trackName
         slotEntry.currUpgrade  = currUpgrade
         slotEntry.maxUpgrade   = maxUpgrade
         slotEntry.maxIlvl      = info.maxItemLevel or 0
+        if maxUpgrade > 0 and currUpgrade >= maxUpgrade then
+            slotEntry.notUpgradeable = true
+        end
         -- Mark crafted items: check track name AND tooltip for "Crafted" quality line.
         -- Midnight crafted items show "Myth 5/6" as track, not "Crafted", so tooltip scan is needed.
         if trackName == "Crafted" then
@@ -1299,16 +1532,21 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
         if hasNext then
             local levelInfos = info.upgradeLevelInfos or {}
             local nextInfo   = levelInfos[currUpgrade + 1]
-            if nextInfo and nextInfo.currencyCostsToUpgrade then
-                local costs = {}
-                for i = 1, #nextInfo.currencyCostsToUpgrade do
-                    local entry = nextInfo.currencyCostsToUpgrade[i]
-                    if entry.currencyID and (entry.cost or entry.amount) then
-                        costs[#costs + 1] = { currencyID = entry.currencyID, amount = entry.cost or entry.amount }
-                    end
+            if nextInfo then
+                if nextInfo.moneyCost and nextInfo.moneyCost > 0 then
+                    slotEntry.nextUpgradeMoneyCost = nextInfo.moneyCost
                 end
-                if #costs > 0 then
-                    slotEntry.nextUpgradeCosts = costs
+                if nextInfo.currencyCostsToUpgrade then
+                    local costs = {}
+                    for i = 1, #nextInfo.currencyCostsToUpgrade do
+                        local entry = nextInfo.currencyCostsToUpgrade[i]
+                        if entry.currencyID and (entry.cost or entry.amount) then
+                            costs[#costs + 1] = { currencyID = entry.currencyID, amount = entry.cost or entry.amount }
+                        end
+                    end
+                    if #costs > 0 then
+                        slotEntry.nextUpgradeCosts = costs
+                    end
                 end
             end
             if not slotEntry.nextUpgradeCosts and C_ItemUpgrade.GetItemUpgradeCost then -- legacy; not in current API list
@@ -1410,6 +1648,7 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                         end
                     end
                 end)
+                ScanSlotUpgradeData(slotEntry, slotID)
             else
                 local equipLoc  = GetEquipLoc(itemLink)
                 local ilvl      = GetEffectiveIlvl(itemLink)
@@ -1460,6 +1699,7 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                         slotEntry.isCrafted = true
                     end
                 end
+                ScanSlotUpgradeData(slotEntry, slotID)
 
                 if not slotEntry.upgradeTrack then
                     local trackName, curUp, maxUp = InferUpgradeFromIlvl(ilvl)
@@ -1785,7 +2025,8 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
 
     local ls = tonumber(gearData.lastScan) or 0
     local upCache = persistedUpgradeInfoSessionCache[canon]
-    if upCache and upCache.lastScan == ls and upCache.upgrades then
+    if upCache and upCache.lastScan == ls and upCache.upgrades
+        and upCache.logicVer == PERSISTED_UPGRADE_INFO_LOGIC_VER then
         return upCache.upgrades
     end
 
@@ -1793,48 +2034,39 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
 
     for slotID, slot in pairs(gearData.slots) do
         local itemLevel = tonumber(slot.itemLevel) or 0
-        local trackName = slot.upgradeTrack
+        local trackName = NormalizeUpgradeTrackName(slot.upgradeTrack)
         local currUpgrade = slot.currUpgrade
         local maxUpgrade = slot.maxUpgrade
 
-        if not trackName or not currUpgrade or not maxUpgrade or maxUpgrade == 0 then
-            trackName, currUpgrade, maxUpgrade = InferUpgradeFromIlvl(itemLevel)
-        end
-
-        -- Runtime crafted detection for old persisted data missing isCrafted flag.
-        -- Scans the stored itemLink tooltip for "Crafted" quality text (once per link per session + cache).
-        if not slot.isCrafted and trackName ~= "Crafted" and slot.itemLink then
-            local link = slot.itemLink
-            if issecretvalue and issecretvalue(link) then
-                -- Cannot safely inspect; skip probe.
-            else
-                local cachedCrafted = gearCraftedProbeCache[link]
-                if cachedCrafted == true then
-                    slot.isCrafted = true
-                elseif cachedCrafted == false then
-                    slot.isCrafted = false
-                else
-                    local foundCrafted = false
-                    local tipOk, tipData
-                    if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
-                        tipOk, tipData = pcall(C_TooltipInfo.GetHyperlink, link)
-                    end
-                    if tipOk and tipData and tipData.lines then
-                        for li = 1, #tipData.lines do
-                            local lt = tipData.lines[li] and tipData.lines[li].leftText
-                            if lt and not (issecretvalue and issecretvalue(lt)) and lt:find("Crafted") then
-                                slot.isCrafted = true
-                                foundCrafted = true
-                                break
-                            end
-                        end
-                    end
-                    if not foundCrafted then
-                        slot.isCrafted = false
-                    end
-                    CacheGearCraftedProbeResult(link, foundCrafted)
+        if trackName and TRACK_ILVLS[trackName] then
+            if not currUpgrade or not maxUpgrade or maxUpgrade == 0 then
+                local tCur, tMax = InferTierWithinTrack(trackName, itemLevel)
+                currUpgrade = tCur or currUpgrade
+                maxUpgrade = tMax or maxUpgrade
+            end
+        else
+            local inferredTrack, inferredCur, inferredMax = InferUpgradeFromIlvl(itemLevel)
+            if inferredTrack then
+                trackName = inferredTrack
+                if not currUpgrade or not maxUpgrade or maxUpgrade == 0 then
+                    currUpgrade = inferredCur
+                    maxUpgrade = inferredMax
                 end
             end
+        end
+
+        if slot.itemUpgradeable == false then
+            slot.notUpgradeable = true
+        end
+
+        -- Crafted / not-upgradeable come from ScanSlotUpgradeData (C_ItemUpgrade.GetItemUpgradeItemInfo
+        -- itemUpgradeable + scan-time tooltip). Do not re-probe hyperlinks in GetPersistedUpgradeInfo —
+        -- that ran per slot on every Gear draw and caused frame spikes.
+        if slot.isCrafted == nil and trackName == "Crafted" then
+            slot.isCrafted = true
+        end
+        if InferSlotIsCraftedGear(slot, trackName, itemLevel) then
+            slot.isCrafted = true
         end
 
         if slot.notUpgradeable then
@@ -1873,7 +2105,7 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 watermarkIlvl   = watermarks[slotID] or 0,
             }
         elseif trackName and currUpgrade and maxUpgrade and maxUpgrade > 0 then
-            local hasNext = (currUpgrade < maxUpgrade)
+            local hasNext = (currUpgrade < maxUpgrade) and slot.itemUpgradeable ~= false
             local tiers = TRACK_ILVLS[trackName]
 
             local nextIlvl = itemLevel
@@ -1886,9 +2118,7 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 maxIlvl = tiers[maxUpgrade]
             end
 
-            local currencyID = TRACK_NAME_TO_CURRENCY_ID[trackName] or 0
-            local crestCost = hasNext and (ns.UPGRADE_CREST_PER_LEVEL or 20) or 0
-            local moneyCost = hasNext and (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000) or 0
+            local currencyID, crestCost, moneyCost = ResolveNextUpgradeCosts(slot, trackName, hasNext)
 
             -- Gold-only = upgrades to ilvl this slot has already reached. Use per-slot watermark only;
             -- for paired slots (rings/trinkets), cap by this item's current ilvl so we don't use the pair's max
@@ -1911,7 +2141,11 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
         end
     end
 
-    persistedUpgradeInfoSessionCache[canon] = { lastScan = ls, upgrades = upgrades }
+    persistedUpgradeInfoSessionCache[canon] = {
+        lastScan = ls,
+        upgrades = upgrades,
+        logicVer = PERSISTED_UPGRADE_INFO_LOGIC_VER,
+    }
     return upgrades
 end
 
@@ -1939,7 +2173,8 @@ local function GetAffordableCountAndNextCrestNeed(upInfo, currencyAmounts)
     local goldPerUpgrade = upInfo.moneyCost or 100000
     local crestPerUpgrade = upInfo.crestCost or 20
     local cid = upInfo.currencyID or 0
-    local haveGoldCopper = ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
+    local haveGoldCopper = (currencyAmounts and currencyAmounts._goldCopper)
+        or ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
     local haveCrests = (currencyAmounts and currencyAmounts[cid]) or 0
 
     local totalAffordable = 0
@@ -2012,12 +2247,23 @@ function WarbandNexus:GearUpgradeDebugReport()
     end
     local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(currentKey)) or {}
     local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(currentKey)) or {}
-    local currencyAmounts = {}
-    for i = 1, #currencies do
-        local c = currencies[i]
-        if c and c.currencyID ~= nil then
-            currencyAmounts[c.currencyID] = (c.amount ~= nil) and c.amount or 0
+    local currencyAmounts = (ns.GearUI_BuildGearCurrencyAmounts and ns.GearUI_BuildGearCurrencyAmounts(currencies)) or {}
+    if not ns.GearUI_BuildGearCurrencyAmounts then
+        for i = 1, #currencies do
+            local c = currencies[i]
+            if c and c.currencyID ~= nil then
+                if c.currencyID == 0 and c.isGold then
+                    local copper = (c.amount or 0) * 10000 + (c.silver or 0) * 100 + (c.copper or 0)
+                    currencyAmounts[0] = math.floor(copper / 10000)
+                    currencyAmounts._goldCopper = copper
+                else
+                    currencyAmounts[c.currencyID] = (c.amount ~= nil) and c.amount or 0
+                end
+            end
         end
+    end
+    if ns.GearUI_EnrichUpgradeInfoWithAffordability then
+        ns.GearUI_EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
     end
     local function currencyName(cid)
         if cid == 0 then return "Gold" end
@@ -2112,22 +2358,116 @@ end
 -- STORAGE UPGRADE FINDER  (Cross-character — reads persisted item data)
 -- ============================================================================
 
+--- Resolve equipped ilvl for one slot (persisted gearData + live inventory when viewing self).
+---@param charKey string
+---@param slotID number
+---@param equippedMap table|nil optional cache from BuildEquippedIlvlMap
+---@return number
+local function ResolveEquippedIlvlForComparison(charKey, slotID, equippedMap)
+    -- Logged-in player: live inventory wins over stale db.global.gearData (unequip-to-bag must clear slot).
+    if IsViewingLivePlayerGear(charKey) and GetInventoryItemLink then
+        local link = GetInventoryItemLink("player", slotID)
+        if not link or link == "" or (issecretvalue and issecretvalue(link)) then
+            return 0
+        end
+        local liveIl = GetEffectiveIlvl(link) or 0
+        if liveIl > 0 then return liveIl end
+        return 0
+    end
+
+    local il = equippedMap and equippedMap[slotID] or nil
+    if il and il > 0 then return il end
+
+    local gearData = WarbandNexus:GetEquippedGear(charKey)
+    local slotData = gearData and gearData.slots and gearData.slots[slotID]
+    if slotData then
+        il = tonumber(slotData.itemLevel) or 0
+        if il > 0 then return il end
+        if slotData.itemLink then
+            il = GetEffectiveIlvl(slotData.itemLink) or 0
+            if il > 0 then return il end
+        end
+    end
+
+    return 0
+end
+
 --- Build a map: slotID -> currently equipped ilvl for the given character.
 ---@param charKey string
 ---@return table { [slotID] = ilvl }
 local function BuildEquippedIlvlMap(charKey)
-    local gearData = WarbandNexus:GetEquippedGear(charKey)
-    if not gearData or not gearData.slots then return {} end
     local map = {}
-    for slotID, slotData in pairs(gearData.slots) do
-        map[slotID] = slotData.itemLevel or 0
+    local slotList = GEAR_SLOTS
+    if slotList then
+        for si = 1, #slotList do
+            local sid = slotList[si].id
+            map[sid] = ResolveEquippedIlvlForComparison(charKey, sid, nil)
+        end
+        return map
+    end
+    local gearData = WarbandNexus:GetEquippedGear(charKey)
+    if not gearData or not gearData.slots then return map end
+    for slotID, _ in pairs(gearData.slots) do
+        map[slotID] = ResolveEquippedIlvlForComparison(charKey, slotID, nil)
     end
     return map
 end
 
+--- Empty weapon/trinket slots must not compare as ilvl 0 (surfaces legacy bank junk).
+local GEAR_STORAGE_EMPTY_SLOT_FLOOR_MARGIN = 40
+
+---@param charKey string
+---@param slotID number
+---@param equippedMap table|nil
+---@param charData table|nil
+---@return number floorIlvl minimum candidate ilvl to count as an upgrade
+local function BuildGearStorageComparisonFloor(charKey, slotID, equippedMap, charData)
+    local equipped = ResolveEquippedIlvlForComparison(charKey, slotID, equippedMap)
+    if equipped > 0 then return equipped end
+
+    local sum, count = 0, 0
+    local gearData = WarbandNexus:GetEquippedGear(charKey)
+    if gearData and gearData.slots then
+        for sid, _ in pairs(gearData.slots) do
+            if sid ~= slotID then
+                local il = ResolveEquippedIlvlForComparison(charKey, sid, equippedMap)
+                if il > 0 then
+                    sum = sum + il
+                    count = count + 1
+                end
+            end
+        end
+    end
+    if count > 0 then
+        return math.max(0, math.floor(sum / count + 0.5) - GEAR_STORAGE_EMPTY_SLOT_FLOOR_MARGIN)
+    end
+    local rosterIlvl = charData and tonumber(charData.itemLevel)
+    if rosterIlvl and rosterIlvl > 0 then
+        return math.max(0, rosterIlvl - GEAR_STORAGE_EMPTY_SLOT_FLOOR_MARGIN)
+    end
+    return 0
+end
+
+--- Dedupe key: prefer container coordinates so cold live scan does not block persisted retry.
+---@param item table
+---@return string
+local function GearItemEvalSeenKey(item)
+    if not item then return "nil" end
+    local bagID = item.actualBagID or item.bagID
+    local slotIdx = item.slotIndex or item.slot
+    if bagID ~= nil and slotIdx ~= nil then
+        return "c:" .. tostring(bagID) .. ":" .. tostring(slotIdx)
+    end
+    local lk = item.itemLink or item.link
+    if lk and type(lk) == "string" and not (issecretvalue and issecretvalue(lk)) then
+        return "l:" .. lk
+    end
+    return "i:" .. tostring(item.itemID or 0)
+end
+
 -- Fixed slot order for FindGearStorageUpgrades cache keys (pairs() on slots is undefined order).
 local GEAR_STORAGE_SIG_SLOTS = {1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
-local gearStorageFindingsCache = { canonKey = nil, invEpoch = nil, equipSig = nil, findings = nil }
+local gearStorageFindingsCache = { canonKey = nil, invEpoch = nil, equipSig = nil, findings = nil, logicVer = nil }
 
 -- Narrow refresh (ITEM_METADATA / GET_ITEM_INFO) used to Invalidate+ScheduleResolve immediately after a
 -- yielded Find commit, producing duplicate full scans with identical Reject/add lines. We record the last
@@ -2158,6 +2498,23 @@ end
 ---@return number ilvl (0 if unknown)
 local function ResolveStorageItemIlvl(item)
     if not item or not item.itemID then return 0 end
+
+    local storedIlvl = tonumber(item.itemLevel) or tonumber(item.ilvl)
+    if storedIlvl and storedIlvl > 0 then return storedIlvl end
+
+    local bagID = item.actualBagID or item.bagID
+    local slotIdx = item.slotIndex or item.slot
+    if bagID and slotIdx and ItemLocation and ItemLocation.CreateFromBagAndSlot and C_Item and C_Item.GetCurrentItemLevel then
+        local okLoc, ilFromLoc = pcall(function()
+            local loc = ItemLocation:CreateFromBagAndSlot(bagID, slotIdx)
+            if loc and loc.IsValid and loc:IsValid() then
+                local v = C_Item.GetCurrentItemLevel(loc)
+                if type(v) == "number" and v > 0 then return v end
+            end
+            return 0
+        end)
+        if okLoc and ilFromLoc and ilFromLoc > 0 then return ilFromLoc end
+    end
 
     local link = item.itemLink or item.link
     if link then
@@ -2194,6 +2551,20 @@ local function ResolveStorageItemIlvl(item)
     end
 
     return 0
+end
+
+--- Warm item cache then resolve ilvl (storage scan).
+---@param item table
+---@return number
+local function ResolveStorageItemIlvlWarm(item)
+    if not item then return 0 end
+    local ilvl = ResolveStorageItemIlvl(item)
+    if ilvl > 0 then return ilvl end
+    if item.itemID and C_Item and C_Item.RequestLoadItemDataByID then
+        pcall(C_Item.RequestLoadItemDataByID, item.itemID)
+        ilvl = ResolveStorageItemIlvl(item)
+    end
+    return ilvl or 0
 end
 
 --- Determine the binding/availability label for a storage item.
@@ -2254,15 +2625,14 @@ local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageT
         if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
             return ns.Utilities:GetCanonicalCharacterKey(k) or k
         end
-        return (k:gsub("%s+", ""))
+        return k
     end
     local sourceNorm = canonical(sourceCharKey)
     local selectedNorm = canonical(selectedCharKey)
     local isSameChar = (sourceNorm ~= "" and selectedNorm ~= "" and sourceNorm == selectedNorm)
 
-    if isSameChar then
-        if storageType == "bank" then return "Your Bank", "self_bank" end
-        return "Your Bag", "self_bag"
+    if isSameChar and (storageType == "bag" or storageType == "bank") then
+        return OwnStorageSourceLabels(storageType)
     end
 
     -- Cross-character: prefer tooltip scan (catches WuE items reported as bindType=2 by
@@ -2316,8 +2686,13 @@ function WarbandNexus:GetGearStorageFindingsIfCached(selectedCharKey)
     local invEpoch = ns._gearStorageInvGen or 0
     local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
     local c = gearStorageFindingsCache
-    if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings then
-        return c.findings, true
+    if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings
+        and (c.logicVer or 0) == GEAR_STORAGE_FINDINGS_LOGIC_VER then
+        local _, fc = GearStorageFindingsCount(c.findings)
+        if fc > 0 then
+            return c.findings, true
+        end
+        -- Empty findings must not block a rescan (bag/equip change may have added candidates).
     end
     return nil, false
 end
@@ -2333,7 +2708,7 @@ function WarbandNexus:GetGearStorageFindingsCommitted(selectedCharKey)
     end or function(k) return k end
     local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
     local c = gearStorageFindingsCache
-    if c.canonKey == canonKey and c.findings then
+    if c.canonKey == canonKey and c.findings and (c.logicVer or 0) == GEAR_STORAGE_FINDINGS_LOGIC_VER then
         return c.findings, true
     end
     return nil, false
@@ -2372,7 +2747,8 @@ function WarbandNexus:GetGearStorageFindingsIfEquipSigMatch(selectedCharKey)
     local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
     local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
     local c = gearStorageFindingsCache
-    if c.canonKey ~= canonKey or c.equipSig ~= equipSig or not c.findings then
+    if c.canonKey ~= canonKey or c.equipSig ~= equipSig or not c.findings
+        or (c.logicVer or 0) ~= GEAR_STORAGE_FINDINGS_LOGIC_VER then
         return nil, false
     end
     local invEpoch = ns._gearStorageInvGen or 0
@@ -2426,12 +2802,17 @@ end
 function WarbandNexus:InvalidateGearStorageFindingsCacheImmediate(canonKey)
     if not canonKey then return false end
     local c = gearStorageFindingsCache
-    if not c or c.canonKey ~= canonKey or not c.findings then
-        return false
+    if c then
+        if c.canonKey == canonKey or not c.canonKey then
+            c.canonKey = nil
+            c.invEpoch = nil
+            c.equipSig = nil
+            c.findings = nil
+            c.logicVer = nil
+        end
     end
-    c.invEpoch = nil
     ns._gearStorageFindingsDirtyToken = (ns._gearStorageFindingsDirtyToken or 0) + 1
-    WarbandNexus:GearStorageTrace("Invalidate invEpoch cleared canon=" .. tostring(canonKey)
+    WarbandNexus:GearStorageTrace("Invalidate full clear canon=" .. tostring(canonKey)
         .. " dirtyTok=" .. tostring(ns._gearStorageFindingsDirtyToken or 0))
     return true
 end
@@ -2488,20 +2869,224 @@ function WarbandNexus:GetGearStorageFindingsDedupeToken()
     return tostring(n) .. ";" .. table.concat(buf, ",")
 end
 
---- Count slot buckets and total candidate rows in a findings table (debug / diagnostics).
----@param findings table|nil
----@return number slots
----@return number candidates
-local function GearStorageFindingsCount(findings)
-    if not findings or type(findings) ~= "table" then return 0, 0 end
-    local slots, cand = 0, 0
-    for _, list in pairs(findings) do
-        slots = slots + 1
-        if type(list) == "table" then
-            cand = cand + #list
+local LIVE_INVENTORY_BAGS = ns.INVENTORY_BAGS or { 0, 1, 2, 3, 4, 5 }
+local LIVE_BANK_BAGS = ns.PERSONAL_BANK_BAGS or { -1, 6, 7, 8, 9, 10, 11 }
+
+---@param bagID number
+---@return boolean
+local function IsGearLiveBagIgnored(bagID)
+    local prof = WarbandNexus.db and WarbandNexus.db.profile
+    return prof and prof.ignoredInventoryBags and prof.ignoredInventoryBags[bagID] == true
+end
+
+--- Read logged-in player containers from live APIs (itemStorage can lag BAG_UPDATE throttle).
+---@param out table[]
+---@param bagID number
+local function AppendLiveContainerBagItems(out, bagID)
+    if not out or not bagID or IsGearLiveBagIgnored(bagID) then return end
+    if not C_Container or not C_Container.GetContainerItemInfo then return end
+    local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+    for slot = 1, numSlots do
+        local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+        if itemInfo and itemInfo.hyperlink then
+            local hl = itemInfo.hyperlink
+            if not (issecretvalue and issecretvalue(hl)) then
+                local itemID = itemInfo.itemID
+                if not itemID and C_Item and C_Item.GetItemInfoInstant then
+                    itemID = C_Item.GetItemInfoInstant(hl)
+                end
+                if itemID then
+                    local snapIlvl = 0
+                    if ItemLocation and ItemLocation.CreateFromBagAndSlot
+                        and C_Item and C_Item.GetCurrentItemLevel then
+                        pcall(function()
+                            local loc = ItemLocation:CreateFromBagAndSlot(bagID, slot)
+                            if loc and loc.IsValid and loc:IsValid() then
+                                local v = C_Item.GetCurrentItemLevel(loc)
+                                if type(v) == "number" and v > 0
+                                    and not (issecretvalue and issecretvalue(v)) then
+                                    snapIlvl = v
+                                end
+                            end
+                        end)
+                    end
+                    if snapIlvl == 0 and C_Item and C_Item.GetDetailedItemLevelInfo then
+                        pcall(function()
+                            local v = C_Item.GetDetailedItemLevelInfo(hl)
+                            if type(v) == "number" and v > 0 then snapIlvl = v end
+                        end)
+                    end
+                    out[#out + 1] = {
+                        itemID = itemID,
+                        itemLink = hl,
+                        stackCount = itemInfo.stackCount or 1,
+                        quality = itemInfo.quality,
+                        isBound = itemInfo.isBound or false,
+                        actualBagID = bagID,
+                        bagID = bagID,
+                        slotIndex = slot,
+                        slot = slot,
+                        itemLevel = (snapIlvl > 0) and snapIlvl or nil,
+                    }
+                end
+            end
         end
     end
-    return slots, cand
+end
+
+---@return table bagItems
+---@return table bankItems
+local function CollectLivePlayerContainerItemsForGearScan()
+    local bagItems = {}
+    local bankItems = {}
+    for i = 1, #LIVE_INVENTORY_BAGS do
+        if ns._gearStorageYieldCo and i > 1 and (i % 2 == 0) then
+            coroutine.yield()
+        end
+        AppendLiveContainerBagItems(bagItems, LIVE_INVENTORY_BAGS[i])
+    end
+    if WarbandNexus.bankIsOpen then
+        for i = 1, #LIVE_BANK_BAGS do
+            if ns._gearStorageYieldCo and (i % 2 == 0) then
+                coroutine.yield()
+            end
+            AppendLiveContainerBagItems(bankItems, LIVE_BANK_BAGS[i])
+        end
+    end
+    return bagItems, bankItems
+end
+
+--- Chat-visible storage-rec diagnostic + forced rescan (always prints; does not require debug mode).
+--- Usage: |cff00ccff/wn gearstash|r  or  |cff00ccff/wn gearstash 193707|r
+---@param charKey string|nil canonical or storage key; defaults to gear tab selection / logged-in player
+---@param probeItemID number|nil optional itemID to search in bags (e.g. Final Grade)
+function WarbandNexus:DiagnoseGearStorageRecToChat(charKey, probeItemID)
+    local U = ns.Utilities
+    local function canon(k)
+        if not k or k == "" then return nil end
+        if U and U.GetCanonicalCharacterKey then
+            return U:GetCanonicalCharacterKey(k) or k
+        end
+        return k
+    end
+    if not charKey then
+        if ns.GearUI and type(ns.GearUI) == "table" then
+            -- GearUI keeps selection in closure; use storage key for logged-in player.
+        end
+        charKey = (self.GetCurrentGearStorageKey and self:GetCurrentGearStorageKey())
+            or (U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(self))
+            or (U and U.GetCharacterKey and U:GetCharacterKey())
+    end
+    if not charKey then
+        self:Print("|cffff6600[WN gearstash]|r No character key (not logged in?).")
+        return
+    end
+    local selCanon = canon(charKey) or charKey
+    local loggedIn = IsViewingLivePlayerGear(selCanon)
+
+    self:Print("|cff00ccff[WN gearstash]|r canon=" .. tostring(selCanon) .. " loggedIn=" .. tostring(loggedIn))
+    local mhFloor = BuildGearStorageComparisonFloor(selCanon, 16, BuildEquippedIlvlMap(selCanon), nil)
+    self:Print(string.format("  MH comparison floor ilvl=%s (empty MH uses avg equipped - %d)",
+        tostring(mhFloor), GEAR_STORAGE_EMPTY_SLOT_FLOOR_MARGIN))
+
+    local bagN, bankN, liveN, liveBankN = 0, 0, 0, 0
+    local probeHits = 0
+    if self.GetItemsData then
+        local data = self:GetItemsData(selCanon)
+        if data then
+            bagN = data.bags and #data.bags or 0
+            bankN = data.bank and #data.bank or 0
+        end
+    end
+    if loggedIn then
+        local liveBags, liveBank = CollectLivePlayerContainerItemsForGearScan()
+        liveN = liveBags and #liveBags or 0
+        liveBankN = liveBank and #liveBank or 0
+        if probeItemID and liveBags then
+            for i = 1, #liveBags do
+                local it = liveBags[i]
+                if it and tonumber(it.itemID) == tonumber(probeItemID) then
+                    probeHits = probeHits + 1
+                    local il = ResolveStorageItemIlvlWarm(it)
+                    self:Print(string.format("  live bag: id=%s ilvl=%s link=%s",
+                        tostring(it.itemID), tostring(il), tostring(it.itemLink and "yes" or "no")))
+                end
+            end
+        end
+        if probeItemID and bagN > 0 and self.GetItemsData then
+            local data = self:GetItemsData(selCanon)
+            for i = 1, #(data.bags or {}) do
+                local it = data.bags[i]
+                if it and tonumber(it.itemID) == tonumber(probeItemID) then
+                    probeHits = probeHits + 1
+                    local il = ResolveStorageItemIlvlWarm(it)
+                    self:Print(string.format("  saved bag: id=%s ilvl=%s", tostring(it.itemID), tostring(il)))
+                end
+            end
+        end
+    end
+    self:Print(string.format("  items: savedBags=%d savedBank=%d liveBags=%d liveBank=%d probeId=%s hits=%d",
+        bagN, bankN, liveN, liveBankN, tostring(probeItemID), probeHits))
+
+    self:InvalidateGearStorageFindingsCacheImmediate(selCanon)
+    local findings = (self.FindGearStorageUpgrades and self:FindGearStorageUpgrades(selCanon)) or {}
+    local slots, cands = GearStorageFindingsCount(findings)
+    self:Print(string.format("  scan: slots=%d candidates=%d logicVer=%s",
+        slots, cands, tostring(GEAR_STORAGE_FINDINGS_LOGIC_VER)))
+
+    local sum = ns._gearStorageLastFindSummary
+    if sum then
+        self:Print(string.format("  rejects: stat=%s lvlRace=%s boeSoul=%s bindLbl=%s bind=%s added=%s",
+            tostring(sum.stat), tostring(sum.lvlRace), tostring(sum.boeSoul),
+            tostring(sum.bindLabel), tostring(sum.bind), tostring(sum.added)))
+    end
+
+    for si = 1, #GEAR_SLOTS do
+        local slotDef = GEAR_SLOTS[si]
+        local sid = slotDef.id
+        local list = findings[sid]
+        local best = list and list[1]
+        if best then
+            self:Print(string.format("  slot %s: %s -> ilvl %s (%s)",
+                tostring(slotDef.label),
+                tostring(best.equippedIlvlAtFind or "?"),
+                tostring(best.itemLevel or 0),
+                tostring(best.source or "?")))
+        end
+    end
+
+    local mf = self.UI and self.UI.mainFrame
+    if mf and mf.currentTab == "gear" and self.RedrawGearStorageRecommendationsOnly then
+        ns._gearStorageAllowEquipSigInvBypass = true
+        local ok = self:RedrawGearStorageRecommendationsOnly(selCanon, ns._gearTabDrawGen or 0, true)
+        ns._gearStorageAllowEquipSigInvBypass = false
+        self:Print("  UI redraw: " .. tostring(ok == true))
+    else
+        self:Print("  Open Gear tab after /wn gearstash to refresh the recommendations panel.")
+    end
+end
+
+--- True when `charKey` is the logged-in player (live bag APIs are player-scoped).
+---@param charKey string|nil
+---@return boolean
+function WarbandNexus:IsGearTabCharacterLoggedInPlayer(charKey)
+    if not charKey then return false end
+    local U = ns.Utilities
+    local function canon(k)
+        if not k or k == "" then return "" end
+        if U and U.GetCanonicalCharacterKey then
+            return U:GetCanonicalCharacterKey(k) or k
+        end
+        return k
+    end
+    local sel = canon(charKey)
+    if sel == "" then return false end
+    local cur = ResolveGearStorageKey()
+    if not cur and U and U.GetCharacterKey then
+        cur = U:GetCharacterKey()
+    end
+    if not cur then return false end
+    return sel == canon(cur)
 end
 
 --- Find items in storage (all chars' bags/bank, warband bank, guild bank cache, plus other chars' equipped warbound)
@@ -2531,7 +3116,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
     do
         local c = gearStorageFindingsCache
-        if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings then
+        if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings
+            and (c.logicVer or 0) == GEAR_STORAGE_FINDINGS_LOGIC_VER then
             local fs, fc = GearStorageFindingsCount(c.findings)
             WarbandNexus:GearStoragePanelDebug(("Find CACHE HIT canon=%s invEpoch=%s findingsSlots=%d candidates=%d (no full scan)")
                 :format(tostring(canonKey), tostring(invEpoch), fs, fc))
@@ -2541,9 +3127,6 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         end
     end
 
-    local P = ns.Profiler
-    local _gearFindProfOn = P and P.enabled and P.StartSlice and P.StopSlice
-    if _gearFindProfOn then P:StartSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_scan") end
     local findingsScanDirtyStart = ns._gearStorageFindingsDirtyToken or 0
     WarbandNexus:GearStorageTrace("Find full scan start canon=" .. tostring(canonKey)
         .. " invEpoch=" .. tostring(invEpoch) .. " dirtyTok=" .. tostring(findingsScanDirtyStart))
@@ -2562,14 +3145,32 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     -- legendary-style rings carry the unique flag).
     local equippedItemIDBySlot = {}
     do
-        local equippedGear = self:GetEquippedGear(selectedCharKey)
-        local slots = equippedGear and equippedGear.slots or {}
         local pairedSlots = { 11, 12, 13, 14 }
         for si = 1, #pairedSlots do
             local slotID = pairedSlots[si]
-            local s = slots[slotID]
-            if s and s.itemID then
-                equippedItemIDBySlot[slotID] = tonumber(s.itemID)
+            local iid = nil
+            if selectedIsLoggedInPlayer and GetInventoryItemLink then
+                local link = GetInventoryItemLink("player", slotID)
+                if link and not (issecretvalue and issecretvalue(link)) then
+                    pcall(function()
+                        if C_Item and C_Item.GetItemInfoInstant then
+                            iid = C_Item.GetItemInfoInstant(link)
+                        end
+                    end)
+                    if not iid and type(link) == "string" then
+                        local idFromLink = link:match("item:(%d+)")
+                        iid = idFromLink and tonumber(idFromLink) or nil
+                    end
+                end
+            else
+                local equippedGear = self:GetEquippedGear(selectedCharKey)
+                local s = equippedGear and equippedGear.slots and equippedGear.slots[slotID]
+                if s and s.itemID then
+                    iid = tonumber(s.itemID)
+                end
+            end
+            if iid then
+                equippedItemIDBySlot[slotID] = iid
             end
         end
     end
@@ -2581,12 +3182,20 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     -- "upgrade" against an empty slot 17.
     local mainHandIs2H = false
     do
-        local equippedGear = self:GetEquippedGear(selectedCharKey)
-        local mh = equippedGear and equippedGear.slots and equippedGear.slots[16]
-        local mhEquipLoc = mh and mh.equipLoc or ""
-        if mhEquipLoc == "" and mh and mh.itemLink then
-            local ok, loc = pcall(GetEquipLoc, mh.itemLink)
-            if ok then mhEquipLoc = loc or "" end
+        local mhEquipLoc = ""
+        if selectedIsLoggedInPlayer and GetInventoryItemLink then
+            local mhLink = GetInventoryItemLink("player", 16)
+            if mhLink and not (issecretvalue and issecretvalue(mhLink)) then
+                mhEquipLoc = GetEquipLoc(mhLink) or ""
+            end
+        else
+            local equippedGear = self:GetEquippedGear(selectedCharKey)
+            local mh = equippedGear and equippedGear.slots and equippedGear.slots[16]
+            mhEquipLoc = mh and mh.equipLoc or ""
+            if mhEquipLoc == "" and mh and mh.itemLink then
+                local ok, loc = pcall(GetEquipLoc, mh.itemLink)
+                if ok then mhEquipLoc = loc or "" end
+            end
         end
         if mhEquipLoc == "INVTYPE_2HWEAPON" or mhEquipLoc == "INVTYPE_RANGED" or mhEquipLoc == "INVTYPE_RANGEDRIGHT" then
             mainHandIs2H = true
@@ -2607,8 +3216,10 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     end
 
     local currentKey = ResolveGearStorageKey()
-    local curCanon = currentKey
-    local selectedIsLoggedInPlayer = (selCanon and curCanon and selCanon == curCanon)
+    if not currentKey and ns.Utilities and ns.Utilities.GetCharacterKey then
+        currentKey = ns.Utilities:GetCharacterKey()
+    end
+    local selectedIsLoggedInPlayer = IsViewingLivePlayerGear(selectedCharKey)
 
     local mainStat, mainStatSource = ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLoggedInPlayer)
 
@@ -2641,14 +3252,19 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     end
 
     --- Level + race/class (only when the selected tab character is the logged-in player — API is player-scoped).
-    local function SelectedCharacterMeetsItemRequirements(itemLink, itemID)
+    ---@param ownStorage boolean|nil when true, skip stale db.level gate (own bag items are equippable)
+    local function SelectedCharacterMeetsItemRequirements(itemLink, itemID, ownStorage)
+        if ownStorage and selectedIsLoggedInPlayer then
+            return true
+        end
         local minLvl = GetItemMinLevelFromItemInfo(itemLink) or GetItemMinLevelFromItemInfo(itemID)
         local charLvl = charData and tonumber(charData.level)
-        -- charData.level is a stale snapshot from the last time this character was online —
-        -- it can lag behind the current real level (e.g. char dinged 90 but DB still shows 89,
-        -- so a "Requires Level 90" recommendation gets rejected). When previewing an alt, we
-        -- can't fetch live level from the API; trust storage availability + class/armor filter
-        -- instead of a brittle stale-level check.
+        if selectedIsLoggedInPlayer and UnitLevel then
+            local liveLvl = UnitLevel("player")
+            if type(liveLvl) == "number" and liveLvl > 0 then
+                charLvl = liveLvl
+            end
+        end
         if selectedIsLoggedInPlayer and minLvl and charLvl and charLvl < minLvl then
             return false
         end
@@ -2669,14 +3285,26 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local function AddCandidate(slotID, candidate)
         if not findings[slotID] then findings[slotID] = {} end
         local link = candidate.itemLink or candidate.link
+        local warmIlvl = tonumber(candidate.itemLevel) or 0
         if link then
-            candidate.itemLevel = ResolveStorageItemIlvl({ itemID = candidate.itemID, itemLink = link, link = link })
+            candidate.itemLevel = ResolveStorageItemIlvl({
+                itemID = candidate.itemID,
+                itemLink = link,
+                link = link,
+                actualBagID = candidate.actualBagID,
+                bagID = candidate.bagID,
+                slotIndex = candidate.slotIndex,
+                slot = candidate.slot,
+            }) or warmIlvl
+            if (candidate.itemLevel or 0) == 0 and warmIlvl > 0 then
+                candidate.itemLevel = warmIlvl
+            end
             local minL = GetItemMinLevelFromItemInfo(link) or GetItemMinLevelFromItemInfo(candidate.itemID)
             if minL then candidate.requiredLevel = minL end
         end
         if (candidate.itemLevel or 0) == 0 then return end
         -- Snapshot for UI row filter: Find can run against slightly older gearData than RedrawGearStorageRecommendationsOnly.
-        candidate.equippedIlvlAtFind = equippedMap[slotID] or 0
+        candidate.equippedIlvlAtFind = BuildGearStorageComparisonFloor(selectedCharKey, slotID, equippedMap, charData)
         for i = 1, #findings[slotID] do
             local ex = findings[slotID][i]
             if ex.itemLink == candidate.itemLink and ex.source == candidate.source then return end
@@ -2685,19 +3313,22 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         addedCount = addedCount + 1
     end
 
-    local function EvaluateItem(item, sourceCharKey, storageType)
-        if not item or not item.itemID then return end
+    ---@return boolean anyAdded
+    local function EvaluateItem(item, sourceCharKey, storageType, evalOpts)
+        evalOpts = evalOpts or {}
+        if not item or not item.itemID then return false end
+        local anyAdded = false
         -- When RunFindGearStorageUpgradesYielded drives this scan, yield so one frame never evaluates thousands of items.
         if ns._gearStorageYieldCo then
             ns._gearStorageYieldCounter = (ns._gearStorageYieldCounter or 0) + 1
-            if ns._gearStorageYieldCounter >= 28 then
+            if ns._gearStorageYieldCounter >= GEAR_STORAGE_EVAL_ITEMS_PER_YIELD then
                 ns._gearStorageYieldCounter = 0
                 coroutine.yield()
             end
         end
 
         local linkEarly = item.itemLink or item.link
-        if IsCosmeticGearCandidate(item.itemID, linkEarly) then return end
+        if IsCosmeticGearCandidate(item.itemID, linkEarly) then return false end
 
         local equipLoc = ""
         local itemClassID = item.classID
@@ -2711,17 +3342,13 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         if (equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP") and (item.itemLink or item.link) then
             equipLoc = GetEquipLoc(item.itemLink or item.link)
         end
-        if equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP" then return end
+        if equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP" then return false end
 
         local targetSlots = EQUIP_LOC_TO_SLOTS[equipLoc]
-        if not targetSlots then return end
+        if not targetSlots then return false end
 
-        if C_Item and C_Item.RequestLoadItemDataByID and item.itemID then
-            pcall(C_Item.RequestLoadItemDataByID, item.itemID)
-        end
-
-        local ilvl = ResolveStorageItemIlvl(item)
-        if ilvl == 0 then return end
+        local ilvl = ResolveStorageItemIlvlWarm(item)
+        if ilvl == 0 then return false end
 
         -- Only Uncommon (2) and above; hide Poor (0) and Common (1)
         local quality = item.quality
@@ -2729,7 +3356,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             local q = (item.itemLink or item.link) and GetItemQuality(item.itemLink or item.link) or nil
             quality = (q ~= nil) and q or 0
         end
-        if (quality or 0) < 2 then return end
+        if (quality or 0) < 2 then return false end
 
         local link = item.itemLink or item.link
 
@@ -2747,7 +3374,12 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             else
             local isArmorOK = IsArmorCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc)
             local isWeaponOK = IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID, equipLoc, mainStat)
+            local ownStorage = IsSelectedCharacterOwnStorage(
+                sourceCharKey, selectedCharKey, storageType, getCanonicalKey, evalOpts.forceOwnStorage == true)
             local isStatOK = MatchGetItemStatsPrimariesToExpected(link, mainStat, slotID, selectedIsLoggedInPlayer, item.itemID)
+            if ownStorage then
+                isStatOK = true
+            end
 
             if not isArmorOK then
                 -- silent
@@ -2755,33 +3387,82 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                 -- silent
             elseif not isStatOK then
                 rejectCounts.stat = rejectCounts.stat + 1
-            elseif not SelectedCharacterMeetsItemRequirements(link, item.itemID) then
+            elseif not SelectedCharacterMeetsItemRequirements(link, item.itemID, ownStorage) then
                 rejectCounts.lvlRace = rejectCounts.lvlRace + 1
             else
-                local currentIlvl = equippedMap[slotID] or 0
+                local currentIlvl = BuildGearStorageComparisonFloor(selectedCharKey, slotID, equippedMap, charData)
                 if ilvl > currentIlvl then
-                    local source, sourceType = ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
-                    if source and sourceType == "boe" and item.isBound == true then
-                        rejectCounts.boeSoul = rejectCounts.boeSoul + 1
-                    elseif source and not IsAllowedStorageRecommendationBindLabel(sourceType) then
-                        rejectCounts.bindLabel = rejectCounts.bindLabel + 1
-                    elseif source then
+                    if ownStorage then
+                        local ownLabel, ownType = OwnStorageSourceLabels(storageType)
                         AddCandidate(slotID, {
                             itemID     = item.itemID,
                             itemLink   = link,
                             itemLevel  = ilvl,
                             quality    = item.quality or 0,
-                            source     = source,
-                            sourceType = sourceType,
+                            source     = ownLabel,
+                            sourceType = ownType,
                             isBound    = item.isBound,
                             equipLoc   = equipLoc,
                             sourceClassFile = ResolveSourceClassFile(sourceCharKey),
+                            actualBagID = item.actualBagID or item.bagID,
+                            bagID = item.bagID,
+                            slotIndex = item.slotIndex or item.slot,
+                            slot = item.slot,
                         })
+                        anyAdded = true
                     else
-                        rejectCounts.bind = rejectCounts.bind + 1
+                        local source, sourceType = ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
+                        if source and sourceType == "boe" and item.isBound == true then
+                            rejectCounts.boeSoul = rejectCounts.boeSoul + 1
+                        elseif source and not IsAllowedStorageRecommendationBindLabel(sourceType) then
+                            rejectCounts.bindLabel = rejectCounts.bindLabel + 1
+                        elseif source then
+                            AddCandidate(slotID, {
+                                itemID     = item.itemID,
+                                itemLink   = link,
+                                itemLevel  = ilvl,
+                                quality    = item.quality or 0,
+                                source     = source,
+                                sourceType = sourceType,
+                                isBound    = item.isBound,
+                                equipLoc   = equipLoc,
+                                sourceClassFile = ResolveSourceClassFile(sourceCharKey),
+                                actualBagID = item.actualBagID or item.bagID,
+                                bagID = item.bagID,
+                                slotIndex = item.slotIndex or item.slot,
+                                slot = item.slot,
+                            })
+                            anyAdded = true
+                        else
+                            rejectCounts.bind = rejectCounts.bind + 1
+                        end
                     end
                 end
             end
+            end
+        end
+        return anyAdded
+    end
+
+    local function EvaluateItemList(items, ownerKey, storageType, seen, evalOpts)
+        if not items then return end
+        for j = 1, #items do
+            if ns._gearStorageYieldCo and (j % GEAR_STORAGE_EVAL_ITEMS_PER_YIELD == 0) then
+                coroutine.yield()
+            end
+            local it = items[j]
+            if not it then
+                -- skip
+            else
+                local dk = GearItemEvalSeenKey(it)
+                if seen and seen[dk] then
+                    -- skip duplicate (same bag slot or same link already evaluated with known ilvl)
+                else
+                    local added = EvaluateItem(it, ownerKey, storageType, evalOpts)
+                    if seen and added then
+                        seen[dk] = true
+                    end
+                end
             end
         end
     end
@@ -2790,7 +3471,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local wbData = (WarbandNexus.GetWarbandBankData and WarbandNexus:GetWarbandBankData()) or nil
     if wbData and wbData.items then
         for i = 1, #wbData.items do
-            if ns._gearStorageYieldCo and (i % 40 == 0) then
+            if ns._gearStorageYieldCo and (i % GEAR_STORAGE_WARBANK_ITEMS_PER_YIELD == 0) then
                 coroutine.yield()
             end
             local item = wbData.items[i]
@@ -2850,28 +3531,107 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             return nil
         end
 
-        for i = 1, #scanOrder do
-            local canonicalChar = scanOrder[i]
-            local charKey = repKeyByCanon[canonicalChar] or canonicalChar
-            local itemsData = getItemsForCharacter(canonicalChar, charKey)
-            if itemsData then
-                local bags = itemsData.bags or {}
-                for j = 1, #bags do
-                    EvaluateItem(bags[j], charKey, "bag")
+        local selCanonScan = getCanonicalKey(selectedCharKey) or selectedCharKey
+        local ownEvalOpts = { forceOwnStorage = true }
+        local seenOwnGlobal = {}
+
+        -- Phase A: selected character own bags/bank FIRST (soulbound/BoE/warbound — never cross-char bind rules).
+        do
+            local repKeySel = repKeyByCanon[selCanonScan] or selCanonScan
+            local itemsDataSel = getItemsForCharacter(selCanonScan, repKeySel)
+            if selectedIsLoggedInPlayer then
+                if itemsDataSel and itemsDataSel.bags and #itemsDataSel.bags > 0 then
+                    EvaluateItemList(itemsDataSel.bags, selCanonScan, "bag", seenOwnGlobal, ownEvalOpts)
                 end
-                local bank = itemsData.bank or {}
-                for j = 1, #bank do
-                    EvaluateItem(bank[j], charKey, "bank")
+                if itemsDataSel and not WarbandNexus.bankIsOpen and itemsDataSel.bank and #itemsDataSel.bank > 0 then
+                    EvaluateItemList(itemsDataSel.bank, selCanonScan, "bank", seenOwnGlobal, ownEvalOpts)
+                end
+                local liveBags, liveBank = CollectLivePlayerContainerItemsForGearScan()
+                EvaluateItemList(liveBags, selCanonScan, "bag", seenOwnGlobal, ownEvalOpts)
+                EvaluateItemList(liveBank, selCanonScan, "bank", seenOwnGlobal, ownEvalOpts)
+                dbg(string.format(
+                    "Containers(own): persistedBags=%d liveBags=%d liveBank=%d loggedIn=%s",
+                    itemsDataSel and itemsDataSel.bags and #itemsDataSel.bags or 0,
+                    #liveBags,
+                    #liveBank,
+                    tostring(selectedIsLoggedInPlayer)
+                ))
+            elseif itemsDataSel then
+                if itemsDataSel.bags and #itemsDataSel.bags > 0 then
+                    EvaluateItemList(itemsDataSel.bags, selCanonScan, "bag", seenOwnGlobal, ownEvalOpts)
+                end
+                if itemsDataSel.bank and #itemsDataSel.bank > 0 then
+                    EvaluateItemList(itemsDataSel.bank, selCanonScan, "bank", seenOwnGlobal, ownEvalOpts)
+                end
+            end
+        end
+
+        for i = 1, #scanOrder do
+            if ns._gearStorageYieldCo and (i % 2 == 0) then
+                coroutine.yield()
+            end
+            local canonicalChar = scanOrder[i]
+            if canonicalChar == selCanonScan then
+                -- Own storage already handled in Phase A.
+            else
+                local charKey = repKeyByCanon[canonicalChar] or canonicalChar
+                local itemsData = getItemsForCharacter(canonicalChar, charKey)
+                if itemsData then
+                    local ownerKey = charKey
+                    local bags = itemsData.bags or {}
+                    for j = 1, #bags do
+                        EvaluateItem(bags[j], ownerKey, "bag")
+                    end
+                    local bank = itemsData.bank or {}
+                    for j = 1, #bank do
+                        EvaluateItem(bank[j], ownerKey, "bank")
+                    end
                 end
             end
         end
 
         local guildItems = (WarbandNexus.GetGuildBankItems and WarbandNexus:GetGuildBankItems()) or {}
         for gi = 1, #guildItems do
-            if ns._gearStorageYieldCo and (gi % 40 == 0) then
+            if ns._gearStorageYieldCo and (gi % GEAR_STORAGE_WARBANK_ITEMS_PER_YIELD == 0) then
                 coroutine.yield()
             end
             EvaluateItem(guildItems[gi], selectedCharKey, "guild")
+        end
+
+        -- Logged-in player: re-touch bag rows that were skipped at ilvl 0 (cold client cache during long scans).
+        if selectedIsLoggedInPlayer then
+            local repKey = repKeyByCanon[selCanonScan] or selCanonScan
+            local itemsDataRetry = getItemsForCharacter(selCanonScan, repKey)
+            local function retryOwnStorageList(list, storageType)
+                if not list then return end
+                for j = 1, #list do
+                    if ns._gearStorageYieldCo and (j % GEAR_STORAGE_EVAL_ITEMS_PER_YIELD == 0) then
+                        coroutine.yield()
+                    end
+                    local it = list[j]
+                    if it and it.itemID then
+                        local il = tonumber(it.itemLevel) or ResolveStorageItemIlvlWarm(it)
+                        if il == 0 then
+                            if C_Item and C_Item.RequestLoadItemDataByID then
+                                pcall(C_Item.RequestLoadItemDataByID, it.itemID)
+                            end
+                            il = ResolveStorageItemIlvlWarm(it)
+                        end
+                        if il > 0 then
+                            EvaluateItem(it, selCanonScan, storageType, { forceOwnStorage = true })
+                        end
+                    end
+                end
+            end
+            if itemsDataRetry then
+                retryOwnStorageList(itemsDataRetry.bags, "bag")
+                if not WarbandNexus.bankIsOpen then
+                    retryOwnStorageList(itemsDataRetry.bank, "bank")
+                end
+            end
+            local liveBagsRetry, liveBankRetry = CollectLivePlayerContainerItemsForGearScan()
+            retryOwnStorageList(liveBagsRetry, "bag")
+            retryOwnStorageList(liveBankRetry, "bank")
         end
     end
 
@@ -2883,7 +3643,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         for otherCharKey, otherCharData in pairs(allChars) do
             if ns._gearStorageYieldCo then
                 _equippedOtherYield = _equippedOtherYield + 1
-                if _equippedOtherYield % 4 == 0 then
+                if _equippedOtherYield % GEAR_STORAGE_CHAR_LOOP_EVERY == 0 then
                     coroutine.yield()
                 end
             end
@@ -2907,7 +3667,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                     if IsCosmeticGearCandidate(slotData.itemID, slotData.itemLink) then
                         -- skip cosmetic appearances worn by another character
                     else
-                    local currentIlvl = equippedMap[slotID] or 0
+                    local currentIlvl = ResolveEquippedIlvlForComparison(selectedCharKey, slotID, equippedMap)
                     local itemLevel = ResolveStorageItemIlvl(slotData)
                     if itemLevel > currentIlvl then
                         local slotQuality = slotData.quality
@@ -2984,6 +3744,15 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     end
 
     local rSum = rejectCounts.stat + rejectCounts.lvlRace + rejectCounts.boeSoul + rejectCounts.bindLabel + rejectCounts.bind
+    ns._gearStorageLastFindSummary = {
+        stat = rejectCounts.stat,
+        lvlRace = rejectCounts.lvlRace,
+        boeSoul = rejectCounts.boeSoul,
+        bindLabel = rejectCounts.bindLabel,
+        bind = rejectCounts.bind,
+        added = addedCount,
+        canonKey = canonKey,
+    }
     dbg(string.format(
         "  Reject/add: stat=%d lvlRace=%d boeSoul=%d bindLbl=%d bind=%d | added=%d",
         rejectCounts.stat,
@@ -2994,9 +3763,25 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         addedCount
     ))
 
+    local equippedMapCommit = BuildEquippedIlvlMap(selectedCharKey)
     for slotID, candidates in pairs(findings) do
-        table.sort(candidates, function(a, b) return (a.itemLevel or 0) > (b.itemLevel or 0) end)
-        while #candidates > 5 do table.remove(candidates) end
+        local floorIlvl = BuildGearStorageComparisonFloor(selectedCharKey, slotID, equippedMapCommit, charData)
+        local i = 1
+        while i <= #candidates do
+            local cand = candidates[i]
+            if (cand.itemLevel or 0) <= floorIlvl then
+                table.remove(candidates, i)
+            else
+                cand.equippedIlvlAtFind = floorIlvl
+                i = i + 1
+            end
+        end
+        if #candidates == 0 then
+            findings[slotID] = nil
+        else
+            table.sort(candidates, function(a, b) return (a.itemLevel or 0) > (b.itemLevel or 0) end)
+            while #candidates > 5 do table.remove(candidates) end
+        end
     end
 
     -- Recompute equipped signature at commit: yielded scans can span many frames while
@@ -3016,21 +3801,18 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
             gearStorageFindingsCache.findings = nil
             gearStorageFindingsCache.invEpoch = nil
         end
-        if _gearFindProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_scan") end
         return findings
     end
-    local equippedMapCommit = BuildEquippedIlvlMap(selectedCharKey)
     local equipSigCommit = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMapCommit)
     gearStorageFindingsCache.canonKey = canonKey
     gearStorageFindingsCache.equipSig = equipSigCommit
     gearStorageFindingsCache.findings = findings
+    gearStorageFindingsCache.logicVer = GEAR_STORAGE_FINDINGS_LOGIC_VER
     -- Align cache epoch to the latest scan generation. Item-info batches and metadata
     -- hooks can bump `ns._gearStorageInvGen` while a yielded Find runs; using only the
     -- epoch captured at scan start forces redundant FULLFIND in RedrawGearStorageRecommendationsOnly.
     gearStorageFindingsCache.invEpoch = ns._gearStorageInvGen or 0
     ns._gearStorageFindingsCleanToken = ns._gearStorageFindingsDirtyToken or 0
-
-    if _gearFindProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_scan") end
 
     WarbandNexus:GearStorageTrace("Find committed canon=" .. tostring(canonKey)
         .. " candidatesAdded=" .. tostring(addedCount) .. " invEpoch=" .. tostring(gearStorageFindingsCache.invEpoch))
@@ -3124,6 +3906,9 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
         end)
     end
 
+    local P = ns.Profiler
+    local _gearPumpProfOn = P and P.enabled and P.StartSlice and P.StopSlice
+
     local function pump()
         if paintGen ~= (ns._gearTabDrawGen or 0) then
             abortYieldedFind("stale paintGen")
@@ -3136,13 +3921,23 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
         if ns._gearStorageYieldCo ~= co then
             return
         end
-        local sliceStart = GetTime()
+        if _gearPumpProfOn then P:StartSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
+        local sliceStart = debugprofilestop()
+        local resumes = 0
         while coroutine.status(co) ~= "dead" do
             if ns._gearStorageYieldCo ~= co then
+                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
+                return
+            end
+            resumes = resumes + 1
+            if resumes > GEAR_STORAGE_PUMP_MAX_RESUMES then
+                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
+                C_Timer.After(0, pump)
                 return
             end
             local ok, err = coroutine.resume(co)
             if not ok then
+                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
                 if ns._gearStorageYieldCo ~= co then
                     return
                 end
@@ -3150,11 +3945,13 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
                 abortYieldedFind("coroutine error")
                 return
             end
-            if (GetTime() - sliceStart) > 0.010 then
+            if (debugprofilestop() - sliceStart) >= GEAR_STORAGE_PUMP_BUDGET_MS then
+                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
                 C_Timer.After(0, pump)
                 return
             end
         end
+        if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
         if ns._gearStorageYieldCo ~= co then
             return
         end

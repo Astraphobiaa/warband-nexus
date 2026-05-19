@@ -59,6 +59,10 @@ local GearFact = ns.UI.Factory
 local GEAR_CONTENT_VEIL_MIN_DISPLAY_SEC = 0.5
 --- Minimum time "Scanning storage…" stays up before swapping to rows/empty (avoids sub-500ms flicker).
 local GEAR_STORAGE_SCANNING_MIN_DISPLAY_SEC = 0.5
+--- Yielded storage scan timing (must be above TryStartPendingGearStorageScan — Lua locals are not hoisted).
+local GEAR_STORAGE_SCAN_START_DELAY_SEC = 0.035
+local GEAR_STORAGE_APPLY_UI_DELAY_SEC = 0.02
+ns.GEAR_STORAGE_SCAN_START_DELAY_SEC = GEAR_STORAGE_SCAN_START_DELAY_SEC
 
 --- Locale helper (defined before first use; GetLocalizedText is declared later in this file).
 local function GearTabL(key, fallback)
@@ -345,21 +349,21 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
         WarbandNexus:GearStorageTrace("apply RedrawStorageRec ok=" .. tostring(ok) .. " canon=" .. tostring(capCanon))
         WarbandNexus:GearStoragePanelDebug(("applyStorageScanUI Redraw ok=%s canon=%s"):format(tostring(ok), tostring(capCanon)))
         if ok then return end
-        if P2 and P2.enabled and P2.Wrap and P2.SliceLabel then
-            P2:Wrap(P2:SliceLabel(P2.CAT.UI, "Gear_StorageRec_fallbackPopulate"), function()
-                WarbandNexus:PopulateContent()
-                local mfPop = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-                if mfPop and mfPop.CancelPendingPopulateDebounce then
-                    mfPop:CancelPendingPopulateDebounce()
-                end
-            end)
-        else
-            WarbandNexus:PopulateContent()
-            local mfPop = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-            if mfPop and mfPop.CancelPendingPopulateDebounce then
-                mfPop:CancelPendingPopulateDebounce()
-            end
-        end
+        -- Never fall back to full PopulateContent (~20–70ms); retry narrow redraw once host is ready.
+        WarbandNexus:GearStoragePanelDebug("applyStorageScanUI narrow redraw failed — scheduling retry (no PopulateContent)")
+        C_Timer.After(0.05, function()
+            if paintGen ~= (ns._gearTabDrawGen or 0) then return end
+            if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+            ns._gearStorageAllowEquipSigInvBypass = true
+            local okRetry = WarbandNexus.RedrawGearStorageRecommendationsOnly
+                and WarbandNexus:RedrawGearStorageRecommendationsOnly(capCanon, paintGen, true)
+            ns._gearStorageAllowEquipSigInvBypass = false
+            WarbandNexus:GearStoragePanelDebug(("applyStorageScanUI retry ok=%s"):format(tostring(okRetry == true)))
+        end)
+    end
+
+    local function scheduleApplyStorageScanUI()
+        C_Timer.After(GEAR_STORAGE_APPLY_UI_DELAY_SEC, applyStorageScanUI)
     end
 
     local function beginYieldedStorageFind()
@@ -368,21 +372,17 @@ local function TryStartPendingGearStorageScan(mf, paintGen)
         if WarbandNexus.RunFindGearStorageUpgradesYielded then
             WarbandNexus:RunFindGearStorageUpgradesYielded(capCanon, paintGen, function()
                 if WarbandNexus.OnGearStorageYieldedScanComplete then
-                    WarbandNexus:OnGearStorageYieldedScanComplete(capCanon, paintGen, function()
-                        C_Timer.After(0, applyStorageScanUI)
-                    end)
+                    WarbandNexus:OnGearStorageYieldedScanComplete(capCanon, paintGen, scheduleApplyStorageScanUI)
                 else
-                    C_Timer.After(0, applyStorageScanUI)
+                    scheduleApplyStorageScanUI()
                 end
             end)
         elseif WarbandNexus.FindGearStorageUpgrades then
             WarbandNexus:FindGearStorageUpgrades(capCanon)
             if WarbandNexus.OnGearStorageYieldedScanComplete then
-                WarbandNexus:OnGearStorageYieldedScanComplete(capCanon, paintGen, function()
-                    C_Timer.After(0, applyStorageScanUI)
-                end)
+                WarbandNexus:OnGearStorageYieldedScanComplete(capCanon, paintGen, scheduleApplyStorageScanUI)
             else
-                C_Timer.After(0, applyStorageScanUI)
+                scheduleApplyStorageScanUI()
             end
         else
             applyStorageScanUI()
@@ -498,7 +498,7 @@ local GEAR_CHAR_SELECTOR_HEIGHT = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HE
 local GEAR_CHAR_DROPDOWN_ENTRY_H = (ns.UI_LAYOUT and ns.UI_LAYOUT.DROPDOWN_MENU_ROW_HEIGHT) or (ns.UI_LAYOUT and ns.UI_LAYOUT.ROW_HEIGHT) or 26
 local GEAR_HIDE_FILTER_BUTTON_W = 84
 
--- Paper doll: sol panel | orta panel | sağ panel | alt panel (fixed widths); %10 büyütme
+-- Paper doll: paperdoll (left) | stats+currencies (right) | recommendations (bottom band)
 -- [[WN_GEAR_PAPERDOLL_MOVED]]
 -- Paperdoll chunk lives in GearUI_Paperdoll.lua (Lua 200-local limit)
 local GEAR_STORAGE_RECOMMENDATIONS_ENABLED = true
@@ -510,11 +510,21 @@ function WarbandNexus:IsGearStorageRecommendationsEnabled()
 end
 
 local function GetGearTabMinCardInnerW()
-    return ns.GearUI_GetGearTabMinCardInnerW()
+    if ns.GearUI_GetGearTabMinCardInnerW then
+        return ns.GearUI_GetGearTabMinCardInnerW(WarbandNexus:IsGearStorageRecommendationsEnabled())
+    end
+    if ns.GearUI_GetGearTabMinCardInnerW_Paperdoll then
+        return ns.GearUI_GetGearTabMinCardInnerW_Paperdoll()
+    end
+    return 1100
 end
 
-local MIN_GEAR_CARD_W = 2 * (SIDE_MARGIN or 16) + 2 * 12 + GetGearTabMinCardInnerW()
-ns.MIN_GEAR_CARD_W = MIN_GEAR_CARD_W
+local CARD_PAD_GEAR = (ns.GEAR_LAYOUT and ns.GEAR_LAYOUT.CARD_PAD) or 12
+if ns.GearUI_RefreshMinScrollWidthCache then
+    ns.GearUI_RefreshMinScrollWidthCache()
+else
+    ns.MIN_GEAR_CARD_W = 2 * (SIDE_MARGIN or 16) + 2 * CARD_PAD_GEAR + GetGearTabMinCardInnerW()
+end
 
 local GEAR_PAPERDOLL_REFRESH_SLOT_IDS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 }
 -- [[/WN_GEAR_PAPERDOLL_MOVED]]
@@ -674,6 +684,59 @@ local function GetItemIconSafe(linkOrId)
 end
 
 -- ============================================================================
+-- UPGRADE AFFORDABILITY (currency map + tier simulation)
+-- ============================================================================
+
+--- Full copper for gold entry (Gear currencies list stores gold/silver/copper on id 0).
+---@param currencyAmounts table|nil
+---@return number copper
+local function GetGearCurrencyGoldCopper(currencyAmounts)
+    if not currencyAmounts then return 0 end
+    if currencyAmounts._goldCopper then return currencyAmounts._goldCopper end
+    return (currencyAmounts[0] or 0) * 10000
+end
+
+--- Build currencyID -> amount map from GetGearUpgradeCurrenciesFromDB rows.
+---@param currencies table
+---@return table currencyAmounts
+local function BuildGearCurrencyAmounts(currencies)
+    local currencyAmounts = {}
+    for i = 1, #(currencies or {}) do
+        local cur = currencies[i]
+        if cur and cur.currencyID ~= nil then
+            local id = (type(cur.currencyID) == "number") and cur.currencyID or tonumber(cur.currencyID)
+            local amt = (type(cur.amount) == "number") and cur.amount or tonumber(cur.amount)
+            if id then
+                if id == 0 and cur.isGold then
+                    local copper = (amt or 0) * 10000 + (cur.silver or 0) * 100 + (cur.copper or 0)
+                    currencyAmounts[0] = math.floor(copper / 10000)
+                    currencyAmounts._goldCopper = copper
+                else
+                    currencyAmounts[id] = (amt and amt >= 0) and amt or 0
+                end
+            end
+        end
+    end
+    return currencyAmounts
+end
+
+--- Crest cost for the very next tier step (0 when gold-only via watermark).
+---@param upInfo table
+---@return number
+local function GetNextStepCrestNeed(upInfo)
+    if not upInfo or not upInfo.canUpgrade or upInfo.isCrafted then return 0 end
+    local currTier = upInfo.currUpgrade or 0
+    local maxTier = upInfo.maxUpgrade or 0
+    if currTier >= maxTier then return 0 end
+    local tiers = ns.TRACK_ILVLS and ns.TRACK_ILVLS[upInfo.trackName]
+    if not tiers then return upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20) end
+    local nextIlvl = tiers[currTier + 1]
+    if not nextIlvl then return upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20) end
+    if nextIlvl <= (upInfo.watermarkIlvl or 0) then return 0 end
+    return upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20)
+end
+
+-- ============================================================================
 -- CRAFTED ITEM RECRAFT RANGE
 -- ============================================================================
 
@@ -753,7 +816,7 @@ local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
     local crestPerUpgrade = upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20)
     local currencyID = upInfo.currencyID or 0
 
-    local haveGoldCopper = ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
+    local haveGoldCopper = GetGearCurrencyGoldCopper(currencyAmounts)
     local haveCrests = (currencyAmounts and currencyAmounts[currencyID]) or 0
 
     local totalAffordable = 0
@@ -764,15 +827,23 @@ local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
         if not nextIlvl then break end
 
         local isGoldOnly = (nextIlvl <= wmIlvl)
-
-        if haveGoldCopper < goldPerUpgrade then break end
-
-        if not isGoldOnly then
-            if haveCrests < crestPerUpgrade then break end
-            haveCrests = haveCrests - crestPerUpgrade
+        local stepGold = goldPerUpgrade
+        local stepCrest = crestPerUpgrade
+        if nextTier == currTier + 1 and upInfo.moneyCost and upInfo.moneyCost > 0 then
+            stepGold = upInfo.moneyCost
+        end
+        if nextTier == currTier + 1 and upInfo.crestCost and upInfo.crestCost > 0 then
+            stepCrest = upInfo.crestCost
         end
 
-        haveGoldCopper = haveGoldCopper - goldPerUpgrade
+        if haveGoldCopper < stepGold then break end
+
+        if not isGoldOnly then
+            if haveCrests < stepCrest then break end
+            haveCrests = haveCrests - stepCrest
+        end
+
+        haveGoldCopper = haveGoldCopper - stepGold
         totalAffordable = totalAffordable + 1
         if isGoldOnly then
             goldOnlyCount = goldOnlyCount + 1
@@ -799,6 +870,32 @@ end
 --- True when this slot should show the upgrade arrow (next tier / recraft available), regardless of crest affordability.
 local function GearUpgradeInfoHasPath(upInfo)
     return upInfo and upInfo.canUpgrade == true and not upInfo.notUpgradeable
+end
+
+--- Attach affordableUpgrades / canAffordNext on each slot row (paperdoll + refresh).
+---@param upgradeInfo table
+---@param currencyAmounts table
+local function EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
+    if not upgradeInfo or not currencyAmounts then return end
+    for _, up in pairs(upgradeInfo) do
+        if up and up.canUpgrade and not up.notUpgradeable then
+            if up.isCrafted then
+                local range = GetCraftedIlvlRange(up, currencyAmounts)
+                up.canAffordNext = range and range.maxIlvl > (up.currentIlvl or 0)
+                up.affordableUpgrades = up.canAffordNext and 1 or 0
+                up.goldOnlyUpgrades = 0
+            else
+                local aff, goldOnly = CalculateAffordableUpgrades(up, currencyAmounts)
+                up.affordableUpgrades = aff
+                up.goldOnlyUpgrades = goldOnly
+                up.canAffordNext = aff > 0
+            end
+        elseif up then
+            up.affordableUpgrades = 0
+            up.goldOnlyUpgrades = 0
+            up.canAffordNext = false
+        end
+    end
 end
 
 --- Get the class color hex for a classFile string (e.g. "SHAMAN").
@@ -918,19 +1015,20 @@ local function GetGearStorageRecColumnLayout(contentW)
     local pad = 8
     local gap = 6
     local inner = math.max(40, contentW - pad * 2)
-    -- Slot: fit "Main Hand" / localized long labels without ellipsis.
-    local slotW = math.min(108, math.max(86, math.floor(inner * 0.20 + 0.5)))
-    local recommendW = math.min(128, math.max(76, math.floor(inner * 0.20 + 0.5)))
-    local locationW = math.min(168, math.max(88, math.floor(inner * 0.28 + 0.5)))
+    local minSlot, minRec, minLoc, minGear = 72, 80, 92, 84
+    local slotW = math.min(120, math.max(minSlot, math.floor(inner * 0.20 + 0.5)))
+    local recommendW = math.min(148, math.max(minRec, math.floor(inner * 0.18 + 0.5)))
+    local locationW = math.min(220, math.max(minLoc, math.floor(inner * 0.28 + 0.5)))
     local gearW = inner - slotW - recommendW - locationW - 3 * gap
+    if gearW < minGear then
+        local deficit = minGear - gearW
+        gearW = minGear
+        recommendW = math.max(minRec, recommendW - math.floor(deficit * 0.35))
+        locationW = math.max(minLoc, locationW - math.ceil(deficit * 0.65))
+        gearW = math.max(minGear, inner - slotW - recommendW - locationW - 3 * gap)
+    end
     local rw, lw = recommendW, locationW
     local gw = gearW
-    if gw < 72 then
-        local deficit = 72 - gw
-        rw = math.max(58, rw - math.floor(deficit * 0.40))
-        lw = math.max(80, lw - math.ceil(deficit * 0.60))
-        gw = inner - slotW - rw - lw - 3 * gap
-    end
     local iconSz = math.min(26, math.max(20, math.floor(24 * 0.92)))
     local xSlot = pad
     local xGear = xSlot + slotW + gap
@@ -950,6 +1048,56 @@ local function GetGearStorageRecColumnLayout(contentW)
         xLocation = xLocation,
     }
 end
+
+--- Live resize: reflow recommendation table columns without rebuilding rows.
+---@param recContent Frame|nil
+---@param contentW number|nil
+local function RelayoutGearStorageRecColumns(recContent, contentW)
+    if not recContent or not contentW or contentW < 40 then return end
+    recContent:SetWidth(contentW)
+    local lay = GetGearStorageRecColumnLayout(contentW)
+    for i = 1, select("#", recContent:GetChildren()) do
+        local line = select(i, recContent:GetChildren())
+        if line and line.slotText then
+            local innerH = line:GetHeight() or 32
+            line:SetSize(contentW, innerH)
+            if line.slotText then
+                line.slotText:SetWidth(lay.slotW)
+                line.slotText:ClearAllPoints()
+                line.slotText:SetPoint("LEFT", line, "LEFT", lay.xSlot, 0)
+            end
+            if line.icon then
+                line.icon:SetSize(lay.iconSz, lay.iconSz)
+                line.icon:ClearAllPoints()
+                line.icon:SetPoint("LEFT", line, "LEFT", lay.xGear, 0)
+            end
+            if line.itemNameText then
+                line.itemNameText:ClearAllPoints()
+                line.itemNameText:SetPoint("LEFT", line.icon, "RIGHT", lay.gap, 0)
+                line.itemNameText:SetPoint("RIGHT", line, "LEFT", lay.xRecommend - 2, 0)
+                if lay.gearW < 100 and line.itemNameText.SetWordWrap then
+                    line.itemNameText:SetWordWrap(true)
+                    if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(2) end
+                elseif line.itemNameText.SetWordWrap then
+                    line.itemNameText:SetWordWrap(false)
+                    if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(0) end
+                end
+            end
+            if line.upgradeSummaryText then
+                line.upgradeSummaryText:ClearAllPoints()
+                line.upgradeSummaryText:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xRecommend, 0)
+                line.upgradeSummaryText:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xRecommend + lay.recommendW, 0)
+            end
+            if line.sourceText then
+                line.sourceText:ClearAllPoints()
+                line.sourceText:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xLocation, 0)
+                line.sourceText:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xLocation + lay.locationW, 0)
+            end
+        end
+    end
+end
+
+ns.GearUI_RelayoutStorageRecColumns = RelayoutGearStorageRecColumns
 
 local function GetGearStorageItemDisplayName(itemLink, itemID)
     local nm
@@ -1004,14 +1152,19 @@ end
 local function PaintGearStorageRecColumnHeader(parent, contentW)
     if not parent or not FontManager then return end
     local lay = GetGearStorageRecColumnLayout(contentW)
-    local hdr = GearFact:CreateContainer(parent, contentW, GEAR_STORAGE_REC_TABLE_HDR, false)
+    local hdrH = GEAR_STORAGE_REC_TABLE_HDR
+    local hdr = GearFact:CreateContainer(parent, contentW, hdrH, false)
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
+    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
+    local hdrBg = hdr:CreateTexture(nil, "BACKGROUND")
+    hdrBg:SetAllPoints()
+    hdrBg:SetColorTexture(accent[1] * 0.10, accent[2] * 0.10, accent[3] * 0.10, 0.92)
     local rule = hdr:CreateTexture(nil, "ARTWORK")
     rule:SetHeight(1)
-    rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 2)
-    rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 2)
-    rule:SetColorTexture(0.35, 0.38, 0.44, 0.45)
-    local hdrColor = { 1, 1, 1 }
+    rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 0)
+    rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
+    rule:SetColorTexture(accent[1] * 0.28, accent[2] * 0.28, accent[3] * 0.28, 0.55)
+    local hdrColor = { 0.78, 0.80, 0.86 }
     local function colFs(text, leftX, width, justify)
         local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
         fs:SetPoint("LEFT", hdr, "LEFT", leftX, 1)
@@ -1140,7 +1293,13 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         itemNameFs:SetPoint("LEFT", itemIcon, "RIGHT", lay.gap, 0)
         itemNameFs:SetPoint("RIGHT", line, "LEFT", lay.xRecommend - 2, 0)
         itemNameFs:SetJustifyH("LEFT")
-        itemNameFs:SetWordWrap(false)
+        if lay.gearW < 100 and itemNameFs.SetWordWrap then
+            itemNameFs:SetWordWrap(true)
+            if itemNameFs.SetMaxLines then itemNameFs:SetMaxLines(2) end
+        else
+            itemNameFs:SetWordWrap(false)
+            if itemNameFs.SetMaxLines then itemNameFs:SetMaxLines(0) end
+        end
         local dispRaw = GetGearStorageItemDisplayName(rowData.itemLink, rowData.itemID)
         if not dispRaw or dispRaw == "" then
             dispRaw = "#" .. tostring(rowData.itemID or 0)
@@ -1185,7 +1344,7 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     end)
 end
 
-local GEAR_STORAGE_ROWS_PER_FRAME = 5
+local GEAR_STORAGE_ROWS_PER_FRAME = 4
 
 ---Paint storage recommendation rows across multiple frames (never bulk N rows on one spike).
 local function PaintGearStorageRowsBatched(recContent, recScroll, rows, contentW, rowH, charData, drawGen, onComplete)
@@ -1359,7 +1518,7 @@ local function BuildStorageRecommendationRows(findings, gearData)
                         source = best.source or "",
                         sourceType = best.sourceType or "",
                         sourceClassFile = best.sourceClassFile,
-                        delta = target - currentDisplay,
+                        delta = target - scanBase,
                         requiredLevel = best.requiredLevel,
                     }
                 end
@@ -1556,6 +1715,13 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     local storageHeaderH = host.storageHeaderH
     local storageBarW = host.storageBarW
     local storageW = host.storageW
+    if storagePanel and storagePanel.GetWidth then
+        local measuredW = storagePanel:GetWidth()
+        if measuredW and measuredW > 0 then
+            storageW = measuredW
+            host.storageW = measuredW
+        end
+    end
     local rowH = host.rowH
     local sbCol = host.sbCol
 
@@ -1700,8 +1866,32 @@ end
 ---@param slotID number
 ---@return table|nil
 
+--- Paperdoll slot refresh during first-paint quiet / yielded storage scan causes socket/enchant flicker.
+---@return boolean
+local function ShouldDeferGearPaperdollSlotRefresh()
+    if ns._gearStorageYieldCo then return true end
+    local untilT = ns._gearTabPopulateQuietUntil
+    if untilT and GetTime() < untilT then return true end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and mf._gearDeferChainActive then return true end
+    return false
+end
+
+--- Refresh upgrade arrows + track labels after currency/gold changes (no full Gear PopulateContent).
+---@return boolean handled
+function WarbandNexus:TryRefreshGearUpgradeEconomy()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or mf.currentTab ~= "gear" then return false end
+    if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return false end
+    local card = mf._gearPaperdollCard
+    if not card or not card._gearSlotInspectList or #card._gearSlotInspectList == 0 then return false end
+    local canon = mf._gearPopulateCanonKey
+    if not canon then return false end
+    return self:TryRefreshGearEquipSlotsOnly({ charKey = canon, refreshAllSlots = true, forcePaperdoll = true }) == true
+end
+
 --- In-place paperdoll slot refresh after equip/unequip (no full tab teardown).
----@param payload table|nil { charKey, slotIDs = { number, ... } }
+---@param payload table|nil { charKey, slotIDs = { number, ... }, refreshAllSlots = boolean|nil, forcePaperdoll = boolean|nil }
 ---@return boolean ok
 ---@return boolean|nil needFollowUp When true, PLAYER_EQUIPMENT_CHANGED path should retry next tick (live link lag viewing current character).
 function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
@@ -1713,6 +1903,9 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
     local card = mf._gearPaperdollCard
     if not card or not card._gearSlotInspectList or #card._gearSlotInspectList == 0 then return false end
     if not card.GetParent or not card:GetParent() then return false end
+    if not (payload and payload.forcePaperdoll) and ShouldDeferGearPaperdollSlotRefresh() then
+        return false
+    end
 
     local canon = mf._gearPopulateCanonKey
     if not canon then return false end
@@ -1728,14 +1921,23 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
     end
     local isViewingCurrent = currentCanon and canon == currentCanon
 
-    local slotFilter = payload and payload.slotIDs
-    if not slotFilter or #slotFilter == 0 then
-        return false
-    end
     local refreshSet = {}
-    for i = 1, #slotFilter do
-        local sid = tonumber(slotFilter[i])
-        if sid then refreshSet[sid] = true end
+    if payload and payload.refreshAllSlots then
+        local gearSlots = ns.GEAR_SLOTS
+        if gearSlots then
+            for si = 1, #gearSlots do
+                refreshSet[gearSlots[si].id] = true
+            end
+        end
+    else
+        local slotFilter = payload and payload.slotIDs
+        if not slotFilter or #slotFilter == 0 then
+            return false
+        end
+        for i = 1, #slotFilter do
+            local sid = tonumber(slotFilter[i])
+            if sid then refreshSet[sid] = true end
+        end
     end
     for sid in pairs(refreshSet) do
         local partner = ns.GEAR_PAPERDOLL.GEAR_REFRESH_PAIR_SLOTS[sid]
@@ -1754,15 +1956,8 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
 
     local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canon)) or {}
     local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(canon)) or {}
-    local currencyAmounts = {}
-    for i = 1, #currencies do
-        local cur = currencies[i]
-        if cur and cur.currencyID ~= nil then
-            local id = (type(cur.currencyID) == "number") and cur.currencyID or tonumber(cur.currencyID)
-            local amt = (type(cur.amount) == "number") and cur.amount or tonumber(cur.amount)
-            if id then currencyAmounts[id] = (amt and amt >= 0) and amt or 0 end
-        end
-    end
+    local currencyAmounts = BuildGearCurrencyAmounts(currencies)
+    EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
 
     local slotList = card._gearSlotInspectList
     local refreshed = {}
@@ -1885,7 +2080,7 @@ function WarbandNexus:TryRefreshGearEquipSlotsImmediate(changedSlotID)
     if partner then
         slotIDs[#slotIDs + 1] = partner
     end
-    local pl = { slotIDs = slotIDs }
+    local pl = { slotIDs = slotIDs, forcePaperdoll = true }
     local function run()
         if WarbandNexus.TryRefreshGearEquipSlotsOnly then
             return WarbandNexus:TryRefreshGearEquipSlotsOnly(pl)
@@ -2710,6 +2905,12 @@ function WarbandNexus:DrawGearTab(parent)
     -- Invalidate in-flight storage deferrals when this tab redraws (char change, tab switch, PopulateContent).
     ns._gearTabDrawGen = (ns._gearTabDrawGen or 0) + 1
     local gearPaintGen = ns._gearTabDrawGen
+    -- Coalesce WN_CHARACTER_UPDATED / GEAR_UPDATED / item-info storms during first paint + storage scan.
+    local quietSec = 1.35
+    if WarbandNexus.IsGearStorageRecommendationsEnabled and WarbandNexus:IsGearStorageRecommendationsEnabled() then
+        quietSec = 2.1
+    end
+    ns._gearTabPopulateQuietUntil = GetTime() + quietSec
     local mfGear = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if mfGear then
         mfGear._gearPendingStorageScan = nil
@@ -2884,15 +3085,8 @@ function WarbandNexus:DrawGearTab(parent)
     -- Fetch currencies once; reuse for both affordability map and display panel
     pGearSliceStart("Gear_data_currencies")
     local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(canonicalKey)) or {}
-    local currencyAmounts = {}
-    for i = 1, #currencies do
-        local cur = currencies[i]
-        if cur and cur.currencyID ~= nil then
-            local id = (type(cur.currencyID) == "number") and cur.currencyID or tonumber(cur.currencyID)
-            local amt = (type(cur.amount) == "number") and cur.amount or tonumber(cur.amount)
-            if id then currencyAmounts[id] = (amt and amt >= 0) and amt or 0 end
-        end
-    end
+    local currencyAmounts = BuildGearCurrencyAmounts(currencies)
+    EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
     pGearSliceStop("Gear_data_currencies")
 
     gearOpenStamp("after_currencies")
@@ -2990,6 +3184,9 @@ function WarbandNexus:DrawGearTab(parent)
         pGearSliceStop("Gear_populateSig")
         if mfOut and ns.GearUI_RelayoutGearTabViewportFill then
             ns.GearUI_RelayoutGearTabViewportFill(mfOut)
+            if ns.GearUI_UpdateScrollWidthHint then
+                ns.GearUI_UpdateScrollWidthHint(mfOut)
+            end
             local fillCard = mfOut._gearPaperdollCard
             local lay = fillCard and fillCard._wnGearViewportLayout
             if fillCard and lay and lay.scrollYOffset and fillCard.GetHeight then
@@ -3049,6 +3246,11 @@ function WarbandNexus:DrawGearTab(parent)
     return outSync
   end
 
+    local splitPaperDollNext = mfGear and mfGear._wnGearSplitPaperDollNext
+    if mfGear then
+        mfGear._wnGearSplitPaperDollNext = nil
+    end
+
     if deferScrollPaint and mfGear then
         C_Timer.After(0, function()
             if gearPaintGen ~= ns._gearTabDrawGen then
@@ -3087,7 +3289,14 @@ function WarbandNexus:DrawGearTab(parent)
         return math.max(viewportH, 480)
     end
 
-    return paintGearScrollBody()
+    if splitPaperDollNext and mfGear then
+        pGearSliceStart("Gear_tabSwitch_dataOnly")
+        local outH = paintGearScrollBody(true)
+        pGearSliceStop("Gear_tabSwitch_dataOnly")
+        return math.max(outH or 0, GearResultsViewportHeight(mfGear))
+    end
+
+    return paintGearScrollBody(false)
 end
 
 ns.UI_EnsureGearTabLoadingVeil = EnsureGearContentVeil
@@ -3098,7 +3307,13 @@ ns.GearUI_TryDismissGearContentVeil = TryDismissGearContentVeil
 ns.GearUI_PaintGearStorageRowsBatched = PaintGearStorageRowsBatched
 ns.GearUI_STORAGE_REC_TABLE_HDR = GEAR_STORAGE_REC_TABLE_HDR
 ns.GearUI_GetCraftedIlvlRange = GetCraftedIlvlRange
+ns.GearUI_BuildGearCurrencyAmounts = BuildGearCurrencyAmounts
+ns.GearUI_EnrichUpgradeInfoWithAffordability = EnrichUpgradeInfoWithAffordability
+ns.GearUI_GetNextStepCrestNeed = GetNextStepCrestNeed
+ns.GearUI_GetGearCurrencyGoldCopper = GetGearCurrencyGoldCopper
 ns.GearUI_CalculateAffordableUpgrades = CalculateAffordableUpgrades
+ns.GearUI_CanAffordNextUpgrade = CanAffordNextUpgrade
+ns.GearUI_GearUpgradeInfoHasPath = GearUpgradeInfoHasPath
 ns.GearUI_IsPrimaryEnchantExpected = IsPrimaryEnchantExpected
 ns.GearUI_GetItemIconSafe = GetItemIconSafe
 ns.GearUI_BuildGearTabItemTooltipContext = BuildGearTabItemTooltipContext

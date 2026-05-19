@@ -7,6 +7,8 @@
       Use for live drag relayout (gold cards, row paint width, explicit SetWidth).
     - Scroll child width: `ComputeScrollChildWidth` (tab minimums). Frozen in `_wnResizeFreezeScrollChildW`
       during corner-drag so column rails do not jitter; horizontal scroll when viewport < min.
+    - Content minimum: never assign column widths below tab-specific readable floors; clamp with
+      `GearUI_ClampCardInnerWidth` / `GearUI_GetGearTabMinScrollWidth` (scroll, do not squeeze/overlap).
     - `resize_live`: shell/nav rail only; Characters tab content frozen until commit (`PopulateContent`).
     - `resize_commit`: unfreeze scroll child, `OnViewportLayoutCommit` or full PopulateContent.
     - Tab painters: prefer `UI_GetMainTabLayoutMetrics` (`contentWidth`, `bodyWidth`, `sideMargin`);
@@ -319,6 +321,7 @@ function LayoutCoordinator:OnMainFrameMetricsChanged(frame, reason)
         if reason == "resize_live" or reason == "drag_stop" then
             if IsMainFrameResizeSession(frame) then
                 ApplyShellChromeLive(frame)
+                -- Gear: body frozen until resize commit (see GearUI_Layout OnViewportWidthChanged).
                 RunTabLiveAdapter(frame, contentWidth)
             else
                 ApplyShellChromeFull(frame, reason)

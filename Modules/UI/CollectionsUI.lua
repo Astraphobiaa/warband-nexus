@@ -709,7 +709,7 @@ if ns.UI_LayoutCoordinator then
     end
     LC:RegisterTabAdapter("collections", {
         OnViewportWidthChanged = function(scrollChild, contentWidth, mf)
-            if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+            if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mf) then
                 return CollectionsViewportRelayout(scrollChild, contentWidth, mf)
             end
             local tokens = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SCROLL or {}

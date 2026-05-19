@@ -132,7 +132,7 @@ local function CharactersVirtualScrollBump()
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if not mf then return end
     -- Corner-drag: freeze list until resize commit (no interval column/gold/gradient churn).
-    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+    if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mf) then
         return
     end
     if mf._virtualScrollUpdate then
@@ -3506,7 +3506,7 @@ ns.UI_ForEachCharactersVirtualContainer = ForEachCharactersVirtualContainer
 
 local function CharactersTabViewportRelayout(scrollChild, contentWidth, mf)
     if not mf or mf.currentTab ~= "chars" then return false end
-    if ns.UI_IsMainFrameResizing and ns.UI_IsMainFrameResizing(mf) then
+    if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mf) then
         return true
     end
     RelayoutCharactersGoldCards(scrollChild, contentWidth, mf)
