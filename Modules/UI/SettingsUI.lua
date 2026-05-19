@@ -38,6 +38,8 @@ local GRID_SPACING = UI_SPACING.SIDE_MARGIN  -- Horizontal spacing between grid 
 local SETTINGS_SECTION_GAP = math.max((UI_SPACING.SECTION_SPACING or 8) + 12, 20)
 local SETTINGS_DIVIDER_PAD = 8
 local CONTENT_PADDING_TOP = 40  -- Title height (from CreateSection standard, settings-specific)
+local SETTINGS_UNTITLED_SECTION_TOP_PAD = 16
+local SETTINGS_PANEL_INTRO_GAP = 14
 local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding within section
 -- Tighter foot room under section.content than generic MIN_BOTTOM_SPACING (avoids huge empty card bottoms)
 local SETTINGS_CARD_OUTER_BOTTOM_PAD = math.min(CONTENT_PADDING_BOTTOM or 20, 10)
@@ -82,6 +84,34 @@ local function SettingsMeasuredSectionContentHeight(stackY)
     return math.abs(stackY) + SETTINGS_CARD_CONTENT_BOTTOM_PAD
 end
 
+local function SettingsSectionTopPad(hasTitle)
+    if hasTitle then return CONTENT_PADDING_TOP end
+    return SETTINGS_UNTITLED_SECTION_TOP_PAD
+end
+
+local function FinalizeSettingsSectionHeight(section, contentHeight, hasTitle)
+    local topPad = SettingsSectionTopPad(hasTitle)
+    section:SetHeight(contentHeight + topPad + SETTINGS_CARD_OUTER_BOTTOM_PAD)
+    section.content:SetHeight(contentHeight)
+end
+
+---Lead copy above a panel card (panel description from SettingsUI shell).
+local function AppendSettingsPanelIntro(parent, panelId, width, yOffset, sideInset)
+    local SUI = ns.SettingsUI
+    local desc = SUI and SUI.PanelDescription and SUI.PanelDescription(panelId)
+    if not desc or desc == "" then return yOffset end
+    local fs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    fs:SetPoint("TOPLEFT", parent, "TOPLEFT", sideInset, yOffset)
+    fs:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -sideInset, yOffset)
+    fs:SetJustifyH("LEFT")
+    fs:SetWordWrap(true)
+    fs:SetText(desc)
+    local dim = COLORS.textDim or { 0.55, 0.55, 0.55, 1 }
+    fs:SetTextColor(dim[1], dim[2], dim[3], dim[4] or 1)
+    local sh = (fs.GetStringHeight and fs:GetStringHeight()) or 36
+    return yOffset - math.max(18, sh) - SETTINGS_PANEL_INTRO_GAP
+end
+
 ---Advance layout cy past a TOPLEFT-anchored wrapped FontString plus trailing gap.
 local function AdvancePastWrappedFontString(fs, cy, gapAfter)
     if not fs then return cy end
@@ -109,7 +139,7 @@ local function AppendSettingsGroupDivider(parent, width, yOffset)
     return yOffset - 2 - SETTINGS_DIVIDER_PAD
 end
 
--- Forward declaration: BuildSettings and ShowSettings share this reference.
+-- Forward declaration: BuildSettings / keybind capture.
 local settingsFrame = nil
 local settingsKeybindStopListening = nil
 local settingsKeybindIsListening = false
@@ -202,6 +232,12 @@ local function EnsureSettingsCloseSpecialHook()
         if p and p:IsShown() then
             SettingsEscDebug("CloseSpecialWindows post-hook → Hide()")
             p:Hide()
+            return
+        end
+        local mf = _G.WarbandNexusFrame
+        if mf and mf:IsShown() and mf.currentTab == "settings" and mf.ActivateMainTab then
+            local back = mf._wnTabBeforeSettings or "chars"
+            mf:ActivateMainTab(back, { persistLastTab = false })
         end
     end)
 end
@@ -790,7 +826,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         if not values then return end
 
         -- Parent menus to the settings window so UIParent-level hit layers do not sit above scroll content.
-        local menuParent = _G.WarbandNexusSettingsPanel or UIParent
+        local menuParent = (_G.WarbandNexusFrame and _G.WarbandNexusFrame:IsShown() and _G.WarbandNexusFrame) or UIParent
 
         -- Toggle
         if activeMenu and activeMenu:IsShown() then
@@ -1280,7 +1316,11 @@ local function RefreshSubtitles()
     end
 end
 
-local function BuildSettings(parent, containerWidth)
+---@param parent Frame
+---@param containerWidth number|nil
+---@param layoutOpts table|nil `{ startYOffset, sideInset }` for embedded main-window tab
+local function BuildSettings(parent, containerWidth, layoutOpts)
+    layoutOpts = layoutOpts or {}
     -- Clear existing
     local bin = ns.UI_RecycleBin
     for _, child in pairs({parent:GetChildren()}) do
@@ -1293,18 +1333,30 @@ local function BuildSettings(parent, containerWidth)
     wipe(sliderElements)
     wipe(settingsAccentChrome)
     
-    -- Ensure we have a valid width
+    local sideInset = layoutOpts.sideInset or 0
+    -- Ensure we have a valid width (body already inset when sideInset > 0)
     local effectiveWidth = containerWidth or parent:GetWidth() or 640
+    if sideInset > 0 then
+        effectiveWidth = math.max(200, effectiveWidth - (sideInset * 2))
+    end
     
-    local yOffset = 0  -- Start at 0, sections handle their own top spacing
+    local yOffset = layoutOpts.startYOffset or 0
+    local function Want(panelId)
+        return ns.SettingsUI and ns.SettingsUI.PanelActive(layoutOpts, panelId)
+    end
     
+    local function AnchorSectionTop(section, y)
+        section:SetPoint("TOPLEFT", sideInset, y)
+        section:SetPoint("TOPRIGHT", -sideInset, y)
+    end
+
+    if Want("general") then
     --========================================================================
     -- GENERAL SETTINGS
     --========================================================================
-    
-    local generalSection = CreateSection(parent, (ns.L and ns.L["GENERAL_SETTINGS"]) or "General Settings", effectiveWidth)
-    generalSection:SetPoint("TOPLEFT", 0, yOffset)
-    generalSection:SetPoint("TOPRIGHT", 0, yOffset)
+    yOffset = AppendSettingsPanelIntro(parent, "general", effectiveWidth, yOffset, sideInset)
+    local generalSection = CreateSection(parent, nil, effectiveWidth)
+    AnchorSectionTop(generalSection, yOffset)
     
     -- General options grid
     local generalOptions = {
@@ -1685,19 +1737,19 @@ local function BuildSettings(parent, containerWidth)
     end, { flat = true, noTrailingGap = true })
 
     local generalContentHeight = SettingsMeasuredSectionContentHeight(generalStackY)
-    generalSection:SetHeight(generalContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
-    generalSection.content:SetHeight(generalContentHeight)
+    FinalizeSettingsSectionHeight(generalSection, generalContentHeight, false)
     
     -- Move to next section
     yOffset = yOffset - generalSection:GetHeight() - SETTINGS_SECTION_GAP
+    end -- general panel
 
+    if Want("modules") then
     --========================================================================
     -- MODULE MANAGEMENT
     --========================================================================
-    
-    local moduleSection = CreateSection(parent, (ns.L and ns.L["MODULE_MANAGEMENT"]) or "Module Management", effectiveWidth)
-    moduleSection:SetPoint("TOPLEFT", 0, yOffset)
-    moduleSection:SetPoint("TOPRIGHT", 0, yOffset)
+    yOffset = AppendSettingsPanelIntro(parent, "modules", effectiveWidth, yOffset, sideInset)
+    local moduleSection = CreateSection(parent, nil, effectiveWidth)
+    AnchorSectionTop(moduleSection, yOffset)
 
     local moduleContentW = effectiveWidth - 30
     local moduleStackY = 0
@@ -1707,14 +1759,6 @@ local function BuildSettings(parent, containerWidth)
             (ns.L and ns.L["SETTINGS_SECTION_MODULES_LIST"]) or "Enabled modules",
             iw, cy, { skipGapBefore = true })
         cy = cy - GetHeaderToolbarGap()
-        local moduleDesc = FontManager:CreateFontString(inner, "body", "OVERLAY")
-        moduleDesc:SetPoint("TOPLEFT", 0, cy)
-        moduleDesc:SetWidth(iw)
-        moduleDesc:SetJustifyH("LEFT")
-        moduleDesc:SetWordWrap(true)
-        moduleDesc:SetText((ns.L and ns.L["MODULE_MANAGEMENT_DESC"]) or "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.")
-        moduleDesc:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
-        cy = AdvancePastWrappedFontString(moduleDesc, cy, GetHeaderToolbarGap())
 
         local moduleOptions = {
         {
@@ -1840,20 +1884,19 @@ local function BuildSettings(parent, containerWidth)
     end, { flat = true, noTrailingGap = true })
 
     local moduleContentHeight = SettingsMeasuredSectionContentHeight(moduleStackY)
-    moduleSection:SetHeight(moduleContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
-    moduleSection.content:SetHeight(moduleContentHeight)
+    FinalizeSettingsSectionHeight(moduleSection, moduleContentHeight, false)
     
     -- Move to next section
     yOffset = yOffset - moduleSection:GetHeight() - SETTINGS_SECTION_GAP
-    yOffset = AppendSettingsGroupDivider(parent, effectiveWidth, yOffset)
+    end -- modules panel
 
+    if Want("access") then
     --========================================================================
     -- EASY ACCESS (floating shortcut)
     --========================================================================
-
-    local vaultSection = CreateSection(parent, (ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", effectiveWidth)
-    vaultSection:SetPoint("TOPLEFT", 0, yOffset)
-    vaultSection:SetPoint("TOPRIGHT", 0, yOffset)
+    yOffset = AppendSettingsPanelIntro(parent, "access", effectiveWidth, yOffset, sideInset)
+    local vaultSection = CreateSection(parent, nil, effectiveWidth)
+    AnchorSectionTop(vaultSection, yOffset)
 
     local function GetVaultButtonSettings()
         WarbandNexus.db.profile.vaultButton = WarbandNexus.db.profile.vaultButton or {}
@@ -2054,18 +2097,18 @@ local function BuildSettings(parent, containerWidth)
     end, { flat = true, noTrailingGap = true })
 
     local vaultContentHeight = SettingsMeasuredSectionContentHeight(vaultStackY)
-    vaultSection:SetHeight(vaultContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
-    vaultSection.content:SetHeight(vaultContentHeight)
+    FinalizeSettingsSectionHeight(vaultSection, vaultContentHeight, false)
 
     yOffset = yOffset - vaultSection:GetHeight() - SETTINGS_SECTION_GAP
-    
+    end -- access panel
+
+    if Want("filters") then
     --========================================================================
     -- TAB FILTERING
     --========================================================================
-    
-    local tabSection = CreateSection(parent, (ns.L and ns.L["TAB_FILTERING"]) or "Tab Filtering", effectiveWidth)
-    tabSection:SetPoint("TOPLEFT", 0, yOffset)
-    tabSection:SetPoint("TOPRIGHT", 0, yOffset)
+    yOffset = AppendSettingsPanelIntro(parent, "filters", effectiveWidth, yOffset, sideInset)
+    local tabSection = CreateSection(parent, nil, effectiveWidth)
+    AnchorSectionTop(tabSection, yOffset)
     
     local tabGridYOffset = 0
     local tabInnerW = effectiveWidth - 30
@@ -2160,22 +2203,23 @@ local function BuildSettings(parent, containerWidth)
 
     -- Calculate section height
     local contentHeight = SettingsMeasuredSectionContentHeight(tabGridYOffset)
-    tabSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
-    tabSection.content:SetHeight(contentHeight)
+    FinalizeSettingsSectionHeight(tabSection, contentHeight, false)
     
     -- Move to next section
     yOffset = yOffset - tabSection:GetHeight() - SETTINGS_SECTION_GAP
-    yOffset = AppendSettingsGroupDivider(parent, effectiveWidth, yOffset)
-    
+    end -- filters panel
+
+    if Want("notifications") then
     --========================================================================
     -- NOTIFICATIONS
     --========================================================================
-    
-    local notifSection = CreateSection(parent, (ns.L and ns.L["NOTIFICATIONS_LABEL"]) or "Notifications", effectiveWidth)
-    notifSection:SetPoint("TOPLEFT", 0, yOffset)
-    notifSection:SetPoint("TOPRIGHT", 0, yOffset)
-    
-    local notifOptions = {
+    yOffset = AppendSettingsPanelIntro(parent, "notifications", effectiveWidth, yOffset, sideInset)
+    local notifSection = CreateSection(parent, nil, effectiveWidth)
+    AnchorSectionTop(notifSection, yOffset)
+
+    local notifGridOpts = { indentChildren = true, minColumns = 1, maxColumns = 1 }
+
+    local notifMasterOptions = {
         {
             key = "enabled",
             label = (ns.L and ns.L["ENABLE_NOTIFICATIONS"]) or "Enable All Notifications",
@@ -2234,6 +2278,22 @@ local function BuildSettings(parent, containerWidth)
                 end
             end,
         },
+        {
+            key = "hideBlizzAchievement",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT"]) or "Replace Achievement Popup",
+            tooltip = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"]) or "Replace Blizzard's default achievement popup with the Warband Nexus notification style",
+            get = function() return WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert = value
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                end
+            end,
+        },
+    }
+
+    local notifCollectibleOptions = {
         {
             key = "loot",
             parentKey = "enabled",
@@ -2299,19 +2359,6 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.notifications.showAchievementNotifications = value end,
         },
         {
-            key = "hideBlizzAchievement",
-            parentKey = "enabled",
-            label = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT"]) or "Replace Achievement Popup",
-            tooltip = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"]) or "Replace Blizzard's default achievement popup with the Warband Nexus notification style",
-            get = function() return WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert end,
-            set = function(value)
-                WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert = value
-                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
-                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-                end
-            end,
-        },
-        {
             key = "showCriteriaProgress",
             parentKey = "loot",
             label = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS"]) or "Criteria Progress Toast",
@@ -2319,6 +2366,9 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications = value end,
         },
+    }
+
+    local notifChatOptions = {
         {
             key = "reputation",
             parentKey = "enabled",
@@ -2345,6 +2395,9 @@ local function BuildSettings(parent, containerWidth)
                 end
             end,
         },
+    }
+
+    local notifTryOptions = {
         {
             key = "autoTryCounter",
             parentKey = "loot",
@@ -2400,9 +2453,40 @@ local function BuildSettings(parent, containerWidth)
     local tcChatRouteDropdown, tcChatRouteLabel
     local addTcChatBtn
 
+    local function MergeCheckboxWidgets(into, from)
+        if not into or not from then return end
+        for k, v in pairs(from) do
+            into[k] = v
+        end
+    end
+
     notifStackY = StackSettingsSubPanel(notifSection.content, notifInnerW, 0, function(inner, iw)
-        local cy, w = CreateCheckboxGrid(inner, notifOptions, 0, iw, { indentChildren = false, minColumns = 2 })
+        local cy = 0
+        local w
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_MASTER"]) or "Master and reminders",
+            iw, cy, { skipGapBefore = true })
+        cy, w = CreateCheckboxGrid(inner, notifMasterOptions, cy, iw, notifGridOpts)
         notifWidgets = w
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"]) or "Collectibles",
+            iw, cy, {})
+        cy, w = CreateCheckboxGrid(inner, notifCollectibleOptions, cy, iw, notifGridOpts)
+        MergeCheckboxWidgets(notifWidgets, w)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_CHAT"]) or "Chat messages",
+            iw, cy, {})
+        cy, w = CreateCheckboxGrid(inner, notifChatOptions, cy, iw, notifGridOpts)
+        MergeCheckboxWidgets(notifWidgets, w)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"]) or "Try counter",
+            iw, cy, {})
+        cy, w = CreateCheckboxGrid(inner, notifTryOptions, cy, iw, notifGridOpts)
+        MergeCheckboxWidgets(notifWidgets, w)
+
         cy = cy - GetHeaderToolbarGap()
         cy, tcChatRouteDropdown, tcChatRouteLabel = CreateDropdownWidget(inner, {
             stackBelowLabel = true,
@@ -3217,19 +3301,19 @@ local function BuildSettings(parent, containerWidth)
     
     -- Calculate section height
     local contentHeight = SettingsMeasuredSectionContentHeight(notifGridYOffset)
-    notifSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
-    notifSection.content:SetHeight(contentHeight)
+    FinalizeSettingsSectionHeight(notifSection, contentHeight, false)
     
     -- Move to next section
     yOffset = yOffset - notifSection:GetHeight() - SETTINGS_SECTION_GAP
-    
+    end -- notifications panel
+
+    if Want("appearance") then
     --========================================================================
     -- THEME & APPEARANCE
     --========================================================================
-    
-    local themeSection = CreateSection(parent, (ns.L and ns.L["THEME_APPEARANCE"]) or "Theme & Appearance", effectiveWidth)
-    themeSection:SetPoint("TOPLEFT", 0, yOffset)
-    themeSection:SetPoint("TOPRIGHT", 0, yOffset)
+    yOffset = AppendSettingsPanelIntro(parent, "appearance", effectiveWidth, yOffset, sideInset)
+    local themeSection = CreateSection(parent, nil, effectiveWidth)
+    AnchorSectionTop(themeSection, yOffset)
 
     local themeContentW = effectiveWidth - 30
     local themeStackY = 0
@@ -3617,20 +3701,19 @@ local function BuildSettings(parent, containerWidth)
     end, { flat = true, noTrailingGap = true })
 
     local themeSectionHeight = SettingsMeasuredSectionContentHeight(themeStackY)
-    themeSection:SetHeight(themeSectionHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
-    themeSection.content:SetHeight(themeSectionHeight)
+    FinalizeSettingsSectionHeight(themeSection, themeSectionHeight, false)
     
     -- Move to next section
     yOffset = yOffset - themeSection:GetHeight() - SETTINGS_SECTION_GAP
-    yOffset = AppendSettingsGroupDivider(parent, effectiveWidth, yOffset)
-    
+    end -- appearance panel
+
+    if Want("advanced") then
     --========================================================================
     -- TRACK ITEM DB
     --========================================================================
-    
+    yOffset = AppendSettingsPanelIntro(parent, "advanced", effectiveWidth, yOffset, sideInset)
     local trackSection = CreateSection(parent, (ns.L and ns.L["TRACK_ITEM_DB"]) or "Track Item DB", effectiveWidth)
-    trackSection:SetPoint("TOPLEFT", 0, yOffset)
-    trackSection:SetPoint("TOPRIGHT", 0, yOffset)
+    AnchorSectionTop(trackSection, yOffset)
     
     -- Collapsible: arrow + title aligned with other sections (15px left padding, same as CreateSection)
     local COLLAPSED_HEIGHT = CONTENT_PADDING_TOP  -- title bar only
@@ -4186,9 +4269,8 @@ local function BuildSettings(parent, containerWidth)
     -- ADVANCED
     --========================================================================
     
-    local advSection = CreateSection(parent, (ns.L and ns.L["ADVANCED_SECTION"]) or "Advanced", effectiveWidth)
-    advSection:SetPoint("TOPLEFT", 0, yOffset)
-    advSection:SetPoint("TOPRIGHT", 0, yOffset)
+    local advSection = CreateSection(parent, nil, effectiveWidth)
+    AnchorSectionTop(advSection, yOffset)
     
     -- Debug checkboxes: same 2-column row-major grid as other settings cards.
     -- Order fills [autoOptimize | debug] then [tryCounter | debugVerbose] so Verbose sits under Debug.
@@ -4235,8 +4317,7 @@ local function BuildSettings(parent, containerWidth)
 
     -- Calculate section height
     local advContentHeight = SettingsMeasuredSectionContentHeight(advGridYOffset)
-    advSection:SetHeight(advContentHeight + CONTENT_PADDING_TOP + SETTINGS_CARD_OUTER_BOTTOM_PAD)
-    advSection.content:SetHeight(advContentHeight)
+    FinalizeSettingsSectionHeight(advSection, advContentHeight, false)
     
     -- Collapsible toggle handler for Track Item DB
     local function ToggleTrackSection()
@@ -4263,364 +4344,143 @@ local function BuildSettings(parent, containerWidth)
     -- Make entire title text area clickable for convenience
     trackSection.titleText:SetScript("OnMouseUp", ToggleTrackSection)
     
-    -- Set total parent height (default collapsed state)
-    local totalHeight = math.abs(yOffset) + advSection:GetHeight()
-    parent:SetHeight(totalHeight + SETTINGS_SCROLL_INSET_BOTTOM)
+    end -- advanced panel
+
+    local contentH = math.abs(yOffset - (layoutOpts.startYOffset or 0))
+    parent:SetHeight(math.max(80, contentH) + SETTINGS_SCROLL_INSET_BOTTOM)
 end
 
 --============================================================================
--- MAIN WINDOW
+-- MAIN WINDOW TAB (embedded in WarbandNexusFrame content scroll)
 --============================================================================
+
+function WarbandNexus:StopSettingsKeybindCapture()
+    if settingsKeybindStopListening then
+        settingsKeybindStopListening()
+    end
+    if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
+        settingsKeybindButton:EnableKeyboard(false)
+    end
+    RestoreMainWindowKeyboardAfterSettingsClose()
+end
+
+---Paint settings into the main window scroll host (replaces legacy floating panel).
+---@param parent Frame
+---@return number contentHeight
+function WarbandNexus:DrawSettingsTab(parent)
+    if not parent then return 0 end
+    local mf = _G.WarbandNexusFrame
+    local chrome = (mf and ns.UI_BeginTabChromeLayout) and ns.UI_BeginTabChromeLayout(mf) or nil
+    local side = (chrome and chrome.side) or 12
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local navW = shell.SETTINGS_NAV_WIDTH or 148
+    local navGap = shell.SETTINGS_NAV_GAP or 10
+    local SUI = ns.SettingsUI
+    local activePanel = (SUI and SUI.GetActivePanel and SUI.GetActivePanel()) or "general"
+    local panelSubtitle = (SUI and SUI.PanelDescription and SUI.PanelDescription(activePanel))
+        or (SUI and SUI.PanelLabel and SUI.PanelLabel(activePanel))
+        or activePanel
+    local tabTitle = (ns.L and ns.L["SETTINGS_TAB_TITLE"]) or "Settings"
+
+    if chrome and chrome.headerParent and ns.UI_CreateStandardTabTitleCard then
+        local C = COLORS
+        local r, g, b = C.accent[1], C.accent[2], C.accent[3]
+        local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+        local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(chrome.headerParent, {
+            tabKey = "settings",
+            titleText = "|cff" .. hexColor .. tabTitle .. "|r",
+            subtitleText = panelSubtitle,
+            showUnderline = false,
+        }))
+        if titleCard then
+            if ns.UI_AnchorTabTitleCard then
+                ns.UI_AnchorTabTitleCard(titleCard, chrome)
+            end
+            titleCard:Show()
+            if ns.UI_AdvanceTabChromeYOffset then
+                local headerBody = ns.UI_AdvanceTabChromeYOffset(chrome.yOffset, titleCard:GetHeight())
+                if ns.UI_CommitTabFixedHeader then
+                    ns.UI_CommitTabFixedHeader(mf, headerBody)
+                end
+            elseif mf and mf.fixedHeader then
+                mf.fixedHeader:SetHeight((chrome.yOffset or 0) + (titleCard:GetHeight() or 64) + 8)
+            end
+        end
+    end
+
+    local w = parent:GetWidth() or 640
+    if w < 200 then w = 640 end
+    local startY = -((ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8)
+
+    local bodyRow = ns.UI.Factory:CreateContainer(parent, w, 1, false)
+    if not bodyRow then
+        BuildSettings(parent, w, { startYOffset = startY, sideInset = side, panel = activePanel })
+        return parent:GetHeight() or 1
+    end
+    bodyRow:ClearAllPoints()
+    bodyRow:SetPoint("TOPLEFT", parent, "TOPLEFT", side, startY)
+    bodyRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -side, startY)
+
+    local navCol = ns.UI.Factory:CreateContainer(bodyRow, navW, 1, false)
+    local host = ns.UI.Factory:CreateContainer(bodyRow, 1, 1, false)
+    if not navCol or not host then
+        BuildSettings(parent, w, { startYOffset = startY, sideInset = 0, panel = activePanel })
+        return parent:GetHeight() or 1
+    end
+
+    navCol:SetWidth(navW)
+    navCol:SetPoint("TOPLEFT", bodyRow, "TOPLEFT", 0, 0)
+    navCol:SetPoint("BOTTOMLEFT", bodyRow, "BOTTOMLEFT", 0, 0)
+
+    local navBg = COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
+    if ns.UI_ApplyBorderlessSurface then
+        ns.UI_ApplyBorderlessSurface(navCol, { navBg[1], navBg[2], navBg[3], 0.92 })
+    elseif ApplyVisuals then
+        ApplyVisuals(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35 })
+        if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(navCol) end
+    end
+    local navDivider = navCol:CreateTexture(nil, "ARTWORK")
+    local divA = shell.NAV_RAIL_DIVIDER_ALPHA or 0.55
+    local acNav = COLORS.accent or { 0.6, 0.4, 1 }
+    navDivider:SetColorTexture(acNav[1], acNav[2], acNav[3], divA)
+    navDivider:SetWidth(1)
+    navDivider:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
+    navDivider:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
+
+    host:SetPoint("TOPLEFT", navCol, "TOPRIGHT", navGap, 0)
+    host:SetPoint("TOPRIGHT", bodyRow, "TOPRIGHT", 0, 0)
+    host:SetPoint("BOTTOMRIGHT", bodyRow, "BOTTOMRIGHT", 0, 0)
+
+    local navH = 0
+    if SUI and SUI.BuildCategoryNav then
+        navH = SUI.BuildCategoryNav(navCol, navW, activePanel, function(panelId)
+            if mf and mf.currentTab == "settings" and WarbandNexus.PopulateContent then
+                if mf.scroll then
+                    mf.scroll:SetVerticalScroll(0)
+                end
+                WarbandNexus:PopulateContent()
+            end
+        end)
+    end
+
+    local hostW = math.max(240, (bodyRow:GetWidth() or w) - navW - navGap)
+    BuildSettings(host, hostW, { startYOffset = 0, sideInset = 10, panel = activePanel })
+    local hostH = host:GetHeight() or 0
+    local rowH = math.max(navH, hostH, 120)
+    bodyRow:SetHeight(rowH)
+    host:SetHeight(rowH)
+    navCol:SetHeight(rowH)
+
+    parent:SetHeight(math.abs(startY) + rowH + ((ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12))
+    return parent:GetHeight() or 1
+end
 
 function WarbandNexus:ShowSettings()
-    -- Combat safety: prevent taint from frame operations during combat
-    if InCombatLockdown() then
-        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
-        return
+    if self.OpenOptions then
+        self:OpenOptions()
     end
-
-    EnsureSettingsCloseSpecialHook()
-
-    -- Prevent duplicates: if already shown, bring to front
-    if settingsFrame and settingsFrame:IsShown() then
-        if not InCombatLockdown() and settingsFrame.EnableKeyboard then
-            settingsFrame:EnableKeyboard(false)
-        end
-        settingsFrame:Raise()
-        C_Timer.After(0, function()
-            if settingsKeybindStopListening then settingsKeybindStopListening() end
-            if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
-                settingsKeybindButton:EnableKeyboard(false)
-            end
-            EnsureSettingsEscBindingsCleared()
-            SuppressMainWindowKeyboardWhileSettingsOpen()
-        end)
-        return
-    end
-    
-    -- Reuse existing hidden frame to prevent orphaned frame leaks.
-    -- Previous code created a new frame every time, leaving old hidden frames in memory.
-    if settingsFrame then
-        settingsFrame:Show()
-        settingsFrame:Raise()
-        return
-    end
-
-    -- Forward declarations for resize callbacks.
-    local scrollFrame, scrollChild, lastWidth
-    
-    -- Main frame: no addon FrameXML — same pattern as InformationDialog / WindowFactory.CreateExternalWindow
-    -- (pure Lua CreateFrame("Frame", globalName, UIParent)). ESC: UISpecialFrames + WindowManager + hooks.
-    local SETTINGS_FRAME_NAME = "WarbandNexusSettingsPanel"
-    local f = ns.UI.Factory:CreateContainer(UIParent, 720, 680, false, SETTINGS_FRAME_NAME)
-    if not f then return end
-    f:SetSize(720, 680)
-    f:SetPoint("CENTER")
-    f:SetMovable(true)
-    f:SetResizable(true)
-    f:EnableMouse(true)
-    if f.SetToplevel then f:SetToplevel(true) end
-    f:SetClampedToScreen(true)
-    f:SetResizeBounds(640, 520, 1000, 800)
-    
-    if ApplyVisuals then
-        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
-    end
-    
-    settingsFrame = f
-    
-    -- OnHide: Normalize main window position to prevent anchor drift.
-    -- When a FULLSCREEN_DIALOG frame hides, WoW's layout engine can recalculate
-    -- sibling frame positions, causing the main window to shift.
-    f:SetScript("OnHide", function()
-        SettingsEscDebug("OnHide WarbandNexusSettingsPanel")
-        if settingsKeybindStopListening and settingsKeybindIsListening then
-            settingsKeybindStopListening()
-        end
-        if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
-            settingsKeybindButton:EnableKeyboard(false)
-        end
-        RestoreMainWindowKeyboardAfterSettingsClose()
-        ClearSettingsEscOverride()
-        local mainFrame = _G.WarbandNexusFrame
-        if mainFrame and mainFrame:IsShown() then
-            local left = mainFrame:GetLeft()
-            local top = mainFrame:GetTop()
-            if left and top then
-                mainFrame:ClearAllPoints()
-                mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
-            end
-        end
-    end)
-
-    -- Blizzard ESC chain (CloseSpecialWindows) — complements WindowManager when keyboard focus is elsewhere.
-    do
-        local list = _G.UISpecialFrames
-        if list and not tContains(list, SETTINGS_FRAME_NAME) then
-            table.insert(list, SETTINGS_FRAME_NAME)
-        end
-    end
-    
-    -- ESC: Register for hierarchy, but do NOT InstallESCHandler on the root. EnableKeyboard(true) on a
-    -- large panel captures the keyboard stack and breaks movement, chat, and keybinding capture for the whole client.
-    -- Close via ToggleGameMenu / CloseSpecialWindows / CloseAllWindows hooks + UISpecialFrames (EnsureSettingsCloseSpecialHook).
-    -- Strata: FLOATING (HIGH).
-    if ns.WindowManager then
-        ns.WindowManager:ApplyStrata(f, ns.WindowManager.PRIORITY.FLOATING)
-        f:SetFrameLevel((f:GetFrameLevel() or 120) + 25)
-        ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.POPUP, function()
-            SettingsEscDebug("WindowManager registered closeFunc → Hide()")
-            f:Hide()
-        end)
-        if not InCombatLockdown() and f.EnableKeyboard then
-            f:EnableKeyboard(false)
-        end
-    else
-        f:SetFrameStrata("HIGH")
-        f:SetFrameLevel(150)
-        if not InCombatLockdown() and f.EnableKeyboard then
-            f:EnableKeyboard(false)
-        end
-    end
-
-    f:SetScript("OnShow", function(self)
-        local ok, err = pcall(function()
-            SettingsEscDebug(
-                "OnShow name=%s strata=%s level=%s",
-                tostring(self:GetName()),
-                tostring(self.GetFrameStrata and self:GetFrameStrata()) or "?",
-                tostring(self.GetFrameLevel and self:GetFrameLevel()) or "?"
-            )
-            SettingsEscDebug(
-                "READY: Debug Mode on — press ESC. Expect [H1a] ToggleGameMenu; [H2] CloseSpecialWindows; hooks close panel (root has no keyboard capture)."
-            )
-        end)
-        if not ok then
-            SettingsEscDebug("ERROR in OnShow pcall: %s", tostring(err))
-        end
-        if self.Raise then self:Raise() end
-        C_Timer.After(0, function()
-            if not self or not self:IsShown() then return end
-            if settingsKeybindStopListening then settingsKeybindStopListening() end
-            if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
-                settingsKeybindButton:EnableKeyboard(false)
-            end
-            if not InCombatLockdown() and self.EnableKeyboard then
-                self:EnableKeyboard(false)
-            end
-            EnsureSettingsEscBindingsCleared()
-            SuppressMainWindowKeyboardWhileSettingsOpen()
-        end)
-    end)
-    
-    local settingsMainShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
-    local settingsChromeInset = settingsMainShell.FRAME_CONTENT_INSET or 2
-    local settingsHeaderH = settingsMainShell.HEADER_BAR_HEIGHT or 40
-
-    -- Header (Factory container) — same inset/header band contract as main `CreateMainWindow`
-    local header = ns.UI.Factory:CreateContainer(f, 1, settingsHeaderH, false)
-    if not header then return end
-    header:SetHeight(settingsHeaderH)
-    header:ClearAllPoints()
-    header:SetPoint("TOPLEFT", settingsChromeInset, -settingsChromeInset)
-    header:SetPoint("TOPRIGHT", -settingsChromeInset, -settingsChromeInset)
-    header:EnableMouse(true)
-    if ns.WindowManager and ns.WindowManager.InstallDragHandler then
-        ns.WindowManager:InstallDragHandler(header, f)
-    else
-        header:RegisterForDrag("LeftButton")
-        header:SetScript("OnDragStart", function()
-            -- Re-anchor to current visual position to prevent teleport after Alt-Tab
-            local left, top = f:GetLeft(), f:GetTop()
-            if left and top then
-                f:ClearAllPoints()
-                f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
-            end
-            f:StartMoving()
-        end)
-        header:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
-    end
-    
-    if ApplyVisuals then
-        ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
-    
-    -- Icon
-    local icon = header:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(24, 24)
-    icon:SetPoint("LEFT", 15, 0)
-    icon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
-    
-    -- Title
-    local title = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
-    title:SetPoint("LEFT", icon, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
-    title:EnableMouse(true)
-    title:SetText((ns.L and ns.L["WARBAND_NEXUS_SETTINGS"]) or "Warband Nexus Settings")
-    title:SetTextColor(1, 1, 1)
-    title:SetScript("OnEnter", function(self)
-        Settings_ShowWrappedTooltip(self, (ns.L and ns.L["SETTINGS_ESC_HINT"])
-            or "Press |cff999999ESC|r to close this window.")
-    end)
-    title:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    -- Close button (Factory)
-    local closeBtn = ns.UI.Factory:CreateButton(header, 28, 28, true)
-    if not closeBtn then return end
-    closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
-    
-    if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
-    
-    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    
-    closeBtn:SetScript("OnClick", function()
-        f:Hide()
-        -- Do NOT nil settingsFrame — frame is reused across open/close cycles.
-        -- Setting nil here would cause a new frame to be created every time,
-        -- leaking orphaned frames into memory.
-    end)
-    
-    closeBtn:SetScript("OnEnter", function(self)
-        closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
-        end
-    end)
-    
-    closeBtn:SetScript("OnLeave", function(self)
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-        end
-    end)
-    
-    -- Resize grip (Factory button) — inset above footer / scrollbar lane
-    local shellGrip = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
-    local gripSize = shellGrip.RESIZE_GRIP_SIZE or 18
-    local scrollLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
-    local resizer = ns.UI.Factory:CreateButton(f, gripSize, gripSize, true)
-    if not resizer then return end
-    resizer:SetSize(gripSize, gripSize)
-    resizer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(scrollLane + 6), shellGrip.RESIZE_GRIP_INSET_Y or 8)
-    resizer:SetFrameLevel((f:GetFrameLevel() or 0) + 40)
-    resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    resizer:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
-    local function SettingsSatelliteCommitLayout()
-        if not scrollChild or not scrollFrame then return end
-        local newScrollWidth = scrollFrame:GetWidth() or 640
-        scrollChild:SetWidth(newScrollWidth)
-        BuildSettings(scrollChild, newScrollWidth)
-        lastWidth = newScrollWidth
-        if ns.UI.Factory.UpdateScrollBarVisibility then
-            ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
-        end
-    end
-
-    resizer:SetScript("OnMouseUp", function()
-        f:StopMovingOrSizing()
-        local LC = ns.UI_LayoutCoordinator
-        if LC and LC.OnSatelliteMetricsChanged then
-            LC:OnSatelliteMetricsChanged(f, f:GetWidth(), f:GetHeight(), true)
-        else
-            SettingsSatelliteCommitLayout()
-        end
-    end)
-    
-    -- Content area (Factory container)
-    local contentArea = ns.UI.Factory:CreateContainer(f, 1, 1, false)
-    if not contentArea then return end
-    contentArea:ClearAllPoints()
-    contentArea:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -UI_SPACING.TOP_MARGIN)
-    contentArea:SetPoint("BOTTOMRIGHT", -UI_SPACING.SIDE_MARGIN, UI_SPACING.TOP_MARGIN)
-    
-    -- ScrollFrame (Collections pattern: bar column + PositionScrollBarInContainer)
-    local settingsSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(contentArea, settingsSbColW, SETTINGS_SCROLL_INSET_TOP, SETTINGS_SCROLL_INSET_BOTTOM)
-    scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
-    scrollFrame:ClearAllPoints()
-    scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -SETTINGS_SCROLL_INSET_TOP)
-    scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", 0, SETTINGS_SCROLL_INSET_BOTTOM)
-    scrollFrame:EnableMouseWheel(true)
-    if scrollFrame.EnableMouse then scrollFrame:EnableMouse(true) end
-    if scrollFrame.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
-        ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
-    end
-
-    -- Scroll child
-    scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
-    local scrollWidth = scrollFrame:GetWidth() or 660
-    scrollChild:SetWidth(scrollWidth)
-    scrollChild:EnableMouse(true)
-    scrollFrame:SetScrollChild(scrollChild)
-    
-    local function SettingsSatelliteLiveLayout()
-        if not scrollChild or not scrollFrame then return end
-        scrollChild:SetWidth(scrollFrame:GetWidth() or 640)
-    end
-
-    local LC = ns.UI_LayoutCoordinator
-    if LC and LC.RegisterSatelliteFrame then
-        LC:RegisterSatelliteFrame(f, {
-            onLive = SettingsSatelliteLiveLayout,
-            onCommit = SettingsSatelliteCommitLayout,
-        })
-    else
-        f:SetScript("OnSizeChanged", function()
-            SettingsSatelliteLiveLayout()
-        end)
-    end
-    
-    -- Mouse wheel scrolling (uses dynamic scroll speed)
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 28
-        local current = self:GetVerticalScroll()
-        local maxScroll = self:GetVerticalScrollRange()
-        local newScroll = current - (delta * step)
-        newScroll = math.max(0, math.min(newScroll, maxScroll))
-        self:SetVerticalScroll(newScroll)
-    end)
-    
-    -- Build content with explicit width (delayed to ensure frame is rendered)
-    C_Timer.After(0.05, function()
-        if not scrollFrame or not scrollChild then return end
-        
-        local initialWidth = scrollFrame:GetWidth() or 640
-        scrollChild:SetWidth(initialWidth)
-        BuildSettings(scrollChild, initialWidth)
-        lastWidth = initialWidth  -- Track initial width
-        
-        -- Final adjustment after content is built
-        C_Timer.After(0.1, function()
-            if scrollFrame and scrollChild then
-                local newScrollWidth = scrollFrame:GetWidth() or 640
-                scrollChild:SetWidth(newScrollWidth)
-                
-                -- Rebuild with correct width if it changed significantly
-                if math.abs(newScrollWidth - initialWidth) > 10 then
-                    BuildSettings(scrollChild, newScrollWidth)
-                    lastWidth = newScrollWidth
-                end
-                
-                if ns.UI.Factory.UpdateScrollBarVisibility then
-                    ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
-                end
-            end
-        end)
-    end)
-    
-    f:Show()
-    settingsFrame = f
 end
 
--- Export
 ns.ShowSettings = function() WarbandNexus:ShowSettings() end
 
 -- After theme refresh (chains with VaultButton wrapper on ADDON_LOADED), re-apply settings control borders.
@@ -4635,5 +4495,13 @@ do
     end
 end
 
--- CloseSpecialWindows path for ESC (do not rely on ShowSettings having run first).
+-- CloseSpecialWindows path for ESC (legacy floating panel upgrades).
 EnsureSettingsCloseSpecialHook()
+
+-- Hide orphaned floating settings panel from pre-embed builds.
+do
+    local legacy = _G.WarbandNexusSettingsPanel
+    if legacy and legacy.Hide then
+        legacy:Hide()
+    end
+end

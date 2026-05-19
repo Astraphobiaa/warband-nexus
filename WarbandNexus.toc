@@ -109,6 +109,7 @@ Modules\UI\SearchResultsRenderer.lua
 Modules\UI\VirtualListModule.lua
 Modules\UI\TooltipFactory.lua
 Modules\UI\PlanCardFactory.lua
+Modules\UI\SettingsUI_Shell.lua
 Modules\UI\SettingsUI.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua

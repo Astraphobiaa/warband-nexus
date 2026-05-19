@@ -96,9 +96,24 @@ local function DebugVerbosePrint(...)
     EmitDebugTraceLine(tconcat(parts, " "))
 end
 
+--- Print to default chat only when debug mode is enabled (slash feedback, rare UX).
+---@param ... any
+local function DebugChatPrint(...)
+    if not IsDebugModeEnabled() then return end
+    local addon = _G.WarbandNexus
+    if not addon or not addon.Print then return end
+    local n = select("#", ...)
+    local parts = {}
+    for i = 1, n do
+        parts[i] = tostring(select(i, ...))
+    end
+    addon:Print(tconcat(parts, " "))
+end
+
 -- Export to namespace
 ns.DebugPrint = DebugPrint
 ns.DebugVerbosePrint = DebugVerbosePrint
+ns.DebugChatPrint = DebugChatPrint
 ns.IsDebugModeEnabled = IsDebugModeEnabled
 ns.IsDebugVerboseEnabled = IsDebugVerboseEnabled
 ns.IsTryCounterLootDebugEnabled = IsTryCounterLootDebugEnabled
@@ -107,6 +122,7 @@ ns.CreateDebugPrinter = CreateDebugPrinter
 return {
     DebugPrint = DebugPrint,
     DebugVerbosePrint = DebugVerbosePrint,
+    DebugChatPrint = DebugChatPrint,
     IsDebugModeEnabled = IsDebugModeEnabled,
     IsDebugVerboseEnabled = IsDebugVerboseEnabled,
     IsTryCounterLootDebugEnabled = IsTryCounterLootDebugEnabled,

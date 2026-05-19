@@ -539,7 +539,7 @@ local UI_SPACING = {
         TAB_HEIGHT = 34, -- also Plans Tracker category strip (`CATEGORY_BAR_HEIGHT` in `PlansTrackerWindow.lua`)
         TAB_PAD = 24,
         TAB_GAP = 5,
-        --- Main window nav: vertical text rail (left); horizontal `top` remains in Settings.
+        --- Main window nav: vertical text rail (left); Settings pinned bottom-left of rail (`top`: right of tab strip).
         NAV_LAYOUT_MODE = "rail",
 
         --- Left text rail: ~16% of body width, clamped (readable labels; content keeps majority).
@@ -558,6 +558,14 @@ local UI_SPACING = {
         NAV_RAIL_DIVIDER_ALPHA = 0.55,
         NAV_RAIL_TAB_SEP_HEIGHT = 1,
         NAV_RAIL_TAB_SEP_ALPHA = 0.4,
+        --- Gap between last scrolled tab and footer rule; footer rule to Settings row.
+        NAV_RAIL_SCROLL_BOTTOM_GAP = 6,
+        NAV_RAIL_SETTINGS_SEP_GAP = 4,
+        NAV_RAIL_SETTINGS_BOTTOM_PAD = 6,
+        --- In-content settings category column (right of main rail).
+        SETTINGS_NAV_WIDTH = 160,
+        SETTINGS_NAV_GAP = 10,
+        SETTINGS_NAV_PAD = 4,
         NAV_RAIL_ACTIVE_BG_ALPHA = 0.52,
         NAV_RAIL_ACTIVE_GLOW_ALPHA = 0.42,
         NAV_RAIL_ACTIVE_GLOW_INNER_ALPHA = 0.28,
@@ -4334,6 +4342,7 @@ local TAB_HEADER_ICONS = {
     collections = "dragon-rostrum",
     professions = "Vehicle-HammerGold",
     gear = "VignetteEventElite",
+    settings = "mechagon-projects",
     qol = "Soulbinds_Tree_Conduit_Icon_Utility",
 }
 
@@ -4349,6 +4358,7 @@ local TAB_NAV_TEXTURE_FALLBACK = {
     collections = "Interface\\Icons\\INV_Misc_Head_Dragon_Nexus",
     plans = "Interface\\Icons\\INV_Misc_Map_01",
     stats = "Interface\\Icons\\Achievement_General_StayClassy",
+    settings = "Interface\\Icons\\Trade_Engineering",
 }
 
 ns.UI_MAIN_TAB_NAV_MEDIA = TAB_NAV_TEXTURE_FALLBACK

@@ -53,8 +53,6 @@ function DebugService:Debug(addon, message)
     local P = ns.Profiler
     if P and P.AppendUserTraceLine then
         P:AppendUserTraceLine(line)
-    elseif addon and addon.Print then
-        addon:Print("|cff888888" .. line .. "|r")
     end
 end
 
@@ -66,6 +64,7 @@ end
 --- Helps diagnose Warband Bank detection issues
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintBankDebugInfo(addon)
+    if not IsDebugModeEnabled() then return end
     addon:Print("=== Bank Debug Info ===")
     
     -- Internal state flags

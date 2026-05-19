@@ -108,6 +108,35 @@ local function ApplyMainNavGoldenShellLayout(f)
             end
         end
     end
+    if f.navSettingsBtn and f.navSettingsBtn._wnRailTextMode then
+        f.navSettingsBtn:SetWidth(stripW)
+    end
+end
+
+---Expand hit target and show tooltip on main nav tab buttons (rail + top strip).
+---@param btn Button
+---@param tooltipTitle string|nil
+---@param tooltipHint string|nil
+local function WireMainNavTabButtonUX(btn, tooltipTitle, tooltipHint)
+    if not btn then return end
+    if btn.RegisterForClicks then
+        btn:RegisterForClicks("LeftButtonUp")
+    end
+    if btn.SetHitRectInsets then
+        btn:SetHitRectInsets(-3, -3, -2, -2)
+    end
+    if not tooltipTitle or tooltipTitle == "" then return end
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(tooltipTitle, 1, 1, 1)
+        if tooltipHint and tooltipHint ~= "" then
+            GameTooltip:AddLine(tooltipHint, 0.7, 0.7, 0.7, true)
+        end
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
 end
 
 local function RefreshMainNavRailStrip(f)
@@ -143,6 +172,8 @@ local function RefreshMainNavRailStrip(f)
         end
     end
     h = h + topInset
+    local scrollBottomGap = shell.NAV_RAIL_SCROLL_BOTTOM_GAP or 6
+    h = h + scrollBottomGap
 
     local viewH = scroll:GetHeight()
     if (not viewH) or viewH <= 0 then
@@ -845,7 +876,7 @@ end
 ---Session-only main tab (hide/show same login). Cleared on /reload.
 ---@param tabKey string|nil
 local function RememberSessionMainTab(tabKey)
-    if tabKey and tabKey ~= "" then
+    if tabKey and tabKey ~= "" and tabKey ~= "settings" then
         ns._wnSessionLastTab = tabKey
     end
 end
@@ -857,11 +888,13 @@ local function ResolveMainWindowOpenTab()
         ns._wnOpenCharsTabOnNextShow = nil
         return "chars"
     end
-    if ns._wnSessionLastTab then
+    if ns._wnSessionLastTab and ns._wnSessionLastTab ~= "settings" then
         return ns._wnSessionLastTab
     end
     local p = WarbandNexus.db and WarbandNexus.db.profile
-    return (p and p.lastTab) or "chars"
+    local lt = p and p.lastTab
+    if lt == "settings" then lt = nil end
+    return lt or "chars"
 end
 
 -- Intentionally raw: /reload sets next main open to Characters (ENTERING_WORLD flag).
@@ -880,12 +913,6 @@ function WarbandNexus:ToggleMainWindow()
         return
     end
     if ns and ns._wnSuppressToggleMainOnce then
-        return
-    end
-    -- Modal-first behavior: if Settings is open, close it first.
-    local settingsPanel = _G.WarbandNexusSettingsPanel
-    if settingsPanel and settingsPanel:IsShown() then
-        settingsPanel:Hide()
         return
     end
     if mainFrame and mainFrame:IsShown() then
@@ -1199,6 +1226,75 @@ local function UpdateTabButtonStates(f)
                 if ns.UI_ApplyRailTabActiveVisuals then
                     ns.UI_ApplyRailTabActiveVisuals(btn, false, accentColor)
                 end
+            end
+        end
+    end
+
+    local settingsBtn = f.navSettingsBtn
+    if settingsBtn and settingsBtn:IsShown() then
+        local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+        local railFlat = settingsBtn._wnRailTextMode
+        local isActive = (f.currentTab == "settings")
+        if isActive then
+            settingsBtn.active = true
+            if settingsBtn.label and (settingsBtn._wnRailTextMode or not settingsBtn._wnRailCompact) then
+                settingsBtn.label:SetTextColor(1, 1, 1)
+                local font, size = settingsBtn.label:GetFont()
+                if font and size then
+                    settingsBtn.label:SetFont(font, size, "OUTLINE")
+                elseif fm then
+                    fm:ApplyFont(settingsBtn.label, "body")
+                    font, size = settingsBtn.label:GetFont()
+                    if font and size then settingsBtn.label:SetFont(font, size, "OUTLINE") end
+                end
+            end
+            if settingsBtn.activeBar then settingsBtn.activeBar:SetAlpha(1) end
+            if settingsBtn.tabIcon then settingsBtn.tabIcon:SetVertexColor(1, 1, 1, 1) end
+            if railFlat and ns.UI_HideFrameBorderQuartet then
+                ns.UI_HideFrameBorderQuartet(settingsBtn)
+            end
+            if settingsBtn.SetBackdropColor then
+                local railA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.52
+                settingsBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+            end
+            if ns.UI_ApplyRailTabActiveVisuals then
+                ns.UI_ApplyRailTabActiveVisuals(settingsBtn, true, accentColor)
+            end
+        else
+            settingsBtn.active = false
+            if settingsBtn.label and (settingsBtn._wnRailTextMode or not settingsBtn._wnRailCompact) then
+                if railFlat then
+                    settingsBtn.label:SetTextColor(0.92, 0.92, 0.94)
+                else
+                    settingsBtn.label:SetTextColor(0.7, 0.7, 0.7)
+                end
+                local font, size = settingsBtn.label:GetFont()
+                if font and size then
+                    settingsBtn.label:SetFont(font, size, "")
+                elseif fm then
+                    fm:ApplyFont(settingsBtn.label, "body")
+                end
+            end
+            if settingsBtn.activeBar then settingsBtn.activeBar:SetAlpha(0) end
+            if settingsBtn.tabIcon then
+                if railFlat then
+                    settingsBtn.tabIcon:SetVertexColor(0.88, 0.88, 0.92, 1)
+                else
+                    settingsBtn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92)
+                end
+            end
+            if railFlat and ns.UI_HideFrameBorderQuartet then
+                ns.UI_HideFrameBorderQuartet(settingsBtn)
+            end
+            if settingsBtn.SetBackdropColor then
+                if railFlat then
+                    settingsBtn:SetBackdropColor(0.08, 0.08, 0.10, 0.4)
+                else
+                    settingsBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                end
+            end
+            if ns.UI_ApplyRailTabActiveVisuals then
+                ns.UI_ApplyRailTabActiveVisuals(settingsBtn, false, accentColor)
             end
         end
     end
@@ -1558,17 +1654,9 @@ function WarbandNexus:CreateMainWindow()
     local DISCORD_URL = "https://discord.gg/warbandnexus"
     local PATREON_URL = "https://patreon.com/warbandnexus?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
     local discordCopyFrame, discordCopyBox, patreonCopyFrame, patreonCopyBox
-    local settingsBtn = CreateFrame("Button", nil, header)
-    settingsBtn:SetSize(28, 28)
-    settingsBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
-    settingsBtn:SetNormalAtlas("mechagon-projects")
-    settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
-    settingsBtn:SetScript("OnClick", function() WarbandNexus:OpenOptions() end)
-    f.settingsBtn = settingsBtn
-
     local infoBtn = CreateFrame("Button", nil, header)
     infoBtn:SetSize(28, 28)
-    infoBtn:SetPoint("RIGHT", settingsBtn, "LEFT", -6, 0)
+    infoBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
     infoBtn:SetNormalTexture("Interface\\BUTTONS\\UI-GuildButton-PublicNote-Up")
     infoBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     infoBtn:SetScript("OnClick", function() WarbandNexus:ShowInfoDialog() end)
@@ -1581,6 +1669,7 @@ function WarbandNexus:CreateMainWindow()
     infoBtn:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
+    f.infoBtn = infoBtn
 
     -- Patreon (`Media/donateicon.png`); sits between Info and Discord.
     local patreonBtn = CreateFrame("Button", nil, header)
@@ -1865,9 +1954,28 @@ function WarbandNexus:CreateMainWindow()
         end
 
         local railPad = RAIL_PAD
+        local sepH = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_SEP_HEIGHT or 1
+        local sepGap = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_SEP_GAP or 4
+        local settingsBottomPad = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_BOTTOM_PAD or railPad
+        local railFooterH = sepH + sepGap + RAIL_TAB_H + settingsBottomPad
+        f._wnNavRailFooterH = railFooterH
+        local navRailFooter = CreateFrame("Frame", nil, navRail)
+        navRailFooter:SetHeight(railFooterH)
+        navRailFooter:SetPoint("BOTTOMLEFT", navRail, "BOTTOMLEFT", 0, 0)
+        navRailFooter:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 0)
+        f.navRailFooter = navRailFooter
+
+        local railFooterSep = navRailFooter:CreateTexture(nil, "ARTWORK")
+        railFooterSep:SetHeight(sepH)
+        railFooterSep:SetPoint("TOPLEFT", navRailFooter, "TOPLEFT", railPad, 0)
+        railFooterSep:SetPoint("TOPRIGHT", navRailFooter, "TOPRIGHT", -railPad, 0)
+        local acSep = COLORS.accent or { 0.6, 0.4, 1 }
+        railFooterSep:SetColorTexture(acSep[1], acSep[2], acSep[3], MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_SEP_ALPHA or 0.4)
+        f._wnNavRailFooterSep = railFooterSep
+
         navRailScroll = CreateFrame("ScrollFrame", nil, navRail)
         navRailScroll:SetPoint("TOPLEFT", navRail, "TOPLEFT", railPad, -railPad)
-        navRailScroll:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", -railPad, railPad)
+        navRailScroll:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", -railPad, railPad + railFooterH)
         navRailScroll:EnableMouseWheel(true)
         navRailScroll:SetScript("OnMouseWheel", function(scrollSelf, delta)
             local rng = scrollSelf.GetVerticalScrollRange and scrollSelf:GetVerticalScrollRange() or 0
@@ -1961,6 +2069,225 @@ function WarbandNexus:CreateMainWindow()
     local railInnerBtnW = railLayout and math.max(80, railW - (RAIL_PAD * 2)) or 0
     local RAIL_LABEL_PAD = MAIN_SHELL_LAYOUT.NAV_RAIL_LABEL_PAD_H or 6
     local RAIL_ICON_INSET = MAIN_SHELL_LAYOUT.NAV_RAIL_ICON_INSET or 8
+
+    ---Shared main-window tab switch (nav tabs + rail Settings).
+    ---@param targetTab string
+    ---@param opts table|nil `{ persistLastTab = boolean }`
+    local function ActivateMainTab(targetTab, opts)
+        opts = opts or {}
+        if not targetTab or f.currentTab == targetTab then return end
+        if GetTime() < (f._wnMainTabInputGraceUntil or 0) then
+            if f._wnBypassMainTabInputGraceOnce then
+                f._wnBypassMainTabInputGraceOnce = nil
+            else
+                return
+            end
+        end
+
+        if f.currentTab == "settings" then
+            if WarbandNexus.StopSettingsKeybindCapture then
+                WarbandNexus:StopSettingsKeybindCapture()
+            end
+            if ns._wnSettingsOpenDropdownMenu and ns._wnSettingsOpenDropdownMenu.Hide then
+                ns._wnSettingsOpenDropdownMenu:Hide()
+            end
+            if ns._wnSettingsDropdownClickCatcher and ns._wnSettingsDropdownClickCatcher.Hide then
+                ns._wnSettingsDropdownClickCatcher:Hide()
+            end
+        end
+        if targetTab == "settings" then
+            f._wnTabBeforeSettings = f.currentTab
+        end
+
+        f._tabSwitchGen = (f._tabSwitchGen or 0) + 1
+        local tabSwitchGen = f._tabSwitchGen
+
+        if f.AbortPendingPopulateDebounce then
+            f:AbortPendingPopulateDebounce()
+        end
+        f._wnLastMainTabSwitchAt = GetTime()
+        f._wnLastMainTabSwitchKey = targetTab
+
+        local previousTab = f.currentTab
+
+        if IsTabPerfMonitorEnabled() then
+            f._wnPerfMainTabSwitch = {
+                gen = tabSwitchGen,
+                fromTab = previousTab,
+                toTab = targetTab,
+            }
+            debugprofilestart()
+        else
+            f._wnPerfMainTabSwitch = nil
+        end
+
+        if previousTab and f.scroll then
+            if not f._tabScrollPositions then f._tabScrollPositions = {} end
+            f._tabScrollPositions[previousTab] = {
+                v = f.scroll:GetVerticalScroll() or 0,
+                h = f.scroll:GetHorizontalScroll() or 0,
+            }
+        end
+
+        f.currentTab = targetTab
+        UpdateTabButtonStates(f)
+        if targetTab ~= "settings" then
+            ScrollMainNavEnsureTabVisible(f, targetTab)
+        end
+
+        if opts.persistLastTab ~= false and targetTab ~= "settings" then
+            if WarbandNexus.db and WarbandNexus.db.profile then
+                WarbandNexus.db.profile.lastTab = targetTab
+            end
+            RememberSessionMainTab(targetTab)
+        end
+
+        if previousTab == "plans" and WarbandNexus.ClearCollectionMetadataCache then
+            WarbandNexus:ClearCollectionMetadataCache()
+        end
+
+        if WarbandNexus.AbortTabOperations then
+            WarbandNexus:AbortTabOperations(previousTab)
+        end
+
+        f.isMainTabSwitch = true
+        ClearAllSearchBoxes()
+
+        if WarbandNexus.CloseAllPlanDialogs then
+            WarbandNexus:CloseAllPlanDialogs()
+        end
+
+        C_Timer.After(0, function()
+            if tabSwitchGen ~= f._tabSwitchGen then
+                local pStale = f._wnPerfMainTabSwitch
+                if pStale and pStale.gen == tabSwitchGen then
+                    f._wnPerfMainTabSwitch = nil
+                    debugprofilestop()
+                end
+                return
+            end
+            if f.currentTab ~= targetTab then
+                local pStale = f._wnPerfMainTabSwitch
+                if pStale and pStale.gen == tabSwitchGen then
+                    f._wnPerfMainTabSwitch = nil
+                    debugprofilestop()
+                end
+                return
+            end
+            local function runPoolReleaseOnly()
+                local scrollChild = f.scrollChild
+                if scrollChild then
+                    local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
+                    for i = 1, nc do
+                        local child = _uiChildEnumScratch[i]
+                        if ReleasePooledRowsInSubtree then
+                            ReleasePooledRowsInSubtree(child)
+                        end
+                        if child.isPersistentRowElement then
+                            child:Hide()
+                        elseif not child._wnKeepOnTabSwitch then
+                            child:Hide()
+                            child:SetParent(recycleBin)
+                        end
+                    end
+                    f._contentPreCleared = true
+                end
+            end
+
+            local function schedulePopulateAfterPoolPerf()
+                local pAfterPool = f._wnPerfMainTabSwitch
+                if pAfterPool and pAfterPool.gen == tabSwitchGen and f.currentTab == targetTab then
+                    if IsTabPerfMonitorEnabled() then
+                        pAfterPool.msClickToPoolEnd = debugprofilestop()
+                        debugprofilestart()
+                    else
+                        f._wnPerfMainTabSwitch = nil
+                        debugprofilestop()
+                    end
+                end
+                C_Timer.After(0, function()
+                    if tabSwitchGen ~= f._tabSwitchGen then
+                        local pStale = f._wnPerfMainTabSwitch
+                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                            f._wnPerfMainTabSwitch = nil
+                            f._wnPerfTabSwitchPendingLog = nil
+                            debugprofilestop()
+                        end
+                        return
+                    end
+                    if f.currentTab ~= targetTab then
+                        local pStale = f._wnPerfMainTabSwitch
+                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                            f._wnPerfMainTabSwitch = nil
+                            f._wnPerfTabSwitchPendingLog = nil
+                            debugprofilestop()
+                        end
+                        return
+                    end
+                    local pBeforePop = f._wnPerfMainTabSwitch
+                    if pBeforePop and pBeforePop.gen == tabSwitchGen and pBeforePop.msClickToPoolEnd then
+                        if IsTabPerfMonitorEnabled() then
+                            f._wnPerfTabSwitchPendingLog = tabSwitchGen
+                        else
+                            f._wnPerfMainTabSwitch = nil
+                            debugprofilestop()
+                        end
+                    end
+                    WarbandNexus:PopulateContent()
+                    f.isMainTabSwitch = false
+                end)
+            end
+
+            local function runPoolReleaseAndSchedulePopulate()
+                runPoolReleaseOnly()
+                schedulePopulateAfterPoolPerf()
+            end
+
+            if previousTab == "gear" and targetTab ~= "gear" then
+                C_Timer.After(0, function()
+                    if tabSwitchGen ~= f._tabSwitchGen or f.currentTab ~= targetTab then
+                        local pStale = f._wnPerfMainTabSwitch
+                        if pStale and pStale.gen == tabSwitchGen then
+                            f._wnPerfMainTabSwitch = nil
+                            debugprofilestop()
+                        end
+                        return
+                    end
+                    local P = ns.Profiler
+                    if P and P.enabled and P.StartSlice and P.StopSlice then
+                        P:StartSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
+                    end
+                    runPoolReleaseOnly()
+                    if P and P.enabled and P.StartSlice and P.StopSlice then
+                        P:StopSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
+                    end
+                    schedulePopulateAfterPoolPerf()
+                end)
+            elseif previousTab == "chars" and targetTab == "gear" then
+                C_Timer.After(0, function()
+                    if tabSwitchGen ~= f._tabSwitchGen or f.currentTab ~= targetTab then
+                        local pStale = f._wnPerfMainTabSwitch
+                        if pStale and pStale.gen == tabSwitchGen then
+                            f._wnPerfMainTabSwitch = nil
+                            debugprofilestop()
+                        end
+                        return
+                    end
+                    local P = ns.Profiler
+                    if P and P.enabled and P.StartSlice and P.StopSlice then
+                        P:StartSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
+                    end
+                    runPoolReleaseAndSchedulePopulate()
+                    if P and P.enabled and P.StartSlice and P.StopSlice then
+                        P:StopSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
+                    end
+                end)
+            else
+                runPoolReleaseAndSchedulePopulate()
+            end
+        end)
+    end
+    f.ActivateMainTab = ActivateMainTab
     
         local function CreateTabButton(parent, text, key)
         -- Main nav tabs: icon + label (`rail` and `top`).
@@ -2070,244 +2397,12 @@ function WarbandNexus:CreateMainWindow()
         end
 
         btn:SetScript("OnClick", function(self)
-            -- Skip if this tab is already selected (avoid redundant refresh)
-            if f.currentTab == self.key then return end
-            -- Brief post-open window: ignore nav clicks so the opening click cannot land on another tab (gear → chars).
-            if GetTime() < (f._wnMainTabInputGraceUntil or 0) then
-                if f._wnBypassMainTabInputGraceOnce then
-                    f._wnBypassMainTabInputGraceOnce = nil
-                else
-                    return
-                end
-            end
-
-            -- Invalidate any in-flight tab-switch timers (rapid clicks); paired with checks inside C_Timer callbacks.
-            f._tabSwitchGen = (f._tabSwitchGen or 0) + 1
-            local tabSwitchGen = f._tabSwitchGen
-            local targetTab = self.key
-
-            -- Drop pending event-driven populates from before this click; absorb follow-up message bursts
-            -- (~100ms debounce) that would otherwise run a redundant same-tab PopulateContent right after paint.
-            if f.AbortPendingPopulateDebounce then
-                f:AbortPendingPopulateDebounce()
-            end
-            -- Suppress redundant debounced PopulateContent on the destination tab shortly after main-tab paint
-            -- (debounce 100ms + event latency can fire after a wall-clock "until" window; use switch-relative time).
-            f._wnLastMainTabSwitchAt = GetTime()
-            f._wnLastMainTabSwitchKey = targetTab
-
-            local previousTab = f.currentTab
-
-            -- Dev-only: main tab switch timings (debugprofilestop ms); see IsTabPerfMonitorEnabled (see pool/populate hooks below).
-            if IsTabPerfMonitorEnabled() then
-                f._wnPerfMainTabSwitch = {
-                    gen = tabSwitchGen,
-                    fromTab = previousTab,
-                    toTab = targetTab,
-                }
-                debugprofilestart()
-            else
-                f._wnPerfMainTabSwitch = nil
-            end
-
-            -- Save scroll position of the tab we're leaving
-            if previousTab and f.scroll then
-                if not f._tabScrollPositions then f._tabScrollPositions = {} end
-                f._tabScrollPositions[previousTab] = {
-                    v = f.scroll:GetVerticalScroll() or 0,
-                    h = f.scroll:GetHorizontalScroll() or 0,
-                }
-            end
-
-            f.currentTab = self.key
-
-            -- PERFORMANCE: Update tab bar visuals immediately so user sees switch without waiting for content
-            UpdateTabButtonStates(f)
-            ScrollMainNavEnsureTabVisible(f, targetTab)
-
-            -- Persist selected tab (profile + session: session drives same-login hide/show)
-            if WarbandNexus.db and WarbandNexus.db.profile then
-                WarbandNexus.db.profile.lastTab = self.key
-            end
-            RememberSessionMainTab(self.key)
-
-            -- Clear session-only collection metadata when leaving Plans (free RAM, avoid bloat)
-            if previousTab == "plans" and WarbandNexus.ClearCollectionMetadataCache then
-                WarbandNexus:ClearCollectionMetadataCache()
-            end
-            
-            -- ABORT PROTOCOL: Cancel all async operations from previous tab
-            -- This prevents race conditions when user switches tabs rapidly
-            if WarbandNexus.AbortTabOperations then
-                WarbandNexus:AbortTabOperations(previousTab)
-            end
-            
-            -- Flag that this is a MAIN tab switch (not a sub-tab or refresh)
-            f.isMainTabSwitch = true
-            
-            -- Clear all search boxes when switching main tabs
-            ClearAllSearchBoxes()
-            
-            -- Close any open plan dialogs when switching tabs (if function exists)
-            if WarbandNexus.CloseAllPlanDialogs then
-                WarbandNexus:CloseAllPlanDialogs()
-            end
-            -- PERFORMANCE: Frame 1 — pool release + detach old tab content; Frame 2 — PopulateContent.
-            -- "click->pool" in tab perf logs is dominated by ReleasePooledRowsInSubtree on the previous tab's
-            -- scrollChild (Items/Reputations/etc. pooled rows), not Gear character-dropdown entry pooling.
-            -- Keeps teardown and full redraw off the same frame (reduces hitch on heavy tabs).
-            -- When leaving Gear, defer pool release one extra idle tick so the first PopulateContent of the
-            -- destination tab is not stacked on the same scheduler turn as Gear's pooled subtree teardown.
-            -- Characters -> Gear: one extra idle tick before pool so the first Gear PopulateContent is not on
-            -- the same turn as the tab-switch callback that only schedules work (matches staged Gear UI paint).
-            C_Timer.After(0, function()
-                if tabSwitchGen ~= f._tabSwitchGen then
-                    local pStale = f._wnPerfMainTabSwitch
-                    if pStale and pStale.gen == tabSwitchGen then
-                        f._wnPerfMainTabSwitch = nil
-                        debugprofilestop()
-                    end
-                    return
-                end
-                if f.currentTab ~= targetTab then
-                    local pStale = f._wnPerfMainTabSwitch
-                    if pStale and pStale.gen == tabSwitchGen then
-                        f._wnPerfMainTabSwitch = nil
-                        debugprofilestop()
-                    end
-                    return
-                end
-                local function runPoolReleaseOnly()
-                    local scrollChild = f.scrollChild
-                    if scrollChild then
-                        local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
-                        for i = 1, nc do
-                            local child = _uiChildEnumScratch[i]
-                            if ReleasePooledRowsInSubtree then
-                                ReleasePooledRowsInSubtree(child)
-                            end
-                            if child.isPersistentRowElement then
-                                child:Hide()
-                            elseif not child._wnKeepOnTabSwitch then
-                                child:Hide()
-                                child:SetParent(recycleBin)
-                            end
-                        end
-                        f._contentPreCleared = true
-                    end
-                end
-
-                local function schedulePopulateAfterPoolPerf()
-                    local pAfterPool = f._wnPerfMainTabSwitch
-                    if pAfterPool and pAfterPool.gen == tabSwitchGen and f.currentTab == targetTab then
-                        if IsTabPerfMonitorEnabled() then
-                            pAfterPool.msClickToPoolEnd = debugprofilestop()
-                            debugprofilestart()
-                        else
-                            f._wnPerfMainTabSwitch = nil
-                            debugprofilestop()
-                        end
-                    end
-                    C_Timer.After(0, function()
-                        if tabSwitchGen ~= f._tabSwitchGen then
-                            local pStale = f._wnPerfMainTabSwitch
-                            if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
-                                f._wnPerfMainTabSwitch = nil
-                                f._wnPerfTabSwitchPendingLog = nil
-                                debugprofilestop()
-                            end
-                            return
-                        end
-                        if f.currentTab ~= targetTab then
-                            local pStale = f._wnPerfMainTabSwitch
-                            if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
-                                f._wnPerfMainTabSwitch = nil
-                                f._wnPerfTabSwitchPendingLog = nil
-                                debugprofilestop()
-                            end
-                            return
-                        end
-                        local pBeforePop = f._wnPerfMainTabSwitch
-                        if pBeforePop and pBeforePop.gen == tabSwitchGen and pBeforePop.msClickToPoolEnd then
-                            if IsTabPerfMonitorEnabled() then
-                                f._wnPerfTabSwitchPendingLog = tabSwitchGen
-                            else
-                                f._wnPerfMainTabSwitch = nil
-                                debugprofilestop()
-                            end
-                        end
-                        WarbandNexus:PopulateContent()
-                        f.isMainTabSwitch = false
-                    end)
-                end
-
-                local function runPoolReleaseAndSchedulePopulate()
-                    runPoolReleaseOnly()
-                    schedulePopulateAfterPoolPerf()
-                end
-
-                if previousTab == "gear" and targetTab ~= "gear" then
-                    C_Timer.After(0, function()
-                        if tabSwitchGen ~= f._tabSwitchGen then
-                            local pStale = f._wnPerfMainTabSwitch
-                            if pStale and pStale.gen == tabSwitchGen then
-                                f._wnPerfMainTabSwitch = nil
-                                debugprofilestop()
-                            end
-                            return
-                        end
-                        if f.currentTab ~= targetTab then
-                            local pStale = f._wnPerfMainTabSwitch
-                            if pStale and pStale.gen == tabSwitchGen then
-                                f._wnPerfMainTabSwitch = nil
-                                debugprofilestop()
-                            end
-                            return
-                        end
-                        local P = ns.Profiler
-                        if P and P.enabled and P.StartSlice and P.StopSlice then
-                            P:StartSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
-                        end
-                        runPoolReleaseOnly()
-                        if P and P.enabled and P.StartSlice and P.StopSlice then
-                            P:StopSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
-                        end
-                        schedulePopulateAfterPoolPerf()
-                    end)
-                elseif previousTab == "chars" and targetTab == "gear" then
-                    -- Extra idle tick before pool+PopulateContent: entering Gear after Characters
-                    -- avoids stacking chars subtree pool release on the same scheduler turn as the first Gear draw.
-                    C_Timer.After(0, function()
-                        if tabSwitchGen ~= f._tabSwitchGen then
-                            local pStale = f._wnPerfMainTabSwitch
-                            if pStale and pStale.gen == tabSwitchGen then
-                                f._wnPerfMainTabSwitch = nil
-                                debugprofilestop()
-                            end
-                            return
-                        end
-                        if f.currentTab ~= targetTab then
-                            local pStale = f._wnPerfMainTabSwitch
-                            if pStale and pStale.gen == tabSwitchGen then
-                                f._wnPerfMainTabSwitch = nil
-                                debugprofilestop()
-                            end
-                            return
-                        end
-                        local P = ns.Profiler
-                        if P and P.enabled and P.StartSlice and P.StopSlice then
-                            P:StartSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
-                        end
-                        runPoolReleaseAndSchedulePopulate()
-                        if P and P.enabled and P.StartSlice and P.StopSlice then
-                            P:StopSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
-                        end
-                    end)
-                else
-                    runPoolReleaseAndSchedulePopulate()
-                end
-            end)
+            ActivateMainTab(self.key, { persistLastTab = true })
         end)
+
+        if railLayout then
+            WireMainNavTabButtonUX(btn, text, nil)
+        end
 
         return btn
     end
@@ -2347,6 +2442,39 @@ function WarbandNexus:CreateMainWindow()
         end
         f.tabButtons[key] = btn
         prevBtn = btn
+    end
+
+    local settingsLabel = (ns.L and ns.L["BTN_SETTINGS"]) or "Settings"
+    local settingsTooltip = (ns.L and ns.L["NAV_SETTINGS_TOOLTIP"]) or "Warband Nexus options and preferences"
+    if railLayout and f.navRailFooter then
+        local sepH = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_SEP_HEIGHT or 1
+        local sepGap = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_SEP_GAP or 4
+        local settingsBottomPad = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_BOTTOM_PAD or RAIL_PAD
+        local settingsBtn = CreateTabButton(f.navRailFooter, settingsLabel, "settings")
+        settingsBtn:ClearAllPoints()
+        settingsBtn:SetPoint("TOPLEFT", f.navRailFooter, "TOPLEFT", RAIL_PAD, -(sepH + sepGap))
+        settingsBtn:SetPoint("BOTTOMRIGHT", f.navRailFooter, "BOTTOMRIGHT", -RAIL_PAD, settingsBottomPad)
+        f.navSettingsBtn = settingsBtn
+        settingsBtn:SetScript("OnClick", function()
+            ActivateMainTab("settings", { persistLastTab = false })
+        end)
+        WireMainNavTabButtonUX(settingsBtn, settingsTooltip, (ns.L and ns.L["SETTINGS_TAB_SUBTITLE"]) or nil)
+    elseif navLayoutMode == "top" then
+        local navBarH = nav:GetHeight() or MAIN_SHELL_LAYOUT.NAV_BAR_HEIGHT or 36
+        local settingsBtn = CreateTabButton(nav, settingsLabel, "settings")
+        settingsBtn:SetHeight(navBarH)
+        settingsBtn:SetPoint("TOPRIGHT", nav, "TOPRIGHT", -MAIN_TAB_STRIP_EDGE_INSET, 0)
+        settingsBtn:SetPoint("BOTTOMRIGHT", nav, "BOTTOMRIGHT", -MAIN_TAB_STRIP_EDGE_INSET, 0)
+        f.navSettingsBtn = settingsBtn
+        if f.tabNavScroll then
+            f.tabNavScroll:ClearAllPoints()
+            f.tabNavScroll:SetPoint("TOPLEFT", nav, "TOPLEFT", 0, 0)
+            f.tabNavScroll:SetPoint("BOTTOMRIGHT", settingsBtn, "BOTTOMLEFT", -8, 0)
+        end
+        settingsBtn:SetScript("OnClick", function()
+            ActivateMainTab("settings", { persistLastTab = false })
+        end)
+        WireMainNavTabButtonUX(settingsBtn, settingsTooltip, nil)
     end
     
     UpdateTabVisibility(f)
@@ -3410,10 +3538,8 @@ function WarbandNexus:CreateMainWindow()
             WarbandNexus:CloseAllPlanDialogs()
         end
         ClearAllSearchBoxes()
-        -- Close Settings window if open (child follows parent)
-        local settingsFrame = _G["WarbandNexusSettingsFrame"]
-        if settingsFrame and settingsFrame:IsShown() then
-            settingsFrame:Hide()
+        if WarbandNexus.StopSettingsKeybindCapture then
+            WarbandNexus:StopSettingsKeybindCapture()
         end
         -- Free session-only metadata caches (bounded FIFO, but no reason to keep in memory while closed)
         if WarbandNexus.ClearCurrencyMetadataCache then WarbandNexus:ClearCurrencyMetadataCache() end
@@ -3425,17 +3551,17 @@ function WarbandNexus:CreateMainWindow()
     --- Show/hide header Reload button when debug mode is on (boolean or legacy SavedVars `1`; matches ProfileFlagOn / Settings toggles).
     function f:SyncMainHeaderDebugReloadLayout()
         local reloadBtn = self.reloadDebugBtn
-        local settBtn = self.settingsBtn
+        local infoBtn = self.infoBtn
         local clsBtn = self.closeBtn
-        if not reloadBtn or not settBtn or not clsBtn then return end
+        if not reloadBtn or not infoBtn or not clsBtn then return end
         local p = WarbandNexus.db and WarbandNexus.db.profile
         local show = p and ProfileFlagOn(p.debugMode)
         reloadBtn:SetShown(show)
-        settBtn:ClearAllPoints()
+        infoBtn:ClearAllPoints()
         if show then
-            settBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -6, 0)
+            infoBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -6, 0)
         else
-            settBtn:SetPoint("RIGHT", clsBtn, "LEFT", -6, 0)
+            infoBtn:SetPoint("RIGHT", clsBtn, "LEFT", -6, 0)
         end
     end
     f:SyncMainHeaderDebugReloadLayout()
@@ -3487,7 +3613,7 @@ local function PopulateContentBody(self)
 
     -- Persisted lastTab can point at a tab whose module is disabled (hidden nav button).
     -- Clamp before tab-switch detection so highlight and scroll body stay aligned.
-    if not IsTabModuleEnabled(mainFrame.currentTab) then
+    if mainFrame.currentTab ~= "settings" and not IsTabModuleEnabled(mainFrame.currentTab) then
         mainFrame.currentTab = "chars"
         local p = WarbandNexus.db and WarbandNexus.db.profile
         if p then
@@ -3723,6 +3849,12 @@ local function PopulateContentBody(self)
         height = self:DrawCollectionsTab(scrollChild)
     elseif tab == "plans" then
         height = self:DrawPlansTab(scrollChild)
+    elseif tab == "settings" then
+        if self.DrawSettingsTab then
+            height = self:DrawSettingsTab(scrollChild)
+        else
+            height = 200
+        end
     else
         height = self:DrawCharacterList(scrollChild)
     end
@@ -3735,9 +3867,7 @@ local function PopulateContentBody(self)
             local P = ns.Profiler
             if P and P.AppendUserTraceLine then
                 P:AppendUserTraceLine(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
-            elseif WarbandNexus.Print then
-                WarbandNexus:Print(format("|cff9e9e9e[WN Perf] DrawTab %s %.1fms|r", tab, ms))
-            else
+            elseif DebugPrint then
                 DebugPrint(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
             end
         end
@@ -3825,12 +3955,22 @@ local function PopulateContentBody(self)
         ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
     end
     
-    -- Tab switch: always open at top for consistent scroll chrome across pages.
+    -- Tab switch: open at top; restore prior scroll offset for Settings when returning.
     if mainFrame.isMainTabSwitch and mainFrame.scroll then
-        mainFrame.scroll:SetVerticalScroll(0)
-        mainFrame.scroll:SetHorizontalScroll(0)
-        if mainFrame.hScroll and mainFrame.hScroll.SetValue then
-            mainFrame.hScroll:SetValue(0)
+        local saved = (tab == "settings" and mainFrame._tabScrollPositions)
+            and mainFrame._tabScrollPositions.settings
+        if saved then
+            mainFrame.scroll:SetVerticalScroll(saved.v or 0)
+            mainFrame.scroll:SetHorizontalScroll(saved.h or 0)
+            if mainFrame.hScroll and mainFrame.hScroll.SetValue then
+                mainFrame.hScroll:SetValue(saved.h or 0)
+            end
+        else
+            mainFrame.scroll:SetVerticalScroll(0)
+            mainFrame.scroll:SetHorizontalScroll(0)
+            if mainFrame.hScroll and mainFrame.hScroll.SetValue then
+                mainFrame.hScroll:SetValue(0)
+            end
         end
     end
 
@@ -3861,9 +4001,7 @@ local function PopulateContentBody(self)
             local P = ns.Profiler
             if P and P.AppendUserTraceLine then
                 P:AppendUserTraceLine(msg)
-            elseif WarbandNexus.Print then
-                WarbandNexus:Print("|cff9e9e9e" .. msg .. "|r")
-            else
+            elseif DebugPrint then
                 DebugPrint(msg)
             end
         else
@@ -4247,15 +4385,21 @@ end
     Moved from Core.lua to UI.lua (proper separation of concerns)
 ]]
 function WarbandNexus:OpenOptions()
-    if IsDebugModeEnabled and IsDebugModeEnabled() then
+    if InCombatLockdown() then
+        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
+        return
     end
-    -- Show custom settings UI (renders AceConfig with themed widgets)
-    if self.ShowSettings then
-        self:ShowSettings()
-    elseif ns.ShowSettings then
-        ns.ShowSettings()
+    if not mainFrame or not mainFrame:IsShown() then
+        self:ShowMainWindow()
+    end
+    if mainFrame and mainFrame.ActivateMainTab then
+        mainFrame:ActivateMainTab("settings", { persistLastTab = false })
+    elseif self.DrawSettingsTab then
+        if mainFrame then
+            mainFrame.currentTab = "settings"
+            self:PopulateContent()
+        end
     else
-        -- No settings UI available (ShowSettings should always exist)
         self:Print("|cff9370DB[Warband Nexus]|r " .. ((ns.L and ns.L["SETTINGS_UI_UNAVAILABLE"]) or "Settings UI not available. Try /wn to open the main window."))
     end
 end

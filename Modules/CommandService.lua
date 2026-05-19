@@ -18,6 +18,25 @@ local issecretvalue = issecretvalue
 
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
+local function IsDebugOn()
+    return IsDebugModeEnabled and IsDebugModeEnabled()
+end
+
+local function PrintSlashHelp(addon)
+    addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
+    addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
+    addon:Print("  |cff00ccff/wn saved|r — Saved Instances")
+    addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "To-Do Tracker"))
+    addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
+    addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
+    addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
+    addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
+    addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
+    if IsDebugOn() then
+        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
+    end
+end
+
 --============================================================================
 -- MAIN SLASH COMMAND HANDLER
 --============================================================================
@@ -44,23 +63,7 @@ function CommandService:HandleSlashCommand(addon, input)
     
     -- Help command
     if cmd == "help" then
-        addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
-        addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
-        addon:Print("  |cff00ccff/wn saved|r — Saved Instances")
-        addon:Print("  |cff00ccff/wn todo|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "To-Do Tracker"))
-        addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
-        addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
-        addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
-        addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
-        addon:Print("  |cff00ccff/wn uimap here|r — " .. ((ns.L and ns.L["CMD_UIMAP_HERE"]) or "Current uiMapID + parent chain (no debug)"))
-        addon:Print("  |cff00ccff/wn collection sync|r — Refresh if version/categories need work (no wipe)")
-        addon:Print("  |cff00ccff/wn collection sync force|r — |cff00ccff/wn collection rescan|r — remount pets/toys/mounts then rescan (no debug)")
-        addon:Print("  |cff00ccff/wn collection status|r — Collection store snapshot (counts, loading)")
-        addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
-        addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
-        if IsDebugModeEnabled and IsDebugModeEnabled() then
-            addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn dumpitem|r, |cff00ccff/wn uimap catalog|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn collection rebuild|r")
-        end
+        PrintSlashHelp(addon)
         return
     end
     
@@ -198,7 +201,20 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "profiler" or cmd == "profile" then
+    elseif cmd == "debug" then
+        CommandService:HandleDebugToggle(addon)
+        return
+    end
+
+    -- ── Debug-only commands (profiler, collection, diagnostics, tests) ──
+    if not IsDebugOn() then
+        addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_COMMAND"]) or "Unknown command.") .. "|r " ..
+            ((ns.L and ns.L["TYPE_HELP"]) or "Type") .. " |cff00ccff/wn help|r " ..
+            ((ns.L and ns.L["FOR_AVAILABLE_COMMANDS"]) or "for available commands."))
+        return
+    end
+
+    if cmd == "profiler" or cmd == "profile" then
         local P = ns.Profiler
         if not P or not P.HandleCommand then
             addon:Print("|cffff6600[WN]|r " .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")
@@ -239,10 +255,6 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             return
         elseif sub == "rebuild" then
-            if not (IsDebugModeEnabled and IsDebugModeEnabled()) then
-                addon:Print("|cffff6600[WN]|r /wn collection rebuild needs |cff00ccff/wn debug|r. Use |cff00ccff/wn collection sync|r to refresh without wiping.|r")
-                return
-            end
             local full = third and third:lower() == "full"
             if addon.DebugForceCollectionRebuild then
                 addon:DebugForceCollectionRebuild(full)
@@ -252,15 +264,11 @@ function CommandService:HandleSlashCommand(addon, input)
             return
         else
             addon:Print("|cff00ccff/wn collection sync|r — Run EnsureCollectionData when store is incomplete vs code version.")
-            addon:Print("|cff00ccff/wn collection sync force|r — same as |cff00ccff/wn collection rescan|r (mount/pet/toy wipe + rescan, no debug).")
+            addon:Print("|cff00ccff/wn collection sync force|r — same as |cff00ccff/wn collection rescan|r (mount/pet/toy wipe + rescan).")
             addon:Print("|cff00ccff/wn collection status|r — Print collectionStore counts and loading state.")
-            addon:Print("|cff888888With |cff00ccff/wn debug|r:|r |cff00ccff/wn collection rebuild|r [|cff00ccfffull|r] — wipe store + full refetch (profiler friendly).")
+            addon:Print("|cff00ccff/wn collection rebuild|r [|cff00ccfffull|r] — wipe store + full refetch.")
             return
         end
-
-    elseif cmd == "debug" then
-        CommandService:HandleDebugToggle(addon)
-        return
 
     elseif cmd == "uimap" then
         CommandService:HandleUiMapDebug(addon, input)
@@ -279,19 +287,38 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    end
-
-    -- ── Debug commands (require debug mode) ──
-    
-    local isDebug = IsDebugModeEnabled and IsDebugModeEnabled()
-    if not isDebug then
-        addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_COMMAND"]) or "Unknown command.") .. "|r " ..
-            ((ns.L and ns.L["TYPE_HELP"]) or "Type") .. " |cff00ccff/wn help|r " ..
-            ((ns.L and ns.L["FOR_AVAILABLE_COMMANDS"]) or "for available commands."))
+    elseif cmd == "testloot" or cmd == "testnotif" then
+        local _, typeArg, idArg, stepArg = addon:GetArgs(input, 4)
+        if addon.TestLootNotification then
+            addon:TestLootNotification(typeArg, idArg, stepArg)
+        end
         return
-    end
-    
-    if cmd == "cleanup" then
+
+    elseif cmd == "testevents" then
+        local _, typeArg, idArg = addon:GetArgs(input, 3)
+        if addon.TestNotificationEvents then
+            addon:TestNotificationEvents(typeArg, idArg)
+        end
+        return
+
+    elseif cmd == "errors" or cmd == "error" then
+        local _, subCmd, idxArg = addon:GetArgs(input, 3)
+        if subCmd == "full" and addon.ShowErrorDetails then
+            addon:ShowErrorDetails(tonumber(idxArg) or 1)
+        elseif addon.PrintRecentErrors then
+            addon:PrintRecentErrors(tonumber(subCmd) or 5)
+        end
+        return
+
+    elseif cmd == "profverify" then
+        if addon.PrintProfessionVerify then
+            addon:PrintProfessionVerify()
+        else
+            addon:Print("|cffff6600[WN]|r Profession verify not available.|r")
+        end
+        return
+
+    elseif cmd == "cleanup" then
         if addon.CleanupStaleCharacters then
             local removed = addon:CleanupStaleCharacters(90)
             if removed == 0 then
@@ -390,7 +417,8 @@ function CommandService:HandleSlashCommand(addon, input)
         return
 
     else
-        addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. cmd)
+        addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. tostring(cmd))
+        addon:Print("|cff888888Type |cff00ccff/wn help|r for commands.|r")
     end
 end
 
@@ -437,9 +465,9 @@ function CommandService:HandleUiMapDebug(addon, input)
 
     if sub == "" or sub == "help" then
         banner("Usage:")
-        addon:Print("  |cff00ccff/wn uimap here|r — player map + parents + optional instance (works without debug)")
-        addon:Print("  |cff888888(debug ON)|r |cff00ccff/wn uimap catalog [section]|r — rows from ReminderZoneCatalog (omit section = all)")
-        addon:Print("  |cff888888(debug ON)|r |cff00ccff/wn uimap id <uiMapID>|r — GetMapInfo + UIMapContentKind.Resolve")
+        addon:Print("  |cff00ccff/wn uimap here|r — player map + parents + optional instance")
+        addon:Print("  |cff00ccff/wn uimap catalog [section]|r — rows from ReminderZoneCatalog (omit section = all)")
+        addon:Print("  |cff00ccff/wn uimap id <uiMapID>|r — GetMapInfo + UIMapContentKind.Resolve")
         return
     end
 
@@ -480,11 +508,6 @@ function CommandService:HandleUiMapDebug(addon, input)
             addon:Print(string.format("  Instance: %s | type=%s | instanceID=%s | difficultyID=%s",
                 tostring(name), tostring(instType), tostring(instanceID), tostring(difficultyID)))
         end
-        return
-    end
-
-    if not IsDebugModeEnabled or not IsDebugModeEnabled() then
-        addon:Print("|cffff6600[WN uiMap]|r Enable debug: |cff00ccff/wn debug|r — then retry catalog/id.")
         return
     end
 

@@ -46,6 +46,17 @@ local function NormalizeCollectionSearchText(searchText)
 end
 
 -- Debug print helper (only prints if debug mode + debugVerbose enabled; reduces BAG SCAN spam)
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
+local DebugChatPrint = ns.DebugChatPrint
+
+local function CollectionUserPrint(self, msg)
+    if DebugChatPrint then
+        DebugChatPrint(msg)
+    elseif IsDebugModeEnabled and IsDebugModeEnabled() and self.Print then
+        self:Print(msg)
+    end
+end
+
 local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(
     nil,
     { verboseOnly = true, suppressWhenTryCounterLoot = true }
@@ -211,15 +222,15 @@ end
 ---Coalesced EnsureCollectionData (slash / other callers). Does not wipe SV; use DebugForceCollectionRebuild for that.
 function WarbandNexus:RequestCollectionDataRefresh()
     if ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading then
-        self:Print("|cffff8800[WN]|r Collection pipeline already running; skipped. |cff00ccff/wn collection status|r for stage.|r")
+        CollectionUserPrint(self, "|cffff8800[WN]|r Collection pipeline already running; skipped. |cff00ccff/wn collection status|r for stage.|r")
         return
     end
     if IsCollectionEnsureDataComplete(self) then
-        self:Print("|cff888888[WN]|r Collection store already matches code version and categories; nothing to rescan. (|cff00ccff/wn debug|r + |cff00ccff/wn collection rebuild|r to force, or bump cache version in a release.)|r")
+        CollectionUserPrint(self, "|cff888888[WN]|r Collection store already matches code version and categories; nothing to rescan. (|cff00ccff/wn collection rebuild|r to force, or bump cache version in a release.)|r")
         return
     end
     ScheduleEnsureCollectionDataDeferred()
-    self:Print("|cff00ccff[WN]|r Collection refresh scheduled (EnsureCollectionData next frames).|r")
+    CollectionUserPrint(self, "|cff00ccff[WN]|r Collection refresh scheduled (EnsureCollectionData next frames).|r")
 end
 
 ---Debug: print collectionStore counts, SV version, and CollectionLoadingState snapshot.
@@ -235,7 +246,7 @@ function WarbandNexus:PrintCollectionDataStatus()
     for _ in pairs(collectionStore.illusion or {}) do nIll = nIll + 1 end
     local load = ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading
     local stage = (ns.CollectionLoadingState and ns.CollectionLoadingState.currentStage) or "-"
-    self:Print(string.format(
+    CollectionUserPrint(self, string.format(
         "|cff00ccff[WN Collection]|r SV.version=%s loading=%s stage=%s | store m/p/t/a/ti/il=%d/%d/%d/%d/%d/%d|r",
         tostring(svVer), tostring(load), tostring(stage), nm, np, nt, na, nti, nIll))
 end
@@ -2867,11 +2878,11 @@ end)
 ---Force mount/pet/toy refetch without debug mode (lighter than rebuild full). Clears those SV maps and schedules EnsureCollectionData.
 function WarbandNexus:RequestCollectionDataRefreshForce()
     if ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading then
-        self:Print("|cffff8800[WN]|r Collection pipeline already running; skipped. |cff00ccff/wn collection status|r for stage.|r")
+        CollectionUserPrint(self, "|cffff8800[WN]|r Collection pipeline already running; skipped. |cff00ccff/wn collection status|r for stage.|r")
         return
     end
     if not self.db or not self.db.global then
-        self:Print("|cffff6600[WN Collection]|r DB not ready.|r")
+        CollectionUserPrint(self, "|cffff6600[WN Collection]|r DB not ready.|r")
         return
     end
     local function wipeMap(t)
@@ -2897,7 +2908,7 @@ function WarbandNexus:RequestCollectionDataRefreshForce()
     elseif self.EnsureCollectionData then
         self:EnsureCollectionData()
     end
-    self:Print("|cff00ccff[WN]|r Collection rescan scheduled (mounts, pets, toys).|r")
+    CollectionUserPrint(self, "|cff00ccff[WN]|r Collection rescan scheduled (mounts, pets, toys).|r")
 end
 
 --- DEBUG ONLY (gated by CommandService + IsDebugModeEnabled): simulate a collectionStore version bump and re-fetch mount/pet/toy for profiler runs.
@@ -2905,7 +2916,7 @@ end
 function WarbandNexus:DebugForceCollectionRebuild(full)
     full = full == true
     if not self.db or not self.db.global then
-        self:Print("|cffff6600[WN Collection]|r DB not ready.|r")
+        CollectionUserPrint(self, "|cffff6600[WN Collection]|r DB not ready.|r")
         return
     end
     local function wipeMap(t)
@@ -2936,11 +2947,11 @@ function WarbandNexus:DebugForceCollectionRebuild(full)
     end
     self:InvalidateCollectionCache(nil)
     InvalidateCollectionCountsCache(nil, nil)
-    self:Print("|cff00ccff[WN Collection]|r Debug rebuild started (mount/pet/toy" ..
+    CollectionUserPrint(self, "|cff00ccff[WN Collection]|r Debug rebuild started (mount/pet/toy" ..
         (full and " + achievements/titles/illusions" or "") ..
         "). Use |cff00ccff/wn profiler on|r then open Collections.|r")
     self:EnsureCollectionData(function()
-        self:Print("|cff00ff00[WN Collection]|r Debug rebuild finished.|r")
+        CollectionUserPrint(self, "|cff00ff00[WN Collection]|r Debug rebuild finished.|r")
     end)
 end
 

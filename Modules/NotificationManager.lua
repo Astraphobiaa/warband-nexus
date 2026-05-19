@@ -2859,6 +2859,7 @@ end
 
 ---Test loot notification system (All notification types with real data)
 function WarbandNexus:TestLootNotification(type, id, step)
+    if not (ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()) then return end
     type = type and strlower(type) or "all"
     
     -- Show help message
@@ -3270,6 +3271,7 @@ end
 
 ---Test event-driven notification system
 function WarbandNexus:TestNotificationEvents(type, id)
+    if not (ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()) then return end
     type = type and strlower(type) or "all"
     
     self:Print("|cff00ccff[Event Test]|r Testing notification events (type: " .. type .. ")")

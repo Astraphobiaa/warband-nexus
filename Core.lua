@@ -170,6 +170,8 @@ local defaults = {
         mainWindowDensity = "standard",
         --- Main window nav: vertical "rail" icon column (left) | horizontal "top" strip (Settings; /reload).
         mainNavLayout = "rail",
+        --- Settings tab: in-content category (`SettingsUI_Shell`); not a main-window tab id.
+        settingsPanel = "general",
 
         vaultButton = {
             enabled = true,
@@ -1170,16 +1172,10 @@ function WarbandNexus:RefreshTheme()
         ns.UI_RefreshColors()
     end
     
-    -- Refresh settings window if open
-    local settingsFrame = _G["WarbandNexusSettingsFrame"]
-    if settingsFrame and settingsFrame:IsShown() then
-        -- Close and reopen to apply new colors
-        settingsFrame:Hide()
-        C_Timer.After(0.1, function()
-            if ns.ShowSettings then
-                ns.ShowSettings()
-            end
-        end)
+    -- Refresh embedded settings tab when active
+    local mf = _G.WarbandNexusFrame
+    if mf and mf:IsShown() and mf.currentTab == "settings" and WarbandNexus.PopulateContent then
+        WarbandNexus:PopulateContent()
     end
 end
 

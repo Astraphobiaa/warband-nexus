@@ -2646,6 +2646,7 @@ end
     Use: /wn profverify
 ]]
 function WarbandNexus:PrintProfessionVerify()
+    if not (ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()) then return end
     if not self.Print then return end
     local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then

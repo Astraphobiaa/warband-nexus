@@ -2004,6 +2004,7 @@ end
 --- Internal diagnostic: upgrade info per slot (current character). No slash — dev: /run WarbandNexus:GearUpgradeDebugReport()
 --- Uses same currency source as Gear tab (FromDB, normalized). Crest need = 20 or 0 (gold-only/maxed).
 function WarbandNexus:GearUpgradeDebugReport()
+    if not (ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()) then return end
     local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
     if not currentKey then
         self:Print("|cffff6600[WN GearUpgradeDebug]|r No current character.")
@@ -2055,6 +2056,7 @@ end
 
 --- Internal diagnostic: storage-upgrade summary for all tracked characters. No slash — dev: /run WarbandNexus:GearStorageUpgradeDebugReportAll()
 function WarbandNexus:GearStorageUpgradeDebugReportAll()
+    if not (ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()) then return end
     local chars = self.db and self.db.global and self.db.global.characters
     if not chars then
         self:Print("|cffff6600[WN GearStorageDebug]|r No character database.")
