@@ -724,6 +724,10 @@ function CommandService:HandleDebugToggle(addon)
         addon:Print("|cffff8800" .. ((ns.L and ns.L["DEBUG_DISABLED"]) or "Debug mode DISABLED.") .. "|r")
     end
 
+    if ns.Profiler and ns.Profiler.SyncWithDebugMode then
+        ns.Profiler:SyncWithDebugMode()
+    end
+
     local mf = addon.mainFrame
     if mf and mf.SyncMainHeaderDebugReloadLayout then
         mf:SyncMainHeaderDebugReloadLayout()

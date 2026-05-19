@@ -381,7 +381,7 @@ Fns.RegisterTryCounterEvents()
 tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
     local addon = WarbandNexus
     -- Event trace: helps diagnose "no log" scenarios (e.g. no LOOT_OPENED, only currency chat event).
-    if addon and addon.db and addon.db.profile and addon.db.profile.debugTryCounterLoot and DEBUG_TRACE_EVENTS[event] then
+    if Fns.IsTryCounterLootDebugEnabled(addon) and DEBUG_TRACE_EVENTS[event] then
         local nowTrace = GetTime()
         local dedupKey = (event == "LOOT_READY") and event or nil
         if dedupKey and lastDebugTraceLootTime[dedupKey]
@@ -789,7 +789,8 @@ local journalMirrorBuildPending = false
 local lastLockoutSyncAt = 0
 
 function Fns.IsTryCounterLootDebugEnabled(addon)
-    return addon and addon.db and addon.db.profile and addon.db.profile.debugTryCounterLoot
+    local p = addon and addon.db and addon.db.profile
+    return p and p.debugMode == true and p.debugTryCounterLoot == true
 end
 
 -- Color-coded debug log. Categories:

@@ -4289,6 +4289,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             get = function() return WarbandNexus.db.profile.debugMode end,
             set = function(value)
                 WarbandNexus.db.profile.debugMode = value
+                if ns.Profiler and ns.Profiler.SyncWithDebugMode then
+                    ns.Profiler:SyncWithDebugMode()
+                end
                 local mf = WarbandNexus.mainFrame
                 if mf and mf.SyncMainHeaderDebugReloadLayout then
                     mf:SyncMainHeaderDebugReloadLayout()

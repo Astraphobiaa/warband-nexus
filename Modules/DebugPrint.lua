@@ -37,7 +37,7 @@ end
 
 local function IsTryCounterLootDebugEnabled()
     local profile = GetDebugProfile()
-    return profile and profile.debugTryCounterLoot == true or false
+    return profile and profile.debugMode == true and profile.debugTryCounterLoot == true or false
 end
 
 ---Create a module-scoped debug printer with optional policy flags.

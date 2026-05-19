@@ -921,6 +921,9 @@ local options = {
                 else
                     WarbandNexus:Print("|cffff9900Debug mode disabled|r")
                 end
+                if ns.Profiler and ns.Profiler.SyncWithDebugMode then
+                    ns.Profiler:SyncWithDebugMode()
+                end
                 local mf = WarbandNexus.mainFrame
                 if mf and mf.SyncMainHeaderDebugReloadLayout then
                     mf:SyncMainHeaderDebugReloadLayout()

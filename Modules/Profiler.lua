@@ -167,10 +167,59 @@ function Profiler:SavePersistToProfile()
     end
 end
 
+--- True when addon debug mode allows profiler chat / trace / persisted runtime.
+---@return boolean
+local function IsProfilerDebugAllowed()
+    return ns.IsDebugModeEnabled and ns.IsDebugModeEnabled() or false
+end
+
+--- Stop measuring, live output, frame tracking, and hide dev HUD (does not clear profilerPersist).
+function Profiler:SuspendForDebugOff()
+    self.enabled = false
+    self.liveOutput = false
+    self.eventTrace = false
+    if self.frameTracking or self._frameHandler then
+        self._suppressFrameTrackingPrint = true
+        self:SetFrameTracking(false)
+        self._suppressFrameTrackingPrint = false
+    end
+    if self._devWindow and self._devWindow:IsShown() then
+        self._devWindow:Hide()
+    end
+    if self._traceWindow and self._traceWindow:IsShown() then
+        self._traceWindow:Hide()
+    end
+end
+
+--- Align runtime profiler with profile.debugMode (call after debug toggle or profile change).
+function Profiler:SyncWithDebugMode()
+    if not IsProfilerDebugAllowed() then
+        self:SuspendForDebugOff()
+        return
+    end
+    local profile = ns.db and ns.db.profile
+    if profile then
+        self:ApplyPersistedSettings(profile)
+    end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if IsProfilerDebugAllowed() then
+                self:RestoreUIAfterAddonEnable()
+            end
+        end)
+    else
+        self:RestoreUIAfterAddonEnable()
+    end
+end
+
 --- Read AceDB profile and apply in-memory profiler flags (call after db exists).
 ---@param profile table db.profile
 function Profiler:ApplyPersistedSettings(profile)
     if not profile then return end
+    if not IsProfilerDebugAllowed() then
+        self:SuspendForDebugOff()
+        return
+    end
     local p = profile.profilerPersist
     if not p then return end
     self.enabled = p.measuring == true
@@ -193,6 +242,7 @@ end
 
 --- Re-show dev HUD after OnEnable (frame objects do not survive /reload).
 function Profiler:RestoreUIAfterAddonEnable()
+    if not IsProfilerDebugAllowed() then return end
     if not self.devMode then return end
     local root = GetProfilePersistRoot()
     if not root or not root.devWindowVisible then return end
@@ -205,6 +255,9 @@ function Profiler:RestoreUIAfterAddonEnable()
 end
 
 local function ProfilerPrint(...)
+    if not IsProfilerDebugAllowed() then
+        return
+    end
     local addon = ns and ns.WarbandNexus
     if addon and addon.Print then
         addon:Print(...)
@@ -254,6 +307,7 @@ end
 --- Addon debug / Gear char-flow lines (do not require profiling measuring ON).
 ---@param plainLine string
 function Profiler:AppendUserTraceLine(plainLine)
+    if not IsProfilerDebugAllowed() then return end
     self:_RingTraceAppend(plainLine)
 end
 
