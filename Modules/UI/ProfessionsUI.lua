@@ -1344,14 +1344,14 @@ local function GetCharSortValue(char, col)
                     val = mx > 0 and (cur / mx) or -1
                 end
             elseif col == "moxie" then
-                local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey(char.name, char.realm) or nil
+                local charKey = GetCharKey(char)
                 local moxieCurrencyID = slID and MIDNIGHT_MOXIE_CURRENCY[slID]
                 if charKey and moxieCurrencyID and WarbandNexus.GetCurrencyData then
                     local moxieData = WarbandNexus:GetCurrencyData(moxieCurrencyID, charKey)
                     val = (moxieData and (moxieData.quantity or moxieData.value)) or 0
                 end
             elseif col == "cooldowns" then
-                local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey(char.name, char.realm) or nil
+                local charKey = GetCharKey(char)
                 if charKey and slID then
                     local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
                     local cdTable = charData and charData.professionCooldowns and charData.professionCooldowns[slID]
@@ -2879,6 +2879,7 @@ end
 function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
     local p = "l" .. lineIndex
     local FactRow = ns.UI and ns.UI.Factory
+    local charKey = GetCharKey(char)
 
     local iconSize = ColWidth("profIcon")
 
@@ -3244,7 +3245,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         catchUpText:SetText(FormatProgressPair(progressData and progressData.catchUp))
 
         -- Moxie: Artisan Moxie currency for this profession (Midnight; from DB/currency cache).
-        local charKey = (ns.Utilities and ns.Utilities.GetCharacterKey) and ns.Utilities:GetCharacterKey(char.name, char.realm) or nil
         local moxieCurrencyID = slID and MIDNIGHT_MOXIE_CURRENCY[slID]
         if charKey and moxieCurrencyID and WarbandNexus.GetCurrencyData then
             local moxieData = WarbandNexus:GetCurrencyData(moxieCurrencyID, charKey)

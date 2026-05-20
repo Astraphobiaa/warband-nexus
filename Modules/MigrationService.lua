@@ -30,6 +30,44 @@ end
 local MigrationService = {}
 ns.MigrationService = MigrationService
 
+local function CountGearSlots(entry)
+    local slots = type(entry) == "table" and entry.slots
+    if type(slots) ~= "table" then return 0 end
+    local count = 0
+    for _, slot in pairs(slots) do
+        if type(slot) == "table" then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function ShouldReplaceGearBucket(current, candidate)
+    if type(candidate) ~= "table" then return false end
+    if type(current) ~= "table" then return true end
+
+    local currentSlots = CountGearSlots(current)
+    local candidateSlots = CountGearSlots(candidate)
+    if candidateSlots > 0 and currentSlots == 0 then return true end
+    if candidateSlots == 0 and currentSlots > 0 then return false end
+
+    return (tonumber(candidate.lastScan) or 0) > (tonumber(current.lastScan) or 0)
+end
+
+local function MergeGearDataBucket(current, legacy)
+    if type(legacy) ~= "table" then return current end
+    if ShouldReplaceGearBucket(current, legacy) then
+        if type(legacy.modelView) ~= "table" and type(current) == "table" and type(current.modelView) == "table" then
+            legacy.modelView = current.modelView
+        end
+        return legacy
+    end
+    if type(current) == "table" and type(current.modelView) ~= "table" and type(legacy.modelView) == "table" then
+        current.modelView = legacy.modelView
+    end
+    return current
+end
+
 --[[
     Single-roof version check.
 
@@ -580,10 +618,8 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
     if db.global.gearData then
         for oldKey, newKey in pairs(renames) do
             if oldKey ~= newKey then
-                if db.global.gearData[oldKey] and not db.global.gearData[newKey] then
-                    db.global.gearData[newKey] = db.global.gearData[oldKey]
-                    db.global.gearData[oldKey] = nil
-                elseif db.global.gearData[oldKey] then
+                if db.global.gearData[oldKey] then
+                    db.global.gearData[newKey] = MergeGearDataBucket(db.global.gearData[newKey], db.global.gearData[oldKey])
                     db.global.gearData[oldKey] = nil
                 end
             end

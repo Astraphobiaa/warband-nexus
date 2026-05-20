@@ -1313,6 +1313,44 @@ function WarbandNexus:GetCurrentGearStorageKey()
     return ResolveGearStorageKey()
 end
 
+local function CountGearDataSlots(entry)
+    local slots = type(entry) == "table" and entry.slots
+    if type(slots) ~= "table" then return 0 end
+    local count = 0
+    for _, slot in pairs(slots) do
+        if type(slot) == "table" then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function ShouldReplaceGearDataBucket(current, candidate)
+    if type(candidate) ~= "table" then return false end
+    if type(current) ~= "table" then return true end
+
+    local currentSlots = CountGearDataSlots(current)
+    local candidateSlots = CountGearDataSlots(candidate)
+    if candidateSlots > 0 and currentSlots == 0 then return true end
+    if candidateSlots == 0 and currentSlots > 0 then return false end
+
+    return (tonumber(candidate.lastScan) or 0) > (tonumber(current.lastScan) or 0)
+end
+
+local function MergeGearDataBucket(current, legacy)
+    if type(legacy) ~= "table" then return current end
+    if ShouldReplaceGearDataBucket(current, legacy) then
+        if type(legacy.modelView) ~= "table" and type(current) == "table" and type(current.modelView) == "table" then
+            legacy.modelView = current.modelView
+        end
+        return legacy
+    end
+    if type(current) == "table" and type(current.modelView) ~= "table" and type(legacy.modelView) == "table" then
+        current.modelView = legacy.modelView
+    end
+    return current
+end
+
 --- Move pre-guid scans (Name-Realm) into the canonical bucket once.
 ---@param db table gearData root
 ---@param storageKey string
@@ -1322,9 +1360,7 @@ local function MigrateLegacyGearDataKey(db, storageKey)
     if not U or not U.GetCharacterKey then return end
     local legacy = U:GetCharacterKey()
     if not legacy or legacy == "" or legacy == storageKey or not db[legacy] then return end
-    if not db[storageKey] then
-        db[storageKey] = db[legacy]
-    end
+    db[storageKey] = MergeGearDataBucket(db[storageKey], db[legacy])
     db[legacy] = nil
 end
 
