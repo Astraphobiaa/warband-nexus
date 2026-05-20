@@ -3005,6 +3005,37 @@ local function SafeChatLinkString(link)
     return link
 end
 
+--- Resolve the collectible id used for try-count storage/display on plan cards.
+---@param plan table
+---@return number|nil
+function WarbandNexus:GetPlanCollectibleID(plan)
+    if not plan or not plan.type then return nil end
+    local t = plan.type
+    if t == "mount" then
+        if plan.mountID and type(plan.mountID) == "number" then return plan.mountID end
+        if plan.itemID and type(plan.itemID) == "number" and C_MountJournal and C_MountJournal.GetMountFromItem then
+            local ok, mid = pcall(C_MountJournal.GetMountFromItem, plan.itemID)
+            if ok and type(mid) == "number" and mid > 0
+                and not (issecretvalue and issecretvalue(mid)) then
+                return mid
+            end
+        end
+        if plan.itemID and type(plan.itemID) == "number" then return plan.itemID end
+        return nil
+    end
+    if t == "pet" then
+        if plan.speciesID and type(plan.speciesID) == "number" then return plan.speciesID end
+        if plan.petID and type(plan.petID) == "number" then return plan.petID end
+        return nil
+    end
+    if t == "toy" and plan.itemID and type(plan.itemID) == "number" then return plan.itemID end
+    if t == "illusion" then
+        if plan.sourceID and type(plan.sourceID) == "number" then return plan.sourceID end
+        if plan.illusionID and type(plan.illusionID) == "number" then return plan.illusionID end
+    end
+    return nil
+end
+
 --- Whether the plan type can expose a WoW chat hyperlink (button shown on card).
 function WarbandNexus:PlanSupportsChatLink(plan)
     if not plan or not plan.type then return false end

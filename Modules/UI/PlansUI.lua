@@ -294,6 +294,9 @@ end
 --- To-Do List / Weekly Progress do not use this — they filter plans in DrawActivePlans (Show Completed only).
 local function ClearPlanReminderForBrowseItem(addon, category, itemID)
     if not addon or not itemID or not addon.RemovePlanReminder then return end
+    ns._plansBrowseReminderCleared = ns._plansBrowseReminderCleared or {}
+    local memoKey = (category or "") .. ":" .. tostring(itemID)
+    if ns._plansBrowseReminderCleared[memoKey] then return end
     local plans = addon.db and addon.db.global and addon.db.global.plans
     if not plans then return end
     for _, plan in pairs(plans) do
@@ -307,10 +310,19 @@ local function ClearPlanReminderForBrowseItem(addon, category, itemID)
             elseif category == "title" and plan.titleID == itemID then match = true
             end
             if match then
-                addon:RemovePlanReminder(plan.id)
+                local r = plan.reminder
+                if r and r.enabled ~= false then
+                    if addon:RemovePlanReminder(plan.id) then
+                        ns._plansBrowseReminderCleared[memoKey] = true
+                    end
+                else
+                    ns._plansBrowseReminderCleared[memoKey] = true
+                end
+                return
             end
         end
     end
+    ns._plansBrowseReminderCleared[memoKey] = true
 end
 
 local function MergePlansBrowseResults(collectedList, uncollectedList, showPlanned, showCompleted)
@@ -566,8 +578,8 @@ function WarbandNexus:DrawPlansTab(parent)
     local subtitleTextContent = plansSubtitle .. " • " .. activePlanText
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local plansToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
-        100, 100, 100, 80, tm.squareBtn or 32, 120, tm.squareBtn or 32, 100,
-    })) or 560
+        100, 100, 100, 80, tm.squareBtn or 32, 120, tm.squareBtn or 32, 115, tm.squareBtn or 32,
+    })) or 600
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "plans",
         titleText = titleTextContent,
@@ -749,7 +761,8 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- "Show Planned" only affects browse subtabs, but the control stays visible (dimmed on To-Do / Weekly Progress).
         local plannedBrowseLocked = (currentCategory == "active" or currentCategory == "daily_tasks")
-        local plannedCheckbox = CreateThemedCheckbox(titleCard, showPlanned)
+        local plannedCheckbox, plannedLabel
+        plannedCheckbox = CreateThemedCheckbox(titleCard, showPlanned)
         if plannedCheckbox then
             if plannedCheckbox.innerDot then
                 plannedCheckbox.innerDot:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
@@ -760,7 +773,7 @@ function WarbandNexus:DrawPlansTab(parent)
                 plannedCheckbox:SetPoint("RIGHT", checkboxLabel, "LEFT", -hdrToolbarGap, 0)
             end
 
-            local plannedLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
+            plannedLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
             if ns.UI_AnchorTitleCardToolbarControl then
                 ns.UI_AnchorTitleCardToolbarControl(plannedLabel, titleCard, plannedCheckbox, "LEFT", -hdrToolbarGap)
             else
@@ -820,6 +833,7 @@ function WarbandNexus:DrawPlansTab(parent)
             end)
         end
 
+        -- Anchor expand/collapse left of the Show Planned label (checkbox anchor overlapped the label text).
         local ecAnchor = plannedLabel or checkboxLabel or resetBtn
         if ns.UI_EnsureTitleCardExpandCollapseButtons and ecAnchor then
             ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -hdrToolbarGap, 0, {
@@ -887,12 +901,9 @@ function WarbandNexus:DrawPlansTab(parent)
         -- WN_PLANS_UPDATED: handled by UI.lua SchedulePopulateContent (debounced).
         -- Registering here caused double rebuild (immediate redraw + debounced PopulateContent).
         
-        -- Collection scan progress (throttled UI refresh for loading indicators)
+        -- Collection scan progress: milestone refresh only (full tab rebuild every 500ms caused profiler spam).
         if Constants and Constants.EVENTS then
             WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(_, data)
-                local now = debugprofilestop()
-                if (now - lastUIRefresh) < 500 then return end
-                
                 if not self:IsStillOnTab("plans") then return end
                 local scanCategory = data and data.category
                 if currentCategory == "active" or currentCategory == "daily_tasks" then
@@ -900,17 +911,38 @@ function WarbandNexus:DrawPlansTab(parent)
                 elseif scanCategory and scanCategory ~= currentCategory and scanCategory ~= "all" and scanCategory ~= "build" then
                     return
                 end
-                
+                local collLoading = ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading
+                local catLoading = scanCategory and ns.PlansLoadingState and ns.PlansLoadingState[scanCategory]
+                    and ns.PlansLoadingState[scanCategory].isLoading
+                if not collLoading and not catLoading then return end
+                local progress = tonumber(data and data.progress) or 0
+                local scanKey = scanCategory or "all"
+                local milestone = progress >= 100 and 100 or (math.floor(progress / 25) * 25)
+                if milestone <= (ns._plansBrowseScanUIMilestone[scanKey] or -1) then return end
+                ns._plansBrowseScanUIMilestone[scanKey] = milestone
+                local now = GetTime()
+                if (now - lastUIRefresh) < 1.5 then return end
                 lastUIRefresh = now
                 C_Timer.After(0.05, function()
                     if self:IsStillOnTab("plans") then
-                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans" })
                     end
                 end)
             end)
-            
-            -- Collection scan complete (final refresh)
-            -- COLLECTION_SCAN_COMPLETE and COLLECTION_UPDATED refresh are centralized in UI.lua.
+
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
+                local cat = data and data.category
+                if cat and ns._plansBrowseCollectionEnsurePending then
+                    ns._plansBrowseCollectionEnsurePending[cat] = nil
+                end
+                if cat and ns._plansBrowseScanUIMilestone then
+                    ns._plansBrowseScanUIMilestone[cat] = nil
+                end
+                ns._plansBrowseScanUIMilestone.all = nil
+                ns._plansBrowseScanUIMilestone.build = nil
+            end)
+
+            -- Final populate refresh: UI.lua SchedulePopulateContent (skipCooldown on complete).
         end
         
         self._plansEventRegistered = true
@@ -2071,11 +2103,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local achievementPoints, information, criteriaItems, criteriaText, criteriaHeader
             local achievementOnExpandPopulate = nil
 
-            local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
-            local idKey = tryCountTypes[plan.type]
-            local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
+            local collectibleID = self.GetPlanCollectibleID and self:GetPlanCollectibleID(plan)
             local trySuffix = ""
-            if (not planComplete) and collectibleID and self.ShouldShowTryCountInUI and self:ShouldShowTryCountInUI(plan.type, collectibleID)
+            if collectibleID and self.ShouldShowTryCountInUI and self:ShouldShowTryCountInUI(plan.type, collectibleID)
                 and WarbandNexus.GetTryCount then
                 local count = WarbandNexus:GetTryCount(plan.type, collectibleID) or 0
                 local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
@@ -2810,11 +2840,37 @@ local PLANS_BROWSE_STORE_CATEGORIES = {
     mount = true, pet = true, toy = true, illusion = true, title = true,
 }
 
+--- One EnsureCollectionData request per browse category until scan completes (stops PopulateContent loops).
+ns._plansBrowseCollectionEnsurePending = ns._plansBrowseCollectionEnsurePending or {}
+ns._plansBrowseScanUIMilestone = ns._plansBrowseScanUIMilestone or {}
+
 local function PlansBrowseCategoryStoreEmpty(category)
-    local store = WarbandNexus and WarbandNexus.collectionStore
+    if WarbandNexus and WarbandNexus.IsPlansBrowseCategoryStoreEmpty then
+        return WarbandNexus:IsPlansBrowseCategoryStoreEmpty(category)
+    end
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+    local store = db and db.collectionStore
     if not store then return true end
     local tbl = store[category]
     return not tbl or next(tbl) == nil
+end
+
+function ns.RequestPlansBrowseCollectionEnsure(category)
+    if not category or not PLANS_BROWSE_STORE_CATEGORIES[category] then return end
+    if ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading then return end
+    local cs = ns.PlansLoadingState and ns.PlansLoadingState[category]
+    if cs and cs.isLoading then return end
+    if not PlansBrowseCategoryStoreEmpty(category) then
+        ns._plansBrowseCollectionEnsurePending[category] = nil
+        return
+    end
+    if ns._plansBrowseCollectionEnsurePending[category] then return end
+    ns._plansBrowseCollectionEnsurePending[category] = true
+    if ns.ScheduleEnsureCollectionDataDeferred then
+        ns.ScheduleEnsureCollectionDataDeferred()
+    elseif WarbandNexus and WarbandNexus.EnsureCollectionData then
+        WarbandNexus:EnsureCollectionData()
+    end
 end
 
 local function DrawPlansBrowseLoadingCard(parent, yOffset, category, categoryState)
@@ -2934,14 +2990,11 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
     local col = (gridIndex - 1) % 2
 
     local trySuffix = ""
-    if (not isCompletedCard) and browserTryTypes[category] and item.id and self.GetTryCount then
+    if browserTryTypes[category] and item.id and self.ShouldShowTryCountInUI
+        and self:ShouldShowTryCountInUI(category, item.id) and self.GetTryCount then
         local count = self:GetTryCount(category, item.id) or 0
-        local isDrop = self.IsDropSourceCollectible and self:IsDropSourceCollectible(category, item.id)
-        local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(category, item.id)
-        if (isDrop and not isGuaranteed) or count > 0 then
-            local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-            trySuffix = "|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r"
-        end
+        local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+        trySuffix = "|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r"
     end
 
     local summaryLines = ns.UI_BuildBrowseTodoSummaryLines and ns.UI_BuildBrowseTodoSummaryLines(item, category, sources, { maxLines = 2 }) or {}
@@ -3106,7 +3159,8 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         end)
     end
 
-    if (not isCompletedCard) and browserTryTypes[category] and item.id then
+    if browserTryTypes[category] and item.id and self.ShouldShowTryCountInUI
+        and self:ShouldShowTryCountInUI(category, item.id) then
         local tryId, tryName, tryCat = item.id, item.name, category
         local prevMouseDown
         do
@@ -3410,11 +3464,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 return DrawPlansBrowseLoadingCard(parent, yOffset, category, categoryState)
             end
             if PlansBrowseCategoryStoreEmpty(category) then
-                if ns.ScheduleEnsureCollectionDataDeferred then
-                    ns.ScheduleEnsureCollectionDataDeferred()
-                elseif WarbandNexus.EnsureCollectionData then
-                    WarbandNexus:EnsureCollectionData()
-                end
+                ns.RequestPlansBrowseCollectionEnsure(category)
                 return DrawPlansBrowseLoadingCard(parent, yOffset, category, categoryState)
             end
         end

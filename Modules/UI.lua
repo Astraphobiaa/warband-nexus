@@ -3198,19 +3198,31 @@ function WarbandNexus:CreateMainWindow()
     
     -- WN_REPUTATION_* refresh: ReputationUI.lua registers DrawReputationTab (avoid double PopulateContent here)
     
-    -- Plans / To-Do list must redraw immediately after add/remove (800ms POPULATE_COOLDOWN would drop the refresh).
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PLANS_UPDATED, function()
+    -- Plans / To-Do: add/remove/complete need immediate redraw (skip POPULATE_COOLDOWN).
+    -- try_count_set / statistic reseeds can storm during farms — coalesce via debounce + 800ms cooldown.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PLANS_UPDATED, function(_, payload)
         if f and f:IsShown() and f.currentTab == "plans" then
-            SchedulePopulateContent(true)
+            local action = payload and payload.action
+            local tryCountBurst = action == "try_count_set" or action == "statistics_reseeded"
+                or action == "statistics_seeded"
+            local plansCoalesce = tryCountBurst or action == "reminder_changed"
+            if plansCoalesce then
+                SchedulePopulateContent()
+            else
+                SchedulePopulateContent(true)
+            end
         end
     end)
     
-    -- Collection scan complete (plans/collections tab): skip cooldown so scan results show immediately
+    -- Collection scan complete: collections needs immediate paint; plans browse coalesces (avoid redraw loop).
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
         if not f or not f:IsShown() then return end
         local tab = f.currentTab
-        if tab ~= "plans" and tab ~= "collections" then return end
-        SchedulePopulateContent(true)
+        if tab == "collections" then
+            SchedulePopulateContent(true)
+        elseif tab == "plans" then
+            SchedulePopulateContent()
+        end
     end)
     
     -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
@@ -3319,7 +3331,12 @@ function WarbandNexus:CreateMainWindow()
     local function refreshCollection()
         if not f or not f:IsShown() then return end
         if f.currentTab == "collections" or f.currentTab == "plans" or f.currentTab == "stats" then
-            SchedulePopulateContent(true)
+            -- Plans browse: coalesce COLLECTION_UPDATED storms during background scans (skipCooldown rebuild loop).
+            if f.currentTab == "plans" then
+                SchedulePopulateContent()
+            else
+                SchedulePopulateContent(true)
+            end
         elseif f.currentTab == "chars" then
             WarbandNexus:UpdateTabCountBadges("collections")
         end

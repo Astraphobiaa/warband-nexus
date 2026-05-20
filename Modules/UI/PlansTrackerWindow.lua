@@ -985,9 +985,7 @@ local function RefreshTrackerContentImmediate()
             end
 
             local trySuffix = ""
-            local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
-            local idKey = tryCountTypes[plan.type]
-            local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
+            local collectibleID = WarbandNexus.GetPlanCollectibleID and WarbandNexus:GetPlanCollectibleID(plan)
             if collectibleID and WarbandNexus.ShouldShowTryCountInUI and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
                 and WarbandNexus.GetTryCount then
                 local count = WarbandNexus:GetTryCount(plan.type, collectibleID) or 0

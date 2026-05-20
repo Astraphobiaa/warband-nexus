@@ -225,6 +225,25 @@ local function EnsureTriggersStructure(r)
     end
 end
 
+--- True when reminder is already off and has no active triggers (RemovePlanReminder no-op).
+local function IsPlanReminderEffectivelyDisabled(r)
+    if not r then return true end
+    if r.enabled then return false end
+    if r.activeReminders then return false end
+    EnsureTriggersStructure(r)
+    local entries = r.triggers.entries
+    for i = 1, #entries do
+        local e = entries[i]
+        if e and e.enabled ~= false then return false end
+    end
+    if r.onDailyLogin or r.onWeeklyReset or r.onMonthlyLogin then return false end
+    if r.daysBeforeReset and #r.daysBeforeReset > 0 then return false end
+    if r.onZoneEnter or r.onInstanceEnter then return false end
+    if r.instanceReminder then return false end
+    if r.mapIDs and next(r.mapIDs) then return false end
+    return true
+end
+
 --- Merge manual uiMapIDs, optional serialized map hash, and optional plan source/name hints.
 local function CollectZoneMapIDsFromEntry(plan, entry)
     local merged = {}
@@ -510,6 +529,7 @@ function WarbandNexus:RemovePlanReminder(planID)
     if not plan or not plan.reminder then return false end
 
     local r = plan.reminder
+    if IsPlanReminderEffectivelyDisabled(r) then return false end
     r.enabled = false
     r.activeReminders = nil
     r.lastShown = {}

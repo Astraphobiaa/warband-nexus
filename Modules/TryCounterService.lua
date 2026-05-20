@@ -1622,7 +1622,56 @@ function WarbandNexus:GetTryCount(collectibleType, id)
         end
     end
     local count = WarbandNexus.db.global.tryCounts[collectibleType][id]
-    return type(count) == "number" and count or 0
+    local n = type(count) == "number" and count or 0
+    return Fns.MaxTryCountAliasKeys(collectibleType, id, n)
+end
+
+---Highest stored try count across native id, teaching itemID, and journal aliases (plan UI uses mountID).
+---@param collectibleType string
+---@param id number|string
+---@param primary number
+---@return number
+function Fns.MaxTryCountAliasKeys(collectibleType, id, primary)
+    local best = type(primary) == "number" and primary or 0
+    local idNum = tonumber(id)
+    if not idNum or not VALID_TYPES[collectibleType] or not Fns.EnsureDB() then return best end
+    local tbl = WarbandNexus.db.global.tryCounts[collectibleType]
+    if not tbl then return best end
+    local function consider(key)
+        if not key then return end
+        local v = tbl[key]
+        if type(v) == "number" and v > best then best = v end
+    end
+    if collectibleType == "mount" or collectibleType == "pet" then
+        if resolvedIDsReverse then
+            consider(resolvedIDsReverse[idNum])
+        end
+        if collectibleType == "mount" and C_MountJournal then
+            if C_MountJournal.GetMountFromItem then
+                local ok, mid = pcall(C_MountJournal.GetMountFromItem, idNum)
+                if ok and type(mid) == "number" and mid > 0 and mid ~= idNum
+                    and not (issecretvalue and issecretvalue(mid)) then
+                    consider(mid)
+                end
+            end
+            if C_MountJournal.GetMountItemID then
+                local ok, itemID = pcall(C_MountJournal.GetMountItemID, idNum)
+                if ok and type(itemID) == "number" and itemID > 0
+                    and not (issecretvalue and issecretvalue(itemID)) then
+                    consider(itemID)
+                end
+            end
+        elseif collectibleType == "pet" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+            local ok, sid = pcall(function()
+                return select(13, C_PetJournal.GetPetInfoByItemID(idNum))
+            end)
+            if ok and type(sid) == "number" and sid > 0
+                and not (issecretvalue and issecretvalue(sid)) then
+                consider(sid)
+            end
+        end
+    end
+    return best
 end
 
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
@@ -1634,7 +1683,7 @@ function WarbandNexus:SetTryCount(collectibleType, id, count)
     count = tonumber(count)
     if not count or count < 0 then count = 0 end
     WarbandNexus.db.global.tryCounts[collectibleType][id] = count
-    self:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
+    Fns.SchedulePlansTryCountUIUpdate()
 end
 
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
@@ -2001,6 +2050,38 @@ local dropSourceCache = {}
 -- OnTryCounterCollectibleObtained reads from this cache so the notification
 -- shows the correct attempt count instead of 0.
 local pendingPreResetCounts = {}
+-- Coalesce WN_PLANS_UPDATED try_count_set (SetTryCount + ProcessMissedDrops) into one UI refresh burst.
+local plansTryCountNotifyTimer = nil
+local PLANS_TRY_COUNT_NOTIFY_DEBOUNCE = 0.35
+
+---Debounced notify so Plans tab does not run PopulateContent per +1 try during farms.
+function Fns.SchedulePlansTryCountUIUpdate()
+    if not WarbandNexus or not WarbandNexus.SendMessage or not E then return end
+    if plansTryCountNotifyTimer and plansTryCountNotifyTimer.Cancel then
+        plansTryCountNotifyTimer:Cancel()
+        plansTryCountNotifyTimer = nil
+    end
+    local delay = PLANS_TRY_COUNT_NOTIFY_DEBOUNCE
+    if type(delay) ~= "number" or delay <= 0 then delay = 0.35 end
+    if C_Timer and C_Timer.NewTimer then
+        plansTryCountNotifyTimer = C_Timer.NewTimer(delay, function()
+            plansTryCountNotifyTimer = nil
+            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
+        end)
+        return
+    end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(delay, function()
+            WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
+        end)
+        return
+    end
+    WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
+end
+
+-- Drops found on this kill (loot/chat/journal) — blocks deferred ProcessMissedDrops after reset.
+local dropObtainedThisKill = {}
+local DROP_OBTAINED_KILL_TTL = 45
 
 ---Lookup helper: check index for both the raw id (may be mountID/speciesID)
 ---and resolved itemIDs. Uses a session cache to avoid repeat lookups.
@@ -2853,6 +2934,54 @@ function Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
     return preResetCount - 1
 end
 
+---Mark a drop as obtained on the current kill so ENCOUNTER_END / LOOT_CLOSED miss paths do not +1 after reset.
+---@param tcType string
+---@param tryKey string|number
+---@param drop table|nil
+function Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
+    if not tcType or not tryKey then return end
+    local now = GetTime()
+    local function mark(k)
+        if k == nil then return end
+        dropObtainedThisKill[tcType .. "\0" .. tostring(k)] = now
+    end
+    mark(tryKey)
+    if drop and type(drop) == "table" and drop.itemID then
+        mark(drop.itemID)
+    end
+    if tcType == "mount" and type(tryKey) == "number" and resolvedIDsReverse then
+        local rev = resolvedIDsReverse[tryKey]
+        if rev then mark(rev) end
+    end
+end
+
+---@param tcType string
+---@param tryKey string|number
+---@param drop table|nil
+---@return boolean
+function Fns.IsDropObtainedThisKill(tcType, tryKey, drop)
+    if not tcType or not tryKey then return false end
+    local now = GetTime()
+    local function recent(k)
+        if k == nil then return false end
+        local t = dropObtainedThisKill[tcType .. "\0" .. tostring(k)]
+        return t and (now - t) < DROP_OBTAINED_KILL_TTL
+    end
+    if recent(tryKey) then return true end
+    if drop and drop.itemID and recent(drop.itemID) then return true end
+    return false
+end
+
+---True when a found/obtain path already handled this drop (prevents "1 attempts" after success chat).
+---@param drop table
+---@return boolean
+function Fns.ShouldSkipMissIncrementForDrop(drop)
+    if not drop then return false end
+    local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+    if not tryKey then return false end
+    return Fns.IsDropObtainedThisKill(tcType, tryKey, drop)
+end
+
 ---Sum GetStatistic values for a list of statistic IDs (LFR+N+H+M columns, deduped upstream).
 ---@param statIds table|nil
 ---@return number
@@ -3089,15 +3218,14 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
 
     -- Drop entries queued before deferred run may now resolve as collected (journal/spell).
     -- Repeatable farm mounts stay eligible even when owned.
-    -- NOTE: We intentionally do NOT filter by `IsDropAlreadyCounted` here. The mark is keyed on
-    -- (tcType, tryKey), which is shared across many open-world rares that drop the same mount —
-    -- filtering here would silently skip every rare farm kill after the first. Same-kill dedup
-    -- (ENCOUNTER_END + LOOT_OPENED race for one boss) is handled by the source-key check in
-    -- ProcessNPCLoot, which is per-corpse-GUID and naturally distinguishes consecutive kills.
+    -- Same-kill dedup: skip drops already found this kill (dropObtainedThisKill only).
+    -- Do not reuse IsDropAlreadyCounted (dropDelayedReseeded) here — that mark is per tryKey and
+    -- shared across open-world rares that drop the same mount; filtering on it would break farms.
     local filtered = {}
     for i = 1, #drops do
         local d = drops[i]
-        if d and (d.repeatable or not Fns.IsCollectibleCollected(d)) then
+        if d and not Fns.ShouldSkipMissIncrementForDrop(d)
+            and (d.repeatable or not Fns.IsCollectibleCollected(d)) then
             filtered[#filtered + 1] = d
         end
     end
@@ -3248,9 +3376,7 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
                 end
             end
         end
-        if WN.SendMessage then
-            WN:SendMessage(E.PLANS_UPDATED, { action = "try_count_set" })
-        end
+        Fns.SchedulePlansTryCountUIUpdate()
     end)
 end
 
@@ -4755,6 +4881,7 @@ function Fns.HandleNewCollectibleAdded(tcType, collectibleID)
     for i = 1, #candidateKeys do
         local key = candidateKeys[i]
         if Fns.IsDropAlreadyCounted(tcType, key) then
+            Fns.MarkDropObtainedThisKill(tcType, key, nil)
             local preResetCount = WarbandNexus:GetTryCount(tcType, key) or 0
             local adjusted = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, key)
             local L = ns.L
@@ -4846,6 +4973,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     if repDrop then
         local tryKey = Fns.GetTryCountKey(repDrop)
         if tryKey then
+            Fns.MarkDropObtainedThisKill(repDrop.type, tryKey, repDrop)
             local preResetCount = self:GetTryCount(repDrop.type, tryKey)
             self:ResetTryCount(repDrop.type, tryKey)
             lastTryCountSourceKey = "item_" .. tostring(itemID)
@@ -4934,6 +5062,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if not foundDrop.repeatable and foundDrop.type == "item" then Fns.MarkItemObtained(foundDrop.itemID) end
                     local tcType, tryKey = Fns.GetTryCountTypeAndKey(foundDrop)
                     if tryKey then
+                        Fns.MarkDropObtainedThisKill(tcType, tryKey, foundDrop)
                         local preResetCount = self:GetTryCount(tcType, tryKey)
                         preResetCount = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
                         self:ResetTryCount(tcType, tryKey)
@@ -5015,6 +5144,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                             if not foundDrop.repeatable and foundDrop.type == "item" then Fns.MarkItemObtained(foundDrop.itemID) end
                             local tcType, tryKey = Fns.GetTryCountTypeAndKey(foundDrop)
                             if tryKey then
+                                Fns.MarkDropObtainedThisKill(tcType, tryKey, foundDrop)
                                 local preResetCount = self:GetTryCount(tcType, tryKey)
                                 preResetCount = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
                                 self:ResetTryCount(tcType, tryKey)
@@ -5068,6 +5198,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if not caughtDrop.repeatable and caughtDrop.type == "item" then Fns.MarkItemObtained(caughtDrop.itemID) end
                     local tcType, tryKey = Fns.GetTryCountTypeAndKey(caughtDrop)
                     if tryKey then
+                        Fns.MarkDropObtainedThisKill(tcType, tryKey, caughtDrop)
                         local preResetCount = self:GetTryCount(tcType, tryKey)
                         self:ResetTryCount(tcType, tryKey)
                         lastTryCountSourceKey = "item_" .. tostring(itemID)
@@ -6138,6 +6269,7 @@ function Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops)
         if drop and drop.repeatable and found[drop.itemID] then
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
             if tryKey then
+                Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = WarbandNexus:GetTryCount(tcType, tryKey)
                 preResetCount = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
                 WarbandNexus:ResetTryCount(tcType, tryKey)
@@ -6173,6 +6305,7 @@ function Fns.ApplyBossSlotOutcomeFoundHandlers(trackable, found, drops)
             if drop.type == "item" then Fns.MarkItemObtained(drop.itemID) end
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
             if tryKey then
+                Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local currentCount = WarbandNexus:GetTryCount(tcType, tryKey)
                 currentCount = Fns.AdjustPreResetForDelayedReseed(currentCount, tcType, tryKey)
                 local cacheKey = tcType .. "\0" .. tostring(tryKey)
@@ -6282,7 +6415,7 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self)
     local missed = {}
     for mi = 1, #trackable do
         local d = trackable[mi]
-        if d and not found[d.itemID] then
+        if d and not found[d.itemID] and not Fns.ShouldSkipMissIncrementForDrop(d) then
             missed[#missed + 1] = d
         end
     end
@@ -6548,6 +6681,7 @@ function WarbandNexus:ProcessNPCLoot()
         if drop.repeatable and found[drop.itemID] then
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
             if tryKey then
+                Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = WarbandNexus:GetTryCount(tcType, tryKey)
                 preResetCount = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
                 WarbandNexus:ResetTryCount(tcType, tryKey)
@@ -6585,6 +6719,7 @@ function WarbandNexus:ProcessNPCLoot()
             if drop.type == "item" then Fns.MarkItemObtained(drop.itemID) end
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
             if tryKey then
+                Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local currentCount = WarbandNexus:GetTryCount(tcType, tryKey)
                 currentCount = Fns.AdjustPreResetForDelayedReseed(currentCount, tcType, tryKey)
                 -- Always cache (even when 0 = first try) so BoP auto-collect events
@@ -6642,7 +6777,10 @@ function WarbandNexus:ProcessNPCLoot()
     -- Build increment list (drops NOT found in loot).
     local dropsToIncrement = {}
     for i = 1, #trackable do
-        if not found[trackable[i].itemID] then dropsToIncrement[#dropsToIncrement + 1] = trackable[i] end
+        local d = trackable[i]
+        if not found[d.itemID] and not Fns.ShouldSkipMissIncrementForDrop(d) then
+            dropsToIncrement[#dropsToIncrement + 1] = d
+        end
     end
 
     -- Merged AoE loot: count distinct creature sources. tableMult uses Lua table identity on npcDropDB
@@ -6751,6 +6889,7 @@ function WarbandNexus:ProcessFishingLoot()
         if drop.repeatable and found[drop.itemID] then
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
             if tryKey then
+                Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = WarbandNexus:GetTryCount(tcType, tryKey)
                 WarbandNexus:ResetTryCount(tcType, tryKey)
                 
@@ -6789,6 +6928,7 @@ function WarbandNexus:ProcessFishingLoot()
             if drop.type == "item" then Fns.MarkItemObtained(drop.itemID) end
             local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
             if tryKey then
+                Fns.MarkDropObtainedThisKill(tcType, tryKey, drop)
                 local preResetCount = WarbandNexus:GetTryCount(tcType, tryKey)
                 WarbandNexus:ResetTryCount(tcType, tryKey)
                 local cacheKey = tcType .. "\0" .. tostring(tryKey)
@@ -6816,8 +6956,9 @@ function WarbandNexus:ProcessFishingLoot()
     -- Find missed drops (not in loot) -> increment try count
     local missed = {}
     for i = 1, #trackable do
-        if not found[trackable[i].itemID] then
-            missed[#missed + 1] = trackable[i]
+        local d = trackable[i]
+        if not found[d.itemID] and not Fns.ShouldSkipMissIncrementForDrop(d) then
+            missed[#missed + 1] = d
         end
     end
 

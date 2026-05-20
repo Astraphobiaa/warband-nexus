@@ -1132,9 +1132,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     end
 
     local Factory = ns.UI.Factory
-    local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "sourceID" }
-    local idKey = tryCountTypes[plan.type]
-    local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.illusionID))
+    local collectibleID = WarbandNexus.GetPlanCollectibleID and WarbandNexus:GetPlanCollectibleID(plan)
     if collectibleID and Factory and Factory.CreateTryCountClickable and WarbandNexus then
         local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name
         local row = card.tryCountClickable

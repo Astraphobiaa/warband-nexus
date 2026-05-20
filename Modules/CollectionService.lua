@@ -201,6 +201,15 @@ function WarbandNexus:IsCollectionEnsureDataComplete()
     return IsCollectionEnsureDataComplete(self)
 end
 
+--- Plans browse: true when collectionStore has no rows for mount/pet/toy/illusion/title yet.
+---@param category string
+---@return boolean
+function WarbandNexus:IsPlansBrowseCategoryStoreEmpty(category)
+    if not category then return true end
+    local tbl = collectionStore[category]
+    return not tbl or next(tbl) == nil
+end
+
 -- collectionCache: deprecated; GetUncollected* artık collectionStore'dan filtreler. ScanCollection hâlâ uncollected yazıyor (geçiş).
 local collectionCache = {
     owned = { mounts = {}, pets = {}, toys = {} },
@@ -4999,8 +5008,10 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
         return results
     end
 
-    -- Store empty: trigger background data build so next draw has results
-    if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+    -- Store empty: one deferred ensure per category (Plans browse PopulateContent loop guard).
+    if ns.RequestPlansBrowseCollectionEnsure then
+        ns.RequestPlansBrowseCollectionEnsure("mount")
+    elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
         ScheduleEnsureCollectionDataDeferred()
     end
     return {}
@@ -5112,7 +5123,9 @@ function WarbandNexus:GetCollectedMounts(searchText, limit)
 
     local store = collectionStore.mount
     if not store or next(store) == nil then
-        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+        if ns.RequestPlansBrowseCollectionEnsure then
+            ns.RequestPlansBrowseCollectionEnsure("mount")
+        elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
             ScheduleEnsureCollectionDataDeferred()
         end
         return {}
@@ -5166,7 +5179,9 @@ function WarbandNexus:GetCollectedPets(searchText, limit)
 
     local store = collectionStore.pet
     if not store or next(store) == nil then
-        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+        if ns.RequestPlansBrowseCollectionEnsure then
+            ns.RequestPlansBrowseCollectionEnsure("pet")
+        elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
             ScheduleEnsureCollectionDataDeferred()
         end
         return {}
@@ -5209,7 +5224,9 @@ function WarbandNexus:GetCollectedToys(searchText, limit)
 
     local store = collectionStore.toy
     if not store or next(store) == nil then
-        if self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+        if ns.RequestPlansBrowseCollectionEnsure then
+            ns.RequestPlansBrowseCollectionEnsure("toy")
+        elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
             ScheduleEnsureCollectionDataDeferred()
         end
         return {}
