@@ -3,7 +3,7 @@
     Draggable button showing Great Vault status across all characters.
     - Hover: compact list of ready/pending characters
     - Click: full table view (Name | iLvl | Raid | Dungeon | World | Status) with column separators
-    - Row hover: tooltip showing iLvl reward per vault slot
+    - Row hover: readable vault summary per character (slot iLvl / progress text)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -227,6 +227,7 @@ local function GetEnabledCategoryDefs()
     local width = settings.showRewardProgress and settings.showRewardItemLevel and COL_REWARD_PROGRESS
         or (settings.showRewardProgress and COL_PROGRESS)
         or (settings.showRewardItemLevel and COL_REWARD_ILVL or nil)
+        or ns.ResolveVaultTrackerColumnWidth(settings.showRewardProgress)
     local defs = {}
     if columns.raids ~= false then
         table.insert(defs, { key="raids", width=width or COL_RAID, label="Raid", icon=TRACK_ICONS.raids, tooltip="Raid" })
@@ -605,19 +606,101 @@ local function FormatRewardIlvl(ilvl, category)
     return "|cffd4af37" .. ilvl .. "|r"
 end
 
-local function SlotSymbols(slots, category)
-    local settings = GetSettings()
-    local parts = {}
-    local progress, nextThreshold, maxThreshold = 0, nil, 0
+--- Build SlotSymbols-shaped slot rows from great-vault activity list (PvE tracker / grid).
+function ns.VaultSlotsFromActivityList(activityList, slotCount, typeName)
+    slotCount = slotCount or 3
+    if slotCount < 1 then slotCount = 3 end
+    local catKey = (typeName == "Raid" and "raids")
+        or (typeName == "M+" and "mythicPlus")
+        or (typeName == "World" and "world")
+        or typeName
+    local apiType = CAT_TO_TYPE[catKey] or typeName
+    local slots = {}
+    for i = 1, slotCount do
+        local a = activityList and activityList[i]
+        local th = tonumber(a and a.threshold) or 0
+        local prog = tonumber(a and a.progress) or 0
+        slots[i] = {
+            complete = th > 0 and prog >= th,
+            progress = prog,
+            threshold = th,
+            ilvl = a and a.rewardItemLevel or 0,
+            canUpgrade = SlotShowsUpgrade(a, apiType),
+        }
+    end
+    return slots, catKey
+end
+
+--- Remaining weekly events to finish one vault activity slot (nil if complete or unknown).
+function ns.GetVaultActivityRemaining(activity)
+    if not activity then return nil end
+    local th = tonumber(activity.threshold) or 0
+    local prog = tonumber(activity.progress) or 0
+    if th <= 0 or prog >= th then return nil end
+    return th - prog
+end
+
+--- In-progress slot center text: `3/8` by default, `5` when Shift is held.
+function ns.FormatVaultSlotProgressText(activity, shiftHeld)
+    if not activity then return nil end
+    local th = tonumber(activity.threshold) or 0
+    local prog = tonumber(activity.progress) or 0
+    if th <= 0 or prog >= th then return nil end
+    local rem = th - prog
+    if shiftHeld then
+        return "|cffffcc00" .. rem .. "|r"
+    end
+    return string.format("|cffffcc00%d|r|cff666666/|r|cff888888%d|r", prog, th)
+end
+
+--- Tracker column width: icons only, progress suffix `(3/8)`, or compact Shift remaining digit(s).
+function ns.ResolveVaultTrackerColumnWidth(showRewardProgress)
+    if showRewardProgress then
+        return COL_PROGRESS
+    end
+    return COL_RAID
+end
+
+--- Raid / Dungeon / World tracker column (not expanded vault cards).
+--- Normal: slot glyphs; optional `(3/8)` when showRewardProgress.
+--- Shift: only remaining count toward the next unlock (e.g. `5`), no icons.
+function ns.VaultFormatCategoryColumn(slots, category, opts)
+    opts = opts or {}
+    local shiftHeld = opts.shiftHeld == true
+    local showIlvl = opts.showRewardItemLevel == true
+    local showProg = opts.showRewardProgress == true
+    if opts.vaultLootClaimable then
+        local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+        return "|cff44ff44" .. readyLabel .. "|r"
+    end
+
+    local nextProg, nextThresh
     for i = 1, 3 do
         local slot = slots[i]
-        progress = math.max(progress, tonumber(slot.progress) or 0)
-        maxThreshold = math.max(maxThreshold, tonumber(slot.threshold) or 0)
-        if not slot.complete and slot.threshold and slot.threshold > 0 and (not nextThreshold or slot.threshold < nextThreshold) then
-            nextThreshold = slot.threshold
+        if slot and not slot.complete then
+            local th = tonumber(slot.threshold) or 0
+            local prog = tonumber(slot.progress) or 0
+            if th > 0 and (not nextThresh or th < nextThresh) then
+                nextThresh = th
+                nextProg = prog
+            end
         end
-        if slot.complete then
-            if settings.showRewardItemLevel then
+    end
+
+    if shiftHeld and nextThresh and nextThresh > 0 then
+        local rem = nextThresh - math.min(tonumber(nextProg) or 0, nextThresh)
+        if rem > 0 then
+            return "|cffffcc00" .. rem .. "|r"
+        end
+    end
+
+    local parts = {}
+    for i = 1, 3 do
+        local slot = slots[i]
+        if not slot then
+            parts[i] = CROSS
+        elseif slot.complete then
+            if showIlvl and (tonumber(slot.ilvl) or 0) > 0 then
                 parts[i] = FormatRewardIlvl(slot.ilvl, category)
             elseif slot.canUpgrade then
                 parts[i] = UPARROW
@@ -628,14 +711,97 @@ local function SlotSymbols(slots, category)
             parts[i] = CROSS
         end
     end
+
     local text = table.concat(parts, " ")
-    if settings.showRewardProgress then
-        local target = nextThreshold or maxThreshold
-        if target and target > 0 then
-            text = text .. " |cffaaaaaa(" .. math.min(progress, target) .. "/" .. target .. ")|r"
-        end
+    if showProg and nextThresh and nextThresh > 0 then
+        local progShown = math.min(tonumber(nextProg) or 0, nextThresh)
+        text = text .. " |cffaaaaaa(" .. progShown .. "/" .. nextThresh .. ")|r"
     end
     return text
+end
+
+local _vaultSlotProgressBindings = setmetatable({}, { __mode = "k" })
+local _vaultColumnBindings = setmetatable({}, { __mode = "k" })
+local _vaultShiftWatcher
+
+local function RefreshVaultShiftBindings()
+    local shiftHeld = IsShiftKeyDown and IsShiftKeyDown() or false
+    for fs, activity in pairs(_vaultSlotProgressBindings) do
+        if fs and fs.SetText then
+            local txt = ns.FormatVaultSlotProgressText(activity, shiftHeld)
+            if txt then
+                fs:SetText(txt)
+            end
+        end
+    end
+    for fs, data in pairs(_vaultColumnBindings) do
+        if fs and fs.SetText and data and data.slots then
+            fs:SetText(ns.VaultFormatCategoryColumn(data.slots, data.category, {
+                shiftHeld = shiftHeld,
+                showRewardProgress = data.showRewardProgress,
+                showRewardItemLevel = data.showRewardItemLevel,
+                vaultLootClaimable = data.vaultLootClaimable,
+            }))
+        end
+    end
+end
+
+function ns.RefreshVaultShiftAwareDisplays()
+    RefreshVaultShiftBindings()
+end
+
+local function EnsureVaultShiftWatcher()
+    if _vaultShiftWatcher then return end
+    _vaultShiftWatcher = CreateFrame("Frame")
+    _vaultShiftWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
+    _vaultShiftWatcher:SetScript("OnEvent", function(_, _, key)
+        if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+        RefreshVaultShiftBindings()
+    end)
+end
+
+function ns.UI_BindVaultSlotProgress(fs, activity)
+    if not fs or not fs.SetText then return end
+    EnsureVaultShiftWatcher()
+    _vaultSlotProgressBindings[fs] = activity
+    local txt = ns.FormatVaultSlotProgressText(activity, IsShiftKeyDown and IsShiftKeyDown())
+    if txt then
+        fs:SetText(txt)
+    end
+end
+
+function ns.UI_UnbindVaultSlotProgress(fs)
+    if fs then
+        _vaultSlotProgressBindings[fs] = nil
+    end
+end
+
+function ns.UI_BindVaultColumnDisplay(fs, bindData)
+    if not fs or not fs.SetText or not bindData then return end
+    EnsureVaultShiftWatcher()
+    _vaultColumnBindings[fs] = bindData
+    fs:SetText(ns.VaultFormatCategoryColumn(bindData.slots, bindData.category, {
+        shiftHeld = IsShiftKeyDown and IsShiftKeyDown(),
+        showRewardProgress = bindData.showRewardProgress,
+        showRewardItemLevel = bindData.showRewardItemLevel,
+        vaultLootClaimable = bindData.vaultLootClaimable,
+    }))
+end
+
+function ns.UI_UnbindVaultColumnDisplay(fs)
+    if fs then
+        _vaultColumnBindings[fs] = nil
+    end
+end
+
+local function SlotSymbols(slots, category, vaultLootClaimable)
+    local settings = GetSettings()
+    return ns.VaultFormatCategoryColumn(slots, category, {
+        shiftHeld = IsShiftKeyDown and IsShiftKeyDown(),
+        showRewardProgress = settings.showRewardProgress,
+        showRewardItemLevel = settings.showRewardItemLevel,
+        vaultLootClaimable = vaultLootClaimable == true,
+    })
 end
 
 local function BuildCharList()
@@ -724,6 +890,9 @@ local StartSavedInstancesLiveRefresh
 local StopSavedInstancesLiveRefresh
 local WNTooltipShow
 local WNTooltipHide
+local EAL
+local BuildVaultCharacterTooltipLines
+local FormatSavedResetShort
 
 local function ReleaseSavedInstanceRows()
     if not S.savedRows then
@@ -1040,7 +1209,8 @@ local function BuildTableFrame()
         HCell(nil,      hx, COL_BOUNTY,  true,  TRACK_ICONS.bounty, "Trovehunter's Bounty", nil, "item", BOUNTY_ITEM_ID) ; hx = hx + COL_BOUNTY
     end
     if columns.gildedStash == true then
-        HCell(nil,      hx, COL_STASH,   true,  TRACK_ICONS.gildedStash, "Gilded Stashes", "Weekly gilded stashes claimed.") ; hx = hx + COL_STASH
+        HCell(nil,      hx, COL_STASH,   true,  TRACK_ICONS.gildedStash, EAL("EA_TOOLTIP_STASH_LABEL", "Gilded Stashes"),
+            EAL("EA_TOOLTIP_STASH_HEADER_DESC", "Weekly gilded stash claims on this character.")) ; hx = hx + COL_STASH
     end
     if columns.voidcore ~= false then
         HCell(nil,      hx, COL_VOIDCORE,true,  TRACK_ICONS.voidcore, "Nebulous Voidcore", nil, "currency", VOIDCORE_ID) ; hx = hx + COL_VOIDCORE
@@ -1186,7 +1356,18 @@ RefreshTable = function()
             fs:SetSize(cat.width, ROW_H)
             fs:SetJustifyH("CENTER")
             fs:SetJustifyV("MIDDLE")
-            fs:SetText(SlotSymbols(slots, cat.key))
+            local settings = GetSettings()
+            if ns.UI_BindVaultColumnDisplay then
+                ns.UI_BindVaultColumnDisplay(fs, {
+                    slots = slots,
+                    category = cat.key,
+                    showRewardProgress = settings.showRewardProgress,
+                    showRewardItemLevel = settings.showRewardItemLevel,
+                    vaultLootClaimable = e.isReady == true,
+                })
+            else
+                fs:SetText(SlotSymbols(slots, cat.key, e.isReady))
+            end
             x = x + cat.width
         end
 
@@ -1274,93 +1455,11 @@ RefreshTable = function()
             ns.UI_SyncGridColumnDividers(row, vaultColumnDividerXs, ROW_H)
         end
 
-        -- Row tooltip: iLvl per slot + bounty status (themed)
+        -- Row tooltip: readable vault summary (table cells keep icons)
         row:SetScript("OnEnter", function(self)
-            local ilvlLabel = e.itemLevel > 0
-                and ("  |cffd4af37" .. string.format("%.0f", e.itemLevel) .. " iLvl|r") or ""
-            local lines = {}
-            lines[#lines + 1] = { text = FormatCharacterName(e) .. ilvlLabel }
+            local lines = BuildVaultCharacterTooltipLines(e.charKey, e)
             lines[#lines + 1] = { text = " " }
-
-            for _, cat in ipairs(catDefs) do
-                local slots = allSlots[cat.key]
-                local parts = {}
-                for si = 1, 3 do
-                    local s = slots[si]
-                    if s.complete then
-                        if s.ilvl > 0 then parts[si] = FormatRewardIlvl(s.ilvl, cat.key)
-                        elseif s.canUpgrade then parts[si] = UPARROW
-                        else parts[si] = CHECK end
-                    else
-                        parts[si] = CROSS
-                    end
-                end
-                lines[#lines + 1] = {
-                    left = cat.label, right = table.concat(parts, "  "),
-                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
-                }
-            end
-
-            if columns.bounty ~= false then
-                local bountyLabel = b == nil and DASH
-                    or (b and CHECK .. " |cff33dd33Collected|r" or "|cffdd3333Not collected|r")
-                lines[#lines + 1] = {
-                    left = "|T1064187:14:14:0:0|t Trovehunter's Bounty",
-                    right = bountyLabel,
-                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
-                }
-            end
-            if columns.gildedStash == true then
-                local stash = e.gildedStash
-                if stash then
-                    local stashLabel = stash.unknown and ("|cffaaaaaa?/" .. (stash.max or 4) .. "|r")
-                        or ("|cffd4af37" .. (stash.current or 0) .. "/" .. (stash.max or 4) .. " claimed|r")
-                    lines[#lines + 1] = {
-                        left = "|T" .. TRACK_ICONS.gildedStash .. ":14:14:0:0|t Gilded Stashes",
-                        right = stashLabel,
-                        leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
-                    }
-                end
-            end
-            if columns.voidcore ~= false and e.voidcore then
-                local vc2 = e.voidcore
-                local sm = vc2.seasonMax or 0
-                local vcLabel
-                if sm > 0 then
-                    vcLabel = (vc2.isCapped and "|cffdd3333" or "|cffd4af37")
-                        .. vc2.progress .. "/" .. sm
-                        .. (vc2.isCapped and " (Capped)|r" or "|r")
-                        .. (vc2.quantity > 0 and ("|cffaaaaaa  (" .. vc2.quantity .. " held)|r") or "")
-                else
-                    vcLabel = "|cffd4af37" .. vc2.quantity .. " held|r"
-                end
-                lines[#lines + 1] = {
-                    left = "|T7658128:14:14:0:0|t Nebulous Voidcore",
-                    right = vcLabel,
-                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
-                }
-            end
-            if columns.manaflux == true and e.manaflux then
-                lines[#lines + 1] = {
-                    left = "|T" .. GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux) .. ":14:14:0:0|t Dawnlight Manaflux",
-                    right = "|cffd4af37" .. (e.manaflux.quantity or 0) .. " held|r",
-                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 1, 1}
-                }
-            end
-
-            lines[#lines + 1] = { text = " " }
-            local readyMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
-            local pendingMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
-            local slotsReadyMsg = (ns.L and ns.L["VAULT_TRACKER_STATUS_SLOTS_READY"]) or "Slots Ready"
-            if e.isReady then
-                lines[#lines + 1] = { text = readyMsg, color = {0.27, 1, 0.27} }
-            elseif (e.slots or 0) > 0 then
-                lines[#lines + 1] = { text = string.format("%s (%d)", slotsReadyMsg, e.slots), color = {0.4, 0.85, 1} }
-            else
-                lines[#lines + 1] = { text = pendingMsg, color = {1, 0.84, 0} }
-            end
-            lines[#lines + 1] = { text = "|cff888888[Click] Open PvE tab|r" }
-
+            lines[#lines + 1] = { text = EAL("EA_TOOLTIP_OPEN_PVE", "Left-click: open PvE tab"), color = {0.55, 0.55, 0.55} }
             WNTooltipShow(self, { type = "custom", lines = lines, anchor = "ANCHOR_RIGHT" })
         end)
         row:SetScript("OnLeave", function() WNTooltipHide() end)
@@ -1453,6 +1552,186 @@ UpdateBadge = function()
 end
 
 -- ============================================================================
+-- Easy Access tooltip copy (clear text; table cells keep icons)
+-- ============================================================================
+EAL = function(key, fallback, ...)
+    local fmt = (ns.L and ns.L[key]) or fallback
+    if select("#", ...) > 0 then
+        return string.format(fmt, ...)
+    end
+    return fmt
+end
+
+local function FormatVaultSlotShort(slot, category)
+    if not slot then return "-" end
+    if slot.complete then
+        local ilvl = tonumber(slot.ilvl) or 0
+        if ilvl > 0 then
+            if category == "world" then
+                return ColorByItemQuality(ilvl, WORLD_REWARD_QUALITY_BY_ILVL[ilvl])
+            end
+            return "|cffd4af37" .. ilvl .. "|r"
+        end
+        if slot.canUpgrade then
+            return EAL("EA_TOOLTIP_SLOT_UPGRADE_SHORT", "Upg")
+        end
+        return EAL("EA_TOOLTIP_SLOT_DONE_SHORT", "Done")
+    end
+    local thresh = tonumber(slot.threshold) or 0
+    if thresh > 0 then
+        local prog = math.min(tonumber(slot.progress) or 0, thresh)
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            return "|cffffcc00" .. math.max(thresh - prog, 0) .. "|r"
+        end
+        return string.format("%d/%d", prog, thresh)
+    end
+    return "-"
+end
+
+local function FormatVaultCategorySummary(charKey, categoryKey, label)
+    local slots = GetSlotData(charKey, categoryKey)
+    return string.format(
+        "%s: %s",
+        label,
+        table.concat({
+            FormatVaultSlotShort(slots[1], categoryKey),
+            FormatVaultSlotShort(slots[2], categoryKey),
+            FormatVaultSlotShort(slots[3], categoryKey),
+        }, "  |  ")
+    )
+end
+
+local function AppendVaultOptionalLines(lines, charKey, entry, columns)
+    columns = columns or (GetSettings().columns or {})
+    local bounty = entry and entry.bounty
+    if bounty == nil then bounty = GetBountyStatus(charKey) end
+    if columns.bounty ~= false and bounty ~= nil then
+        lines[#lines + 1] = {
+            left = EAL("EA_TOOLTIP_BOUNTY_LABEL", "Trovehunter's Bounty"),
+            right = bounty and EAL("EA_TOOLTIP_BOUNTY_DONE", "Collected") or EAL("EA_TOOLTIP_BOUNTY_TODO", "Not collected"),
+            leftColor = {0.75, 0.75, 0.75},
+            rightColor = bounty and {0.3, 0.9, 0.35} or {0.9, 0.35, 0.35},
+        }
+    end
+    local stash = (entry and entry.gildedStash) or GetGildedStashData(charKey)
+    if columns.gildedStash == true and stash then
+        local stashRight
+        if stash.unknown then
+            stashRight = EAL("EA_TOOLTIP_STASH_UNKNOWN", "Unknown")
+        else
+            stashRight = EAL("EA_TOOLTIP_STASH_CLAIMED", "%d/%d claimed", stash.current or 0, stash.max or 4)
+        end
+        lines[#lines + 1] = {
+            left = EAL("EA_TOOLTIP_STASH_LABEL", "Gilded Stashes"),
+            right = stashRight,
+            leftColor = {0.75, 0.75, 0.75},
+            rightColor = {1, 1, 1},
+        }
+    end
+    local vc = (entry and entry.voidcore) or GetVoidcoreData(charKey)
+    if columns.voidcore ~= false and vc then
+        local vcRight
+        local sm = vc.seasonMax or 0
+        if sm > 0 then
+            local cap = vc.isCapped and EAL("EA_TOOLTIP_VOIDCORE_CAPPED_SUFFIX", " (capped)") or ""
+            vcRight = string.format("%d/%d%s", vc.progress or 0, sm, cap)
+        else
+            vcRight = EAL("EA_TOOLTIP_VOIDCORE_HELD", "%d held", vc.quantity or 0)
+        end
+        lines[#lines + 1] = {
+            left = EAL("EA_TOOLTIP_VOIDCORE_LABEL", "Nebulous Voidcore"),
+            right = vcRight,
+            leftColor = {0.75, 0.75, 0.75},
+            rightColor = {1, 1, 1},
+        }
+    end
+    local mf = (entry and entry.manaflux) or GetManafluxData(charKey)
+    if columns.manaflux == true and mf then
+        lines[#lines + 1] = {
+            left = EAL("EA_TOOLTIP_MANAFLUX_LABEL", "Dawnlight Manaflux"),
+            right = EAL("EA_TOOLTIP_MANAFLUX_HELD", "%d held", mf.quantity or 0),
+            leftColor = {0.75, 0.75, 0.75},
+            rightColor = {1, 1, 1},
+        }
+    end
+end
+
+local function AppendVaultStatusLine(lines, isReady, slotsEarned)
+    lines[#lines + 1] = { text = " " }
+    if isReady then
+        lines[#lines + 1] = {
+            text = EAL("VAULT_TRACKER_STATUS_READY_CLAIM", "Ready to Claim"),
+            color = {0.27, 1, 0.27},
+        }
+    elseif (slotsEarned or 0) > 0 then
+        lines[#lines + 1] = {
+            text = EAL("EA_TOOLTIP_STATUS_SLOTS_EARNED", "%d slot(s) earned - claim at the Great Vault", slotsEarned),
+            color = {0.4, 0.85, 1},
+        }
+    else
+        lines[#lines + 1] = {
+            text = EAL("EA_TOOLTIP_STATUS_IN_PROGRESS", "In progress this week"),
+            color = {1, 0.84, 0},
+        }
+    end
+end
+
+BuildVaultCharacterTooltipLines = function(charKey, entry)
+    local lines = {}
+    local chars = GetCharacters()
+    local charRow = chars and chars[charKey]
+    local name = (entry and entry.name) or (charRow and charRow.name) or charKey
+    local classFile = (entry and entry.classFile) or (charRow and charRow.classFile) or "WARRIOR"
+    local ilvl = (entry and entry.itemLevel) or (charRow and charRow.itemLevel) or 0
+    local nameLine = "|cff" .. GetClassHex(classFile) .. name .. "|r"
+    if ilvl and ilvl > 0 then
+        nameLine = nameLine .. "  |cffd4af37" .. string.format("%.0f", ilvl) .. " iLvl|r"
+    end
+    lines[#lines + 1] = { text = nameLine }
+    lines[#lines + 1] = { text = " " }
+
+    local catLabels = {
+        raids = EAL("EA_TOOLTIP_CAT_RAID", "Raid"),
+        mythicPlus = EAL("EA_TOOLTIP_CAT_DUNGEON", "Dungeon"),
+        world = EAL("EA_TOOLTIP_CAT_WORLD", "World"),
+    }
+    for _, key in ipairs({ "raids", "mythicPlus", "world" }) do
+        lines[#lines + 1] = { text = FormatVaultCategorySummary(charKey, key, catLabels[key]), color = {0.88, 0.88, 0.9} }
+    end
+
+    AppendVaultOptionalLines(lines, charKey, entry, GetSettings().columns or {})
+
+    local pveCache = GetPveCache()
+    local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
+    local rewardData = rewards and rewards[charKey]
+    local isReady = (rewardData and rewardData.hasAvailableRewards) or false
+    if charKey == GetCurrentCharKey() and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards
+        and C_WeeklyRewards.HasAvailableRewards() then
+        isReady = true
+    end
+    if not isReady and (CountReadySlots(charKey) or 0) > 0 and VaultResetCrossedFor(charKey) then
+        isReady = true
+    end
+    local slotsEarned = entry and entry.slots or CountReadySlots(charKey)
+    AppendVaultStatusLine(lines, isReady, slotsEarned)
+    return lines
+end
+
+local function FormatWarbandSummaryStatus(entry)
+    if entry.isReady then
+        return EAL("EA_TOOLTIP_SUMMARY_CHAR_READY", "Ready to claim"), {0.3, 0.95, 0.35}
+    end
+    local slots = entry.slots or 0
+    if slots > 0 then
+        return EAL("EA_TOOLTIP_SUMMARY_CHAR_SLOTS", "%d slot(s) earned", slots), {0.45, 0.85, 1}
+    end
+    if GetSettings().includeBountyOnly == true and entry.bounty == true then
+        return EAL("EA_TOOLTIP_SUMMARY_CHAR_BOUNTY", "Bounty collected"), {0.75, 0.75, 0.75}
+    end
+    return EAL("EA_TOOLTIP_SUMMARY_CHAR_PROGRESS", "In progress"), {0.95, 0.85, 0.35}
+end
+
+-- ============================================================================
 -- Themed tooltip helpers (delegate to ns.UI_ShowTooltip / ns.UI_HideTooltip,
 -- with GameTooltip fallback before TooltipService is initialised).
 -- ============================================================================
@@ -1488,151 +1767,57 @@ end
 -- Hover tooltip (current character only)
 -- ============================================================================
 local function ShowHoverTooltip(anchor)
+    local lines = {}
+    local title = EAL("WEEKLY_VAULT_TRACKER", "Weekly Vault Tracker")
+
     if GetSettings().showSummaryOnMouseover then
         local list = BuildCharList()
-        local readyN, pendingN = 0, 0
-        local lines = {}
+        local readyN, progressN = 0, 0
         if #list == 0 then
-            lines[#lines + 1] = { text = "No vault activity this week.", color = {0.5, 0.5, 0.5} }
+            lines[#lines + 1] = { text = EAL("EA_TOOLTIP_NO_WARBAND_VAULT", "No tracked vault activity this week."), color = {0.55, 0.55, 0.55} }
         else
             for _, e in ipairs(list) do
-                local bountyOnly = GetSettings().includeBountyOnly == true and e.bounty == true and (e.slots or 0) == 0 and not e.isReady
-                if e.isReady then readyN = readyN + 1 elseif not bountyOnly then pendingN = pendingN + 1 end
-                local status = e.isReady and "|cff33dd33[Ready]|r" or (bountyOnly and "|cff33dd33[Bounty Only]|r" or "|cff66ddff[Earned]|r")
-                local slotStr = e.slots > 0
-                    and (" |cffaaaaaa("..e.slots.." slot"..(e.slots==1 and "" or "s")..")|r")
-                    or ""
-                lines[#lines + 1] = { left = FormatCharacterName(e), right = status..slotStr, leftColor = {1,1,1}, rightColor = {1,1,1} }
-            end
-            lines[#lines + 1] = { text = " " }
-            if readyN   > 0 then lines[#lines + 1] = { text = readyN .. " ready to claim", color = {0.2, 1.0, 0.3} } end
-            if pendingN > 0 then lines[#lines + 1] = { text = pendingN .. " in progress / tracked", color = {1.0, 1.0, 0.2} } end
-        end
-        lines[#lines + 1] = { text = " " }
-        lines[#lines + 1] = { text = "|cff888888[Left-click] Action  [Right-click] Menu  [Drag] Move|r" }
-        WNTooltipShow(anchor, {
-            type = "custom",
-            title = "Warband Nexus Vault Tracker",
-            icon = ICON_TEXTURE,
-            lines = lines,
-            anchor = "ANCHOR_RIGHT",
-        })
-        return
-    end
-    local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
-    local pendingLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_PENDING"]) or "Pending..."
-
-    local charKey = GetCurrentCharKey()
-    local chars = GetCharacters()
-    local entry = chars and charKey and chars[charKey]
-
-    local lines = {}
-    if not entry then
-        lines[#lines + 1] = { text = "No vault data for current character yet.", color = {0.6, 0.6, 0.6} }
-    else
-        local pveCache = GetPveCache()
-        local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
-        local rewardData = rewards and rewards[charKey]
-        local isReady = (rewardData and rewardData.hasAvailableRewards) or false
-
-        local nameLine = "|cff" .. GetClassHex(entry.classFile) .. (entry.name or charKey) .. "|r"
-        if entry.itemLevel and entry.itemLevel > 0 then
-            nameLine = nameLine .. "  |cffd4af37" .. string.format("%.0f", entry.itemLevel) .. " iLvl|r"
-        end
-        lines[#lines + 1] = { text = nameLine }
-        lines[#lines + 1] = { text = " " }
-
-        local catLabels = { raids = "Raid", mythicPlus = "Dungeon", world = "World" }
-        for _, key in ipairs({ "raids", "mythicPlus", "world" }) do
-            local slots = GetSlotData(charKey, key)
-            local parts = {}
-            for i = 1, 3 do
-                local s = slots[i]
-                if s.complete then
-                    parts[i] = s.canUpgrade and UPARROW or CHECK
+                local statusText, statusColor = FormatWarbandSummaryStatus(e)
+                if e.isReady then
+                    readyN = readyN + 1
                 else
-                    parts[i] = CROSS
+                    local bountyOnly = GetSettings().includeBountyOnly == true and e.bounty == true
+                        and (e.slots or 0) == 0
+                    if not bountyOnly then
+                        progressN = progressN + 1
+                    end
                 end
-            end
-            lines[#lines + 1] = {
-                left = catLabels[key],
-                right = table.concat(parts, "  "),
-                leftColor = {0.7, 0.7, 0.7},
-                rightColor = {1, 1, 1},
-            }
-        end
-
-        local bounty = GetBountyStatus(charKey)
-        if bounty ~= nil then
-            local bountyLabel = bounty and (CHECK .. " |cff33dd33Collected|r") or "|cffdd3333Not collected|r"
-            lines[#lines + 1] = {
-                left = "|T1064187:14:14:0:0|t Trovehunter's Bounty",
-                right = bountyLabel,
-                leftColor = {0.7, 0.7, 0.7},
-                rightColor = {1, 1, 1},
-            }
-        end
-
-        local currentColumns = GetSettings().columns or {}
-        if currentColumns.gildedStash == true then
-            local stash = GetGildedStashData(charKey)
-            if stash then
-                local stashLabel = stash.unknown and ("|cffaaaaaa?/" .. (stash.max or 4) .. "|r")
-                    or ("|cffd4af37" .. (stash.current or 0) .. "/" .. (stash.max or 4) .. " claimed|r")
-                GameTooltip:AddDoubleLine("|T" .. TRACK_ICONS.gildedStash .. ":14:14:0:0|t |cffaaaaaaGilded Stashes|r", stashLabel, 0.7,0.7,0.7, 1,1,1)
-            end
-        end
-
-        local vc = GetVoidcoreData(charKey)
-        if vc then
-            local sm = vc.seasonMax or 0
-            local vcLabel
-            if sm > 0 then
-                vcLabel = (vc.isCapped and "|cffdd3333" or "|cffd4af37")
-                    .. vc.progress .. "/" .. sm
-                    .. (vc.isCapped and " (Capped)|r" or "|r")
-                    .. (vc.quantity > 0 and ("|cffaaaaaa  (" .. vc.quantity .. " held)|r") or "")
-            else
-                vcLabel = "|cffd4af37" .. vc.quantity .. " held|r"
-            end
-            lines[#lines + 1] = {
-                left = "|T7658128:14:14:0:0|t Nebulous Voidcore",
-                right = vcLabel,
-                leftColor = {0.7, 0.7, 0.7},
-                rightColor = {1, 1, 1},
-            }
-        end
-
-        if GetSettings().showManaflux then
-            local mf = GetManafluxData(charKey)
-            if mf then
                 lines[#lines + 1] = {
-                    left = "|T" .. GetCurrencyIcon(MANAFLUX_ID, TRACK_ICONS.manaflux) .. ":14:14:0:0|t Dawnlight Manaflux",
-                    right = "|cffd4af37" .. (mf.quantity or 0) .. " held|r",
-                    leftColor = {0.7, 0.7, 0.7},
-                    rightColor = {1, 1, 1},
+                    left = FormatCharacterName(e),
+                    right = statusText,
+                    leftColor = {1, 1, 1},
+                    rightColor = statusColor,
                 }
             end
+            lines[#lines + 1] = { text = " " }
+            if readyN > 0 then
+                lines[#lines + 1] = { text = EAL("EA_TOOLTIP_SUMMARY_READY_COUNT", "%d ready to claim", readyN), color = {0.25, 0.95, 0.35} }
+            end
+            if progressN > 0 then
+                lines[#lines + 1] = { text = EAL("EA_TOOLTIP_SUMMARY_PROGRESS_COUNT", "%d in progress", progressN), color = {0.95, 0.85, 0.35} }
+            end
         end
-
-        lines[#lines + 1] = { text = " " }
-        local slotsReadyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_SLOTS_READY"]) or "Slots Ready"
-        local readySlotCount = CountReadySlots(charKey)
-        if isReady then
-            lines[#lines + 1] = { text = readyLabel, color = {0.27, 1, 0.27} }
-        elseif readySlotCount > 0 then
-            lines[#lines + 1] = { text = string.format("%s (%d)", slotsReadyLabel, readySlotCount), color = {0.4, 0.85, 1} }
+    else
+        local charKey = GetCurrentCharKey()
+        local chars = GetCharacters()
+        if not charKey or not chars or not chars[charKey] then
+            lines[#lines + 1] = { text = EAL("EA_TOOLTIP_NO_CHAR_VAULT", "No vault data for this character yet. Open the Great Vault once."), color = {0.6, 0.6, 0.6} }
         else
-            lines[#lines + 1] = { text = pendingLabel, color = {1, 0.84, 0} }
+            lines = BuildVaultCharacterTooltipLines(charKey, nil)
         end
     end
 
     lines[#lines + 1] = { text = " " }
-    lines[#lines + 1] = { text = "|cff888888[Left-click] Action  [Right-click] Menu  [Drag] Move|r" }
+    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_CONTROLS", "Left-click: action  |  Right-click: menu  |  Drag to move"), color = {0.55, 0.55, 0.55} }
 
     WNTooltipShow(anchor, {
         type = "custom",
-        title = "Warband Nexus",
+        title = title,
         icon = ICON_TEXTURE,
         lines = lines,
         anchor = "ANCHOR_RIGHT",
@@ -2390,22 +2575,44 @@ local function BuildLockoutRow(parent, char, encounters, group, totalW)
         end
     end
 
-    -- Hover tooltip: list of bosses killed by this specific character
     row:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:ClearLines()
-        GameTooltip:AddLine("|cff" .. hex .. (charName or char.charKey) .. "|r")
-        GameTooltip:AddLine(group.instanceName .. " — |cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r")
-        GameTooltip:AddLine(" ")
-        for i, e in ipairs(roster) do
-            local mark = e.killed and "|cff44ff44" .. CHECK .. "|r" or "|cff444444" .. CROSS .. "|r"
-            GameTooltip:AddDoubleLine(mark .. " " .. (e.name or ("Boss " .. i)),
-                e.killed and "|cff44ff44killed|r" or "|cff888888—|r",
-                1,1,1, 0.85,0.85,0.85)
+        local lines = {}
+        lines[#lines + 1] = {
+            text = "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r",
+            color = {0.85, 0.85, 0.9},
+        }
+        if char.reset and char.reset > 0 then
+            local resetTag = FormatSavedResetShort(char.reset)
+            if resetTag ~= "" then
+                lines[#lines + 1] = {
+                    text = EAL("EA_TOOLTIP_LOCKOUT_RESET", "Lockout resets in %s", resetTag),
+                    color = {0.65, 0.65, 0.7},
+                }
+            end
         end
-        GameTooltip:Show()
+        lines[#lines + 1] = {
+            text = EAL("EA_TOOLTIP_LOCKOUT_PROGRESS", "%d/%d bosses defeated", k, t),
+            color = {0.9, 0.9, 0.92},
+        }
+        if roster and #roster > 0 then
+            lines[#lines + 1] = { text = " " }
+            for i, e in ipairs(roster) do
+                local bossName = e.name or EAL("EA_TOOLTIP_BOSS_FALLBACK", "Boss %d", i)
+                if e.killed then
+                    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_BOSS_KILLED", "Defeated: %s", bossName), color = {0.35, 0.9, 0.4} }
+                else
+                    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_BOSS_REMAINING", "Remaining: %s", bossName), color = {0.75, 0.75, 0.78} }
+                end
+            end
+        end
+        WNTooltipShow(self, {
+            type = "custom",
+            title = "|cff" .. hex .. (charName or char.charKey) .. "|r",
+            lines = lines,
+            anchor = "ANCHOR_RIGHT",
+        })
     end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnLeave", function() WNTooltipHide() end)
 
     return row
 end
@@ -2538,13 +2745,24 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     nameFS:SetPoint("RIGHT", countNumFS, "LEFT", -12, 0)
 
     header:SetScript("OnEnter", function(self)
+        local bossTotal = bosses and #bosses or 0
+        local bossCleared = 0
+        if bosses then
+            for i = 1, #bosses do
+                if #(bosses[i].killers or {}) > 0 then
+                    bossCleared = bossCleared + 1
+                end
+            end
+        end
         WNTooltipShow(self, {
             type = "custom",
             title = group.instanceName or "?",
             lines = {
                 { text = "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r" },
+                { text = EAL("EA_TOOLTIP_INSTANCE_BOSSES", "%d/%d bosses defeated", bossCleared, bossTotal), color = {0.88, 0.88, 0.9} },
+                { text = EAL("EA_TOOLTIP_INSTANCE_CHARS", "%d characters on lockout", #group.characters), color = {0.7, 0.7, 0.75} },
                 { text = " " },
-                { text = (ns.L and ns.L["SAVED_INSTANCES_EXPAND_HINT"]) or "Click to expand/collapse character lockouts" },
+                { text = (ns.L and ns.L["SAVED_INSTANCES_EXPAND_HINT"]) or "Click to expand character lockouts", color = {0.55, 0.55, 0.55} },
             },
             anchor = "ANCHOR_RIGHT",
         })
@@ -2595,7 +2813,7 @@ local function GetSavedInstanceArt(group)
     return map and map[string.lower(name)] or nil
 end
 
-local function FormatSavedResetShort(secondsLeft)
+FormatSavedResetShort = function(secondsLeft)
     if not secondsLeft or secondsLeft <= 0 then return "" end
     local hours = math.floor(secondsLeft / 3600)
     local days = math.floor(hours / 24)
@@ -2675,60 +2893,63 @@ local function BuildInstanceCard(parent, group, cardSize)
 
     card:SetScript("OnEnter", function(self)
         local lines = {}
-        lines[#lines + 1] = { text = "|cff999999Difficulty|r" }
         lines[#lines + 1] = { text = "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r" }
-        lines[#lines + 1] = { text = " " }
-        lines[#lines + 1] = { text = "|cff999999Bosses -> Characters|r" }
+        lines[#lines + 1] = {
+            text = EAL("EA_TOOLTIP_INSTANCE_BOSSES", "%d/%d bosses defeated", cleared, total),
+            color = {0.88, 0.88, 0.9},
+        }
 
         if bosses and #bosses > 0 then
+            lines[#lines + 1] = { text = " " }
             for bi = 1, #bosses do
                 local b = bosses[bi]
                 local killers = b.killers or {}
-                local right
+                local bossName = b.name or EAL("EA_TOOLTIP_BOSS_FALLBACK", "Boss %d", bi)
                 if #killers == 0 then
-                    right = "|cff888888—|r"
+                    lines[#lines + 1] = {
+                        left = bossName,
+                        right = EAL("EA_TOOLTIP_BOSS_NOT_KILLED", "Not defeated"),
+                        leftColor = {0.9, 0.9, 0.92},
+                        rightColor = {0.65, 0.65, 0.68},
+                    }
                 else
                     local parts = {}
                     for ki = 1, #killers do
-                        local hex, name = GetClassHexFromCharacters(killers[ki])
-                        parts[#parts + 1] = "|cff" .. hex .. name .. "|r"
+                        local kHex, kName = GetClassHexFromCharacters(killers[ki])
+                        parts[#parts + 1] = "|cff" .. kHex .. kName .. "|r"
                     end
-                    right = table.concat(parts, ", ")
+                    lines[#lines + 1] = {
+                        left = bossName,
+                        right = table.concat(parts, ", "),
+                        leftColor = {0.9, 0.9, 0.92},
+                        rightColor = {0.88, 0.88, 0.9},
+                    }
                 end
-                lines[#lines + 1] = {
-                    left = string.format("%d. %s", bi, b.name or ("Boss " .. tostring(bi))),
-                    right = right,
-                    leftColor = {1, 1, 1},
-                    rightColor = {0.88, 0.88, 0.9},
-                }
             end
-        else
-            lines[#lines + 1] = { text = "|cff666666Boss data unavailable|r" }
         end
 
-        lines[#lines + 1] = { text = " " }
-        lines[#lines + 1] = { text = "|cff999999Completed characters|r" }
-        local completed = {}
+        local clearedChars = {}
         for ci = 1, #group.characters do
             local c = group.characters[ci]
-            local killed = c.killed or 0
+            local killedN = c.killed or 0
             local totalBoss = c.total or 0
-            if totalBoss > 0 and killed >= totalBoss then
-                local hex, name = GetClassHexFromCharacters(c.charKey)
+            if totalBoss > 0 and killedN >= totalBoss then
+                local cHex, cName = GetClassHexFromCharacters(c.charKey)
                 local resetTag = FormatSavedResetShort(c.reset)
                 if resetTag ~= "" then
-                    completed[#completed + 1] = string.format("|cff%s%s|r |cff777777(%s)|r", hex, name or c.charKey, resetTag)
+                    clearedChars[#clearedChars + 1] = string.format("|cff%s%s|r (%s)", cHex, cName or c.charKey, resetTag)
                 else
-                    completed[#completed + 1] = string.format("|cff%s%s|r", hex, name or c.charKey)
+                    clearedChars[#clearedChars + 1] = string.format("|cff%s%s|r", cHex, cName or c.charKey)
                 end
             end
         end
-        if #completed == 0 then
-            lines[#lines + 1] = { text = "|cff666666None|r" }
-        else
-            for i = 1, #completed do
-                lines[#lines + 1] = { text = completed[i] }
-            end
+        if #clearedChars > 0 then
+            lines[#lines + 1] = { text = " " }
+            lines[#lines + 1] = {
+                text = EAL("EA_TOOLTIP_INSTANCE_CLEARED_BY", "Fully cleared by: %s", table.concat(clearedChars, ", ")),
+                color = {0.75, 0.75, 0.78},
+                wrap = true,
+            }
         end
 
         WNTooltipShow(self, {
@@ -3077,8 +3298,8 @@ local function BuildMenu()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
         GameTooltip:AddLine((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", 1, 1, 1)
-        GameTooltip:AddLine("The star marks the current left-click action.", 0.85, 0.85, 0.85, true)
-        GameTooltip:AddLine("Right-click a menu option to set it as the left-click action.", 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_STAR", "Star marks your left-click action."), 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_SET_ACTION", "Right-click a menu item to set the left-click action."), 0.85, 0.85, 0.85, true)
         GameTooltip:Show()
     end)
     header:SetScript("OnLeave", function()

@@ -256,7 +256,7 @@ local function ResolveSeasonCapState(cd)
     return qty, progress, cap, capped
 end
 
-local function FormatSeasonProgressShiftAware(cd, expanded)
+local function FormatSeasonProgressShiftAware(cd, expanded, compactRemainingOnly)
     if not cd then return CC_MUTED .. "0|r" end
     local qty, progress, cap, capped = ResolveSeasonCapState(cd)
     local color = (cap > 0) and (capped and CC_CAPPED or CC_CAP_OPEN) or CC_AMOUNT
@@ -265,6 +265,13 @@ local function FormatSeasonProgressShiftAware(cd, expanded)
             return CC_AMOUNT .. FormatNumber(qty) .. "|r"
         end
         return CC_MUTED .. EM_DASH_U .. "|r"
+    end
+    if compactRemainingOnly and cap > 0 then
+        local rem = math.max(cap - progress, 0)
+        if rem > 0 then
+            return color .. FormatNumber(rem) .. "|r"
+        end
+        return capped and CC_CAPPED or (CC_AMOUNT .. FormatNumber(qty) .. "|r")
     end
     if cap > 0 then
         local progressTxt = (progress ~= qty)
@@ -277,6 +284,13 @@ local function FormatSeasonProgressShiftAware(cd, expanded)
     return CC_MUTED .. EM_DASH_U .. "|r"
 end
 
+local function ResolveSeasonBinding(entry)
+    if type(entry) == "table" and entry.cd ~= nil then
+        return entry.cd, entry.compactShift == true
+    end
+    return entry, false
+end
+
 local _seasonAmountBindings = setmetatable({}, { __mode = "k" })
 local _seasonAmountWatcher
 
@@ -287,9 +301,10 @@ local function EnsureSeasonAmountWatcher()
     _seasonAmountWatcher:SetScript("OnEvent", function(_, _, key)
         if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
         local expanded = IsShiftKeyDown() and true or false
-        for fs, cd in pairs(_seasonAmountBindings) do
+        for fs, entry in pairs(_seasonAmountBindings) do
             if fs and fs.SetText and fs.IsObjectType then
-                fs:SetText(FormatSeasonProgressShiftAware(cd, expanded))
+                local cd, compact = ResolveSeasonBinding(entry)
+                fs:SetText(FormatSeasonProgressShiftAware(cd, expanded, compact))
             end
         end
     end)
@@ -299,11 +314,13 @@ end
 ---and current\194\183earned/cap when Shift is held. Handles refresh on shift toggle.
 ---@param fs FontString
 ---@param cd table|nil
-local function BindSeasonProgressAmount(fs, cd)
+---@param opts table|nil { compactShift = boolean } table cells: Shift shows remaining-to-cap only
+local function BindSeasonProgressAmount(fs, cd, opts)
     if not fs or not fs.SetText then return end
     EnsureSeasonAmountWatcher()
-    _seasonAmountBindings[fs] = cd
-    fs:SetText(FormatSeasonProgressShiftAware(cd, IsShiftKeyDown() and true or false))
+    local compact = opts and opts.compactShift == true
+    _seasonAmountBindings[fs] = { cd = cd, compactShift = compact }
+    fs:SetText(FormatSeasonProgressShiftAware(cd, IsShiftKeyDown() and true or false, compact))
 end
 
 ---Remove shift-aware binding so a reused FontString stops tracking stale currency data.
@@ -312,11 +329,18 @@ local function UnbindSeasonProgressAmount(fs)
 end
 
 ---Update binding (e.g. on data refresh) and re-render with current shift state.
-local function RefreshSeasonProgressAmount(fs, cd)
+local function RefreshSeasonProgressAmount(fs, cd, opts)
     if not fs or not fs.SetText then return end
-    if cd ~= nil then _seasonAmountBindings[fs] = cd end
-    local data = cd or _seasonAmountBindings[fs]
-    fs:SetText(FormatSeasonProgressShiftAware(data, IsShiftKeyDown() and true or false))
+    local compact = opts and opts.compactShift == true
+    if cd ~= nil then
+        _seasonAmountBindings[fs] = { cd = cd, compactShift = compact }
+    end
+    local entry = _seasonAmountBindings[fs]
+    local data, compactShift = ResolveSeasonBinding(entry)
+    if opts and opts.compactShift ~= nil then
+        compactShift = opts.compactShift == true
+    end
+    fs:SetText(FormatSeasonProgressShiftAware(data, IsShiftKeyDown() and true or false, compactShift))
 end
 
 --============================================================================

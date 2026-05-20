@@ -84,11 +84,12 @@ local PVE_COL_RIGHT_MARGIN = 6
 local PVE_DAWNCREST_COL_W = 112                  -- qty/max (R:rem)
 local PVE_COFFER_COL_W = 132
 local PVE_KEY_COL_W = 88
-local PVE_VAULT_COL_W = 84                       -- keep Raid/Dungeon/World header labels untruncated
+local PVE_VAULT_COL_W = 72                       -- three 12px slot glyphs
+local PVE_VAULT_COL_PROGRESS_W = 108           -- glyphs + (3/8); Shift shows remaining only
 local PVE_BOUNTIFUL_COL_W = 58                   -- enough for "Bounty" label under icon
 local PVE_STATUS_COL_W    = 128                  -- enough for "N Slots Ready" values
-local PVE_VOIDCORE_COL_W = 64
-local PVE_MANAFLUX_COL_W = 64
+local PVE_VOIDCORE_COL_W = 72
+local PVE_MANAFLUX_COL_W = 72
 local PVE_VOIDCORE_ID = 3418
 local PVE_MANAFLUX_ID = 3378
 
@@ -995,15 +996,19 @@ function ns.ComputePvEMinScrollWidth(self)
     for i = 1, #columnSeq do
         visibleKeySet[columnSeq[i]] = true
     end
+    local vb = profile.vaultButton or {}
+    local vaultTrackColW = (ns.ResolveVaultTrackerColumnWidth and ns.ResolveVaultTrackerColumnWidth(vb.showRewardProgress == true))
+        or (vb.showRewardProgress and PVE_VAULT_COL_PROGRESS_W)
+        or PVE_VAULT_COL_W
 
     local widthByKey = {
         coffer_shards = PVE_COFFER_COL_W,
         restored_key = PVE_KEY_COL_W,
         voidcore = PVE_VOIDCORE_COL_W,
         manaflux = PVE_MANAFLUX_COL_W,
-        slot1 = PVE_VAULT_COL_W,
-        slot2 = PVE_VAULT_COL_W,
-        slot3 = PVE_VAULT_COL_W,
+        slot1 = vaultTrackColW,
+        slot2 = vaultTrackColW,
+        slot3 = vaultTrackColW,
         bountiful = PVE_BOUNTIFUL_COL_W,
         vault_status = PVE_STATUS_COL_W,
     }
@@ -1123,8 +1128,19 @@ local function PvE_SlotShowsVaultUpgrade(act, typeName)
     return true
 end
 
---- One vault column string (Raid / M+ / World). Slot glyphs match Vault Tracker table (12px + spaced).
+--- Vault tracker column display (shared with Easy Access; Shift shows remaining events only).
 local function PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, _)
+    if ns.VaultFormatCategoryColumn and ns.VaultSlotsFromActivityList then
+        local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+        local vb = profile and profile.vaultButton or {}
+        local slots, catKey = ns.VaultSlotsFromActivityList(activityList, slotCount, typeName)
+        return ns.VaultFormatCategoryColumn(slots, catKey, {
+            shiftHeld = IsShiftKeyDown and IsShiftKeyDown(),
+            showRewardProgress = vb.showRewardProgress == true,
+            showRewardItemLevel = vb.showRewardItemLevel == true,
+            vaultLootClaimable = vaultLootClaimable == true,
+        })
+    end
     local READY = VAULT_SLOT_CHECK
     local NOT_READY = VAULT_SLOT_CROSS
     local GREEN_ARROW = VAULT_SLOT_UPARROW
@@ -1135,29 +1151,18 @@ local function PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vau
     slotCount = slotCount or 3
     if slotCount < 1 then slotCount = 3 end
     local parts = {}
-    local hasIncomplete = false
-    local hasUpgrade = false
     for s = 1, slotCount do
         local act = activityList and activityList[s]
         local th = tonumber(act and act.threshold) or 0
         local prog = tonumber(act and act.progress) or 0
         local complete = (th > 0 and prog >= th)
         if not complete then
-            hasIncomplete = true
             parts[s] = NOT_READY
         elseif PvE_SlotShowsVaultUpgrade(act, typeName) then
-            hasUpgrade = true
             parts[s] = GREEN_ARROW
         else
             parts[s] = READY
         end
-    end
-    if not hasIncomplete and not hasUpgrade and slotCount > 0 then
-        local done = {}
-        for s = 1, slotCount do
-            done[s] = READY
-        end
-        return table.concat(done, " ")
     end
     return table.concat(parts, " ")
 end
@@ -3336,6 +3341,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     profile = profile or (self.db and self.db.profile)
     local vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
     local pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
+    local vbProfile = profile and profile.vaultButton or {}
+    local vaultTrackColW = (L.ns.ResolveVaultTrackerColumnWidth and L.ns.ResolveVaultTrackerColumnWidth(vbProfile.showRewardProgress == true))
+        or (vbProfile.showRewardProgress and PVE_VAULT_COL_PROGRESS_W)
+        or PVE_VAULT_COL_W
     local PVE_COLUMNS = {}
     for i = 1, #PVE_DAWNCRESTS do
         local crestEntry = PVE_DAWNCRESTS[i]
@@ -3414,7 +3423,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
             key = "slot1",
             label = "",
-            width = L.PVE_VAULT_COL_W,
+            width = vaultTrackColW,
             icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
             tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids",
             headerLabel = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"),
@@ -3424,7 +3433,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
             key = "slot2",
             label = "",
-            width = L.PVE_VAULT_COL_W,
+            width = vaultTrackColW,
             icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
             tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
             headerLabel = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"),
@@ -3434,7 +3443,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
             key = "slot3",
             label = "",
-            width = L.PVE_VAULT_COL_W,
+            width = vaultTrackColW,
             icon = "Interface\\Icons\\INV_Misc_Map_01",
             tooltipTitle = (L.ns.L and L.ns.L["VAULT_WORLD"]) or "World",
             headerLabel = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"),
@@ -4347,6 +4356,22 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 end
             end
 
+            local profileVault = L.WarbandNexus and L.WarbandNexus.db and L.WarbandNexus.db.profile
+            local vbCols = profileVault and profileVault.vaultButton or {}
+            local function BuildVaultColumnBind(activityList, slotCount, typeName)
+                if L.ns.VaultSlotsFromActivityList and L.ns.VaultFormatCategoryColumn then
+                    local slots, catKey = L.ns.VaultSlotsFromActivityList(activityList, slotCount, typeName)
+                    return {
+                        slots = slots,
+                        category = catKey,
+                        showRewardProgress = vbCols.showRewardProgress == true,
+                        showRewardItemLevel = vbCols.showRewardItemLevel == true,
+                        vaultLootClaimable = vaultLootClaimable == true,
+                    }
+                end
+                return nil
+            end
+
             local function FormatVaultTrackSlots(activityList, slotCount, typeName)
                 return L.PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vaultLootClaimable, 12)
             end
@@ -4557,8 +4582,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                             color = {0.85, 0.9, 0.95},
                         })
                     elseif thresh > 0 then
+                        local shiftHeld = IsShiftKeyDown and IsShiftKeyDown()
+                        local rem = thresh - prog
+                        local progressLine
+                        if shiftHeld and rem > 0 then
+                            progressLine = L.GetLocalizedText("PVE_VAULT_SLOT_REMAINING_FORMAT", "Slot %d: |cffffcc00%d|r more"):format(i, rem)
+                        else
+                            progressLine = L.GetLocalizedText("PVE_VAULT_SLOT_PROGRESS_FORMAT", "Slot %d: |cffff8888%d/%d|r"):format(i, prog, thresh)
+                        end
                         table.insert(lines, {
-                            text = L.GetLocalizedText("PVE_VAULT_SLOT_PROGRESS_FORMAT", "Slot %d: |cffff8888%d/%d|r"):format(i, prog, thresh),
+                            text = progressLine,
                             color = {0.65, 0.65, 0.65},
                         })
                     else
@@ -4570,18 +4603,21 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
             colValuesByKey.slot1 = {
                 text = FormatVaultTrackSlots(vaultActs.raids, raidTotal, "Raid"),
+                vaultColumnData = BuildVaultColumnBind(vaultActs.raids, raidTotal, "Raid"),
                 color = {1, 1, 1},
                 tooltip = BuildVaultSlotTooltipLines(vaultActs.raids, "Raid", raidTotal),
                 tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids",
             }
             colValuesByKey.slot2 = {
                 text = FormatVaultTrackSlots(vaultActs.mythicPlus, dungeonTotal, "M+"),
+                vaultColumnData = BuildVaultColumnBind(vaultActs.mythicPlus, dungeonTotal, "M+"),
                 color = {1, 1, 1},
                 tooltip = BuildVaultSlotTooltipLines(vaultActs.mythicPlus, "M+", dungeonTotal),
                 tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
             }
             colValuesByKey.slot3 = {
                 text = FormatVaultTrackSlots(vaultActs.world, worldTotal, "World"),
+                vaultColumnData = BuildVaultColumnBind(vaultActs.world, worldTotal, "World"),
                 color = {1, 1, 1},
                 tooltip = BuildVaultSlotTooltipLines(vaultActs.world, "World", worldTotal),
                 tooltipTitle = (L.ns.L and L.ns.L["VAULT_WORLD"]) or "World",
@@ -4667,6 +4703,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             }
 
             local UnbindSeason = L.ns.UI_UnbindSeasonProgressAmount
+            local UnbindVaultCol = L.ns.UI_UnbindVaultColumnDisplay
             for ci = 1, #PVE_COLUMNS do
                 local col = PVE_COLUMNS[ci]
                 local val = colValuesByKey[col.key]
@@ -4680,11 +4717,17 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     colText:SetJustifyH("CENTER")
                     if colText.SetJustifyV then colText:SetJustifyV("MIDDLE") end
                     colText:SetWordWrap(false)
-                    if val.seasonProgressData and L.ns.UI_BindSeasonProgressAmount then
-                        L.ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData)
+                    if val.vaultColumnData and L.ns.UI_BindVaultColumnDisplay then
+                        if UnbindSeason then UnbindSeason(colText) end
+                        L.ns.UI_BindVaultColumnDisplay(colText, val.vaultColumnData)
+                        colText:SetTextColor(1, 1, 1)
+                    elseif val.seasonProgressData and L.ns.UI_BindSeasonProgressAmount then
+                        if UnbindVaultCol then UnbindVaultCol(colText) end
+                        L.ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData, { compactShift = true })
                         colText:SetTextColor(1, 1, 1)
                     else
                         if UnbindSeason then UnbindSeason(colText) end
+                        if UnbindVaultCol then UnbindVaultCol(colText) end
                         colText:SetText(val.text)
                         if not val.richText and val.color then
                             colText:SetTextColor(val.color[1], val.color[2], val.color[3])
