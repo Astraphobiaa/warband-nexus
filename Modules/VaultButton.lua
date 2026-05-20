@@ -106,6 +106,18 @@ local function VBAnchorFullWidthRowBelowChrome(row, rootFrame, chromeBandHeight,
     row:SetPoint("TOPRIGHT", rootFrame, "TOPRIGHT", -inset, y)
 end
 
+--- Saved Instances body insets — mirror Vault Tracker table (`FRAME_PAD` on all sides, scroll bar inside scroll frame).
+local SAVED_INSTANCES_LAYOUT_VERSION = 2
+local function VBGetSavedInstancesLayout()
+    return {
+        pad = FRAME_PAD,
+        filterBelowChrome = 4,
+        contentTopGap = FRAME_PAD,
+        contentBottomPad = FRAME_PAD,
+        layoutVersion = SAVED_INSTANCES_LAYOUT_VERSION,
+    }
+end
+
 local DASH   = "|cff888888-|r"
 
 -- Maps Easy Access column key -> PvE typeName used by upgrade-detection logic
@@ -1253,6 +1265,20 @@ local function BuildTableFrame()
     ApplyTheme()
 end
 
+--- Clamp scroll child height and hide the bar when all rows fit (avoids 1–2px overflow on first open).
+local function VBSyncVaultTableScrollBar(list, content, contentH)
+    if not S.tableScroll or not content then return end
+    local vf = ns.UI.Factory
+    if not vf or not vf.UpdateScrollBarVisibility then return end
+    local scrollH = S.tableScroll:GetHeight() or 0
+    if list and #list > 0 and #list <= MAX_ROWS and scrollH > 1 then
+        content:SetHeight(math.min(contentH, scrollH))
+    else
+        content:SetHeight(contentH)
+    end
+    vf:UpdateScrollBarVisibility(S.tableScroll)
+end
+
 RefreshTable = function()
     BuildTableFrame()
     local VF = ns.UI.Factory
@@ -1271,9 +1297,13 @@ RefreshTable = function()
         msg:SetTextColor(0.5, 0.5, 0.5)
         msg:SetText("No vault activity this week.")
         S.tableFrame:Show()
-        local vf0 = ns.UI.Factory
-        if vf0 and vf0.UpdateScrollBarVisibility and S.tableScroll then
-            vf0:UpdateScrollBarVisibility(S.tableScroll)
+        VBSyncVaultTableScrollBar(list, content, 40)
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                if S.tableFrame and S.tableFrame:IsShown() then
+                    VBSyncVaultTableScrollBar(list, content, 40)
+                end
+            end)
         end
         return
     end
@@ -1480,12 +1510,16 @@ RefreshTable = function()
     local viewH    = visRows * ROW_H
     local totalH   = VBGetChromeBandHeight() + 6 + HEADER_H + 2 + viewH + FRAME_PAD
 
-    content:SetSize(tableW - FRAME_PAD*2, contentH)
     S.tableFrame:SetSize(tableW, totalH)
     S.tableScroll:SetVerticalScroll(0)
-    local vfTbl = ns.UI.Factory
-    if vfTbl and vfTbl.UpdateScrollBarVisibility and S.tableScroll then
-        vfTbl:UpdateScrollBarVisibility(S.tableScroll)
+    content:SetWidth(tableW - FRAME_PAD * 2)
+    VBSyncVaultTableScrollBar(list, content, contentH)
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if S.tableFrame and S.tableFrame:IsShown() then
+                VBSyncVaultTableScrollBar(list, content, contentH)
+            end
+        end)
     end
     S.tableFrame:Show()
 end
@@ -1494,6 +1528,7 @@ local function ToggleTable()
     if S.tableFrame and S.tableFrame:IsShown() then
         HideTable()
     else
+        HideSavedInstances()
         RefreshTable()
         if S.tableFrame and S.button then
             S.tableFrame:ClearAllPoints()
@@ -2195,6 +2230,9 @@ local savedLiveEventFrame = nil
 local savedLiveRefreshPending = false
 
 local function ScheduleSavedInstancesLiveRefresh(triggerPvEUpdate)
+    if S._savedUserInteractUntil and GetTime() < S._savedUserInteractUntil then
+        return
+    end
     if triggerPvEUpdate and WarbandNexus and WarbandNexus.UpdatePvEData then
         pcall(WarbandNexus.UpdatePvEData, WarbandNexus)
     end
@@ -2245,6 +2283,13 @@ StopSavedInstancesLiveRefresh = function()
 end
 
 local function BuildSavedInstancesFrame()
+    if S.savedFrame and (S.savedFrame._savedLayoutVersion or 0) ~= SAVED_INSTANCES_LAYOUT_VERSION then
+        ReleaseSavedInstanceRows()
+        S.savedFrame:Hide()
+        S.savedFrame = nil
+        S.savedScroll = nil
+        S.savedContent = nil
+    end
     if S.savedFrame then return end
     local ApplyVisuals = ns.UI_ApplyVisuals
     local COLORS = ns.UI_COLORS or {}
@@ -2256,9 +2301,9 @@ local function BuildSavedInstancesFrame()
     AddEscCloseFrame("WarbandNexusSavedInstances")
     f:SetSize(SAVED_FRAME_W, 480)
     f:SetClampedToScreen(true)
-    -- Above normal panels/menus; still below world map full-screen if any.
-    f:SetFrameStrata("FULLSCREEN_DIALOG")
-    f:SetFrameLevel(100)
+    -- Match Vault Tracker table strata so an open tracker cannot paint its scrollbar over this window.
+    f:SetFrameStrata("DIALOG")
+    f:SetFrameLevel(200)
     f:SetMovable(true)
     f:SetResizable(true)
     if f.SetResizeBounds then
@@ -2323,9 +2368,15 @@ local function BuildSavedInstancesFrame()
     close:SetScript("OnLeave", function() closeIcon:SetVertexColor(0.9, 0.3, 0.3) end)
 
     -- Filter / search bar
+    local lay = VBGetSavedInstancesLayout()
+    f._savedLayout = lay
+    f._savedLayoutVersion = lay.layoutVersion
+
+    local filterY = -(chromeBandH + lay.filterBelowChrome)
     local filterRow = CreateFrame("Frame", nil, f)
     filterRow:SetHeight(SAVED_FILTER_H)
-    VBAnchorFullWidthRowBelowChrome(filterRow, f, chromeBandH, 4)
+    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY)
+    filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.pad, filterY)
     if ApplyVisuals then
         ApplyVisuals(filterRow, {0.06, 0.06, 0.08, 1}, {accent[1], accent[2], accent[3], 0.4})
     end
@@ -2338,8 +2389,7 @@ local function BuildSavedInstancesFrame()
         { key = "heroic",  label = "H",   diff = 15 },
         { key = "mythic",  label = "M",   diff = 16 },
     }
-    local SIDE_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
-    local fx = SIDE_PAD
+    local fx = lay.pad
     for _, fb in ipairs(filterBtns) do
         local di = GetDiffInfo(fb.diff)
         local b = CreateFrame("Button", nil, filterRow)
@@ -2382,35 +2432,20 @@ local function BuildSavedInstancesFrame()
     else
         summary = VBFontString(filterRow, "small")
     end
-    summary:SetPoint("RIGHT", filterRow, "RIGHT", -SIDE_PAD, 0)
+    summary:SetPoint("RIGHT", filterRow, "RIGHT", -lay.pad, 0)
     summary:SetTextColor(0.75, 0.75, 0.8)
     f.summary = summary
 
-    -- Scroll body + themed scrollbar (same pattern as NotificationManager / main UI)
-    local CONTENT_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
-    local SCROLLBAR_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-
+    -- Scroll body — same anchors as Vault Tracker table (symmetric FRAME_PAD; bar inside scroll frame).
     local scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", CONTENT_PAD, -CONTENT_PAD)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(2 + CONTENT_PAD + SCROLLBAR_COL_W), 2 + CONTENT_PAD)
-
-    local scrollBarColumn = nil
-    if scroll.ScrollBar then
-        local topInset = VBGetChromeBandHeight() + SAVED_FILTER_H + CONTENT_PAD + 2
-        local bottomInset = CONTENT_PAD + 2
-        scrollBarColumn = VF:CreateScrollBarColumn(f, SCROLLBAR_COL_W, topInset, bottomInset)
-        VF:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
-    end
-
-    local contentW = math.max(320, SAVED_FRAME_W - 4 - CONTENT_PAD * 2 - SCROLLBAR_COL_W)
-    local content = VF:CreateContainer(scroll, contentW, 1, false)
+    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY - SAVED_FILTER_H - 2)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -lay.pad, lay.pad)
+    local content = VF:CreateContainer(scroll, math.max(320, SAVED_FRAME_W - lay.pad * 2), 1, false)
     scroll:SetScrollChild(content)
-
-    f.savedScrollBarColumn = scrollBarColumn
 
     local resizeGrip = CreateFrame("Button", nil, f)
     resizeGrip:SetSize(16, 16)
-    resizeGrip:SetPoint("BOTTOMRIGHT", -2, 2)
+    resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -lay.pad, lay.pad)
     resizeGrip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizeGrip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
@@ -2631,7 +2666,6 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     local header = CreateFrame("Button", nil, parent)
     header:SetSize(totalW, 30)
     header:EnableMouse(true)
-    header:RegisterForClicks("LeftButtonUp")
 
     if ApplyVisuals then
         ApplyVisuals(header, {diffInfo.color[1] * 0.18, diffInfo.color[2] * 0.18, diffInfo.color[3] * 0.18, 1},
@@ -2653,6 +2687,7 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
     local badgeW = diffInfo.short == "LFR" and 36 or 22
     local badge = ns.UI.Factory:CreateContainer(header, badgeW, 16, false)
     badge:SetPoint("LEFT", 12, 0)
+    badge:EnableMouse(false)
     if ApplyVisuals then
         ApplyVisuals(badge, {diffInfo.color[1] * 0.5, diffInfo.color[2] * 0.5, diffInfo.color[3] * 0.5, 1},
             {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1})
@@ -2699,6 +2734,7 @@ local function BuildGroupHeader(parent, group, totalW, collapsed)
         end
     end
     UpdateChevron()
+    header._savedUpdateChevron = UpdateChevron
 
     local progressFS
     if FontManager and FontManager.CreateFontString then
@@ -3007,8 +3043,10 @@ RefreshSavedInstances = function()
         S.savedFrame.summary:SetText(string.format(sumFmt, #filtered, n))
     end
 
+    local lay = (S.savedFrame and S.savedFrame._savedLayout) or VBGetSavedInstancesLayout()
     local viewportW = (S.savedScroll and S.savedScroll.GetWidth and S.savedScroll:GetWidth()) or SAVED_FRAME_W
-    content:SetWidth(math.max(320, viewportW))
+    local contentW = math.max(320, viewportW)
+    content:SetWidth(contentW)
 
     if #filtered == 0 then
         local FontManager = ns.FontManager
@@ -3026,7 +3064,7 @@ RefreshSavedInstances = function()
             msg:SetText((ns.L and ns.L["SAVED_INSTANCES_NO_FILTER_MATCH"]) or "No instances match the current filters.")
         end
         msg:SetJustifyH("CENTER")
-        content:SetHeight(80)
+        content:SetHeight(math.max(80, lay.contentTopGap + 60))
         S.savedRows[#S.savedRows + 1] = msg
         local vf = ns.UI.Factory
         if vf and vf.UpdateScrollBarVisibility and S.savedScroll then
@@ -3046,11 +3084,10 @@ RefreshSavedInstances = function()
         return (a.difficultyName or "") < (b.difficultyName or "")
     end)
 
-    local SIDE_PAD = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
-    local GROUP_GAP = 12
+    local GROUP_GAP = lay.contentTopGap
     local ROW_GAP = 3
-    local rowW = math.max(260, content:GetWidth() - (SIDE_PAD * 2))
-    local y = 8
+    local rowW = contentW
+    local y = lay.contentTopGap
     local prevScroll = (S.savedScroll and S.savedScroll.GetVerticalScroll and S.savedScroll:GetVerticalScroll()) or 0
 
     S.savedGroupCollapsed = S.savedGroupCollapsed or {}
@@ -3066,14 +3103,16 @@ RefreshSavedInstances = function()
 
         local header = BuildGroupHeader(content, group, rowW, collapsed)
         header._savedGroupKey = groupKey
-        header:SetScript("OnClick", function()
-            local key = header._savedGroupKey
-            if not key then return end
-            S.savedGroupCollapsed[key] = not S.savedGroupCollapsed[key]
+        header:SetScript("OnClick", nil)
+        header:SetScript("OnMouseDown", function(_, btn)
+            if btn ~= "LeftButton" then return end
+            S._savedUserInteractUntil = GetTime() + 0.45
+            local wasCollapsed = S.savedGroupCollapsed[groupKey] == true
+            S.savedGroupCollapsed[groupKey] = not wasCollapsed
             RefreshSavedInstances()
         end)
         header:ClearAllPoints()
-        header:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -y)
+        header:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
         S.savedRows[#S.savedRows + 1] = header
         y = y + header:GetHeight() + ROW_GAP
 
@@ -3089,14 +3128,14 @@ RefreshSavedInstances = function()
                 local c = roster[ci]
                 local charRow = BuildLockoutRow(content, c, c.encounters, group, rowW)
                 charRow:ClearAllPoints()
-                charRow:SetPoint("TOPLEFT", content, "TOPLEFT", SIDE_PAD, -y)
+                charRow:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
                 S.savedRows[#S.savedRows + 1] = charRow
                 y = y + charRow:GetHeight() + ROW_GAP
             end
         end
     end
 
-    content:SetHeight(math.max(40, y))
+    content:SetHeight(math.max(40, y + lay.contentBottomPad))
     local viewportH = (S.savedScroll and S.savedScroll.GetHeight and S.savedScroll:GetHeight()) or 0
     local maxY = math.max(0, (content:GetHeight() or 0) - viewportH)
     S.savedScroll:SetVerticalScroll(math.min(maxY, math.max(0, prevScroll)))
@@ -3112,6 +3151,8 @@ ToggleSavedInstances = function()
         S.savedFrame:Hide()
         return
     end
+    HideTable()
+    HideMenu()
     BuildSavedInstancesFrame()
     if S.savedFrame and S.button and not S.savedFrame:GetPoint() then
         S.savedFrame:ClearAllPoints()
