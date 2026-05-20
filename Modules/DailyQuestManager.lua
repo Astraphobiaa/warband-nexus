@@ -193,8 +193,9 @@ end
 local QUEST_CATEGORIES = {
     { key = "weeklyQuests",    order = 1 },
     { key = "worldQuests",     order = 2 },
-    { key = "dailyQuests",     order = 3 },
-    { key = "events",          order = 4 },
+    { key = "assignments",     order = 3 },
+    { key = "dailyQuests",     order = 4 },
+    { key = "events",          order = 5 },
 }
 
 local CATEGORY_DISPLAY = {
@@ -207,6 +208,11 @@ local CATEGORY_DISPLAY = {
         name  = function() return (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World Quests" end,
         atlas = "worldquest-icon",
         color = { 0.30, 0.80, 1.00 },
+    },
+    assignments = {
+        name  = function() return (ns.L and ns.L["VAULT_SLOT_SA"]) or "Assignments" end,
+        atlas = "questlog-questtypeicon-important",
+        color = { 1.00, 0.55, 0.20 },
     },
     dailyQuests = {
         name  = function() return (ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily Quests" end,
@@ -227,6 +233,7 @@ ns.CATEGORY_DISPLAY = CATEGORY_DISPLAY
 local DEFAULT_QUEST_TYPES = {
     weeklyQuests = true,
     worldQuests  = true,
+    assignments  = true,
     dailyQuests  = true,
     events       = true,
 }
@@ -240,6 +247,7 @@ local function NormalizeQuestTypes(questTypes)
     return {
         weeklyQuests = (questTypes.weeklyQuests ~= false),
         worldQuests  = (questTypes.worldQuests ~= false),
+        assignments  = (questTypes.assignments ~= false),
         dailyQuests  = (questTypes.dailyQuests ~= false),
         events       = (questTypes.events ~= false),
     }
@@ -460,7 +468,7 @@ local function DetermineQuestCategory(questID, questTitle, flags)
     -- Title-based detection (before flag checks)
     if lowerTitle ~= "" then
         if lowerTitle:find("special assignment", 1, true) or lowerTitle:find("assignment:", 1, true) then
-            return "worldQuests"
+            return "assignments"
         end
         -- Prey hunts (individual contracts from Astalor Bloodsworn)
         if lowerTitle:find("prey:", 1, true) or lowerTitle:find("prey hunt", 1, true) then
@@ -524,6 +532,7 @@ function WarbandNexus:ScanMidnightQuests()
     local quests = {
         weeklyQuests = {},
         worldQuests  = {},
+        assignments  = {},
         dailyQuests  = {},
         events       = {},
     }
@@ -691,7 +700,7 @@ function WarbandNexus:ScanMidnightQuests()
                 local progress = GetQuestProgress(lockQuestID)
                 local objectiveText = GetObjectiveText(lockQuestID)
 
-                quests.worldQuests[#quests.worldQuests + 1] = {
+                quests.assignments[#quests.assignments + 1] = {
                     questID      = lockQuestID,
                     title        = saTitle,
                     isComplete   = false,
@@ -747,7 +756,9 @@ function WarbandNexus:ScanMidnightQuests()
                         local bTitle = GetQuestTitle(bi.questID, bi)
                         local lt = type(bTitle) == "string" and bTitle:lower() or ""
                         local isWQ = IsWorldQuest(bi.questID)
-                        if (not isWQ) or lt:find("assignment", 1, true) then
+                        if lt:find("assignment", 1, true) then
+                            AddQuest(bi.questID, parentID, "Quel'Thalas", bi, "assignments")
+                        elseif not isWQ then
                             AddQuest(bi.questID, parentID, "Quel'Thalas", bi)
                         end
                     end
@@ -912,7 +923,7 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
         contentType    = "midnight",
         contentName    = "Midnight",
         questTypes     = normalizedTypes,
-        name           = ((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Weekly Progress - ") .. characterName,
+        name           = ((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. characterName,
         iconAtlas      = "questlog-questtypeicon-daily",
         iconIsAtlas    = true,
         createdDate    = time(),
@@ -943,14 +954,9 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     if not plan or plan.type ~= "daily_quests" then return end
 
     plan.questTypes = NormalizeQuestTypes(plan.questTypes)
-    plan.questTypes.assignments = nil
-    if plan.quests then
-        plan.quests.assignments = nil
-    end
 
     local oldQuests = plan.quests
     local newQuests = self:ScanMidnightQuests()
-    newQuests.assignments = nil
 
     -- Merge completed quests that vanished from API back into the plan
     -- Dynamic quests (WQ, daily, SA) disappear from API on turn-in
@@ -958,7 +964,7 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     if oldQuests then
         local hasReset = (self.HasWeeklyResetOccurredSince and self:HasWeeklyResetOccurredSince(plan.lastUpdate))
 
-        local mergeDynamicCats = { "worldQuests", "dailyQuests" }
+        local mergeDynamicCats = { "worldQuests", "assignments", "dailyQuests" }
         for mci = 1, #mergeDynamicCats do
             local catKey = mergeDynamicCats[mci]
             local oldList = oldQuests[catKey]

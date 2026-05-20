@@ -658,12 +658,12 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         end)
     end
 
-    y = addCheckboxRow(y, (ns.L and ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards", ex.coffer_shards ~= false, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"), ex.coffer_shards ~= false, function(checked)
         ex.coffer_shards = checked
         applyColumnPickerChange(false)
     end)
 
-    y = addCheckboxRow(y, (ns.L and ns.L["PVE_COL_RESTORED_KEY"]) or "Restored Key", ex.restored_key ~= false, function(checked)
+    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"), ex.restored_key ~= false, function(checked)
         ex.restored_key = checked
         applyColumnPickerChange(false)
     end)
@@ -709,7 +709,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         local resetLbl = FontManager:CreateFontString(resetBtn, "small", "OVERLAY")
         resetLbl:SetPoint("CENTER", 0, 0)
         local hex = (UI_GetAccentHexColor and UI_GetAccentHexColor()) or "aaaaee"
-        resetLbl:SetText("|cff" .. hex .. ((ns.L and ns.L["SHOW_ALL"]) or "Show All") .. "|r")
+        resetLbl:SetText("|cff" .. hex .. (GetLocalizedText("SHOW_ALL", "Show All")) .. "|r")
         if resetLbl.EnableMouse then resetLbl:EnableMouse(false) end
         resetBtn:SetScript("OnClick", function()
             for j = 1, #crestDefs do
@@ -911,7 +911,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     local columnsBtnText = FontManager:CreateFontString(columnsBtn, "body", "OVERLAY")
     columnsBtnText:SetPoint("CENTER", 0, 0)
     columnsBtnText:SetJustifyH("CENTER")
-    columnsBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
+    columnsBtnText:SetText(GetLocalizedText("COLUMNS_BUTTON", "Columns"))
     columnsBtnText:SetTextColor(0.9, 0.9, 0.9)
     if Factory.ApplyHighlight then Factory:ApplyHighlight(columnsBtn) end
     columnsBtn:SetPoint("RIGHT", hideBtn, "LEFT", -8, 0)
@@ -1144,7 +1144,7 @@ local function PvE_FormatVaultTrackColumn(activityList, slotCount, typeName, vau
     local READY = VAULT_SLOT_CHECK
     local NOT_READY = VAULT_SLOT_CROSS
     local GREEN_ARROW = VAULT_SLOT_UPARROW
-    local readyClaimLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+    local readyClaimLabel = GetLocalizedText("VAULT_READY_TO_CLAIM", "Ready")
     if vaultLootClaimable then
         return "|cff44ff44" .. readyClaimLabel .. "|r"
     end
@@ -1224,10 +1224,10 @@ local function GetNextTierName(activity, typeName)
     
     local currentLevel = activity.level
     
-    local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
-    local heroicLabel = (ns.L and ns.L["DIFFICULTY_HEROIC"]) or "Heroic"
-    local normalLabel = (ns.L and ns.L["DIFFICULTY_NORMAL"]) or "Normal"
-    local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
+    local mythicLabel = GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
+    local heroicLabel = GetLocalizedText("DIFFICULTY_HEROIC", "Heroic")
+    local normalLabel = GetLocalizedText("DIFFICULTY_NORMAL", "Normal")
+    local tierFmt = GetLocalizedText("TIER_FORMAT", "Tier %d")
     
     -- World/Delves tier progression (Tier 1-8)
     if typeName == "World" then
@@ -1271,11 +1271,11 @@ end
     @return string|nil - Max tier/difficulty name
 ]]
 local function GetMaxTierName(typeName)
-    local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
+    local tierFmt = GetLocalizedText("TIER_FORMAT", "Tier %d")
     if typeName == "World" then
         return string.format(tierFmt, 8)
     elseif typeName == "Raid" then
-        return (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
+        return GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
     elseif typeName == "M+" or typeName == "Dungeon" then
         return string.format(tierFmt, 10)
     elseif typeName == "PvP" then
@@ -1291,13 +1291,13 @@ end
     @return string - Display text for the activity (e.g., "Heroic", "+7", "Tier 1")
 ]]
 local function GetVaultActivityDisplayText(activity, typeName)
-    local unknownLabel = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-    local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
-    local heroicLabel = (ns.L and ns.L["DIFFICULTY_HEROIC"]) or "Heroic"
-    local normalLabel = (ns.L and ns.L["DIFFICULTY_NORMAL"]) or "Normal"
-    local lfrLabel = (ns.L and ns.L["DIFFICULTY_LFR"]) or "LFR"
-    local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
-    local pvpLabel = (ns.L and ns.L["PVP_TYPE"]) or "PvP"
+    local unknownLabel = GetLocalizedText("UNKNOWN", "Unknown")
+    local mythicLabel = GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
+    local heroicLabel = GetLocalizedText("DIFFICULTY_HEROIC", "Heroic")
+    local normalLabel = GetLocalizedText("DIFFICULTY_NORMAL", "Normal")
+    local lfrLabel = GetLocalizedText("DIFFICULTY_LFR", "LFR")
+    local tierFmt = GetLocalizedText("TIER_FORMAT", "Tier %d")
+    local pvpLabel = GetLocalizedText("PVP_TYPE", "PvP")
     
     if not activity then
         return unknownLabel
@@ -1363,7 +1363,7 @@ local function BuildRaidEncounterLines(lines, encounters)
     end)
     
     local lastInstanceID = nil
-    local encounterListLabel = (ns.L and ns.L["VAULT_ENCOUNTER_LIST_FORMAT"]) or "%s"
+    local encounterListLabel = GetLocalizedText("VAULT_ENCOUNTER_LIST_FORMAT", "%s")
     for i = 1, #sorted do
         local enc = sorted[i]
         if (enc.instanceID or 0) ~= (lastInstanceID or 0) then
@@ -1437,7 +1437,7 @@ local function BuildRaidBossLinesFromLockouts(lines, raidLockouts)
         end
     end
 
-    local encounterListLabel = (ns.L and ns.L["VAULT_ENCOUNTER_LIST_FORMAT"]) or "%s"
+    local encounterListLabel = GetLocalizedText("VAULT_ENCOUNTER_LIST_FORMAT", "%s")
     for ii = 1, #instanceOrder do
         local instName = instanceOrder[ii]
         local bossMap = instances[instName]
@@ -1485,9 +1485,9 @@ end
 local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, threshold)
     if threshold <= 0 then return end
     
-    local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
-    local heroicLabel = (ns.L and ns.L["DIFFICULTY_HEROIC"]) or "Heroic"
-    local topRunsLabel = (ns.L and ns.L["VAULT_TOP_RUNS_FORMAT"]) or "Top %d Runs This Week"
+    local mythicLabel = GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
+    local heroicLabel = GetLocalizedText("DIFFICULTY_HEROIC", "Heroic")
+    local topRunsLabel = GetLocalizedText("VAULT_TOP_RUNS_FORMAT", "Top %d Runs This Week")
     
     table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
     table.insert(lines, {
@@ -1564,8 +1564,8 @@ end
 local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
     if not worldTierProgress or #worldTierProgress == 0 or threshold <= 0 then return end
     
-    local topRunsLabel = (ns.L and ns.L["VAULT_TOP_RUNS_FORMAT"]) or "Top %d Runs This Week"
-    local delveTierFmt = (ns.L and ns.L["VAULT_DELVE_TIER_FORMAT"]) or "Tier %d (%d)"
+    local topRunsLabel = GetLocalizedText("VAULT_TOP_RUNS_FORMAT", "Top %d Runs This Week")
+    local delveTierFmt = GetLocalizedText("VAULT_DELVE_TIER_FORMAT", "Tier %d (%d)")
     
     table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
     table.insert(lines, {
@@ -1700,11 +1700,11 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
         local typeDisplayName = typeName
         if typeName == "Raid" then
-            typeDisplayName = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids"
+            typeDisplayName = GetLocalizedText("VAULT_SLOT_RAIDS", "Raids")
         elseif typeName == "Dungeon" then
-            typeDisplayName = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeons"
+            typeDisplayName = GetLocalizedText("VAULT_SLOT_DUNGEON", "Dungeons")
         elseif typeName == "World" then
-            typeDisplayName = (ns.L and ns.L["VAULT_WORLD"]) or "World"
+            typeDisplayName = GetLocalizedText("VAULT_WORLD", "World")
         end
         local label = FontManager:CreateFontString(rowFrame, rowLabelFontKey, "OVERLAY")
         label:SetPoint("LEFT", trackIcon, "RIGHT", 5, 0)
@@ -1743,6 +1743,17 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
             end
             if WeeklyRewardsFrame then
                 WeeklyRewardsFrame:Show()
+                if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then
+                    C_WeeklyRewards.OnUIInteract()
+                end
+                if WarbandNexus and WarbandNexus.EnsureWeeklyRewardsFrameHooks then
+                    WarbandNexus:EnsureWeeklyRewardsFrameHooks()
+                end
+                C_Timer.After(0.2, function()
+                    if WarbandNexus and WarbandNexus.RefreshVaultClaimState then
+                        WarbandNexus:RefreshVaultClaimState()
+                    end
+                end)
             end
         end
 
@@ -1837,7 +1848,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                     ilvlText:SetWidth(textW)
                     ilvlText:SetJustifyH("CENTER")
                     ilvlText:SetWordWrap(false)
-                    local ilvlFormat = (ns.L and ns.L["ILVL_FORMAT"]) or "iLvl %d"
+                    local ilvlFormat = GetLocalizedText("ILVL_FORMAT", "iLvl %d")
                     ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", rewardIlvl))
                 end
 
@@ -1856,14 +1867,14 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         local lines = {}
                         local displayText = GetVaultActivityDisplayText(activity, dataKey)
                         local rewardIlvl = GetRewardItemLevel(activity)
-                        local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
-                        local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
+                        local tierFmt = GetLocalizedText("TIER_FORMAT", "Tier %d")
+                        local mythicLabel = GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
 
                         -- Current Reward header + value
                         if rewardIlvl and rewardIlvl > 0 then
                             table.insert(lines, {
                                 text = string.format("|cff00ff00%s|r",
-                                    (ns.L and ns.L["VAULT_REWARD"]) or "Current Reward"),
+                                    GetLocalizedText("VAULT_REWARD", "Current Reward")),
                                 color = {0.5, 1, 0.5}
                             })
                             table.insert(lines, {
@@ -1879,7 +1890,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                             local nextTierName = GetNextTierName(activity, dataKey)
                             if nextTierName then
                                 table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                local improveLabel = (ns.L and ns.L["VAULT_IMPROVE_TO"]) or "Improve to"
+                                local improveLabel = GetLocalizedText("VAULT_IMPROVE_TO", "Improve to")
                                 if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
                                     table.insert(lines, {
                                         text = string.format("|cffa0d0ff%s iLvl %d:|r",
@@ -1887,7 +1898,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                                         color = {0.63, 0.82, 1}
                                     })
                                 end
-                                local completeOnLabel = (ns.L and ns.L["VAULT_COMPLETE_ON"]) or "Complete this activity on %s"
+                                local completeOnLabel = GetLocalizedText("VAULT_COMPLETE_ON", "Complete this activity on %s")
                                 table.insert(lines, {
                                     text = string.format("|cff888888" .. completeOnLabel .. "|r", nextTierName),
                                     color = {0.5, 0.5, 0.5}
@@ -1919,9 +1930,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
                         if vaultSlotInteract then
                             table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                            table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                            table.insert(lines, { text = "|cff00ccff" .. (GetLocalizedText("VAULT_CLICK_TO_OPEN", "Click to open Great Vault")) .. "|r", color = {0, 0.8, 1} })
                         end
-                        local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
+                        local slotTitleFormat = GetLocalizedText("VAULT_SLOT_FORMAT", "%s Slot %d")
                         ShowTooltip(self, {
                             type = "custom",
                             icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
@@ -1963,22 +1974,22 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                     slotFrame:EnableMouse(true)
                     slotFrame:SetScript("OnEnter", function(self)
                         local lines = {}
-                        local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
-                        local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
+                        local tierFmt = GetLocalizedText("TIER_FORMAT", "Tier %d")
+                        local mythicLabel = GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
 
                         local activityHint = ""
                         if dataKey == "M+" then
-                            activityHint = (ns.L and ns.L["VAULT_DUNGEONS"]) or "dungeons"
+                            activityHint = GetLocalizedText("VAULT_DUNGEONS", "dungeons")
                         elseif dataKey == "Raid" then
-                            activityHint = (ns.L and ns.L["VAULT_BOSS_KILLS"]) or "boss kills"
+                            activityHint = GetLocalizedText("VAULT_BOSS_KILLS", "boss kills")
                         elseif dataKey == "World" then
-                            activityHint = (ns.L and ns.L["VAULT_WORLD_ACTIVITIES"]) or "world activities"
+                            activityHint = GetLocalizedText("VAULT_WORLD_ACTIVITIES", "world activities")
                         else
-                            activityHint = (ns.L and ns.L["VAULT_ACTIVITIES"]) or "activities"
+                            activityHint = GetLocalizedText("VAULT_ACTIVITIES", "activities")
                         end
 
                         -- Unlock Reward header
-                        local unlockLabel = (ns.L and ns.L["VAULT_UNLOCK_REWARD"]) or "Unlock Reward"
+                        local unlockLabel = GetLocalizedText("VAULT_UNLOCK_REWARD", "Unlock Reward")
                         table.insert(lines, {
                             text = string.format("|cff00ff00%s|r", unlockLabel),
                             color = {0.5, 1, 0.5}
@@ -1987,7 +1998,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         -- "Complete N more X to unlock"
                         local remaining = threshold - progress
                         if remaining > 0 then
-                            local completeMoreLabel = (ns.L and ns.L["VAULT_COMPLETE_MORE_FORMAT"]) or "Complete %d more %s this week to unlock."
+                            local completeMoreLabel = GetLocalizedText("VAULT_COMPLETE_MORE_FORMAT", "Complete %d more %s this week to unlock.")
                             table.insert(lines, {
                                 text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
                                     remaining, activityHint),
@@ -1999,7 +2010,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         if dataKey == "M+" then
                             local currentTierText = GetVaultActivityDisplayText(activity, dataKey)
                             table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                            local basedOnLabel = (ns.L and ns.L["VAULT_BASED_ON_FORMAT"]) or "The item level of this reward will be based on the lowest of your top %d runs this week (currently %s)."
+                            local basedOnLabel = GetLocalizedText("VAULT_BASED_ON_FORMAT", "The item level of this reward will be based on the lowest of your top %d runs this week (currently %s).")
                             table.insert(lines, {
                                 text = string.format("|cff888888" .. basedOnLabel .. "|r",
                                     threshold, currentTierText),
@@ -2011,7 +2022,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         if dataKey == "Raid" then
                             local currentDiffText = GetVaultActivityDisplayText(activity, dataKey)
                             table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                            local raidBasedLabel = (ns.L and ns.L["VAULT_RAID_BASED_FORMAT"]) or "Reward based on highest difficulty defeated (currently %s)."
+                            local raidBasedLabel = GetLocalizedText("VAULT_RAID_BASED_FORMAT", "Reward based on highest difficulty defeated (currently %s).")
                             table.insert(lines, {
                                 text = string.format("|cff888888" .. raidBasedLabel .. "|r", currentDiffText),
                                 color = {0.5, 0.5, 0.5}
@@ -2042,9 +2053,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
                         if vaultSlotInteract then
                             table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                            table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                            table.insert(lines, { text = "|cff00ccff" .. (GetLocalizedText("VAULT_CLICK_TO_OPEN", "Click to open Great Vault")) .. "|r", color = {0, 0.8, 1} })
                         end
-                        local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
+                        local slotTitleFormat = GetLocalizedText("VAULT_SLOT_FORMAT", "%s Slot %d")
                         ShowTooltip(self, {
                             type = "custom",
                             icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
@@ -2086,21 +2097,21 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
                             local activityHint = ""
                             if dataKey == "M+" then
-                                activityHint = (ns.L and ns.L["VAULT_DUNGEONS"]) or "dungeons"
+                                activityHint = GetLocalizedText("VAULT_DUNGEONS", "dungeons")
                             elseif dataKey == "Raid" then
-                                activityHint = (ns.L and ns.L["VAULT_BOSS_KILLS"]) or "boss kills"
+                                activityHint = GetLocalizedText("VAULT_BOSS_KILLS", "boss kills")
                             elseif dataKey == "World" then
-                                activityHint = (ns.L and ns.L["VAULT_WORLD_ACTIVITIES"]) or "world activities"
+                                activityHint = GetLocalizedText("VAULT_WORLD_ACTIVITIES", "world activities")
                             else
-                                activityHint = (ns.L and ns.L["VAULT_ACTIVITIES"]) or "activities"
+                                activityHint = GetLocalizedText("VAULT_ACTIVITIES", "activities")
                             end
 
-                            local unlockLabel = (ns.L and ns.L["VAULT_UNLOCK_REWARD"]) or "Unlock Reward"
+                            local unlockLabel = GetLocalizedText("VAULT_UNLOCK_REWARD", "Unlock Reward")
                             table.insert(lines, {
                                 text = string.format("|cff00ff00%s|r", unlockLabel),
                                 color = {0.5, 1, 0.5}
                             })
-                            local completeMoreLabel = (ns.L and ns.L["VAULT_COMPLETE_MORE_FORMAT"]) or "Complete %d more %s this week to unlock."
+                            local completeMoreLabel = GetLocalizedText("VAULT_COMPLETE_MORE_FORMAT", "Complete %d more %s this week to unlock.")
                             table.insert(lines, {
                                 text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
                                     threshold, activityHint),
@@ -2109,9 +2120,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
                             if vaultSlotInteract then
                                 table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
-                                table.insert(lines, { text = "|cff00ccff" .. ((ns.L and ns.L["VAULT_CLICK_TO_OPEN"]) or "Click to open Great Vault") .. "|r", color = {0, 0.8, 1} })
+                                table.insert(lines, { text = "|cff00ccff" .. (GetLocalizedText("VAULT_CLICK_TO_OPEN", "Click to open Great Vault")) .. "|r", color = {0, 0.8, 1} })
                             end
-                            local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
+                            local slotTitleFormat = GetLocalizedText("VAULT_SLOT_FORMAT", "%s Slot %d")
                             ShowTooltip(self, {
                                 type = "custom",
                                 icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
@@ -2254,7 +2265,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 scoreColor = "|cff9d9d9d"
             end
             
-            local overallScoreLabel = (ns.L and ns.L["OVERALL_SCORE_LABEL"]) or "Overall Score:"
+            local overallScoreLabel = GetLocalizedText("OVERALL_SCORE_LABEL", "Overall Score:")
             scoreText:SetText(string.format("%s %s%s|r", overallScoreLabel, scoreColor, FormatNumber(totalScore)))
             mplusY = mplusY + 35
             
@@ -2402,18 +2413,18 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                                 table.insert(tooltipLines, { text = dungeon.name, color = {1, 1, 1} })
                             end
                             if hasBestLevel then
-                                local bestKeyLabel = (ns.L and ns.L["VAULT_BEST_KEY"]) or "Best Key:"
+                                local bestKeyLabel = GetLocalizedText("VAULT_BEST_KEY", "Best Key:")
                                 table.insert(tooltipLines, {
                                     text = string.format("%s |cffffcc00+%d|r", bestKeyLabel, dungeon.bestLevel),
                                     color = {0.9, 0.9, 0.9}
                                 })
-                                local scoreLabel = (ns.L and ns.L["VAULT_SCORE"]) or "Score:"
+                                local scoreLabel = GetLocalizedText("VAULT_SCORE", "Score:")
                                 table.insert(tooltipLines, {
                                     text = string.format("%s |cffffffff%s|r", scoreLabel, FormatNumber(dungeon.score or 0)),
                                     color = {0.9, 0.9, 0.9}
                                 })
                             else
-                                local notCompletedLabel = (ns.L and ns.L["NOT_COMPLETED_SEASON"]) or "Not completed this season"
+                                local notCompletedLabel = GetLocalizedText("NOT_COMPLETED_SEASON", "Not completed this season")
                                 table.insert(tooltipLines, {
                                     text = "|cff888888" .. notCompletedLabel .. "|r",
                                     color = {0.6, 0.6, 0.6}
@@ -2422,7 +2433,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                             ShowTooltip(self, {
                                 type = "custom",
                                 icon = dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark",
-                                title = dungeon.name or ((ns.L and ns.L["VAULT_DUNGEON"]) or "Dungeon"),
+                                title = dungeon.name or (GetLocalizedText("VAULT_DUNGEON", "Dungeon")),
                                 lines = tooltipLines,
                                 anchor = "ANCHOR_TOP"
                             })
@@ -2441,7 +2452,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             else
                 local noData = FontManager:CreateFontString(mplusCard, "small", "OVERLAY")
                 noData:SetPoint("TOPLEFT", 15, -mplusY)
-                local noDataLabel = (ns.L and ns.L["NO_DATA"]) or "No data"
+                local noDataLabel = GetLocalizedText("NO_DATA", "No data")
                 noData:SetText("|cff666666" .. noDataLabel .. "|r")
                 mplusNeededH = math.max(baseCardHeight, mplusY + 40)
             end
@@ -2464,7 +2475,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             
             local keystoneTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             keystoneTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + topColumnWidth / 2, -col1Y)
-            local keystoneLabel = (ns.L and ns.L["KEYSTONE"]) or "Keystone"
+            local keystoneLabel = GetLocalizedText("KEYSTONE", "Keystone")
             keystoneTitle:SetText("|cffffffff" .. keystoneLabel .. "|r")
             keystoneTitle:SetJustifyH("CENTER")
             
@@ -2501,18 +2512,18 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                     nameText:SetJustifyH("CENTER")
                     nameText:SetWordWrap(true)
                     nameText:SetMaxLines(2)
-                    nameText:SetText(mapName or ((ns.L and ns.L["KEYSTONE"]) or "Keystone"))
+                    nameText:SetText(mapName or (GetLocalizedText("KEYSTONE", "Keystone")))
                 else
                     local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                     noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
-                    local noKeyLabel = (ns.L and ns.L["NO_KEY"]) or "No Key"
+                    local noKeyLabel = GetLocalizedText("NO_KEY", "No Key")
                     noKeyText:SetText("|cff888888" .. noKeyLabel .. "|r")
                     noKeyText:SetJustifyH("CENTER")
                 end
             else
                 local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
-                local noKeyLabel = (ns.L and ns.L["NO_KEY"]) or "No Key"
+                local noKeyLabel = GetLocalizedText("NO_KEY", "No Key")
                 noKeyText:SetText("|cff888888" .. noKeyLabel .. "|r")
                 noKeyText:SetJustifyH("CENTER")
             end
@@ -2524,7 +2535,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             
             local affixesTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             affixesTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col2X + topColumnWidth / 2, -col2Y)
-            local affixesLabel = (ns.L and ns.L["AFFIXES"]) or "Affixes"
+            local affixesLabel = GetLocalizedText("AFFIXES", "Affixes")
             affixesTitle:SetText("|cffffffff" .. affixesLabel .. "|r")
             affixesTitle:SetJustifyH("CENTER")
             
@@ -2570,7 +2581,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                                     ShowTooltip(self, {
                                         type = "custom",
                                         icon = filedataid,
-                                        title = name or ((ns.L and ns.L["AFFIX_TITLE_FALLBACK"]) or "Affix"),
+                                        title = name or (GetLocalizedText("AFFIX_TITLE_FALLBACK", "Affix")),
                                         description = description,
                                         lines = {},
                                         anchor = "ANCHOR_RIGHT"
@@ -2590,7 +2601,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             else
                 local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -30)
-                local noAffixesLabel = (ns.L and ns.L["NO_AFFIXES"]) or "No Affixes"
+                local noAffixesLabel = GetLocalizedText("NO_AFFIXES", "No Affixes")
                 noAffixesText:SetText("|cff888888" .. noAffixesLabel .. "|r")
                 noAffixesText:SetJustifyH("CENTER")
             end
@@ -2627,7 +2638,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 local iconFileID = currencyEntry and currencyEntry.icon or curr.fallbackIcon
                 local quantity = currencyEntry and currencyEntry.quantity or 0
                 local maxQuantity = currencyEntry and currencyEntry.maxQuantity or 0
-                local currencyName = currencyEntry and currencyEntry.name or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency")
+                local currencyName = currencyEntry and currencyEntry.name or (GetLocalizedText("TAB_CURRENCY", "Currency"))
 
                 local slotX = rowStartX + ((ci - 1) * (rowItemW + rowSpacing))
                 local iconCenterX = slotX + (rowItemW * 0.5)
@@ -2779,7 +2790,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             
             local noVault = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
             noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
-            local noVaultLabel = (ns.L and ns.L["NO_VAULT_DATA"]) or "No vault data"
+            local noVaultLabel = GetLocalizedText("NO_VAULT_DATA", "No vault data")
             noVault:SetText("|cff666666" .. noVaultLabel .. "|r")
         end
         
@@ -2823,6 +2834,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     local scrollFrameRef = opts.scrollFrameRef
     local yTop = opts.yTop
     local SIDE_MARGIN0 = opts.sideMargin or SIDE_MARGIN
+    local stackW = opts.stackWidth or math.max(1, (scrollParent:GetWidth() or 400) - 2 * SIDE_MARGIN0)
 
     if not chars or #chars == 0 then return nil end
     if not profile.ui then profile.ui = {} end
@@ -2870,6 +2882,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     if visualOpts and visualOpts.sectionPreset then
         headerVisualOpts.sectionPreset = visualOpts.sectionPreset
     end
+    headerVisualOpts.sectionStackWidth = stackW
 
     local expandKey = opts.expandKey
     if not expandKey then
@@ -2914,12 +2927,13 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
         hdrIcon:SetSize(sz, sz)
     end
     header:SetHeight(SECTION_COLLAPSE_HEADER_HEIGHT)
+    if header.SetWidth then
+        header:SetWidth(math.max(1, stackW))
+    end
     if layoutTailFrame then
-        header:SetPoint("TOPLEFT", layoutTailFrame, "BOTTOMLEFT", SIDE_MARGIN0, -4)
-        header:SetPoint("TOPRIGHT", layoutTailFrame, "BOTTOMRIGHT", -SIDE_MARGIN0, -4)
+        header:SetPoint("TOPLEFT", layoutTailFrame, "BOTTOMLEFT", 0, -4)
     else
         header:SetPoint("TOPLEFT", scrollParent, "TOPLEFT", SIDE_MARGIN0, -yTop)
-        header:SetPoint("TOPRIGHT", scrollParent, "TOPRIGHT", -SIDE_MARGIN0, -yTop)
     end
 
     totalLH.v = totalLH.v + SECTION_COLLAPSE_HEADER_HEIGHT
@@ -2955,14 +2969,16 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     end
 
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
-        sectionContent = ns.UI.Factory:CreateContainer(scrollParent, math.max(1, scrollParent:GetWidth()), 1, false)
+        sectionContent = ns.UI.Factory:CreateContainer(scrollParent, math.max(1, stackW), 1, false)
     else
         sectionContent = CreateFrame("Frame", nil, scrollParent)
-        sectionContent:SetSize(math.max(1, scrollParent:GetWidth()), 1)
+        sectionContent:SetSize(math.max(1, stackW), 1)
     end
     sectionContent:ClearAllPoints()
-    sectionContent:SetPoint("TOPLEFT", header, "BOTTOMLEFT", -SIDE_MARGIN0, 0)
-    sectionContent:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", SIDE_MARGIN0, 0)
+    sectionContent:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+    if sectionContent.SetWidth then
+        sectionContent:SetWidth(math.max(1, stackW))
+    end
     sectionContent:SetHeight(0.1)
     sectionContent._wnSectionFullH = 0
     sectionContent._pveRunningH = 0
@@ -3070,13 +3086,19 @@ end
 local function PvEUI_DrawPvEProgressBody(self, parent, L)
     parent._pvePaintedCoreH = nil
     local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
-    local width = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
-        or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
 
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+    local metrics = (chrome and chrome.metrics) or (ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf))
     local fixedHeader = mf and mf.fixedHeader
     local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
     local headerYOffset = (chrome and chrome.yOffset) or 0
+    local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or L.SIDE_MARGIN
+    local stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
+        or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+        or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
+    local width = stackWidth
+    parent._wnPveStackWidth = stackWidth
+    parent._wnPveContentSide = contentSide
     local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
     
     -- Add DB version badge (for debugging/monitoring)
@@ -3165,8 +3187,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for timer/sort/columns =====
     local r, g, b = L.COLORS.accent[1], L.COLORS.accent[2], L.COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local titleTextContent = "|cff" .. hexColor .. ((L.ns.L and L.ns.L["PVE_TITLE"]) or "PvE Progress") .. "|r"
-    local subtitleTextContent = (L.ns.L and L.ns.L["PVE_SUBTITLE"]) or "Great Vault, Raid Lockouts & Mythic+ across your Warband"
+    local titleTextContent = "|cff" .. hexColor .. (GetLocalizedText("PVE_TITLE", "PvE Progress")) .. "|r"
+    local subtitleTextContent = GetLocalizedText("PVE_SUBTITLE", "Great Vault, Raid Lockouts & Mythic+ across your Warband")
     local tm = L.ns.UI_GetTitleCardToolbarMetrics and L.ns.UI_GetTitleCardToolbarMetrics() or {}
     local hdrGapPve = tm.gap or (L.GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
     local pveToolbarReserve = (L.ns.UI_ComputeTitleToolbarReserve and L.ns.UI_ComputeTitleToolbarReserve({
@@ -3181,8 +3203,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     if chrome and ns.UI_AnchorTabTitleCard then
         ns.UI_AnchorTabTitleCard(titleCard, chrome)
     else
-        titleCard:SetPoint("TOPLEFT", L.SIDE_MARGIN, -headerYOffset)
-        titleCard:SetPoint("TOPRIGHT", -L.SIDE_MARGIN, -headerYOffset)
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
     
     -- Weekly reset timer (standardized widget)
@@ -3212,12 +3234,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     -- Sort + section filter (Characters/Professions parity) or legacy sort-only control
     local sortAnchor = resetTimer.container
     local sortOptions = {
-        {key = "manual", label = (L.ns.L and L.ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-        {key = "name", label = (L.ns.L and L.ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-        {key = "level", label = (L.ns.L and L.ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-        {key = "ilvl", label = (L.ns.L and L.ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-        {key = "gold", label = (L.ns.L and L.ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-        {key = "realm", label = (L.ns.L and L.ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
+        {key = "manual", label = GetLocalizedText("SORT_MODE_MANUAL", "Manual (Custom Order)")},
+        {key = "name", label = GetLocalizedText("SORT_MODE_NAME", "Name (A-Z)")},
+        {key = "level", label = GetLocalizedText("SORT_MODE_LEVEL", "Level (Highest)")},
+        {key = "ilvl", label = GetLocalizedText("SORT_MODE_ILVL", "Item Level (Highest)")},
+        {key = "gold", label = GetLocalizedText("SORT_MODE_GOLD", "Gold (Highest)")},
+        {key = "realm", label = GetLocalizedText("SORT_MODE_REALM", "Realm (A-Z)")},
     }
     if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
     if L.ns.UI_CreateCharacterTabAdvancedFilterButton and L.ns.CharacterService and L.ns.CharacterService.EnsureCustomCharacterSectionsProfile then
@@ -3280,8 +3302,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 end
                 return false
             end,
-            expandTooltip = (L.ns.L and L.ns.L["PVE_EXPAND_ALL_TOOLTIP"]) or "Expand all PvE sections and character rows.",
-            collapseTooltip = (L.ns.L and L.ns.L["PVE_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all PvE sections and character rows.",
+            expandTooltip = GetLocalizedText("PVE_EXPAND_ALL_TOOLTIP", "Expand all PvE sections and character rows."),
+            collapseTooltip = GetLocalizedText("PVE_COLLAPSE_ALL_TOOLTIP", "Collapse all PvE sections and character rows."),
             onExpandClick = function()
                 if not profile.ui then profile.ui = {} end
                 profile.ui.pveFavoritesExpanded = true
@@ -3425,7 +3447,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             label = "",
             width = vaultTrackColW,
             icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
-            tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids",
+            tooltipTitle = GetLocalizedText("PVE_HEADER_RAIDS", "Raids"),
             headerLabel = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"),
         }
     end
@@ -3435,7 +3457,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             label = "",
             width = vaultTrackColW,
             icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-            tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
+            tooltipTitle = GetLocalizedText("PVE_HEADER_DUNGEONS", "Dungeons"),
             headerLabel = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"),
         }
     end
@@ -3445,7 +3467,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             label = "",
             width = vaultTrackColW,
             icon = "Interface\\Icons\\INV_Misc_Map_01",
-            tooltipTitle = (L.ns.L and L.ns.L["VAULT_WORLD"]) or "World",
+            tooltipTitle = GetLocalizedText("VAULT_WORLD", "World"),
             headerLabel = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"),
         }
     end
@@ -3456,7 +3478,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             label = "",
             width = L.PVE_BOUNTIFUL_COL_W,
             icon = L.GetTrovehunterBountyColumnIcon(),
-            tooltipTitle = (L.ns.L and L.ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty",
+            tooltipTitle = GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"),
             headerLabel = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"),
         }
     end
@@ -3467,7 +3489,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             label = "",
             width = L.PVE_STATUS_COL_W,
             icon = "Interface\\RaidFrame\\ReadyCheck-Ready",
-            tooltipTitle = (L.ns.L and L.ns.L["PVE_COL_VAULT_STATUS"]) or "Vault Status",
+            tooltipTitle = GetLocalizedText("PVE_COL_VAULT_STATUS", "Vault Status"),
             headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
             headerIconIsAtlas = false,
         }
@@ -3505,7 +3527,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     if not L.ns.Utilities:IsModuleEnabled("pve") then
         L.WarbandNexus._pveVaultTooltipCharsSnapshot = {}
         local CreateDisabledCard = L.ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, (L.ns.L and L.ns.L["PVE_TITLE"]) or "PvE Progress")
+        local cardHeight = CreateDisabledCard(parent, yOffset, GetLocalizedText("PVE_TITLE", "PvE Progress"))
         return yOffset + cardHeight
     end
     
@@ -3561,7 +3583,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local charKey = GetRowCanonicalPvEKey(char)
         
         -- Separate current character
-        if charKey == currentPlayerKey then
+        if charKey == currentPlayerKey
+            or (L.ns.VaultCharKeysMatch and L.ns.VaultCharKeysMatch(charKey, currentPlayerKey)) then
             currentChar = char
         elseif L.ns.CharacterService and L.ns.CharacterService:IsFavoriteCharacter(self, charKey) then
             table.insert(favorites, char)
@@ -3770,7 +3793,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 parent,
                 yOffset,
                 L.ns.PvELoadingState,
-                (L.ns.L and L.ns.L["LOADING_PVE"]) or "Loading PvE Data..."
+                GetLocalizedText("LOADING_PVE", "Loading PvE Data...")
             )
             return newYOffset + 50
         end
@@ -3837,9 +3860,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local pveColumnDividerXs = (L.BuildPvEInlineColumnDividerXs and L.BuildPvEInlineColumnDividerXs(gridInlineStartX, PVE_COLUMNS, GapBetweenColumns)) or {}
     local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + gridInlineStartX + inlineTotal
     local colHeaderInnerW = math.max(viewportW, minScrollW)
-    parent:SetWidth(colHeaderInnerW)
+    local pveGridW = colHeaderInnerW
+    parent:SetWidth(pveGridW)
+    parent._wnPveStackWidth = pveGridW
     if mf then
-        mf._pveMinScrollWidth = colHeaderInnerW
+        mf._pveMinScrollWidth = pveGridW
     end
 
     -- Crest/vault column headers live in scrollChild (scroll with the list). Not columnHeaderClip (Professions frozen strip).
@@ -3857,8 +3882,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         colHeaderRow:SetSize(colHeaderInnerW, COL_HEADER_HEIGHT)
     end
     colHeaderRow:SetHeight(COL_HEADER_HEIGHT)
-    colHeaderRow:SetPoint("TOPLEFT", parent, "TOPLEFT", L.SIDE_MARGIN, -yOffset)
-    colHeaderRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -L.SIDE_MARGIN, -yOffset)
+    colHeaderRow:ClearAllPoints()
+    colHeaderRow:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
+    if colHeaderRow.SetWidth then
+        colHeaderRow:SetWidth(math.max(1, pveGridW))
+    end
 
     local PVE_COMPACT_HEADER_BY_KEY = {
         coffer_shards = { text = L.GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), hex = "ffffff" },
@@ -4139,7 +4167,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             if not secBodies[sk] then
                 secBodies[sk] = L.PvEUI_CreatePvETabSectionShell(self, parent, profile, {
                     chars = favoritesDisplay,
-                    headerLabel = (L.ns.L and L.ns.L["HEADER_FAVORITES"]) or "Favorites",
+                    headerLabel = GetLocalizedText("HEADER_FAVORITES", "Favorites"),
                     sectionUiKey = "pveFavoritesExpanded",
                     defaultExpanded = false,
                     headerAtlas = "GM-icon-assistActive-hover",
@@ -4148,7 +4176,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     totalLH = totalLHBox,
                     scrollFrameRef = scrollFrameRef,
                     yTop = totalLHBox.v,
-                    sideMargin = L.SIDE_MARGIN,
+                    sideMargin = contentSide,
+                    stackWidth = pveGridW,
                 })
             end
             rowHost = secBodies[sk]
@@ -4156,7 +4185,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             if not secBodies[sk] then
                 secBodies[sk] = L.PvEUI_CreatePvETabSectionShell(self, parent, profile, {
                     chars = regularDisplay,
-                    headerLabel = (L.ns.L and L.ns.L["HEADER_CHARACTERS"]) or "Characters",
+                    headerLabel = GetLocalizedText("HEADER_CHARACTERS", "Characters"),
                     sectionUiKey = "pveCharactersExpanded",
                     defaultExpanded = false,
                     headerAtlas = "GM-icon-headCount",
@@ -4165,7 +4194,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     totalLH = totalLHBox,
                     scrollFrameRef = scrollFrameRef,
                     yTop = totalLHBox.v,
-                    sideMargin = L.SIDE_MARGIN,
+                    sideMargin = contentSide,
+                    stackWidth = pveGridW,
                 })
             end
             rowHost = secBodies[sk]
@@ -4196,7 +4226,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     totalLH = totalLHBox,
                     scrollFrameRef = scrollFrameRef,
                     yTop = totalLHBox.v,
-                    sideMargin = L.SIDE_MARGIN,
+                    sideMargin = contentSide,
+                    stackWidth = pveGridW,
                 })
             end
             rowHost = secBodies[sk]
@@ -4226,6 +4257,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         -- Only the current (online) character starts expanded; all others collapsed.
         local charExpandKey = "pve-char-" .. charKey
         local isCurrentChar = (charKey == currentPlayerKey)
+            or (L.ns.VaultCharKeysMatch and L.ns.VaultCharKeysMatch(charKey, currentPlayerKey))
         local hasVaultReward = pve.hasUnclaimedRewards or false
         
         local charExpanded = L.IsExpanded(charExpandKey, false)
@@ -4308,8 +4340,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             accVisual
         )
         if prevDet == nil then
-            charHeader:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 10, 0)
-            charHeader:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", -10, 0)
+            charHeader:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 0, 0)
+            charHeader:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", 0, 0)
         else
             charHeader:SetPoint("TOPLEFT", prevDet, "BOTTOMLEFT", 0, -interRowGap)
             charHeader:SetPoint("TOPRIGHT", prevDet, "BOTTOMRIGHT", 0, -interRowGap)
@@ -4345,15 +4377,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             -- Vault summary from activities
             local vaultActs = pve.vaultActivities or {}
 
-            -- Claimable Great Vault loot (not the same as "threshold progress completed" ticks below).
-            -- Prefer live API for current character, but never let transient API timing
-            -- wipe a known cached "unclaimed rewards" state.
-            local vaultLootClaimable = (pve.hasUnclaimedRewards == true)
-            if isCurrentChar and L.WarbandNexus.HasUnclaimedVaultRewards then
-                local ok, v = pcall(L.WarbandNexus.HasUnclaimedVaultRewards, L.WarbandNexus)
-                if ok then
-                    vaultLootClaimable = (v == true) or vaultLootClaimable
-                end
+            -- Claimable loot: GetVaultStatusForChar (live API for current char; cache + reset for alts).
+            local vaultLootClaimable = false
+            if L.WarbandNexus.GetVaultStatusForChar then
+                local vs = L.WarbandNexus:GetVaultStatusForChar(charKey)
+                vaultLootClaimable = vs and vs.isReady == true
+            else
+                vaultLootClaimable = pve.hasUnclaimedRewards == true
             end
 
             local profileVault = L.WarbandNexus and L.WarbandNexus.db and L.WarbandNexus.db.profile
@@ -4387,10 +4417,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
             local function BuildCurrencyTooltip(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
                 local lines = {}
-                local currentLabel = (L.ns.L and L.ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
-                local seasonLabel = (L.ns.L and L.ns.L["SEASON"]) or "Season"
-                local weeklyLabel = (L.ns.L and L.ns.L["CURRENCY_LABEL_WEEKLY"]) or "Weekly"
-                local remainingSuffix = (L.ns.L and L.ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
+                local currentLabel = GetLocalizedText("CURRENT_ENTRIES_LABEL", "Current:")
+                local seasonLabel = GetLocalizedText("SEASON", "Season")
+                local weeklyLabel = GetLocalizedText("CURRENCY_LABEL_WEEKLY", "Weekly")
+                local remainingSuffix = GetLocalizedText("VAULT_REMAINING_SUFFIX", "remaining")
                 local cappedText = CAPPED or "Capped"
                 qty = qty or 0
                 maxQty = maxQty or 0
@@ -4431,7 +4461,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     if sources and #sources > 0 then
                         table.insert(lines, { text = " ", color = {1, 1, 1} })
                         table.insert(lines, {
-                            text = (L.ns.L and L.ns.L["CREST_SOURCES_HEADER"]) or "Sources:",
+                            text = GetLocalizedText("CREST_SOURCES_HEADER", "Sources:"),
                             color = {1, 0.82, 0},
                         })
                         for si = 1, #sources do
@@ -4441,7 +4471,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                             table.insert(lines, {
                                 text = string.format("%s %s",
                                     L.FormatNumber(remSeason),
-                                    (L.ns.L and L.ns.L["CREST_TO_CAP_SUFFIX"]) or "to season cap"),
+                                    GetLocalizedText("CREST_TO_CAP_SUFFIX", "to season cap")),
                                 color = {0.55, 0.85, 0.55},
                             })
                         end
@@ -4511,7 +4541,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 local te = cd and cd.totalEarned
                 local sm = cd and cd.seasonMax
                 local txt = FormatSeasonLine and FormatSeasonLine(cd) or FormatCurrencyStatus(q)
-                local tipTitle = PVE_DAWNCRESTS[i] and PVE_DAWNCRESTS[i].name or ((L.ns.L and L.ns.L["TAB_CURRENCY"]) or "Currency")
+                local tipTitle = PVE_DAWNCRESTS[i] and PVE_DAWNCRESTS[i].name or (GetLocalizedText("TAB_CURRENCY", "Currency"))
                 colValuesByKey["crest_" .. tostring(PVE_DAWNCRESTS[i].id)] = {
                     text = txt,
                     richText = FormatSeasonLine ~= nil,
@@ -4530,7 +4560,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 richText = FormatSeasonLine ~= nil,
                 color = (not FormatSeasonLine) and ((shardTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM)) or nil,
                 tooltip = BuildCurrencyTooltip(PVE_SHARDS_ID, shardData and shardData.name, shardQty, shardMax, shardTE, shardSM),
-                tooltipTitle = (L.ns.L and L.ns.L["PVE_COL_COFFER_SHARDS"]) or "Coffer Shards",
+                tooltipTitle = GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"),
                 tooltipIcon = shardData and shardData.icon,
                 currencyID = PVE_SHARDS_ID,
                 seasonProgressData = shardData,
@@ -4560,9 +4590,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
             local function BuildVaultSlotTooltipLines(activities, category, totalSlots)
                 local lines = {}
-                local catTitle = (category == "Raid") and ((L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids")
-                    or (category == "M+") and ((L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons")
-                    or ((L.ns.L and L.ns.L["VAULT_WORLD"]) or "World")
+                local catTitle = (category == "Raid") and (GetLocalizedText("PVE_HEADER_RAIDS", "Raids"))
+                    or (category == "M+") and (GetLocalizedText("PVE_HEADER_DUNGEONS", "Dungeons"))
+                    or (GetLocalizedText("VAULT_WORLD", "World"))
                 table.insert(lines, { text = catTitle, color = {1, 0.82, 0} })
                 for i = 1, (totalSlots or 3) do
                     local a = activities and activities[i]
@@ -4575,7 +4605,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                         local rhs = diffLabel or ""
                         if rewardIlvl > 0 then
                             rhs = (rhs ~= "" and (rhs .. "  ") or "")
-                                .. ((L.ns.L and L.ns.L["ILVL_FORMAT"] and string.format(L.ns.L["ILVL_FORMAT"], rewardIlvl)) or ("iLvl " .. rewardIlvl))
+                                .. L.GetLocalizedText("ILVL_FORMAT", "iLvl %d"):format(rewardIlvl)
                         end
                         table.insert(lines, {
                             text = L.GetLocalizedText("PVE_VAULT_SLOT_COMPLETE_FORMAT", "Slot %d: |cff80ff80\226\156\147|r %s"):format(i, rhs ~= "" and rhs or L.GetLocalizedText("PVE_VAULT_SLOT_UNLOCKED", "Unlocked")),
@@ -4606,21 +4636,21 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 vaultColumnData = BuildVaultColumnBind(vaultActs.raids, raidTotal, "Raid"),
                 color = {1, 1, 1},
                 tooltip = BuildVaultSlotTooltipLines(vaultActs.raids, "Raid", raidTotal),
-                tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_RAIDS"]) or "Raids",
+                tooltipTitle = GetLocalizedText("PVE_HEADER_RAIDS", "Raids"),
             }
             colValuesByKey.slot2 = {
                 text = FormatVaultTrackSlots(vaultActs.mythicPlus, dungeonTotal, "M+"),
                 vaultColumnData = BuildVaultColumnBind(vaultActs.mythicPlus, dungeonTotal, "M+"),
                 color = {1, 1, 1},
                 tooltip = BuildVaultSlotTooltipLines(vaultActs.mythicPlus, "M+", dungeonTotal),
-                tooltipTitle = (L.ns.L and L.ns.L["PVE_HEADER_DUNGEONS"]) or "Dungeons",
+                tooltipTitle = GetLocalizedText("PVE_HEADER_DUNGEONS", "Dungeons"),
             }
             colValuesByKey.slot3 = {
                 text = FormatVaultTrackSlots(vaultActs.world, worldTotal, "World"),
                 vaultColumnData = BuildVaultColumnBind(vaultActs.world, worldTotal, "World"),
                 color = {1, 1, 1},
                 tooltip = BuildVaultSlotTooltipLines(vaultActs.world, "World", worldTotal),
-                tooltipTitle = (L.ns.L and L.ns.L["VAULT_WORLD"]) or "World",
+                tooltipTitle = GetLocalizedText("VAULT_WORLD", "World"),
             }
             -- Trovehunter's Bounty / bountiful weeklies: per-character snapshot from PvE cache (not live API on every row).
             local delveChar = (pve.delves and pve.delves.character) or {}
@@ -4628,13 +4658,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             if bountifulDone == nil and isCurrentChar then
                 bountifulDone = L.WarbandNexus.IsBountifulDelveWeeklyDone and L.WarbandNexus:IsBountifulDelveWeeklyDone() or false
             end
-            local bountifulTitle = (L.ns.L and L.ns.L["BOUNTIFUL_DELVE"]) or "Trovehunter's Bounty"
+            local bountifulTitle = GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty")
             local bountifulUnknown = (bountifulDone == nil)
             local bountifulTip = {
                 {
-                    text = bountifulUnknown and ((L.ns.L and L.ns.L["PVE_BOUNTY_NEED_LOGIN"]) or "No saved status for this character. Log in to refresh.")
-                        or (bountifulDone and ((L.ns.L and L.ns.L["VAULT_COMPLETED_ACTIVITIES"]) or "Completed")
-                            or ((L.ns.L and L.ns.L["ACHIEVEMENT_NOT_COMPLETED"]) or "Not Completed")),
+                    text = bountifulUnknown and (GetLocalizedText("PVE_BOUNTY_NEED_LOGIN", "No saved status for this character. Log in to refresh."))
+                        or (bountifulDone and (GetLocalizedText("VAULT_COMPLETED_ACTIVITIES", "Completed"))
+                            or (GetLocalizedText("ACHIEVEMENT_NOT_COMPLETED", "Not Completed"))),
                     color = {1, 1, 1},
                 },
             }
@@ -4679,11 +4709,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 if not vs then
                     statusTxt = EM_DASH_RICH
                 elseif vs.isReady then
-                    statusTxt = "|cff44ff44" .. ((L.ns.L and L.ns.L["VAULT_READY_TO_CLAIM"]) or "Ready to Claim") .. "|r"
+                    statusTxt = "|cff44ff44" .. (GetLocalizedText("VAULT_READY_TO_CLAIM", "Ready to Claim")) .. "|r"
                 elseif (vs.readySlots or 0) > 0 then
                     statusTxt = "|cff66ddff" .. L.GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots"):format(tonumber(vs.readySlots) or 0) .. "|r"
                 else
-                    statusTxt = "|cffffd700" .. ((L.ns.L and L.ns.L["VAULT_PENDING"]) or "Pending\226\128\166") .. "|r"
+                    statusTxt = "|cffffd700" .. (GetLocalizedText("VAULT_PENDING", "Pending\226\128\166")) .. "|r"
                 end
                 colValuesByKey.vault_status = {
                     text = statusTxt,
@@ -4764,7 +4794,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                                 L.ShowTooltip(self, {
                                     type = "custom",
                                     icon = val.tooltipIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
-                                    title = val.tooltipTitle or ((L.ns.L and L.ns.L["TAB_CURRENCY"]) or "Currency"),
+                                    title = val.tooltipTitle or (GetLocalizedText("TAB_CURRENCY", "Currency")),
                                     lines = val.tooltip,
                                     anchor = "ANCHOR_TOP",
                                 })
@@ -4871,9 +4901,9 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
     local snap = self._pveVaultTooltipCharsSnapshot
     local lines = {}
 
-    local title = (ns.L and ns.L["VAULT_SUMMARY_ALL_TITLE"]) or "Great Vault — all characters"
+    local title = GetLocalizedText("VAULT_SUMMARY_ALL_TITLE", "Great Vault — all characters")
     table.insert(lines, {
-        text = (ns.L and ns.L["VAULT_SUMMARY_ALL_SUB"]) or "Raid · Mythic+ · World columns match the PvE tab.",
+        text = GetLocalizedText("VAULT_SUMMARY_ALL_SUB", "Raid · Mythic+ · World columns match the PvE tab."),
         color = { 0.72, 0.72, 0.76 },
     })
     table.insert(lines, { type = "spacer", height = 6 })
@@ -4892,7 +4922,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
 
     if not snap or #snap == 0 then
         table.insert(lines, {
-            text = (ns.L and ns.L["VAULT_SUMMARY_NO_CHARS"]) or "No tracked characters.",
+            text = GetLocalizedText("VAULT_SUMMARY_NO_CHARS", "No tracked characters."),
             color = { 0.55, 0.55, 0.58 },
         })
     else
@@ -4911,10 +4941,12 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
                 local dT = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
                 local wT = vaultActs.world and #vaultActs.world or 3
 
-                local claim = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards == true
-                if (not claim) and charKey == currentKey and self.HasUnclaimedVaultRewards then
-                    local ok, v = pcall(self.HasUnclaimedVaultRewards, self)
-                    claim = ok and v == true
+                local claim = false
+                if self.GetVaultStatusForChar then
+                    local vs = self:GetVaultStatusForChar(charKey)
+                    claim = vs and vs.isReady == true
+                else
+                    claim = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards == true
                 end
 
                 local r = PvE_FormatVaultTrackColumn(vaultActs.raids, raidT, "Raid", claim, 12)
@@ -4948,11 +4980,11 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
             end
         end
 
-        local hdrName = (ns.L and ns.L["VAULT_SUMMARY_COL_NAME"]) or "Character"
-        local hdrRealm = (ns.L and ns.L["VAULT_SUMMARY_COL_REALM"]) or "Realm"
-        local hdrRaid = (ns.L and ns.L["PVE_HEADER_RAIDS"]) or "Raids"
-        local hdrMPlus = (ns.L and ns.L["PVE_HEADER_DUNGEONS"]) or "M+"
-        local hdrWorld = (ns.L and ns.L["VAULT_WORLD"]) or "World"
+        local hdrName = GetLocalizedText("VAULT_SUMMARY_COL_NAME", "Character")
+        local hdrRealm = GetLocalizedText("VAULT_SUMMARY_COL_REALM", "Realm")
+        local hdrRaid = GetLocalizedText("PVE_HEADER_RAIDS", "Raids")
+        local hdrMPlus = GetLocalizedText("PVE_HEADER_DUNGEONS", "M+")
+        local hdrWorld = GetLocalizedText("VAULT_WORLD", "World")
 
         local FontManager = ns.FontManager
         local measure = FontManager and FontManager:CreateFontString(UIParent, "medium", "OVERLAY")
@@ -5018,7 +5050,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
         if notShown > 0 then
             table.insert(lines, { type = "spacer", height = 4 })
             table.insert(lines, {
-                text = string.format((ns.L and ns.L["VAULT_SUMMARY_MORE"]) or "… and %d more (see PvE list).", notShown),
+                text = string.format(GetLocalizedText("VAULT_SUMMARY_MORE", "… and %d more (see PvE list)."), notShown),
                 color = { 0.5, 0.52, 0.58 },
             })
         end
@@ -5057,6 +5089,13 @@ if ns.UI_LayoutCoordinator then
             end
             return PveTabViewportRelayout(scrollChild, contentWidth, mf)
         end,
-        OnViewportLayoutCommit = PveTabViewportRelayout,
+        OnViewportLayoutCommit = function(scrollChild, contentWidth, mf)
+            if not mf or mf.currentTab ~= "pve" then return false end
+            PveTabViewportRelayout(scrollChild, contentWidth, mf)
+            if WarbandNexus and WarbandNexus.PopulateContent then
+                WarbandNexus:PopulateContent(true)
+            end
+            return true
+        end,
     })
 end

@@ -160,14 +160,15 @@ end
 
 local ROW_HEIGHT = 52
 local COL_SPACING = 8                -- Uniform gap after every column (WN-UI-layout single rhythm)
-local OPEN_PROF_GAP = COL_SPACING + 10  -- Extra air between Open button and profession icon column
+local OPEN_PROF_GAP = COL_SPACING  -- Same rhythm as other columns (no extra gap after Open)
 local DATA_FONT = "body"             -- 12px - used for ALL data text
 
 -- Frozen column header: air below title card before header labels (Professions-only tuning).
 local COLUMN_HEADER_TOP_GAP = 6
-local COLUMN_HEADER_HEIGHT = 26
+local COLUMN_HEADER_HEIGHT = 48
 local COLUMN_HEADER_PAD = 4
 local PROF_COLUMN_HEADER_FONT = "subtitle"
+local PROF_COL_ICON_SIZE = 22
 
 -- Two profession bands per row: centers at +/- ROW_HEIGHT/4 from row midline (symmetric halves).
 local PROF_LINE_CENTER_Y = ROW_HEIGHT / 4
@@ -724,9 +725,133 @@ local function ApplyProfColumnHeaderLabel(lbl, displayText, highlighted)
     lbl:SetText(displayText or "")
 end
 
+local ToggleColumnSort
+
+local function BindProfColumnHeaderTooltip(frame, tooltipTitle)
+    if not frame or not tooltipTitle or tooltipTitle == "" then return end
+    frame:EnableMouse(true)
+    frame:SetScript("OnEnter", function(self)
+        if ShowTooltip then
+            ShowTooltip(self, { type = "custom", title = tooltipTitle, lines = {}, anchor = "ANCHOR_TOP" })
+        end
+    end)
+    frame:SetScript("OnLeave", function()
+        if HideTooltip then HideTooltip() end
+    end)
+end
+
+local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
+    if not iconTex or not iconDef or not iconDef.icon then return end
+    if iconDef.iconIsAtlas and iconTex.SetAtlas then
+        iconTex:SetTexture(nil)
+        pcall(function() iconTex:SetAtlas(iconDef.icon) end)
+        local okAtlas = iconTex.GetAtlas and iconTex:GetAtlas()
+        if not okAtlas and iconDef.iconFallback then
+            iconTex:SetTexture(iconDef.iconFallback)
+            iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+    else
+        iconTex:SetTexture(iconDef.icon)
+        iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+end
+
+--- Icon-only data column headers; full locale title on hover (sortable columns keep click target).
+local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef, hdef, sortState, tooltipTitle, accentR, accentG, accentB, FactHdr)
+    if not colHeaderBar or not iconDef or w <= 0 then return end
+    local hitW = math.max(w, PROF_COL_ICON_SIZE + 4)
+    local hitBtn
+    if hdef and hdef.sortable then
+        hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, hitW, COLUMN_HEADER_HEIGHT, true)
+        if not hitBtn then
+            hitBtn = CreateFrame("Button", nil, colHeaderBar)
+            hitBtn:SetSize(hitW, COLUMN_HEADER_HEIGHT)
+        end
+        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+        hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 2)
+        hitBtn:EnableMouse(true)
+    else
+        hitBtn = FactHdr and FactHdr:CreateContainer(colHeaderBar, hitW, COLUMN_HEADER_HEIGHT, false)
+        if not hitBtn then
+            hitBtn = CreateFrame("Frame", nil, colHeaderBar)
+            hitBtn:SetSize(hitW, COLUMN_HEADER_HEIGHT)
+        end
+        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+        hitBtn:EnableMouse(true)
+    end
+
+    local iconTex = hitBtn:CreateTexture(nil, "ARTWORK")
+    iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
+    iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
+    ApplyProfessionHeaderIconTexture(iconTex, iconDef)
+    BindProfColumnHeaderTooltip(hitBtn, tooltipTitle)
+
+    if not hdef or not hdef.sortable then
+        return
+    end
+
+    local isSorted = sortState and sortState.col == col
+    local arrow = hitBtn:CreateTexture(nil, "OVERLAY")
+    arrow:SetSize(11, 11)
+    arrow:SetPoint("TOPRIGHT", hitBtn, "TOPRIGHT", -1, -2)
+    if isSorted then
+        if sortState.dir == "asc" then
+            arrow:SetAtlas("hud-MainMenuBar-arrowup")
+        else
+            arrow:SetAtlas("hud-MainMenuBar-arrowdown")
+        end
+        arrow:SetVertexColor(accentR, accentG, accentB, 1)
+        arrow:Show()
+    else
+        arrow:Hide()
+    end
+
+    local capturedCol = col
+    local prevOnEnter = hitBtn:GetScript("OnEnter")
+    local prevOnLeave = hitBtn:GetScript("OnLeave")
+    hitBtn:SetScript("OnClick", function()
+        if ToggleColumnSort then
+            ToggleColumnSort(capturedCol)
+        end
+    end)
+    hitBtn:SetScript("OnEnter", function(self)
+        if prevOnEnter then prevOnEnter(self) end
+        if not isSorted then
+            arrow:SetAtlas("hud-MainMenuBar-arrowup")
+            arrow:SetVertexColor(1, 1, 1, 0.4)
+            arrow:Show()
+        end
+    end)
+    hitBtn:SetScript("OnLeave", function(self)
+        if prevOnLeave then prevOnLeave(self) end
+        if not isSorted then
+            arrow:Hide()
+        end
+    end)
+end
+
 -- Column header definitions — alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 -- sortable = true means clicking the header toggles ascending/descending sort
+--- Icon atlas/texture per profession data column (header shows icon; tooltip uses full locale label).
+local PROF_HEADER_ICON_BY_COL = {
+    equipment   = { icon = "ItemUpgrade_Icon", iconIsAtlas = true },
+    skill       = { icon = "professions_recipes_in_progress", iconIsAtlas = true },
+    conc        = { icon = "creationgear-32x32", iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_Manaregen" },
+    recharge    = { icon = "Garr_Timer", iconIsAtlas = true },
+    knowledge   = { icon = "QuestDaily", iconIsAtlas = true },
+    recipes     = { icon = "professions_recipes_abilitytab", iconIsAtlas = true },
+    firstCraft  = { icon = "crafting-crafting-order-icon", iconIsAtlas = true },
+    uniques     = { icon = "worldquest-icon", iconIsAtlas = true },
+    treatise    = { icon = "Interface\\Icons\\INV_Inscription_Tradeskill01", iconIsAtlas = false },
+    weeklyQuest = { icon = "questlog-questtypeicon-weekly", iconIsAtlas = true },
+    treasure    = { icon = "worldquest-questmarker-rare", iconIsAtlas = true },
+    gathering   = { icon = "poi-gather", iconIsAtlas = true },
+    catchUp     = { icon = "XPBarAnim-OrangeSpark", iconIsAtlas = true },
+    moxie       = { icon = "currency-icon-moxie", iconIsAtlas = true },
+    cooldowns   = { icon = "Garr_Timer", iconIsAtlas = true },
+}
+
 local HEADER_DEFS = {
     { col = "open",        label = "PROF_OPEN_RECIPE",       text = ns.L and ns.L["PROF_OPEN_RECIPE"],          align = "CENTER", sortable = false },
     { col = "name",        label = "MONEY_LOGS_COLUMN_CHARACTER", text = ns.L and ns.L["MONEY_LOGS_COLUMN_CHARACTER"], align = "LEFT",   sortable = true },
@@ -767,7 +892,7 @@ local function SetColumnSortState(col, dir)
     end
 end
 
-local function ToggleColumnSort(col)
+ToggleColumnSort = function(col)
     local state = GetColumnSortState()
     if state and state.col == col then
         if state.dir == "asc" then
@@ -1541,7 +1666,7 @@ local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
             clipBg:ClearAllPoints()
             clipBg:SetPoint("TOPLEFT", clip, "TOPLEFT", side, -COLUMN_HEADER_TOP_GAP)
             clipBg:SetSize(stackW, COLUMN_HEADER_HEIGHT)
-            clipBg:Show()
+            clipBg:Hide()
         end
     end
     if mf.columnHeaderInner and mf.columnHeaderInner.SetWidth then
@@ -1908,7 +2033,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         clipBg:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 0.95)
         clipBg:SetPoint("TOPLEFT", columnHeaderClip, "TOPLEFT", contentSide, -COLUMN_HEADER_TOP_GAP)
         clipBg:SetSize(stackWidth, COLUMN_HEADER_HEIGHT)
-        clipBg:Show()
+        clipBg:Hide()
     end
     if columnHeaderInner then
         columnHeaderInner:SetWidth(colHeaderInnerW)
@@ -1951,12 +2076,17 @@ function WarbandNexus:DrawProfessionsTab(parent)
             local displayText = StripProfHeaderDisplayText(
                 (hdef.label and ns.L and ns.L[hdef.label]) or hdef.text or ""
             )
-            if col == "open" and displayText == "" then
-                displayText = StripProfHeaderDisplayText((ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open")
-            end
             if col == "profName" and displayText == "" then
                 displayText = StripProfHeaderDisplayText((ns.L and ns.L["GROUP_PROFESSION"]) or "Profession")
             end
+            if col == "open" then
+                -- Per-row Open button only; no header label (avoids "Open" text beside Character sort arrow).
+            elseif PROF_HEADER_ICON_BY_COL[col] then
+                PaintProfessionCompactColumnHeader(
+                    colHeaderBar, col, w, PROF_HEADER_ICON_BY_COL[col], hdef, sortState, displayText,
+                    accentR, accentG, accentB, FactHdr
+                )
+            else
             local isSorted = sortState and sortState.col == col
 
             if hdef.sortable then
@@ -2013,6 +2143,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 hitBtn:SetScript("OnEnter", function()
                     ApplyProfColumnHeaderLabel(lbl, displayText, true)
                     SetHeaderLabelArrowInset(true)
+                    if ShowTooltip and displayText ~= "" then
+                        ShowTooltip(hitBtn, { type = "custom", title = displayText, lines = {}, anchor = "ANCHOR_TOP" })
+                    end
                     if not isSorted then
                         arrow:SetAtlas("hud-MainMenuBar-arrowup")
                         arrow:SetVertexColor(1, 1, 1, 0.4)
@@ -2022,6 +2155,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 hitBtn:SetScript("OnLeave", function()
                     ApplyProfColumnHeaderLabel(lbl, displayText, false)
                     SetHeaderLabelArrowInset(isSorted)
+                    if HideTooltip then HideTooltip() end
                     if not isSorted then
                         arrow:Hide()
                     end
@@ -2045,6 +2179,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
                 lbl:SetPoint("TOPLEFT", clip, "TOPLEFT", 1, 0)
                 lbl:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", -1, 0)
+                BindProfColumnHeaderTooltip(clip, displayText)
+            end
             end
         end
     end

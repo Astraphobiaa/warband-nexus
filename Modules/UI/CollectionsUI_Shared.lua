@@ -84,7 +84,7 @@ local RECENT_SECTION_ORDER = { "achievement", "mount", "pet", "toy" }
 local RECENT_CARD_ICON = 26
 local RECENT_CARD_HEADER_PAD = 10
 local RECENT_ROW_ICON_BORDER_ALPHA = 0.82
--- Recent column cards: shrink column count before cards become unreadable (Statistics tab pattern).
+-- Recent column cards: minimum readable width; narrow viewports scroll horizontally (four columns).
 local RECENT_CARD_MIN_WIDTH = 160
 local SUBTAB_BAR_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
 local PROGRESS_ROW_HEIGHT = 28

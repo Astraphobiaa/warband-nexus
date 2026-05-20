@@ -246,6 +246,11 @@ local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = GetLayout().SIDE_MARGIN or GetLayout().sideMargin or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or GetLayout().topMargin or 8
 
+--- Search bar + card grid share this inset inside the Plans scroll body (see ns.UI_PlansContentPadH).
+local function PlansContentPadH()
+    return (ns.UI_PlansContentPadH and ns.UI_PlansContentPadH()) or SIDE_MARGIN
+end
+
 -- Import PLAN_TYPES from PlansManager
 local PLAN_TYPES = ns.PLAN_TYPES
 
@@ -1066,8 +1071,9 @@ function WarbandNexus:DrawPlansTab(parent)
     -- ===== SEARCH BAR FOR MY PLANS (active tab only) =====
     if currentCategory == "active" then
         local searchBar = ns.UI.Factory:CreateContainer(parent, nil, 32, false)
-        searchBar:SetPoint("TOPLEFT", 10, -yOffset)
-        searchBar:SetPoint("TOPRIGHT", -10, -yOffset)
+        local padH = PlansContentPadH()
+        searchBar:SetPoint("TOPLEFT", padH, -yOffset)
+        searchBar:SetPoint("TOPRIGHT", -padH, -yOffset)
         if ApplyVisuals then
             ApplyVisuals(searchBar, COLORS.bgLight, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
         end
@@ -1311,10 +1317,11 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local expandedGroups = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
 
     -- ===== WEEKLY RESET TIMER BAR =====
+    local padH = PlansContentPadH()
     local resetBarH = 30
     local resetBar = CreateCard(parent, resetBarH)
-    resetBar:SetPoint("TOPLEFT", 10, -yOffset)
-    resetBar:SetPoint("TOPRIGHT", -10, -yOffset)
+    resetBar:SetPoint("TOPLEFT", padH, -yOffset)
+    resetBar:SetPoint("TOPRIGHT", -padH, -yOffset)
     if ApplyVisuals then
         local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
         ApplyVisuals(resetBar, bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
@@ -1376,7 +1383,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local Factory = ns.UI.Factory
     local SECTION_COLLAPSE_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     local sectionSpacing = (GetLayout().SECTION_SPACING) or 8
-    local innerW = math.max(1, width - 20)
+    local innerW = math.max(1, width - 2 * padH)
     local STATS_H = 28
     local scrollTop = yOffset
     local weeklyChainTail = nil
@@ -1454,7 +1461,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             charWrap:SetClipsChildren(true)
         end
         charWrap:ClearAllPoints()
-        ChainSectionFrameBelow(parent, charWrap, weeklyChainTail, 10, weeklyChainTail and sectionSpacing or nil, weeklyChainTail and nil or scrollTop)
+        ChainSectionFrameBelow(parent, charWrap, weeklyChainTail, padH, weeklyChainTail and sectionSpacing or nil, weeklyChainTail and nil or scrollTop)
 
         local realmHdr = plan.characterRealm or ""
         if realmHdr ~= "" and ns.Utilities and ns.Utilities.FormatRealmName then
@@ -1948,7 +1955,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         cardWidth, cardSpacing, gridPadH = ns.UI_PlansCardGridLayout(gridW, 2)
     else
         cardSpacing = (PCM and PCM.todoListCardGap) or 10
-        gridPadH = 12
+        gridPadH = PlansContentPadH()
         cardWidth = ns.UI_PlansCardGridColumnWidth(gridW) or 200
     end
     local todoHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(gridW) or 63
@@ -1959,6 +1966,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
 
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
+    layoutManager.padH = gridPadH
     -- Always point at the active layout: PopulateContent rebuilds cards but OnSizeChanged is only hooked once;
     -- a stale closure capture would RefreshLayout the wrong (old) instance and corrupt positions after resize/scroll.
     parent._plansCardLayoutManager = layoutManager
@@ -1973,8 +1981,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         
         -- === WEEKLY VAULT PLANS (Full Width Card via Factory) ===
         if plan.type == "weekly_vault" then
-            local weeklyCardHeight = 170
-            
+            local weeklyCardHeight = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, gridW)) or 174
+
             -- Create raw card (no base card - weekly vault is fully custom)
             local card = CreateCard(parent, weeklyCardHeight)
             card:EnableMouse(true)
@@ -1984,8 +1992,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             -- Override positioning to make it full width
             card:ClearAllPoints()
-            card:SetPoint("TOPLEFT", 10, -yPos)
-            card:SetPoint("TOPRIGHT", -10, -yPos)
+            card:SetPoint("TOPLEFT", gridPadH, -yPos)
+            card:SetPoint("TOPRIGHT", -gridPadH, -yPos)
             
             -- Update layout manager for full-width card
             layoutManager.currentYOffsets[0] = yPos + weeklyCardHeight + cardSpacing
@@ -2009,16 +2017,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         
         -- === DAILY QUEST PLANS (Single Full-Width Card, vault-style) ===
         elseif plan.type == "daily_quests" then
-            local questCardHeight = 170
-            
+            local questCardHeight = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, gridW)) or 174
+
             local card = CreateCard(parent, questCardHeight)
             card:EnableMouse(true)
             
             local yPos = CardLayoutManager:AddCard(layoutManager, card, 0, questCardHeight)
             
             card:ClearAllPoints()
-            card:SetPoint("TOPLEFT", 10, -yPos)
-            card:SetPoint("TOPRIGHT", -10, -yPos)
+            card:SetPoint("TOPLEFT", gridPadH, -yPos)
+            card:SetPoint("TOPRIGHT", -gridPadH, -yPos)
             
             layoutManager.currentYOffsets[0] = yPos + questCardHeight + cardSpacing
             layoutManager.currentYOffsets[1] = yPos + questCardHeight + cardSpacing
@@ -2332,7 +2340,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
 
     -- Use SharedWidgets search bar (like Items tab)
     -- Create results container that can be refreshed independently
-    local resultsContainer = CreateResultsContainer(parent, yOffset + 40, 10)
+    local padH = PlansContentPadH()
+    local resultsContainer = CreateResultsContainer(parent, yOffset + 40, padH)
     if resultsContainer then
         resultsContainer._plansBrowseTopInset = yOffset + 40
     end
@@ -2360,8 +2369,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         local resultsYOffset = 0
         self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, text)
     end, 0.3, initialSearchText or searchText)
-    searchContainer:SetPoint("TOPLEFT", 10, -yOffset)
-    searchContainer:SetPoint("TOPRIGHT", -10, -yOffset)
+    searchContainer:SetPoint("TOPLEFT", padH, -yOffset)
+    searchContainer:SetPoint("TOPRIGHT", -padH, -yOffset)
     
     yOffset = yOffset + 40
     
@@ -2872,7 +2881,7 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
     end
     local noResultsCard = CreateCard(parent, 80)
     noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
-    noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    noResultsCard:SetPoint("TOPRIGHT", 0, -yOffset)
     local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
     noResultsText:SetPoint("CENTER", 0, 10)
     noResultsText:SetTextColor(titleR, titleG, titleB)
@@ -3429,19 +3438,22 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     -- === 2-COLUMN CARD GRID (metrics match To-Do expandable rows — SharedWidgets ns.UI_PLANS_CARD_METRICS) ===
     local PCM = ns.UI_PLANS_CARD_METRICS
     local gridW = ResolvePlansContentWidth(parent, width)
+    -- `parent` is the browse results container (already inset to match the search bar).
+    local browseGridOpts = { padH = 0 }
     local cardWidth, cardSpacing, gridPadH
     if ns.UI_PlansCardGridLayout then
-        cardWidth, cardSpacing, gridPadH = ns.UI_PlansCardGridLayout(gridW, 2)
+        cardWidth, cardSpacing, gridPadH = ns.UI_PlansCardGridLayout(gridW, 2, browseGridOpts)
     else
         cardSpacing = (PCM and PCM.gridSpacing) or 8
-        gridPadH = 12
-        cardWidth = ns.UI_PlansCardGridColumnWidth(gridW) or 200
+        gridPadH = 0
+        cardWidth = math.max(100, (gridW - cardSpacing) / 2)
     end
     local todoHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(gridW) or 78
     local todoBadgeSz = (PCM and PCM.todoTypeBadgeSize) or 24
     local ACTION_SIZE = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or todoBadgeSz
     local ACTION_GAP = 4
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
+    layoutManager.padH = 0
     parent._plansBrowseLayoutManager = layoutManager
     parent._plansCardLayoutManager = nil
     if not ns._plansBrowseExpanded then ns._plansBrowseExpanded = {} end
@@ -3456,7 +3468,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     if totalResults > MAX_BROWSE_RESULTS then
         local truncationMsg = FontManager:CreateFontString(parent, "body", "OVERLAY")
         truncationMsg:SetPoint("TOPLEFT", 0, -yOffset)
-        truncationMsg:SetPoint("TOPRIGHT", -10, -yOffset)
+        truncationMsg:SetPoint("TOPRIGHT", 0, -yOffset)
         truncationMsg:SetJustifyH("CENTER")
         local showingFormat = (ns.L and ns.L["SHOWING_X_OF_Y"]) or "Showing %d of %d results"
         truncationMsg:SetText("|cff888888" .. format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
@@ -4552,6 +4564,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     local selectedQuestTypes = {
         weeklyQuests = true,
         worldQuests  = true,
+        assignments  = true,
         dailyQuests  = true,
         events       = true,
     }
@@ -4566,6 +4579,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     local categoryDescs = {
         weeklyQuests = (ns.L and ns.L["QUEST_CATEGORY_DESC_WEEKLY"]) or "Weekly objectives, hunts, sparks, world boss, delves",
         worldQuests  = (ns.L and ns.L["QUEST_CATEGORY_DESC_WORLD"]) or "Zone-wide repeatable world quests",
+        assignments  = (ns.L and ns.L["QUEST_CATEGORY_DESC_ASSIGNMENTS"]) or "Special Assignments and weekly assignment progress",
         dailyQuests  = (ns.L and ns.L["QUEST_CATEGORY_DESC_DAILY"]) or "Daily repeatable quests from NPCs",
         events       = (ns.L and ns.L["QUEST_CATEGORY_DESC_EVENTS"]) or "Bonus objectives, tasks, and activities",
     }

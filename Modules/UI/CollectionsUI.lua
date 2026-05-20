@@ -31,6 +31,17 @@ local RefreshCollectionsLayout = M.RefreshCollectionsLayout
 local ApplySessionCollectionsSubTab = M.ApplySessionCollectionsSubTab
 local LayoutCollectionsSearchBar = M.LayoutCollectionsSearchBar
 local DrawRecentContent = M.DrawRecentContent
+local ComputeRecentTabMinScrollWidth = M.ComputeRecentTabMinScrollWidth
+
+if ns.UI_RegisterTabMinScrollWidth and not M.state._recentMinScrollRegistered then
+    M.state._recentMinScrollRegistered = true
+    ns.UI_RegisterTabMinScrollWidth("collections", function()
+        if M.state.currentSubTab ~= "recent" then
+            return nil
+        end
+        return ComputeRecentTabMinScrollWidth(M.state._recentMinScrollSideMargin)
+    end)
+end
 local DrawMountsContent = M.DrawMountsContent
 local DrawPetsContent = M.DrawPetsContent
 local DrawToysContent = M.DrawToysContent
@@ -458,6 +469,12 @@ function WarbandNexus:DrawCollectionsTab(parent)
     local contentHeight = math.max(250, viewHeight - yOffset - bottomPad)
     local parentWidth = parent:GetWidth() or 680
     local contentWidth = math.max(1, parentWidth - (sideMargin * 2))
+    if M.state.currentSubTab == "recent" and ns.UI_ResolveMainTabBodyWidth then
+        local bodyW = ns.UI_ResolveMainTabBodyWidth(mf, parent)
+        if bodyW and bodyW > 0 then
+            contentWidth = bodyW
+        end
+    end
 
     local contentFrame = M.state.contentFrame
     if contentFrame then
@@ -511,6 +528,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
     -- Draw current sub-tab content
     if M.state.currentSubTab == "recent" then
         M.state.recentViewportCap = contentHeight
+        M.state._recentMinScrollSideMargin = sideMargin
+        M.state._recentGridScrollWidth = nil
         M.DrawRecentContent(contentFrame)
         contentHeight = contentFrame:GetHeight() or contentHeight
     elseif M.state.currentSubTab == "mounts" then

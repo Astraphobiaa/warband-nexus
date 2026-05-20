@@ -89,8 +89,6 @@ local function GetCategoryKeys()
         { key = "illusion",      label = (L and L["CATEGORY_ILLUSIONS"]) or "Illusions" },
         { key = "title",         label = (L and L["CATEGORY_TITLES"]) or "Titles" },
         { key = "achievement",   label = (L and L["CATEGORY_ACHIEVEMENTS"]) or "Achievements" },
-        { key = "weekly_vault",  label = (L and L["WEEKLY_VAULT"]) or "Weekly Vault" },
-        { key = "daily_quests",  label = (L and L["CATEGORY_DAILY_TASKS"]) or "Weekly Progress" },
         { key = "custom",        label = (L and L["CUSTOM"]) or "Custom" },
     }
 end
@@ -98,7 +96,6 @@ local CATEGORY_KEYS = GetCategoryKeys()
 
 local currentCategoryKey = nil -- nil = All
 local expandedAchievements = {} -- [achievementID] = true
-local expandedVaults = {} -- [planID] = true
 local expandedPlans = {} -- [planID] = true (mount/pet/toy/illusion/title/custom)
 
 -- Card colors (consistent border theme; use COLORS at runtime in case ns.UI_COLORS was nil at load)
@@ -196,18 +193,22 @@ local function GetAchievementRequirementsText(achievementID)
     return header .. table.concat(parts, "\n")
 end
 
--- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
 -- Content helpers
--- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
---- Content width: derived from scrollFrame (already accounts for scrollbar gap)
-local function GetContentWidth(frame)
-    local sf = frame and frame.contentScrollFrame
+---- List width shared by category bar, dropdown, and plan cards (matches scroll viewport).
+local function GetTrackerListWidth(frame)
+    if not frame then return 200 end
+    local sf = frame.contentScrollFrame
     if sf then
-        local w = sf and sf:GetWidth() or nil
+        local w = sf:GetWidth()
         if w and w > 0 then return w end
     end
-    -- Fallback before layout is ready
-    return math.max((frame and frame:GetWidth() or 380) - PADDING - TRACK_SCROLL_RIGHT_RESERVE, 200)
+    return math.max((frame:GetWidth() or 380) - PADDING - TRACK_SCROLL_RIGHT_RESERVE, 200)
+end
+
+--- Content width: derived from scrollFrame (already accounts for scrollbar gap)
+local function GetContentWidth(frame)
+    return GetTrackerListWidth(frame)
 end
 
 local function IsPlaceholderSourceText(sourceText)
@@ -842,13 +843,47 @@ local function RepositionTrackerRows()
     end
     local frame = GetTrackerFrame()
     if frame and frame.contentScrollChild then
-        frame.contentScrollChild:SetHeight(math.max(1, y))
+        local scrollFrame = frame.contentScrollFrame
+        local viewportHeight = (scrollFrame and scrollFrame.GetHeight and scrollFrame:GetHeight()) or 1
+        frame.contentScrollChild:SetHeight(math.max(y, viewportHeight))
     end
+    return y
+end
+
+--- Full-width vault / daily cards — same factory + height as Plans To-Do tab.
+local function CreateTrackerFullWidthPlanCard(scrollChild, plan, width)
+    local PCF = ns.UI_PlanCardFactory
+    local cardH = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, width)) or 174
+    local card = Factory and Factory:CreateContainer(scrollChild, width, cardH, false)
+    if not card then
+        card = CreateFrame("Frame", nil, scrollChild)
+        card:SetSize(width, cardH)
+    end
+    if ApplyVisuals then
+        ApplyVisuals(card, GetCardColors().bg, GetCardColors().border)
+    end
+    AddTrackerCardAccent(card)
+    if plan.type == "weekly_vault" and PCF and PCF.CreateWeeklyVaultCard then
+        local progress = WarbandNexus.GetResolvedPlanProgress and WarbandNexus:GetResolvedPlanProgress(plan)
+        PCF:CreateWeeklyVaultCard(card, plan, progress, nil)
+    elseif plan.type == "daily_quests" and PCF and PCF.CreateDailyQuestCard then
+        PCF:CreateDailyQuestCard(card, plan)
+    end
+    card:SetHeight(cardH)
+    card:Show()
+    return card
 end
 
 local function RefreshTrackerContentImmediate()
     local frame = GetTrackerFrame()
     if not frame or not frame.contentScrollChild then return end
+
+    if currentCategoryKey == "weekly_vault" or currentCategoryKey == "daily_quests" then
+        currentCategoryKey = nil
+        if frame.categoryBar and frame.categoryBar.syncCategoryLabel then
+            frame.categoryBar.syncCategoryLabel(nil)
+        end
+    end
 
     local scrollChild = frame.contentScrollChild
     local contentWidth = GetContentWidth(frame)
@@ -860,8 +895,13 @@ local function RefreshTrackerContentImmediate()
 
     local plans = WarbandNexus:GetActivePlans() or {}
 
+    local function IsTrackerListPlan(plan)
+        return plan and plan.type ~= "weekly_vault" and plan.type ~= "daily_quests"
+    end
+
     -- Tracker: never list completed plans (only active / in-progress goals).
     local filtered = {}
+    local trackerEligibleTotal = 0
     local planDoneMemo = {}
     local function memoIsPlanDone(plan)
         local v = planDoneMemo[plan]
@@ -876,19 +916,17 @@ local function RefreshTrackerContentImmediate()
     end
     for i = 1, #plans do
         local plan = plans[i]
-        if currentCategoryKey == nil or plan.type == currentCategoryKey then
-            if not memoIsPlanDone(plan) then
+        if not IsTrackerListPlan(plan) then
+            -- Great Vault / Daily Quest Tracker: main To-Do tab only (narrow tracker overlaps).
+        elseif not memoIsPlanDone(plan) then
+            trackerEligibleTotal = trackerEligibleTotal + 1
+            if currentCategoryKey == nil or plan.type == currentCategoryKey then
                 filtered[#filtered + 1] = plan
             end
         end
     end
-    
-    -- Sort: Weekly Progress (daily_quests) first, then Great Vault, then other types, then by ID
-    local typePriority = { daily_quests = 1, weekly_vault = 2 }
+
     table.sort(filtered, function(a, b)
-        local pa = typePriority[a.type] or 50
-        local pb = typePriority[b.type] or 50
-        if pa ~= pb then return pa < pb end
         if (a.type or "") ~= (b.type or "") then return (a.type or "") < (b.type or "") end
         local aID = tonumber(a.id) or 0
         local bID = tonumber(b.id) or 0
@@ -911,191 +949,23 @@ local function RefreshTrackerContentImmediate()
         r:ClearAllPoints()
     end
 
-    local yOffset = 0
-    -- Single-column list: full width, predictable vertical rhythm (no 2Ã—2 grid)
-    local LIST_GAP = 8
-    local colWidth = width
-
     if #filtered == 0 then
-        -- Wrap empty state in a frame so it gets cleaned up by children cleanup
         local emptyFrame = Factory and Factory:CreateContainer(scrollChild, width, 50, false)
         if not emptyFrame then
             emptyFrame = CreateFrame("Frame", nil, scrollChild)
             emptyFrame:SetSize(width, 50)
         end
-        emptyFrame:SetPoint("TOPLEFT", 0, -yOffset)
         local empty = FontManager:CreateFontString(emptyFrame, "body", "OVERLAY")
         empty:SetPoint("TOPLEFT", PADDING, -12)
-        empty:SetWidth(width - PADDING * 2)
+        empty:SetWidth(math.max(1, width))
         empty:SetWordWrap(true)
         empty:SetJustifyH("CENTER")
         local noPlansText = (ns.L and ns.L["NO_PLANS_IN_CATEGORY"]) or "No plans in this category.\nAdd plans from the Plans tab."
         empty:SetText("|cff666666" .. noPlansText .. "|r")
-        yOffset = yOffset + 50
+        trackerRowOrder[#trackerRowOrder + 1] = emptyFrame
     else
         for i = 1, #filtered do
             local plan = filtered[i]
-            if plan.type == "weekly_vault" then
-                -- â”€â”€ Weekly Vault (unchanged custom card) â”€â”€
-                local isExpanded = expandedVaults[plan.id]
-                local VAULT_HEADER_HEIGHT = math.max(CARD_HEIGHT, 56)
-                local VAULT_ROW_HEIGHT = 22
-                local VAULT_PADDING = 8
-                local NUM_VAULT_PROGRESS_ROWS = 4
-                local expandedHeight = VAULT_HEADER_HEIGHT + VAULT_PADDING + (VAULT_ROW_HEIGHT * NUM_VAULT_PROGRESS_ROWS) + VAULT_PADDING + 4
-                local cardHeight = isExpanded and expandedHeight or VAULT_HEADER_HEIGHT
-                local vaultCard = Factory:CreateContainer(scrollChild, width, cardHeight)
-                vaultCard:SetPoint("TOPLEFT", 0, -yOffset)
-                if ApplyVisuals then
-                    ApplyVisuals(vaultCard, GetCardColors().bg, GetCardColors().border)
-                end
-                AddTrackerCardAccent(vaultCard)
-                local headerFrame = Factory and Factory:CreateContainer(vaultCard, width, VAULT_HEADER_HEIGHT, false)
-                if not headerFrame then
-                    headerFrame = CreateFrame("Frame", nil, vaultCard)
-                    headerFrame:SetHeight(VAULT_HEADER_HEIGHT)
-                end
-                headerFrame:SetPoint("TOPLEFT", 0, 0)
-                headerFrame:SetPoint("TOPRIGHT", 0, 0)
-                headerFrame:SetHeight(VAULT_HEADER_HEIGHT)
-                headerFrame:EnableMouse(true)
-                local iconFrame = CreateIcon(headerFrame, "greatVault-whole-normal", ICON_SIZE, true, nil, false)
-                iconFrame:SetPoint("LEFT", PADDING, 0)
-                iconFrame:Show()
-                local classColor = {1, 1, 1}
-                if plan.characterClass then
-                    local cc = RAID_CLASS_COLORS[plan.characterClass]
-                    if cc then classColor = {cc.r, cc.g, cc.b} end
-                end
-                local nameText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
-                nameText:SetPoint("TOPLEFT", iconFrame, "TOPRIGHT", 6, -2)
-                nameText:SetPoint("RIGHT", headerFrame, "RIGHT", -70, 0)
-                nameText:SetJustifyH("LEFT")
-                nameText:SetMaxLines(2)
-                local charDisplay = plan.characterName or ""
-                if plan.characterRealm and plan.characterRealm ~= "" then
-                    local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
-                    charDisplay = charDisplay .. "-" .. rShown
-                end
-                nameText:SetText(format("|cff%02x%02x%02x%s|r",
-                    math.floor(classColor[1]*255), math.floor(classColor[2]*255), math.floor(classColor[3]*255),
-                    charDisplay))
-                local subtitleText = FontManager:CreateFontString(headerFrame, "small", "OVERLAY")
-                subtitleText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -1)
-                subtitleText:SetText("|cff888888" .. ((ns.L and ns.L["WEEKLY_VAULT"]) or "Weekly Vault") .. "|r")
-                local resetLabel = FontManager:CreateFontString(headerFrame, "small", "OVERLAY")
-                resetLabel:SetPoint("RIGHT", headerFrame, "RIGHT", -PADDING, 0)
-                resetLabel:SetJustifyH("RIGHT")
-                local resetTimestamp = WarbandNexus.GetWeeklyResetTime and WarbandNexus:GetWeeklyResetTime() or 0
-                resetLabel:SetText("|cff66cc66" .. ns.Utilities:FormatTimeUntilReset(resetTimestamp) .. "|r")
-                local arrow = headerFrame:CreateTexture(nil, "OVERLAY")
-                arrow:SetSize(12, 12)
-                arrow:SetPoint("RIGHT", resetLabel, "LEFT", -4, 0)
-                arrow:SetAtlas(isExpanded and "campaign-headericon-open" or "campaign-headericon-closed")
-                headerFrame:SetScript("OnMouseDown", function()
-                    expandedVaults[plan.id] = not expandedVaults[plan.id]
-                    RefreshTrackerContentImmediate()
-                end)
-                headerFrame:SetScript("OnEnter", function()
-                    if ApplyVisuals then
-                        ApplyVisuals(vaultCard, GetCardColors().hoverBg, GetCardColors().hoverBorder)
-                    end
-                end)
-                headerFrame:SetScript("OnLeave", function()
-                    if ApplyVisuals then
-                        ApplyVisuals(vaultCard, GetCardColors().bg, GetCardColors().border)
-                    end
-                end)
-                if isExpanded then
-                    local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
-                        dungeonCount = 0, raidBossCount = 0, worldActivityCount = 0, specialAssignmentCount = 0, specialAssignmentTotal = 2,
-                        dungeonSlots = {}, raidSlots = {}, worldSlots = {}
-                    }
-                    local vaultLootReady = false
-                    if WarbandNexus.HasUnclaimedVaultRewards then
-                        local ok, v = pcall(WarbandNexus.HasUnclaimedVaultRewards, WarbandNexus)
-                        vaultLootReady = ok and v == true
-                    end
-                    local saMax = currentProgress.specialAssignmentTotal or 2
-                    local progressRows = {
-                        { label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids", current = currentProgress.raidBossCount, max = 6, thresholds = {2, 4, 6} },
-                        { label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon", current = currentProgress.dungeonCount, max = 8, thresholds = {1, 4, 8} },
-                        { label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World", current = currentProgress.worldActivityCount, max = 8, thresholds = {2, 4, 8} },
-                        { label = (ns.L and ns.L["VAULT_SLOT_SA"]) or "SA", current = currentProgress.specialAssignmentCount or 0, max = saMax, thresholds = {1, saMax} },
-                    }
-                    local contentY = -(VAULT_HEADER_HEIGHT + VAULT_PADDING)
-                    local barAreaWidth = width - PADDING * 2
-                    local labelWidth = 55
-                    local barWidth = barAreaWidth - labelWidth - 8
-                    local readyLabel = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
-                    for ri = 1, #progressRows do
-                        local row = progressRows[ri]
-                        local rowY = contentY - ((ri - 1) * VAULT_ROW_HEIGHT)
-                        local lbl = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
-                        lbl:SetPoint("TOPLEFT", vaultCard, "TOPLEFT", PADDING, rowY)
-                        lbl:SetWidth(labelWidth)
-                        lbl:SetJustifyH("LEFT")
-                        lbl:SetText("|cffcccccc" .. row.label .. "|r")
-                        local barBg = Factory:CreateContainer(vaultCard, barWidth, 14)
-                        barBg:SetPoint("TOPLEFT", vaultCard, "TOPLEFT", PADDING + labelWidth + 4, rowY - 1)
-                        if ApplyVisuals then
-                            ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.6}, {0.3, 0.3, 0.3, 0.4})
-                        end
-                        local fillPct = math.min(1.0, row.current / row.max)
-                        local fillW = (barWidth - 2) * fillPct
-                        if fillW > 0 then
-                            local fill = barBg:CreateTexture(nil, "ARTWORK")
-                            fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
-                            fill:SetSize(fillW, 12)
-                            fill:SetTexture("Interface\\Buttons\\WHITE8x8")
-                            fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
-                        end
-                        for ti = 1, #row.thresholds do
-                            local threshold = row.thresholds[ti]
-                            local markerPct = threshold / row.max
-                            local markerX = (markerPct * (barWidth - 2)) + 1
-                            if vaultLootReady then
-                                local rl = FontManager:CreateFontString(barBg, "small", "OVERLAY")
-                                rl:SetPoint("CENTER", barBg, "LEFT", markerX, 0)
-                                rl:SetWidth(math.max(28, barWidth / math.max(1, #row.thresholds) - 2))
-                                rl:SetJustifyH("CENTER")
-                                rl:SetText("|cff44ff44" .. readyLabel .. "|r")
-                            else
-                                local tick = barBg:CreateTexture(nil, "OVERLAY")
-                                tick:SetSize(1, 14)
-                                tick:SetPoint("LEFT", barBg, "LEFT", markerX, 0)
-                                tick:SetTexture("Interface\\Buttons\\WHITE8x8")
-                                if row.current >= threshold then
-                                    tick:SetVertexColor(0.2, 1, 0.2, 0.8)
-                                else
-                                    tick:SetVertexColor(0.6, 0.6, 0.6, 0.5)
-                                end
-                            end
-                        end
-                        local progText = FontManager:CreateFontString(barBg, "small", "OVERLAY")
-                        progText:SetPoint("CENTER", barBg, "CENTER", 0, 0)
-                        progText:SetText("|cffffffff" .. row.current .. "/" .. row.max .. "|r")
-                    end
-                end
-                vaultCard:Show()
-                trackerRowOrder[#trackerRowOrder + 1] = vaultCard
-                yOffset = yOffset + cardHeight + LIST_GAP
-            elseif plan.type == "daily_quests" then
-                local dqH = 170
-                local dqCard = Factory and Factory:CreateContainer(scrollChild, width, dqH, false)
-                if not dqCard then
-                    dqCard = CreateFrame("Frame", nil, scrollChild)
-                    dqCard:SetSize(width, dqH)
-                end
-                dqCard:SetPoint("TOPLEFT", 0, -yOffset)
-                if ApplyVisuals then ApplyVisuals(dqCard, GetCardColors().bg, GetCardColors().border) end
-                local PCF = ns.UI_PlanCardFactory
-                if PCF and PCF.CreateDailyQuestCard then PCF:CreateDailyQuestCard(dqCard, plan) end
-                AddTrackerCardAccent(dqCard)
-                dqCard:Show()
-                trackerRowOrder[#trackerRowOrder + 1] = dqCard
-                yOffset = yOffset + dqH + LIST_GAP
-            else
             local PCM = ns.UI_PLANS_CARD_METRICS
             local PCF = ns.UI_PlanCardFactory
             local isExpanded
@@ -1194,11 +1064,12 @@ local function RefreshTrackerContentImmediate()
 
             local typeAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS[plan.type]
 
-            local headerH = ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)
+            local collapsedH = ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)
                 or (ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(width) or 92)
             local rowData = {
                 todoUnifiedHeader = true,
                 summaryInHeader = true,
+                collapsedHeight = collapsedH,
                 canExpand = canExpand,
                 icon = resolvedIcon,
                 iconIsAtlas = iconIsAtlas,
@@ -1218,17 +1089,14 @@ local function RefreshTrackerContentImmediate()
                 onExpandPopulate = onExpandPopulate,
             }
 
-            local row = CreateExpandableRow(scrollChild, width, headerH, rowData, isExpanded, function(expanded)
+            local row = CreateExpandableRow(scrollChild, width, collapsedH, rowData, isExpanded, function(expanded)
                 if plan.type == "achievement" and plan.achievementID then
                     expandedAchievements[plan.achievementID] = expanded
                 else
                     expandedPlans[plan.id] = expanded
                 end
             end)
-            if not row then
-                yOffset = yOffset + headerH + 8
-            else
-            row:SetPoint("TOPLEFT", 0, -yOffset)
+            if row then
             if ApplyVisuals then
                 ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
             end
@@ -1277,29 +1145,25 @@ local function RefreshTrackerContentImmediate()
             row.headerFrame:SetScript("OnLeave", HidePlanTooltip)
             row:Show()
             trackerRowOrder[#trackerRowOrder + 1] = row
-            yOffset = yOffset + headerH + LIST_GAP
-            end
-        end
         end
     end
+    end
+
+    RepositionTrackerRows()
 
     -- Update count label
     local frame = GetTrackerFrame()
     if frame and frame.categoryBar and frame.categoryBar.countLabel then
-        local totalCount = WarbandNexus:GetActivePlanTotalCount()
         local plansFormat = (ns.L and ns.L["PLANS_COUNT_FORMAT"]) or "%d plans"
         -- Extract suffix from format string (e.g., "%d plans" -> " plans")
         local suffix = plansFormat:gsub("%%d%s*", "")
         local countLabel = frame.categoryBar and frame.categoryBar.countLabel
         if countLabel then
-            countLabel:SetText("|cff888888" .. #filtered .. "/" .. totalCount .. suffix .. "|r")
+            countLabel:SetText("|cff888888" .. #filtered .. "/" .. trackerEligibleTotal .. suffix .. "|r")
         end
     end
 
-    -- Set scrollChild height: at least viewport size (required for WoW scroll frame)
     local scrollFrame = frame and frame.contentScrollFrame
-    local viewportHeight = scrollFrame and scrollFrame:GetHeight() or 1
-    scrollChild:SetHeight(math.max(yOffset + 4, viewportHeight))
     if scrollFrame then
         if scrollFrame.UpdateScrollChildRect then
             scrollFrame:UpdateScrollChildRect()
@@ -1338,11 +1202,19 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         bar:SetHeight(CATEGORY_BAR_HEIGHT)
     end
     bar:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + PADDING))
-    bar:SetPoint("TOPRIGHT", -PADDING, -(HEADER_HEIGHT + PADDING))
+    bar:SetPoint("TOPRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, -(HEADER_HEIGHT + PADDING))
 
-    -- Dropdown button (Factory)
-    local dropdown = Factory:CreateButton(bar, 150, 26, false)
-    dropdown:SetPoint("LEFT", 0, 0)
+    -- Plan count label (right side of bar) — dropdown fills remaining width
+    local countLabel = FontManager:CreateFontString(bar, "small", "OVERLAY")
+    countLabel:SetPoint("RIGHT", -4, 0)
+    countLabel:SetJustifyH("RIGHT")
+    bar.countLabel = countLabel
+
+    -- Dropdown button spans full bar width (same as plan cards below)
+    local dropdown = Factory:CreateButton(bar, 120, 26, false)
+    dropdown:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    dropdown:SetPoint("RIGHT", countLabel, "LEFT", -8, 0)
+    dropdown:SetHeight(26)
     if ApplyVisuals then
         ApplyVisuals(dropdown, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, 0.6 })
     end
@@ -1361,12 +1233,6 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
     arrow:SetTexCoord(0, 1, 0, 1)
     arrow:SetVertexColor(0.7, 0.7, 0.7)
-
-    -- Plan count label (right side of bar)
-    local countLabel = FontManager:CreateFontString(bar, "small", "OVERLAY")
-    countLabel:SetPoint("RIGHT", -4, 0)
-    countLabel:SetJustifyH("RIGHT")
-    bar.countLabel = countLabel
 
     local function UpdateLabel(key)
         local label = (ns.L and ns.L["CATEGORY_ALL"]) or "All"
@@ -1531,7 +1397,9 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         end
     end)
 
+    bar.syncCategoryLabel = UpdateLabel
     currentCategoryKey = nil
+    UpdateLabel(nil)
     return bar, dropdown
 end
 
@@ -1865,7 +1733,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
             frame:StartSizing("BOTTOMRIGHT")
         end
     end)
-    local function TrackerSatelliteLiveLayout(fr)
+    local trackerResizeToken = 0
+    local function TrackerSatelliteLiveLayout(fr, rebuildCards)
         if fr._plansTrackerHeaderShell then
             fr._plansTrackerHeaderShell:SetWidth(math.max(1, fr:GetWidth()))
         end
@@ -1873,12 +1742,22 @@ function WarbandNexus:CreatePlansTrackerWindow()
         if sw and sw > 0 and scrollChild then
             scrollChild:SetWidth(sw)
         end
+        if rebuildCards then
+            trackerResizeToken = trackerResizeToken + 1
+            local token = trackerResizeToken
+            C_Timer.After(0, function()
+                if token ~= trackerResizeToken or not fr or not fr:IsShown() then
+                    return
+                end
+                RefreshTrackerContent()
+            end)
+        end
     end
 
     resizer:SetScript("OnMouseUp", function()
         frame:StopMovingOrSizing()
         SavePosition(frame)
-        TrackerSatelliteLiveLayout(frame)
+        TrackerSatelliteLiveLayout(frame, false)
         local LC = ns.UI_LayoutCoordinator
         if LC and LC.OnSatelliteMetricsChanged then
             LC:OnSatelliteMetricsChanged(frame, frame:GetWidth(), frame:GetHeight(), true)
@@ -1891,14 +1770,16 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local LC = ns.UI_LayoutCoordinator
     if LC and LC.RegisterSatelliteFrame then
         LC:RegisterSatelliteFrame(frame, {
-            onLive = TrackerSatelliteLiveLayout,
+            onLive = function(fr)
+                TrackerSatelliteLiveLayout(fr, true)
+            end,
             onCommit = function()
                 RefreshTrackerContent()
             end,
         })
     else
         frame:SetScript("OnSizeChanged", function()
-            TrackerSatelliteLiveLayout(frame)
+            TrackerSatelliteLiveLayout(frame, true)
         end)
     end
 

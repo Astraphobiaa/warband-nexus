@@ -375,11 +375,39 @@ local function GetCurrentCharKey()
     return raw
 end
 
+--- True when two keys refer to the same character (GUID vs Name-Realm vs storage key).
+local function CharKeysMatch(a, b)
+    if not a or not b then return false end
+    if a == b then return true end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local ca = ns.Utilities:GetCanonicalCharacterKey(a)
+        local cb = ns.Utilities:GetCanonicalCharacterKey(b)
+        if ca and cb and ca == cb then return true end
+    end
+    return false
+end
+ns.VaultCharKeysMatch = CharKeysMatch
+
+--- Lookup a per-character pveCache subtable when keys were written under a canonical alias.
+local function LookupPveCacheSubtable(subtable, charKey)
+    if not subtable or not charKey then return nil end
+    local direct = subtable[charKey]
+    if direct ~= nil then return direct end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local ck = ns.Utilities:GetCanonicalCharacterKey(charKey)
+        if ck and subtable[ck] ~= nil then return subtable[ck] end
+    end
+    for k, v in pairs(subtable) do
+        if CharKeysMatch(k, charKey) then return v end
+    end
+    return nil
+end
+ns.LookupPvECacheSubtable = LookupPveCacheSubtable
+
 local function GetCharActivities(charKey)
     local pveCache = GetPveCache()
-    if not pveCache then return nil end
-    return pveCache.greatVault and pveCache.greatVault.activities
-        and pveCache.greatVault.activities[charKey] or nil
+    if not pveCache or not pveCache.greatVault or not pveCache.greatVault.activities then return nil end
+    return LookupPveCacheSubtable(pveCache.greatVault.activities, charKey)
 end
 
 local function HasAnyProgress(charKey)
@@ -436,12 +464,12 @@ end
 local function VaultResetCrossedFor(charKey)
     local pveCache = GetPveCache()
     local activities = pveCache and pveCache.greatVault and pveCache.greatVault.activities
-        and pveCache.greatVault.activities[charKey] or nil
+        and LookupPveCacheSubtable(pveCache.greatVault.activities, charKey) or nil
     if not activities then return false end
     local resetT = tonumber(activities.weeklyResetTime) or 0
     if resetT <= 0 then return false end
     local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
-    local rewardData = rewards and rewards[charKey]
+    local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
     local claimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
     if claimedResetTime and claimedResetTime >= resetT then
         return false
@@ -682,7 +710,8 @@ function ns.VaultFormatCategoryColumn(slots, category, opts)
     local showIlvl = opts.showRewardItemLevel == true
     local showProg = opts.showRewardProgress == true
     if opts.vaultLootClaimable then
-        local readyLabel = (ns.L and ns.L["VAULT_TRACKER_STATUS_READY_CLAIM"]) or "Ready to Claim"
+        -- Compact column width (72px): full "Ready to Claim" truncates in PvE / tracker grids.
+        local readyLabel = (ns.L and ns.L["VAULT_READY_TO_CLAIM"]) or "Ready"
         return "|cff44ff44" .. readyLabel .. "|r"
     end
 
@@ -824,19 +853,18 @@ local function BuildCharList()
     local currentKey = GetCurrentCharKey()
     local settings   = GetSettings()
     local result     = {}
-    -- For the logged-in char, prefer live HasAvailableRewards() so post-reset carry-over
-    -- chests flip the Ready badge immediately (matches the Great Vault\226\128\153s own prompt).
-    local liveCurrentReady = false
-    if currentKey and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards
-        and C_WeeklyRewards.HasAvailableRewards() then
-        liveCurrentReady = true
-    end
     for charKey, charData in pairs(characters) do
-        local rewardData = rewards and rewards[charKey]
+        local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
         local isReady    = rewardData and rewardData.hasAvailableRewards or false
-        if charKey == currentKey and liveCurrentReady then isReady = true end
+        if CharKeysMatch(charKey, currentKey) then
+            if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
+                isReady = WarbandNexus:HasUnclaimedVaultRewards()
+            else
+                isReady = false
+            end
+        end
         -- Alt auto-flip: cached \226\128\156slots earned\226\128\157 last week + reset crossed -> sitting chest.
-        if not isReady and charKey ~= currentKey
+        if not isReady and not CharKeysMatch(charKey, currentKey)
             and (CountReadySlots(charKey) or 0) > 0
             and VaultResetCrossedFor(charKey) then
             isReady = true
@@ -852,7 +880,7 @@ local function BuildCharList()
                 itemLevel = charData.itemLevel or 0,
                 isReady   = isReady,
                 isPending = isPending,
-                isCurrent = (charKey == currentKey),
+                isCurrent = CharKeysMatch(charKey, currentKey),
                 bounty    = bounty,
                 voidcore  = GetVoidcoreData(charKey),
                 manaflux  = GetManafluxData(charKey),
@@ -1740,11 +1768,13 @@ BuildVaultCharacterTooltipLines = function(charKey, entry)
     local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
     local rewardData = rewards and rewards[charKey]
     local isReady = (rewardData and rewardData.hasAvailableRewards) or false
-    if charKey == GetCurrentCharKey() and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards
-        and C_WeeklyRewards.HasAvailableRewards() then
-        isReady = true
-    end
-    if not isReady and (CountReadySlots(charKey) or 0) > 0 and VaultResetCrossedFor(charKey) then
+    if charKey == GetCurrentCharKey() then
+        if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
+            isReady = WarbandNexus:HasUnclaimedVaultRewards()
+        else
+            isReady = false
+        end
+    elseif not isReady and (CountReadySlots(charKey) or 0) > 0 and VaultResetCrossedFor(charKey) then
         isReady = true
     end
     local slotsEarned = entry and entry.slots or CountReadySlots(charKey)
@@ -3741,16 +3771,17 @@ function WarbandNexus:GetVaultStatusForChar(charKey)
     local pveCache = GetPveCache()
     if not pveCache then return nil end
     local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
-    local rewardData = rewards and rewards[charKey]
+    local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
     local isReady    = rewardData and rewardData.hasAvailableRewards == true or false
 
     local readySlots = CountReadySlots(charKey) or 0
     local currentKey = GetCurrentCharKey()
 
-    if currentKey and charKey == currentKey and C_WeeklyRewards
-        and C_WeeklyRewards.HasAvailableRewards then
-        if C_WeeklyRewards.HasAvailableRewards() then
-            isReady = true
+    if currentKey and CharKeysMatch(charKey, currentKey) then
+        if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
+            isReady = WarbandNexus:HasUnclaimedVaultRewards()
+        else
+            isReady = false
         end
     elseif not isReady and readySlots > 0 and VaultResetCrossedFor(charKey) then
         -- Alt had ready slots last week; reset has crossed -> chest is sitting unclaimed.

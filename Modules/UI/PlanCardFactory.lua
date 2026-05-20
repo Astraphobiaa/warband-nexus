@@ -3190,12 +3190,122 @@ function PlanCardFactory:ExpandTitleContent(expandedContent, plan)
     return self:ExpandMountContent(expandedContent, plan)  -- Same structure for now
 end
 
+--- Milestone thresholds for quest-count style slots (Daily Quest Tracker categories).
+local function BuildQuestCountThresholds(total)
+    total = math.max(tonumber(total) or 0, 1)
+    if total <= 1 then return { 1 } end
+    if total <= 3 then
+        local t = {}
+        for i = 1, total do t[i] = i end
+        return t
+    end
+    local mid = math.ceil(total / 2)
+    return { 1, mid, total }
+end
+
+--- Shared Great Vault / Daily Quest Tracker progress column (fill bar + checkpoint arrows).
+local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
+    local COLORS = ns.UI_COLORS
+    local FontManager = ns.FontManager
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+    local FormatTextNumbers = ns.UI_FormatTextNumbers
+
+    opts = opts or {}
+    local titleColor = opts.titleColor or { 0.95, 0.95, 0.95 }
+    local borderColor = opts.borderColor or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+    local fillColor = opts.fillColor or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
+
+    local title = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
+    title:SetPoint("TOP", slotFrame, "TOP", 0, -8)
+    title:SetText(slot.title or "")
+    title:SetTextColor(titleColor[1], titleColor[2], titleColor[3])
+
+    local barY = -32
+    local barPadding = 18
+    local barWidth = math.max(24, (slotFrame:GetWidth() or 80) - (barPadding * 2))
+    local barHeight = 16
+
+    local barBg = ns.UI.Factory:CreateContainer(slotFrame, barWidth, barHeight)
+    barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
+    if ApplyVisuals then
+        ApplyVisuals(barBg, { 0.05, 0.05, 0.07, 0.3 }, borderColor)
+    end
+
+    local maxVal = math.max(tonumber(slot.max) or 1, 1)
+    local current = tonumber(slot.current) or 0
+    local fillPercent = math.min(1.0, current / maxVal)
+    local innerBarWidth = barWidth - 2
+    local fillWidth = innerBarWidth * fillPercent
+    if fillWidth > 0 and not opts.isEmpty then
+        local fill = barBg:CreateTexture(nil, "ARTWORK")
+        fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
+        fill:SetSize(fillWidth, barHeight - 2)
+        fill:SetTexture("Interface\\Buttons\\WHITE8x8")
+        fill:SetVertexColor(fillColor[1], fillColor[2], fillColor[3], 1)
+    end
+
+    local readyShort = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
+    local thresholds = slot.thresholds or {}
+    for i = 1, #thresholds do
+        local threshold = thresholds[i]
+        local checkpointSlot = slot.slotData and slot.slotData[i]
+        local slotProgress = math.min(current, threshold)
+        local completed = current >= threshold
+        local markerXPercent = threshold / maxVal
+        local markerX = (markerXPercent * innerBarWidth) + 1
+
+        if opts.vaultLootReady then
+            local rl = FontManager:CreateFontString(slotFrame, "small", "OVERLAY")
+            rl:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -6)
+            rl:SetWidth(math.max(32, innerBarWidth / math.max(1, #thresholds) - 2))
+            rl:SetJustifyH("CENTER")
+            rl:SetText("|cff44ff44" .. readyShort .. "|r")
+        elseif opts.isEmpty then
+            -- no markers
+        elseif completed then
+            local checkFrame = ns.UI.Factory:CreateContainer(slotFrame, 16, 16)
+            checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
+            local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
+            checkmark:SetAllPoints()
+            checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+        else
+            local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
+            checkArrow:SetSize(24, 24)
+            checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
+            checkArrow:SetAtlas("MiniMap-QuestArrow")
+            checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
+            local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
+            label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
+            label:SetTextColor(1, 1, 1)
+            local progressText = format("%d / %d", slotProgress, threshold)
+            label:SetText(FormatTextNumbers(progressText))
+        end
+
+        if checkpointSlot and CreateThemedCheckbox then
+            local checkbox = CreateThemedCheckbox(slotFrame, checkpointSlot.completed)
+            checkbox:SetSize(8, 8)
+            checkbox:SetPoint("CENTER", barBg, "LEFT", markerX, 0)
+            checkbox:SetAlpha(0.01)
+            checkbox:SetScript("OnClick", function(self)
+                checkpointSlot.completed = self:GetChecked()
+                checkpointSlot.manualOverride = true
+            end)
+        end
+    end
+
+    if opts.showCenterProgress and not opts.isEmpty then
+        local progText = FontManager:CreateFontString(barBg, "small", "OVERLAY")
+        progText:SetPoint("CENTER", barBg, "CENTER", 0, 0)
+        progText:SetText("|cffffffff" .. current .. "/" .. maxVal .. "|r")
+    end
+end
+
 --[[
     Create Weekly Vault card with 3 progress slots
 ]]
 function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     local COLORS = ns.UI_COLORS
-    local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
     local CreateIcon = ns.UI_CreateIcon
     local FontManager = ns.FontManager
     
@@ -3221,10 +3331,10 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     if plan.fullyCompleted then
         titleText:SetTextColor(0.2, 1, 0.2)
-        titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_COMPLETE"]) or "Weekly Vault Card - Complete")
+        titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_COMPLETE"]) or "Great Vault - Complete")
     else
         titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_CARD"]) or "Weekly Vault Card")
+        titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_CARD"]) or "Great Vault")
     end
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
@@ -3273,13 +3383,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     local slotWidth = (availableWidth - slotSpacing * 2) / 3
     local slotHeight = 92
     
-    local tracked = plan.trackedSlots or { dungeon = true, raid = true, world = true, specialAssignment = true }
-    
-    local saTotal = currentProgress.specialAssignmentTotal or (plan.progress and plan.progress.specialAssignmentTotal) or 2
-    local saSlotData = plan.slots.specialAssignment or {
-        {threshold = 1, completed = false, manualOverride = false},
-        {threshold = 2, completed = false, manualOverride = false}
-    }
+    local tracked = plan.trackedSlots or { dungeon = true, raid = true, world = true }
     
     local allSlots = {
         {
@@ -3309,15 +3413,6 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             slotData = plan.slots.world,
             thresholds = {2, 4, 8}
         },
-        {
-            key = "specialAssignment",
-            atlas = "questlog-questtypeicon-important",
-            title = (ns.L and ns.L["VAULT_SLOT_SA"]) or "Assignments",
-            current = currentProgress.specialAssignmentCount or 0,
-            max = saTotal,
-            slotData = saSlotData,
-            thresholds = {1, saTotal}
-        }
     }
     
     local slots = {}
@@ -3334,101 +3429,18 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         slotWidth = (availableWidth - slotSpacing * math.max(0, visibleCount - 1)) / visibleCount
     end
     
+    local accentBorder = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+    local accentFill = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
     for slotIndex = 1, #slots do
         local slot = slots[slotIndex]
         local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
-        
         local slotFrame = ns.UI.Factory:CreateContainer(card, slotWidth, slotHeight)
         slotFrame:SetPoint("TOPLEFT", slotX, contentY)
-        
-        -- Title (centered above bar, no icon)
-        local title = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
-        title:SetPoint("TOP", slotFrame, "TOP", 0, -8)  -- Centered, moved up
-        title:SetText(slot.title)
-        title:SetTextColor(0.95, 0.95, 0.95)
-        
-        -- Progress Bar (closer to title)
-        local barY = -32  -- Moved up from -52
-        local barPadding = 18
-        local barWidth = slotWidth - (barPadding * 2)
-        local barHeight = 16
-        
-        local barBg = ns.UI.Factory:CreateContainer(slotFrame, barWidth, barHeight)
-        barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
-        
-        if ApplyVisuals then
-            local accentBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
-            ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, accentBorderColor)
-        end
-        
-        -- Progress Fill (capped at 100% to prevent overflow)
-        local fillPercent = math.min(1.0, slot.current / slot.max)  -- Cap at 100%
-        local innerBarWidth = barWidth - 2  -- Actual usable width inside border
-        local fillWidth = innerBarWidth * fillPercent
-        if fillWidth > 0 then
-            local fill = barBg:CreateTexture(nil, "ARTWORK")
-            fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
-            fill:SetSize(fillWidth, barHeight - 2)
-            fill:SetTexture("Interface\\Buttons\\WHITE8x8")
-            fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-        end
-        
-        -- Checkpoint Markers (positioned relative to inner bar width)
-        local readyShort = (ns.L and ns.L["VAULT_LOOT_READY_SHORT"]) or "Ready!"
-        for i = 1, #slot.thresholds do
-            local threshold = slot.thresholds[i]
-            local checkpointSlot = slot.slotData[i]
-            local slotProgress = math.min(slot.current, threshold)
-            local completed = slot.current >= threshold
-            
-            local markerXPercent = threshold / slot.max
-            local markerX = (markerXPercent * innerBarWidth) + 1  -- +1 for left border offset
-            
-            if vaultLootReady then
-                local rl = FontManager:CreateFontString(slotFrame, "small", "OVERLAY")
-                rl:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -6)
-                rl:SetWidth(math.max(32, innerBarWidth / math.max(1, #slot.thresholds) - 2))
-                rl:SetJustifyH("CENTER")
-                rl:SetText("|cff44ff44" .. readyShort .. "|r")
-            else
-                -- Checkpoint arrow
-                local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
-                checkArrow:SetSize(24, 24)
-                checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
-                checkArrow:SetAtlas("MiniMap-QuestArrow")
-                if completed then
-                    checkArrow:SetVertexColor(0.2, 1, 0.2, 1)
-                else
-                    checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
-                end
-                
-                -- Checkpoint label (aligned with checkmark position)
-                if completed then
-                    local checkFrame = ns.UI.Factory:CreateContainer(slotFrame, 16, 16)
-                    checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
-                    
-                    local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
-                    checkmark:SetAllPoints()
-                    checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
-                else
-                    local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                    label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
-                    label:SetTextColor(1, 1, 1)
-                    local progressText = format("%d / %d", slotProgress, threshold)
-                    label:SetText(FormatTextNumbers(progressText))
-                end
-            end
-            
-            -- Hidden checkbox for manual override
-            local checkbox = CreateThemedCheckbox(slotFrame, checkpointSlot.completed)
-            checkbox:SetSize(8, 8)
-            checkbox:SetPoint("CENTER", barBg, "LEFT", markerX, 0)
-            checkbox:SetAlpha(0.01)
-            checkbox:SetScript("OnClick", function(self)
-                checkpointSlot.completed = self:GetChecked()
-                checkpointSlot.manualOverride = true
-            end)
-        end
+        PaintVaultStyleProgressSlot(card, slotFrame, slot, {
+            vaultLootReady = vaultLootReady,
+            borderColor = accentBorder,
+            fillColor = accentFill,
+        })
     end
 end
 
@@ -3441,7 +3453,6 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local COLORS = ns.UI_COLORS
     local CreateIcon = ns.UI_CreateIcon
     local FontManager = ns.FontManager
-    local ApplyVisuals = ns.UI_ApplyVisuals
     
     local classColor = {1, 1, 1}
     if plan.characterClass then
@@ -3484,7 +3495,7 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     
     local allComplete = true
     local totalAll, completedAll = 0, 0
-    local categoryOrder = {"weeklyQuests", "worldQuests", "dailyQuests", "events"}
+    local categoryOrder = { "weeklyQuests", "worldQuests", "assignments", "dailyQuests", "events" }
     for cki = 1, #categoryOrder do
         local catKey = categoryOrder[cki]
         if plan.questTypes and plan.questTypes[catKey] then
@@ -3508,12 +3519,12 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     if allComplete then
         titleText:SetTextColor(0.2, 1, 0.2)
-        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Weekly Progress - ") .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
+        titleText:SetText(((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
     else
         titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         local displayContent = plan.contentName or "Midnight"
         if displayContent == "" then displayContent = "Midnight" end
-        titleText:SetText(((ns.L and ns.L["DAILY_TASKS_PREFIX"]) or "Weekly Progress - ") .. displayContent)
+        titleText:SetText(((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. displayContent)
     end
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
@@ -3544,6 +3555,7 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local shortNames = {
         weeklyQuests = (ns.L and ns.L["QUEST_CAT_WEEKLY"])        or "Weekly",
         worldQuests  = (ns.L and ns.L["QUEST_CAT_WORLD"])         or "World",
+        assignments  = (ns.L and ns.L["VAULT_SLOT_SA"])           or "Assignments",
         dailyQuests  = (ns.L and ns.L["QUEST_CAT_DAILY"])         or "Daily",
         events       = (ns.L and ns.L["QUEST_CAT_CONTENT_EVENTS"]) or "Events",
     }
@@ -3556,6 +3568,12 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         }
     end
     
+    local vaultProgress
+    if WarbandNexus.GetWeeklyVaultProgress and plan.characterName then
+        local ok, vp = pcall(WarbandNexus.GetWeeklyVaultProgress, WarbandNexus, plan.characterName, plan.characterRealm)
+        if ok and type(vp) == "table" then vaultProgress = vp end
+    end
+
     local visibleSlots = {}
     for cki = 1, #categoryOrder do
         local catKey = categoryOrder[cki]
@@ -3569,103 +3587,102 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
                     if q.isComplete then completed = completed + 1 end
                 end
             end
-            -- Always include tracked categories so the user sees them even when the
-            -- live scan hasn't found any active quests yet (e.g. Midnight Assignments
-            -- not yet unlocked or between weekly resets).
+            local ci = categoryInfo[catKey] or { name = shortNames[catKey] or catKey, color = { 0.9, 0.9, 0.9 } }
+            local paintSlot
+            if catKey == "assignments" then
+                local saTotal = (vaultProgress and vaultProgress.specialAssignmentTotal)
+                    or (plan.progress and plan.progress.specialAssignmentTotal) or 2
+                saTotal = math.max(tonumber(saTotal) or 2, 1)
+                local saCurrent = (vaultProgress and vaultProgress.specialAssignmentCount)
+                    or (plan.progress and plan.progress.specialAssignmentCount) or completed
+                paintSlot = {
+                    title = shortNames.assignments,
+                    current = saCurrent,
+                    max = saTotal,
+                    thresholds = { 1, saTotal },
+                }
+            else
+                local maxVal = math.max(total, 1)
+                paintSlot = {
+                    title = ci.name,
+                    current = completed,
+                    max = maxVal,
+                    thresholds = BuildQuestCountThresholds(total),
+                    isEmpty = (total == 0),
+                }
+            end
             visibleSlots[#visibleSlots + 1] = {
-                key     = catKey,
-                info    = categoryInfo[catKey],
-                completed = completed,
-                total   = total,
-                isEmpty = (total == 0),
+                paint = paintSlot,
+                color = ci.color,
+                isEmpty = paintSlot.isEmpty,
             }
         end
     end
 
     local visibleCount = #visibleSlots
     if visibleCount == 0 then return end
-    
+
     local slotWidth = (availableWidth - slotSpacing * math.max(0, visibleCount - 1)) / visibleCount
     local slotHeight = 92
-    
+
     for slotIndex = 1, #visibleSlots do
         local slot = visibleSlots[slotIndex]
         local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
-        local ci = slot.info
-        
         local slotFrame = ns.UI.Factory:CreateContainer(card, slotWidth, slotHeight)
         slotFrame:SetPoint("TOPLEFT", slotX, contentY)
-        
-        local isEmpty = slot.isEmpty
-        -- Dim alpha for empty/untracked categories so they look visually distinct
-        -- from categories with active content.
-        if isEmpty then
+        if slot.isEmpty then
             slotFrame:SetAlpha(0.45)
         end
-
-        -- Category icon
-        local catIcon = slotFrame:CreateTexture(nil, "ARTWORK")
-        catIcon:SetSize(22, 22)
-        catIcon:SetPoint("TOP", 0, -6)
-        pcall(catIcon.SetAtlas, catIcon, ci.atlas, false)
-        if isEmpty then
-            catIcon:SetVertexColor(0.5, 0.5, 0.5)
-        end
-
-        -- Title
-        local title = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-        title:SetPoint("TOP", catIcon, "BOTTOM", 0, -2)
-        title:SetText(ci.name)
-        if isEmpty then
-            title:SetTextColor(0.5, 0.5, 0.5)
-        else
-            title:SetTextColor(ci.color[1], ci.color[2], ci.color[3])
-        end
-
-        -- Progress bar
-        local barY = -52
-        local barPadding = 12
-        local barWidth = slotWidth - (barPadding * 2)
-        local barHeight = 14
-
-        local barBg = ns.UI.Factory:CreateContainer(slotFrame, barWidth, barHeight)
-        barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
-
-        if ApplyVisuals then
-            if isEmpty then
-                ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.2}, {0.3, 0.3, 0.3, 0.3})
-            else
-                ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, {ci.color[1], ci.color[2], ci.color[3], 0.6})
-            end
-        end
-
-        if not isEmpty then
-            local fillPercent = slot.total > 0 and math.min(1.0, slot.completed / slot.total) or 0
-            local innerBarWidth = barWidth - 2
-            local fillWidth = innerBarWidth * fillPercent
-            if fillWidth > 0 then
-                local fill = barBg:CreateTexture(nil, "ARTWORK")
-                fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
-                fill:SetSize(fillWidth, barHeight - 2)
-                fill:SetTexture("Interface\\Buttons\\WHITE8x8")
-                fill:SetVertexColor(ci.color[1], ci.color[2], ci.color[3], 1)
-            end
-        end
-
-        -- Progress text below bar
-        local progressLabel = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
-        progressLabel:SetPoint("TOP", barBg, "BOTTOM", 0, -6)
-        if isEmpty then
-            progressLabel:SetTextColor(0.4, 0.4, 0.4)
-            progressLabel:SetText("—")
-        elseif slot.completed == slot.total and slot.total > 0 then
-            progressLabel:SetTextColor(0.3, 1, 0.3)
-            progressLabel:SetText(format("%d / %d", slot.completed, slot.total))
-        else
-            progressLabel:SetTextColor(1, 1, 1)
-            progressLabel:SetText(format("%d / %d", slot.completed, slot.total))
-        end
+        local c = slot.color or { 0.9, 0.9, 0.9 }
+        local borderColor = slot.isEmpty and { 0.35, 0.35, 0.35, 0.5 } or { c[1], c[2], c[3], 0.8 }
+        local fillColor = slot.isEmpty and { 0.4, 0.4, 0.4, 1 } or { c[1], c[2], c[3], 1 }
+        local titleColor = slot.isEmpty and { 0.5, 0.5, 0.5 } or { c[1], c[2], c[3] }
+        PaintVaultStyleProgressSlot(card, slotFrame, slot.paint, {
+            isEmpty = slot.isEmpty,
+            borderColor = borderColor,
+            fillColor = fillColor,
+            titleColor = titleColor,
+        })
     end
+end
+
+--- Full-width Weekly Vault / Weekly Progress cards: header band + one slot row (matches CreateWeeklyVaultCard / CreateDailyQuestCard layout).
+local FULL_WIDTH_PLAN_HEADER_H = 70
+local FULL_WIDTH_PLAN_SLOT_H = 92
+local FULL_WIDTH_PLAN_BOTTOM_PAD = 12
+
+local DAILY_QUEST_CATEGORY_ORDER = { "weeklyQuests", "worldQuests", "assignments", "dailyQuests", "events" }
+
+---@param plan table
+---@param cardWidth number|nil unused; reserved for future responsive slot rows
+---@return number
+function ns.UI_MeasureFullWidthPlanCardHeight(plan, cardWidth)
+    if not plan then
+        return FULL_WIDTH_PLAN_HEADER_H + FULL_WIDTH_PLAN_BOTTOM_PAD
+    end
+    if plan.type == "daily_quests" then
+        local visible = 0
+        for i = 1, #DAILY_QUEST_CATEGORY_ORDER do
+            local catKey = DAILY_QUEST_CATEGORY_ORDER[i]
+            if plan.questTypes and plan.questTypes[catKey] then
+                visible = visible + 1
+            end
+        end
+        if visible == 0 then
+            return FULL_WIDTH_PLAN_HEADER_H + FULL_WIDTH_PLAN_BOTTOM_PAD
+        end
+        return FULL_WIDTH_PLAN_HEADER_H + FULL_WIDTH_PLAN_SLOT_H + FULL_WIDTH_PLAN_BOTTOM_PAD
+    end
+    -- weekly_vault (and safe default for other full-width types)
+    local tracked = plan.trackedSlots or { dungeon = true, raid = true, world = true }
+    local visible = 0
+    for _, on in pairs(tracked) do
+        if on then visible = visible + 1 end
+    end
+    if visible == 0 then
+        return FULL_WIDTH_PLAN_HEADER_H + FULL_WIDTH_PLAN_BOTTOM_PAD
+    end
+    return FULL_WIDTH_PLAN_HEADER_H + FULL_WIDTH_PLAN_SLOT_H + FULL_WIDTH_PLAN_BOTTOM_PAD
 end
 
 --[[

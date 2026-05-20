@@ -1978,33 +1978,22 @@ end
 ---so expired/previous-period rewards do not trigger the reminder.
 ---@return boolean hasRewards
 function WarbandNexus:HasUnclaimedVaultRewards()
+    if ns.WeeklyVaultHasPendingRewards then
+        return ns.WeeklyVaultHasPendingRewards()
+    end
     if not C_WeeklyRewards or not C_WeeklyRewards.HasAvailableRewards then
         return false
     end
     if not C_WeeklyRewards.HasAvailableRewards() then
         return false
     end
-    -- Midnight+: only current period and actually claimable
     if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
         local isCurrent = C_WeeklyRewards.AreRewardsForCurrentRewardPeriod()
         if not isCurrent then
             return false
         end
     end
-    if C_WeeklyRewards.CanClaimRewards then
-        local canClaim = C_WeeklyRewards.CanClaimRewards()
-        if not canClaim then
-            return false
-        end
-    end
-    -- Midnight+: current-period + can-claim checks are authoritative.
-    if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and C_WeeklyRewards.CanClaimRewards then
-        return true
-    end
-
-    -- Legacy fallback when one/both newer APIs are unavailable.
-    local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
-    return activities ~= nil and #activities > 0
+    return true
 end
 
 ---Show vault reminder popup (simplified wrapper)
@@ -2063,20 +2052,14 @@ function WarbandNexus:CheckNotificationsOnLogin()
                 DebugVerbosePrint("|cff888888[Vault]|r C_WeeklyRewards = nil")
                 return
             end
-            local hasRewards = C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards()
-            local isCurrentPeriod = true
-            if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
-                isCurrentPeriod = C_WeeklyRewards.AreRewardsForCurrentRewardPeriod()
-            end
-            local canClaim = true
-            if C_WeeklyRewards.CanClaimRewards then
-                canClaim = C_WeeklyRewards.CanClaimRewards()
-            end
+            local hasRewards = ns.WeeklyVaultHasPendingRewards and ns.WeeklyVaultHasPendingRewards()
+                or (C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards())
+            local canClaim = ns.WeeklyVaultCanClaimAtLocation and ns.WeeklyVaultCanClaimAtLocation()
             local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
             local activityCount = activities and #activities or 0
             local secsUntilReset = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset()) or nil
-            DebugVerbosePrint(string.format("|cff00ccff[Vault]|r HasAvailableRewards=%s | isCurrentPeriod=%s | canClaim=%s | activities=%s | secsUntilReset=%s",
-                tostring(hasRewards), tostring(isCurrentPeriod), tostring(canClaim), tostring(activityCount), secsUntilReset and tostring(secsUntilReset) or "n/a"))
+            DebugVerbosePrint(string.format("|cff00ccff[Vault]|r pending=%s | canClaimAtLocation=%s | activities=%s | secsUntilReset=%s",
+                tostring(hasRewards), tostring(canClaim), tostring(activityCount), secsUntilReset and tostring(secsUntilReset) or "n/a"))
             if activities and activityCount > 0 then
                 local a1 = activities[1]
                 if a1 then
@@ -2084,23 +2067,15 @@ function WarbandNexus:CheckNotificationsOnLogin()
                         tostring(a1.type), tostring(a1.progress), tostring(a1.threshold)))
                 end
             end
-            local shouldShow = hasRewards and isCurrentPeriod and canClaim and activities and activityCount > 0
+            local shouldShow = hasRewards == true
             if shouldShow then
-                DebugVerbosePrint("|cff00ccff[Vault]|r Showing reminder (current period, claimable).")
+                DebugVerbosePrint("|cff00ccff[Vault]|r Showing reminder (unclaimed rewards, current period).")
                 QueueNotification({
                     type = "vault",
-                    data = {}
+                    data = { canClaimAtLocation = canClaim == true }
                 })
             else
-                if not hasRewards then
-                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: HasAvailableRewards=false.")
-                elseif not isCurrentPeriod then
-                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: rewards not for current period (e.g. expired/old season).")
-                elseif not canClaim then
-                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: CanClaimRewards=false.")
-                else
-                    DebugVerbosePrint("|cff888888[Vault]|r NOT showing: no activities.")
-                end
+                DebugVerbosePrint("|cff888888[Vault]|r NOT showing: no pending vault rewards for current period.")
             end
         end)
     end

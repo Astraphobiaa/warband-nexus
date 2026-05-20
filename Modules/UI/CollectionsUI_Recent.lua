@@ -82,15 +82,42 @@ local wipe = table.wipe
 ---@return number cols, number cardW
 function M.ComputeRecentCardGrid(innerW, gap)
     local count = #RECENT_SECTION_ORDER
-    local cols = count
-    while cols > 1 do
-        local w = (innerW - (cols - 1) * gap) / cols
-        if w >= RECENT_CARD_MIN_WIDTH then
-            return cols, w
-        end
-        cols = cols - 1
+    local idealW = count * RECENT_CARD_MIN_WIDTH + (count - 1) * gap
+    if innerW >= idealW then
+        return count, (innerW - (count - 1) * gap) / count
     end
-    return 1, innerW
+    -- Keep all category columns; use main-window horizontal scroll instead of stacking columns.
+    return count, RECENT_CARD_MIN_WIDTH
+end
+
+--- scrollChild minimum width when Recent grid is wider than the viewport body (main-window h-bar only).
+---@param sideMargin number|nil
+---@return number|nil
+function M.ComputeRecentTabMinScrollWidth(sideMargin)
+    local gridW = M.state._recentGridScrollWidth
+    if not gridW or gridW < 1 then return nil end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local bodyW = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, mf and mf.scrollChild)) or 0
+    if bodyW < 1 or gridW <= bodyW then
+        return nil
+    end
+    local side = sideMargin or SIDE_MARGIN or 12
+    return side + gridW + side
+end
+
+local function SyncRecentMainHorizontalScroll()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or mf.currentTab ~= "collections" or M.state.currentSubTab ~= "recent" then
+        return
+    end
+    local lc = ns.UI_LayoutCoordinator
+    local sh = lc and lc._shell
+    if sh and sh.updateScrollLayout then
+        sh.updateScrollLayout(mf)
+    end
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.UpdateHorizontalScrollBarVisibility and mf.scroll then
+        ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mf.scroll)
+    end
 end
 
 function M.RecentEntryNameMatches(e, qlower)
@@ -278,10 +305,15 @@ function M.DrawRecentContent(contentFrame)
     M.HideAllCollectionsResultFrames()
     local parent = contentFrame:GetParent()
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local cw = contentFrame:GetWidth()
-    if not cw or cw < 1 then
-        cw = M.CollectionsFallbackContentWidth(parent, mf)
+    -- Layout from viewport body width only — never scrollChild width (avoids resize feedback loop).
+    local bodyW = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent)) or 0
+    if bodyW < 1 then
+        bodyW = contentFrame:GetWidth()
     end
+    if not bodyW or bodyW < 1 then
+        bodyW = M.CollectionsFallbackContentWidth(parent, mf)
+    end
+    local cw = bodyW
     local ch = M.ResolveCollectionsViewportHeight(contentFrame, mf)
     local viewCap = M.state.recentViewportCap or ch
 
@@ -295,7 +327,6 @@ function M.DrawRecentContent(contentFrame)
     panel:SetParent(contentFrame)
     panel:ClearAllPoints()
     panel:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
-    panel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
     panel:Show()
 
     if WarbandNexus.PruneCollectionsRecentObtained then
@@ -319,6 +350,8 @@ function M.DrawRecentContent(contentFrame)
 
     local innerW = math.max(1, cw - 2 * inset)
     local recentCols, cardW = M.ComputeRecentCardGrid(innerW, gap)
+    local gridBodyW = 2 * inset + recentCols * cardW + (recentCols - 1) * gap
+    M.state._recentGridScrollWidth = gridBodyW
     local recentRows = math.ceil(#RECENT_SECTION_ORDER / recentCols)
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 8
     local listTopPad = headerBand + 4
@@ -368,6 +401,16 @@ function M.DrawRecentContent(contentFrame)
     local finalContentH = math.max(viewCap, headerBlockH + inset + recentRows * cardH + rowGapTotal + inset)
 
     contentFrame:SetHeight(finalContentH)
+    local panelH = math.max(1, inner_viewport)
+    if panel.SetSize then
+        panel:SetSize(gridBodyW, panelH)
+    elseif panel.SetWidth then
+        panel:SetWidth(gridBodyW)
+        panel:SetHeight(panelH)
+    end
+    if contentFrame.SetClipsChildren then
+        contentFrame:SetClipsChildren(false)
+    end
     M.ApplyCollectionsContentHeader(contentFrame, "recent", finalContentH)
 
     local rowVisualIndex = 0
@@ -536,5 +579,7 @@ function M.DrawRecentContent(contentFrame)
 
         listHost:SetHeight(math.max(yList, 1))
     end
+
+    SyncRecentMainHorizontalScroll()
 end
 

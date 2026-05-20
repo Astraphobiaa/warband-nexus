@@ -1014,7 +1014,7 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm, trackedSlo
     
     -- Default: track all slots unless caller specifies
     if not trackedSlots then
-        trackedSlots = { dungeon = true, raid = true, world = true, specialAssignment = true }
+        trackedSlots = { dungeon = true, raid = true, world = true }
     end
     
     -- Create weekly plan structure
@@ -1080,17 +1080,6 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
     end
     
     self:Debug("UpdateWeeklyPlanProgress called for: " .. (plan.characterName or "Unknown"))
-    
-    -- Ensure SA slots exist for plans created before SA tracking was added
-    if not plan.slots.specialAssignment then
-        plan.slots.specialAssignment = {
-            {threshold = 1, completed = false, manualOverride = false},
-            {threshold = 2, completed = false, manualOverride = false}
-        }
-    end
-    if not plan.trackedSlots.specialAssignment then
-        plan.trackedSlots.specialAssignment = true
-    end
     
     -- Get current progress from API
     local currentProgress = self:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm)

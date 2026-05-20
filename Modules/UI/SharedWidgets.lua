@@ -1133,7 +1133,7 @@ ns.UI_PLANS_CARD_METRICS = {
     browseCardHeight = PlansMetric(126),
     --- Vertical gap between To-Do List cards (Currency/Reputation row-gap parity).
     todoListCardGap = 10,
-    browseCardPadH = 12,
+    browseCardPadH = 10,
     plansActionIconInset = 3,
     browseIconTopInset = PlansMetric(10),
     browseIconLeftInset = PlansMetric(10),
@@ -1142,11 +1142,26 @@ ns.UI_PLANS_CARD_METRICS = {
     plansChevronSize = PlansMetric(18),
 }
 
---- Plans / Collections browse grid: card width, spacing, horizontal pad (clamp-safe).
-function ns.UI_PlansCardGridLayout(contentInnerWidth, columns)
-    columns = columns or 2
+--- Horizontal inset for To-Do tab search bar and card grids (must match).
+function ns.UI_PlansContentPadH()
     local PCM = ns.UI_PLANS_CARD_METRICS
-    local padH = (PCM and PCM.browseCardPadH) or 12
+    if PCM and PCM.browseCardPadH then
+        return PCM.browseCardPadH
+    end
+    local L = ns.UI_LAYOUT
+    return (L and (L.SIDE_MARGIN or L.sideMargin)) or 10
+end
+
+--- Plans / Collections browse grid: card width, spacing, horizontal pad (clamp-safe).
+---@param opts table|nil `{ padH = number }` — pass `padH = 0` when parent is already inset (browse results container).
+function ns.UI_PlansCardGridLayout(contentInnerWidth, columns, opts)
+    columns = columns or 2
+    opts = opts or {}
+    local PCM = ns.UI_PLANS_CARD_METRICS
+    local padH = opts.padH
+    if padH == nil then
+        padH = ns.UI_PlansContentPadH and ns.UI_PlansContentPadH() or ((PCM and PCM.browseCardPadH) or 10)
+    end
     local sp = (PCM and PCM.todoListCardGap) or (PCM and PCM.gridSpacing) or PLANS_GRID_SPACING
     local w = math.max(200, (contentInnerWidth or 400) - 2 * padH)
     local cardW = math.max(100, (w - (columns - 1) * sp) / columns)

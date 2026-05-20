@@ -3170,6 +3170,10 @@ function WarbandNexus:CreateMainWindow()
         elseif f.currentTab == "chars" then
             -- Total Gold / WoW Token card reads token price; refresh without 800ms cooldown drop.
             SchedulePopulateContent(true)
+        elseif f.currentTab == "pve" then
+            -- Restored Key / crest columns: vault open grants currency before hover tooltip refresh.
+            lastEventPopulateTime = 0
+            SchedulePopulateContent(true)
         else
             WarbandNexus:UpdateTabCountBadges("currency")
         end
