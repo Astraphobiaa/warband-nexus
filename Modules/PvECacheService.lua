@@ -73,6 +73,87 @@ local function CanonicalizePvEKey(charKey)
     return charKey
 end
 
+local function CharKeysMatch(a, b)
+    if ns.VaultCharKeysMatch then
+        return ns.VaultCharKeysMatch(a, b)
+    end
+    return a and b and a == b
+end
+
+local function GetSessionCanonicalPvEKey()
+    local raw = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    return CanonicalizePvEKey(raw)
+end
+
+local function IsSessionPvECharacter(charKey)
+    local sessionKey = GetSessionCanonicalPvEKey()
+    charKey = CanonicalizePvEKey(charKey)
+    if not sessionKey or not charKey then
+        return false
+    end
+    return CharKeysMatch(charKey, sessionKey)
+end
+
+--- Merge alias reward rows; a claimed row (false + claimedAt) wins over a stale true on another key.
+local function LookupVaultRewardsEntry(rewards, charKey)
+    if not rewards or not charKey then
+        return nil
+    end
+    if ns.LookupPvECacheSubtable then
+        return ns.LookupPvECacheSubtable(rewards, charKey)
+    end
+    charKey = CanonicalizePvEKey(charKey)
+    local best, bestUpdate, claimedEntry = nil, -1, nil
+    for k, row in pairs(rewards) do
+        if type(row) == "table" and CharKeysMatch(k, charKey) then
+            local lu = tonumber(row.lastUpdate) or 0
+            local ca = tonumber(row.claimedAt) or 0
+            if row.hasAvailableRewards == false and ca > 0 then
+                claimedEntry = row
+            end
+            if lu >= bestUpdate then
+                bestUpdate = lu
+                best = row
+            end
+        end
+    end
+    return claimedEntry or best
+end
+
+local function PruneVaultRewardAliasKeys(rewards, charKey)
+    if not rewards or not charKey then
+        return
+    end
+    local canonKey = CanonicalizePvEKey(charKey)
+    if not canonKey then
+        return
+    end
+    for k in pairs(rewards) do
+        if k ~= canonKey and CharKeysMatch(k, charKey) then
+            rewards[k] = nil
+        end
+    end
+end
+
+--- Persist reward flags on the canonical key only (removes GUID/Name-Realm duplicate rows).
+local function WriteVaultRewardsCache(charKey, rewardData)
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.pveCache then
+        return
+    end
+    charKey = CanonicalizePvEKey(charKey)
+    if not charKey then
+        return
+    end
+    local gv = WarbandNexus.db.global.pveCache.greatVault
+    if not gv then
+        return
+    end
+    gv.rewards = gv.rewards or {}
+    PruneVaultRewardAliasKeys(gv.rewards, charKey)
+    gv.rewards[charKey] = rewardData
+end
+
 --- True when the logged-in character has unclaimed Great Vault loot for the current reward period.
 --- Uses HasAvailableRewards + AreRewardsForCurrentRewardPeriod; does not require CanClaimRewards
 --- (false when the player must travel to the Great Vault, matching Blizzard's unclaimed prompt).
@@ -1200,22 +1281,31 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     if allowClaimTransition == nil and vaultClaimAllowUntil > 0 and GetTime() < vaultClaimAllowUntil then
         allowClaimTransition = true
     end
-    
-    local hasAvailable = ns.WeeklyVaultHasPendingRewards()
-    if not hasAvailable and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-        -- Legacy fallback when HasAvailableRewards exists but AreRewardsForCurrentRewardPeriod does not.
-        local ok, has = pcall(C_WeeklyRewards.HasAvailableRewards)
-        if ok and has then
-            local activities = C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities() or nil
-            hasAvailable = activities ~= nil and #activities > 0
-        end
-    end
-    
+
     if not self.db.global.pveCache.greatVault.rewards then
         self.db.global.pveCache.greatVault.rewards = {}
     end
+    local rewardsTable = self.db.global.pveCache.greatVault.rewards
+    local previousRewardData = LookupVaultRewardsEntry(rewardsTable, charKey)
+    local isSessionChar = IsSessionPvECharacter(charKey)
 
-    local previousRewardData = self.db.global.pveCache.greatVault.rewards[charKey]
+    -- C_WeeklyRewards.* is scoped to the logged-in character only — never apply live reads to alt rows.
+    local hasAvailable = false
+    if isSessionChar then
+        hasAvailable = ns.WeeklyVaultHasPendingRewards()
+        if not hasAvailable and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
+            local ok, has = pcall(C_WeeklyRewards.HasAvailableRewards)
+            if ok and has then
+                local activities = C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities() or nil
+                hasAvailable = activities ~= nil and #activities > 0
+            end
+        end
+    else
+        hasAvailable = previousRewardData and previousRewardData.hasAvailableRewards == true or false
+        if allowClaimTransition ~= true then
+            return
+        end
+    end
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local claimedResetTime = previousRewardData and tonumber(previousRewardData.claimedResetTime) or nil
     local claimedAt = previousRewardData and tonumber(previousRewardData.claimedAt) or nil
@@ -1263,12 +1353,12 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
         return
     end
 
-    self.db.global.pveCache.greatVault.rewards[charKey] = {
+    WriteVaultRewardsCache(charKey, {
         hasAvailableRewards = hasAvailable,
         lastUpdate = time(),
         claimedAt = claimedAt,
         claimedResetTime = claimedResetTime,
-    }
+    })
 end
 
 -- ============================================================================
@@ -2068,6 +2158,7 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
         return
     end
 
+    ns._vaultClaimSubjectKey = charKey
     vaultDataFreshThisSession = true
     vaultClaimAllowUntil = GetTime() + 3
 
@@ -2088,6 +2179,15 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     self:UpdateCharacterKeystone(charKey)
     ScheduleKeystoneRetry(charKey)
     self:UpdateGreatVaultRewards(charKey, true)
+    local stillPending = IsSessionPvECharacter(charKey) and ns.WeeklyVaultHasPendingRewards()
+    if not stillPending then
+        WriteVaultRewardsCache(charKey, {
+            hasAvailableRewards = false,
+            lastUpdate = time(),
+            claimedAt = time(),
+            claimedResetTime = GetCurrentWeeklyResetStartTime(),
+        })
+    end
     self:SavePvECache()
     local afterSig = BuildPvESignature(self.db.global.pveCache, charKey)
 
@@ -2114,8 +2214,12 @@ function WarbandNexus:EnsureWeeklyRewardsFrameHooks()
     if ns._weeklyRewardsFrameHooked then return end
     if not WeeklyRewardsFrame or not WeeklyRewardsFrame.HookScript then return end
     ns._weeklyRewardsFrameHooked = true
+    WeeklyRewardsFrame:HookScript("OnShow", function()
+        ns._weeklyRewardsInteractCharKey = GetSessionCanonicalPvEKey()
+    end)
     WeeklyRewardsFrame:HookScript("OnHide", function()
-        local charKey = CanonicalizePvEKey(ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus) or ns.Utilities:GetCharacterKey())
+        local charKey = ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey or GetSessionCanonicalPvEKey()
+        ns._weeklyRewardsInteractCharKey = nil
         if charKey and WarbandNexus.RefreshVaultClaimState then
             WarbandNexus:RefreshVaultClaimState(charKey)
         end
@@ -2174,7 +2278,8 @@ function WarbandNexus:RegisterPvECacheEvents()
     local function RefreshVaultRewardsAfterItemChange(delay)
         C_Timer.After(delay or 0.35, function()
             if WarbandNexus.RefreshVaultClaimState then
-                WarbandNexus:RefreshVaultClaimState()
+                local key = ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey
+                WarbandNexus:RefreshVaultClaimState(key)
             end
         end)
     end
@@ -2244,7 +2349,8 @@ function WarbandNexus:RegisterPvECacheEvents()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_ITEM_CHANGED triggered")
         WarbandNexus:EnsureWeeklyRewardsFrameHooks()
         if WarbandNexus.RefreshVaultClaimState then
-            WarbandNexus:RefreshVaultClaimState()
+            local key = ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey
+            WarbandNexus:RefreshVaultClaimState(key)
         end
         -- Keystone API can lag behind the vault UI by a few frames after a key reward.
         RefreshVaultRewardsAfterItemChange(0.2)

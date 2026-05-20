@@ -389,18 +389,33 @@ end
 ns.VaultCharKeysMatch = CharKeysMatch
 
 --- Lookup a per-character pveCache subtable when keys were written under a canonical alias.
+--- For rewards: a claimed row (hasAvailableRewards=false + claimedAt) wins over stale true on another key.
 local function LookupPveCacheSubtable(subtable, charKey)
     if not subtable or not charKey then return nil end
     local direct = subtable[charKey]
-    if direct ~= nil then return direct end
+    if direct ~= nil and type(direct) ~= "table" then return direct end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         local ck = ns.Utilities:GetCanonicalCharacterKey(charKey)
-        if ck and subtable[ck] ~= nil then return subtable[ck] end
+        if ck and subtable[ck] ~= nil then
+            direct = subtable[ck]
+            if type(direct) ~= "table" then return direct end
+        end
     end
+    local best, bestUpdate, claimedEntry = direct, direct and (tonumber(direct.lastUpdate) or 0) or -1, nil
     for k, v in pairs(subtable) do
-        if CharKeysMatch(k, charKey) then return v end
+        if type(v) == "table" and CharKeysMatch(k, charKey) then
+            local lu = tonumber(v.lastUpdate) or 0
+            local ca = tonumber(v.claimedAt) or 0
+            if v.hasAvailableRewards == false and ca > 0 then
+                claimedEntry = v
+            end
+            if lu >= bestUpdate then
+                bestUpdate = lu
+                best = v
+            end
+        end
     end
-    return nil
+    return claimedEntry or best
 end
 ns.LookupPvECacheSubtable = LookupPveCacheSubtable
 
@@ -3773,6 +3788,9 @@ function WarbandNexus:GetVaultStatusForChar(charKey)
     local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
     local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
     local isReady    = rewardData and rewardData.hasAvailableRewards == true or false
+    if rewardData and rewardData.hasAvailableRewards == false and (tonumber(rewardData.claimedAt) or 0) > 0 then
+        isReady = false
+    end
 
     local readySlots = CountReadySlots(charKey) or 0
     local currentKey = GetCurrentCharKey()
