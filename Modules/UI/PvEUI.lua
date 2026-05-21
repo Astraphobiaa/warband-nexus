@@ -990,7 +990,8 @@ function ns.ComputePvEMinScrollWidth(self)
     end
     local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
     local prefixW = (ns.PvE_ComputeCharacterRowPrefixToGoldPx and ns.PvE_ComputeCharacterRowPrefixToGoldPx(nameWidth)) or 400
-    if not profile then return PVE_CHAR_HEADER_H_MARGIN + prefixW + PVE_COL_RIGHT_MARGIN end
+    local tabSide = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN
+    if not profile then return 2 * tabSide + prefixW + PVE_COL_RIGHT_MARGIN end
     local columnSeq = BuildPvEColumnKeySequence(profile)
     local visibleKeySet = {}
     for i = 1, #columnSeq do
@@ -1026,7 +1027,7 @@ function ns.ComputePvEMinScrollWidth(self)
         inlineTotal = inlineTotal + PvE_GetGapAfterColumnKey(columnSeq[i], visibleKeySet)
     end
     inlineTotal = inlineTotal + PVE_COL_RIGHT_MARGIN
-    return PVE_CHAR_HEADER_H_MARGIN + prefixW + inlineTotal
+    return 2 * tabSide + prefixW + inlineTotal
 end
 
 -- Performance: Local function references
@@ -3083,6 +3084,12 @@ if not ns.PvEDrawLibs then
     }
 end
 
+--- Inner stack width after symmetric tab side insets (header/sections anchor at contentSide).
+local function PvEStackBodyWidth(scrollPaintW, contentSide)
+    local side = contentSide or SIDE_MARGIN
+    return math.max(1, (tonumber(scrollPaintW) or 1) - 2 * side)
+end
+
 local function PvEUI_DrawPvEProgressBody(self, parent, L)
     parent._pvePaintedCoreH = nil
     local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
@@ -3096,8 +3103,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
         or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
         or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
-    local width = stackWidth
-    parent._wnPveStackWidth = stackWidth
     parent._wnPveContentSide = contentSide
     local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
     
@@ -3810,11 +3815,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     inlineTotal = inlineTotal + COL_RIGHT_MARGIN
     local gridInlineStartX = (L.PvE_ComputeInlineColumnsStartPx and L.PvE_ComputeInlineColumnsStartPx(nameWidth)) or 400
     local pveColumnDividerXs = (L.BuildPvEInlineColumnDividerXs and L.BuildPvEInlineColumnDividerXs(gridInlineStartX, PVE_COLUMNS, GapBetweenColumns)) or {}
-    local minScrollW = L.PVE_CHAR_HEADER_H_MARGIN + gridInlineStartX + inlineTotal
+    local minScrollW = 2 * contentSide + gridInlineStartX + inlineTotal
     local colHeaderInnerW = math.max(viewportW, minScrollW)
     local pveGridW = colHeaderInnerW
+    local pveStackW = PvEStackBodyWidth(pveGridW, contentSide)
     parent:SetWidth(pveGridW)
-    parent._wnPveStackWidth = pveGridW
+    parent._wnPveStackWidth = pveStackW
     if mf then
         mf._pveMinScrollWidth = pveGridW
     end
@@ -3828,16 +3834,16 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
 
     -- ===== COLUMN HEADER ROW (icon + compact two-line labels) =====
-    local colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, colHeaderInnerW, COL_HEADER_HEIGHT)
+    local colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, pveStackW, COL_HEADER_HEIGHT)
     if not colHeaderRow then
         colHeaderRow = CreateFrame("Frame", nil, parent)
-        colHeaderRow:SetSize(colHeaderInnerW, COL_HEADER_HEIGHT)
+        colHeaderRow:SetSize(pveStackW, COL_HEADER_HEIGHT)
     end
     colHeaderRow:SetHeight(COL_HEADER_HEIGHT)
     colHeaderRow:ClearAllPoints()
     colHeaderRow:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
     if colHeaderRow.SetWidth then
-        colHeaderRow:SetWidth(math.max(1, pveGridW))
+        colHeaderRow:SetWidth(math.max(1, pveStackW))
     end
 
     local PVE_COMPACT_HEADER_BY_KEY = {
@@ -4129,7 +4135,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     scrollFrameRef = scrollFrameRef,
                     yTop = totalLHBox.v,
                     sideMargin = contentSide,
-                    stackWidth = pveGridW,
+                    stackWidth = pveStackW,
                 })
             end
             rowHost = secBodies[sk]
@@ -4147,7 +4153,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     scrollFrameRef = scrollFrameRef,
                     yTop = totalLHBox.v,
                     sideMargin = contentSide,
-                    stackWidth = pveGridW,
+                    stackWidth = pveStackW,
                 })
             end
             rowHost = secBodies[sk]
@@ -4179,7 +4185,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     scrollFrameRef = scrollFrameRef,
                     yTop = totalLHBox.v,
                     sideMargin = contentSide,
-                    stackWidth = pveGridW,
+                    stackWidth = pveStackW,
                 })
             end
             rowHost = secBodies[sk]
