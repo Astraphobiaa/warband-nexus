@@ -2278,9 +2278,8 @@ local function ScheduleSavedInstancesLiveRefresh(triggerPvEUpdate)
     if S._savedUserInteractUntil and GetTime() < S._savedUserInteractUntil then
         return
     end
-    if triggerPvEUpdate and WarbandNexus and WarbandNexus.UpdatePvEData then
-        pcall(WarbandNexus.UpdatePvEData, WarbandNexus)
-    end
+    -- RequestRaidInfo drives UPDATE_INSTANCE_INFO; PvECacheService performs the
+    -- delayed cache write after Blizzard's saved-instance API has populated.
     if RequestRaidInfo then
         pcall(RequestRaidInfo)
     end

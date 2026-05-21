@@ -4127,9 +4127,9 @@ local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
     local hasTrackableOnDiff = false
     while idx <= EJ_ENCOUNTER_INDEX_CAP do
         local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
-        if encName == nil then break end
         if issecretvalue and issecretvalue(encName) then break end
-        local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+        if encName == nil then break end
+        local dexSecret = issecretvalue and issecretvalue(dungeonEncID)
         if not dexSecret and dungeonEncID then
             local npcIDs = encounterDB[dungeonEncID]
             if npcIDs then
@@ -4464,9 +4464,9 @@ function WarbandNexus:TryCounterDebugInstanceProbe()
         local hadDbBoss = false
         while idx <= EJ_ENCOUNTER_INDEX_CAP do
             local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, jid)
-            if encName == nil then break end
             if issecretvalue and issecretvalue(encName) then break end
-            local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+            if encName == nil then break end
+            local dexSecret = issecretvalue and issecretvalue(dungeonEncID)
             if not dexSecret and dungeonEncID then
                 local npcIDs = encounterDB[dungeonEncID]
                 if npcIDs then
@@ -4524,9 +4524,9 @@ Fns.TryCounterShowInstanceDrops = function(journalInstanceID, opts)
         local EJ_ENCOUNTER_INDEX_CAP = 500
         while idx <= EJ_ENCOUNTER_INDEX_CAP do
             local encName, dungeonEncID = Fns.TryCounterResolveDungeonEncounterFromEJIndex(idx, journalInstanceID)
-            if encName == nil then break end
             if issecretvalue and issecretvalue(encName) then break end
-            local dexSecret = dungeonEncID and issecretvalue and issecretvalue(dungeonEncID)
+            if encName == nil then break end
+            local dexSecret = issecretvalue and issecretvalue(dungeonEncID)
             if not dexSecret then
                 -- Our encounterDB is keyed by DungeonEncounterID (from ENCOUNTER_END event)
                 local npcIDs = dungeonEncID and encounterDB[dungeonEncID]
@@ -5520,6 +5520,67 @@ Fns.ResetLootSession = function()
     lootSession.opened = false
 end
 
+local function CopyArray(src)
+    local out = {}
+    if src then
+        for i = 1, #src do
+            out[i] = src[i]
+        end
+    end
+    return out
+end
+
+local function CopyLootSlotData(src)
+    local out = {}
+    if src then
+        for i = 1, #src do
+            local slot = src[i]
+            if slot then
+                out[i] = {
+                    hasItem = slot.hasItem,
+                    link = slot.link,
+                }
+            end
+        end
+    end
+    return out
+end
+
+Fns.SnapshotLootSessionState = function()
+    return {
+        numLoot = lootSession.numLoot or 0,
+        sourceGUIDs = CopyArray(lootSession.sourceGUIDs),
+        slotData = CopyLootSlotData(lootSession.slotData),
+        mouseoverGUID = lootSession.mouseoverGUID,
+        targetGUID = lootSession.targetGUID,
+        npcGUID = lootSession.npcGUID,
+        opened = lootSession.opened == true,
+    }
+end
+
+Fns.ApplyLootSessionState = function(snapshot)
+    snapshot = snapshot or {}
+    lootSession.numLoot = snapshot.numLoot or 0
+    lootSession.sourceGUIDs = CopyArray(snapshot.sourceGUIDs)
+    wipe(lootSession.slotData)
+    local slots = snapshot.slotData
+    if slots then
+        for i = 1, #slots do
+            local slot = slots[i]
+            if slot then
+                lootSession.slotData[i] = {
+                    hasItem = slot.hasItem,
+                    link = slot.link,
+                }
+            end
+        end
+    end
+    lootSession.mouseoverGUID = snapshot.mouseoverGUID
+    lootSession.targetGUID = snapshot.targetGUID
+    lootSession.npcGUID = snapshot.npcGUID
+    lootSession.opened = snapshot.opened == true
+end
+
 ---Copy lootReady into lootSession tables (own arrays; lootReady.sourceGUIDs is wiped on LOOT_CLOSED).
 ---@param numLoot number
 local function ApplyLootReadySnapshotToSession(numLoot)
@@ -5712,6 +5773,52 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     return "npc"
 end
 
+local function ScheduleLootRouteProcessor(addon, route, source)
+    local sessionSnapshot = Fns.SnapshotLootSessionState()
+    local containerItemIDSnapshot = lastContainerItemID
+    local containerItemTimeSnapshot = lastContainerItemTime
+    local professionLootingSnapshot = isProfessionLooting
+
+    C_Timer.After(0, function()
+        if not addon or not Fns.IsAutoTryCounterEnabled() then return end
+
+        local liveSession = Fns.SnapshotLootSessionState()
+        local liveContainerItemID = lastContainerItemID
+        local liveContainerItemTime = lastContainerItemTime
+        local liveProfessionLooting = isProfessionLooting
+
+        Fns.ApplyLootSessionState(sessionSnapshot)
+        lastContainerItemID = containerItemIDSnapshot
+        lastContainerItemTime = containerItemTimeSnapshot
+        isProfessionLooting = professionLootingSnapshot
+
+        local ok, err
+        if route == "container" then
+            ok, err = pcall(addon.ProcessContainerLoot, addon)
+        elseif route == "fishing" then
+            ok, err = pcall(addon.ProcessFishingLoot, addon)
+        elseif route == "npc" then
+            ok, err = pcall(addon.ProcessNPCLoot, addon)
+        else
+            ok = true
+        end
+
+        Fns.ApplyLootSessionState(liveSession)
+        lastContainerItemID = liveContainerItemID
+        lastContainerItemTime = liveContainerItemTime
+        isProfessionLooting = liveProfessionLooting
+
+        if route == "fishing" and ok and (source == "closed" or not liveSession.opened) then
+            fishingCtx.active = false
+            fishingCtx.castTime = 0
+            fishingCtx.lootWasFishing = false
+            if fishingCtx.resetTimer then fishingCtx.resetTimer:Cancel() fishingCtx.resetTimer = nil end
+        end
+
+        if not ok then error(err) end
+    end)
+end
+
 ---Unified routing: classify then dispatch to exactly one processor.
 ---@param self table WarbandNexus addon reference
 ---@param source string "opened"|"closed"
@@ -5723,26 +5830,17 @@ Fns.RouteLootSession = function(self, source, isFromItem)
 
     if route == "skip" then return end
     if route == "container" then
-        local addon = self
-        C_Timer.After(0, function()
-            if addon and Fns.IsAutoTryCounterEnabled() then addon:ProcessContainerLoot() end
-        end)
+        ScheduleLootRouteProcessor(self, route, source)
         return
     end
     if route == "fishing" then
-        local addon = self
-        C_Timer.After(0, function()
-            if addon and Fns.IsAutoTryCounterEnabled() then addon:ProcessFishingLoot() end
-        end)
+        ScheduleLootRouteProcessor(self, route, source)
         return
     end
     if route == "npc" then
         -- SoD Mythic: mount outcome from slot links alone (secret GUID chest / personal loot).
         if Fns.TryInstanceBossSlotOutcomeFirst(self) then return end
-        local addon = self
-        C_Timer.After(0, function()
-            if addon and Fns.IsAutoTryCounterEnabled() then addon:ProcessNPCLoot() end
-        end)
+        ScheduleLootRouteProcessor(self, route, source)
         return
     end
 end
