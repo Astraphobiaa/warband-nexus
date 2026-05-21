@@ -1034,9 +1034,9 @@ L["REMINDER_OPT_WEEKLY"] = "每周重置后提醒"
 L["REMINDER_OPT_DAILY_SHORT"] = "每日"
 L["REMINDER_OPT_WEEKLY_SHORT"] = "每周"
 L["REMINDER_OPT_DAYS_SHORT"] = "%d天"
-L["REMINDER_OPT_DAYS_BEFORE_SUFFIX"] = "重置前天"
+L["REMINDER_OPT_DAYS_BEFORE_SUFFIX"] = "天前提醒"
 L["REMINDER_OPT_DAYS_BEFORE"] = "重置前 %d 天提醒"
-L["REMINDER_OPT_ZONE"] = "进入来源区域时提醒"
+L["REMINDER_OPT_ZONE"] = "进入区域时提醒"
 
 -- Empty State Cards
 L["NO_SCAN"] = "未扫描"

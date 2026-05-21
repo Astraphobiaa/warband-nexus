@@ -1501,42 +1501,95 @@ function WarbandNexus:GetCurrentGearStorageKey()
     return ResolveGearStorageKey()
 end
 
-local function CountGearDataSlots(entry)
+local function GearDataSlotHasPayload(slot)
+    if type(slot) ~= "table" then return false end
+    if slot.itemLink or slot.itemID or slot.name then return true end
+    return (tonumber(slot.itemLevel) or 0) > 0
+end
+
+local function CountGearDataPayloadSlots(entry)
     local slots = type(entry) == "table" and entry.slots
     if type(slots) ~= "table" then return 0 end
     local count = 0
     for _, slot in pairs(slots) do
-        if type(slot) == "table" then
-            count = count + 1
-        end
+        if GearDataSlotHasPayload(slot) then count = count + 1 end
     end
     return count
 end
 
-local function ShouldReplaceGearDataBucket(current, candidate)
-    if type(candidate) ~= "table" then return false end
-    if type(current) ~= "table" then return true end
+local function ShouldUseLegacyGearDataBucket(current, legacy)
+    local currentSlots = CountGearDataPayloadSlots(current)
+    local legacySlots = CountGearDataPayloadSlots(legacy)
+    if legacySlots ~= currentSlots then
+        return legacySlots > currentSlots
+    end
+    return (tonumber(legacy.lastScan) or 0) > (tonumber(current.lastScan) or 0)
+end
 
-    local currentSlots = CountGearDataSlots(current)
-    local candidateSlots = CountGearDataSlots(candidate)
-    if candidateSlots > 0 and currentSlots == 0 then return true end
-    if candidateSlots == 0 and currentSlots > 0 then return false end
+local function MergeMissingGearDataSlots(target, donor)
+    local donorSlots = type(donor) == "table" and donor.slots
+    if type(donorSlots) ~= "table" then return end
+    if type(target.slots) ~= "table" then
+        target.slots = donorSlots
+        return
+    end
+    for slotID, donorSlot in pairs(donorSlots) do
+        local targetSlot = target.slots[slotID]
+        if GearDataSlotHasPayload(donorSlot) and not GearDataSlotHasPayload(targetSlot) then
+            target.slots[slotID] = donorSlot
+        end
+    end
+end
 
-    return (tonumber(candidate.lastScan) or 0) > (tonumber(current.lastScan) or 0)
+local function MergeGearDataWatermarks(target, donor)
+    local donorMarks = type(donor) == "table" and donor.watermarks
+    if type(donorMarks) ~= "table" then return end
+    if type(target.watermarks) ~= "table" then
+        target.watermarks = donorMarks
+        return
+    end
+    for slotID, watermark in pairs(donorMarks) do
+        local existing = target.watermarks[slotID]
+        if existing == nil or (tonumber(watermark) or 0) > (tonumber(existing) or 0) then
+            target.watermarks[slotID] = watermark
+        end
+    end
 end
 
 local function MergeGearDataBucket(current, legacy)
     if type(legacy) ~= "table" then return current end
-    if ShouldReplaceGearDataBucket(current, legacy) then
-        if type(legacy.modelView) ~= "table" and type(current) == "table" and type(current.modelView) == "table" then
-            legacy.modelView = current.modelView
+    if type(current) ~= "table" then return legacy end
+
+    local target = current
+    local donor = legacy
+    if ShouldUseLegacyGearDataBucket(current, legacy) then
+        target = legacy
+        donor = current
+    end
+
+    MergeMissingGearDataSlots(target, donor)
+    MergeGearDataWatermarks(target, donor)
+
+    if type(target.modelView) ~= "table" and type(donor.modelView) == "table" then
+        target.modelView = donor.modelView
+    elseif type(target.modelView) == "table" and type(donor.modelView) == "table" then
+        local targetViewScan = tonumber(target.modelView.lastUpdate) or 0
+        local donorViewScan = tonumber(donor.modelView.lastUpdate) or 0
+        if donorViewScan > targetViewScan then
+            target.modelView = donor.modelView
         end
-        return legacy
     end
-    if type(current) == "table" and type(current.modelView) ~= "table" and type(legacy.modelView) == "table" then
-        current.modelView = legacy.modelView
+    if type(target.modelSnapshot) ~= "table" and type(donor.modelSnapshot) == "table" then
+        target.modelSnapshot = donor.modelSnapshot
     end
-    return current
+    if target.version == nil and donor.version ~= nil then
+        target.version = donor.version
+    end
+    if (tonumber(donor.lastScan) or 0) > (tonumber(target.lastScan) or 0) then
+        target.lastScan = donor.lastScan
+    end
+
+    return target
 end
 
 --- Move pre-guid scans (Name-Realm) into the canonical bucket once.
