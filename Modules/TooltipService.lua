@@ -668,19 +668,35 @@ function TooltipService:RenderCustomTooltip(frame, data)
         end
         frame:SetDescription(data.description, dr, dg, db)
     end
+
+    if data.titleAffixPair and frame.AddTitleAffixPair then
+        local ap = data.titleAffixPair
+        local lc = ap.leftColor or { 1, 1, 1 }
+        local rc = ap.rightColor or { 0.83, 0.69, 0.22 }
+        frame:AddTitleAffixPair(ap.left, ap.right, lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+    end
     
     -- 4) Data lines
     if data.lines then
         for _, line in ipairs(data.lines) do
             if line.type == "spacer" then
                 frame:AddSpacer(line.height or 8)
+            elseif line.type == "divider" and frame.AddBodyDivider then
+                frame:AddBodyDivider()
+            elseif line.type == "section_label" and frame.AddSectionLabel then
+                local c = line.color or { 0.62, 0.64, 0.72 }
+                frame:AddSectionLabel(line.text, c[1], c[2], c[3])
+            elseif line.type == "centered" and frame.AddCenteredLine then
+                local c = line.color or { 1, 1, 1 }
+                frame:AddCenteredLine(line.text, c[1], c[2], c[3])
             elseif line.left and line.right then
                 local leftColor = line.leftColor or {1, 1, 1}
                 local rightColor = line.rightColor or {1, 1, 1}
                 frame:AddDoubleLine(
                     line.left, line.right,
                     leftColor[1], leftColor[2], leftColor[3],
-                    rightColor[1], rightColor[2], rightColor[3]
+                    rightColor[1], rightColor[2], rightColor[3],
+                    { balanced = line.balanced == true }
                 )
             elseif line.type == "vault_grid_row" then
                 frame:AddVaultGridRow(
@@ -690,6 +706,14 @@ function TooltipService:RenderCustomTooltip(frame, data)
                     line.colMplus,
                     line.colWorld,
                     line.widths,
+                    { isHeader = line.isHeader == true }
+                )
+            elseif line.type == "vault_track_row" then
+                frame:AddVaultTrackRow(
+                    line.colRaid,
+                    line.colMplus,
+                    line.colWorld,
+                    line.colW,
                     { isHeader = line.isHeader == true }
                 )
             elseif line.left then

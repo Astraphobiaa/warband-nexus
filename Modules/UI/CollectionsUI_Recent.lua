@@ -48,6 +48,7 @@ local PROGRESS_ROW_HEIGHT = M.PROGRESS_ROW_HEIGHT
 local BAR_INSET = M.BAR_INSET
 local SD = M.SD
 local Factory = M.Factory
+local SD = M.SD
 local PADDING = M.PADDING
 local SCROLLBAR_GAP = M.SCROLLBAR_GAP
 local SCROLLBAR_SIDE_GAP = M.SCROLLBAR_SIDE_GAP
@@ -561,7 +562,11 @@ function M.DrawRecentContent(contentFrame)
                     subLine = format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
                     rowH = RECENT_ROW_H_SUB
                 end
-                local nameRich = COLLECTED_COLOR .. nm .. "|r"
+                local trySuffix = ""
+                if (typ == "mount" or typ == "pet" or typ == "toy") and SD and SD.FormatMountPetToyListTrySuffix then
+                    trySuffix = SD.FormatMountPetToyListTrySuffix(typ, idCopy) or ""
+                end
+                local nameRich = COLLECTED_COLOR .. nm .. "|r" .. trySuffix
 
                 local function buildTooltip(tt)
                     M.PopulateCollectionsRecentTooltip(tt, {

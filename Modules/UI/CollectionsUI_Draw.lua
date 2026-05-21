@@ -1099,8 +1099,10 @@ function M.DrawToysContent(contentFrame)
             local gR = (COLORS.gold and COLORS.gold[1]) or 1
             local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
             local gB = (COLORS.gold and COLORS.gold[3]) or 0
-            M.state._toyDetailName:SetText(displayName)
-            M.state._toyDetailName:SetTextColor(gR, gG, gB)
+            local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+            local trySuffix = (SD and SD.FormatMountPetToyListTrySuffix and itemID)
+                and SD.FormatMountPetToyListTrySuffix("toy", itemID) or ""
+            M.state._toyDetailName:SetText(goldHex .. (displayName or "") .. "|r" .. trySuffix)
         end
         if M.state._toyDetailCollectedBadge then
             M.state._toyDetailCollectedBadge:Hide()

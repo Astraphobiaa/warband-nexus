@@ -2861,9 +2861,12 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
 
     -- Primary: DressUpModel — current character SetUnit+Dress; alts: snapshot+TryOn. modelView in SavedVariables.
     local GEAR_REFERENCE_RADIUS = 0.96
-    local GEAR_FIXED_CAM_DISTANCE = 2.72
-    local GEAR_CAM_FIT_PADDING = 0.82
-    local GEAR_FIXED_CAM_SCALE = 2.28
+    -- Paperdoll close-up: low camera distance; cam scale capped so radius normalize does not push camera away.
+    local GEAR_FIXED_CAM_DISTANCE = 1.48
+    local GEAR_CAM_FIT_PADDING = 0.48
+    local GEAR_CAM_SCALE_CAP = 1.04
+    local GEAR_PORTRAIT_ZOOM = 0.38
+    local GEAR_FIXED_CAM_SCALE = 2.85
     local GEAR_MODEL_SCALE_MIN = 0.15
     local GEAR_MODEL_SCALE_MAX = 6.0
     local GEAR_ZOOM_MIN = 0.5
@@ -2924,16 +2927,18 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
                 if m.UseModelCenterToTransform then m:UseModelCenterToTransform(true) end
                 if m.SetPitch then m:SetPitch(0) end
                 m:SetFacing(m._rotation)
-                if m.SetPortraitZoom then m:SetPortraitZoom(0) end
+                if m.SetPortraitZoom then m:SetPortraitZoom(GEAR_PORTRAIT_ZOOM) end
                 if m._normalized and m.SetModelScale and m.SetCameraDistance then
                     m:SetModelScale(m._scale)
                     local vw, vh = clip:GetWidth() or 1, clip:GetHeight() or 1
-                    local aspectPad = (vh > 1 and (vw / vh) > 1.12) and 1.09 or 1.0
+                    local aspectPad = (vh > 1 and (vw / vh) > 1.12) and 1.04 or 1.0
+                    local camScale = m._scale
+                    if camScale > GEAR_CAM_SCALE_CAP then camScale = GEAR_CAM_SCALE_CAP end
                     local camDist = GEAR_FIXED_CAM_DISTANCE
                         * GEAR_CAM_FIT_PADDING
                         * aspectPad
                         * m._zoom
-                        * m._scale
+                        * camScale
                     m:SetCameraDistance(math.max(0.1, camDist))
                 elseif m.SetCamDistanceScale then
                     m:SetCamDistanceScale(GEAR_FIXED_CAM_SCALE * m._zoom)
@@ -2947,7 +2952,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             if not m.GetModelRadius or not m.SetModelScale or not m.SetCameraDistance then return false end
             local ok, r = pcall(m.GetModelRadius, m)
             if not ok or not r or r <= 0 then return false end
-            local s = (GEAR_REFERENCE_RADIUS / r) * 0.94 * 1.18
+            local s = (GEAR_REFERENCE_RADIUS / r) * 0.94 * 1.38
             if s < GEAR_MODEL_SCALE_MIN then s = GEAR_MODEL_SCALE_MIN
             elseif s > GEAR_MODEL_SCALE_MAX then s = GEAR_MODEL_SCALE_MAX end
             m._normalized = true
@@ -3066,7 +3071,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         -- Reset framing state on character swap so radius normalize re-runs cleanly.
         m._normalized = false
         m._scale = 1.0
-        m._zoom = 1.05
+        m._zoom = 0.65
         m._rotation = 0
         do
             local mv = gearData and gearData.modelView
@@ -3077,8 +3082,10 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
                 if mv.zoom ~= nil then
                     local z = tonumber(mv.zoom)
                     if z and z > 0 then
-                        -- Legacy defaults were ~0.58 (too far); bump so saved views stay readable.
-                        if z < 0.85 then z = 1.05 end
+                        -- Saved views from older builds were too far; pull toward new close-up default.
+                        if z < 0.58 or (z >= 0.72 and z <= 1.12) then
+                            z = 0.65
+                        end
                         m._zoom = z
                     end
                 end

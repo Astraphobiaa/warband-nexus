@@ -946,7 +946,7 @@ local StopSavedInstancesLiveRefresh
 local WNTooltipShow
 local WNTooltipHide
 local EAL
-local BuildVaultCharacterTooltipLines
+local BuildEasyAccessTooltipData
 local FormatSavedResetShort
 
 local function ReleaseSavedInstanceRows()
@@ -1530,10 +1530,18 @@ RefreshTable = function()
 
         -- Row tooltip: readable vault summary (table cells keep icons)
         row:SetScript("OnEnter", function(self)
-            local lines = BuildVaultCharacterTooltipLines(e.charKey, e)
-            lines[#lines + 1] = { text = " " }
-            lines[#lines + 1] = { text = EAL("EA_TOOLTIP_OPEN_PVE", "Left-click: open PvE tab"), color = {0.55, 0.55, 0.55} }
-            WNTooltipShow(self, { type = "custom", lines = lines, anchor = "ANCHOR_RIGHT" })
+            local tip = BuildEasyAccessTooltipData(e.charKey, e) or {}
+            WNTooltipShow(self, {
+                type = "custom",
+                title = EAL("CONFIG_VAULT_BUTTON_SECTION", "Easy Access"),
+                icon = ICON_TEXTURE,
+                titleColor = tip.titleColor,
+                titleAffixPair = tip.titleAffixPair,
+                description = tip.description,
+                lines = tip.lines,
+                anchor = "ANCHOR_RIGHT",
+                maxWidth = 360,
+            })
         end)
         row:SetScript("OnLeave", function() WNTooltipHide() end)
 
@@ -1640,175 +1648,175 @@ EAL = function(key, fallback, ...)
     return fmt
 end
 
-local function FormatVaultSlotShort(slot, category)
-    if not slot then return "-" end
-    if slot.complete then
-        local ilvl = tonumber(slot.ilvl) or 0
-        if ilvl > 0 then
-            if category == "world" then
-                return ColorByItemQuality(ilvl, WORLD_REWARD_QUALITY_BY_ILVL[ilvl])
-            end
-            return "|cffd4af37" .. ilvl .. "|r"
-        end
-        if slot.canUpgrade then
-            return EAL("EA_TOOLTIP_SLOT_UPGRADE_SHORT", "Upg")
-        end
-        return EAL("EA_TOOLTIP_SLOT_DONE_SHORT", "Done")
+local EA_MONEY_ICON = 14
+local EA_LABEL_COLOR = { 0.55, 0.57, 0.62 }
+local EA_VALUE_COLOR = { 0.94, 0.94, 0.96 }
+local EA_FOOTER_COLOR = { 0.48, 0.50, 0.54 }
+
+local NormalizeColonLabel = ns.UI_NormalizeColonLabelSpacing
+    or function(label)
+        if not label or label == "" then return "" end
+        local trimmed = label:match("^%s*(.-)%s*$") or label
+        trimmed = trimmed:gsub("%s*:%s*$", "")
+        return trimmed .. " : "
     end
-    local thresh = tonumber(slot.threshold) or 0
-    if thresh > 0 then
-        local prog = math.min(tonumber(slot.progress) or 0, thresh)
-        if IsShiftKeyDown and IsShiftKeyDown() then
-            return "|cffffcc00" .. math.max(thresh - prog, 0) .. "|r"
+
+local function EAIconLabel(iconTexture, iconAtlas, localeKey, fallback)
+    local icon = ""
+    if iconAtlas and CreateAtlasMarkup then
+        local ok, markup = pcall(CreateAtlasMarkup, iconAtlas, 12, 12)
+        if ok and markup and markup ~= "" then
+            icon = markup .. " "
         end
-        return string.format("%d/%d", prog, thresh)
     end
-    return "-"
+    if icon == "" and iconTexture then
+        icon = "|T" .. iconTexture .. ":12:12:0:0|t "
+    end
+    return icon .. NormalizeColonLabel(EAL(localeKey, fallback))
 end
 
-local function FormatVaultCategorySummary(charKey, categoryKey, label)
-    local slots = GetSlotData(charKey, categoryKey)
-    return string.format(
-        "%s: %s",
-        label,
-        table.concat({
-            FormatVaultSlotShort(slots[1], categoryKey),
-            FormatVaultSlotShort(slots[2], categoryKey),
-            FormatVaultSlotShort(slots[3], categoryKey),
-        }, "  |  ")
-    )
+local function EAFormatMoneyCopper(copper)
+    if ns.UI_FormatMoney then
+        return ns.UI_FormatMoney(copper or 0, EA_MONEY_ICON)
+    end
+    if WarbandNexus and WarbandNexus.API_FormatMoney then
+        return WarbandNexus:API_FormatMoney(copper or 0, EA_MONEY_ICON)
+    end
+    if ns.UI_FormatGold then
+        return ns.UI_FormatGold(copper or 0)
+    end
+    return tostring(copper or 0)
 end
 
-local function AppendVaultOptionalLines(lines, charKey, entry, columns)
-    columns = columns or (GetSettings().columns or {})
-    local bounty = entry and entry.bounty
-    if bounty == nil then bounty = GetBountyStatus(charKey) end
-    if columns.bounty ~= false and bounty ~= nil then
-        lines[#lines + 1] = {
-            left = EAL("EA_TOOLTIP_BOUNTY_LABEL", "Trovehunter's Bounty"),
-            right = bounty and EAL("EA_TOOLTIP_BOUNTY_DONE", "Collected") or EAL("EA_TOOLTIP_BOUNTY_TODO", "Not collected"),
-            leftColor = {0.75, 0.75, 0.75},
-            rightColor = bounty and {0.3, 0.9, 0.35} or {0.9, 0.35, 0.35},
-        }
+local function EAFormatTitleIlvl(ilvl)
+    local short = (ns.L and ns.L["ILVL_SHORT"]) or "iLvl"
+    if ilvl and ilvl > 0 then
+        return "|cffffd700" .. short .. " " .. string.format("%.0f", tonumber(ilvl) or 0) .. "|r"
     end
-    local stash = (entry and entry.gildedStash) or GetGildedStashData(charKey)
-    if columns.gildedStash == true and stash then
-        local stashRight
-        if stash.unknown then
-            stashRight = EAL("EA_TOOLTIP_STASH_UNKNOWN", "Unknown")
-        else
-            stashRight = EAL("EA_TOOLTIP_STASH_CLAIMED", "%d/%d claimed", stash.current or 0, stash.max or 4)
+    return "|cff666666--|r"
+end
+
+local function EAFormatTodoValue(n)
+    n = tonumber(n) or 0
+    if n > 0 then
+        return "|cffffc864" .. tostring(n) .. "|r"
+    end
+    return "|cff6666660|r"
+end
+
+local function EAAccentTitleColor()
+    local ac = ns.UI_COLORS and ns.UI_COLORS.accent
+    if ac then
+        return { ac[1], ac[2], ac[3] }
+    end
+    return { 1, 0.82, 0 }
+end
+
+local function ResolveEasyAccessGoldCopper(charKey, charRow)
+    if not charRow or not ns.Utilities or not ns.Utilities.GetCharTotalCopper then
+        return 0
+    end
+    local copper = ns.Utilities:GetCharTotalCopper(charRow) or 0
+    if not ns.Utilities.GetLiveCharacterMoneyCopper then
+        return copper
+    end
+    local curKey = GetCurrentCharKey()
+    if not curKey or not charKey then
+        return copper
+    end
+    local ck = charKey
+    local cur = curKey
+    if ns.Utilities.GetCanonicalCharacterKey then
+        ck = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
+        cur = ns.Utilities:GetCanonicalCharacterKey(curKey) or curKey
+    end
+    if ck == cur then
+        return ns.Utilities:GetLiveCharacterMoneyCopper(copper)
+    end
+    return copper
+end
+
+local function FormatEasyAccessRealmLine(charRow, entry)
+    local realm = (entry and entry.realm) or (charRow and charRow.realm) or ""
+    if realm == "" then return nil end
+    local realmDisp = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(realm)) or realm
+    if issecretvalue and issecretvalue(realmDisp) then
+        return nil
+    end
+    return "|cff8e9098" .. realmDisp .. "|r"
+end
+
+local function GetActiveTodoCount()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
+        return 0
+    end
+    local plans = WarbandNexus.db.global.plans
+    if not plans then
+        return 0
+    end
+    local n = 0
+    for i = 1, #plans do
+        local plan = plans[i]
+        if plan and not plan.completed and not plan.completionNotified then
+            n = n + 1
         end
-        lines[#lines + 1] = {
-            left = EAL("EA_TOOLTIP_STASH_LABEL", "Gilded Stashes"),
-            right = stashRight,
-            leftColor = {0.75, 0.75, 0.75},
-            rightColor = {1, 1, 1},
-        }
     end
-    local vc = (entry and entry.voidcore) or GetVoidcoreData(charKey)
-    if columns.voidcore ~= false and vc then
-        local vcRight
-        local sm = vc.seasonMax or 0
-        if sm > 0 then
-            local cap = vc.isCapped and EAL("EA_TOOLTIP_VOIDCORE_CAPPED_SUFFIX", " (capped)") or ""
-            vcRight = string.format("%d/%d%s", vc.progress or 0, sm, cap)
-        else
-            vcRight = EAL("EA_TOOLTIP_VOIDCORE_HELD", "%d held", vc.quantity or 0)
-        end
-        lines[#lines + 1] = {
-            left = EAL("EA_TOOLTIP_VOIDCORE_LABEL", "Nebulous Voidcore"),
-            right = vcRight,
-            leftColor = {0.75, 0.75, 0.75},
-            rightColor = {1, 1, 1},
-        }
-    end
-    local mf = (entry and entry.manaflux) or GetManafluxData(charKey)
-    if columns.manaflux == true and mf then
-        lines[#lines + 1] = {
-            left = EAL("EA_TOOLTIP_MANAFLUX_LABEL", "Dawnlight Manaflux"),
-            right = EAL("EA_TOOLTIP_MANAFLUX_HELD", "%d held", mf.quantity or 0),
-            leftColor = {0.75, 0.75, 0.75},
-            rightColor = {1, 1, 1},
-        }
-    end
+    return n
 end
 
-local function AppendVaultStatusLine(lines, isReady, slotsEarned)
-    lines[#lines + 1] = { text = " " }
-    if isReady then
-        lines[#lines + 1] = {
-            text = EAL("VAULT_TRACKER_STATUS_READY_CLAIM", "Ready to Claim"),
-            color = {0.27, 1, 0.27},
-        }
-    elseif (slotsEarned or 0) > 0 then
-        lines[#lines + 1] = {
-            text = EAL("EA_TOOLTIP_STATUS_SLOTS_EARNED", "%d slot(s) earned - claim at the Great Vault", slotsEarned),
-            color = {0.4, 0.85, 1},
-        }
-    else
-        lines[#lines + 1] = {
-            text = EAL("EA_TOOLTIP_STATUS_IN_PROGRESS", "In progress this week"),
-            color = {1, 0.84, 0},
-        }
-    end
-end
-
-BuildVaultCharacterTooltipLines = function(charKey, entry)
-    local lines = {}
+--- Plans-style tooltip payload: hero name + ilvl in header band, realm subtitle, metric double-lines.
+BuildEasyAccessTooltipData = function(charKey, entry)
     local chars = GetCharacters()
     local charRow = chars and chars[charKey]
-    local name = (entry and entry.name) or (charRow and charRow.name) or charKey
-    local classFile = (entry and entry.classFile) or (charRow and charRow.classFile) or "WARRIOR"
+    local tooltipEntry = entry or {}
+    if not tooltipEntry.name and charRow then
+        tooltipEntry.name = charRow.name
+    end
+    if not tooltipEntry.classFile and charRow then
+        tooltipEntry.classFile = charRow.classFile
+    end
+    if not tooltipEntry.realm and charRow then
+        tooltipEntry.realm = charRow.realm
+    end
+    if entry and entry.itemLevel and not tooltipEntry.itemLevel then
+        tooltipEntry.itemLevel = entry.itemLevel
+    end
+
+    local name = tooltipEntry.name or "?"
+    local classFile = tooltipEntry.classFile or "WARRIOR"
+    local classHex = GetClassHex(classFile)
     local ilvl = (entry and entry.itemLevel) or (charRow and charRow.itemLevel) or 0
-    local nameLine = "|cff" .. GetClassHex(classFile) .. name .. "|r"
-    if ilvl and ilvl > 0 then
-        nameLine = nameLine .. "  |cffd4af37" .. string.format("%.0f", ilvl) .. " iLvl|r"
-    end
-    lines[#lines + 1] = { text = nameLine }
-    lines[#lines + 1] = { text = " " }
 
-    local catLabels = {
-        raids = EAL("EA_TOOLTIP_CAT_RAID", "Raid"),
-        mythicPlus = EAL("EA_TOOLTIP_CAT_DUNGEON", "Dungeon"),
-        world = EAL("EA_TOOLTIP_CAT_WORLD", "World"),
+    local lines = {}
+    lines[#lines + 1] = {
+        left = EAIconLabel("Interface\\MoneyFrame\\UI-GoldIcon", "coin-gold", "EA_TOOLTIP_LINE_GOLD", "Gold"),
+        right = EAFormatMoneyCopper(ResolveEasyAccessGoldCopper(charKey, charRow)),
+        leftColor = EA_LABEL_COLOR,
+        rightColor = EA_VALUE_COLOR,
     }
-    for _, key in ipairs({ "raids", "mythicPlus", "world" }) do
-        lines[#lines + 1] = { text = FormatVaultCategorySummary(charKey, key, catLabels[key]), color = {0.88, 0.88, 0.9} }
-    end
+    lines[#lines + 1] = {
+        left = EAIconLabel("Interface\\Icons\\INV_Misc_Map_01", nil, "EA_TOOLTIP_LINE_TODO", "To-Do"),
+        right = EAFormatTodoValue(GetActiveTodoCount()),
+        leftColor = EA_LABEL_COLOR,
+        rightColor = EA_VALUE_COLOR,
+    }
+    lines[#lines + 1] = { type = "spacer", height = 8 }
+    lines[#lines + 1] = {
+        text = EAL("EA_TOOLTIP_CONTROLS", "Left-click: action  |  Right-click: menu  |  Drag to move"),
+        color = EA_FOOTER_COLOR,
+    }
 
-    AppendVaultOptionalLines(lines, charKey, entry, GetSettings().columns or {})
-
-    local pveCache = GetPveCache()
-    local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
-    local rewardData = rewards and rewards[charKey]
-    local isReady = (rewardData and rewardData.hasAvailableRewards) or false
-    if charKey == GetCurrentCharKey() then
-        if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
-            isReady = WarbandNexus:HasUnclaimedVaultRewards()
-        else
-            isReady = false
-        end
-    elseif not isReady and (CountReadySlots(charKey) or 0) > 0 and VaultResetCrossedFor(charKey) then
-        isReady = true
-    end
-    local slotsEarned = entry and entry.slots or CountReadySlots(charKey)
-    AppendVaultStatusLine(lines, isReady, slotsEarned)
-    return lines
-end
-
-local function FormatWarbandSummaryStatus(entry)
-    if entry.isReady then
-        return EAL("EA_TOOLTIP_SUMMARY_CHAR_READY", "Ready to claim"), {0.3, 0.95, 0.35}
-    end
-    local slots = entry.slots or 0
-    if slots > 0 then
-        return EAL("EA_TOOLTIP_SUMMARY_CHAR_SLOTS", "%d slot(s) earned", slots), {0.45, 0.85, 1}
-    end
-    if GetSettings().includeBountyOnly == true and entry.bounty == true then
-        return EAL("EA_TOOLTIP_SUMMARY_CHAR_BOUNTY", "Bounty collected"), {0.75, 0.75, 0.75}
-    end
-    return EAL("EA_TOOLTIP_SUMMARY_CHAR_PROGRESS", "In progress"), {0.95, 0.85, 0.35}
+    return {
+        titleAffixPair = {
+            left = "|cff" .. classHex .. name .. "|r",
+            right = EAFormatTitleIlvl(ilvl),
+            leftColor = { 1, 1, 1 },
+            rightColor = { 1, 0.82, 0 },
+        },
+        description = FormatEasyAccessRealmLine(charRow, tooltipEntry),
+        lines = lines,
+        titleColor = EAAccentTitleColor(),
+    }
 end
 
 -- ============================================================================
@@ -1821,16 +1829,27 @@ WNTooltipShow = function(anchor, data)
     else
         GameTooltip:SetOwner(anchor, data.anchor or "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
-        if data.title then GameTooltip:AddLine(data.title, 1, 1, 1) end
-        if data.description then GameTooltip:AddLine(data.description, 0.85, 0.85, 0.85, true) end
+        local tc = data.titleColor or { 1, 0.82, 0 }
+        if data.title then
+            GameTooltip:AddLine(data.title, tc[1], tc[2], tc[3])
+        end
+        if data.titleAffixPair then
+            local ap = data.titleAffixPair
+            local lc = ap.leftColor or { 1, 1, 1 }
+            local rc = ap.rightColor or { 1, 0.82, 0 }
+            GameTooltip:AddDoubleLine(ap.left or "", ap.right or "", lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+        end
+        if data.description then
+            GameTooltip:AddLine(data.description, 0.55, 0.57, 0.62)
+        end
         if data.lines then
             for _, line in ipairs(data.lines) do
                 if line.left or line.right then
-                    local lc, rc = line.leftColor or {1,1,1}, line.rightColor or {1,1,1}
+                    local lc, rc = line.leftColor or { 1, 1, 1 }, line.rightColor or { 1, 1, 1 }
                     GameTooltip:AddDoubleLine(line.left or "", line.right or "",
                         lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
                 else
-                    local c = line.color or {1,1,1}
+                    local c = line.color or { 1, 1, 1 }
                     GameTooltip:AddLine(line.text or "", c[1], c[2], c[3], line.wrap == true)
                 end
             end
@@ -1844,64 +1863,35 @@ WNTooltipHide = function()
 end
 
 -- ============================================================================
--- Hover tooltip (current character only)
+-- Hover tooltip (current character summary)
 -- ============================================================================
 local function ShowHoverTooltip(anchor)
-    local lines = {}
-    local title = EAL("WEEKLY_VAULT_TRACKER", "Weekly Vault Tracker")
-
-    if GetSettings().showSummaryOnMouseover then
-        local list = BuildCharList()
-        local readyN, progressN = 0, 0
-        if #list == 0 then
-            lines[#lines + 1] = { text = EAL("EA_TOOLTIP_NO_WARBAND_VAULT", "No tracked vault activity this week."), color = {0.55, 0.55, 0.55} }
-        else
-            for _, e in ipairs(list) do
-                local statusText, statusColor = FormatWarbandSummaryStatus(e)
-                if e.isReady then
-                    readyN = readyN + 1
-                else
-                    local bountyOnly = GetSettings().includeBountyOnly == true and e.bounty == true
-                        and (e.slots or 0) == 0
-                    if not bountyOnly then
-                        progressN = progressN + 1
-                    end
-                end
-                lines[#lines + 1] = {
-                    left = FormatCharacterName(e),
-                    right = statusText,
-                    leftColor = {1, 1, 1},
-                    rightColor = statusColor,
-                }
-            end
-            lines[#lines + 1] = { text = " " }
-            if readyN > 0 then
-                lines[#lines + 1] = { text = EAL("EA_TOOLTIP_SUMMARY_READY_COUNT", "%d ready to claim", readyN), color = {0.25, 0.95, 0.35} }
-            end
-            if progressN > 0 then
-                lines[#lines + 1] = { text = EAL("EA_TOOLTIP_SUMMARY_PROGRESS_COUNT", "%d in progress", progressN), color = {0.95, 0.85, 0.35} }
-            end
-        end
+    local charKey = GetCurrentCharKey()
+    local chars = GetCharacters()
+    local data = {
+        type = "custom",
+        title = EAL("CONFIG_VAULT_BUTTON_SECTION", "Easy Access"),
+        icon = ICON_TEXTURE,
+        anchor = "ANCHOR_RIGHT",
+        maxWidth = 360,
+        lines = {},
+    }
+    if not charKey or not chars or not chars[charKey] then
+        data.lines[#data.lines + 1] = {
+            text = EAL("EA_TOOLTIP_NO_CHAR", "No character data yet."),
+            color = { 0.6, 0.6, 0.6 },
+        }
     else
-        local charKey = GetCurrentCharKey()
-        local chars = GetCharacters()
-        if not charKey or not chars or not chars[charKey] then
-            lines[#lines + 1] = { text = EAL("EA_TOOLTIP_NO_CHAR_VAULT", "No vault data for this character yet. Open the Great Vault once."), color = {0.6, 0.6, 0.6} }
-        else
-            lines = BuildVaultCharacterTooltipLines(charKey, nil)
+        local tip = BuildEasyAccessTooltipData(charKey, nil)
+        if tip then
+            data.titleColor = tip.titleColor
+            data.titleAffixPair = tip.titleAffixPair
+            data.description = tip.description
+            data.lines = tip.lines
         end
     end
 
-    lines[#lines + 1] = { text = " " }
-    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_CONTROLS", "Left-click: action  |  Right-click: menu  |  Drag to move"), color = {0.55, 0.55, 0.55} }
-
-    WNTooltipShow(anchor, {
-        type = "custom",
-        title = title,
-        icon = ICON_TEXTURE,
-        lines = lines,
-        anchor = "ANCHOR_RIGHT",
-    })
+    WNTooltipShow(anchor, data)
 end
 
 -- ============================================================================

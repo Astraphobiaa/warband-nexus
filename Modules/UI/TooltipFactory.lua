@@ -61,6 +61,7 @@ local VAULT_GRID_GAP_BEFORE_VAULT = 12
 local VAULT_GRID_GAP_VAULT_COL = 6
 -- Minimum width per Raid/M+/World column (three slot icons or “Pending…”).
 local VAULT_GRID_TRACK_MIN_W = 72
+local VAULT_TRACK_GAP_COL = 10
 
 --[[
     Create singleton tooltip frame
@@ -130,10 +131,17 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.doubleLinePool = {}
     frame.vaultGridRows = {}
     frame.vaultGridLinePool = {}
+    frame.vaultTrackRows = {}
+    frame.vaultTrackLinePool = {}
     frame.titleLine = nil
     frame.descLine = nil
     frame.titleAffixLines = {}
+    frame.hasTitleAffixPair = false
+    frame.titleAffixPairLeft = nil
+    frame.titleAffixPairRight = nil
+    frame.bodyDividerPool = {}
     frame.allLines = {}
+    frame._balancedSplit = nil
     
     -- Layout state (dynamic width, clamped to min/max)
     local MIN_WIDTH = 120
@@ -176,6 +184,24 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             table.insert(self.linePool, tLine)
         end
         table.wipe(self.titleAffixLines)
+
+        if self.titleAffixPairLeft then
+            self.titleAffixPairLeft:Hide()
+            self.titleAffixPairRight:Hide()
+            self.titleAffixPairLeft:SetText("")
+            self.titleAffixPairRight:SetText("")
+            self.titleAffixPairLeft:ClearAllPoints()
+            self.titleAffixPairRight:ClearAllPoints()
+        end
+        self.hasTitleAffixPair = false
+        for i = 1, #self.bodyDividerPool do
+            local div = self.bodyDividerPool[i]
+            if div then
+                div:Hide()
+                div:ClearAllPoints()
+            end
+        end
+        self._balancedSplit = nil
         
         -- Return all lines to pool
         for i = 1, #self.lines do
@@ -183,6 +209,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             line:Hide()
             line:SetText("")
             line:ClearAllPoints()
+            if line.SetJustifyH then
+                line:SetJustifyH("LEFT")
+            end
             table.insert(self.linePool, line)
         end
         table.wipe(self.lines)
@@ -220,7 +249,32 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             table.insert(self.vaultGridLinePool, vr)
         end
         table.wipe(self.vaultGridRows)
+
+        for i = 1, #self.vaultTrackRows do
+            local tr = self.vaultTrackRows[i]
+            tr.raidFs:Hide()
+            tr.mplusFs:Hide()
+            tr.worldFs:Hide()
+            tr.raidFs:SetText("")
+            tr.mplusFs:SetText("")
+            tr.worldFs:SetText("")
+            tr.raidFs:ClearAllPoints()
+            tr.mplusFs:ClearAllPoints()
+            tr.worldFs:ClearAllPoints()
+            table.insert(self.vaultTrackLinePool, tr)
+        end
+        table.wipe(self.vaultTrackRows)
         
+        for i = 1, #self.allLines do
+            local lineData = self.allLines[i]
+            if lineData.type == "divider" and lineData.element then
+                local div = lineData.element
+                div:Hide()
+                div:ClearAllPoints()
+                table.insert(self.bodyDividerPool, div)
+            end
+        end
+
         -- Clear unified line list
         table.wipe(self.allLines)
         
@@ -294,6 +348,24 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         table.insert(self.titleAffixLines, line)
         self:LayoutLines()
     end
+
+    -- Character row under title: name (left) + ilvl (right), header band only.
+    frame.AddTitleAffixPair = function(self, leftText, rightText, lr, lg, lb, rr, rg, rb)
+        if not self.titleAffixPairLeft then
+            self.titleAffixPairLeft = FontManager:CreateFontString(self, "large", "OVERLAY")
+            self.titleAffixPairRight = FontManager:CreateFontString(self, "medium", "OVERLAY")
+            self.titleAffixPairLeft:SetJustifyH("LEFT")
+            self.titleAffixPairRight:SetJustifyH("RIGHT")
+        end
+        self.titleAffixPairLeft:SetText(leftText or "")
+        self.titleAffixPairLeft:SetTextColor(lr or 1, lg or 1, lb or 1)
+        self.titleAffixPairRight:SetText(rightText or "")
+        self.titleAffixPairRight:SetTextColor(rr or 1, rg or 1, rb or 1)
+        self.titleAffixPairLeft:Show()
+        self.titleAffixPairRight:Show()
+        self.hasTitleAffixPair = true
+        self:LayoutLines()
+    end
     
     -- ========================================================================
     -- API: Set description (below title, smaller font, wrapping)
@@ -340,7 +412,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- ========================================================================
     -- API: Add double-column line (left/right text)
     -- ========================================================================
-    frame.AddDoubleLine = function(self, leftText, rightText, lr, lg, lb, rr, rg, rb)
+    frame.AddDoubleLine = function(self, leftText, rightText, lr, lg, lb, rr, rg, rb, opts)
+        opts = opts or {}
         local dLine = self:GetOrCreateDoubleLine()
         
         dLine.left:SetText(leftText)
@@ -348,16 +421,67 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         
         dLine.right:SetText(rightText)
         dLine.right:SetTextColor(rr or 1, rg or 1, rb or 1)
+        dLine.right:SetJustifyH("RIGHT")
         
         dLine.left:Show()
         dLine.right:Show()
         
         table.insert(self.doubleLines, dLine)
-        table.insert(self.allLines, {type = "double", element = dLine})
+        table.insert(self.allLines, {
+            type = "double",
+            element = dLine,
+            balanced = opts.balanced == true,
+        })
         
         self:LayoutLines()
     end
-    
+
+    frame.AddCenteredLine = function(self, text, r, g, b)
+        local line = self:GetOrCreateLine()
+        line:SetText(text or "")
+        line:SetTextColor(r or 1, g or 1, b or 1)
+        line:SetJustifyH("CENTER")
+        line:Show()
+        table.insert(self.lines, line)
+        table.insert(self.allLines, { type = "centered", element = line })
+        self:LayoutLines()
+    end
+
+    frame.AddSectionLabel = function(self, text, r, g, b)
+        local line
+        if #self.linePool > 0 then
+            line = table.remove(self.linePool)
+        else
+            line = FontManager:CreateFontString(self, "small", "OVERLAY")
+        end
+        line:SetText(text or "")
+        line:SetTextColor(r or 0.62, g or 0.64, b or 0.72)
+        line:SetJustifyH("CENTER")
+        line:Show()
+        table.insert(self.lines, line)
+        table.insert(self.allLines, { type = "section_label", element = line })
+        self:LayoutLines()
+    end
+
+    frame.GetOrCreateBodyDivider = function(self)
+        if #self.bodyDividerPool > 0 then
+            return table.remove(self.bodyDividerPool)
+        end
+        local div = self:CreateTexture(nil, "ARTWORK")
+        div:SetHeight(1)
+        return div
+    end
+
+    frame.AddBodyDivider = function(self)
+        self:AddSpacer(6)
+        local div = self:GetOrCreateBodyDivider()
+        local ac = (COLORS and COLORS.accent) or { 0.45, 0.35, 0.72 }
+        div:SetColorTexture(ac[1], ac[2], ac[3], 0.32)
+        div:Show()
+        table.insert(self.allLines, { type = "divider", element = div })
+        self:AddSpacer(6)
+    end
+
     -- ========================================================================
     -- API: Add spacer
     -- ========================================================================
@@ -492,6 +616,52 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         table.insert(self.allLines, { type = "vault_grid", element = row })
         self:LayoutLines()
     end
+
+    -- ========================================================================
+    -- INTERNAL: Three-column vault track row (Raid / M+ / World only)
+    -- ========================================================================
+    frame.GetOrCreateVaultTrackRow = function(self)
+        if #self.vaultTrackLinePool > 0 then
+            return table.remove(self.vaultTrackLinePool)
+        end
+        local row = {}
+        row.raidFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.raidFs:SetJustifyH("CENTER")
+        row.raidFs:SetWordWrap(false)
+        row.mplusFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.mplusFs:SetJustifyH("CENTER")
+        row.mplusFs:SetWordWrap(false)
+        row.worldFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.worldFs:SetJustifyH("CENTER")
+        row.worldFs:SetWordWrap(false)
+        return row
+    end
+
+    frame.AddVaultTrackRow = function(self, colRaid, colMplus, colWorld, colW, opts)
+        opts = opts or {}
+        local row = self:GetOrCreateVaultTrackRow()
+        row.raidFs:SetText(colRaid or "")
+        row.mplusFs:SetText(colMplus or "")
+        row.worldFs:SetText(colWorld or "")
+        row.colW = tonumber(colW) or VAULT_GRID_TRACK_MIN_W
+        row.isHeader = opts.isHeader == true
+        if opts.isHeader then
+            local hr, hg, hb = 1, 0.82, 0.35
+            row.raidFs:SetTextColor(hr, hg, hb)
+            row.mplusFs:SetTextColor(hr, hg, hb)
+            row.worldFs:SetTextColor(hr, hg, hb)
+        else
+            row.raidFs:SetTextColor(1, 1, 1)
+            row.mplusFs:SetTextColor(1, 1, 1)
+            row.worldFs:SetTextColor(1, 1, 1)
+        end
+        row.raidFs:Show()
+        row.mplusFs:Show()
+        row.worldFs:Show()
+        table.insert(self.vaultTrackRows, row)
+        table.insert(self.allLines, { type = "vault_track", element = row })
+        self:LayoutLines()
+    end
     
     -- ========================================================================
     -- INTERNAL: Layout - header (icon + title + desc) then body lines
@@ -532,11 +702,24 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 if withIcon > maxContentW then maxContentW = withIcon end
             end
         end
+
+        if self.hasTitleAffixPair and self.titleAffixPairLeft and self.titleAffixPairRight then
+            self.titleAffixPairLeft:SetWidth(0)
+            self.titleAffixPairRight:SetWidth(0)
+            local pairW = (self.titleAffixPairLeft:GetStringWidth() or 0) + (self.titleAffixPairRight:GetStringWidth() or 0) + 28
+            local withIcon = pairW + (self.hasIcon and (ICON_SIZE + ICON_PADDING) or 0)
+            if withIcon > maxContentW then maxContentW = withIcon end
+        end
         
         -- Measure body lines
+        local maxBalancedLeft = 0
         for i = 1, #self.allLines do
             local lineData = self.allLines[i]
             if lineData.type == "single" then
+                lineData.element:SetWidth(0)
+                local lw = lineData.element:GetStringWidth() or 0
+                if lw > maxContentW then maxContentW = lw end
+            elseif lineData.type == "centered" or lineData.type == "section_label" then
                 lineData.element:SetWidth(0)
                 local lw = lineData.element:GetStringWidth() or 0
                 if lw > maxContentW then maxContentW = lw end
@@ -545,10 +728,17 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 lineData.element.right:SetWidth(0)
                 local lw = (lineData.element.left:GetStringWidth() or 0) + (lineData.element.right:GetStringWidth() or 0) + 20
                 if lw > maxContentW then maxContentW = lw end
+                if lineData.balanced then
+                    maxBalancedLeft = math.max(maxBalancedLeft, lineData.element.left:GetStringWidth() or 0)
+                end
             elseif lineData.type == "vault_grid" then
                 local v = lineData.element
                 local lw = v.widthName + VAULT_GRID_GAP_NAME_REALM + v.widthRealm + VAULT_GRID_GAP_BEFORE_VAULT
                     + v.widthRaid + VAULT_GRID_GAP_VAULT_COL + v.widthMplus + VAULT_GRID_GAP_VAULT_COL + v.widthWorld
+                if lw > maxContentW then maxContentW = lw end
+            elseif lineData.type == "vault_track" then
+                local t = lineData.element
+                local lw = t.colW * 3 + VAULT_TRACK_GAP_COL * 2
                 if lw > maxContentW then maxContentW = lw end
             end
         end
@@ -559,12 +749,13 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local computedWidth = math.max(MIN_WIDTH, math.min(widthCap, maxContentW + padding * 2))
         self.fixedWidth = computedWidth
         self:SetWidth(computedWidth)
+        self._balancedSplit = (maxBalancedLeft > 0) and (padding + maxBalancedLeft + 14) or nil
         
         -- Re-constrain wrapping lines to the new width
         local contentWidth = computedWidth - padding * 2
         for i = 1, #self.allLines do
             local lineData = self.allLines[i]
-            if lineData.type == "single" then
+            if lineData.type == "single" or lineData.type == "centered" or lineData.type == "section_label" then
                 lineData.element:SetWidth(contentWidth)
             end
         end
@@ -607,8 +798,19 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             titleBottom = yOffset - self.titleLine:GetHeight()
         end
 
-        -- Title affixes: directly under the colored name (before separator, same indent as title)
+        -- Title affix pair (character + ilvl)
         local afterHeaderText = titleBottom
+        if self.hasTitleAffixPair and self.titleAffixPairLeft and self.titleAffixPairRight then
+            local yTop = titleBottom - 2
+            self.titleAffixPairLeft:ClearAllPoints()
+            self.titleAffixPairRight:ClearAllPoints()
+            self.titleAffixPairLeft:SetPoint("TOPLEFT", self, "TOPLEFT", textLeftX, yTop)
+            self.titleAffixPairRight:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yTop)
+            local pairH = math.max(self.titleAffixPairLeft:GetStringHeight(), self.titleAffixPairRight:GetStringHeight())
+            afterHeaderText = yTop - pairH
+        end
+
+        -- Title affixes: directly under the colored name (before separator, same indent as title)
         if self.titleAffixLines and #self.titleAffixLines > 0 then
             local yTop = titleBottom
             for i = 1, #self.titleAffixLines do
@@ -649,7 +851,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             -- Only show separator if there's both header and body content
             for i = 1, #self.allLines do
                 local lineData = self.allLines[i]
-                if lineData.type ~= "spacer" then
+                if lineData.type ~= "spacer" and lineData.type ~= "divider" then
                     showSeparator = true
                     break
                 end
@@ -685,7 +887,30 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 
                 yOffset = yOffset - line:GetHeight() - lineSpacing
                 prevElement = line
-                
+
+            elseif lineData.type == "centered" or lineData.type == "section_label" then
+                local line = lineData.element
+                line:ClearAllPoints()
+                line:SetJustifyH("CENTER")
+                line:SetWidth(contentWidth)
+                if prevElement then
+                    line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset - lineSpacing)
+                else
+                    line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
+                end
+                local lineHeight = line:GetStringHeight()
+                yOffset = yOffset - lineHeight - lineSpacing
+                prevElement = line
+
+            elseif lineData.type == "divider" then
+                local div = lineData.element
+                div:ClearAllPoints()
+                local divY = yOffset - 4
+                div:SetPoint("TOPLEFT", self, "TOPLEFT", padding, divY)
+                div:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, divY)
+                yOffset = divY - 1 - 6
+                prevElement = div
+
             elseif lineData.type == "double" then
                 local dLine = lineData.element
                 dLine.left:ClearAllPoints()
@@ -697,7 +922,13 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                     dLine.left:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
                 end
                 
-                dLine.right:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yOffset)
+                if lineData.balanced and self._balancedSplit then
+                    dLine.right:SetJustifyH("LEFT")
+                    dLine.right:SetPoint("TOPLEFT", self, "TOPLEFT", self._balancedSplit, yOffset)
+                else
+                    dLine.right:SetJustifyH("RIGHT")
+                    dLine.right:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yOffset)
+                end
                 
                 local lineHeight = math.max(dLine.left:GetHeight(), dLine.right:GetHeight())
                 yOffset = yOffset - lineHeight - lineSpacing
@@ -736,6 +967,35 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 )
                 yOffset = yOffset - lineHeight - lineSpacing
                 prevElement = v.nameFs
+            elseif lineData.type == "vault_track" then
+                local t = lineData.element
+                local contentWidth = (self.fixedWidth or 350) - padding * 2
+                local trackW = t.colW * 3 + VAULT_TRACK_GAP_COL * 2
+                local trackLeft = padding + math.max(0, math.floor((contentWidth - trackW) * 0.5))
+
+                t.raidFs:ClearAllPoints()
+                t.mplusFs:ClearAllPoints()
+                t.worldFs:ClearAllPoints()
+
+                if prevElement then
+                    t.raidFs:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
+                else
+                    t.raidFs:SetPoint("TOPLEFT", self, "TOPLEFT", trackLeft, yOffset)
+                end
+
+                t.raidFs:SetWidth(t.colW)
+                t.mplusFs:SetWidth(t.colW)
+                t.worldFs:SetWidth(t.colW)
+                t.mplusFs:SetPoint("TOPLEFT", t.raidFs, "TOPRIGHT", VAULT_TRACK_GAP_COL, 0)
+                t.worldFs:SetPoint("TOPLEFT", t.mplusFs, "TOPRIGHT", VAULT_TRACK_GAP_COL, 0)
+
+                local lineHeight = math.max(
+                    t.raidFs:GetStringHeight(),
+                    t.mplusFs:GetStringHeight(),
+                    t.worldFs:GetStringHeight()
+                )
+                yOffset = yOffset - lineHeight - lineSpacing
+                prevElement = t.raidFs
             end
         end
         

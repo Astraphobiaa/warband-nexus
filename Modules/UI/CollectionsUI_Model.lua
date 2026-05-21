@@ -1116,7 +1116,7 @@ function M.CreateModelViewer(parent, width, height)
         local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local gB = (COLORS.gold and COLORS.gold[3]) or 0
         local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
-        nameText:SetText(goldHex .. (name or "") .. "|r")
+        nameText:SetText(goldHex .. (name or "") .. "|r" .. (SD.FormatMountPetToyListTrySuffix and SD.FormatMountPetToyListTrySuffix("mount", mountID) or ""))
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then
             local _, extraDesc, extraSrc = M.SafeGetMountInfoExtra(mountID)
@@ -1313,7 +1313,7 @@ function M.CreateModelViewer(parent, width, height)
         local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local gB = (COLORS.gold and COLORS.gold[3]) or 0
         local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
-        nameText:SetText(goldHex .. (name or "") .. "|r")
+        nameText:SetText(goldHex .. (name or "") .. "|r" .. (SD.FormatMountPetToyListTrySuffix and SD.FormatMountPetToyListTrySuffix("pet", speciesID) or ""))
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then
             local _, extraDesc, extraSrc = M.SafeGetPetInfoExtra(speciesID)
