@@ -735,20 +735,71 @@ local function BindProfColumnHeaderTooltip(frame, tooltipTitle)
     end)
 end
 
-local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
-    if not iconTex or not iconDef or not iconDef.icon then return end
-    if iconDef.iconIsAtlas and iconTex.SetAtlas then
-        iconTex:SetTexture(nil)
-        pcall(function() iconTex:SetAtlas(iconDef.icon) end)
-        local okAtlas = iconTex.GetAtlas and iconTex:GetAtlas()
-        if not okAtlas and iconDef.iconFallback then
-            iconTex:SetTexture(iconDef.iconFallback)
-            iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
-    else
-        iconTex:SetTexture(iconDef.icon)
-        iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+local function TryApplyProfessionHeaderAtlas(iconTex, atlasName)
+    if not iconTex or not iconTex.SetAtlas or not atlasName or atlasName == "" then return false end
+    iconTex:SetTexture(nil)
+    local modes = { false, true }
+    local ign = _G.TextureKitConstants and TextureKitConstants.IgnoreAtlasSize
+    if ign ~= nil then
+        modes[#modes + 1] = ign
     end
+    local tryNames = { atlasName, string.format("%s:%d:%d", atlasName, PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE) }
+    for ni = 1, #tryNames do
+        local name = tryNames[ni]
+        for mi = 1, #modes do
+            if pcall(iconTex.SetAtlas, iconTex, name, modes[mi]) then
+                iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
+                iconTex:SetVertexColor(1, 1, 1, 1)
+                iconTex:Show()
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function ApplyProfessionHeaderFileIcon(iconTex, path)
+    if not iconTex or not path or path == "" then return false end
+    iconTex:SetTexture(nil)
+    if not pcall(iconTex.SetTexture, iconTex, path) then return false end
+    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    iconTex:SetVertexColor(1, 1, 1, 1)
+    iconTex:Show()
+    return true
+end
+
+local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
+    if not iconTex or not iconDef then return end
+    local paths = iconDef.iconPaths
+    if type(paths) == "table" then
+        for pi = 1, #paths do
+            if ApplyProfessionHeaderFileIcon(iconTex, paths[pi]) then return end
+        end
+    end
+    if iconDef.icon and iconDef.iconIsAtlas == false then
+        if ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon) then return end
+    end
+    if iconTex.SetAtlas and (iconDef.iconIsAtlas or type(iconDef.iconAtlases) == "table") then
+        local candidates = iconDef.iconAtlases
+        if type(candidates) ~= "table" or #candidates == 0 then
+            candidates = iconDef.icon and { iconDef.icon } or nil
+        end
+        local applied = false
+        if type(candidates) == "table" then
+            for ci = 1, #candidates do
+                if TryApplyProfessionHeaderAtlas(iconTex, candidates[ci]) then
+                    applied = true
+                    break
+                end
+            end
+        end
+        if not applied and iconDef.iconFallback then
+            ApplyProfessionHeaderFileIcon(iconTex, iconDef.iconFallback)
+        end
+    elseif iconDef.icon then
+        ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon)
+    end
+    if iconTex.Show then iconTex:Show() end
 end
 
 local PROF_COMPACT_HEADER_HEX = "aaaaaa"
@@ -760,7 +811,7 @@ local function BuildProfCompactHeaderLabel(col, displayText)
         equipment = (ns.L and ns.L["EQUIPMENT"]) or "Equip",
         skill = (ns.L and ns.L["SKILL"]) or "Skill",
         conc = (ns.L and ns.L["CONCENTRATION"]) or "Conc",
-        recharge = (ns.L and ns.L["RECHARGE"]) or "Rech",
+        recharge = (ns.L and ns.L["RECHARGE"]) or "Regen",
         knowledge = (ns.L and ns.L["KNOWLEDGE"]) or "Know",
         recipes = (ns.L and ns.L["RECIPES"]) or "Recipes",
         firstCraft = (ns.L and ns.L["FIRST_CRAFT"]) or "1st",
@@ -783,6 +834,7 @@ local function BuildProfCompactHeaderLabel(col, displayText)
 end
 
 local profColHeaderLabels = {}
+local profColHeaderHits = {}
 
 local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compactLabel, compactHex, colWidth)
     if not colHeaderBar or not hitFrame or not compactLabel or compactLabel == "" then return nil end
@@ -808,29 +860,40 @@ end
 local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef, hdef, sortState, tooltipTitle, accentR, accentG, accentB, FactHdr)
     if not colHeaderBar or not iconDef or w <= 0 then return end
     local hitW, hitH = PROF_COL_ICON_SIZE + 4, PROF_COL_ICON_SIZE + 4
-    local hitBtn
-    if hdef and hdef.sortable then
-        hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, hitW, hitH, true)
-        if not hitBtn then
-            hitBtn = CreateFrame("Button", nil, colHeaderBar)
-            hitBtn:SetSize(hitW, hitH)
+    local sortable = hdef and hdef.sortable
+    local hitBtn = profColHeaderHits[col]
+    if not hitBtn then
+        if sortable then
+            hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, hitW, hitH, true)
+            if not hitBtn then
+                hitBtn = CreateFrame("Button", nil, colHeaderBar)
+                hitBtn:SetSize(hitW, hitH)
+            end
+            hitBtn:EnableMouse(true)
+        else
+            hitBtn = FactHdr and FactHdr:CreateContainer(colHeaderBar, hitW, hitH, false)
+            if not hitBtn then
+                hitBtn = CreateFrame("Frame", nil, colHeaderBar)
+                hitBtn:SetSize(hitW, hitH)
+            end
+            hitBtn:EnableMouse(true)
         end
-        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col) + (w - hitW) * 0.5, 6)
-        hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 2)
-        hitBtn:EnableMouse(true)
+        local iconTex = hitBtn:CreateTexture(nil, "ARTWORK")
+        iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
+        iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
+        hitBtn._wnHeaderIconTex = iconTex
+        profColHeaderHits[col] = hitBtn
     else
-        hitBtn = FactHdr and FactHdr:CreateContainer(colHeaderBar, hitW, hitH, false)
-        if not hitBtn then
-            hitBtn = CreateFrame("Frame", nil, colHeaderBar)
-            hitBtn:SetSize(hitW, hitH)
-        end
-        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col) + (w - hitW) * 0.5, 6)
-        hitBtn:EnableMouse(true)
+        hitBtn:SetParent(colHeaderBar)
+        hitBtn:SetSize(hitW, hitH)
+        hitBtn:Show()
+        if sortable and hitBtn.EnableMouse then hitBtn:EnableMouse(true) end
     end
+    hitBtn:ClearAllPoints()
+    hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col) + (w - hitW) * 0.5, 6)
+    hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 2)
 
-    local iconTex = hitBtn:CreateTexture(nil, "ARTWORK")
-    iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
-    iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
+    local iconTex = hitBtn._wnHeaderIconTex
     ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     BindProfColumnHeaderTooltip(hitBtn, tooltipTitle)
 
@@ -844,9 +907,13 @@ local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef,
     end
 
     local isSorted = sortState and sortState.col == col
-    local arrow = hitBtn:CreateTexture(nil, "OVERLAY")
-    arrow:SetSize(11, 11)
-    arrow:SetPoint("TOPRIGHT", hitBtn, "TOPRIGHT", -1, -2)
+    local arrow = hitBtn._wnSortArrow
+    if not arrow then
+        arrow = hitBtn:CreateTexture(nil, "OVERLAY")
+        arrow:SetSize(11, 11)
+        arrow:SetPoint("TOPRIGHT", hitBtn, "TOPRIGHT", -1, -2)
+        hitBtn._wnSortArrow = arrow
+    end
     if isSorted then
         if sortState.dir == "asc" then
             arrow:SetAtlas("hud-MainMenuBar-arrowup")
@@ -886,24 +953,39 @@ end
 -- Column header definitions — alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 -- sortable = true means clicking the header toggles ascending/descending sort
---- Icon atlas/texture per profession data column (header shows icon; tooltip uses full locale label).
+--- Column header icons mapped to retail profession UI (Gethe/wow-ui-source live, May 2026).
+--- Order: iconPaths (file) -> iconAtlases (C_Texture.GetAtlasInfo + SetAtlas) -> iconFallback.
+--- Sources: Blizzard_ProfessionsTemplates (recipe/schematic), Blizzard_ProfessionsSpecializations (knowledge ring),
+--- Blizzard_ProfessionsRecipeList (skill tier icons), Blizzard_ProfessionsCurrencyTemplate (UI_Concentration),
+--- ProfessionsTemplates.lua (auctionhouse-icon-clock = expiration/recharge column).
 local PROF_HEADER_ICON_BY_COL = {
-    profName    = { icon = "professions-icon-book", iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
-    equipment   = { icon = "ItemUpgrade_Icon", iconIsAtlas = true },
-    skill       = { icon = "professions_recipes_in_progress", iconIsAtlas = true },
-    conc        = { icon = "creationgear-32x32", iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_Manaregen" },
-    recharge    = { icon = "Capacitance-General-32x32", iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_TimeStop" },
-    knowledge   = { icon = "QuestDaily", iconIsAtlas = true },
-    recipes     = { icon = "professions_recipes_abilitytab", iconIsAtlas = true },
-    firstCraft  = { icon = "crafting-crafting-order-icon", iconIsAtlas = true },
-    uniques     = { icon = "auctionhouse-icon-favorite", iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Organizer_01" },
-    treatise    = { icon = "Interface\\Icons\\INV_Inscription_Tradeskill01", iconIsAtlas = false },
-    weeklyQuest = { icon = "questlog-questtypeicon-weekly", iconIsAtlas = true },
-    treasure    = { icon = "worldquest-questmarker-rare", iconIsAtlas = true },
-    gathering   = { icon = "poi-gather", iconIsAtlas = true },
-    catchUp     = { icon = "XPBarAnim-OrangeSpark", iconIsAtlas = true },
-    moxie       = { icon = "currency-icon-moxie", iconIsAtlas = true },
-    cooldowns   = { icon = "ui-hud-refreshbutton-icon", iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Holy_GreaterHeal" },
+    -- Recipe list / profession book tab parity
+    profName    = { iconAtlases = { "professions-icon-book", "professions_recipes_abilitytab", "Professions-recipe-header-left" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
+    -- Equipment slots: Professions-Slot-Plus (Templates); legacy creationgear fallback
+    equipment   = { iconAtlases = { "Professions-Slot-Plus", "creationgear-32x32", "ItemUpgrade_Icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Hammer_20" },
+    -- Skill-ups: Professions-Icon-Skill-* (RecipeList.lua); in_progress is reliable legacy fallback
+    skill       = { iconAtlases = { "professions_recipes_in_progress", "Professions-Icon-Skill-Medium", "Professions-Icon-Skill-High", "Professions-Icon-Skill-Low" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Trade_Engineering" },
+    -- Concentration currency icon (ProfessionsCurrencyTemplate XML — file, not atlas)
+    conc        = { iconPaths = { "Interface\\ICONS\\UI_Concentration" }, iconAtlases = { "Capacitance-General-32x32" }, iconFallback = "Interface\\Icons\\Spell_Nature_Manaregen" },
+    -- Recharge / expiration: auctionhouse-icon-clock (Templates sort header)
+    recharge    = { iconAtlases = { "auctionhouse-icon-clock", "Capacitance-General-WorkOrderArrow", "Capacitance-General-32x32" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_TimeStop" },
+    -- Specialization knowledge sample ring (Specializations.xml); unspent badge alt
+    knowledge   = { iconAtlases = { "QuestDaily", "icons_64x64_important", "spec-sampleabilityring" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
+    -- Active recipe row overlay (RecipeList.xml)
+    recipes     = { iconAtlases = { "Professions_Recipe_Active", "professions_recipes_abilitytab", "Professions_Recipe_Hover" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
+    -- First-craft affordance (RecipeSchematicForm.xml)
+    firstCraft  = { iconAtlases = { "professions_icon_firsttimecraft", "crafting-crafting-order-icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_04" },
+    -- Unique craft star + favorite affordance (RecipeSchematicForm.xml)
+    uniques     = { iconAtlases = { "tradeskills-star", "auctionhouse-icon-favorite" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Organizer_01" },
+    treatise    = { iconPaths = { "Interface\\Icons\\INV_Inscription_Tradeskill01" } },
+    weeklyQuest = { iconAtlases = { "questlog-questtypeicon-weekly", "questlog-questtypeicon-daily" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Scroll_03" },
+    -- Treasure discovery reward chest (Templates / CrafterOrderView)
+    treasure    = { iconAtlases = { "ui_icon_chest_npcreward", "worldquest-questmarker-rare" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_TreasureMap" },
+    gathering   = { iconAtlases = { "poi-gather", "Professions-Icon-Skill-Low" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Powder_Ardent" },
+    -- Catch-up reagent affordance (RecipeReagentSlotBase.xml)
+    catchUp     = { iconAtlases = { "tradeskills-icon-add", "XPBarAnim-OrangeSpark" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\XPBarAnim-OrangeSpark" },
+    moxie       = { iconAtlases = { "currency-icon-moxie" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Coin_01" },
+    cooldowns   = { iconAtlases = { "auctionhouse-icon-clock", "ui-hud-refreshbutton-icon", "Capacitance-General-WorkOrderArrow" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Holy_GreaterHeal" },
 }
 
 local HEADER_DEFS = {
@@ -1826,8 +1908,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     parent._wnProfNestedRows = {}
     parent._wnProfSectionContents = {}
-    parent._wnProfColHeaderRow = nil
-
       -- fixedHeader: title card only; column headers live in scrollChild (PvE parity)
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
     local metrics = (chrome and chrome.metrics) or (ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf))
@@ -2044,12 +2124,16 @@ function WarbandNexus:DrawProfessionsTab(parent)
     parent._wnProfColHeaderStripH = COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
 
     local FactHdr = ns.UI and ns.UI.Factory
-    local colHeaderBar = FactHdr and FactHdr:CreateContainer(parent, profStackW, COLUMN_HEADER_HEIGHT, false)
+    local colHeaderBar = parent._wnProfColHeaderRow
     if not colHeaderBar then
-        colHeaderBar = CreateFrame("Frame", nil, parent)
-        colHeaderBar:SetSize(profStackW, COLUMN_HEADER_HEIGHT)
+        colHeaderBar = FactHdr and FactHdr:CreateContainer(parent, profStackW, COLUMN_HEADER_HEIGHT, false)
+        if not colHeaderBar then
+            colHeaderBar = CreateFrame("Frame", nil, parent)
+            colHeaderBar:SetSize(profStackW, COLUMN_HEADER_HEIGHT)
+        end
+        parent._wnProfColHeaderRow = colHeaderBar
     end
-    parent._wnProfColHeaderRow = colHeaderBar
+    colHeaderBar:Show()
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
     colHeaderBar:ClearAllPoints()
     colHeaderBar:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -scrollTopY)
@@ -2066,6 +2150,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     for _, fs in pairs(profColHeaderLabels) do
         if fs and fs.Hide then fs:Hide() end
+    end
+    for colKey, hit in pairs(profColHeaderHits) do
+        if hit and hit.Hide then hit:Hide() end
     end
 
     local SORT_ARROW_SIZE = 11
@@ -2849,21 +2936,6 @@ local function SetEquipCell(cell, eqData, slotKey)
             GameTooltip:Show()
         end)
         cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    elseif eqData and eqData.lastUpdate then
-        cell.icon:SetAtlas("services-icon-warning")
-        cell.icon:SetTexCoord(0, 1, 0, 1)
-        cell.icon:SetDesaturated(false)
-        cell.icon:SetVertexColor(1, 0.82, 0, 1)
-        cell.icon:Show()
-        if cell.warnTex then cell.warnTex:Hide() end
-        local displayName = SLOT_DISPLAY_NAMES[slotKey] or slotKey
-        cell:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(displayName, 1, 0.82, 0)
-            GameTooltip:AddLine((ns.L and ns.L["GEAR_NO_ITEM_EQUIPPED"]) or "No item equipped in this slot.", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
-        end)
-        cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
     else
         cell.icon:SetTexture(nil)
         cell.icon:Hide()
@@ -2881,13 +2953,19 @@ local function ResolveProfessionEquipmentData(charKey, profName)
     local eqByProf = charData and charData.professionEquipment
     if not eqByProf then return nil end
     local cache = profEquipResolveCache
+    local function NormalizeEquipmentPayload(data)
+        if not data or type(data) ~= "table" then return nil end
+        if data.tool or data.accessory1 or data.accessory2 then return data end
+        return nil
+    end
+
     if cache then
         local byChar = cache[charKey]
         if byChar then
             local v = byChar[profName]
             if v ~= nil then
                 if v == EQUIP_CACHE_MISS then return nil end
-                return v
+                return NormalizeEquipmentPayload(v)
             end
         end
     end
@@ -2911,7 +2989,7 @@ local function ResolveProfessionEquipmentData(charKey, profName)
         if not cache[charKey] then cache[charKey] = {} end
         cache[charKey][profName] = eqData or EQUIP_CACHE_MISS
     end
-    return eqData
+    return NormalizeEquipmentPayload(eqData)
 end
 
 -- Profession icon column: resolve stored icon, skillLineID API, or fallback (missing DB icon / bad fileID).
@@ -3196,7 +3274,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         local iicon = ibtn:CreateTexture(nil, "ARTWORK")
         iicon:SetSize(14, 14)
         iicon:SetPoint("CENTER", 0, 0)
-        iicon:SetAtlas("QuestTurnin")
+        if not (iicon.SetAtlas and (pcall(iicon.SetAtlas, iicon, "QuestTurnin", false) or pcall(iicon.SetAtlas, iicon, "QuestTurnin", true))) then
+            iicon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+            iicon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
         ibtn.iconTex = iicon
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(ibtn) end
         row[p.."InfoBtn"] = ibtn

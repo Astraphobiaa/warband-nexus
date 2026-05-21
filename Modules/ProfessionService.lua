@@ -798,9 +798,14 @@ local function EnsureEquipmentTable(charData)
 end
 
 -- Store equipment under the normalized profession name.
+-- Never persist lastUpdate-only stubs (Professions UI treated those as empty-slot warnings).
 local function StoreEquipment(charData, profName, equipment)
     local key = NormalizeProfessionNameForEquipment(profName) or profName
-    charData.professionEquipment[key] = equipment or { lastUpdate = time() }
+    if equipment then
+        charData.professionEquipment[key] = equipment
+    else
+        charData.professionEquipment[key] = nil
+    end
 end
 
 --[[
