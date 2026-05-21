@@ -3651,12 +3651,40 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                 hideAccentBar = true,
                 underlineHeader = true,
                 titleColor = recTitleColor,
+                height = storageHeaderH,
             })
         if storageHdr then
             storageHdr:ClearAllPoints()
-            storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", 0, 0)
-            storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", 0, 0)
+            storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, 0)
+            storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -storagePad, 0)
+            if storageHdr.GetHeight then
+                local hh = storageHdr:GetHeight()
+                if hh and hh > 0 then storageHeaderH = hh end
+            end
+            if storageHdr.SetFrameLevel and storagePanel.GetFrameLevel then
+                storageHdr:SetFrameLevel(storagePanel:GetFrameLevel() + 4)
+            end
+            storageHdr:Show()
+        elseif FontManager then
+            storageHdr = CreateFrame("Frame", nil, storagePanel)
+            storageHdr:SetHeight(storageHeaderH)
+            storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, 0)
+            storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -storagePad, 0)
+            local fs = FontManager:CreateFontString(storageHdr, GFR("gearStorageCardTitle"), "OVERLAY")
+            if fs then
+                fs:SetPoint("LEFT", storageHdr, "LEFT", 0, 0)
+                fs:SetPoint("RIGHT", storageHdr, "RIGHT", 0, 0)
+                fs:SetJustifyH("LEFT")
+                fs:SetText(storageHdrText)
+                fs:SetTextColor(recTitleColor[1], recTitleColor[2], recTitleColor[3])
+            end
+            local rule = storageHdr:CreateTexture(nil, "ARTWORK")
+            rule:SetHeight(1)
+            rule:SetPoint("BOTTOMLEFT", storageHdr, "BOTTOMLEFT", 0, 2)
+            rule:SetPoint("BOTTOMRIGHT", storageHdr, "BOTTOMRIGHT", 0, 2)
+            rule:SetColorTexture(accent[1] * 0.45, accent[2] * 0.45, accent[3] * 0.45, 0.65)
         end
+        gearHosts.storageRecTitle = storageHdr
 
         local viewportH = storagePanelH - storageHeaderH - storagePad - 10
         scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
@@ -3672,7 +3700,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             if sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
                 ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, sbCol, 0)
             end
-            scroll:SetPoint("TOPLEFT", storagePad, -storageHeaderH)
+            scroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
             -- Hide the scrollbar column entirely when no overflow, and let scroll area reclaim its width.
             if rowsOverflow then
                 scroll:SetPoint("BOTTOMRIGHT", -storageBarW, storagePad)

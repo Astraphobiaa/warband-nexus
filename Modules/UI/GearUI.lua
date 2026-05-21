@@ -1110,10 +1110,13 @@ local function GetGearStorageRecColumnLayout(contentW)
     local xGear = xSlot + slotW + gap
     local xRecommend = xGear + gw + gap
     local xLocation = xRecommend + rw + gap
+    local iconPad, nameGap = 2, 4
     return {
         pad = pad,
         gap = gap,
         iconSz = iconSz,
+        iconPad = iconPad,
+        nameGap = nameGap,
         slotW = slotW,
         gearW = gw,
         recommendW = rw,
@@ -1138,7 +1141,7 @@ local function AnchorGearStorageRecColText(fs, host, leftX, width, justify)
     fs:SetWidth(width)
     fs:SetPoint("TOP", host, "TOP", 0, 0)
     fs:SetPoint("BOTTOM", host, "BOTTOM", 0, 0)
-    fs:SetJustifyH(justify or "CENTER")
+    fs:SetJustifyH(justify or "LEFT")
 end
 
 --- Anchor icon + name + summary + source for one recommendation row.
@@ -1146,35 +1149,38 @@ end
 ---@param lay table
 local function ApplyGearStorageRecRowAnchors(line, lay)
     if not line or not lay then return end
+    local colInset = 2
     if line.slotText then
-        AnchorGearStorageRecColText(line.slotText, line, lay.xSlot, lay.slotW, "CENTER")
+        AnchorGearStorageRecColText(line.slotText, line, lay.xSlot + colInset, math.max(8, lay.slotW - colInset * 2), "LEFT")
     end
+    local iconPad = lay.iconPad or 2
+    local nameGap = lay.nameGap or 4
     if line.icon then
         line.icon:SetSize(lay.iconSz, lay.iconSz)
         line.icon:ClearAllPoints()
-        local iconCenterX = lay.xGear + lay.gearW * 0.5
-        line.icon:SetPoint("CENTER", line, "LEFT", iconCenterX, 0)
+        line.icon:SetPoint("LEFT", line, "LEFT", lay.xGear + iconPad, 0)
     end
     if line.itemNameText then
+        local textLeft = lay.xGear + iconPad + lay.iconSz + nameGap
+        local textW = math.max(20, lay.gearW - iconPad - lay.iconSz - nameGap - colInset)
         line.itemNameText:ClearAllPoints()
-        line.itemNameText:SetPoint("LEFT", line, "LEFT", lay.xGear, 0)
-        line.itemNameText:SetPoint("RIGHT", line, "LEFT", lay.xGear + lay.gearW, 0)
+        line.itemNameText:SetPoint("LEFT", line, "LEFT", textLeft, 0)
+        line.itemNameText:SetWidth(textW)
         line.itemNameText:SetPoint("TOP", line, "TOP", 0, 0)
         line.itemNameText:SetPoint("BOTTOM", line, "BOTTOM", 0, 0)
-        line.itemNameText:SetJustifyH("CENTER")
-        if lay.gearW < 100 and line.itemNameText.SetWordWrap then
+        line.itemNameText:SetJustifyH("LEFT")
+        if textW < 72 and line.itemNameText.SetWordWrap then
             line.itemNameText:SetWordWrap(true)
             if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(2) end
         elseif line.itemNameText.SetWordWrap then
             line.itemNameText:SetWordWrap(false)
-            if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(0) end
         end
     end
     if line.upgradeSummaryText then
-        AnchorGearStorageRecColText(line.upgradeSummaryText, line, lay.xRecommend, lay.recommendW, "CENTER")
+        AnchorGearStorageRecColText(line.upgradeSummaryText, line, lay.xRecommend + colInset, math.max(8, lay.recommendW - colInset * 2), "LEFT")
     end
     if line.sourceText then
-        AnchorGearStorageRecColText(line.sourceText, line, lay.xLocation, lay.locationW, "CENTER")
+        AnchorGearStorageRecColText(line.sourceText, line, lay.xLocation + colInset, math.max(8, lay.locationW - colInset * 2), "LEFT")
     end
 end
 
@@ -1263,18 +1269,19 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
     rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
     rule:SetColorTexture(accent[1] * 0.28, accent[2] * 0.28, accent[3] * 0.28, 0.55)
     local hdrColor = { 0.78, 0.80, 0.86 }
+    local colInset = 2
     local function colFs(text, leftX, width, justify)
         local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
-        AnchorGearStorageRecColText(fs, hdr, leftX, width, justify or "CENTER")
+        AnchorGearStorageRecColText(fs, hdr, leftX + colInset, math.max(8, width - colInset * 2), justify or "LEFT")
         fs:SetWordWrap(false)
         fs:SetText(text)
         fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
         return fs
     end
-    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_SLOT", "Slot"), lay.xSlot, lay.slotW, "CENTER")
-    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_GEAR", "Gear"), lay.xGear, lay.gearW, "CENTER")
-    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_RECOMMEND", "Recommend"), lay.xRecommend, lay.recommendW, "CENTER")
-    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_LOCATION", "Location"), lay.xLocation, lay.locationW, "CENTER")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_SLOT", "Slot"), lay.xSlot, lay.slotW, "LEFT")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_GEAR", "Gear"), lay.xGear, lay.gearW, "LEFT")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_RECOMMEND", "Recommend"), lay.xRecommend, lay.recommendW, "LEFT")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_LOCATION", "Location"), lay.xLocation, lay.locationW, "LEFT")
 end
 
 --- Paint one storage-upgrade row (slot | gear | recommend | location).
