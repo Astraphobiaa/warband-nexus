@@ -619,34 +619,6 @@ local function RegisterCharacterEvents(parent)
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
 
---- Collapsible section defaults for Favorites / Characters / Untracked (nil handling matches PopulateContent).
-local function CharactersUISectionExpandedTriplet(ui)
-    ui = ui or {}
-    local fav = ui.favoritesExpanded
-    if fav == nil then fav = true end
-    local ch = ui.charactersExpanded
-    if ch == nil then ch = true end
-    local unt = ui.untrackedExpanded
-    if unt == nil then unt = false end
-    return fav, ch, unt
-end
-
-local function CharactersUISectionAllExpanded(ui)
-    local fav, ch, unt = CharactersUISectionExpandedTriplet(ui)
-    if not (fav and ch and unt) then return false end
-    local profile = WarbandNexus.db and WarbandNexus.db.profile
-    if not profile then return true end
-    local groups = profile.characterCustomGroups or {}
-    local ge = profile.characterGroupExpanded or {}
-    for gi = 1, #groups do
-        local gid = groups[gi].id
-        if ge[gid] == false then
-            return false
-        end
-    end
-    return true
-end
-
 --============================================================================
 -- DRAW CHARACTER LIST
 --============================================================================
@@ -862,61 +834,10 @@ function WarbandNexus:DrawCharacterList(parent)
         sortAnchorX = -10
     end
 
-    -- Single toolbar toggle: shared helper (same shell as Storage/Currency/Reputation title toggles).
-    if ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle and ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas then
-        local ownerFrame = parent
-        local toggleBtn = ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle(ownerFrame, titleCard)
-        if toggleBtn then
-            local function charSectionCollapseMode()
-                return CharactersUISectionAllExpanded(WarbandNexus.db.profile.ui or {})
-            end
-            if ns.UI_AnchorTitleCardToolbarControl then
-                ns.UI_AnchorTitleCardToolbarControl(toggleBtn, titleCard, sortAnchorFrame, sortAnchorPoint, sortAnchorX)
-            else
-                toggleBtn:ClearAllPoints()
-                toggleBtn:SetPoint("RIGHT", sortAnchorFrame, sortAnchorPoint, sortAnchorX, 0)
-            end
-            ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggleBtn, charSectionCollapseMode)
-            toggleBtn:SetScript("OnEnter", function(btnFrame)
-                GameTooltip:SetOwner(btnFrame, "ANCHOR_BOTTOMRIGHT")
-                local collapseMode = charSectionCollapseMode()
-                local tipKey = collapseMode and "CHARACTERS_SECTION_TOGGLE_COLLAPSE_TOOLTIP" or "CHARACTERS_SECTION_TOGGLE_EXPAND_TOOLTIP"
-                local fb = collapseMode
-                    and "Collapse Favorites, Characters, and Untracked sections."
-                    or "Expand Favorites, Characters, and Untracked sections."
-                GameTooltip:SetText((ns.L and ns.L[tipKey]) or fb, 1, 1, 1)
-                GameTooltip:Show()
-            end)
-            toggleBtn:SetScript("OnLeave", GameTooltip_Hide)
-            toggleBtn:SetScript("OnClick", function()
-                if not WarbandNexus.db.profile.ui then WarbandNexus.db.profile.ui = {} end
-                local ui = WarbandNexus.db.profile.ui
-                if CharactersUISectionAllExpanded(ui) then
-                    ui.favoritesExpanded = false
-                    ui.charactersExpanded = false
-                    ui.untrackedExpanded = false
-                    if not WarbandNexus.db.profile.characterGroupExpanded then WarbandNexus.db.profile.characterGroupExpanded = {} end
-                    local cg = WarbandNexus.db.profile.characterCustomGroups or {}
-                    for ei = 1, #cg do
-                        WarbandNexus.db.profile.characterGroupExpanded[cg[ei].id] = false
-                    end
-                else
-                    ui.favoritesExpanded = true
-                    ui.charactersExpanded = true
-                    ui.untrackedExpanded = true
-                    if not WarbandNexus.db.profile.characterGroupExpanded then WarbandNexus.db.profile.characterGroupExpanded = {} end
-                    local cg2 = WarbandNexus.db.profile.characterCustomGroups or {}
-                    for ei = 1, #cg2 do
-                        WarbandNexus.db.profile.characterGroupExpanded[cg2[ei].id] = true
-                    end
-                end
-                ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggleBtn, charSectionCollapseMode)
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
-            end)
-            toggleBtn:Show()
-        end
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(parent)
     end
-    
+
     -- NO TRACKING: Static text, never overflows
     
     titleCard:Show()

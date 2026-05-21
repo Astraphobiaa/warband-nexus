@@ -207,32 +207,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
             headerYOffset = headerYOffset + (M.GetLayout().afterHeader or 72)
         end
 
-        if ns.UI_EnsureTitleCardExpandCollapseButtons then
-            local tmEc = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
-            local insetEc = tmEc.edgeInset or 0
-            ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, titleCard, "RIGHT", -insetEc, 0, {
-                getIsCollapseMode = function()
-                    return M.CollectionsToolbarAnyExpanded and M.CollectionsToolbarAnyExpanded()
-                end,
-                expandTooltip = (ns.L and ns.L["COLLECTIONS_EXPAND_ALL_TOOLTIP"]) or "Expand all source category sections.",
-                collapseTooltip = (ns.L and ns.L["COLLECTIONS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all source category sections.",
-                onExpandClick = function()
-                    if M.CollectionsToolbarExpandAll then M.CollectionsToolbarExpandAll() end
-                    WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, {
-                        tab = "collections",
-                        skipCooldown = true,
-                        instantPopulate = true,
-                    })
-                end,
-                onCollapseClick = function()
-                    if M.CollectionsToolbarCollapseAll then M.CollectionsToolbarCollapseAll() end
-                    WarbandNexus:SendMessage(Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, {
-                        tab = "collections",
-                        skipCooldown = true,
-                        instantPopulate = true,
-                    })
-                end,
-            })
+        if ns.UI_HideTitleCardExpandCollapseControls then
+            ns.UI_HideTitleCardExpandCollapseControls(parent)
         end
 
         -- ===== SUB-TAB BAR (in fixedHeader - non-scrolling) =====

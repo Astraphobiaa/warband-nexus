@@ -578,7 +578,7 @@ function WarbandNexus:DrawPlansTab(parent)
     local subtitleTextContent = plansSubtitle .. " • " .. activePlanText
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local plansToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
-        100, 100, 100, 80, tm.squareBtn or 32, 120, tm.squareBtn or 32, 115, tm.squareBtn or 32,
+        100, 100, 100, 80, 120, 115,
     })) or 600
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "plans",
@@ -833,44 +833,12 @@ function WarbandNexus:DrawPlansTab(parent)
             end)
         end
 
-        -- Anchor expand/collapse left of the Show Planned label (checkbox anchor overlapped the label text).
-        local ecAnchor = plannedLabel or checkboxLabel or resetBtn
-        if ns.UI_EnsureTitleCardExpandCollapseButtons and ecAnchor then
-            ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -hdrToolbarGap, 0, {
-                getIsCollapseMode = function()
-                    if self.achievementsExpandAllActive then return true end
-                    local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                    for _, v in pairs(eg) do
-                        if v == true then return true end
-                    end
-                    return false
-                end,
-                expandTooltip = (ns.L and ns.L["PLANS_EXPAND_ALL_TOOLTIP"]) or "Expand all To-Do sections and groups.",
-                collapseTooltip = (ns.L and ns.L["PLANS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all To-Do sections and groups.",
-                onExpandClick = function()
-                    self.achievementsExpandAllActive = true
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                        tab = "plans",
-                        skipCooldown = true,
-                        instantPopulate = true,
-                    })
-                end,
-                onCollapseClick = function()
-                    self.achievementsExpandAllActive = false
-                    local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                    for k in pairs(eg) do
-                        eg[k] = false
-                    end
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                        tab = "plans",
-                        skipCooldown = true,
-                        instantPopulate = true,
-                    })
-                end,
-            })
-        end
     end
-    
+
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(parent)
+    end
+
     -- Check if module is disabled (before showing controls)
     if not moduleEnabled then
         titleCard:Show()

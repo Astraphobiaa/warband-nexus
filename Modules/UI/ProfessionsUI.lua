@@ -1804,8 +1804,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         expBadgeWidth,
         filterBtnW,
         tm.filterW or 96,
-        tm.squareBtn or btnHH,
-    })) or (expBadgeWidth + filterBtnW + 40 + btnHH + hdrGapEc)
+    })) or (expBadgeWidth + filterBtnW + 40 + hdrGapEc)
 
     -- ===== TITLE CARD (in fixedHeader - non-scrolling) — single subtitle line (tracked count only) =====
     local subLine = format((ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s characters with professions", FormatNumber(totalProfChars))
@@ -1948,60 +1947,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
     end
 
-    local ecAnchor = sortBtn or filterBtn
-    if ns.UI_EnsureTitleCardExpandCollapseButtons and ecAnchor then
-        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, ecAnchor, "LEFT", -hdrGap, 0, {
-            getIsCollapseMode = function()
-                local ui = WarbandNexus.db.profile.ui or {}
-                local fav = ui.profFavoritesExpanded == true
-                local ch = ui.profCharactersExpanded == true
-                local unt = ui.profUntrackedExpanded == true
-                if not (fav and ch and unt) then return false end
-                local profile = WarbandNexus.db.profile
-                local groups = profile.characterCustomGroups or {}
-                local ge = profile.characterGroupExpanded or {}
-                for gi = 1, #groups do
-                    if ge[groups[gi].id] == false then return false end
-                end
-                return true
-            end,
-            expandTooltip = (ns.L and ns.L["PROFESSIONS_EXPAND_ALL_TOOLTIP"]) or "Expand Favorites, Characters, and Untracked sections.",
-            collapseTooltip = (ns.L and ns.L["PROFESSIONS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse Favorites, Characters, and Untracked sections.",
-            onExpandClick = function()
-                if not self.db.profile.ui then self.db.profile.ui = {} end
-                self.db.profile.ui.profFavoritesExpanded = true
-                self.db.profile.ui.profCharactersExpanded = true
-                self.db.profile.ui.profUntrackedExpanded = true
-                if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
-                local cg = self.db.profile.characterCustomGroups or {}
-                for ei = 1, #cg do
-                    self.db.profile.characterGroupExpanded[cg[ei].id] = true
-                end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "professions",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-            onCollapseClick = function()
-                if not self.db.profile.ui then self.db.profile.ui = {} end
-                self.db.profile.ui.profFavoritesExpanded = false
-                self.db.profile.ui.profCharactersExpanded = false
-                self.db.profile.ui.profUntrackedExpanded = false
-                if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
-                local cg = self.db.profile.characterCustomGroups or {}
-                for ei = 1, #cg do
-                    self.db.profile.characterGroupExpanded[cg[ei].id] = false
-                end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "professions",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-        })
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(parent)
     end
-    
+
     titleCard:Show()
     if ns.UI_AdvanceTabChromeYOffset then
         headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())

@@ -2388,8 +2388,8 @@ function WarbandNexus:DrawItemList(parent)
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local headerBtnH = tm.btnH or (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
     local HeaderFact = ns.UI and ns.UI.Factory
-    local itemsToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 130, 130, tm.squareBtn or headerBtnH }))
-        or (230 + headerBtnH + (tm.gap or 8))
+    local itemsToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 130, 130 }))
+        or 230
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "items",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r",
@@ -2488,73 +2488,10 @@ function WarbandNexus:DrawItemList(parent)
         end
     end)
 
-    local hdrGapEc = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
-    --- Warband: DrawStorageResults + session storage tree; other sub-tabs: `expandedGroups` + virtual list.
-    local function StorageTreeAnyExpandedForToolbar()
-        if not WarbandNexus.GetStorageTreeExpandState then return false end
-        local st = WarbandNexus:GetStorageTreeExpandState()
-        if not st then return false end
-        if st.personal == true or st.warband == true then return true end
-        local cats = st.categories
-        if not cats then return false end
-        for _, v in pairs(cats) do
-            if v == true then return true end
-        end
-        return false
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(parent)
     end
-    if ns.UI_EnsureTitleCardExpandCollapseButtons then
-        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, moneyLogsBtn, "LEFT", -hdrGapEc, 0, {
-            getIsCollapseMode = function()
-                local sub = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
-                if sub == "warband" then
-                    if WarbandNexus.storageExpandAllActive == true then return true end
-                    return StorageTreeAnyExpandedForToolbar()
-                end
-                if WarbandNexus.itemsExpandAllActive then return true end
-                local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                local prefix = sub .. "_"
-                for k, v in pairs(eg) do
-                    if type(k) == "string" and k:sub(1, #prefix) == prefix and v == true then
-                        return true
-                    end
-                end
-                return false
-            end,
-            expandTooltip = (ns.L and ns.L["ITEMS_EXPAND_ALL_TOOLTIP"]) or "Expand all item type groups for this bank view.",
-            collapseTooltip = (ns.L and ns.L["ITEMS_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all item type groups for this bank view.",
-            onExpandClick = function()
-                local sub = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
-                if sub == "warband" then
-                    WarbandNexus.storageExpandAllActive = true
-                    WarbandNexus:RedrawItemsResultsOnly()
-                    return
-                end
-                WarbandNexus.itemsExpandAllActive = true
-                WarbandNexus:ApplyItemsVirtualFlatListOnly()
-            end,
-            onCollapseClick = function()
-                local sub = (ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()) or "personal"
-                if sub == "warband" then
-                    WarbandNexus.storageExpandAllActive = false
-                    if WarbandNexus.ResetStorageTreeExpandState then
-                        WarbandNexus:ResetStorageTreeExpandState()
-                    end
-                    WarbandNexus:RedrawItemsResultsOnly()
-                    return
-                end
-                WarbandNexus.itemsExpandAllActive = false
-                local eg = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
-                local prefix = sub .. "_"
-                for k in pairs(eg) do
-                    if type(k) == "string" and k:sub(1, #prefix) == prefix then
-                        eg[k] = false
-                    end
-                end
-                WarbandNexus:ApplyItemsVirtualFlatListOnly()
-            end,
-        })
-    end
-    
+
     titleCard:Show()
     
     if ns.UI_AdvanceTabChromeYOffset then
@@ -2566,9 +2503,9 @@ function WarbandNexus:DrawItemList(parent)
 
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("items") then
-        if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
-        if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
-        if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
+        if ns.UI_HideTitleCardExpandCollapseControls then
+            ns.UI_HideTitleCardExpandCollapseControls(parent)
+        end
         if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard

@@ -3284,56 +3284,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     -- Column visibility (vault columns + PvE crest/shard/key toggles)
     sortAnchor = L.PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
 
-    if L.ns.UI_EnsureTitleCardExpandCollapseButtons and sortAnchor and profile then
-        local hdrGapEc = hdrGapPve
-        L.ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, sortAnchor, "LEFT", -hdrGapEc, 0, {
-            getIsCollapseMode = function()
-                if WarbandNexus.pveExpandAllActive then return true end
-                local ui = profile.ui or {}
-                if ui.pveFavoritesExpanded == true or ui.pveCharactersExpanded == true then
-                    return true
-                end
-                local cg = profile.characterGroupExpanded or {}
-                for _, v in pairs(cg) do
-                    if v == true then return true end
-                end
-                for _, v in pairs(expandedStates) do
-                    if v == true then return true end
-                end
-                return false
-            end,
-            expandTooltip = GetLocalizedText("PVE_EXPAND_ALL_TOOLTIP", "Expand all PvE sections and character rows."),
-            collapseTooltip = GetLocalizedText("PVE_COLLAPSE_ALL_TOOLTIP", "Collapse all PvE sections and character rows."),
-            onExpandClick = function()
-                if not profile.ui then profile.ui = {} end
-                profile.ui.pveFavoritesExpanded = true
-                profile.ui.pveCharactersExpanded = true
-                WarbandNexus.pveExpandAllActive = true
-                local groups = profile.characterCustomGroups or {}
-                if not profile.characterGroupExpanded then profile.characterGroupExpanded = {} end
-                for gi = 1, #groups do
-                    profile.characterGroupExpanded[groups[gi].id] = true
-                end
-                L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "pve",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-            onCollapseClick = function()
-                if not profile.ui then profile.ui = {} end
-                profile.ui.pveFavoritesExpanded = false
-                profile.ui.pveCharactersExpanded = false
-                WarbandNexus.pveExpandAllActive = false
-                wipe(expandedStates)
-                profile.characterGroupExpanded = {}
-                L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "pve",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-        })
+    if L.ns.UI_HideTitleCardExpandCollapseControls then
+        L.ns.UI_HideTitleCardExpandCollapseControls(parent)
     end
 
     titleCard:Show()

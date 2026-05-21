@@ -2287,8 +2287,7 @@ function WarbandNexus:DrawReputationTab(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
-    local repRightReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ tm.squareBtn or 32 }))
-        or ((tm.squareBtn or 32) + (tm.gap or 8))
+    local repRightReserve = (tm.edgeInset or 0)
     local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local titleCard
     if mfRef and mfRef._wnReputationTitleCard then
@@ -2324,38 +2323,9 @@ function WarbandNexus:DrawReputationTab(parent)
     
     titleCard:Show()
 
-    if moduleEnabled and ns.UI_EnsureTitleCardExpandCollapseButtons then
-        local inset = tm.edgeInset or 0
-        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, titleCard, "RIGHT", -inset, 0, {
-            getIsCollapseMode = function()
-                return WarbandNexus.db.profile.reputationExpandOverride ~= "all_collapsed"
-            end,
-            expandTooltip = (ns.L and ns.L["REP_EXPAND_ALL_TOOLTIP"]) or "Expand all reputation sections and category headers.",
-            collapseTooltip = (ns.L and ns.L["REP_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all reputation sections and category headers.",
-            onExpandClick = function()
-                self.db.profile.reputationExpandOverride = nil
-                self.db.profile.reputationExpanded = {}
-                -- Must match mainFrame.currentTab ("reputations"); "reputation" is ignored and refresh never runs.
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "reputations",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-            onCollapseClick = function()
-                self.db.profile.reputationExpandOverride = "all_collapsed"
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "reputations",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-        })
-    elseif parent._wnExpandCollapseToggleBtn then
-        parent._wnExpandCollapseToggleBtn:Hide()
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(parent)
     end
-    if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
-    if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
     
     if ns.UI_AdvanceTabChromeYOffset then
         headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
@@ -2365,9 +2335,9 @@ function WarbandNexus:DrawReputationTab(parent)
 
     -- If module is disabled, show disabled state card in scroll area
     if not moduleEnabled then
-        if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
-        if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
-        if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
+        if ns.UI_HideTitleCardExpandCollapseControls then
+            ns.UI_HideTitleCardExpandCollapseControls(parent)
+        end
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")

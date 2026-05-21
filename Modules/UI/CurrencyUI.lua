@@ -1394,8 +1394,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
     subtitle = subtitle .. "  |cff666666\194\183|r  |cff888888" .. shiftHintText .. "|r"
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
-    local currencyToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 118, tm.squareBtn or 32 }))
-        or (118 + (tm.squareBtn or 32) + (tm.gap or 8))
+    local currencyToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 118 }))
+        or 118
     local titleCard, _, _, _, _ = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "currency",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r",
@@ -1428,40 +1428,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
         })
     end)
 
-    if moduleEnabled and ns.UI_EnsureTitleCardExpandCollapseButtons then
-        local hdrGapEc = GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8
-        ns.UI_EnsureTitleCardExpandCollapseButtons(parent, titleCard, showZeroBtn, "LEFT", -hdrGapEc, 0, {
-            getIsCollapseMode = function()
-                return WarbandNexus.db.profile.currencyExpandOverride ~= "all_collapsed"
-            end,
-            expandTooltip = (ns.L and ns.L["CURRENCY_EXPAND_ALL_TOOLTIP"]) or "Expand all currency category headers.",
-            collapseTooltip = (ns.L and ns.L["CURRENCY_COLLAPSE_ALL_TOOLTIP"]) or "Collapse all currency category headers.",
-            onExpandClick = function()
-                self.db.profile.currencyExpandOverride = nil
-                self.db.profile.currencyExpanded = {}
-                self.currencyExpandAllActive = true
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "currency",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-            onCollapseClick = function()
-                self.db.profile.currencyExpandOverride = "all_collapsed"
-                self.db.profile.currencyExpanded = {}
-                self.currencyExpandAllActive = false
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "currency",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end,
-        })
-    elseif parent._wnExpandCollapseToggleBtn then
-        parent._wnExpandCollapseToggleBtn:Hide()
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(parent)
     end
-    if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
-    if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
 
     titleCard:Show()
     
@@ -1473,9 +1442,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     -- If module is disabled, show disabled state card (in scroll area)
     if not moduleEnabled then
-        if parent._wnExpandCollapseToggleBtn then parent._wnExpandCollapseToggleBtn:Hide() end
-        if parent._wnExpandCollapseCollapseBtn then parent._wnExpandCollapseCollapseBtn:Hide() end
-        if parent._wnExpandCollapseExpandBtn then parent._wnExpandCollapseExpandBtn:Hide() end
+        if ns.UI_HideTitleCardExpandCollapseControls then
+            ns.UI_HideTitleCardExpandCollapseControls(parent)
+        end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, 8, (ns.L and ns.L["CURRENCY_DISABLED_TITLE"]) or "Currency Tracking")

@@ -5287,11 +5287,11 @@ function ns.UI_ComputeTitleToolbarReserve(widths, opts)
     return total
 end
 
---- Title-card toolbar reserve for Characters (Filter + section + expand + gaps + right inset).
+--- Title-card toolbar reserve for Characters (Filter + custom section + gaps + right inset).
 ---@return number
 local function ComputeCharactersTitleToolbarReserve()
     local m = ns.UI_GetTitleCardToolbarMetrics()
-    return ns.UI_ComputeTitleToolbarReserve({ m.filterW, m.squareBtn, m.squareBtn })
+    return ns.UI_ComputeTitleToolbarReserve({ m.filterW, m.squareBtn })
 end
 
 local GRID_COL_DIVIDER_RGBA = { 0.3, 0.3, 0.35, 0.4 }
@@ -6818,109 +6818,13 @@ function ns.UI_CreateCustomSectionCreatePicker(parent, width, _scrollH, addon, p
     return ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, charactersList, nil)
 end
 
--- Title-card toolbar: same glues arrow atlases as Characters tab section toggle.
-local TITLE_TOOLBAR_EC_ATLAS_UP = "glues-characterSelect-icon-arrowUp-small-hover"
-local TITLE_TOOLBAR_EC_ATLAS_DOWN = "glues-characterSelect-icon-arrowDown-small-hover"
-
---- Characters-parity title toolbar toggle shell (themed square + `_wnEcIcon`). Persists `ownerFrame._wnExpandCollapseToggleBtn`.
---- Migrates legacy `ownerFrame._wnCharactersExpandCollapseToggleBtn` if present.
----@return Button|nil
-function ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle(ownerFrame, titleCard)
-    if not ownerFrame or not titleCard or not ns.UI.Factory or not ns.UI.Factory.CreateButton then
-        return nil
-    end
-    if ownerFrame._wnCharactersExpandCollapseToggleBtn and not ownerFrame._wnExpandCollapseToggleBtn then
-        ownerFrame._wnExpandCollapseToggleBtn = ownerFrame._wnCharactersExpandCollapseToggleBtn
-        ownerFrame._wnCharactersExpandCollapseToggleBtn = nil
-    end
-    local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
-    local COLORS = ns.UI_COLORS or { accent = { 0.6, 0.4, 1 } }
-    local accent = COLORS.accent or { 0.6, 0.4, 1 }
-    local btn = ownerFrame._wnExpandCollapseToggleBtn
-    if not btn then
-        btn = ns.UI.Factory:CreateButton(titleCard, btnH, btnH, false)
-        ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { accent[1], accent[2], accent[3], 0.6 })
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-            ns.UI.Factory:ApplyHighlight(btn)
-        end
-        btn._wnEcIcon = btn:CreateTexture(nil, "OVERLAY")
-        btn._wnEcIcon:SetAllPoints(btn)
-        if btn.RegisterForClicks then
-            btn:RegisterForClicks("LeftButtonUp")
-        end
-        ownerFrame._wnExpandCollapseToggleBtn = btn
-    end
-    btn:SetParent(titleCard)
-    btn:SetFrameLevel((titleCard:GetFrameLevel() or 0) + 5)
-    btn:SetSize(btnH, btnH)
-    btn:Show()
-    return btn
-end
-
---- `getIsCollapseMode()` → true when the next click should collapse (up arrow).
-function ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(btn, getIsCollapseMode)
-    if not btn or not btn._wnEcIcon then return end
-    local cm = getIsCollapseMode and getIsCollapseMode() == true
-    btn._wnEcIcon:SetAtlas(cm and TITLE_TOOLBAR_EC_ATLAS_UP or TITLE_TOOLBAR_EC_ATLAS_DOWN, false)
-end
-
---- Single expand/collapse-all toggle on tab title cards (Characters-style button via `CreateOrAcquire` + atlas helper).
---- Legacy `_wnExpandCollapseCollapseBtn` / `_wnExpandCollapseExpandBtn` are hidden if present.
---- @param opts table `{ collapseTooltip, expandTooltip, onCollapseClick, onExpandClick, getIsCollapseMode }`
----        `getIsCollapseMode()` → true when the tree is “fully expanded” (next click should collapse).
-function ns.UI_EnsureTitleCardExpandCollapseButtons(ownerFrame, titleCard, anchorFrame, anchorPoint, anchorOffsetX, anchorOffsetY, opts)
-    if not ownerFrame or not titleCard or not anchorFrame or not opts then return end
-
-    local legCol = ownerFrame._wnExpandCollapseCollapseBtn
-    local legExp = ownerFrame._wnExpandCollapseExpandBtn
-    if legCol then legCol:Hide() end
-    if legExp then legExp:Hide() end
-
-    local toggle = ns.UI_CreateOrAcquireTitleToolbarExpandCollapseToggle(ownerFrame, titleCard)
-    if not toggle then return end
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(toggle, titleCard, anchorFrame, anchorPoint, anchorOffsetX)
-        if anchorOffsetY and anchorOffsetY ~= 0 then
-            local p, rel, rp, x, y = toggle:GetPoint(1)
-            if p then toggle:SetPoint(p, rel, rp, x, (y or 0) + anchorOffsetY) end
-        end
-    else
-        toggle:ClearAllPoints()
-        toggle:SetPoint("RIGHT", anchorFrame, anchorPoint, anchorOffsetX or 0, anchorOffsetY or 0)
-    end
-
-    local function collapseModeNow()
-        if opts.getIsCollapseMode then
-            return opts.getIsCollapseMode() == true
-        end
-        return false
-    end
-
-    local function applyAtlas()
-        ns.UI_ApplyTitleToolbarExpandCollapseToggleAtlas(toggle, function()
-            return collapseModeNow()
-        end)
-    end
-    applyAtlas()
-
-    local collapseTip = opts.collapseTooltip or ""
-    local expandTip = opts.expandTooltip or ""
-
-    toggle:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-        GameTooltip:SetText(collapseModeNow() and collapseTip or expandTip, 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    toggle:SetScript("OnLeave", GameTooltip_Hide)
-
-    toggle:SetScript("OnClick", function()
-        if collapseModeNow() then
-            if opts.onCollapseClick then opts.onCollapseClick() end
-        else
-            if opts.onExpandClick then opts.onExpandClick() end
-        end
-        applyAtlas()
-    end)
+--- Hide legacy title-card expand/collapse-all controls (toolbar toggle removed).
+function ns.UI_HideTitleCardExpandCollapseControls(ownerFrame)
+    if not ownerFrame then return end
+    if ownerFrame._wnExpandCollapseToggleBtn then ownerFrame._wnExpandCollapseToggleBtn:Hide() end
+    if ownerFrame._wnExpandCollapseCollapseBtn then ownerFrame._wnExpandCollapseCollapseBtn:Hide() end
+    if ownerFrame._wnExpandCollapseExpandBtn then ownerFrame._wnExpandCollapseExpandBtn:Hide() end
+    if ownerFrame._wnCharactersExpandCollapseToggleBtn then ownerFrame._wnCharactersExpandCollapseToggleBtn:Hide() end
 end
 
 -- Exports
