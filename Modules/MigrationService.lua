@@ -30,41 +30,60 @@ end
 local MigrationService = {}
 ns.MigrationService = MigrationService
 
-local function CountGearSlots(entry)
-    local slots = type(entry) == "table" and entry.slots
-    if type(slots) ~= "table" then return 0 end
-    local count = 0
-    for _, slot in pairs(slots) do
-        if type(slot) == "table" then
-            count = count + 1
-        end
-    end
-    return count
+local function GearSlotHasPayload(slot)
+    if type(slot) ~= "table" then return false end
+    if slot.itemLink or slot.itemID or slot.name then return true end
+    return (tonumber(slot.itemLevel) or 0) > 0
 end
 
-local function ShouldReplaceGearBucket(current, candidate)
-    if type(candidate) ~= "table" then return false end
-    if type(current) ~= "table" then return true end
-
-    local currentSlots = CountGearSlots(current)
-    local candidateSlots = CountGearSlots(candidate)
-    if candidateSlots > 0 and currentSlots == 0 then return true end
-    if candidateSlots == 0 and currentSlots > 0 then return false end
-
-    return (tonumber(candidate.lastScan) or 0) > (tonumber(current.lastScan) or 0)
+local function MergeGearWatermarks(current, legacy)
+    local legacyMarks = type(legacy) == "table" and legacy.watermarks
+    if type(legacyMarks) ~= "table" then return end
+    if type(current.watermarks) ~= "table" then
+        current.watermarks = legacyMarks
+        return
+    end
+    for slotID, watermark in pairs(legacyMarks) do
+        local existing = current.watermarks[slotID]
+        if existing == nil or (tonumber(watermark) or 0) > (tonumber(existing) or 0) then
+            current.watermarks[slotID] = watermark
+        end
+    end
 end
 
 local function MergeGearDataBucket(current, legacy)
     if type(legacy) ~= "table" then return current end
-    if ShouldReplaceGearBucket(current, legacy) then
-        if type(legacy.modelView) ~= "table" and type(current) == "table" and type(current.modelView) == "table" then
-            legacy.modelView = current.modelView
+    if type(current) ~= "table" then return legacy end
+
+    local legacySlots = legacy.slots
+    if type(legacySlots) == "table" then
+        if type(current.slots) ~= "table" then
+            current.slots = legacySlots
+        else
+            for slotID, legacySlot in pairs(legacySlots) do
+                local currentSlot = current.slots[slotID]
+                if GearSlotHasPayload(legacySlot) and not GearSlotHasPayload(currentSlot) then
+                    current.slots[slotID] = legacySlot
+                end
+            end
         end
-        return legacy
     end
-    if type(current) == "table" and type(current.modelView) ~= "table" and type(legacy.modelView) == "table" then
+
+    MergeGearWatermarks(current, legacy)
+
+    if type(current.modelView) ~= "table" and type(legacy.modelView) == "table" then
         current.modelView = legacy.modelView
     end
+    if type(current.modelSnapshot) ~= "table" and type(legacy.modelSnapshot) == "table" then
+        current.modelSnapshot = legacy.modelSnapshot
+    end
+    if current.version == nil and legacy.version ~= nil then
+        current.version = legacy.version
+    end
+    if (tonumber(legacy.lastScan) or 0) > (tonumber(current.lastScan) or 0) then
+        current.lastScan = legacy.lastScan
+    end
+
     return current
 end
 
