@@ -1486,10 +1486,17 @@ local QUALITY_COLORS = {
 ns.UI_COLORS = COLORS
 ns.UI_QUALITY_COLORS = QUALITY_COLORS
 
+--- Must be above ns.UI_FormatUpgradeTrackMarkup (Lua 5.1: local visible only after this line).
+local function GetQualityHex(quality)
+    return QUALITY_COLORS[quality] or "ffffff"
+end
+ns.UI_GetQualityHex = GetQualityHex
+
 --- PvE upgrade track tier -> |cffRRGGBB| hex (6 digits only; never prefix alpha `ff` — |cff supplies opacity).
 ns.GEAR_UPGRADE_TRACK_TIER_HEX = {
     Adventurer = "9d9d9d",
     Explorer   = "9d9d9d",
+    Custodial  = "9d9d9d",
     Veteran    = "1eff00",
     Champion   = "0070dd",
     Hero       = "a335ee",
@@ -3410,11 +3417,6 @@ end
 --============================================================================
 -- UI HELPER FUNCTIONS
 --============================================================================
-
--- Get quality color as hex string
-local function GetQualityHex(quality)
-    return QUALITY_COLORS[quality] or "ffffff"
-end
 
 -- Get accent color as hex string
 local function GetAccentHexColor()
@@ -7561,7 +7563,7 @@ end
 -- NAMESPACE EXPORTS
 --============================================================================
 
-ns.UI_GetQualityHex = GetQualityHex
+-- ns.UI_GetQualityHex assigned with GetQualityHex (early export — before FormatUpgradeTrackMarkup)
 ns.UI_GetAccentHexColor = GetAccentHexColor
 ns.UI_ApplyProfessionCraftingQualityAtlasToTexture = ApplyProfessionCraftingQualityAtlasToTexture
 ns.UI_GetProfessionCraftingQualityAtlasNameForTier = GetProfessionCraftingQualityAtlasNameForTier

@@ -134,7 +134,7 @@ local STATUS_ICON_INSET = 1
 -- DEBUG: show upgrade arrow on every occupied slot. Set false for release.
 local GEAR_DEBUG_ALWAYS_SHOW_UPGRADE = false
 -- When false, hide paperdoll missing-enchant / empty-socket alert triangles (upgrade chip is separate).
-local GEAR_PAPERDOLL_ENCHANT_GEM_ALERTS = false
+local GEAR_PAPERDOLL_ENCHANT_GEM_ALERTS = true
 -- Inline ilvl separator in recommendation FontStrings (Unicode → renders as tofu); same atlas as storage row ilvl arrow.
 local GEAR_ILVL_ARROW_ATLAS = "common-dropdown-icon-play"
 local GEAR_ILVL_ARROW_INLINE_SZ = 14
@@ -142,6 +142,8 @@ local GEAR_ILVL_ARROW_INLINE_MARKUP = (CreateAtlasMarkup and CreateAtlasMarkup(G
     or ("|A:" .. GEAR_ILVL_ARROW_ATLAS .. ":" .. GEAR_ILVL_ARROW_INLINE_SZ .. ":" .. GEAR_ILVL_ARROW_INLINE_SZ .. "|a")
 local CURRENCY_PANEL_W = 248
 local GEAR_STAT_PANEL_W = 292
+local GEAR_REC_STACK_MIN_H = 200
+local GEAR_REC_STACK_MAX_H = 280
 local CENTER_GAP     = P(10)
 local CURRENCY_PAPERDOLL_GAP = 14  -- boşluk crest paneli ile paperdoll arası
 
@@ -195,7 +197,7 @@ local TEXT_HALF_W = TRACK_TEXT_W / 2
 local TEXT_OFFSET_FROM_SLOT_CENTER = SLOT_HALF + SLOT_TO_ARROW_GAP + STATUS_TEXT_WARD_W + ARROW_TO_TEXT_GAP + TEXT_HALF_W
 local PAPERDOLL_COL_INSET = 4
 local PAPER_TRACK_EDGE_PAD = 12
-local MAX_PAPER_MODEL_BOOST = 32
+local MAX_PAPER_MODEL_BOOST = 48
 
 --- Right edge of right-column track labels (CENTER anchor + LEFT justify within TRACK_TEXT_W).
 ---@param baseX number
@@ -232,6 +234,10 @@ local GEAR_BOTTOM_CURR_MIN_W = GEAR_LAYOUT.BOTTOM_CURR_MIN_W or 148
 local GEAR_BOTTOM_BAND_MIN_H = GEAR_LAYOUT.BOTTOM_BAND_MIN_H or 120
 
 local function ComputeGearLayoutWidths(cardInnerW, recEnabled)
+    if ns.GearUI_ComputeTopRowWidths then
+        local paperW, recW = ns.GearUI_ComputeTopRowWidths(cardInnerW, recEnabled)
+        return math.max(paperW or 0, GEAR_PAPER_COL_FIXED_W), recW or 0
+    end
     if ns.GearUI_ComputeTopRowLayout then
         local _, paperW, sideW = ns.GearUI_ComputeTopRowLayout(cardInnerW, nil)
         return math.max(paperW or 0, GEAR_PAPER_COL_FIXED_W), sideW
@@ -246,7 +252,7 @@ local function ComputeGearLayoutWidths(cardInnerW, recEnabled)
     return paperW, math.max(0, inner - paperW)
 end
 
---- Body zones: top (paperdoll | stats+currencies) + bottom (recommendations).
+--- Body zones: single row paperdoll (left) | recommendations (right).
 ---@param card Frame
 ---@param layout table
 ---@param panelTopY number
@@ -255,28 +261,54 @@ local function EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if not card or not layout then return end
     if not layout.bodyHost then
         local body = CreateFrame("Frame", nil, card)
-        if body.SetClipsChildren then body:SetClipsChildren(true) end
+        if body.SetClipsChildren then body:SetClipsChildren(false) end
         layout.bodyHost = body
     end
     layout.bodyHost:ClearAllPoints()
     layout.bodyHost:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD, panelTopY)
     layout.bodyHost:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -CARD_PAD, CARD_PAD)
+    if layout.bodyHost.SetClipsChildren then
+        layout.bodyHost:SetClipsChildren(false)
+    end
 
     if not layout.topHost then
         local top = CreateFrame("Frame", nil, layout.bodyHost)
-        if top.SetClipsChildren then top:SetClipsChildren(true) end
+        if top.SetClipsChildren then top:SetClipsChildren(false) end
         layout.topHost = top
     end
     layout.topHost:SetParent(layout.bodyHost)
     layout.topHost:Show()
+    if layout.topHost.SetClipsChildren then
+        layout.topHost:SetClipsChildren(false)
+    end
 
     if not layout.leftColHost then
         local left = CreateFrame("Frame", nil, layout.topHost)
-        if left.SetClipsChildren then left:SetClipsChildren(true) end
+        -- Track labels + outer gem/enchant column extend past slot bounds; must not clip.
+        if left.SetClipsChildren then left:SetClipsChildren(false) end
         layout.leftColHost = left
     end
     layout.leftColHost:SetParent(layout.topHost)
     layout.leftColHost:Show()
+    if layout.leftColHost.SetClipsChildren then
+        layout.leftColHost:SetClipsChildren(false)
+    end
+
+    if not layout.paperTopHost then
+        local paperTop = CreateFrame("Frame", nil, layout.leftColHost)
+        if paperTop.SetClipsChildren then paperTop:SetClipsChildren(false) end
+        layout.paperTopHost = paperTop
+    end
+    layout.paperTopHost:SetParent(layout.leftColHost)
+    layout.paperTopHost:Show()
+
+    if not layout.paperBottomHost then
+        local paperBottom = CreateFrame("Frame", nil, layout.leftColHost)
+        if paperBottom.SetClipsChildren then paperBottom:SetClipsChildren(false) end
+        layout.paperBottomHost = paperBottom
+    end
+    layout.paperBottomHost:SetParent(layout.leftColHost)
+    layout.paperBottomHost:Show()
 
     if not layout.centerGapHost then
         local center = CreateFrame("Frame", nil, layout.topHost)
@@ -307,116 +339,246 @@ local function EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     end
 end
 
---- Stretch top row + bottom recommendations band.
+--- Stretch top row: paperdoll | recommendations (equal height, header-aligned insets).
 ---@param card Frame
 ---@param layout table
 ---@param panelTopY number
 ---@param recEnabled boolean
----@return number|nil storageW measured bottom band width
+---@return number|nil storageW measured recommendations column width
 local function RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if not card or not layout then return nil end
     EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled == true)
     local gap = layout.panelGutter or GEAR_LAYOUT.COL_GAP or GEAR_PANEL_GAP
-    local sectionGap = layout.sectionGap or GEAR_LAYOUT.SECTION_GAP or 12
     local paperColW = math.max(GEAR_PAPER_COL_FIXED_W, layout.paperColW or GEAR_PAPER_COL_FIXED_W)
     layout.paperColW = paperColW
-    local sideColW = math.max(1, layout.sideColW or layout.storageW or 0)
-    local recZoneH = layout.recZoneH or 0
+    local recColW = math.max(0, layout.recColW or layout.sideColW or layout.storageW or 0)
     local body = layout.bodyHost
     local top = layout.topHost
     local left = layout.leftColHost
     local right = layout.rightColHost
     local bottom = layout.bottomColHost
-    if not body or not top or not left or not right then return nil end
+    if not body or not top or not left then return nil end
 
-    top:ClearAllPoints()
-    top:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
-    if recEnabled and bottom and recZoneH > 0 then
-        top:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, recZoneH + sectionGap)
-        bottom:ClearAllPoints()
-        bottom:SetPoint("BOTTOMLEFT", body, "BOTTOMLEFT", 0, 0)
-        bottom:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
-        bottom:SetHeight(recZoneH)
-        bottom:Show()
-    else
-        top:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
-        if bottom then bottom:Hide() end
-    end
-
-    local paperBandH = math.max(1, layout.paperdollNaturalH or layout.paperZoneH or 1)
-    layout.paperZoneH = paperBandH
-
-    -- Right rail pinned to card top-right; paperdoll stays left (never under stats).
-    left:ClearAllPoints()
-    left:SetPoint("TOPLEFT", top, "TOPLEFT", 0, 0)
-    left:SetSize(paperColW, paperBandH)
-    if left.SetClipsChildren then
-        left:SetClipsChildren(true)
-    end
-
-    right:ClearAllPoints()
-    right:SetPoint("TOPRIGHT", top, "TOPRIGHT", 0, 0)
-    right:SetPoint("BOTTOMRIGHT", top, "BOTTOMRIGHT", 0, 0)
-    right:SetWidth(sideColW)
-    if right.SetClipsChildren then
-        right:SetClipsChildren(true)
-    end
-
-    local center = layout.centerGapHost
-    if center then
-        center:ClearAllPoints()
-        center:SetPoint("TOPLEFT", left, "TOPRIGHT", 0, 0)
-        center:SetPoint("BOTTOMLEFT", left, "BOTTOMRIGHT", 0, 0)
-        center:SetPoint("TOPRIGHT", right, "TOPLEFT", 0, 0)
-        center:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT", 0, 0)
-        center:Show()
-    end
-
-    if layout.colDivider then
-        layout.colDivider:SetParent(top)
-        layout.colDivider:ClearAllPoints()
-        if center then
-            layout.colDivider:SetPoint("TOP", center, "TOP", 0, 0)
-            layout.colDivider:SetPoint("BOTTOM", center, "BOTTOM", 0, 0)
-            layout.colDivider:SetPoint("CENTER", center, "CENTER", 0, 0)
-        else
-            layout.colDivider:SetPoint("TOP", right, "TOPLEFT", -math.floor(gap * 0.5), 0)
-            layout.colDivider:SetPoint("BOTTOM", right, "BOTTOMLEFT", -math.floor(gap * 0.5), 0)
-        end
-        layout.colDivider:Show()
-    end
+    local contentBandH = math.max(1, layout.contentBandH or layout.paperZoneH or layout.paperdollNaturalH or 1)
+    layout.contentBandH = contentBandH
+    layout.paperZoneH = contentBandH
 
     local topW = (top.GetWidth and top:GetWidth()) or 0
-    local minTopW = paperColW + gap + sideColW
+    if topW < 1 then
+        topW = layout.cardInnerW or 0
+    end
+    if topW < 1 and card and card.GetWidth then
+        topW = GetGearCardInnerWidthFromCard(card)
+    end
+    local minTopW = paperColW + (recColW > 0 and (gap + recColW) or 0)
     layout.topRowMinW = minTopW
-    layout.topRowOverlaps = (topW > 0 and topW < minTopW - 1)
-    if layout.topStackDivider and layout.topStackDivider.Hide then
-        layout.topStackDivider:Hide()
+    local rowOverlaps = (topW > 0 and topW < minTopW - 1)
+    layout.topRowOverlaps = rowOverlaps
+    local useStack = rowOverlaps and recEnabled and recColW > 0 and right and bottom
+
+    left:ClearAllPoints()
+    if left.SetClipsChildren then
+        left:SetClipsChildren(false)
     end
 
-    if sideColW < 1 and right.GetWidth then
-        sideColW = right:GetWidth() or sideColW
-    end
-    layout.sideColW = sideColW
-    layout.topLayoutMode = "row"
-
-    local storageW = nil
-    if recEnabled and layout.storagePanel and bottom then
-        layout.storagePanel:SetParent(bottom)
-        layout.storagePanel:ClearAllPoints()
-        layout.storagePanel:SetPoint("TOPLEFT", bottom, "TOPLEFT", 0, 0)
-        layout.storagePanel:SetPoint("BOTTOMRIGHT", bottom, "BOTTOMRIGHT", 0, 0)
-        if layout.storagePanel.GetWidth then
-            storageW = layout.storagePanel:GetWidth()
+    local bottomH = math.max(0, layout.paperBottomBandH or 0)
+    local paperTop = layout.paperTopHost
+    local paperBottom = layout.paperBottomHost
+    local function layoutPaperColumnInHost(host)
+        if not paperTop or not host then return end
+        paperTop:ClearAllPoints()
+        if paperBottom and bottomH > 0 then
+            paperBottom:ClearAllPoints()
+            paperBottom:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 0, 0)
+            paperBottom:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
+            paperBottom:SetHeight(bottomH)
+            paperBottom:Show()
+            paperTop:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+            paperTop:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, 0)
+            paperTop:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 0, bottomH)
+        else
+            if paperBottom then paperBottom:Hide() end
+            paperTop:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+            paperTop:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
         end
     end
 
-    if layout.horizDivider then
-        layout.horizDivider:Hide()
+    local storageW = nil
+    layout.topRowStacked = false
+    layout.recStackH = nil
+    layout.topRowStackExtraH = 0
+
+    if useStack then
+        layout.topLayoutMode = "stack"
+        layout.topRowStacked = true
+        local recStackH = math.max(
+            GEAR_REC_STACK_MIN_H,
+            math.min(GEAR_REC_STACK_MAX_H, math.floor(contentBandH * 0.40 + 0.5)))
+        layout.recStackH = recStackH
+        layout.topRowStackExtraH = recStackH + gap
+
+        top:ClearAllPoints()
+        top:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
+        top:SetPoint("TOPRIGHT", body, "TOPRIGHT", 0, 0)
+        top:SetHeight(contentBandH)
+
+        bottom:Show()
+        bottom:ClearAllPoints()
+        bottom:SetPoint("TOPLEFT", top, "BOTTOMLEFT", 0, -gap)
+        bottom:SetPoint("TOPRIGHT", top, "BOTTOMRIGHT", 0, -gap)
+        bottom:SetHeight(recStackH)
+
+        left:SetPoint("TOPLEFT", top, "TOPLEFT", 0, 0)
+        left:SetPoint("BOTTOMRIGHT", top, "BOTTOMRIGHT", 0, 0)
+        left:SetWidth(math.max(paperColW, topW))
+
+        layoutPaperColumnInHost(left)
+
+        right:SetParent(bottom)
+        right:Show()
+        right:ClearAllPoints()
+        right:SetPoint("TOPLEFT", bottom, "TOPLEFT", 0, 0)
+        right:SetPoint("BOTTOMRIGHT", bottom, "BOTTOMRIGHT", 0, 0)
+        if right.SetClipsChildren then
+            right:SetClipsChildren(true)
+        end
+
+        if layout.centerGapHost then layout.centerGapHost:Hide() end
+        if layout.colDivider and layout.colDivider.Hide then layout.colDivider:Hide() end
+        if layout.topStackDivider then
+            layout.topStackDivider:SetParent(body)
+            layout.topStackDivider:ClearAllPoints()
+            layout.topStackDivider:SetPoint("BOTTOMLEFT", top, "BOTTOMLEFT", 0, 0)
+            layout.topStackDivider:SetPoint("BOTTOMRIGHT", top, "BOTTOMRIGHT", 0, 0)
+            layout.topStackDivider:Show()
+        end
+        if layout.horizDivider and layout.horizDivider.Hide then layout.horizDivider:Hide() end
+
+        storageW = math.max(1, topW)
+        if layout.storagePanel then
+            layout.storagePanel:SetParent(right)
+            layout.storagePanel:ClearAllPoints()
+            layout.storagePanel:SetPoint("TOPLEFT", right, "TOPLEFT", 0, 0)
+            layout.storagePanel:SetPoint("BOTTOMRIGHT", right, "BOTTOMRIGHT", 0, 0)
+            if layout.storagePanel.GetWidth then
+                local mw = layout.storagePanel:GetWidth()
+                if mw and mw > 0 then storageW = mw end
+            end
+        end
+        layout.topRowOverlaps = false
+    else
+        layout.topLayoutMode = "row"
+        top:ClearAllPoints()
+        top:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
+        top:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
+        if bottom then bottom:Hide() end
+
+        left:SetPoint("TOPLEFT", top, "TOPLEFT", 0, 0)
+        left:SetPoint("BOTTOMLEFT", top, "BOTTOMLEFT", 0, 0)
+        left:SetWidth(paperColW)
+        layoutPaperColumnInHost(left)
+
+        if recEnabled and recColW > 0 and right then
+            right:SetParent(top)
+            right:Show()
+            right:ClearAllPoints()
+            right:SetPoint("TOPRIGHT", top, "TOPRIGHT", 0, 0)
+            right:SetPoint("BOTTOMRIGHT", top, "BOTTOMRIGHT", 0, 0)
+            right:SetWidth(recColW)
+            if right.SetClipsChildren then
+                right:SetClipsChildren(true)
+            end
+
+            local center = layout.centerGapHost
+            if center then
+                center:ClearAllPoints()
+                center:SetPoint("TOPLEFT", left, "TOPRIGHT", 0, 0)
+                center:SetPoint("BOTTOMLEFT", left, "BOTTOMRIGHT", 0, 0)
+                center:SetPoint("TOPRIGHT", right, "TOPLEFT", 0, 0)
+                center:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT", 0, 0)
+                center:Show()
+            end
+
+            if layout.colDivider then
+                layout.colDivider:SetParent(top)
+                layout.colDivider:ClearAllPoints()
+                if center then
+                    layout.colDivider:SetPoint("TOP", center, "TOP", 0, 0)
+                    layout.colDivider:SetPoint("BOTTOM", center, "BOTTOM", 0, 0)
+                    layout.colDivider:SetPoint("CENTER", center, "CENTER", 0, 0)
+                else
+                    layout.colDivider:SetPoint("TOP", right, "TOPLEFT", -math.floor(gap * 0.5), 0)
+                    layout.colDivider:SetPoint("BOTTOM", right, "BOTTOMLEFT", -math.floor(gap * 0.5), 0)
+                end
+                layout.colDivider:Show()
+            end
+
+            if layout.storagePanel then
+                layout.storagePanel:SetParent(right)
+                layout.storagePanel:ClearAllPoints()
+                layout.storagePanel:SetPoint("TOPLEFT", right, "TOPLEFT", 0, 0)
+                layout.storagePanel:SetPoint("BOTTOMRIGHT", right, "BOTTOMRIGHT", 0, 0)
+                if layout.storagePanel.GetWidth then
+                    storageW = layout.storagePanel:GetWidth()
+                end
+            end
+        else
+            if right then right:Hide() end
+            if layout.centerGapHost then layout.centerGapHost:Hide() end
+            if layout.colDivider and layout.colDivider.Hide then layout.colDivider:Hide() end
+            recColW = 0
+        end
+
+        if layout.topStackDivider and layout.topStackDivider.Hide then
+            layout.topStackDivider:Hide()
+        end
+        if layout.horizDivider and layout.horizDivider.Hide then
+            layout.horizDivider:Hide()
+        end
     end
-    layout.recLeft = nil
-    layout.storageW = storageW or layout.cardInnerW
+
+    layout.recColW = recColW
+    layout.sideColW = recColW
+    layout.storageW = storageW or (useStack and topW) or recColW
     return storageW
+end
+
+--- Vertically center the slot columns inside the paperdoll top band.
+---@param paperZoneH number|nil
+---@param maxRows number
+---@param anchorY number|nil
+---@param extraTopInset number|nil
+---@return number startY
+local function ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extraTopInset)
+    local rowStep = SLOT_SIZE + SLOT_GAP
+    local columnH = (maxRows - 1) * rowStep + SLOT_SIZE
+    local zoneH = tonumber(paperZoneH) or columnH
+    local padTop = math.max(0, math.floor((zoneH - columnH) * 0.5 + 0.5))
+    return (tonumber(anchorY) or 0) - padTop - (tonumber(extraTopInset) or 0)
+end
+
+--- Model viewport backdrop only (must stay behind slots/track labels, not over the paper band).
+---@param chrome Frame|nil
+---@param modelHost Frame|nil
+---@param cardRef Frame|nil
+local function AnchorGearPaperChromeBehindModel(chrome, modelHost, cardRef)
+    if not chrome then return end
+    if not modelHost or not modelHost.IsShown or not modelHost:IsShown() then
+        if chrome.Hide then chrome:Hide() end
+        return
+    end
+    chrome:SetParent(modelHost:GetParent() or modelHost)
+    chrome:ClearAllPoints()
+    chrome:SetPoint("TOPLEFT", modelHost, "TOPLEFT", 0, 0)
+    chrome:SetPoint("BOTTOMRIGHT", modelHost, "BOTTOMRIGHT", 0, 0)
+    chrome:EnableMouse(false)
+    chrome:Show()
+    if chrome.SetFrameLevel then
+        local ml = (modelHost.GetFrameLevel and modelHost:GetFrameLevel()) or 2
+        chrome:SetFrameLevel(math.max(1, ml - 1))
+    elseif cardRef and cardRef.GetFrameLevel then
+        chrome:SetFrameLevel((cardRef:GetFrameLevel() or 2) + 1)
+    end
 end
 
 --- Re-anchor paperdoll slots + center model after live resize (DrawPaperDollInCard positions are fixed at paint time).
@@ -427,11 +589,11 @@ local function RelayoutGearPaperdollInCard(card, layout)
     local slotList = card._gearSlotInspectList
     if not slotList or #slotList == 0 then return end
 
-    local paperParent = layout.leftColHost or card
+    local paperParent = layout.paperTopHost or layout.leftColHost or card
     local useColHost = layout.leftColHost ~= nil
     local baseX = useColHost and PAPERDOLL_COL_INSET or ((layout.paperLeft or CARD_PAD) + PAPERDOLL_COL_INSET)
     local paperColW = layout.paperColW or PAPERDOLL_BLOCK_W
-    local modelBoost = math.max(0, math.min(32, paperColW - PAPERDOLL_BLOCK_W - PAPERDOLL_COL_INSET * 2))
+    local modelBoost = math.max(0, math.min(MAX_PAPER_MODEL_BOOST, paperColW - GEAR_PAPER_COL_FIXED_W))
     layout.paperdollBaseX = baseX
     layout.modelBoost = modelBoost
 
@@ -441,28 +603,29 @@ local function RelayoutGearPaperdollInCard(card, layout)
     local rowStep = SLOT_SIZE + SLOT_GAP
 
     local paperdollNaturalH = layout.paperdollNaturalH or 0
-    local paperBandH = paperdollNaturalH
+    local paperBandH = layout.paperZoneH or layout.paperTopZoneH or paperdollNaturalH
     layout.paperZoneH = paperBandH
-    local vertCenterPad = 0
-    local startY
-    if useColHost then
-        startY = -vertCenterPad
-    else
-        local paperOriginY = layout.panelTopY
-        if paperOriginY == nil then paperOriginY = -(CARD_PAD + 22) end
-        startY = paperOriginY - vertCenterPad
+    local pl = card._wnGearPaperdollLayout or {}
+    local topInset = tonumber(pl.topContentInset) or 0
+    local anchorY = pl.paperOriginY
+    if anchorY == nil then
+        anchorY = useColHost and 0 or layout.panelTopY
+        if anchorY == nil then anchorY = -(CARD_PAD + 22) end
     end
+    local leftSlots = { 1, 2, 3, 15, 5, 9 }
+    local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
+    local maxRows = math.max(#leftSlots, #rightSlots)
+    local paperZoneH = layout.paperTopZoneH or layout.paperZoneH or paperBandH or paperdollNaturalH
+    local startY = ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
     local modelX = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
     layout.modelX = modelX
     layout.modelTopY = modelTopY
 
     local posBySlot = {}
-    local leftSlots = { 1, 2, 3, 15, 5, 9 }
     for i = 1, #leftSlots do
         posBySlot[leftSlots[i]] = { leftX, startY - (i - 1) * rowStep }
     end
-    local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
     for i = 1, #rightSlots do
         posBySlot[rightSlots[i]] = { rightX, startY - (i - 1) * rowStep }
     end
@@ -470,7 +633,6 @@ local function RelayoutGearPaperdollInCard(card, layout)
     local WEAPON_GAP = P(36)
     local weaponRowW = SLOT_SIZE + WEAPON_GAP + SLOT_SIZE
     local weaponStartX = baseX + LEFT_PANEL_W + (modelW + CENTER_GAP - weaponRowW) / 2
-    local maxRows = math.max(#leftSlots, #rightSlots)
     local bottomY = startY - maxRows * rowStep - 8
     for i = 1, #weaponSlots do
         local sid = weaponSlots[i]
@@ -508,18 +670,17 @@ local function RelayoutGearPaperdollInCard(card, layout)
     layout.paperColW = math.max(GEAR_PAPER_COL_FIXED_W, layout.paperColW or 0, measuredPaperW)
     layout.measuredPaperColW = measuredPaperW
     if layout.leftColHost and layout.leftColHost.SetSize then
-        local bandH = layout.paperdollNaturalH or layout.paperZoneH or paperdollNaturalH
+        local bandH = layout.contentBandH or layout.paperZoneH or layout.paperdollNaturalH or paperdollNaturalH
         layout.leftColHost:SetSize(layout.paperColW, bandH)
     end
-    if layout.paperChrome and layout.paperChrome.SetSize then
-        layout.paperChrome:SetSize(layout.paperColW, layout.paperZoneH or paperdollNaturalH)
-    end
-
     local centerShown = nil
     if ns._gearDressModel and ns._gearDressModel.IsShown and ns._gearDressModel:IsShown() then
         centerShown = ns._gearDressModel
     elseif ns._gearPortraitPanel and ns._gearPortraitPanel.IsShown and ns._gearPortraitPanel:IsShown() then
         centerShown = ns._gearPortraitPanel
+    end
+    if layout.paperChrome then
+        AnchorGearPaperChromeBehindModel(layout.paperChrome, centerShown, card)
     end
     if centerShown and ns._gearModelBorder then
         ns._gearModelBorder:ClearAllPoints()
@@ -528,30 +689,11 @@ local function RelayoutGearPaperdollInCard(card, layout)
     end
 end
 
---- Three-zone grid: left-top paperdoll, left-bottom stats|currencies, right recommendations (~equal area).
----@param panelH number viewport-filled content height
----@param paperdollMinH number minimum paperdoll block height
----@param bottomBandMinH number minimum stats+currencies band height
----@param sectionGap number
----@return number paperZoneH
----@return number bottomZoneH
-local function ComputeGearLeftColumnHeights(panelH, paperdollMinH, bottomBandMinH, sectionGap)
-    local gap = sectionGap or 12
-    local bottomH = math.max(GEAR_BOTTOM_BAND_MIN_H, bottomBandMinH or 0)
-    local paperMin = paperdollMinH or 0
-    local minStack = paperMin + gap + bottomH
-    local paperZoneH = paperMin
-    if panelH > minStack then
-        paperZoneH = paperMin + (panelH - minStack)
-    end
-    return paperZoneH, bottomH
-end
-
 local function GetGearTabMinCardInnerW()
     if ns.GearUI_GetGearTabMinCardInnerW then
         return ns.GearUI_GetGearTabMinCardInnerW(WarbandNexus:IsGearStorageRecommendationsEnabled())
     end
-    return GEAR_PAPER_COL_FIXED_W + GEAR_PANEL_GAP + (GEAR_LAYOUT.SIDE_COL_MIN_W or 280)
+    return GEAR_PAPER_COL_FIXED_W + GEAR_PANEL_GAP + (GEAR_LAYOUT.REC_COL_MIN_W or 300)
 end
 
 local function ResolveGearTabCardInnerWidth(scrollChildW)
@@ -561,32 +703,23 @@ local function ResolveGearTabCardInnerWidth(scrollChildW)
     return GetGearTabMinCardInnerW()
 end
 
---- Stretch gear card across scroll child; cap to viewport when scrollChild is wider than visible area.
+--- Stretch gear card across scroll child; horizontal scroll when inner width exceeds viewport.
 ---@param card Frame
 ---@param parent Frame
 ---@param yOffset number
----@param mf Frame|nil main frame (scroll viewport width)
+---@param mf Frame|nil
 ---@return number cardInnerW
 local function AnchorGearCardFillWidth(card, parent, yOffset, mf)
     if not card or not parent then return GetGearTabMinCardInnerW() end
     local side = SIDE_MARGIN or 16
     local scrollChildW = (parent.GetWidth and parent:GetWidth()) or 0
     local outerW = math.max(1, scrollChildW - 2 * side)
-    -- Never squeeze the gear card to the visible viewport when scrollChild is wider:
-    -- horizontal scroll reveals overflow instead of truncating paperdoll / stats / recommendations.
     card:ClearAllPoints()
     card:SetPoint("TOPLEFT", parent, "TOPLEFT", side, yOffset)
     card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -side, yOffset)
     return math.max(1, outerW - 2 * CARD_PAD)
 end
 
----@param cardInnerW number
----@return number cardOuterW
-local function GearTabCardOuterWidth(cardInnerW)
-    return math.max(1, (cardInnerW or 0) + CARD_PAD * 2)
-end
-
---- Measured inner width after card stretch anchors (never wider than the card frame).
 ---@param card Frame|nil
 ---@return number cardInnerW
 local function GetGearCardInnerWidthFromCard(card)
@@ -605,118 +738,6 @@ local function ComputeGearStatColumnWidths(statInnerW, colGap)
         return ns.GearUI_ComputeStatColumnWidths(statInnerW, colGap)
     end
     return 80, 48, 44
-end
-
---- Reflow stat/currency FontString widths after bottom-band resize (no full PopulateContent).
----@param layout table
-local function RelayoutGearBottomBandTypography(layout)
-    if not layout then return end
-    local statPanel = layout.statPanel
-    local currencyPanel = layout.currencyPanel
-    local statColW = math.max(1, layout.sideColW or layout.statColW or 0)
-    local currColW = math.max(1, layout.sideColW or layout.currColW or 0)
-
-    if statPanel and statPanel._wnGearStatMetrics and statPanel._wnGearStatRows then
-        local m = statPanel._wnGearStatMetrics
-        local gap = m.statColGap or 8
-        local pad = m.statPad or 10
-        local valW = m.valColW or 72
-        local pctW = m.pctColW or 52
-        local rows = statPanel._wnGearStatRows
-        for i = 1, #rows do
-            local row = rows[i]
-            local y = row.y or 0
-            if row.val then
-                row.val:ClearAllPoints()
-                row.val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -pad, y)
-                row.val:SetWidth(valW)
-                row.val:SetJustifyH("RIGHT")
-            end
-            if row.hasPct and row.pct then
-                row.pct:ClearAllPoints()
-                row.pct:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -(pad + valW + gap), y)
-                row.pct:SetWidth(pctW)
-                row.pct:SetJustifyH("RIGHT")
-            elseif row.pct then
-                row.pct:Hide()
-            end
-            if row.label then
-                row.label:ClearAllPoints()
-                row.label:SetPoint("TOPLEFT", statPanel, "TOPLEFT", pad, y)
-                local labelRight = pad + valW + gap + (row.hasPct and (pctW + gap) or 0)
-                row.label:SetPoint("RIGHT", statPanel, "RIGHT", -labelRight, y)
-                row.label:SetJustifyH("LEFT")
-            end
-        end
-    end
-
-    if currencyPanel and currencyPanel._wnGearCurrMetrics and currencyPanel._wnGearCurrRows then
-        local cm = currencyPanel._wnGearCurrMetrics
-        local currAmtReserve = (ns.GEAR_LAYOUT and ns.GEAR_LAYOUT.CURR_AMOUNT_COL_W) or 108
-        cm.currAmtReserve = currAmtReserve
-        local rows = currencyPanel._wnGearCurrRows
-        for i = 1, #rows do
-            local row = rows[i]
-            if row.name then
-                row.name:ClearAllPoints()
-                row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
-                row.name:SetPoint("RIGHT", currencyPanel, "RIGHT", -cm.currPad - currAmtReserve, 0)
-                row.name:SetPoint("TOP", row.icon, "TOP", 0, 0)
-                row.name:SetPoint("BOTTOM", row.icon, "BOTTOM", 0, 0)
-            end
-            if row.amount and row.icon then
-                row.amount:ClearAllPoints()
-                row.amount:SetPoint("RIGHT", currencyPanel, "RIGHT", -cm.currPad, 0)
-                row.amount:SetPoint("TOP", row.icon, "TOP", 0, 0)
-                row.amount:SetPoint("BOTTOM", row.icon, "BOTTOM", 0, 0)
-            end
-        end
-    end
-end
-
---- Stats + currencies stacked in the right column (top host).
----@param card Frame
----@param layout table
-local function RelayoutGearSideColumnInCard(card, layout)
-    if not card or not layout then return end
-    local sideParent = layout.rightColHost
-    if not sideParent then return end
-    local sideColW = math.max(1, layout.sideColW or layout.statColW or 0)
-    local sideInset = GEAR_LAYOUT.SIDE_PANEL_INSET or 6
-    local innerW = math.max(1, sideColW - sideInset * 2)
-    local statPanelH = math.max(80, layout.statPanelH or layout.statBandH or GEAR_BOTTOM_BAND_MIN_H)
-    local currPanelH = math.max(80, layout.currenciesH or layout.currBandH or GEAR_BOTTOM_BAND_MIN_H)
-    local bandGap = layout.sideBandGap or GEAR_LAYOUT.SIDE_BAND_GAP or 10
-    layout.bottomBandMode = "stack"
-    layout.statColW = sideColW
-    layout.currColW = sideColW
-    layout.sideBandGap = bandGap
-    layout.sideColNaturalH = statPanelH + bandGap + currPanelH
-
-    if layout.statPanel then
-        layout.statPanel:SetParent(sideParent)
-        layout.statPanel:ClearAllPoints()
-        layout.statPanel:SetSize(innerW, statPanelH)
-        layout.statPanel:SetPoint("TOPLEFT", sideParent, "TOPLEFT", sideInset, 0)
-        layout.statPanel:SetPoint("TOPRIGHT", sideParent, "TOPRIGHT", -sideInset, 0)
-    end
-    if layout.statCurrDiv then
-        layout.statCurrDiv:SetParent(sideParent)
-        layout.statCurrDiv:ClearAllPoints()
-        local divY = -statPanelH - math.floor(bandGap * 0.5)
-        layout.statCurrDiv:SetPoint("TOPLEFT", sideParent, "TOPLEFT", sideInset, divY)
-        layout.statCurrDiv:SetPoint("TOPRIGHT", sideParent, "TOPRIGHT", -sideInset, divY)
-        layout.statCurrDiv:SetHeight(1)
-        layout.statCurrDiv:Show()
-    end
-    if layout.currencyPanel then
-        layout.currencyPanel:SetParent(sideParent)
-        layout.currencyPanel:ClearAllPoints()
-        layout.currencyPanel:SetSize(innerW, currPanelH)
-        layout.currencyPanel:SetPoint("TOPLEFT", sideParent, "TOPLEFT", sideInset, -statPanelH - bandGap)
-        layout.currencyPanel:SetPoint("BOTTOMRIGHT", sideParent, "BOTTOMRIGHT", -sideInset, 0)
-    end
-    RelayoutGearBottomBandTypography(layout)
 end
 
 -- Empty slot textures (standard WoW interface art)
@@ -1093,9 +1114,9 @@ local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBgBo
         tex:SetSize(sz, sz)
         tex:ClearAllPoints()
         if side == "left" or side == "bottom_left" then
-            tex:SetPoint("TOPLEFT", icon, "TOPLEFT", dx, dy)
-        elseif side == "right" or side == "bottom_right" then
             tex:SetPoint("TOPRIGHT", icon, "TOPRIGHT", -dx, dy)
+        elseif side == "right" or side == "bottom_right" then
+            tex:SetPoint("TOPLEFT", icon, "TOPLEFT", dx, dy)
         else
             tex:SetPoint("TOP", icon, "TOP", 0, dy)
         end
@@ -1115,9 +1136,9 @@ local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBgBo
         if upgradeArrowBg then
             upgradeArrow:SetPoint("CENTER", upgradeArrowBg, "CENTER", 0, 0)
         elseif side == "left" or side == "bottom_left" then
-            upgradeArrow:SetPoint("TOPLEFT", icon, "TOPLEFT", inset, yInset)
-        elseif side == "right" or side == "bottom_right" then
             upgradeArrow:SetPoint("TOPRIGHT", icon, "TOPRIGHT", -inset, yInset)
+        elseif side == "right" or side == "bottom_right" then
+            upgradeArrow:SetPoint("TOPLEFT", icon, "TOPLEFT", inset, yInset)
         else
             upgradeArrow:SetPoint("TOP", icon, "TOP", 0, yInset)
         end
@@ -1128,13 +1149,96 @@ local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBgBo
         lockIcon:SetSize(lockSz, lockSz)
         lockIcon:ClearAllPoints()
         if side == "left" or side == "bottom_left" then
-            lockIcon:SetPoint("TOPLEFT", icon, "TOPLEFT", inset, yInset)
-        elseif side == "right" or side == "bottom_right" then
             lockIcon:SetPoint("TOPRIGHT", icon, "TOPRIGHT", -inset, yInset)
+        elseif side == "right" or side == "bottom_right" then
+            lockIcon:SetPoint("TOPLEFT", icon, "TOPLEFT", inset, yInset)
         else
             lockIcon:SetPoint("TOP", icon, "TOP", 0, yInset)
         end
     end
+end
+
+--- Dawncrest rows in PvE column order with the same currency icons as the PvE tab (GetCurrencyData).
+---@param currencies table|nil from GetGearUpgradeCurrenciesFromDB
+---@param charKey string|nil
+---@param isCurrentChar boolean|nil
+---@return table rows
+---@return table|nil goldCurrency
+local function BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
+    local rows = {}
+    local goldCurrency = nil
+    local byId = {}
+    for i = 1, #(currencies or {}) do
+        local cur = currencies[i]
+        if cur then
+            if cur.isGold then
+                goldCurrency = cur
+            elseif cur.currencyID then
+                byId[cur.currencyID] = cur
+            end
+        end
+    end
+    local MS1 = ns.Constants and ns.Constants.DAWNCREST_UI
+    local ordered = MS1 and MS1.COLUMN_IDS
+    local labelKeys = MS1 and MS1.PVE_LABEL_KEYS
+    local function resolveCrestIcon(currencyID)
+        if WarbandNexus and WarbandNexus.GetCurrencyData then
+            local cd = WarbandNexus:GetCurrencyData(currencyID, charKey)
+            if cd and (cd.icon or cd.iconFileID) then
+                return cd.icon or cd.iconFileID
+            end
+        end
+        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+            if ok and info and info.iconFileID and info.iconFileID > 0 then
+                return info.iconFileID
+            end
+        end
+        return 134400
+    end
+    local function mergeRow(currencyID, base)
+        local row = {
+            currencyID = currencyID,
+            amount = base and tonumber(base.amount) or 0,
+            name = base and base.name,
+            icon = resolveCrestIcon(currencyID),
+            maxQuantity = base and base.maxQuantity,
+        }
+        if isCurrentChar and WarbandNexus and WarbandNexus.GetCurrencyData then
+            local cd = WarbandNexus:GetCurrencyData(currencyID, charKey)
+            if cd then
+                row.amount = cd.quantity or row.amount
+                if cd.name and cd.name ~= "" then row.name = cd.name end
+                if cd.icon or cd.iconFileID then row.icon = cd.icon or cd.iconFileID end
+                row.maxQuantity = cd.maxQuantity
+            end
+        end
+        if labelKeys and labelKeys[currencyID] and ns.L and ns.L[labelKeys[currencyID]] then
+            row.displayName = ns.L[labelKeys[currencyID]]
+        end
+        rows[#rows + 1] = row
+    end
+    if ordered then
+        for i = 1, #ordered do
+            local id = ordered[i]
+            if byId[id] then
+                mergeRow(id, byId[id])
+                byId[id] = nil
+            end
+        end
+    end
+    for id, base in pairs(byId) do
+        mergeRow(id, base)
+    end
+    return rows, goldCurrency
+end
+
+local function GearSlotHideLegacyIncreaseLabels(btn)
+    if not btn then return end
+    if btn._gearIncNextFs then btn._gearIncNextFs:Hide() end
+    if btn._gearIncTargetFs then btn._gearIncTargetFs:Hide() end
+    btn._gearLastIncNext = nil
+    btn._gearLastIncTarget = nil
 end
 
 --- Upgrade chip on slot icon (green = affordable, yellow = upgrade path but short on crests).
@@ -1150,16 +1254,19 @@ local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable)
         btn._gearUpgradeArrow:Hide()
         if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Hide() end
         if btn._gearUpgradeArrowBg then btn._gearUpgradeArrowBg:Hide() end
+        GearSlotHideLegacyIncreaseLabels(btn)
         return
     end
     local up = btn._gearUpgradeInfo and btn._gearUpgradeInfo[slotID]
     local currencies = btn._gearCurrencyAmounts
-    local canAfford = up and up.canUpgrade and not notUpgradeable and (
-        up.canAffordNext == true
-        or (ns.GearUI_CanAffordNextUpgrade and ns.GearUI_CanAffordNextUpgrade(up, currencies))
-    )
+    local arrowDisplay = nil
+    if up and ns.GearUI_GetUpgradeArrowDisplay then
+        arrowDisplay = ns.GearUI_GetUpgradeArrowDisplay(up, currencies)
+        up.upgradeArrowDisplay = arrowDisplay
+    end
     local showUpChip = GEAR_DEBUG_ALWAYS_SHOW_UPGRADE
-        or (canAfford == true)
+        or (arrowDisplay == "green")
+    local canAfford = (arrowDisplay == "green")
     if showUpChip then
         btn._gearUpgradeArrow:Show()
         if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Show() end
@@ -1180,6 +1287,7 @@ local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable)
         if btn._gearUpgradeArrowBgBorder then btn._gearUpgradeArrowBgBorder:Hide() end
         if btn._gearUpgradeArrowBg then btn._gearUpgradeArrowBg:Hide() end
     end
+    GearSlotHideLegacyIncreaseLabels(btn)
     btn._gearLastCanAffordNext = canAfford == true
 end
 
@@ -1191,6 +1299,7 @@ local function GearSlotClearPaperdollOverlays(btn)
     if btn.missingGemIcon then btn.missingGemIcon:Hide() end
     if btn._gearOuterSideHost then btn._gearOuterSideHost:Hide() end
     if btn.warnIcon then btn.warnIcon:Hide() end
+    GearSlotHideLegacyIncreaseLabels(btn)
 end
 
 local function UpdateGearSocketCluster(btn, entries, opts)
@@ -1284,9 +1393,12 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
     local slotID = btn._slotID
     local st = btn._gearInspectSt
     local ctx = btn._gearLayoutCtx
-    if not slotData or not slotData.itemLink or not st or not ctx then
+    if not slotData or not slotData.itemLink or not st then
         GearSlotClearPaperdollOverlays(btn)
         return
+    end
+    if not ctx then
+        ctx = { side = btn._gearTextSide or "right", upgradeArrow = btn._gearUpgradeArrow }
     end
     local link = slotData.itemLink
     if issecretvalue and issecretvalue(link) then
@@ -1434,8 +1546,9 @@ end
 ---@param itemTooltipContext table|nil optional { level, specID } — rewrite item link for C_TooltipInfo primary-stat lines (Gear tab / viewed character)
 ---@param charKey string|nil canonical character key for persisted upgrade tooltip append
 ---@param isCurrentChar boolean|nil live player — enables tooltip scan fallback in GearService
+---@param inspectListHost Frame|nil card root for deferred enchant/gem inspect (must match card._gearSlotInspectList)
 ---@return Frame btn
-local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
+local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, inspectListHost)
     -- Slot her zaman aynı boyutta; ikon görünmese bile boşluk rezerve (empty texture)
     local btn = GearFact:CreateButton(parent, SLOT_SIZE, SLOT_SIZE, true)
     btn:SetPoint("TOPLEFT", x, y)
@@ -1458,9 +1571,10 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     if slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
         btn._needsDeferredInspect = true
     end
-    if parent then
-        parent._gearSlotInspectList = parent._gearSlotInspectList or {}
-        tinsert(parent._gearSlotInspectList, btn)
+    local inspectRoot = inspectListHost or parent
+    if inspectRoot then
+        inspectRoot._gearSlotInspectList = inspectRoot._gearSlotInspectList or {}
+        tinsert(inspectRoot._gearSlotInspectList, btn)
     end
 
     -- Outer border frame (quality color rim)
@@ -1539,7 +1653,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
 
             -- ilvl label (only when slot has an item link and valid ilvl)
             if btn.ilvlLabel and data.itemLink and data.itemLevel and data.itemLevel > 0 then
-                btn.ilvlLabel:SetText(data.itemLevel)
+                btn.ilvlLabel:SetText(tostring(math.floor(tonumber(data.itemLevel) or 0)))
                 btn.ilvlLabel:SetTextColor(1, 1, 1)
                 btn.ilvlLabel:SetShadowOffset(1, -1)
                 btn.ilvlLabel:SetShadowColor(0, 0, 0, 1)
@@ -1561,6 +1675,8 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     Populate(slotData)
 
     local side = textSide or "right"
+    btn._gearTextSide = side
+    btn._gearTextWidth = textWidth
     local upgradeArrow = nil
 
     local isBottomLeft  = (side == "bottom" or side == "bottom_left")
@@ -1569,17 +1685,19 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     -- Ortadan çizgi: yazı merkezi, ikon merkezi, slot merkezi aynı yatay çizgide (sol/sağ/alt)
     local upSlot = upgradeInfo and upgradeInfo[slotID]
     local isCraftedSlot = upSlot and upSlot.isCrafted
-    local canAffordNext = upSlot and upSlot.canUpgrade and (
-        upSlot.canAffordNext == true
-        or (ns.GearUI_CanAffordNextUpgrade and ns.GearUI_CanAffordNextUpgrade(upSlot, currencyAmounts))
-    )
+    local arrowDisplay = (upSlot and ns.GearUI_GetUpgradeArrowDisplay)
+        and ns.GearUI_GetUpgradeArrowDisplay(upSlot, currencyAmounts) or nil
+    if upSlot then upSlot.upgradeArrowDisplay = arrowDisplay end
     local statusUpgradeSz = STATUS_UPGRADE_ICON - 2 * STATUS_ICON_INSET
     local wantDebugUpgrade = GEAR_DEBUG_ALWAYS_SHOW_UPGRADE == true and slotData and slotData.itemLink
         and not (issecretvalue and issecretvalue(slotData.itemLink))
     -- Always reserve an arrow texture when the slot has an item (unless lock-only), so a late upgradeInfo refresh can still show/hide in _gearApplySlotVisual.
     local hasItemNow = slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink))
     local lockOnly = isNotUpgradeable and hasItemNow and not wantDebugUpgrade
-    if not lockOnly and (hasUpgradePath or wantDebugUpgrade or hasItemNow) then
+    local showUpgradeChip = wantDebugUpgrade
+        or (hasUpgradePath and arrowDisplay == "green" and hasItemNow and not isNotUpgradeable)
+    local canAffordNext = (arrowDisplay == "green")
+    if not lockOnly and showUpgradeChip then
         local upgradeBd = btn:CreateTexture(nil, "OVERLAY")
         btn._gearUpgradeArrowBgBorder = upgradeBd
         upgradeBd:SetTexture("Interface\\BUTTONS\\WHITE8X8")
@@ -1639,7 +1757,16 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
 
     btn:SetScript("OnEnter", function(self)
         if slotData and slotData.itemLink then
+            local snap = self._slotDataRef or slotData
             local up = upgradeInfo and upgradeInfo[slotID]
+            if up and snap and ns.Gear_SyncUpgradeEntryFromSlot then
+                up = ns.Gear_SyncUpgradeEntryFromSlot(up, snap) or up
+                if upgradeInfo then upgradeInfo[slotID] = up end
+            end
+            if up and ns.GearUI_GetUpgradeArrowDisplay then
+                up.upgradeArrowDisplay = ns.GearUI_GetUpgradeArrowDisplay(up, currencyAmounts)
+                GearSlotRefreshUpgradeArrow(self, snap or slotData, (up and up.notUpgradeable) or false)
+            end
             local additionalLines = {}
             local underTitleLines
 
@@ -1671,46 +1798,47 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
                 end
             elseif up and up.canUpgrade then
                 additionalLines[#additionalLines + 1] = { type = "spacer", height = 6 }
-                local affordable = up.affordableUpgrades
-                local goldOnly = up.goldOnlyUpgrades
-                if affordable == nil and ns.GearUI_CalculateAffordableUpgrades then
-                    affordable, goldOnly = ns.GearUI_CalculateAffordableUpgrades(up, currencyAmounts)
+                if ns.GearUI_CanAffordImmediateNextStep then
+                    up.canAffordNext = ns.GearUI_CanAffordImmediateNextStep(up, currencyAmounts)
                 end
-                affordable = affordable or 0
-                goldOnly = goldOnly or 0
-                if affordable > 0 then
-                    local targetTier = (up.currUpgrade or 0) + affordable
-                    local TRACK_ILVLS = ns.TRACK_ILVLS
-                    local targetIlvl = TRACK_ILVLS and TRACK_ILVLS[up.trackName] and TRACK_ILVLS[up.trackName][targetTier]
-                    local ilvlStr = targetIlvl and format(" (%d)", targetIlvl) or ""
+                local canPayNext = up.canAffordNext == true
+                local crestNeed = (ns.GearUI_GetNextStepCrestNeed and ns.GearUI_GetNextStepCrestNeed(up)) or (up.crestCost or 20)
+                local cid = up.currencyID or 0
+                local haveCrests = (currencyAmounts and currencyAmounts[cid]) or 0
+                local goldCopper = (ns.GearUI_GetGearCurrencyGoldCopper and ns.GearUI_GetGearCurrencyGoldCopper(currencyAmounts))
+                    or ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
+                local goldNeed = up.moneyCost or (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000)
+                local nextTier = (up.currUpgrade or 0) + 1
+                local TRACK_ILVLS = ns.TRACK_ILVLS
+                local nextIlvl = TRACK_ILVLS and TRACK_ILVLS[up.trackName] and TRACK_ILVLS[up.trackName][nextTier]
+                local ilvlStr = nextIlvl and format(" (%d)", nextIlvl) or ""
+                if canPayNext then
                     additionalLines[#additionalLines + 1] = {
-                        text = format((ns.L and ns.L["GEAR_UPGRADE_AVAILABLE_FORMAT"]) or "Available upgrade to %s %d/%d%s", LocalizeUpgradeTrackName(up.trackName or ""), targetTier, up.maxUpgrade or 0, ilvlStr),
+                        text = format((ns.L and ns.L["GEAR_UPGRADE_AVAILABLE_FORMAT"]) or "Available upgrade to %s %d/%d%s", LocalizeUpgradeTrackName(up.trackName or ""), nextTier, up.maxUpgrade or 0, ilvlStr),
                         color = { 0.4, 1, 0.4 }
                     }
-                    additionalLines[#additionalLines + 1] = {
-                        text = format((ns.L and ns.L["GEAR_UPGRADES_WITH_CURRENCY_FORMAT"]) or "%d upgrade(s) with current currency", affordable),
-                        color = { 0.6, 0.9, 0.6 }
-                    }
-                    if goldOnly > 0 then
-                        if goldOnly >= affordable then
+                    if crestNeed > 0 then
+                        additionalLines[#additionalLines + 1] = {
+                            text = format((ns.L and ns.L["GEAR_TT_NEXT_STEP_CRESTS"]) or "Next step: %d %s.", crestNeed, (ns.L and ns.L["GEAR_TT_DAWNCREST_WORD"]) or "Dawncrest"),
+                            color = { 0.6, 0.9, 0.6 }
+                        }
+                        additionalLines[#additionalLines + 1] = {
+                            text = format((ns.L and ns.L["GEAR_SLOT_CURRENCY_HAVE_NEED"]) or "%d/%d", haveCrests, crestNeed),
+                            color = { 0.55, 0.95, 0.55 }
+                        }
+                        if up.nextUpgradeIsDiscounted then
                             additionalLines[#additionalLines + 1] = {
-                                text = (ns.L and ns.L["GEAR_CRESTS_GOLD_ONLY"]) or "Crests needed: 0 (gold only — previously reached)",
-                                color = { 1, 0.85, 0.4 }
-                            }
-                        else
-                            additionalLines[#additionalLines + 1] = {
-                                text = format((ns.L and ns.L["GEAR_UPGRADES_GOLD_ONLY_FORMAT"]) or "%d upgrade(s) gold only (previously reached)", goldOnly),
-                                color = { 1, 0.85, 0.4 }
+                                text = (ns.L and ns.L["GEAR_TT_DISCOUNTED_UPGRADE"]) or "Discounted crest cost (high watermark)",
+                                color = { 0.55, 0.82, 1 }
                             }
                         end
+                    elseif ns.GearUI_IsNextStepGoldOnlyUpgrade and ns.GearUI_IsNextStepGoldOnlyUpgrade(up) then
+                        additionalLines[#additionalLines + 1] = {
+                            text = (ns.L and ns.L["GEAR_CRESTS_GOLD_ONLY"]) or "Crests needed: 0 (gold only — previously reached)",
+                            color = { 1, 0.85, 0.4 }
+                        }
                     end
                 else
-                    local crestNeed = (ns.GearUI_GetNextStepCrestNeed and ns.GearUI_GetNextStepCrestNeed(up)) or (up.crestCost or 20)
-                    local cid = up.currencyID or 0
-                    local haveCrests = (currencyAmounts and currencyAmounts[cid]) or 0
-                    local goldCopper = (ns.GearUI_GetGearCurrencyGoldCopper and ns.GearUI_GetGearCurrencyGoldCopper(currencyAmounts))
-                        or ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
-                    local goldNeed = up.moneyCost or (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000)
                     if crestNeed > 0 then
                         local crestWord = (ns.L and ns.L["GEAR_TT_DAWNCREST_WORD"]) or "Dawncrest"
                         additionalLines[#additionalLines + 1] = {
@@ -1721,6 +1849,12 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
                             text = format((ns.L and ns.L["GEAR_NEED_MORE_CRESTS_FORMAT"]) or "%s %d/%d - need more crests", LocalizeUpgradeTrackName(up.trackName or ""), haveCrests, crestNeed),
                             color = { 1, 0.55, 0.25 }
                         }
+                        if up.nextUpgradeIsDiscounted then
+                            additionalLines[#additionalLines + 1] = {
+                                text = (ns.L and ns.L["GEAR_TT_DISCOUNTED_UPGRADE"]) or "Discounted crest cost (high watermark)",
+                                color = { 0.55, 0.82, 1 }
+                            }
+                        end
                     elseif goldCopper < goldNeed then
                         additionalLines[#additionalLines + 1] = {
                             text = format((ns.L and ns.L["GEAR_TT_NEXT_STEP_GOLD_ONLY"]) or "Next step: gold only (you already reached this item level on this slot)."),
@@ -1817,13 +1951,10 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
         if slotNameLabel.SetWordWrap then slotNameLabel:SetWordWrap(false) end
     end
 
-    -- Status label ve text layout
     local trackText = (statusText and statusText ~= "") and statusText or nil
     local trackLabel = nil
     local w = textWidth or TRACK_TEXT_W
-    
     local currentTextOffset = TEXT_OFFSET_FROM_SLOT_CENTER
-    -- Dikey hizalama yapıldığı için artık +20 yatay itme yapmaya gerek yok
 
     if trackText and side ~= "top" then
         trackLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, GFR("gearTrackLabel"), "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1921,6 +2052,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
             end
         end
         GearSlotRefreshUpgradeArrow(self, slotData, notUpgradeable)
+        GearSlotHideLegacyIncreaseLabels(self)
         if self._gearLockIcon then
             if notUpgradeable and slotData and slotData.itemLink then self._gearLockIcon:Show() else self._gearLockIcon:Hide() end
         end
@@ -1928,10 +2060,10 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     end
 
     local upInit = upgradeInfo and upgradeInfo[slotID]
-    local canAffordInit = upInit and upInit.canUpgrade and (
-        upInit.canAffordNext == true
-        or (ns.GearUI_CanAffordNextUpgrade and ns.GearUI_CanAffordNextUpgrade(upInit, currencyAmounts))
-    )
+    local initArrow = (upInit and ns.GearUI_GetUpgradeArrowDisplay)
+        and ns.GearUI_GetUpgradeArrowDisplay(upInit, currencyAmounts) or nil
+    if upInit then upInit.upgradeArrowDisplay = initArrow end
+    local canAffordInit = initArrow == "green"
     local trackTextInit = (statusText and statusText ~= "") and statusText or nil
     btn:_gearApplySlotVisual(slotData, canAffordInit, trackTextInit, isNotUpgradeable)
 
@@ -1945,51 +2077,549 @@ end
 local CURRENCY_ROW_H = 26
 local ROW_H = 34
 
---- Build track/tier string from upgradeInfo[slotID], e.g. "Veteran 2/6".
---- For crafted items, shows tier name + ilvl (e.g. "Myth 285") or upgrade arrow (e.g. "Hero → Myth 285").
-local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts)
-    local up = upgradeInfo and upgradeInfo[slotID]
+--- Crest/gold have vs need for next upgrade step (discounted cost when API flagged).
+---@param up table
+---@param currencyAmounts table|nil
+---@return string|nil markup suffix e.g. " |cff66ee88(45/20)|r"
+local function FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
+    if not up or not up.canUpgrade or up.notUpgradeable then return nil end
+    if up.isCrafted then
+        local range = currencyAmounts and ns.GearUI_GetCraftedIlvlRange and ns.GearUI_GetCraftedIlvlRange(up, currencyAmounts) or nil
+        if not range or not range.nextTierCost or range.nextTierCost <= 0 then return nil end
+        local have = range.nextTierHave or 0
+        local need = range.nextTierCost
+        local hex = (have >= need) and "66ee88" or "ff8844"
+        local fmt = (ns.L and ns.L["GEAR_SLOT_CURRENCY_HAVE_NEED"]) or "%d/%d"
+        return " |cff" .. hex .. "(" .. format(fmt, have, need) .. ")|r"
+    end
+    local crestNeed = (ns.GearUI_GetNextStepCrestNeed and ns.GearUI_GetNextStepCrestNeed(up)) or (up.crestCost or 0)
+    if crestNeed > 0 then
+        local cid = up.currencyID or 0
+        local have = (currencyAmounts and currencyAmounts[cid]) or 0
+        local hex = (have >= crestNeed) and "66ee88" or "ff8844"
+        local fmt = (ns.L and ns.L["GEAR_SLOT_CURRENCY_HAVE_NEED"]) or "%d/%d"
+        local suffix = " |cff" .. hex .. "(" .. format(fmt, have, crestNeed) .. ")|r"
+        if up.nextUpgradeIsDiscounted then
+            suffix = suffix .. " |cff88ccff*|r"
+        end
+        return suffix
+    end
+    local goldNeed = up.moneyCost or (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000)
+    local goldCopper = (ns.GearUI_GetGearCurrencyGoldCopper and ns.GearUI_GetGearCurrencyGoldCopper(currencyAmounts))
+        or ((currencyAmounts and currencyAmounts[0]) or 0) * 10000
+    local haveGold = math.floor(goldCopper / 10000)
+    local needGold = math.floor(goldNeed / 10000)
+    local hex = (goldCopper >= goldNeed) and "66ee88" or "ff8844"
+    local fmt = (ns.L and ns.L["GEAR_SLOT_CURRENCY_HAVE_NEED"]) or "%d/%d"
+    return " |cff" .. hex .. "(" .. format(fmt, haveGold, needGold) .. ")|r"
+end
+
+--- Build track/tier string from upgradeInfo[slotID], e.g. "Hero 3/6".
+--- slotData optional: live ilvl sync only (track comes from scan/GetPersistedUpgradeInfo).
+local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData)
+    local up = upgradeInfo and (upgradeInfo[slotID] or upgradeInfo[tostring(slotID)])
+    if not up and slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
+        if ns.Gear_ResolveSlotUpgradeTrackAndTier then
+            local tn, tc, tm = ns.Gear_ResolveSlotUpgradeTrackAndTier(slotData)
+            if tn and tc and tm and tm > 0 then
+                local track = LocalizeUpgradeTrackName(tn)
+                if track and track ~= "" then
+                    return FormatTrackMarkup(tn, track .. " " .. tostring(tc) .. "/" .. tostring(tm), quality)
+                end
+            end
+        end
+        return nil
+    end
     if not up then return nil end
+    if slotData and ns.Gear_SyncUpgradeEntryFromSlot then
+        up = ns.Gear_SyncUpgradeEntryFromSlot(up, slotData) or up
+    end
+    if slotData and ns.Gear_ResolveSlotUpgradeTrackAndTier and not up.isCrafted and not up.notUpgradeable then
+        local maxT = tonumber(up.maxUpgrade) or 0
+        if not up.trackName or up.trackName == "" or maxT <= 0 then
+            local tn, tc, tm = ns.Gear_ResolveSlotUpgradeTrackAndTier(slotData)
+            if tn and tc and tm then
+                up.trackName = tn
+                up.currUpgrade = tc
+                up.maxUpgrade = tm
+            end
+        end
+    end
 
     -- Crafted items: show current tier + achievable recraft target
     if up.isCrafted then
-        local currentEnglish = up.craftedTierName or "Crafted"
+        local currentEnglish = up.craftedTierName or up.trackName or "Crafted"
+        local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
+        if currentEnglish == "Myth" and maxT > 5 then
+            maxT = 5
+            if curT > 5 then curT = 5 end
+        end
         local currentTier = LocalizeUpgradeTrackName(currentEnglish)
-        local range = currencyAmounts and ns.GearUI_GetCraftedIlvlRange(up, currencyAmounts) or nil
+        local range = currencyAmounts and ns.GearUI_GetCraftedIlvlRange and ns.GearUI_GetCraftedIlvlRange(up, currencyAmounts) or nil
         local canRecast = range and range.maxIlvl > (up.currentIlvl or 0)
             and (up.canAffordNext == true
                 or (currencyAmounts and ns.GearUI_CanAffordNextUpgrade and ns.GearUI_CanAffordNextUpgrade(up, currencyAmounts)))
+        if maxT > 0 and curT > 0 and currentTier then
+            if canRecast then
+                local bestEnglish = range.bestCrestName or ""
+                return FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+                    .. " → "
+                    .. FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
+            end
+            return FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+        end
         if canRecast then
             local bestEnglish = range.bestCrestName or ""
-            return FormatTrackMarkup(currentEnglish, currentTier, quality)
+            return FormatTrackMarkup(currentEnglish, currentTier or LocalizeUpgradeTrackName(currentEnglish), quality)
                 .. " → "
                 .. FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
         end
-        return FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(up.currentIlvl or 0), quality)
+        if currentTier and currentTier ~= "" then
+            return FormatTrackMarkup(currentEnglish, currentTier, quality)
+        end
     end
 
     local englishTrack = up.trackName
     local track = (englishTrack and englishTrack ~= "") and LocalizeUpgradeTrackName(englishTrack) or nil
     local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
     if maxT and maxT > 0 and track then
-        local base = FormatTrackMarkup(englishTrack, track .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
-        local aff = up.affordableUpgrades
-        if (not aff or aff == 0) and currencyAmounts and ns.GearUI_CalculateAffordableUpgrades then
-            aff = select(1, ns.GearUI_CalculateAffordableUpgrades(up, currencyAmounts))
-        end
-        local canAffordNext = up.canAffordNext == true
-            or (currencyAmounts and ns.GearUI_CanAffordNextUpgrade and ns.GearUI_CanAffordNextUpgrade(up, currencyAmounts))
-        if canAffordNext and aff and aff > 0 then
-            local targetTier = curT + aff
-            local TRACK_ILVLS = ns.TRACK_ILVLS
-            local tiers = TRACK_ILVLS and TRACK_ILVLS[englishTrack]
-            local ilvlSuffix = (tiers and tiers[targetTier]) and (" " .. tostring(tiers[targetTier])) or ""
-            return base .. "|cff66ff66 → " .. tostring(targetTier) .. "/" .. tostring(maxT) .. ilvlSuffix .. "|r"
-        end
-        return base
+        return FormatTrackMarkup(englishTrack, track .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
     end
     if track and track ~= "" then return FormatTrackMarkup(englishTrack, track, quality) end
+    if slotData and slotData.upgradeTrack and not (issecretvalue and issecretvalue(slotData.upgradeTrack)) then
+        local raw = slotData.upgradeTrack
+        local englishTrack = raw:match("^(%S+)") or raw
+        local trackLbl = LocalizeUpgradeTrackName(englishTrack)
+        local curT = tonumber(slotData.currUpgrade) or tonumber(up.currUpgrade) or 0
+        local maxT = tonumber(slotData.maxUpgrade) or tonumber(up.maxUpgrade) or 0
+        if trackLbl and maxT > 0 then
+            return FormatTrackMarkup(englishTrack, trackLbl .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+        end
+        if trackLbl and trackLbl ~= "" then
+            return FormatTrackMarkup(englishTrack, trackLbl, quality)
+        end
+    end
     return nil
+end
+
+-- Stat helpers (must be above PaintGearPaperBottomBand — Lua 5.1 local scope).
+local STAT_IDS = {
+    { id = 1, label = (ns.L and ns.L["STAT_STRENGTH"]) or SPELL_STAT1_NAME or "Strength",    icon = "Interface\\Icons\\spell_nature_strength" },
+    { id = 2, label = (ns.L and ns.L["STAT_AGILITY"]) or SPELL_STAT2_NAME or "Agility",      icon = "Interface\\Icons\\ability_backstab" },
+    { id = 3, label = (ns.L and ns.L["STAT_STAMINA"]) or SPELL_STAT3_NAME or "Stamina",      icon = "Interface\\Icons\\spell_holy_wordfortitude" },
+    { id = 4, label = (ns.L and ns.L["STAT_INTELLECT"]) or SPELL_STAT4_NAME or "Intellect",  icon = "Interface\\Icons\\spell_holy_magicalsentry" },
+}
+local SECONDARY_STATS = {
+    { label = (ns.L and ns.L["STAT_CRITICAL_STRIKE"]) or "Critical Strike", fn = function() return GetCombatRating and GetCombatRating(9) or 0 end,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
+    { label = (ns.L and ns.L["STAT_HASTE"]) or "Haste",                     fn = function() return GetCombatRating and GetCombatRating(18) or 0 end, pctFn = function() return GetHaste and GetHaste() or 0 end },
+    { label = (ns.L and ns.L["STAT_MASTERY"]) or "Mastery",                 fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
+    { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
+}
+local function MergeOfflineSecondaryForGear(savedSec)
+    local out = {}
+    for i = 1, #SECONDARY_STATS do
+        local def = SECONDARY_STATS[i]
+        local rating, pct = 0, 0
+        local s = savedSec and savedSec[i]
+        if s and type(s.rating) == "number" then
+            rating = math.floor(s.rating)
+            pct = (type(s.pct) == "number") and s.pct or 0
+        elseif savedSec then
+            for j = 1, #savedSec do
+                local ent = savedSec[j]
+                if ent and ent.label == def.label then
+                    rating = tonumber(ent.rating) or 0
+                    pct = (type(ent.pct) == "number") and ent.pct or 0
+                    break
+                end
+            end
+        end
+        out[#out + 1] = { label = def.label, rating = rating, pct = pct }
+    end
+    return out
+end
+
+--- Shared bottom-band row: label (optional icon) left, value right — stats + currencies use the same layout.
+---@param col Frame
+---@param rowY number
+---@param rowH number
+---@param pad number
+---@param valueColW number
+---@param label string
+---@param valueStr string
+---@param iconFileID number|nil
+---@return number nextY
+local function PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueStr, iconFileID)
+    local labelLeft = pad
+    if iconFileID then
+        local iconSz = math.min(22, rowH - 2)
+        local ico = col:CreateTexture(nil, "ARTWORK")
+        ico:SetSize(iconSz, iconSz)
+        ico:SetPoint("TOPLEFT", col, "TOPLEFT", pad, rowY)
+        ico:SetTexture(iconFileID)
+        ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        labelLeft = pad + iconSz + 6
+    end
+    if valueStr and valueStr ~= "" then
+        local val = FontManager:CreateFontString(col, GFR("gearStatRating"), "OVERLAY")
+        val:SetPoint("TOPRIGHT", col, "TOPRIGHT", -pad, rowY)
+        val:SetWidth(valueColW)
+        val:SetJustifyH("RIGHT")
+        val:SetTextColor(1, 1, 1)
+        val:SetText(valueStr)
+    end
+    local labelRightInset = pad + valueColW + 8
+    local row = FontManager:CreateFontString(col, GFR("gearStatLabel"), "OVERLAY")
+    row:SetPoint("TOPLEFT", col, "TOPLEFT", labelLeft, rowY)
+    row:SetPoint("TOPRIGHT", col, "TOPRIGHT", -labelRightInset, rowY)
+    row:SetJustifyH("LEFT")
+    row:SetTextColor(1, 1, 1)
+    row:SetText(label or "")
+    return rowY - rowH
+end
+
+--- Label + "Straight Value (Percentage)" in one right column (no separate % column).
+local function PaintGearStatGridRow(statCol, statY, statRowH, statPad, valueColW, label, valueStr, pctStr)
+    local displayVal = valueStr or ""
+    if pctStr and pctStr ~= "" then
+        local fmt = (ns.L and ns.L["GEAR_STAT_VALUE_PCT_FORMAT"]) or "%s (%s)"
+        displayVal = format(fmt, (valueStr and valueStr ~= "") and valueStr or "--", pctStr)
+    end
+    return PaintGearPaperBandRow(statCol, statY, statRowH, statPad, valueColW, label, displayVal, nil)
+end
+
+--- Combined value column width for straight + (pct) layout.
+local function ComputeGearPaperStatValueColW(statInnerW, statPad)
+    return math.max(96, math.floor((statInnerW - statPad * 2) * 0.42 + 0.5))
+end
+
+--- Safe numeric for stat display (Midnight: UnitStat / combat ratings may be secret).
+---@param val any
+---@return number|nil
+local function SafeGearStatNumber(val)
+    if val == nil then return nil end
+    if issecretvalue and issecretvalue(val) then return nil end
+    if type(val) ~= "number" then return nil end
+    return val
+end
+
+---@param val any
+---@return string|nil
+local function FormatGearStatDisplayNumber(val)
+    local n = SafeGearStatNumber(val)
+    if not n then return nil end
+    return FormatNumber and FormatNumber(math.floor(n)) or tostring(math.floor(n))
+end
+
+---@return table primaryRows
+---@return table secondaryRows
+local function BuildGearPaperStatRows(charData, isCurrentChar)
+    local primaryRows = {}
+    local secondaryRows = {}
+    if isCurrentChar and UnitStat then
+        local mainStat = (WarbandNexus.GetCurrentCharacterMainStat and WarbandNexus:GetCurrentCharacterMainStat()) or nil
+        local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
+        for i = 1, #STAT_IDS do
+            local stat = STAT_IDS[i]
+            if stat.id == 3 then
+            elseif mainStatId and stat.id ~= mainStatId then
+                stat = nil
+            end
+            if stat then
+                local ok, _, total = pcall(UnitStat, "player", stat.id)
+                if ok then
+                    local valueStr = FormatGearStatDisplayNumber(total)
+                    if valueStr then
+                        primaryRows[#primaryRows + 1] = {
+                            statId = stat.id,
+                            label = stat.label,
+                            value = valueStr,
+                        }
+                    end
+                end
+            end
+        end
+        for i = 1, #SECONDARY_STATS do
+            local stat = SECONDARY_STATS[i]
+            local okR, rating = pcall(stat.fn)
+            local okP, pct = pcall(stat.pctFn)
+            local rNum = okR and SafeGearStatNumber(rating) or nil
+            local pNum = okP and SafeGearStatNumber(pct) or nil
+            if rNum or pNum then
+                secondaryRows[#secondaryRows + 1] = {
+                    label = stat.label,
+                    pctStr = pNum and format("%.1f%%", pNum) or "--",
+                    ratingStr = rNum and (FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum))) or "--",
+                }
+            end
+        end
+    elseif not isCurrentChar and charData and charData.stats then
+        local mainStat = nil
+        local mc = charData.stats.mainStatCode
+        if mc == "STR" or mc == "AGI" or mc == "INT" then mainStat = mc end
+        if not mainStat and WarbandNexus.GetCharacterMainStat then
+            mainStat = WarbandNexus:GetCharacterMainStat(charData)
+        end
+        local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
+        local prim = charData.stats.primary
+        if prim and next(prim) then
+            for idx = 1, #STAT_IDS do
+                local stat = STAT_IDS[idx]
+                if stat.id == 3 then
+                elseif mainStatId and stat.id ~= mainStatId then
+                    stat = nil
+                end
+                if stat then
+                    local valueStr = FormatGearStatDisplayNumber(prim[stat.id])
+                    if valueStr then
+                        primaryRows[#primaryRows + 1] = {
+                            statId = stat.id,
+                            label = stat.label,
+                            value = valueStr,
+                        }
+                    end
+                end
+            end
+        end
+        local mergedSec = MergeOfflineSecondaryForGear(charData.stats.secondary)
+        for j = 1, #mergedSec do
+            local s = mergedSec[j]
+            if s then
+                local pNum = SafeGearStatNumber(s.pct)
+                local rNum = SafeGearStatNumber(s.rating)
+                if pNum or rNum then
+                    secondaryRows[#secondaryRows + 1] = {
+                        label = s.label,
+                        pctStr = pNum and format("%.1f%%", pNum) or "--",
+                        ratingStr = rNum and (FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum))) or "--",
+                    }
+                end
+            end
+        end
+    end
+    return primaryRows, secondaryRows
+end
+
+local GEAR_VIEWPORT_IDENTITY_H = 42
+
+--- Name + realm on top line, item level on the line below (inside model frame).
+---@param viewportHost Frame
+---@param charData table|nil
+---@param accent table|nil
+---@return Frame|nil bar
+local function PaintGearViewportIdentity(viewportHost, charData, accent)
+    if not viewportHost then return nil end
+    local pad = 8
+    local classFile = charData and charData.classFile
+    local classHex = GetClassHex(classFile)
+    local name = (charData and charData.name) or ""
+    local realm = (charData and charData.realm) or ""
+    if realm ~= "" and ns.Utilities and ns.Utilities.FormatRealmName then
+        realm = ns.Utilities:FormatRealmName(realm) or realm
+    end
+    local avgIlvl = SafeGearStatNumber(charData and charData.itemLevel) or 0
+
+    local bar = CreateFrame("Frame", nil, viewportHost)
+    bar:SetHeight(GEAR_VIEWPORT_IDENTITY_H)
+    bar:SetPoint("TOPLEFT", viewportHost, "TOPLEFT", pad, -pad)
+    bar:SetPoint("TOPRIGHT", viewportHost, "TOPRIGHT", -pad, -pad)
+    bar:EnableMouse(false)
+    if bar.SetFrameLevel and viewportHost.GetFrameLevel then
+        bar:SetFrameLevel((viewportHost:GetFrameLevel() or 0) + 24)
+    end
+
+    local nameRealmFs = FontManager:CreateFontString(bar, GFR("gearCharacterName"), "OVERLAY")
+    nameRealmFs:SetPoint("TOP", bar, "TOP", 0, 0)
+    nameRealmFs:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    nameRealmFs:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+    nameRealmFs:SetHeight(18)
+    nameRealmFs:SetJustifyH("CENTER")
+    nameRealmFs:SetShadowOffset(1, -1)
+    nameRealmFs:SetShadowColor(0, 0, 0, 1)
+    if name ~= "" and realm ~= "" then
+        nameRealmFs:SetText("|cff" .. classHex .. name .. "|r |cff888888-|r |cffb8bac4" .. realm .. "|r")
+    elseif name ~= "" then
+        nameRealmFs:SetText("|cff" .. classHex .. name .. "|r")
+    else
+        nameRealmFs:SetText("|cff888888" .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
+    end
+
+    if avgIlvl > 0 then
+        local ilvlFs = FontManager:CreateFontString(bar, GFR("gearIlvlBadge"), "OVERLAY")
+        ilvlFs:SetPoint("TOP", nameRealmFs, "BOTTOM", 0, -2)
+        ilvlFs:SetPoint("LEFT", bar, "LEFT", 0, 0)
+        ilvlFs:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+        ilvlFs:SetJustifyH("CENTER")
+        ilvlFs:SetTextColor(1, 0.9, 0)
+        ilvlFs:SetShadowOffset(1, -1)
+        ilvlFs:SetShadowColor(0, 0, 0, 1)
+        ilvlFs:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
+    end
+    return bar
+end
+
+--- Heights for stats (left) + currencies (right) inside the paperdoll column bottom band.
+---@return number bandH
+---@return number statPanelH
+---@return number currPanelH
+local function ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH)
+    local hasDivider = (#primaryRows > 0 and #secondaryRows > 0)
+    local statContentRows = #primaryRows + #secondaryRows
+    local statH = subHdr + (statContentRows * statRowH) + (hasDivider and 8 or 0) + 12
+    if statContentRows == 0 then
+        statH = subHdr + 56
+    end
+    local currH = subHdr + crestCount * crestRowH + 12 + 28 + 10
+    local bandH = math.max(statH, currH, GEAR_LAYOUT.PAPER_BOTTOM_BAND_MIN_H or 132)
+    return bandH, statH, currH
+end
+
+--- Stats bottom-left, currencies bottom-right (single bottom panel, split columns).
+---@param bottomHost Frame
+---@param paperColW number
+---@param bandH number
+---@param charData table|nil
+---@param isCurrentChar boolean
+---@param currencies table
+---@param charKey string|nil
+---@param accent table
+---@param primaryRows table|nil
+---@param secondaryRows table|nil
+---@return Frame|nil bandPanel
+local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows)
+    if not bottomHost or paperColW < 1 or bandH < 1 then return nil end
+    local gearChrome = ns.GearUI_Chrome
+    local splitGap = math.max(14, GEAR_LAYOUT.SIDE_BAND_GAP or 8)
+    local statColW = math.max(120, math.floor((paperColW - splitGap) * 0.5 + 0.5))
+    local currColW = math.max(120, paperColW - splitGap - statColW)
+    local subHdr = GEAR_LAYOUT.SUBPANEL_HDR or 28
+    local statRowH = GEAR_LAYOUT.STAT_ROW_H or 22
+    local crestRowH = GEAR_LAYOUT.CREST_ROW_H or 26
+    local statPad = GEAR_LAYOUT.SUBPANEL_PAD or 10
+    if not primaryRows or not secondaryRows then
+        primaryRows, secondaryRows = BuildGearPaperStatRows(charData, isCurrentChar)
+    end
+
+    local crestCurrencies, goldCurrency = BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
+
+    local bandPanel = CreateGearSubpanel(bottomHost, paperColW, bandH, accent)
+    bandPanel:SetAllPoints(bottomHost)
+
+    local statCol = CreateFrame("Frame", nil, bandPanel)
+    statCol:SetSize(statColW, bandH)
+    statCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", 0, 0)
+    statCol:EnableMouse(false)
+    if statCol.SetClipsChildren then statCol:SetClipsChildren(true) end
+
+    local currCol = CreateFrame("Frame", nil, bandPanel)
+    currCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", statColW + splitGap, 0)
+    currCol:SetPoint("TOPRIGHT", bandPanel, "TOPRIGHT", 0, 0)
+    currCol:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, 0)
+    currCol:EnableMouse(false)
+    if currCol.SetClipsChildren then currCol:SetClipsChildren(true) end
+
+    local midDiv = bandPanel:CreateTexture(nil, "ARTWORK")
+    midDiv:SetColorTexture(accent[1] * 0.22, accent[2] * 0.22, accent[3] * 0.22, 0.5)
+    midDiv:SetWidth(1)
+    midDiv:SetPoint("TOP", bandPanel, "TOP", 0, -(subHdr - 4))
+    midDiv:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, 6)
+    midDiv:SetPoint("LEFT", statCol, "RIGHT", math.floor(splitGap * 0.5 + 0.5), 0)
+
+    local statInnerW = math.max(1, statColW - statPad * 2)
+    local currInnerW = math.max(1, currColW - statPad * 2)
+    local valColW = math.max(96, math.floor(math.min(statInnerW, currInnerW) * 0.42 + 0.5))
+    local function PaperSectionHdrOpts(titleColor)
+        return {
+            fontRole = "gearPanelTitle",
+            hideAccentBar = true,
+            underlineHeader = true,
+            titleColor = titleColor,
+        }
+    end
+    local statTitleColor = { 0.52, 0.82, 0.95 }
+    local currTitleColor = { 0.96, 0.78, 0.38 }
+    local statHdr = gearChrome and gearChrome.CreateSectionHeader
+        and gearChrome.CreateSectionHeader(statCol, (ns.L and ns.L["GEAR_CHARACTER_STATS"]) or "Character Stats", accent, PaperSectionHdrOpts(statTitleColor))
+    if statHdr then
+        statHdr:SetPoint("TOPLEFT", statCol, "TOPLEFT", 0, 0)
+        statHdr:SetPoint("TOPRIGHT", statCol, "TOPRIGHT", 0, 0)
+    end
+    local statY = -subHdr
+    if #primaryRows > 0 or #secondaryRows > 0 then
+        for i = 1, #primaryRows do
+            local stat = primaryRows[i]
+            statY = PaintGearStatGridRow(statCol, statY, statRowH, statPad, valColW, stat.label, stat.value, nil)
+        end
+        if #primaryRows > 0 and #secondaryRows > 0 then
+            statY = statY - 6
+        end
+        for i = 1, #secondaryRows do
+            local stat = secondaryRows[i]
+            statY = PaintGearStatGridRow(
+                statCol, statY, statRowH, statPad, valColW,
+                stat.label, stat.ratingStr or "0", stat.pctStr or "0.0%")
+        end
+    else
+        local noStats = FontManager:CreateFontString(statCol, GFR("gearEmptyStatsHint"), "OVERLAY")
+        noStats:SetPoint("TOPLEFT", statCol, "TOPLEFT", statPad, statY)
+        noStats:SetWidth(statInnerW)
+        noStats:SetJustifyH("LEFT")
+        noStats:SetTextColor(0.55, 0.55, 0.55)
+        noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
+    end
+
+    local currPad = statPad
+    local currHdr = gearChrome and gearChrome.CreateSectionHeader
+        and gearChrome.CreateSectionHeader(currCol, (ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies", accent, PaperSectionHdrOpts(currTitleColor))
+    if currHdr then
+        currHdr:SetPoint("TOPLEFT", currCol, "TOPLEFT", 0, 0)
+        currHdr:SetPoint("TOPRIGHT", currCol, "TOPRIGHT", 0, 0)
+    end
+    local curY = -subHdr
+    for i = 1, #crestCurrencies do
+        local cur = crestCurrencies[i]
+        local iconFileID = cur.icon or 134400
+        local displayCrestName = cur.displayName
+        if not displayCrestName or displayCrestName == "" then
+            local rawCrestName = cur.name or ""
+            if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
+                local firstWord = rawCrestName:match("^(%S+)")
+                displayCrestName = FormatTrackMarkup(firstWord, firstWord, nil)
+            else
+                displayCrestName = rawCrestName
+            end
+        end
+        local qty = tonumber(cur.amount) or 0
+        local maxQ = tonumber(cur.maxQuantity) or 0
+        local cd = {
+            currencyID = cur.currencyID,
+            quantity = qty,
+            maxQuantity = maxQ,
+            name = cur.name,
+            icon = cur.icon,
+        }
+        local amountStr = tostring(qty)
+        if ns.UI_FormatSeasonProgressCurrencyLine then
+            amountStr = ns.UI_FormatSeasonProgressCurrencyLine(cd) or amountStr
+        end
+        curY = PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
+    end
+    if goldCurrency then
+        curY = curY - 6
+        local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
+        if goldCurrency._goldCopper then
+            copper = goldCurrency._goldCopper
+        end
+        local goldLabel = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
+        curY = PaintGearPaperBandRow(
+            currCol, curY, crestRowH, currPad, valColW,
+            goldLabel, "|cffffff00" .. FormatGold(copper) .. "|r",
+            goldCurrency.icon or 133784)
+    end
+
+    bandPanel._wnStatCol = statCol
+    bandPanel._wnCurrCol = currCol
+    return bandPanel
 end
 
 --- Offline character center panel: class-accent top rule + bottom bar with badge (3D/2D preview only).
@@ -2063,6 +2693,9 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     baseX = baseX or PAPERDOLL_COL_INSET
     local modelW = MODEL_W + (tonumber(opts.modelBoost) or 0)
     card._gearSlotInspectList = {}
+    if paperParent and paperParent ~= card then
+        paperParent._gearSlotInspectList = nil
+    end
     local itemTooltipContext = ns.GearUI_BuildGearTabItemTooltipContext(charData)
     -- Sol panel: fixed width; slot sağda (yazı - ikon - slot)
     local leftX = baseX + LEFT_PANEL_W - SLOT_SIZE
@@ -2070,10 +2703,32 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     local rightX = baseX + LEFT_PANEL_W + CENTER_GAP + modelW + CENTER_GAP
 
     local slots = gearData and gearData.slots or {}
-    local function GetSlotData(slotID) return slots[slotID] end
-    local function HasUpgradePathForSlot(slotID)
+    local function GetSlotData(slotID)
+        local persisted = slots[slotID]
+        if not isCurrentChar or not ns.GearUI_BuildLiveEquippedSlotSnapshot then
+            return persisted
+        end
+        local live = ns.GearUI_BuildLiveEquippedSlotSnapshot(slotID)
+        if not live then return persisted end
+        if not persisted then return live end
+        local merged = {}
+        for k, v in pairs(persisted) do
+            merged[k] = v
+        end
+        if live.itemLink then merged.itemLink = live.itemLink end
+        if live.itemID then merged.itemID = live.itemID end
+        if live.itemLevel and live.itemLevel > 0 then merged.itemLevel = live.itemLevel end
+        if live.quality and live.quality > 0 then merged.quality = live.quality end
+        return merged
+    end
+    --- Upgrade chip only when the immediate next step is affordable (correct track crest pool).
+    local function SlotAffordsUpgrade(slotID)
         local up = upgradeInfo and upgradeInfo[slotID]
-        return ns.GearUI_GearUpgradeInfoHasPath and ns.GearUI_GearUpgradeInfoHasPath(up)
+        if not up or up.notUpgradeable or not up.canUpgrade then return false end
+        if not ns.GearUI_GetUpgradeArrowDisplay then return false end
+        local disp = ns.GearUI_GetUpgradeArrowDisplay(up, currencyAmounts)
+        up.upgradeArrowDisplay = disp
+        return disp == "green"
     end
     local function IsNotUpgradeable(slotID)
         local slot = slots[slotID]
@@ -2084,46 +2739,47 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     end
 
     local rowStep = SLOT_SIZE + SLOT_GAP
-    local vertCenterPad = 0
-    if type(paperBandH) == "number" and type(paperdollNaturalH) == "number" and paperBandH > paperdollNaturalH then
-        vertCenterPad = math.floor((paperBandH - paperdollNaturalH) / 2 + 0.5)
-    end
+    local leftSlots = { 1, 2, 3, 15, 5, 9 }
+    local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
+    local maxRows = math.max(#leftSlots, #rightSlots)
+    local topInset = tonumber(opts.topContentInset) or 0
     local anchorY = paperOriginY
     if anchorY == nil then
         anchorY = 0
     end
-    local startY = anchorY - vertCenterPad
+    local paperZoneH = tonumber(paperBandH) or tonumber(paperdollNaturalH) or 0
+    local startY = ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
 
     -- Left column: 6 armor slots — text left of icon (Icon - Text), right-aligned text
-    local leftSlots = { 1, 2, 3, 15, 5, 9 }
     for i = 1, #leftSlots do
         local slotID = leftSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(paperParent, slotID, GetSlotData(slotID), leftX, startY - (i - 1) * rowStep, HasUpgradePathForSlot(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
+        local slotData = GetSlotData(slotID)
+        CreateSlotButton(paperParent, slotID, slotData, leftX, startY - (i - 1) * rowStep, SlotAffordsUpgrade(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
     end
 
     -- Right column: 6 armor + 2 trinkets — slot | ikon | yazı (finger slots 11 then 12 = API order).
-    local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
     for i = 1, #rightSlots do
         local slotID = rightSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
-        CreateSlotButton(paperParent, slotID, GetSlotData(slotID), rightX, startY - (i - 1) * rowStep, HasUpgradePathForSlot(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
+        local slotData = GetSlotData(slotID)
+        CreateSlotButton(paperParent, slotID, slotData, rightX, startY - (i - 1) * rowStep, SlotAffordsUpgrade(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
     end
 
-    -- Alt panel: slot üstte, altında ikon + yazı (yazılar aşağı); silahlar birbirine yakın
+    -- Alt panel: weapons centered under model; text offset matches armor columns (TEXT_OFFSET_FROM_SLOT_CENTER).
     local weaponSlots = { 16, 17 }
     local WEAPON_GAP = P(36)
     local WEAPON_TEXT_W = TRACK_TEXT_W
     local weaponRowW = SLOT_SIZE + WEAPON_GAP + SLOT_SIZE
     local weaponStartX = baseX + LEFT_PANEL_W + (modelW + CENTER_GAP - weaponRowW) / 2
-    local maxRows = math.max(#leftSlots, #rightSlots)
     local bottomY = startY - maxRows * rowStep - 8
     for i = 1, #weaponSlots do
         local slotID = weaponSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
         local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
-        local weaponSide = (i == 1) and "bottom_left" or "bottom_right"  -- Main Hand solunda, Off Hand sağında
-        CreateSlotButton(paperParent, slotID, GetSlotData(slotID), wx, bottomY, HasUpgradePathForSlot(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar)
+        local weaponSide = (i == 1) and "bottom_left" or "bottom_right"
+        local slotData = GetSlotData(slotID)
+        CreateSlotButton(paperParent, slotID, slotData, wx, bottomY, SlotAffordsUpgrade(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
     end
 
     local numRightRows = #rightSlots  -- 8 (Hands .. Trinket 2)
@@ -2206,8 +2862,8 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     -- Primary: DressUpModel — current character SetUnit+Dress; alts: snapshot+TryOn. modelView in SavedVariables.
     local GEAR_REFERENCE_RADIUS = 0.96
     local GEAR_FIXED_CAM_DISTANCE = 2.72
-    local GEAR_CAM_FIT_PADDING = 1.06
-    local GEAR_FIXED_CAM_SCALE = 2.05
+    local GEAR_CAM_FIT_PADDING = 0.82
+    local GEAR_FIXED_CAM_SCALE = 2.28
     local GEAR_MODEL_SCALE_MIN = 0.15
     local GEAR_MODEL_SCALE_MAX = 6.0
     local GEAR_ZOOM_MIN = 0.5
@@ -2291,7 +2947,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             if not m.GetModelRadius or not m.SetModelScale or not m.SetCameraDistance then return false end
             local ok, r = pcall(m.GetModelRadius, m)
             if not ok or not r or r <= 0 then return false end
-            local s = (GEAR_REFERENCE_RADIUS / r) * 0.94 * 1.05
+            local s = (GEAR_REFERENCE_RADIUS / r) * 0.94 * 1.18
             if s < GEAR_MODEL_SCALE_MIN then s = GEAR_MODEL_SCALE_MIN
             elseif s > GEAR_MODEL_SCALE_MAX then s = GEAR_MODEL_SCALE_MAX end
             m._normalized = true
@@ -2410,7 +3066,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         -- Reset framing state on character swap so radius normalize re-runs cleanly.
         m._normalized = false
         m._scale = 1.0
-        m._zoom = 0.58
+        m._zoom = 1.05
         m._rotation = 0
         do
             local mv = gearData and gearData.modelView
@@ -2419,7 +3075,12 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
                     m._rotation = tonumber(mv.rotation) or 0
                 end
                 if mv.zoom ~= nil then
-                    m._zoom = tonumber(mv.zoom) or m._zoom
+                    local z = tonumber(mv.zoom)
+                    if z and z > 0 then
+                        -- Legacy defaults were ~0.58 (too far); bump so saved views stay readable.
+                        if z < 0.85 then z = 1.05 end
+                        m._zoom = z
+                    end
                 end
             end
         end
@@ -2698,55 +3359,32 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         textBase = centerRef._model:GetFrameLevel() + 22
     end
 
-    if card._wnGearHeroRibbon then
-        if nameWrapper and nameWrapper.Hide then nameWrapper:Hide() end
-        if ilvlFrame and ilvlFrame.Hide then ilvlFrame:Hide() end
-    elseif displayName ~= "" then
-        nameWrapper:SetParent(centerRef)
-        nameWrapper:ClearAllPoints()
-        nameWrapper:SetPoint("TOPLEFT", centerRef, "TOPLEFT", 6, -8)
-        nameWrapper:SetPoint("TOPRIGHT", centerRef, "TOPRIGHT", -6, -8)
-        nameWrapper:SetHeight(20)
-        if nameWrapper.SetFrameLevel then
-            nameWrapper:SetFrameLevel(textBase)
-        end
-        local nameLabel = nameWrapper._label
-        nameLabel:ClearAllPoints()
-        nameLabel:SetPoint("TOPLEFT", nameWrapper, "TOPLEFT", 0, 0)
-        nameLabel:SetPoint("TOPRIGHT", nameWrapper, "TOPRIGHT", 0, 0)
-        local classHex = GetClassHex(classFile)
-        nameLabel:SetText("|cff" .. classHex .. displayName .. "|r")
-        nameWrapper:Show()
+    if nameWrapper and nameWrapper.Hide then nameWrapper:Hide() end
+    if ilvlFrame and ilvlFrame.Hide then ilvlFrame:Hide() end
 
-        if avgIlvl > 0 then
-            ilvlFrame:SetParent(centerRef)
-            ilvlFrame:ClearAllPoints()
-            ilvlFrame:SetPoint("TOP", nameWrapper, "BOTTOM", 0, 0)
-            if ilvlFrame.SetFrameLevel then
-                ilvlFrame:SetFrameLevel(textBase + 1)
-            end
-            ilvlFrame._label:SetTextColor(1, 0.9, 0)
-            ilvlFrame._label:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
-            ilvlFrame:Show()
-        else
-            ilvlFrame:Hide()
+    if centerRef and not card._wnGearHeroRibbon then
+        local idHost = centerRef._clip or centerRef
+        if ns._gearModelIdentityBar and ns._gearModelIdentityBar.Hide then
+            ns._gearModelIdentityBar:Hide()
+            ns._gearModelIdentityBar:SetParent(nil)
         end
-    else
-        nameWrapper:Hide()
-        if avgIlvl > 0 then
-            ilvlFrame:SetParent(centerRef)
-            ilvlFrame:ClearAllPoints()
-            ilvlFrame:SetPoint("TOP", centerRef, "TOP", 0, -8)
-            if ilvlFrame.SetFrameLevel then
-                ilvlFrame:SetFrameLevel(textBase + 1)
-            end
-            ilvlFrame._label:SetTextColor(1, 0.9, 0)
-            ilvlFrame._label:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
-            ilvlFrame:Show()
-        else
-            ilvlFrame:Hide()
-        end
+        ns._gearModelIdentityBar = PaintGearViewportIdentity(idHost, charData, accent)
     end
+
+    if opts.paperChrome and centerRef then
+        AnchorGearPaperChromeBehindModel(opts.paperChrome, centerRef, card)
+    end
+    end
+
+    if card then
+        card._wnGearPaperdollLayout = {
+            paperOriginY = paperOriginY,
+            topContentInset = topInset,
+            paperBandH = paperBandH,
+            paperTopZoneH = paperZoneH,
+            paperdollNaturalH = paperdollNaturalH,
+            maxRows = maxRows,
+        }
     end
 
     if opts and opts.deferCenter then
@@ -2770,75 +3408,14 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     runPaperdollCenterPaint()
 end
 
--- ── Stat helpers (live API for current char) ────────────────────────────────
-local STAT_IDS = {
-    { id = 1, label = (ns.L and ns.L["STAT_STRENGTH"]) or SPELL_STAT1_NAME or "Strength",    icon = "Interface\\Icons\\spell_nature_strength" },
-    { id = 2, label = (ns.L and ns.L["STAT_AGILITY"]) or SPELL_STAT2_NAME or "Agility",      icon = "Interface\\Icons\\ability_backstab" },
-    { id = 3, label = (ns.L and ns.L["STAT_STAMINA"]) or SPELL_STAT3_NAME or "Stamina",      icon = "Interface\\Icons\\spell_holy_wordfortitude" },
-    { id = 4, label = (ns.L and ns.L["STAT_INTELLECT"]) or SPELL_STAT4_NAME or "Intellect",  icon = "Interface\\Icons\\spell_holy_magicalsentry" },
-}
-local SECONDARY_STATS = {
-    { label = (ns.L and ns.L["STAT_CRITICAL_STRIKE"]) or "Critical Strike", fn = function() return GetCombatRating and GetCombatRating(9) or 0 end,  pctFn = function() return GetCritChance and GetCritChance() or 0 end },
-    { label = (ns.L and ns.L["STAT_HASTE"]) or "Haste",                     fn = function() return GetCombatRating and GetCombatRating(18) or 0 end, pctFn = function() return GetHaste and GetHaste() or 0 end },
-    { label = (ns.L and ns.L["STAT_MASTERY"]) or "Mastery",                 fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
-    { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
-}
-
--- Character panel–style stat tints (values / percentages; labels stay neutral).
-local GEAR_SECONDARY_STAT_RGB = {
-    { 1.00, 0.82, 0.35 },
-    { 0.35, 0.95, 0.55 },
-    { 0.45, 0.65, 1.00 },
-    { 0.78, 0.35, 0.95 },
-}
-
-local function GetGearPrimaryStatRGB(statId, classFile)
-    if statId == 3 then
-        return 0.58, 0.86, 0.48
-    end
-    if classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] then
-        local c = RAID_CLASS_COLORS[classFile]
-        return c.r, c.g, c.b
-    end
-    if statId == 1 then return 0.78, 0.61, 0.43 end
-    if statId == 2 then return 1.00, 0.82, 0.00 end
-    if statId == 4 then return 0.41, 0.80, 0.94 end
-    return 1, 1, 1
-end
-
--- Offline snapshot: sıra veya etiket ile eşleştir (eski SV uyumu)
-local function MergeOfflineSecondaryForGear(savedSec)
-    local out = {}
-    for i = 1, #SECONDARY_STATS do
-        local def = SECONDARY_STATS[i]
-        local rating, pct = 0, 0
-        local s = savedSec and savedSec[i]
-        if s and type(s.rating) == "number" then
-            rating = math.floor(s.rating)
-            pct = (type(s.pct) == "number") and s.pct or 0
-        elseif savedSec then
-            for j = 1, #savedSec do
-                local ent = savedSec[j]
-                if ent and ent.label == def.label then
-                    rating = tonumber(ent.rating) or 0
-                    pct = (type(ent.pct) == "number") and ent.pct or 0
-                    break
-                end
-            end
-        end
-        out[#out + 1] = { label = def.label, rating = rating, pct = pct }
-    end
-    return out
-end
-
---- Viewport-aware gear card height for the left stack + full-height recommendations column.
+--- Viewport-aware gear card body height (paperdoll | recommendations share this band).
 ---@param mf Frame|nil
 ---@param yOffset number
----@param leftStackH number paperdoll + stats/currencies band
+---@param contentBandMinH number minimum two-column band height
 ---@param paperdollNaturalH number
 ---@return number panelH
-local function ResolveGearTabPanelHeight(mf, yOffset, leftStackH, paperdollNaturalH)
-    local panelH = math.max(leftStackH or 0, paperdollNaturalH or 0)
+local function ResolveGearTabPanelHeight(mf, yOffset, contentBandMinH, paperdollNaturalH)
+    local panelH = math.max(contentBandMinH or 0, paperdollNaturalH or 0)
     local bodyAvailH = (ns.UI_GetMainTabScrollBodyHeight and ns.UI_GetMainTabScrollBodyHeight(mf)) or 0
     if bodyAvailH > 0 then
         local cardChromeV = CARD_PAD + 24 + CARD_PAD
@@ -2848,7 +3425,27 @@ local function ResolveGearTabPanelHeight(mf, yOffset, leftStackH, paperdollNatur
     return panelH
 end
 
---- Equipped gear card: paperdoll (left) | stats+currencies (right) | recommendations (bottom).
+--- Record min row width; narrow viewports use stack layout (RelayoutGearCardColumnHosts), not scroll widening.
+---@param card Frame|nil
+---@param layout table
+---@param mf Frame|nil
+---@return boolean relayoutAgain always false (no scrollChild mutation)
+local function EnforceGearTopRowNoOverlap(card, layout, mf)
+    if not layout then return false end
+    local gap = layout.panelGutter or GEAR_PANEL_GAP
+    local paperColW = math.max(GEAR_PAPER_COL_FIXED_W, layout.paperColW or GEAR_PAPER_COL_FIXED_W)
+    local recColW = math.max(0, layout.recColW or layout.sideColW or 0)
+    local needInner = paperColW + (recColW > 0 and (gap + recColW) or 0)
+    layout.minTopRowInnerW = needInner
+    layout.paperColW = paperColW
+    if card and card.GetWidth then
+        layout.cardInnerW = GetGearCardInnerWidthFromCard(card)
+    end
+    layout.layoutInnerW = layout.cardInnerW or layout.layoutInnerW or needInner
+    return false
+end
+
+--- Equipped gear card: paperdoll (left) | recommendations (right); hero ribbon above.
 --- charKey: key from dropdown (used for currency/gold lookup).
 --- isCurrentChar: true if selected character is the logged-in one (live portrait fallback).
 --- currencies: array from GetGearUpgradeCurrenciesFromDB (passed to avoid duplicate API calls).
@@ -2856,23 +3453,28 @@ end
 local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings, storageScanPending)
     local rowStep = SLOT_SIZE + SLOT_GAP
     -- Content height: section + slot columns + gap + weapon row (Main/Off Hand) + bottom pad so card border is below weapons
-    local HERO_RIBBON_H = GEAR_LAYOUT.HERO_RIBBON_H or 44
     local contentTop = 8
     local weaponBottom = 8 * rowStep + 8 + SLOT_SIZE
-    local paperdollNaturalH = contentTop + weaponBottom + CARD_PAD
+    local slotsOnlyH = contentTop + weaponBottom + CARD_PAD
     currencies = currencies or {}
-    -- Stats + currencies band under paperdoll (side by side within paper column width).
-    local GEAR_SUBPANEL_PAD = GEAR_LAYOUT.SUBPANEL_PAD or 12
-    local GEAR_SUBPANEL_HDR = GEAR_LAYOUT.SUBPANEL_HDR or 36
-    local GEAR_STAT_COL_GAP = GEAR_LAYOUT.STAT_COL_GAP or 8
-    local cardH = CARD_PAD + HERO_RIBBON_H + 12 + paperdollNaturalH + CARD_PAD
+    local crestCount = 0
+    for i = 1, #currencies do
+        if not currencies[i].isGold then crestCount = crestCount + 1 end
+    end
+    local subHdr = GEAR_LAYOUT.SUBPANEL_HDR or 28
+    local statRowH = GEAR_LAYOUT.STAT_ROW_H or 22
+    local crestRowH = GEAR_LAYOUT.CREST_ROW_H or 26
+    local primaryRows, secondaryRows = BuildGearPaperStatRows(charData, isCurrentChar == true)
+    local paperBottomBandH = select(1, ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH))
+    local paperdollNaturalH = slotsOnlyH + 10 + paperBottomBandH
+    local cardH = CARD_PAD + 8 + paperdollNaturalH + CARD_PAD
 
     local parentW = (parent and parent.GetWidth) and parent:GetWidth() or 0
 
     -- New card on every DrawPaperDollCard: PopulateContent tears down scrollChild, so roster changes cannot reuse the old card here.
     local card = CreateCard(parent, cardH)
     if card.SetClipsChildren then
-        card:SetClipsChildren(true)
+        card:SetClipsChildren(false)
     end
     local mfDraw = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     AnchorGearCardFillWidth(card, parent, yOffset, mfDraw)
@@ -2883,191 +3485,63 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
 
-    -- ── Crest / gold block heights (drawn under character stats in main column) ──
-    local crestCurrencies = {}
-    local goldCurrency = nil
-    for i = 1, #currencies do
-        local cur = currencies[i]
-        if cur.isGold then goldCurrency = cur else crestCurrencies[#crestCurrencies + 1] = cur end
-    end
-
-    local playbookTooltipPayload = nil
-
-    -- Currency panel height: header + crest rows + divider + gold + short footer + bottom pad
-    local CREST_ROW_H = GEAR_LAYOUT.CREST_ROW_H or 28
-    local FOOTER_HINT_H = 20
-    local FOOTER_HINT_PAD = 10
-
     local PANEL_GAP = GEAR_PANEL_GAP
     local recEnabled = WarbandNexus:IsGearStorageRecommendationsEnabled()
-    if ns.GearUI_ClampCardInnerWidth then
-        cardInnerW = ns.GearUI_ClampCardInnerWidth(cardInnerW)
-    end
-    local paperColW, sideColW, layoutInnerW
-    if ns.GearUI_ComputeTopRowLayout then
-        _, paperColW, sideColW, layoutInnerW = ns.GearUI_ComputeTopRowLayout(cardInnerW, nil)
+    local paperColW, recColW, layoutInnerW
+    if ns.GearUI_ComputeTopRowWidths then
+        paperColW, recColW, layoutInnerW = ns.GearUI_ComputeTopRowWidths(cardInnerW, recEnabled)
+    elseif ns.GearUI_ComputeTopRowLayout then
+        _, paperColW, recColW, layoutInnerW = ns.GearUI_ComputeTopRowLayout(cardInnerW, nil)
+        if not recEnabled then recColW = 0 end
     else
-        paperColW, sideColW = ComputeGearLayoutWidths(cardInnerW, recEnabled)
+        paperColW, recColW = ComputeGearLayoutWidths(cardInnerW, recEnabled)
         layoutInnerW = cardInnerW
     end
     local topLayoutMode = "row"
-    local storageW = layoutInnerW or cardInnerW
+    local storageW = recColW > 0 and recColW or (layoutInnerW or cardInnerW)
     local paperLeft = CARD_PAD
 
-    local panelTopY = -(CARD_PAD + HERO_RIBBON_H + 10)
+    local panelTopY = -(CARD_PAD + 6)
     local SECTION_GAP = GEAR_LAYOUT.SECTION_GAP or 16
-    local modelBoost = math.max(0, math.min(32, paperColW - PAPERDOLL_BLOCK_W - PAPERDOLL_COL_INSET * 2))
+    local modelBoost = math.max(0, math.min(MAX_PAPER_MODEL_BOOST, paperColW - GEAR_PAPER_COL_FIXED_W))
 
-    local STAT_ROW_H = GEAR_LAYOUT.STAT_ROW_H or 24
-    local primaryRows = {}
-    local secondaryRows = {}
-    if isCurrentChar and UnitStat then
-        local mainStat = (WarbandNexus.GetCurrentCharacterMainStat and WarbandNexus:GetCurrentCharacterMainStat()) or nil
-        local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
-        for i = 1, #STAT_IDS do
-            local stat = STAT_IDS[i]
-            if stat.id == 3 then
-                -- Stamina always
-            elseif mainStatId and stat.id ~= mainStatId then
-                stat = nil
-            end
-            if stat then
-                local ok, _, total = pcall(UnitStat, "player", stat.id)
-                if ok and type(total) == "number" then
-                    primaryRows[#primaryRows + 1] = {
-                        statId = stat.id,
-                        label = stat.label,
-                        value = FormatNumber and FormatNumber(math.floor(total)) or tostring(math.floor(total)),
-                    }
-                end
-            end
-        end
-        for i = 1, #SECONDARY_STATS do
-            local stat = SECONDARY_STATS[i]
-            local okR, rating = pcall(stat.fn)
-            local okP, pct = pcall(stat.pctFn)
-            local rNum = (okR and type(rating) == "number") and rating or 0
-            local pNum = (okP and type(pct) == "number") and pct or 0
-            secondaryRows[#secondaryRows + 1] = {
-                label = stat.label,
-                pctStr = format("%.1f%%", pNum),
-                ratingStr = FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum)),
-            }
-        end
-    elseif not isCurrentChar and charData and charData.stats then
-        local mainStat = nil
-        local mc = charData.stats.mainStatCode
-        if mc == "STR" or mc == "AGI" or mc == "INT" then
-            mainStat = mc
-        end
-        if not mainStat and WarbandNexus.GetCharacterMainStat then
-            mainStat = WarbandNexus:GetCharacterMainStat(charData)
-        end
-        local mainStatId = (mainStat == "STR" and 1) or (mainStat == "AGI" and 2) or (mainStat == "INT" and 4) or nil
-        local prim = charData.stats.primary
-        if prim and next(prim) then
-            for idx = 1, #STAT_IDS do
-                local stat = STAT_IDS[idx]
-                if stat.id == 3 then
-                    -- Stamina always
-                elseif mainStatId and stat.id ~= mainStatId then
-                    stat = nil
-                end
-                if stat then
-                    local raw = prim[stat.id]
-                    if raw == nil then raw = 0 end
-                    if type(raw) == "number" then
-                        primaryRows[#primaryRows + 1] = {
-                            statId = stat.id,
-                            label = stat.label,
-                            value = FormatNumber and FormatNumber(math.floor(raw)) or tostring(math.floor(raw)),
-                        }
-                    end
-                end
-            end
-        end
-        local mergedSec = MergeOfflineSecondaryForGear(charData.stats.secondary)
-        for j = 1, #mergedSec do
-            local s = mergedSec[j]
-            if s then
-                local pNum = (type(s.pct) == "number") and s.pct or 0
-                local rNum = (type(s.rating) == "number") and s.rating or 0
-                secondaryRows[#secondaryRows + 1] = {
-                    label = s.label,
-                    pctStr = format("%.1f%%", pNum),
-                    ratingStr = FormatNumber and FormatNumber(math.floor(rNum)) or tostring(math.floor(rNum)),
-                }
-            end
-        end
-    end
-    local hasDivider = (#primaryRows > 0 and #secondaryRows > 0)
-    local statContentRows = #primaryRows + #secondaryRows
-    local function ComputeGearMidHeights(subHdr, statRowH, crestRowH)
-        local statH = subHdr + (statContentRows * statRowH) + (hasDivider and 8 or 0) + 12
-        if statContentRows == 0 then
-            statH = subHdr + 56
-        end
-        local currH = subHdr + #crestCurrencies * crestRowH + 12 + 28 + FOOTER_HINT_H + FOOTER_HINT_PAD + 8
-        return statH, currH
-    end
-    local statPanelH, currenciesH = ComputeGearMidHeights(GEAR_SUBPANEL_HDR, STAT_ROW_H, CREST_ROW_H)
-    local SIDE_BAND_GAP = GEAR_LAYOUT.SIDE_BAND_GAP or 10
-    local _, statColW, currColW, _, sideColNaturalH = "stack", sideColW, sideColW, SIDE_BAND_GAP, statPanelH + SIDE_BAND_GAP + currenciesH
-    if ns.GearUI_ComputeSideColumnLayout then
-        _, statColW, currColW, _, sideColNaturalH = ns.GearUI_ComputeSideColumnLayout(sideColW, statPanelH, currenciesH, SIDE_BAND_GAP)
-    end
-    local topZoneNatural = math.max(paperdollNaturalH, sideColNaturalH)
-    local leftStackHNatural = topZoneNatural
-
+    local contentBandMinH = math.max(paperdollNaturalH, GEAR_LAYOUT.CONTENT_BAND_MIN_H or 360)
     local mfHostEarly = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local panelH = ResolveGearTabPanelHeight(mfHostEarly, yOffset, leftStackHNatural, paperdollNaturalH)
-    local recZoneH = 0
-    if recEnabled and ns.GearUI_ComputeRecBandHeight then
-        recZoneH = ns.GearUI_ComputeRecBandHeight(true, panelH, topZoneNatural)
-    elseif recEnabled then
-        recZoneH = GEAR_LAYOUT.REC_BAND_MIN_H or 200
-    end
-    if recEnabled and recZoneH > 0 then
-        panelH = math.max(panelH, topZoneNatural + SECTION_GAP + recZoneH)
-        leftStackHNatural = topZoneNatural + SECTION_GAP + recZoneH
-    end
-    local paperZoneH = paperdollNaturalH
-    local statBandH = statPanelH
-    local currBandH = currenciesH
-    local yPaperBandTop = panelTopY
+    local panelH = ResolveGearTabPanelHeight(mfHostEarly, yOffset, contentBandMinH, paperdollNaturalH)
+    local contentBandH = panelH
+    paperBottomBandH = select(1, ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH))
+    local paperTopZoneH = math.max(slotsOnlyH, contentBandH - paperBottomBandH)
 
     local gearHosts = {
         paperColW = paperColW,
-        sideColW = sideColW,
+        recColW = recColW,
+        sideColW = recColW,
         paperLeft = paperLeft,
         sectionGap = SECTION_GAP,
-        recZoneH = recZoneH,
-        topZoneH = topZoneNatural,
+        topZoneH = contentBandH,
+        contentBandH = contentBandH,
         topLayoutMode = topLayoutMode,
         layoutInnerW = layoutInnerW,
-        paperZoneH = paperZoneH,
+        paperZoneH = paperTopZoneH,
+        paperTopZoneH = paperTopZoneH,
+        paperBottomBandH = paperBottomBandH,
+        slotsOnlyH = slotsOnlyH,
         paperdollNaturalH = paperdollNaturalH,
-        sideColNaturalH = sideColNaturalH,
         cardInnerW = cardInnerW,
         panelGutter = GEAR_LAYOUT.COL_GAP or PANEL_GAP,
+        panelH = panelH,
+        modelBoost = modelBoost,
     }
-    local gearChrome = ns.GearUI_Chrome
-    local heroRibbon = gearChrome and gearChrome.CreateCharacterRibbon
-        and gearChrome.CreateCharacterRibbon(card, charData, accent, { height = HERO_RIBBON_H })
-    if heroRibbon then
-        heroRibbon:ClearAllPoints()
-        heroRibbon:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD, -CARD_PAD)
-        heroRibbon:SetPoint("TOPRIGHT", card, "TOPRIGHT", -CARD_PAD, -CARD_PAD)
-        gearHosts.heroRibbon = heroRibbon
-        card._wnGearHeroRibbon = true
-    end
+    card._wnGearHeroRibbon = nil
 
     EnsureGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
     RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
     local leftCol = gearHosts.leftColHost
+    local paperTop = gearHosts.paperTopHost
+    local paperBottom = gearHosts.paperBottomHost
     local bodyHost = gearHosts.bodyHost
     local rightCol = gearHosts.rightColHost
-    local horizParent = leftCol or card
+    local horizParent = paperTop or leftCol or card
 
     local colDiv
     if bodyHost then
@@ -3083,362 +3557,25 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     end
 
     local paperChrome = CreateFrame("Frame", nil, horizParent, "BackdropTemplate")
-    paperChrome:SetPoint("TOPLEFT", horizParent, "TOPLEFT", 0, 0)
-    paperChrome:SetSize(paperColW, paperZoneH)
-    paperChrome:EnableMouse(false)
-    if paperChrome.SetFrameLevel and card.GetFrameLevel then
-        paperChrome:SetFrameLevel((card:GetFrameLevel() or 2) + 1)
-    end
+    paperChrome:Hide()
     if gearChrome and gearChrome.ApplyPaperdollViewport then
         gearChrome.ApplyPaperdollViewport(paperChrome, accent)
     elseif paperChrome.SetBackdrop then
         pcall(paperChrome.SetBackdrop, paperChrome, nil)
     end
     if paperChrome.SetClipsChildren then
-        paperChrome:SetClipsChildren(true)
+        paperChrome:SetClipsChildren(false)
     end
     gearHosts.paperChrome = paperChrome
 
-    local statPanel = CreateGearSubpanel(rightCol or horizParent, statColW, statBandH, accent)
-    statPanel:SetSize(statColW, statPanelH)
-    statPanel:SetPoint("TOPLEFT", rightCol or horizParent, "TOPLEFT", 0, 0)
-    statPanel:SetPoint("TOPRIGHT", rightCol or horizParent, "TOPRIGHT", 0, 0)
-    statPanel:EnableMouse(false)
-    if statPanel.SetFrameLevel and rightCol and rightCol.SetFrameLevel then
-        rightCol:SetFrameLevel((leftCol and leftCol:GetFrameLevel() or 2) + 2)
-        statPanel:SetFrameLevel((paperChrome:GetFrameLevel() or 3) + 2)
-    end
-    if statPanel.SetClipsChildren then
-        statPanel:SetClipsChildren(true)
-    end
-    gearHosts.statPanel = statPanel
-
-    local currencyPanel = CreateGearSubpanel(rightCol or horizParent, currColW, currBandH, accent)
-    currencyPanel:SetSize(currColW, currBandH)
-    currencyPanel:SetPoint("TOPLEFT", rightCol or horizParent, "TOPLEFT", 0, -statPanelH - SIDE_BAND_GAP)
-    currencyPanel:SetPoint("BOTTOMRIGHT", rightCol or horizParent, "BOTTOMRIGHT", 0, 0)
-    currencyPanel:EnableMouse(false)
-    if currencyPanel.SetClipsChildren then
-        currencyPanel:SetClipsChildren(false)
-    end
-    if currencyPanel.SetFrameLevel then
-        currencyPanel:SetFrameLevel(statPanel:GetFrameLevel() or 5)
-    end
-
-    local statCurrDiv = ns._gearStatCurrDiv
-    if not statCurrDiv then
-        statCurrDiv = card:CreateTexture(nil, "ARTWORK")
-        statCurrDiv:SetWidth(1)
-        ns._gearStatCurrDiv = statCurrDiv
-    end
-    statCurrDiv:SetParent(rightCol or horizParent)
-    statCurrDiv:SetColorTexture(accent[1] * 0.20, accent[2] * 0.20, accent[3] * 0.20, 0.45)
-    local divY = -statPanelH - math.floor(SIDE_BAND_GAP * 0.5)
-    statCurrDiv:SetPoint("TOPLEFT", rightCol or horizParent, "TOPLEFT", 0, divY)
-    statCurrDiv:SetPoint("TOPRIGHT", rightCol or horizParent, "TOPRIGHT", 0, divY)
-    statCurrDiv:SetHeight(1)
-    statCurrDiv:Show()
-    gearHosts.statCurrDiv = statCurrDiv
-    gearHosts.currencyPanel = currencyPanel
-
-    local SUBPANEL_TITLE_INSET = 8
-    local statPad = GEAR_SUBPANEL_PAD
-    local statInnerW = math.max(1, statColW - statPad * 2)
-    local labelColW, valColW, pctColW = ComputeGearStatColumnWidths(statInnerW, GEAR_STAT_COL_GAP)
-    statPanel._wnGearStatMetrics = {
-        statPad = statPad,
-        statColGap = GEAR_STAT_COL_GAP,
-        labelColW = labelColW,
-        valColW = valColW,
-        pctColW = pctColW,
-    }
-    statPanel._wnGearStatRows = {}
-    local statRowRefs = statPanel._wnGearStatRows
-    local currPad = GEAR_SUBPANEL_PAD
-    -- Amount column width aligned with stats value block (symmetric L/R insets inside each half).
-    local currInnerW = math.max(1, currColW - currPad * 2)
-    local currAmtReserve = (ns.GEAR_LAYOUT and ns.GEAR_LAYOUT.CURR_AMOUNT_COL_W) or 108
-    currencyPanel._wnGearCurrMetrics = {
-        currPad = currPad,
-        currAmtReserve = currAmtReserve,
-        valColW = valColW,
-        pctColW = pctColW,
-        statColGap = GEAR_STAT_COL_GAP,
-    }
-    currencyPanel._wnGearCurrRows = {}
-    local currRowRefs = currencyPanel._wnGearCurrRows
-
-    local statHdrText = (ns.L and ns.L["GEAR_CHARACTER_STATS"]) or "Character Stats"
-    local statHdr = gearChrome and gearChrome.CreateSectionHeader
-        and gearChrome.CreateSectionHeader(statPanel, statHdrText, accent)
-    if statHdr then
-        statHdr:ClearAllPoints()
-        statHdr:SetPoint("TOPLEFT", statPanel, "TOPLEFT", 0, 0)
-        statHdr:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", 0, 0)
-    end
-
-    local classFile = charData and charData.classFile
-    local function paintGearMidColumnDeferred()
-        local subHdr = GEAR_SUBPANEL_HDR
-        local statRowH = STAT_ROW_H
-        local crestRowH = CREST_ROW_H
-        local statY = -subHdr
-        local zebra = 0
-
-        if #primaryRows > 0 or #secondaryRows > 0 then
-            for i = 1, #primaryRows do
-                zebra = zebra + 1
-                local rowBg = statPanel:CreateTexture(nil, "BACKGROUND")
-                rowBg:SetPoint("TOPLEFT", statPanel, "TOPLEFT", math.max(0, statPad - 2), statY + 1)
-                rowBg:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -math.max(0, statPad - 2), statY + 1)
-                rowBg:SetHeight(statRowH - 1)
-                local rbR, rbG, rbB, rbA = GearPanelRowBgColor(zebra)
-                rowBg:SetColorTexture(rbR, rbG, rbB, rbA)
-
-                local stat = primaryRows[i]
-                local pr, pg, pb = GetGearPrimaryStatRGB(stat.statId, classFile)
-                local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
-                val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
-                val:SetWidth(valColW)
-                val:SetJustifyH("RIGHT")
-                val:SetTextColor(pr, pg, pb)
-                val:SetText(stat.value)
-                val:SetShadowOffset(1, -1)
-                val:SetShadowColor(0, 0, 0, 0.8)
-
-                local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
-                row:SetPoint("TOPLEFT", statPanel, "TOPLEFT", statPad, statY)
-                row:SetPoint("RIGHT", statPanel, "RIGHT", -(statPad + valColW + GEAR_STAT_COL_GAP), statY)
-                row:SetWordWrap(false)
-                row:SetJustifyH("LEFT")
-                row:SetTextColor(0.88, 0.88, 0.88)
-                row:SetText(stat.label)
-                row:SetShadowOffset(1, -1)
-                row:SetShadowColor(0, 0, 0, 0.8)
-
-                statRowRefs[#statRowRefs + 1] = { label = row, pct = nil, val = val, y = statY, hasPct = false }
-                statY = statY - statRowH
-            end
-
-            if hasDivider then
-                local statDiv = statPanel:CreateTexture(nil, "ARTWORK")
-                statDiv:SetPoint("TOPLEFT", statPad, statY - 2)
-                statDiv:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY - 2)
-                statDiv:SetHeight(1)
-                statDiv:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
-                statY = statY - 8
-            end
-
-            for i = 1, #secondaryRows do
-                zebra = zebra + 1
-                local rowBg = statPanel:CreateTexture(nil, "BACKGROUND")
-                rowBg:SetPoint("TOPLEFT", statPanel, "TOPLEFT", math.max(0, statPad - 2), statY + 1)
-                rowBg:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -math.max(0, statPad - 2), statY + 1)
-                rowBg:SetHeight(statRowH - 1)
-                local rbR, rbG, rbB, rbA = GearPanelRowBgColor(zebra)
-                rowBg:SetColorTexture(rbR, rbG, rbB, rbA)
-
-                local stat = secondaryRows[i]
-                local secRgb = GEAR_SECONDARY_STAT_RGB[i] or { 1, 1, 1 }
-                local sr, sg, sb = secRgb[1], secRgb[2], secRgb[3]
-                local val = FontManager:CreateFontString(statPanel, GFR("gearStatRating"), "OVERLAY")
-                val:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -statPad, statY)
-                val:SetWidth(valColW)
-                val:SetJustifyH("RIGHT")
-                val:SetTextColor(sr * 0.82, sg * 0.82, sb * 0.82)
-                val:SetText(stat.ratingStr or "0")
-                val:SetShadowOffset(1, -1)
-                val:SetShadowColor(0, 0, 0, 0.8)
-
-                local pctFs = FontManager:CreateFontString(statPanel, GFR("gearStatPct"), "OVERLAY")
-                pctFs:SetPoint("TOPRIGHT", statPanel, "TOPRIGHT", -(statPad + valColW + GEAR_STAT_COL_GAP), statY)
-                pctFs:SetWidth(pctColW)
-                pctFs:SetJustifyH("RIGHT")
-                pctFs:SetTextColor(sr, sg, sb)
-                pctFs:SetText(stat.pctStr or "0.0%")
-                pctFs:SetShadowOffset(1, -1)
-                pctFs:SetShadowColor(0, 0, 0, 0.8)
-
-                local row = FontManager:CreateFontString(statPanel, GFR("gearStatLabel"), "OVERLAY")
-                row:SetPoint("TOPLEFT", statPanel, "TOPLEFT", statPad, statY)
-                row:SetPoint("RIGHT", statPanel, "RIGHT", -(statPad + valColW + GEAR_STAT_COL_GAP + pctColW + GEAR_STAT_COL_GAP), statY)
-                row:SetWordWrap(false)
-                row:SetJustifyH("LEFT")
-                row:SetTextColor(0.88, 0.88, 0.88)
-                row:SetText(stat.label)
-                row:SetShadowOffset(1, -1)
-                row:SetShadowColor(0, 0, 0, 0.8)
-
-                statRowRefs[#statRowRefs + 1] = { label = row, pct = pctFs, val = val, y = statY, hasPct = true }
-                statY = statY - statRowH
-            end
-        else
-            local noStats = FontManager:CreateFontString(statPanel, GFR("gearEmptyStatsHint"), "OVERLAY")
-            noStats:SetPoint("TOPLEFT", statPad, statY)
-            noStats:SetWidth(statInnerW)
-            noStats:SetJustifyH("CENTER")
-            noStats:SetTextColor(0.45, 0.45, 0.45)
-            noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
-            noStats:SetShadowOffset(1, -1)
-            noStats:SetShadowColor(0, 0, 0, 0.8)
-        end
-
-        local currHdrText = (ns.L and ns.L["GEAR_UPGRADE_CURRENCIES"]) or "Upgrade Currencies"
-        local currHdr = gearChrome and gearChrome.CreateSectionHeader
-            and gearChrome.CreateSectionHeader(currencyPanel, currHdrText, accent, { fontRole = "gearPanelTitle" })
-        if currHdr then
-            currHdr:ClearAllPoints()
-            currHdr:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", 0, 0)
-            currHdr:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", 0, 0)
-        end
-
-        -- Crest rows: icon | name (clipped) | fixed-width amount column (symmetric insets with stats panel).
-        local curY = -subHdr
-        local iconSize = 24
-for i = 1, #crestCurrencies do
-            local cur = crestCurrencies[i]
-            -- Alternating row bg
-            local rowBg = currencyPanel:CreateTexture(nil, "BACKGROUND")
-            rowBg:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
-            rowBg:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
-            rowBg:SetHeight(crestRowH)
-            local rbR, rbG, rbB, rbA = GearPanelRowBgColor(i)
-            rowBg:SetColorTexture(rbR, rbG, rbB, rbA)
-
-            local ico = currencyPanel:CreateTexture(nil, "ARTWORK")
-            ico:SetSize(iconSize, iconSize)
-            ico:SetPoint("TOPLEFT", currPad, curY)
-            ico:SetTexture(cur.icon or "Interface\\Icons\\INV_Misc_Coin_01")
-            ico:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-            local crestHitW = math.max(1, currColW - currPad * 2)
-            local crestHit = GearFact:CreateContainer(currencyPanel, crestHitW, crestRowH, false)
-            crestHit:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY + 1)
-            crestHit:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY + 1)
-            crestHit:SetHeight(crestRowH)
-            crestHit:EnableMouse(true)
-            crestHit:SetScript("OnEnter", function(self)
-                if ShowTooltip then
-                    ShowTooltip(self, {
-                        type = "currency",
-                        currencyID = cur.currencyID,
-                        charKey = charKey,
-                        anchor = "ANCHOR_RIGHT",
-                    })
-                elseif ns.TooltipService then
-                    ns.TooltipService:Show(self, {
-                        type = "currency",
-                        currencyID = cur.currencyID,
-                        charKey = charKey,
-                        anchor = "ANCHOR_RIGHT",
-                    })
-                end
-            end)
-            crestHit:SetScript("OnLeave", function()
-                if HideTooltip then
-                    HideTooltip()
-                elseif ns.TooltipService then
-                    ns.TooltipService:Hide()
-                end
-            end)
-
-            -- Name (left aligned; reserve currAmtReserve for amount column — symmetric rows)
-            local nameText = FontManager:CreateFontString(currencyPanel, GFR("gearCurrencyLabel"), "OVERLAY")
-            nameText:SetPoint("LEFT", ico, "RIGHT", 6, 0)
-            nameText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad - currAmtReserve, 0)
-            nameText:SetPoint("TOP", ico, "TOP", 0, 0)
-            nameText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
-            nameText:SetJustifyH("LEFT")
-            nameText:SetWordWrap(false)
-            nameText:SetTextColor(0.85, 0.85, 0.85)
-            -- Always use the first word (e.g. Adventurer/Veteran) to keep labels crisp without truncation.
-            local rawCrestName = cur.name or ""
-            local displayCrestName = rawCrestName
-            if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
-                local firstWord = rawCrestName:match("^(%S+)")
-                firstWord = firstWord or rawCrestName
-                displayCrestName = FormatTrackMarkup(firstWord, firstWord, nil)
-            end
-            nameText:SetText(displayCrestName)
-            nameText:SetShadowOffset(1, -1)
-            nameText:SetShadowColor(0, 0, 0, 0.8)
-
-            -- Amount / cap: GetCurrencyData (same source as PvE + Currency tab) — season earned/max or weekly qty/cap + green/red
-            local cd = WarbandNexus.GetCurrencyData and WarbandNexus:GetCurrencyData(cur.currencyID, charKey) or nil
-            if not cd then
-                local mq = (type(cur.maxQuantity) == "number" and cur.maxQuantity > 0) and cur.maxQuantity or 0
-                cd = {
-                    currencyID = cur.currencyID,
-                    name = cur.name,
-                    quantity = cur.amount or 0,
-                    maxQuantity = mq,
-                    totalEarned = nil,
-                    seasonMax = nil,
-                }
-            end
-            local amountText = FontManager:CreateFontString(currencyPanel, GFR("gearCurrencyAmount"), "OVERLAY")
-            amountText:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY)
-            amountText:SetPoint("TOP", ico, "TOP", 0, 0)
-            amountText:SetPoint("BOTTOM", ico, "BOTTOM", 0, 0)
-            amountText:SetJustifyH("RIGHT")
-            amountText:SetShadowOffset(1, -1)
-            amountText:SetShadowColor(0, 0, 0, 0.8)
-            if ns.UI_BindSeasonProgressAmount then
-                ns.UI_BindSeasonProgressAmount(amountText, cd)
-            elseif ns.UI_FormatSeasonProgressCurrencyLine then
-                amountText:SetText(ns.UI_FormatSeasonProgressCurrencyLine(cd) or "")
-            end
-
-            currRowRefs[#currRowRefs + 1] = { icon = ico, name = nameText, amount = amountText }
-            curY = curY - crestRowH
-        end
-
-        -- Divider line
-        local divider = currencyPanel:CreateTexture(nil, "ARTWORK")
-        divider:SetPoint("TOPLEFT", currencyPanel, "TOPLEFT", currPad, curY - 4)
-        divider:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY - 4)
-        divider:SetHeight(1)
-        divider:SetColorTexture(accent[1] * 0.3, accent[2] * 0.3, accent[3] * 0.3, 0.6)
-
-        -- Gold row
-        if goldCurrency then
-            curY = curY - 14
-            local goldIco = currencyPanel:CreateTexture(nil, "ARTWORK")
-            goldIco:SetSize(iconSize, iconSize)
-            goldIco:SetPoint("TOPLEFT", currPad, curY)
-            goldIco:SetTexture(goldCurrency.icon or 133784)
-            goldIco:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-            local goldText = FontManager:CreateFontString(currencyPanel, GFR("gearGoldLabel"), "OVERLAY")
-            goldText:SetPoint("LEFT", goldIco, "RIGHT", 6, 0)
-            goldText:SetPoint("RIGHT", currencyPanel, "RIGHT", -currPad - currAmtReserve, 0)
-            goldText:SetJustifyH("LEFT")
-            goldText:SetWordWrap(false)
-            goldText:SetTextColor(1, 0.82, 0)
-            goldText:SetText((ns.L and ns.L["GOLD_LABEL"]) or "Gold")
-            goldText:SetShadowOffset(1, -1)
-            goldText:SetShadowColor(0, 0, 0, 0.8)
-
-            local goldAmt = FontManager:CreateFontString(currencyPanel, GFR("gearGoldAmount"), "OVERLAY")
-            goldAmt:SetPoint("TOPRIGHT", currencyPanel, "TOPRIGHT", -currPad, curY)
-            goldAmt:SetPoint("TOP", goldIco, "TOP", 0, 0)
-            goldAmt:SetPoint("BOTTOM", goldIco, "BOTTOM", 0, 0)
-            goldAmt:SetJustifyH("RIGHT")
-            goldAmt:SetShadowOffset(1, -1)
-            goldAmt:SetShadowColor(0, 0, 0, 0.8)
-            local copper = (goldCurrency.amount or 0) * 10000 + (goldCurrency.silver or 0) * 100 + (goldCurrency.copper or 0)
-            goldAmt:SetText("|cffffff00" .. FormatGold(copper) .. "|r")
-            currRowRefs[#currRowRefs + 1] = { icon = goldIco, name = goldText, amount = goldAmt }
-        end
-
-        -- Short hint under gold (season progress on crest amounts).
-        local shiftHint = FontManager:CreateFontString(currencyPanel, "small", "OVERLAY")
-        shiftHint:SetPoint("BOTTOMLEFT", currencyPanel, "BOTTOMLEFT", currPad, FOOTER_HINT_PAD)
-        shiftHint:SetPoint("BOTTOMRIGHT", currencyPanel, "BOTTOMRIGHT", -currPad, FOOTER_HINT_PAD)
-        shiftHint:SetJustifyH("CENTER")
-        shiftHint:SetText("|cff777777" .. GetLocalizedText("SHIFT_HINT_SEASON_PROGRESS_SHORT", "Shift: Season progress") .. "|r")
-        shiftHint:SetShadowOffset(1, -1)
-        shiftHint:SetShadowColor(0, 0, 0, 0.8)
+    if paperBottom then
+        local bandPanel = PaintGearPaperBottomBand(
+            paperBottom, paperColW, paperBottomBandH,
+            charData, isCurrentChar, currencies, charKey, accent,
+            primaryRows, secondaryRows
+        )
+        gearHosts.statPanel = bandPanel
+        gearHosts.currencyPanel = bandPanel
     end
 
     local recScroll, recContent, scroll, storageContentW = nil, nil, nil, nil
@@ -3488,9 +3625,9 @@ for i = 1, #crestCurrencies do
             end)
         end
 
-        -- ── BOTTOM BAND: Gear upgrade recommendations (full width) ──
-        local storageParent = gearHosts.bottomColHost or card
-        local storagePanel = CreateGearSubpanel(storageParent, storageW, recZoneH > 0 and recZoneH or panelH, accent)
+        -- ── RIGHT COLUMN: Gear upgrade recommendations (full height, aligned with paperdoll) ──
+        local storageParent = gearHosts.rightColHost or card
+        local storagePanel = CreateGearSubpanel(storageParent, storageW, contentBandH, accent)
         storagePanel:ClearAllPoints()
         storagePanel:SetPoint("TOPLEFT", storageParent, "TOPLEFT", 0, 0)
         storagePanel:SetPoint("BOTTOMRIGHT", storageParent, "BOTTOMRIGHT", 0, 0)
@@ -3502,9 +3639,19 @@ for i = 1, #crestCurrencies do
             storagePanel:SetClipsChildren(true)
         end
         local storagePanelH = storagePanel.GetHeight and storagePanel:GetHeight() or panelH
-        local storageHdrText = GetLocalizedText("GEAR_STORAGE_TITLE", "Gear Upgrade Recommendations")
+        local recTitleColor = {
+            math.min(1, accent[1] * 1.12),
+            math.min(1, accent[2] * 1.12),
+            math.min(1, accent[3] * 1.12),
+        }
+        local storageHdrText = GetLocalizedText("GEAR_RECOMMENDED_TITLE", "Recommended")
         local storageHdr = gearChrome and gearChrome.CreateSectionHeader
-            and gearChrome.CreateSectionHeader(storagePanel, storageHdrText, accent, { fontRole = "gearStorageCardTitle" })
+            and gearChrome.CreateSectionHeader(storagePanel, storageHdrText, accent, {
+                fontRole = "gearStorageCardTitle",
+                hideAccentBar = true,
+                underlineHeader = true,
+                titleColor = recTitleColor,
+            })
         if storageHdr then
             storageHdr:ClearAllPoints()
             storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", 0, 0)
@@ -3583,14 +3730,20 @@ for i = 1, #crestCurrencies do
         end
         gearHosts.storagePanel = storagePanel
         RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
-        RelayoutGearSideColumnInCard(card, gearHosts)
     end
 
-  -- Paperdoll in left column host (clips inside paperColW; stats/currencies stay in rightColHost).
-    local paperParent = leftCol or card
+    -- Paperdoll slots + model in top band; stats/currencies sit in paperBottomHost below.
+    local paperParent = paperTop or leftCol or card
     DrawPaperDollInCard(paperParent, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true,
-        PAPERDOLL_COL_INSET, charKey, 0, paperdollNaturalH, paperZoneH,
-        { cardRef = card, deferCenter = true, modelBoost = modelBoost })
+        PAPERDOLL_COL_INSET, charKey, 0, slotsOnlyH, paperTopZoneH,
+        {
+            cardRef = card,
+            deferCenter = true,
+            modelBoost = modelBoost,
+            topContentInset = 0,
+            skipCenterIdentity = true,
+            paperChrome = paperChrome,
+        })
 
     -- Staged paint: one idle tick per stage (mid+center -> storage rows -> slot inspect) to avoid stacking FRAME SPIKEs.
     local gearDeferGen = ns._gearTabDrawGen
@@ -3657,15 +3810,6 @@ for i = 1, #crestCurrencies do
             return
         end
         local P = ns.Profiler
-        local function runMid()
-            paintGearMidColumnDeferred()
-        end
-        if P and P.enabled and P.Wrap and P.SliceLabel then
-            P:Wrap(P:SliceLabel(P.CAT.UI, "Gear_MidColumn_deferred"), runMid)
-        else
-            runMid()
-        end
-
         local centerFn = card._gearPaperdollCenterDefer
         card._gearPaperdollCenterDefer = nil
         local function runStorageRowsThenInspect()
@@ -3752,9 +3896,9 @@ for i = 1, #crestCurrencies do
         end
     end)
 
-    cardH = CARD_PAD + HERO_RIBBON_H + 10 + panelH + CARD_PAD
+    cardH = CARD_PAD + 8 + panelH + CARD_PAD
     if recContent then
-        local newViewportH = (recZoneH > 0 and recZoneH or panelH) - storageHeaderH - storagePad - 10
+        local newViewportH = contentBandH - storageHeaderH - storagePad - 10
         local storageHdrScroll = (#storageRows > 0) and ns.GearUI_STORAGE_REC_TABLE_HDR or 0
         recContent:SetHeight(math.max(#storageRows * rowH + storageHdrScroll, math.max(newViewportH, 40)))
         if recScroll and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
@@ -3763,7 +3907,6 @@ for i = 1, #crestCurrencies do
     end
 
     card:SetHeight(cardH)
-
     card:Show()
     local mfHost = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if mfHost then
@@ -3771,33 +3914,24 @@ for i = 1, #crestCurrencies do
         card._wnGearViewportLayout = {
             scrollYOffset = yOffset,
             paperdollNaturalH = paperdollNaturalH,
-            paperZoneH = paperZoneH,
-            paperdollNaturalH = paperdollNaturalH,
-            topZoneH = topZoneNatural,
-            recZoneH = recZoneH,
-            leftStackHNatural = leftStackHNatural,
+            slotsOnlyH = slotsOnlyH,
+            paperZoneH = paperTopZoneH,
+            paperTopZoneH = paperTopZoneH,
+            paperBottomBandH = paperBottomBandH,
+            contentBandH = contentBandH,
+            topZoneH = contentBandH,
             panelH = panelH,
-            statPanelH = statPanelH,
-            currenciesH = currenciesH,
-            statBandH = statBandH,
-            currBandH = currBandH,
             sectionGap = SECTION_GAP,
-            statColW = statColW,
-            currColW = currColW,
-            sideColW = sideColW,
-            sideBandGap = SIDE_BAND_GAP,
+            recColW = recColW,
+            sideColW = recColW,
             paperLeft = paperLeft,
             panelTopY = panelTopY,
             panelGutter = GEAR_LAYOUT.COL_GAP or PANEL_GAP,
-            statPanel = statPanel,
-            statCurrDiv = statCurrDiv,
-            currencyPanel = currencyPanel,
             paperChrome = paperChrome,
             colDivider = colDiv,
             topStackDivider = gearHosts.topStackDivider,
             topLayoutMode = topLayoutMode,
             layoutInnerW = layoutInnerW,
-            sideColNaturalH = sideColNaturalH,
             storagePanel = storagePanel,
             cardInnerW = cardInnerW,
             paperColW = paperColW,
@@ -3813,17 +3947,31 @@ for i = 1, #crestCurrencies do
             bodyHost = gearHosts.bodyHost,
             topHost = gearHosts.topHost,
             leftColHost = gearHosts.leftColHost,
+            paperTopHost = gearHosts.paperTopHost,
+            paperBottomHost = gearHosts.paperBottomHost,
+            statPanel = gearHosts.statPanel,
+            currencyPanel = gearHosts.currencyPanel,
             rightColHost = gearHosts.rightColHost,
             bottomColHost = gearHosts.bottomColHost,
         }
         local layoutSync = card._wnGearViewportLayout
         if card._gearSlotInspectList and #card._gearSlotInspectList > 0 then
+            EnforceGearTopRowNoOverlap(card, layoutSync, mfDraw)
             RelayoutGearPaperdollInCard(card, layoutSync)
             RelayoutGearCardColumnHosts(card, layoutSync, panelTopY, recEnabled)
-            if EnforceGearTopRowNoOverlap(card, layoutSync, mfDraw) then
-                RelayoutGearCardColumnHosts(card, layoutSync, panelTopY, recEnabled)
+            if layoutSync.topRowStackExtraH and layoutSync.topRowStackExtraH > 0 then
+                cardH = cardH + layoutSync.topRowStackExtraH
             end
-            RelayoutGearSideColumnInCard(card, layoutSync)
+            layoutSync.topLayoutMode = layoutSync.topLayoutMode or topLayoutMode
+            card:SetHeight(cardH)
+            -- If defer chain exited early (empty list bug / tab switch), still paint enchant/gem once.
+            local slotList = card._gearSlotInspectList
+            for si = 1, #slotList do
+                local sb = slotList[si]
+                if sb and sb._needsDeferredInspect and sb._gearInspectSt and not sb._gearInspectSt.ready then
+                    GearSlotApplyDeferredEnchantGemInspect(sb)
+                end
+            end
         end
     end
     return yOffset - cardH - 12, cardH
@@ -3852,52 +4000,6 @@ local function SyncGearStorageRecHostFromLayout(mf, layout)
     host.recScroll = layout.recScroll or host.recScroll
     host.recContent = layout.recContent or host.recContent
     host.sbCol = layout.sbCol or host.sbCol
-end
-
---- Widen scroll child when paper + gap + side exceeds card inner (never overlap columns).
----@param card Frame|nil
----@param layout table
----@param mf Frame|nil
----@return boolean widened
-local function EnforceGearTopRowNoOverlap(card, layout, mf)
-    if not layout then return false end
-    local gap = layout.panelGutter or GEAR_PANEL_GAP
-    local paperColW = math.max(GEAR_PAPER_COL_FIXED_W, layout.paperColW or GEAR_PAPER_COL_FIXED_W)
-    local sideColW = math.max(1, layout.sideColW or 0)
-    local needInner = paperColW + gap + sideColW
-    layout.minTopRowInnerW = needInner
-    layout.paperColW = paperColW
-
-    local cardInner = layout.cardInnerW or 0
-    if card and card.GetWidth then
-        cardInner = GetGearCardInnerWidthFromCard(card)
-    end
-    if cardInner >= needInner - 1 then
-        layout.cardInnerW = math.max(cardInner, needInner)
-        layout.layoutInnerW = math.max(layout.layoutInnerW or 0, needInner)
-        return false
-    end
-
-    layout.cardInnerW = needInner
-    layout.layoutInnerW = math.max(layout.layoutInnerW or 0, needInner)
-    layout.storageW = math.max(layout.storageW or 0, needInner)
-
-    if not mf or not mf.scrollChild or not mf.scrollChild.SetWidth then
-        return false
-    end
-
-    local side = SIDE_MARGIN or 16
-    local scrollW = needInner + CARD_PAD * 2 + side * 2
-    if ns.GearUI_GetGearTabMinScrollWidth then
-        scrollW = math.max(scrollW, ns.GearUI_GetGearTabMinScrollWidth())
-    end
-    local viewportW = (mf.scroll and mf.scroll.GetWidth and mf.scroll:GetWidth()) or 0
-    mf.scrollChild:SetWidth(math.max(viewportW, scrollW))
-
-    if card then
-        layout.cardInnerW = GetGearCardInnerWidthFromCard(card)
-    end
-    return true
 end
 
 --- Live resize / post-populate: stretch gear card columns to scroll body bottom (footer).
@@ -3932,88 +4034,76 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
     if parent and layout.scrollYOffset ~= nil then
         AnchorGearCardFillWidth(card, parent, layout.scrollYOffset, mf)
     end
-    layout.cardInnerW = GetGearCardInnerWidthFromCard(card)
-    if (card:GetWidth() or 0) < 1 and parentW and parentW > 0 then
-        layout.cardInnerW = ResolveGearTabCardInnerWidth(parentW)
+    -- Prefer live viewport width during corner-drag (scrollChild width may stay frozen/wide).
+    local layoutInnerFromViewport = nil
+    if contentWidth and contentWidth > 0 then
+        layoutInnerFromViewport = ResolveGearTabCardInnerWidth(contentWidth)
     end
-    if ns.GearUI_ClampCardInnerWidth then
-        layout.cardInnerW = ns.GearUI_ClampCardInnerWidth(layout.cardInnerW)
+    layout.cardInnerW = layoutInnerFromViewport or GetGearCardInnerWidthFromCard(card)
+    if layout.cardInnerW < 1 and parentW and parentW > 0 then
+        layout.cardInnerW = ResolveGearTabCardInnerWidth(parentW)
     end
     local recEnabled = WarbandNexus:IsGearStorageRecommendationsEnabled()
     if layout.cardInnerW and layout.cardInnerW > 0 then
         local cardInnerW = layout.cardInnerW
-        local paperColW, sideColW, layoutInnerW
-        if ns.GearUI_ComputeTopRowLayout then
-            _, paperColW, sideColW, layoutInnerW = ns.GearUI_ComputeTopRowLayout(cardInnerW, nil)
+        local paperColW, recColW, layoutInnerW
+        if ns.GearUI_ComputeTopRowWidths then
+            paperColW, recColW, layoutInnerW = ns.GearUI_ComputeTopRowWidths(cardInnerW, recEnabled)
+        elseif ns.GearUI_ComputeTopRowLayout then
+            _, paperColW, recColW, layoutInnerW = ns.GearUI_ComputeTopRowLayout(cardInnerW, nil)
+            if not recEnabled then recColW = 0 end
         else
-            paperColW, sideColW = ComputeGearLayoutWidths(cardInnerW, recEnabled)
+            paperColW, recColW = ComputeGearLayoutWidths(cardInnerW, recEnabled)
             layoutInnerW = cardInnerW
         end
-        layout.topLayoutMode = "row"
         layout.paperColW = math.max(GEAR_PAPER_COL_FIXED_W, paperColW or 0)
-        layout.sideColW = sideColW
-        local minRowInner = (ns.GearUI_GetTopRowMinInnerW and ns.GearUI_GetTopRowMinInnerW(layout.paperColW, sideColW))
-            or (layout.paperColW + GEAR_PANEL_GAP + sideColW)
-        layout.layoutInnerW = math.max(layoutInnerW or 0, minRowInner)
-        layout.storageW = layout.layoutInnerW or cardInnerW
+        layout.recColW = recColW
+        layout.sideColW = recColW
+        layout.layoutInnerW = layoutInnerW or layout.cardInnerW or cardInnerW
+        layout.storageW = recColW > 0 and recColW or (layout.layoutInnerW or cardInnerW)
         layout.panelGutter = GEAR_PANEL_GAP
     end
 
     local paperdollNaturalH = layout.paperdollNaturalH or 0
-    local statPanelH = layout.statPanelH or 0
-    local currenciesH = layout.currenciesH or 0
-    local sideBandGap = layout.sideBandGap or GEAR_LAYOUT.SIDE_BAND_GAP or 10
     local sectionGap = layout.sectionGap or 12
     local panelTopY = layout.panelTopY or (-CARD_PAD - 22)
-    local horizParentLay = layout.leftColHost or card
+    local horizParentLay = layout.paperTopHost or layout.leftColHost or card
     local panelH = layout.panelH or 0
-    local recZoneH = layout.recZoneH or 0
-    local topZoneNatural = layout.topZoneH or paperdollNaturalH
+    local contentBandMinH = math.max(paperdollNaturalH, GEAR_LAYOUT.CONTENT_BAND_MIN_H or 360)
+    local bottomBand = layout.paperBottomBandH or 0
 
     if not chromeOnly then
-        local sideColNaturalH = statPanelH + sideBandGap + currenciesH
-        if ns.GearUI_ComputeSideColumnLayout and layout.sideColW then
-            local _, _, _, _, h = ns.GearUI_ComputeSideColumnLayout(layout.sideColW, statPanelH, currenciesH, sideBandGap)
-            sideColNaturalH = h
-        end
-        topZoneNatural = math.max(paperdollNaturalH, sideColNaturalH)
-        layout.topZoneH = topZoneNatural
-        layout.sideColNaturalH = sideColNaturalH
-        layout.topLayoutMode = "row"
-        panelH = ResolveGearTabPanelHeight(mf, layout.scrollYOffset or 0, topZoneNatural, paperdollNaturalH)
-        recZoneH = 0
-        if recEnabled and ns.GearUI_ComputeRecBandHeight then
-            recZoneH = ns.GearUI_ComputeRecBandHeight(true, panelH, topZoneNatural)
-        elseif recEnabled then
-            recZoneH = GEAR_LAYOUT.REC_BAND_MIN_H or 200
-        end
-        if recEnabled and recZoneH > 0 then
-            panelH = math.max(panelH, topZoneNatural + sectionGap + recZoneH)
-        end
+        panelH = ResolveGearTabPanelHeight(mf, layout.scrollYOffset or 0, contentBandMinH, paperdollNaturalH)
         layout.panelH = panelH
-        layout.recZoneH = recZoneH
-        layout.paperZoneH = paperdollNaturalH
-        layout.leftStackHNatural = recEnabled and (topZoneNatural + sectionGap + recZoneH) or topZoneNatural
+        layout.contentBandH = panelH
+        layout.topZoneH = panelH
+        layout.paperTopZoneH = math.max(1, panelH - bottomBand)
+        layout.paperZoneH = layout.paperTopZoneH
     end
 
+    EnforceGearTopRowNoOverlap(card, layout, mf)
     RelayoutGearPaperdollInCard(card, layout)
-
     local measuredStorageW = RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
-    if EnforceGearTopRowNoOverlap(card, layout, mf) then
-        RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
-    end
     if measuredStorageW and measuredStorageW > 0 then
         layout.storageW = measuredStorageW
     end
 
     local cardH = CARD_PAD + 24 + panelH + CARD_PAD
-    if layout.paperChrome and layout.paperChrome.SetSize and layout.paperColW then
-        layout.paperChrome:SetParent(horizParentLay)
-        layout.paperChrome:SetSize(layout.paperColW, layout.paperZoneH or layout.paperdollNaturalH or topZoneNatural)
-        layout.paperChrome:ClearAllPoints()
-        layout.paperChrome:SetPoint("TOPLEFT", horizParentLay, "TOPLEFT", 0, 0)
+    if layout.topRowStackExtraH and layout.topRowStackExtraH > 0 then
+        cardH = cardH + layout.topRowStackExtraH
     end
-    RelayoutGearSideColumnInCard(card, layout)
+    if layout.paperChrome then
+        local modelHost = nil
+        if ns._gearDressModel and ns._gearDressModel.IsShown and ns._gearDressModel:IsShown() then
+            modelHost = ns._gearDressModel
+        elseif ns._gearPortraitPanel and ns._gearPortraitPanel.IsShown and ns._gearPortraitPanel:IsShown() then
+            modelHost = ns._gearPortraitPanel
+        end
+        AnchorGearPaperChromeBehindModel(layout.paperChrome, modelHost, card)
+    end
+    if layout.paperBottomBandH and layout.paperBottomBandH > 0 then
+        RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
+    end
     if not chromeOnly or not heightNear(card:GetHeight(), cardH) then
         card:SetHeight(cardH)
     end
@@ -4096,19 +4186,32 @@ local function BuildLiveEquippedSlotSnapshot(slotID)
     if not itemID and not itemLink then return nil end
     local quality = 0
     local ilvl = 0
-    pcall(function()
-        if C_Item and C_Item.GetDetailedItemLevelInfo then
-            local v = C_Item.GetDetailedItemLevelInfo(itemLink)
-            if v and v > 0 then ilvl = v end
-        end
-    end)
-    pcall(function()
-        if C_Item and C_Item.GetItemInfo then
-            local _, _, q, level = C_Item.GetItemInfo(itemLink)
-            if q then quality = q end
-            if (not ilvl or ilvl <= 0) and level and level > 0 then ilvl = level end
-        end
-    end)
+    if ns.Gear_GetEffectiveIlvl then
+        ilvl = ns.Gear_GetEffectiveIlvl(itemLink) or 0
+    else
+        pcall(function()
+            if C_Item and C_Item.GetDetailedItemLevelInfo then
+                local v = C_Item.GetDetailedItemLevelInfo(itemLink)
+                if v and v > 0 then ilvl = v end
+            end
+        end)
+        pcall(function()
+            if C_Item and C_Item.GetItemInfo then
+                local _, _, q, level = C_Item.GetItemInfo(itemLink)
+                if q then quality = q end
+                if (not ilvl or ilvl <= 0) and level and level > 0 then ilvl = level end
+            end
+        end)
+    end
+    if quality == 0 then
+        pcall(function()
+            if C_Item and C_Item.GetItemInfo then
+                local _, _, q = C_Item.GetItemInfo(itemLink)
+                if q then quality = q end
+            end
+        end)
+    end
+    ilvl = math.floor(tonumber(ilvl) or 0)
     return {
         itemID = itemID,
         itemLink = itemLink,
@@ -4162,13 +4265,17 @@ local function GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText
         if nsig ~= osig then return false end
     end
 
-    local upShown = sb._gearUpgradeArrow and sb._gearUpgradeArrow:IsShown() == true
+    local upInfo = sb._gearUpgradeInfo and sb._gearUpgradeInfo[sb._slotID]
+    local arrowDisplay = (upInfo and ns.GearUI_GetUpgradeArrowDisplay)
+        and ns.GearUI_GetUpgradeArrowDisplay(upInfo, sb._gearCurrencyAmounts) or nil
+    if upInfo then upInfo.upgradeArrowDisplay = arrowDisplay end
     local expectUpgradeShown = (GEAR_DEBUG_ALWAYS_SHOW_UPGRADE and slotData and slotData.itemLink and slotData.itemLink ~= ""
             and not (issecretvalue and issecretvalue(slotData.itemLink)))
-        or (canUpgrade == true and not notUpgradeable)
+        or (arrowDisplay == "green" and not notUpgradeable)
+    local upShown = sb._gearUpgradeArrow and sb._gearUpgradeArrow:IsShown() == true
     if expectUpgradeShown ~= upShown then return false end
 
-    local aff = canUpgrade == true
+    local aff = arrowDisplay == "green"
     if sb._gearLastCanAffordNext ~= aff then return false end
 
     local wantLock = false

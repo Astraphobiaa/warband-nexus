@@ -1541,6 +1541,9 @@ L["MONEY_LOGS_CHAT_WITHDRAW"] = "|cffff9900金币记录:|r 从战团银行取出
 -- Gear UI
 L["GEAR_UPGRADE_CURRENCIES"] = "升级货币"
 L["GEAR_CHARACTER_STATS"] = "角色属性"
+L["GEAR_STAT_VALUE_PCT_FORMAT"] = "%s (%s)"
+L["GEAR_SLOT_CURRENCY_HAVE_NEED"] = "%d/%d"
+L["GEAR_TT_DISCOUNTED_UPGRADE"] = "纹章费用已折扣（高水位）"
 L["GEAR_NO_ITEM_EQUIPPED"] = "此栏位未装备物品。"
 L["GEAR_NO_PREVIEW"] = "无预览"
 L["GEAR_OFFLINE_BADGE"] = "离线"

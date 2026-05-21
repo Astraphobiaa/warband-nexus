@@ -5,9 +5,9 @@
     Layout:
     ┌────────────────────────────────────────────────────────────────────────────┐
     │ [Header: Title / subtitle (left)                    Character ▼ (right)]    │
-    ├────────────────────────────────────────────────────────────────────────────┤
-    │ Paperdoll — Slot icons (left/right/bottom) + portrait (center) + crests    │
-    └────────────────────────────────────────────────────────────────────────────┘
+    ├──────────────────────────────┬─────────────────────────────────────────────┤
+    │ Paperdoll (slots + model)    │ Gear upgrade recommendations (scroll table) │
+    └──────────────────────────────┴─────────────────────────────────────────────┘
 ]]
 
 local _, ns = ...
@@ -498,7 +498,7 @@ local GEAR_CHAR_SELECTOR_HEIGHT = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HE
 local GEAR_CHAR_DROPDOWN_ENTRY_H = (ns.UI_LAYOUT and ns.UI_LAYOUT.DROPDOWN_MENU_ROW_HEIGHT) or (ns.UI_LAYOUT and ns.UI_LAYOUT.ROW_HEIGHT) or 26
 local GEAR_HIDE_FILTER_BUTTON_W = 84
 
--- Paper doll: paperdoll (left) | stats+currencies (right) | recommendations (bottom band)
+-- Paper doll: paperdoll (left) | recommendations (right); stats/currencies panels removed
 -- [[WN_GEAR_PAPERDOLL_MOVED]]
 -- Paperdoll chunk lives in GearUI_Paperdoll.lua (Lua 200-local limit)
 local GEAR_STORAGE_RECOMMENDATIONS_ENABLED = true
@@ -720,20 +720,40 @@ local function BuildGearCurrencyAmounts(currencies)
     return currencyAmounts
 end
 
---- Crest cost for the very next tier step (0 when gold-only via watermark).
+--- Affordability must use the crest pool for up.trackName (Hero/Myth), not a mismatched API currencyID.
+---@param upInfo table|nil
+local function EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
+    if not upInfo or upInfo.isCrafted then return end
+    local track = upInfo.trackName
+    local map = ns.TRACK_NAME_TO_CURRENCY_ID
+    if not track or not map then return end
+    local expected = map[track]
+    if not expected or expected == 0 then return end
+    if upInfo.currencyID == expected then return end
+    upInfo.currencyID = expected
+    upInfo.upgradeArrowDisplay = nil
+end
+
+--- Crest cost for the very next tier step from API-persisted slot data (0 = vendor gold-only for this step).
+--- Do not infer gold-only from TRACK_ILVLS watermark — that disagrees with C_ItemUpgrade costs (Midnight).
 ---@param upInfo table
 ---@return number
 local function GetNextStepCrestNeed(upInfo)
+    EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
     if not upInfo or not upInfo.canUpgrade or upInfo.isCrafted then return 0 end
     local currTier = upInfo.currUpgrade or 0
     local maxTier = upInfo.maxUpgrade or 0
     if currTier >= maxTier then return 0 end
-    local tiers = ns.TRACK_ILVLS and ns.TRACK_ILVLS[upInfo.trackName]
-    if not tiers then return upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20) end
-    local nextIlvl = tiers[currTier + 1]
-    if not nextIlvl then return upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20) end
-    if nextIlvl <= (upInfo.watermarkIlvl or 0) then return 0 end
-    return upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20)
+    local c = tonumber(upInfo.crestCost)
+    if c ~= nil and c >= 0 then return c end
+    return ns.UPGRADE_CREST_PER_LEVEL or 20
+end
+
+--- Gold-only when API reports zero crest cost for the immediate next step.
+---@param upInfo table|nil
+---@return boolean
+local function IsNextStepGoldOnlyUpgrade(upInfo)
+    return GetNextStepCrestNeed(upInfo) <= 0
 end
 
 -- ============================================================================
@@ -800,6 +820,7 @@ end
 ---@return number totalAffordable how many upgrades the player can afford
 ---@return number goldOnlyCount how many of those are gold-only (below watermark)
 local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
+    EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
     if not upInfo or not upInfo.canUpgrade then return 0, 0 end
 
     local currTier = upInfo.currUpgrade or 0
@@ -811,7 +832,6 @@ local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
     local tiers = TRACK_ILVLS and TRACK_ILVLS[trackName]
     if not tiers then return 0, 0 end
 
-    local wmIlvl = upInfo.watermarkIlvl or 0
     local goldPerUpgrade = upInfo.moneyCost or (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000)
     local crestPerUpgrade = upInfo.crestCost or (ns.UPGRADE_CREST_PER_LEVEL or 20)
     local currencyID = upInfo.currencyID or 0
@@ -823,31 +843,28 @@ local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
     local goldOnlyCount = 0
 
     for nextTier = currTier + 1, maxTier do
-        local nextIlvl = tiers[nextTier]
-        if not nextIlvl then break end
-
-        local isGoldOnly = (nextIlvl <= wmIlvl)
         local stepGold = goldPerUpgrade
         local stepCrest = crestPerUpgrade
-        if nextTier == currTier + 1 and upInfo.moneyCost and upInfo.moneyCost > 0 then
-            stepGold = upInfo.moneyCost
-        end
-        if nextTier == currTier + 1 and upInfo.crestCost and upInfo.crestCost > 0 then
-            stepCrest = upInfo.crestCost
+        if nextTier == currTier + 1 then
+            if upInfo.moneyCost and upInfo.moneyCost > 0 then
+                stepGold = upInfo.moneyCost
+            end
+            if upInfo.crestCost ~= nil then
+                stepCrest = upInfo.crestCost
+            end
         end
 
         if haveGoldCopper < stepGold then break end
 
-        if not isGoldOnly then
+        if stepCrest > 0 then
             if haveCrests < stepCrest then break end
             haveCrests = haveCrests - stepCrest
+        else
+            goldOnlyCount = goldOnlyCount + 1
         end
 
         haveGoldCopper = haveGoldCopper - stepGold
         totalAffordable = totalAffordable + 1
-        if isGoldOnly then
-            goldOnlyCount = goldOnlyCount + 1
-        end
     end
 
     return totalAffordable, goldOnlyCount
@@ -867,16 +884,60 @@ local function CanAffordNextUpgrade(upInfo, currencyAmounts)
     return count > 0
 end
 
---- True when this slot should show the upgrade arrow (next tier / recraft available), regardless of crest affordability.
+--- Afford exactly one upgrade step (curr+1), not multi-step simulation.
+---@param upInfo table
+---@param currencyAmounts table|nil
+---@return boolean
+local function CanAffordImmediateNextStep(upInfo, currencyAmounts)
+    EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
+    if not upInfo or not upInfo.canUpgrade then return false end
+    if upInfo.isCrafted then
+        return CanAffordNextUpgrade(upInfo, currencyAmounts)
+    end
+    local currTier = upInfo.currUpgrade or 0
+    local maxTier = upInfo.maxUpgrade or 0
+    if currTier >= maxTier then return false end
+    local goldNeed = upInfo.moneyCost or (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000)
+    if GetGearCurrencyGoldCopper(currencyAmounts) < goldNeed then return false end
+    local crestNeed = GetNextStepCrestNeed(upInfo)
+    if crestNeed <= 0 then
+        return true
+    end
+    local cid = upInfo.currencyID or 0
+    local haveCrests = (currencyAmounts and currencyAmounts[cid]) or 0
+    return haveCrests >= crestNeed
+end
+
+--- True when this slot has a remaining upgrade track (recraft / tier steps), regardless of affordability.
 local function GearUpgradeInfoHasPath(upInfo)
     return upInfo and upInfo.canUpgrade == true and not upInfo.notUpgradeable
+end
+
+--- Paperdoll upgrade chip: green = next step needs crests and is affordable; yellow = crest step but short; hide gold-only catch-up.
+---@param upInfo table|nil
+---@param currencyAmounts table|nil
+---@return string|nil "green" | "yellow" | nil
+local function GetUpgradeArrowDisplay(upInfo, currencyAmounts)
+    EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
+    if not GearUpgradeInfoHasPath(upInfo) then return nil end
+    if upInfo.isCrafted then
+        return CanAffordNextUpgrade(upInfo, currencyAmounts) and "green" or nil
+    end
+    if IsNextStepGoldOnlyUpgrade(upInfo) then
+        return CanAffordImmediateNextStep(upInfo, currencyAmounts) and "green" or nil
+    end
+    if CanAffordImmediateNextStep(upInfo, currencyAmounts) then
+        return "green"
+    end
+    return "yellow"
 end
 
 --- Attach affordableUpgrades / canAffordNext on each slot row (paperdoll + refresh).
 ---@param upgradeInfo table
 ---@param currencyAmounts table
 local function EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
-    if not upgradeInfo or not currencyAmounts then return end
+    if not upgradeInfo then return end
+    currencyAmounts = currencyAmounts or {}
     for _, up in pairs(upgradeInfo) do
         if up and up.canUpgrade and not up.notUpgradeable then
             if up.isCrafted then
@@ -884,16 +945,31 @@ local function EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
                 up.canAffordNext = range and range.maxIlvl > (up.currentIlvl or 0)
                 up.affordableUpgrades = up.canAffordNext and 1 or 0
                 up.goldOnlyUpgrades = 0
+                up.nextStepNeedsCrest = up.canAffordNext == true
+                up.upgradeArrowDisplay = GetUpgradeArrowDisplay(up, currencyAmounts)
             else
+                EnsureUpgradeRowCurrencyMatchesTrack(up)
                 local aff, goldOnly = CalculateAffordableUpgrades(up, currencyAmounts)
                 up.affordableUpgrades = aff
                 up.goldOnlyUpgrades = goldOnly
-                up.canAffordNext = aff > 0
+                up.canAffordNext = CanAffordImmediateNextStep(up, currencyAmounts)
+                up.nextStepNeedsCrest = GetNextStepCrestNeed(up) > 0
+                up.upgradeArrowDisplay = GetUpgradeArrowDisplay(up, currencyAmounts)
+                local tiers = ns.TRACK_ILVLS and ns.TRACK_ILVLS[up.trackName]
+                local curT = up.currUpgrade or 0
+                if aff and aff > 0 and tiers then
+                    local targetTier = curT + aff
+                    if tiers[targetTier] then
+                        up.affordableTargetIlvl = tiers[targetTier]
+                    end
+                end
             end
         elseif up then
             up.affordableUpgrades = 0
             up.goldOnlyUpgrades = 0
             up.canAffordNext = false
+            up.nextStepNeedsCrest = false
+            up.upgradeArrowDisplay = nil
         end
     end
 end
@@ -1049,6 +1125,59 @@ local function GetGearStorageRecColumnLayout(contentW)
     }
 end
 
+--- Vertically center a FontString inside a storage recommendation row/column band.
+---@param fs FontString
+---@param host Frame
+---@param leftX number
+---@param width number
+---@param justify string|nil
+local function AnchorGearStorageRecColText(fs, host, leftX, width, justify)
+    if not fs or not host then return end
+    fs:ClearAllPoints()
+    fs:SetPoint("LEFT", host, "LEFT", leftX, 0)
+    fs:SetWidth(width)
+    fs:SetPoint("TOP", host, "TOP", 0, 0)
+    fs:SetPoint("BOTTOM", host, "BOTTOM", 0, 0)
+    fs:SetJustifyH(justify or "CENTER")
+end
+
+--- Anchor icon + name + summary + source for one recommendation row.
+---@param line Frame
+---@param lay table
+local function ApplyGearStorageRecRowAnchors(line, lay)
+    if not line or not lay then return end
+    if line.slotText then
+        AnchorGearStorageRecColText(line.slotText, line, lay.xSlot, lay.slotW, "CENTER")
+    end
+    if line.icon then
+        line.icon:SetSize(lay.iconSz, lay.iconSz)
+        line.icon:ClearAllPoints()
+        local iconCenterX = lay.xGear + lay.gearW * 0.5
+        line.icon:SetPoint("CENTER", line, "LEFT", iconCenterX, 0)
+    end
+    if line.itemNameText then
+        line.itemNameText:ClearAllPoints()
+        line.itemNameText:SetPoint("LEFT", line, "LEFT", lay.xGear, 0)
+        line.itemNameText:SetPoint("RIGHT", line, "LEFT", lay.xGear + lay.gearW, 0)
+        line.itemNameText:SetPoint("TOP", line, "TOP", 0, 0)
+        line.itemNameText:SetPoint("BOTTOM", line, "BOTTOM", 0, 0)
+        line.itemNameText:SetJustifyH("CENTER")
+        if lay.gearW < 100 and line.itemNameText.SetWordWrap then
+            line.itemNameText:SetWordWrap(true)
+            if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(2) end
+        elseif line.itemNameText.SetWordWrap then
+            line.itemNameText:SetWordWrap(false)
+            if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(0) end
+        end
+    end
+    if line.upgradeSummaryText then
+        AnchorGearStorageRecColText(line.upgradeSummaryText, line, lay.xRecommend, lay.recommendW, "CENTER")
+    end
+    if line.sourceText then
+        AnchorGearStorageRecColText(line.sourceText, line, lay.xLocation, lay.locationW, "CENTER")
+    end
+end
+
 --- Live resize: reflow recommendation table columns without rebuilding rows.
 ---@param recContent Frame|nil
 ---@param contentW number|nil
@@ -1061,38 +1190,7 @@ local function RelayoutGearStorageRecColumns(recContent, contentW)
         if line and line.slotText then
             local innerH = line:GetHeight() or 32
             line:SetSize(contentW, innerH)
-            if line.slotText then
-                line.slotText:SetWidth(lay.slotW)
-                line.slotText:ClearAllPoints()
-                line.slotText:SetPoint("LEFT", line, "LEFT", lay.xSlot, 0)
-            end
-            if line.icon then
-                line.icon:SetSize(lay.iconSz, lay.iconSz)
-                line.icon:ClearAllPoints()
-                line.icon:SetPoint("LEFT", line, "LEFT", lay.xGear, 0)
-            end
-            if line.itemNameText then
-                line.itemNameText:ClearAllPoints()
-                line.itemNameText:SetPoint("LEFT", line.icon, "RIGHT", lay.gap, 0)
-                line.itemNameText:SetPoint("RIGHT", line, "LEFT", lay.xRecommend - 2, 0)
-                if lay.gearW < 100 and line.itemNameText.SetWordWrap then
-                    line.itemNameText:SetWordWrap(true)
-                    if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(2) end
-                elseif line.itemNameText.SetWordWrap then
-                    line.itemNameText:SetWordWrap(false)
-                    if line.itemNameText.SetMaxLines then line.itemNameText:SetMaxLines(0) end
-                end
-            end
-            if line.upgradeSummaryText then
-                line.upgradeSummaryText:ClearAllPoints()
-                line.upgradeSummaryText:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xRecommend, 0)
-                line.upgradeSummaryText:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xRecommend + lay.recommendW, 0)
-            end
-            if line.sourceText then
-                line.sourceText:ClearAllPoints()
-                line.sourceText:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xLocation, 0)
-                line.sourceText:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xLocation + lay.locationW, 0)
-            end
+            ApplyGearStorageRecRowAnchors(line, lay)
         end
     end
 end
@@ -1167,34 +1265,16 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
     local hdrColor = { 0.78, 0.80, 0.86 }
     local function colFs(text, leftX, width, justify)
         local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
-        fs:SetPoint("LEFT", hdr, "LEFT", leftX, 1)
-        fs:SetWidth(width)
-        fs:SetJustifyH(justify or "LEFT")
+        AnchorGearStorageRecColText(fs, hdr, leftX, width, justify or "CENTER")
         fs:SetWordWrap(false)
         fs:SetText(text)
         fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
         return fs
     end
-    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_SLOT", "Slot"), lay.xSlot, lay.slotW, "LEFT")
-    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_GEAR", "Gear"), lay.xGear, lay.gearW, "LEFT")
-    do
-        local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
-        fs:SetPoint("TOPLEFT", hdr, "TOPLEFT", lay.xRecommend, 1)
-        fs:SetPoint("TOPRIGHT", hdr, "TOPLEFT", lay.xRecommend + lay.recommendW, 1)
-        fs:SetJustifyH("CENTER")
-        fs:SetWordWrap(false)
-        fs:SetText(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_RECOMMEND", "Recommend"))
-        fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
-    end
-    do
-        local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
-        fs:SetPoint("TOPLEFT", hdr, "TOPLEFT", lay.xLocation, 1)
-        fs:SetPoint("TOPRIGHT", hdr, "TOPLEFT", lay.xLocation + lay.locationW, 1)
-        fs:SetJustifyH("LEFT")
-        fs:SetWordWrap(false)
-        fs:SetText(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_LOCATION", "Location"))
-        fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
-    end
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_SLOT", "Slot"), lay.xSlot, lay.slotW, "CENTER")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_GEAR", "Gear"), lay.xGear, lay.gearW, "CENTER")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_RECOMMEND", "Recommend"), lay.xRecommend, lay.recommendW, "CENTER")
+    colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_LOCATION", "Location"), lay.xLocation, lay.locationW, "CENTER")
 end
 
 --- Paint one storage-upgrade row (slot | gear | recommend | location).
@@ -1236,9 +1316,6 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     end
     if slotText then
         slotText:Show()
-        slotText:SetPoint("LEFT", line, "LEFT", lay.xSlot, 0)
-        slotText:SetWidth(lay.slotW)
-        slotText:SetJustifyH("LEFT")
         slotText:SetWordWrap(false)
         slotText:SetText(rowData.slotName or "Slot")
         slotText:SetTextColor(0.92, 0.93, 0.98)
@@ -1254,10 +1331,6 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     end
     if upgradeSummary then
         upgradeSummary:Show()
-        upgradeSummary:ClearAllPoints()
-        upgradeSummary:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xRecommend, 0)
-        upgradeSummary:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xRecommend + lay.recommendW, 0)
-        upgradeSummary:SetJustifyH("CENTER")
         upgradeSummary:SetWordWrap(false)
         local parts = {}
         parts[1] = "|cffb8bcc6"
@@ -1277,8 +1350,6 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         line.icon = itemIcon
     end
     itemIcon:Show()
-    itemIcon:SetSize(lay.iconSz, lay.iconSz)
-    itemIcon:SetPoint("LEFT", line, "LEFT", lay.xGear, 0)
     local icon = rowData.itemLink and GetItemIconSafe(rowData.itemLink) or GetItemIconSafe(rowData.itemID)
     itemIcon:SetTexture(icon or 134400)
     itemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1290,16 +1361,6 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     end
     if itemNameFs then
         itemNameFs:Show()
-        itemNameFs:SetPoint("LEFT", itemIcon, "RIGHT", lay.gap, 0)
-        itemNameFs:SetPoint("RIGHT", line, "LEFT", lay.xRecommend - 2, 0)
-        itemNameFs:SetJustifyH("LEFT")
-        if lay.gearW < 100 and itemNameFs.SetWordWrap then
-            itemNameFs:SetWordWrap(true)
-            if itemNameFs.SetMaxLines then itemNameFs:SetMaxLines(2) end
-        else
-            itemNameFs:SetWordWrap(false)
-            if itemNameFs.SetMaxLines then itemNameFs:SetMaxLines(0) end
-        end
         local dispRaw = GetGearStorageItemDisplayName(rowData.itemLink, rowData.itemID)
         if not dispRaw or dispRaw == "" then
             dispRaw = "#" .. tostring(rowData.itemID or 0)
@@ -1317,16 +1378,14 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         line.sourceText = sourceText
     end
     if sourceText then
-        sourceText:ClearAllPoints()
-        sourceText:SetPoint("TOPLEFT", line, "TOPLEFT", lay.xLocation, 0)
-        sourceText:SetPoint("TOPRIGHT", line, "TOPLEFT", lay.xLocation + lay.locationW, 0)
-        sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
         if sourceText.SetMaxLines then sourceText:SetMaxLines(2) end
         local srcDisplay = FormatStorageSourceDisplay(rowData.source or "", rowData.sourceClassFile, viewerClassFile)
         sourceText:SetText(srcDisplay ~= "" and srcDisplay or (rowData.source or ""))
         sourceText:SetTextColor(0.72, 0.76, 0.84)
     end
+
+    ApplyGearStorageRecRowAnchors(line, lay)
 
     line:SetScript("OnEnter", function(self)
         if ShowTooltip then
@@ -1887,6 +1946,13 @@ function WarbandNexus:TryRefreshGearUpgradeEconomy()
     if not card or not card._gearSlotInspectList or #card._gearSlotInspectList == 0 then return false end
     local canon = mf._gearPopulateCanonKey
     if not canon then return false end
+    if self.InvalidatePersistedUpgradeInfoCacheForChar then
+        self:InvalidatePersistedUpgradeInfoCacheForChar(canon)
+    end
+    local gearData = (self.GetEquippedGear and self:GetEquippedGear(canon)) or nil
+    if gearData and self.OverlayLiveEquippedIlvlOnGearData then
+        self:OverlayLiveEquippedIlvlOnGearData(gearData)
+    end
     return self:TryRefreshGearEquipSlotsOnly({ charKey = canon, refreshAllSlots = true, forcePaperdoll = true }) == true
 end
 
@@ -1954,6 +2020,13 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
         return false
     end
 
+    if isViewingCurrent and gearData and self.OverlayLiveEquippedIlvlOnGearData then
+        self:OverlayLiveEquippedIlvlOnGearData(gearData)
+    end
+    if isViewingCurrent and self.InvalidatePersistedUpgradeInfoCacheForChar then
+        self:InvalidatePersistedUpgradeInfoCacheForChar(canon)
+    end
+
     local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canon)) or {}
     local currencies = (self.GetGearUpgradeCurrenciesFromDB and self:GetGearUpgradeCurrenciesFromDB(canon)) or {}
     local currencyAmounts = BuildGearCurrencyAmounts(currencies)
@@ -1982,23 +2055,30 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
             end
             local quality = (slotData and slotData.quality) or 0
             local up = upgradeInfo[slotID]
-            local canUpgrade = up and up.canUpgrade and CanAffordNextUpgrade(up, currencyAmounts)
+            if up and slotData and ns.Gear_SyncUpgradeEntryFromSlot then
+                up = ns.Gear_SyncUpgradeEntryFromSlot(up, slotData) or up
+                upgradeInfo[slotID] = up
+            end
+            local arrowDisplay = up and GetUpgradeArrowDisplay and GetUpgradeArrowDisplay(up, currencyAmounts)
+            if up then up.upgradeArrowDisplay = arrowDisplay end
+            local showUpgradeArrow = arrowDisplay == "green"
+            local canAffordGreen = showUpgradeArrow
             local notUpgradeable = false
             if slotData and slotData.notUpgradeable then
                 notUpgradeable = true
             elseif up and up.notUpgradeable then
                 notUpgradeable = true
             end
-            local trackText = ns.GearUI_GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts)
+            local trackText = ns.GearUI_GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData)
             local bypassDiff = isViewingCurrent and not liveSnap
                 and (ns.GearUI_GearSlotHasInspectableItemLink(slotData) or ns.GearUI_GearSlotHasInspectableItemLink(sb._slotDataRef))
             if bypassDiff then
                 needFollowUp = true
             end
-            if not bypassDiff and ns.GearUI_GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, notUpgradeable) then
+            if not bypassDiff and ns.GearUI_GearSlotPaperdollVisualEquals(sb, slotData, showUpgradeArrow, trackText, notUpgradeable) then
                 -- No-op: visuals already match (avoids texture churn + deferred inspect storms).
             else
-                sb:_gearApplySlotVisual(slotData, canUpgrade, trackText, notUpgradeable)
+                sb:_gearApplySlotVisual(slotData, canAffordGreen, trackText, notUpgradeable)
                 refreshed[#refreshed + 1] = sb
             end
         end
@@ -2968,7 +3048,7 @@ function WarbandNexus:DrawGearTab(parent)
     local r, g, b = accent[1], accent[2], accent[3]
     local hexAcc  = format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
     local titleTextContent = "|cff" .. hexAcc .. ((ns.L and ns.L["GEAR_TAB_TITLE"]) or "Gear Management") .. "|r"
-    local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Equipped gear, upgrade analysis, and crest tracking"
+    local subtitleTextContent = (ns.L and ns.L["GEAR_TAB_DESC"]) or "Paperdoll and stash upgrade recommendations side by side"
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local gearHeaderRightReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
         GEAR_CHAR_SELECTOR_WIDTH,
@@ -3071,6 +3151,13 @@ function WarbandNexus:DrawGearTab(parent)
         if not slotsTbl or not next(slotsTbl) then
             self:ScanEquippedGear()
             gearData = (self.GetEquippedGear and self:GetEquippedGear(canonicalKey)) or gearData
+        end
+    end
+
+    if canonicalKey == currentKey and gearData and self.OverlayLiveEquippedIlvlOnGearData then
+        self:OverlayLiveEquippedIlvlOnGearData(gearData)
+        if self.InvalidatePersistedUpgradeInfoCacheForChar then
+            self:InvalidatePersistedUpgradeInfoCacheForChar(canonicalKey)
         end
     end
 
@@ -3309,10 +3396,14 @@ ns.GearUI_STORAGE_REC_TABLE_HDR = GEAR_STORAGE_REC_TABLE_HDR
 ns.GearUI_GetCraftedIlvlRange = GetCraftedIlvlRange
 ns.GearUI_BuildGearCurrencyAmounts = BuildGearCurrencyAmounts
 ns.GearUI_EnrichUpgradeInfoWithAffordability = EnrichUpgradeInfoWithAffordability
+ns.GearUI_EnsureUpgradeRowCurrencyMatchesTrack = EnsureUpgradeRowCurrencyMatchesTrack
 ns.GearUI_GetNextStepCrestNeed = GetNextStepCrestNeed
+ns.GearUI_IsNextStepGoldOnlyUpgrade = IsNextStepGoldOnlyUpgrade
 ns.GearUI_GetGearCurrencyGoldCopper = GetGearCurrencyGoldCopper
 ns.GearUI_CalculateAffordableUpgrades = CalculateAffordableUpgrades
 ns.GearUI_CanAffordNextUpgrade = CanAffordNextUpgrade
+ns.GearUI_CanAffordImmediateNextStep = CanAffordImmediateNextStep
+ns.GearUI_GetUpgradeArrowDisplay = GetUpgradeArrowDisplay
 ns.GearUI_GearUpgradeInfoHasPath = GearUpgradeInfoHasPath
 ns.GearUI_IsPrimaryEnchantExpected = IsPrimaryEnchantExpected
 ns.GearUI_GetItemIconSafe = GetItemIconSafe

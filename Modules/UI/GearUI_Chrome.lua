@@ -22,7 +22,7 @@ local function ResolveAccent(accent)
     return accent or COLORS.accent or { 0.55, 0.45, 0.78 }
 end
 
---- Raised sub-card with accent top edge (stats, currencies, recommendations).
+--- Raised sub-card with accent top edge (paperdoll viewport, recommendations).
 ---@param frame Frame
 ---@param accent table|nil
 function Chrome.ApplySubpanel(frame, accent)
@@ -77,7 +77,9 @@ function Chrome.CreateSectionHeader(parent, titleText, accent, opts)
     local L = ns.GEAR_LAYOUT or {}
     local h = opts.height or L.SECTION_HDR_H or 28
     local pad = opts.pad or L.SUBPANEL_PAD or 10
+    local barPadL = opts.accentPadLeft or pad
     local barW = L.SECTION_ACCENT_W or 3
+    local hideAccentBar = opts.hideAccentBar == true
     local ac = ResolveAccent(accent)
 
     local host = (GearFact and GearFact.CreateContainer)
@@ -86,19 +88,40 @@ function Chrome.CreateSectionHeader(parent, titleText, accent, opts)
     host:SetHeight(h)
 
     local bar = host:CreateTexture(nil, "ARTWORK")
-    bar:SetWidth(barW)
-    bar:SetPoint("TOPLEFT", host, "TOPLEFT", pad, -4)
-    bar:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", pad, 4)
-    bar:SetColorTexture(ac[1], ac[2], ac[3], 0.92)
+    local titleAnchor = host
+    local titlePadL = pad
+    if not hideAccentBar then
+        bar:SetWidth(barW)
+        bar:SetPoint("TOPLEFT", host, "TOPLEFT", barPadL, -4)
+        bar:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", barPadL, 4)
+        bar:SetColorTexture(ac[1], ac[2], ac[3], 0.92)
+        titleAnchor = bar
+        titlePadL = 8
+    else
+        bar:Hide()
+    end
 
     local fs = FontManager and FontManager.CreateFontString
         and FontManager:CreateFontString(host, GFR(opts.fontRole or "gearSectionTitle"), "OVERLAY")
     if fs then
-        fs:SetPoint("LEFT", bar, "RIGHT", 8, 0)
+        fs:SetPoint("LEFT", titleAnchor, hideAccentBar and "LEFT" or "RIGHT", titlePadL, 0)
         fs:SetPoint("RIGHT", host, "RIGHT", -pad, 0)
         fs:SetJustifyH("LEFT")
-        fs:SetTextColor(0.93, 0.93, 0.96)
+        local tc = opts.titleColor
+        if tc then
+            fs:SetTextColor(tc[1], tc[2], tc[3])
+        else
+            fs:SetTextColor(0.93, 0.93, 0.96)
+        end
         fs:SetText(titleText or "")
+    end
+    if opts.underlineHeader then
+        local rule = host:CreateTexture(nil, "BORDER")
+        rule:SetHeight(1)
+        rule:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", pad, 2)
+        rule:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -pad, 2)
+        rule:SetColorTexture(ac[1] * 0.45, ac[2] * 0.45, ac[3] * 0.45, 0.65)
+        host._wnHeaderRule = rule
     end
     host._wnTitle = fs
     host._wnAccentBar = bar

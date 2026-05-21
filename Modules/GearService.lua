@@ -238,7 +238,7 @@ local GEAR_CRAFTED_PROBE_CACHE_CAP = 512
 
 -- Session-only: canonical gear row key -> { lastScan = number, upgrades = table } for GetPersistedUpgradeInfo.
 local persistedUpgradeInfoSessionCache = {}
-local PERSISTED_UPGRADE_INFO_LOGIC_VER = 3
+local PERSISTED_UPGRADE_INFO_LOGIC_VER = 14
 
 -- Session-only: offline-view canonical key -> currency array from GetGearUpgradeCurrenciesFromDB (amounts follow Currency UI snapshot).
 local gearUpgradeCurrencyOfflineCache = {}
@@ -1102,7 +1102,7 @@ local function NormalizeUpgradeTrackName(raw)
             end
         end
     end
-    return raw
+    return nil
 end
 
 -- Reverse map: ilvl → { trackName, tier, maxTier }.
@@ -1138,6 +1138,50 @@ local function InferTierWithinTrack(trackName, itemLevel)
         end
     end
     return best, #tiers
+end
+
+--- Prefer scan/API tier when it matches equipped ilvl on this track; otherwise infer from ilvl floor.
+---@param trackName string
+---@param itemLevel number
+---@param apiCurr number|nil
+---@param apiMax number|nil
+---@return number|nil currUpgrade
+---@return number|nil maxUpgrade
+local function ReconcileUpgradeTierForSlot(trackName, itemLevel, apiCurr, apiMax)
+    local tiers = TRACK_ILVLS[trackName]
+    if not tiers then
+        return apiCurr, apiMax
+    end
+    local ilvl = tonumber(itemLevel) or 0
+    local maxT = #tiers
+    local inferCur, inferMax = InferTierWithinTrack(trackName, ilvl)
+    if not inferCur or not inferMax then
+        return apiCurr, apiMax
+    end
+    if not (apiCurr and apiMax and apiMax > 0) then
+        return inferCur, inferMax
+    end
+    local cur = math.floor(tonumber(apiCurr) or 0)
+    local maxU = math.floor(tonumber(apiMax) or 0)
+    if maxU > maxT then maxU = maxT end
+    if cur > 0 and cur <= maxU then
+        local tierIlvl = tiers[cur]
+        if ilvl > 0 and tierIlvl and tierIlvl == ilvl then
+            return cur, maxU
+        end
+        if cur >= maxU and ilvl > 0 and ilvl >= (tiers[maxU] or ilvl) then
+            return maxU, maxU
+        end
+        -- Equipped ilvl disagrees with API tier step (e.g. Myth 3/6 on 289 ilvl) — trust ilvl.
+        if ilvl > 0 and (not tierIlvl or tierIlvl ~= ilvl) then
+            return inferCur, inferMax
+        end
+        if inferCur > cur then
+            return inferCur, inferMax
+        end
+        return cur, maxU
+    end
+    return inferCur, inferMax
 end
 
 --- Infer upgrade track and level from item level only (no API). Returns nil if not in Midnight upgrade range.
@@ -1182,6 +1226,15 @@ local function InferUpgradeFromIlvl(itemLevel)
     return nil, nil, nil
 end
 
+---@param trackName string
+---@param tier number
+---@return number|nil
+local function GetTierIlvlForTrack(trackName, tier)
+    local tiers = TRACK_ILVLS[trackName]
+    if not tiers or not tier or tier < 1 or tier > #tiers then return nil end
+    return tiers[math.floor(tier)]
+end
+
 --- Get the ilvl for a given track and tier.
 ---@param trackName string
 ---@param tier number 1-6
@@ -1205,8 +1258,89 @@ local TRACK_NAME_TO_CURRENCY_ID = {
 }
 
 local UPGRADE_CURRENCY_ID_SET_EARLY = {}
-for _, cid in pairs(TRACK_NAME_TO_CURRENCY_ID) do
+local CURRENCY_ID_TO_TRACK = {}
+for track, cid in pairs(TRACK_NAME_TO_CURRENCY_ID) do
     UPGRADE_CURRENCY_ID_SET_EARLY[cid] = true
+    CURRENCY_ID_TO_TRACK[cid] = track
+end
+
+--- Dawncrest type for a persisted next-step cost row (Hero=3345, Myth=3347, ...).
+---@param currencyID number
+---@return string|nil trackName
+local function TrackNameFromUpgradeCurrencyID(currencyID)
+    if not currencyID then return nil end
+    return CURRENCY_ID_TO_TRACK[currencyID]
+end
+
+--- Normalize one ItemUpgradeCurrencyCost row (cost reflects discount when API applies it).
+---@param entry table|nil
+---@return table|nil { currencyID, amount, isDiscounted }
+local function NormalizeUpgradeCurrencyCostEntry(entry)
+    if not entry or not entry.currencyID then return nil end
+    local amt = entry.cost or entry.amount
+    if amt == nil then return nil end
+    local di = entry.discountInfo
+    local isDiscounted = (di and di.isDiscounted == true) or false
+    return {
+        currencyID = entry.currencyID,
+        amount = amt,
+        isDiscounted = isDiscounted,
+    }
+end
+
+---@param slot table
+---@return string|nil trackName
+local function ResolveTrackFromPersistedCosts(slot)
+    local costs = slot and slot.nextUpgradeCosts
+    if not costs then return nil end
+    for i = 1, #costs do
+        local norm = NormalizeUpgradeCurrencyCostEntry(costs[i])
+        if norm and norm.currencyID then
+            local track = TrackNameFromUpgradeCurrencyID(norm.currencyID)
+            if track and TRACK_ILVLS[track] then
+                return track
+            end
+        end
+    end
+    return nil
+end
+
+--- Parse API customUpgradeString or tooltip-style label (e.g. "Hero 3/6").
+---@param raw string|nil
+---@return string|nil trackName
+---@return number|nil currUpgrade
+---@return number|nil maxUpgrade
+local function ParseUpgradeLabelString(raw)
+    if not raw or raw == "" then return nil, nil, nil end
+    if issecretvalue and issecretvalue(raw) then return nil, nil, nil end
+    local trackPart, curS, maxS = raw:match("^([%a]+)%s+(%d+)/(%d+)")
+    if trackPart then
+        local track = NormalizeUpgradeTrackName(trackPart)
+        if track and TRACK_ILVLS[track] then
+            return track, tonumber(curS), tonumber(maxS)
+        end
+    end
+    local track = NormalizeUpgradeTrackName(raw)
+    if track and TRACK_ILVLS[track] then
+        return track, nil, nil
+    end
+    return nil, nil, nil
+end
+
+--- Track from scan label fields only (never item display name).
+---@param slot table
+---@return string|nil trackName
+---@return number|nil currUpgrade
+---@return number|nil maxUpgrade
+local function ResolveTrackFromSlotLabels(slot)
+    if not slot then return nil, nil, nil end
+    local track, cur, max = ParseUpgradeLabelString(slot.customUpgradeString)
+    if track then return track, cur, max end
+    track = NormalizeUpgradeTrackName(slot.upgradeTrack)
+    if track and TRACK_ILVLS[track] then
+        return track, tonumber(slot.currUpgrade), tonumber(slot.maxUpgrade)
+    end
+    return nil, nil, nil
 end
 
 --- Next-step costs: prefer persisted C_ItemUpgrade scan; fallback flat S1 defaults.
@@ -1216,30 +1350,90 @@ end
 ---@return number currencyID
 ---@return number crestCost
 ---@return number moneyCost copper
+---@return boolean isDiscounted
 local function ResolveNextUpgradeCosts(slot, trackName, hasNext)
-    local currencyID = TRACK_NAME_TO_CURRENCY_ID[trackName] or 0
+    local currencyID = 0
     local crestCost = hasNext and (ns.UPGRADE_CREST_PER_LEVEL or 20) or 0
     local moneyCost = hasNext and (ns.UPGRADE_GOLD_PER_LEVEL_COPPER or 100000) or 0
+    local isDiscounted = false
     if not hasNext or not slot then
-        return currencyID, crestCost, moneyCost
-    end
-    if slot.nextUpgradeMoneyCost and slot.nextUpgradeMoneyCost > 0 then
-        moneyCost = slot.nextUpgradeMoneyCost
+        return currencyID, crestCost, moneyCost, isDiscounted
     end
     local costs = slot.nextUpgradeCosts
     if costs then
         for i = 1, #costs do
-            local entry = costs[i]
-            local cid = entry and entry.currencyID
-            local amt = entry and (entry.amount or entry.cost)
-            if cid and amt and UPGRADE_CURRENCY_ID_SET_EARLY[cid] then
-                currencyID = cid
-                crestCost = amt
+            local norm = NormalizeUpgradeCurrencyCostEntry(costs[i])
+            if norm and norm.currencyID and UPGRADE_CURRENCY_ID_SET_EARLY[norm.currencyID] then
+                currencyID = norm.currencyID
+                crestCost = norm.amount
+                if norm.isDiscounted then
+                    isDiscounted = true
+                end
             end
         end
     end
-    return currencyID, crestCost, moneyCost
+    if currencyID == 0 and trackName and TRACK_ILVLS[trackName] then
+        currencyID = TRACK_NAME_TO_CURRENCY_ID[trackName] or 0
+    end
+    if currencyID ~= 0 and trackName and TRACK_ILVLS[trackName] then
+        local costTrack = TrackNameFromUpgradeCurrencyID(currencyID)
+        if costTrack and costTrack ~= trackName then
+            currencyID = TRACK_NAME_TO_CURRENCY_ID[trackName] or 0
+            crestCost = hasNext and (ns.UPGRADE_CREST_PER_LEVEL or 20) or 0
+            isDiscounted = false
+        end
+    end
+    if slot.nextUpgradeMoneyCost and slot.nextUpgradeMoneyCost > 0 then
+        moneyCost = slot.nextUpgradeMoneyCost
+    end
+    if slot.nextUpgradeIsDiscounted then
+        isDiscounted = true
+    end
+    return currencyID, crestCost, moneyCost, isDiscounted
 end
+
+--- Track + tier from scan/tooltip label first; reconcile tier within that track only.
+--- API currencyID must not override track (unreliable); ilvl inference is last resort.
+---@param slot table
+---@return string|nil trackName
+---@return number|nil currUpgrade
+---@return number|nil maxUpgrade
+local function ResolveSlotUpgradeTrackAndTier(slot)
+    if not slot then return nil, nil, nil end
+    local ilvl = tonumber(slot.itemLevel) or 0
+    if ilvl <= 0 then return nil, nil, nil end
+
+    local labelTrack, labelCur, labelMax = ResolveTrackFromSlotLabels(slot)
+    local track = labelTrack or NormalizeUpgradeTrackName(slot.upgradeTrack)
+    if track and not TRACK_ILVLS[track] then
+        track = nil
+    end
+
+    local apiCur = tonumber(slot.currUpgrade)
+    local apiMax = tonumber(slot.maxUpgrade)
+    if labelCur and labelMax and labelMax > 0 then
+        apiCur = apiCur or labelCur
+        apiMax = apiMax or labelMax
+    end
+
+    if track then
+        if apiCur and apiMax and apiMax > 0 then
+            local tCur, tMax = ReconcileUpgradeTierForSlot(track, ilvl, apiCur, apiMax)
+            if tCur and tMax then
+                return track, tCur, tMax
+            end
+            return track, math.floor(apiCur), math.min(math.floor(apiMax), #TRACK_ILVLS[track])
+        end
+        local tCur, tMax = InferTierWithinTrack(track, ilvl)
+        if tCur and tMax then
+            return track, tCur, tMax
+        end
+    end
+
+    return InferUpgradeFromIlvl(ilvl)
+end
+
+ns.Gear_ResolveSlotUpgradeTrackAndTier = ResolveSlotUpgradeTrackAndTier
 
 -- Crafted items: recraft with crests to reach higher ilvl tiers.
 -- Crafted gear caps at 5/6 (285 for Myth, 272 for Hero) — NOT 6/6 like dropped gear.
@@ -1263,12 +1457,6 @@ ns.CRAFTED_CREST_TIERS = CRAFTED_CREST_TIERS
 local function InferSlotIsCraftedGear(slot, trackName, itemLevel)
     if slot and slot.isCrafted then return true end
     if trackName == "Crafted" then return true end
-    local mythTiers = TRACK_ILVLS and TRACK_ILVLS.Myth
-    local droppedMythMax = (mythTiers and mythTiers[6]) or 289
-    local craftedMythCap = CRAFTED_CREST_TIERS[1].maxIlvl
-    if trackName == "Myth" and itemLevel >= craftedMythCap and itemLevel < droppedMythMax then
-        return true
-    end
     return false
 end
 
@@ -1368,6 +1556,35 @@ local function GetEffectiveIlvl(itemLink)
     return infoIlvl
 end
 
+--- Get item quality tier integer for an item link.
+---@param itemLink string
+---@return number quality (0 = Poor, 2 = Uncommon, 3 = Rare, 4 = Epic, ...)
+local function GetItemQuality(itemLink)
+    if not itemLink then return 0 end
+    local quality = 0
+    pcall(function()
+        if C_Item and C_Item.GetItemInfo then
+            local _, _, q = C_Item.GetItemInfo(itemLink)
+            if q then quality = q end
+        end
+    end)
+    return quality
+end
+
+ns.Gear_GetEffectiveIlvl = GetEffectiveIlvl
+
+--- Drop session upgrade reconstruction for one character (after live ilvl overlay).
+---@param charKey string|nil
+function WarbandNexus:InvalidatePersistedUpgradeInfoCacheForChar(charKey)
+    if not charKey then return end
+    local canon = charKey
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey then
+        canon = U:GetCanonicalCharacterKey(charKey) or charKey
+    end
+    persistedUpgradeInfoSessionCache[canon] = nil
+end
+
 --- Get the equip location string for an item link ("INVTYPE_HEAD" etc.)
 ---@param itemLink string
 ---@return string equipLoc (empty string if unknown/non-equip)
@@ -1382,21 +1599,6 @@ local function GetEquipLoc(itemLink)
         end
     end)
     return loc
-end
-
---- Get item quality tier integer for an item link.
----@param itemLink string
----@return number quality (0 = Poor, 2 = Uncommon, 3 = Rare, 4 = Epic, ...)
-local function GetItemQuality(itemLink)
-    if not itemLink then return 0 end
-    local quality = 0
-    pcall(function()
-        if C_Item and C_Item.GetItemInfo then
-            local _, _, q = C_Item.GetItemInfo(itemLink)
-            if q then quality = q end
-        end
-    end)
-    return quality
 end
 
 -- ============================================================================
@@ -1455,6 +1657,20 @@ end
 -- UPGRADE DATA PERSISTENCE  (Captures C_ItemUpgrade state during gear scan)
 -- ============================================================================
 
+---@param levelInfos table|nil
+---@param upgradeLevel number
+---@return table|nil
+local function FindUpgradeLevelInfo(levelInfos, upgradeLevel)
+    if not levelInfos or not upgradeLevel then return nil end
+    for i = 1, #levelInfos do
+        local row = levelInfos[i]
+        if row and row.upgradeLevel == upgradeLevel then
+            return row
+        end
+    end
+    return levelInfos[upgradeLevel]
+end
+
 --- Read C_ItemUpgrade data for a single equipped slot and write it into the
 --- slot entry table so the info survives across sessions / characters.
 ---@param slotEntry table  The slot record being built (mutated in place)
@@ -1463,6 +1679,20 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
     if not C_ItemUpgrade or not ItemLocation then return end
 
     pcall(function()
+        local tooltipInfo = ScanUpgradeFromTooltip(slotID)
+        if tooltipInfo and tooltipInfo.trackName then
+            slotEntry.upgradeTrack = tooltipInfo.trackName
+            if tooltipInfo.currUpgrade then
+                slotEntry.currUpgrade = tooltipInfo.currUpgrade
+            end
+            if tooltipInfo.maxUpgrade then
+                slotEntry.maxUpgrade = tooltipInfo.maxUpgrade
+            end
+            if tooltipInfo.isCrafted then
+                slotEntry.isCrafted = true
+            end
+        end
+
         local location = ItemLocation:CreateFromEquipmentSlot(slotID)
         if not location or not location:IsValid() then return end
 
@@ -1497,21 +1727,27 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
             return
         end
 
-        -- Track name: name (e.g. Veteran, Champion); fallback customUpgradeString (10.1.0+)
-        local trackName = (info.name and info.name ~= "") and info.name or nil
-        if trackName and issecretvalue and issecretvalue(trackName) then
-            trackName = nil
+        if info.customUpgradeString and info.customUpgradeString ~= ""
+            and not (issecretvalue and issecretvalue(info.customUpgradeString)) then
+            slotEntry.customUpgradeString = info.customUpgradeString
         end
-        if not trackName and info.customUpgradeString and info.customUpgradeString ~= "" then
-            trackName = info.customUpgradeString
-            if trackName and issecretvalue and issecretvalue(trackName) then
-                trackName = nil
+
+        -- Track label: customUpgradeString / tooltip only — info.name is the item name, not Hero/Myth.
+        local trackName, labelCur, labelMax = ParseUpgradeLabelString(slotEntry.customUpgradeString)
+        if not trackName then
+            local tooltipInfo = ScanUpgradeFromTooltip(slotID)
+            if tooltipInfo and tooltipInfo.trackName then
+                trackName = NormalizeUpgradeTrackName(tooltipInfo.trackName)
+                labelCur = tooltipInfo.currUpgrade
+                labelMax = tooltipInfo.maxUpgrade
             end
         end
-        trackName = NormalizeUpgradeTrackName(trackName)
-        slotEntry.upgradeTrack = trackName
-        slotEntry.currUpgrade  = currUpgrade
-        slotEntry.maxUpgrade   = maxUpgrade
+        slotEntry.currUpgrade = currUpgrade
+        slotEntry.maxUpgrade = maxUpgrade
+        if labelCur and labelMax and labelMax > 0 and (not currUpgrade or currUpgrade == 0) then
+            slotEntry.currUpgrade = labelCur
+            slotEntry.maxUpgrade = labelMax
+        end
         slotEntry.maxIlvl      = info.maxItemLevel or 0
         if maxUpgrade > 0 and currUpgrade >= maxUpgrade then
             slotEntry.notUpgradeable = true
@@ -1531,17 +1767,25 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
         local hasNext = (currUpgrade < maxUpgrade)
         if hasNext then
             local levelInfos = info.upgradeLevelInfos or {}
-            local nextInfo   = levelInfos[currUpgrade + 1]
+            local nextInfo = FindUpgradeLevelInfo(levelInfos, currUpgrade + 1)
             if nextInfo then
+                local inc = tonumber(nextInfo.itemLevelIncrement)
+                local baseIlvl = tonumber(slotEntry.itemLevel) or 0
+                if inc and inc > 0 and baseIlvl > 0 then
+                    slotEntry.nextStepIlvl = baseIlvl + inc
+                end
                 if nextInfo.moneyCost and nextInfo.moneyCost > 0 then
                     slotEntry.nextUpgradeMoneyCost = nextInfo.moneyCost
                 end
                 if nextInfo.currencyCostsToUpgrade then
                     local costs = {}
                     for i = 1, #nextInfo.currencyCostsToUpgrade do
-                        local entry = nextInfo.currencyCostsToUpgrade[i]
-                        if entry.currencyID and (entry.cost or entry.amount) then
-                            costs[#costs + 1] = { currencyID = entry.currencyID, amount = entry.cost or entry.amount }
+                        local norm = NormalizeUpgradeCurrencyCostEntry(nextInfo.currencyCostsToUpgrade[i])
+                        if norm then
+                            costs[#costs + 1] = norm
+                            if norm.isDiscounted then
+                                slotEntry.nextUpgradeIsDiscounted = true
+                            end
                         end
                     end
                     if #costs > 0 then
@@ -1566,7 +1810,73 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
                 end
             end
         end
+
+        local labelTrack = NormalizeUpgradeTrackName(slotEntry.upgradeTrack)
+            or trackName
+        local costTrack = ResolveTrackFromPersistedCosts(slotEntry)
+        if costTrack and TRACK_ILVLS[costTrack] then
+            if not labelTrack or costTrack == labelTrack then
+                slotEntry.upgradeTrack = costTrack
+            end
+        elseif labelTrack and TRACK_ILVLS[labelTrack] then
+            slotEntry.upgradeTrack = labelTrack
+        elseif trackName and TRACK_ILVLS[trackName] then
+            slotEntry.upgradeTrack = trackName
+        end
     end)
+end
+
+--- Refresh equipped slot metadata from live inventory (ilvl, quality, C_ItemUpgrade track).
+---@param gearData table|nil
+---@return table|nil gearData same table, mutated in place
+function WarbandNexus:OverlayLiveEquippedIlvlOnGearData(gearData)
+    if not gearData then return gearData end
+    if not gearData.slots then
+        gearData.slots = {}
+    end
+    local slotDefs = ns.GEAR_SLOTS
+    if not slotDefs then return gearData end
+    for si = 1, #slotDefs do
+        local slotID = slotDefs[si].id
+        local itemLink = GetInventoryItemLink and GetInventoryItemLink("player", slotID)
+        if itemLink and (issecretvalue and issecretvalue(itemLink)) then
+            itemLink = nil
+        end
+        if itemLink then
+            local itemID = nil
+            pcall(function()
+                if C_Item and C_Item.GetItemInfoInstant then
+                    itemID = C_Item.GetItemInfoInstant(itemLink)
+                end
+            end)
+            if not itemID and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
+                local idFromLink = itemLink:match("item:(%d+)")
+                itemID = idFromLink and tonumber(idFromLink) or nil
+            end
+            local ilvl = GetEffectiveIlvl(itemLink) or 0
+            local quality = GetItemQuality(itemLink) or 0
+            local slot = gearData.slots[slotID]
+            if not slot then
+                slot = {}
+                gearData.slots[slotID] = slot
+            end
+            slot.itemLink = itemLink
+            slot.itemID = itemID or slot.itemID
+            slot.itemLevel = ilvl
+            if quality > 0 then
+                slot.quality = quality
+            end
+            ScanSlotUpgradeData(slot, slotID)
+            local tn = NormalizeUpgradeTrackName(slot.upgradeTrack)
+            if tn and TRACK_ILVLS[tn] and slot.currUpgrade and slot.maxUpgrade then
+                local tc, tm = ReconcileUpgradeTierForSlot(tn, ilvl, slot.currUpgrade, slot.maxUpgrade)
+                slot.upgradeTrack = tn
+                slot.currUpgrade = tc
+                slot.maxUpgrade = tm
+            end
+        end
+    end
+    return gearData
 end
 
 -- ============================================================================
@@ -1649,6 +1959,13 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                     end
                 end)
                 ScanSlotUpgradeData(slotEntry, slotID)
+                local tn = NormalizeUpgradeTrackName(slotEntry.upgradeTrack)
+                if tn and TRACK_ILVLS[tn] and slotEntry.currUpgrade and slotEntry.maxUpgrade then
+                    local tc, tm = ReconcileUpgradeTierForSlot(tn, ilvl, slotEntry.currUpgrade, slotEntry.maxUpgrade)
+                    slotEntry.upgradeTrack = tn
+                    slotEntry.currUpgrade = tc
+                    slotEntry.maxUpgrade = tm
+                end
             else
                 local equipLoc  = GetEquipLoc(itemLink)
                 local ilvl      = GetEffectiveIlvl(itemLink)
@@ -1700,16 +2017,14 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
                     end
                 end
                 ScanSlotUpgradeData(slotEntry, slotID)
-
-                if not slotEntry.upgradeTrack then
-                    local trackName, curUp, maxUp = InferUpgradeFromIlvl(ilvl)
-                    if trackName and curUp and maxUp then
-                        slotEntry.upgradeTrack = trackName
-                        slotEntry.currUpgrade  = curUp
-                        slotEntry.maxUpgrade   = maxUp
-                    elseif ilvl > 0 and (ilvl < 220 or ilvl > 289) then
-                        slotEntry.notUpgradeable = true
-                    end
+                local tn = NormalizeUpgradeTrackName(slotEntry.upgradeTrack)
+                if tn and TRACK_ILVLS[tn] and slotEntry.currUpgrade and slotEntry.maxUpgrade then
+                    local tc, tm = ReconcileUpgradeTierForSlot(tn, ilvl, slotEntry.currUpgrade, slotEntry.maxUpgrade)
+                    slotEntry.upgradeTrack = tn
+                    slotEntry.currUpgrade = tc
+                    slotEntry.maxUpgrade = tm
+                elseif not slotEntry.upgradeTrack and ilvl > 0 and (ilvl < 220 or ilvl > 289) then
+                    slotEntry.notUpgradeable = true
                 end
 
                 local prevWM = watermarks[slotID] or 0
@@ -2007,6 +2322,61 @@ end
 -- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
 -- ============================================================================
 
+--- Align one upgrade row with persisted slot ilvl/track (paperdoll icon and upgrade text share this).
+---@param up table|nil
+---@param slot table|nil persisted gearData.slots[id]
+---@return table|nil
+local function SyncUpgradeEntryFromPersistedSlot(up, slot)
+    if not up or not slot or up.isCrafted or up.notUpgradeable then return up end
+    local ilvl = tonumber(slot.itemLevel) or 0
+    if ilvl <= 0 then return up end
+    local trackName = NormalizeUpgradeTrackName(slot.upgradeTrack) or up.trackName
+    local tCur, tMax = slot.currUpgrade, slot.maxUpgrade
+    if trackName and TRACK_ILVLS[trackName] and tCur and tMax and tMax > 0 then
+        tCur, tMax = ReconcileUpgradeTierForSlot(trackName, ilvl, tCur, tMax)
+    else
+        trackName, tCur, tMax = ResolveSlotUpgradeTrackAndTier(slot)
+    end
+    if not trackName or not tCur or not tMax then return up end
+    slot.upgradeTrack = trackName
+    slot.currUpgrade = tCur
+    slot.maxUpgrade = tMax
+    up.trackName = trackName
+    up.currUpgrade = tCur
+    up.maxUpgrade = tMax
+    up.currentIlvl = ilvl
+    local tiers = TRACK_ILVLS[trackName]
+    local hasNext = (tCur < tMax) and slot.itemUpgradeable ~= false
+    up.canUpgrade = hasNext
+    if tiers and tiers[tMax] then
+        up.maxIlvl = tiers[tMax]
+    end
+    if hasNext then
+        local stepIlvl = tonumber(slot.nextStepIlvl)
+        if stepIlvl and stepIlvl > ilvl then
+            up.nextIlvl = stepIlvl
+        elseif tiers and tiers[tCur + 1] then
+            up.nextIlvl = tiers[tCur + 1]
+        end
+        local currencyID, crestCost, moneyCost, isDiscounted = ResolveNextUpgradeCosts(slot, trackName, true)
+        up.currencyID = currencyID
+        up.crestCost = crestCost
+        up.moneyCost = moneyCost
+        up.nextUpgradeIsDiscounted = isDiscounted
+    else
+        up.nextIlvl = ilvl
+        up.crestCost = 0
+        up.nextUpgradeIsDiscounted = false
+    end
+    up.upgradeArrowDisplay = nil
+    if ns.GearUI_EnsureUpgradeRowCurrencyMatchesTrack then
+        ns.GearUI_EnsureUpgradeRowCurrencyMatchesTrack(up)
+    end
+    return up
+end
+
+ns.Gear_SyncUpgradeEntryFromSlot = SyncUpgradeEntryFromPersistedSlot
+
 --- Reconstruct upgrade info from persisted gear only. No API; works offline.
 --- Uses slot.upgradeTrack/currUpgrade when present; else infers from slot.itemLevel.
 --- Returns per-slot info with ilvl progression, currency IDs, costs, and watermark data.
@@ -2035,24 +2405,16 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
     for slotID, slot in pairs(gearData.slots) do
         local itemLevel = tonumber(slot.itemLevel) or 0
         local trackName = NormalizeUpgradeTrackName(slot.upgradeTrack)
+        if trackName and not TRACK_ILVLS[trackName] then
+            trackName = nil
+        end
         local currUpgrade = slot.currUpgrade
         local maxUpgrade = slot.maxUpgrade
 
-        if trackName and TRACK_ILVLS[trackName] then
-            if not currUpgrade or not maxUpgrade or maxUpgrade == 0 then
-                local tCur, tMax = InferTierWithinTrack(trackName, itemLevel)
-                currUpgrade = tCur or currUpgrade
-                maxUpgrade = tMax or maxUpgrade
-            end
-        else
-            local inferredTrack, inferredCur, inferredMax = InferUpgradeFromIlvl(itemLevel)
-            if inferredTrack then
-                trackName = inferredTrack
-                if not currUpgrade or not maxUpgrade or maxUpgrade == 0 then
-                    currUpgrade = inferredCur
-                    maxUpgrade = inferredMax
-                end
-            end
+        if not trackName or not currUpgrade or not maxUpgrade or maxUpgrade == 0 then
+            trackName, currUpgrade, maxUpgrade = ResolveSlotUpgradeTrackAndTier(slot)
+        elseif trackName and TRACK_ILVLS[trackName] and itemLevel > 0 then
+            currUpgrade, maxUpgrade = ReconcileUpgradeTierForSlot(trackName, itemLevel, currUpgrade, maxUpgrade)
         end
 
         if slot.itemUpgradeable == false then
@@ -2089,6 +2451,13 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 end
             end
             local canUpgrade = (itemLevel < CRAFTED_CREST_TIERS[1].maxIlvl)
+            local craftedMaxTier = maxUpgrade or 0
+            if craftedTierName == "Myth" and craftedMaxTier > 5 then
+                craftedMaxTier = 5
+                if currUpgrade and currUpgrade > 5 then
+                    currUpgrade = 5
+                end
+            end
             upgrades[slotID] = {
                 canUpgrade      = canUpgrade,
                 isCrafted       = true,
@@ -2096,7 +2465,7 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 nextIlvl        = itemLevel,
                 maxIlvl         = 285,
                 currUpgrade     = currUpgrade or 0,
-                maxUpgrade      = maxUpgrade or 0,
+                maxUpgrade      = craftedMaxTier,
                 trackName       = "Crafted",
                 craftedTierName = craftedTierName,
                 currencyID      = 0,
@@ -2109,8 +2478,13 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
             local tiers = TRACK_ILVLS[trackName]
 
             local nextIlvl = itemLevel
-            if hasNext and tiers and tiers[currUpgrade + 1] then
-                nextIlvl = tiers[currUpgrade + 1]
+            if hasNext then
+                local stepIlvl = tonumber(slot.nextStepIlvl)
+                if stepIlvl and stepIlvl > itemLevel then
+                    nextIlvl = stepIlvl
+                elseif tiers and tiers[currUpgrade + 1] then
+                    nextIlvl = tiers[currUpgrade + 1]
+                end
             end
 
             local maxIlvl = itemLevel
@@ -2118,7 +2492,7 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 maxIlvl = tiers[maxUpgrade]
             end
 
-            local currencyID, crestCost, moneyCost = ResolveNextUpgradeCosts(slot, trackName, hasNext)
+            local currencyID, crestCost, moneyCost, isDiscounted = ResolveNextUpgradeCosts(slot, trackName, hasNext)
 
             -- Gold-only = upgrades to ilvl this slot has already reached. Use per-slot watermark only;
             -- for paired slots (rings/trinkets), cap by this item's current ilvl so we don't use the pair's max
@@ -2137,6 +2511,7 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 crestCost     = crestCost,
                 moneyCost     = moneyCost,
                 watermarkIlvl = perSlotWm,
+                nextUpgradeIsDiscounted = isDiscounted,
             }
         end
     end
