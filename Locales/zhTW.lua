@@ -682,6 +682,20 @@ L["WELCOME_OPEN_INTERFACE"] = "以開啟介面。"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
+L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
+
+Revision:
+- 外掛版面與體驗：改進介面配置並提升使用穩定性。
+
+Fixes:
+- 無限迴圈：修復從 PvE 標籤切換到其他標籤時發生的凍結。
+- 重複項目：修復成就、坐騎、寵物與玩具的重複條目。
+- 在地化：修復翻譯及語言相關問題。
+- 資料 / UI 流程：最佳化資料同步與介面流程。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
 L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
 
@@ -1596,7 +1610,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "????????"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已儲存副本、嘗試次數計數、PvE/裝備/計畫、快取架構）。各語系檔已移除舊版逐條更新說明；請用 `/wn changelog` 檢視目前版本（v3.0.5）。
+午夜（Midnight）大型版本（已儲存副本、嘗試次數計數、PvE/裝備/計畫、快取架構）。各語系檔已移除舊版逐條更新說明；請用 `/wn changelog` 檢視目前版本（v3.1.0）。
 
 CurseForge: Warband Nexus]=]
 

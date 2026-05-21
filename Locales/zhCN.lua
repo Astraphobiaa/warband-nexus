@@ -918,6 +918,20 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
+L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
+
+Revision:
+- 插件布局与体验：改进界面布局并提升使用稳定性。
+
+Fixes:
+- 无限循环：修复从 PvE 标签切换到其他标签时发生的卡顿。
+- 重复项：修复成就、坐骑、宠物和玩具的重复条目。
+- 本地化：修复翻译及语言相关问题。
+- 数据 / UI 流程：优化数据同步与界面流程。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
 L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
 
@@ -1779,7 +1793,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.0.5）。
+午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.0）。
 
 CurseForge: Warband Nexus]=]
 

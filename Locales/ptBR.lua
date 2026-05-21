@@ -683,6 +683,20 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir a interface."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
+L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
+
+Revision:
+- Layout e UX do addon: interface aprimorada e experiencia mais estavel.
+
+Fixes:
+- Loop infinito: corrigido travamento ao sair da aba PvE para qualquer outra.
+- Duplicatas: corrigidas entradas duplicadas de conquistas, montarias, mascotes e brinquedos.
+- Localizacao: corrigidos problemas de traducao e idioma.
+- Dados / UI: sincronizacao de dados e fluxo da interface otimizados.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
 L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
 
@@ -1597,7 +1611,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Facção ou classe restrita"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.0.5).
+Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.1.0).
 
 CurseForge: Warband Nexus]=]
 

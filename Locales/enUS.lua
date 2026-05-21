@@ -1047,6 +1047,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION - see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
+L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
+
+Revision:
+- AddOn Layout & UX: Enhanced interface layout and user experience stability.
+
+Fixes:
+- Endless Loop: Fixed a freeze occurring when switching from the "PvE" tab to "Any Tab".
+- Duplications: Resolved duplicate entries for Achievements, Mounts, Pets, and Toys.
+- Localization: Fixed translation and language-specific issues.
+- Data / UI Flow: Optimized data syncing and user interface flow.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
 L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
 
@@ -1083,7 +1097,7 @@ CurseForge: Warband Nexus]=]
 -- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.0.5).
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.0).
 
 CurseForge: Warband Nexus]=]
 

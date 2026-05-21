@@ -691,6 +691,20 @@ L["WELCOME_OPEN_INTERFACE"] = "인터페이스를 열려면."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
+L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
+
+Revision:
+- 애드온 레이아웃 및 UX: 인터페이스 배치와 사용 안정성이 개선되었습니다.
+
+Fixes:
+- 무한 루프: PvE 탭에서 다른 탭으로 전환할 때 발생하던 멈춤 현상을 수정했습니다.
+- 중복: 업적, 탈것, 애완동물, 장난감의 중복 항목을 해결했습니다.
+- 현지화: 번역 및 언어별 문제를 수정했습니다.
+- 데이터 / UI 흐름: 데이터 동기화와 UI 흐름을 최적화했습니다.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
 L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
 
@@ -1605,7 +1619,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?? ?? ?? ??"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.0.5)는 `/wn changelog`를 사용하세요.
+미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.1.0)는 `/wn changelog`를 사용하세요.
 
 CurseForge: Warband Nexus]=]
 
