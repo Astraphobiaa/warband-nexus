@@ -2272,7 +2272,10 @@ function WarbandNexus:CreateMainWindow()
                         end
                         if child.isPersistentRowElement then
                             child:Hide()
-                        elseif not child._wnKeepOnTabSwitch then
+                        elseif child._wnProfColumnHeaderStrip or not child._wnKeepOnTabSwitch then
+                            if child._wnProfColumnHeaderStrip then
+                                child._wnKeepOnTabSwitch = nil
+                            end
                             child:Hide()
                             child:SetParent(recycleBin)
                         end
@@ -3912,7 +3915,10 @@ local function PopulateContentBody(self)
             end
             if child.isPersistentRowElement then
                 child:Hide()
-            elseif not child._wnKeepOnTabSwitch then
+            elseif child._wnProfColumnHeaderStrip or not child._wnKeepOnTabSwitch then
+                if child._wnProfColumnHeaderStrip then
+                    child._wnKeepOnTabSwitch = nil
+                end
                 child:Hide()
                 child:SetParent(recycleBin)
             end
@@ -3930,6 +3936,16 @@ local function PopulateContentBody(self)
         if ns._gearModelBorder then ns._gearModelBorder:Hide() end
         if ns._gearIlvlFrame then ns._gearIlvlFrame:Hide() end
         if ns._gearNameWrapper then ns._gearNameWrapper:Hide() end
+    end
+
+    -- Profession column header strip is scrollChild-local; never keep visible on PvE/other tabs.
+    if mainFrame.currentTab ~= "professions" then
+        if ns.UI_HideProfessionColumnHeaderStrip then
+            ns.UI_HideProfessionColumnHeaderStrip(scrollChild)
+        elseif scrollChild._wnProfColHeaderRow then
+            scrollChild._wnProfColHeaderRow._wnKeepOnTabSwitch = nil
+            scrollChild._wnProfColHeaderRow:Hide()
+        end
     end
     
     -- Update status

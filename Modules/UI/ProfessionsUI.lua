@@ -735,6 +735,19 @@ local function BindProfColumnHeaderTooltip(frame, tooltipTitle)
     end)
 end
 
+local function ProfessionHeaderIconIsDrawn(iconTex)
+    if not iconTex then return false end
+    if iconTex.GetAtlas then
+        local atlas = iconTex:GetAtlas()
+        if atlas and atlas ~= "" then return true end
+    end
+    if iconTex.GetTexture then
+        local tex = iconTex:GetTexture()
+        if tex and tex ~= "" then return true end
+    end
+    return false
+end
+
 local function TryApplyProfessionHeaderAtlas(iconTex, atlasName)
     if not iconTex or not iconTex.SetAtlas or not atlasName or atlasName == "" then return false end
     iconTex:SetTexture(nil)
@@ -747,12 +760,13 @@ local function TryApplyProfessionHeaderAtlas(iconTex, atlasName)
     for ni = 1, #tryNames do
         local name = tryNames[ni]
         for mi = 1, #modes do
-            if pcall(iconTex.SetAtlas, iconTex, name, modes[mi]) then
+            if pcall(iconTex.SetAtlas, iconTex, name, modes[mi]) and ProfessionHeaderIconIsDrawn(iconTex) then
                 iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
                 iconTex:SetVertexColor(1, 1, 1, 1)
                 iconTex:Show()
                 return true
             end
+            iconTex:SetTexture(nil)
         end
     end
     return false
@@ -765,16 +779,29 @@ local function ApplyProfessionHeaderFileIcon(iconTex, path)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     iconTex:SetVertexColor(1, 1, 1, 1)
     iconTex:Show()
-    return true
+    return ProfessionHeaderIconIsDrawn(iconTex)
 end
 
 local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     if not iconTex or not iconDef then return end
+    iconTex:Hide()
+    iconTex:SetTexture(nil)
     local paths = iconDef.iconPaths
-    if type(paths) == "table" then
+    if type(paths) ~= "table" then paths = {} end
+    if iconDef.iconFallback and iconDef.iconFallback ~= "" then
+        local hasFallback = false
         for pi = 1, #paths do
-            if ApplyProfessionHeaderFileIcon(iconTex, paths[pi]) then return end
+            if paths[pi] == iconDef.iconFallback then
+                hasFallback = true
+                break
+            end
         end
+        if not hasFallback then
+            paths[#paths + 1] = iconDef.iconFallback
+        end
+    end
+    for pi = 1, #paths do
+        if ApplyProfessionHeaderFileIcon(iconTex, paths[pi]) then return end
     end
     if iconDef.icon and iconDef.iconIsAtlas == false then
         if ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon) then return end
@@ -784,22 +811,19 @@ local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
         if type(candidates) ~= "table" or #candidates == 0 then
             candidates = iconDef.icon and { iconDef.icon } or nil
         end
-        local applied = false
         if type(candidates) == "table" then
             for ci = 1, #candidates do
                 if TryApplyProfessionHeaderAtlas(iconTex, candidates[ci]) then
-                    applied = true
-                    break
+                    return
                 end
             end
         end
-        if not applied and iconDef.iconFallback then
-            ApplyProfessionHeaderFileIcon(iconTex, iconDef.iconFallback)
-        end
     elseif iconDef.icon then
-        ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon)
+        if ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon) then return end
     end
-    if iconTex.Show then iconTex:Show() end
+    if iconDef.iconFallback then
+        ApplyProfessionHeaderFileIcon(iconTex, iconDef.iconFallback)
+    end
 end
 
 local PROF_COMPACT_HEADER_HEX = "aaaaaa"
@@ -835,6 +859,38 @@ end
 
 local profColHeaderLabels = {}
 local profColHeaderHits = {}
+
+--- PopulateContent parks scrollChild children in recycleBin; reattach when Professions redraws.
+local function ReattachProfessionColumnHeaderBar(colHeaderBar, parent)
+    if not colHeaderBar or not parent then return end
+    if colHeaderBar:GetParent() ~= parent then
+        colHeaderBar:SetParent(parent)
+    end
+    colHeaderBar._wnProfColumnHeaderStrip = true
+    if colHeaderBar.SetFrameStrata and parent.GetFrameStrata then
+        colHeaderBar:SetFrameStrata(parent:GetFrameStrata())
+    end
+    if colHeaderBar.SetFrameLevel and parent.GetFrameLevel then
+        colHeaderBar:SetFrameLevel(parent:GetFrameLevel() + 2)
+    end
+end
+
+--- Hide profession-only column headers when another main tab is active (must not use _wnKeepOnTabSwitch).
+function ns.UI_HideProfessionColumnHeaderStrip(scrollChild)
+    if not scrollChild then return end
+    local bar = scrollChild._wnProfColHeaderRow
+    if bar then
+        bar._wnKeepOnTabSwitch = nil
+        bar:Hide()
+        bar:ClearAllPoints()
+    end
+    for _, fs in pairs(profColHeaderLabels) do
+        if fs and fs.Hide then fs:Hide() end
+    end
+    for _, hit in pairs(profColHeaderHits) do
+        if hit and hit.Hide then hit:Hide() end
+    end
+end
 
 local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compactLabel, compactHex, colWidth)
     if not colHeaderBar or not hitFrame or not compactLabel or compactLabel == "" then return nil end
@@ -889,11 +945,20 @@ local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef,
         hitBtn:Show()
         if sortable and hitBtn.EnableMouse then hitBtn:EnableMouse(true) end
     end
+    if FactHdr and FactHdr.ApplyIconOnlyButtonChrome and hitBtn.GetObjectType and hitBtn:GetObjectType() == "Button" then
+        FactHdr:ApplyIconOnlyButtonChrome(hitBtn)
+    end
     hitBtn:ClearAllPoints()
     hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col) + (w - hitW) * 0.5, 6)
     hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 2)
 
     local iconTex = hitBtn._wnHeaderIconTex
+    if not iconTex or not iconTex.SetTexture then
+        iconTex = hitBtn:CreateTexture(nil, "ARTWORK")
+        iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
+        iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
+        hitBtn._wnHeaderIconTex = iconTex
+    end
     ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     BindProfColumnHeaderTooltip(hitBtn, tooltipTitle)
 
@@ -1803,6 +1868,7 @@ local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
     end
     local colHeaderRow = scrollChild._wnProfColHeaderRow
     if not colHeaderRow then return end
+    ReattachProfessionColumnHeaderBar(colHeaderRow, scrollChild)
     local stackW = bodyWidth or scrollChild._wnProfStackWidth or scrollChild._wnProfBodyWidth
     local side = scrollChild._wnProfContentSide or SIDE_MARGIN
     local paintW = ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, stackW)
@@ -2133,6 +2199,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
         parent._wnProfColHeaderRow = colHeaderBar
     end
+    ReattachProfessionColumnHeaderBar(colHeaderBar, parent)
     colHeaderBar:Show()
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
     colHeaderBar:ClearAllPoints()
