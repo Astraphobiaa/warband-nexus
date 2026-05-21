@@ -104,6 +104,9 @@ end
 function M.GetActivePanel()
     local db = WarbandNexus.db and WarbandNexus.db.profile
     local p = db and db.settingsPanel
+    if p == "about" then
+        return "general"
+    end
     if p and VALID_PANEL[p] then return p end
     return "general"
 end
@@ -113,6 +116,9 @@ function M.SetActivePanel(panelId)
     local db = WarbandNexus.db and WarbandNexus.db.profile
     if not db then return end
     db.settingsPanel = panelId
+    if ns.UI_UpdateMainFrameTabButtonStates and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+        ns.UI_UpdateMainFrameTabButtonStates(WarbandNexus.UI.mainFrame)
+    end
 end
 
 function M.PanelActive(layoutOpts, panelId)
@@ -227,9 +233,13 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
     if tabIcon.SetTexelSnappingBias then tabIcon:SetTexelSnappingBias(0) end
     btn.tabIcon = tabIcon
     local iconKey = M.PanelIconKey(panelId)
-    if ns.UI_ApplyMainNavTabGlyph then
+    local usedWnIcon = false
+    if panelId == "about" and ns.UI_SetWnIconTexture then
+        usedWnIcon = ns.UI_SetWnIconTexture(tabIcon, "credits", { 0.88, 0.88, 0.92, 1 })
+    end
+    if not usedWnIcon and ns.UI_ApplyMainNavTabGlyph then
         ns.UI_ApplyMainNavTabGlyph(tabIcon, iconKey)
-    else
+    elseif not usedWnIcon then
         local atlasNm = ns.UI_GetTabIcon and ns.UI_GetTabIcon(iconKey) or nil
         local atlasOk = atlasNm and type(atlasNm) == "string" and pcall(tabIcon.SetAtlas, tabIcon, atlasNm, false)
         if not atlasOk then

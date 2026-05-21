@@ -561,6 +561,7 @@ local UI_SPACING = {
         --- Gap between last scrolled tab and footer rule; footer rule to Settings row.
         NAV_RAIL_SCROLL_BOTTOM_GAP = 6,
         NAV_RAIL_SETTINGS_SEP_GAP = 4,
+        NAV_RAIL_FOOTER_BTN_GAP = 4,
         NAV_RAIL_SETTINGS_BOTTOM_PAD = 6,
         --- In-content settings category column (right of main rail).
         SETTINGS_NAV_WIDTH = 160,
@@ -726,6 +727,11 @@ local function GetWnIconPaths()
         chevron_up = (C and C.WN_ICON_CHEVRON_UP) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronUp.tga",
         chevron_down = (C and C.WN_ICON_CHEVRON_DOWN) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronDown.tga",
         link = (C and C.WN_ICON_LINK) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Link.tga",
+        close = (C and C.WN_ICON_CLOSE) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Close.tga",
+        discord = (C and C.WN_ICON_DISCORD) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Discord.tga",
+        donate = (C and C.WN_ICON_DONATE) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Donate.tga",
+        credits = (C and C.WN_ICON_CREDITS) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
+        tracking = (C and C.WN_ICON_TRACKING) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
     }
     return WN_ICON_PATHS
 end
@@ -4360,6 +4366,7 @@ local TAB_HEADER_ICONS = {
     professions = "Vehicle-HammerGold",
     gear = "VignetteEventElite",
     settings = "mechagon-projects",
+    about = "Campaign-QuestLog-Legendaryicon",
     qol = "Soulbinds_Tree_Conduit_Icon_Utility",
 }
 
@@ -4376,6 +4383,7 @@ local TAB_NAV_TEXTURE_FALLBACK = {
     plans = "Interface\\Icons\\INV_Misc_Map_01",
     stats = "Interface\\Icons\\Achievement_General_StayClassy",
     settings = "Interface\\Icons\\Trade_Engineering",
+    about = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
 }
 
 ns.UI_MAIN_TAB_NAV_MEDIA = TAB_NAV_TEXTURE_FALLBACK

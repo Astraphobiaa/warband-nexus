@@ -27,7 +27,7 @@ Locales\ruRU.lua
 Locales\zhCN.lua
 Locales\zhTW.lua
 
-# Media: `Media/icon.tga` (addon list + chrome). UI stroke icons: Icon-*.tga (todo, reminder, pin, block, chevrons, link).
+# Media: `Media/icon.tga` (addon list + chrome). UI stroke icons: Icon-*.tga + Icon-*.svg (todo, link, close, discord, donate, credits, tracking). Rebuild: python scripts/build_chrome_icons.py
 
 # Packaging / QA
 # Locale key parity vs enUS: python scripts/check_locales.py  (optional: --strict-en-us-ascii once enUS ASCII cleanup lands)

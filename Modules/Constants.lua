@@ -95,6 +95,11 @@ local Constants = {
     WN_ICON_CHEVRON_UP = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronUp.tga",
     WN_ICON_CHEVRON_DOWN = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-ChevronDown.tga",
     WN_ICON_LINK = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Link.tga",
+    WN_ICON_CLOSE = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Close.tga",
+    WN_ICON_DISCORD = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Discord.tga",
+    WN_ICON_DONATE = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Donate.tga",
+    WN_ICON_CREDITS = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
+    WN_ICON_TRACKING = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
     
     --==========================================================================
     -- DATABASE VERSIONS

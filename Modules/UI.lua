@@ -84,6 +84,12 @@ function ns.UI_ApplyMainWindowTitleIcon(tex)
     end
 end
 
+--- Header utility glyphs from packaged SVG-derived TGAs (`Media/Icon-*.tga`).
+function ns.UI_SetMainChromeIcon(tex, iconKey, vertexColor)
+    if not tex or not iconKey or not ns.UI_SetWnIconTexture then return false end
+    return ns.UI_SetWnIconTexture(tex, iconKey, { vertexColor = vertexColor or { 1, 1, 1, 1 } })
+end
+
 --- Golden-ratio rail width + strip/button sync (text rail below header).
 local function ApplyMainNavGoldenShellLayout(f)
     if not f or f._wnMainNavLayout ~= "rail" or not f.navRail then return end
@@ -110,6 +116,9 @@ local function ApplyMainNavGoldenShellLayout(f)
     end
     if f.navSettingsBtn and f.navSettingsBtn._wnRailTextMode then
         f.navSettingsBtn:SetWidth(stripW)
+    end
+    if f.navAboutBtn and f.navAboutBtn._wnRailTextMode then
+        f.navAboutBtn:SetWidth(stripW)
     end
 end
 
@@ -898,7 +907,7 @@ end
 ---Session-only main tab (hide/show same login). Cleared on /reload.
 ---@param tabKey string|nil
 local function RememberSessionMainTab(tabKey)
-    if tabKey and tabKey ~= "" and tabKey ~= "settings" then
+    if tabKey and tabKey ~= "" and tabKey ~= "settings" and tabKey ~= "about" then
         ns._wnSessionLastTab = tabKey
     end
 end
@@ -910,12 +919,12 @@ local function ResolveMainWindowOpenTab()
         ns._wnOpenCharsTabOnNextShow = nil
         return "chars"
     end
-    if ns._wnSessionLastTab and ns._wnSessionLastTab ~= "settings" then
+    if ns._wnSessionLastTab and ns._wnSessionLastTab ~= "settings" and ns._wnSessionLastTab ~= "about" then
         return ns._wnSessionLastTab
     end
     local p = WarbandNexus.db and WarbandNexus.db.profile
     local lt = p and p.lastTab
-    if lt == "settings" then lt = nil end
+    if lt == "settings" or lt == "about" then lt = nil end
     return lt or "chars"
 end
 
@@ -1320,6 +1329,76 @@ local function UpdateTabButtonStates(f)
             end
         end
     end
+
+    local aboutBtn = f.navAboutBtn
+    if aboutBtn and aboutBtn:IsShown() then
+        local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+        local railFlat = aboutBtn._wnRailTextMode
+        local isAboutActive = (f.currentTab == "about")
+        if isAboutActive then
+            aboutBtn.active = true
+            if aboutBtn.label and (aboutBtn._wnRailTextMode or not aboutBtn._wnRailCompact) then
+                aboutBtn.label:SetTextColor(1, 1, 1)
+                local font, size = aboutBtn.label:GetFont()
+                if font and size then
+                    aboutBtn.label:SetFont(font, size, "OUTLINE")
+                elseif fm then
+                    fm:ApplyFont(aboutBtn.label, "body")
+                    font, size = aboutBtn.label:GetFont()
+                    if font and size then aboutBtn.label:SetFont(font, size, "OUTLINE") end
+                end
+            end
+            if aboutBtn.activeBar then aboutBtn.activeBar:SetAlpha(1) end
+            if aboutBtn.tabIcon then aboutBtn.tabIcon:SetVertexColor(1, 1, 1, 1) end
+            if railFlat and ns.UI_HideFrameBorderQuartet then
+                ns.UI_HideFrameBorderQuartet(aboutBtn)
+            end
+            if aboutBtn.SetBackdropColor then
+                local railA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.52
+                aboutBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+            end
+            if ns.UI_ApplyRailTabActiveVisuals then
+                ns.UI_ApplyRailTabActiveVisuals(aboutBtn, true, accentColor)
+            end
+        else
+            aboutBtn.active = false
+            if aboutBtn.label and (aboutBtn._wnRailTextMode or not aboutBtn._wnRailCompact) then
+                if railFlat then
+                    aboutBtn.label:SetTextColor(0.92, 0.92, 0.94)
+                else
+                    aboutBtn.label:SetTextColor(0.7, 0.7, 0.7)
+                end
+                local font, size = aboutBtn.label:GetFont()
+                if font and size then
+                    aboutBtn.label:SetFont(font, size, "")
+                elseif fm then
+                    fm:ApplyFont(aboutBtn.label, "body")
+                end
+            end
+            if aboutBtn.activeBar then aboutBtn.activeBar:SetAlpha(0) end
+            if aboutBtn.tabIcon then
+                if railFlat then
+                    aboutBtn.tabIcon:SetVertexColor(0.88, 0.88, 0.92, 1)
+                else
+                    aboutBtn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92)
+                end
+            end
+            if railFlat and ns.UI_HideFrameBorderQuartet then
+                ns.UI_HideFrameBorderQuartet(aboutBtn)
+            end
+            if aboutBtn.SetBackdropColor then
+                if railFlat then
+                    aboutBtn:SetBackdropColor(0.08, 0.08, 0.10, 0.4)
+                else
+                    aboutBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                end
+            end
+            if ns.UI_ApplyRailTabActiveVisuals then
+                ns.UI_ApplyRailTabActiveVisuals(aboutBtn, false, accentColor)
+            end
+        end
+    end
+
 end
 
 ns.UI_UpdateMainFrameTabButtonStates = UpdateTabButtonStates
@@ -1335,7 +1414,7 @@ ns.UI_UpdateMainFrameTabButtonStates = UpdateTabButtonStates
     invisible event hosts (no tab layout).
   - `WarbandNexusRecycleBin`: long-lived orphan reparent bucket.
   - Resize corner strip: Blizzard size-grabber textures on a capturing `Frame` (not Factory button).
-  - Header utility buttons (close/reload/settings/info/Patreon/Discord): custom atlas + tooltips +
+  - Header utility buttons (close/discord/donate/credits/tracking): packaged Icon-*.tga (SVG source) + tooltips +
     copy-to-clipboard `EditBox` popups (`FULLSCREEN_DIALOG`).
   - `trackingChip` + nested `BackdropTemplate` hosts: compact tracking strip.
   - `CreateTabButton` inner `Button`: main nav tabs (custom width math + atlas + `ApplyHighlight`).
@@ -1572,7 +1651,7 @@ function WarbandNexus:CreateMainWindow()
     -- Addon `Media` branding (see `ns.UI_ApplyMainWindowTitleIcon`). `SetFrameLevel` exists on Frame only, not Texture;
     -- host frame keeps the icon above sibling header art without calling a nil Texture method.
     local iconHolder = CreateFrame("Frame", nil, header)
-    iconHolder:SetSize(24, 24)
+    iconHolder:SetSize(34, 34)
     iconHolder:SetPoint("LEFT", 15, 0)
     iconHolder:SetFrameLevel((header:GetFrameLevel() or 0) + 8)
     local icon = iconHolder:CreateTexture(nil, "OVERLAY", nil, 1)
@@ -1597,16 +1676,14 @@ function WarbandNexus:CreateMainWindow()
         ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
     
-    -- Close icon using WoW atlas
     local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(16, 16)
     closeIcon:SetPoint("CENTER")
     closeIcon:SetAtlas("uitools-icon-close")
     closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    
+
     closeBtn:SetScript("OnClick", function() f:Hide() end)
-    
-    -- Hover effects
+
     closeBtn:SetScript("OnEnter", function(self)
         closeIcon:SetVertexColor(1, 0.2, 0.2)
         if ns.UI_ApplyVisuals then
@@ -1676,27 +1753,12 @@ function WarbandNexus:CreateMainWindow()
     local DISCORD_URL = "https://discord.gg/warbandnexus"
     local PATREON_URL = "https://patreon.com/warbandnexus?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
     local discordCopyFrame, discordCopyBox, patreonCopyFrame, patreonCopyBox
-    local infoBtn = CreateFrame("Button", nil, header)
-    infoBtn:SetSize(28, 28)
-    infoBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
-    infoBtn:SetNormalTexture("Interface\\BUTTONS\\UI-GuildButton-PublicNote-Up")
-    infoBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
-    infoBtn:SetScript("OnClick", function() WarbandNexus:ShowInfoDialog() end)
-    infoBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText((ns.L and ns.L["HEADER_INFO_TOOLTIP"]) or "Addon guide & credits", 1, 1, 1)
-        GameTooltip:AddLine((ns.L and ns.L["HEADER_INFO_TOOLTIP_HINT"]) or "Features, supporters, and contributors at the top", 0.65, 0.65, 0.65, true)
-        GameTooltip:Show()
-    end)
-    infoBtn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    f.infoBtn = infoBtn
-
-    -- Patreon (`Media/donateicon.png`); sits between Info and Discord.
     local patreonBtn = CreateFrame("Button", nil, header)
     patreonBtn:SetSize(30, 30)
-    patreonBtn:SetPoint("RIGHT", infoBtn, "LEFT", -6, 0)
+    patreonBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(patreonBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
     local patreonIcon = patreonBtn:CreateTexture(nil, "ARTWORK")
     patreonIcon:SetAllPoints()
     patreonIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\donateicon.png")
@@ -1762,10 +1824,12 @@ function WarbandNexus:CreateMainWindow()
     end)
     f.patreonBtn = patreonBtn
 
-    -- Discord (`Media/discord.tga`); Tracking chip attaches to Discord's left edge.
     local discordBtn = CreateFrame("Button", nil, header)
     discordBtn:SetSize(30, 30)
     discordBtn:SetPoint("RIGHT", patreonBtn, "LEFT", -6, 0)
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(discordBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
     local discordIcon = discordBtn:CreateTexture(nil, "ARTWORK")
     discordIcon:SetAllPoints()
     discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
@@ -1979,7 +2043,8 @@ function WarbandNexus:CreateMainWindow()
         local sepH = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_SEP_HEIGHT or 1
         local sepGap = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_SEP_GAP or 4
         local settingsBottomPad = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_BOTTOM_PAD or railPad
-        local railFooterH = sepH + sepGap + RAIL_TAB_H + settingsBottomPad
+        local footerBtnGap = MAIN_SHELL_LAYOUT.NAV_RAIL_FOOTER_BTN_GAP or 4
+        local railFooterH = sepH + sepGap + RAIL_TAB_H + footerBtnGap + RAIL_TAB_H + settingsBottomPad
         f._wnNavRailFooterH = railFooterH
         local navRailFooter = CreateFrame("Frame", nil, navRail)
         navRailFooter:SetHeight(railFooterH)
@@ -2157,7 +2222,7 @@ function WarbandNexus:CreateMainWindow()
             ScrollMainNavEnsureTabVisible(f, targetTab)
         end
 
-        if opts.persistLastTab ~= false and targetTab ~= "settings" then
+        if opts.persistLastTab ~= false and targetTab ~= "settings" and targetTab ~= "about" then
             if WarbandNexus.db and WarbandNexus.db.profile then
                 WarbandNexus.db.profile.lastTab = targetTab
             end
@@ -2369,9 +2434,13 @@ function WarbandNexus:CreateMainWindow()
         if tabIcon.SetSnapToPixelGrid then tabIcon:SetSnapToPixelGrid(false) end
         if tabIcon.SetTexelSnappingBias then tabIcon:SetTexelSnappingBias(0) end
         btn.tabIcon = tabIcon
-        if ns.UI_ApplyMainNavTabGlyph then
+        local usedPackagedIcon = false
+        if key == "about" and ns.UI_SetWnIconTexture then
+            usedPackagedIcon = ns.UI_SetWnIconTexture(tabIcon, "credits", { 0.88, 0.88, 0.92, 1 })
+        end
+        if not usedPackagedIcon and ns.UI_ApplyMainNavTabGlyph then
             ns.UI_ApplyMainNavTabGlyph(tabIcon, key)
-        else
+        elseif not usedPackagedIcon then
             local atlasNm = ns.UI_GetTabIcon and ns.UI_GetTabIcon(key) or nil
             local atlasOk = atlasNm and type(atlasNm) == "string" and pcall(tabIcon.SetAtlas, tabIcon, atlasNm, false)
             if not atlasOk then
@@ -2441,6 +2510,7 @@ function WarbandNexus:CreateMainWindow()
         collections = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections",
         plans       = (ns.L and ns.L["TAB_PLANS"]) or "To-Do",
         stats       = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics",
+        about       = (ns.L and ns.L["SETTINGS_PANEL_ABOUT"]) or "About",
     }
     
     -- Create tabs: horizontal strip (`top`) or compact vertical rail (`rail` + vertical scroll).
@@ -2472,15 +2542,35 @@ function WarbandNexus:CreateMainWindow()
         local sepH = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_SEP_HEIGHT or 1
         local sepGap = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_SEP_GAP or 4
         local settingsBottomPad = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_BOTTOM_PAD or RAIL_PAD
+        local footerBtnGap = MAIN_SHELL_LAYOUT.NAV_RAIL_FOOTER_BTN_GAP or 4
         local settingsBtn = CreateTabButton(f.navRailFooter, settingsLabel, "settings")
         settingsBtn:ClearAllPoints()
         settingsBtn:SetPoint("TOPLEFT", f.navRailFooter, "TOPLEFT", RAIL_PAD, -(sepH + sepGap))
-        settingsBtn:SetPoint("BOTTOMRIGHT", f.navRailFooter, "BOTTOMRIGHT", -RAIL_PAD, settingsBottomPad)
+        settingsBtn:SetPoint("TOPRIGHT", f.navRailFooter, "TOPRIGHT", -RAIL_PAD, 0)
+        settingsBtn:SetHeight(RAIL_TAB_H)
         f.navSettingsBtn = settingsBtn
         settingsBtn:SetScript("OnClick", function()
+            if ns.SettingsUI and ns.SettingsUI.SetActivePanel then
+                ns.SettingsUI.SetActivePanel("general")
+            end
             ActivateMainTab("settings", { persistLastTab = false })
         end)
         WireMainNavTabButtonUX(settingsBtn, settingsTooltip, (ns.L and ns.L["SETTINGS_TAB_SUBTITLE"]) or nil)
+        f.tabButtons.settings = settingsBtn
+
+        local aboutLabel = TAB_LABELS.about
+        local aboutTooltip = (ns.L and ns.L["SETTINGS_PANEL_ABOUT_DESC"]) or "Credits, contributors, and a guide to every tab."
+        local aboutBtn = CreateTabButton(f.navRailFooter, aboutLabel, "about")
+        aboutBtn:ClearAllPoints()
+        aboutBtn:SetPoint("TOPLEFT", settingsBtn, "BOTTOMLEFT", 0, -footerBtnGap)
+        aboutBtn:SetPoint("TOPRIGHT", settingsBtn, "BOTTOMRIGHT", 0, 0)
+        aboutBtn:SetHeight(RAIL_TAB_H)
+        f.navAboutBtn = aboutBtn
+        f.tabButtons.about = aboutBtn
+        aboutBtn:SetScript("OnClick", function()
+            ActivateMainTab("about", { persistLastTab = false })
+        end)
+        WireMainNavTabButtonUX(aboutBtn, aboutTooltip, nil)
     elseif navLayoutMode == "top" then
         local navBarH = nav:GetHeight() or MAIN_SHELL_LAYOUT.NAV_BAR_HEIGHT or 36
         local settingsBtn = CreateTabButton(nav, settingsLabel, "settings")
@@ -3620,17 +3710,17 @@ function WarbandNexus:CreateMainWindow()
     --- Show/hide header Reload button when debug mode is on (boolean or legacy SavedVars `1`; matches ProfileFlagOn / Settings toggles).
     function f:SyncMainHeaderDebugReloadLayout()
         local reloadBtn = self.reloadDebugBtn
-        local infoBtn = self.infoBtn
+        local patreonBtn = self.patreonBtn
         local clsBtn = self.closeBtn
-        if not reloadBtn or not infoBtn or not clsBtn then return end
+        if not patreonBtn or not clsBtn then return end
         local p = WarbandNexus.db and WarbandNexus.db.profile
         local show = p and ProfileFlagOn(p.debugMode)
-        reloadBtn:SetShown(show)
-        infoBtn:ClearAllPoints()
-        if show then
-            infoBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -6, 0)
+        if reloadBtn then reloadBtn:SetShown(show) end
+        patreonBtn:ClearAllPoints()
+        if show and reloadBtn then
+            patreonBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -6, 0)
         else
-            infoBtn:SetPoint("RIGHT", clsBtn, "LEFT", -6, 0)
+            patreonBtn:SetPoint("RIGHT", clsBtn, "LEFT", -6, 0)
         end
     end
     f:SyncMainHeaderDebugReloadLayout()
@@ -3682,7 +3772,7 @@ local function PopulateContentBody(self)
 
     -- Persisted lastTab can point at a tab whose module is disabled (hidden nav button).
     -- Clamp before tab-switch detection so highlight and scroll body stay aligned.
-    if mainFrame.currentTab ~= "settings" and not IsTabModuleEnabled(mainFrame.currentTab) then
+    if mainFrame.currentTab ~= "settings" and mainFrame.currentTab ~= "about" and not IsTabModuleEnabled(mainFrame.currentTab) then
         mainFrame.currentTab = "chars"
         local p = WarbandNexus.db and WarbandNexus.db.profile
         if p then
@@ -3925,6 +4015,12 @@ local function PopulateContentBody(self)
     elseif tab == "settings" then
         if self.DrawSettingsTab then
             height = self:DrawSettingsTab(scrollChild)
+        else
+            height = 200
+        end
+    elseif tab == "about" then
+        if self.DrawAboutTab then
+            height = self:DrawAboutTab(scrollChild)
         else
             height = 200
         end

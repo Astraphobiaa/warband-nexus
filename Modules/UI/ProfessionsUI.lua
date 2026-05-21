@@ -5,9 +5,9 @@
     Character ordering mirrors CharactersUI (favorites, regular, untracked).
     Collapsible section headers for Favorites / Characters / Untracked.
 
-    Column header bar sits above all sections with alignment matching data:
-        LEFT-aligned:  CHARACTER, PROFESSION
-        CENTER-aligned: SKILL, CONCENTRATION, KNOWLEDGE
+    Column header row in scroll content (PvE parity) sits directly above sections:
+        LEFT-aligned:  CHARACTER (text header)
+        Icon + compact label (PvE parity): PROFESSION and all profession data columns
     Identity (name/realm) is vertically centered in the row; profession lines sit in
     symmetric upper/lower bands (ROW_HEIGHT/4 from midline). Uniform COL_SPACING (8px)
     between all columns. Vertical rules only in the profession data grid (not identity columns).
@@ -163,10 +163,9 @@ local COL_SPACING = 8                -- Uniform gap after every column (WN-UI-la
 local OPEN_PROF_GAP = COL_SPACING  -- Same rhythm as other columns (no extra gap after Open)
 local DATA_FONT = "body"             -- 12px - used for ALL data text
 
--- Frozen column header: air below title card before header labels (Professions-only tuning).
-local COLUMN_HEADER_TOP_GAP = 6
+-- Column header row in scrollChild (PvE parity): 48px icons/labels + 2px before first section.
 local COLUMN_HEADER_HEIGHT = 48
-local COLUMN_HEADER_PAD = 4
+local COLUMN_HEADER_PAD = 2
 local PROF_COLUMN_HEADER_FONT = "subtitle"
 local PROF_COL_ICON_SIZE = 22
 
@@ -627,17 +626,13 @@ local function ColCenterX(key)
     return ColOffset(key) + ColWidth(key) / 2
 end
 
---- Center X of gaps in the profession data grid only (not fav/class/name — avoids visual clutter).
---- One rule after Open when the profession block is visible (OPEN_PROF_GAP).
+--- Center X of gaps in the profession data grid only (after Profession column — not identity/open).
 local function BuildProfessionColumnDividerXs()
     local xs = {}
-    if IsColumnVisible("open") and IsColumnVisible("profIcon") then
-        xs[#xs + 1] = ColOffset("open") + ColWidth("open") + (COLUMNS.open.spacing or OPEN_PROF_GAP) * 0.5
-    end
     local inDataGrid = false
     for ki = 1, #COLUMN_ORDER - 1 do
         local k = COLUMN_ORDER[ki]
-        if k == "profIcon" then
+        if k == "profName" then
             inDataGrid = true
         end
         if not inDataGrid or not IsColumnVisible(k) then
@@ -756,27 +751,80 @@ local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     end
 end
 
---- Icon-only data column headers; full locale title on hover (sortable columns keep click target).
+local PROF_COMPACT_HEADER_HEX = "aaaaaa"
+
+local function BuildProfCompactHeaderLabel(col, displayText)
+    if type(displayText) ~= "string" or displayText == "" then return "", PROF_COMPACT_HEADER_HEX end
+    local shortByCol = {
+        profName = (ns.L and ns.L["GROUP_PROFESSION"]) or "Profession",
+        equipment = (ns.L and ns.L["EQUIPMENT"]) or "Equip",
+        skill = (ns.L and ns.L["SKILL"]) or "Skill",
+        conc = (ns.L and ns.L["CONCENTRATION"]) or "Conc",
+        recharge = (ns.L and ns.L["RECHARGE"]) or "Rech",
+        knowledge = (ns.L and ns.L["KNOWLEDGE"]) or "Know",
+        recipes = (ns.L and ns.L["RECIPES"]) or "Recipes",
+        firstCraft = (ns.L and ns.L["FIRST_CRAFT"]) or "1st",
+        uniques = (ns.L and ns.L["UNIQUES"]) or "Unique",
+        treatise = (ns.L and ns.L["TREATISE"]) or "Treat",
+        weeklyQuest = (ns.L and ns.L["WEEKLY_QUEST_CAT"]) or "Weekly",
+        treasure = (ns.L and ns.L["SOURCE_TYPE_TREASURE"]) or "Treas",
+        gathering = (ns.L and ns.L["GATHERING"]) or "Gather",
+        catchUp = (ns.L and ns.L["CATCH_UP"]) or "Catch",
+        moxie = (ns.L and ns.L["MOXIE"]) or "Moxie",
+        cooldowns = (ns.L and ns.L["COOLDOWNS"]) or "CD",
+    }
+    if col and shortByCol[col] then
+        return shortByCol[col], PROF_COMPACT_HEADER_HEX
+    end
+    if #displayText > 10 then
+        return displayText:sub(1, 9) .. ".", PROF_COMPACT_HEADER_HEX
+    end
+    return displayText, PROF_COMPACT_HEADER_HEX
+end
+
+local profColHeaderLabels = {}
+
+local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compactLabel, compactHex, colWidth)
+    if not colHeaderBar or not hitFrame or not compactLabel or compactLabel == "" then return nil end
+    local fs = profColHeaderLabels[colKey]
+    if not fs then
+        fs = FontManager:CreateFontString(colHeaderBar, "bodySmall", "OVERLAY")
+        profColHeaderLabels[colKey] = fs
+    else
+        fs:SetParent(colHeaderBar)
+        fs:Show()
+    end
+    fs:SetPoint("TOP", hitFrame, "BOTTOM", 0, 0)
+    fs:SetWidth(math.max(24, colWidth - 4))
+    fs:SetJustifyH("CENTER")
+    fs:SetWordWrap(false)
+    fs:SetText("|cff" .. (compactHex or PROF_COMPACT_HEADER_HEX) .. compactLabel .. "|r")
+    fs:SetShadowOffset(1, -1)
+    fs:SetShadowColor(0, 0, 0, 0.9)
+    return fs
+end
+
+--- Icon + compact label (PvE column header parity); full locale title on hover.
 local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef, hdef, sortState, tooltipTitle, accentR, accentG, accentB, FactHdr)
     if not colHeaderBar or not iconDef or w <= 0 then return end
-    local hitW = math.max(w, PROF_COL_ICON_SIZE + 4)
+    local hitW, hitH = PROF_COL_ICON_SIZE + 4, PROF_COL_ICON_SIZE + 4
     local hitBtn
     if hdef and hdef.sortable then
-        hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, hitW, COLUMN_HEADER_HEIGHT, true)
+        hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, hitW, hitH, true)
         if not hitBtn then
             hitBtn = CreateFrame("Button", nil, colHeaderBar)
-            hitBtn:SetSize(hitW, COLUMN_HEADER_HEIGHT)
+            hitBtn:SetSize(hitW, hitH)
         end
-        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col) + (w - hitW) * 0.5, 6)
         hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 2)
         hitBtn:EnableMouse(true)
     else
-        hitBtn = FactHdr and FactHdr:CreateContainer(colHeaderBar, hitW, COLUMN_HEADER_HEIGHT, false)
+        hitBtn = FactHdr and FactHdr:CreateContainer(colHeaderBar, hitW, hitH, false)
         if not hitBtn then
             hitBtn = CreateFrame("Frame", nil, colHeaderBar)
-            hitBtn:SetSize(hitW, COLUMN_HEADER_HEIGHT)
+            hitBtn:SetSize(hitW, hitH)
         end
-        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col) + (w - hitW) * 0.5, 6)
         hitBtn:EnableMouse(true)
     end
 
@@ -785,6 +833,11 @@ local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef,
     iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
     ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     BindProfColumnHeaderTooltip(hitBtn, tooltipTitle)
+
+    local compactLabel, compactHex = BuildProfCompactHeaderLabel(col, tooltipTitle)
+    if compactLabel ~= "" then
+        ProfAcquireColHeaderLabel(colHeaderBar, col, hitBtn, compactLabel, compactHex, w)
+    end
 
     if not hdef or not hdef.sortable then
         return
@@ -835,21 +888,22 @@ end
 -- sortable = true means clicking the header toggles ascending/descending sort
 --- Icon atlas/texture per profession data column (header shows icon; tooltip uses full locale label).
 local PROF_HEADER_ICON_BY_COL = {
+    profName    = { icon = "professions-icon-book", iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Book_09" },
     equipment   = { icon = "ItemUpgrade_Icon", iconIsAtlas = true },
     skill       = { icon = "professions_recipes_in_progress", iconIsAtlas = true },
     conc        = { icon = "creationgear-32x32", iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_Manaregen" },
-    recharge    = { icon = "Garr_Timer", iconIsAtlas = true },
+    recharge    = { icon = "Capacitance-General-32x32", iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_TimeStop" },
     knowledge   = { icon = "QuestDaily", iconIsAtlas = true },
     recipes     = { icon = "professions_recipes_abilitytab", iconIsAtlas = true },
     firstCraft  = { icon = "crafting-crafting-order-icon", iconIsAtlas = true },
-    uniques     = { icon = "worldquest-icon", iconIsAtlas = true },
+    uniques     = { icon = "auctionhouse-icon-favorite", iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Misc_Organizer_01" },
     treatise    = { icon = "Interface\\Icons\\INV_Inscription_Tradeskill01", iconIsAtlas = false },
     weeklyQuest = { icon = "questlog-questtypeicon-weekly", iconIsAtlas = true },
     treasure    = { icon = "worldquest-questmarker-rare", iconIsAtlas = true },
     gathering   = { icon = "poi-gather", iconIsAtlas = true },
     catchUp     = { icon = "XPBarAnim-OrangeSpark", iconIsAtlas = true },
     moxie       = { icon = "currency-icon-moxie", iconIsAtlas = true },
-    cooldowns   = { icon = "Garr_Timer", iconIsAtlas = true },
+    cooldowns   = { icon = "ui-hud-refreshbutton-icon", iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Holy_GreaterHeal" },
 }
 
 local HEADER_DEFS = {
@@ -1654,23 +1708,21 @@ end
 
 local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
     if not mf or not scrollChild then return end
-    local stripH = scrollChild._wnProfColHeaderStripH
+    local clip = mf.columnHeaderClip
+    if clip then
+        clip:SetHeight(1)
+        clip:Hide()
+    end
+    local colHeaderRow = scrollChild._wnProfColHeaderRow
+    if not colHeaderRow then return end
     local stackW = bodyWidth or scrollChild._wnProfStackWidth or scrollChild._wnProfBodyWidth
     local side = scrollChild._wnProfContentSide or SIDE_MARGIN
-    local clip = mf.columnHeaderClip
-    if stripH and clip and clip.SetHeight then
-        clip:SetHeight(stripH)
-        clip:Show()
-        local clipBg = clip._wnProfColumnHeaderBg
-        if clipBg and stackW and stackW > 0 then
-            clipBg:ClearAllPoints()
-            clipBg:SetPoint("TOPLEFT", clip, "TOPLEFT", side, -COLUMN_HEADER_TOP_GAP)
-            clipBg:SetSize(stackW, COLUMN_HEADER_HEIGHT)
-            clipBg:Hide()
-        end
-    end
-    if mf.columnHeaderInner and mf.columnHeaderInner.SetWidth then
-        mf.columnHeaderInner:SetWidth(ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, stackW))
+    local innerW = ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, stackW)
+    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    colHeaderRow:ClearAllPoints()
+    colHeaderRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", side, -scrollTopY)
+    if colHeaderRow.SetWidth then
+        colHeaderRow:SetWidth(math.max(1, innerW))
     end
 end
 
@@ -1761,8 +1813,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     parent._wnProfNestedRows = {}
     parent._wnProfSectionContents = {}
+    parent._wnProfColHeaderRow = nil
 
-      -- fixedHeader: non-scrolling area for title card + column headers
+      -- fixedHeader: title card only; column headers live in scrollChild (PvE parity)
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
     local metrics = (chrome and chrome.metrics) or (ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf))
     local fixedHeader = mf and mf.fixedHeader
@@ -1960,60 +2013,45 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
 
-    -- ===== COLUMN HEADER BAR (in columnHeaderClip — scrolls horizontally with data) =====
-    local colHeaderStripH = COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD + COLUMN_HEADER_TOP_GAP
+    -- ===== COLUMN HEADER ROW (scrollChild — PvE parity; crest/icons sit directly above sections) =====
     local mainFrameRef = WarbandNexus.UI.mainFrame
     local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
-    local columnHeaderInner = mainFrameRef and mainFrameRef.columnHeaderInner
-    local colHeaderParent = columnHeaderInner or headerParent
-    local hdrScrollChild = mainFrameRef and mainFrameRef.scrollChild
-    local colHeaderInnerW = ResolveProfessionColumnHeaderInnerWidth(mainFrameRef, hdrScrollChild, stackWidth)
-    parent._wnProfColHeaderStripH = colHeaderStripH
-
     if columnHeaderClip then
-        columnHeaderClip:SetHeight(colHeaderStripH)
-        columnHeaderClip:Show()
-        local clipBg = columnHeaderClip._wnProfColumnHeaderBg
-        if not clipBg then
-            clipBg = columnHeaderClip:CreateTexture(nil, "BACKGROUND", nil, 0)
-            columnHeaderClip._wnProfColumnHeaderBg = clipBg
-        end
-        clipBg:ClearAllPoints()
-        clipBg:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 0.95)
-        clipBg:SetPoint("TOPLEFT", columnHeaderClip, "TOPLEFT", contentSide, -COLUMN_HEADER_TOP_GAP)
-        clipBg:SetSize(stackWidth, COLUMN_HEADER_HEIGHT)
-        clipBg:Hide()
+        columnHeaderClip:SetHeight(1)
+        columnHeaderClip:Hide()
     end
-    if columnHeaderInner then
-        columnHeaderInner:SetWidth(colHeaderInnerW)
+
+    local colHeaderInnerW = ResolveProfessionColumnHeaderInnerWidth(mainFrameRef, parent, stackWidth)
+    parent:SetWidth(math.max(1, colHeaderInnerW))
+    if mainFrameRef then
+        mainFrameRef._profMinScrollWidth = colHeaderInnerW
     end
+    parent._wnProfColHeaderStripH = COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
 
     local FactHdr = ns.UI and ns.UI.Factory
-    local colHeaderBar = FactHdr and FactHdr:CreateContainer(colHeaderParent, colHeaderInnerW, COLUMN_HEADER_HEIGHT, false)
+    local colHeaderBar = FactHdr and FactHdr:CreateContainer(parent, colHeaderInnerW, COLUMN_HEADER_HEIGHT, false)
     if not colHeaderBar then
-        colHeaderBar = CreateFrame("Frame", nil, colHeaderParent)
+        colHeaderBar = CreateFrame("Frame", nil, parent)
+        colHeaderBar:SetSize(colHeaderInnerW, COLUMN_HEADER_HEIGHT)
     end
+    parent._wnProfColHeaderRow = colHeaderBar
     colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
-    if columnHeaderInner then
-        -- Same horizontal inset as title card / section rows (ColOffset is relative to this bar).
-        colHeaderBar:ClearAllPoints()
-        colHeaderBar:SetPoint("TOPLEFT", columnHeaderInner, "TOPLEFT", contentSide, -COLUMN_HEADER_TOP_GAP)
-        colHeaderBar:SetWidth(stackWidth)
-    else
-        colHeaderBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-        colHeaderBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-        headerYOffset = headerYOffset + COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+    colHeaderBar:ClearAllPoints()
+    colHeaderBar:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -scrollTopY)
+    if colHeaderBar.SetWidth then
+        colHeaderBar:SetWidth(math.max(1, colHeaderInnerW))
     end
 
     local accentR = COLORS.accent[1] or 0.40
     local accentG = COLORS.accent[2] or 0.20
     local accentB = COLORS.accent[3] or 0.58
-    local colHeaderLine = colHeaderBar:CreateTexture(nil, "ARTWORK")
-    colHeaderLine:SetPoint("BOTTOMLEFT", 0, 0)
-    colHeaderLine:SetPoint("BOTTOMRIGHT", 0, 0)
-    colHeaderLine:SetHeight(1)
-    colHeaderLine:SetColorTexture(accentR, accentG, accentB, 0.28)
+    if colHeaderBar._wnProfColHeaderLine then
+        colHeaderBar._wnProfColHeaderLine:Hide()
+    end
+
+    for _, fs in pairs(profColHeaderLabels) do
+        if fs and fs.Hide then fs:Hide() end
+    end
 
     local SORT_ARROW_SIZE = 11
     local sortState = GetColumnSortState()
@@ -2136,10 +2174,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     ApplyProfessionColumnDividers(colHeaderBar, COLUMN_HEADER_HEIGHT)
     colHeaderBar:Show()
 
-    -- Scroll content starts below the column header overlay area.
-    -- The overlay covers the full clip height (header row + optional top gap + pad).
-    local colHeaderOverlayH = columnHeaderClip and colHeaderStripH or 0
-    local yOffset = scrollTopY + colHeaderOverlayH
+    local yOffset = scrollTopY + COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
 
     -- ===== EMPTY STATE =====
     if totalProfChars == 0 then
