@@ -36,17 +36,51 @@ local function GearSlotHasPayload(slot)
     return (tonumber(slot.itemLevel) or 0) > 0
 end
 
-local function MergeGearWatermarks(current, legacy)
-    local legacyMarks = type(legacy) == "table" and legacy.watermarks
-    if type(legacyMarks) ~= "table" then return end
-    if type(current.watermarks) ~= "table" then
-        current.watermarks = legacyMarks
+local function CountGearPayloadSlots(entry)
+    local slots = type(entry) == "table" and entry.slots
+    if type(slots) ~= "table" then return 0 end
+    local count = 0
+    for _, slot in pairs(slots) do
+        if GearSlotHasPayload(slot) then count = count + 1 end
+    end
+    return count
+end
+
+local function ShouldUseLegacyGearBucket(current, legacy)
+    local currentSlots = CountGearPayloadSlots(current)
+    local legacySlots = CountGearPayloadSlots(legacy)
+    if legacySlots ~= currentSlots then
+        return legacySlots > currentSlots
+    end
+    return (tonumber(legacy.lastScan) or 0) > (tonumber(current.lastScan) or 0)
+end
+
+local function MergeMissingGearSlots(target, donor)
+    local donorSlots = type(donor) == "table" and donor.slots
+    if type(donorSlots) ~= "table" then return end
+    if type(target.slots) ~= "table" then
+        target.slots = donorSlots
         return
     end
-    for slotID, watermark in pairs(legacyMarks) do
-        local existing = current.watermarks[slotID]
+    for slotID, donorSlot in pairs(donorSlots) do
+        local targetSlot = target.slots[slotID]
+        if GearSlotHasPayload(donorSlot) and not GearSlotHasPayload(targetSlot) then
+            target.slots[slotID] = donorSlot
+        end
+    end
+end
+
+local function MergeGearWatermarks(target, donor)
+    local donorMarks = type(donor) == "table" and donor.watermarks
+    if type(donorMarks) ~= "table" then return end
+    if type(target.watermarks) ~= "table" then
+        target.watermarks = donorMarks
+        return
+    end
+    for slotID, watermark in pairs(donorMarks) do
+        local existing = target.watermarks[slotID]
         if existing == nil or (tonumber(watermark) or 0) > (tonumber(existing) or 0) then
-            current.watermarks[slotID] = watermark
+            target.watermarks[slotID] = watermark
         end
     end
 end
@@ -55,36 +89,36 @@ local function MergeGearDataBucket(current, legacy)
     if type(legacy) ~= "table" then return current end
     if type(current) ~= "table" then return legacy end
 
-    local legacySlots = legacy.slots
-    if type(legacySlots) == "table" then
-        if type(current.slots) ~= "table" then
-            current.slots = legacySlots
-        else
-            for slotID, legacySlot in pairs(legacySlots) do
-                local currentSlot = current.slots[slotID]
-                if GearSlotHasPayload(legacySlot) and not GearSlotHasPayload(currentSlot) then
-                    current.slots[slotID] = legacySlot
-                end
-            end
+    local target = current
+    local donor = legacy
+    if ShouldUseLegacyGearBucket(current, legacy) then
+        target = legacy
+        donor = current
+    end
+
+    MergeMissingGearSlots(target, donor)
+    MergeGearWatermarks(target, donor)
+
+    if type(target.modelView) ~= "table" and type(donor.modelView) == "table" then
+        target.modelView = donor.modelView
+    elseif type(target.modelView) == "table" and type(donor.modelView) == "table" then
+        local targetViewScan = tonumber(target.modelView.lastUpdate) or 0
+        local donorViewScan = tonumber(donor.modelView.lastUpdate) or 0
+        if donorViewScan > targetViewScan then
+            target.modelView = donor.modelView
         end
     end
-
-    MergeGearWatermarks(current, legacy)
-
-    if type(current.modelView) ~= "table" and type(legacy.modelView) == "table" then
-        current.modelView = legacy.modelView
+    if type(target.modelSnapshot) ~= "table" and type(donor.modelSnapshot) == "table" then
+        target.modelSnapshot = donor.modelSnapshot
     end
-    if type(current.modelSnapshot) ~= "table" and type(legacy.modelSnapshot) == "table" then
-        current.modelSnapshot = legacy.modelSnapshot
+    if target.version == nil and donor.version ~= nil then
+        target.version = donor.version
     end
-    if current.version == nil and legacy.version ~= nil then
-        current.version = legacy.version
-    end
-    if (tonumber(legacy.lastScan) or 0) > (tonumber(current.lastScan) or 0) then
-        current.lastScan = legacy.lastScan
+    if (tonumber(donor.lastScan) or 0) > (tonumber(target.lastScan) or 0) then
+        target.lastScan = donor.lastScan
     end
 
-    return current
+    return target
 end
 
 --[[
