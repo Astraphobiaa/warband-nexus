@@ -2407,6 +2407,15 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             set = function(value) WarbandNexus.db.profile.notifications.autoTryCounter = value end,
         },
         {
+            key = "syncTryCountDownToStatistics",
+            parentKey = "autoTryCounter",
+            label = (ns.L and ns.L["SYNC_TRY_COUNT_DOWN_TO_STATISTICS"]) or "Align try count down to Statistics",
+            tooltip = (ns.L and ns.L["SYNC_TRY_COUNT_DOWN_TO_STATISTICS_TOOLTIP"])
+                or "When enabled, stat-backed mounts can decrease to match WoW Statistics totals on login or /wn tc sync-stats. Default off (only raises counts).",
+            get = function() return WarbandNexus.db.profile.notifications.syncTryCountDownToStatistics == true end,
+            set = function(value) WarbandNexus.db.profile.notifications.syncTryCountDownToStatistics = value end,
+        },
+        {
             key = "hideTryCounterChat",
             parentKey = "autoTryCounter",
             label = (ns.L and ns.L["HIDE_TRY_COUNTER_CHAT"]) or "Hide Attempts on Chat",

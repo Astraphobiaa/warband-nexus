@@ -358,6 +358,7 @@ local defaults = {
             screenFlashEffect = true,          -- Screen flash effect on collectible obtained
             tryCounterDropScreenshot = true,   -- Auto Screenshot() on try-tracked collectible drop (mount/pet/toy/illusion)
             autoTryCounter = true,             -- Automatic try counter for NPC/boss/fishing/container drops
+            syncTryCountDownToStatistics = false, -- When true, stat-backed try counts may decrease to match GetStatistic totals
             -- On instance entry: [WN-Drops] lines (boss, item link, difficulty color) vs one short hint
             tryCounterInstanceEntryDropLines = true,
             hideTryCounterChat = false,        -- Suppress all try counter chat lines; counting still runs

@@ -389,11 +389,21 @@ function CommandService:HandleSlashCommand(addon, input)
         return
 
     elseif cmd == "trycount" or cmd == "tc" then
-        local _, collectibleType, id = addon:GetArgs(input, 3)
+        local _, subCmd, collectibleType, id = addon:GetArgs(input, 4)
+        local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
+        if subLower == "sync-stats" or subLower == "syncstats" then
+            if addon.ForceTryCounterStatisticsSync then
+                addon:ForceTryCounterStatisticsSync()
+            else
+                addon:Print("|cffff6600Try counter module not loaded.|r")
+            end
+            return
+        end
         if not collectibleType or not id then
             addon:Print("|cffff6600Usage:|r /wn trycount <type> <id>")
             addon:Print("|cff888888Example:|r /wn trycount item 226683")
             addon:Print("|cff888888Types:|r item, mount, pet, toy")
+            addon:Print("|cff888888Sync:|r /wn tc sync-stats  (re-read WoW Statistics for this character)")
             return
         end
         

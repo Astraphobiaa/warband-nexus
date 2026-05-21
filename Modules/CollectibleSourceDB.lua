@@ -45,6 +45,8 @@
       - repeatable: optional; resets try count on obtain
       - yields: optional; for "item" that leads to mount/pet (e.g. egg -> mount)
       - statisticIds: on the NPC array and/or per drop row — list every WoW Statistics column that counts
+        toward kills (GetStatistic achievement IDs). Verified against wago.tools Achievement DB2
+        build 12.0.1.65617 where noted. In-game: /dump GetStatistic(id) after a kill.
         kills/attempts for that source (LFR, Normal, Heroic, Mythic, legacy 10/25, etc.). Same mount from
         multiple bosses or difficulties must each contribute IDs; TryCounter merges rows that share the same
         mount/pet try key into one summed seed. dropDifficulty gates loot/encounter UI only, not which stats are merged.
@@ -666,6 +668,7 @@ ns.CollectibleSourceDB = {
         },
         { sourceType = "instance_boss", npcID = 24664,  -- Kael'thas Sunstrider (Magister's Terrace)
           drops = { { type = "mount", itemID = 35513, name = "Swift White Hawkstrider" } },
+          statisticIds = { 1082 },  -- Kael'thas kills (Magister's Terrace); DB2 12.0.1
         },
         { sourceType = "instance_boss", npcID = 23035,  -- Anzu (Sethekk Halls Heroic)
           drops = { { type = "mount", itemID = 32768, name = "Reins of the Raven Lord" } },
@@ -1437,7 +1440,9 @@ ns.CollectibleSourceDB = {
         [155157] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - main encounter)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
             dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only mount; encounter 2291 used for fallback. statisticIds optional (verify in-game).
+            -- NOTE: Mythic-only mount; encounter 2291 used for fallback.
+            -- DB2: only HK-8 kills (Heroic Junkyard)=14057; King Mechagon kills (Mythic)=13620 is final boss, not HK-8.
+            -- No dedicated Mythic HK-8 kill statistic — loot-miss path only.
         },
         [150190] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - alt ID)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
@@ -1686,9 +1691,9 @@ ns.CollectibleSourceDB = {
         -- Raid Bosses
         [189492] = { -- Raszageth the Storm-Eater (Vault of the Incarnates Mythic)
             { type = "mount", itemID = 201790, name = "Renewed Proto-Drake: Embodiment of the Storm-Eater" },
+            statisticIds = { 16394 },  -- Raszageth kills (Mythic Vault of the Incarnates); DB2 12.0.1
             dropDifficulty = "Mythic",
             -- NOTE: Mythic-only dragonriding customization manuscript
-            -- TODO: Add statisticIds after in-game verification
         },
         [204931] = { -- Fyrakk (Amirdrassil Mythic)
             { type = "mount", itemID = 210061, name = "Reins of Anu'relos, Flame's Guidance" },
@@ -1698,9 +1703,9 @@ ns.CollectibleSourceDB = {
         },
         [201791] = { -- Scalecommander Sarkareth (Aberrus, the Shadowed Crucible Mythic)
             { type = "mount", itemID = 205876, name = "Highland Drake: Embodiment of the Hellforged" },
+            statisticIds = { 18227 },  -- Sarkareth kills (Mythic Aberrus); DB2 12.0.1
             dropDifficulty = "Mythic",
             -- NOTE: Mythic-only drakewatcher manuscript; encounterID 2685
-            -- TODO: Add statisticIds after in-game verification
         },
 
         -- Dungeon Bosses [Verified]
@@ -1709,7 +1714,8 @@ ns.CollectibleSourceDB = {
             dropDifficulty = "Mythic",
             -- NOTE: Mythic-only mount from Dragonflight megadungeon (10.1.5)
             -- When used, teaches a random mount from past dungeon content
-            -- TODO: Add statisticIds after in-game verification
+            -- No "Deios kills (Mythic Dawn of the Infinite)" statistic in DB2 12.0.1 (only Uldaman 16095-16097).
+            -- Try count uses loot miss / ENCOUNTER_END path, not GetStatistic seed.
         },
 
         -- ========================================
@@ -1762,9 +1768,8 @@ ns.CollectibleSourceDB = {
             statisticIds = { 20484 },  -- Darkflame Cleft kills (Mythic)
             dropDifficulty = "Mythic",
         },
-        -- No statisticIds: WoW stat 20500 / merged seed often reads 0 or mismatches journal keys, which
-        -- made ProcessMissedDrops skip manual increments entirely — UI showed 0 tries. Counts come from
-        -- per-kill loot-miss increments (tryCountReflectsTo → mount 2119), same as farming the item.
+        -- No statisticIds: DB2 has Void Speaker Eirich (Mythic Stonevault)=40722, not 20500 (20500 is unrelated).
+        -- Merged seed still mismatched journal tryKeys / read 0 in testing — keep loot-miss + tryCountReflectsTo.
         [213119] = { -- Void Speaker Eirich (The Stonevault Mythic/M+) [Verified]
             { type = "item", itemID = 226683, name = "Malfunctioning Mechsuit", repeatable = false,
               questStarters = {
@@ -1921,19 +1926,22 @@ ns.CollectibleSourceDB = {
         -- Not BoE farm copies — try count must not "reset on obtain" (repeatable = false).
         [231636] = { -- Restless Heart (Windrunner Spire) â€” Spectral Hawkstrider â€” encounterID 3059
             { type = "mount", itemID = 262914, name = "Spectral Hawkstrider", repeatable = false },
+            statisticIds = { 41295 },  -- The Restless Heart kills (Mythic Windrunner Spire); DB2 12.0.1
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+); same encounter, no separate M+ entry
         },
         [231865] = { -- Degentrius (Magisters' Terrace) â€” Lucent Hawkstrider â€” encounterID 3074 (npcID 231865)
             -- mountID: journal id (avoids GetMountFromItem when secret in instances); spell fallback still applies
             { type = "mount", itemID = 260231, name = "Lucent Hawkstrider", mountID = 2817, repeatable = false },
+            statisticIds = { 61217 },  -- Degentrius kills (Mythic Magisters' Terrace); DB2 12.0.1
             dropDifficulty = "Mythic",
             difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },
         [214650] = { -- Midnight Falls encounter (March on Quel'Danas raid, final boss) — encounterID 3183
             -- Seat of the Triumvirate (Legion / M+ rotation) reuses npcID 214650 and boss name L'ura.
-            -- Belo'ren drops only from March on Quel'Danas Mythic; exclude Legion dungeon instance MapID.
+            -- Ashes of Belo'ren drops from Midnight Falls (final boss), not Belo'ren earlier boss.
             { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", excludeInstanceIDs = { 1753 } },
+            statisticIds = { 61307 },  -- Midnight Falls (Mythic March on Quel'Danas); DB2 12.0.1
             dropDifficulty = "Mythic",
             difficultyIDs = { 16 },  -- Mythic raid only (excludes M+ kills sharing this npcID)
         },
