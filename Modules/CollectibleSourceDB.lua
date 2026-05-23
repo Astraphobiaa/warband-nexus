@@ -92,6 +92,11 @@ local _cracklingShard = {
     },
 }
 
+-- Darkflame Cleft final boss (Wick's Lead); npc 210798 journal / 210797 alternate template
+local _wicksLeadDarkness = {
+    { type = "mount", itemID = 225548, name = "Wick's Lead" },
+}
+
 -- TWW 11.1 "Undermine" Miscellaneous Mechanica - shared drop table
 -- Currency item used to purchase mounts (25 each) and pets from vendors in Undermine
 local _miscMechanica = {
@@ -893,7 +898,17 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter", encounterID = 2607, npcIDs = { 189492 } },             -- Raszageth
         { sourceType = "encounter", encounterID = 2685, npcIDs = { 201791 } },             -- Scalecommander Sarkareth
         { sourceType = "encounter", encounterID = 2677, npcIDs = { 204931 } },             -- Fyrakk
-        { sourceType = "encounter", encounterID = 2788, npcIDs = { 210798 } },             -- The Darkness (Darkflame Cleft)
+        { sourceType = "instance_boss", npcID = 210798,  -- The Darkness (Darkflame Cleft)
+          drops = _wicksLeadDarkness,
+          statisticIds = { 20484 },  -- The Darkness kills (Mythic Darkflame Cleft); DB2 12.0.1.65617
+          dropDifficulty = "Mythic",
+        },
+        { sourceType = "instance_boss", npcID = 210797,  -- Same boss, alternate creature template
+          drops = _wicksLeadDarkness,
+          statisticIds = { 20484 },
+          dropDifficulty = "Mythic",
+        },
+        { sourceType = "encounter", encounterID = 2788, npcIDs = { 210798, 210797 } },     -- The Darkness (Darkflame Cleft)
         { sourceType = "encounter", encounterID = 2883, npcIDs = { 213119 } },             -- Void Speaker Eirich
         { sourceType = "encounter", encounterID = 2922, npcIDs = { 218370 } },             -- Queen Ansurek
         { sourceType = "encounter", encounterID = 3016, npcIDs = { 241526 } },             -- Chrome King Gallywix
@@ -907,6 +922,18 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter_name", encounterName = "Restless Heart", npcIDs = { 231636 } },  -- Windrunner Spire
         { sourceType = "encounter_name", encounterName = "Degentrius",     npcIDs = { 231865 } },  -- Magisters' Terrace
         { sourceType = "encounter_name", encounterName = "Midnight Falls", npcIDs = { 214650 } },  -- March on Quel'Danas
+        -- Darkflame Cleft — ENCOUNTER_END encounterName is localized (Midnight 12.0 secret encounterID fallback).
+        { sourceType = "encounter_name", encounterName = "The Darkness", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "Die Dunkelheit", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "La Oscuridad", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "Les Tenebres", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "Les Ténèbres", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "L'Obscurite", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "A Escuridao", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "Тьма", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "Karanlık", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "어둠", npcIDs = { 210798, 210797 } },
+        { sourceType = "encounter_name", encounterName = "黑暗", npcIDs = { 210798, 210797 } },
         -- Sanctum of Domination — ENCOUNTER_END encounterName is localized; encounterID may differ in TW/reprints.
         { sourceType = "encounter_name", encounterName = "Sylvanas Windläufer", npcIDs = { 175732 } },
         { sourceType = "encounter_name", encounterName = "Sylvanas Coursevent", npcIDs = { 175732 } },
@@ -1762,12 +1789,6 @@ ns.CollectibleSourceDB = {
         [219262] = _cracklingShard, -- Springbubble (Isle of Dorn) ~1%
         [219278] = _cracklingShard, -- Shallowshell the Clacker (Isle of Dorn) ~1%
 
-        -- Dungeon: TWW Season 1
-        [210798] = { -- The Darkness (Darkflame Cleft Mythic) [Verified via logic]
-            { type = "mount", itemID = 225548, name = "Wick's Lead" },
-            statisticIds = { 20484 },  -- Darkflame Cleft kills (Mythic)
-            dropDifficulty = "Mythic",
-        },
         -- No statisticIds: DB2 has Void Speaker Eirich (Mythic Stonevault)=40722, not 20500 (20500 is unrelated).
         -- Merged seed still mismatched journal tryKeys / read 0 in testing — keep loot-miss + tryCountReflectsTo.
         [213119] = { -- Void Speaker Eirich (The Stonevault Mythic/M+) [Verified]
@@ -2074,9 +2095,9 @@ ns.CollectibleSourceDB = {
         ["Fyrakk the Blazing"] = { 204931 },
         ["Scalecommander Sarkareth"] = { 201791 },
         -- TWW
-        -- Wick's Lead drops from journal boss "The Darkness" (npc 210798); 210797 is a separate unit template.
-        ["Wick"] = { 210798 },
-        ["The Darkness"] = { 210798 },
+        -- Wick's Lead: journal boss 210798; 210797 alternate unit template (see sources instance_boss).
+        ["Wick"] = { 210798, 210797 },
+        ["The Darkness"] = { 210798, 210797 },
         ["Void Speaker Eirich"] = { 213119 },
         ["Queen Ansurek"] = { 218370 },
         ["Chrome King Gallywix"] = { 241526 },

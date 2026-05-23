@@ -402,7 +402,8 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
                 addon:OnTryCounterSpellcastChannelStart(event, ...)
             end
         end
-        if addon and (event == "LOOT_READY" or event == "LOOT_OPENED" or event == "CHAT_MSG_LOOT")
+        if addon and (event == "LOOT_READY" or event == "LOOT_OPENED" or event == "CHAT_MSG_LOOT"
+            or event == "ENCOUNTER_START" or event == "ENCOUNTER_END" or event == "BOSS_KILL")
             and addon.InitializeTryCounter and not tryCounterInitializing then
             addon:InitializeTryCounter()
         end
@@ -2590,6 +2591,28 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
     return trackable, diffSkipped
 end
 
+---Loot debug: why ENCOUNTER_END / loot left no trackable drops after difficulty gating.
+---@param WN table|nil
+---@param context string
+---@param drops table|nil
+---@param encounterDiffID number|nil
+---@param trackable table|nil
+---@param diffSkipped table|nil
+function Fns.DebugLogDifficultyFilterEmpty(WN, context, drops, encounterDiffID, trackable, diffSkipped)
+    if not WN or not Fns.IsTryCounterLootDebugEnabled(WN) then return end
+    if trackable and #trackable > 0 then return end
+    local label = Fns.ResolveDifficultyLabel(encounterDiffID)
+    local req = diffSkipped and diffSkipped.required or (drops and drops.dropDifficulty) or "?"
+    local drop = diffSkipped and diffSkipped.drop
+    local collected = (drop and Fns.IsCollectibleCollected(drop)) and "yes" or "no"
+    local encStr = (encounterDiffID ~= nil) and tostring(encounterDiffID) or "nil"
+    local labelStr = label or "nil"
+    local tmpl = (ns.L and ns.L["TRYCOUNTER_DIFF_FILTER_DEBUG"])
+        or "Difficulty filter: no trackable drops (encDiff=%s, label=%s, required=%s, collected=%s)."
+    WN:Print("|cff9370DB[WN-TC]|r " .. format(tmpl, encStr, labelStr, tostring(req), collected)
+        .. " [" .. tostring(context) .. "]")
+end
+
 ---Localized plain text for dropDifficulty gate (Try Counter debug probe only).
 ---@param reqDiff string|nil
 ---@return string
@@ -3512,14 +3535,46 @@ end
 -- SETTING CHECK
 -- =====================================================================
 
+---True when the Try Counter module toggle is enabled (ignores autoTryCounter notification).
+---@return boolean
+function Fns.IsTryCounterModuleEnabled()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile then return false end
+    if WarbandNexus.db.profile.modulesEnabled and WarbandNexus.db.profile.modulesEnabled.tryCounter == false then
+        return false
+    end
+    return true
+end
+
+---@return string|nil "module"|"auto" when counting is disabled
+function Fns.GetTryCounterDisabledReason()
+    if not Fns.IsTryCounterModuleEnabled() then return "module" end
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile.notifications then
+        return "auto"
+    end
+    if WarbandNexus.db.profile.notifications.autoTryCounter ~= true then
+        return "auto"
+    end
+    return nil
+end
+
+---One-line hint when auto counting is off (instance entry, /wn check).
+---@param WN table|nil
+function Fns.PrintTryCounterDisabledHint(WN)
+    WN = WN or WarbandNexus
+    if not WN or not WN.Print then return end
+    local reason = Fns.GetTryCounterDisabledReason()
+    if not reason then return end
+    local L = ns.L
+    local key = (reason == "module") and "TRYCOUNTER_DISABLED_MODULE" or "TRYCOUNTER_DISABLED_AUTO"
+    local msg = (L and L[key])
+        or "Try Counter is disabled in Settings - kills are not counted."
+    WN:Print("|cffff6600[WN-Counter]|r " .. msg)
+end
+
 ---Check if auto try counter is enabled (module toggle AND notification setting must both be on)
 ---@return boolean
 function Fns.IsAutoTryCounterEnabled()
-    if not WarbandNexus or not WarbandNexus.db then return false end
-    if not WarbandNexus.db.profile then return false end
-    if WarbandNexus.db.profile.modulesEnabled and WarbandNexus.db.profile.modulesEnabled.tryCounter == false then return false end
-    if not WarbandNexus.db.profile.notifications then return false end
-    return WarbandNexus.db.profile.notifications.autoTryCounter == true
+    return Fns.GetTryCounterDisabledReason() == nil
 end
 
 ---Whether try counter chat output is suppressed (processing continues, chat lines hidden).
@@ -4047,7 +4102,12 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                 local inInst = IsInInstance()
                 if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
                 local encDiff = Fns.ResolveEncounterDifficultyForLootGating(inInst, bestKill.difficultyID, nil)
-                trackable = Fns.FilterDropsByDifficulty(npcDropDB[matchedNpcID], encDiff)
+                local npcDrops = npcDropDB[matchedNpcID]
+                local diffSkipped
+                trackable, diffSkipped = Fns.FilterDropsByDifficulty(npcDrops, encDiff)
+                if matchedNpcID and (#trackable == 0) then
+                    Fns.DebugLogDifficultyFilterEmpty(self, "EncounterEnd", npcDrops, encDiff, trackable, diffSkipped)
+                end
             end
 
             if #trackable > 0 and matchedNpcID then
@@ -4100,8 +4160,9 @@ end
 -- =====================================================================
 
 local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
-    if not WN or not WN.Print or not Fns.IsAutoTryCounterEnabled() then return end
-    if Fns.IsTryCounterChatHidden() then return end
+    if not WN or not WN.Print then return end
+    local autoEnabled = Fns.IsAutoTryCounterEnabled()
+    if autoEnabled and Fns.IsTryCounterChatHidden() then return end
     local inI, it = IsInInstance()
     if issecretvalue and inI and issecretvalue(inI) then return end
     if not inI then return end
@@ -4158,6 +4219,13 @@ local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
         end
         idx = idx + 1
     end
+
+    if not autoEnabled and hasAnyMount then
+        if throttleKey then tryCounterInstanceEntryAnnounced[throttleKey] = true end
+        Fns.PrintTryCounterDisabledHint(WN)
+        return
+    end
+    if not autoEnabled then return end
 
     local showDropLines = Fns.IsTryCounterInstanceEntryDropLinesEnabled() and hasAnyMount
     local showHintOnly = (not showDropLines) and hasTrackableOnDiff
@@ -8419,6 +8487,9 @@ end
 ---Prints detailed info about NPC/Object drops, encounter mapping, and collection status
 function WarbandNexus:CheckTargetDrops()
     local function msg(text) self:Print("|cff9370DB[WN-DropCheck]|r " .. text) end
+    if Fns.GetTryCounterDisabledReason() then
+        Fns.PrintTryCounterDisabledHint(self)
+    end
     local function safeStr(val)
         if val == nil then return "nil" end
         if issecretvalue and issecretvalue(val) then return "(secret)" end
