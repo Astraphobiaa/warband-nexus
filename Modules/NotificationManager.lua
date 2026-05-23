@@ -128,6 +128,277 @@ local function NM_GetElevatedBackdropFillRGBA()
     return 0.03, 0.03, 0.05, 0.98
 end
 
+-- Toast entrance VFX: sun-like pulse + horizontal sweep (custom textures only).
+local NM_SUN_WASH_PEAK = 0.58
+local NM_SUN_CORE_PEAK = 1
+local NM_SUN_WASH_RGB = { 1, 0.96, 0.82 }
+local NM_SUN_CORE_RGB = { 1, 1, 0.92 }
+local NM_SHEEN_PEAK_ALPHA = 0.72
+local NM_SHEEN_WIDTH_RATIO = 0.44
+
+---@param fxFrame Frame
+local function NM_IgnoreParentAlpha(fxFrame)
+    if fxFrame and fxFrame.SetIgnoreParentAlpha then
+        fxFrame:SetIgnoreParentAlpha(true)
+    end
+end
+
+---Sun-like radial burst + warm full-panel wash on toast appear.
+---@param toastHost Frame
+---@param toastWidth number
+---@param toastHeight number
+local function NM_PlayToastSunGlow(toastHost, toastWidth, toastHeight)
+    if not toastHost or not toastWidth or not toastHeight then
+        return
+    end
+    if not toastHost:IsShown() or toastHost.isClosing or toastHost._removed then
+        return
+    end
+
+    local fxRoot = CreateFrame("Frame", nil, toastHost)
+    fxRoot:SetFrameLevel(3)
+    fxRoot:SetAllPoints(toastHost)
+    fxRoot:SetClipsChildren(true)
+    fxRoot:EnableMouse(false)
+    NM_IgnoreParentAlpha(fxRoot)
+
+    local wash = fxRoot:CreateTexture(nil, "ARTWORK", nil, 0)
+    wash:SetAllPoints(fxRoot)
+    wash:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    wash:SetBlendMode("ADD")
+    wash:SetVertexColor(NM_SUN_WASH_RGB[1], NM_SUN_WASH_RGB[2], NM_SUN_WASH_RGB[3], 1)
+
+    local sunSize = math.floor(math.max(toastWidth, toastHeight) * 1.25)
+    local sunHost = CreateFrame("Frame", nil, fxRoot)
+    sunHost:SetSize(sunSize, sunSize)
+    sunHost:SetPoint("CENTER", fxRoot, "CENTER", 0, 0)
+
+    local sunHalo = sunHost:CreateTexture(nil, "BACKGROUND", nil, -1)
+    sunHalo:SetSize(sunSize * 1.35, sunSize * 1.35)
+    sunHalo:SetPoint("CENTER", sunHost, "CENTER", 0, 0)
+    sunHalo:SetTexture("Interface\\Cooldown\\star4")
+    sunHalo:SetBlendMode("ADD")
+    sunHalo:SetVertexColor(NM_SUN_WASH_RGB[1], NM_SUN_WASH_RGB[2], NM_SUN_WASH_RGB[3], 0.85)
+
+    local sunCore = sunHost:CreateTexture(nil, "ARTWORK", nil, 1)
+    sunCore:SetSize(sunSize * 0.72, sunSize * 0.72)
+    sunCore:SetPoint("CENTER", sunHost, "CENTER", 0, 0)
+    sunCore:SetTexture("Interface\\Cooldown\\star4")
+    sunCore:SetBlendMode("ADD")
+    sunCore:SetVertexColor(NM_SUN_CORE_RGB[1], NM_SUN_CORE_RGB[2], NM_SUN_CORE_RGB[3], 1)
+
+    fxRoot:SetAlpha(0)
+    sunHost:SetAlpha(0)
+
+    local ag = fxRoot:CreateAnimationGroup()
+    ag:SetScript("OnFinished", function()
+        fxRoot:Hide()
+    end)
+
+    local washIn = ag:CreateAnimation("Alpha")
+    washIn:SetTarget(fxRoot)
+    washIn:SetFromAlpha(0)
+    washIn:SetToAlpha(NM_SUN_WASH_PEAK)
+    washIn:SetDuration(0.09)
+    washIn:SetSmoothing("OUT")
+
+    local sunIn = ag:CreateAnimation("Alpha")
+    sunIn:SetTarget(sunHost)
+    sunIn:SetFromAlpha(0)
+    sunIn:SetToAlpha(NM_SUN_CORE_PEAK)
+    sunIn:SetDuration(0.07)
+    sunIn:SetSmoothing("OUT")
+
+    local sunScale = ag:CreateAnimation("Scale")
+    sunScale:SetTarget(sunHost)
+    sunScale:SetOrigin("CENTER", 0, 0)
+    sunScale:SetScale(1.55, 1.55)
+    sunScale:SetDuration(0.48)
+    sunScale:SetSmoothing("OUT")
+
+    local washHold = ag:CreateAnimation("Alpha")
+    washHold:SetTarget(fxRoot)
+    washHold:SetFromAlpha(NM_SUN_WASH_PEAK)
+    washHold:SetToAlpha(NM_SUN_WASH_PEAK * 0.78)
+    washHold:SetDuration(0.14)
+    washHold:SetStartDelay(0.09)
+    washHold:SetSmoothing("NONE")
+
+    local sunHold = ag:CreateAnimation("Alpha")
+    sunHold:SetTarget(sunHost)
+    sunHold:SetFromAlpha(NM_SUN_CORE_PEAK)
+    sunHold:SetToAlpha(NM_SUN_CORE_PEAK * 0.55)
+    sunHold:SetDuration(0.16)
+    sunHold:SetStartDelay(0.07)
+    sunHold:SetSmoothing("NONE")
+
+    local washOut = ag:CreateAnimation("Alpha")
+    washOut:SetTarget(fxRoot)
+    washOut:SetFromAlpha(NM_SUN_WASH_PEAK * 0.78)
+    washOut:SetToAlpha(0)
+    washOut:SetDuration(0.4)
+    washOut:SetStartDelay(0.23)
+    washOut:SetSmoothing("IN")
+
+    local sunOut = ag:CreateAnimation("Alpha")
+    sunOut:SetTarget(sunHost)
+    sunOut:SetFromAlpha(NM_SUN_CORE_PEAK * 0.55)
+    sunOut:SetToAlpha(0)
+    sunOut:SetDuration(0.42)
+    sunOut:SetStartDelay(0.2)
+    sunOut:SetSmoothing("IN")
+
+    ag:Play()
+end
+
+---White horizontal sweep across toast (custom band, clipped to frame).
+---@param toastHost Frame
+---@param toastWidth number
+---@param toastHeight number
+local function NM_PlayToastSweepShine(toastHost, toastWidth, toastHeight)
+    if not toastHost or not toastWidth or not toastHeight then
+        return
+    end
+    if not toastHost:IsShown() or toastHost.isClosing or toastHost._removed then
+        return
+    end
+
+    local clipFrame = CreateFrame("Frame", nil, toastHost)
+    clipFrame:SetFrameLevel(4)
+    clipFrame:SetAllPoints(toastHost)
+    clipFrame:SetClipsChildren(true)
+    clipFrame:EnableMouse(false)
+    NM_IgnoreParentAlpha(clipFrame)
+
+    local shineH = toastHeight
+    local shineW = math.max(72, math.floor(toastWidth * NM_SHEEN_WIDTH_RATIO))
+    local shineHost = CreateFrame("Frame", nil, clipFrame)
+    shineHost:SetSize(shineW, shineH)
+    shineHost:SetPoint("LEFT", clipFrame, "LEFT", -shineW, 0)
+
+    local function addBand(width, alpha, relPoint, relTo, xOff)
+        local band = shineHost:CreateTexture(nil, "ARTWORK")
+        band:SetSize(width, shineH)
+        band:SetPoint(relPoint, relTo, relPoint, xOff, 0)
+        band:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+        band:SetVertexColor(1, 1, 0.95, alpha)
+        band:SetBlendMode("ADD")
+        return band
+    end
+
+    local coreW = math.max(28, math.floor(shineW * 0.36))
+    local wingW = math.max(22, math.floor((shineW - coreW) * 0.5))
+    local core = addBand(coreW, 1, "CENTER", shineHost, 0)
+    addBand(wingW, 0.5, "RIGHT", core, "LEFT", 0)
+    addBand(wingW, 0.5, "LEFT", core, "RIGHT", 0)
+
+    local travel = toastWidth + shineW
+    local duration = 0.58
+    local ag = clipFrame:CreateAnimationGroup()
+    ag:SetScript("OnFinished", function()
+        clipFrame:Hide()
+    end)
+
+    local move = ag:CreateAnimation("Translation")
+    move:SetTarget(shineHost)
+    move:SetOffset(travel, 0)
+    move:SetDuration(duration)
+    move:SetSmoothing("IN_OUT")
+
+    local fadeIn = ag:CreateAnimation("Alpha")
+    fadeIn:SetTarget(shineHost)
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(NM_SHEEN_PEAK_ALPHA)
+    fadeIn:SetDuration(0.05)
+    fadeIn:SetSmoothing("OUT")
+
+    local fadeOut = ag:CreateAnimation("Alpha")
+    fadeOut:SetTarget(shineHost)
+    fadeOut:SetFromAlpha(NM_SHEEN_PEAK_ALPHA)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetDuration(0.16)
+    fadeOut:SetStartDelay(math.max(0, duration - 0.1))
+    fadeOut:SetSmoothing("IN")
+
+    ag:Play()
+end
+
+---@param toastHost Frame
+---@param toastWidth number|nil
+---@param toastHeight number|nil
+---@return number width, number height
+local function NM_ResolveToastFxSize(toastHost, toastWidth, toastHeight)
+    local w = toastHost:GetWidth() or toastHost._toastFxWidth or toastWidth or 0
+    local h = toastHost:GetHeight() or toastHost._toastFxHeight or toastHeight or 0
+    if w < 1 then w = toastWidth or toastHost._toastFxWidth or 400 end
+    if h < 1 then h = toastHeight or toastHost._toastFxHeight or 88 end
+    return w, h
+end
+
+---Sun glow + sweep together when the toast appears.
+---@param toastHost Frame
+---@param toastWidth number
+---@param toastHeight number
+---@return boolean played
+local function NM_PlayToastEntranceEffects(toastHost, toastWidth, toastHeight)
+    if not toastHost or toastHost.isClosing or toastHost._removed or not toastHost:IsShown() then
+        return false
+    end
+    local w, h = NM_ResolveToastFxSize(toastHost, toastWidth, toastHeight)
+    if w < 1 or h < 1 then
+        return false
+    end
+    NM_PlayToastSunGlow(toastHost, w, h)
+    NM_PlayToastSweepShine(toastHost, w, h)
+    return true
+end
+
+---Play entrance VFX once per toast; retry briefly if layout is not ready yet.
+---@param toastHost Frame
+---@param toastWidth number
+---@param toastHeight number
+local function NM_TriggerToastEntranceEffects(toastHost, toastWidth, toastHeight)
+    if not toastHost then return end
+    toastHost._toastFxWidth = toastWidth
+    toastHost._toastFxHeight = toastHeight
+
+    if toastHost._effectTimer then
+        toastHost._effectTimer:Cancel()
+        toastHost._effectTimer = nil
+    end
+
+    local function playOnce()
+        if toastHost._entranceFxPlayed or toastHost.isClosing or toastHost._removed then
+            return true
+        end
+        if NM_PlayToastEntranceEffects(toastHost, toastWidth, toastHeight) then
+            toastHost._entranceFxPlayed = true
+            return true
+        end
+        return false
+    end
+
+    if playOnce() then
+        return
+    end
+
+    toastHost._effectTimer = C_Timer.NewTimer(0.03, function()
+        toastHost._effectTimer = nil
+        if playOnce() then return end
+        toastHost._effectTimer = C_Timer.NewTimer(0.06, function()
+            toastHost._effectTimer = nil
+            playOnce()
+        end)
+    end)
+end
+
+---Fallback if entrance finishes before deferred VFX could run (stack spam / timer coalesce).
+---@param toastHost Frame
+local function NM_EnsureToastEntranceEffects(toastHost)
+    if not toastHost or toastHost._entranceFxPlayed then return end
+    NM_TriggerToastEntranceEffects(toastHost, toastHost._toastFxWidth, toastHost._toastFxHeight)
+end
+
 --[[============================================================================
     NOTIFICATION QUEUE
 ============================================================================]]
@@ -988,13 +1259,9 @@ local function RemoveAlert(alert)
         alert.dismissTimer:Cancel()
         alert.dismissTimer = nil
     end
-    
-    -- Stop timer animations
-    if alert.timerAg then
-        alert.timerAg:Stop()
-    end
-    if alert.timerRotateAg then
-        alert.timerRotateAg:Stop()
+    if alert._effectTimer then
+        alert._effectTimer:Cancel()
+        alert._effectTimer = nil
     end
     
     -- Stop any OnUpdate scripts
@@ -1114,7 +1381,7 @@ function WarbandNexus:ShowModalNotification(config)
     local anchorKey = lanePrefix .. point .. "|" .. tostring(baseX) .. "|" .. tostring(baseY)
     local yOffset = baseY + GetCumulativeOffsetForNewAlert(anchorKey, direction)
     
-    -- Compact toast: icon left, content (backdrop + ornaments + text) right.
+    -- Compact toast: icon left, content (backdrop + text) right.
     -- Progress lane (criteria / vault / To-Do reminders): Blizzard criteria-bar width scaling.
     if config.compact then
         local laneUsesProgressSizing = useProgressSlot or useReminderSlot
@@ -1142,16 +1409,11 @@ function WarbandNexus:ShowModalNotification(config)
         compactPopup._baseX = baseX
         compactPopup._baseY = baseY
         compactPopup._alertHeight = COMPACT_HEIGHT
-        table.insert(self.activeAlerts, compactPopup)
-        compactPopup.isEntering = true
         
         -- Layer 0: effects (glow lines) behind the black frame
         local effectsFrameCompact = CreateFrame("Frame", nil, compactPopup)
         effectsFrameCompact:SetFrameLevel(0)
         effectsFrameCompact:SetAllPoints(compactPopup)
-        local contentEffectsFrameCompact = CreateFrame("Frame", nil, effectsFrameCompact)
-        contentEffectsFrameCompact:SetPoint("LEFT", effectsFrameCompact, "LEFT", laneIconLeadingPad + ICON_SLOT_WIDTH_COMPACT, 0)
-        contentEffectsFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
         -- Layer 1: black background on top of effects
         local backdropFrameCompact = CreateFrame("Frame", nil, compactPopup, "BackdropTemplate")
         backdropFrameCompact:SetFrameLevel(1)
@@ -1205,12 +1467,13 @@ function WarbandNexus:ShowModalNotification(config)
             iconBlingCompact:Hide()
         end
         
-        -- Content frame (right): text only (ornaments in contentEffectsFrameCompact)
+        -- Content frame (right): text only
         local contentFrameCompact = CreateFrame("Frame", nil, compactPopup)
         contentFrameCompact:SetFrameLevel(2)
         contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad + ICON_SLOT_WIDTH_COMPACT, 0)
         
-        -- Theme: TopBottom glow in effects layer (behind black). Progress slot defaults to no glow (helper/criteria-like).
+        -- Theme: TopBottom glow in effects layer (behind black) — spans ENTIRE toast for Blizzard-style coverage
+        -- Progress slot defaults to no glow (helper/criteria-like).
         local compactGlowAtlas = glowAtlas
         if laneUsesProgressSizing and config.progressGlow ~= true then
             compactGlowAtlas = nil
@@ -1218,17 +1481,17 @@ function WarbandNexus:ShowModalNotification(config)
         if compactGlowAtlas and type(compactGlowAtlas) == "string" and compactGlowAtlas:find("TopBottom:") then
             local gInset = NM_GetShellContentInset()
             local baseAtlas = compactGlowAtlas:gsub("TopBottom:", "")
-            local topLine = contentEffectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
-            topLine:SetPoint("TOPLEFT", contentEffectsFrameCompact, "TOPLEFT", 0, gInset)
-            topLine:SetPoint("TOPRIGHT", contentEffectsFrameCompact, "TOPRIGHT", 0, gInset)
-            topLine:SetHeight(32)
+            local topLine = effectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
+            topLine:SetPoint("TOPLEFT", effectsFrameCompact, "TOPLEFT", 0, gInset)
+            topLine:SetPoint("TOPRIGHT", effectsFrameCompact, "TOPRIGHT", 0, gInset)
+            topLine:SetHeight(40)
             topLine:SetAtlas(baseAtlas .. "-Top", true)
             topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
             topLine:SetBlendMode("ADD")
-            local bottomLine = contentEffectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
-            bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrameCompact, "BOTTOMLEFT", 0, -gInset)
-            bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrameCompact, "BOTTOMRIGHT", 0, -gInset)
-            bottomLine:SetHeight(32)
+            local bottomLine = effectsFrameCompact:CreateTexture(nil, "BACKGROUND", nil, 0)
+            bottomLine:SetPoint("BOTTOMLEFT", effectsFrameCompact, "BOTTOMLEFT", 0, -gInset)
+            bottomLine:SetPoint("BOTTOMRIGHT", effectsFrameCompact, "BOTTOMRIGHT", 0, -gInset)
+            bottomLine:SetHeight(40)
             bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
             bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
             bottomLine:SetBlendMode("ADD")
@@ -1277,7 +1540,6 @@ function WarbandNexus:ShowModalNotification(config)
             nameLine:SetShadowColor(0, 0, 0, 0.9)
         end
         contentFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
-        contentEffectsFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
         compactPopup:SetSize(popupWidthCompact, COMPACT_HEIGHT)
 
         local textPad = laneUsesProgressSizing and 12 or 10
@@ -1310,7 +1572,6 @@ function WarbandNexus:ShowModalNotification(config)
             compactPopup:SetHeight(newH)
             iconSlotCompact:SetHeight(newH)
             contentFrameCompact:SetHeight(newH)
-            contentEffectsFrameCompact:SetHeight(newH)
             compactPopup._alertHeight = newH
 
             local padTop = math.max(6, (newH - stackH) / 2)
@@ -1354,7 +1615,6 @@ function WarbandNexus:ShowModalNotification(config)
                 pcall(OpenAchievementFrameToAchievement, self.achievementID)
             end
             if self.dismissTimer then self.dismissTimer:Cancel(); self.dismissTimer = nil end
-            if self.timerAg then self.timerAg:Stop() end
             self:SetScript("OnUpdate", nil)
             local t0 = GetTime()
             self:SetScript("OnUpdate", function(self, elapsed)
@@ -1374,8 +1634,12 @@ function WarbandNexus:ShowModalNotification(config)
         compactPopup._baseX = baseX
         compactPopup._direction = direction
         local _pt, _bx = point, baseX
+
+        table.insert(self.activeAlerts, compactPopup)
+        compactPopup.isEntering = true
         RepositionAlerts(true)
         compactPopup:Show()
+        NM_TriggerToastEntranceEffects(compactPopup, popupWidthCompact, compactPopup:GetHeight() or COMPACT_HEIGHT)
         compactPopup:SetScript("OnUpdate", function(self, elapsed)
             local prog = math.min(1, (GetTime() - (self._entranceStartTime or 0)) / 0.3)
             local ease = 1 - math.pow(1 - prog, 2)
@@ -1389,6 +1653,7 @@ function WarbandNexus:ShowModalNotification(config)
                 self:SetAlpha(1)
                 self.currentYOffset = self._entranceTargetY
                 self.isEntering = false
+                NM_EnsureToastEntranceEffects(self)
             end
         end)
         
@@ -1409,26 +1674,20 @@ function WarbandNexus:ShowModalNotification(config)
     -- Full achievement popup: fixed width; long titles/subtitles wrap inside the text area
     local popupWidthFull = ALERT_WIDTH_FIXED
     
-    -- WoW Achievement-style: container = icon slot (left) + content frame (text + ornaments only). Animations stay behind icon.
+    -- WoW Achievement-style: container = icon slot (left) + content frame (text).
     local ICON_SLOT_WIDTH = 62  -- 14 pad + 42 icon + 6 gap
     local contentFrameWidth = popupWidthFull - ICON_SLOT_WIDTH
     
     local popup = (ToastFactory and ToastFactory.CreateToastHost)
-        and ToastFactory:CreateToastHost(UIParent, popupWidthFull, 88, { strata = "HIGH", frameLevel = 1000 })
+        and ToastFactory:CreateToastHost(UIParent, popupWidthFull, ALERT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
         or CreateFrame("Frame", nil, UIParent)
-    popup:SetSize(popupWidthFull, 88)
+    popup:SetSize(popupWidthFull, ALERT_HEIGHT)
     popup:SetMouseClickEnabled(true)
     
-    -- Layer 0: effects (rings, border glow, glows) — drawn behind the black frame
+    -- Layer 0: glow / edge effects (behind backdrop)
     local effectsFrame = CreateFrame("Frame", nil, popup)
     effectsFrame:SetFrameLevel(0)
     effectsFrame:SetAllPoints(popup)
-    local iconEffectsFrame = CreateFrame("Frame", nil, effectsFrame)
-    iconEffectsFrame:SetPoint("LEFT", effectsFrame, "LEFT", 0, 0)
-    iconEffectsFrame:SetSize(ICON_SLOT_WIDTH, 88)
-    local contentEffectsFrame = CreateFrame("Frame", nil, effectsFrame)
-    contentEffectsFrame:SetPoint("LEFT", effectsFrame, "LEFT", ICON_SLOT_WIDTH, 0)
-    contentEffectsFrame:SetSize(contentFrameWidth, 88)
     
     -- Layer 1: single black background (drawn on top of effects)
     local backdropFrame = CreateFrame("Frame", nil, popup, "BackdropTemplate")
@@ -1445,10 +1704,10 @@ function WarbandNexus:ShowModalNotification(config)
     backdropFrame:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
     backdropFrame:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     
-    -- Layer 2: icon slot (icon + bling only; rings live in iconEffectsFrame)
+    -- Layer 2: icon slot (icon + bling only)
     local iconSlot = CreateFrame("Frame", nil, popup)
     iconSlot:SetFrameLevel(2)
-    iconSlot:SetSize(ICON_SLOT_WIDTH, 88)
+    iconSlot:SetSize(ICON_SLOT_WIDTH, ALERT_HEIGHT)
     iconSlot:SetPoint("LEFT", popup, "LEFT", 0, 0)
     
     local iconSize = 42
@@ -1468,32 +1727,6 @@ function WarbandNexus:ShowModalNotification(config)
         end
     end
     
-    local ringSize = 180
-    local iconCenterX = 14 + (iconSize / 2)
-    local iconCenterY = 88 / 2
-    -- Ring 1 exactly behind icon center; ring 2 mirrored to the right side.
-    local mirroredRightX = popupWidthFull - iconCenterX
-    local ring1 = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-    ring1:SetSize(ringSize, ringSize)
-    ring1:SetPoint("CENTER", popup, "BOTTOMLEFT", iconCenterX, iconCenterY)
-    ring1:SetTexture("Interface\\Cooldown\\star4")
-    ring1:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
-    ring1:SetBlendMode("ADD")
-    local ring2 = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-    ring2:SetSize(ringSize, ringSize)
-    ring2:SetPoint("CENTER", popup, "BOTTOMLEFT", mirroredRightX, iconCenterY)
-    ring2:SetTexture("Interface\\Cooldown\\star4")
-    ring2:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
-    ring2:SetBlendMode("ADD")
-    
-    -- Flash shine: one-time overlay when notification first appears
-    local flashShine = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    flashShine:SetAllPoints(effectsFrame)
-    flashShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    flashShine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
-    flashShine:SetBlendMode("ADD")
-    flashShine:SetAlpha(0)
-    
     local iconBling = iconSlot:CreateTexture(nil, "OVERLAY", nil, 7)
     iconBling:SetSize(64, 64)
     iconBling:SetPoint("CENTER", icon, "CENTER", 0, 0)
@@ -1502,104 +1735,105 @@ function WarbandNexus:ShowModalNotification(config)
     iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
     iconBling:SetBlendMode("BLEND")
     
-    -- Layer 2: content frame (text + timer only; effects live in contentEffectsFrame)
+    -- Layer 2: content frame (text only)
     local contentFrame = CreateFrame("Frame", nil, popup)
     contentFrame:SetFrameLevel(2)
-    contentFrame:SetSize(contentFrameWidth, 88)
+    contentFrame:SetSize(contentFrameWidth, ALERT_HEIGHT)
     contentFrame:SetPoint("LEFT", popup, "LEFT", ICON_SLOT_WIDTH, 0)
     
-    local popupHeight = 88
+    local popupHeight = ALERT_HEIGHT
+    -- Glow lines span ENTIRE toast width (effectsFrame) for full Blizzard-style coverage
     if glowAtlas:find("TopBottom:") then
         local gInset = NM_GetShellContentInset()
         local baseAtlas = glowAtlas:gsub("TopBottom:", "")
-        local topLine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-        topLine:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 0, gInset)
-        topLine:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", 0, gInset)
+        local topLine = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
+        topLine:SetPoint("TOPLEFT", effectsFrame, "TOPLEFT", 0, gInset)
+        topLine:SetPoint("TOPRIGHT", effectsFrame, "TOPRIGHT", 0, gInset)
         topLine:SetHeight(56)
         topLine:SetAtlas(baseAtlas .. "-Top", true)
         topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         topLine:SetBlendMode("ADD")
-        local bottomLine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
-        bottomLine:SetPoint("BOTTOMLEFT", contentEffectsFrame, "BOTTOMLEFT", 0, -gInset)
-        bottomLine:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", 0, -gInset)
+        local bottomLine = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
+        bottomLine:SetPoint("BOTTOMLEFT", effectsFrame, "BOTTOMLEFT", 0, -gInset)
+        bottomLine:SetPoint("BOTTOMRIGHT", effectsFrame, "BOTTOMRIGHT", 0, -gInset)
         bottomLine:SetHeight(56)
         bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
         bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         bottomLine:SetBlendMode("ADD")
-        local topGlowAg = contentEffectsFrame:CreateAnimationGroup()
+        local topGlowAg = effectsFrame:CreateAnimationGroup()
         topGlowAg:SetLooping("REPEAT")
         local topGlowIn = topGlowAg:CreateAnimation("Alpha")
         topGlowIn:SetTarget(topLine)
-        topGlowIn:SetFromAlpha(0.7)
+        topGlowIn:SetFromAlpha(0.6)
         topGlowIn:SetToAlpha(1.0)
-        topGlowIn:SetDuration(1.2)
+        topGlowIn:SetDuration(1.4)
         topGlowIn:SetSmoothing("IN_OUT")
         local topGlowOut = topGlowAg:CreateAnimation("Alpha")
         topGlowOut:SetTarget(topLine)
         topGlowOut:SetFromAlpha(1.0)
-        topGlowOut:SetToAlpha(0.7)
-        topGlowOut:SetDuration(1.2)
+        topGlowOut:SetToAlpha(0.6)
+        topGlowOut:SetDuration(1.4)
         topGlowOut:SetSmoothing("IN_OUT")
-        topGlowOut:SetStartDelay(1.2)
+        topGlowOut:SetStartDelay(1.4)
         topGlowAg:Play()
-        local bottomGlowAg = contentEffectsFrame:CreateAnimationGroup()
+        local bottomGlowAg = effectsFrame:CreateAnimationGroup()
         bottomGlowAg:SetLooping("REPEAT")
         local bottomGlowIn = bottomGlowAg:CreateAnimation("Alpha")
         bottomGlowIn:SetTarget(bottomLine)
-        bottomGlowIn:SetFromAlpha(0.7)
+        bottomGlowIn:SetFromAlpha(0.6)
         bottomGlowIn:SetToAlpha(1.0)
-        bottomGlowIn:SetDuration(1.2)
+        bottomGlowIn:SetDuration(1.4)
         bottomGlowIn:SetSmoothing("IN_OUT")
         local bottomGlowOut = bottomGlowAg:CreateAnimation("Alpha")
         bottomGlowOut:SetTarget(bottomLine)
         bottomGlowOut:SetFromAlpha(1.0)
-        bottomGlowOut:SetToAlpha(0.7)
-        bottomGlowOut:SetDuration(1.2)
+        bottomGlowOut:SetToAlpha(0.6)
+        bottomGlowOut:SetDuration(1.4)
         bottomGlowOut:SetSmoothing("IN_OUT")
-        bottomGlowOut:SetStartDelay(1.2)
+        bottomGlowOut:SetStartDelay(1.4)
         bottomGlowAg:Play()
     else
-        local borderGlow = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
+        local borderGlow = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
         if glowAtlas:find("Line%-Top") then
-            borderGlow:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 0, 4)
-            borderGlow:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", 0, 4)
+            borderGlow:SetPoint("TOPLEFT", effectsFrame, "TOPLEFT", 0, 4)
+            borderGlow:SetPoint("TOPRIGHT", effectsFrame, "TOPRIGHT", 0, 4)
             borderGlow:SetHeight(40)
         elseif glowAtlas:find("Line%-Bottom") or glowAtlas:find("Line%-bottom") then
-            borderGlow:SetPoint("BOTTOMLEFT", contentEffectsFrame, "BOTTOMLEFT", 0, -4)
-            borderGlow:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", 0, -4)
+            borderGlow:SetPoint("BOTTOMLEFT", effectsFrame, "BOTTOMLEFT", 0, -4)
+            borderGlow:SetPoint("BOTTOMRIGHT", effectsFrame, "BOTTOMRIGHT", 0, -4)
             borderGlow:SetHeight(40)
         elseif glowAtlas:find("DastardlyDuos%-Bar") then
-            borderGlow:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 8, -8)
-            borderGlow:SetPoint("BOTTOMRIGHT", contentEffectsFrame, "BOTTOMRIGHT", -8, 8)
+            borderGlow:SetPoint("TOPLEFT", effectsFrame, "TOPLEFT", 4, -4)
+            borderGlow:SetPoint("BOTTOMRIGHT", effectsFrame, "BOTTOMRIGHT", -4, 4)
         else
-            borderGlow:SetAllPoints(contentEffectsFrame)
+            borderGlow:SetAllPoints(effectsFrame)
         end
         borderGlow:SetAtlas(glowAtlas, true)
         borderGlow:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         borderGlow:SetBlendMode("ADD")
         borderGlow:SetAlpha(0.9)
     end
-    local edgeShine = contentEffectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+    -- Edge shine spans full toast top edge
+    local edgeShine = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
     edgeShine:SetHeight(1)
-    edgeShine:SetPoint("TOPLEFT", contentEffectsFrame, "TOPLEFT", 1, -1)
-    edgeShine:SetPoint("TOPRIGHT", contentEffectsFrame, "TOPRIGHT", -1, -1)
+    edgeShine:SetPoint("TOPLEFT", effectsFrame, "TOPLEFT", 1, -1)
+    edgeShine:SetPoint("TOPRIGHT", effectsFrame, "TOPRIGHT", -1, -1)
     edgeShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
     edgeShine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.3)
     edgeShine:SetBlendMode("ADD")
+    -- Bottom edge shine
+    local edgeShineBottom = effectsFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+    edgeShineBottom:SetHeight(1)
+    edgeShineBottom:SetPoint("BOTTOMLEFT", effectsFrame, "BOTTOMLEFT", 1, 1)
+    edgeShineBottom:SetPoint("BOTTOMRIGHT", effectsFrame, "BOTTOMRIGHT", -1, 1)
+    edgeShineBottom:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    edgeShineBottom:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.2)
+    edgeShineBottom:SetBlendMode("ADD")
     
-    -- Track this alert (container = popup for stacking)
-    popup.currentYOffset = yOffset
-    popup.achievementID = config.achievementID
-    popup._toastLane = toastLane
-    popup._alertHeight = ALERT_HEIGHT
-    table.insert(self.activeAlerts, popup)
-    popup.isEntering = true
-    RepositionAlerts(true)
-    
-    -- === CONTENT: text centered in content frame (ornaments only in this frame) ===
+    -- === CONTENT: text centered in content frame ===
     -- Symmetric layout: text block center = content frame center.
     local popupWidth = contentFrameWidth
-    local popupHeight = 88
+    local popupHeight = ALERT_HEIGHT
     local textCenterX = contentFrameWidth / 2
     local textAreaWidth = math.max(40, contentFrameWidth - 20)
     
@@ -1626,7 +1860,7 @@ function WarbandNexus:ShowModalNotification(config)
         totalHeight = totalHeight + ((lineCount - 1) * lineSpacing)
     end
     
-    -- Vertical: same logic as criteria-progress — text block centered in usable height between ornaments (88px).
+    -- Vertical: text block centered in the toast panel.
     -- Use negative offset so block sits in the middle; -8 matches compact toast visual balance.
     local startY = totalHeight / 2 - 8
     
@@ -1696,55 +1930,25 @@ function WarbandNexus:ShowModalNotification(config)
         legacySub:SetShadowColor(0, 0, 0, 0.6)
     end
     
-    -- === CIRCULAR PROGRESS TIMER (bottom-right corner) ===
-    local timerSize = 24
-    local timerFrame = ns.UI and ns.UI.Factory and ns.UI.Factory:CreateContainer(contentFrame, timerSize, timerSize, false)
-    if not timerFrame then
-        timerFrame = CreateFrame("Frame", nil, contentFrame)
-        timerFrame:SetSize(timerSize, timerSize)
-    end
-    timerFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -6, 6)
-    
-    -- Timer spinner (WoW naval map glow trails)
-    local timerSpinner = timerFrame:CreateTexture(nil, "OVERLAY")
-    timerSpinner:SetAllPoints()
-    timerSpinner:SetAtlas("NavalMap-CircleGlowTrails")
-    timerSpinner:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1.0)
-    timerSpinner:SetBlendMode("ADD")
-    
     -- Left-click: open achievement UI + dismiss | Right-click: dismiss only
     popup:SetScript("OnMouseDown", function(self, button)
         if self.isClosing or self._removed then return end
         self.isClosing = true
         
-        -- Achievement left-click: open the achievement frame to the specific achievement
         if button == "LeftButton" and self.achievementID and not InCombatLockdown() then
             local achID = self.achievementID
-            -- OpenAchievementFrameToAchievement loads Blizzard_AchievementUI on demand
             if OpenAchievementFrameToAchievement then
                 pcall(OpenAchievementFrameToAchievement, achID)
             end
         end
-        -- Right-click (or any other button): just dismiss without opening UI
         
-        -- Cancel auto-dismiss timer
         if self.dismissTimer then
             self.dismissTimer:Cancel()
             self.dismissTimer = nil
         end
         
-        -- Stop timer animations
-        if self.timerAg then
-            self.timerAg:Stop()
-        end
-        if self.timerRotateAg then
-            self.timerRotateAg:Stop()
-        end
-        
-        -- Stop any existing OnUpdate (like entrance animation)
         self:SetScript("OnUpdate", nil)
         
-        -- Quick fade out on click (manual animation)
         local clickStartTime = GetTime()
         local clickDuration = 0.25
         local clickStartAlpha = self:GetAlpha()
@@ -1752,16 +1956,12 @@ function WarbandNexus:ShowModalNotification(config)
         self:SetScript("OnUpdate", function(self, elapsed)
             local elapsedTime = GetTime() - clickStartTime
             local progress = math.min(1, elapsedTime / clickDuration)
-            
-            -- Fade out
             self:SetAlpha(clickStartAlpha * (1 - progress))
-            
-            -- Animation complete
             if progress >= 1 then
                 self:SetScript("OnUpdate", nil)
                 RemoveAlert(self)
-                end
-            end)
+            end
+        end)
     end)
     
     -- Hover effect
@@ -1786,186 +1986,80 @@ function WarbandNexus:ShowModalNotification(config)
         PlaySound(config.soundID or (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295)
     end
     
-    -- === ANIMATIONS (WoW-STYLE SLIDE DOWN) ===
-    
-    -- Store anchor info on the popup for later repositioning (and for RepositionAlerts when using separate criteria position)
+    -- === ENTRANCE (compact-aligned order: stack → hide → reposition → show → VFX → slide) ===
+    local slideOffset = 50 * -direction
+    local startYOffset = yOffset + slideOffset
+    local finalYOffset = yOffset
+
     popup._anchorPoint = point
     popup._baseX = baseX
     popup._baseY = baseY
     popup._direction = direction
-    
-    -- Entrance animation: slide FROM the direction we're growing
-    -- Growing DOWN → entrance from above (+50), Growing UP → entrance from below (-50)
-    local slideOffset = 50 * -direction  -- opposite of growth = where we come from
-    local startYOffset = yOffset + slideOffset
-    local finalYOffset = yOffset
-    
+    popup._toastLane = toastLane
+    popup._alertHeight = ALERT_HEIGHT
+    popup.achievementID = config.achievementID
+
+    table.insert(self.activeAlerts, popup)
+    popup.isEntering = true
+
     popup:SetAlpha(0)
     popup:SetPoint(point, UIParent, point, baseX, startYOffset)
     popup.currentYOffset = startYOffset
-    popup:Show()
-    
-    -- Store entrance animation parameters on the frame for dynamic repositioning
-    -- RepositionAlerts can update these if the target position changes mid-entrance
     popup._entranceStartY = startYOffset
     popup._entranceTargetY = finalYOffset
     popup._entranceStartTime = GetTime()
-    
-    -- Note: isEntering was already set to true before RepositionAlerts was called
-    
-    -- Smooth slide-in animation using OnUpdate (reads targets from frame properties)
-    local slideDuration = 0.4
-    
-    -- Capture anchor for closure
+
+    RepositionAlerts(true)
+    popup:Show()
+    NM_TriggerToastEntranceEffects(popup, popupWidthFull, ALERT_HEIGHT)
+
+    local slideDuration = 0.3
     local _point, _bx = point, baseX
-    
+
     popup:SetScript("OnUpdate", function(self, elapsed)
-        local elapsedTime = GetTime() - (self._entranceStartTime or 0)
-        local progress = math.min(1, elapsedTime / slideDuration)
-        
-        -- Smooth easing (OUT)
-        local easedProgress = 1 - math.pow(1 - progress, 3)
-        
-        -- Calculate current position using dynamic targets (may be updated by RepositionAlerts)
-        local entryStart = self._entranceStartY or startYOffset
-        local entryTarget = self._entranceTargetY or finalYOffset
-        local currentY = entryStart + ((entryTarget - entryStart) * easedProgress)
-        
-        -- Fade in
-        self:SetAlpha(math.min(1, self:GetAlpha() + elapsed * 3))
-        
-        -- Update position
+        local prog = math.min(1, (GetTime() - (self._entranceStartTime or 0)) / slideDuration)
+        local ease = 1 - math.pow(1 - prog, 2)
+        local cy = (self._entranceStartY or 0) + ((self._entranceTargetY or 0) - (self._entranceStartY or 0)) * ease
+        self:SetAlpha(math.min(1, self:GetAlpha() + elapsed * 4))
         self:ClearAllPoints()
-        self:SetPoint(_point, UIParent, _point, _bx, currentY)
-        self.currentYOffset = currentY
-        
-        -- Animation complete
-        if progress >= 1 then
+        self:SetPoint(_point, UIParent, _point, _bx, cy)
+        self.currentYOffset = cy
+        if prog >= 1 then
             self:SetScript("OnUpdate", nil)
             self:SetAlpha(1)
-            self.currentYOffset = entryTarget
-            self.isEntering = false -- Clear entering flag
-            
-            -- FLASH SHINE: one-time on appear
-            local flashAg = popup:CreateAnimationGroup()
-            local flashIn = flashAg:CreateAnimation("Alpha")
-            flashIn:SetTarget(flashShine)
-            flashIn:SetFromAlpha(0)
-            flashIn:SetToAlpha(0.55)
-            flashIn:SetDuration(0.08)
-            flashIn:SetSmoothing("OUT")
-            local flashOut = flashAg:CreateAnimation("Alpha")
-            flashOut:SetTarget(flashShine)
-            flashOut:SetFromAlpha(0.55)
-            flashOut:SetToAlpha(0)
-            flashOut:SetDuration(0.4)
-            flashOut:SetSmoothing("IN")
-            flashOut:SetStartDelay(0.06)
-            flashAg:Play()
-
-            -- ROTATING RINGS only
-            ring1:SetAlpha(1.0)
-            local rotateAg1 = popup:CreateAnimationGroup()
-            rotateAg1:SetLooping("REPEAT")
-            local rotate1 = rotateAg1:CreateAnimation("Rotation")
-            rotate1:SetTarget(ring1)
-            rotate1:SetOrigin("CENTER", 0, 0)
-            rotate1:SetDegrees(360)
-            rotate1:SetDuration(5.4)
-            rotateAg1:Play()
-
-            ring2:SetAlpha(1.0)
-            local rotateAg2 = popup:CreateAnimationGroup()
-            rotateAg2:SetLooping("REPEAT")
-            local rotate2 = rotateAg2:CreateAnimation("Rotation")
-            rotate2:SetTarget(ring2)
-            rotate2:SetOrigin("CENTER", 0, 0)
-            rotate2:SetDegrees(-360)
-            rotate2:SetDuration(6.2)
-            rotateAg2:Play()
-        
-        -- ICON BLING: always full opacity
-        iconBling:SetAlpha(1.0)
-        
-        -- START CIRCULAR PROGRESS TIMER (rotate + fade)
-        -- Rotation animation (continuous loop)
-        local rotateLoopAg = timerFrame:CreateAnimationGroup()
-        rotateLoopAg:SetLooping("REPEAT")
-        local rotateLoop = rotateLoopAg:CreateAnimation("Rotation")
-        rotateLoop:SetTarget(timerSpinner)
-        rotateLoop:SetOrigin("CENTER", 0, 0)
-        rotateLoop:SetDegrees(-360) -- Counter-clockwise for smoother look
-        rotateLoop:SetDuration(2.0) -- 2 seconds per rotation
-        rotateLoopAg:Play()
-        popup.timerRotateAg = rotateLoopAg
-        
-        -- Fade out animation (shows time remaining)
-        local fadeAg = timerFrame:CreateAnimationGroup()
-        local timerFade = fadeAg:CreateAnimation("Alpha")
-        timerFade:SetTarget(timerSpinner)
-        timerFade:SetFromAlpha(1.0)
-        timerFade:SetToAlpha(0)
-        timerFade:SetDuration(autoDismissDelay)
-        timerFade:SetSmoothing("NONE") -- Linear fade
-        fadeAg:Play()
-        popup.timerAg = fadeAg
-        
-        -- AUTO-DISMISS: Fade out after configured delay
-        local popupRef = popup -- Capture popup reference explicitly
-        popup.dismissTimer = C_Timer.NewTimer(autoDismissDelay, function()
-            if not popupRef or not popupRef:IsShown() or popupRef.isClosing or popupRef._removed then
-                return 
-            end
-            
-            popupRef.isClosing = true
-            
-            -- Stop timer animations (if still running)
-            if popupRef.timerAg then
-                popupRef.timerAg:Stop()
-            end
-            if popupRef.timerRotateAg then
-                popupRef.timerRotateAg:Stop()
-            end
-            
-            -- Stop any existing OnUpdate
-            popupRef:SetScript("OnUpdate", nil)
-            
-            -- Fade out and slide away animation (direction-aware)
-            local exitStartTime = GetTime()
-            local exitDuration = 0.5
-            local exitStartY = popupRef.currentYOffset or finalYOffset
-            -- Slide away from growth direction: growing DOWN → exit slides UP, growing UP → exit slides DOWN
-            local exitDir = popupRef._direction or direction
-            local exitEndY = exitStartY + (30 * exitDir)  -- Slide back toward origin
-            local exitPoint = popupRef._anchorPoint or point
-            local exitBaseX = popupRef._baseX or baseX
-            
-            popupRef:SetScript("OnUpdate", function(self, elapsed)
-                if not self or not self:IsShown() then
-                    return
-                end
-                local elapsedTime = GetTime() - exitStartTime
-                local progress = math.min(1, elapsedTime / exitDuration)
-                
-                -- Smooth easing (IN cubic)
-                local easedProgress = math.pow(progress, 3)
-                
-                -- Fade out
-                self:SetAlpha(1 - easedProgress)
-                
-                -- Slide away
-                local currentY = exitStartY + ((exitEndY - exitStartY) * easedProgress)
-                self:ClearAllPoints()
-                self:SetPoint(exitPoint, UIParent, exitPoint, exitBaseX, currentY)
-                
-                -- Animation complete
-                if progress >= 1 then
-                    self:SetScript("OnUpdate", nil)
-                    RemoveAlert(self)  -- Use 'self', not 'popup'!
+            self.currentYOffset = self._entranceTargetY
+            self.isEntering = false
+            NM_EnsureToastEntranceEffects(self)
         end
     end)
+
+    popup.dismissTimer = C_Timer.NewTimer(autoDismissDelay, function()
+        if not popup:IsShown() or popup.isClosing or popup._removed then return end
+        popup.isClosing = true
+        if popup.dismissTimer then popup.dismissTimer:Cancel(); popup.dismissTimer = nil end
+        popup:SetScript("OnUpdate", nil)
+
+        local exitStartTime = GetTime()
+        local exitDuration = 0.5
+        local exitStartY = popup.currentYOffset or finalYOffset
+        local exitDir = popup._direction or direction
+        local exitEndY = exitStartY + (30 * exitDir)
+        local exitPoint = popup._anchorPoint or point
+        local exitBaseX = popup._baseX or baseX
+
+        popup:SetScript("OnUpdate", function(self, elapsed)
+            if not self or not self:IsShown() then return end
+            local progress = math.min(1, (GetTime() - exitStartTime) / exitDuration)
+            local easedProgress = math.pow(progress, 3)
+            self:SetAlpha(1 - easedProgress)
+            local currentY = exitStartY + ((exitEndY - exitStartY) * easedProgress)
+            self:ClearAllPoints()
+            self:SetPoint(exitPoint, UIParent, exitPoint, exitBaseX, currentY)
+            if progress >= 1 then
+                self:SetScript("OnUpdate", nil)
+                RemoveAlert(self)
+            end
         end)
-        end
     end)
 end
 
