@@ -2917,7 +2917,7 @@ end
 -- MAIN DRAW FUNCTION
 -- ============================================================================
 
---- Phase timings for first-open / roster freezes: requires WN Trace visible or debug+verbose (ns.IsTabPerfMonitorEnabled).
+--- Phase timings for first-open / roster freezes: WN Trace visible or /wn profiler tabperf on.
 local function ShouldLogGearOpenPhases()
     local P = ns.Profiler
     if P and P.IsUserTraceWindowShown and P:IsUserTraceWindowShown() then return true end

@@ -108,7 +108,7 @@ function CommandService:HandleSlashCommand(addon, input)
         if addon.ShowUpdateNotification and ns.CHANGELOG then
             local ok, err = pcall(function()
                 addon:ShowUpdateNotification({
-                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "3.1.0",
+                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "3.1.1",
                     date = ns.CHANGELOG.date or "",
                     changes = ns.CHANGELOG.changes or {"No changelog available"}
                 })
@@ -259,6 +259,17 @@ function CommandService:HandleSlashCommand(addon, input)
         return
 
     elseif cmd == "debug" then
+        local _, sub = addon:GetArgs(input, 2)
+        if sub and not (issecretvalue and issecretvalue(sub)) then
+            sub = sub:lower()
+            if sub == "verbose" then
+                CommandService:HandleDebugVerboseToggle(addon)
+                return
+            elseif sub == "off" then
+                CommandService:HandleDebugOff(addon)
+                return
+            end
+        end
         CommandService:HandleDebugToggle(addon)
         return
     end
@@ -787,7 +798,11 @@ function CommandService:HandleDebugToggle(addon)
     
     if addon.db.profile.debugMode then
         addon:Print("|cff00ff00" .. ((ns.L and ns.L["DEBUG_ENABLED"]) or "Debug mode ENABLED.") .. "|r")
+        addon:Print("|cff888888[WN]|r Cache/scan logs need Debug Verbose (Settings) or |cff00ccff/wn debug verbose on|r. Tab timings: |cff00ccff/wn profiler tabperf on|r.")
     else
+        addon.db.profile.debugVerbose = false
+        local pp = addon.db.profile.profilerPersist
+        if pp then pp.tabPerfMonitor = false end
         addon:Print("|cffff8800" .. ((ns.L and ns.L["DEBUG_DISABLED"]) or "Debug mode DISABLED.") .. "|r")
     end
 
@@ -795,6 +810,44 @@ function CommandService:HandleDebugToggle(addon)
         ns.Profiler:SyncWithDebugMode()
     end
 
+    local mf = addon.mainFrame
+    if mf and mf.SyncMainHeaderDebugReloadLayout then
+        mf:SyncMainHeaderDebugReloadLayout()
+    end
+end
+
+--- Toggle debug verbose (cache/scan/tooltip trace tier).
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleDebugVerboseToggle(addon)
+    if not addon.db or not addon.db.profile then return end
+    local p = addon.db.profile
+    if not p.debugMode then
+        p.debugMode = true
+        addon:Print("|cff00ff00" .. ((ns.L and ns.L["DEBUG_ENABLED"]) or "Debug mode ENABLED.") .. "|r")
+    end
+    p.debugVerbose = not p.debugVerbose
+    if p.debugVerbose then
+        addon:Print("|cff00ff00[WN]|r Debug verbose ON (cache/scan logs → |cff00ccff/wn profiler trace|r).")
+    else
+        addon:Print("|cffff8800[WN]|r Debug verbose OFF.")
+    end
+    if ns.Profiler and ns.Profiler.SyncWithDebugMode then
+        ns.Profiler:SyncWithDebugMode()
+    end
+end
+
+--- Disable all debug tiers (mode, verbose, tab perf monitor).
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleDebugOff(addon)
+    if not addon.db or not addon.db.profile then return end
+    local p = addon.db.profile
+    p.debugMode = false
+    p.debugVerbose = false
+    if p.profilerPersist then p.profilerPersist.tabPerfMonitor = false end
+    addon:Print("|cffff8800" .. ((ns.L and ns.L["DEBUG_DISABLED"]) or "Debug mode DISABLED.") .. "|r")
+    if ns.Profiler and ns.Profiler.SyncWithDebugMode then
+        ns.Profiler:SyncWithDebugMode()
+    end
     local mf = addon.mainFrame
     if mf and mf.SyncMainHeaderDebugReloadLayout then
         mf:SyncMainHeaderDebugReloadLayout()

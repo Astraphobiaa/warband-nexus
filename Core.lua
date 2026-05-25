@@ -128,6 +128,7 @@ local defaults = {
             liveOutput = false,
             frameTracking = false,
             devMode = false,
+            tabPerfMonitor = false, -- /wn profiler tabperf on — main-tab switch ms lines (not debugVerbose)
             devWindowVisible = false,
             point = "CENTER",
             relPoint = "CENTER",
@@ -1765,6 +1766,10 @@ function WarbandNexus:AbortTabOperations(tabKey)
         -- Drop professions session caches (recipe maps / C_TradeSkillUI icon resolution) when leaving the tab.
         if self.AbortProfessionsTabWork then
             self:AbortProfessionsTabWork()
+        end
+    elseif tabKey == "pve" then
+        if ns.PvEUI and ns.PvEUI.AbortChunkedPaint then
+            ns.PvEUI.AbortChunkedPaint()
         end
     end
 end

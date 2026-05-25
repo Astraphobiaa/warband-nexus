@@ -2999,6 +2999,14 @@ end
 -- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
 --============================================================================
 
+ns.PvEUI = ns.PvEUI or {}
+--- Cancel in-flight chunked PvE row paint (tab switch).
+function ns.PvEUI.AbortChunkedPaint()
+    ns.PvEUI._paintDrawGen = (ns.PvEUI._paintDrawGen or 0) + 1
+end
+ns.PvEUI.PAINT_CHUNK_SIZE = 2
+ns.PvEUI.PAINT_CHUNK_MIN = 4
+
 -- Packed chunk locals for PvE draw body (Lua 5.1 max 60 upvalues per function).
 if not ns.PvEDrawLibs then
     ns.PvEDrawLibs = {
@@ -4106,7 +4114,15 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local prevDet = nil
 
     -- ===== CHARACTER ROWS (Favorites / custom / Characters sections only; online toon merged above) =====
-    for i = 1, #paintOrder do
+    local PvEUIState = ns.PvEUI
+    local function finalizePveCharPaint()
+        if #paintOrder > 0 then
+            finalizePveSectionContent(paintOrder[#paintOrder].secKey)
+        end
+    end
+
+    local function paintPvERows(fromI, toI)
+    for i = fromI, toI do
         local ent = paintOrder[i]
         local sk = ent.secKey
         local nextEnt = paintOrder[i + 1]
@@ -4834,9 +4850,40 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
     -- Character sections flow directly one after another (like Characters tab)
     end
+    end
 
     if #paintOrder > 0 then
-        finalizePveSectionContent(paintOrder[#paintOrder].secKey)
+        PvEUIState.AbortChunkedPaint()
+        local pvePaintDrawGen = PvEUIState._paintDrawGen or 0
+        local pveChunkSize = PvEUIState.PAINT_CHUNK_SIZE or 2
+        local pvePaintCursor = 1
+
+        if #paintOrder <= (PvEUIState.PAINT_CHUNK_MIN or 4) then
+            paintPvERows(1, #paintOrder)
+            finalizePveCharPaint()
+        else
+            local function pumpPvePaint()
+                if PvEUIState._paintDrawGen ~= pvePaintDrawGen then return end
+                if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then return end
+                local toI = math.min(pvePaintCursor + pveChunkSize - 1, #paintOrder)
+                paintPvERows(pvePaintCursor, toI)
+                pvePaintCursor = toI + 1
+                if pvePaintCursor > #paintOrder then
+                    finalizePveCharPaint()
+                    local coreHDone = totalLHBox.v + 12
+                    parent._pvePaintedCoreH = coreHDone
+                    if mf and ns.UI_SyncMainTabScrollChrome then
+                        ns.UI_SyncMainTabScrollChrome(mf, parent, coreHDone)
+                    end
+                    return
+                end
+                if mf and ns.UI_SyncMainTabScrollChrome then
+                    ns.UI_SyncMainTabScrollChrome(mf, parent, totalLHBox.v + 12)
+                end
+                C_Timer.After(0, pumpPvePaint)
+            end
+            C_Timer.After(0, pumpPvePaint)
+        end
     end
 
     local coreH = totalLHBox.v + 12

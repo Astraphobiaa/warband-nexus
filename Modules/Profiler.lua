@@ -47,7 +47,7 @@
         /wn profiler events on|off [minMs] - Log slow event handlers to WN_TRACE (WN_TRACE_EVT; needs measuring ON)
 
     Heavy-tab QA (see WN-PERF-warband-nexus Heavy tab first paint): enable measuring (`/wn profiler on`) plus
-    tab perf traces (`/wn debug` + verbose) to log `Pop_drawTab`/`DrawTab <tab> ...ms`; exercise Items/Warband tree,
+    tab perf traces (`/wn profiler tabperf on`) to log `Pop_drawTab`/`DrawTab <tab> ...ms`; exercise Items/Warband tree,
     Collections, Plans, Characters. Main-tab switch uses staged pool (`C_Timer.After`) then `PopulateContent` (UI.lua).
 ============================================================================]]
 
@@ -153,6 +153,9 @@ function Profiler:SavePersistToProfile()
     p.gearOnlyRecording = self.gearOnlyRecording and true or false
     p.eventTrace = self.eventTrace and true or false
     p.eventTraceMinMs = tonumber(self.eventTraceMinMs) or 12
+    if p.tabPerfMonitor == nil then
+        p.tabPerfMonitor = false
+    end
     local w = self._devWindow
     if w then
         p.devWindowVisible = w:IsShown() and true or false
@@ -408,7 +411,7 @@ function Profiler:EnsureTraceWindow()
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("TOP", 0, -30)
-    hint:SetText("|cff808080Debug lines always; open Trace before the Gear tab for [WN Perf][GearOpen] phase ms (or debug+verbose). Select all, Ctrl+C.|r")
+    hint:SetText("|cff808080Debug verbose → trace buffer (/wn profiler trace). Tab ms: /wn profiler tabperf on. Select all, Ctrl+C.|r")
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", -4, -4)
@@ -1301,6 +1304,22 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
             .. "  |cff00ccff/wn profiler events on 8|r sets threshold to 8ms" .. C_R)
         self:SavePersistToProfile()
 
+    elseif subCmd == "tabperf" or subCmd == "tabperfmonitor" then
+        local root = GetProfilePersistRoot()
+        if not root then return end
+        local a = (arg3 and tostring(arg3):lower()) or ""
+        if a == "on" or a == "1" or a == "true" then
+            root.tabPerfMonitor = true
+        elseif a == "off" or a == "0" or a == "false" then
+            root.tabPerfMonitor = false
+        else
+            root.tabPerfMonitor = not (root.tabPerfMonitor == true)
+        end
+        self:SavePersistToProfile()
+        local st = root.tabPerfMonitor and (C_GOOD .. "ON") or (C_DIM .. "OFF")
+        print(PREFIX .. "Main tab perf lines ([WN Perf] click→pool…): " .. st .. C_R
+            .. C_DIM .. "  Requires debug mode; lines go to |cff00ccff/wn profiler trace|r (not chat)." .. C_R)
+
     elseif subCmd == "help" then
         print(" ")
         print(C_HEADER .. "Warband Nexus Profiler - Commands" .. C_R)
@@ -1318,6 +1337,7 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
         print("  " .. C_LABEL .. "/wn profiler window" .. C_R .. "  Toggle dev summary window")
         print("  " .. C_LABEL .. "/wn profiler trace" .. C_R .. "   Toggle unified trace window (debug lines; perf lines when measuring ON)")
         print("  " .. C_LABEL .. "/wn profiler dock" .. C_R .. "    Toggle dock-left for dev window")
+        print("  " .. C_LABEL .. "/wn profiler tabperf" .. C_R .. " on|off  Main-tab switch ms ([WN Perf] lines; trace only)")
         print("  " .. C_LABEL .. "/wn profiler gearonly" .. C_R .. " on|off  Record only Gear-focused slices (reduces noise)")
         print("  " .. C_LABEL .. "/wn profiler events" .. C_R .. " on|off [minMs]  Log slow Blizzard handlers (WN_TRACE_EVT)")
         print(" ")

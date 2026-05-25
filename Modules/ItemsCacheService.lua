@@ -1198,12 +1198,19 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
     
     -- Compress data
     local compressed = CompressItemData(items)
+    local slotCount = #items
+    local stackTotal = 0
+    for si = 1, slotCount do
+        stackTotal = stackTotal + (items[si].stackCount or 1)
+    end
     if not compressed then
         -- Fallback: store uncompressed
         self.db.global.itemStorage[charKey][dataType] = {
             compressed = false,
             data = items,
-            lastUpdate = time()
+            lastUpdate = time(),
+            slotCount = slotCount,
+            stackTotal = stackTotal,
         }
         -- Invalidate caches even on uncompressed fallback
         decompressedItemCache[charKey] = nil
@@ -1216,7 +1223,9 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
     self.db.global.itemStorage[charKey][dataType] = {
         compressed = true,
         data = compressed,
-        lastUpdate = time()
+        lastUpdate = time(),
+        slotCount = slotCount,
+        stackTotal = stackTotal,
     }
     
     -- Invalidate decompressed cache + mark summary index pending for this character
@@ -1237,12 +1246,19 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
     
     -- Compress data
     local compressed = CompressItemData(items)
+    local slotCount = #items
+    local stackTotal = 0
+    for si = 1, slotCount do
+        stackTotal = stackTotal + (items[si].stackCount or 1)
+    end
     if not compressed then
         -- Fallback: store uncompressed
         self.db.global.itemStorage.warbandBank = {
             compressed = false,
             data = items,
-            lastUpdate = time()
+            lastUpdate = time(),
+            slotCount = slotCount,
+            stackTotal = stackTotal,
         }
         decompressedWarbandCache = nil
         itemSummaryIndex.warbandPending = true
@@ -1254,7 +1270,9 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
     self.db.global.itemStorage.warbandBank = {
         compressed = true,
         data = compressed,
-        lastUpdate = time()
+        lastUpdate = time(),
+        slotCount = slotCount,
+        stackTotal = stackTotal,
     }
     
     -- Invalidate decompressed cache + mark warband summary pending
@@ -1395,6 +1413,208 @@ end
 -- ============================================================================
 -- PUBLIC API (FOR UI AND DATASERVICE)
 -- ============================================================================
+
+--- One-time slotCount backfill for legacy compressed buckets (persists in AceDB on next save).
+---@param bucket table
+---@return number|nil slotCount
+---@return number|nil stackTotal
+local function LazyBackfillSlotCountFromCompressed(bucket)
+    if not bucket or bucket.slotCount or not bucket.compressed or not bucket.data then
+        return nil, nil
+    end
+    local items = DecompressItemData(bucket.data)
+    if not items then
+        return nil, nil
+    end
+    local slotCount = #items
+    local stackTotal = 0
+    for i = 1, slotCount do
+        stackTotal = stackTotal + (items[i].stackCount or 1)
+    end
+    bucket.slotCount = slotCount
+    bucket.stackTotal = stackTotal
+    return slotCount, stackTotal
+end
+
+--- Occupied slots + stack totals from a persisted itemStorage bucket without decompress.
+---@param bucket table|nil
+---@param allowLazyBackfill boolean|nil
+---@return number|nil slotCount
+---@return number|nil stackTotal
+---@return number|nil lastUpdate
+local function OccupiedSlotsFromStorageBucket(bucket, allowLazyBackfill)
+    if not bucket then
+        return nil, nil, nil
+    end
+    local lastUpdate = bucket.lastUpdate or 0
+    if bucket.slotCount then
+        return bucket.slotCount, bucket.stackTotal or bucket.slotCount, lastUpdate
+    end
+    if bucket.compressed == false and type(bucket.data) == "table" then
+        local slots = #bucket.data
+        local stacks = 0
+        for i = 1, slots do
+            local item = bucket.data[i]
+            stacks = stacks + (item and item.stackCount or 1)
+        end
+        return slots, stacks, lastUpdate
+    end
+    if bucket.compressed and allowLazyBackfill ~= false then
+        local slots, stacks = LazyBackfillSlotCountFromCompressed(bucket)
+        if slots then
+            return slots, stacks, lastUpdate
+        end
+    end
+    return nil, nil, lastUpdate
+end
+
+--- Resolve v2 itemStorage row for a character key (GUID / Name-Realm aliases).
+---@param charKey string
+---@return table|nil storageRow
+local function ResolveItemStorageRow(charKey)
+    local globalIS = WarbandNexus.db.global.itemStorage
+    if not globalIS or not charKey or charKey == "" then
+        return nil
+    end
+    local storage = globalIS[charKey]
+    local function storageHasPayload(ent)
+        return ent and (ent.bags or ent.bank)
+    end
+    if not storageHasPayload(storage) and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local alt = ns.Utilities:GetCanonicalCharacterKey(charKey)
+        if alt and alt ~= charKey then
+            local s2 = globalIS[alt]
+            if storageHasPayload(s2) then
+                storage = s2
+            end
+        end
+    end
+    if not storageHasPayload(storage) then
+        local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+        local U = ns.Utilities
+        if charData and U and U.GetCharacterKey then
+            local legacyKey = U:GetCharacterKey(charData.name, charData.realm)
+            if legacyKey and legacyKey ~= charKey then
+                local sLegacy = globalIS[legacyKey]
+                if storageHasPayload(sLegacy) then
+                    storage = sLegacy
+                end
+            end
+        end
+    end
+    return storage
+end
+
+--- Fast occupied-slot tally for one character bucket (bags/bank) — no decompress.
+---@param charKey string
+---@param dataType string "bags"|"bank"
+---@param allowLazyBackfill boolean|nil
+---@return number slotCount
+---@return number stackTotal
+---@return number lastUpdate
+function WarbandNexus:GetItemStorageOccupiedSlotTally(charKey, dataType, allowLazyBackfill)
+    local storage = ResolveItemStorageRow(charKey)
+    local bucket = storage and storage[dataType]
+    local slots, stacks, lastUpdate = OccupiedSlotsFromStorageBucket(bucket, allowLazyBackfill)
+    if slots then
+        return slots, stacks or slots, lastUpdate or 0
+    end
+    if bucket and (lastUpdate or bucket.lastUpdate or 0) > 0 then
+        return 0, 0, lastUpdate or bucket.lastUpdate or 0
+    end
+
+    local cached = decompressedItemCache[charKey]
+    if cached then
+        local arr = dataType == "bags" and cached.bags or cached.bank
+        if arr then
+            local n = #arr
+            local st = 0
+            for i = 1, n do
+                st = st + (arr[i].stackCount or 1)
+            end
+            local lu = dataType == "bags" and (cached.bagsLastUpdate or 0) or (cached.bankLastUpdate or 0)
+            return n, st, lu
+        end
+    end
+
+    if dataType == "bags" then
+        local charData = self.db.global.characters and self.db.global.characters[charKey]
+        if charData and charData.items then
+            local n = #charData.items
+            return n, n, charData.itemsLastUpdate or 0
+        end
+    elseif dataType == "bank" then
+        local charData = self.db.global.characters and self.db.global.characters[charKey]
+        if charData and charData.bank then
+            local n = #charData.bank
+            return n, n, charData.bankLastUpdate or 0
+        end
+        local pb = self.db.global.personalBanks and self.db.global.personalBanks[charKey]
+        if pb then
+            local n = pb.items and #pb.items or 0
+            return n, n, pb.lastUpdate or 0
+        end
+    end
+
+    return 0, 0, 0
+end
+
+--- Fast warband bank occupied slots — no decompress when slotCount metadata exists.
+---@param allowLazyBackfill boolean|nil
+---@return number slotCount
+---@return number stackTotal
+---@return number lastUpdate
+function WarbandNexus:GetWarbandBankOccupiedSlotTally(allowLazyBackfill)
+    if decompressedWarbandCache and decompressedWarbandCache.items then
+        local items = decompressedWarbandCache.items
+        local n = #items
+        local st = 0
+        for i = 1, n do
+            st = st + (items[i].stackCount or 1)
+        end
+        return n, st, decompressedWarbandCache.lastUpdate or 0
+    end
+
+    local storage = self.db.global.itemStorage and self.db.global.itemStorage.warbandBank
+    local slots, stacks, lastUpdate = OccupiedSlotsFromStorageBucket(storage, allowLazyBackfill)
+    if slots then
+        return slots, stacks or slots, lastUpdate or 0
+    end
+    if storage and (lastUpdate or storage.lastUpdate or 0) > 0 then
+        return 0, 0, lastUpdate or storage.lastUpdate or 0
+    end
+
+    if self.db.global.warbandBank and type(self.db.global.warbandBank.items) == "table" then
+        local legacy = self.db.global.warbandBank.items
+        local n = #legacy
+        if n > 0 then
+            return n, n, self.db.global.warbandBank.lastUpdate or 0
+        end
+    end
+
+    return 0, 0, 0
+end
+
+--- Sum tracked roster personal storage using fast slot tallies (Items > Warband stats + tree scan).
+---@param allowLazyBackfill boolean|nil When false, skip legacy compressed decompress (collapsed embed stats).
+---@return number stackTotal
+---@return number usedSlots
+---@return number lastScan
+function WarbandNexus:SumTrackedPersonalStorageSlotTally(allowLazyBackfill)
+    local stackTotal, usedSlots, lastScan = 0, 0, 0
+    local allCharacters = self.GetAllCharacters and self:GetAllCharacters() or {}
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
+        if char and char.isTracked ~= false and char._key then
+            local bagSlots, bagStacks, bagLast = self:GetItemStorageOccupiedSlotTally(char._key, "bags", allowLazyBackfill)
+            local bankSlots, bankStacks, bankLast = self:GetItemStorageOccupiedSlotTally(char._key, "bank", allowLazyBackfill)
+            usedSlots = usedSlots + bagSlots + bankSlots
+            stackTotal = stackTotal + bagStacks + bankStacks
+            lastScan = math.max(lastScan, bagLast, bankLast)
+        end
+    end
+    return stackTotal, usedSlots, lastScan
+end
 
 ---Get items data for a specific character (decompressed + hydrated with metadata).
 ---Uses session RAM cache to avoid repeated decompression. Invalidated when items are scanned.

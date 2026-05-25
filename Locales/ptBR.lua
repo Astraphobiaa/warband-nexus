@@ -683,6 +683,23 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir a interface."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
+L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
+
+Adicionado:
+- Missoes mundiais, eventos de conteudo e eventos mundiais no sistema de lembretes.
+- Informacoes de correio (aba Personagens).
+- Ordem de colunas personalizavel.
+
+Correcoes:
+- Rastreador/contador de itens ausente nas dicas de ferramentas.
+- Problemas de exibicao de criterios de conquistas, progresso e requisitos na Colecao To-Do.
+- Resumo de JcE ausente no menu de acesso rapido.
+- Aba Personagens presa apos recarregar.
+- Stagger + Virtual Page adicionado
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
 L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
 
@@ -1614,7 +1631,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Facção ou classe restrita"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.1.0).
+Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.1.1).
 
 CurseForge: Warband Nexus]=]
 

@@ -2788,6 +2788,21 @@ function M.HideAllCollectionsResultFrames()
     if M.state._collectionsContentSubHeader then M.state._collectionsContentSubHeader:Hide() end
 end
 
+function M.ResetCollectionsListScrollPositions()
+    local scrollFrames = {
+        M.state.mountListScrollFrame,
+        M.state.petListScrollFrame,
+        M.state.toyListScrollFrame,
+        M.state.achievementListScrollFrame,
+    }
+    for i = 1, #scrollFrames do
+        local sf = scrollFrames[i]
+        if sf and sf.SetVerticalScroll then
+            sf:SetVerticalScroll(0)
+        end
+    end
+end
+
 M.CONTENT_GAP = CONTENT_GAP
 M.COLLECTED_COLOR = "|cff33e533"
 M.DEFAULT_ICON_MOUNT = "Interface\\Icons\\Ability_Mount_RidingHorse"

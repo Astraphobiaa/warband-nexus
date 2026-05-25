@@ -796,6 +796,23 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
+L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
+
+Hinzugefuegt:
+- Weltquests, Inhaltsereignisse und Weltereignisse im Erinnerungssystem.
+- Postinformationen (Charakter-Tab).
+- Anpassbare Spaltenreihenfolge.
+
+Behoben:
+- Fehlender Item-Tracker/Zaehler in Tooltips.
+- Anzeigeprobleme bei Erfolgskriterien, Fortschritt und Anforderungen in der To-Do-Sammlung.
+- PvE-Zusammenfassung fehlte im Schnellzugriffsmenue.
+- Charakter-Tab nach Reload eingeklemmt.
+- Stagger + Virtual Page hinzugefuegt
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
 L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
 
@@ -1759,7 +1776,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Fraktions- oder klassenbeschr�
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.1.0) `/wn changelog` verwenden.
+Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.1.1) `/wn changelog` verwenden.
 
 CurseForge: Warband Nexus]=]
 

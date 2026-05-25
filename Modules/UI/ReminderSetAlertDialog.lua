@@ -1674,44 +1674,69 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local LIST_ROW_H = RD.catalogRowH
         local LIST_HDR_H = RD.catalogHdrH
-        local RQP_CAT = ns.ReminderQuestPickerCatalog
-        local LIST_POOL_MAX = (RQP_CAT and RQP_CAT.GetMaxDisplayRowCount and RQP_CAT.GetMaxDisplayRowCount()) or 120
         f._questListRows = {}
-        for li = 1, LIST_POOL_MAX do
-            (function(poolIdx)
-                local row = CreateFrame("Frame", nil, questListChild)
-                row:SetHeight(LIST_ROW_H)
-                row._poolIndex = poolIdx
-                row.headerBar = row:CreateTexture(nil, "BACKGROUND")
-                row.headerBar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-                row.headerBar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-                row.headerBar:SetColorTexture(COLORS.accent[1] * 0.35, COLORS.accent[2] * 0.35, COLORS.accent[3] * 0.35, 0.55)
-                row.headerBar:Hide()
-                row.tagFs = FontManager:CreateFontString(row, "small", "OVERLAY")
-                row.tagFs:SetWidth(questTagColW)
-                row.tagFs:SetPoint("LEFT", row, "LEFT", 8, 0)
-                row.tagFs:SetJustifyH("CENTER")
-                row.check = CreateThemedCheckbox(row, false)
-                row.check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-                row.labelFs = FontManager:CreateFontString(row, "small", "OVERLAY")
-                row.labelFs:SetJustifyH("LEFT")
-                row.labelFs:SetWordWrap(false)
-                row.labelFs:SetMaxLines(1)
-                row.labelFs:SetPoint("LEFT", row.tagFs, "RIGHT", 6, 0)
-                row.labelFs:SetPoint("RIGHT", row.check, "LEFT", -8, 0)
-                local baseCheckOnClick = row.check:GetScript("OnClick")
-                row.check:SetScript("OnClick", function(self)
-                    if baseCheckOnClick then
-                        baseCheckOnClick(self)
-                    end
-                    local r = f._questListRows and f._questListRows[poolIdx]
-                    if r then
-                        f:OnPickerRowCheckClick(r)
-                    end
-                end)
-                row:Hide()
-                f._questListRows[poolIdx] = row
-            end)(li)
+        f._questListPoolCount = 0
+        f._questListPoolMax = nil
+
+        function f:ResolveQuestListPoolMax()
+            if self._questListPoolMax then return self._questListPoolMax end
+            local RQP_CAT = ns.ReminderQuestPickerCatalog
+            local cap = (RQP_CAT and RQP_CAT.GetMaxDisplayRowCount and RQP_CAT.GetMaxDisplayRowCount()) or 120
+            self._questListPoolMax = cap
+            return cap
+        end
+
+        function f:EnsureQuestListRow(poolIdx)
+            local maxRows = self:ResolveQuestListPoolMax()
+            if not poolIdx or poolIdx < 1 or poolIdx > maxRows then return nil end
+            local pool = self._questListRows
+            if pool[poolIdx] then return pool[poolIdx] end
+            local questListChild = self.questCatalogScrollChild
+            if not questListChild then return nil end
+
+            local row = CreateFrame("Frame", nil, questListChild)
+            row:SetHeight(LIST_ROW_H)
+            row._poolIndex = poolIdx
+            row.headerBar = row:CreateTexture(nil, "BACKGROUND")
+            row.headerBar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+            row.headerBar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+            row.headerBar:SetColorTexture(COLORS.accent[1] * 0.35, COLORS.accent[2] * 0.35, COLORS.accent[3] * 0.35, 0.55)
+            row.headerBar:Hide()
+            row.tagFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+            row.tagFs:SetWidth(questTagColW)
+            row.tagFs:SetPoint("LEFT", row, "LEFT", 8, 0)
+            row.tagFs:SetJustifyH("CENTER")
+            row.check = CreateThemedCheckbox(row, false)
+            row.check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            row.labelFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+            row.labelFs:SetJustifyH("LEFT")
+            row.labelFs:SetWordWrap(false)
+            row.labelFs:SetMaxLines(1)
+            row.labelFs:SetPoint("LEFT", row.tagFs, "RIGHT", 6, 0)
+            row.labelFs:SetPoint("RIGHT", row.check, "LEFT", -8, 0)
+            local baseCheckOnClick = row.check:GetScript("OnClick")
+            row.check:SetScript("OnClick", function(self)
+                if baseCheckOnClick then
+                    baseCheckOnClick(self)
+                end
+                local r = f._questListRows and f._questListRows[poolIdx]
+                if r then
+                    f:OnPickerRowCheckClick(r)
+                end
+            end)
+            row:Hide()
+            pool[poolIdx] = row
+            if poolIdx > (self._questListPoolCount or 0) then
+                self._questListPoolCount = poolIdx
+            end
+            return row
+        end
+
+        function f:EnsureQuestListPoolSize(needed)
+            needed = math.min(needed or 0, self:ResolveQuestListPoolMax())
+            for i = 1, needed do
+                self:EnsureQuestListRow(i)
+            end
         end
 
         local function LayoutQuestCatalogSplit()
@@ -1766,7 +1791,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                     f.questCatalogScrollChild:SetWidth(math.max(160, vw))
                 end
             end
-            if f.RefreshPickerListRows then
+            if f.RefreshPickerListRows and f._questPickerPrimed then
                 f:RefreshPickerListRows()
             end
         end
@@ -1851,9 +1876,12 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
 
             local pool = self._questListRows or {}
+            local needed = #rows
+            self:EnsureQuestListPoolSize(needed)
+            local poolLimit = self._questListPoolCount or #pool
             local lastVisibleRow = nil
             local estH = 0
-            for ri = 1, #pool do
+            for ri = 1, poolLimit do
                 local row = pool[ri]
                 local entry = rows[ri]
                 row.questID = nil
@@ -2287,7 +2315,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if child and w and w > 0 then
                 child:SetWidth(math.max(120, w))
             end
-            if f.RefreshZoneCatalogRows then
+            if f.RefreshZoneCatalogRows and f._zoneCatalogPrimed then
                 f:RefreshZoneCatalogRows()
             end
             if Factory.UpdateScrollBarVisibility then
@@ -2309,7 +2337,17 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local MAX_CAT_ROWS = math.min(680, math.max(120, (catalogDef and catalogDef.GetMaxDisplayRowCount and catalogDef.GetMaxDisplayRowCount()) or 520))
         f._zoneCatalogRows = {}
-        for ri = 1, MAX_CAT_ROWS do
+        f._zoneCatalogRowPoolCount = 0
+        f._zoneCatalogRowPoolMax = MAX_CAT_ROWS
+
+        function f:EnsureZoneCatalogRow(ri)
+            local maxRows = self._zoneCatalogRowPoolMax or MAX_CAT_ROWS
+            if not ri or ri < 1 or ri > maxRows then return nil end
+            local pool = self._zoneCatalogRows
+            if pool[ri] then return pool[ri] end
+            local zChild = self.zoneCatalogScrollChild
+            if not zChild then return nil end
+
             local row = CreateFrame("Frame", nil, zChild)
             row:SetHeight(ROW_H)
             row:SetWidth(zChild:GetWidth())
@@ -2354,7 +2392,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if ri == 1 then
                 row:SetPoint("TOPLEFT", zChild, "TOPLEFT", 0, 0)
             else
-                row:SetPoint("TOPLEFT", f._zoneCatalogRows[ri - 1], "BOTTOMLEFT", 0, -2)
+                row:SetPoint("TOPLEFT", pool[ri - 1], "BOTTOMLEFT", 0, -2)
             end
 
             addB:SetScript("OnClick", function()
@@ -2364,7 +2402,18 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 end
             end)
             row:Hide()
-            f._zoneCatalogRows[ri] = row
+            pool[ri] = row
+            if ri > (self._zoneCatalogRowPoolCount or 0) then
+                self._zoneCatalogRowPoolCount = ri
+            end
+            return row
+        end
+
+        function f:EnsureZoneCatalogPoolSize(needed)
+            needed = math.min(needed or 0, self._zoneCatalogRowPoolMax or MAX_CAT_ROWS)
+            for i = 1, needed do
+                self:EnsureZoneCatalogRow(i)
+            end
         end
 
         function f:RefreshZoneCatalogRows()
@@ -2408,7 +2457,11 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 or 320
             local unk = (Lz and Lz["UNKNOWN"]) or "?"
 
-            for ri = 1, #(self._zoneCatalogRows or {}) do
+            local shown = #rows
+            self:EnsureZoneCatalogPoolSize(shown)
+            local poolLimit = self._zoneCatalogRowPoolCount or 0
+
+            for ri = 1, poolLimit do
                 local row = self._zoneCatalogRows[ri]
                 local entry = rows[ri]
                 if entry and row then

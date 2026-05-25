@@ -23,6 +23,7 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local E = ns.Constants.EVENTS
 local DebugPrint = ns.DebugPrint
+local DebugVerbosePrint = ns.DebugVerbosePrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 local issecretvalue = issecretvalue
@@ -633,8 +634,8 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
         lastUpdate       = time(),
     }
 
-    if IsDebugModeEnabled and IsDebugModeEnabled() then
-        DebugPrint("[Knowledge] " .. (profName or "?")
+    if IsDebugModeEnabled and IsDebugModeEnabled() and DebugVerbosePrint then
+        DebugVerbosePrint("[Knowledge] " .. (profName or "?")
             .. ": unspent=" .. unspentTotal
             .. ", spent=" .. spentTotal
             .. ", max=" .. maxTotal
@@ -3113,8 +3114,8 @@ function WarbandNexus:StartRechargeTimer()
         end
     end)
     
-    if IsDebugModeEnabled and IsDebugModeEnabled() then
-        DebugPrint("[Recharge Timer] Started (60s interval)")
+    if IsDebugModeEnabled and IsDebugModeEnabled() and DebugVerbosePrint then
+        DebugVerbosePrint("[Recharge Timer] Started (60s interval)")
     end
 end
 
@@ -3123,8 +3124,8 @@ function WarbandNexus:StopRechargeTimer()
         rechargeTickerHandle:Cancel()
         rechargeTickerHandle = nil
         
-        if IsDebugModeEnabled and IsDebugModeEnabled() then
-            DebugPrint("[Recharge Timer] Stopped")
+        if IsDebugModeEnabled and IsDebugModeEnabled() and DebugVerbosePrint then
+            DebugVerbosePrint("[Recharge Timer] Stopped")
         end
     end
 end

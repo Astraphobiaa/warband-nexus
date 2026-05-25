@@ -393,17 +393,24 @@ function M.BuildMenu()
         y = y - (rowH + 2)
     end
 
-    -- Auto-hide on focus loss: close when mouse leaves and not over a child
-    f:SetScript("OnUpdate", function(self, elapsed)
-        elapsed = elapsed or 0
-        if self:IsMouseOver() then
-            self._hideElapsed = 0
-        else
-            self._hideElapsed = (self._hideElapsed or 0) + elapsed
-            if self._hideElapsed > 2.5 then
-                self:Hide()
+    -- Auto-hide on focus loss: close when mouse leaves and not over a child (OnUpdate only while menu is shown).
+    f:SetScript("OnShow", function(self)
+        self._hideElapsed = 0
+        self:SetScript("OnUpdate", function(frame, elapsed)
+            elapsed = elapsed or 0
+            if frame:IsMouseOver() then
+                frame._hideElapsed = 0
+            else
+                frame._hideElapsed = (frame._hideElapsed or 0) + elapsed
+                if frame._hideElapsed > 2.5 then
+                    frame:Hide()
+                end
             end
-        end
+        end)
+    end)
+    f:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+        self._hideElapsed = 0
     end)
 
     S.menuFrame = f

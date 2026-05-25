@@ -32,8 +32,30 @@ local COLLAPSE_HEADER_HEIGHT_ACH = LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT or 36
 local BASE_INDENT = LAYOUT.BASE_INDENT or 15
 local SECTION_SPACING = LAYOUT.SECTION_SPACING or LAYOUT.betweenSections or 8
 local MINI_SPACING = LAYOUT.MINI_SPACING or LAYOUT.miniSpacing or 4
+local ACHIEVEMENT_HEADER_CHUNK = 4
 
 local _populateAchievementBrowseBusy = false
+local _populateAchievementBrowseQueued = nil
+
+function ns.UI_AchievementBrowse_ResetPopulateBusy()
+    _populateAchievementBrowseBusy = false
+    _populateAchievementBrowseQueued = nil
+end
+
+local function InvokeAchievementBrowseListReady(opts)
+    if type(opts) ~= "table" or type(opts.onListReady) ~= "function" then
+        return
+    end
+    opts.onListReady()
+end
+
+local function DrainAchievementBrowsePopulateQueue()
+    local queued = _populateAchievementBrowseQueued
+    _populateAchievementBrowseQueued = nil
+    if queued then
+        ns.UI_AchievementBrowse_Populate(queued)
+    end
+end
 
 local _achChildEnumScratch = {}
 local _achRegionEnumScratch = {}
@@ -187,11 +209,17 @@ end
     opts.acquireRow(scrollChild, listWidth, item, selectedID, onSelect, redraw, cf) -> frame
     opts.releaseRowFrame(frame)
     opts.scheduleVisibleSync(function(refreshFn)) — optional; Collections passes ScheduleCollectionsVisibleSync
+    opts.drawGen — optional generation token; stored on state._achPopulateGen for pump abort
+    opts.collectionsSubTabGen — optional; Collections sub-tab switch abort
+    opts.plansCategoryGen — optional; Plans To-Do browse category switch abort
     opts.rowHeightScale — optional number passed to BuildFlatList (Plans & Collections achievements use `ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE`).
 ]]
 function ns.UI_AchievementBrowse_Populate(opts)
     if not opts or not opts.scrollChild or not Factory then return end
-    if _populateAchievementBrowseBusy then return end
+    if _populateAchievementBrowseBusy then
+        _populateAchievementBrowseQueued = opts
+        return
+    end
     _populateAchievementBrowseBusy = true
 
     local state = opts.state
@@ -210,6 +238,8 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     if type(acquireRow) ~= "function" or type(releaseRowFrame) ~= "function" then
         _populateAchievementBrowseBusy = false
+        InvokeAchievementBrowseListReady(opts)
+        DrainAchievementBrowsePopulateQueue()
         return
     end
 
@@ -342,6 +372,29 @@ function ns.UI_AchievementBrowse_Populate(opts)
         })
     end
 
+    local function ensureAchievementBrowseScrollHooks()
+        local scrollFrame = state.achievementListScrollFrame
+        if not scrollFrame then return end
+        state._achListRefreshVisible = refreshVisibleInternal
+        if state._achUseOuterScroll then
+            state._achOuterScrollActive = true
+            ns._plansAchOuterVirtualState = state
+            if scrollFrame.HookScript and not ns._plansAchOuterScrollHooked then
+                ns._plansAchOuterScrollHooked = true
+                scrollFrame:HookScript("OnVerticalScroll", function()
+                    local st = ns._plansAchOuterVirtualState
+                    if st and st._achOuterScrollActive and st._achListRefreshVisible then
+                        st._achListRefreshVisible()
+                    end
+                end)
+            end
+        else
+            scrollFrame:SetScript("OnVerticalScroll", function()
+                refreshVisibleInternal()
+            end)
+        end
+    end
+
     local function CountAchievementTree(catID)
         local cat = categoryData and categoryData[catID]
         if not cat then return 0 end
@@ -413,9 +466,86 @@ function ns.UI_AchievementBrowse_Populate(opts)
         end
     end
 
-    for i = 1, #flatList do
-        local it = flatList[i]
-        if it.type == "header" then
+    local drawGen = opts.drawGen
+    if drawGen then
+        state._achPopulateGen = drawGen
+    end
+    if opts.collectionsSubTabGen then
+        state._collectionsSubTabGen = opts.collectionsSubTabGen
+    end
+    if opts.plansCategoryGen then
+        state._plansCategoryGen = opts.plansCategoryGen
+    end
+
+    -- Bind flat list before header pump so expanded sections can paint rows per chunk.
+    state._achFlatList = flatList
+    state._achFlatListTotalHeight = totalHeight
+    state._achListWidth = listWidth
+    state._achListSelectedID = selectedAchievementID
+    state._achListOnSelect = onSelectAchievement
+    state._achListCollapsedHeaders = collapsedHeaders
+    state._achListContentFrame = cf
+    state._achListRedrawFn = redraw
+    ensureAchievementBrowseScrollHooks()
+
+    local function finishAchievementBrowsePopulate()
+        ReflowAchievementSectionHeights()
+        ensureAchievementBrowseScrollHooks()
+        refreshVisibleInternal()
+        if type(scheduleVisibleSync) == "function" then
+            scheduleVisibleSync(refreshVisibleInternal)
+        end
+        InvokeAchievementBrowseListReady(opts)
+        _populateAchievementBrowseBusy = false
+        DrainAchievementBrowsePopulateQueue()
+    end
+
+    local flatHeaderIdx = 1
+    local function hasRemainingAchievementHeaders()
+        for hi = flatHeaderIdx, #flatList do
+            if flatList[hi].type == "header" then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function pumpAchievementHeaders()
+        if state._achPopulateGen == -1 or state._plansCategoryGen == -1 then
+            _populateAchievementBrowseBusy = false
+            InvokeAchievementBrowseListReady(opts)
+            DrainAchievementBrowsePopulateQueue()
+            return
+        end
+        if drawGen and state._achPopulateGen and state._achPopulateGen ~= drawGen then
+            _populateAchievementBrowseBusy = false
+            InvokeAchievementBrowseListReady(opts)
+            DrainAchievementBrowsePopulateQueue()
+            return
+        end
+        if drawGen and state._collectionsSubTabGen and opts.collectionsSubTabGen and state._collectionsSubTabGen ~= opts.collectionsSubTabGen then
+            _populateAchievementBrowseBusy = false
+            InvokeAchievementBrowseListReady(opts)
+            DrainAchievementBrowsePopulateQueue()
+            return
+        end
+        if drawGen and opts.plansCategoryGen and state._plansCategoryGen and state._plansCategoryGen ~= opts.plansCategoryGen then
+            _populateAchievementBrowseBusy = false
+            InvokeAchievementBrowseListReady(opts)
+            DrainAchievementBrowsePopulateQueue()
+            return
+        end
+
+        local built = 0
+        while flatHeaderIdx <= #flatList and built < ACHIEVEMENT_HEADER_CHUNK do
+            while flatHeaderIdx <= #flatList and flatList[flatHeaderIdx].type ~= "header" do
+                flatHeaderIdx = flatHeaderIdx + 1
+            end
+            if flatHeaderIdx > #flatList then
+                break
+            end
+            local it = flatList[flatHeaderIdx]
+            flatHeaderIdx = flatHeaderIdx + 1
             local key = it.key
             local indentPx = it.indent or 0
             local indentLevel = (indentPx > 0 and math.floor(indentPx / achBaseIndent)) or 0
@@ -454,7 +584,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 headerHeight = COLLAPSE_H_COLL,
                 hideOnCollapse = true,
                 applyToggleBeforeCollapseAnimate = true,
-                -- Defer marking collapsed until tween ends — virtual rows stay until animation completes (large sections).
                 persistFn = function(exp)
                     if exp then
                         collapsedHeaders[key] = false
@@ -495,46 +624,25 @@ function ns.UI_AchievementBrowse_Populate(opts)
             achSectionWraps[key] = sectionWrap
             achHeaderKeys[#achHeaderKeys + 1] = key
             achSiblingTailByParent[parentToken] = sectionWrap
+            built = built + 1
         end
-    end
 
-    ReflowAchievementSectionHeights()
+        if built > 0 then
+            refreshVisibleInternal()
+        end
 
-    state._achFlatList = flatList
-    state._achFlatListTotalHeight = totalHeight
-    state._achListWidth = listWidth
-    state._achListSelectedID = selectedAchievementID
-    state._achListOnSelect = onSelectAchievement
-    state._achListCollapsedHeaders = collapsedHeaders
-    state._achListContentFrame = cf
-    state._achListRedrawFn = redraw
-    state._achListRefreshVisible = refreshVisibleInternal
-
-    local scrollFrame = state.achievementListScrollFrame
-    if scrollFrame then
-        if state._achUseOuterScroll then
-            state._achOuterScrollActive = true
-            ns._plansAchOuterVirtualState = state
-            if scrollFrame.HookScript and not ns._plansAchOuterScrollHooked then
-                ns._plansAchOuterScrollHooked = true
-                scrollFrame:HookScript("OnVerticalScroll", function()
-                    local st = ns._plansAchOuterVirtualState
-                    if st and st._achOuterScrollActive and st._achListRefreshVisible then
-                        st._achListRefreshVisible()
-                    end
-                end)
+        if hasRemainingAchievementHeaders() then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, pumpAchievementHeaders)
+            else
+                pumpAchievementHeaders()
             end
-        else
-            scrollFrame:SetScript("OnVerticalScroll", function()
-                refreshVisibleInternal()
-            end)
+            return
         end
+        finishAchievementBrowsePopulate()
     end
-    refreshVisibleInternal()
-    if type(scheduleVisibleSync) == "function" then
-        scheduleVisibleSync(refreshVisibleInternal)
-    end
-    _populateAchievementBrowseBusy = false
+
+    pumpAchievementHeaders()
 end
 
 function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)

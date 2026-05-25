@@ -40,6 +40,19 @@ local function IsTryCounterLootDebugEnabled()
     return profile and profile.debugMode == true and profile.debugTryCounterLoot == true or false
 end
 
+--- Cache/scan/tooltip tier: debugMode + debugVerbose (Settings → Debug Verbose).
+local function IsUserDebugTraceActive()
+    return IsDebugVerboseEnabled()
+end
+
+--- Module diagnostics tier: verbose OR trace window visible (/wn profiler trace).
+local function IsModuleDebugTraceActive()
+    if not IsDebugModeEnabled() then return false end
+    if IsDebugVerboseEnabled() then return true end
+    local P = ns.Profiler
+    return P and P.IsUserTraceWindowShown and P:IsUserTraceWindowShown() or false
+end
+
 ---Create a module-scoped debug printer with optional policy flags.
 ---@param prefix string|nil Optional prefix printed before message args
 ---@param options table|nil { verboseOnly=boolean, suppressWhenTryCounterLoot=boolean }
@@ -52,9 +65,9 @@ local function CreateDebugPrinter(prefix, options)
     return function(...)
         if suppressWhenTryCounterLoot and IsTryCounterLootDebugEnabled() then return end
         if verboseOnly then
-            if not IsDebugVerboseEnabled() then return end
+            if not IsUserDebugTraceActive() then return end
         else
-            if not IsDebugModeEnabled() then return end
+            if not IsModuleDebugTraceActive() then return end
         end
 
         local n = select("#", ...)
@@ -71,11 +84,10 @@ local function CreateDebugPrinter(prefix, options)
     end
 end
 
---- Print debug message (only if debug mode enabled).
---- Use this as the default logging path.
+--- Print debug message (debugMode + debugVerbose — cache/scan tier; trace buffer only).
 ---@param ... any Messages to print
 local function DebugPrint(...)
-    if not IsDebugModeEnabled() then return end
+    if not IsUserDebugTraceActive() then return end
     local n = select("#", ...)
     local parts = {}
     for i = 1, n do
@@ -84,10 +96,10 @@ local function DebugPrint(...)
     EmitDebugTraceLine(tconcat(parts, " "))
 end
 
---- Print debug message (only if debugMode + debugVerbose enabled).
+--- Alias of DebugPrint (verbose cache/scan/tooltip tier).
 ---@param ... any Messages to print
 local function DebugVerbosePrint(...)
-    if not IsDebugVerboseEnabled() then return end
+    if not IsUserDebugTraceActive() then return end
     local n = select("#", ...)
     local parts = {}
     for i = 1, n do
@@ -117,6 +129,8 @@ ns.DebugChatPrint = DebugChatPrint
 ns.IsDebugModeEnabled = IsDebugModeEnabled
 ns.IsDebugVerboseEnabled = IsDebugVerboseEnabled
 ns.IsTryCounterLootDebugEnabled = IsTryCounterLootDebugEnabled
+ns.IsUserDebugTraceActive = IsUserDebugTraceActive
+ns.IsModuleDebugTraceActive = IsModuleDebugTraceActive
 ns.CreateDebugPrinter = CreateDebugPrinter
 
 return {
@@ -126,5 +140,7 @@ return {
     IsDebugModeEnabled = IsDebugModeEnabled,
     IsDebugVerboseEnabled = IsDebugVerboseEnabled,
     IsTryCounterLootDebugEnabled = IsTryCounterLootDebugEnabled,
+    IsUserDebugTraceActive = IsUserDebugTraceActive,
+    IsModuleDebugTraceActive = IsModuleDebugTraceActive,
     CreateDebugPrinter = CreateDebugPrinter,
 }

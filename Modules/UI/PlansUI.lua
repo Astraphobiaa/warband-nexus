@@ -43,6 +43,7 @@ local expandedPlans = {}
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
+local ReleasePooledRowsInSubtree = ns.UI_ReleasePooledRowsInSubtree
 
 -- Services
 local SearchStateManager = ns.SearchStateManager
@@ -286,6 +287,246 @@ local function NormalizeCheckButtonChecked(button)
     return v == true or v == 1
 end
 
+--- Sync session category key (To-Do browse subtabs).
+local function ResolvePlansCategoryFromSession()
+    local validCat = {}
+    for i = 1, #CATEGORIES do
+        validCat[CATEGORIES[i].key] = true
+    end
+    local sc = ns._sessionPlansCategory
+    if sc and validCat[sc] then
+        currentCategory = sc
+    else
+        currentCategory = "active"
+    end
+    return currentCategory
+end
+
+--- Update category bar active styling without rebuilding fixed header (sub-tab perf).
+local function ApplyPlansCategoryBarActive(categoryBar, activeKey)
+    if not categoryBar or not categoryBar.buttons then return end
+    local acc = COLORS.accent
+    for k, btn in pairs(categoryBar.buttons) do
+        local isActive = (k == activeKey)
+        btn._active = isActive
+        if btn.activeBar then btn.activeBar:SetAlpha(isActive and 1 or 0) end
+        if ApplyVisuals then
+            if isActive then
+                ApplyVisuals(btn, { acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1 }, { acc[1], acc[2], acc[3], 1 })
+            else
+                ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
+            end
+        end
+        if btn._text then
+            if isActive then
+                btn._text:SetTextColor(1, 1, 1)
+                local font, size = btn._text:GetFont()
+                if font and size then btn._text:SetFont(font, size, "OUTLINE") end
+            else
+                btn._text:SetTextColor(0.7, 0.7, 0.7)
+                local font, size = btn._text:GetFont()
+                if font and size then btn._text:SetFont(font, size, "") end
+            end
+        end
+    end
+end
+
+local function CollectScrollChildFrames(parent)
+    if not parent or not parent.GetChildren then return {} end
+    return { parent:GetChildren() }
+end
+
+--- Stop Plans achievement virtual list (outer-scroll hook + visible row pool) before browse category switch.
+local function TeardownPlansAchievementBrowse(host)
+    if not host then return end
+    local st = host._plansAchBrowseState
+    if st then
+        st._achPopulateGen = -1
+        st._plansCategoryGen = -1
+        st._achOuterScrollActive = false
+        st._achListRefreshVisible = nil
+        if ns._plansAchOuterVirtualState == st then
+            ns._plansAchOuterVirtualState = nil
+        end
+        local rowPool = host._plansAchBrowseRowPool
+        local visible = st._achVisibleRowFrames
+        if visible then
+            if not rowPool then
+                rowPool = {}
+                host._plansAchBrowseRowPool = rowPool
+            end
+            for vi = 1, #visible do
+                local v = visible[vi]
+                if v and v.frame then
+                    v.frame:Hide()
+                    v.frame:ClearAllPoints()
+                    rowPool[#rowPool + 1] = v.frame
+                end
+            end
+            st._achVisibleRowFrames = {}
+        end
+        if st._plansAchInnerScroll then
+            st._plansAchInnerScroll:Hide()
+            if st._plansAchInnerScroll.SetScrollChild then
+                st._plansAchInnerScroll:SetScrollChild(nil)
+            end
+        end
+        host._plansAchBrowseState = nil
+    end
+    if host.plansAchBrowseRoot then
+        host.plansAchBrowseRoot:Hide()
+        host.plansAchBrowseRoot:ClearAllPoints()
+    end
+end
+
+local function TeardownPlansScrollChildBrowseArtifacts(scrollChild)
+    if not scrollChild then return end
+    if ns.UI_AchievementBrowse_ResetPopulateBusy then
+        ns.UI_AchievementBrowse_ResetPopulateBusy()
+    end
+    TeardownPlansAchievementBrowse(scrollChild)
+    local children = CollectScrollChildFrames(scrollChild)
+    for i = 1, #children do
+        local child = children[i]
+        if child and child ~= scrollChild.emptyStateContainer then
+            TeardownPlansAchievementBrowse(child)
+        end
+    end
+    ns._plansAchOuterVirtualState = nil
+end
+
+--- Coalesce achievement virtual-row refresh after Plans browse layout (outer scroll metrics).
+local function SchedulePlansVisibleSync(refreshFn)
+    if type(refreshFn) ~= "function" then return end
+    C_Timer.After(0, function()
+        if currentCategory ~= "achievement" then return end
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return end
+        refreshFn()
+    end)
+    C_Timer.After(0.05, function()
+        if currentCategory ~= "achievement" then return end
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return end
+        refreshFn()
+    end)
+end
+
+local function ReleasePlansScrollBody(parent)
+    if not parent then return end
+    TeardownPlansScrollChildBrowseArtifacts(parent)
+    if HideEmptyStateCard then
+        HideEmptyStateCard(parent, "plans")
+    end
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    local recycleBin = ns.UI_RecycleBin
+    local children = CollectScrollChildFrames(parent)
+    for i = 1, #children do
+        local child = children[i]
+        if child and child ~= parent.emptyStateContainer then
+            if ReleasePooledRowsInSubtree then
+                ReleasePooledRowsInSubtree(child)
+            end
+        end
+    end
+    for i = 1, #children do
+        local child = children[i]
+        if child and child ~= parent.emptyStateContainer then
+            child:Hide()
+            child:ClearAllPoints()
+            if recycleBin then
+                child:SetParent(recycleBin)
+            end
+        end
+    end
+    parent._plansCardLayoutManager = nil
+    parent._plansBrowseLayoutManager = nil
+    parent.plansAchBrowseRoot = nil
+    parent._plansAchBrowseState = nil
+    parent._plansAchBrowseRowPool = nil
+    ns._plansAchPopulateGen = (ns._plansAchPopulateGen or 0) + 1
+    ns._plansBrowsePaintGen = (ns._plansBrowsePaintGen or 0) + 1
+end
+
+ns.TeardownPlansScrollChildBrowseArtifacts = TeardownPlansScrollChildBrowseArtifacts
+
+--- Partial To-Do refresh: category bar + scroll body only (no full PopulateContent).
+function WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, toCat)
+    local mf = self.UI and self.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return false end
+    if not (self.db and self.db.profile and self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false) then
+        return false
+    end
+    local parent = mf.scrollChild
+    if not parent or not mf._plansCategoryBar then return false end
+
+    ResolvePlansCategoryFromSession()
+    toCat = toCat or currentCategory
+    fromCat = fromCat or toCat
+    ApplyPlansCategoryBarActive(mf._plansCategoryBar, currentCategory)
+
+    local plannedLocked = (currentCategory == "active" or currentCategory == "daily_tasks")
+    if mf._plansPlannedCheckbox then
+        mf._plansPlannedCheckbox:SetAlpha(plannedLocked and 0.42 or 1)
+        mf._plansPlannedCheckbox:EnableMouse(not plannedLocked)
+    end
+    if mf._plansPlannedLabel then
+        mf._plansPlannedLabel:SetAlpha(plannedLocked and 0.42 or 1)
+    end
+
+    -- To-Do List needs the scroll search bar (fixed header only on first DrawPlansTab).
+    if currentCategory == "active" then
+        if self.SendMessage then
+            self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+        end
+        return true
+    end
+
+    local perfOn = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()
+    local wallStart = perfOn and GetTime() or nil
+    if perfOn then
+        debugprofilestart()
+    end
+
+    ReleasePlansScrollBody(parent)
+
+    if mf.scroll and mf.scroll.SetVerticalScroll then
+        mf.scroll:SetVerticalScroll(0)
+    end
+
+    local width = mf._plansContentWidth
+        or (ns.UI_ResolveMainTabContentWidth and ns.UI_ResolveMainTabContentWidth(mf, parent))
+        or (parent:GetWidth() or 600)
+    local yOffset = mf._plansScrollBodyStartY or ((ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8)
+
+    if currentCategory == "daily_tasks" then
+        yOffset = self:DrawActivePlans(parent, yOffset, width, currentCategory)
+    else
+        yOffset = self:DrawBrowser(parent, yOffset, width, currentCategory)
+    end
+
+    parent:SetHeight(math.max((yOffset or 0) + 20, 1))
+    if ns.UI_EnsureMainScrollLayout then
+        ns.UI_EnsureMainScrollLayout()
+    elseif mf.scroll and UpdateScrollLayout then
+        UpdateScrollLayout(mf)
+    end
+    if perfOn and ns.EmitPartialTabRefreshPerf then
+        local bodyMs = debugprofilestop()
+        ns.EmitPartialTabRefreshPerf("plans", fromCat, toCat, bodyMs, wallStart)
+    end
+    return true
+end
+
+ns.RefreshPlansCategoryBodyOnly = function()
+    if WarbandNexus and WarbandNexus.RefreshPlansCategoryBodyOnly then
+        return WarbandNexus:RefreshPlansCategoryBodyOnly()
+    end
+    return false
+end
+
 --- Browse subtabs only: merge collected + uncollected using isPlanned and the two checkboxes.
 --- To-Do List / Weekly Progress do not use this — they filter plans in DrawActivePlans (Show Completed only).
 local function ClearPlanReminderForBrowseItem(addon, category, itemID)
@@ -524,18 +765,7 @@ function WarbandNexus:DrawPlansTab(parent)
     HideEmptyStateCard(parent, "plans")
 
     -- Default: To-Do List ("active"). Same session: remember last category until /reload.
-    do
-        local validCat = {}
-        for i = 1, #CATEGORIES do
-            validCat[CATEGORIES[i].key] = true
-        end
-        local sc = ns._sessionPlansCategory
-        if sc and validCat[sc] then
-            currentCategory = sc
-        else
-            currentCategory = "active"
-        end
-    end
+    ResolvePlansCategoryFromSession()
 
     if currentCategory ~= "achievement" then
         ns._plansAchOuterVirtualState = nil
@@ -786,6 +1016,11 @@ function WarbandNexus:DrawPlansTab(parent)
             end
             ApplyPlannedBrowseLockVisuals()
 
+            if mf then
+                mf._plansPlannedCheckbox = plannedCheckbox
+                mf._plansPlannedLabel = plannedLabel
+            end
+
             local origPlannedOnClick = nil
             if plannedCheckbox.GetScript then
                 local ok2, res2 = pcall(function() return plannedCheckbox:GetScript("OnClick") end)
@@ -942,6 +1177,7 @@ function WarbandNexus:DrawPlansTab(parent)
     
     local currentX = 0
     local currentRow = 0
+    local categoryButtons = {}
     
     for i = 1, #CATEGORIES do
         local cat = CATEGORIES[i]
@@ -1020,6 +1256,7 @@ function WarbandNexus:DrawPlansTab(parent)
         label:SetJustifyH("LEFT")
         label:SetWordWrap(false)
         btn._text = label
+        categoryButtons[cat.key] = btn
         if isActive then
             label:SetTextColor(1, 1, 1)
             local font, size = label:GetFont()
@@ -1032,14 +1269,20 @@ function WarbandNexus:DrawPlansTab(parent)
 
         btn:SetScript("OnClick", function()
             if currentCategory == cat.key then return end
+            local fromCat = currentCategory
             currentCategory = cat.key
             ns._sessionPlansCategory = cat.key
             searchText = ""
-            
-            -- Defer UI refresh to next frame to prevent button freeze
-            C_Timer.After(0.05, function()
-                if not WarbandNexus or not WarbandNexus.SendMessage then return end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+            ns._plansCategoryBodyGen = (ns._plansCategoryBodyGen or 0) + 1
+            local bodyGen = ns._plansCategoryBodyGen
+            C_Timer.After(0, function()
+                if not WarbandNexus then return end
+                if ns._plansCategoryBodyGen ~= bodyGen then return end
+                if not (WarbandNexus.RefreshPlansCategoryBodyOnly and WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, cat.key)) then
+                    if WarbandNexus.SendMessage then
+                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+                    end
+                end
             end)
         end)
         
@@ -1052,6 +1295,10 @@ function WarbandNexus:DrawPlansTab(parent)
     -- Example: 2 rows = 2 * 40px + 1 * 8px = 88px (not 96px!)
     local totalHeight = (currentRow + 1) * catBtnHeight + currentRow * catBtnSpacing
     categoryBar:SetHeight(totalHeight)
+    categoryBar.buttons = categoryButtons
+    if mf then
+        mf._plansCategoryBar = categoryBar
+    end
     
     local blockGap = (metrics and metrics.blockGap) or (GetLayout().TAB_CHROME_BLOCK_GAP) or (GetLayout().afterElement) or 8
     headerYOffset = headerYOffset + totalHeight + blockGap
@@ -1060,6 +1307,11 @@ function WarbandNexus:DrawPlansTab(parent)
         ns.UI_CommitTabFixedHeader(mf, headerYOffset)
     elseif fixedHeader then
         fixedHeader:SetHeight(headerYOffset)
+    end
+
+    if mf then
+        mf._plansScrollBodyStartY = scrollTopY
+        mf._plansContentWidth = width
     end
 
     local yOffset = scrollTopY
@@ -1836,6 +2088,13 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 end
 
 function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
+    if HideEmptyStateCard then
+        HideEmptyStateCard(parent, "plans")
+    end
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+
     local plans
     if category == "daily_tasks" then
         plans = {}
@@ -2337,6 +2596,12 @@ end
 
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     parent._plansCardLayoutManager = nil
+    if HideEmptyStateCard then
+        HideEmptyStateCard(parent, "plans")
+    end
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
 
     -- Use SharedWidgets search bar (like Items tab)
     -- Create results container that can be refreshed independently
@@ -2768,7 +3033,14 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         return row
     end
 
-    ns.UI_AchievementBrowse_Populate({
+    SearchStateManager:UpdateResults("plans_achievement", #results)
+
+    ns._plansAchPopulateGen = (ns._plansAchPopulateGen or 0) + 1
+    local popGen = ns._plansAchPopulateGen
+    local catBodyGen = ns._plansCategoryBodyGen or 0
+    st._achPopulateGen = popGen
+    st._plansCategoryGen = catBodyGen
+    local populateOpts = {
         state = st,
         scrollChild = scrollChild,
         listWidth = listInnerW,
@@ -2781,16 +3053,26 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         redrawFn = nil,
         acquireRow = acquireRow,
         releaseRowFrame = releaseRowFrame,
-        scheduleVisibleSync = nil,
+        scheduleVisibleSync = SchedulePlansVisibleSync,
         rowHeightScale = achRowScale,
-    })
+        drawGen = popGen,
+        plansCategoryGen = catBodyGen,
+    }
 
+    ns.UI_AchievementBrowse_Populate(populateOpts)
     if Factory.UpdateScrollBarVisibility and scrollFrame and not st._achUseOuterScroll then
         Factory:UpdateScrollBarVisibility(scrollFrame)
     end
+    local totalHNow = st._achFlatListTotalHeight or totalPrev or 1
+    rootFrame:SetHeight(math.max(1, totalHNow))
+    if parent.SetHeight then
+        parent:SetHeight(math.max(1, (yOffset or 0) + totalHNow + innerPad))
+    end
+    if ns.UI_EnsureMainScrollLayout then
+        ns.UI_EnsureMainScrollLayout()
+    end
 
-    SearchStateManager:UpdateResults("plans_achievement", #results)
-    local totalH = st._achFlatListTotalHeight or 1
+    local totalH = totalHNow
     rootFrame:SetHeight(math.max(1, totalH))
     return (yOffset or 0) + totalH + innerPad
 end
@@ -2802,6 +3084,7 @@ end
 
 -- Phase 4.4: Performance limit for browse results rendering
 local MAX_BROWSE_RESULTS = 100
+local PLANS_BROWSE_CARD_CHUNK = 8
 -- Collected fetch for Plans browse: Show Completed filters collected rows by isPlanned. A low cap (e.g. 50)
 -- leaves tabs empty when the user's planned-completed entries are not among the first N collected (Achievements already used 99999).
 local COLLECTED_BROWSE_FETCH_LIMIT = 99999
@@ -2809,6 +3092,59 @@ local COLLECTED_BROWSE_FETCH_LIMIT = 99999
 local PLANS_BROWSE_STORE_CATEGORIES = {
     mount = true, pet = true, toy = true, illusion = true, title = true,
 }
+
+local function RunChunkedPlansBrowseCardPaint(opts)
+    local addon = opts.addon
+    local parent = opts.parent
+    local layoutManager = opts.layoutManager
+    local results = opts.results
+    local resultsToRender = opts.resultsToRender
+    local category = opts.category
+    local cardWidth = opts.cardWidth
+    local todoHeaderH = opts.todoHeaderH
+    local PCM = opts.PCM
+    local browseExpanded = opts.browseExpanded
+    local browserTryTypes = opts.browserTryTypes
+    local drawGen = opts.drawGen
+    local baseYOffset = opts.yOffset or 0
+    if not addon or not parent or not layoutManager or not results then return end
+
+    local idx = 1
+    local function pump()
+        if ns._plansBrowsePaintGen ~= drawGen then return end
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return end
+        if not parent:GetParent() then return end
+
+        local limit = math.min(idx + PLANS_BROWSE_CARD_CHUNK - 1, resultsToRender)
+        for i = idx, limit do
+            local item = results[i]
+            item.category = category
+            addon:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, category, i, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
+        end
+        idx = limit + 1
+
+        if idx <= resultsToRender then
+            C_Timer.After(0, pump)
+            return
+        end
+
+        ReflowPlansCardLayout(layoutManager)
+        if ns.UI_SyncPlansScrollContentHeight then
+            ns.UI_SyncPlansScrollContentHeight(parent)
+        end
+        local yOff = CardLayoutManager and CardLayoutManager:GetFinalYOffset(layoutManager) or baseYOffset
+        local totalH = yOff + 10
+        if parent.SetHeight then
+            parent:SetHeight(math.max(totalH, 1))
+        end
+        if ns.UI_EnsureMainScrollLayout then
+            ns.UI_EnsureMainScrollLayout()
+        end
+    end
+
+    C_Timer.After(0, pump)
+end
 
 --- One EnsureCollectionData request per browse category until scan completes (stops PopulateContent loops).
 ns._plansBrowseCollectionEnsurePending = ns._plansBrowseCollectionEnsurePending or {}
@@ -3152,9 +3488,10 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
 end
 
 function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searchText)
-    ns._plansAchOuterVirtualState = nil
-
-    local scrollChildLayout = parent and parent:GetParent()
+    if category ~= "achievement" then
+        TeardownPlansAchievementBrowse(parent)
+        ns._plansAchOuterVirtualState = nil
+    end
 
     -- Same path as search refresh: repool/recycle children so achievement section rebuild is clean.
     if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer and parent then
@@ -3167,14 +3504,6 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 child:Hide()
             end
         end
-    end
-
-    if scrollChildLayout and category ~= "achievement" and parent._plansAchBrowseState then
-        parent._plansAchBrowseState._achOuterScrollActive = false
-    end
-
-    if parent and parent.plansAchBrowseRoot and category ~= "achievement" then
-        parent.plansAchBrowseRoot:Hide()
     end
 
     local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
@@ -3495,17 +3824,26 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         yOffset = yOffset + 24
     end
 
-    for i = 1, resultsToRender do
-        local item = results[i]
-        item.category = category
-        self:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, category, i, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
-    end
+    ns._plansBrowsePaintGen = (ns._plansBrowsePaintGen or 0) + 1
+    local drawGen = ns._plansBrowsePaintGen
+    RunChunkedPlansBrowseCardPaint({
+        addon = self,
+        parent = parent,
+        layoutManager = layoutManager,
+        results = results,
+        resultsToRender = resultsToRender,
+        category = category,
+        cardWidth = cardWidth,
+        todoHeaderH = todoHeaderH,
+        PCM = PCM,
+        browseExpanded = browseExpanded,
+        browserTryTypes = browserTryTypes,
+        drawGen = drawGen,
+        yOffset = yOffset,
+    })
 
-    ReflowPlansCardLayout(layoutManager)
-    if ns.UI_SyncPlansScrollContentHeight then
-        ns.UI_SyncPlansScrollContentHeight(parent)
-    end
-    yOffset = CardLayoutManager and CardLayoutManager:GetFinalYOffset(layoutManager) or yOffset
+    local estRows = math.ceil(resultsToRender / 2)
+    yOffset = yOffset + estRows * (todoHeaderH + cardSpacing) + 10
 
     local searchId = "plans_" .. (category or "unknown"):lower()
     SearchStateManager:UpdateResults(searchId, #results)

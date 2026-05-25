@@ -19,6 +19,7 @@ local DebugService = {}
 ns.DebugService = DebugService
 local IsDebugModeEnabled = ns.IsDebugModeEnabled or function() return false end
 local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled or function() return false end
+local IsModuleDebugTraceActive = ns.IsModuleDebugTraceActive or function() return false end
 
 --============================================================================
 -- DEBUG LOGGING
@@ -34,6 +35,7 @@ local DEBUG_VERBOSE_PREFIXES = {
     ["[Recharge Timer]"] = true,
     ["[Knowledge]"] = true,
     ["TryCounter:"] = true,
+    ["[DailyQuest]"] = true,
 }
 
 --- Print debug message if debug mode is enabled in profile.
@@ -43,11 +45,17 @@ local DEBUG_VERBOSE_PREFIXES = {
 function DebugService:Debug(addon, message)
     if not IsDebugModeEnabled() then return end
     local msg = tostring(message)
+    local needsVerbose = false
     for prefix in pairs(DEBUG_VERBOSE_PREFIXES) do
         if msg:find(prefix, 1, true) then
-            if not IsDebugVerboseEnabled() then return end
+            needsVerbose = true
             break
         end
+    end
+    if needsVerbose then
+        if not IsDebugVerboseEnabled() then return end
+    elseif not IsModuleDebugTraceActive() then
+        return
     end
     local line = "[DEBUG] " .. msg
     local P = ns.Profiler

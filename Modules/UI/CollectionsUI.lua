@@ -91,6 +91,10 @@ end
 function WarbandNexus:DrawCollectionsTab(parent)
     M.RefreshCollectionsLayout()
     M.ApplySessionCollectionsSubTab()
+    M.state._collectionsSubTabRedrawScheduled = nil
+    if M.ClearCollectionsDrawBusyFlags then
+        M.ClearCollectionsDrawBusyFlags()
+    end
 
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
@@ -219,6 +223,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 end
                 return
             end
+            local fromSub = M.state.currentSubTab
             M.state.currentSubTab = tabKey
             ns._sessionCollectionsSubTab = tabKey
             if M.state.subTabBar then
@@ -229,21 +234,12 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.state.searchBox:SetText("")
             end
             M.HideAllCollectionsResultFrames()
-            C_Timer.After(0, function()
-                local cf = M.state.contentFrame
-                if not cf or not cf:GetParent() then return end
-                if M.state.currentSubTab == "recent" then
-                    M.DrawRecentContent(cf)
-                elseif M.state.currentSubTab == "mounts" then
-                    M.DrawMountsContent(cf)
-                elseif M.state.currentSubTab == "pets" then
-                    M.DrawPetsContent(cf)
-                elseif M.state.currentSubTab == "toys" then
-                    M.DrawToysContent(cf)
-                elseif M.state.currentSubTab == "achievements" then
-                    M.DrawAchievementsContent(cf)
-                end
-            end)
+            if M.ResetCollectionsListScrollPositions then
+                M.ResetCollectionsListScrollPositions()
+            end
+            local perfOn = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()
+            local wallStart = perfOn and GetTime() or nil
+            M.ScheduleCollectionsSubTabRedraw(fromSub, tabKey, wallStart)
             local hc = M.state._fixedHeaderCache
             if hc and hc.filterRow then
                 if M.state.currentSubTab == "recent" then hc.filterRow:Hide() else hc.filterRow:Show() end
@@ -539,6 +535,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
             M.state._petFlatList = nil
             M.state._lastGroupedToyData = nil
             M.state._toyFlatList = nil
+            M.state._achGroupedCache = nil
         end
 
         local function InvalidateCollectionCachesForType(collectionType)
@@ -555,7 +552,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.state._lastGroupedToyData = nil
                 M.state._toyFlatList = nil
             elseif collectionType == "achievement" then
-                -- Achievements use dedicated lists/detail state; keep mount/pet/toy caches intact.
+                M.state._achGroupedCache = nil
             else
                 InvalidateAllCollectionCaches()
             end

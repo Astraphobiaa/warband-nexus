@@ -918,6 +918,23 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
+L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
+
+新增:
+- 提醒系统中加入世界任务、内容事件和世界事件。
+- 角色标签页显示邮件信息。
+- 可自定义列顺序。
+
+修复:
+- 工具提示缺少物品追踪/计数。
+- To-Do 收藏中成就条件、进度和要求详情的显示问题。
+- 快速访问菜单缺少 PvE 摘要。
+- 重载后角色标签页布局挤压问题。
+- 新增 Stagger + Virtual Page
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
 L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
 
@@ -1796,7 +1813,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.0）。
+午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.1）。
 
 CurseForge: Warband Nexus]=]
 

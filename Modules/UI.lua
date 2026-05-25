@@ -25,13 +25,63 @@ local function ProfileFlagOn(v)
     return v == true or v == 1
 end
 
---- Main-tab perf timings: Debug + Verbose both on (any legacy truthy). `/wn debug` alone does not spam chat.
+--- Main-tab perf timings: debugMode + profilerPersist.tabPerfMonitor, or trace window visible.
 local function IsTabPerfMonitorEnabled()
     local p = WarbandNexus.db and WarbandNexus.db.profile
-    return p and ProfileFlagOn(p.debugMode) and ProfileFlagOn(p.debugVerbose)
+    if not p or not ProfileFlagOn(p.debugMode) then return false end
+    local pp = p.profilerPersist
+    if pp and ProfileFlagOn(pp.tabPerfMonitor) then return true end
+    local P = ns.Profiler
+    return P and P.IsUserTraceWindowShown and P:IsUserTraceWindowShown() or false
 end
 
 ns.IsTabPerfMonitorEnabled = IsTabPerfMonitorEnabled
+
+--- Log partial tab refresh (Items Bank sub-tabs, To-Do categories, Collections sub-tabs) — bypasses PopulateContent.
+function ns.EmitPartialTabRefreshPerf(mainTab, fromKey, toKey, bodyMs, wallStart)
+    if not IsTabPerfMonitorEnabled() then return end
+    if not mainTab or not toKey then return end
+    bodyMs = bodyMs or 0
+    local msg = format(
+        "[WN Perf] %s sub-tab %s → %s | body=%.2fms",
+        tostring(mainTab),
+        tostring(fromKey or "?"),
+        tostring(toKey),
+        bodyMs
+    )
+    local P = ns.Profiler
+    if P and P.AppendUserTraceLine then
+        P:AppendUserTraceLine(msg)
+    elseif DebugPrint then
+        DebugPrint(msg)
+    end
+    if wallStart and C_Timer and C_Timer.After then
+        local settleFrom = fromKey
+        local settleTo = toKey
+        C_Timer.After(0, function()
+            C_Timer.After(0, function()
+                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+                if not mf or mf.currentTab ~= mainTab then return end
+                local settleMs = (GetTime() - wallStart) * 1000
+                local deferredMs = settleMs - bodyMs
+                if deferredMs < 1.5 then return end
+                local settleMsg = format(
+                    "[WN Perf] %s sub-tab %s → %s | settle≈%.2fms (+%.2fms deferred)",
+                    tostring(mainTab),
+                    tostring(settleFrom or "?"),
+                    tostring(settleTo),
+                    settleMs,
+                    deferredMs
+                )
+                if P and P.AppendUserTraceLine then
+                    P:AppendUserTraceLine(settleMsg)
+                elseif DebugPrint then
+                    DebugPrint(settleMsg)
+                end
+            end)
+        end)
+    end
+end
 
 -- Lazy-load FontManager (prevent race conditions)
 local function GetFontManager()
@@ -990,6 +1040,63 @@ function WarbandNexus:ToggleMainWindow()
     end
 end
 
+--- Shell layout before tab body paint (Easy Access / minimap / `/wn` open paths).
+---@param f Frame
+---@param targetTab string|nil
+local function ApplyMainWindowShowChrome(f, targetTab)
+    f._wnMainTabInputGraceUntil = GetTime() + 0.2
+    if f.tabButtons and ns.UI_UpdateMainFrameTabButtonStates then
+        ns.UI_UpdateMainFrameTabButtonStates(f)
+    end
+    f:Show()
+    ApplyMainNavGoldenShellLayout(f)
+    UpdateScrollLayout(f)
+    RefreshFixedHeaderChrome(f)
+    RefreshMainNavLayout(f)
+    if targetTab then
+        ScrollMainNavEnsureTabVisible(f, targetTab)
+    end
+    local LC = ns.UI_LayoutCoordinator
+    if LC and LC.ForceMainFrameMetrics then
+        C_Timer.After(0, function()
+            if f and f:IsShown() then
+                LC:ForceMainFrameMetrics(f, "display_changed")
+            end
+        end)
+    end
+end
+
+--- One-shot collectible tooltip precache after first main-window show this session.
+local function ScheduleMainWindowTooltipPrecache()
+    if ns._wnTooltipPrecacheDone or ns._wnTooltipPrecachePending then return end
+    ns._wnTooltipPrecachePending = true
+    C_Timer.After(1.5, function()
+        ns._wnTooltipPrecachePending = nil
+        if ns._wnTooltipPrecacheDone then return end
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if not mf or not mf:IsShown() then return end
+        ns._wnTooltipPrecacheDone = true
+        if WarbandNexus.Tooltip and WarbandNexus.Tooltip.PreCacheCollectibleItems then
+            WarbandNexus.Tooltip:PreCacheCollectibleItems()
+        end
+    end)
+end
+
+--- Staged PopulateContent (matches nav ActivateMainTab: pool release frame, populate next).
+---@param f Frame
+---@param targetTab string
+local function ScheduleDeferredShowMainPopulate(f, targetTab)
+    f.isMainTabSwitch = true
+    C_Timer.After(0, function()
+        if not f or not f:IsShown() or f.currentTab ~= targetTab then return end
+        C_Timer.After(0, function()
+            if not f or not f:IsShown() or f.currentTab ~= targetTab then return end
+            WarbandNexus:PopulateContent()
+            f.isMainTabSwitch = false
+        end)
+    end)
+end
+
 --- Open main window. Optional tab: Easy Access / scripted shortcuts (chars, pve, …). Nil = first-login chars, else session/lastTab.
 ---@param requestedTabKey string|nil
 function WarbandNexus:ShowMainWindow(requestedTabKey)
@@ -1028,54 +1135,33 @@ function WarbandNexus:ShowMainWindow(requestedTabKey)
     
     -- Store reference for external access (FontManager, etc.)
     self.mainFrame = mainFrame
-    
-    local resolvedTab = ResolveMainWindowOpenTab(requestedTabKey)
-    ApplyMainFrameOpenTab(mainFrame, requestedTabKey, resolvedTab)
-    RememberSessionMainTab(mainFrame.currentTab)
-    mainFrame.isMainTabSwitch = true  -- First open = main tab switch
 
-    -- Show before PopulateContent: while hidden, scroll:GetWidth() is often 0 → blank/black To-Do (and other tabs).
-    -- Same pointer action that opened the window (LDB/minimap) can release over the nav row → spurious tab click.
-    mainFrame._wnMainTabInputGraceUntil = GetTime() + 0.2
-    -- ns export: ShowMainWindow is defined above UpdateTabButtonStates (Lua 5.1 forward-ref).
-    if mainFrame.tabButtons and ns.UI_UpdateMainFrameTabButtonStates then
-        ns.UI_UpdateMainFrameTabButtonStates(mainFrame)
+    local profile = self.db and self.db.profile
+    if profile and ProfileFlagOn(profile.debugMode) and ProfileFlagOn(profile.debugVerbose) and not ns._wnVerboseHintShown then
+        ns._wnVerboseHintShown = true
+        self:Print("|cff888888[WN]|r Debug verbose ON — cache logs go to |cff00ccff/wn profiler trace|r, not chat. |cff00ccff/wn debug verbose off|r or Settings to silence.")
     end
-    mainFrame:Show()
-    ApplyMainNavGoldenShellLayout(mainFrame)
-    UpdateScrollLayout(mainFrame)
-    RefreshFixedHeaderChrome(mainFrame)
-    RefreshMainNavLayout(mainFrame)
-    if mainFrame.currentTab then
-        ScrollMainNavEnsureTabVisible(mainFrame, mainFrame.currentTab)
+
+    local resolvedTab = ResolveMainWindowOpenTab(requestedTabKey)
+    local prevTab = mainFrame.currentTab
+    ApplyMainFrameOpenTab(mainFrame, requestedTabKey, resolvedTab)
+    local targetTab = mainFrame.currentTab
+    RememberSessionMainTab(targetTab)
+
+    -- Tab change: reuse nav staged pool teardown + deferred PopulateContent (Easy Access left-click, minimap shortcuts).
+    if prevTab ~= targetTab and mainFrame.ActivateMainTab then
+        mainFrame.currentTab = prevTab
+        ApplyMainWindowShowChrome(mainFrame, targetTab)
+        mainFrame.ActivateMainTab(targetTab, { persistLastTab = requestedTabKey ~= nil })
+        ScheduleMainWindowTooltipPrecache()
+        NormalizeFramePosition(mainFrame)
+    else
+        -- Same tab or first paint: show shell immediately, defer heavy PopulateContent (WN-PERF first paint).
+        ApplyMainWindowShowChrome(mainFrame, targetTab)
+        ScheduleMainWindowTooltipPrecache()
+        ScheduleDeferredShowMainPopulate(mainFrame, targetTab)
+        NormalizeFramePosition(mainFrame)
     end
-    local LC = ns.UI_LayoutCoordinator
-    if LC and LC.ForceMainFrameMetrics then
-        C_Timer.After(0, function()
-            if mainFrame and mainFrame:IsShown() then
-                LC:ForceMainFrameMetrics(mainFrame, "display_changed")
-            end
-        end)
-    end
-    -- One-shot collectible tooltip precache after the user actually opens the UI (avoids background work on login-only sessions).
-    if not ns._wnTooltipPrecacheDone and not ns._wnTooltipPrecachePending then
-        ns._wnTooltipPrecachePending = true
-        C_Timer.After(1.5, function()
-            ns._wnTooltipPrecachePending = nil
-            if ns._wnTooltipPrecacheDone then return end
-            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-            if not mf or not mf:IsShown() then return end
-            ns._wnTooltipPrecacheDone = true
-            if WarbandNexus.Tooltip and WarbandNexus.Tooltip.PreCacheCollectibleItems then
-                WarbandNexus.Tooltip:PreCacheCollectibleItems()
-            end
-        end)
-    end
-    self:PopulateContent()
-    mainFrame.isMainTabSwitch = false  -- Reset flag
-    -- Ensure frame is always anchored TOPLEFT when visible so drag never "teleports"
-    -- (StartMoving uses current anchor; CENTER would make the window jump to cursor-as-center).
-    NormalizeFramePosition(mainFrame)
 
     -- Loading overlay is standalone — no action needed here
     
@@ -2237,6 +2323,7 @@ function WarbandNexus:CreateMainWindow()
                 gen = tabSwitchGen,
                 fromTab = previousTab,
                 toTab = targetTab,
+                wallStart = GetTime(),
             }
             debugprofilestart()
         else
@@ -3919,6 +4006,10 @@ local function PopulateContentBody(self)
     -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
     
+    if ns.TeardownPlansScrollChildBrowseArtifacts then
+        ns.TeardownPlansScrollChildBrowseArtifacts(scrollChild)
+    end
+
     local wasPreCleared = isTabSwitch and mainFrame._contentPreCleared
     mainFrame._contentPreCleared = nil
 
@@ -4003,7 +4094,8 @@ local function PopulateContentBody(self)
     -- Tab renderers can skip redundant ReleaseAllPooledChildren() calls in this pass.
     scrollChild._preparedByPopulate = true
 
-    _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_drawTab")
+    local tab = mainFrame.currentTab
+    _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_drawTab/" .. tostring(tab))
     -- Draw based on current tab
     local height
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
@@ -4013,7 +4105,6 @@ local function PopulateContentBody(self)
         plans = true, stats = true,
     }
 
-    local tab = mainFrame.currentTab
     -- Dev-only: wall time for scroll-heavy mains (WN-PERF checklist). Complements tab-switch click→populate log + `Pop_drawTab`.
     local drawPerfT0 = (isTracked and IsTabPerfMonitorEnabled() and TAB_DRAW_PERF_TRACE[tab]) and GetTime() or nil
     if not isTracked and trackedOnlyTabs[tab] then
@@ -4041,7 +4132,7 @@ local function PopulateContentBody(self)
     elseif tab == "gear" then
         -- Full-tab loading veil removed: recommendations panel shows its own "Scanning..." state; smoother tab open.
         mainFrame._wnGearPaintShowVeil = false
-        -- Split DB read (frame N) from paperdoll card build (frame N+1) to avoid ~20ms Pop_drawTab spikes (WN-PERF).
+        -- Split DB read (frame N) from paperdoll card build (frame N+1) to cap single-frame Pop_drawTab spikes (WN-PERF).
         if isTabSwitch then
             mainFrame._wnGearSplitPaperDollNext = true
         end
@@ -4078,7 +4169,7 @@ local function PopulateContentBody(self)
     else
         height = self:DrawCharacterList(scrollChild)
     end
-    _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_drawTab")
+    _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_drawTab/" .. tostring(tab))
     -- GetTime() has limited resolution: sub-ms DrawTab often logs as 0.0ms (noise). Only trace meaningful wall time.
     local TRACE_DRAW_TAB_MIN_MS = 3
     if drawPerfT0 then
@@ -4210,19 +4301,49 @@ local function PopulateContentBody(self)
             and mainFrame.currentTab == perf.toTab
         if ok then
             local msPopulate = debugprofilestop()
+            local sumMs = perf.msClickToPoolEnd + msPopulate
             local msg = format(
                 "[WN Perf] main tab %s → %s | click→pool=%.2fms pool→populate=%.2fms sum=%.2fms",
                 tostring(perf.fromTab),
                 tostring(perf.toTab),
                 perf.msClickToPoolEnd,
                 msPopulate,
-                perf.msClickToPoolEnd + msPopulate
+                sumMs
             )
             local P = ns.Profiler
             if P and P.AppendUserTraceLine then
                 P:AppendUserTraceLine(msg)
             elseif DebugPrint then
                 DebugPrint(msg)
+            end
+            -- PopulateContent returns before deferred paint (Gear split paperdoll, Prof/PvE chunk rows, staged pool chain).
+            -- Log wall time ~2 frames later so hitch matches what you feel in-game.
+            local wallStart = perf.wallStart
+            local settleGen = perf.gen
+            local fromTab = perf.fromTab
+            local toTab = perf.toTab
+            if wallStart and C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    C_Timer.After(0, function()
+                        local mf = WarbandNexus.mainFrame
+                        if not mf or mf._tabSwitchGen ~= settleGen or mf.currentTab ~= toTab then return end
+                        local settleMs = (GetTime() - wallStart) * 1000
+                        local deferredMs = settleMs - sumMs
+                        if deferredMs < 1.5 then return end
+                        local settleMsg = format(
+                            "[WN Perf] main tab %s → %s | settle≈%.2fms (+%.2fms after populate — gear/chunk/staged paint)",
+                            tostring(fromTab),
+                            tostring(toTab),
+                            settleMs,
+                            deferredMs
+                        )
+                        if P and P.AppendUserTraceLine then
+                            P:AppendUserTraceLine(settleMsg)
+                        elseif DebugPrint then
+                            DebugPrint(settleMsg)
+                        end
+                    end)
+                end)
             end
         else
             debugprofilestop()
@@ -4240,7 +4361,7 @@ local function PopulateContentBody(self)
         local wallMs = (GetTime() - populateWallStart) * 1000
         if wallMs > 400 then
             DebugPrint(format(
-                "[WN UI] PopulateContent slow: %.0fms tab=%s (/wn profiler on | trace: Pop_* + DrawTab lines with /wn debug + verbose)",
+                "[WN UI] PopulateContent slow: %.0fms tab=%s (/wn profiler on | trace: Pop_* + DrawTab with /wn profiler tabperf on)",
                 wallMs,
                 tostring(mainFrame.currentTab)
             ))

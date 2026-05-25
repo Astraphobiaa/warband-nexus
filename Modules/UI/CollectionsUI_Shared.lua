@@ -192,7 +192,9 @@ function M.RequestCollectionFillFromUI()
     end
 end
 -- Process this many mounts/pets per frame to avoid 1s freeze (spread over multiple frames).
-local RUN_CHUNK_SIZE = 100
+local RUN_CHUNK_SIZE = 40
+--- Collapsible category headers per frame (Achievements / Toys browse trees).
+local COLLECTIONS_HEADER_CHUNK = 4
 -- Same row/header dimensions for all three sub-tabs (Mounts, Pets, Achievements); matches SharedWidgets/UI_SPACING
 local ROW_HEIGHT = math.floor(32 * 1.05 * 1.25 + 0.5)
 local ROW_GAP = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (ns.UI_LAYOUT and ns.UI_LAYOUT.dataRowGap) or 4
@@ -426,11 +428,110 @@ function M.ResolveCollectionsViewportHeight(contentFrame, mainFrame)
     return (parent and parent:GetHeight() and (parent:GetHeight() - 200)) or 400
 end
 
----Bump draw generations so RunChunked* callbacks exit (tab switch / AbortTabOperations).
+--- Clear per-sub-tab draw locks left behind when async populate is aborted mid-flight.
+function M.CollectionsDrawRetryAllowed(contentFrame, subTabKey)
+    if M.state.currentSubTab ~= subTabKey then
+        return false
+    end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and (not mf:IsShown() or mf.currentTab ~= "collections") then
+        return false
+    end
+    if not contentFrame or not contentFrame:GetParent() then
+        return false
+    end
+    if contentFrame.IsVisible and not contentFrame:IsVisible() then
+        return false
+    end
+    return true
+end
+
+function M.ClearCollectionsDrawBusyFlags()
+    M.state._drawMountsContentBusy = nil
+    M.state._drawPetsContentBusy = nil
+    M.state._drawToysContentBusy = nil
+    M.state._drawAchievementsContentBusy = nil
+    if ns.UI_AchievementBrowse_ResetPopulateBusy then
+        ns.UI_AchievementBrowse_ResetPopulateBusy()
+    end
+end
+
+--- Bump draw generations so RunChunked* callbacks exit (tab switch / AbortTabOperations).
 function WarbandNexus:AbortCollectionsChunkedBuilds()
     M.state._mountsDrawGen = (M.state._mountsDrawGen or 0) + 1
     M.state._petDrawGen = (M.state._petDrawGen or 0) + 1
     M.state._toysDrawGen = (M.state._toysDrawGen or 0) + 1
+    M.state._achPopulateGen = (M.state._achPopulateGen or 0) + 1
+    M.ClearCollectionsDrawBusyFlags()
+end
+
+local function DrawActiveCollectionsSubTab(contentFrame)
+    if not contentFrame or not contentFrame:GetParent() then
+        return
+    end
+    local sub = M.state.currentSubTab
+    if sub == "recent" then
+        M.DrawRecentContent(contentFrame)
+    elseif sub == "mounts" then
+        M.DrawMountsContent(contentFrame)
+    elseif sub == "pets" then
+        M.DrawPetsContent(contentFrame)
+    elseif sub == "toys" then
+        M.DrawToysContent(contentFrame)
+    elseif sub == "achievements" then
+        M.DrawAchievementsContent(contentFrame)
+    end
+end
+
+--- Coalesce rapid Collections sub-tab clicks into one redraw (avoids empty body after aborted chunk pumps).
+function M.ScheduleCollectionsSubTabRedraw(fromSub, toSub, perfWallStart)
+    M.state._collectionsSubTabGen = (M.state._collectionsSubTabGen or 0) + 1
+    if WarbandNexus.AbortCollectionsChunkedBuilds then
+        WarbandNexus:AbortCollectionsChunkedBuilds()
+    else
+        M.ClearCollectionsDrawBusyFlags()
+    end
+    M.state._collectionsSubTabRedrawFrom = fromSub
+    M.state._collectionsSubTabRedrawTo = toSub
+    M.state._collectionsSubTabRedrawPerfStart = perfWallStart
+
+    local cf = M.state.contentFrame
+    if not (C_Timer and C_Timer.After) then
+        if cf then
+            DrawActiveCollectionsSubTab(cf)
+        end
+        return
+    end
+    if M.state._collectionsSubTabRedrawScheduled then
+        return
+    end
+    M.state._collectionsSubTabRedrawScheduled = true
+    C_Timer.After(0, function()
+        M.state._collectionsSubTabRedrawScheduled = nil
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mf and (not mf:IsShown() or mf.currentTab ~= "collections") then
+            return
+        end
+        local contentFrame = M.state.contentFrame
+        if not contentFrame or not contentFrame:GetParent() then
+            return
+        end
+        local perfOn = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()
+        if perfOn then
+            debugprofilestart()
+        end
+        DrawActiveCollectionsSubTab(contentFrame)
+        if perfOn and ns.EmitPartialTabRefreshPerf then
+            local bodyMs = debugprofilestop()
+            ns.EmitPartialTabRefreshPerf(
+                "collections",
+                M.state._collectionsSubTabRedrawFrom,
+                M.state._collectionsSubTabRedrawTo,
+                bodyMs,
+                M.state._collectionsSubTabRedrawPerfStart
+            )
+        end
+    end)
 end
 
 local _populateMountListBusy = false
@@ -498,6 +599,7 @@ M.SCROLLBAR_GAP = SCROLLBAR_GAP
 M.SCROLLBAR_SIDE_GAP = SCROLLBAR_SIDE_GAP
 M.COLLECTION_HEAVY_DELAY = COLLECTION_HEAVY_DELAY
 M.RUN_CHUNK_SIZE = RUN_CHUNK_SIZE
+M.COLLECTIONS_HEADER_CHUNK = COLLECTIONS_HEADER_CHUNK
 M.ROW_HEIGHT = ROW_HEIGHT
 M.ROW_GAP = ROW_GAP
 M.ROW_STRIDE = ROW_STRIDE

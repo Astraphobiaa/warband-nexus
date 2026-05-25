@@ -1047,6 +1047,23 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION - see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
+L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
+
+Added:
+- World Quests, Content Events, and World Events to the Reminder system.
+- Mail information (Character Tab).
+- Customizable column ordering.
+
+Fixes:
+- Missing item tracker/counter on tooltips.
+- Display issues with achievement criteria, progress, and requirement details in the To-Do Collection.
+- PvE summary missing from the Quick Access menu.
+- Character Tab clamp after reload.
+- Stagger + Virtual Page added
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
 L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
 
@@ -1097,7 +1114,7 @@ CurseForge: Warband Nexus]=]
 -- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.0).
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.1).
 
 CurseForge: Warband Nexus]=]
 

@@ -30,6 +30,12 @@
 local ADDON_NAME, ns = ...
 local E = ns.Constants.EVENTS
 
+--- Incremental professions tab paint (WN-PERF heavy tab first paint; Collections RunChunked parity).
+ns.ProfessionsUI = ns.ProfessionsUI or {}
+local ProfUI = ns.ProfessionsUI
+ProfUI.CHUNK_SIZE = 4
+ProfUI.CHUNK_MIN_CHARS = 5
+
 local Utilities = ns.Utilities
 local function SafeLower(s)
     return Utilities and Utilities.SafeLower and Utilities:SafeLower(s) or ""
@@ -2604,29 +2610,24 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
 
         sectionContent = AcquireSectionContentFrame(header)
+        sectionContent._wnProfRunningYOffset = 0
         local sectionYOffset = 0
-        for chi = 1, #chars do
-            local char = chars[chi]
-            rowIndex = rowIndex + 1
-            local ok, nextYOffset, rowFrame = pcall(self.DrawProfessionRow, self, sectionContent, char, rowIndex, profStackW, sectionYOffset, currentPlayerKey)
-            if ok and nextYOffset then
-                sectionYOffset = nextYOffset
-                if rowFrame then
-                    tinsert(sectionRows, rowFrame)
-                end
-            else
-                sectionYOffset = sectionYOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0)
-                if IsDebugModeEnabled and IsDebugModeEnabled() then
-                    DebugPrint("|cffff0000[ProfessionsUI] DrawProfessionRow error for " .. tostring(char.name) .. ": " .. tostring(nextYOffset) .. "|r")
-                end
-            end
-        end
-
-        sectionContent._wnSectionFullH = math.max(0.1, sectionYOffset)
         if isExpanded then
-            sectionContent:SetHeight(sectionContent._wnSectionFullH)
+            if not parent._wnProfChunkQueue then
+                parent._wnProfChunkQueue = {}
+            end
+            for chi = 1, #chars do
+                tinsert(parent._wnProfChunkQueue, {
+                    char = chars[chi],
+                    sectionContent = sectionContent,
+                })
+            end
+            sectionContent._wnSectionFullH = 0.1
+            sectionContent:SetHeight(0.1)
             sectionContent:Show()
+            sectionYOffset = 0.1
         else
+            sectionContent._wnSectionFullH = 0.1
             sectionContent:SetHeight(0.1)
             sectionContent:Hide()
         end
@@ -2738,10 +2739,31 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     EnsureProfessionRowGradientScrollHook(mfRef)
     EnsureProfessionColumnHeaderStrip(mfRef, parent, stackWidth)
-    RelayoutProfessionRowWidths(parent)
-    RefreshVisibleProfessionRowGradients(parent)
-    if mfRef and ns.UI_SyncMainTabScrollChrome then
-        ns.UI_SyncMainTabScrollChrome(mfRef, parent, yOffset)
+
+    local chunkQueue = parent._wnProfChunkQueue
+    parent._wnProfChunkQueue = nil
+
+    local function FinishProfessionsTabChrome()
+        RelayoutProfessionRowWidths(parent)
+        RefreshVisibleProfessionRowGradients(parent)
+        if parent._wnProfRelayoutSectionStack then
+            parent._wnProfRelayoutSectionStack()
+        end
+    end
+
+    if chunkQueue and #chunkQueue > 0 then
+        ProfUI.AbortChunkedRowPaint()
+        local drawGen = ProfUI._drawGen or 0
+        local useChunked = #chunkQueue >= (ProfUI.CHUNK_MIN_CHARS or 5)
+        ProfUI.RunChunkedRowPaint(self, parent, chunkQueue, drawGen, {
+            profStackW = profStackW,
+            currentPlayerKey = currentPlayerKey,
+            rowIndex = rowIndex,
+            syncAll = not useChunked,
+            onComplete = FinishProfessionsTabChrome,
+        })
+    else
+        FinishProfessionsTabChrome()
     end
 
     return yOffset + 10
@@ -3795,8 +3817,91 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
     end
 end
 
+--- Cancel in-flight chunked row paint (tab switch / PopulateContent supersede).
+function ProfUI.AbortChunkedRowPaint()
+    ProfUI._drawGen = (ProfUI._drawGen or 0) + 1
+end
+
+--- Paint profession character rows across frames; generation token cancels on tab leave.
+---@param addon table WarbandNexus
+---@param parent Frame scrollChild
+---@param queue table[] { char, sectionContent }
+---@param drawGen number
+---@param ctx table profStackW, currentPlayerKey, rowIndex, onComplete
+function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
+    if not queue or #queue == 0 then
+        if ctx.onComplete then ctx.onComplete() end
+        return
+    end
+    local chunkSize = ProfUI.CHUNK_SIZE or 4
+    local rowIndex = ctx.rowIndex or 0
+    local rowStride = ROW_HEIGHT + ((GetLayout().betweenRows) or 0)
+    local idx = 1
+
+    local function relayoutTouched(fromIdx, toIdx)
+        local touched = {}
+        for qi = fromIdx, toIdx do
+            local job = queue[qi]
+            local sc = job and job.sectionContent
+            if sc and not touched[sc] then
+                touched[sc] = true
+                local h = math.max(0.1, sc._wnProfRunningYOffset or 0.1)
+                sc._wnSectionFullH = h
+                sc:SetHeight(h)
+                sc:Show()
+            end
+        end
+        if parent._wnProfRelayoutSectionStack then
+            parent._wnProfRelayoutSectionStack()
+        end
+    end
+
+    local function pump()
+        if ProfUI._drawGen ~= drawGen then return end
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if not mf or not mf:IsShown() or mf.currentTab ~= "professions" then return end
+        if not parent or not parent.GetParent then return end
+
+        local fromIdx = idx
+        local limit = ctx.syncAll and #queue or math.min(idx + chunkSize - 1, #queue)
+        for qi = fromIdx, limit do
+            local job = queue[qi]
+            local sectionContent = job.sectionContent
+            local char = job.char
+            if sectionContent and char then
+                rowIndex = rowIndex + 1
+                local sectionYOffset = sectionContent._wnProfRunningYOffset or 0
+                local ok, nextYOffset, rowFrame = pcall(addon.DrawProfessionRow, addon, sectionContent, char, rowIndex, ctx.profStackW, sectionYOffset, ctx.currentPlayerKey)
+                if ok and nextYOffset then
+                    sectionContent._wnProfRunningYOffset = nextYOffset
+                    if rowFrame and parent._wnProfNestedRows then
+                        tinsert(parent._wnProfNestedRows, rowFrame)
+                    end
+                else
+                    sectionContent._wnProfRunningYOffset = sectionYOffset + rowStride
+                end
+            end
+        end
+        idx = limit + 1
+        relayoutTouched(fromIdx, limit)
+
+        if idx > #queue then
+            if ctx.onComplete then ctx.onComplete() end
+            return
+        end
+        C_Timer.After(0, pump)
+    end
+
+    if ctx.syncAll then
+        pump()
+    else
+        C_Timer.After(0, pump)
+    end
+end
+
 --- Tab switch (AbortTabOperations): clear session profession caches so GUID/API-heavy maps are not retained across tabs.
 function WarbandNexus:AbortProfessionsTabWork()
+    ProfUI.AbortChunkedRowPaint()
     InvalidateProfessionsTradeSessionCaches()
 end
 

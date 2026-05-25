@@ -53,6 +53,7 @@ local SCROLLBAR_GAP = M.SCROLLBAR_GAP
 local SCROLLBAR_SIDE_GAP = M.SCROLLBAR_SIDE_GAP
 local COLLECTION_HEAVY_DELAY = M.COLLECTION_HEAVY_DELAY
 local RUN_CHUNK_SIZE = M.RUN_CHUNK_SIZE
+local COLLECTIONS_HEADER_CHUNK = M.COLLECTIONS_HEADER_CHUNK or 6
 local ROW_HEIGHT = M.ROW_HEIGHT
 local ROW_GAP = M.ROW_GAP
 local ROW_STRIDE = M.ROW_STRIDE
@@ -229,6 +230,15 @@ end
 
 -- Achievement grouping: API category hierarchy (GetCategoryList, GetCategoryInfo) — same as Plans.
 function M.BuildGroupedAchievementData(searchText, showCollected, showUncollected)
+    local query = SafeLower(searchText)
+    local showC = (showCollected ~= false)
+    local showU = (showUncollected ~= false)
+    local sig = query .. "|" .. (showC and "1" or "0") .. "|" .. (showU and "1" or "0")
+    local cache = M.state._achGroupedCache
+    if cache and cache.sig == sig and cache.categoryData then
+        return cache.categoryData, cache.rootCategories, cache.totalCount
+    end
+
     local allCategoryIDs = GetCategoryList and GetCategoryList() or {}
     if #allCategoryIDs == 0 then return {}, {}, 0 end
 
@@ -263,9 +273,6 @@ function M.BuildGroupedAchievementData(searchText, showCollected, showUncollecte
     end
 
     local allAchievements = (WarbandNexus.GetAllAchievementsData and WarbandNexus:GetAllAchievementsData()) or {}
-    local query = SafeLower(searchText)
-    local showC = (showCollected ~= false)
-    local showU = (showUncollected ~= false)
     local totalCount = 0
 
     for i = 1, #allAchievements do
@@ -297,6 +304,13 @@ function M.BuildGroupedAchievementData(searchText, showCollected, showUncollecte
             end
         end
     end
+
+    M.state._achGroupedCache = {
+        sig = sig,
+        categoryData = categoryData,
+        rootCategories = rootCategories,
+        totalCount = totalCount,
+    }
 
     return categoryData, rootCategories, totalCount
 end
@@ -1366,7 +1380,7 @@ M.UpdateToyListVisibleRange = function()
     end
 end
 
-function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn)
+function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
     if not scrollChild or not Factory then return end
     if _populateToyListBusy then return end
     _populateToyListBusy = true
@@ -1424,10 +1438,66 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
     end
     M.AnnotateFlatRowsByNearestHeader(flatList)
 
+    local function finishToyListPopulate()
+        M.state._toyFlatList = flatList
+        M.state._toyFlatListTotalHeight = totalHeight
+        M.state._toySectionContentH = toySectionContentH
+        M.state._toyRowScrollFlatIdx = M.state._toyRowScrollFlatIdx or {}
+        M.state._toyRowScrollTops = M.state._toyRowScrollTops or {}
+        M.state._toyRowScrollHeights = M.state._toyRowScrollHeights or {}
+        M.state._toyListWidth = listWidth
+        M.state._toyListSelectedID = selectedToyID
+        M.state._toyListOnSelectToy = onSelectToy
+        M.state._toyListCollapsedHeaders = collapsedHeaders
+        M.state._toyListRedrawFn = redraw
+        M.state._toyListContentFrame = cf
+        M.state._toyListRefreshVisible = M.UpdateToyListVisibleRange
+        M.CollectionVirtual_RefreshToyRowScrollIndex()
+        local scrollFrame = M.state.toyListScrollFrame
+        if scrollFrame then
+            scrollFrame:SetScript("OnVerticalScroll", function()
+                M.RequestToyListVisibleRangeAfterScroll()
+            end)
+        end
+        M.UpdateToyListVisibleRange()
+        M.ScheduleCollectionsVisibleSync("toys", M.UpdateToyListVisibleRange)
+        if type(onListReady) == "function" then
+            onListReady()
+        end
+        _populateToyListBusy = false
+    end
+
     local collHdrChainTail = nil
-    for i = 1, #flatList do
-        local it = flatList[i]
-        if it.type == "header" then
+    local flatIdx = 1
+    local function hasRemainingToyHeaders()
+        for hi = flatIdx, #flatList do
+            if flatList[hi].type == "header" then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function pumpToyHeaders()
+        if drawGen and M.state._toysDrawGen and M.state._toysDrawGen ~= drawGen then
+            _populateToyListBusy = false
+            return
+        end
+        if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "toys" then
+            _populateToyListBusy = false
+            return
+        end
+
+        local built = 0
+        while flatIdx <= #flatList and built < COLLECTIONS_HEADER_CHUNK do
+            while flatIdx <= #flatList and flatList[flatIdx].type ~= "header" do
+                flatIdx = flatIdx + 1
+            end
+            if flatIdx > #flatList then
+                break
+            end
+            local it = flatList[flatIdx]
+            flatIdx = flatIdx + 1
             local key = it.key
             local gap = collHdrChainTail and SECTION_SPACING or nil
 
@@ -1444,7 +1514,6 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
                 secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                -- Pre-populate visible rows before expand tween so first open is animated with content.
                 if isExpanded then
                     M.CollectionVirtual_RefreshToyRowScrollIndex()
                     M.UpdateToyListVisibleRange()
@@ -1497,32 +1566,21 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
             M.state._toySectionBodies[key] = sectionBody
 
             collHdrChainTail = sectionWrap
+            built = built + 1
         end
+
+        if hasRemainingToyHeaders() then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, pumpToyHeaders)
+            else
+                pumpToyHeaders()
+            end
+            return
+        end
+        finishToyListPopulate()
     end
 
-    M.state._toyFlatList = flatList
-    M.state._toyFlatListTotalHeight = totalHeight
-    M.state._toySectionContentH = toySectionContentH
-    M.state._toyRowScrollFlatIdx = M.state._toyRowScrollFlatIdx or {}
-    M.state._toyRowScrollTops = M.state._toyRowScrollTops or {}
-    M.state._toyRowScrollHeights = M.state._toyRowScrollHeights or {}
-    M.state._toyListWidth = listWidth
-    M.state._toyListSelectedID = selectedToyID
-    M.state._toyListOnSelectToy = onSelectToy
-    M.state._toyListCollapsedHeaders = collapsedHeaders
-    M.state._toyListRedrawFn = redraw
-    M.state._toyListContentFrame = cf
-    M.state._toyListRefreshVisible = M.UpdateToyListVisibleRange
-    M.CollectionVirtual_RefreshToyRowScrollIndex()
-    local scrollFrame = M.state.toyListScrollFrame
-    if scrollFrame then
-        scrollFrame:SetScript("OnVerticalScroll", function()
-            M.RequestToyListVisibleRangeAfterScroll()
-        end)
-    end
-    M.UpdateToyListVisibleRange()
-    M.ScheduleCollectionsVisibleSync("toys", M.UpdateToyListVisibleRange)
-    _populateToyListBusy = false
+    pumpToyHeaders()
 end
 
 function M.UpdateAchievementListVisibleRange()
@@ -1535,7 +1593,7 @@ function M.UpdateAchievementListVisibleRange()
     })
 end
 
-function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCategories, collapsedHeaders, selectedAchievementID, onSelectAchievement, contentFrameForRefresh, redrawFn)
+function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCategories, collapsedHeaders, selectedAchievementID, onSelectAchievement, contentFrameForRefresh, redrawFn, drawGen, onListReady)
     ns.UI_AchievementBrowse_Populate({
         state = M.state,
         scrollChild = scrollChild,
@@ -1555,6 +1613,9 @@ function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCat
             M.ScheduleCollectionsVisibleSync("achievements", fn)
         end,
         rowHeightScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.155,
+        drawGen = drawGen,
+        collectionsSubTabGen = M.state._collectionsSubTabGen,
+        onListReady = onListReady,
     })
 end
 

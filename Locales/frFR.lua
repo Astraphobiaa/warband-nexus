@@ -475,6 +475,23 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
+L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
+
+Ajouts:
+- Quetes mondiales, evenements de contenu et evenements mondiaux dans le systeme de rappels.
+- Informations de courrier (onglet Personnages).
+- Ordre des colonnes personnalisable.
+
+Corrections:
+- Suivi/compteur d'objets manquant dans les infobulles.
+- Problemes d'affichage des criteres de succes, de la progression et des exigences dans la collection To-Do.
+- Resume PvE manquant dans le menu d'acces rapide.
+- Onglet Personnages bloque apres rechargement.
+- Stagger + Virtual Page ajoutes
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
 L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
 
@@ -1682,7 +1699,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.0).
+Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.1).
 
 CurseForge: Warband Nexus]=]
 

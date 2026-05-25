@@ -4597,15 +4597,23 @@ function WarbandNexus:GetBankStatistics()
     }
     
     -- ===== WARBAND BANK (from new ItemsCacheService compressed storage) =====
-    local warbandData = self.GetWarbandBankData and self:GetWarbandBankData()
-    if warbandData and warbandData.items and #warbandData.items > 0 then
-        stats.warband.usedSlots = #warbandData.items
-        for i = 1, #warbandData.items do
-            local item = warbandData.items[i]
-            stats.warband.itemCount = stats.warband.itemCount + (item.stackCount or 1)
+    local wbSlots, wbStacks, wbLast = 0, 0, 0
+    if self.GetWarbandBankOccupiedSlotTally then
+        wbSlots, wbStacks, wbLast = self:GetWarbandBankOccupiedSlotTally()
+    else
+        local warbandData = self.GetWarbandBankData and self:GetWarbandBankData()
+        if warbandData and warbandData.items and #warbandData.items > 0 then
+            wbSlots = #warbandData.items
+            for i = 1, wbSlots do
+                local item = warbandData.items[i]
+                wbStacks = wbStacks + (item.stackCount or 1)
+            end
+            wbLast = warbandData.lastUpdate or 0
         end
-        stats.warband.lastScan = warbandData.lastUpdate or 0
     end
+    stats.warband.usedSlots = wbSlots
+    stats.warband.itemCount = wbStacks
+    stats.warband.lastScan = wbLast
     -- Live API for total warband bank slots (works even when bank is closed in TWW)
     local WARBAND_BAGS = ns.WARBAND_BAGS or {13, 14, 15, 16, 17}
     for i = 1, #WARBAND_BAGS do

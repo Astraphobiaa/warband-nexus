@@ -137,10 +137,14 @@ function M.DrawMountsContent(contentFrame)
     if M.state._drawMountsContentBusy then
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
-                if contentFrame and contentFrame:IsVisible() then
+                if M.CollectionsDrawRetryAllowed(contentFrame, "mounts") then
                     M.DrawMountsContent(contentFrame)
+                else
+                    M.state._drawMountsContentBusy = nil
                 end
             end)
+        else
+            M.state._drawMountsContentBusy = nil
         end
         return
     end
@@ -476,10 +480,14 @@ function M.DrawPetsContent(contentFrame)
     if M.state._drawPetsContentBusy then
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
-                if contentFrame and contentFrame:IsVisible() then
+                if M.CollectionsDrawRetryAllowed(contentFrame, "pets") then
                     M.DrawPetsContent(contentFrame)
+                else
+                    M.state._drawPetsContentBusy = nil
                 end
             end)
+        else
+            M.state._drawPetsContentBusy = nil
         end
         return
     end
@@ -814,10 +822,14 @@ function M.DrawToysContent(contentFrame)
     if M.state._drawToysContentBusy then
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
-                if contentFrame and contentFrame:IsVisible() then
+                if M.CollectionsDrawRetryAllowed(contentFrame, "toys") then
                     M.DrawToysContent(contentFrame)
+                else
+                    M.state._drawToysContentBusy = nil
                 end
             end)
+        else
+            M.state._drawToysContentBusy = nil
         end
         return
     end
@@ -1234,10 +1246,11 @@ function M.DrawToysContent(contentFrame)
             local grouped = M.GetFilteredToysGrouped(M.state.searchText or "", M.state.showCollected, M.state.showUncollected)
             if M.state._toysDrawGen == drawGen and M.state.currentSubTab == "toys" and sch and sch:GetParent() and contentFrame:IsVisible() then
                 M.state._lastGroupedToyData = grouped
-                M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent)
-                if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
-                    Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
-                end
+                M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
+                    if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
+                        Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
+                    end
+                end)
             end
         end)
     else
@@ -1270,21 +1283,26 @@ function M.DrawToysContent(contentFrame)
                 M.state._toyListRefreshVisible()
             end
         else
-            C_Timer.After(0, function()
-                if M.state._toysDrawGen ~= drawGen or M.state.currentSubTab ~= "toys" then return end
-                if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then return end
-                local grouped = M.GetFilteredToysGrouped(M.state.searchText or "", M.state.showCollected, M.state.showUncollected)
-                if M.state._toysDrawGen == drawGen and M.state.currentSubTab == "toys" and sch:GetParent() and contentFrame:IsVisible() then
-                    M.state._toyLastSearchText = M.state.searchText or ""
-                    M.state._toyLastShowCollected = M.state.showCollected
-                    M.state._toyLastShowUncollected = M.state.showUncollected
-                    M.state._lastGroupedToyData = grouped
-                    M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent)
-                    if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
-                        Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
-                    end
+            if M.state._toysDrawGen ~= drawGen or M.state.currentSubTab ~= "toys" then
+                M.state._drawToysContentBusy = nil
+                return
+            end
+            if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then
+                M.state._drawToysContentBusy = nil
+                return
+            end
+            local grouped = M.GetFilteredToysGrouped(M.state.searchText or "", M.state.showCollected, M.state.showUncollected)
+            M.state._toyLastSearchText = M.state.searchText or ""
+            M.state._toyLastShowCollected = M.state.showCollected
+            M.state._toyLastShowUncollected = M.state.showUncollected
+            M.state._lastGroupedToyData = grouped
+            M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
+                if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
+                    Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
                 end
+                M.state._drawToysContentBusy = nil
             end)
+            return
         end
     end
     M.state._drawToysContentBusy = nil
@@ -1295,10 +1313,14 @@ function M.DrawAchievementsContent(contentFrame)
     if M.state._drawAchievementsContentBusy then
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
-                if contentFrame and contentFrame:IsVisible() then
+                if M.CollectionsDrawRetryAllowed(contentFrame, "achievements") then
                     M.DrawAchievementsContent(contentFrame)
+                else
+                    M.state._drawAchievementsContentBusy = nil
                 end
             end)
+        else
+            M.state._drawAchievementsContentBusy = nil
         end
         return
     end
@@ -1462,11 +1484,6 @@ function M.DrawAchievementsContent(contentFrame)
     local collLoading = ns.CollectionLoadingState
     -- Loading only when a scan/load is actually in progress; not when filters result in empty list (e.g. both Owned and Missing unchecked)
     local isLoading = (loadingState and loadingState.isLoading) or (collLoading and collLoading.isLoading and collLoading.currentCategory == "achievement")
-    local categoryData, rootCategories, totalCount = M.BuildGroupedAchievementData(
-        M.state.searchText or "",
-        M.state.showCollected,
-        M.state.showUncollected
-    )
 
     if isLoading then
         M.SetCollectionProgress(nil, nil)
@@ -1497,36 +1514,59 @@ function M.DrawAchievementsContent(contentFrame)
                 local e = allAchsForProgress[i]
                 if e and (e.isCollected or e.completed or e.collected) then achCollected = achCollected + 1 end
             end
+            allAchsForProgress._wnAchCollected = achCollected
         end
         M.SetCollectionProgress(achCollected, achTotal)
 
+        M.state._achPopulateGen = (M.state._achPopulateGen or 0) + 1
+        local popGen = M.state._achPopulateGen
+        local listW = listContentWidth - (CONTAINER_INSET * 2)
+        local searchSnap = M.state.searchText or ""
+        local showCSnap = M.state.showCollected
+        local showUSnap = M.state.showUncollected
+        local selAchID = M.state.selectedAchievementID
+
+        if M.state.currentSubTab ~= "achievements" or M.state._achPopulateGen ~= popGen then
+            M.state._drawAchievementsContentBusy = nil
+            return
+        end
+        local categoryData, rootCategories = M.BuildGroupedAchievementData(searchSnap, showCSnap, showUSnap)
         M.state._lastAchievementCategoryData = categoryData
         M.state._lastAchievementRootCategories = rootCategories
         M.PopulateAchievementList(
             M.state.achievementListScrollChild,
-            listContentWidth - (CONTAINER_INSET * 2),
+            listW,
             categoryData,
             rootCategories,
             M.state.collapsedHeaders,
-            M.state.selectedAchievementID,
+            selAchID,
             onSelectAchievement,
             contentFrame,
-            DrawAchievementsContent
-        )
-        if M.state.selectedAchievementID then
-            local allAchs = WarbandNexus:GetAllAchievementsData()
-            for i = 1, #allAchs do
-                if allAchs[i].id == M.state.selectedAchievementID then
-                    M.state.achievementDetailPanel:SetAchievement(allAchs[i])
-                    break
+            DrawAchievementsContent,
+            popGen,
+            function()
+                if M.state.currentSubTab ~= "achievements" or M.state._achPopulateGen ~= popGen then
+                    M.state._drawAchievementsContentBusy = nil
+                    return
                 end
+                if selAchID then
+                    local allAchs = WarbandNexus:GetAllAchievementsData()
+                    for i = 1, #allAchs do
+                        if allAchs[i].id == selAchID then
+                            M.state.achievementDetailPanel:SetAchievement(allAchs[i])
+                            break
+                        end
+                    end
+                else
+                    M.state.achievementDetailPanel:SetAchievement(nil)
+                end
+                if Factory.UpdateScrollBarVisibility and M.state.achievementListScrollFrame then
+                    Factory:UpdateScrollBarVisibility(M.state.achievementListScrollFrame)
+                end
+                M.state._drawAchievementsContentBusy = nil
             end
-        else
-            M.state.achievementDetailPanel:SetAchievement(nil)
-        end
-        if Factory.UpdateScrollBarVisibility and M.state.achievementListScrollFrame then
-            Factory:UpdateScrollBarVisibility(M.state.achievementListScrollFrame)
-        end
+        )
+        return
     end
     M.state._drawAchievementsContentBusy = nil
 end
