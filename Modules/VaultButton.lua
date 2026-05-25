@@ -559,7 +559,7 @@ local function GetManafluxData(charKey)
     }
 end
 
---- Open WarbandNexus main window on a specific tab (or no tab change)
+--- Open WarbandNexus main window on a specific tab (nil = session / profile lastTab).
 local function OpenWNTab(tabKey)
     if InCombatLockdown and InCombatLockdown() then
         if DEFAULT_CHAT_FRAME then
@@ -568,16 +568,7 @@ local function OpenWNTab(tabKey)
         return
     end
     if not WarbandNexus or not WarbandNexus.ShowMainWindow then return end
-    WarbandNexus:ShowMainWindow()
-    if not tabKey then return end
-    C_Timer.After(0.05, function()
-        local mf = WarbandNexus.mainFrame
-        if mf and mf.tabButtons and mf.tabButtons[tabKey] and mf.tabButtons[tabKey].Click then
-            -- ShowMainWindow arms a short input grace so the open click cannot hit another tab; allow this scripted switch.
-            mf._wnBypassMainTabInputGraceOnce = true
-            mf.tabButtons[tabKey]:Click()
-        end
-    end)
+    WarbandNexus:ShowMainWindow(tabKey)
 end
 
 --- Toggle main window: hides if already shown, otherwise opens on the last-used tab

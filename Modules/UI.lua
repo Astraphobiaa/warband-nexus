@@ -56,7 +56,7 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 
 --- Canonical tab order: `ns.UI_MAIN_TAB_ORDER` in SharedWidgets.lua — must precede timers that reference it (Lua local scope).
---- QA smoke: open each entry once after /reload (`ShowMainWindow` deferred tab label pass uses this index).
+--- Canonical tab order (deferred tab label pass iterates this list).
 local MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
     "chars",
     "items",
@@ -912,11 +912,25 @@ local function RememberSessionMainTab(tabKey)
     end
 end
 
----After /reload first open is always Characters; same-session reopen uses last tab.
+---Normalize caller tab keys (Easy Access / legacy aliases).
+---@param tabKey string|nil
+---@return string|nil
+local function NormalizeRequestedMainTab(tabKey)
+    if not tabKey or tabKey == "" then return nil end
+    if tabKey == "storage" then return "items" end
+    return tabKey
+end
+
+---First login (no explicit tab): Characters once. Reload/session: lastTab; hide/show: session tab.
+---@param requestedTabKey string|nil explicit tab (Easy Access left-click, minimap shortcuts)
 ---@return string
-local function ResolveMainWindowOpenTab()
-    if ns._wnOpenCharsTabOnNextShow then
-        ns._wnOpenCharsTabOnNextShow = nil
+local function ResolveMainWindowOpenTab(requestedTabKey)
+    local explicit = NormalizeRequestedMainTab(requestedTabKey)
+    if explicit then
+        return explicit
+    end
+    if ns._wnOpenCharsTabOnFirstLogin then
+        ns._wnOpenCharsTabOnFirstLogin = nil
         return "chars"
     end
     if ns._wnSessionLastTab and ns._wnSessionLastTab ~= "settings" and ns._wnSessionLastTab ~= "about" then
@@ -925,15 +939,36 @@ local function ResolveMainWindowOpenTab()
     local p = WarbandNexus.db and WarbandNexus.db.profile
     local lt = p and p.lastTab
     if lt == "settings" or lt == "about" then lt = nil end
+    if lt == "storage" then lt = "items" end
     return lt or "chars"
 end
 
--- Intentionally raw: /reload sets next main open to Characters (ENTERING_WORLD flag).
-local reloadMainTabFrame = CreateFrame("Frame")
-reloadMainTabFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-reloadMainTabFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
+---Apply resolved tab to mainFrame (legacy "storage" -> Items > Warband).
+---@param f Frame
+---@param requestedTabKey string|nil
+---@param resolvedTab string
+local function ApplyMainFrameOpenTab(f, requestedTabKey, resolvedTab)
+    if requestedTabKey == "storage" then
+        f.currentTab = "items"
+        if WarbandNexus.db and WarbandNexus.db.profile then
+            WarbandNexus.db.profile.lastTab = "items"
+        end
+        if ns.UI_SetItemsSubTab then
+            ns.UI_SetItemsSubTab("warband")
+        end
+        return
+    end
+    f.currentTab = resolvedTab
+end
+
+-- Intentionally raw: first login -> Characters on first generic open; /reload keeps db.profile.lastTab.
+local mainTabWorldFrame = CreateFrame("Frame")
+mainTabWorldFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+mainTabWorldFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
+    if isInitialLogin then
+        ns._wnOpenCharsTabOnFirstLogin = true
+    end
     if isReloadingUi then
-        ns._wnOpenCharsTabOnNextShow = true
         ns._wnSessionLastTab = nil
     end
 end)
@@ -955,8 +990,9 @@ function WarbandNexus:ToggleMainWindow()
     end
 end
 
--- Open: /reload -> Characters; same session hide/show -> last tab (session), else db.profile.lastTab.
-function WarbandNexus:ShowMainWindow()
+--- Open main window. Optional tab: Easy Access / scripted shortcuts (chars, pve, …). Nil = first-login chars, else session/lastTab.
+---@param requestedTabKey string|nil
+function WarbandNexus:ShowMainWindow(requestedTabKey)
     -- TAINT PROTECTION: Prevent UI manipulation during combat
     if InCombatLockdown() then
         self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
@@ -968,13 +1004,17 @@ function WarbandNexus:ShowMainWindow()
     if not fm or not fm.CreateFontString then
         DebugPrint("|cffff0000[WN UI]|r ERROR: FontManager not ready. Please wait a moment and try again.")
         -- Try again after 1 second
+        ns._wnPendingShowMainTab = requestedTabKey
         C_Timer.After(1.0, function()
             if WarbandNexus and WarbandNexus.ShowMainWindow then
-                WarbandNexus:ShowMainWindow()
+                local pending = ns._wnPendingShowMainTab
+                ns._wnPendingShowMainTab = nil
+                WarbandNexus:ShowMainWindow(pending)
             end
         end)
         return
     end
+    ns._wnPendingShowMainTab = nil
     
     if not mainFrame then
         mainFrame = self:CreateMainWindow()
@@ -989,23 +1029,18 @@ function WarbandNexus:ShowMainWindow()
     -- Store reference for external access (FontManager, etc.)
     self.mainFrame = mainFrame
     
-    mainFrame.currentTab = ResolveMainWindowOpenTab()
-    -- Former main tab "storage" is merged into Items > Warband (account-wide tree).
-    if mainFrame.currentTab == "storage" then
-        mainFrame.currentTab = "items"
-        if WarbandNexus.db.profile then
-            WarbandNexus.db.profile.lastTab = "items"
-        end
-        if ns.UI_SetItemsSubTab then
-            ns.UI_SetItemsSubTab("warband")
-        end
-    end
+    local resolvedTab = ResolveMainWindowOpenTab(requestedTabKey)
+    ApplyMainFrameOpenTab(mainFrame, requestedTabKey, resolvedTab)
     RememberSessionMainTab(mainFrame.currentTab)
     mainFrame.isMainTabSwitch = true  -- First open = main tab switch
 
     -- Show before PopulateContent: while hidden, scroll:GetWidth() is often 0 → blank/black To-Do (and other tabs).
     -- Same pointer action that opened the window (LDB/minimap) can release over the nav row → spurious tab click.
     mainFrame._wnMainTabInputGraceUntil = GetTime() + 0.2
+    -- ns export: ShowMainWindow is defined above UpdateTabButtonStates (Lua 5.1 forward-ref).
+    if mainFrame.tabButtons and ns.UI_UpdateMainFrameTabButtonStates then
+        ns.UI_UpdateMainFrameTabButtonStates(mainFrame)
+    end
     mainFrame:Show()
     ApplyMainNavGoldenShellLayout(mainFrame)
     UpdateScrollLayout(mainFrame)

@@ -281,15 +281,10 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
                 ns._wnSessionLastTab = "pve"
 
                 if not self.mainFrame or not self.mainFrame:IsShown() then
-                    self:ShowMainWindow()
-                end
-
-                local mainFrame = self.mainFrame
-                if mainFrame then
-                    mainFrame.currentTab = "pve"
-                    if E and self.SendMessage then
-                        self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
-                    end
+                    self:ShowMainWindow("pve")
+                elseif self.mainFrame.ActivateMainTab then
+                    self.mainFrame._wnBypassMainTabInputGraceOnce = true
+                    self.mainFrame:ActivateMainTab("pve", { persistLastTab = true })
                 end
             end
 
