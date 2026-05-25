@@ -83,7 +83,16 @@ Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua
+Modules\Data\MidnightQuestCatalog.lua
 Modules\DailyQuestManager.lua
+Modules\Data\ReminderMapContent.lua
+Modules\Data\ReminderWorldQuestIndex.lua
+Modules\Data\ReminderMidnightFactionEmissaryData.lua
+Modules\Data\ReminderMidnightWorldQuestData.lua
+Modules\Data\ReminderWorldQuestCatalog.lua
+Modules\Data\ReminderHolidayEventCatalog.lua
+Modules\Data\ReminderQuestCatalog.lua
+Modules\Data\ReminderQuestPickerCatalog.lua
 Modules\Data\ReminderContentIndex.lua
 Modules\Data\UIMapContentKind.lua
 Modules\Data\ReminderZoneCatalog.lua

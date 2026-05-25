@@ -223,7 +223,22 @@ function MigrationService:RunMigrations(db)
     self:MigrateReminderToastAnchors(db)
     self:MigrateNotificationToastLaneDefaults(db)
     self:MigrateCustomSectionChangelogLog(db)
+    self:MigrateReminderQuestCatalog(db)
     return false
+end
+
+--- Seed maintained world-quest catalog (static + version bump).
+function MigrationService:MigrateReminderQuestCatalog(db)
+    if not db or not db.global then return end
+    local WQC = ns.ReminderWorldQuestCatalog
+    if not WQC or not WQC.SeedStaticIntoDatabase then return end
+    local cat = db.global.reminderQuestCatalog
+    local ver = WQC.CATALOG_VERSION or 1
+    if cat and tonumber(cat.version) == ver then return end
+    WQC.SeedStaticIntoDatabase()
+    if ns.DebugPrint then
+        ns.DebugPrint("|cff9370DB[Migration]|r Reminder quest catalog seeded (v" .. tostring(ver) .. ")")
+    end
 end
 
 --- One-time chat log for Custom Section system updates (profile normalization lives in CharacterService:EnsureCustomCharacterSectionsProfile).

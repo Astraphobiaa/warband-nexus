@@ -9,6 +9,7 @@
       - daily_login / weekly_reset / monthly_login / days_before_reset
       - zone_enter (manual uiMapIDs + optional name/source hints; Set Alert always allows enabling zone)
       - instance_enter (optional Blizzard instance ID + optional difficulty filter)
+      - world_quest_active / content_event_active (enter a map where selected WQs or content events are up)
 
     Zone enter: raw GetBestMapForUnit + parent-chain ancestry — configured parent uiMapID (e.g. Stormwind 84)
     matches child micro-maps without listing every district. Delve floors still use alternateUIMapIDs collapse
@@ -127,6 +128,9 @@ local KIND = {
     DAYS_BEFORE_RESET = "days_before_reset",
     ZONE_ENTER = "zone_enter",
     INSTANCE_ENTER = "instance_enter",
+    WORLD_QUEST_ACTIVE = "world_quest_active",
+    CONTENT_EVENT_ACTIVE = "content_event_active",
+    WORLD_EVENT_ACTIVE = "world_event_active",
 }
 
 ns.REMINDER_TRIGGER_TYPES = TRIGGER_TYPES
@@ -385,6 +389,32 @@ local function SyncLegacyFromTriggers(plan)
     end
 end
 
+local function CopyQuestIDList(ids)
+    local out = {}
+    if type(ids) ~= "table" then return out end
+    for i = 1, #ids do
+        local n = tonumber(ids[i])
+        if n and n > 0 then out[#out + 1] = n end
+    end
+    table.sort(out)
+    return out
+end
+
+local function CopyEventKeysList(keys)
+    local out = {}
+    if type(keys) ~= "table" then return out end
+    local seen = {}
+    for i = 1, #keys do
+        local k = keys[i]
+        if type(k) == "string" and k ~= "" and not seen[k] then
+            seen[k] = true
+            out[#out + 1] = k
+        end
+    end
+    table.sort(out)
+    return out
+end
+
 local function FindTriggerEntry(r, kind)
     EnsureTriggersStructure(r)
     for i = 1, #r.triggers.entries do
@@ -465,6 +495,34 @@ function WarbandNexus:SetPlanReminder(planID, settings)
     end
 
     if settings then
+        local hasQuestTrigger = false
+        if type(settings.questTriggers) == "table" then
+            for qi = 1, #settings.questTriggers do
+                local qt = settings.questTriggers[qi]
+                if qt and qt.kind and qt.enabled ~= false then
+                    hasQuestTrigger = true
+                    break
+                end
+            end
+        end
+        if not hasQuestTrigger and type(settings.worldEventTriggers) == "table" then
+            for wi = 1, #settings.worldEventTriggers do
+                local wt = settings.worldEventTriggers[wi]
+                if wt and wt.kind and wt.enabled ~= false then
+                    hasQuestTrigger = true
+                    break
+                end
+            end
+        end
+        if settings.onZoneEnter and hasQuestTrigger then
+            settings.questTriggers = {}
+            settings.worldEventTriggers = {}
+            hasQuestTrigger = false
+        end
+        if hasQuestTrigger and settings.onZoneEnter then
+            settings.onZoneEnter = false
+        end
+
         if settings.onDailyLogin ~= nil then r.onDailyLogin = settings.onDailyLogin end
         if settings.onWeeklyReset ~= nil then r.onWeeklyReset = settings.onWeeklyReset end
         if settings.onMonthlyLogin ~= nil then r.onMonthlyLogin = settings.onMonthlyLogin end
@@ -515,6 +573,32 @@ function WarbandNexus:SetPlanReminder(planID, settings)
             instanceID = tonumber(r.instanceReminder.instanceID),
             difficultyID = r.instanceReminder.difficultyID ~= nil and tonumber(r.instanceReminder.difficultyID) or nil,
         })
+    end
+
+    if settings and type(settings.questTriggers) == "table" then
+        for qi = 1, #settings.questTriggers do
+            local qt = settings.questTriggers[qi]
+            if qt and qt.kind then
+                UpsertTriggerEntry(r, {
+                    kind = qt.kind,
+                    enabled = qt.enabled ~= false,
+                    questIDs = CopyQuestIDList(qt.questIDs),
+                })
+            end
+        end
+    end
+
+    if settings and type(settings.worldEventTriggers) == "table" then
+        for wi = 1, #settings.worldEventTriggers do
+            local wt = settings.worldEventTriggers[wi]
+            if wt and wt.kind then
+                UpsertTriggerEntry(r, {
+                    kind = wt.kind,
+                    enabled = wt.enabled ~= false,
+                    eventKeys = CopyEventKeysList(wt.eventKeys),
+                })
+            end
+        end
     end
 
     r._reminderTriggersV1 = true
@@ -768,7 +852,8 @@ local function CanShowReminder(plan, triggerKey)
     end
 
     -- Zone / instance: show every matching entry unless user explicitly enables location throttling.
-    if triggerKey:find("^zone_") or triggerKey:find("^inst_") then
+    if triggerKey:find("^zone_") or triggerKey:find("^inst_")
+        or triggerKey:find("^wq_active_") or triggerKey:find("^event_active_") then
         local settings = GetReminderSettings()
         if not settings or settings.throttleLocationReminders ~= true then
             return true
@@ -1154,6 +1239,160 @@ end
 
 local lastStableReminderZoneKey = nil
 local lastInstanceFingerprint = nil
+local lastMapQuestReminderStable = nil
+
+local lastWorldEventReminderKey = nil
+
+local function CheckWorldEventReminders()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local settings = GetReminderSettings()
+    if settings and not settings.enabled then
+        lastWorldEventReminderKey = nil
+        return
+    end
+    local HEC = ns.ReminderHolidayEventCatalog
+    if not HEC or not HEC.MatchesWorldEventSelection then return end
+
+    local activeNames = {}
+    local activeEvents = (HEC.GetActiveEventsToday and HEC.GetActiveEventsToday()) or {}
+    for i = 1, #activeEvents do
+        local e = activeEvents[i]
+        if e then
+            activeNames[#activeNames + 1] = (HEC.GetEventLabel and HEC.GetEventLabel(e)) or e.calendarName or "?"
+        end
+    end
+    if #activeNames == 0 then
+        lastWorldEventReminderKey = nil
+        return
+    end
+    table.sort(activeNames)
+    local stableKey = table.concat(activeNames, "|")
+    if stableKey == lastWorldEventReminderKey then return end
+    lastWorldEventReminderKey = stableKey
+
+    local L = ns.L
+    local labelBase = (L and L["REMINDER_WORLD_EVENT_ACTIVE"]) or "World event active - %s"
+    local displayName = activeNames[1]
+    if #activeNames > 1 then
+        displayName = displayName .. " (+" .. tostring(#activeNames - 1) .. ")"
+    end
+
+    local function processPlans(planList)
+        if not planList then return end
+        for i = 1, #planList do
+            local plan = planList[i]
+            EnsureReminderField(plan)
+            if not plan.reminder or not plan.reminder.enabled or plan.completed then
+                -- skip
+            elseif not PlanAllowsLocationReminder(plan) then
+                -- skip
+            else
+                local weEntry = FindTriggerEntry(plan.reminder, KIND.WORLD_EVENT_ACTIVE)
+                if weEntry and weEntry.enabled ~= false then
+                    if HEC.MatchesWorldEventSelection(weEntry.eventKeys) then
+                        local triggerKey = "world_event_" .. stableKey
+                        if CanShowReminder(plan, triggerKey) then
+                            if not LoginBurstSuppressLocationReminder(plan) then
+                                MarkReminderShown(plan, triggerKey)
+                                ActivateReminder(plan, string.format(labelBase, displayName),
+                                    { repeatLocationNotify = false, fromLocation = false })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    processPlans(WarbandNexus.db.global.plans)
+    processPlans(WarbandNexus.db.global.customPlans)
+end
+
+local function CheckMapQuestReminders(rawMapID)
+    if not rawMapID or rawMapID == 0 then return end
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+
+    local settings = GetReminderSettings()
+    if settings and not settings.enabled then
+        lastMapQuestReminderStable = nil
+        return
+    end
+
+    local RMC = ns.ReminderMapContent
+    if not RMC or not RMC.GetActiveQuestIDsForCategoryOnMap or not RMC.MatchesQuestSelection then
+        return
+    end
+
+    local configuredUnion = BuildAllConfiguredZoneIdsUnion()
+    local stable = StableReminderZoneKey(rawMapID, configuredUnion)
+    if not stable then return end
+    if stable == lastMapQuestReminderStable then return end
+    lastMapQuestReminderStable = stable
+
+    local L = ns.L
+    local displayZoneName = tostring(rawMapID)
+    if C_Map and C_Map.GetMapInfo then
+        local okZ, currentZoneInfo = pcall(C_Map.GetMapInfo, rawMapID)
+        if okZ and currentZoneInfo and currentZoneInfo.name
+            and not (issecretvalue and issecretvalue(currentZoneInfo.name)) then
+            displayZoneName = currentZoneInfo.name
+        end
+    end
+
+    local function processPlans(planList)
+        if not planList then return end
+        for i = 1, #planList do
+            local plan = planList[i]
+            EnsureReminderField(plan)
+            if not plan.reminder or not plan.reminder.enabled or plan.completed then
+                -- skip
+            elseif not PlanAllowsLocationReminder(plan) then
+                -- skip
+            else
+                local wqEntry = FindTriggerEntry(plan.reminder, KIND.WORLD_QUEST_ACTIVE)
+                if wqEntry and wqEntry.enabled ~= false then
+                    local active = (RMC.GetActiveWorldQuestIDsOnMap and RMC.GetActiveWorldQuestIDsOnMap(rawMapID))
+                        or RMC.GetActiveQuestIDsForCategoryOnMap(rawMapID, "worldQuests")
+                    if RMC.MatchesQuestSelection(active, wqEntry.questIDs) then
+                        local triggerKey = "wq_active_" .. tostring(stable)
+                        if CanShowReminder(plan, triggerKey) then
+                            if not LoginBurstSuppressLocationReminder(plan) then
+                                MarkReminderShown(plan, triggerKey)
+                                local label = string.format(
+                                    (L and L["REMINDER_WORLD_QUEST_ACTIVE"]) or "World Quests active - %s",
+                                    displayZoneName
+                                )
+                                ActivateReminder(plan, label, { repeatLocationNotify = true, fromLocation = true })
+                            end
+                        end
+                    end
+                end
+
+                local evEntry = FindTriggerEntry(plan.reminder, KIND.CONTENT_EVENT_ACTIVE)
+                if evEntry and evEntry.enabled ~= false then
+                    local activeEv = (RMC.GetActiveContentEventQuestIDsOnMap and RMC.GetActiveContentEventQuestIDsOnMap(rawMapID, evEntry.questIDs))
+                        or RMC.GetActiveQuestIDsForCategoryOnMap(rawMapID, "events")
+                    if RMC.MatchesQuestSelection(activeEv, evEntry.questIDs) then
+                        local triggerKey = "event_active_" .. tostring(stable)
+                        if CanShowReminder(plan, triggerKey) then
+                            if not LoginBurstSuppressLocationReminder(plan) then
+                                MarkReminderShown(plan, triggerKey)
+                                local label = string.format(
+                                    (L and L["REMINDER_CONTENT_EVENT_ACTIVE"]) or "Content events active - %s",
+                                    displayZoneName
+                                )
+                                ActivateReminder(plan, label, { repeatLocationNotify = true, fromLocation = true })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    processPlans(WarbandNexus.db.global.plans)
+    processPlans(WarbandNexus.db.global.customPlans)
+end
 
 local function CheckZoneReminders(rawMapID)
     if not rawMapID or rawMapID == 0 then return end
@@ -1379,6 +1618,10 @@ local function RunZoneOrInstanceChangedNow()
     local mapID = SafeGetRawPlayerUIMapID()
     if mapID then
         CheckZoneReminders(mapID)
+        CheckMapQuestReminders(mapID)
+        CheckWorldEventReminders()
+    else
+        lastMapQuestReminderStable = nil
     end
     CheckInstanceReminders()
 end
@@ -1405,6 +1648,7 @@ OnLoginRemindersCheck = function()
     CheckMonthlyLoginReminders()
     CheckWeeklyResetReminders()
     CheckDaysBeforeResetReminders()
+    CheckWorldEventReminders()
     FlushCalendarToastBatch()
 end
 
@@ -1512,6 +1756,8 @@ ns.ReminderServiceBridge = {
     EnsureReminderField = EnsureReminderField,
     FindTriggerEntry = FindTriggerEntry,
     KIND = KIND,
+    CopyQuestIDList = CopyQuestIDList,
+    CopyEventKeysList = CopyEventKeysList,
     UniqueSortedInts = UniqueSortedInts,
     ZoneTriggerAllowsConfigure = ZoneTriggerAllowsConfigure,
     PlanHasZoneSourceHints = PlanHasZoneSourceHints,

@@ -33,6 +33,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     local EnsureReminderField = B.EnsureReminderField
     local FindTriggerEntry = B.FindTriggerEntry
     local KIND = B.KIND
+    local CopyQuestIDList = B.CopyQuestIDList
+    local CopyEventKeysList = B.CopyEventKeysList
     local PlanHasZoneSourceHints = B.PlanHasZoneSourceHints
     local UniqueSortedInts = B.UniqueSortedInts
     local SafeUIMapDisplayName = B.SafeUIMapDisplayName
@@ -64,14 +66,24 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local zoneSubInset = sideInset + (UI_SP.SUBROW_EXTRA_INDENT or 12)
         local footerH = 52
         -- Wide enough for expansion list + map names + Add column (avoid clipping under scroll bars).
-        local dialogW, dialogH = 960, 800
+        local dialogW, dialogH = 960, 820
         local RD = {
             cardPad = 10,
-            sectionGap = 10,
+            sectionGap = 8,
             whenCardH = 76,
             locationBaseH = 120,
+            questEventsMinH = 240,
+            questTrackBaseH = 108,
+            questHeaderH = 22,
+            questOptsH = 88,
+            questListChromeH = 54,
+            questListScrollMinH = 100,
+            worldEventChromeH = 38,
+            worldEventScrollMinH = 80,
             selectedBlockMinH = 36,
-            catalogMinH = 340,
+            catalogMinH = 200,
+            zoneCatalogShare = 0.40,
+            questCardShare = 0.55,
             expColW = 212,
             splitGap = 10,
             addBtnW = 64,
@@ -205,44 +217,144 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
         end)
 
-        local scrollBarColumn = Factory:CreateScrollBarColumn(bodyHost, scrollBarW, 0, 0)
-        if scrollBarColumn then
-            scrollBarColumn:SetPoint("TOPRIGHT", bodyHost, "TOPRIGHT", 0, 0)
-            scrollBarColumn:SetPoint("BOTTOMRIGHT", bodyHost, "BOTTOMRIGHT", 0, 0)
+        local innerW = math.max(120, dialogW - sideInset * 2 - 8)
+        local tabBarH = 32
+        local tabBar = CreateFrame("Frame", nil, bodyHost)
+        tabBar:SetPoint("TOPLEFT", bodyHost, "TOPLEFT", 0, 0)
+        tabBar:SetPoint("TOPRIGHT", bodyHost, "TOPRIGHT", 0, 0)
+        tabBar:SetHeight(tabBarH)
+        f.tabBar = tabBar
+
+        local alertTabDefs = {
+            { key = "schedule", labelKey = "SET_ALERT_SECTION_SCHEDULE", fallback = "Login & Resets" },
+            { key = "zone",     labelKey = "SET_ALERT_SECTION_LOCATION", fallback = "Zone & Instance" },
+            { key = "quests",   labelKey = "SET_ALERT_SECTION_QUESTS", fallback = "Quests & Events" },
+        }
+        f._alertTabKeys = {}
+        f._alertTabBtns = {}
+        for ti = 1, #alertTabDefs do
+            f._alertTabKeys[ti] = alertTabDefs[ti].key
         end
 
-        local scrollFrame = Factory:CreateScrollFrame(bodyHost, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetPoint("TOPLEFT", bodyHost, "TOPLEFT", 0, 0)
-        if scrollBarColumn then
-            scrollFrame:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", -4, 0)
-            if scrollFrame.ScrollBar then
-                Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+        local function LayoutAlertTabButtons()
+            local rw = tabBar:GetWidth()
+            if not rw or rw < 180 then return end
+            local gap = 6
+            local n = #alertTabDefs
+            local bw = math.floor((rw - gap * (n - 1)) / n)
+            for bi = 1, n do
+                local b = f._alertTabBtns[bi]
+                if b then
+                    b:SetSize(math.max(80, bw), tabBarH - 4)
+                    b:ClearAllPoints()
+                    if bi == 1 then
+                        b:SetPoint("LEFT", tabBar, "LEFT", 0, 0)
+                    else
+                        b:SetPoint("LEFT", f._alertTabBtns[bi - 1], "RIGHT", gap, 0)
+                    end
+                end
             end
-        else
-            scrollFrame:SetPoint("BOTTOMRIGHT", bodyHost, "BOTTOMRIGHT", 0, 0)
+        end
+        tabBar:SetScript("OnSizeChanged", LayoutAlertTabButtons)
+
+        for ti = 1, #alertTabDefs do
+            (function(tabDef, tabIdx)
+                local tb = Factory:CreateButton(tabBar, 120, tabBarH - 4, false)
+                if not tb then
+                    tb = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
+                    tb:SetSize(120, tabBarH - 4)
+                end
+                tb.labelFs = FontManager:CreateFontString(tb, "small", "OVERLAY")
+                tb.labelFs:SetPoint("CENTER")
+                tb.labelFs:SetText((L and L[tabDef.labelKey]) or tabDef.fallback)
+                tb:SetScript("OnClick", function()
+                    if f.SelectAlertTab then
+                        f:SelectAlertTab(tabDef.key)
+                    end
+                end)
+                f._alertTabBtns[tabIdx] = tb
+            end)(alertTabDefs[ti], ti)
+        end
+        LayoutAlertTabButtons()
+        f.LayoutAlertTabButtons = LayoutAlertTabButtons
+
+        local contentHost = CreateFrame("Frame", nil, bodyHost)
+        contentHost:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
+        contentHost:SetPoint("BOTTOMRIGHT", bodyHost, "BOTTOMRIGHT", 0, 0)
+        contentHost:SetClipsChildren(true)
+        f.contentHost = contentHost
+
+        local function MakeTabPanel(name)
+            local panel = CreateFrame("Frame", nil, contentHost)
+            panel:SetPoint("TOPLEFT", contentHost, "TOPLEFT", 0, 0)
+            panel:SetPoint("BOTTOMRIGHT", contentHost, "BOTTOMRIGHT", 0, 0)
+            panel:SetClipsChildren(true)
+            panel:Hide()
+            return panel
         end
 
-        local innerW = math.max(120, (dialogW - sideInset * 2) - scrollBarW - 4)
-        local sc = Factory:CreateContainer(scrollFrame, innerW, 100, false)
-        scrollFrame:SetScrollChild(sc)
-        f.reminderScrollFrame = scrollFrame
-        f.reminderScrollChild = sc
+        f.panelSchedule = MakeTabPanel("schedule")
+        f.panelZone = MakeTabPanel("zone")
+        f.panelQuests = MakeTabPanel("quests")
+        f._alertTabPanels = {
+            schedule = f.panelSchedule,
+            zone = f.panelZone,
+            quests = f.panelQuests,
+        }
 
-        scrollFrame:SetScript("OnSizeChanged", function(self)
-            local child = self:GetScrollChild()
-            local w = self:GetWidth()
-            if child and w then child:SetWidth(w) end
-            if f._layoutReminderGrids then
-                f._layoutReminderGrids()
+        function f:SelectAlertTab(tabKey)
+            tabKey = tabKey or "schedule"
+            self._activeAlertTab = tabKey
+            local panels = self._alertTabPanels
+            if panels then
+                for key, panel in pairs(panels) do
+                    if panel then
+                        if key == tabKey then panel:Show() else panel:Hide() end
+                    end
+                end
             end
-            if Factory.UpdateScrollBarVisibility then
-                Factory:UpdateScrollBarVisibility(self)
+            local keys = self._alertTabKeys or {}
+            local btns = self._alertTabBtns or {}
+            for bi = 1, #keys do
+                local b = btns[bi]
+                local sel = (keys[bi] == tabKey)
+                if b and b.labelFs then
+                    if ApplyVisuals then
+                        ApplyVisuals(b,
+                            sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 }
+                                or { 0.12, 0.12, 0.15, 1 },
+                            { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], sel and 0.95 or 0.35 })
+                    end
+                end
             end
-        end)
+            if tabKey == "zone" or tabKey == "quests" then
+                if self.ApplyAlertLocationQuestMutex then self:ApplyAlertLocationQuestMutex() end
+            end
+            if tabKey == "zone" then
+                if self.ApplyZoneDependentControlsState then self:ApplyZoneDependentControlsState() end
+                if not self._zoneCatalogPrimed and self.RefreshZoneCatalogRows then
+                    self._zoneCatalogPrimed = true
+                    if C_Timer and C_Timer.After then
+                        C_Timer.After(0, function()
+                            if self:IsShown() and self._activeAlertTab == "zone" and self.RefreshZoneCatalogRows then
+                                self:RefreshZoneCatalogRows()
+                            end
+                        end)
+                    else
+                        self:RefreshZoneCatalogRows()
+                    end
+                end
+            elseif tabKey == "quests" then
+                if self.ApplyQuestTrackControlsState then self:ApplyQuestTrackControlsState() end
+            end
+            if self.LayoutDialogHeights then self:LayoutDialogHeights() end
+        end
+        f.SelectAlertTab = f.SelectAlertTab
 
-        local function AttachOptionLabel(fs, anchorWidget, textStr)
+        local function AttachOptionLabel(fs, anchorWidget, textStr, rightParent)
+            rightParent = rightParent or anchorWidget:GetParent() or contentHost
             fs:SetPoint("LEFT", anchorWidget, "RIGHT", 8, 0)
-            fs:SetPoint("RIGHT", sc, "RIGHT", -sideInset, 0)
+            fs:SetPoint("RIGHT", rightParent, "RIGHT", 0, 0)
             fs:SetJustifyH("LEFT")
             fs:SetText(textStr)
             fs:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
@@ -262,6 +374,83 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end)
         end
 
+        function f:ShowMutexTooltip(owner, tipText)
+            if not owner or not tipText or tipText == "" then return end
+            if ns.UI_SetGameTooltipSmartOwner then
+                ns.UI_SetGameTooltipSmartOwner(owner, 0, 0)
+            else
+                GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+            end
+            -- Midnight: SetText(text [, color, alpha, wrap]) — not legacy r,g,b,wrap floats.
+            GameTooltip:SetText(tipText)
+            GameTooltip:Show()
+        end
+
+        local function WireMutexHoverTip(widget, tipField)
+            if not widget or widget._mutexHoverWired then return end
+            widget._mutexHoverWired = true
+            widget:EnableMouse(true)
+            widget:HookScript("OnEnter", function(self)
+                local tip = f[tipField]
+                if not tip or tip == "" then return end
+                f:ShowMutexTooltip(self, tip)
+            end)
+            widget:HookScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+        end
+
+        local function WireMutexTipHost(host)
+            if not host or host._mutexTipHooked then return end
+            host._mutexTipHooked = true
+            host:SetScript("OnEnter", function(self)
+                local tip = self._mutexBlockTip
+                if not tip or tip == "" then return end
+                f:ShowMutexTooltip(self, tip)
+            end)
+            host:HookScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+        end
+
+        local function CreateMutexTipHost(parent, leftWidget, rightWidget)
+            if not parent or not leftWidget or not rightWidget then return nil end
+            local host = CreateFrame("Frame", nil, parent)
+            host:SetPoint("TOPLEFT", leftWidget, "TOPLEFT", -4, 4)
+            host:SetPoint("BOTTOMRIGHT", rightWidget, "BOTTOMRIGHT", 4, -4)
+            host:Hide()
+            host:EnableMouse(false)
+            WireMutexTipHost(host)
+            return host
+        end
+
+        function f:RaiseMutexTipHost(host)
+            if not host then return end
+            if host.SetFrameStrata then
+                host:SetFrameStrata("TOOLTIP")
+            end
+            if host.SetFrameLevel then
+                host:SetFrameLevel(200)
+            end
+            if host.Raise then
+                host:Raise()
+            end
+        end
+
+        function f:SetAlertMutexTipHost(host, tipText)
+            if not host then return end
+            if tipText and tipText ~= "" then
+                host._mutexBlockTip = tipText
+                host:Show()
+                host:EnableMouse(true)
+                self:RaiseMutexTipHost(host)
+            else
+                host._mutexBlockTip = nil
+                host:Hide()
+                host:EnableMouse(false)
+            end
+        end
+
         local cardPad = RD.cardPad
         local bgCardCol = COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
 
@@ -273,45 +462,42 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
         end
 
-        local function ReflowReminderScrollHeight()
-            local scH = 8
-            if f.whenCard and f.whenCard:IsShown() then
-                scH = scH + (f.whenCard:GetHeight() or RD.whenCardH) + RD.sectionGap
-            end
-            if f.locationCard and f.locationCard:IsShown() then
-                scH = scH + (f.locationCard:GetHeight() or RD.locationBaseH) + RD.sectionGap
-            end
-            if f.zoneCatalogCard and f.zoneCatalogCard:IsShown() then
-                scH = scH + (f.zoneCatalogCard:GetHeight() or RD.catalogMinH) + RD.sectionGap
-            end
-            if f.reminderScrollChild then
-                local bodyH = (f.reminderBodyHost and f.reminderBodyHost:GetHeight()) or 0
-                f.reminderScrollChild:SetHeight(math.max(bodyH, scH + 16))
-            end
-        end
-        f.ReflowReminderScrollHeight = ReflowReminderScrollHeight
-
         function f:LayoutDialogHeights()
-            local bodyH = self.reminderBodyHost and self.reminderBodyHost:GetHeight()
-            if not bodyH or bodyH < 120 then return end
-            local whenH = (self.whenCard and self.whenCard:IsShown() and self.whenCard:GetHeight()) or 0
-            local locH = (self.locationCard and self.locationCard:IsShown() and self.locationCard:GetHeight()) or 0
-            local gaps = RD.sectionGap * 2 + 12
-            if self.zoneCatalogCard and self.zoneCatalogCard:IsShown() then
-                local catalogH = math.max(RD.catalogMinH, bodyH - whenH - locH - gaps)
-                self.zoneCatalogCard:SetHeight(catalogH)
+            local tab = self._activeAlertTab or "schedule"
+
+            if tab == "zone" and self.panelZone and self.locationCard then
+                self.locationCard:ClearAllPoints()
+                self.locationCard:SetPoint("TOPLEFT", self.panelZone, "TOPLEFT", 0, 0)
+                self.locationCard:SetPoint("TOPRIGHT", self.panelZone, "TOPRIGHT", 0, 0)
+                if self.zoneCatalogCard and self.zoneCatalogCard:IsShown() then
+                    self.zoneCatalogCard:ClearAllPoints()
+                    self.zoneCatalogCard:SetPoint("TOPLEFT", self.locationCard, "BOTTOMLEFT", 0, -8)
+                    self.zoneCatalogCard:SetPoint("BOTTOMRIGHT", self.panelZone, "BOTTOMRIGHT", 0, 0)
+                end
             end
-            if self.ReflowReminderScrollHeight then
-                self:ReflowReminderScrollHeight()
+
+            if tab == "quests" and self.panelQuests and self.questTrackCard then
+                self.questTrackCard:ClearAllPoints()
+                self.questTrackCard:SetPoint("TOPLEFT", self.panelQuests, "TOPLEFT", 0, 0)
+                self.questTrackCard:SetPoint("TOPRIGHT", self.panelQuests, "TOPRIGHT", 0, 0)
+                if self.questCatalogCard and self.questCatalogCard:IsShown() then
+                    self.questCatalogCard:ClearAllPoints()
+                    self.questCatalogCard:SetPoint("TOPLEFT", self.questTrackCard, "BOTTOMLEFT", 0, -8)
+                    self.questCatalogCard:SetPoint("BOTTOMRIGHT", self.panelQuests, "BOTTOMRIGHT", 0, 0)
+                end
             end
-            if self.LayoutZoneCatalogSplit then
-                self:LayoutZoneCatalogSplit()
+
+            if self.LayoutZoneCatalogSplit then self:LayoutZoneCatalogSplit() end
+            if self.LayoutQuestCatalogSplit then self:LayoutQuestCatalogSplit() end
+            if Factory.UpdateScrollBarVisibility then
+                if self.questCatalogScroll then Factory:UpdateScrollBarVisibility(self.questCatalogScroll) end
+                if self.zoneCatalogScroll then Factory:UpdateScrollBarVisibility(self.zoneCatalogScroll) end
             end
         end
 
-        local whenCard = CreateFrame("Frame", nil, sc)
-        whenCard:SetPoint("TOPLEFT", sideInset, -4)
-        whenCard:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -sideInset, -4)
+        local whenCard = CreateFrame("Frame", nil, f.panelSchedule)
+        whenCard:SetPoint("TOPLEFT", f.panelSchedule, "TOPLEFT", 0, 0)
+        whenCard:SetPoint("TOPRIGHT", f.panelSchedule, "TOPRIGHT", 0, 0)
         whenCard:SetHeight(RD.whenCardH)
         StyleCard(whenCard)
         f.whenCard = whenCard
@@ -325,7 +511,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         secSchedule:SetPoint("TOPRIGHT", whenInner, "TOPRIGHT", 0, 0)
         secSchedule:SetJustifyH("LEFT")
         secSchedule:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        secSchedule:SetText((L and L["SET_ALERT_SECTION_SCHEDULE"]) or "Login & resets")
+        secSchedule:SetText((L and L["SET_ALERT_SECTION_SCHEDULE"]) or "Login & Resets")
 
         local whenOptsRow = CreateFrame("Frame", nil, whenInner)
         whenOptsRow:SetPoint("TOPLEFT", secSchedule, "BOTTOMLEFT", 0, -8)
@@ -445,9 +631,9 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         LayoutWhenOptsRow()
         SyncDaysBeforeEditEnabled()
 
-        local locationCard = CreateFrame("Frame", nil, sc)
-        locationCard:SetPoint("TOPLEFT", whenCard, "BOTTOMLEFT", 0, -RD.sectionGap)
-        locationCard:SetPoint("TOPRIGHT", whenCard, "BOTTOMRIGHT", 0, -RD.sectionGap)
+        local locationCard = CreateFrame("Frame", nil, f.panelZone)
+        locationCard:SetPoint("TOPLEFT", f.panelZone, "TOPLEFT", 0, 0)
+        locationCard:SetPoint("TOPRIGHT", f.panelZone, "TOPRIGHT", 0, 0)
         locationCard:SetHeight(RD.locationBaseH)
         StyleCard(locationCard)
         f.locationCard = locationCard
@@ -474,14 +660,40 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         zoneLabel:SetMaxLines(2)
         zoneLabel:SetText((L and L["REMINDER_OPT_ZONE_ENTER_MATCHING"]) or (L and L["REMINDER_OPT_ZONE"]) or "Remind me when enter to matching zone")
         zoneLabel:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
-        WireLabelToggle(zoneLabel, zoneCheck)
+        zoneLabel:EnableMouse(true)
+        if zoneLabel.RegisterForClicks then
+            zoneLabel:RegisterForClicks("LeftButtonUp")
+        end
+        zoneLabel:SetScript("OnMouseUp", function(_, btn)
+            if btn ~= "LeftButton" then return end
+            if f._zoneMutexTipText then return end
+            zoneCheck:Click()
+        end)
         f.zoneCheck = zoneCheck
         f.zoneLabel = zoneLabel
+        f.zoneMutexNotice = FontManager:CreateFontString(locInner, "small", "OVERLAY")
+        f.zoneMutexNotice:SetPoint("TOPLEFT", zoneCheck, "BOTTOMLEFT", 0, -6)
+        f.zoneMutexNotice:SetPoint("TOPRIGHT", locInner, "TOPRIGHT", 0, -6)
+        f.zoneMutexNotice:SetJustifyH("LEFT")
+        f.zoneMutexNotice:SetWordWrap(true)
+        f.zoneMutexNotice:SetMaxLines(2)
+        f.zoneMutexNotice:SetTextColor(0.92, 0.72, 0.42)
+        f.zoneMutexNotice:Hide()
+        WireMutexHoverTip(zoneLabel, "_zoneMutexTipText")
+        WireMutexHoverTip(zoneCheck, "_zoneMutexTipText")
+
         zoneCheck:HookScript("OnClick", function()
-            if f.ApplyZoneDependentControlsState then
-                f:ApplyZoneDependentControlsState()
+            if f._zoneMutexTipText then
+                f:SyncThemedCheck(f.zoneCheck, false)
+                return
             end
+            f._locationQuestMutexSide = "zone"
+            if f.ApplyAlertLocationQuestMutex then f:ApplyAlertLocationQuestMutex() end
+            if f.ApplyZoneDependentControlsState then f:ApplyZoneDependentControlsState() end
+            if f.ApplyQuestTrackControlsState then f:ApplyQuestTrackControlsState() end
         end)
+        f.zoneMutexTipHost = CreateMutexTipHost(locInner, zoneCheck, zoneLabel)
+        f:RaiseMutexTipHost(f.zoneMutexTipHost)
 
         f.selectedZonesBlock = CreateFrame("Frame", nil, locInner)
         f.selectedZonesBlock:SetPoint("TOPLEFT", zoneCheck, "BOTTOMLEFT", 0, -10)
@@ -780,8 +992,6 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
             if self.LayoutDialogHeights then
                 self:LayoutDialogHeights()
-            elseif self.ReflowReminderScrollHeight then
-                self:ReflowReminderScrollHeight()
             end
         end
 
@@ -807,11 +1017,1008 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             return str:sub(1, maxLen - 1) .. "…"
         end
 
+        local function LocaleOr(key, fallback)
+            if not key or key == "" then return fallback or "" end
+            local v = L and L[key]
+            if v and v ~= key then return v end
+            return fallback or key
+        end
+
+        f._selectedWQQuestIDs = {}
+        f._selectedEventQuestIDs = {}
+        f._selectedWorldEventKeys = {}
+        f._questListTab = "worldQuests"
+        f._questPickerSectionIdx = 1
+        f._questPickerLastScrollW = 0
+        f._questPickerPrimed = false
+        f._zoneCatalogPrimed = false
+
+        function f:SyncThemedCheck(cb, checked)
+            if not cb then return end
+            local v = checked and true or false
+            cb:SetChecked(v)
+            if cb.innerDot then
+                cb.innerDot:SetShown(v)
+            end
+        end
+
+        --- Zone & Instance and Quests & Events cannot both be enabled on one alert.
+        function f:ApplyAlertLocationQuestMutex()
+            if self._locationQuestMutexLock then return end
+            self._locationQuestMutexLock = true
+
+            local zoneOn = self.zoneCheck and self.zoneCheck:GetChecked() == true
+            local questOn = self.questTrackCheck and self.questTrackCheck:GetChecked() == true
+
+            if zoneOn and questOn then
+                if self._locationQuestMutexSide == "quest" then
+                    self:SyncThemedCheck(self.zoneCheck, false)
+                    zoneOn = false
+                else
+                    self:SyncThemedCheck(self.questTrackCheck, false)
+                    questOn = false
+                end
+                self._locationQuestMutexSide = nil
+            end
+
+            local zoneBlocksQuest = zoneOn
+            local questBlocksZone = questOn
+
+            if self.questTrackCheck and self.questTrackCheck.Enable then
+                self.questTrackCheck:Enable()
+            end
+            if self.zoneCheck and self.zoneCheck.Enable then
+                self.zoneCheck:Enable()
+            end
+            if questBlocksZone and self.zoneCheck then
+                self:SyncThemedCheck(self.zoneCheck, false)
+            end
+            if zoneBlocksQuest and self.questTrackCheck then
+                self:SyncThemedCheck(self.questTrackCheck, false)
+            end
+
+            if self.questTrackLabel and self.questTrackLabel.SetTextColor then
+                local blocked = zoneBlocksQuest and not questOn
+                local alpha = blocked and 0.28 or (questOn and 1 or 0.38)
+                self.questTrackLabel:SetTextColor(
+                    labelBody[1] * alpha + 0.3, labelBody[2] * alpha + 0.3, labelBody[3] * alpha + 0.3)
+            end
+            if self.zoneLabel and self.zoneLabel.SetTextColor then
+                local blocked = questBlocksZone and not zoneOn
+                local alpha = blocked and 0.28 or (zoneOn and 1 or 0.38)
+                self.zoneLabel:SetTextColor(
+                    labelBody[1] * alpha + 0.3, labelBody[2] * alpha + 0.3, labelBody[3] * alpha + 0.3)
+            end
+
+            local zoneTabName = (L and L["SET_ALERT_SECTION_LOCATION"]) or "Zone & Instance"
+            local questTabName = (L and L["SET_ALERT_SECTION_QUESTS"]) or "Quests & Events"
+            local questBlockedFmt = (L and L["SET_ALERT_MUTEX_QUEST_BLOCKED"])
+                or "Disabled while %s is enabled. Turn it off to use Quests and Events on this alert."
+            local zoneBlockedFmt = (L and L["SET_ALERT_MUTEX_ZONE_BLOCKED"])
+                or "Disabled while %s is enabled. Turn it off to use Zone and Instance on this alert."
+            local questTip = zoneBlocksQuest and string.format(questBlockedFmt, zoneTabName) or nil
+            local zoneTip = questBlocksZone and string.format(zoneBlockedFmt, questTabName) or nil
+            self._questMutexTipText = questTip
+            self._zoneMutexTipText = zoneTip
+
+            if self.SetAlertMutexTipHost then
+                self:SetAlertMutexTipHost(self.questMutexTipHost, questTip)
+                self:SetAlertMutexTipHost(self.zoneMutexTipHost, zoneTip)
+            end
+
+            if self.zoneMutexNotice then
+                if zoneTip then
+                    self.zoneMutexNotice:SetText(zoneTip)
+                    self.zoneMutexNotice:Show()
+                    if self.selectedZonesBlock and self.locationInner then
+                        self.selectedZonesBlock:ClearAllPoints()
+                        self.selectedZonesBlock:SetPoint("TOPLEFT", self.zoneMutexNotice, "BOTTOMLEFT", 0, -8)
+                        self.selectedZonesBlock:SetPoint("TOPRIGHT", self.locationInner, "TOPRIGHT", 0, -10)
+                    end
+                else
+                    self.zoneMutexNotice:Hide()
+                    if self.selectedZonesBlock and self.zoneCheck and self.locationInner then
+                        self.selectedZonesBlock:ClearAllPoints()
+                        self.selectedZonesBlock:SetPoint("TOPLEFT", self.zoneCheck, "BOTTOMLEFT", 0, -10)
+                        self.selectedZonesBlock:SetPoint("TOPRIGHT", self.locationInner, "TOPRIGHT", 0, -10)
+                    end
+                end
+            end
+            if self.questMutexNotice then
+                if questTip then
+                    self.questMutexNotice:SetText(questTip)
+                    self.questMutexNotice:Show()
+                    if self.selectedQuestsBlock and self.questEventsInner then
+                        self.selectedQuestsBlock:ClearAllPoints()
+                        self.selectedQuestsBlock:SetPoint("TOPLEFT", self.questMutexNotice, "BOTTOMLEFT", 0, -8)
+                        self.selectedQuestsBlock:SetPoint("TOPRIGHT", self.questEventsInner, "TOPRIGHT", 0, -10)
+                    end
+                else
+                    self.questMutexNotice:Hide()
+                    if self.selectedQuestsBlock and self.questTrackCheck and self.questEventsInner then
+                        self.selectedQuestsBlock:ClearAllPoints()
+                        self.selectedQuestsBlock:SetPoint("TOPLEFT", self.questTrackCheck, "BOTTOMLEFT", 0, -10)
+                        self.selectedQuestsBlock:SetPoint("TOPRIGHT", self.questEventsInner, "TOPRIGHT", 0, -10)
+                    end
+                end
+            end
+
+            if self.LayoutDialogHeights then self:LayoutDialogHeights() end
+
+            self._locationQuestMutexLock = false
+        end
+
+        function f:GetActiveQuestPickerSection()
+            local RQP = ns.ReminderQuestPickerCatalog
+            local sections = (RQP and RQP.GetTypeSections and RQP.GetTypeSections()) or {}
+            local idx = self._questPickerSectionIdx or 1
+            return sections[idx] or sections[1]
+        end
+
+        function f:GetActiveQuestTrackMode()
+            local sec = self:GetActiveQuestPickerSection()
+            return (sec and sec.trackMode) or self._questListTab or "worldQuests"
+        end
+
+        function f:GetActiveQuestTrackSelectionCount()
+            local mode = self:GetActiveQuestTrackMode()
+            if mode == "contentEvents" then
+                return #(self._selectedEventQuestIDs or {})
+            end
+            if mode == "worldEvents" then
+                return #(self._selectedWorldEventKeys or {})
+            end
+            return #(self._selectedWQQuestIDs or {})
+        end
+
+        function f:RefreshSelectedQuestSummary()
+            local n = self:GetActiveQuestTrackSelectionCount()
+            if self.questSelectedTitle then
+                local cntKey = (L and L["REMINDER_QUEST_SELECTED_COUNT"]) or "Selected entries (%d)"
+                self.questSelectedTitle:SetText(string.format(cntKey, n))
+            end
+            if self.questSelectedEmpty then
+                if n == 0 then
+                    self.questSelectedEmpty:Show()
+                else
+                    self.questSelectedEmpty:Hide()
+                end
+            end
+            local pad = RD.cardPad
+            local topBlock = 22 + 8 + 22 + 10
+            local blockH = topBlock + ((n == 0) and 28 or 4)
+            if self.selectedQuestsBlock then
+                self.selectedQuestsBlock:SetHeight(math.max(36, blockH))
+            end
+            if self.questTrackCard then
+                self.questTrackCard:SetHeight(math.max(RD.questTrackBaseH, pad + blockH + pad))
+            end
+            if self.LayoutDialogHeights then self:LayoutDialogHeights() end
+        end
+
+        function f:SetActiveQuestPickerSectionIdx(idx)
+            local RQP = ns.ReminderQuestPickerCatalog
+            local sections = (RQP and RQP.GetTypeSections and RQP.GetTypeSections()) or {}
+            idx = tonumber(idx) or 1
+            if idx < 1 then idx = 1 end
+            if #sections > 0 and idx > #sections then idx = #sections end
+            local sec = sections[idx]
+            if not sec then return end
+            if self._questPickerSectionIdx ~= idx and self.questCatalogScroll then
+                self.questCatalogScroll:SetVerticalScroll(0)
+            end
+            self._questPickerSectionIdx = idx
+            self._catalogQuestSectionIdx = idx
+            self._questListTab = sec.trackMode
+            self:RefreshSelectedQuestSummary()
+            if self.LayoutQuestCatalogSplit then
+                self:LayoutQuestCatalogSplit()
+            end
+            if self.RefreshQuestTypeButtonHighlight then
+                self:RefreshQuestTypeButtonHighlight()
+            end
+            if self._activeAlertTab == "quests" and self._questPickerPrimed and self.RefreshPickerListRows then
+                self:RefreshPickerListRows()
+            end
+        end
+
+        function f:SetActiveQuestTrackMode(mode)
+            if mode ~= "worldQuests" and mode ~= "contentEvents" and mode ~= "worldEvents" then
+                mode = "worldQuests"
+            end
+            local RQP = ns.ReminderQuestPickerCatalog
+            local idx = 1
+            if RQP and RQP.GetDefaultSectionIndexForTrackMode then
+                idx = RQP.GetDefaultSectionIndexForTrackMode(mode)
+            end
+            self:SetActiveQuestPickerSectionIdx(idx)
+        end
+
+        function f:RefreshQuestTypeButtonHighlight()
+            local sections = (ns.ReminderQuestPickerCatalog and ns.ReminderQuestPickerCatalog.GetTypeSections
+                and ns.ReminderQuestPickerCatalog.GetTypeSections()) or {}
+            local idx = self._questPickerSectionIdx or 1
+            local btns = self._questTypeBtns
+            if not btns then return end
+            for bi = 1, #sections do
+                local sel = (bi == idx)
+                if btns[bi] and ApplyVisuals then
+                    ApplyVisuals(btns[bi],
+                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or { 0.12, 0.12, 0.15, 1 },
+                        { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], sel and 0.95 or 0.35 })
+                end
+            end
+        end
+
+        local questTrackCard = CreateFrame("Frame", nil, f.panelQuests)
+        questTrackCard:SetPoint("TOPLEFT", f.panelQuests, "TOPLEFT", 0, 0)
+        questTrackCard:SetPoint("TOPRIGHT", f.panelQuests, "TOPRIGHT", 0, 0)
+        questTrackCard:SetHeight(RD.questTrackBaseH)
+        StyleCard(questTrackCard)
+        f.questTrackCard = questTrackCard
+        f.questEventsCard = questTrackCard
+
+        local trackInner = CreateFrame("Frame", nil, questTrackCard)
+        trackInner:SetPoint("TOPLEFT", questTrackCard, "TOPLEFT", cardPad, -cardPad)
+        trackInner:SetPoint("BOTTOMRIGHT", questTrackCard, "BOTTOMRIGHT", -cardPad, cardPad)
+        f.questEventsInner = trackInner
+
+        local secQuestTrack = FontManager:CreateFontString(trackInner, "subtitle", "OVERLAY")
+        secQuestTrack:SetPoint("TOPLEFT", trackInner, "TOPLEFT", 0, 0)
+        secQuestTrack:SetPoint("TOPRIGHT", trackInner, "TOPRIGHT", 0, 0)
+        secQuestTrack:SetJustifyH("LEFT")
+        secQuestTrack:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        secQuestTrack:SetText((L and L["SET_ALERT_SECTION_QUESTS"]) or "Quests & Events")
+
+        local questTrackCheck = CreateThemedCheckbox(trackInner, false)
+        questTrackCheck:SetPoint("TOPLEFT", secQuestTrack, "BOTTOMLEFT", 0, -8)
+        local questTrackLabel = FontManager:CreateFontString(trackInner, "body", "OVERLAY")
+        questTrackLabel:SetPoint("LEFT", questTrackCheck, "RIGHT", 8, 0)
+        questTrackLabel:SetPoint("RIGHT", trackInner, "RIGHT", 0, 0)
+        questTrackLabel:SetJustifyH("LEFT")
+        questTrackLabel:SetWordWrap(true)
+        questTrackLabel:SetMaxLines(2)
+        questTrackLabel:SetText((L and L["REMINDER_OPT_QUEST_TRACK"])
+            or (L and L["REMINDER_OPT_WORLD_QUEST_ACTIVE"])
+            or "Remind when selected entries are active on the map")
+        questTrackLabel:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
+        questTrackLabel:EnableMouse(true)
+        if questTrackLabel.RegisterForClicks then
+            questTrackLabel:RegisterForClicks("LeftButtonUp")
+        end
+        questTrackLabel:SetScript("OnMouseUp", function(_, btn)
+            if btn ~= "LeftButton" then return end
+            if f._questMutexTipText then return end
+            questTrackCheck:Click()
+        end)
+        f.questTrackCheck = questTrackCheck
+        f.questTrackLabel = questTrackLabel
+        f.questMutexNotice = FontManager:CreateFontString(trackInner, "small", "OVERLAY")
+        f.questMutexNotice:SetPoint("TOPLEFT", questTrackCheck, "BOTTOMLEFT", 0, -6)
+        f.questMutexNotice:SetPoint("TOPRIGHT", trackInner, "TOPRIGHT", 0, -6)
+        f.questMutexNotice:SetJustifyH("LEFT")
+        f.questMutexNotice:SetWordWrap(true)
+        f.questMutexNotice:SetMaxLines(2)
+        f.questMutexNotice:SetTextColor(0.92, 0.72, 0.42)
+        f.questMutexNotice:Hide()
+        WireMutexHoverTip(questTrackLabel, "_questMutexTipText")
+        WireMutexHoverTip(questTrackCheck, "_questMutexTipText")
+
+        questTrackCheck:HookScript("OnClick", function()
+            if f._questMutexTipText then
+                f:SyncThemedCheck(f.questTrackCheck, false)
+                return
+            end
+            f._locationQuestMutexSide = "quest"
+            if f.ApplyAlertLocationQuestMutex then f:ApplyAlertLocationQuestMutex() end
+            if f.ApplyZoneDependentControlsState then f:ApplyZoneDependentControlsState() end
+            if f.ApplyQuestTrackControlsState then f:ApplyQuestTrackControlsState() end
+        end)
+        f.questMutexTipHost = CreateMutexTipHost(trackInner, questTrackCheck, questTrackLabel)
+        f:RaiseMutexTipHost(f.questMutexTipHost)
+
+        f.selectedQuestsBlock = CreateFrame("Frame", nil, trackInner)
+        f.selectedQuestsBlock:SetPoint("TOPLEFT", questTrackCheck, "BOTTOMLEFT", 0, -10)
+        f.selectedQuestsBlock:SetPoint("TOPRIGHT", trackInner, "TOPRIGHT", 0, -10)
+        f.selectedQuestsBlock:SetHeight(36)
+
+        f.questSelectedTitle = FontManager:CreateFontString(f.selectedQuestsBlock, "subtitle", "OVERLAY")
+        f.questSelectedTitle:SetPoint("TOPLEFT", f.selectedQuestsBlock, "TOPLEFT", 0, 0)
+        f.questSelectedTitle:SetPoint("TOPRIGHT", f.selectedQuestsBlock, "TOPRIGHT", 0, 0)
+        f.questSelectedTitle:SetJustifyH("LEFT")
+        f.questSelectedTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        f.questSelectedTitle:SetText(string.format(
+            (L and L["REMINDER_QUEST_SELECTED_COUNT"]) or "Selected entries (%d)", 0))
+
+        f.questSelectedEmpty = FontManager:CreateFontString(f.selectedQuestsBlock, "small", "OVERLAY")
+        f.questSelectedEmpty:SetPoint("TOPLEFT", f.questSelectedTitle, "BOTTOMLEFT", 0, -4)
+        f.questSelectedEmpty:SetPoint("TOPRIGHT", f.selectedQuestsBlock, "TOPRIGHT", 0, -4)
+        f.questSelectedEmpty:SetJustifyH("LEFT")
+        f.questSelectedEmpty:SetWordWrap(true)
+        f.questSelectedEmpty:SetMaxLines(2)
+        f.questSelectedEmpty:SetTextColor(0.55, 0.58, 0.64)
+        f.questSelectedEmpty:SetText((L and L["REMINDER_QUEST_SELECTED_EMPTY"])
+            or "No quests or events selected. Check the list below.")
+
+        f.questPickerCard = CreateFrame("Frame", nil, f.panelQuests)
+        f.questPickerCard:SetPoint("TOPLEFT", questTrackCard, "BOTTOMLEFT", 0, -8)
+        f.questPickerCard:SetPoint("BOTTOMRIGHT", f.panelQuests, "BOTTOMRIGHT", 0, 0)
+        f.questPickerCard:SetClipsChildren(true)
+        if ApplyVisuals then
+            ApplyVisuals(f.questPickerCard,
+                { bgCardCol[1], bgCardCol[2], bgCardCol[3], bgCardCol[4] or 1 },
+                { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
+        end
+
+        local questPickerPad = 8
+        local questPickerTitle = FontManager:CreateFontString(f.questPickerCard, "subtitle", "OVERLAY")
+        questPickerTitle:SetPoint("TOPLEFT", f.questPickerCard, "TOPLEFT", cardPad, -questPickerPad)
+        questPickerTitle:SetPoint("TOPRIGHT", f.questPickerCard, "TOPRIGHT", -cardPad, -questPickerPad)
+        questPickerTitle:SetJustifyH("LEFT")
+        questPickerTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        questPickerTitle:SetText((L and L["REMINDER_QUEST_CATALOG_TITLE"]) or "Quest and event picker")
+
+        local questPickerHint = FontManager:CreateFontString(f.questPickerCard, "small", "OVERLAY")
+        questPickerHint:SetPoint("TOPLEFT", questPickerTitle, "BOTTOMLEFT", 0, -4)
+        questPickerHint:SetPoint("TOPRIGHT", questPickerTitle, "BOTTOMRIGHT", 0, -4)
+        questPickerHint:SetJustifyH("LEFT")
+        questPickerHint:SetWordWrap(true)
+        questPickerHint:SetMaxLines(2)
+        questPickerHint:SetTextColor(0.55, 0.58, 0.64)
+        questPickerHint:SetText((L and L["REMINDER_QUEST_CATALOG_HINT_SHORT"])
+            or (L and L["SET_ALERT_QUESTS_HINT"])
+            or "Region or category on the left; Type and Title on the right.")
+        f.questTabHint = questPickerHint
+        f.questCatalogCard = f.questPickerCard
+
+        function f:GetQuestSelectionList(mode)
+            if mode == "contentEvents" then
+                return self._selectedEventQuestIDs
+            end
+            if mode == "worldQuests" then
+                return self._selectedWQQuestIDs
+            end
+            return nil
+        end
+
+        function f:IsQuestSelected(questID, mode)
+            questID = tonumber(questID)
+            if not questID or not mode then return false end
+            local list = self:GetQuestSelectionList(mode)
+            if not list then return false end
+            for i = 1, #list do
+                if list[i] == questID then return true end
+            end
+            return false
+        end
+
+        function f:SetQuestSelected(questID, mode, selected)
+            questID = tonumber(questID)
+            if not questID or questID <= 0 then return end
+            if mode ~= "worldQuests" and mode ~= "contentEvents" then return end
+            local list = self:GetQuestSelectionList(mode) or {}
+            local out = {}
+            local found = false
+            for i = 1, #list do
+                if list[i] == questID then
+                    found = true
+                    if selected then out[#out + 1] = questID end
+                else
+                    out[#out + 1] = list[i]
+                end
+            end
+            if selected and not found then out[#out + 1] = questID end
+            table.sort(out)
+            if mode == "contentEvents" then
+                self._selectedEventQuestIDs = out
+            else
+                self._selectedWQQuestIDs = out
+            end
+            if self.RefreshSelectedQuestSummary then self:RefreshSelectedQuestSummary() end
+        end
+
+        function f:OnPickerRowCheckClick(row)
+            if not row or not row.check then return end
+            local mode = row._pickerMode
+            if not mode then return end
+            local checked = row.check:GetChecked() == true
+            if mode == "worldEvents" then
+                if row.eventKey and self.SetWorldEventSelected then
+                    self:SetWorldEventSelected(row.eventKey, checked)
+                end
+                return
+            end
+            if row.questID and (mode == "worldQuests" or mode == "contentEvents") then
+                self:SetQuestSelected(row.questID, mode, checked)
+            end
+        end
+
+        function f:IsWorldEventSelected(eventKey)
+            if not eventKey or eventKey == "" then return false end
+            local list = self._selectedWorldEventKeys or {}
+            for i = 1, #list do
+                if list[i] == eventKey then return true end
+            end
+            return false
+        end
+
+        function f:SetWorldEventSelected(eventKey, selected)
+            if not eventKey or eventKey == "" then return end
+            local list = self._selectedWorldEventKeys or {}
+            local out, found = {}, false
+            for i = 1, #list do
+                if list[i] == eventKey then
+                    found = true
+                    if selected then out[#out + 1] = eventKey end
+                else
+                    out[#out + 1] = list[i]
+                end
+            end
+            if selected and not found then out[#out + 1] = eventKey end
+            table.sort(out)
+            self._selectedWorldEventKeys = out
+            if self.RefreshSelectedQuestSummary then self:RefreshSelectedQuestSummary() end
+        end
+
+        local qcScrollW = scrollBarW
+        local qcSplitGap = RD.splitGap
+        local typeInnerW = RD.expColW
+        local typePanelOuterW = typeInnerW + 4
+
+        local questMapsBody = CreateFrame("Frame", nil, f.questPickerCard)
+        questMapsBody:SetPoint("TOPLEFT", questPickerHint, "BOTTOMLEFT", 0, -8)
+        questMapsBody:SetPoint("BOTTOMRIGHT", f.questPickerCard, "BOTTOMRIGHT", -cardPad, questPickerPad)
+        f.questMapsBody = questMapsBody
+        f.questListArea = questMapsBody
+        f.questListSection = questMapsBody
+
+        local questColHeadRow = CreateFrame("Frame", nil, questMapsBody)
+        questColHeadRow:SetPoint("TOPLEFT", questMapsBody, "TOPLEFT", 0, 0)
+        questColHeadRow:SetPoint("TOPRIGHT", questMapsBody, "TOPRIGHT", 0, 0)
+        questColHeadRow:SetHeight(18)
+        f.questColHeadRow = questColHeadRow
+
+        local questSectionHead = FontManager:CreateFontString(questColHeadRow, "subtitle", "OVERLAY")
+        questSectionHead:SetPoint("TOPLEFT", questColHeadRow, "TOPLEFT", 0, 0)
+        questSectionHead:SetWidth(typeInnerW)
+        questSectionHead:SetJustifyH("LEFT")
+        questSectionHead:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        questSectionHead:SetText((L and L["REMINDER_QUEST_CATALOG_CATEGORY_LABEL"]) or "Category")
+        f.questSectionHead = questSectionHead
+        f.questTypeHead = questSectionHead
+
+        local questListHead = FontManager:CreateFontString(questColHeadRow, "subtitle", "OVERLAY")
+        questListHead:SetPoint("TOPLEFT", questColHeadRow, "TOPLEFT", typePanelOuterW + qcSplitGap, 0)
+        questListHead:SetPoint("TOPRIGHT", questColHeadRow, "TOPRIGHT", 0, 0)
+        questListHead:SetJustifyH("LEFT")
+        questListHead:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        questListHead:SetText((L and L["REMINDER_QUEST_CATALOG_LIST_LABEL"]) or "Quests")
+        f.questListHead = questListHead
+        f.questEntriesHead = questListHead
+
+        local questPickSplit = CreateFrame("Frame", nil, questMapsBody)
+        questPickSplit:SetPoint("TOPLEFT", questColHeadRow, "BOTTOMLEFT", 0, -8)
+        questPickSplit:SetPoint("BOTTOMRIGHT", questMapsBody, "BOTTOMRIGHT", 0, 0)
+        f.questPickSplit = questPickSplit
+
+        local typePanel = CreateFrame("Frame", nil, questPickSplit)
+        typePanel:SetWidth(typePanelOuterW)
+        typePanel:SetPoint("TOPLEFT", questPickSplit, "TOPLEFT", 0, 0)
+        typePanel:SetPoint("BOTTOMLEFT", questPickSplit, "BOTTOMLEFT", 0, 0)
+        if typePanel.SetClipsChildren then
+            typePanel:SetClipsChildren(true)
+        end
+        f.questTypePanel = typePanel
+
+        local typeListHost = CreateFrame("Frame", nil, typePanel)
+        typeListHost:SetPoint("TOPLEFT", typePanel, "TOPLEFT", 0, 0)
+        typeListHost:SetPoint("BOTTOMRIGHT", typePanel, "BOTTOMRIGHT", 0, 0)
+        if typeListHost.SetClipsChildren then
+            typeListHost:SetClipsChildren(true)
+        end
+        f.questTypeListHost = typeListHost
+        f.questSectionScrollChild = typeListHost
+
+        local questSplitLine = questPickSplit:CreateTexture(nil, "ARTWORK")
+        questSplitLine:SetWidth(1)
+        questSplitLine:SetColorTexture(borderCol[1], borderCol[2], borderCol[3], 0.45)
+        questSplitLine:SetPoint("TOPLEFT", typePanel, "TOPRIGHT", math.floor(qcSplitGap * 0.5), 0)
+        questSplitLine:SetPoint("BOTTOMLEFT", typePanel, "BOTTOMRIGHT", math.ceil(qcSplitGap * 0.5), 0)
+        f.questSplitLine = questSplitLine
+
+        local entriesPanel = CreateFrame("Frame", nil, questPickSplit)
+        entriesPanel:SetPoint("TOPLEFT", questPickSplit, "TOPLEFT", typePanelOuterW + qcSplitGap, 0)
+        entriesPanel:SetPoint("BOTTOMRIGHT", questPickSplit, "BOTTOMRIGHT", 0, 0)
+        if entriesPanel.SetClipsChildren then
+            entriesPanel:SetClipsChildren(true)
+        end
+        f.questEntriesPanel = entriesPanel
+
+        f._catalogQuestBtns = {}
+        f._catalogQuestSectionIdx = 1
+        f._questTypeBtns = f._catalogQuestBtns
+
+        local questPickerDef = ns.ReminderQuestPickerCatalog
+        local questSecBtnH = 28
+        local questSecBtnGap = 6
+        if questPickerDef and questPickerDef.GetTypeSections then
+            local sections = questPickerDef.GetTypeSections()
+            for si = 1, #sections do
+                (function(sec, secIdx)
+                    local sb = Factory:CreateButton(typeListHost, typeInnerW, questSecBtnH, false)
+                    if not sb then
+                        sb = CreateFrame("Button", nil, typeListHost, "BackdropTemplate")
+                        sb:SetSize(typeInnerW, questSecBtnH)
+                        if ApplyVisuals then
+                            ApplyVisuals(sb, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
+                        end
+                    end
+                    if secIdx == 1 then
+                        sb:SetPoint("TOPLEFT", typeListHost, "TOPLEFT", 0, 0)
+                    else
+                        sb:SetPoint("TOPLEFT", f._catalogQuestBtns[secIdx - 1], "BOTTOMLEFT", 0, -questSecBtnGap)
+                    end
+                    sb:SetSize(typeInnerW, questSecBtnH)
+                    local lk = sec.labelKey or ""
+                    local sbTxt = FontManager:CreateFontString(sb, "small", "OVERLAY")
+                    sbTxt:SetPoint("LEFT", sb, "LEFT", 8, 0)
+                    sbTxt:SetPoint("RIGHT", sb, "RIGHT", -8, 0)
+                    sbTxt:SetJustifyH("LEFT")
+                    sbTxt:SetMaxLines(2)
+                    sbTxt:SetWordWrap(true)
+                    sbTxt:SetText(LocaleOr(lk, sec.fallback or "?"))
+                    sb:SetScript("OnClick", function()
+                        if f.SetActiveQuestPickerSectionIdx then
+                            f:SetActiveQuestPickerSectionIdx(secIdx)
+                        end
+                    end)
+                    f._catalogQuestBtns[secIdx] = sb
+                end)(sections[si], si)
+            end
+            local totalSecH = #sections * (questSecBtnH + questSecBtnGap) - questSecBtnGap
+            typeListHost:SetHeight(math.max(totalSecH, 40))
+        end
+
+        local questPickColW = RD.addBtnW
+        local questTagColW = RD.tagColW
+        local questListHdrH = 16
+
+        local questEntriesListColHead = CreateFrame("Frame", nil, entriesPanel)
+        questEntriesListColHead:SetPoint("TOPLEFT", entriesPanel, "TOPLEFT", 0, 0)
+        questEntriesListColHead:SetPoint("TOPRIGHT", entriesPanel, "TOPRIGHT", 0, 0)
+        questEntriesListColHead:SetHeight(questListHdrH)
+        f.questEntriesListColHead = questEntriesListColHead
+        f.mapsListColHead = questEntriesListColHead
+
+        local questTagColHead = FontManager:CreateFontString(questEntriesListColHead, "small", "OVERLAY")
+        questTagColHead:SetWidth(questTagColW)
+        questTagColHead:SetPoint("LEFT", questEntriesListColHead, "LEFT", 8, 0)
+        questTagColHead:SetJustifyH("CENTER")
+        questTagColHead:SetTextColor(0.55, 0.58, 0.64)
+        questTagColHead:SetText(LocaleOr("REMINDER_QUEST_CATALOG_COL_TYPE", "Type"))
+        f.questEntriesTypeColHead = questTagColHead
+
+        local questPickColHead = FontManager:CreateFontString(questEntriesListColHead, "small", "OVERLAY")
+        questPickColHead:SetWidth(questPickColW)
+        questPickColHead:SetPoint("RIGHT", questEntriesListColHead, "RIGHT", -6, 0)
+        questPickColHead:SetJustifyH("CENTER")
+        questPickColHead:SetTextColor(0.55, 0.58, 0.64)
+        questPickColHead:SetText(LocaleOr("REMINDER_QUEST_CATALOG_COL_SELECT", "Track"))
+        f.questPickColHead = questPickColHead
+
+        local questTitleColHead = FontManager:CreateFontString(questEntriesListColHead, "small", "OVERLAY")
+        questTitleColHead:SetPoint("LEFT", questTagColHead, "RIGHT", 6, 0)
+        questTitleColHead:SetPoint("RIGHT", questPickColHead, "LEFT", -8, 0)
+        questTitleColHead:SetJustifyH("LEFT")
+        questTitleColHead:SetTextColor(0.55, 0.58, 0.64)
+        questTitleColHead:SetText(LocaleOr("REMINDER_QUEST_CATALOG_COL_QUEST", "Quest"))
+        f.questEntriesTitleHead = questTitleColHead
+        f.questEntriesEntryHead = questTitleColHead
+
+        local entriesBarCol = Factory:CreateScrollBarColumn(entriesPanel, qcScrollW, 0, 0)
+        if entriesBarCol then
+            entriesBarCol:SetPoint("TOPRIGHT", entriesPanel, "TOPRIGHT", 0, 0)
+            entriesBarCol:SetPoint("BOTTOMRIGHT", entriesPanel, "BOTTOMRIGHT", 0, 0)
+        end
+
+        local questListScroll = Factory:CreateScrollFrame(entriesPanel, "UIPanelScrollFrameTemplate", true)
+        if not questListScroll then
+            questListScroll = CreateFrame("ScrollFrame", nil, entriesPanel, "UIPanelScrollFrameTemplate")
+        end
+        questListScroll:SetPoint("TOPLEFT", questEntriesListColHead, "BOTTOMLEFT", 0, -4)
+        if entriesBarCol then
+            questListScroll:SetPoint("BOTTOMRIGHT", entriesBarCol, "BOTTOMLEFT", -4, 0)
+            if questListScroll.ScrollBar then
+                Factory:PositionScrollBarInContainer(questListScroll.ScrollBar, entriesBarCol, 0)
+            end
+        else
+            questListScroll:SetPoint("BOTTOMRIGHT", entriesPanel, "BOTTOMRIGHT", 0, 0)
+        end
+
+        local questListChild = CreateFrame("Frame", nil, questListScroll)
+        local qListInitialW = math.max(200, innerW - cardPad * 2 - typePanelOuterW - qcSplitGap - qcScrollW - 16)
+        questListChild:SetWidth(qListInitialW)
+        questListScroll:SetScrollChild(questListChild)
+        f._questCatalogLayout = {
+            scrollBarW = qcScrollW,
+            splitGap = qcSplitGap,
+            typeInnerW = typeInnerW,
+            typePanelOuterW = typePanelOuterW,
+            addBtnW = questPickColW,
+            tagColW = questTagColW,
+            rowH = RD.catalogRowH,
+            hdrH = RD.catalogHdrH,
+        }
+        f.questCatalogScroll = questListScroll
+        f.questCatalogScrollChild = questListChild
+        f.questCatalogEmptyFs = FontManager:CreateFontString(questListChild, "small", "OVERLAY")
+        f.questCatalogEmptyFs:SetPoint("TOPLEFT", questListChild, "TOPLEFT", 8, -8)
+        f.questCatalogEmptyFs:SetPoint("TOPRIGHT", questListChild, "TOPRIGHT", -8, -8)
+        f.questCatalogEmptyFs:SetJustifyH("LEFT")
+        f.questCatalogEmptyFs:SetWordWrap(true)
+        f.questCatalogEmptyFs:Hide()
+        BindCatalogMouseWheel(questListScroll)
+
+        questListScroll:SetScript("OnSizeChanged", function(self)
+            local child = self:GetScrollChild()
+            local w = self:GetWidth()
+            if not w or w <= 0 then return end
+            if child then child:SetWidth(math.max(160, w)) end
+            local lastW = f._questPickerLastScrollW or 0
+            if math.abs(w - lastW) > 1 then
+                f._questPickerLastScrollW = w
+                if f.RefreshPickerListRows then f:RefreshPickerListRows() end
+            end
+            if Factory.UpdateScrollBarVisibility then Factory:UpdateScrollBarVisibility(self) end
+        end)
+
+        local LIST_ROW_H = RD.catalogRowH
+        local LIST_HDR_H = RD.catalogHdrH
+        local RQP_CAT = ns.ReminderQuestPickerCatalog
+        local LIST_POOL_MAX = (RQP_CAT and RQP_CAT.GetMaxDisplayRowCount and RQP_CAT.GetMaxDisplayRowCount()) or 120
+        f._questListRows = {}
+        for li = 1, LIST_POOL_MAX do
+            (function(poolIdx)
+                local row = CreateFrame("Frame", nil, questListChild)
+                row:SetHeight(LIST_ROW_H)
+                row._poolIndex = poolIdx
+                row.headerBar = row:CreateTexture(nil, "BACKGROUND")
+                row.headerBar:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+                row.headerBar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+                row.headerBar:SetColorTexture(COLORS.accent[1] * 0.35, COLORS.accent[2] * 0.35, COLORS.accent[3] * 0.35, 0.55)
+                row.headerBar:Hide()
+                row.tagFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+                row.tagFs:SetWidth(questTagColW)
+                row.tagFs:SetPoint("LEFT", row, "LEFT", 8, 0)
+                row.tagFs:SetJustifyH("CENTER")
+                row.check = CreateThemedCheckbox(row, false)
+                row.check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+                row.labelFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+                row.labelFs:SetJustifyH("LEFT")
+                row.labelFs:SetWordWrap(false)
+                row.labelFs:SetMaxLines(1)
+                row.labelFs:SetPoint("LEFT", row.tagFs, "RIGHT", 6, 0)
+                row.labelFs:SetPoint("RIGHT", row.check, "LEFT", -8, 0)
+                local baseCheckOnClick = row.check:GetScript("OnClick")
+                row.check:SetScript("OnClick", function(self)
+                    if baseCheckOnClick then
+                        baseCheckOnClick(self)
+                    end
+                    local r = f._questListRows and f._questListRows[poolIdx]
+                    if r then
+                        f:OnPickerRowCheckClick(r)
+                    end
+                end)
+                row:Hide()
+                f._questListRows[poolIdx] = row
+            end)(li)
+        end
+
+        local function LayoutQuestCatalogSplit()
+            if not f.questMapsBody or not f.questTypePanel or not f.questEntriesPanel then return end
+            local lay = f._questCatalogLayout
+            if not lay then return end
+            local typeW = RD.expColW
+            local outerW = typeW + 4
+            lay.typeInnerW = typeW
+            lay.typePanelOuterW = outerW
+
+            f.questTypePanel:SetWidth(outerW)
+            f.questTypePanel:ClearAllPoints()
+            f.questTypePanel:SetPoint("TOPLEFT", f.questPickSplit, "TOPLEFT", 0, 0)
+            f.questTypePanel:SetPoint("BOTTOMLEFT", f.questPickSplit, "BOTTOMLEFT", 0, 0)
+
+            local typeBtns = f._catalogQuestBtns
+            if typeBtns then
+                for bi = 1, #typeBtns do
+                    local tb = typeBtns[bi]
+                    if tb then
+                        tb:SetWidth(typeW)
+                    end
+                end
+            end
+            if f.questSectionHead then
+                f.questSectionHead:SetWidth(typeW)
+            elseif f.questTypeHead then
+                f.questTypeHead:SetWidth(typeW)
+            end
+
+            f.questEntriesPanel:ClearAllPoints()
+            f.questEntriesPanel:SetPoint("TOPLEFT", f.questPickSplit, "TOPLEFT", outerW + lay.splitGap, 0)
+            f.questEntriesPanel:SetPoint("BOTTOMRIGHT", f.questPickSplit, "BOTTOMRIGHT", 0, 0)
+
+            if f.questSplitLine and f.questTypePanel then
+                f.questSplitLine:ClearAllPoints()
+                local halfGap = math.floor(lay.splitGap * 0.5)
+                f.questSplitLine:SetPoint("TOPLEFT", f.questTypePanel, "TOPRIGHT", halfGap, 0)
+                f.questSplitLine:SetPoint("BOTTOMLEFT", f.questTypePanel, "BOTTOMRIGHT", halfGap, 0)
+            end
+
+            if f.questEntriesHead and f.questColHeadRow then
+                f.questEntriesHead:ClearAllPoints()
+                f.questEntriesHead:SetPoint("TOPLEFT", f.questColHeadRow, "TOPLEFT", outerW + lay.splitGap, 0)
+                f.questEntriesHead:SetPoint("TOPRIGHT", f.questColHeadRow, "TOPRIGHT", 0, 0)
+            end
+
+            if f.questCatalogScroll then
+                local vw = f.questCatalogScroll:GetWidth()
+                if f.questCatalogScrollChild and vw and vw > 0 then
+                    f.questCatalogScrollChild:SetWidth(math.max(160, vw))
+                end
+            end
+            if f.RefreshPickerListRows then
+                f:RefreshPickerListRows()
+            end
+        end
+        f.LayoutQuestCatalogSplit = LayoutQuestCatalogSplit
+
+        questMapsBody:SetScript("OnSizeChanged", function()
+            LayoutQuestCatalogSplit()
+        end)
+        LayoutQuestCatalogSplit()
+
+        function f:RefreshPickerListRows()
+            local RQP = ns.ReminderQuestPickerCatalog
+            local RQC = ns.ReminderQuestCatalog
+            local section = self.GetActiveQuestPickerSection and self:GetActiveQuestPickerSection()
+            local tab = (section and section.trackMode) or self:GetActiveQuestTrackMode()
+            local isWorldEvents = (tab == "worldEvents")
+            local isWQ = (tab == "worldQuests")
+            local rows = (RQP and RQP.GetDisplayRows and section and RQP.GetDisplayRows(section)) or {}
+
+            local RQPsec = ns.ReminderQuestPickerCatalog
+            local questSections = (RQPsec and RQPsec.GetTypeSections and RQPsec.GetTypeSections()) or {}
+            local secIdx = self._questPickerSectionIdx or self._catalogQuestSectionIdx or 1
+            for j = 1, #questSections do
+                local ob = self._catalogQuestBtns and self._catalogQuestBtns[j]
+                if ob and ApplyVisuals then
+                    local sel = (j == secIdx)
+                    ApplyVisuals(ob,
+                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or { 0.12, 0.12, 0.15, 1 },
+                        { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], sel and 0.95 or 0.35 })
+                end
+            end
+
+            local zw = (self.questCatalogScroll and self.questCatalogScroll:GetWidth())
+                or (self.questCatalogScrollChild and self.questCatalogScrollChild:GetWidth()) or 320
+            local Lq = ns.L
+            local unk = (Lq and Lq["UNKNOWN"]) or "?"
+            local activeLbl = (Lq and Lq["REMINDER_WORLD_EVENT_STATUS_ACTIVE"]) or "Active"
+            local inactiveLbl = (Lq and Lq["REMINDER_WORLD_EVENT_STATUS_INACTIVE"]) or "Inactive"
+            local lay = self._questCatalogLayout or {}
+            local pickColW = lay.addBtnW or RD.addBtnW
+            local tagColW = lay.tagColW or RD.tagColW
+            local dataRowH = lay.rowH or LIST_ROW_H
+            local hdrRowH = lay.hdrH or LIST_HDR_H
+
+            if self.questCatalogEmptyFs then
+                if #rows == 0 then
+                    local ek = isWorldEvents and "REMINDER_WORLD_EVENT_CATALOG_EMPTY"
+                        or (isWQ and "REMINDER_QUEST_CATALOG_EMPTY_WQ" or "REMINDER_QUEST_CATALOG_EMPTY_EVENTS")
+                    local emptyMsg = (Lq and Lq[ek])
+                        or "No quests or events in this list."
+                    self.questCatalogEmptyFs:SetText(emptyMsg)
+                    self.questCatalogEmptyFs:Show()
+                else
+                    self.questCatalogEmptyFs:Hide()
+                end
+            end
+
+            local function LocaleRow(key, fallback)
+                if not key or key == "" then return fallback or "" end
+                local v = Lq and Lq[key]
+                if v and v ~= key then return v end
+                return fallback or key
+            end
+
+            local function TagText(entry)
+                if not entry or not entry.typeTagKey then return "|cff888888?|r" end
+                if entry.trackMode == "worldEvents" then
+                    if entry.isActive then
+                        return "|cff9ecfae" .. activeLbl .. "|r"
+                    end
+                    return "|cff888888" .. inactiveLbl .. "|r"
+                end
+                local tk = entry.typeTagKey
+                local raw = LocaleRow(tk, tk)
+                if tk == "REMINDER_QUEST_TAG_WQ" then
+                    return "|cff9ecfae" .. raw .. "|r"
+                end
+                if tk == "REMINDER_QUEST_TAG_CONTENT_EVENT" or tk == "REMINDER_QUEST_TAG_ZONE_EVENT" then
+                    return "|cffc8b68e" .. raw .. "|r"
+                end
+                return "|cff8eb0ca" .. raw .. "|r"
+            end
+
+            local pool = self._questListRows or {}
+            local lastVisibleRow = nil
+            local estH = 0
+            for ri = 1, #pool do
+                local row = pool[ri]
+                local entry = rows[ri]
+                row.questID = nil
+                row.eventKey = nil
+                row._pickerMode = nil
+                row._isCatalogHeader = false
+                if entry and row then
+                    if entry.headerKey then
+                        row._isCatalogHeader = true
+                        if row.check then row.check:Hide() end
+                        if row.tagFs then row.tagFs:Hide() end
+                        if row.headerBar then row.headerBar:Show() end
+                        row.labelFs:ClearAllPoints()
+                        row.labelFs:SetPoint("LEFT", row, "LEFT", 10, 0)
+                        row.labelFs:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+                        row.labelFs:SetJustifyH("LEFT")
+                        local hk = entry.headerKey or ""
+                        local ht = LocaleRow(hk, hk)
+                        row.labelFs:SetText("|cffcccccc" .. ht .. "|r")
+                        row:SetHeight(hdrRowH)
+                        estH = estH + hdrRowH + 2
+                    elseif entry.eventKey and isWorldEvents then
+                        row._pickerMode = "worldEvents"
+                        row.eventKey = entry.eventKey
+                        if row.headerBar then row.headerBar:Hide() end
+                        if row.tagFs then
+                            row.tagFs:Show()
+                            row.tagFs:SetWidth(tagColW)
+                            row.tagFs:SetText(TagText(entry))
+                        end
+                        if row.check then row.check:Show() end
+                        row.labelFs:ClearAllPoints()
+                        row.labelFs:SetPoint("LEFT", row.tagFs, "RIGHT", 6, 0)
+                        row.labelFs:SetPoint("RIGHT", row.check, "LEFT", -8, 0)
+                        local labelMax = 48
+                        if zw and zw > 0 then
+                            labelMax = math.max(24, math.floor((zw - tagColW - pickColW - 34) / 6.2))
+                        end
+                        local title = entry.title or entry.label or unk
+                        row.labelFs:SetText("|cffffffff" .. TruncatePickerLabel(title, labelMax) .. "|r")
+                        f:SyncThemedCheck(row.check, f.IsWorldEventSelected and f:IsWorldEventSelected(entry.eventKey) == true)
+                        row:SetHeight(dataRowH)
+                        estH = estH + dataRowH + 2
+                    elseif entry.questID then
+                        row._pickerMode = entry.trackMode or tab
+                        row.questID = entry.questID
+                        if row.headerBar then row.headerBar:Hide() end
+                        if row.tagFs then
+                            row.tagFs:Show()
+                            row.tagFs:SetWidth(tagColW)
+                            row.tagFs:SetText(TagText(entry))
+                        end
+                        if row.check then row.check:Show() end
+                        row.labelFs:ClearAllPoints()
+                        row.labelFs:SetPoint("LEFT", row.tagFs, "RIGHT", 6, 0)
+                        row.labelFs:SetPoint("RIGHT", row.check, "LEFT", -8, 0)
+                        local labelMax = 48
+                        if zw and zw > 0 then
+                            labelMax = math.max(24, math.floor((zw - tagColW - pickColW - 34) / 6.2))
+                        end
+                        local title = entry.title or (RQC and RQC.ResolveQuestTitle and RQC.ResolveQuestTitle(entry.questID)) or unk
+                        row.labelFs:SetText(string.format(
+                            "|cffffffff%s|r |cff888888— %d|r",
+                            TruncatePickerLabel(title, labelMax),
+                            entry.questID
+                        ))
+                        f:SyncThemedCheck(row.check, f.IsQuestSelected and f:IsQuestSelected(entry.questID, row._pickerMode) == true)
+                        row:SetHeight(dataRowH)
+                        estH = estH + dataRowH + 2
+                    else
+                        entry = nil
+                    end
+                    if entry then
+                        row:ClearAllPoints()
+                        if not lastVisibleRow then
+                            row:SetPoint("TOPLEFT", self.questCatalogScrollChild, "TOPLEFT", 0, 0)
+                        else
+                            row:SetPoint("TOPLEFT", lastVisibleRow, "BOTTOMLEFT", 0, -2)
+                        end
+                        row:SetWidth(zw)
+                        lastVisibleRow = row
+                        row:Show()
+                    else
+                        if row.check then row.check:Show() end
+                        f:SyncThemedCheck(row.check, false)
+                        if row.headerBar then row.headerBar:Hide() end
+                        row:ClearAllPoints()
+                        row:Hide()
+                    end
+                elseif row then
+                    f:SyncThemedCheck(row.check, false)
+                    if row.check then row.check:Show() end
+                    if row.tagFs then row.tagFs:Hide() end
+                    if row.headerBar then row.headerBar:Hide() end
+                    row:ClearAllPoints()
+                    row:Hide()
+                end
+            end
+
+            if self.questCatalogScrollChild then
+                self.questCatalogScrollChild:SetHeight(math.max(28, estH > 0 and estH or 40))
+                self.questCatalogScrollChild:SetWidth(math.max(160, zw))
+            end
+            if Factory.UpdateScrollBarVisibility and self.questCatalogScroll then
+                Factory:UpdateScrollBarVisibility(self.questCatalogScroll)
+            end
+        end
+        f.RefreshQuestListRows = f.RefreshPickerListRows
+
+        function f:IsQuestTrackEnabledInReminder(reminder)
+            if not reminder then return false end
+            local wqE = FindTriggerEntry(reminder, KIND.WORLD_QUEST_ACTIVE)
+            if wqE and wqE.enabled ~= false then return true end
+            local evE = FindTriggerEntry(reminder, KIND.CONTENT_EVENT_ACTIVE)
+            if evE and evE.enabled ~= false then return true end
+            local weE = FindTriggerEntry(reminder, KIND.WORLD_EVENT_ACTIVE)
+            if weE and weE.enabled ~= false then return true end
+            return false
+        end
+
+        function f:ApplyQuestTrackControlsState()
+            if self.ApplyAlertLocationQuestMutex then self:ApplyAlertLocationQuestMutex() end
+            local zoneBlocks = self.zoneCheck and self.zoneCheck:GetChecked() == true
+            local on = self.questTrackCheck and self.questTrackCheck:GetChecked()
+            local detailAlpha = (on and not zoneBlocks) and 1 or 0.38
+            if self.questPickerCard then
+                if on then self.questPickerCard:Show() else self.questPickerCard:Hide() end
+            end
+            if self.questTrackLabel and self.questTrackLabel.SetTextColor then
+                self.questTrackLabel:SetTextColor(labelBody[1] * detailAlpha + 0.3,
+                    labelBody[2] * detailAlpha + 0.3, labelBody[3] * detailAlpha + 0.3)
+            end
+            if on and self._activeAlertTab == "quests" then
+                if not self._questPickerPrimed then
+                    self._questPickerPrimed = true
+                end
+                if self.RefreshPickerListRows then self:RefreshPickerListRows() end
+            end
+            if self.RefreshSelectedQuestSummary then self:RefreshSelectedQuestSummary() end
+            if self.LayoutDialogHeights then self:LayoutDialogHeights() end
+        end
+        f.ApplyQuestDependentControlsState = f.ApplyQuestTrackControlsState
+
+        function f:ResolveSavedQuestTrackMode(reminder)
+            if not reminder then return "worldQuests" end
+            local weE = FindTriggerEntry(reminder, KIND.WORLD_EVENT_ACTIVE)
+            if weE and weE.enabled ~= false then
+                return "worldEvents"
+            end
+            local evE = FindTriggerEntry(reminder, KIND.CONTENT_EVENT_ACTIVE)
+            if evE and evE.enabled ~= false then
+                return "contentEvents"
+            end
+            local wqE = FindTriggerEntry(reminder, KIND.WORLD_QUEST_ACTIVE)
+            if wqE and wqE.enabled ~= false then
+                return "worldQuests"
+            end
+            return "worldQuests"
+        end
+
         local bgCardColCatalog = COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
-        f.zoneCatalogCard = CreateFrame("Frame", nil, sc)
-        f.zoneCatalogCard:SetPoint("TOPLEFT", f.locationCard, "BOTTOMLEFT", 0, -RD.sectionGap)
-        f.zoneCatalogCard:SetPoint("TOPRIGHT", f.locationCard, "BOTTOMRIGHT", 0, -RD.sectionGap)
-        f.zoneCatalogCard:SetHeight(RD.catalogMinH)
+        f.zoneCatalogCard = CreateFrame("Frame", nil, f.panelZone)
+        f.zoneCatalogCard:SetPoint("TOPLEFT", f.locationCard, "BOTTOMLEFT", 0, -8)
+        f.zoneCatalogCard:SetPoint("BOTTOMRIGHT", f.panelZone, "BOTTOMRIGHT", 0, 0)
+        f.zoneCatalogCard:SetClipsChildren(true)
 
         if ApplyVisuals then
             ApplyVisuals(f.zoneCatalogCard,
@@ -841,7 +2048,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local zbScrollW = scrollBarW
         local splitGap = RD.splitGap
         local expInnerW = RD.expColW
-        local expPanelOuterW = expInnerW + zbScrollW + 6
+        local expPanelOuterW = expInnerW + 4
 
         local mapsBody = CreateFrame("Frame", nil, f.zoneCatalogCard)
         mapsBody:SetPoint("TOPLEFT", zoneCatHint, "BOTTOMLEFT", 0, -8)
@@ -884,29 +2091,13 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
         f.zoneExpPanel = expPanel
 
-        local expBarCol = Factory:CreateScrollBarColumn(expPanel, zbScrollW, 0, 0)
-        if expBarCol then
-            expBarCol:SetPoint("TOPRIGHT", expPanel, "TOPRIGHT", 0, 0)
-            expBarCol:SetPoint("BOTTOMRIGHT", expPanel, "BOTTOMRIGHT", 0, 0)
+        local expListHost = CreateFrame("Frame", nil, expPanel)
+        expListHost:SetPoint("TOPLEFT", expPanel, "TOPLEFT", 0, 0)
+        expListHost:SetPoint("BOTTOMRIGHT", expPanel, "BOTTOMRIGHT", 0, 0)
+        if expListHost.SetClipsChildren then
+            expListHost:SetClipsChildren(true)
         end
-
-        local expScroll = Factory:CreateScrollFrame(expPanel, "UIPanelScrollFrameTemplate", true)
-        if not expScroll then
-            expScroll = CreateFrame("ScrollFrame", nil, expPanel, "UIPanelScrollFrameTemplate")
-        end
-        expScroll:SetPoint("TOPLEFT", expPanel, "TOPLEFT", 0, 0)
-        if expBarCol then
-            expScroll:SetPoint("BOTTOMRIGHT", expBarCol, "BOTTOMLEFT", -4, 0)
-            if expScroll.ScrollBar then
-                Factory:PositionScrollBarInContainer(expScroll.ScrollBar, expBarCol, 0)
-            end
-        else
-            expScroll:SetPoint("BOTTOMRIGHT", expPanel, "BOTTOMRIGHT", 0, 0)
-        end
-
-        local expScrollChild = CreateFrame("Frame", nil, expScroll)
-        expScroll:SetScrollChild(expScrollChild)
-        f.zoneExpScrollChild = expScrollChild
+        f.zoneExpScrollChild = expListHost
 
         local splitLine = zonePickSplit:CreateTexture(nil, "ARTWORK")
         splitLine:SetWidth(1)
@@ -973,7 +2164,6 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             zScroll:SetPoint("BOTTOMRIGHT", mapsPanel, "BOTTOMRIGHT", 0, 0)
         end
 
-        f.zoneCatalogExpScroll = expScroll
         f._catalogExpBtns = {}
         f._catalogExpansionIdx = 1
 
@@ -983,16 +2173,16 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         if catalogDef and catalogDef.sections and #catalogDef.sections > 0 then
             for ei = 1, #catalogDef.sections do
                 local sec = catalogDef.sections[ei]
-                local eb = Factory:CreateButton(expScrollChild, expInnerW, expBtnH, false)
+                local eb = Factory:CreateButton(expListHost, expInnerW, expBtnH, false)
                 if not eb then
-                    eb = CreateFrame("Button", nil, expScrollChild, "BackdropTemplate")
+                    eb = CreateFrame("Button", nil, expListHost, "BackdropTemplate")
                     eb:SetSize(expInnerW, expBtnH)
                     if ApplyVisuals then
                         ApplyVisuals(eb, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
                     end
                 end
                 if ei == 1 then
-                    eb:SetPoint("TOPLEFT", expScrollChild, "TOPLEFT", 0, 0)
+                    eb:SetPoint("TOPLEFT", expListHost, "TOPLEFT", 0, 0)
                 else
                     eb:SetPoint("TOPLEFT", f._catalogExpBtns[ei - 1], "BOTTOMLEFT", 0, -expBtnGap)
                 end
@@ -1012,19 +2202,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 f._catalogExpBtns[ei] = eb
             end
             local totalExpH = #catalogDef.sections * (expBtnH + expBtnGap) - expBtnGap
-            expScrollChild:SetHeight(math.max(totalExpH, 40))
+            expListHost:SetHeight(math.max(totalExpH, 40))
         end
-
-        expScroll:SetScript("OnSizeChanged", function()
-            local lay = f._zoneCatalogLayout
-            local ew = lay and lay.expInnerW
-            if expScrollChild and ew and ew > 0 then
-                expScrollChild:SetWidth(ew)
-            end
-            if Factory.UpdateScrollBarVisibility then
-                Factory:UpdateScrollBarVisibility(expScroll)
-            end
-        end)
 
         local zChild = CreateFrame("Frame", nil, zScroll)
         local zListInitialW = math.max(200, innerW - cardPad * 2 - expPanelOuterW - splitGap - zbScrollW - 16)
@@ -1048,7 +2227,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             local lay = f._zoneCatalogLayout
             if not lay then return end
             local expW = RD.expColW
-            local outerW = expW + lay.scrollBarW + 6
+            local outerW = expW + 4
             lay.expInnerW = expW
             lay.expPanelOuterW = outerW
 
@@ -1302,9 +2481,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if self.zoneCatalogScroll then
                 self.zoneCatalogScroll:SetVerticalScroll(0)
             end
-            if Factory.UpdateScrollBarVisibility then
-                if self.zoneCatalogScroll then Factory:UpdateScrollBarVisibility(self.zoneCatalogScroll) end
-                if self.zoneCatalogExpScroll then Factory:UpdateScrollBarVisibility(self.zoneCatalogExpScroll) end
+            if Factory.UpdateScrollBarVisibility and self.zoneCatalogScroll then
+                Factory:UpdateScrollBarVisibility(self.zoneCatalogScroll)
             end
         end
 
@@ -1395,9 +2573,11 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         f.removeBtn = removeBtn
 
         function f:ApplyZoneDependentControlsState()
+            if self.ApplyAlertLocationQuestMutex then self:ApplyAlertLocationQuestMutex() end
             local zc = self.zoneCheck
+            local questBlocks = self.questTrackCheck and self.questTrackCheck:GetChecked() == true
             local zoneMaster = zc and zc:GetChecked()
-            local detailAlpha = zoneMaster and 1 or 0.38
+            local detailAlpha = (zoneMaster and not questBlocks) and 1 or 0.38
             local hasCat = catalogDef and catalogDef.sections and #catalogDef.sections > 0
             if self.zoneCatalogCard then
                 if zoneMaster and hasCat then
@@ -1439,19 +2619,12 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if self.RefreshManualMapList then
                 self:RefreshManualMapList()
             end
-            if zoneMaster and hasCat and self.RefreshZoneCatalogRows then
-                self:RefreshZoneCatalogRows()
-            end
             if self.LayoutDialogHeights then
                 self:LayoutDialogHeights()
-            elseif self.ReflowReminderScrollHeight then
-                self:ReflowReminderScrollHeight()
-            end
-            if self.reminderScrollFrame and Factory.UpdateScrollBarVisibility then
-                Factory:UpdateScrollBarVisibility(self.reminderScrollFrame)
             end
         end
 
+        f:SelectAlertTab("schedule")
         reminderDialog = f
     end
 
@@ -1495,15 +2668,6 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     end
     f.planTitleFs:SetJustifyH("LEFT")
     f.planTitleFs:SetText("|cffffffff" .. displayName .. "|r")
-
-    local function SyncThemedCheck(cb, checked)
-        if not cb then return end
-        local v = checked and true or false
-        cb:SetChecked(v)
-        if cb.innerDot then
-            cb.innerDot:SetShown(v)
-        end
-    end
 
     f._currentPlanID = planID
     f._manualMapIDs = {}
@@ -1560,12 +2724,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     if f.RefreshManualMapList then
         f:RefreshManualMapList()
     end
-    if f.LayoutZoneCatalogSplit then
-        f:LayoutZoneCatalogSplit()
-    end
-    if f.RefreshZoneCatalogRows and ns.ReminderZoneCatalog and ns.ReminderZoneCatalog.sections and #ns.ReminderZoneCatalog.sections > 0 then
-        f:RefreshZoneCatalogRows()
-    end
+    f._zoneCatalogPrimed = false
+    f._questPickerPrimed = false
 
     f.mapGetIdBtn:SetScript("OnClick", function()
         if not C_Map or not C_Map.GetBestMapForUnit then return end
@@ -1592,8 +2752,10 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end)
     end
 
-    SyncThemedCheck(f.dailyCheck, r.onDailyLogin or false)
-    SyncThemedCheck(f.weeklyCheck, r.onWeeklyReset or false)
+    if f.SyncThemedCheck then
+        f:SyncThemedCheck(f.dailyCheck, r.onDailyLogin or false)
+        f:SyncThemedCheck(f.weeklyCheck, r.onWeeklyReset or false)
+    end
 
     local savedDayN = nil
     if r.daysBeforeReset then
@@ -1605,7 +2767,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
         end
     end
-    SyncThemedCheck(f.daysBeforeCheck, savedDayN ~= nil)
+    if f.SyncThemedCheck then f:SyncThemedCheck(f.daysBeforeCheck, savedDayN ~= nil) end
     if f.daysBeforeEdit then
         if savedDayN then
             f.daysBeforeEdit:SetText(tostring(savedDayN))
@@ -1617,20 +2779,62 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         f:SyncDaysBeforeEditEnabled()
     end
 
-    SyncThemedCheck(f.zoneCheck, r.onZoneEnter == true)
+    local zoneSaved = r.onZoneEnter == true
+    local questSaved = f.IsQuestTrackEnabledInReminder and f:IsQuestTrackEnabledInReminder(r) or false
+    if zoneSaved and questSaved then
+        questSaved = false
+    end
+    if f.SyncThemedCheck then f:SyncThemedCheck(f.zoneCheck, zoneSaved) end
     f.zoneCheck:Enable()
     f.zoneCheck:SetAlpha(1)
     f.zoneLabel:SetTextColor(0.9, 0.9, 0.9)
 
+    f._selectedWQQuestIDs = {}
+    f._selectedEventQuestIDs = {}
+    f._selectedWorldEventKeys = {}
+    if CopyQuestIDList then
+        local wqE = FindTriggerEntry(r, KIND.WORLD_QUEST_ACTIVE)
+        if wqE and type(wqE.questIDs) == "table" then
+            f._selectedWQQuestIDs = CopyQuestIDList(wqE.questIDs)
+        end
+        local evE = FindTriggerEntry(r, KIND.CONTENT_EVENT_ACTIVE)
+        if evE and type(evE.questIDs) == "table" then
+            f._selectedEventQuestIDs = CopyQuestIDList(evE.questIDs)
+        end
+    end
+    if CopyEventKeysList then
+        local weE = FindTriggerEntry(r, KIND.WORLD_EVENT_ACTIVE)
+        if weE and type(weE.eventKeys) == "table" then
+            f._selectedWorldEventKeys = CopyEventKeysList(weE.eventKeys)
+        end
+    end
+    local savedTrackMode = (f.ResolveSavedQuestTrackMode and f:ResolveSavedQuestTrackMode(r)) or "worldQuests"
+    local RQP = ns.ReminderQuestPickerCatalog
+    f._questListTab = savedTrackMode
+    f._questPickerSectionIdx = (RQP and RQP.GetDefaultSectionIndexForTrackMode and RQP.GetDefaultSectionIndexForTrackMode(savedTrackMode)) or 1
+    if f.questTrackCheck then
+        if f.SyncThemedCheck then f:SyncThemedCheck(f.questTrackCheck, questSaved) end
+    end
+    if f.RefreshSelectedQuestSummary then
+        f:RefreshSelectedQuestSummary()
+    end
+
     local prof = addon.db and addon.db.profile
 
+    if f.ApplyAlertLocationQuestMutex then
+        f:ApplyAlertLocationQuestMutex()
+    end
     if f.ApplyZoneDependentControlsState then
         f:ApplyZoneDependentControlsState()
     end
-    if f.LayoutDialogHeights then
-        f:LayoutDialogHeights()
-    elseif f.ReflowReminderScrollHeight then
-        f:ReflowReminderScrollHeight()
+    if f.ApplyQuestTrackControlsState then
+        f:ApplyQuestTrackControlsState()
+    end
+    if f.SetActiveQuestPickerSectionIdx then
+        f:SetActiveQuestPickerSectionIdx(f._questPickerSectionIdx or 1)
+    end
+    if f.SelectAlertTab then
+        f:SelectAlertTab("schedule")
     end
 
     f.saveBtn:SetScript("OnClick", function()
@@ -1643,6 +2847,13 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
 
         local zoneOn = f.zoneCheck:GetChecked() == true
+        local questOn = f.questTrackCheck and f.questTrackCheck:GetChecked() == true
+        if zoneOn and questOn then
+            questOn = false
+        end
+        if questOn then
+            zoneOn = false
+        end
         local zoneHintsSaved = (zoneOn and hintsOk) or false
 
         local settings = {
@@ -1675,7 +2886,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 end
                 return z
             end)(),
-            onInstanceEnter = f._preserveOnInstanceEnter and true or false,
+            onInstanceEnter = (zoneOn and f._preserveOnInstanceEnter) and true or false,
             instanceReminder = nil,
         }
         if settings.onInstanceEnter and f._preserveInstanceReminder then
@@ -1683,6 +2894,31 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 instanceID = f._preserveInstanceReminder.instanceID,
                 difficultyID = f._preserveInstanceReminder.difficultyID,
             }
+        end
+
+        settings.questTriggers = {}
+        settings.worldEventTriggers = {}
+        if questOn then
+            local trackMode = (f.GetActiveQuestTrackMode and f:GetActiveQuestTrackMode()) or "worldQuests"
+            if trackMode == "worldQuests" then
+                settings.questTriggers[1] = {
+                    kind = KIND.WORLD_QUEST_ACTIVE,
+                    enabled = true,
+                    questIDs = CopyQuestIDList and CopyQuestIDList(f._selectedWQQuestIDs) or {},
+                }
+            elseif trackMode == "contentEvents" then
+                settings.questTriggers[1] = {
+                    kind = KIND.CONTENT_EVENT_ACTIVE,
+                    enabled = true,
+                    questIDs = CopyQuestIDList and CopyQuestIDList(f._selectedEventQuestIDs) or {},
+                }
+            elseif trackMode == "worldEvents" then
+                settings.worldEventTriggers[1] = {
+                    kind = KIND.WORLD_EVENT_ACTIVE,
+                    enabled = true,
+                    eventKeys = CopyEventKeysList and CopyEventKeysList(f._selectedWorldEventKeys) or {},
+                }
+            end
         end
 
         addon:SetPlanReminder(f._currentPlanID, settings)
@@ -1699,30 +2935,17 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         f:Hide()
     end)
 
-    if f.reminderScrollFrame and f.reminderScrollChild then
-        local sf = f.reminderScrollFrame
-        local w = sf:GetWidth()
-        if w and w > 0 then
-            f.reminderScrollChild:SetWidth(w)
-        end
-        local Fact = ns.UI and ns.UI.Factory
-        if Fact and Fact.UpdateScrollBarVisibility then
-            Fact:UpdateScrollBarVisibility(sf)
-        end
-        if f._layoutReminderGrids then
-            f._layoutReminderGrids()
-        end
+    if f._layoutReminderGrids then
+        f._layoutReminderGrids()
     end
 
     f:Show()
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             if not f:IsShown() then return end
-            if f.LayoutDialogHeights then
-                f:LayoutDialogHeights()
-            elseif f.LayoutZoneCatalogSplit then
-                f:LayoutZoneCatalogSplit()
-            end
+            if f.LayoutZoneCatalogSplit then f:LayoutZoneCatalogSplit() end
+            if f.LayoutQuestCatalogSplit then f:LayoutQuestCatalogSplit() end
+            if f.LayoutDialogHeights then f:LayoutDialogHeights() end
         end)
     end
 end

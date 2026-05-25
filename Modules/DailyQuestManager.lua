@@ -124,67 +124,11 @@ end
 ns.MIDNIGHT_MAPS_FOR_SA = MIDNIGHT_MAPS_LIST
 
 -- ============================================================================
--- KNOWN QUESTS (hardcoded for reliable tracking via IsQuestFlaggedCompleted)
+-- KNOWN QUESTS (MidnightQuestCatalog — reliable weekly / content-event tracking)
 -- ============================================================================
 
-local KNOWN_WEEKLY_QUESTS = {
-    -- =====================================================================
-    -- WEEKLY QUESTS (core weekly objectives)
-    -- =====================================================================
-    { questID = 93942, title = "Spark of Radiance",       category = "weeklyQuests", zone = "Silvermoon",    icon = "Interface\\Icons\\INV_10_Jewelcrafting_Gem3Primal_Fire_Cut_Green",
-      description = "Collect a Spark of Radiance for crafting. Pick one weekly event from Lady Liadrin." },
-    { questID = 95245, title = "Midnight: World Tour",    category = "weeklyQuests", zone = "Quel'Thalas",   icon = "Interface\\Icons\\INV_Misc_Map_01",
-      description = "Complete all 4 zone events this week: Soiree, Abundance, Legends, Stormarion." },
-    { questID = 93913, title = "Midnight: World Boss",    category = "weeklyQuests", zone = "Quel'Thalas",   icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
-      description = "Defeat the weekly world boss in Quel'Thalas for Champion-level gear." },
-    { questID = 81514, title = "Bountiful Delves",        category = "weeklyQuests", zone = "Silvermoon",    icon = "Interface\\Icons\\INV_Misc_Bag_33",
-      description = "Complete Tier 8+ Delves for bonus Coffer Keys and gear rewards." },
-    { questID = 92600, title = "Cracked Keystone",        category = "weeklyQuests", zone = "Silvermoon",    icon = "Interface\\Icons\\INV_Keystone",
-      description = "Complete a Tier 11 Bountiful Delve for a Crested Keystone." },
-
-    -- =====================================================================
-    -- CONTENT EVENTS — 4 zone events, each weekly
-    -- Main events: counted in card summary (isSubQuest = nil/false)
-    -- Sub-quests: shown in detail view only (isSubQuest = true)
-    -- =====================================================================
-
-    -- Saltheril's Soiree (Eversong Woods)
-    { questID = 93889, title = "Saltheril's Soiree",       category = "events", zone = "Eversong Woods", icon = "Interface\\Icons\\INV_Misc_Food_164_Fish_Seadog", eventGroup = "soiree",
-      description = "Choose a faction, earn Favor, and defend a Runestone in Eversong Woods." },
-    { questID = 89289, title = "Favor of the Court",       category = "events", zone = "Eversong Woods", icon = "Interface\\Icons\\INV_Misc_Note_06",              eventGroup = "soiree", isSubQuest = true,
-      description = "Pick an ally faction (Blood Knights, Farstriders, Magisters, or Shades) to invite." },
-    { questID = 90573, title = "Fortify the Runestones",   category = "events", zone = "Eversong Woods", icon = "Interface\\Icons\\Spell_Arcane_PortalSilvermoon", eventGroup = "soiree", isSubQuest = true, alternateIDs = {90574, 90575, 90576},
-      description = "Collect Latent Arcana, charge and defend a Runestone. Faction-specific quest." },
-
-    -- Abundance (Zul'Aman)
-    { questID = 93890, title = "Abundance",                category = "events", zone = "Zul'Aman",       icon = "Interface\\Icons\\INV_Misc_Herb_AncientLichen",  eventGroup = "abundance",
-      description = "Treasure cave sprint — collect and donate 20,000 points to Dundun's altars." },
-    { questID = 89507, title = "Abundant Offerings",       category = "events", zone = "Zul'Aman",       icon = "Interface\\Icons\\INV_Misc_Coin_02",             eventGroup = "abundance", isSubQuest = true,
-      description = "Accumulate 20,000 treasure points across multiple Abundance cave runs." },
-
-    -- Legends of the Haranir (Harandar)
-    { questID = 93891, title = "Legends of the Haranir",   category = "events", zone = "Harandar",       icon = "Interface\\Icons\\INV_Misc_Book_09",             eventGroup = "haranir",
-      description = "Pick 1 of 7 ancient relics and complete its scenario. Warband-wide weekly pick." },
-    { questID = 89268, title = "Lost Legends",             category = "events", zone = "Harandar",       icon = "Interface\\Icons\\INV_Misc_Rune_15",             eventGroup = "haranir", isSubQuest = true,
-      description = "Select a Hara'ti relic to investigate at the Reliquary of the Zur'ashar." },
-
-    -- Stormarion Assault (Voidstorm)
-    { questID = 93892, title = "Stormarion Assault",       category = "events", zone = "Voidstorm",      icon = "Interface\\Icons\\Ability_Warrior_Charge",       eventGroup = "stormarion",
-      description = "Tower defense: defend the Singularity Anchor against 3 waves of enemies." },
-
-}
-
-local KNOWN_QUEST_LOOKUP = {}
-for i = 1, #KNOWN_WEEKLY_QUESTS do
-    local entry = KNOWN_WEEKLY_QUESTS[i]
-    KNOWN_QUEST_LOOKUP[entry.questID] = entry
-    if entry.alternateIDs then
-        local alts = entry.alternateIDs
-        for ai = 1, #alts do
-            KNOWN_QUEST_LOOKUP[alts[ai]] = entry
-        end
-    end
-end
+local KNOWN_WEEKLY_QUESTS = (ns.MidnightQuestCatalog and ns.MidnightQuestCatalog.GetEntries and ns.MidnightQuestCatalog.GetEntries()) or {}
+local KNOWN_QUEST_LOOKUP = (ns.MidnightQuestCatalog and ns.MidnightQuestCatalog.GetLookup and ns.MidnightQuestCatalog.GetLookup()) or {}
 
 -- ============================================================================
 -- QUEST CATEGORIES
@@ -851,6 +795,16 @@ function WarbandNexus:ScanMidnightQuests()
             else
                 SortDynamicQuestCategoryList(list)
             end
+        end
+    end
+
+    if quests.worldQuests then
+        if ns.ReminderQuestCatalog and ns.ReminderQuestCatalog.RecordDiscoveredWorldQuests then
+            ns.ReminderQuestCatalog.RecordDiscoveredWorldQuests(quests.worldQuests)
+        end
+        local WQC = ns.ReminderWorldQuestCatalog
+        if WQC and WQC.ImportFromScanRows then
+            WQC.ImportFromScanRows(quests.worldQuests)
         end
     end
 

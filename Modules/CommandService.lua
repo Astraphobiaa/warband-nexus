@@ -119,6 +119,52 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
+    elseif cmd == "reminder" then
+        local sub = addon:GetArgs(input, 2)
+        if sub and issecretvalue and issecretvalue(sub) then sub = nil end
+        sub = sub and sub:lower() or ""
+        if sub == "syncwq" or sub == "syncquestcatalog" or sub == "sync" then
+            if not addon.ScanMidnightQuests then
+                addon:Print("|cffff6600[WN]|r Midnight quest scan not available.")
+                return
+            end
+            local rows
+            local INDEX = ns.ReminderWorldQuestIndex
+            if INDEX and INDEX.DeepScanAllMaps then
+                local okScan, scanned = pcall(INDEX.DeepScanAllMaps)
+                if okScan and type(scanned) == "table" then rows = scanned end
+            end
+            if not rows or #rows == 0 then
+                local ok, quests = pcall(function() return addon:ScanMidnightQuests() end)
+                if ok and quests and quests.worldQuests then
+                    rows = quests.worldQuests
+                end
+            end
+            if not rows or #rows == 0 then
+                addon:Print("|cffff6600[WN]|r Quest scan failed.")
+                return
+            end
+            local n = #rows
+            if ns.ReminderQuestCatalog and ns.ReminderQuestCatalog.RefreshDiscoveryFromScan then
+                ns.ReminderQuestCatalog.RefreshDiscoveryFromScan()
+            else
+                local WQC = ns.ReminderWorldQuestCatalog
+                if WQC and WQC.ImportFromScanRows then
+                    WQC.ImportFromScanRows(rows)
+                end
+                if ns.ReminderQuestCatalog and ns.ReminderQuestCatalog.RecordDiscoveredWorldQuests then
+                    ns.ReminderQuestCatalog.RecordDiscoveredWorldQuests(rows)
+                end
+            end
+            if ns.ReminderQuestCatalog and ns.ReminderQuestCatalog.ClearRowCache then
+                ns.ReminderQuestCatalog.ClearRowCache()
+            end
+            addon:Print(string.format("|cff00ccff[WN]|r Saved %d world quests to reminder catalog (account-wide). Reopen Set Alert to refresh.", n))
+        else
+            addon:Print("|cff00ccff/wn reminder syncwq|r — Scan Midnight maps and save all seen world quests to the maintained catalog.")
+        end
+        return
+
     elseif cmd == "keys" or cmd == "keystones" then
         if not addon.GetAllCharacters then
             addon:Print("|cffff6600[WN] Character data not available.|r")
