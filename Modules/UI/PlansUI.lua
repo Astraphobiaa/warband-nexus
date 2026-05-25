@@ -97,7 +97,13 @@ local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
 
 --- Session cache: achievementID -> { points, numCriteria, criteriaText, criteriaItems, information }
+local PLANS_ACHIEVEMENT_CACHE_VERSION = 4
+
 local function PlansAchievementSessionCache()
+    if ns._plansAchievementExpandCacheVersion ~= PLANS_ACHIEVEMENT_CACHE_VERSION then
+        ns._plansAchievementExpandCache = {}
+        ns._plansAchievementExpandCacheVersion = PLANS_ACHIEVEMENT_CACHE_VERSION
+    end
     local c = ns._plansAchievementExpandCache
     if not c then
         c = {}
@@ -123,7 +129,7 @@ local function EnsurePlansAchievementExpandCache(achievementID)
         information = nil,
     }
 
-    local ok, _, _, pointsRaw, _, _, _, achDesc = pcall(GetAchievementInfo, achievementID)
+    local ok, _, _, pointsRaw, _, _, _, _, achDesc = pcall(GetAchievementInfo, achievementID)
     if not ok then
         cache[achievementID] = entry
         return entry
@@ -147,27 +153,17 @@ local function EnsurePlansAchievementExpandCache(achievementID)
     entry.numCriteria = numCriteria
 
     if numCriteria > 0 then
-        local completed = 0
-        local items = {}
-        for cidx = 1, numCriteria do
-            local cName, _, cDone, qty, reqQty = GetAchievementCriteriaInfo(achievementID, cidx)
-            if cName and not (issecretvalue and issecretvalue(cName)) and cName ~= "" then
-                if cDone then completed = completed + 1 end
-                local progress = ""
-                if not (issecretvalue and issecretvalue(qty)) and not (issecretvalue and issecretvalue(reqQty)) then
-                    local rq = tonumber(reqQty)
-                    if rq and rq > 1 and qty then
-                        progress = format(" (%s / %s)", FormatNumber(qty), FormatNumber(reqQty))
-                    end
-                end
-                local icon = cDone and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                items[#items + 1] = { text = icon .. " " .. cName .. progress, completed = cDone }
-            end
+        local items, summary
+        if ns.UI_BuildAchievementCriteriaListItems then
+            items, summary = ns.UI_BuildAchievementCriteriaListItems(achievementID)
+        else
+            items = {}
+            summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievementID)
         end
-        entry.criteriaItems = items
-        local pct = numCriteria > 0 and math.floor((completed / numCriteria) * 100) or 0
-        local achFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
-        entry.criteriaText = format(achFmt, FormatNumber(completed), FormatNumber(numCriteria), FormatNumber(pct))
+        entry.criteriaItems = items or {}
+        if summary and ns.UI_FormatAchievementProgressHeader then
+            entry.criteriaText = ns.UI_FormatAchievementProgressHeader(summary)
+        end
     end
 
     cache[achievementID] = entry
@@ -2082,28 +2078,36 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
 
             local allSourceItems = ns.UI_BuildPlanCriteriaItemsAll and ns.UI_BuildPlanCriteriaItemsAll(plan)
                 or (ns.UI_BuildPlanCriteriaItems and ns.UI_BuildPlanCriteriaItems(plan)) or {}
-            local summaryMax = (plan.type == "achievement") and 1 or 2
+            local summaryMax = 2
             local summaryLines = ns.UI_BuildPlanTodoSummaryLines and ns.UI_BuildPlanTodoSummaryLines(plan, { maxLines = summaryMax }) or {}
+            local achSummary = nil
 
             if plan.type == "achievement" and plan.achievementID then
                 local achID = plan.achievementID
+                achSummary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achID)
                 local entry = EnsurePlansAchievementExpandCache(achID)
                 achievementPoints = ns.UI_ResolveAchievementPlanPoints and ns.UI_ResolveAchievementPlanPoints(plan, entry) or 0
-                criteriaHeader = true
-                if isExpanded then
-                    information = entry.information
-                    criteriaText = entry.criteriaText
+                criteriaHeader = false
+                local allowExpand = ns.UI_ShouldAchievementTodoExpand and ns.UI_ShouldAchievementTodoExpand(achSummary)
+                if not allowExpand then
+                    isExpanded = false
+                    expandedPlans[plan.id] = false
+                end
+                if isExpanded and allowExpand then
                     criteriaItems = entry.criteriaItems
                 end
-                if not isExpanded then
-                    achievementOnExpandPopulate = function(data, row)
-                        local e = EnsurePlansAchievementExpandCache(achID)
-                        data.information = e.information
-                        data.criteria = e.criteriaText
-                        data.criteriaData = e.criteriaItems
-                        data.criteriaShowHeader = true
-                        data.summaryInHeader = true
+                achievementOnExpandPopulate = function(data)
+                    if not (ns.UI_ShouldAchievementTodoExpand and ns.UI_ShouldAchievementTodoExpand(achSummary)) then
+                        return
                     end
+                    local e = EnsurePlansAchievementExpandCache(achID)
+                    data.information = nil
+                    data.hideExpandedDescription = true
+                    data.criteria = nil
+                    data.criteriaData = e.criteriaItems
+                    data.criteriaShowHeader = false
+                    data.criteriaSectionLabel = nil
+                    data.summaryInHeader = true
                 end
             else
                 if plan.type == "custom" then
@@ -2132,10 +2136,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
 
             local canExpand = false
             if plan.type == "achievement" and plan.achievementID then
-                local nc = (GetAchievementNumCriteria and GetAchievementNumCriteria(plan.achievementID)) or 0
-                if issecretvalue and issecretvalue(nc) then nc = 0 end
-                canExpand = (tonumber(nc) or 0) > 0
-                if not canExpand and information and information ~= "" then canExpand = true end
+                canExpand = achSummary and ns.UI_ShouldAchievementTodoExpand and ns.UI_ShouldAchievementTodoExpand(achSummary) or false
             end
 
             local typeBadgeSz = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize())
@@ -2171,7 +2172,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 summaryLines = summaryLines,
                 metaRightText = (trySuffix ~= "") and trySuffix or nil,
                 collapsedHeight = collapsedH,
-                information = information,
+                information = (plan.type ~= "achievement") and information or nil,
+                hideExpandedDescription = (plan.type == "achievement") or nil,
                 criteria = criteriaText,
                 criteriaData = criteriaItems,
                 criteriaColumns = 2,

@@ -103,6 +103,7 @@ Modules\GearService.lua
 
 # UI Modules (FormatHelpers before SharedWidgets — ns.UI_Format* / money helpers)
 Modules\UI\FormatHelpers.lua
+Modules\UI\AchievementCriteriaHelpers.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\LayoutCoordinator.lua
 Modules\UI\NotificationToastFactory.lua

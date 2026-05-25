@@ -24,6 +24,24 @@ local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 
 local format = string.format
 
+--- Progress line for achievement plan cards (delegates to AchievementCriteriaHelpers display mode).
+local function BuildAchievementProgressLabelText(achievementID)
+    local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievementID)
+    if not summary or (summary.rawNumCriteria or 0) <= 0 then return nil end
+    local header = ns.UI_FormatAchievementProgressHeader and ns.UI_FormatAchievementProgressHeader(summary)
+    if not header or header == "" then return nil end
+    local P2 = ns.PLAN_UI_COLORS or {}
+    local done = (summary.displayMode == "quantity_bar" and summary.totalReqQuantity > 0 and summary.totalQuantity >= summary.totalReqQuantity)
+        or (summary.completedCount >= summary.rawNumCriteria)
+    local progressColor = done and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
+    local label = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r "
+    if summary.displayMode == "quantity_bar" and summary.hasProgressBased then
+        local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
+        return label .. progressColor .. format(progressFmt, summary.totalQuantity, summary.totalReqQuantity) .. "|r"
+    end
+    return label .. progressColor .. header .. "|r"
+end
+
 local REMINDER_ALERT_TEX = (ns.Constants and ns.Constants.REMINDER_ALERT_ICON_TEXTURE) or "Interface\\Icons\\INV_Misc_Horn_01"
 local REMINDER_ALERT_ATLAS = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager"
 local REMINDER_HORN_UI_COLOR = (ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR) or { 1, 0.82, 0.22 }
@@ -1676,38 +1694,9 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     -- Calculate progress on initial creation
     local achievementID = plan.achievementID
     if achievementID then
-        local numCriteria = GetAchievementNumCriteria(achievementID)
-        if numCriteria and numCriteria > 0 then
-            local completedCount = 0
-            local totalQuantity = 0
-            local totalReqQuantity = 0
-            local hasProgressBased = false
-            
-            for criteriaIndex = 1, numCriteria do
-                local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
-                if criteriaName and criteriaName ~= "" then
-                    if completed then
-                        completedCount = completedCount + 1
-                    end
-                    if quantity and reqQuantity and reqQuantity > 0 then
-                        totalQuantity = totalQuantity + (quantity or 0)
-                        totalReqQuantity = totalReqQuantity + (reqQuantity or 0)
-                        hasProgressBased = true
-                    end
-                end
-            end
-            
-            local P2 = ns.PLAN_UI_COLORS or {}
-            local progressColor = (completedCount == numCriteria) and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
-            if hasProgressBased and totalReqQuantity > 0 then
-                local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-                local progressText = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
-                progressLabel:SetText(FormatTextNumbers(progressText))
-            else
-                local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-                local progressText = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(reqFmt, completedCount, numCriteria) .. "|r"
-                progressLabel:SetText(FormatTextNumbers(progressText))
-            end
+        local progressText = BuildAchievementProgressLabelText(achievementID)
+        if progressText then
+            progressLabel:SetText(FormatTextNumbers(progressText))
         else
             progressLabel:SetText((ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
         end
@@ -1878,39 +1867,9 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
             
             -- Recalculate progress when collapsed to show same format as expanded
             if achievementID and cardFrame.progressLabel then
-                local numCriteria = GetAchievementNumCriteria(achievementID)
-                if numCriteria and numCriteria > 0 then
-                    local completedCount = 0
-                    local totalQuantity = 0
-                    local totalReqQuantity = 0
-                    local hasProgressBased = false
-                    
-                    for criteriaIndex = 1, numCriteria do
-                        local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
-                        if criteriaName and criteriaName ~= "" then
-                            if completed then
-                                completedCount = completedCount + 1
-                            end
-                            if quantity and reqQuantity and reqQuantity > 0 then
-                                totalQuantity = totalQuantity + (quantity or 0)
-                                totalReqQuantity = totalReqQuantity + (reqQuantity or 0)
-                                hasProgressBased = true
-                            end
-                        end
-                    end
-                    
-            local P = ns.PLAN_UI_COLORS or {}
-            local progressColor = (completedCount == numCriteria) and (P.progressFull or "|cff00ff00") or (P.incomplete or "|cffffffff")
-            if hasProgressBased and totalReqQuantity > 0 then
-                local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-                local progressText = (P.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
-                        cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
-                    else
-                        -- Criteria-based: "You completed X of Y total requirements"
-                        local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-                        local progressText = "|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(reqFmt, completedCount, numCriteria) .. "|r"
-                        cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
-                    end
+                local progressText = BuildAchievementProgressLabelText(achievementID)
+                if progressText then
+                    cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                 else
                     cardFrame.progressLabel:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
                 end
@@ -1987,76 +1946,46 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
         end
     end
     
-    local completedCount = 0
     local criteriaDetails = {}
-    local totalQuantity = 0
-    local totalReqQuantity = 0
-    local hasProgressBased = false
-    
-    local CRITERIA_TYPE_ACHIEVEMENT = 8
-    for criteriaIndex = 1, GetAchievementNumCriteria(achievementID) do
-        local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
-        if criteriaName and criteriaName ~= "" then
-            if completed then
-                completedCount = completedCount + 1
-            end
-            
-            local progressText = ""
-            if quantity and reqQuantity and reqQuantity > 0 then
-                totalQuantity = totalQuantity + (quantity or 0)
-                totalReqQuantity = totalReqQuantity + (reqQuantity or 0)
-                hasProgressBased = true
-                -- Only show (x/y) on line when reqQuantity > 1; skip 0/1 and 1/1 for kill objectives
-                if reqQuantity > 1 then
-                    progressText = format(" |cffffffff(%s / %s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
+    local achSummary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievementID)
+    local formatRowSuffix = ns.UI_FormatCriterionRowSuffix
+    if achSummary and achSummary.criteria then
+        for ci = 1, #achSummary.criteria do
+            local row = achSummary.criteria[ci]
+            if row.hasName and row.name then
+                local progressText = formatRowSuffix and formatRowSuffix(row, achSummary) or ""
+                if progressText ~= "" then
+                    progressText = " |cffffffff" .. progressText:match("^%s*(.*)") .. "|r"
                 end
-            end
-            
-            -- Detect achievement-type criteria (criteriaType 8 = another achievement)
-            local linkedAchievementID = nil
-            if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID and assetID > 0 then
-                linkedAchievementID = assetID
-            end
-            
-            -- Light blue for achievement-linked criteria, green/white for others
-            local textColor
-            if linkedAchievementID then
-                textColor = completed and "|cff44ddff" or "|cff44bbff"
-            else
-                local P3 = ns.PLAN_UI_COLORS or {}
-                textColor = completed and (P3.completed or "|cff44ff44") or (P3.incomplete or "|cffffffff")
-            end
-            
-            local formattedCriteriaName = FormatTextNumbers(criteriaName)
-            -- Append (Planned) for linked achievements that are in plans
-            local plannedSuffix = ""
-            if linkedAchievementID then
-                local WarbandNexus = ns.WarbandNexus
-                if WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(linkedAchievementID) then
-                    local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
-                    plannedSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
+                local linkedAchievementID = row.linkedAchievementID
+                local textColor
+                if linkedAchievementID then
+                    textColor = row.completed and "|cff44ddff" or "|cff44bbff"
+                else
+                    local P3 = ns.PLAN_UI_COLORS or {}
+                    textColor = row.completed and (P3.completed or "|cff44ff44") or (P3.incomplete or "|cffffffff")
                 end
+                local formattedCriteriaName = FormatTextNumbers(row.name)
+                local plannedSuffix = ""
+                if linkedAchievementID then
+                    local WarbandNexus = ns.WarbandNexus
+                    if WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(linkedAchievementID) then
+                        local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+                        plannedSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
+                    end
+                end
+                criteriaDetails[#criteriaDetails + 1] = {
+                    completed = row.completed,
+                    text = textColor .. formattedCriteriaName .. "|r" .. progressText .. plannedSuffix,
+                    linkedAchievementID = linkedAchievementID,
+                }
             end
-            table.insert(criteriaDetails, {
-                completed = completed,
-                text = textColor .. formattedCriteriaName .. "|r" .. progressText .. plannedSuffix,
-                linkedAchievementID = linkedAchievementID,
-            })
         end
     end
     
-    -- Update progress label with appropriate text based on achievement type
-    local numCriteria = #criteriaDetails
-    local P4 = ns.PLAN_UI_COLORS or {}
-    local progressColor = (completedCount == numCriteria) and (P4.progressFull or "|cff00ff00") or (P4.incomplete or "|cffffffff")
     if card.progressLabel then
-        if hasProgressBased and totalReqQuantity > 0 then
-            local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-            local progressText = (P4.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
-            card.progressLabel:SetText(FormatTextNumbers(progressText))
-        else
-            local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-            local progressText = (P4.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. format(reqFmt, completedCount, numCriteria) .. "|r"
+        local progressText = BuildAchievementProgressLabelText(achievementID)
+        if progressText then
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         end
     end

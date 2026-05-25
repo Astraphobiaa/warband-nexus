@@ -1930,14 +1930,16 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
                 local critAnchor = titleFs
                 local critPoint = "BOTTOMLEFT"
                 local critY = -SECTION_GAP
-                for i = 1, numCriteria do
-                    local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievement.id, i)
+                local achSummary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievement.id)
+                local formatRowSuffix = ns.UI_FormatCriterionRowSuffix
+                local critRows = achSummary and achSummary.criteria
+                local critCount = critRows and #critRows or numCriteria
+                for i = 1, critCount do
+                    local row = critRows and critRows[i]
+                    local criteriaName = row and row.name
+                    local completed = row and row.completed
                     if criteriaName and criteriaName ~= "" then
-                        local progressStr = ""
-                        if quantity and reqQuantity and reqQuantity > 1 then
-                            local fmt = ns.UI_FormatNumber or tostring
-                            progressStr = format(" (%s / %s)", fmt(quantity), fmt(reqQuantity))
-                        end
+                        local progressStr = formatRowSuffix and formatRowSuffix(row, achSummary) or ""
                         local critFs = FontManager:CreateFontString(content, "body", "OVERLAY")
                         critFs:SetPoint("TOPLEFT", critAnchor, critPoint, 0, critY)
                         critFs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)

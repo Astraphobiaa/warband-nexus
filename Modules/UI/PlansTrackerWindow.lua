@@ -166,30 +166,26 @@ end
 
 local function GetAchievementRequirementsText(achievementID)
     if not achievementID then return "" end
-    local numCriteria = GetAchievementNumCriteria(achievementID)
-    if not numCriteria or numCriteria == 0 then
+    local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievementID)
+    if not summary or (summary.rawNumCriteria or 0) == 0 then
         local noReqs = (ns.L and ns.L["NO_REQUIREMENTS"]) or "No requirements (instant completion)"
         return "|cffffffff" .. noReqs .. "|r"
     end
     local parts = {}
-    local completedCount = 0
-    for i = 1, numCriteria do
-        local criteriaName, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, i)
-        if criteriaName and criteriaName ~= "" then
-            if completed then completedCount = completedCount + 1 end
-            local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-            local color = completed and (PLAN_COLORS.completed or "|cff44ff44") or (PLAN_COLORS.incomplete or "|cffffffff")
-            local progress = ""
-            -- Only show progress when reqQuantity > 1 (e.g. 3/10); skip 0/1 and 1/1 for kill objectives
-            if quantity and reqQuantity and reqQuantity > 1 then
-                progress = format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
+    local formatRowSuffix = ns.UI_FormatCriterionRowSuffix
+    if summary.criteria then
+        for i = 1, #summary.criteria do
+            local row = summary.criteria[i]
+            if row.hasName and row.name then
+                local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                local color = row.completed and (PLAN_COLORS.completed or "|cff44ff44") or (PLAN_COLORS.incomplete or "|cffffffff")
+                local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
+                parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(row.name) .. "|r" .. progress
             end
-            parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(criteriaName) .. "|r" .. progress
         end
     end
-    local pct = numCriteria > 0 and math.floor((completedCount / numCriteria) * 100) or 0
-    local achieveFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
-    local header = format("|cff00ff00" .. achieveFmt .. "|r\n", FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
+    local headerLine = ns.UI_FormatAchievementProgressHeader and ns.UI_FormatAchievementProgressHeader(summary) or ""
+    local header = headerLine ~= "" and ("|cff00ff00" .. headerLine .. "|r\n") or ""
     return header .. table.concat(parts, "\n")
 end
 
@@ -482,28 +478,14 @@ function ns.UI_BuildPlanTodoSummaryLine(plan, opts)
     local dim = P.descDim or "|cff888888"
 
     if plan.type == "achievement" and plan.achievementID then
-        local achID = plan.achievementID
-        local numCriteria = (GetAchievementNumCriteria and GetAchievementNumCriteria(achID)) or 0
-        if issecretvalue and issecretvalue(numCriteria) then numCriteria = 0 end
-        numCriteria = tonumber(numCriteria) or 0
-        if numCriteria > 0 then
-            local completed = 0
-            for cidx = 1, numCriteria do
-                local cName, _, cDone = GetAchievementCriteriaInfo(achID, cidx)
-                if cName and cName ~= "" and cDone then completed = completed + 1 end
-            end
-            local pct = numCriteria > 0 and math.floor((completed / numCriteria) * 100) or 0
-            local reqLab = ns.UI_NormalizeColonLabelSpacing((L and L["REQUIREMENTS_LABEL"]) or "Requirements:")
-            local achFmt = (L and L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
-            local progress = format(achFmt, FormatNumber(completed), FormatNumber(numCriteria), FormatNumber(pct))
-            return (P.progressLabel or "|cffffcc00") .. reqLab .. "|r " .. (P.incomplete or "|cffffffff") .. progress .. "|r"
-        end
-        local _, _, _, _, _, _, _, achDesc = GetAchievementInfo(achID)
-        if achDesc and achDesc ~= "" and not (issecretvalue and issecretvalue(achDesc)) then
-            local descLab = ns.UI_NormalizeColonLabelSpacing((L and L["DESCRIPTION_LABEL"]) or "Description:")
-            local d = achDesc:gsub("\n", " "):gsub("%s+", " ")
-            if #d > 72 then d = d:sub(1, 69) .. "..." end
-            return labCol .. descLab .. "|r " .. body .. d .. "|r"
+        local achLines = ns.UI_BuildAchievementTodoSummaryLines
+            and ns.UI_BuildAchievementTodoSummaryLines(
+                ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(plan.achievementID),
+                plan.achievementID,
+                plan.description
+            )
+        if achLines and achLines[1] then
+            return achLines[1]
         end
         return ""
     end
@@ -539,13 +521,23 @@ end
 function ns.UI_BuildPlanTodoSummaryLines(plan, opts)
     opts = type(opts) == "table" and opts or {}
     local maxLines = tonumber(opts.maxLines) or 2
-    if plan and plan.type == "achievement" then
-        maxLines = 1
+    if not plan then return {} end
+    if plan.type == "achievement" and plan.achievementID then
+        maxLines = math.max(maxLines, 2)
+        if ns.UI_BuildAchievementTodoSummaryLines then
+            local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(plan.achievementID)
+            local lines = summary and ns.UI_BuildAchievementTodoSummaryLines(summary, plan.achievementID, plan.description) or {}
+            if #lines > maxLines then
+                local trimmed = {}
+                for i = 1, maxLines do trimmed[i] = lines[i] end
+                return trimmed
+            end
+            return lines
+        end
     end
     if maxLines < 1 then maxLines = 1 end
     local one = ns.UI_BuildPlanTodoSummaryLine and ns.UI_BuildPlanTodoSummaryLine(plan, opts) or ""
-    if not plan then return {} end
-    if plan.type == "achievement" or plan.type == "custom" then
+    if plan.type == "custom" then
         return one ~= "" and { one } or {}
     end
     local items = BuildPlanCriteriaItems(plan)
@@ -753,29 +745,24 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
 
     -- Achievement requirements (only when collapsed â€” expanded cards already show them)
     if plan.type == "achievement" and plan.achievementID and not isExpanded then
-        local numCriteria = GetAchievementNumCriteria(plan.achievementID)
-        if numCriteria and numCriteria > 0 then
+        local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(plan.achievementID)
+        if summary and (summary.rawNumCriteria or 0) > 0 then
             lines[#lines + 1] = { type = "spacer", height = 4 }
-            local completedCount = 0
             local criteriaLines = {}
-            for i = 1, numCriteria do
-                local criteriaName, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(plan.achievementID, i)
-                if criteriaName and criteriaName ~= "" then
-                    if completed then completedCount = completedCount + 1 end
-                    local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                    local color = completed and (PLAN_COLORS.completedRgb or {0.27, 1, 0.27}) or (PLAN_COLORS.incompleteRgb or {1, 1, 1})
-                    local progress = ""
-                    if quantity and reqQuantity and reqQuantity > 1 then
-                        progress = format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
+            local formatRowSuffix = ns.UI_FormatCriterionRowSuffix
+            if summary.criteria then
+                for i = 1, #summary.criteria do
+                    local row = summary.criteria[i]
+                    if row.hasName and row.name then
+                        local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                        local color = row.completed and (PLAN_COLORS.completedRgb or {0.27, 1, 0.27}) or (PLAN_COLORS.incompleteRgb or {1, 1, 1})
+                        local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
+                        criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. row.name .. progress, color = color }
                     end
-                    criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. criteriaName .. progress, color = color }
                 end
             end
 
-            -- Header: "X of Y (Z%)"
-            local pct = numCriteria > 0 and math.floor((completedCount / numCriteria) * 100) or 0
-            local achieveFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
-            local header = format(achieveFmt, FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
+            local header = ns.UI_FormatAchievementProgressHeader and ns.UI_FormatAchievementProgressHeader(summary) or ""
             lines[#lines + 1] = { text = header, color = {0.3, 1, 0.3} }
 
             -- 3-column layout: group criteria into rows of 3
@@ -993,31 +980,38 @@ local function RefreshTrackerContentImmediate()
             end
 
             local allSourceItems = ns.UI_BuildPlanCriteriaItemsAll and ns.UI_BuildPlanCriteriaItemsAll(plan) or BuildPlanCriteriaItems(plan)
-            local summaryMax = (plan.type == "achievement") and 1 or 2
+            local summaryMax = 2
             local summaryLines = ns.UI_BuildPlanTodoSummaryLines and ns.UI_BuildPlanTodoSummaryLines(plan, { maxLines = summaryMax }) or {}
 
             local achievementPoints, information, criteriaItems, criteriaText, criteriaHeader
             local onExpandPopulate
+            local achSummary = nil
             if plan.type == "achievement" and plan.achievementID then
                 local achID = plan.achievementID
+                achSummary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achID)
                 local entry = ns.UI_EnsurePlansAchievementExpandCache and ns.UI_EnsurePlansAchievementExpandCache(achID)
                 achievementPoints = ns.UI_ResolveAchievementPlanPoints and ns.UI_ResolveAchievementPlanPoints(plan, entry) or 0
-                criteriaHeader = true
-                if isExpanded and entry then
-                    information = entry.information
-                    criteriaText = entry.criteriaText
+                criteriaHeader = false
+                local allowExpand = ns.UI_ShouldAchievementTodoExpand and ns.UI_ShouldAchievementTodoExpand(achSummary)
+                if not allowExpand then
+                    isExpanded = false
+                end
+                if isExpanded and allowExpand and entry then
                     criteriaItems = entry.criteriaItems
                 end
-                if not isExpanded then
-                    onExpandPopulate = function(data)
-                        local e = ns.UI_EnsurePlansAchievementExpandCache and ns.UI_EnsurePlansAchievementExpandCache(achID)
-                        if not e then return end
-                        data.information = e.information
-                        data.criteria = e.criteriaText
-                        data.criteriaData = e.criteriaItems
-                        data.criteriaShowHeader = true
-                        data.summaryInHeader = true
+                onExpandPopulate = function(data)
+                    if not (ns.UI_ShouldAchievementTodoExpand and ns.UI_ShouldAchievementTodoExpand(achSummary)) then
+                        return
                     end
+                    local e = ns.UI_EnsurePlansAchievementExpandCache and ns.UI_EnsurePlansAchievementExpandCache(achID)
+                    if not e then return end
+                    data.information = nil
+                    data.hideExpandedDescription = true
+                    data.criteria = nil
+                    data.criteriaData = e.criteriaItems
+                    data.criteriaShowHeader = false
+                    data.criteriaSectionLabel = nil
+                    data.summaryInHeader = true
                 end
             else
                 if plan.type == "custom" then
@@ -1044,10 +1038,7 @@ local function RefreshTrackerContentImmediate()
 
             local canExpand = false
             if plan.type == "achievement" and plan.achievementID then
-                local nc = (GetAchievementNumCriteria and GetAchievementNumCriteria(plan.achievementID)) or 0
-                if issecretvalue and issecretvalue(nc) then nc = 0 end
-                canExpand = (tonumber(nc) or 0) > 0
-                if not canExpand and information and information ~= "" then canExpand = true end
+                canExpand = achSummary and ns.UI_ShouldAchievementTodoExpand and ns.UI_ShouldAchievementTodoExpand(achSummary) or false
             end
 
             local typeBadgeSz = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or 24
@@ -1077,7 +1068,8 @@ local function RefreshTrackerContentImmediate()
                 title = resolvedName,
                 summaryLines = summaryLines,
                 metaRightText = (trySuffix ~= "") and trySuffix or nil,
-                information = isExpanded and information or nil,
+                information = (plan.type ~= "achievement" and isExpanded) and information or nil,
+                hideExpandedDescription = (plan.type == "achievement") or nil,
                 criteria = isExpanded and criteriaText or nil,
                 criteriaData = criteriaItems,
                 criteriaColumns = 2,

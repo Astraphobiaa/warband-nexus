@@ -59,8 +59,8 @@ local function CreateDetailsFrame(row, parentFrame, options)
     local rightMargin = 16
     local sectionSpacing = 6
     
-    -- Information Section (inline: "Description: text...")
-    if data.information and data.information ~= "" then
+    -- Information Section (inline: "Description: text...") — skipped when header already shows description.
+    if data.information and data.information ~= "" and not data.hideExpandedDescription then
         -- Combined header + text in one line, left-anchored
         local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
         infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
@@ -109,6 +109,21 @@ local function CreateDetailsFrame(row, parentFrame, options)
                     table.insert(criteriaItems, { text = line })
                 end
             end
+        end
+
+        -- Optional section title for expanded checklist (no duplicate Requirements progress line).
+        if data.criteriaSectionLabel and data.criteriaSectionLabel ~= "" and data.criteriaShowHeader == false and #criteriaItems > 0 then
+            local Psec = ns.PLAN_UI_COLORS or {}
+            local sectionFs = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+            sectionFs:SetPoint("TOPLEFT", leftMargin, yOffset)
+            sectionFs:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+            sectionFs:SetJustifyH("LEFT")
+            sectionFs:SetText((Psec.progressLabel or "|cffffcc00") .. data.criteriaSectionLabel .. "|r")
+            local secW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
+            sectionFs:SetWidth(math.max(60, secW - leftMargin - rightMargin))
+            local secH = sectionFs:GetStringHeight()
+            if not secH or secH < 14 then secH = 14 end
+            yOffset = yOffset - secH - 4
         end
 
         -- Section header with inline progress. Callers that don't have a true requirement
@@ -452,6 +467,7 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     if (not summaryLines or #summaryLines == 0) and data.summaryLine and data.summaryLine ~= "" then
         summaryLines = { data.summaryLine }
     end
+
     if summaryLines and #summaryLines > 0 and iconFrame then
         row.summaryTexts = {}
         local layout = ns.UI_PlansTodoSummaryLayout and ns.UI_PlansTodoSummaryLayout(rowHeight, #summaryLines, hasPoints)

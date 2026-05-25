@@ -343,6 +343,8 @@ local function RefreshSeasonProgressAmount(fs, cd, opts)
     fs:SetText(FormatSeasonProgressShiftAware(data, IsShiftKeyDown() and true or false, compactShift))
 end
 
+-- Achievement criteria helpers: Modules/UI/AchievementCriteriaHelpers.lua (loaded after this file in TOC)
+
 --============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
