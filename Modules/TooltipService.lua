@@ -1981,7 +1981,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         end
     end
 
-    tooltip:Show()
+    -- Do not call tooltip:Show() here — retriggers TooltipDataProcessor post-call (refresh/flicker loop).
 end
 
 -- ============================================================================
@@ -2050,6 +2050,152 @@ end
 -- GAME TOOLTIP INJECTION (TAINT-SAFE)
 -- ============================================================================
 
+---@param val any
+---@return number|nil
+local function SafeTooltipNumber(val)
+    if val == nil then return nil end
+    if issecretvalue and issecretvalue(val) then return nil end
+    return tonumber(val)
+end
+
+---@param link string|nil
+---@return number|nil
+local function ParseItemIDFromItemLink(link)
+    if not link or type(link) ~= "string" or (issecretvalue and issecretvalue(link)) then
+        return nil
+    end
+    local idStr = link:match("item:(%d+)")
+    return idStr and tonumber(idStr) or nil
+end
+
+--- Resolve item id for WN Search counts (Struct TooltipData.id + hyperlink; Midnight-safe).
+---@param data table|nil TooltipData from TooltipDataProcessor post-call
+---@return number|nil
+local function ResolveItemTooltipID(data)
+    if not data then return nil end
+    local id = SafeTooltipNumber(data.id)
+    if id then return id end
+    return ParseItemIDFromItemLink(data.hyperlink)
+end
+
+--- Per-tooltip injection guard (prevents post-call + Show() refresh loops).
+---@param tooltip Frame
+---@param token string
+---@return boolean
+local function TooltipInjectionAlreadyDone(tooltip, token)
+    if not tooltip or not token then return false end
+    local tokens = tooltip._wnInjectTokens
+    return tokens and tokens[token] == true
+end
+
+---@param tooltip Frame
+---@param token string
+local function MarkTooltipInjectionDone(tooltip, token)
+    if not tooltip or not token then return end
+    if not tooltip._wnInjectTokens then
+        tooltip._wnInjectTokens = {}
+    end
+    tooltip._wnInjectTokens[token] = true
+end
+
+---@param tooltip Frame|nil
+local function ClearTooltipInjectionTokens(tooltip)
+    if not tooltip then return end
+    tooltip._wnInjectTokens = nil
+    if tooltip._wnItemCountTimer then
+        if tooltip._wnItemCountTimer.Cancel then
+            tooltip._wnItemCountTimer:Cancel()
+        end
+        tooltip._wnItemCountTimer = nil
+    end
+end
+
+local function InstallGameTooltipInjectionClearHooks()
+    if TooltipService._injectionHideHooked then return end
+    TooltipService._injectionHideHooked = true
+    local function hookHide(frame)
+        if not frame or not frame.HookScript then return end
+        frame:HookScript("OnHide", function(self)
+            ClearTooltipInjectionTokens(self)
+        end)
+    end
+    if GameTooltip then hookHide(GameTooltip) end
+    if ItemRefTooltip then hookHide(ItemRefTooltip) end
+end
+
+---@param tooltip Frame
+---@param itemID number
+---@return boolean injected
+local function AppendWNItemCountLines(tooltip, itemID)
+    if not tooltip or not itemID or not tooltip.AddLine or not tooltip.AddDoubleLine then
+        return false
+    end
+    if not WarbandNexus or not WarbandNexus.GetDetailedItemCountsFast then
+        return false
+    end
+
+    local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
+    if not details then return false end
+
+    local total = details.warbandBank or 0
+    for i = 1, #details.characters do
+        total = total + details.characters[i].bagCount + details.characters[i].bankCount
+    end
+    if total == 0 then return false end
+
+    tooltip:AddLine(" ")
+    tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
+
+    local bagIcon     = CreateAtlasMarkup and CreateAtlasMarkup("Banker", 16, 16) or ""
+    local bankIcon    = CreateAtlasMarkup and CreateAtlasMarkup("VignetteLoot", 16, 16) or ""
+    local warbandIcon = CreateAtlasMarkup and CreateAtlasMarkup("warbands-icon", 16, 16) or ""
+
+    if details.warbandBank > 0 then
+        tooltip:AddDoubleLine(
+            warbandIcon .. " " .. ((ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"),
+            "x" .. details.warbandBank,
+            0.8, 0.8, 0.8, 0.3, 0.9, 0.3
+        )
+    end
+
+    if #details.characters > 0 then
+        local isShift = IsShiftKeyDown()
+        local maxShow = isShift and 999 or 5
+        local shown = 0
+
+        for i = 1, #details.characters do
+            if shown >= maxShow then break end
+            local char = details.characters[i]
+            if char.bankCount > 0 or char.bagCount > 0 then
+                local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+                if char.bankCount > 0 then
+                    tooltip:AddDoubleLine(
+                        bankIcon .. " " .. char.charName,
+                        "x" .. char.bankCount,
+                        cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                    )
+                end
+                if char.bagCount > 0 then
+                    tooltip:AddDoubleLine(
+                        bagIcon .. " " .. char.charName,
+                        "x" .. char.bagCount,
+                        cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                    )
+                end
+                shown = shown + 1
+            end
+        end
+
+        if not isShift and #details.characters > 5 then
+            tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
+        end
+    end
+
+    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+    tooltip:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
+    return true
+end
+
 --[[
     Initialize GameTooltip hook for item count display
     Uses TooltipDataProcessor (TWW API) - TAINT-SAFE
@@ -2062,96 +2208,34 @@ function TooltipService:InitializeGameTooltipHook()
         return
     end
 
+    InstallGameTooltipInjectionClearHooks()
+
     -- ================================================================
     -- ITEM TOOLTIP — single post-call (counts + planned + container drops)
     -- One TooltipDataProcessor registration avoids triple invocation per hover.
     -- ================================================================
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        local itemID = data and data.id
+        local itemID = ResolveItemTooltipID(data)
+        local dataInstanceID = data and data.dataInstanceID
 
-        -- WN Search counts per character
+        -- WN Search counts per character (sync in post-call; never call Show() — retriggers rebuild loop)
         if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
             local showTooltipItemCount = WarbandNexus.db.profile.showTooltipItemCount
             if showTooltipItemCount == nil then
                 showTooltipItemCount = WarbandNexus.db.profile.showItemCount
             end
-            if showTooltipItemCount and tooltip and tooltip.AddLine and tooltip.AddDoubleLine and itemID then
-                local tipRef = tooltip
-                local idCapture = itemID
-                C_Timer.After(0, function()
-                    if not tipRef or not tipRef.IsShown or not tipRef:IsShown() then return end
-                    local _, link = tipRef.GetItem and tipRef:GetItem()
-                    if not link or type(link) ~= "string" or (issecretvalue and issecretvalue(link)) then return end
-                    local idFromLink = link:match("item:(%d+)")
-                    idFromLink = idFromLink and tonumber(idFromLink) or nil
-                    if not idFromLink or idFromLink ~= idCapture then return end
+            if showTooltipItemCount and tooltip and itemID then
+                local countToken = "counts:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                if not TooltipInjectionAlreadyDone(tooltip, countToken) then
                     local ok, err = pcall(function()
-                        local details = WarbandNexus:GetDetailedItemCountsFast(idCapture)
-                        if not details then return end
-
-                        local total = details.warbandBank or 0
-                        for i = 1, #details.characters do
-                            total = total + details.characters[i].bagCount + details.characters[i].bankCount
+                        if AppendWNItemCountLines(tooltip, itemID) then
+                            MarkTooltipInjectionDone(tooltip, countToken)
                         end
-                        if total == 0 then return end
-
-                        tipRef:AddLine(" ")
-                        tipRef:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
-
-                        local bagIcon     = CreateAtlasMarkup and CreateAtlasMarkup("Banker", 16, 16) or ""
-                        local bankIcon    = CreateAtlasMarkup and CreateAtlasMarkup("VignetteLoot", 16, 16) or ""
-                        local warbandIcon = CreateAtlasMarkup and CreateAtlasMarkup("warbands-icon", 16, 16) or ""
-
-                        if details.warbandBank > 0 then
-                            tipRef:AddDoubleLine(
-                                warbandIcon .. " " .. ((ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"),
-                                "x" .. details.warbandBank,
-                                0.8, 0.8, 0.8, 0.3, 0.9, 0.3
-                            )
-                        end
-
-                        if #details.characters > 0 then
-                            local isShift = IsShiftKeyDown()
-                            local maxShow = isShift and 999 or 5
-                            local shown = 0
-
-                            for i = 1, #details.characters do
-                                if shown >= maxShow then break end
-                                local char = details.characters[i]
-                                if char.bankCount > 0 or char.bagCount > 0 then
-                                    local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-                                    if char.bankCount > 0 then
-                                        tipRef:AddDoubleLine(
-                                            bankIcon .. " " .. char.charName,
-                                            "x" .. char.bankCount,
-                                            cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                                        )
-                                    end
-                                    if char.bagCount > 0 then
-                                        tipRef:AddDoubleLine(
-                                            bagIcon .. " " .. char.charName,
-                                            "x" .. char.bagCount,
-                                            cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                                        )
-                                    end
-                                    shown = shown + 1
-                                end
-                            end
-
-                            if not isShift and #details.characters > 5 then
-                                tipRef:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
-                            end
-                        end
-
-                        local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-                        tipRef:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
-                        tipRef:Show()
                     end)
-
                     if not ok and WarbandNexus.Debug then
-                        WarbandNexus:Debug("[Tooltip] Item PostCall error for itemID " .. tostring(idCapture) .. ": " .. tostring(err))
+                        WarbandNexus:Debug("[Tooltip] Item count inject error for itemID " .. tostring(itemID) .. ": " .. tostring(err))
                     end
-                end)
+                end
             end
         end
 
@@ -2206,9 +2290,12 @@ function TooltipService:InitializeGameTooltipHook()
             end
 
             if planned and not ItemTooltipCollectibleOwned(itemID) then
-                local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
-                tooltip:AddLine("|cffffcc00(" .. plannedWord .. ")|r")
-                tooltip:Show()
+                local plannedToken = "planned:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                if not TooltipInjectionAlreadyDone(tooltip, plannedToken) then
+                    local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+                    tooltip:AddLine("|cffffcc00(" .. plannedWord .. ")|r")
+                    MarkTooltipInjectionDone(tooltip, plannedToken)
+                end
             end
         end
 
@@ -2220,7 +2307,11 @@ function TooltipService:InitializeGameTooltipHook()
                 if containerData then
                     local drops = containerData.drops or containerData
                     if drops and type(drops) == "table" and #drops > 0 then
-                        InjectCollectibleDropLines(tooltip, drops)
+                        local dropsToken = "drops:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                        if not TooltipInjectionAlreadyDone(tooltip, dropsToken) then
+                            InjectCollectibleDropLines(tooltip, drops)
+                            MarkTooltipInjectionDone(tooltip, dropsToken)
+                        end
                     end
                 end
             end

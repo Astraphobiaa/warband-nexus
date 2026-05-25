@@ -1423,6 +1423,20 @@ function WarbandNexus:GetItemsData(charKey)
                 end
             end
         end
+        -- GUID-indexed characters row but itemStorage still under legacy Name-Realm (pre-migration slot).
+        if not storageHasPayload(storage) then
+            local charData = self.db.global.characters and self.db.global.characters[charKey]
+            local U = ns.Utilities
+            if charData and U and U.GetCharacterKey then
+                local legacyKey = U:GetCharacterKey(charData.name, charData.realm)
+                if legacyKey and legacyKey ~= charKey then
+                    local sLegacy = globalIS[legacyKey]
+                    if storageHasPayload(sLegacy) then
+                        storage = sLegacy
+                    end
+                end
+            end
+        end
     end
     local hasV2Data = storage and (storage.bags or storage.bank)
 
