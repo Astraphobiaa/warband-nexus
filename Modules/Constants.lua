@@ -351,6 +351,10 @@ local Constants = {
         86371,
     },
     PVE_CRACKED_KEYSTONE_WEEKLY_QUEST_ID = 92600,
+    -- Gilded Stash weekly counter (Delver's Journey / Delves UI widget; spell id for tooltip fallback).
+    PVE_GILDED_STASH_WIDGET_ID = 7591,
+    PVE_GILDED_STASH_SPELL_ID = 1216211,
+    PVE_GILDED_STASH_WEEKLY_MAX = 4,
 
     -- PvE "Bountiful" column: icon from Trovehunter's Bounty item (C_Item.GetItemIconByID); ALT for ID drift between patches.
     TROVEHUNTERS_BOUNTY_ITEM_ID = 252415,

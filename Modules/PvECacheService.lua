@@ -552,18 +552,89 @@ local function SafeIsQuestFlaggedCompleted(questID)
     return done == true
 end
 
---- Read Gilded Stash weekly progress from the live UI widget (when available).
-local function GetGildedStashCounts()
-    local current, weeklyMax = -1, 4
-    if C_UIWidgetManager and C_UIWidgetManager.GetSpellDisplayVisualizationInfo then
-        local widget = C_UIWidgetManager.GetSpellDisplayVisualizationInfo(7591)
-        local tooltip = widget and widget.spellInfo and widget.spellInfo.tooltip
-        if tooltip then
-            local cur, max = tooltip:match("(%d+)%s*/%s*(%d+)")
-            if cur then current = tonumber(cur) or current end
-            if max then weeklyMax = tonumber(max) or weeklyMax end
+--- Parse "2 / 4" style progress from Delves UI copy (guards Midnight secret strings).
+---@return number|nil current
+---@return number|nil weeklyMax
+local function ParseGildedStashFraction(text)
+    if not text or text == "" then return nil, nil end
+    if issecretvalue and issecretvalue(text) then return nil, nil end
+    local cur, max = text:match("(%d+)%s*/%s*(%d+)")
+    if not cur then return nil, nil end
+    return tonumber(cur), tonumber(max)
+end
+
+--- Collect candidate strings from a spell-display widget payload.
+local function CollectGildedStashWidgetTexts(widget)
+    local out = {}
+    if not widget then return out end
+    local spellInfo = widget.spellInfo
+    if spellInfo then
+        local fields = {
+            spellInfo.tooltip,
+            spellInfo.text,
+            spellInfo.header,
+            spellInfo.headerText,
+            spellInfo.description,
+            spellInfo.subText,
+        }
+        for i = 1, #fields do
+            local v = fields[i]
+            if v and v ~= "" and not (issecretvalue and issecretvalue(v)) then
+                out[#out + 1] = v
+            end
         end
     end
+    if widget.text and widget.text ~= "" and not (issecretvalue and issecretvalue(widget.text)) then
+        out[#out + 1] = widget.text
+    end
+    return out
+end
+
+--- Read Gilded Stash weekly progress from Delves UI (widget 7591) or spell tooltip lines.
+local function GetGildedStashCounts()
+    local weeklyMax = (Constants and Constants.PVE_GILDED_STASH_WEEKLY_MAX) or 4
+    local widgetID = (Constants and Constants.PVE_GILDED_STASH_WIDGET_ID) or 7591
+    local spellID = (Constants and Constants.PVE_GILDED_STASH_SPELL_ID) or 1216211
+    local current = -1
+
+    if C_UIWidgetManager and C_UIWidgetManager.GetSpellDisplayVisualizationInfo then
+        local ok, widget = pcall(C_UIWidgetManager.GetSpellDisplayVisualizationInfo, widgetID)
+        if ok and widget then
+            local texts = CollectGildedStashWidgetTexts(widget)
+            for ti = 1, #texts do
+                local cur, max = ParseGildedStashFraction(texts[ti])
+                if cur ~= nil then
+                    current = cur
+                    if max and max > 0 then weeklyMax = max end
+                    break
+                end
+            end
+        end
+    end
+
+    if current < 0 and C_TooltipInfo and C_TooltipInfo.GetSpellByID then
+        local ok, data = pcall(C_TooltipInfo.GetSpellByID, spellID)
+        if ok and data and data.lines then
+            for li = 1, #data.lines do
+                local line = data.lines[li]
+                local left = line and (line.leftText or line.leftString)
+                local right = line and line.rightText
+                local cur, max = ParseGildedStashFraction(left)
+                if cur == nil then
+                    cur, max = ParseGildedStashFraction(right)
+                end
+                if cur == nil and left and right then
+                    cur, max = ParseGildedStashFraction(tostring(left) .. " " .. tostring(right))
+                end
+                if cur ~= nil then
+                    current = cur
+                    if max and max > 0 then weeklyMax = max end
+                    break
+                end
+            end
+        end
+    end
+
     return current, weeklyMax
 end
 

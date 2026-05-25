@@ -4610,9 +4610,8 @@ function WarbandNexus:OpenOptions()
         return
     end
     if not mainFrame or not mainFrame:IsShown() then
-        self:ShowMainWindow()
-    end
-    if mainFrame and mainFrame.ActivateMainTab then
+        self:ShowMainWindow("settings")
+    elseif mainFrame and mainFrame.ActivateMainTab then
         mainFrame:ActivateMainTab("settings", { persistLastTab = false })
     elseif self.DrawSettingsTab then
         if mainFrame then

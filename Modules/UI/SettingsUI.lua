@@ -1925,10 +1925,36 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         if settings.columns.gildedStash == nil then settings.columns.gildedStash = false end
         settings.showManaflux = settings.columns.manaflux == true
         settings.opacity = tonumber(settings.opacity) or 1.0
+        if ns.EnsureVaultButtonDisplaySettings then
+            ns.EnsureVaultButtonDisplaySettings(settings)
+        end
         return settings
     end
 
-    local function RefreshVaultButton()
+    local RefreshVaultButton
+
+    local function VaultDisplayGet(key)
+        local settings = GetVaultButtonSettings()
+        return settings.display and settings.display[key] == true
+    end
+
+    local function VaultDisplaySet(key, value)
+        local settings = GetVaultButtonSettings()
+        settings.display[key] = value and true or false
+        RefreshVaultButton()
+    end
+
+    local function VaultDisplayCheckbox(displayKey, labelKey, descKey, labelFallback, descFallback)
+        return {
+            key = "vaultDisplay_" .. displayKey,
+            label = (ns.L and ns.L[labelKey]) or labelFallback,
+            tooltip = (ns.L and ns.L[descKey]) or descFallback,
+            get = function() return VaultDisplayGet(displayKey) end,
+            set = function(v) VaultDisplaySet(displayKey, v) end,
+        }
+    end
+
+    RefreshVaultButton = function()
         if WarbandNexus.RefreshVaultButtonSettings then
             WarbandNexus:RefreshVaultButtonSettings()
         end
@@ -2075,6 +2101,47 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         end
 
         cy = leftClickYOffset
+
+        local tooltipDisplayOptions = {
+            VaultDisplayCheckbox("tooltipVault", "CONFIG_VAULT_DISPLAY_VAULT", "CONFIG_VAULT_DISPLAY_VAULT_DESC",
+                "Great Vault progress", "Raid, dungeon, and world slots plus claim status."),
+            VaultDisplayCheckbox("tooltipGold", "CONFIG_VAULT_DISPLAY_GOLD", "CONFIG_VAULT_DISPLAY_GOLD_DESC",
+                "Gold", "Character gold on the hover tooltip."),
+            VaultDisplayCheckbox("tooltipTodo", "CONFIG_VAULT_DISPLAY_TODO", "CONFIG_VAULT_DISPLAY_TODO_DESC",
+                "Character to-do plans", "Active plan count for that character."),
+            VaultDisplayCheckbox("tooltipBounty", "CONFIG_VAULT_DISPLAY_BOUNTY", "CONFIG_VAULT_DISPLAY_BOUNTY_DESC",
+                "Trovehunter's Bounty", "Weekly delve bounty status."),
+            VaultDisplayCheckbox("tooltipVoidcore", "CONFIG_VAULT_DISPLAY_VOIDCORE", "CONFIG_VAULT_DISPLAY_VOIDCORE_DESC",
+                "Nebulous Voidcore", "Season voidcore progress."),
+            VaultDisplayCheckbox("tooltipGildedStash", "CONFIG_VAULT_DISPLAY_STASH", "CONFIG_VAULT_DISPLAY_STASH_DESC",
+                "Gilded Stashes", "Weekly gilded stash claims."),
+            VaultDisplayCheckbox("tooltipManaflux", "CONFIG_VAULT_DISPLAY_MANAFLUX", "CONFIG_VAULT_DISPLAY_MANAFLUX_DESC",
+                "Dawnlight Manaflux", "Held manaflux currency."),
+            VaultDisplayCheckbox("tooltipKeystone", "CONFIG_VAULT_DISPLAY_KEYSTONE", "CONFIG_VAULT_DISPLAY_KEYSTONE_DESC",
+                "Mythic+ keystone", "Owned keystone level and dungeon."),
+            VaultDisplayCheckbox("tooltipMythicScore", "CONFIG_VAULT_DISPLAY_MYTHIC_SCORE", "CONFIG_VAULT_DISPLAY_MYTHIC_SCORE_DESC",
+                "Mythic+ rating", "Overall Mythic+ score."),
+        }
+        local menuDisplayOptions = {
+            VaultDisplayCheckbox("menuVault", "CONFIG_VAULT_DISPLAY_MENU_VAULT", "CONFIG_VAULT_DISPLAY_MENU_VAULT_DESC",
+                "Vault summary block", "Raid, dungeon, world, and status under the menu title."),
+            VaultDisplayCheckbox("menuKeystone", "CONFIG_VAULT_DISPLAY_MENU_KEYSTONE", "CONFIG_VAULT_DISPLAY_MENU_KEYSTONE_DESC",
+                "Keystone line", "Current character keystone in the menu."),
+            VaultDisplayCheckbox("menuMythicScore", "CONFIG_VAULT_DISPLAY_MENU_SCORE", "CONFIG_VAULT_DISPLAY_MENU_SCORE_DESC",
+                "M+ rating line", "Overall Mythic+ score in the menu."),
+        }
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_VAULT_DISPLAY"]) or "Tooltip & menu",
+            iw, cy, {})
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["CONFIG_VAULT_DISPLAY_TOOLTIP_HEADER"]) or "Hover tooltip",
+            iw, cy, { compact = true })
+        cy = CreateCheckboxGrid(inner, tooltipDisplayOptions, cy, iw)
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["CONFIG_VAULT_DISPLAY_MENU_HEADER"]) or "Right-click menu",
+            iw, cy, { compact = true })
+        cy = CreateCheckboxGrid(inner, menuDisplayOptions, cy, iw)
 
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_VAULT_LOOK"]) or "Look & opacity",

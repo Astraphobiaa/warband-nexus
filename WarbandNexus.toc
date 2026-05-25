@@ -77,6 +77,13 @@ Modules\MinimapButton.lua
 Modules\TooltipService.lua
 Modules\GuildBankScanner.lua
 Modules\VaultScanner.lua
+Modules\VaultButton_Core.lua
+Modules\VaultButton_Data.lua
+Modules\VaultButton_Table.lua
+Modules\VaultButton_Tooltip.lua
+Modules\VaultButton_TrackerUI.lua
+Modules\VaultButton_SavedInstances.lua
+Modules\VaultButton_SavedInstancesUI.lua
 Modules\VaultButton.lua
 Modules\PlansManager.lua
 Modules\AchievementFrameIntegration.lua
