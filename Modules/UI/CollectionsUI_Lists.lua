@@ -233,14 +233,15 @@ function M.BuildGroupedAchievementData(searchText, showCollected, showUncollecte
     local query = SafeLower(searchText)
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
+    local allCategoryIDs = GetCategoryList and GetCategoryList() or {}
+    if #allCategoryIDs == 0 then return {}, {}, 0 end
+
     local sig = query .. "|" .. (showC and "1" or "0") .. "|" .. (showU and "1" or "0")
+        .. "|cats:" .. #allCategoryIDs
     local cache = M.state._achGroupedCache
     if cache and cache.sig == sig and cache.categoryData then
         return cache.categoryData, cache.rootCategories, cache.totalCount
     end
-
-    local allCategoryIDs = GetCategoryList and GetCategoryList() or {}
-    if #allCategoryIDs == 0 then return {}, {}, 0 end
 
     local categoryData = {}
     local rootCategories = {}

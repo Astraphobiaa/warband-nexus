@@ -42,6 +42,17 @@ function ns.UI_AchievementBrowse_ResetPopulateBusy()
     _populateAchievementBrowseQueued = nil
 end
 
+--- Drop session caches when achievement APIs become ready (login) or collection scan finishes.
+function ns.UI_InvalidateAchievementCategoryCaches()
+    if ns.UI_InvalidatePlansAchievementCategoryTree then
+        ns.UI_InvalidatePlansAchievementCategoryTree()
+    end
+    local cui = ns.CollectionsUI
+    if cui and cui.state then
+        cui.state._achGroupedCache = nil
+    end
+end
+
 local function InvokeAchievementBrowseListReady(opts)
     if type(opts) ~= "table" or type(opts.onListReady) ~= "function" then
         return
@@ -139,9 +150,17 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         return total
     end
 
+    local function CategoryHasChildBranches(catID)
+        local cat = categoryData[catID]
+        local children = cat and cat.children
+        return children and #children > 0
+    end
+
     local function CategoryShouldAppear(catID)
         if CountCategoryAchievements(catID) > 0 then return true end
         if GetApiCategoryAchievementCount(catID) > 0 then return true end
+        -- Feats of Strength (and similar): journal sub-tabs exist before browse/scan data is ready on first login.
+        if CategoryHasChildBranches(catID) then return true end
         local cat = categoryData[catID]
         local children = cat and cat.children or {}
         for i = 1, #children do

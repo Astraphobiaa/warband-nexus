@@ -17,20 +17,19 @@ local HOOKED = {}
 ---@type table<Button, boolean>
 local wnJournalButtons = setmetatable({}, { __mode = "k" })
 
-local ACHIEVEMENT_ROW_MIXINS = {
-    "AchievementTemplateMixin",
-    "AchievementFullSearchResultsButtonMixin",
-    "AchievementTemplateSummaryMixin",
+-- Achievement list rows only (never AchievementCategoryTemplateMixin — sidebar category buttons).
+-- Midnight journal binds rows via AchievementTemplateMixin:Init inside a recycled ScrollBox.
+local ACHIEVEMENT_ROW_HOOKS = {
+    { mix = "AchievementTemplateMixin", hooks = { Init = "rowInit" } },
+    { mix = "AchievementFullSearchResultsButtonMixin", hooks = { Init = "rowInit" } },
 }
 
----Methods Blizzard rows may use instead of or in addition to Init (Midnight ScrollBox templates vary).
-local ACHIEVEMENT_ROW_METHODS = {
-    "Init",
-    "SetAchievement",
-    "DisplayAchievement",
-    "Setup",
-    "RefreshDisplay",
-}
+local WN_CATEGORY_LIST_MIN_IDS = 80
+local WN_FEAT_OF_STRENGTH_CATEGORY_ID = 81
+local WN_GUILD_CATEGORY_ID = 15076
+local WN_ATTACH_RETRY_SEC = 0.06
+local WN_ATTACH_MAX_ATTEMPTS = 4
+local WN_FRAME_OPEN_HOOK_DEFER_SEC = 0.12
 
 local function AchievementCompletedSafe(completed)
     if completed == nil then return false end
@@ -135,8 +134,132 @@ local function RefreshAllWNJournalIcons()
 end
 
 --- Anchor WN control to the achievement art/icon frame (bottom-right of gold square), not the full row.
+---Mirrors Blizzard AchievementFrameCategories_MakeCategoryList (runs once at AchievementUI load).
+---If that load happens before GetCategoryList() is complete, FoS child tabs stay hidden until /reload.
+local function WNCategories_MakeCategoryList(source, fakeSummaryId)
+    local categories = {}
+    if fakeSummaryId then
+        categories[#categories + 1] = { id = fakeSummaryId }
+    end
+    if not source then return categories end
+    for i = 1, #source do
+        local id = source[i]
+        if id then
+            local _, parent = GetCategoryInfo(id)
+            if parent == -1 or parent == WN_GUILD_CATEGORY_ID then
+                categories[#categories + 1] = { id = id }
+            end
+        end
+    end
+    for i = #source, 1, -1 do
+        local childID = source[i]
+        if childID then
+            local _, parent = GetCategoryInfo(childID)
+            for j = 1, #categories do
+                local category = categories[j]
+                if category.id == parent then
+                    category.parent = true
+                    category.collapsed = true
+                    local elementData = {
+                        id = childID,
+                        parent = category.id,
+                        hidden = true,
+                        isChild = (type(category.id) == "number"),
+                    }
+                    table.insert(categories, j + 1, elementData)
+                end
+            end
+        end
+    end
+    return categories
+end
+
+local function CountChildCategoriesInBuiltList(categories, parentID)
+    if not categories or not parentID then return 0 end
+    local n = 0
+    for i = 1, #categories do
+        local c = categories[i]
+        if c and c.parent == parentID and c.isChild then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+local function CountApiChildCategories(parentID)
+    if not parentID or not GetCategoryList or not GetCategoryInfo then return 0 end
+    local list = GetCategoryList() or {}
+    local n = 0
+    for i = 1, #list do
+        local id = list[i]
+        if id then
+            local _, parent = GetCategoryInfo(id)
+            if parent == parentID then
+                n = n + 1
+            end
+        end
+    end
+    return n
+end
+
+local function NeedsAchievementCategoryListRebuild()
+    if not ACHIEVEMENT_FUNCTIONS or not ACHIEVEMENT_FUNCTIONS.categories then
+        return false
+    end
+    local apiFoS = CountApiChildCategories(WN_FEAT_OF_STRENGTH_CATEGORY_ID)
+    if apiFoS < 3 then
+        return false
+    end
+    local builtFoS = CountChildCategoriesInBuiltList(ACHIEVEMENT_FUNCTIONS.categories, WN_FEAT_OF_STRENGTH_CATEGORY_ID)
+    return builtFoS < apiFoS
+end
+
+local function RebuildAchievementFunctionsCategories()
+    if not GetCategoryList then return false end
+    local list = GetCategoryList() or {}
+    if #list < WN_CATEGORY_LIST_MIN_IDS then
+        return false
+    end
+    if ACHIEVEMENT_FUNCTIONS then
+        ACHIEVEMENT_FUNCTIONS.categories = WNCategories_MakeCategoryList(list, "summary")
+    end
+    if COMPARISON_ACHIEVEMENT_FUNCTIONS then
+        COMPARISON_ACHIEVEMENT_FUNCTIONS.categories = WNCategories_MakeCategoryList(list)
+    end
+    if type(AchievementFrameCategories_UpdateDataProvider) == "function"
+        and AchievementFrame and AchievementFrame:IsShown()
+        and AchievementFrameCategories and AchievementFrameCategories:IsShown() then
+        pcall(AchievementFrameCategories_UpdateDataProvider)
+    end
+    return true
+end
+
+local function EnsureCategoryRebuildHooks()
+    if HOOKED.__CategoriesUpdate then return end
+    if type(AchievementFrameCategories_UpdateDataProvider) == "function" then
+        hooksecurefunc("AchievementFrameCategories_UpdateDataProvider", function()
+            if NeedsAchievementCategoryListRebuild() then
+                RebuildAchievementFunctionsCategories()
+            end
+        end)
+        HOOKED.__CategoriesUpdate = true
+    end
+    if type(AchievementFrameCategories_OnShow) == "function" then
+        hooksecurefunc("AchievementFrameCategories_OnShow", function()
+            if NeedsAchievementCategoryListRebuild() then
+                RebuildAchievementFunctionsCategories()
+            end
+        end)
+        HOOKED.__CategoriesOnShow = true
+    end
+end
+
 local function ResolveJournalIconAnchor(row)
     if not row then return nil end
+    local iconBlock = row.Icon
+    if iconBlock and iconBlock.IsObjectType and iconBlock:IsObjectType("Frame") then
+        return iconBlock
+    end
     local function tryFrame(key)
         local f = row[key]
         if f and type(f) == "table" and f.IsObjectType then
@@ -187,6 +310,13 @@ end
 local function EnsureWNButton(parent, achievementID)
     if not parent or not achievementID then return end
     local btn = parent.WarbandNexusPlanBtn
+    local anchor = ResolveJournalIconAnchor(parent) or parent
+    if btn and btn.achievementID == achievementID and btn:IsShown() then
+        if btn:GetParent() == anchor then
+            RefreshWNIconVisual(btn, achievementID)
+            return
+        end
+    end
     if not btn then
         btn = CreateFrame("Button", nil, parent)
         btn:SetFrameStrata("HIGH")
@@ -209,7 +339,6 @@ local function EnsureWNButton(parent, achievementID)
         parent.WarbandNexusPlanBtn = btn
     end
 
-    local anchor = ResolveJournalIconAnchor(parent) or parent
     if btn:GetParent() ~= anchor then
         btn:SetParent(anchor)
     end
@@ -292,101 +421,252 @@ local function EnsureWNButton(parent, achievementID)
     if btn.Raise then btn:Raise() end
 end
 
-local function OnAchievementTemplateInit(self, ...)
+local function RowStillBoundToAchievement(row, achID)
+    if not row or not achID then return false end
+    if row.id == achID or row.achievementID == achID then return true end
+    return ResolveAchievementIDFromArgs(row) == achID
+end
+
+local function CancelRowAttachTimer(row)
+    if not row then return end
+    local t = row._wnAttachTimer
+    if t and t.Cancel then
+        t:Cancel()
+    end
+    row._wnAttachTimer = nil
+end
+
+local function HideRowWNButton(row)
+    CancelRowAttachTimer(row)
+    if row then row._wnLastAttachAchID = nil end
+    local btn = row and row.WarbandNexusPlanBtn
+    if btn then btn:Hide() end
+end
+
+---Attach WN icon on a bound row. Returns true when done (show or hide); false → retry later.
+local function RunRowWNAttach(row, achID)
+    if not row or not achID or not RowStillBoundToAchievement(row, achID) then
+        return true
+    end
+    if GetAchievementCompletedFlag(achID) or row.completed then
+        HideRowWNButton(row)
+        return true
+    end
+    local ok = select(1, pcall(GetAchievementInfo, achID))
+    if not ok and not SafeAchievementID(achID) then
+        return false
+    end
+    row._wnLastAttachAchID = achID
+    EnsureWNButton(row, achID)
+    return true
+end
+
+local function ScheduleWNButtonAttachRetry(row, achID, attempt)
+    if not row or not achID then return end
+    attempt = attempt or 2
+    if attempt > WN_ATTACH_MAX_ATTEMPTS then
+        if SafeAchievementID(achID) and RowStillBoundToAchievement(row, achID) then
+            row._wnLastAttachAchID = achID
+            EnsureWNButton(row, achID)
+        end
+        return
+    end
+    if row._wnAttachPendingAchID == achID and row._wnAttachTimer then
+        return
+    end
+    CancelRowAttachTimer(row)
+    row._wnAttachPendingAchID = achID
+    local delay = (attempt == 2) and 0 or WN_ATTACH_RETRY_SEC
+    local function runAttach()
+        row._wnAttachTimer = nil
+        row._wnAttachPendingAchID = nil
+        if RunRowWNAttach(row, achID) then return end
+        ScheduleWNButtonAttachRetry(row, achID, attempt + 1)
+    end
+    if delay <= 0 then
+        C_Timer.After(0, runAttach)
+    elseif C_Timer and C_Timer.NewTimer then
+        row._wnAttachTimer = C_Timer.NewTimer(delay, runAttach)
+    else
+        C_Timer.After(delay, runAttach)
+    end
+end
+
+local function TryAttachRowWNButton(row, achID)
+    if not row or not achID then return end
+    if GetAchievementCompletedFlag(achID) or row.completed then
+        HideRowWNButton(row)
+        return
+    end
+    if row._wnLastAttachAchID == achID then
+        local btn = row.WarbandNexusPlanBtn
+        if btn and btn.achievementID == achID and btn:IsShown() then
+            RefreshWNIconVisual(btn, achID)
+            return
+        end
+    end
+    CancelRowAttachTimer(row)
+    row._wnLastAttachAchID = achID
+    if RunRowWNAttach(row, achID) then
+        return
+    end
+    ScheduleWNButtonAttachRetry(row, achID, 2)
+end
+
+local function OnAchievementRowInit(self, ...)
     if not self then return end
     local achID = ResolveAchievementIDFromArgs(self, ...)
-    local btn = self.WarbandNexusPlanBtn
     if not achID then
-        if btn then btn:Hide() end
+        HideRowWNButton(self)
         return
     end
+    TryAttachRowWNButton(self, achID)
+end
 
-    local ok = select(1, pcall(GetAchievementInfo, achID))
-    if not ok then
-        if btn then btn:Hide() end
-        return
-    end
+local ROW_HOOK_HANDLERS = {
+    rowInit = OnAchievementRowInit,
+}
 
-    -- Only show on incomplete achievements; hide once earned.
-    if GetAchievementCompletedFlag(achID) then
-        if btn then btn:Hide() end
-        return
-    end
-
-    -- Defer past Blizzard Init/ScrollBox layout so journal category tabs (e.g. Feats of Strength) are not tainted.
-    local row = self
-    C_Timer.After(0, function()
-        if not row then return end
-        local btn = row.WarbandNexusPlanBtn
-        if btn and btn.achievementID and btn.achievementID ~= achID then return end
-        EnsureWNButton(row, achID)
+---One-shot after the journal opens (ScrollBox Init hooks handle scroll recycling).
+local function RefreshVisibleAchievementRows()
+    local achFrame = _G.AchievementFrameAchievements
+    local scrollBox = achFrame and achFrame.ScrollBox
+    if not scrollBox or not scrollBox.ForEachFrame then return end
+    scrollBox:ForEachFrame(function(frame)
+        if not frame then return end
+        local achID = SafeAchievementID(frame.id) or SafeAchievementID(frame.achievementID)
+        if achID then
+            TryAttachRowWNButton(frame, achID)
+        end
     end)
 end
 
-local function HookMixinTable(mixinTable, methodName, hookLabel)
+local function HookMixinMethod(mixinTable, methodName, hookLabel, handler)
     if not mixinTable or type(mixinTable[methodName]) ~= "function" or HOOKED[hookLabel] then return end
-    hooksecurefunc(mixinTable, methodName, OnAchievementTemplateInit)
+    if type(handler) ~= "function" then return end
+    hooksecurefunc(mixinTable, methodName, handler)
     HOOKED[hookLabel] = true
 end
 
-local function InstallAchievementJournalHooks()
-    for mi = 1, #ACHIEVEMENT_ROW_MIXINS do
-        local mixName = ACHIEVEMENT_ROW_MIXINS[mi]
-        local m = _G[mixName]
-        if type(m) == "table" then
-            for mj = 1, #ACHIEVEMENT_ROW_METHODS do
-                local method = ACHIEVEMENT_ROW_METHODS[mj]
-                HookMixinTable(m, method, mixName .. "." .. method)
+local InstallAchievementJournalHooks
+
+---Do not load Blizzard_AchievementUI until GetCategoryList() is populated (early load freezes FoS sub-tabs).
+local function LoadAchievementUIWhenReady(done, attempt)
+    attempt = attempt or 1
+    local list = GetCategoryList and GetCategoryList() or {}
+    if #list < WN_CATEGORY_LIST_MIN_IDS and attempt < 24 then
+        C_Timer.After(0.25, function()
+            LoadAchievementUIWhenReady(done, attempt + 1)
+        end)
+        return
+    end
+    if InCombatLockdown() and attempt < 30 then
+        C_Timer.After(0.5, function()
+            LoadAchievementUIWhenReady(done, attempt + 1)
+        end)
+        return
+    end
+    local achUILoaded = Utilities and Utilities.CheckAddOnLoaded
+        and Utilities:CheckAddOnLoaded("Blizzard_AchievementUI")
+    if Utilities and Utilities.SafeLoadAddOn and not achUILoaded then
+        Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+    end
+    C_Timer.After(0, function()
+        if NeedsAchievementCategoryListRebuild() then
+            RebuildAchievementFunctionsCategories()
+        end
+        EnsureCategoryRebuildHooks()
+        InstallAchievementJournalHooks()
+        if done then done() end
+    end)
+end
+
+local function OnAchievementFrameOpened()
+    LoadAchievementUIWhenReady(function()
+        if NeedsAchievementCategoryListRebuild() then
+            RebuildAchievementFunctionsCategories()
+        end
+        C_Timer.After(WN_FRAME_OPEN_HOOK_DEFER_SEC, InstallAchievementJournalHooks)
+        C_Timer.After(0.15, function()
+            RefreshAllWNJournalIcons()
+            RefreshVisibleAchievementRows()
+        end)
+    end)
+end
+
+InstallAchievementJournalHooks = function()
+    for hi = 1, #ACHIEVEMENT_ROW_HOOKS do
+        local spec = ACHIEVEMENT_ROW_HOOKS[hi]
+        local m = _G[spec.mix]
+        if type(m) == "table" and spec.hooks then
+            for method, handlerKey in pairs(spec.hooks) do
+                local handler = ROW_HOOK_HANDLERS[handlerKey]
+                HookMixinMethod(m, method, spec.mix .. "." .. method, handler)
             end
         end
     end
+    EnsureCategoryRebuildHooks()
+    if NeedsAchievementCategoryListRebuild() then
+        RebuildAchievementFunctionsCategories()
+    end
 
     -- Globals appear after Blizzard_AchievementUI loads; retry open hooks each install pass.
-    local function onAchievementFrameOpened()
-        if Utilities and Utilities.SafeLoadAddOn then
-            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-        end
-        C_Timer.After(0, InstallAchievementJournalHooks)
-        C_Timer.After(0.08, RefreshAllWNJournalIcons)
-    end
     if not HOOKED.__OpenAchievementFrameToAchievement and type(OpenAchievementFrameToAchievement) == "function" then
-        hooksecurefunc("OpenAchievementFrameToAchievement", onAchievementFrameOpened)
+        hooksecurefunc("OpenAchievementFrameToAchievement", OnAchievementFrameOpened)
         HOOKED.__OpenAchievementFrameToAchievement = true
     end
     if not HOOKED.__ToggleAchievementFrame and type(ToggleAchievementFrame) == "function" then
-        hooksecurefunc("ToggleAchievementFrame", onAchievementFrameOpened)
+        hooksecurefunc("ToggleAchievementFrame", OnAchievementFrameOpened)
         HOOKED.__ToggleAchievementFrame = true
     end
     if not HOOKED.__AchievementFrame_LoadUI and type(AchievementFrame_LoadUI) == "function" then
         hooksecurefunc("AchievementFrame_LoadUI", function()
-            C_Timer.After(0, InstallAchievementJournalHooks)
-            C_Timer.After(0.08, RefreshAllWNJournalIcons)
+            C_Timer.After(WN_FRAME_OPEN_HOOK_DEFER_SEC, InstallAchievementJournalHooks)
+            C_Timer.After(0.12, function()
+                RefreshAllWNJournalIcons()
+                RefreshVisibleAchievementRows()
+            end)
         end)
         HOOKED.__AchievementFrame_LoadUI = true
     end
 end
 
 local loader = CreateFrame("Frame")
+local function ScheduleAchievementJournalWarmup()
+    LoadAchievementUIWhenReady(function()
+        if ns.UI_InvalidateAchievementCategoryCaches then
+            ns.UI_InvalidateAchievementCategoryCaches()
+        end
+        RefreshAllWNJournalIcons()
+    end)
+end
+
 loader:RegisterEvent("ADDON_LOADED")
 loader:RegisterEvent("PLAYER_LOGIN")
+loader:RegisterEvent("PLAYER_ENTERING_WORLD")
 loader:RegisterEvent("ACHIEVEMENT_EARNED")
 loader:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         local name = ...
         if name == "Blizzard_AchievementUI" then
-            if Utilities and Utilities.SafeLoadAddOn then
-                Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-            end
-            InstallAchievementJournalHooks()
+            C_Timer.After(0, function()
+                if NeedsAchievementCategoryListRebuild() then
+                    RebuildAchievementFunctionsCategories()
+                end
+                EnsureCategoryRebuildHooks()
+                InstallAchievementJournalHooks()
+            end)
         end
         return
     end
     if event == "PLAYER_LOGIN" then
-        if Utilities and Utilities.SafeLoadAddOn then
-            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+        ScheduleAchievementJournalWarmup()
+        return
+    end
+    if event == "PLAYER_ENTERING_WORLD" then
+        if NeedsAchievementCategoryListRebuild() then
+            RebuildAchievementFunctionsCategories()
         end
-        InstallAchievementJournalHooks()
-        C_Timer.After(0.5, InstallAchievementJournalHooks)
         return
     end
     if event == "ACHIEVEMENT_EARNED" then
@@ -397,21 +677,27 @@ end)
 -- Blizzard_EventUtil (embedded): ensures hooks run even if load order differs.
 if EventUtil and EventUtil.ContinueOnAddOnLoaded then
     EventUtil.ContinueOnAddOnLoaded("Blizzard_AchievementUI", function()
-        if Utilities and Utilities.SafeLoadAddOn then
-            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-        end
-        InstallAchievementJournalHooks()
-        C_Timer.After(0.1, RefreshAllWNJournalIcons)
+        C_Timer.After(0, function()
+            if NeedsAchievementCategoryListRebuild() then
+                RebuildAchievementFunctionsCategories()
+            end
+            EnsureCategoryRebuildHooks()
+            InstallAchievementJournalHooks()
+            C_Timer.After(0.1, RefreshAllWNJournalIcons)
+        end)
     end)
 end
 
-C_Timer.After(0, function()
-    if Utilities and Utilities.SafeLoadAddOn then
-        Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-    end
-    InstallAchievementJournalHooks()
-end)
-
 if E and WarbandNexus and WarbandNexus.RegisterMessage then
     WarbandNexus:RegisterMessage(E.PLANS_UPDATED, RefreshAllWNJournalIcons)
+    if E.COLLECTION_SCAN_COMPLETE then
+        WarbandNexus:RegisterMessage(E.COLLECTION_SCAN_COMPLETE, function(_, data)
+            local cat = data and data.category
+            if cat and cat ~= "achievement" and cat ~= "all" then return end
+            if ns.UI_InvalidateAchievementCategoryCaches then
+                ns.UI_InvalidateAchievementCategoryCaches()
+            end
+            C_Timer.After(0.1, RefreshAllWNJournalIcons)
+        end)
+    end
 end

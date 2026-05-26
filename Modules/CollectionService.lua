@@ -2882,6 +2882,9 @@ WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
 WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_UPDATED, InvalidateCollectionCountsCache)
 WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
     WipeUncollectedResultsCacheAndMergedAchievements()
+    if ns.UI_InvalidateAchievementCategoryCaches then
+        ns.UI_InvalidateAchievementCategoryCaches()
+    end
 end)
 
 ---Force mount/pet/toy refetch without debug mode (lighter than rebuild full). Clears those SV maps and schedules EnsureCollectionData.

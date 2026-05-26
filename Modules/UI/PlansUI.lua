@@ -91,8 +91,13 @@ ns.PlansLoadingState = ns.PlansLoadingState or {
     -- Structure: { mount = { isLoading, loader }, pet = { isLoading, loader }, toy = { isLoading, loader } }
 }
 
--- Cached achievement category tree (only changes on reload; GetCategoryList/GetCategoryInfo are static)
+-- Cached achievement category tree (GetCategoryList/GetCategoryInfo are static after APIs are ready).
 local cachedCategoryTree = nil
+local PLANS_ACH_CATEGORY_CACHE_MIN_IDS = 40
+
+function ns.UI_InvalidatePlansAchievementCategoryTree()
+    cachedCategoryTree = nil
+end
 local PlanCardFactory = ns.UI_PlanCardFactory
 local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
@@ -1139,6 +1144,13 @@ function WarbandNexus:DrawPlansTab(parent)
                 end
                 ns._plansBrowseScanUIMilestone.all = nil
                 ns._plansBrowseScanUIMilestone.build = nil
+                if not cat or cat == "achievement" or cat == "all" then
+                    if ns.UI_InvalidateAchievementCategoryCaches then
+                        ns.UI_InvalidateAchievementCategoryCaches()
+                    elseif ns.UI_InvalidatePlansAchievementCategoryTree then
+                        ns.UI_InvalidatePlansAchievementCategoryTree()
+                    end
+                end
             end)
 
             -- Final populate refresh: UI.lua SchedulePopulateContent (skipCooldown on complete).
@@ -2674,7 +2686,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         parent.plansAchBrowseRoot:Show()
     end
 
-    if not cachedCategoryTree then
+    local treeSource = cachedCategoryTree
+    if not treeSource then
         local allCategoryIDs = GetCategoryList() or {}
         local catData = {}
         local roots = {}
@@ -2702,18 +2715,21 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                 end
             end
         end
-        cachedCategoryTree = { categoryData = catData, rootCategories = roots }
+        treeSource = { categoryData = catData, rootCategories = roots }
+        if #allCategoryIDs >= PLANS_ACH_CATEGORY_CACHE_MIN_IDS then
+            cachedCategoryTree = treeSource
+        end
     end
 
     local categoryData = {}
-    for catID, src in pairs(cachedCategoryTree.categoryData) do
+    for catID, src in pairs(treeSource.categoryData) do
         categoryData[catID] = {
             id = src.id, name = src.name, parentID = src.parentID,
             children = src.children, order = src.order,
             achievements = {},
         }
     end
-    local rootCategories = cachedCategoryTree.rootCategories
+    local rootCategories = treeSource.rootCategories
 
     local profileAchBrowse = WarbandNexus.db and WarbandNexus.db.profile
     local showCompletedAchBrowse = ProfileBool(profileAchBrowse, "plansShowCompleted", false)
