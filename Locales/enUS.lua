@@ -1047,6 +1047,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION - see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
+L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
+
+Fixes the achievement journal on first login without /reload: Feats of Strength subcategories show fully, and the Warband Nexus To-Do icon appears on incomplete achievements as you scroll without flicker or a long delay. Category tabs are no longer disrupted by early Achievement UI loading.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
@@ -1121,7 +1128,7 @@ CurseForge: Warband Nexus]=]
 -- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.2).
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.3).
 
 CurseForge: Warband Nexus]=]
 

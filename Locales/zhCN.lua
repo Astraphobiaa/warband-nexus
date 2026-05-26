@@ -918,6 +918,13 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
+L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
+
+修复首次登录时无需 /reload 的成就界面：力量壮举子分类完整显示，滚动未完成成就时 Warband Nexus 待办图标即时出现，无闪烁或明显延迟。成就 UI 过早加载不再干扰分类标签。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
@@ -1821,7 +1828,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.2）。
+午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.3）。
 
 CurseForge: Warband Nexus]=]
 

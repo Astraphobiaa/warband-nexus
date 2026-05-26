@@ -683,6 +683,13 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir la interfaz."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
+L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
+
+Corregido el diario de logros en el primer inicio sin /reload: las subcategorias de Gestas de poder se muestran por completo, y el icono To-Do de Warband Nexus aparece en logros incompletos al desplazarse sin parpadeo ni demora larga. Las pestanas de categoria ya no se ven afectadas por la carga anticipada de la interfaz de logros.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
@@ -1640,7 +1647,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Restringido por facci�n o cla
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Gran lanzamiento Midnight (instancias guardadas, contador de intentos, JcJ/equipo/planes, arquitectura de caché). Se eliminaron las listas detalladas de parches antiguos en los archivos de idioma; usa `/wn changelog` para la compilación actual (v3.1.2).
+Gran lanzamiento Midnight (instancias guardadas, contador de intentos, JcJ/equipo/planes, arquitectura de caché). Se eliminaron las listas detalladas de parches antiguos en los archivos de idioma; usa `/wn changelog` para la compilación actual (v3.1.3).
 
 CurseForge: Warband Nexus]=]
 

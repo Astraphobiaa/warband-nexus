@@ -691,6 +691,13 @@ L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
+L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
+
+Corregge il diario degli achievement al primo accesso senza /reload: le sottocategorie Imprese di forza compaiono per intero e l'icona To-Do Warband Nexus appare sugli achievement incompleti durante lo scorrimento, senza sfarfallio o lunghi ritardi. Le schede categoria non sono piu disturbate dal caricamento anticipato dell'interfaccia achievement.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
@@ -1647,7 +1654,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limitato da fazione o classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.1.2).
+Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.1.3).
 
 CurseForge: Warband Nexus]=]
 

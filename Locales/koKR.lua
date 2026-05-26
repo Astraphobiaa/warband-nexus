@@ -691,6 +691,13 @@ L["WELCOME_OPEN_INTERFACE"] = "인터페이스를 열려면."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
+L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
+
+첫 로그인 시 /reload 없이 업적 창 수정: 힘의 위업 하위 카테고리가 모두 표시되고, 스크롤할 때 미완료 업적에 Warband Nexus To-Do 아이콘이 깜빡임이나 긴 지연 없이 표시됩니다. 업적 UI 조기 로드로 인한 카테고리 탭 방해를 수정했습니다.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
@@ -1647,7 +1654,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?? ?? ?? ??"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.1.2)는 `/wn changelog`를 사용하세요.
+미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.1.3)는 `/wn changelog`를 사용하세요.
 
 CurseForge: Warband Nexus]=]
 

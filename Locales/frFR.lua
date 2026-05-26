@@ -475,6 +475,13 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
+L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
+
+Corrige le journal des hauts faits a la premiere connexion sans /reload : les sous-categories Exploits de puissance s'affichent entierement, et l'icone To-Do Warband Nexus apparait sur les hauts faits incomplets lors du defilement, sans scintillement ni long delai. Les onglets de categories ne sont plus perturbees par un chargement precoce de l'interface des hauts faits.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
@@ -1707,7 +1714,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.2).
+Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.3).
 
 CurseForge: Warband Nexus]=]
 

@@ -683,6 +683,13 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir a interface."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
+L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
+
+Corrigido o diario de conquistas no primeiro login sem /reload: subcategorias Proezas de Forca aparecem por completo, e o icone To-Do do Warband Nexus aparece em conquistas incompletas ao rolar sem piscar ou demora longa. As abas de categoria deixam de ser afetadas pelo carregamento antecipado da interface de conquistas.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
@@ -1639,7 +1646,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Facção ou classe restrita"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.1.2).
+Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.1.3).
 
 CurseForge: Warband Nexus]=]
 
