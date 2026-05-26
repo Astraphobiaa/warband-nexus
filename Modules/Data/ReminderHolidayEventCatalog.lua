@@ -62,7 +62,8 @@ local function IsSecret(val)
 end
 
 local function NormalizeName(s)
-    if not s or s == "" or IsSecret(s) then return "" end
+    if s == nil or IsSecret(s) then return "" end
+    if s == "" then return "" end
     return s:lower()
 end
 
@@ -71,6 +72,55 @@ local function NamesMatch(a, b)
     if na == "" or nb == "" then return false end
     if na == nb then return true end
     return na:find(nb, 1, true) or nb:find(na, 1, true)
+end
+
+--- Midnight: calendarType/title from C_Calendar may be secret in instances — never compare or index secret strings.
+local function SafeNonEmptyString(val)
+    if val == nil or IsSecret(val) then return nil end
+    if val == "" then return nil end
+    return val
+end
+
+local function IsHolidayCalendarType(calendarType)
+    if calendarType == nil or IsSecret(calendarType) then return false end
+    return calendarType == "HOLIDAY"
+end
+
+local function DayEventHolidayTitle(ev)
+    if ev == nil then return nil end
+    return SafeNonEmptyString(ev.title) or SafeNonEmptyString(ev.name)
+end
+
+local holidayTitlesCacheDay = nil
+local holidayTitlesCache = nil
+
+--- Midnight: C_Calendar day-event fields are often secret in instances; skip live reads there.
+local function IsPlayerInInstanceSafe()
+    if not IsInInstance then return false end
+    local ok, inInst = pcall(IsInInstance)
+    if not ok then return false end
+    if IsSecret(inInst) then return true end
+    return inInst and true or false
+end
+
+local function ShouldSkipLiveCalendarRead()
+    return IsPlayerInInstanceSafe()
+end
+
+local function EventMatchesTodayTitles(eventDef, todayTitles)
+    if not eventDef or not eventDef.calendarName or not todayTitles then return false end
+    local target = eventDef.calendarName
+    for i = 1, #todayTitles do
+        if NamesMatch(todayTitles[i], target) then
+            return true
+        end
+    end
+    return false
+end
+
+function M.InvalidateHolidayTitlesCache()
+    holidayTitlesCacheDay = nil
+    holidayTitlesCache = nil
 end
 
 function M.GetEventLabel(eventDef)
@@ -96,18 +146,21 @@ end
 local function GetTodayCalendarDay()
     if not C_DateAndTime or not C_DateAndTime.GetCurrentCalendarTime then return nil end
     local ok, today = pcall(C_DateAndTime.GetCurrentCalendarTime)
-    if ok and type(today) == "table" and today.monthDay then
-        return today.monthDay
+    if ok and type(today) == "table" then
+        local day = today.monthDay
+        if type(day) == "number" and day >= 1 and day <= 31 and not IsSecret(day) then
+            return day
+        end
     end
     return nil
 end
 
 --- Collect HOLIDAY titles on today's calendar day (month offset 0).
+---@param todayDay number
 ---@return string[]
-local function GetTodayHolidayTitles()
+local function BuildTodayHolidayTitles(todayDay)
     local out = {}
     local seen = {}
-    local todayDay = GetTodayCalendarDay()
     if not todayDay or not C_Calendar then return out end
     if C_Calendar.OpenCalendar then
         pcall(C_Calendar.OpenCalendar)
@@ -120,51 +173,66 @@ local function GetTodayHolidayTitles()
     end
 
     local function addTitle(title)
-        if not title or title == "" or IsSecret(title) or seen[title] then return end
+        if title == nil or IsSecret(title) then return end
+        if title == "" or seen[title] then return end
         seen[title] = true
         out[#out + 1] = title
     end
 
     for index = 1, numEvents do
-        if C_Calendar.GetHolidayInfo then
-            local ok2, info = pcall(C_Calendar.GetHolidayInfo, 0, todayDay, index)
-            if ok2 and info and info.name then
-                addTitle(info.name)
+        pcall(function()
+            if C_Calendar.GetHolidayInfo then
+                local ok2, info = pcall(C_Calendar.GetHolidayInfo, 0, todayDay, index)
+                if ok2 and info then
+                    addTitle(SafeNonEmptyString(info.name))
+                end
             end
-        end
-        if C_Calendar.GetDayEvent then
-            local ok3, ev = pcall(C_Calendar.GetDayEvent, 0, todayDay, index)
-            if ok3 and ev and ev.calendarType == "HOLIDAY" then
-                addTitle(ev.title or ev.name)
+            if C_Calendar.GetDayEvent then
+                local ok3, ev = pcall(C_Calendar.GetDayEvent, 0, todayDay, index)
+                if ok3 and ev and IsHolidayCalendarType(ev.calendarType) then
+                    addTitle(DayEventHolidayTitle(ev))
+                end
             end
-        end
+        end)
     end
 
     return out
 end
 
+---@return string[]
+local function GetTodayHolidayTitles()
+    local todayDay = GetTodayCalendarDay()
+    if not todayDay then return {} end
+    if holidayTitlesCacheDay == todayDay and holidayTitlesCache then
+        return holidayTitlesCache
+    end
+    if ShouldSkipLiveCalendarRead() then
+        return holidayTitlesCache or {}
+    end
+    local ok, built = pcall(BuildTodayHolidayTitles, todayDay)
+    if not ok or type(built) ~= "table" then
+        built = {}
+    end
+    holidayTitlesCacheDay = todayDay
+    holidayTitlesCache = built
+    return built
+end
+
 ---@param eventDef ReminderCalendarEventDef
 function M.IsEventActive(eventDef)
-    if not eventDef or not eventDef.calendarName then return false end
-    local target = eventDef.calendarName
-    local todayTitles = GetTodayHolidayTitles()
-    for i = 1, #todayTitles do
-        if NamesMatch(todayTitles[i], target) then
-            return true
-        end
-    end
-    return false
+    return EventMatchesTodayTitles(eventDef, GetTodayHolidayTitles())
 end
 
 --- Picker rows: { key, label, isActive }
 function M.GetPickerRows()
+    local todayTitles = GetTodayHolidayTitles()
     local out = {}
     for i = 1, #M.CALENDAR_EVENTS do
         local e = M.CALENDAR_EVENTS[i]
         out[#out + 1] = {
             key = e.key,
             label = M.GetEventLabel(e),
-            isActive = M.IsEventActive(e),
+            isActive = EventMatchesTodayTitles(e, todayTitles),
         }
     end
     table.sort(out, function(a, b)
@@ -176,10 +244,11 @@ end
 
 ---@return ReminderCalendarEventDef[] entries active on today's calendar
 function M.GetActiveEventsToday()
+    local todayTitles = GetTodayHolidayTitles()
     local out = {}
     for i = 1, #M.CALENDAR_EVENTS do
         local e = M.CALENDAR_EVENTS[i]
-        if M.IsEventActive(e) then
+        if EventMatchesTodayTitles(e, todayTitles) then
             out[#out + 1] = e
         end
     end
@@ -192,9 +261,10 @@ function M.MatchesWorldEventSelection(eventKeys)
     if not eventKeys or #eventKeys == 0 then
         return #M.GetActiveEventsToday() > 0
     end
+    local todayTitles = GetTodayHolidayTitles()
     for i = 1, #eventKeys do
         local def = M.GetEventByKey(eventKeys[i])
-        if def and M.IsEventActive(def) then return true end
+        if EventMatchesTodayTitles(def, todayTitles) then return true end
     end
     return false
 end

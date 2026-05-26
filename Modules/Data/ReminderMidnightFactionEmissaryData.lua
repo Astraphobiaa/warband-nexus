@@ -91,7 +91,8 @@ ns.ReminderMidnightFactionEmissaryData = {
     ---@param title string|nil
     ---@return boolean
     IsEmissaryTitle = function(title)
-        if not title or title == "" then return false end
+        if title == nil or title == "" then return false end
+        if issecretvalue and issecretvalue(title) then return false end
         return title:lower():find("emissary of ", 1, true) ~= nil
     end,
 }

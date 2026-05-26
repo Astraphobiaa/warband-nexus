@@ -1254,7 +1254,13 @@ local function CheckWorldEventReminders()
     if not HEC or not HEC.MatchesWorldEventSelection then return end
 
     local activeNames = {}
-    local activeEvents = (HEC.GetActiveEventsToday and HEC.GetActiveEventsToday()) or {}
+    local activeEvents = {}
+    if HEC.GetActiveEventsToday then
+        local okEv, ev = pcall(HEC.GetActiveEventsToday)
+        if okEv and type(ev) == "table" then
+            activeEvents = ev
+        end
+    end
     for i = 1, #activeEvents do
         local e = activeEvents[i]
         if e then
@@ -1684,6 +1690,10 @@ function WarbandNexus:InitializeReminderService()
         local function OnPlayerEnteringWorldReminders()
             if ns.ReminderZoneCatalog and ns.ReminderZoneCatalog.InvalidateZoneApiCache then
                 ns.ReminderZoneCatalog.InvalidateZoneApiCache()
+            end
+            local HEC = ns.ReminderHolidayEventCatalog
+            if HEC and HEC.InvalidateHolidayTitlesCache then
+                HEC.InvalidateHolidayTitlesCache()
             end
             BeginReminderLoginBurst()
             if OnLoginRemindersCheck then
