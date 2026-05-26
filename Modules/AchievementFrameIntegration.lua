@@ -313,7 +313,14 @@ local function OnAchievementTemplateInit(self, ...)
         return
     end
 
-    EnsureWNButton(self, achID)
+    -- Defer past Blizzard Init/ScrollBox layout so journal category tabs (e.g. Feats of Strength) are not tainted.
+    local row = self
+    C_Timer.After(0, function()
+        if not row then return end
+        local btn = row.WarbandNexusPlanBtn
+        if btn and btn.achievementID and btn.achievementID ~= achID then return end
+        EnsureWNButton(row, achID)
+    end)
 end
 
 local function HookMixinTable(mixinTable, methodName, hookLabel)

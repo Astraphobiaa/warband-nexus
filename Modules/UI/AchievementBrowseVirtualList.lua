@@ -121,6 +121,35 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         return total
     end
 
+    -- Feats of Strength (and similar): unearned feats are hidden from GetAchievementInfo browse
+    -- until earned, but Blizzard still lists the category tabs. includeAll=true matches journal.
+    local apiCategoryCountCache = {}
+    local function GetApiCategoryAchievementCount(catID)
+        if not catID or not GetCategoryNumAchievements then return 0 end
+        local cached = apiCategoryCountCache[catID]
+        if cached ~= nil then return cached end
+        local total = 0
+        local ok, n = pcall(function()
+            return select(1, GetCategoryNumAchievements(catID, true))
+        end)
+        if ok and type(n) == "number" and n > 0 then
+            total = n
+        end
+        apiCategoryCountCache[catID] = total
+        return total
+    end
+
+    local function CategoryShouldAppear(catID)
+        if CountCategoryAchievements(catID) > 0 then return true end
+        if GetApiCategoryAchievementCount(catID) > 0 then return true end
+        local cat = categoryData[catID]
+        local children = cat and cat.children or {}
+        for i = 1, #children do
+            if CategoryShouldAppear(children[i]) then return true end
+        end
+        return false
+    end
+
     -- Flat Y must match ChainSectionFrameBelow: only SECTION_SPACING between consecutive *rendered*
     -- subsection wraps. The old loop added spacing after every child index (including empty API slots),
     -- inflating yOffset / relY vs real frames — nested headers and rows overlapped the next category.
@@ -128,7 +157,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         local cat = categoryData[catID]
         if not cat then return end
         local totalAchievements = CountCategoryAchievements(catID)
-        if totalAchievements <= 0 then return end
+        if not CategoryShouldAppear(catID) then return end
 
         local catKey = "achievement_cat_" .. catID
         local catExpanded = (collapsedHeaders[catKey] == false)
@@ -171,7 +200,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         for cidx = 1, #children do
             local childID = children[cidx]
             local childCat = categoryData[childID]
-            if childCat and CountCategoryAchievements(childID) > 0 then
+            if childCat and CategoryShouldAppear(childID) then
                 if not firstEmittedChild then
                     yOffset = yOffset + SECTION_SPACING
                 end
@@ -185,7 +214,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
     for rootIndex = 1, #rootCategories do
         local rootID = rootCategories[rootIndex]
         local rootCat = categoryData[rootID]
-        if rootCat and CountCategoryAchievements(rootID) > 0 then
+        if rootCat and CategoryShouldAppear(rootID) then
             if not firstRoot then
                 yOffset = yOffset + SECTION_SPACING
             end
