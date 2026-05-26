@@ -685,7 +685,10 @@ L["WELCOME_OPEN_INTERFACE"] = "以開啟介面。"
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-修復首次登入時無需 /reload 的成就介面：力量壯舉子分類完整顯示，捲動未完成成就時 Warband Nexus 待辦圖示即時出現，無閃爍或明顯延遲。成就 UI 過早載入不再干擾分類標籤。
+修復:
+- 首次登入無需 /reload 的成就介面：力量壯舉子分類、捲動時待辦圖示、穩定分類標籤。
+- 待辦清單自訂卡片：恢復描述列與完成按鈕。
+- 僅含描述的成就：顯示描述列。
 
 CurseForge: Warband Nexus]=]
 

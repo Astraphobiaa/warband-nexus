@@ -686,7 +686,10 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir a interface."
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-Corrigido o diario de conquistas no primeiro login sem /reload: subcategorias Proezas de Forca aparecem por completo, e o icone To-Do do Warband Nexus aparece em conquistas incompletas ao rolar sem piscar ou demora longa. As abas de categoria deixam de ser afetadas pelo carregamento antecipado da interface de conquistas.
+Correcoes:
+- Diario de conquistas no primeiro login sem /reload: subcategorias Proezas de Forca, icone To-Do ao rolar, abas estaveis.
+- Cartoes personalizados To-Do: linha Descricao e botao Concluir restaurados.
+- Conquistas so com descricao: exibe a linha Descricao.
 
 CurseForge: Warband Nexus]=]
 

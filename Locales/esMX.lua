@@ -686,7 +686,10 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir la interfaz."
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-Corregido el diario de logros en el primer inicio sin /reload: las subcategorias de Gestas de poder se muestran por completo, y el icono To-Do de Warband Nexus aparece en logros incompletos al desplazarse sin parpadeo ni demora larga. Las pestanas de categoria ya no se ven afectadas por la carga anticipada de la interfaz de logros.
+Correcciones:
+- Diario de logros en el primer inicio sin /reload: subcategorias Gestas de poder, icono To-Do al desplazarse, pestanas estables.
+- Tarjetas personalizadas en To-Do: linea Descripcion y boton Completar restaurados.
+- Logros solo con descripcion: se muestra la linea Descripcion.
 
 CurseForge: Warband Nexus]=]
 

@@ -695,6 +695,9 @@ function ns.UI_WnIconVertexForKey(iconKey, active, disabled)
     if iconKey == "delete" or iconKey == "block" then
         return ns.WN_ICON_VERTEX_RED
     end
+    if iconKey == "complete" then
+        return { 0.35, 0.95, 0.45, 1 }
+    end
     if active then
         return ns.WN_ICON_VERTEX_YELLOW
     end
@@ -732,11 +735,12 @@ local function GetWnIconPaths()
         donate = (C and C.WN_ICON_DONATE) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Donate.tga",
         credits = (C and C.WN_ICON_CREDITS) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
         tracking = (C and C.WN_ICON_TRACKING) or "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
+        complete = "Interface\\RaidFrame\\ReadyCheck-Ready",
     }
     return WN_ICON_PATHS
 end
 
---- Apply a packaged WN icon texture. `iconKey`: todo | alert | reminder | track | pin | delete | block | chevron_* | link
+--- Apply a packaged WN icon texture. `iconKey`: todo | alert | reminder | track | pin | delete | block | complete | chevron_* | link
 --- opts: vertexColor {r,g,b,a?}, desaturate bool, texCoord {l,r,t,b} (optional)
 function ns.UI_SetWnIconTexture(tex, iconKey, opts)
     if not tex or not iconKey then return false end

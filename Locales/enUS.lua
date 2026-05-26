@@ -1050,7 +1050,10 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-Fixes the achievement journal on first login without /reload: Feats of Strength subcategories show fully, and the Warband Nexus To-Do icon appears on incomplete achievements as you scroll without flicker or a long delay. Category tabs are no longer disrupted by early Achievement UI loading.
+Fixes:
+- Achievement journal on first login without /reload: Feats of Strength subcategories, To-Do icon while scrolling, stable category tabs.
+- To-Do List custom cards: Description line and Complete button restored.
+- To-Do List: description-only achievements show their Description line.
 
 CurseForge: Warband Nexus]=]
 

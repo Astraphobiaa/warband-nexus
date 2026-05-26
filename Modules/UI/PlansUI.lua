@@ -2382,8 +2382,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end
             else
                 if plan.type == "custom" then
-                    local d = plan.description or plan.note or ""
-                    if d ~= "" and d ~= "Custom plan" then information = d end
+                    local d = ns.UI_GetCustomPlanBodyText and ns.UI_GetCustomPlanBodyText(plan)
+                    if d then information = d end
                 end
                 criteriaItems = isExpanded and allSourceItems or {}
                 criteriaHeader = false
@@ -2427,8 +2427,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 titleRightInset = titleRightInset + ((PCM and PCM.todoMetaRightReserve) or 76)
             end
 
-            local collapsedH = ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)
-                or (ns.UI_PlansTodoCollapsedHeight and ns.UI_PlansTodoCollapsedHeight(2) or todoHeaderH)
+            local hasPtsRow = plan.type == "achievement" and (tonumber(achievementPoints) or 0) > 0
+            local summarySlotLines = math.max(#summaryLines, (PCM and PCM.todoUnifiedSlotLines) or 2)
+            if #summaryLines == 0 then
+                summarySlotLines = (PCM and PCM.todoUnifiedSlotLines) or 2
+            end
+            local collapsedH = ns.UI_PlansTodoCollapsedHeight and ns.UI_PlansTodoCollapsedHeight(summarySlotLines) or todoHeaderH
+            if hasPtsRow and PCM then
+                collapsedH = collapsedH + (PCM.todoPointsRowH or 14) + (PCM.todoSummaryGap or 4)
+            end
             local rowData = {
                 todoUnifiedHeader = true,
                 summaryInHeader = true,
@@ -2545,29 +2552,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end
             end
 
-            -- Custom complete: checkmark (not the alert bell)
-            if plan.type == "custom" and ns.UI.Factory and ns.UI.Factory.CreateButton then
-                local completeBtn = ns.UI.Factory:CreateButton(row.headerFrame, ACTION_SIZE, ACTION_SIZE, true)
-                completeBtn:SetFrameLevel((row.headerFrame:GetFrameLevel() or 0) + 10)
-                completeBtn:RegisterForClicks("LeftButtonUp")
-                completeBtn:SetScript("OnClick", function()
-                    if self.CompleteCustomPlan then self:CompleteCustomPlan(plan.id) end
-                end)
-                completeBtn:SetScript("OnEnter", function(btn)
-                    GameTooltip:SetOwner(btn, "ANCHOR_TOP")
-                    GameTooltip:SetText((ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan", 1, 1, 1)
-                    GameTooltip:Show()
-                end)
-                completeBtn:SetScript("OnLeave", GameTooltip_Hide)
-                local tex = completeBtn:CreateTexture(nil, "OVERLAY")
-                tex:SetSize(math.max(14, ACTION_SIZE - 6), math.max(14, ACTION_SIZE - 6))
-                tex:SetPoint("CENTER")
-                local ok = tex.SetAtlas and pcall(tex.SetAtlas, tex, "common-icon-checkmark", false)
-                if ok then
-                    tex:SetTexCoord(0, 1, 0, 1)
-                    tex:SetVertexColor(0.35, 0.95, 0.45, 1)
-                end
-                anchorRightControl(completeBtn, ACTION_SIZE)
+            -- Custom complete: green check (packaged WN icon; atlas-only buttons were invisible when SetAtlas failed)
+            if plan.type == "custom" and not planComplete then
+                makeIconAction(
+                    "complete",
+                    function()
+                        if self.CompleteCustomPlan then self:CompleteCustomPlan(plan.id) end
+                    end,
+                    "PLAN_ACTION_COMPLETE", "Complete the Plan",
+                    false
+                )
             end
 
             if ns.UI_PlansSyncTitleRightInset then

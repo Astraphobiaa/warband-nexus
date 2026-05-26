@@ -921,7 +921,10 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-修复首次登录时无需 /reload 的成就界面：力量壮举子分类完整显示，滚动未完成成就时 Warband Nexus 待办图标即时出现，无闪烁或明显延迟。成就 UI 过早加载不再干扰分类标签。
+修复:
+- 首次登录无需 /reload 的成就界面：力量壮举子分类、滚动时待办图标、稳定分类标签。
+- 待办列表自定义卡片：恢复描述行和完成按钮。
+- 仅含描述的成就：显示描述行。
 
 CurseForge: Warband Nexus]=]
 

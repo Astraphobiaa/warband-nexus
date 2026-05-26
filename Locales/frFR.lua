@@ -478,7 +478,10 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-Corrige le journal des hauts faits a la premiere connexion sans /reload : les sous-categories Exploits de puissance s'affichent entierement, et l'icone To-Do Warband Nexus apparait sur les hauts faits incomplets lors du defilement, sans scintillement ni long delai. Les onglets de categories ne sont plus perturbees par un chargement precoce de l'interface des hauts faits.
+Corrections:
+- Journal des hauts faits a la premiere connexion sans /reload: sous-categories Exploits de puissance, icone To-Do au defilement, onglets stables.
+- Cartes personnalisees To-Do: ligne Description et bouton Terminer retablis.
+- Hauts faits avec description seule: affichage de la ligne Description.
 
 CurseForge: Warband Nexus]=]
 

@@ -491,10 +491,9 @@ function ns.UI_BuildPlanTodoSummaryLine(plan, opts)
     end
 
     if plan.type == "custom" then
-        local d = plan.description or plan.note or ""
-        if d ~= "" and d ~= "Custom plan" then
-            if #d > 72 then d = d:sub(1, 69) .. "..." end
-            return dim .. d .. "|r"
+        if ns.UI_BuildCustomPlanTodoSummaryLines then
+            local lines = ns.UI_BuildCustomPlanTodoSummaryLines(plan)
+            if lines and lines[1] then return lines[1] end
         end
         return ""
     end
@@ -522,6 +521,18 @@ function ns.UI_BuildPlanTodoSummaryLines(plan, opts)
     opts = type(opts) == "table" and opts or {}
     local maxLines = tonumber(opts.maxLines) or 2
     if not plan then return {} end
+    if plan.type == "custom" then
+        if ns.UI_BuildCustomPlanTodoSummaryLines then
+            local lines = ns.UI_BuildCustomPlanTodoSummaryLines(plan)
+            if #lines > maxLines then
+                local trimmed = {}
+                for i = 1, maxLines do trimmed[i] = lines[i] end
+                return trimmed
+            end
+            return lines
+        end
+        return {}
+    end
     if plan.type == "achievement" and plan.achievementID then
         maxLines = math.max(maxLines, 2)
         if ns.UI_BuildAchievementTodoSummaryLines then
@@ -536,10 +547,6 @@ function ns.UI_BuildPlanTodoSummaryLines(plan, opts)
         end
     end
     if maxLines < 1 then maxLines = 1 end
-    local one = ns.UI_BuildPlanTodoSummaryLine and ns.UI_BuildPlanTodoSummaryLine(plan, opts) or ""
-    if plan.type == "custom" then
-        return one ~= "" and { one } or {}
-    end
     local items = BuildPlanCriteriaItems(plan)
     if #items == 0 then return {} end
     local lines = {}
@@ -1015,8 +1022,8 @@ local function RefreshTrackerContentImmediate()
                 end
             else
                 if plan.type == "custom" then
-                    local d = GetPlanDescription(plan)
-                    if d and d ~= "" then information = d end
+                    local d = ns.UI_GetCustomPlanBodyText and ns.UI_GetCustomPlanBodyText(plan)
+                    if d then information = d end
                 end
                 criteriaItems = isExpanded and allSourceItems or {}
                 criteriaHeader = false
@@ -1045,6 +1052,9 @@ local function RefreshTrackerContentImmediate()
             local ACTION_SIZE, ACTION_GAP = typeBadgeSz, 4
             local titleRightInset = 6 + ACTION_SIZE + ACTION_GAP
             if plan.type == "achievement" and plan.achievementID then
+                titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
+            end
+            if plan.type == "custom" and not memoIsPlanDone(plan) then
                 titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
             end
             if trySuffix ~= "" then
@@ -1120,6 +1130,20 @@ local function RefreshTrackerContentImmediate()
                 tooltipAnchor = "ANCHOR_TOP",
             })
             if delBtn then anchorHeaderAction(delBtn) end
+            if plan.type == "custom" and not memoIsPlanDone(plan) and ns.UI_CreateIconActionButton then
+                local completeBtn = ns.UI_CreateIconActionButton(row.headerFrame, ACTION_SIZE, "complete", {
+                    frameLevelOffset = 10,
+                    onClick = function()
+                        if WarbandNexus.CompleteCustomPlan and plan.id then
+                            WarbandNexus:CompleteCustomPlan(plan.id)
+                            RefreshTrackerContent()
+                        end
+                    end,
+                    tooltipTitle = (ns.L and ns.L["PLAN_ACTION_COMPLETE"]) or "Complete the Plan",
+                    tooltipAnchor = "ANCHOR_TOP",
+                })
+                if completeBtn then anchorHeaderAction(completeBtn) end
+            end
             if plan.type == "achievement" and plan.achievementID and Factory.CreateAchievementTrackPinButton then
                 local achPin = Factory:CreateAchievementTrackPinButton(row.headerFrame, plan.achievementID, {
                     size = ACTION_SIZE,

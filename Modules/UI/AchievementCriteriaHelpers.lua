@@ -561,13 +561,23 @@ local function UsesProgressLabelForSummary(summary)
     return mode == DISPLAY_MODE.QUANTITY_BAR or mode == DISPLAY_MODE.TIMED
 end
 
+--- User-entered custom plan body (stored in source on create; legacy rows may use description/note).
+local function GetCustomPlanBodyText(plan)
+    if not plan or plan.type ~= "custom" then return nil end
+    local customDefault = (ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan"
+    local d = plan.source or plan.description or plan.note or ""
+    if type(d) ~= "string" or d == "" or d == "Custom plan" or d == customDefault then
+        return nil
+    end
+    if issecretvalue and issecretvalue(d) then return nil end
+    return SanitizeAchievementText(d, 72)
+end
+
 --- Summary field rows for To-Do header (Description + Progress or Requirements).
 ---@return table fields { labelKey, fallback, value, iconMarkup? }[]
 local function BuildAchievementTodoSummaryFields(summary, achievementID, planDescription)
     local fields = {}
-    if not summary or (summary.rawNumCriteria or 0) <= 0 then
-        return fields
-    end
+    local numCriteria = summary and (summary.rawNumCriteria or 0) or 0
 
     local descText = GetAchievementDescriptionText(summary, achievementID, planDescription)
     if descText then
@@ -576,6 +586,10 @@ local function BuildAchievementTodoSummaryFields(summary, achievementID, planDes
             fallback = "Description:",
             value = descText,
         }
+    end
+
+    if numCriteria <= 0 then
+        return fields
     end
 
     local paren = FormatAchievementProgressParenthetical(summary)
@@ -612,6 +626,19 @@ local function SummaryFieldsToColoredLines(fields)
         end
     end
     return lines
+end
+
+--- To-Do header lines for custom plans (Description: …).
+local function BuildCustomPlanTodoSummaryLines(plan)
+    local body = GetCustomPlanBodyText(plan)
+    if not body then return {} end
+    return SummaryFieldsToColoredLines({
+        {
+            labelKey = "DESCRIPTION_LABEL",
+            fallback = "Description:",
+            value = body,
+        },
+    })
 end
 
 --- To-Do card summary lines (legacy string form).
@@ -718,6 +745,8 @@ local M = {
     ShouldAchievementTodoExpand = ShouldAchievementTodoExpand,
     GetAchievementDescription = GetAchievementDescription,
     GetAchievementDescriptionAndPoints = GetAchievementDescriptionAndPoints,
+    GetCustomPlanBodyText = GetCustomPlanBodyText,
+    BuildCustomPlanTodoSummaryLines = BuildCustomPlanTodoSummaryLines,
 }
 
 ns.AchievementCriteriaHelpers = M
@@ -737,3 +766,5 @@ ns.UI_SummaryFieldsToColoredLines = SummaryFieldsToColoredLines
 ns.UI_ShouldAchievementTodoExpand = ShouldAchievementTodoExpand
 ns.UI_FormatAchievementProgressParenthetical = FormatAchievementProgressParenthetical
 ns.UI_GetAchievementDescription = GetAchievementDescription
+ns.UI_GetCustomPlanBodyText = GetCustomPlanBodyText
+ns.UI_BuildCustomPlanTodoSummaryLines = BuildCustomPlanTodoSummaryLines

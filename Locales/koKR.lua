@@ -694,7 +694,10 @@ L["WELCOME_OPEN_INTERFACE"] = "인터페이스를 열려면."
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-첫 로그인 시 /reload 없이 업적 창 수정: 힘의 위업 하위 카테고리가 모두 표시되고, 스크롤할 때 미완료 업적에 Warband Nexus To-Do 아이콘이 깜빡임이나 긴 지연 없이 표시됩니다. 업적 UI 조기 로드로 인한 카테고리 탭 방해를 수정했습니다.
+수정:
+- 첫 로그인 시 /reload 없이 업적 창: 힘의 위업 하위 카테고리, 스크롤 시 To-Do 아이콘, 안정적인 탭.
+- To-Do 사용자 지정 카드: 설명 줄과 완료 버튼 복구.
+- 설명만 있는 업적: 설명 줄 표시.
 
 CurseForge: Warband Nexus]=]
 

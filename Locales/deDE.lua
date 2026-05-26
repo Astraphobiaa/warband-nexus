@@ -799,7 +799,10 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-Behebt das Erfolgsfenster beim ersten Login ohne /reload: Feats-of-Strength-Unterkategorien werden vollstaendig angezeigt, und das Warband-Nexus-To-Do-Symbol erscheint bei unvollstaendigen Erfolgen beim Scrollen ohne Flackern oder lange Verzoegerung. Kategorie-Tabs werden durch fruehes Laden der Erfolgs-UI nicht mehr gestoert.
+Fixes:
+- Erfolgsfenster beim ersten Login ohne /reload: Feats-of-Strength-Unterkategorien, To-Do-Symbol beim Scrollen, stabile Kategorie-Tabs.
+- To-Do benutzerdefinierte Karten: Beschreibungszeile und Complete-Schaltflaeche wiederhergestellt.
+- To-Do: Erfolge nur mit Beschreibung zeigen die Beschreibungszeile.
 
 CurseForge: Warband Nexus]=]
 

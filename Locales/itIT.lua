@@ -694,7 +694,10 @@ L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
-Corregge il diario degli achievement al primo accesso senza /reload: le sottocategorie Imprese di forza compaiono per intero e l'icona To-Do Warband Nexus appare sugli achievement incompleti durante lo scorrimento, senza sfarfallio o lunghi ritardi. Le schede categoria non sono piu disturbate dal caricamento anticipato dell'interfaccia achievement.
+Correzioni:
+- Diario achievement al primo accesso senza /reload: sottocategorie Imprese di forza, icona To-Do in scorrimento, schede stabili.
+- Schede personalizzate To-Do: riga Descrizione e pulsante Completa ripristinati.
+- Achievement solo descrizione: mostra la riga Descrizione.
 
 CurseForge: Warband Nexus]=]
 
