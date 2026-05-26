@@ -796,6 +796,13 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
+L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
+
+Behebt Abstuerze bei Weltereignis-Erinnerungen in Instanzen, wenn Kalender-API-Felder nach Bosskills oder Zonenwechseln geheim sind. Sammlungen und To-Do zeigen Feats-of-Strength-Kategorien wie im Spieljournal, und der To-Do-Button im Erfolgsfenster stoert keine Blizzard-Kategorien mehr.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
@@ -1817,7 +1824,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Fraktions- oder klassenbeschr�
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.1.1) `/wn changelog` verwenden.
+Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.1.2) `/wn changelog` verwenden.
 
 CurseForge: Warband Nexus]=]
 

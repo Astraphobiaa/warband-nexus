@@ -475,6 +475,13 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
+L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
+
+Corrige les plantages des rappels d'evenements mondiaux en donjon lorsque les champs du calendrier sont secrets apres un boss ou un changement de zone. Les listes d'accomplissements (Collections et To-Do) affichent les entetes Feats of Strength comme le journal du jeu, et le bouton To-Do du journal n'interfere plus avec les onglets Blizzard.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
@@ -1699,7 +1706,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.1).
+Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.2).
 
 CurseForge: Warband Nexus]=]
 

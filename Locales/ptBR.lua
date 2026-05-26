@@ -683,6 +683,13 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir a interface."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
+L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
+
+Corrige falhas nos lembretes de eventos mundiais em masmorras quando campos do calendario ficam secretos apos matar um chefe ou mudar de zona. Listas de conquistas em Colecoes e A Fazer exibem cabecalhos Feats of Strength como o diario do jogo, e o botao A Fazer no diario nao interfere mais nas abas da Blizzard.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
@@ -1631,7 +1638,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Facção ou classe restrita"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.1.1).
+Grande lançamento Midnight (instâncias salvas, contador de tentativas, PvE/equipamento/planos, arquitetura de cache). Listas detalhadas de patches antigos foram removidas dos arquivos de localização; use `/wn changelog` para a compilação atual (v3.1.2).
 
 CurseForge: Warband Nexus]=]
 

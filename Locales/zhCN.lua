@@ -918,6 +918,13 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
+L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
+
+修复地下城中首领击杀或区域切换后日历 API 返回保密字段时世界事件提醒报错的问题。收藏与待办成就列表会像游戏成就界面一样显示「光辉事迹」分类标题，成就界面上的待办按钮也不再干扰暴雪分类标签。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
@@ -1813,7 +1820,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.1）。
+午夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.2）。
 
 CurseForge: Warband Nexus]=]
 

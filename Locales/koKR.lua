@@ -691,6 +691,13 @@ L["WELCOME_OPEN_INTERFACE"] = "인터페이스를 열려면."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
+L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
+
+던전에서 보스 처치나 지역 변경 후 달력 API 필드가 비밀 값일 때 세계 이벤트 알림이 충돌하던 문제를 수정했습니다. 컬렉션과 할 일 업적 목록에 게임 업적 창과 같이 위업의 업적 범주 제목이 표시되며, 업적 창의 할 일 버튼이 블리자드 범주 탭을 방해하지 않습니다.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
@@ -1639,7 +1646,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?? ?? ?? ??"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.1.1)는 `/wn changelog`를 사용하세요.
+미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.1.2)는 `/wn changelog`를 사용하세요.
 
 CurseForge: Warband Nexus]=]
 

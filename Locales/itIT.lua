@@ -691,6 +691,13 @@ L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
+L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
+
+Corregge crash dei promemoria eventi mondiali nei dungeon quando i campi del calendario sono segreti dopo un boss o un cambio zona. Le liste achievement in Collezioni e Da fare mostrano le intestazioni Feats of Strength come il diario di gioco, e il pulsante Da fare nel diario non interferisce piu con le schede Blizzard.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
@@ -1639,7 +1646,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limitato da fazione o classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.1.1).
+Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.1.2).
 
 CurseForge: Warband Nexus]=]
 

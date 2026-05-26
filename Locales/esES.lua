@@ -683,6 +683,13 @@ L["WELCOME_OPEN_INTERFACE"] = "para abrir la interfaz."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
+L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
+
+Corrige cierres de recordatorios de eventos mundiales en mazmorras cuando los campos del calendario son secretos tras matar a un jefe o cambiar de zona. Las listas de logros en Colecciones y Pendientes muestran las categorias Feats of Strength como el diario del juego, y el boton Pendientes del diario ya no interfiere con las pestanas de Blizzard.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
@@ -1632,7 +1639,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Restringido por facci�n o cla
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Gran lanzamiento Midnight (instancias guardadas, contador de intentos, JcJ/equipo/planes, arquitectura de caché). Se eliminaron las listas detalladas de parches antiguos en los archivos de idioma; usa `/wn changelog` para la compilación actual (v3.1.1).
+Gran lanzamiento Midnight (instancias guardadas, contador de intentos, JcJ/equipo/planes, arquitectura de caché). Se eliminaron las listas detalladas de parches antiguos en los archivos de idioma; usa `/wn changelog` para la compilación actual (v3.1.2).
 
 CurseForge: Warband Nexus]=]
 
