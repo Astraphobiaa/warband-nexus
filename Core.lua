@@ -314,7 +314,11 @@ local defaults = {
             cooldowns   = false,
             equipment   = true,
         },
-        
+        -- Profession tab: user column order (toggleable data columns only; nil = built-in default)
+        professionColumnOrder = nil,
+        -- PvE tab: user column order for inline grid keys (nil = built-in default)
+        pveColumnOrder = nil,
+
         -- PvE list sorting preferences
         pveSort = {
             key = nil,        -- nil = no sorting (default order)

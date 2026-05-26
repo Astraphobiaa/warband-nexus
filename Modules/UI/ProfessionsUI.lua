@@ -212,13 +212,61 @@ local COLUMNS = {
     info        = { width = 30,  spacing = 0 },
 }
 
-local COLUMN_ORDER = {
+local ColumnOrder = ns.ColumnOrder
+
+local PROF_IDENTITY_PREFIX = { "favIcon", "classIcon", "name", "open", "profIcon", "profName" }
+local PROF_IDENTITY_SUFFIX = { "info" }
+local PROF_TOGGLEABLE_DEFAULT_ORDER = {
+    "equipment", "skill", "conc", "recharge", "knowledge",
+    "recipes", "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp", "moxie",
+    "cooldowns",
+}
+local PROF_TOGGLEABLE_KEY_SET = {}
+for _pki = 1, #PROF_TOGGLEABLE_DEFAULT_ORDER do
+    PROF_TOGGLEABLE_KEY_SET[PROF_TOGGLEABLE_DEFAULT_ORDER[_pki]] = true
+end
+
+local STATIC_COLUMN_ORDER = {
     "favIcon", "classIcon", "name", "open",
     "profIcon", "profName", "equipment", "skill", "conc", "recharge", "knowledge",
     "recipes", "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp", "moxie",
     "cooldowns",
     "info",
 }
+local columnOrder = STATIC_COLUMN_ORDER
+
+local function EnsureProfessionColumnOrder(profile)
+    if not profile or not ColumnOrder then return PROF_TOGGLEABLE_DEFAULT_ORDER end
+    if type(profile.professionColumnOrder) ~= "table" then
+        profile.professionColumnOrder = {}
+    end
+    local merged = ColumnOrder.MergeOrder(
+        profile.professionColumnOrder,
+        PROF_TOGGLEABLE_DEFAULT_ORDER,
+        PROF_TOGGLEABLE_KEY_SET
+    )
+    for i = #profile.professionColumnOrder, 1, -1 do
+        profile.professionColumnOrder[i] = nil
+    end
+    for i = 1, #merged do
+        profile.professionColumnOrder[i] = merged[i]
+    end
+    return profile.professionColumnOrder
+end
+
+local function SyncProfessionColumnOrder(profile)
+    if not ColumnOrder then
+        columnOrder = STATIC_COLUMN_ORDER
+        return columnOrder
+    end
+    local middle = EnsureProfessionColumnOrder(profile)
+    local full = {}
+    for pi = 1, #PROF_IDENTITY_PREFIX do full[#full + 1] = PROF_IDENTITY_PREFIX[pi] end
+    for mi = 1, #middle do full[#full + 1] = middle[mi] end
+    for si = 1, #PROF_IDENTITY_SUFFIX do full[#full + 1] = PROF_IDENTITY_SUFFIX[si] end
+    columnOrder = full
+    return columnOrder
+end
 
 local LEFT_PAD = 4                   -- In-row inset; row already anchored with SIDE_MARGIN
 
@@ -282,6 +330,20 @@ local TOGGLEABLE_COLUMNS = {
 local COLUMN_DEFAULT_VISIBLE = {
     cooldowns = false,
 }
+
+local function GetToggleableColumnsInPickerOrder(profile)
+    local order = EnsureProfessionColumnOrder(profile)
+    local byKey = {}
+    for tci = 1, #TOGGLEABLE_COLUMNS do
+        byKey[TOGGLEABLE_COLUMNS[tci].key] = TOGGLEABLE_COLUMNS[tci]
+    end
+    local out = {}
+    for oi = 1, #order do
+        local tc = byKey[order[oi]]
+        if tc then out[#out + 1] = tc end
+    end
+    return out, order
+end
 
 --- Merge toggleable keys + defaults; migrate legacy tool/acc* slots to `equipment`.
 local function EnsureProfessionVisibleColumns(profile)
@@ -377,8 +439,9 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
     local ROW_H = (GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (GetLayout().ROW_HEIGHT) or 26
     local PAD = 6
     local FactDd = ns.UI and ns.UI.Factory
-    local contentH = #TOGGLEABLE_COLUMNS * ROW_H + PAD * 2 + ROW_H
-    menu:SetSize(170, contentH)
+    local pickerCols, colOrder = GetToggleableColumnsInPickerOrder(profile)
+    local contentH = #pickerCols * ROW_H + PAD * 2 + ROW_H + ROW_H
+    menu:SetSize(228, contentH)
 
     local bin = ns.UI_RecycleBin
     local kids = { menu:GetChildren() }
@@ -387,14 +450,37 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
         if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end
     end
 
+    local function RepopulatePickerAfterOrderChange()
+        RequestProfessionColumnsRefresh()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                local picker = WarbandNexus._wnProfColumnPickerMenu
+                local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
+                local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
+                    ProfColumnPickerHide()
+                    return
+                end
+                if not anchor.GetTop or not anchor:GetTop() then
+                    ProfColumnPickerHide()
+                    return
+                end
+                ProfColumnPickerPopulateMenu(picker, anchor)
+                ProfColumnPickerPositionMenu(picker, anchor)
+                picker:Show()
+                ProfColumnPickerShowCatcher(picker)
+            end)
+        end
+    end
+
     local yOff = -PAD
-    for tci = 1, #TOGGLEABLE_COLUMNS do
-        local tc = TOGGLEABLE_COLUMNS[tci]
+    for tci = 1, #pickerCols do
+        local tc = pickerCols[tci]
         local isVisible = IsColumnVisible(tc.key)
-        local checkRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 160, ROW_H, true)
+        local checkRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 216, ROW_H, true)
         if not checkRow then
             checkRow = CreateFrame("Button", nil, menu)
-            checkRow:SetSize(160, ROW_H)
+            checkRow:SetSize(216, ROW_H)
         end
         checkRow:SetPoint("TOPLEFT", PAD, yOff)
 
@@ -417,38 +503,44 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
         local capturedKey = tc.key
         checkRow:SetScript("OnClick", function()
             vis[capturedKey] = not IsColumnVisible(capturedKey)
-            RequestProfessionColumnsRefresh()
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, function()
-                    local picker = WarbandNexus._wnProfColumnPickerMenu
-                    local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
-                    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-                    if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
-                        ProfColumnPickerHide()
-                        return
-                    end
-                    if not anchor.GetTop or not anchor:GetTop() then
-                        ProfColumnPickerHide()
-                        return
-                    end
-                    ProfColumnPickerPopulateMenu(picker, anchor)
-                    ProfColumnPickerPositionMenu(picker, anchor)
-                    picker:Show()
-                    ProfColumnPickerShowCatcher(picker)
-                end)
-            end
+            RepopulatePickerAfterOrderChange()
         end)
         checkRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
         checkRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
         checkRow:Show()
 
+        if ColumnOrder and ColumnOrder.AttachPickerReorderButtons then
+            ColumnOrder.AttachPickerReorderButtons(checkRow, colOrder, capturedKey, RepopulatePickerAfterOrderChange)
+        end
+
         yOff = yOff - ROW_H
     end
 
-    local resetRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 160, ROW_H, true)
+    local resetOrderRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 216, ROW_H, true)
+    if not resetOrderRow then
+        resetOrderRow = CreateFrame("Button", nil, menu)
+        resetOrderRow:SetSize(216, ROW_H)
+    end
+    resetOrderRow:SetPoint("TOPLEFT", PAD, yOff)
+    local resetOrderLbl = FontManager:CreateFontString(resetOrderRow, "small", "OVERLAY")
+    resetOrderLbl:SetPoint("CENTER", 0, 0)
+    resetOrderLbl:SetText("|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["RESET_COLUMN_ORDER"]) or "Reset Order") .. "|r")
+    resetOrderLbl:SetJustifyH("CENTER")
+    resetOrderRow:SetScript("OnClick", function()
+        if ColumnOrder then
+            ColumnOrder.ResetToDefault(colOrder, PROF_TOGGLEABLE_DEFAULT_ORDER, PROF_TOGGLEABLE_KEY_SET)
+        end
+        RepopulatePickerAfterOrderChange()
+    end)
+    resetOrderRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
+    resetOrderRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
+    resetOrderRow:Show()
+    yOff = yOff - ROW_H
+
+    local resetRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 216, ROW_H, true)
     if not resetRow then
         resetRow = CreateFrame("Button", nil, menu)
-        resetRow:SetSize(160, ROW_H)
+        resetRow:SetSize(216, ROW_H)
     end
     resetRow:SetPoint("TOPLEFT", PAD, yOff)
     local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
@@ -459,26 +551,7 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
         for ri = 1, #TOGGLEABLE_COLUMNS do
             vis[TOGGLEABLE_COLUMNS[ri].key] = true
         end
-        RequestProfessionColumnsRefresh()
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                local picker = WarbandNexus._wnProfColumnPickerMenu
-                local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
-                local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-                if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
-                    ProfColumnPickerHide()
-                    return
-                end
-                if not anchor.GetTop or not anchor:GetTop() then
-                    ProfColumnPickerHide()
-                    return
-                end
-                ProfColumnPickerPopulateMenu(picker, anchor)
-                ProfColumnPickerPositionMenu(picker, anchor)
-                picker:Show()
-                ProfColumnPickerShowCatcher(picker)
-            end)
-        end
+        RepopulatePickerAfterOrderChange()
     end)
     resetRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
     resetRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
@@ -491,7 +564,7 @@ function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
     local FactDd = ns.UI and ns.UI.Factory
     local menu = WarbandNexus._wnProfColumnPickerMenu
     if not menu then
-        menu = FactDd and FactDd:CreateContainer(UIParent, 170, 80, false)
+        menu = FactDd and FactDd:CreateContainer(UIParent, 228, 80, false)
         if not menu then
             menu = CreateFrame("Frame", "WarbandNexusProfColumnPickerMenu", UIParent, "BackdropTemplate")
             menu:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
@@ -536,6 +609,7 @@ local SCALABLE_COLUMNS = {
 -- Called every time the professions tab is drawn or the window is resized so that
 -- the scrollChild is always wide enough to show all visible columns without clipping.
 function ns.ComputeProfessionsGridWidth()
+    SyncProfessionColumnOrder(WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile)
     local fontScale = 1.0
     if FontManager and FontManager.GetFontSize then
         local actualSize = FontManager:GetFontSize(DATA_FONT)
@@ -545,8 +619,8 @@ function ns.ComputeProfessionsGridWidth()
     end
 
     local total = 0
-    for ki = 1, #COLUMN_ORDER do
-        local k = COLUMN_ORDER[ki]
+    for ki = 1, #columnOrder do
+        local k = columnOrder[ki]
         if IsColumnVisible(k) then
             local w = COLUMNS[k].width
             if SCALABLE_COLUMNS[k] then
@@ -579,8 +653,8 @@ local function GetColumnScaleFactor()
     if cachedRowWidth and cachedRowWidth > 0 then
         local baseTotal = LEFT_PAD
         local scalableBase = 0
-        for ki = 1, #COLUMN_ORDER do
-            local k = COLUMN_ORDER[ki]
+        for ki = 1, #columnOrder do
+            local k = columnOrder[ki]
             if IsColumnVisible(k) then
                 baseTotal = baseTotal + COLUMNS[k].width + COLUMNS[k].spacing
                 if SCALABLE_COLUMNS[k] then
@@ -613,8 +687,8 @@ end
 local function ColOffset(key)
     local offset = LEFT_PAD
     local scaleFactor = GetColumnScaleFactor()
-    for ki = 1, #COLUMN_ORDER do
-        local k = COLUMN_ORDER[ki]
+    for ki = 1, #columnOrder do
+        local k = columnOrder[ki]
         if k == key then return offset end
         if IsColumnVisible(k) then
             local w = COLUMNS[k].width
@@ -636,8 +710,8 @@ end
 local function BuildProfessionColumnDividerXs()
     local xs = {}
     local inDataGrid = false
-    for ki = 1, #COLUMN_ORDER - 1 do
-        local k = COLUMN_ORDER[ki]
+    for ki = 1, #columnOrder - 1 do
+        local k = columnOrder[ki]
         if k == "profName" then
             inDataGrid = true
         end
@@ -645,17 +719,17 @@ local function BuildProfessionColumnDividerXs()
             -- identity columns: no per-column dividers
         else
             local hasNextVisible = false
-            for kj = ki + 1, #COLUMN_ORDER do
-                if IsColumnVisible(COLUMN_ORDER[kj]) then
+            for kj = ki + 1, #columnOrder do
+                if IsColumnVisible(columnOrder[kj]) then
                     hasNextVisible = true
                     break
                 end
             end
             if hasNextVisible then
                 local nextKey
-                for kj = ki + 1, #COLUMN_ORDER do
-                    if IsColumnVisible(COLUMN_ORDER[kj]) then
-                        nextKey = COLUMN_ORDER[kj]
+                for kj = ki + 1, #columnOrder do
+                    if IsColumnVisible(columnOrder[kj]) then
+                        nextKey = columnOrder[kj]
                         break
                     end
                 end
@@ -1963,6 +2037,7 @@ ns.UI_DebounceProfessionRowGradientRefresh = DebounceProfessionRowGradientRefres
 function WarbandNexus:DrawProfessionsTab(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     profEquipResolveCache = {}
+    SyncProfessionColumnOrder(WarbandNexus.db and WarbandNexus.db.profile)
 
     RegisterProfessionEvents(parent)
     HideEmptyStateCard(parent, "professions")

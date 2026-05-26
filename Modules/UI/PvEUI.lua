@@ -58,6 +58,7 @@ local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local ApplyVisuals = ns.UI_ApplyVisuals  -- For border re-application
 local FormatNumber = ns.UI_FormatNumber
 local COLORS = ns.UI_COLORS
+local ColumnOrder = ns.ColumnOrder
 
 -- Import shared UI layout constants
 local function GetLayout()
@@ -419,27 +420,76 @@ local function EnsurePvEExtraVisibleColumns(profile)
     return ex
 end
 
+local function GetPvEDefaultColumnKeyOrder(profile)
+    local order = {}
+    local crestDefs = GetPvEDawnCrestColumnDefinitions()
+    for i = 1, #crestDefs do
+        order[#order + 1] = "crest_" .. tostring(crestDefs[i].id)
+    end
+    order[#order + 1] = "coffer_shards"
+    order[#order + 1] = "restored_key"
+    order[#order + 1] = "voidcore"
+    order[#order + 1] = "manaflux"
+    order[#order + 1] = "slot1"
+    order[#order + 1] = "slot2"
+    order[#order + 1] = "slot3"
+    order[#order + 1] = "bountiful"
+    order[#order + 1] = "vault_status"
+    return order
+end
+
+--- Merge saved + default column keys into `profile.pveColumnOrder` without replacing the table
+--- (picker reorder buttons keep a stable reference to the profile array).
+local function EnsurePvEColumnOrder(profile)
+    if not profile or not ColumnOrder then
+        return GetPvEDefaultColumnKeyOrder(profile)
+    end
+    if type(profile.pveColumnOrder) ~= "table" then
+        profile.pveColumnOrder = {}
+    end
+    local merged = ColumnOrder.MergeOrder(
+        profile.pveColumnOrder,
+        GetPvEDefaultColumnKeyOrder(profile),
+        nil
+    )
+    for i = #profile.pveColumnOrder, 1, -1 do
+        profile.pveColumnOrder[i] = nil
+    end
+    for i = 1, #merged do
+        profile.pveColumnOrder[i] = merged[i]
+    end
+    return profile.pveColumnOrder
+end
+
+local function IsPvEInlineColumnKeyVisible(key, profile, vc, ex)
+    if not key or type(key) ~= "string" then return false end
+    if key:find("^crest_") then
+        return ex[key] ~= false
+    end
+    if key == "coffer_shards" then return ex.coffer_shards ~= false end
+    if key == "restored_key" then return ex.restored_key ~= false end
+    if key == "voidcore" then return vc.voidcore ~= false end
+    if key == "manaflux" then return vc.manaflux == true end
+    if key == "slot1" then return vc.raids ~= false end
+    if key == "slot2" then return vc.mythicPlus ~= false end
+    if key == "slot3" then return vc.world ~= false end
+    if key == "bountiful" then return vc.bounty ~= false end
+    if key == "vault_status" then return vc.status ~= false end
+    return false
+end
+
 local function BuildPvEColumnKeySequence(profile)
     local seq = {}
     if not profile then return seq end
     local vc = EnsureVaultButtonColumnsForPvE(profile)
     local ex = EnsurePvEExtraVisibleColumns(profile)
-    local crestDefs = GetPvEDawnCrestColumnDefinitions()
-    for i = 1, #crestDefs do
-        local id = crestDefs[i].id
-        local k = "crest_" .. tostring(id)
-        if ex[k] ~= false then
-            seq[#seq + 1] = k
+    local order = EnsurePvEColumnOrder(profile)
+    for oi = 1, #order do
+        local key = order[oi]
+        if IsPvEInlineColumnKeyVisible(key, profile, vc, ex) then
+            seq[#seq + 1] = key
         end
     end
-    if ex.coffer_shards ~= false then seq[#seq + 1] = "coffer_shards" end
-    if ex.restored_key ~= false then seq[#seq + 1] = "restored_key" end
-    if vc.voidcore ~= false then seq[#seq + 1] = "voidcore" end
-    if vc.manaflux == true then seq[#seq + 1] = "manaflux" end
-    if vc.raids ~= false then seq[#seq + 1] = "slot1" end
-    if vc.mythicPlus ~= false then seq[#seq + 1] = "slot2" end
-    if vc.world ~= false then seq[#seq + 1] = "slot3" end
-    if vc.bounty ~= false then seq[#seq + 1] = "bountiful" end
     return seq
 end
 
@@ -526,7 +576,7 @@ local function PvE_GetOrCreateColumnPickerMenu()
     local m = WarbandNexus._wnPvEColumnPickerMenu
     if m then return m end
     local accent = COLORS.accent or { 0.40, 0.20, 0.58 }
-    m = Factory:CreateContainer(UIParent, 292, 320, true)
+    m = Factory:CreateContainer(UIParent, 320, 320, true)
     if not m then return nil end
     m:SetClampedToScreen(true)
     m:SetFrameStrata(PVE_COLUMN_PICKER_STRATA)
@@ -559,8 +609,10 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     local HEADER_H = 22
 
     local crestDefs = GetPvEDawnCrestColumnDefinitions()
+    local colOrder = EnsurePvEColumnOrder(profile)
     local toggleCount = #crestDefs + 8
-    local contentH = HEADER_H + toggleCount * ROW + ROW + 10
+    local contentH = HEADER_H + toggleCount * ROW + ROW + ROW + 10
+    menuW = 320
     local viewportH = math.min(contentH, 300)
     local menuH = viewportH + menuPad * 2
 
@@ -627,12 +679,19 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         end)
     end
 
-    local function addCheckboxRow(y, labelText, isChecked, onToggle)
-        local cb = CreateThemedCheckbox(scrollChild, isChecked)
-        if not cb then return y end
-        cb:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y)
+    local function RepopulatePvEColumnPicker()
+        applyColumnPickerChange(false)
+    end
+
+    local function addCheckboxRow(y, labelText, isChecked, onToggle, reorderKey)
+        local rowHost = Factory:CreateContainer(scrollChild, btnWidth, ROW, false)
+        if not rowHost then return y end
+        rowHost:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, y)
+        local cb = CreateThemedCheckbox(rowHost, isChecked)
+        if not cb then return y - ROW end
+        cb:SetPoint("LEFT", rowHost, "LEFT", 14, 0)
         cb:EnableMouse(true)
-        local lbl = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+        local lbl = FontManager:CreateFontString(rowHost, "body", "OVERLAY")
         lbl:SetPoint("LEFT", cb, "RIGHT", (ns.UI_SPACING and ns.UI_SPACING.AFTER_ELEMENT) or 6, 0)
         lbl:SetText(labelText)
         lbl:SetTextColor(1, 1, 1, 1)
@@ -643,62 +702,70 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
             if prevClick then prevClick(self, ...) end
             onToggle(self:GetChecked() and true or false)
         end)
+        if reorderKey and ColumnOrder and ColumnOrder.AttachPickerReorderButtons then
+            ColumnOrder.AttachPickerReorderButtons(rowHost, colOrder, reorderKey, RepopulatePvEColumnPicker)
+        end
         return y - ROW
     end
 
-    local y = -HEADER_H
+    local pickerRows = {}
     for i = 1, #crestDefs do
         local id = crestDefs[i].id
         local labelKey = crestDefs[i].labelKey
         local crestLabel = labelKey and GetLocalizedText(labelKey, GetLocalizedText("PVE_CREST_GENERIC", "Dawncrest")) or GetLocalizedText("PVE_CREST_GENERIC", "Dawncrest")
         local ck = "crest_" .. tostring(id)
-        y = addCheckboxRow(y, crestLabel, ex[ck] ~= false, function(checked)
-            ex[ck] = checked
-            applyColumnPickerChange(false)
-        end)
+        pickerRows[#pickerRows + 1] = {
+            key = ck,
+            label = crestLabel,
+            checked = ex[ck] ~= false,
+            vault = false,
+            toggle = function(checked)
+                ex[ck] = checked
+                applyColumnPickerChange(false)
+            end,
+        }
+    end
+    pickerRows[#pickerRows + 1] = { key = "coffer_shards", label = GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"), checked = ex.coffer_shards ~= false, vault = false, toggle = function(checked) ex.coffer_shards = checked applyColumnPickerChange(false) end }
+    pickerRows[#pickerRows + 1] = { key = "restored_key", label = GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"), checked = ex.restored_key ~= false, vault = false, toggle = function(checked) ex.restored_key = checked applyColumnPickerChange(false) end }
+    pickerRows[#pickerRows + 1] = { key = "voidcore", label = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"), checked = vc.voidcore ~= false, vault = true, toggle = function(checked) vc.voidcore = checked applyColumnPickerChange(true) end }
+    pickerRows[#pickerRows + 1] = { key = "manaflux", label = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"), checked = vc.manaflux == true, vault = true, toggle = function(checked) vc.manaflux = checked profile.vaultButton = profile.vaultButton or {} profile.vaultButton.showManaflux = checked applyColumnPickerChange(true) end }
+    pickerRows[#pickerRows + 1] = { key = "slot1", label = GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), checked = vc.raids ~= false, vault = true, toggle = function(checked) vc.raids = checked applyColumnPickerChange(true) end }
+    pickerRows[#pickerRows + 1] = { key = "slot2", label = GetLocalizedText("VAULT_DUNGEON", "Dungeon"), checked = vc.mythicPlus ~= false, vault = true, toggle = function(checked) vc.mythicPlus = checked applyColumnPickerChange(true) end }
+    pickerRows[#pickerRows + 1] = { key = "slot3", label = GetLocalizedText("VAULT_SLOT_WORLD", "World"), checked = vc.world ~= false, vault = true, toggle = function(checked) vc.world = checked applyColumnPickerChange(true) end }
+    pickerRows[#pickerRows + 1] = { key = "bountiful", label = GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"), checked = vc.bounty ~= false, vault = true, toggle = function(checked) vc.bounty = checked applyColumnPickerChange(true) end }
+
+    local rank = {}
+    for ri = 1, #colOrder do rank[colOrder[ri]] = ri end
+    table.sort(pickerRows, function(a, b)
+        return (rank[a.key] or 9999) < (rank[b.key] or 9999)
+    end)
+
+    local y = -HEADER_H
+    for pri = 1, #pickerRows do
+        local pr = pickerRows[pri]
+        y = addCheckboxRow(y, pr.label, pr.checked, pr.toggle, pr.key)
     end
 
-    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"), ex.coffer_shards ~= false, function(checked)
-        ex.coffer_shards = checked
-        applyColumnPickerChange(false)
-    end)
-
-    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"), ex.restored_key ~= false, function(checked)
-        ex.restored_key = checked
-        applyColumnPickerChange(false)
-    end)
-
-    y = addCheckboxRow(y, GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), vc.raids ~= false, function(checked)
-        vc.raids = checked
-        applyColumnPickerChange(true)
-    end)
-
-    y = addCheckboxRow(y, GetLocalizedText("VAULT_DUNGEON", "Dungeon"), vc.mythicPlus ~= false, function(checked)
-        vc.mythicPlus = checked
-        applyColumnPickerChange(true)
-    end)
-
-    y = addCheckboxRow(y, GetLocalizedText("VAULT_SLOT_WORLD", "World"), vc.world ~= false, function(checked)
-        vc.world = checked
-        applyColumnPickerChange(true)
-    end)
-
-    y = addCheckboxRow(y, GetLocalizedText("BOUNTIFUL_DELVE", "Trovehunter's Bounty"), vc.bounty ~= false, function(checked)
-        vc.bounty = checked
-        applyColumnPickerChange(true)
-    end)
-
-    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"), vc.voidcore ~= false, function(checked)
-        vc.voidcore = checked
-        applyColumnPickerChange(true)
-    end)
-
-    y = addCheckboxRow(y, GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"), vc.manaflux == true, function(checked)
-        vc.manaflux = checked
-        profile.vaultButton = profile.vaultButton or {}
-        profile.vaultButton.showManaflux = checked
-        applyColumnPickerChange(true)
-    end)
+    local resetOrderBtn = Factory:CreateButton(scrollChild, btnWidth - 28, ROW - 2, false)
+    if resetOrderBtn and ApplyVisuals then
+        ApplyVisuals(resetOrderBtn, { 0.08, 0.08, 0.10, 1 }, { accent[1], accent[2], accent[3], 0.5 })
+    end
+    if resetOrderBtn then
+        resetOrderBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
+        local resetOrderLbl = FontManager:CreateFontString(resetOrderBtn, "small", "OVERLAY")
+        resetOrderLbl:SetPoint("CENTER", 0, 0)
+        local hexOrder = (UI_GetAccentHexColor and UI_GetAccentHexColor()) or "aaaaee"
+        resetOrderLbl:SetText("|cff" .. hexOrder .. (GetLocalizedText("RESET_COLUMN_ORDER", "Reset Order")) .. "|r")
+        if resetOrderLbl.EnableMouse then resetOrderLbl:EnableMouse(false) end
+        resetOrderBtn:SetScript("OnClick", function()
+            if ColumnOrder then
+                ColumnOrder.ResetToDefault(colOrder, GetPvEDefaultColumnKeyOrder(profile), nil)
+            end
+            RepopulatePvEColumnPicker()
+        end)
+        if Factory.ApplyHighlight then Factory:ApplyHighlight(resetOrderBtn) end
+        y = y - ROW - 4
+    end
 
     local resetBtn = Factory:CreateButton(scrollChild, btnWidth - 28, ROW - 2, false)
     if resetBtn and ApplyVisuals then
@@ -3000,6 +3067,8 @@ end
 --============================================================================
 
 ns.PvEUI = ns.PvEUI or {}
+ns.PvEUI.BuildPvEColumnKeySequence = BuildPvEColumnKeySequence
+ns.PvEUI.EnsurePvEColumnOrder = EnsurePvEColumnOrder
 --- Cancel in-flight chunked PvE row paint (tab switch).
 function ns.PvEUI.AbortChunkedPaint()
     ns.PvEUI._paintDrawGen = (ns.PvEUI._paintDrawGen or 0) + 1
@@ -3089,6 +3158,10 @@ if not ns.PvEDrawLibs then
         PvEUI_PopulateExpandedCharacterDetail = ns.PvEUI_PopulateExpandedCharacterDetail,
         PvE_FormatVaultTrackColumn = PvE_FormatVaultTrackColumn,
         BindForwardScrollWheel = BindForwardScrollWheel,
+        ColumnOrder = ColumnOrder,
+        BuildPvEColumnKeySequence = BuildPvEColumnKeySequence,
+        EnsurePvEColumnOrder = EnsurePvEColumnOrder,
+        GetPvEDefaultColumnKeyOrder = GetPvEDefaultColumnKeyOrder,
     }
 end
 
@@ -3458,6 +3531,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             headerLabel = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"),
             headerIconIsAtlas = false,
         }
+    end
+
+    local pveColumnSeq = (L.BuildPvEColumnKeySequence or BuildPvEColumnKeySequence)(profile)
+    local colOrderApi = L.ColumnOrder or ColumnOrder
+    if colOrderApi and colOrderApi.SortColumnsByKeySequence then
+        colOrderApi.SortColumnsByKeySequence(PVE_COLUMNS, pveColumnSeq)
     end
 
     local COL_SPACING = L.PVE_COL_SPACING
