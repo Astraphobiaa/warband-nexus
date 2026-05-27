@@ -314,8 +314,8 @@ L["PVE_CREST_EXPLORER"] = "探索者"
 L["PVE_COL_COFFER_SHARDS"] = "宝匣钥匙碎片"
 L["PVE_COL_RESTORED_KEY"] = "修复的宝匣钥匙"
 L["PVE_COL_VAULT_STATUS"] = "宝库状态"
-L["PVE_COL_NEBULOUS_VOIDCORE"] = "缥缈虚空核"
-L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "晨光魔流"
+L["PVE_COL_NEBULOUS_VOIDCORE"] = "晦暗虚空核心"
+L["PVE_COL_DAWNLIGHT_MANAFLUX"] = "黎明之光法力熔剂"
 L["PVE_HEADER_RAID_SHORT"] = "团队"
 L["PVE_HEADER_MAP_SHORT"] = "赏金"
 L["PVE_HEADER_STATUS_SHORT"] = "状态"
@@ -607,7 +607,7 @@ L["COMPLETED_REQ_FORMAT"] = "你已完成 %d 项，共 %d 项要求"
 L["CONTENT_MIDNIGHT"] = "至暗之夜"
 L["WEEKLY_RESET_LABEL"] = "每周重置"
 L["QUEST_TYPE_WEEKLY"] = "每周任务"
-L["QUEST_CAT_CONTENT_EVENTS"] = "Content Events"
+L["QUEST_CAT_CONTENT_EVENTS"] = "节日事件"
 
 -- Plans - Weekly Vault Progress
 L["MYTHIC_PLUS_LABEL"] = "史诗钥石"
@@ -765,7 +765,7 @@ L["MODULE_GEAR_DESC"] = "跨角色装备管理和物品等级追踪"
 L["MODULE_COLLECTIONS"] = "收藏"
 L["MODULE_COLLECTIONS_DESC"] = "坐骑、宠物、玩具、幻化和收藏概览"
 L["MODULE_TRY_COUNTER"] = "尝试计数器"
-L["MODULE_TRY_COUNTER_DESC"] = "自动追踪NPC、Boss、钓鱼和容器的掉落尝试。禁用将停止所有计数器处理、提示和通知。"
+L["MODULE_TRY_COUNTER_DESC"] = "自动追踪NPC、首领、钓鱼和容器的掉落尝试。禁用将停止所有计数器处理、提示和通知。"
 L["PROFESSIONS_DISABLED_TITLE"] = "专业"
 
 -- Tooltip Service
@@ -906,14 +906,14 @@ L["CLICK_TO_COPY"] = "点击复制邀请链接"
 L["WELCOME_MSG_FORMAT"] = "欢迎使用 Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "请输入"
 L["WELCOME_OPEN_INTERFACE"] = "以打开界面。"
-L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00更新内容：|r 可能会在聊天上方弹出窗口，或输入 |cffffff00/wn changelog|r。"
-L["CHARACTER_LINK_HINT_CHAT"] = "你的存档已保留。若界面显示异常，请输入 |cffffff00/reload|r 一次。"
-L["CONFIG_SHOW_LOGIN_CHAT"] = "在聊天中显示登录提示"
-L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "开启通知时打印一行简短欢迎语。使用“系统”消息组与可见聊天标签（如 Chattynator）。更新说明窗口为独立全屏弹窗。"
-L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
-L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
-L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "登录时请求游戏时间"
-L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /played 以更新“游戏时间”等统计，并隐藏聊天输出。关闭则登录时不自动请求（仍可手动 /played）。"
+L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00最新改动：|r 聊天框上方可能会弹出窗口，你也可以输入 |cffffff00/wn changelog|r 查看。"
+L["CHARACTER_LINK_HINT_CHAT"] = "你的数据已保留。如果面板显示异常，请输入 |cffffff00/reload|r 重载一次。"
+L["CONFIG_SHOW_LOGIN_CHAT"] = "在聊天框显示登录信息"
+L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "启用通知时，在聊天框打印一条简短的欢迎信息。使用“系统”消息组以及一个可见的聊天标签页，因此 Chattynator 等插件也可以显示它。（“最新改动”窗口是独立的全屏弹窗。）"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "隐藏聊天框中的游戏时间"
+L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤掉"总游戏时间"和"本等级游戏时间"的系统消息。关闭此选项可重新显示它们（包括输入 /played 时）。"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"] = "登录时请求游戏时间数据"
+L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "启用后，插件会在后台请求 /played 数据，以更新“最常使用”及相关统计信息。该请求产生的聊天输出会被屏蔽。禁用后，登录时不会自动请求（手动输入 /played 仍然有效）。"
 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
@@ -922,9 +922,9 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
 修复:
-- 首次登录无需 /reload 的成就界面：力量壮举子分类、滚动时待办图标、稳定分类标签。
-- 待办列表自定义卡片：恢复描述行和完成按钮。
-- 仅含描述的成就：显示描述行。
+- 首次登录无需 /reload 即可正常显示成就日志：修复了“光辉事迹”子分类、滚动时的待办事项图标，以及稳定的分类标签页。
+- 待办事项列表自定义卡片：恢复了描述行和“完成”按钮。
+- 待办事项列表：仅含描述的成就现在会显示其描述行。
 
 CurseForge: Warband Nexus]=]
 
