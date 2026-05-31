@@ -456,6 +456,12 @@ local UI_SPACING = {
     HEADER_TOOLBAR_CONTROL_GAP = 8,
     --- Sort-style dropdown menus: height of one option row (matches ROW_HEIGHT)
     DROPDOWN_MENU_ROW_HEIGHT = 26,
+    --- Shared dropdown scroll menus: fixed viewport row cap before scrollbar appears.
+    DROPDOWN_MAX_VISIBLE_ROWS = 6,
+    DROPDOWN_MENU_EDGE = 4,
+    DROPDOWN_INSET_TOP = 4,
+    DROPDOWN_INSET_BOTTOM = 4,
+    DROPDOWN_SCROLL_GAP = 2,
 
     titleCardControlRightInset = 0,
     headerToolbarControlGap = 8,
@@ -5441,21 +5447,18 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
             measure:SetText("")
         end
         local menuWidth = math.max(minMenuWidth, math.ceil(maxLabelW) + sideMargin * 2 + radioArea + 16)
-        local contentHeight = itemCount * itemHeight
-        local padding = (UI_SPACING and UI_SPACING.AFTER_ELEMENT) or 8
-        local menuHeight = contentHeight + padding
 
-        local menu = ns.UI.Factory:CreateContainer(UIParent, menuWidth, menuHeight, true)
+        local menu = ns.UI.Factory:CreateContainer(UIParent, menuWidth, 200, true)
         menu:SetFrameStrata("FULLSCREEN_DIALOG")
         menu:SetFrameLevel(300)
         menu:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
         menu:SetClampedToScreen(true)
+        menu:SetWidth(menuWidth)
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(menu, {0.08, 0.08, 0.10, 0.98}, {ns.UI_COLORS.accent[1] * 0.6, ns.UI_COLORS.accent[2] * 0.6, ns.UI_COLORS.accent[3] * 0.6, 0.8})
         end
         activeSortDropdownMenu = menu
 
-        -- Nil/unknown keys: highlight first menu option (per-tab default differs, e.g. Characters = default order).
         local rawKey = dbSortTable and dbSortTable.key
         local currentKey = nil
         if type(rawKey) == "string" and rawKey ~= "" then
@@ -5472,12 +5475,15 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         if not currentKey then
             currentKey = "manual"
         end
-        local btnContentWidth = menuWidth - sideMargin * 2
+
+        local scrollChild = select(2, ns.UI_ApplyDropdownScrollLayout(menu, itemCount, itemHeight))
+        local btnContentWidth = (scrollChild and scrollChild:GetWidth()) or (menuWidth - sideMargin * 2)
+        local yPos = (UI_SPACING and UI_SPACING.DROPDOWN_INSET_TOP) or 4
 
         for i = 1, itemCount do
             local opt = sortOptions[i]
-            local optionBtn = ns.UI.Factory:CreateButton(menu, btnContentWidth, itemHeight, true)
-            optionBtn:SetPoint("TOPLEFT", sideMargin, -(i - 1) * itemHeight - 4)
+            local optionBtn = ns.UI.Factory:CreateButton(scrollChild or menu, btnContentWidth, itemHeight, true)
+            optionBtn:SetPoint("TOPLEFT", sideMargin, -yPos)
 
             local isSelected = (currentKey == opt.key)
             local radio = (ns.UI_CreateThemedRadioButton and ns.UI_CreateThemedRadioButton(optionBtn, isSelected)) or nil
@@ -5525,7 +5531,10 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
                 end
                 if onSortChanged then onSortChanged() end
             end)
+            yPos = yPos + itemHeight
         end
+
+        ns.UI_ApplyDropdownScrollLayout(menu, itemCount, itemHeight)
 
         menu:Show()
 
@@ -9003,7 +9012,15 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         if not scrollChild then return end
         local contentHeight = scrollChild:GetHeight() or 0
         local frameHeight = self:GetHeight() or 0
-        local needsScroll = contentHeight > frameHeight + 1
+        local needsScroll
+        if self._wnDropdownMaxVisible and self._wnDropdownRowCount then
+            -- Dropdown menus: row cap is authoritative (GetHeight can lag one frame on open).
+            needsScroll = self._wnDropdownRowCount > self._wnDropdownMaxVisible
+        elseif frameHeight < 2 and self._wnDropdownViewportH then
+            needsScroll = contentHeight > self._wnDropdownViewportH + 1
+        else
+            needsScroll = contentHeight > frameHeight + 1
+        end
 
         local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self)
         local col = self._wnScrollBarColumn
@@ -9083,6 +9100,156 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     return scrollFrame
 end
 
+--- Shared dropdown layout (all tab scroll dropdowns: Gear char picker, Settings, Plans tracker, etc.).
+---@return table
+function ns.UI.Factory:GetDropdownLayout()
+    local sp = ns.UI_SPACING or UI_SPACING or {}
+    local layout = ns.UI_LAYOUT or {}
+    return {
+        rowHeight = sp.DROPDOWN_MENU_ROW_HEIGHT or sp.ROW_HEIGHT or 26,
+        maxVisibleRows = layout.DROPDOWN_MAX_VISIBLE_ROWS or sp.DROPDOWN_MAX_VISIBLE_ROWS or 6,
+        menuEdge = layout.DROPDOWN_MENU_EDGE or sp.DROPDOWN_MENU_EDGE or 4,
+        insetTop = layout.DROPDOWN_INSET_TOP or sp.DROPDOWN_INSET_TOP or 4,
+        insetBottom = layout.DROPDOWN_INSET_BOTTOM or sp.DROPDOWN_INSET_BOTTOM or 4,
+        scrollGap = layout.DROPDOWN_SCROLL_GAP or sp.DROPDOWN_SCROLL_GAP or 2,
+        scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or sp.SCROLLBAR_COLUMN_WIDTH or 26,
+    }
+end
+
+---@param rowCount number
+---@param rowHeight number|nil
+---@param opts table|nil maxVisibleRows, menuEdge, insetTop, insetBottom
+---@return number menuOuterH, number scrollContentH
+function ns.UI.Factory:ComputeDropdownMenuHeights(rowCount, rowHeight, opts)
+    opts = opts or {}
+    local dl = self:GetDropdownLayout()
+    rowHeight = rowHeight or dl.rowHeight
+    local maxRows = opts.maxVisibleRows or dl.maxVisibleRows
+    local insetTop = opts.insetTop or dl.insetTop
+    local insetBottom = opts.insetBottom or dl.insetBottom
+    local menuEdge = opts.menuEdge or dl.menuEdge
+    rowCount = tonumber(rowCount) or 0
+    if rowCount <= 0 then
+        local emptyInner = insetTop + rowHeight + insetBottom
+        return emptyInner + 2 * menuEdge, emptyInner
+    end
+    local visibleRows = math.min(rowCount, maxRows)
+    local scrollContentH = insetTop + rowCount * rowHeight + insetBottom
+    local scrollViewportH = insetTop + visibleRows * rowHeight + insetBottom
+    local menuOuterH = scrollViewportH + 2 * menuEdge
+    return menuOuterH, scrollContentH
+end
+
+--- Anchor metadata for UpdateScrollBarVisibility (hide scrollbar column when content fits).
+---@param scrollFrame ScrollFrame
+---@param host Frame
+---@param barColumn Frame
+---@param opts table|nil menuEdge, scrollGap
+function ns.UI.Factory:WireScrollBarColumnLayout(scrollFrame, host, barColumn, opts)
+    if not scrollFrame or not host or not barColumn then return end
+    opts = opts or {}
+    local dl = self:GetDropdownLayout()
+    local edge = opts.menuEdge or dl.menuEdge
+    local gap = opts.scrollGap or dl.scrollGap
+    scrollFrame._wnScrollBarColumn = barColumn
+    scrollFrame._wnScrollHost = host
+    scrollFrame._wnScrollAnchorTL = { frame = host, a1 = "TOPLEFT", a2 = "TOPLEFT", x = edge, y = -edge }
+    scrollFrame._wnScrollAnchorBRShown = { frame = barColumn, a1 = "BOTTOMRIGHT", a2 = "BOTTOMLEFT", x = -gap, y = edge }
+    scrollFrame._wnScrollAnchorBRHidden = { frame = host, a1 = "BOTTOMRIGHT", a2 = "BOTTOMRIGHT", x = -edge, y = edge }
+end
+
+--- Create or reuse scroll + scrollbar column on a dropdown menu host; sizes viewport to shared row cap.
+---@param menu Frame dropdown panel
+---@param rowCount number
+---@param rowHeight number|nil
+---@param opts table|nil maxVisibleRows, menuEdge, recreate
+---@return ScrollFrame|nil scroll, Frame|nil scrollChild, Frame|nil barColumn, number menuOuterH, number scrollContentH
+function ns.UI.Factory:ApplyDropdownScrollLayout(menu, rowCount, rowHeight, opts)
+    if not menu then return nil, nil, nil, 0, 0 end
+    opts = opts or {}
+    local dl = self:GetDropdownLayout()
+    rowHeight = rowHeight or dl.rowHeight
+    local menuEdge = opts.menuEdge or dl.menuEdge
+    local scrollGap = opts.scrollGap or dl.scrollGap
+    local scrollBarW = dl.scrollBarW
+    local maxRows = opts.maxVisibleRows or dl.maxVisibleRows
+    rowCount = tonumber(rowCount) or 0
+    local visibleRows = math.min(math.max(rowCount, 0), maxRows)
+    local scrollViewportH = dl.insetTop + visibleRows * rowHeight + dl.insetBottom
+    local scrollContentH = (rowCount > 0)
+        and (dl.insetTop + rowCount * rowHeight + dl.insetBottom)
+        or (dl.insetTop + rowHeight + dl.insetBottom)
+    local menuOuterH = scrollViewportH + 2 * menuEdge
+    menu:SetHeight(menuOuterH)
+
+    local scroll = menu._wnDropdownScroll
+    local scrollChild = menu._wnDropdownScrollChild
+    local barColumn = menu._wnDropdownBarColumn
+    if not scroll or opts.recreate then
+        barColumn = self:CreateScrollBarColumn(menu, scrollBarW, menuEdge, menuEdge)
+        scroll = self:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
+        if not scroll then return nil, nil, nil, menuOuterH, scrollContentH end
+        scroll:SetPoint("TOPLEFT", menu, "TOPLEFT", menuEdge, -menuEdge)
+        scroll:SetPoint("BOTTOMRIGHT", barColumn, "BOTTOMLEFT", -scrollGap, menuEdge)
+        if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
+        self:WireScrollBarColumnLayout(scroll, menu, barColumn, opts)
+        local menuW = menu:GetWidth() or 200
+        local initW = math.max(56, menuW - scrollBarW - menuEdge * 2 - scrollGap)
+        local initChildH = (rowCount <= maxRows) and scrollViewportH or scrollContentH
+        scrollChild = self:CreateContainer(scroll, initW, initChildH, false)
+        if not scrollChild then
+            scrollChild = CreateFrame("Frame", nil, scroll)
+            scrollChild:SetSize(initW, initChildH)
+        end
+        scroll:SetScrollChild(scrollChild)
+        menu._wnDropdownScroll = scroll
+        menu._wnDropdownScrollChild = scrollChild
+        menu._wnDropdownBarColumn = barColumn
+        if scroll.ScrollBar and barColumn then
+            self:PositionScrollBarInContainer(scroll.ScrollBar, barColumn, 0)
+        end
+        if not scroll._wnDropdownWidthHook then
+            scroll._wnDropdownWidthHook = true
+            scroll:SetScript("OnSizeChanged", function(frame, w)
+                local sc = menu._wnDropdownScrollChild
+                if sc and w and w > 0 then sc:SetWidth(w) end
+            end)
+        end
+    else
+        self:WireScrollBarColumnLayout(scroll, menu, barColumn, opts)
+    end
+
+    if scroll then
+        scroll._wnDropdownRowCount = rowCount
+        scroll._wnDropdownMaxVisible = maxRows
+        scroll._wnDropdownViewportH = scrollViewportH
+    end
+    if scrollChild then
+        if rowCount <= maxRows then
+            scrollChild:SetHeight(scrollViewportH)
+        else
+            scrollChild:SetHeight(math.max(scrollContentH, 1))
+        end
+    end
+    if scroll then
+        scroll:SetVerticalScroll(0)
+        local sw = scroll:GetWidth()
+        if sw and sw > 0 and scrollChild then
+            scrollChild:SetWidth(sw)
+        end
+        local function syncBar()
+            if scroll and scroll.GetScrollChild and scroll:GetScrollChild() then
+                self:UpdateScrollBarVisibility(scroll)
+            end
+        end
+        syncBar()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, syncBar)
+        end
+    end
+    return scroll, scrollChild, barColumn, menuOuterH, scrollContentH
+end
+
 --- Create a frame for the vertical scroll bar column (same pattern as Collections: list | bar column | details).
 --- Caller anchors this to the right of the scroll content, then calls PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
 ---@param parent Frame Parent (e.g. content area)
@@ -9159,6 +9326,22 @@ function ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
     if scrollFrame and scrollFrame.UpdateScrollBarVisibility then
         scrollFrame:UpdateScrollBarVisibility()
     end
+end
+
+ns.UI_ComputeDropdownMenuHeights = function(rowCount, rowHeight, opts)
+    local F = ns.UI and ns.UI.Factory
+    if F and F.ComputeDropdownMenuHeights then
+        return F:ComputeDropdownMenuHeights(rowCount, rowHeight, opts)
+    end
+    return 200, 200
+end
+
+ns.UI_ApplyDropdownScrollLayout = function(menu, rowCount, rowHeight, opts)
+    local F = ns.UI and ns.UI.Factory
+    if F and F.ApplyDropdownScrollLayout then
+        return F:ApplyDropdownScrollLayout(menu, rowCount, rowHeight, opts)
+    end
+    return nil, nil, nil, 0, 0
 end
 
 ---Create a horizontal scrollbar matching the vertical scrollbar style.

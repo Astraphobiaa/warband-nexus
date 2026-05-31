@@ -2517,32 +2517,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             })
             menu:SetBackdropColor(0.06, 0.06, 0.10, 0.98)
             menu:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.9)
-
-            -- Factory scroll + dedicated scrollbar column (matches main window / Collections)
-            local SCROLL_COL = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-            local MENU_EDGE = 4
-
-            menu._barColumn = GearFact:CreateScrollBarColumn(menu, SCROLL_COL, MENU_EDGE, MENU_EDGE)
-            local sf = GearFact:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
-            sf:SetPoint("TOPLEFT", menu, "TOPLEFT", MENU_EDGE, -MENU_EDGE)
-            sf:SetPoint("BOTTOMRIGHT", menu._barColumn, "BOTTOMLEFT", -2, MENU_EDGE)
-            if sf.SetClipsChildren then
-                sf:SetClipsChildren(true)
-            end
-            local initScW = math.max(56, GEAR_CHAR_SELECTOR_WIDTH - SCROLL_COL - MENU_EDGE * 2)
-            local initScH = math.max(8, GEAR_CHAR_DROPDOWN_ENTRY_H + 8)
-            local sc = GearFact:CreateContainer(sf, initScW, initScH, false)
-            sf:SetScrollChild(sc)
-            menu._charScroll = sf
-            menu._charScrollChild = sc
-            if sf.ScrollBar then
-                GearFact:PositionScrollBarInContainer(sf.ScrollBar, menu._barColumn, 0)
-            end
-            sf:SetScript("OnSizeChanged", function(frame, w)
-                if sc and w and w > 0 then
-                    sc:SetWidth(w)
-                end
-            end)
             gearCharDropdownMenu = menu
         end
         if not bg then
@@ -2558,27 +2532,15 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         end
 
         local ENTRY_H = GEAR_CHAR_DROPDOWN_ENTRY_H
-        local contentH = #list * ENTRY_H + 8
-        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 800
-        local maxMenuH = math.max(ENTRY_H + 8, math.floor(screenH * 0.52))
-        local menuH = math.min(contentH, maxMenuH)
-        menu:SetHeight(menuH)
+        local rowCount = #list
         menu:ClearAllPoints()
-        -- Same outer width and horizontal alignment as header selector (full card strip).
         local btnW = math.max(1, math.floor(self:GetWidth() + 0.5))
         menu:SetWidth(btnW)
         menu:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
 
-        local scroll = menu._charScroll
-        local scrollChild = menu._charScrollChild
-        if scroll and scrollChild then
-            scrollChild:SetHeight(math.max(contentH, 1))
-            scroll:SetVerticalScroll(0)
-            local sw = scroll:GetWidth()
-            if sw and sw > 0 then
-                scrollChild:SetWidth(sw)
-            end
-        end
+        local scroll, scrollChild = GearFact:ApplyDropdownScrollLayout(menu, rowCount, ENTRY_H)
+        menu._charScroll = scroll
+        menu._charScrollChild = scrollChild
 
         local selKey = selectedCharKey or GetSelectedCharKey()
 
@@ -2661,17 +2623,15 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             entryY = entryY - ENTRY_H
         end
 
+        GearFact:ApplyDropdownScrollLayout(menu, rowCount, ENTRY_H)
+        scroll = menu._charScroll
+        scrollChild = menu._charScrollChild
+
         local function SyncDropdownScroll()
             if not menu or not menu:IsShown() or not scroll or not scrollChild then return end
-            local sw = scroll:GetWidth()
-            if sw and sw > 0 then
-                scrollChild:SetWidth(sw)
-            end
-            if GearFact.UpdateScrollBarVisibility then
-                GearFact:UpdateScrollBarVisibility(scroll)
-            elseif scroll.UpdateScrollBarVisibility then
-                scroll:UpdateScrollBarVisibility()
-            end
+            GearFact:ApplyDropdownScrollLayout(menu, rowCount, ENTRY_H)
+            scroll = menu._charScroll
+            scrollChild = menu._charScrollChild
         end
 
         local function RelayoutColumnsAfterSize()

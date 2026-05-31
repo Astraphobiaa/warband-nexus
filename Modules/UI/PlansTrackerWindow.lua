@@ -1272,13 +1272,11 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
         local itemCount = #CATEGORY_KEYS
         local itemHeight = 24
-        local contentHeight = math.min(itemCount * itemHeight, 300)
         local menuWidth = self:GetWidth()
 
-        -- Reuse menu (prevents creating new frame trees on every open).
         local menu = dropdown._dropdownMenu
         if not menu then
-            menu = Factory:CreateContainer(UIParent, menuWidth, contentHeight + UI_SPACING.AFTER_ELEMENT)
+            menu = Factory:CreateContainer(UIParent, menuWidth, 200, true)
             menu:SetFrameStrata("FULLSCREEN_DIALOG")
             menu:SetFrameLevel(300)
             menu:SetClampedToScreen(true)
@@ -1294,40 +1292,31 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
             end)
             dropdown._dropdownMenu = menu
         end
-        menu:SetSize(menuWidth, contentHeight + UI_SPACING.AFTER_ELEMENT)
+        menu:SetWidth(menuWidth)
         menu:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
-
-        local children = { menu:GetChildren() }
-        for i = 1, #children do
-            local child = children[i]
-            child:Hide()
-            child:SetParent(nil)
-        end
         activeDropdownMenu = menu
 
-        -- Scroll frame inside menu (for many items)
-        local scrollFrame = Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetPoint("TOPLEFT", 4, -4)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, 4)
-        scrollFrame:EnableMouseWheel(true)
-
-        local scrollChild = Factory:CreateContainer(scrollFrame, menuWidth - UI_SPACING.SIDE_MARGIN, itemCount * itemHeight)
-        scrollFrame:SetScrollChild(scrollChild)
-
-        scrollFrame:SetScript("OnMouseWheel", function(sf, delta)
-            local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 16
-            local cur = sf:GetVerticalScroll()
-            local maxS = sf:GetVerticalScrollRange()
-            sf:SetVerticalScroll(math.max(0, math.min(cur - (delta * step), maxS)))
-        end)
-
-        if Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(scrollFrame)
+        local scrollFrame, scrollChild = ns.UI_ApplyDropdownScrollLayout(menu, itemCount, itemHeight)
+        if scrollFrame then
+            scrollFrame:EnableMouseWheel(true)
+            scrollFrame:SetScript("OnMouseWheel", function(sf, delta)
+                local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 16
+                local cur = sf:GetVerticalScroll()
+                local maxS = sf:GetVerticalScrollRange()
+                sf:SetVerticalScroll(math.max(0, math.min(cur - (delta * step), maxS)))
+            end)
         end
 
-        -- Create option buttons
-        local yPos = 0
-        local btnWidth = menuWidth - UI_SPACING.SIDE_MARGIN
+        if scrollChild then
+            local ch = { scrollChild:GetChildren() }
+            for i = 1, #ch do
+                ch[i]:Hide()
+                ch[i]:SetParent(nil)
+            end
+        end
+
+        local yPos = (ns.UI_LAYOUT and ns.UI_LAYOUT.DROPDOWN_INSET_TOP) or 4
+        local btnWidth = (scrollChild and scrollChild:GetWidth()) or (menuWidth - 16)
         for ci = 1, #CATEGORY_KEYS do
             local cat = CATEGORY_KEYS[ci]
             local btn = Factory:CreateButton(scrollChild, btnWidth, itemHeight, true)
@@ -1367,6 +1356,10 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
             yPos = yPos + itemHeight
         end
+
+        ns.UI_ApplyDropdownScrollLayout(menu, itemCount, itemHeight)
+        scrollFrame = menu._wnDropdownScroll
+        scrollChild = menu._wnDropdownScrollChild
 
         menu:Show()
 

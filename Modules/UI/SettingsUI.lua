@@ -872,10 +872,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
         end
         
         local itemHeight = 28
-        local menuPad = 6
-        local scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-        local contentHeight = math.min(#sortedOptions * itemHeight, 300)
-        
+        local rowCount = #sortedOptions
+
         -- Reuse existing menu if available (Factory container for standard compliance)
         local menu = dropdown._dropdownMenu
         if not menu then
@@ -894,15 +892,12 @@ local function CreateDropdownWidget(parent, option, yOffset)
         end
         if not menu then return end
 
-        -- Update menu size and position
-        menu:SetSize(menuWidth, contentHeight + menuPad * 2)
+        menu:SetWidth(menuWidth)
         if option.menuOpensUpward then
-            -- Avoid covering the next settings row (e.g. try-counter route → button below); tall menus are ~300px.
             menu:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 0, 2)
         else
             menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
         end
-        -- Stay above the settings panel and other UI; click-catcher must stay just under the menu.
         menu:SetFrameStrata("FULLSCREEN_DIALOG")
         local baseLvl = (menuParent.GetFrameLevel and menuParent:GetFrameLevel()) or 0
         menu:SetFrameLevel(baseLvl + 100)
@@ -911,48 +906,27 @@ local function CreateDropdownWidget(parent, option, yOffset)
             if menu.EnableKeyboard then menu:EnableKeyboard(true) end
             if menu.SetPropagateKeyboardInput then menu:SetPropagateKeyboardInput(true) end
         end
-        
-        -- Clear existing children (scrollFrame and buttons)
-        local bin = ns.UI_RecycleBin
-        local children = { menu:GetChildren() }
-        for chi = 1, #children do
-            local child = children[chi]
-            child:Hide()
-            if bin then child:SetParent(bin) else child:SetParent(nil) end
-        end
-        
+
         activeMenu = menu
-        
-        -- ScrollFrame (Collections pattern: bar column + PositionScrollBarInContainer)
-        local scrollFrame = ns.UI.Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetPoint("TOPLEFT", menuPad, -menuPad)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -scrollBarW, menuPad)
-        scrollFrame:EnableMouseWheel(true)
 
-        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(menu, scrollBarW, menuPad, menuPad)
-        if scrollFrame.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
-            ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+        local scrollFrame, scrollChild = ns.UI_ApplyDropdownScrollLayout(menu, rowCount, itemHeight)
+        if scrollFrame then scrollFrame:EnableMouseWheel(true) end
+
+        local bin = ns.UI_RecycleBin
+        if scrollChild then
+            local ch = { scrollChild:GetChildren() }
+            for chi = 1, #ch do
+                ch[chi]:Hide()
+                if bin then ch[chi]:SetParent(bin) else ch[chi]:SetParent(nil) end
+            end
         end
 
-        local btnWidth = menuWidth - menuPad - scrollBarW
-        local scrollChildH = math.max(1, #sortedOptions * itemHeight)
+        local btnWidth = (scrollChild and scrollChild:GetWidth()) or menuWidth
+        if btnWidth < 40 then btnWidth = menuWidth - 40 end
 
-        local scrollChild = ns.UI.Factory and ns.UI.Factory.CreateContainer and ns.UI.Factory:CreateContainer(scrollFrame, btnWidth, scrollChildH, false)
-        if not scrollChild then
-            scrollChild = CreateFrame("Frame", nil, scrollFrame)
-            scrollChild:SetWidth(btnWidth)
-            scrollChild:SetHeight(scrollChildH)
-        end
-        scrollFrame:SetScrollChild(scrollChild)
-        
-        -- Update scroll bar visibility
-        if ns.UI.Factory.UpdateScrollBarVisibility then
-            ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
-        end
-        
         -- Create option buttons (standardized: ApplyVisuals, consistent height, highlight current)
         local currentValue = option.get and option.get()
-        local yPos = 0
+        local yPos = (ns.UI_LAYOUT and ns.UI_LAYOUT.DROPDOWN_INSET_TOP) or 4
         for oi = 1, #sortedOptions do
             local data = sortedOptions[oi]
             local btn = ns.UI.Factory:CreateButton(scrollChild, btnWidth, itemHeight, true)
@@ -1005,6 +979,10 @@ local function CreateDropdownWidget(parent, option, yOffset)
             
             yPos = yPos + itemHeight
         end
+
+        ns.UI_ApplyDropdownScrollLayout(menu, rowCount, itemHeight)
+        scrollFrame = menu._wnDropdownScroll
+        scrollChild = menu._wnDropdownScrollChild
         
         menu:Show()
         

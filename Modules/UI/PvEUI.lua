@@ -602,19 +602,20 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     if not profile then return end
 
     local accent = COLORS.accent or { 0.40, 0.20, 0.58 }
-    local menuW = 292
-    local menuPad = 6
-    local scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+    local menuW = 320
     local ROW = 26
     local HEADER_H = 22
+    local dl = Factory.GetDropdownLayout and Factory:GetDropdownLayout() or {}
+    local menuPad = dl.menuEdge or 4
+    local scrollBarW = dl.scrollBarW or 26
 
     local crestDefs = GetPvEDawnCrestColumnDefinitions()
     local colOrder = EnsurePvEColumnOrder(profile)
     local toggleCount = #crestDefs + 8
     local contentH = HEADER_H + toggleCount * ROW + ROW + ROW + 10
-    menuW = 320
-    local viewportH = math.min(contentH, 300)
-    local menuH = viewportH + menuPad * 2
+    local maxInner = (dl.insetTop or 4) + (dl.maxVisibleRows or 6) * ROW + (dl.insetBottom or 4)
+    local viewportInnerH = math.min(contentH, maxInner)
+    local menuH = viewportInnerH + 2 * menuPad
 
     menu:SetSize(menuW, menuH)
     menu:SetParent(UIParent)
@@ -635,6 +636,9 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
+    if Factory.WireScrollBarColumnLayout then
+        Factory:WireScrollBarColumnLayout(scrollFrame, menu, scrollBarColumn, { menuEdge = menuPad })
+    end
 
     local btnWidth = menuW - menuPad * 2 - scrollBarW
     local scrollChild
@@ -648,7 +652,19 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     end
     scrollFrame:SetScrollChild(scrollChild)
 
+    local logicalRows = math.max(1, math.ceil(contentH / ROW))
+    scrollFrame._wnDropdownRowCount = logicalRows
+    scrollFrame._wnDropdownMaxVisible = dl.maxVisibleRows or 6
+    scrollFrame._wnDropdownViewportH = viewportInnerH
+
     if Factory.UpdateScrollBarVisibility then Factory:UpdateScrollBarVisibility(scrollFrame) end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if Factory.UpdateScrollBarVisibility and scrollFrame then
+                Factory:UpdateScrollBarVisibility(scrollFrame)
+            end
+        end)
+    end
 
     local columnHdr = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
     columnHdr:SetPoint("TOPLEFT", 14, -8)
