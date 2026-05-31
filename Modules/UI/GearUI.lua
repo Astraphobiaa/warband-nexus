@@ -26,7 +26,6 @@ local GetQualityHex       = ns.UI_GetQualityHex
 local CreateThemedButton  = ns.UI_CreateThemedButton
 local FormatGold          = ns.UI_FormatGold
 local FormatNumber        = ns.UI_FormatNumber
-local DrawEmptyState      = ns.UI_DrawEmptyState
 local CreateHeaderIcon    = ns.UI_CreateHeaderIcon
 local GetTabIcon          = ns.UI_GetTabIcon
 local ShowTooltip         = ns.UI_ShowTooltip
@@ -639,6 +638,59 @@ local function GetTrackedCharacters()
         return (a.data.lastSeen or 0) > (b.data.lastSeen or 0)
     end)
     return chars
+end
+
+local function HasAnyTrackedCharacters()
+    local db = WarbandNexus.db and WarbandNexus.db.global
+    if not db or not db.characters then return false end
+    for _, data in pairs(db.characters) do
+        if data and data.isTracked then return true end
+    end
+    return false
+end
+
+--- Gear-specific empty scroll body (DrawEmptyState expects addon/parent/startY; do not pass title strings as parent).
+---@return number
+local function DrawGearTabEmptyState(parent, titleText, descText, startY)
+    startY = tonumber(startY) or 0
+    if not parent or not parent.CreateTexture or not FontManager then
+        return startY + 150
+    end
+    local topGap = (ns.UI_ItemsResultsTopGap and ns.UI_ItemsResultsTopGap(startY)) or (startY + 50)
+    local yOffset = topGap
+
+    local container = parent.emptyStateContainer
+    if not container then
+        container = CreateFrame("Frame", nil, parent)
+        container:SetAllPoints(parent)
+        parent.emptyStateContainer = container
+        container.icon = container:CreateTexture(nil, "ARTWORK")
+        container.icon:SetSize(48, 48)
+        container.icon:SetDesaturated(true)
+        container.icon:SetAlpha(0.4)
+        container.title = FontManager:CreateFontString(container, GFR("emptyStateTitle"), "OVERLAY")
+        container.desc = FontManager:CreateFontString(container, GFR("emptyStateBody"), "OVERLAY")
+        container.desc:SetTextColor(1, 1, 1)
+    end
+
+    container.icon:ClearAllPoints()
+    container.icon:SetPoint("TOP", 0, -yOffset)
+    container.icon:SetTexture("Interface\\Icons\\INV_Chest_Plate06")
+    yOffset = yOffset + 60
+
+    container.title:ClearAllPoints()
+    container.title:SetPoint("TOP", 0, -yOffset)
+    container.title:SetText("|cff666666" .. (titleText or "") .. "|r")
+    yOffset = yOffset + 30
+
+    container.desc:ClearAllPoints()
+    container.desc:SetPoint("TOP", 0, -yOffset)
+    container.desc:SetText(descText or "")
+    container.desc:SetWidth(math.max(280, (parent:GetWidth() or 400) - 48))
+    container.desc:SetJustifyH("CENTER")
+    container:Show()
+
+    return yOffset + 50
 end
 
 --- Format item level with quality color (real data only; empty slot = empty string).
@@ -2974,20 +3026,7 @@ function WarbandNexus:DrawGearTab(parent)
     local canonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
 
     local allChars = GetTrackedCharacters()
-    if #allChars == 0 then
-        local mf0 = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        if mf0 then mf0._gearPopulateContentSig = nil end
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
-            WarbandNexus.UI.mainFrame._gearStorageRecHost = nil
-        end
-        if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-        local height = DrawEmptyState and DrawEmptyState(
-            parent,
-            (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_TITLE"]) or "No tracked characters",
-            (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_DESC"]) or "Log in to a character to start tracking gear."
-        ) or 200
-        return height
-    end
+    local noVisibleChars = (#allChars == 0)
 
     -- Invalidate in-flight storage deferrals when this tab redraws (char change, tab switch, PopulateContent).
     ns._gearTabDrawGen = (ns._gearTabDrawGen or 0) + 1
@@ -3115,6 +3154,30 @@ function WarbandNexus:DrawGearTab(parent)
     end
 
     pGearSliceStop("Gear_headerCard")
+
+    if noVisibleChars then
+        if mfGearFrame then
+            mfGearFrame._gearPopulateContentSig = nil
+            mfGearFrame._gearStorageRecHost = nil
+        end
+        local profile = self.db and self.db.profile
+        local hideTh = GetLowLevelHideThreshold(profile)
+        local titleText
+        local descText
+        if hideTh > 0 and HasAnyTrackedCharacters() then
+            titleText = GetLocalizedText("GEAR_FILTER_EMPTY_TITLE", "No characters match the level filter")
+            descText = GetLocalizedText(
+                "GEAR_FILTER_EMPTY_DESC",
+                "Turn off Hide or lower the level threshold using the Hide button above to show characters again."
+            )
+        else
+            titleText = (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_TITLE"]) or "No tracked characters"
+            descText = (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_DESC"])
+                or "Log in to a character to start tracking gear."
+        end
+        local emptyH = DrawGearTabEmptyState(parent, titleText, descText, TOP_MARGIN)
+        return math.max(tonumber(emptyH) or 200, GearResultsViewportHeight(mfGearFrame))
+    end
 
     --- Scroll-body paint (data + paperdoll). When splitPaperDollToNextTick, DB reads run now, card draw next tick.
     local function paintGearScrollBody(splitPaperDollToNextTick)

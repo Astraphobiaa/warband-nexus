@@ -4170,6 +4170,7 @@ local function PopulateContentBody(self)
         height = self:DrawCharacterList(scrollChild)
     end
     _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_drawTab/" .. tostring(tab))
+    height = tonumber(height) or 0
     -- GetTime() has limited resolution: sub-ms DrawTab often logs as 0.0ms (noise). Only trace meaningful wall time.
     local TRACE_DRAW_TAB_MIN_MS = 3
     if drawPerfT0 then
