@@ -3382,6 +3382,15 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
 
     local profile = self.db and self.db.profile
+    if profile then
+        if not profile.ui then profile.ui = {} end
+        if profile.ui.pveFavoritesExpanded == nil then
+            profile.ui.pveFavoritesExpanded = true
+        end
+        if profile.ui.pveCharactersExpanded == nil then
+            profile.ui.pveCharactersExpanded = true
+        end
+    end
 
     -- Column visibility (vault columns + PvE crest/shard/key toggles)
     sortAnchor = L.PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)

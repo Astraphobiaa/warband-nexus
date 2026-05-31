@@ -1638,6 +1638,38 @@ local function CharacterHasPrimaryProfession(char)
     return false
 end
 
+--- Count roster entries with saved primary profession slots (subtitle / empty-state hints).
+local function CountCharsWithProfessionData(charLists)
+    local n = 0
+    if not charLists then return n end
+    for li = 1, #charLists do
+        local list = charLists[li]
+        if list then
+            for ci = 1, #list do
+                if CharacterHasPrimaryProfession(list[ci]) then
+                    n = n + 1
+                end
+            end
+        end
+    end
+    return n
+end
+
+--- First-visit defaults: match Characters tab (Favorites + Characters open; Untracked closed).
+local function EnsureProfessionsSectionExpandDefaults(profile)
+    if not profile then return end
+    if not profile.ui then profile.ui = {} end
+    if profile.ui.profFavoritesExpanded == nil then
+        profile.ui.profFavoritesExpanded = true
+    end
+    if profile.ui.profCharactersExpanded == nil then
+        profile.ui.profCharactersExpanded = true
+    end
+    if profile.ui.profUntrackedExpanded == nil then
+        profile.ui.profUntrackedExpanded = false
+    end
+end
+
 --- First primary profession slot for OpenTradeSkill (skillLine / skillLineID from CollectProfessionData).
 local function GetFirstPrimaryProfessionSlot(char)
     if not char or not char.professions then return nil end
@@ -2081,11 +2113,17 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     local characters = self:GetAllCharacters()
     local trackedFavorites, groupedById, customGroupsOrdered, trackedRegular, untrackedChars = CategorizeCharacters(characters)
+    EnsureProfessionsSectionExpandDefaults(self.db.profile)
     local totalProfChars = #trackedFavorites + #trackedRegular + #untrackedChars
+    local charListsForProfCount = { trackedFavorites, trackedRegular, untrackedChars }
     for gci = 1, #customGroupsOrdered do
         local gl = groupedById[customGroupsOrdered[gci].id]
-        if gl then totalProfChars = totalProfChars + #gl end
+        if gl then
+            totalProfChars = totalProfChars + #gl
+            charListsForProfCount[#charListsForProfCount + 1] = gl
+        end
     end
+    local profDataCharCount = CountCharsWithProfessionData(charListsForProfCount)
 
     local expBadgeWidth = 100
     local filterBtnW = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH_DEFAULT) or 80
@@ -2098,8 +2136,12 @@ function WarbandNexus:DrawProfessionsTab(parent)
         tm.filterW or 96,
     })) or (expBadgeWidth + filterBtnW + 40 + hdrGapEc)
 
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — single subtitle line (tracked count only) =====
-    local subLine = format((ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s characters with professions", FormatNumber(totalProfChars))
+    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — tracked roster vs saved profession rows =====
+    local subLine = format(
+        (ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s tracked - %s with profession data",
+        FormatNumber(totalProfChars),
+        FormatNumber(profDataCharCount)
+    )
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "professions",
         titleText = "|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["YOUR_PROFESSIONS"]) or "Warband Professions") .. "|r",
@@ -2443,8 +2485,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local rowIndex = 0
     local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
 
-    -- Initialize expand state tracking
-    if not self.db.profile.ui then self.db.profile.ui = {} end
     self.profRecentlyExpanded = self.profRecentlyExpanded or {}
 
     -- Column sort: precompute numeric keys once per list (table.sort calls comparator O(n log n) times;
