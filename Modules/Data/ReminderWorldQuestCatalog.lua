@@ -92,6 +92,14 @@ function M.UpsertWorldQuest(questID, zoneKey, title, mapID)
     end
 end
 
+local function IsQuestCalling(questID)
+    questID = tonumber(questID)
+    if not questID or questID <= 0 then return false end
+    if not C_QuestLog or not C_QuestLog.IsQuestCalling then return false end
+    local ok, result = pcall(C_QuestLog.IsQuestCalling, questID)
+    return ok and result == true
+end
+
 --- Import from ScanMidnightQuests worldQuest rows.
 ---@param questRows table[]
 function M.ImportFromScanRows(questRows)
@@ -117,14 +125,6 @@ function M.ImportFromScanRows(questRows)
             end
         end
     end
-end
-
-local function IsQuestCalling(questID)
-    questID = tonumber(questID)
-    if not questID or questID <= 0 then return false end
-    if not C_QuestLog or not C_QuestLog.IsQuestCalling then return false end
-    local ok, result = pcall(C_QuestLog.IsQuestCalling, questID)
-    return ok and result == true
 end
 
 --- Drop emissary/calling rows and fix zoneKey from map pins after zone-matching fixes.
