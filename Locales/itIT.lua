@@ -691,6 +691,18 @@ L["WELCOME_OPEN_INTERFACE"] = "per aprire l'interfaccia."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
+L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
+
+Correzioni:
+- Lista To-Do: creare un piano da scan missioni non genera piu errori.
+- Equipaggiamento: la scheda non resta vuota dopo il filtro Hide.
+- Menu a tendina: niente barra di scorrimento quando la lista sta a schermo.
+- Professioni: sezioni Preferiti e Personaggi aperte di default; sottotitolo tracciati vs dati professione.
+- PvE: sezioni Preferiti e Personaggi aperte di default come nella scheda Personaggi.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
@@ -1657,7 +1669,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limitato da fazione o classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.1.3).
+Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.1.4).
 
 CurseForge: Warband Nexus]=]
 

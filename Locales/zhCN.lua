@@ -918,6 +918,18 @@ L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"] = "开启时在后台请求 /playe
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
+L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
+
+修复:
+- 待办列表: 从任务扫描创建计划不再报错。
+- 装备: Hide 筛选隐藏所有角色后标签页不再空白。
+- 下拉菜单: 列表能完整显示时不再出现滚动条。
+- 专业: 收藏和角色分区默认展开; 副标题显示跟踪数与专业数据数。
+- PvE: 收藏和角色分区默认展开, 与角色标签页一致。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
@@ -1831,7 +1843,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "阵营和职业限制"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-至暗之夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.3）。
+至暗之夜（Midnight）大型版本（已保存副本、尝试计数器、PvE/装备/计划、缓存架构）。各语言文件中已移除旧补丁的逐条说明；请用 `/wn changelog` 查看当前构建（v3.1.4）。
 
 CurseForge: Warband Nexus]=]
 

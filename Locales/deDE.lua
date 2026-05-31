@@ -796,6 +796,18 @@ L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
+L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
+
+Fixes:
+- To-Do-Liste: Plan aus Quest-Scan erzeugt keinen Fehler mehr.
+- Ausruestung: Registerkarte bleibt nach Hide-Filter nicht mehr leer.
+- Dropdown-Menues: keine Scrollleiste mehr, wenn die Liste ohne Scrollen passt.
+- Berufe: Favoriten- und Charakter-Sektionen standardmaessig geoeffnet; Unterzeile zeigt verfolgte vs. Berufsdaten.
+- PvE: Favoriten- und Charakter-Sektionen standardmaessig geoeffnet wie auf der Charakter-Registerkarte.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
@@ -1835,7 +1847,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Fraktions- oder klassenbeschr�
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.1.3) `/wn changelog` verwenden.
+Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.1.4) `/wn changelog` verwenden.
 
 CurseForge: Warband Nexus]=]
 

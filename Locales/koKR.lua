@@ -691,6 +691,18 @@ L["WELCOME_OPEN_INTERFACE"] = "인터페이스를 열려면."
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
+L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
+
+수정:
+- 할 일 목록: 퀘스트 스캔에서 계획 생성 시 오류가 더 이상 발생하지 않습니다.
+- 장비: Hide 필터로 모든 캐릭터가 숨겨져도 탭이 비지 않습니다.
+- 드롭다운: 목록이 화면에 맞을 때 스크롤바가 나타나지 않습니다.
+- 전문 기술: 즐겨찾기/캐릭터 섹션이 기본으로 열림; 부제목에 추적 수와 데이터 수 표시.
+- PvE: 캐릭터 탭처럼 즐겨찾기/캐릭터 섹션이 기본으로 열립니다.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
@@ -1657,7 +1669,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "?? ?? ?? ??"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.1.3)는 `/wn changelog`를 사용하세요.
+미드나이트 대규모 업데이트(저장된 인스턴스, 도전 횟수, PvE/장비/계획, 캐시 구조). 이전 패치 상세 목록은 로케일 파일에서 제거되었습니다. 현재 빌드(v3.1.4)는 `/wn changelog`를 사용하세요.
 
 CurseForge: Warband Nexus]=]
 

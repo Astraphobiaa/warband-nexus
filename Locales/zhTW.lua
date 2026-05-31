@@ -682,6 +682,18 @@ L["WELCOME_OPEN_INTERFACE"] = "以開啟介面。"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
+L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
+
+修復:
+- 待辦清單: 從任務掃描建立計畫不再報錯。
+- 裝備: Hide 篩選隱藏所有角色後分頁不再空白。
+- 下拉選單: 清單能完整顯示時不再出現捲軸。
+- 專業: 最愛與角色區塊預設展開; 副標題顯示追蹤數與專業資料數。
+- PvE: 最愛與角色區塊預設展開, 與角色分頁一致。
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
@@ -1648,7 +1660,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "????????"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-午夜（Midnight）大型版本（已儲存副本、嘗試次數計數、PvE/裝備/計畫、快取架構）。各語系檔已移除舊版逐條更新說明；請用 `/wn changelog` 檢視目前版本（v3.1.3）。
+午夜（Midnight）大型版本（已儲存副本、嘗試次數計數、PvE/裝備/計畫、快取架構）。各語系檔已移除舊版逐條更新說明；請用 `/wn changelog` 檢視目前版本（v3.1.4）。
 
 CurseForge: Warband Nexus]=]
 

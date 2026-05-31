@@ -475,6 +475,18 @@ L["BANK_NOT_OPEN_MSG"] = "La banque n'est pas ouverte"
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION — see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
+L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
+
+Corrections :
+- Liste To-Do : creer un plan depuis un scan de quetes ne provoque plus d'erreur.
+- Equipement : l'onglet ne reste plus vide apres le filtre Hide.
+- Menus deroulants : plus de barre de defilement quand la liste tient a l'ecran.
+- Metiers : sections Favoris et Personnages ouvertes par defaut ; sous-titre suivi vs donnees metier.
+- PvE : sections Favoris et Personnages ouvertes par defaut comme l'onglet Personnages.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
@@ -1717,7 +1729,7 @@ L["COLLECTION_RULE_FACTION_CLASS_RESTRICTED"] = "Limit� par faction ou classe"
 -- -----------------------------------------------------------------------------
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.3).
+Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.4).
 
 CurseForge: Warband Nexus]=]
 
