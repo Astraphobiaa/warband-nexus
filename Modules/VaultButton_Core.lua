@@ -307,7 +307,7 @@ function M.GetEnabledCategoryDefs()
     local width = settings.showRewardProgress and settings.showRewardItemLevel and COL_REWARD_PROGRESS
         or (settings.showRewardProgress and COL_PROGRESS)
         or (settings.showRewardItemLevel and COL_REWARD_ILVL or nil)
-        or ns.ResolveVaultTrackerColumnWidth(settings.showRewardProgress)
+        or ns.ResolveVaultTrackerColumnWidth(settings.showRewardProgress, settings.showRewardItemLevel)
     local defs = {}
     if columns.raids ~= false then
         table.insert(defs, { key="raids", width=width or COL_RAID, label="Raid", icon=TRACK_ICONS.raids, tooltip="Raid" })

@@ -86,7 +86,9 @@ local PVE_DAWNCREST_COL_W = 112                  -- qty/max (R:rem)
 local PVE_COFFER_COL_W = 132
 local PVE_KEY_COL_W = 88
 local PVE_VAULT_COL_W = 72                       -- three 12px slot glyphs
-local PVE_VAULT_COL_PROGRESS_W = 108           -- glyphs + (3/8); Shift shows remaining only
+local PVE_VAULT_COL_ILVL_W = 106                -- completed slot iLvl text (e.g. 662)
+local PVE_VAULT_COL_PROGRESS_W = 108            -- glyphs + (3/8); Shift shows remaining only
+local PVE_VAULT_COL_REWARD_PROGRESS_W = 144     -- iLvl + progress suffix
 local PVE_BOUNTIFUL_COL_W = 58                   -- enough for "Bounty" label under icon
 local PVE_STATUS_COL_W    = 128                  -- enough for "N Slots Ready" values
 local PVE_VOIDCORE_COL_W = 72
@@ -1081,8 +1083,11 @@ function ns.ComputePvEMinScrollWidth(self)
         visibleKeySet[columnSeq[i]] = true
     end
     local vb = profile.vaultButton or {}
-    local vaultTrackColW = (ns.ResolveVaultTrackerColumnWidth and ns.ResolveVaultTrackerColumnWidth(vb.showRewardProgress == true))
+    local vaultTrackColW = (ns.ResolveVaultTrackerColumnWidth
+        and ns.ResolveVaultTrackerColumnWidth(vb.showRewardProgress == true, vb.showRewardItemLevel == true))
+        or ((vb.showRewardProgress and vb.showRewardItemLevel) and PVE_VAULT_COL_REWARD_PROGRESS_W)
         or (vb.showRewardProgress and PVE_VAULT_COL_PROGRESS_W)
+        or (vb.showRewardItemLevel and PVE_VAULT_COL_ILVL_W)
         or PVE_VAULT_COL_W
 
     local widthByKey = {
@@ -3427,8 +3432,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
     local pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
     local vbProfile = profile and profile.vaultButton or {}
-    local vaultTrackColW = (L.ns.ResolveVaultTrackerColumnWidth and L.ns.ResolveVaultTrackerColumnWidth(vbProfile.showRewardProgress == true))
+    local vaultTrackColW = (L.ns.ResolveVaultTrackerColumnWidth
+        and L.ns.ResolveVaultTrackerColumnWidth(vbProfile.showRewardProgress == true, vbProfile.showRewardItemLevel == true))
+        or ((vbProfile.showRewardProgress and vbProfile.showRewardItemLevel) and PVE_VAULT_COL_REWARD_PROGRESS_W)
         or (vbProfile.showRewardProgress and PVE_VAULT_COL_PROGRESS_W)
+        or (vbProfile.showRewardItemLevel and PVE_VAULT_COL_ILVL_W)
         or PVE_VAULT_COL_W
     local PVE_COLUMNS = {}
     for i = 1, #PVE_DAWNCRESTS do

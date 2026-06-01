@@ -494,6 +494,7 @@ local function GetCurrentWeeklyResetStartTime()
     end
     return nil
 end
+ns.GetCurrentWeeklyResetStartTime = GetCurrentWeeklyResetStartTime
 
 ---Prune keystones that belong to a previous weekly cycle.
 ---Runs on init/update so stale keys never survive a weekly reset.
@@ -1367,13 +1368,6 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     local hasAvailable = false
     if isSessionChar then
         hasAvailable = ns.WeeklyVaultHasPendingRewards()
-        if not hasAvailable and C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-            local ok, has = pcall(C_WeeklyRewards.HasAvailableRewards)
-            if ok and has then
-                local activities = C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities() or nil
-                hasAvailable = activities ~= nil and #activities > 0
-            end
-        end
     else
         hasAvailable = previousRewardData and previousRewardData.hasAvailableRewards == true or false
         if allowClaimTransition ~= true then
@@ -2212,6 +2206,34 @@ end
 -- ============================================================================
 -- VAULT CLAIM / KEYSTONE SYNC (Easy Access, PvE tab, Vault Tracker)
 -- ============================================================================
+
+---When live API reports no pending vault but SV still has hasAvailableRewards=true, heal the row.
+---@param charKey string
+function WarbandNexus:HealStaleVaultRewardsCache(charKey)
+    if not charKey or not self.db or not self.db.global or not self.db.global.pveCache then
+        return
+    end
+    charKey = CanonicalizePvEKey(charKey)
+    if not charKey or not IsSessionPvECharacter(charKey) then
+        return
+    end
+    if ns.WeeklyVaultHasPendingRewards() then
+        return
+    end
+    local rewardsTable = self.db.global.pveCache.greatVault and self.db.global.pveCache.greatVault.rewards
+    local row = LookupVaultRewardsEntry(rewardsTable, charKey)
+    if not row or row.hasAvailableRewards ~= true then
+        return
+    end
+    local stamp = time()
+    WriteVaultRewardsCache(charKey, {
+        hasAvailableRewards = false,
+        lastUpdate = stamp,
+        claimedAt = tonumber(row.claimedAt) or stamp,
+        claimedResetTime = tonumber(row.claimedResetTime) or GetCurrentWeeklyResetStartTime(),
+    })
+    self:SavePvECache()
+end
 
 ---After claiming a Great Vault reward (or closing the vault UI): refresh reward flags,
 ---keystone (vault can grant a key), and emit WN_PVE_UPDATED for all vault UIs.

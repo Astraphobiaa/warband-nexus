@@ -151,6 +151,24 @@ function M.CountReadySlots(charKey)
     return n
 end
 
+--- True when vault rewards were claimed for the current weekly cycle (SavedVariables row).
+function ns.VaultRewardsClaimedForCurrentWeek(rewardData)
+    if not rewardData or type(rewardData) ~= "table" then
+        return false
+    end
+    local resetStart = ns.GetCurrentWeeklyResetStartTime and ns.GetCurrentWeeklyResetStartTime()
+    local claimedReset = tonumber(rewardData.claimedResetTime) or 0
+    if resetStart and claimedReset > 0 and claimedReset >= resetStart then
+        return true
+    end
+    local claimedAt = tonumber(rewardData.claimedAt) or 0
+    if claimedAt > 0 and rewardData.hasAvailableRewards == false then
+        return true
+    end
+    return false
+end
+M.VaultRewardsClaimedForCurrentWeek = ns.VaultRewardsClaimedForCurrentWeek
+
 --- True if `time()` has crossed the stored weeklyResetTime for this char's activities,
 --- meaning the cached "ready slots" are now sitting unclaimed in the vault chest.
 function ns.VaultResetCrossedFor(charKey)
@@ -162,8 +180,13 @@ function ns.VaultResetCrossedFor(charKey)
     if resetT <= 0 then return false end
     local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
     local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
-    local claimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
-    if claimedResetTime and claimedResetTime >= resetT then
+    if ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
+        return false
+    end
+    -- Legacy rows: claimedAt set but claimedResetTime missing after the snapshot reset passed.
+    if rewardData and (tonumber(rewardData.claimedAt) or 0) > 0
+        and (tonumber(rewardData.claimedResetTime) or 0) <= 0
+        and GetServerTime() >= resetT then
         return false
     end
     return GetServerTime() >= resetT
@@ -446,10 +469,19 @@ function ns.FormatVaultSlotProgressText(activity, shiftHeld)
     return string.format("|cffffcc00%d|r|cff666666/|r|cff888888%d|r", prog, th)
 end
 
---- Tracker column width: icons only, progress suffix `(3/8)`, or compact Shift remaining digit(s).
-function ns.ResolveVaultTrackerColumnWidth(showRewardProgress)
+--- Tracker column width for vault cells:
+--- - icons only
+--- - completed slot iLvl text
+--- - progress suffix `(3/8)`
+function ns.ResolveVaultTrackerColumnWidth(showRewardProgress, showRewardItemLevel)
+    if showRewardProgress and showRewardItemLevel then
+        return COL_REWARD_PROGRESS
+    end
     if showRewardProgress then
         return COL_PROGRESS
+    end
+    if showRewardItemLevel then
+        return COL_REWARD_ILVL
     end
     return COL_RAID
 end
@@ -697,7 +729,14 @@ function M.BuildCharList()
     local result     = {}
     for charKey, charData in pairs(characters) do
         local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
-        local isReady    = rewardData and rewardData.hasAvailableRewards or false
+        local isReady = false
+        if rewardData then
+            if ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
+                isReady = false
+            else
+                isReady = rewardData.hasAvailableRewards == true
+            end
+        end
         if CharKeysMatch(charKey, currentKey) then
             if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
                 isReady = WarbandNexus:HasUnclaimedVaultRewards()

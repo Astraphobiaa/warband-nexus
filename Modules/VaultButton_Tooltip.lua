@@ -299,7 +299,14 @@ function M.ResolveVaultTooltipFlags(charKey, entry)
     local pveCache = GetPveCache()
     local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
     local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
-    local isReady = rewardData and rewardData.hasAvailableRewards or false
+    local isReady = false
+    if rewardData then
+        if ns.VaultRewardsClaimedForCurrentWeek and ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
+            isReady = false
+        else
+            isReady = rewardData.hasAvailableRewards == true
+        end
+    end
     local currentKey = GetCurrentCharKey()
     if CharKeysMatch(charKey, currentKey) then
         if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then

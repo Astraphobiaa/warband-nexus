@@ -769,9 +769,13 @@ function WarbandNexus:GetVaultStatusForChar(charKey)
     if not pveCache then return nil end
     local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
     local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
-    local isReady    = rewardData and rewardData.hasAvailableRewards == true or false
-    if rewardData and rewardData.hasAvailableRewards == false and (tonumber(rewardData.claimedAt) or 0) > 0 then
-        isReady = false
+    local isReady = false
+    if rewardData then
+        if ns.VaultRewardsClaimedForCurrentWeek and ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
+            isReady = false
+        else
+            isReady = rewardData.hasAvailableRewards == true
+        end
     end
 
     local readySlots = CountReadySlots(charKey) or 0
@@ -780,6 +784,9 @@ function WarbandNexus:GetVaultStatusForChar(charKey)
     if currentKey and CharKeysMatch(charKey, currentKey) then
         if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
             isReady = WarbandNexus:HasUnclaimedVaultRewards()
+            if not isReady and WarbandNexus.HealStaleVaultRewardsCache then
+                WarbandNexus:HealStaleVaultRewardsCache(charKey)
+            end
         else
             isReady = false
         end
