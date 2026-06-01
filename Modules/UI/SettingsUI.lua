@@ -80,6 +80,38 @@ local function GetStackedSubPanelTrailingGap()
     return GetHeaderToolbarGap() + SETTINGS_STACKED_SUBPANEL_GAP_EXTRA
 end
 
+--- Sync themed checkbox visual (CreateThemedCheckbox uses innerDot, not checkTexture).
+local function SyncSettingsCheckboxChecked(checkbox, checked)
+    if not checkbox then return end
+    checkbox:SetChecked(checked)
+    if checkbox.innerDot then
+        checkbox.innerDot:SetShown(checked)
+    elseif checkbox.checkTexture then
+        checkbox.checkTexture:SetShown(checked)
+    end
+end
+
+--- Lua 5.1: `for` loop `local actionId` is a single slot; factory captures one id per option.
+local function MakeLauncherLeftClickCheckboxOption(keyPrefix, actionId, def, isSelectedFn, applyFn)
+    return {
+        key = keyPrefix .. actionId,
+        label = (ns.L and ns.L[def.settingsLabelKey]) or def.labelFallback or actionId,
+        tooltip = (def.settingsDescKey and ns.L and ns.L[def.settingsDescKey]) or def.labelFallback or "",
+        _wnActionId = actionId,
+        get = function() return isSelectedFn(actionId) end,
+        set = function(value) applyFn(actionId, value) end,
+    }
+end
+
+local function WireLauncherLeftClickCheckbox(widget, actionId, applyFn, syncFn)
+    if not widget or not widget.checkbox or not actionId or not applyFn then return end
+    -- Radio-style: always select this action (avoid GetChecked() false -> revert to toggle/pve).
+    widget.checkbox:SetScript("OnClick", function()
+        applyFn(actionId, true)
+        if syncFn then syncFn() end
+    end)
+end
+
 local function SettingsMeasuredSectionContentHeight(stackY)
     return math.abs(stackY) + SETTINGS_CARD_CONTENT_BOTTOM_PAD
 end
@@ -1447,8 +1479,92 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             (ns.L and ns.L["SETTINGS_SECTION_GENERAL_FEATURES"]) or "Features",
             iw, cy, { skipGapBefore = true })
         cy = CreateCheckboxGrid(inner, generalOptions, cy, iw)
+
+        local VB = ns.VaultButton
+        local function GetMinimapClickSettings()
+            WarbandNexus.db.profile.minimap = WarbandNexus.db.profile.minimap or {}
+            local settings = WarbandNexus.db.profile.minimap
+            if settings.leftClickAction == nil then
+                settings.leftClickAction = "toggle"
+            end
+            if VB and VB.NormalizeMinimapLeftClickAction then
+                settings.leftClickAction = VB.NormalizeMinimapLeftClickAction(settings.leftClickAction)
+            elseif settings.leftClickAction ~= "toggle" then
+                settings.leftClickAction = "toggle"
+            end
+            return settings
+        end
+        local function IsMinimapLeftClickAction(action)
+            return GetMinimapClickSettings().leftClickAction == action
+        end
+        local function SetMinimapLeftClickAction(action, value)
+            local settings = GetMinimapClickSettings()
+            if value then
+                settings.leftClickAction = action
+            elseif settings.leftClickAction == action then
+                settings.leftClickAction = "toggle"
+            end
+        end
+        local minimapLeftClickOptions = {
+            {
+                key = "minimapLeftClickToggle",
+                label = (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE"]) or "Left Click: Toggle Window",
+                tooltip = (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE_DESC"]) or "Left-clicking the minimap button opens or closes the main window (previous default).",
+                get = function() return IsMinimapLeftClickAction("toggle") end,
+                set = function(value) SetMinimapLeftClickAction("toggle", value) end,
+            },
+        }
+        local leftClickOrder = (VB and VB.LAUNCHER_LEFT_CLICK_ORDER) or {}
+        local actionDefs = (VB and VB.LAUNCHER_ACTION_DEFS) or {}
+        for li = 1, #leftClickOrder do
+            local actionId = leftClickOrder[li]
+            local def = actionDefs[actionId]
+            if def and def.settingsLabelKey then
+                minimapLeftClickOptions[#minimapLeftClickOptions + 1] = MakeLauncherLeftClickCheckboxOption(
+                    "minimapLeftClick_",
+                    actionId,
+                    def,
+                    IsMinimapLeftClickAction,
+                    SetMinimapLeftClickAction
+                )
+            end
+        end
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & scaling",
+            (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_HEADER"]) or "Minimap Left Click",
+            iw, cy, {})
+        cy = cy - GetHeaderToolbarGap()
+        local minimapLeftClickYOffset
+        local minimapLeftClickWidgets
+        minimapLeftClickYOffset, minimapLeftClickWidgets = CreateCheckboxGrid(inner, minimapLeftClickOptions, cy, iw)
+        local function SyncMinimapLeftClickWidgets()
+            if not minimapLeftClickWidgets then return end
+            for li = 1, #minimapLeftClickOptions do
+                local opt = minimapLeftClickOptions[li]
+                local widget = minimapLeftClickWidgets[opt.key]
+                if widget and widget.checkbox then
+                    local checked = opt.get and opt.get() or false
+                    SyncSettingsCheckboxChecked(widget.checkbox, checked)
+                end
+            end
+        end
+        for li = 1, #minimapLeftClickOptions do
+            local opt = minimapLeftClickOptions[li]
+            local widget = minimapLeftClickWidgets and minimapLeftClickWidgets[opt.key]
+            if widget and widget.checkbox then
+                if opt._wnActionId then
+                    WireLauncherLeftClickCheckbox(widget, opt._wnActionId, SetMinimapLeftClickAction, SyncMinimapLeftClickWidgets)
+                elseif opt.set then
+                    widget.checkbox:SetScript("OnClick", function(self)
+                        opt.set(self:GetChecked())
+                        SyncMinimapLeftClickWidgets()
+                    end)
+                end
+            end
+        end
+        cy = minimapLeftClickYOffset
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & Scaling",
             iw, cy, {})
         cy = cy - hdrGap
 
@@ -1888,9 +2004,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         if settings.showManaflux == nil then settings.showManaflux = false end
         if settings.showSummaryOnMouseover == nil then settings.showSummaryOnMouseover = false end
         if settings.leftClickAction == nil and settings.leftClickQuickView == true then settings.leftClickAction = "vault" end
-        local allowedVaultLeftClick = { pve = true, vault = true, saved = true, plans = true, chars = true }
-        if not allowedVaultLeftClick[settings.leftClickAction] then
-            settings.leftClickAction = "pve"
+        local VB = ns.VaultButton
+        if VB and VB.NormalizeLeftClickAction then
+            settings.leftClickAction = VB.NormalizeLeftClickAction(settings.leftClickAction)
         end
         if settings.includeBountyOnly == nil then settings.includeBountyOnly = false end
         settings.columns = settings.columns or {}
@@ -1989,43 +2105,23 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local vaultStackY = 0
     local leftClickWidgets
 
-    local leftClickOptions = {
-        {
-            key = "vaultButtonLeftClickPve",
-            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PVE"]) or "Left Click: PvE Tab",
-            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PVE_DESC"]) or "Left-clicking Easy Access opens the PvE tab.",
-            get = function() return IsLeftClickAction("pve") end,
-            set = function(value) SetLeftClickAction("pve", value) end,
-        },
-        {
-            key = "vaultButtonLeftClickChars",
-            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_CHARS"]) or "Left Click: Characters Tab",
-            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_CHARS_DESC"]) or "Left-clicking Easy Access opens the Characters tab.",
-            get = function() return IsLeftClickAction("chars") end,
-            set = function(value) SetLeftClickAction("chars", value) end,
-        },
-        {
-            key = "vaultButtonLeftClickVault",
-            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_VAULT"]) or "Left Click: Vault Tracker",
-            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_VAULT_DESC"]) or "Left-clicking Easy Access opens the Vault Tracker window.",
-            get = function() return IsLeftClickAction("vault") end,
-            set = function(value) SetLeftClickAction("vault", value) end,
-        },
-        {
-            key = "vaultButtonLeftClickSaved",
-            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_SAVED"]) or "Left Click: Saved Instances",
-            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_SAVED_DESC"]) or "Left-clicking Easy Access opens the Saved Instances mini window.",
-            get = function() return IsLeftClickAction("saved") end,
-            set = function(value) SetLeftClickAction("saved", value) end,
-        },
-        {
-            key = "vaultButtonLeftClickPlans",
-            label = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PLANS"]) or "Left Click: Plans/Todo",
-            tooltip = (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_PLANS_DESC"]) or "Left-clicking Easy Access opens the Plans/To-Do mini window.",
-            get = function() return IsLeftClickAction("plans") end,
-            set = function(value) SetLeftClickAction("plans", value) end,
-        },
-    }
+    local leftClickOptions = {}
+    local VB = ns.VaultButton
+    local leftClickOrder = (VB and VB.LAUNCHER_LEFT_CLICK_ORDER) or { "pve", "chars", "vault", "saved", "plans" }
+    local actionDefs = (VB and VB.LAUNCHER_ACTION_DEFS) or {}
+    for li = 1, #leftClickOrder do
+        local actionId = leftClickOrder[li]
+        local def = actionDefs[actionId]
+        if def and def.settingsLabelKey then
+            leftClickOptions[#leftClickOptions + 1] = MakeLauncherLeftClickCheckboxOption(
+                "vaultButtonLeftClick_",
+                actionId,
+                def,
+                IsLeftClickAction,
+                SetLeftClickAction
+            )
+        end
+    end
 
     vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, 0, function(inner, iw)
         local cy = 0
@@ -2043,39 +2139,19 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
         local function SyncLeftClickWidgets()
             if not leftClickWidgets then return end
-            local keys = {
-                pve = "vaultButtonLeftClickPve",
-                chars = "vaultButtonLeftClickChars",
-                vault = "vaultButtonLeftClickVault",
-                saved = "vaultButtonLeftClickSaved",
-                plans = "vaultButtonLeftClickPlans",
-            }
-            for action, key in pairs(keys) do
-                local widget = leftClickWidgets[key]
-                if widget and widget.checkbox then
-                    local checked = IsLeftClickAction(action)
-                    widget.checkbox:SetChecked(checked)
-                    if widget.checkbox.checkTexture then
-                        widget.checkbox.checkTexture:SetShown(checked)
-                    end
+            for li = 1, #leftClickOptions do
+                local opt = leftClickOptions[li]
+                local actionId = opt._wnActionId
+                local widget = leftClickWidgets[opt.key]
+                if widget and widget.checkbox and actionId then
+                    SyncSettingsCheckboxChecked(widget.checkbox, IsLeftClickAction(actionId))
                 end
             end
         end
-        local leftClickScripts = {
-            vaultButtonLeftClickPve = "pve",
-            vaultButtonLeftClickChars = "chars",
-            vaultButtonLeftClickVault = "vault",
-            vaultButtonLeftClickSaved = "saved",
-            vaultButtonLeftClickPlans = "plans",
-        }
-        for key, action in pairs(leftClickScripts) do
-            local widget = leftClickWidgets and leftClickWidgets[key]
-            if widget and widget.checkbox then
-                widget.checkbox:SetScript("OnClick", function(self)
-                    SetLeftClickAction(action, self:GetChecked())
-                    SyncLeftClickWidgets()
-                end)
-            end
+        for li = 1, #leftClickOptions do
+            local opt = leftClickOptions[li]
+            local widget = leftClickWidgets and leftClickWidgets[opt.key]
+            WireLauncherLeftClickCheckbox(widget, opt._wnActionId, SetLeftClickAction, SyncLeftClickWidgets)
         end
 
         cy = leftClickYOffset
@@ -2110,7 +2186,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         }
 
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_VAULT_DISPLAY"]) or "Tooltip & menu",
+            (ns.L and ns.L["SETTINGS_SECTION_VAULT_DISPLAY"]) or "Tooltip & Menu",
             iw, cy, {})
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["CONFIG_VAULT_DISPLAY_TOOLTIP_HEADER"]) or "Hover tooltip",
@@ -2122,7 +2198,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = CreateCheckboxGrid(inner, menuDisplayOptions, cy, iw)
 
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_VAULT_LOOK"]) or "Look & opacity",
+            (ns.L and ns.L["SETTINGS_SECTION_VAULT_LOOK"]) or "Look & Opacity",
             iw, cy, {})
         cy = CreateSliderWidget(inner, {
             name = (ns.L and ns.L["CONFIG_VAULT_BUTTON_OPACITY"]) or "Button Opacity",
@@ -3376,7 +3452,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     themeStackY = StackSettingsSubPanel(themeSection.content, themeContentW, 0, function(inner, iw)
         local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_THEME_COLORS"]) or "Colors & accent",
+            (ns.L and ns.L["SETTINGS_SECTION_THEME_COLORS"]) or "Colors & Accent",
             iw, cy, { skipGapBefore = true })
         cy = cy - GetHeaderToolbarGap()
 
@@ -3620,7 +3696,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = cy - classRowH - GetHeaderToolbarGap()
 
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & readability",
+            (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & Readability",
             iw, cy, {})
         cy = cy - GetHeaderToolbarGap()
 

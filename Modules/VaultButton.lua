@@ -242,45 +242,31 @@ function M.BuildMenu()
     local tabIcon = function(key)
         return (GetTabIcon and GetTabIcon(key)) or nil
     end
-    -- Order: Characters first; icons match main-window tab header atlases (SharedWidgets TAB_HEADER_ICONS)
-    -- plus PvE vault / lockout column textures where no standalone tab exists.
-    local items = {
-        { label = "Characters Tab", leftClickAction = "chars",
-          iconAtlas = tabIcon("characters"), icon = "Interface\\Icons\\Achievement_Character_Human_Male",
-          action = function()
-            HideAllPanels()
-            ToggleWNCharsTab()
-        end },
-        { label = "PvE Tab", leftClickAction = "pve",
-          iconAtlas = tabIcon("pve"), icon = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
-          action = function()
-            HideAllPanels()
-            ToggleWNPveTab()
-        end },
-        { label = "Vault Tracker",
-          leftClickAction = "vault",
-          iconAtlas = "GreatVault-32x32",
-          icon = "Interface\\Icons\\Achievement_Boss_Argus",
-          action = function()
-            ShowQuickView(S.button)
-          end },
-        { label = "Saved Instances", leftClickAction = "saved", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01", action = function()
-            HideTable(); HideMenu(); ToggleSavedInstances()
-        end },
-        { label = "Plans / Todo", leftClickAction = "plans",
-          iconAtlas = tabIcon("plans"), icon = "Interface\\Icons\\INV_Inscription_Scroll",
-          action = function()
-            if WarbandNexus and WarbandNexus.TogglePlansTrackerWindow then
-                if InCombatLockdown and InCombatLockdown() then return end
-                WarbandNexus:TogglePlansTrackerWindow()
+
+    local items = {}
+    local menuOrder = M.LAUNCHER_MENU_ORDER or {}
+    for mi = 1, #menuOrder do
+        local actionId = menuOrder[mi]
+        local def = M.LAUNCHER_ACTION_DEFS[actionId]
+        if def then
+            local iconTab = def.iconTab
+            local opt = {
+                label = GetLauncherActionLabel(actionId),
+                iconAtlas = def.iconAtlas or (iconTab and tabIcon(iconTab)) or nil,
+                icon = def.icon,
+                action = (function(capturedActionId)
+                    return function()
+                        if InCombatLockdown and InCombatLockdown() then return end
+                        RunLauncherAction(capturedActionId, S.button)
+                    end
+                end)(actionId),
+            }
+            if def.menuLeftClick ~= false then
+                opt.leftClickAction = actionId
             end
-        end },
-        { label = "Settings",
-          iconAtlas = "mechagon-projects", icon = "Interface\\Icons\\Trade_Engineering",
-          action = function()
-            OpenWNSettingsTab()
-        end },
-    }
+            items[#items + 1] = opt
+        end
+    end
 
     local W = 230
     local rowH = 30
@@ -495,30 +481,12 @@ function WarbandNexus:OpenVaultButtonQuickMenuAtCursor()
 end
 
 function M.RunLeftClickAction(anchor)
-    local action = GetSettings().leftClickAction
-    if action == "vault" then
-        if S.tableFrame and S.tableFrame:IsShown() then
-            HideTable()
-        else
-            ShowQuickView(anchor or S.button)
-        end
-    elseif action == "saved" then
-        HideTable()
-        HideMenu()
-        ToggleSavedInstances()
-    elseif action == "plans" then
-        HideTable()
-        HideMenu()
-        if WarbandNexus and WarbandNexus.TogglePlansTrackerWindow then
-            if InCombatLockdown and InCombatLockdown() then return end
-            WarbandNexus:TogglePlansTrackerWindow()
-        end
-    elseif action == "chars" then
-        HideAllPanels()
-        ToggleWNCharsTab()
-    elseif action == "pve" or not action then
-        HideAllPanels()
-        ToggleWNPveTab()
+    RunLauncherAction(GetSettings().leftClickAction, anchor)
+end
+
+function WarbandNexus:RunLauncherAction(action, anchor)
+    if M.RunLauncherAction then
+        M.RunLauncherAction(action, anchor)
     end
 end
 

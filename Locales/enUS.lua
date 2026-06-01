@@ -1,19 +1,5 @@
-﻿--[[
-    Warband Nexus - English Localization (Base)
-    
-    This is the default/fallback locale for all other languages.
-    
-    NOTE: Many strings use Blizzard's built-in GlobalStrings for automatic localization!
-    Examples:
-    - CLOSE, SETTINGS, REFRESH, SEARCH -> Blizzard globals
-    - ITEM_QUALITY0_DESC through ITEM_QUALITY7_DESC -> Quality names (Poor, Common, Rare, etc.)
-    - BAG_FILTER_* -> Category names (Equipment, Consumables, etc.)
-    - CHARACTER, STATISTICS, LOCATION_COLON -> Tooltip strings
-    
-    These strings are automatically localized by WoW in all supported languages:
-    enUS, deDE, esES, esMX, frFR, itIT, koKR, ptBR, ruRU, zhCN, zhTW
-    
-    Custom strings (Warband Nexus specific) are defined here as fallback.
+--[[
+    Warband Nexus - English (fallback)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -34,7 +20,7 @@ L["KEYBINDING_CLEAR"] = "Clear keybinding"
 L["KEYBINDING_SAVED"] = "Keybinding saved."
 L["KEYBINDING_COMBAT"] = "Cannot change keybindings in combat."
 
--- Options Panel - General
+-- Settings - General
 L["GENERAL_SETTINGS"] = "General Settings"
 L["SETTINGS_COMPACT_MAIN_WINDOW_LABEL"] = "Compact main-window footprint"
 L["SETTINGS_COMPACT_MAIN_WINDOW_HINT"] = "Tighter resize minimums and modest default sizing. Horizontal scroll still covers wide tabs."
@@ -45,10 +31,10 @@ L["PLANS_COLLAPSE_ALL_TOOLTIP"] = "Collapse all To-Do sections and groups."
 L["PVE_EXPAND_ALL_TOOLTIP"] = "Expand all PvE sections and character rows."
 L["PVE_COLLAPSE_ALL_TOOLTIP"] = "Collapse all PvE sections and character rows."
 L["SETTINGS_SECTION_GENERAL_FEATURES"] = "Features"
-L["SETTINGS_SECTION_GENERAL_CONTROLS"] = "Controls & scaling"
+L["SETTINGS_SECTION_GENERAL_CONTROLS"] = "Controls & Scaling"
 L["SETTINGS_SECTION_MODULES_LIST"] = "Enabled modules"
 L["SETTINGS_SECTION_VAULT_GENERAL"] = "Shortcut behavior"
-L["SETTINGS_SECTION_VAULT_LOOK"] = "Look & opacity"
+L["SETTINGS_SECTION_VAULT_LOOK"] = "Look & Opacity"
 L["SETTINGS_SECTION_TAB_WARBAND"] = "Warband Bank"
 L["SETTINGS_SECTION_TAB_PERSONAL_BANK"] = "Personal Bank"
 L["SETTINGS_SECTION_TAB_INVENTORY"] = "Inventory"
@@ -80,24 +66,14 @@ L["DEBUG_MODE_DESC"] = "Output verbose debug messages to chat for troubleshootin
 L["DEBUG_TRYCOUNTER_LOOT"] = "Try Counter Loot Debug"
 L["DEBUG_TRYCOUNTER_LOOT_DESC"] = "Log loot flow (numLoot, source, route, outcome). Use when try count is not counted (fast auto-loot, dumpster/object, fishing). Rep/currency cache logs suppressed."
 
--- Options Panel - Scanning
 
--- Options Panel - Deposit
-
--- Options Panel - Display
+-- Settings - Display
 L["DISPLAY_SETTINGS"] = "Display Settings"
 L["DISPLAY_SETTINGS_DESC"] = "Configure visual appearance"
 L["SHOW_ITEM_COUNT"] = "Show Item Count"
 
--- Options Panel - Tabs
 
--- Scanner Module
-
--- Banker Module
-
--- Warband Bank Operations
-
--- UI Module
+-- Shared UI
 L["SEARCH_CATEGORY_FORMAT"] = "Search %s..."
 
 -- Main Tabs
@@ -107,7 +83,7 @@ L["TAB_REPUTATIONS"] = "Reputations"
 L["TAB_CURRENCIES"] = "Currencies"
 L["TAB_PVE"] = "PvE"
 
--- Characters Tab
+-- Characters - Summary
 L["HEADER_CURRENT_CHARACTER"] = "Current Character"
 L["HEADER_WARBAND_GOLD"] = "Warband Gold"
 L["HEADER_TOTAL_GOLD"] = "Total Gold"
@@ -115,7 +91,7 @@ L["HEADER_TOTAL_GOLD"] = "Total Gold"
 L["YES"] = YES or "Yes"
 L["NO"] = NO or "No"
 
--- Items Tab
+-- Items - Tab
 L["ITEMS_HEADER"] = "Bank Items"
 L["ITEMS_SUBTAB_BAGS"] = "Bags"
 L["ITEMS_SUBTAB_BANK"] = "Bank"
@@ -123,14 +99,14 @@ L["ITEMS_SUBTAB_WARBAND"] = "Warband"
 L["ITEMS_WARBAND_UPDATING"] = "Building Warband list..."
 L["ITEMS_WARBAND_BANK"] = "Warband Bank"
 
--- Storage Tab
+-- Storage - Tab
 L["STORAGE_HEADER"] = "Storage Browser"
 L["STORAGE_HEADER_DESC"] = "Browse all items organized by type"
 L["STORAGE_EXPAND_ALL_TOOLTIP"] = "Expand all storage sections (personal banks, Warband Bank, guild banks, and nested categories)."
 L["STORAGE_COLLAPSE_ALL_TOOLTIP"] = "Collapse all storage sections and nested categories."
 L["STORAGE_WARBAND_BANK"] = "Warband Bank"
 
--- Plans Tab
+-- Plans - Tab
 L["COLLECTION_PLANS"] = "To-Do List"
 L["SEARCH_PLANS"] = "Search plans..."
 L["SHOW_COMPLETED"] = "Show Completed"
@@ -164,11 +140,6 @@ L["CATEGORY_MY_PLANS"] = "To-Do List"
 L["CATEGORY_DAILY_TASKS"] = "Weekly Progress"
 L["CATEGORY_ILLUSIONS"] = "Illusions"
 
--- Reputation Tab
-
--- Currency Tab
-
--- PvE Tab
 
 -- Statistics
 L["TOTAL"] = TOTAL or "Total"
@@ -192,9 +163,6 @@ L["NONE_DISABLE"] = "None (Disable)"
 L["RESET_CYCLE_LABEL"] = "Reset Cycle:"
 L["RESET_NONE"] = "None"
 
--- Error Messages
-
--- Confirmation Dialogs
 
 -- Update Notification
 L["WHATS_NEW"] = "What's New"
@@ -251,7 +219,7 @@ L["COMPLETED_ALL_ACHIEVEMENTS"] = "You already completed all achievements in thi
 L["DAILY_PLAN_EXISTS"] = "Daily Plan Already Exists"
 L["WEEKLY_PLAN_EXISTS"] = "Weekly Plan Already Exists"
 
--- Characters Tab
+-- Characters - Tab
 L["YOUR_CHARACTERS"] = "Your Characters"
 L["CHARACTERS_EXPAND_ALL"] = "Expand all"
 L["CHARACTERS_EXPAND_ALL_TOOLTIP"] = "Expand Favorites, Characters, and Untracked sections."
@@ -358,7 +326,7 @@ L["EMPTY_STATISTICS_DESC"] = "Statistics are gathered from your tracked characte
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Coming Soon"
 L["COLLECTIONS_COMING_SOON_DESC"] = "Collection overview (mounts, pets, toys, transmog) will be available here."
 
--- Items Tab
+-- Items (2)
 L["PERSONAL_ITEMS"] = "Personal Items"
 L["ITEMS_SUBTITLE"] = "Browse your Warband Bank, Guild Bank, and Personal Items"
 L["ITEMS_EXPAND_ALL_TOOLTIP"] = "Expand all item type groups for the current bank sub-tab (personal, Warband, guild, or inventory)."
@@ -395,11 +363,11 @@ L["ITEMS_STATS_ITEMS"] = "%s items"
 L["ITEMS_STATS_SLOTS"] = "%s/%s slots"
 L["ITEMS_STATS_LAST"] = "Last: %s"
 
--- Storage Tab
+-- Storage - Tab
 L["STORAGE_DISABLED_TITLE"] = "Character Storage"
 L["STORAGE_SEARCH"] = "Search storage..."
 
--- PvE Tab
+-- PvE - Tab
 L["PVE_TITLE"] = "PvE Progress"
 L["PVE_SUBTITLE"] = "Great Vault, Raid Lockouts & Mythic+ across your Warband"
 L["PVE_CREST_ADV"] = "Adventurer"
@@ -479,7 +447,7 @@ L["PVE_BOUNTY_NEED_LOGIN"] = "No saved status for this character. Log in to refr
 L["SEASON"] = "Season"
 L["CURRENCY_LABEL_WEEKLY"] = "Weekly"
 
--- Reputation Tab
+-- Reputations Tab - Tab
 L["REP_TITLE"] = "Reputation Overview"
 L["REP_SUBTITLE"] = "Track factions and renown across your warband"
 L["REP_EXPAND_ALL_TOOLTIP"] = "Expand all reputation sections and expansion headers."
@@ -526,7 +494,7 @@ L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Currency Transfer Limitation"
 L["CURRENCY_TRANSFER_NOTICE_DESC"] = "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies."
 L["CURRENCY_UNKNOWN"] = "Unknown Currency"
 
--- Plans Tab (extended)
+-- Plans (2)
 L["REMOVE_COMPLETED_TOOLTIP"] = "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!"
 L["RECIPE_BROWSER_DESC"] = "Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open."
 L["SOURCE_ACHIEVEMENT_FORMAT"] = "%s |cff00ff00[%s %s]|r"
@@ -542,7 +510,7 @@ L["COMPLETE_LABEL"] = "Complete"
 L["PLANS_COUNT_FORMAT"] = "%d plans"
 L["QUEST_LABEL"] = "Quest:"
 
--- Settings Tab
+-- Settings
 L["CURRENT_LANGUAGE"] = "Current Language:"
 L["LANGUAGE_TOOLTIP"] = "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
 L["NOTIFICATION_DURATION"] = "Notification Duration"
@@ -594,7 +562,7 @@ L["DIFFICULTY_LFR"] = "LFR"
 L["TIER_FORMAT"] = "Tier %d"
 L["PREPARING"] = "Preparing"
 
--- Statistics Tab (extended)
+-- Statistics Tab (2)
 L["ACCOUNT_STATISTICS"] = "Account Statistics"
 L["STATISTICS_SUBTITLE"] = "Collection progress, gold, and storage overview"
 L["WARBAND_WEALTH"] = "Warband Wealth"
@@ -609,11 +577,11 @@ L["PLAYED_MINUTE"] = "Minute"
 L["MORE_CHARACTERS"] = "more character"
 L["MORE_CHARACTERS_PLURAL"] = "more characters"
 
--- Information Dialog (extended)
+-- Information Dialog
 L["WELCOME_TITLE"] = "Welcome to Warband Nexus!"
 L["ADDON_OVERVIEW_TITLE"] = "AddOn Overview"
 
--- Plans UI (extended)
+-- Plans UI - UI
 L["PLANS_SUBTITLE_TEXT"] = "Track your weekly goals & collections"
 L["ACTIVE_PLAN_FORMAT"] = "%d active plan"
 L["ACTIVE_PLANS_FORMAT"] = "%d active plans"
@@ -836,8 +804,8 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "Notification"
 
 -- Settings - Theme & Appearance
 L["THEME_APPEARANCE"] = "Theme & Appearance"
-L["SETTINGS_SECTION_THEME_COLORS"] = "Colors & accent"
-L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Fonts & readability"
+L["SETTINGS_SECTION_THEME_COLORS"] = "Colors & Accent"
+L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Fonts & Readability"
 L["COLOR_PURPLE"] = "Purple"
 L["COLOR_PURPLE_DESC"] = "Classic purple theme (default)"
 L["COLOR_BLUE"] = "Blue"
@@ -930,11 +898,17 @@ L["VAULT_SUMMARY_NO_CHARS"] = "No tracked characters."
 L["VAULT_SUMMARY_MORE"] = "... and %d more (see PvE list)."
 L["UNCLAIMED_REWARDS"] = "You have unclaimed rewards"
 
--- Minimap Button
+-- Minimap
 L["TOTAL_GOLD_LABEL"] = "Total Gold:"
 L["MINIMAP_CHARS_GOLD"] = "Characters Gold:"
 L["LEFT_CLICK_TOGGLE"] = "Left-Click: Toggle window"
+L["MINIMAP_LEFT_CLICK_ACTION_FMT"] = "Left-Click: %s"
+L["MINIMAP_RIGHT_CLICK_MENU"] = "Right-Click: Menu"
 L["RIGHT_CLICK_PLANS"] = "Right-Click: Open Plans"
+L["RIGHT_CLICK_SHORTCUT_MENU"] = "Right-Click: Shortcut menu"
+L["CONFIG_MINIMAP_LEFT_CLICK_HEADER"] = "Minimap Left Click"
+L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE"] = "Left Click: Toggle Window"
+L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE_DESC"] = "Left-clicking the minimap button opens or closes the main window."
 L["MINIMAP_SHOWN_MSG"] = "Minimap button shown"
 L["MINIMAP_HIDDEN_MSG"] = "Minimap button hidden (re-enable under Warband Nexus -> Settings -> Minimap)."
 L["TOGGLE_WINDOW"] = "Toggle Window"
@@ -947,7 +921,7 @@ L["HIDE_MINIMAP_BUTTON"] = "Hide Minimap Button"
 L["MENU_UNAVAILABLE_MSG"] = "Right-click menu unavailable"
 L["USE_COMMANDS_MSG"] = "Use /wn show, /wn options, /wn help"
 
--- SharedWidgets (extended)
+-- SharedWidgets
 L["DATA_SOURCE_TITLE"] = "Data Source Information"
 L["DATA_SOURCE_USING"] = "This tab is using:"
 L["DATA_SOURCE_MODERN"] = "Modern cache service (event-driven)"
@@ -988,7 +962,7 @@ L["SETTINGS_PANEL_ADVANCED"] = "Advanced"
 L["SETTINGS_PANEL_ADVANCED_DESC"] = "Debug logging, cache refresh, and item tracking."
 L["SETTINGS_PANEL_ABOUT"] = "About"
 L["SETTINGS_PANEL_ABOUT_DESC"] = "Credits, contributors, and a guide to every tab."
-L["SETTINGS_SECTION_NOTIF_MASTER"] = "Master and reminders"
+L["SETTINGS_SECTION_NOTIF_MASTER"] = "Master & Reminders"
 L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"] = "Collectibles"
 L["SETTINGS_SECTION_NOTIF_CHAT"] = "Chat messages"
 L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Try counter"
@@ -1005,7 +979,7 @@ L["PROFESSIONS_INFO_DESC"] = "See every tracked character's crafting professions
 L["GEAR_DESC"] = "Paperdoll, character stats, upgrade crests, and stash recommendations in a single modern layout."
 L["COLLECTIONS_DESC"] = "Overview of mounts, pets, toys, transmog, and other collectibles across your account. Track collection progress and find missing items."
 
--- Command Help Strings
+-- Slash commands
 L["AVAILABLE_COMMANDS"] = "Available commands:"
 L["CMD_OPEN"] = "Open addon window"
 L["CMD_PLANS"] = "Toggle To-Do Tracker window"
@@ -1032,7 +1006,7 @@ L["DEBUG_DISABLED"] = "Debug mode DISABLED."
 L["CHARACTER_LABEL"] = "Character:"
 L["TRACK_USAGE"] = "Usage: enable | disable | status"
 
--- Welcome Messages
+-- Welcome
 L["CLICK_TO_COPY"] = "Click to copy invite link"
 
 L["WELCOME_MSG_FORMAT"] = "Welcome to Warband Nexus v%s"
@@ -1045,16 +1019,13 @@ L["CONFIG_SHOW_LOGIN_CHAT_DESC"] = "Print a short welcome line when notification
 L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
--- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION - see NotificationManager.VersionToChangelogKey)
 
--- What's New / changelog body for ADDON_VERSION 3.1.5b (key CHANGELOG_V315)
 L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
 
-Professions tab lists alts again when you expand Favorites or Characters after every section was collapsed. Great Vault on the PvE tab no longer shows Ready after you claim rewards, and vault reward columns are wider so item levels are not cut off.
+Professions tab lists alts again when you expand Favorites or Characters after every section was collapsed. Great Vault on the PvE tab no longer shows Ready after you claim rewards, and vault reward columns are wider so item levels are not cut off. Minimap button left-click is set under Settings > General > Minimap Left Click (for example Collections or Professions). Right-click Options opens Settings, and the side rail highlights the tab you are viewing.
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
 L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
 
 Fixes:
@@ -1066,7 +1037,6 @@ Fixes:
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.1.3 (key CHANGELOG_V313)
 L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
 
 Fixes:
@@ -1076,14 +1046,12 @@ Fixes:
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.1.2 (key CHANGELOG_V312)
 L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
 
 Fixes world event reminders crashing in dungeons when calendar API fields are secret after boss kills or zone changes. Collections and To-Do achievement lists now show Feats of Strength category headers like the game journal, and the achievement journal To-Do button no longer disrupts Blizzard category tabs.
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.1.1 (key CHANGELOG_V311)
 L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
 
 Added:
@@ -1100,7 +1068,6 @@ Fixes:
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.1.0 (key CHANGELOG_V310)
 L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
 
 Revision:
@@ -1114,14 +1081,12 @@ Fixes:
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.0.5 (key CHANGELOG_V305)
 L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
 
 Character storage now prefers stable GUID keys where the game allows it, and duplicate character rows are merged safely so your roster stays tidy. On login you get a single short chat line so you know Warband Nexus loaded without spamming. Collections class coloring is guarded against edge cases, and the tracking confirmation dialog handles GUID-keyed saves correctly.
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.0.4 (key CHANGELOG_V304)
 L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
 
 Professions tab: refreshed module and info descriptions; clearer column headers (Open, sort arrows, Profession strip), wider Open column with clipped icons; Weekly Vault create-plan dialog is wider with card-style vault slots, redundant tracking row removed, and bottom fill matches the shell.
@@ -1132,14 +1097,12 @@ External popout windows: content pane background matches the shell so no gray ga
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.0.3 (key CHANGELOG_V303)
 L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
 
 Custom sections stay in sync across Character, Professions, and PvE with roster edits only on Character; reminder horn and toasts use matching gold highlights; PvE custom groups and spacing get fixes.
 
 CurseForge: Warband Nexus]=]
 
--- What's New / changelog body for ADDON_VERSION 3.0.2 (key CHANGELOG_V302)
 L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
 
 To-Do reminders (zone, instance, calendar, Set Alert), cleaner collection cache and Recent cards, custom roster sections with Filter controls, realm sort on lists; fixes for To-Do states, tracker layout, Recent tab polish, and settings tweaks.
@@ -1147,7 +1110,6 @@ To-Do reminders (zone, instance, calendar, Set Alert), cleaner collection cache 
 CurseForge: Warband Nexus]=]
 
 
--- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
 Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.5b).
@@ -1160,15 +1122,15 @@ L["CONFIRM"] = "Confirm"
 L["ENABLE_TRACKING_FORMAT"] = "Enable tracking for |cffffcc00%s|r?"
 L["DISABLE_TRACKING_FORMAT"] = "Disable tracking for |cffffcc00%s|r?"
 
--- Reputation Section Headers
+-- Reputation Section Headers - Tab
 L["REP_SECTION_ACCOUNT_WIDE"] = "Account-Wide Reputations (%s)"
 L["REP_SECTION_CHARACTER_BASED"] = "Character-Based Reputations (%s)"
 
--- Reputation Processor Labels
+-- Reputation Processor Labels - Tab
 L["REP_REWARD_WAITING"] = "Reward Waiting"
 L["REP_PARAGON_LABEL"] = "Paragon"
 
--- Reputation Loading States
+-- Reputation Loading States - Tab
 L["REP_LOADING_PREPARING"] = "Preparing..."
 L["REP_LOADING_INITIALIZING"] = "Initializing..."
 L["REP_LOADING_FETCHING"] = "Fetching reputation data..."
@@ -1179,7 +1141,6 @@ L["REP_LOADING_COMPLETE"] = "Complete!"
 -- Status / Footer
 L["COMBAT_LOCKDOWN_MSG"] = "Cannot open window during combat. Please try again after combat ends."
 L["BANK_IS_ACTIVE"] = "Bank is Active"
--- Table Headers (SharedWidgets, Professions)
 
 -- Search / Empty States
 L["NO_ITEMS_MATCH"] = "No items match '%s'"
@@ -1187,7 +1148,6 @@ L["NO_ITEMS_MATCH_GENERIC"] = "No items match your search"
 L["ITEMS_SCAN_HINT"] = "Items are scanned automatically. Try /reload if nothing appears."
 L["ITEMS_WARBAND_BANK_HINT"] = "Log in to characters and open banks, bags, or Warband Bank so the account-wide list can populate. Items are cached when you visit."
 
--- Currency Transfer Steps
 
 -- Plans UI Extra
 L["ADDED"] = "Added"
@@ -1291,7 +1251,7 @@ L["CONFIG_VAULT_BUTTON_OPACITY"] = "Button Opacity"
 L["CONFIG_VAULT_BUTTON_OPACITY_DESC"] = "Adjust Easy Access opacity when it is visible."
 L["CONFIG_VAULT_OPT_SUMMARY_MOUSEOVER"] = "Warband Summary Mouseover"
 L["CONFIG_VAULT_OPT_SUMMARY_MOUSEOVER_DESC"] = "Show the warband's vault summary on mouseover. Turning this off shows the current character's only."
-L["SETTINGS_SECTION_VAULT_DISPLAY"] = "Tooltip & menu"
+L["SETTINGS_SECTION_VAULT_DISPLAY"] = "Tooltip & Menu"
 L["CONFIG_VAULT_DISPLAY_TOOLTIP_HEADER"] = "Hover tooltip"
 L["CONFIG_VAULT_DISPLAY_MENU_HEADER"] = "Right-click menu"
 L["CONFIG_VAULT_DISPLAY_VAULT"] = "Great Vault progress"
@@ -1335,6 +1295,24 @@ L["CONFIG_VAULT_LEFT_CLICK_SAVED"] = "Left Click: Saved Instances"
 L["CONFIG_VAULT_LEFT_CLICK_SAVED_DESC"] = "Left-clicking Easy Access opens the Saved Instances mini window."
 L["CONFIG_VAULT_LEFT_CLICK_PLANS"] = "Left Click: Plans/Todo"
 L["CONFIG_VAULT_LEFT_CLICK_PLANS_DESC"] = "Left-clicking Easy Access opens the Plans/To-Do mini window."
+L["CONFIG_VAULT_LEFT_CLICK_ITEMS"] = "Left Click: Bank Tab"
+L["CONFIG_VAULT_LEFT_CLICK_ITEMS_DESC"] = "Left-clicking Easy Access opens the Bank tab."
+L["CONFIG_VAULT_LEFT_CLICK_GEAR"] = "Left Click: Gear Tab"
+L["CONFIG_VAULT_LEFT_CLICK_GEAR_DESC"] = "Left-clicking Easy Access opens the Gear tab."
+L["CONFIG_VAULT_LEFT_CLICK_CURRENCY"] = "Left Click: Currencies Tab"
+L["CONFIG_VAULT_LEFT_CLICK_CURRENCY_DESC"] = "Left-clicking Easy Access opens the Currencies tab."
+L["CONFIG_VAULT_LEFT_CLICK_REPUTATIONS"] = "Left Click: Reputations Tab"
+L["CONFIG_VAULT_LEFT_CLICK_REPUTATIONS_DESC"] = "Left-clicking Easy Access opens the Reputations tab."
+L["CONFIG_VAULT_LEFT_CLICK_PROFESSIONS"] = "Left Click: Professions Tab"
+L["CONFIG_VAULT_LEFT_CLICK_PROFESSIONS_DESC"] = "Left-clicking Easy Access opens the Professions tab."
+L["CONFIG_VAULT_LEFT_CLICK_COLLECTIONS"] = "Left Click: Collections Tab"
+L["CONFIG_VAULT_LEFT_CLICK_COLLECTIONS_DESC"] = "Left-clicking Easy Access opens the Collections tab."
+L["CONFIG_VAULT_LEFT_CLICK_PLANS_TAB"] = "Left Click: To-Do Tab"
+L["CONFIG_VAULT_LEFT_CLICK_PLANS_TAB_DESC"] = "Left-clicking Easy Access opens the main To-Do tab."
+L["CONFIG_VAULT_LEFT_CLICK_STATS"] = "Left Click: Statistics Tab"
+L["CONFIG_VAULT_LEFT_CLICK_STATS_DESC"] = "Left-clicking Easy Access opens the Statistics tab."
+L["CONFIG_VAULT_LEFT_CLICK_SETTINGS"] = "Left Click: Settings"
+L["CONFIG_VAULT_LEFT_CLICK_SETTINGS_DESC"] = "Left-clicking Easy Access opens Warband Nexus settings."
 L["CMD_QT"] = "Open Easy Access menu"
 L["CONFIG_VAULT_QT_UNAVAILABLE"] = "Easy Access is not available yet."
 L["VAULT_BUTTON_MENU_TITLE"] = "WN Menu"
@@ -1603,7 +1581,6 @@ L["ERROR_LABEL"] = "Error:"
 L["ERROR_NAME_REALM_REQUIRED"] = "Character name and realm required"
 L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s already has an active weekly plan"
 
--- Profiles (AceDB)
 
 -- Achievement/Criteria Display
 L["NO_CRITERIA_FOUND"] = "No criteria found"
@@ -1699,9 +1676,6 @@ L["HIDE_FILTER_STATE_OFF"] = "Off"
 L["HIDE_FILTER_TOOLTIP_TOGGLE"] = "Toggle filters: Level 80 / Level 90"
 L["HIDE_FILTER_TOOLTIP_CURRENT"] = "Current: %s"
 
--- Professions: Tooltips & Details
-
--- Professions: Crafting Orders
 
 -- Professions: Equipment
 L["EQUIPMENT"] = "Equipment"
@@ -1791,7 +1765,7 @@ L["FISHING"] = "Fishing"
 L["CONFIG_RECIPE_COMPANION"] = "Recipe Companion"
 L["CONFIG_RECIPE_COMPANION_DESC"] = "Show the Recipe Companion window alongside the Professions UI, displaying reagent availability per character."
 
--- Try Counter
+-- Try Counter (2)
 L["TRYCOUNTER_DIFFICULTY_SKIP"] = "Skipped: %s requires %s difficulty (current: %s)"
 L["TRYCOUNTER_OBTAINED"] = "Obtained %s!"
 
@@ -1887,7 +1861,6 @@ L["TRYCOUNTER_CHAT_TAG_FISHING"] = "fishing"
 L["TRYCOUNTER_CHAT_TAG_RESET"] = "counter reset"
 L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d attempts for %s"
 L["TRYCOUNTER_OBTAINED_RESET"] = "Obtained %s! Try counter reset."
--- "What a grind" message shown when cumulative drop probability exceeded 70%.
 -- Params: totalTries, cumulativePct (e.g. 87), itemLink
 L["TRYCOUNTER_WHAT_A_GRIND"] = "What a grind! %d attempts (expected ~%d%% to have it by now) for %s"
 L["TRYCOUNTER_CAUGHT_RESET"] = "Caught %s! Try counter reset."
@@ -1947,7 +1920,7 @@ L["CONFIG_GENERAL_DESC"] = "Basic addon settings and behavior options."
 L["CONFIG_ENABLE"] = "Enable Addon"
 L["CONFIG_ENABLE_DESC"] = "Turn the addon on or off."
 L["CONFIG_MINIMAP"] = "Minimap Button"
-L["CONFIG_MINIMAP_DESC"] = "Show a button on the minimap for quick access."
+L["CONFIG_MINIMAP_DESC"] = "Show a button on the minimap. Set its left-click action under General -> Minimap Left Click (e.g. Professions)."
 L["CONFIG_MAIN_NAV_LAYOUT"] = "Main window navigation layout"
 L["CONFIG_MAIN_NAV_LAYOUT_DESC"] = "Top row or left icon strip for main tabs; applies after UI reload (/reload)."
 L["CONFIG_MAIN_NAV_LAYOUT_TOP"] = "Horizontal tabs (top row)"
@@ -2129,7 +2102,7 @@ L["WOW_TOKEN_LABEL"] = "WoW Token"
 L["WOW_TOKEN_COUNT_LABEL"] = "Tokens"
 L["NOT_AVAILABLE_SHORT"] = "N/A"
 
--- SharedWidgets
+-- SharedWidgets (2)
 L["FILTER_LABEL"] = FILTER or "Filter"
 
 -- Statistics UI
@@ -2158,7 +2131,7 @@ L["CONTENT_DRAGON_ISLES"] = "Dragon Isles"
 -- Module Disabled
 L["MODULE_DISABLED_DESC_FORMAT"] = "Enable it in %s to use %s."
 
--- Plans UI (extended)
+-- Plans UI (3)
 L["PART_OF_FORMAT"] = "Part of: %s"
 L["LOCKED_WORLD_QUESTS"] = "Locked - complete World Quests to unlock"
 L["QUEST_ID_FORMAT"] = "Quest ID: %s"
@@ -2306,8 +2279,14 @@ L["QUEST_CATEGORY_DESC_DAILY"] = "Daily repeatable quests from NPCs"
 L["QUEST_CATEGORY_DESC_EVENTS"] = "Bonus objectives, tasks, and activities"
 L["GEAR_NO_TRACKED_CHARACTERS_TITLE"] = "No tracked characters"
 L["GEAR_NO_TRACKED_CHARACTERS_DESC"] = "Log in to a character to start tracking gear."
+L["GEAR_FILTER_EMPTY_TITLE"] = "No characters match the level filter"
+L["GEAR_FILTER_EMPTY_DESC"] = "Turn off Hide or lower the level threshold using the Hide button above to show characters again."
 L["SOURCE_TYPE_CATEGORY_FORMAT"] = "Category %d"
 
--- Keybinding globals (must be global for WoW's keybinding UI)
+
+
+-- Keybindings
+
+-- Keybindings
 BINDING_HEADER_WARBANDNEXUS = "Warband Nexus"
 BINDING_NAME_WARBANDNEXUS_TOGGLE = "Show/hide main window"

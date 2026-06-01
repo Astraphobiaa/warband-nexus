@@ -1044,7 +1044,6 @@ end
 ---@param f Frame
 ---@param targetTab string|nil
 local function ApplyMainWindowShowChrome(f, targetTab)
-    f._wnMainTabInputGraceUntil = GetTime() + 0.2
     if f.tabButtons and ns.UI_UpdateMainFrameTabButtonStates then
         ns.UI_UpdateMainFrameTabButtonStates(f)
     end
@@ -1150,9 +1149,21 @@ function WarbandNexus:ShowMainWindow(requestedTabKey)
 
     -- Tab change: reuse nav staged pool teardown + deferred PopulateContent (Easy Access left-click, minimap shortcuts).
     if prevTab ~= targetTab and mainFrame.ActivateMainTab then
+        if requestedTabKey ~= nil and requestedTabKey ~= "" then
+            mainFrame._wnBypassMainTabInputGraceOnce = true
+        end
         mainFrame.currentTab = prevTab
+        local persistLast = requestedTabKey ~= nil and targetTab ~= "settings" and targetTab ~= "about"
+        mainFrame.ActivateMainTab(targetTab, { persistLastTab = persistLast })
+        -- ActivateMainTab before show chrome (grace is set at end of ActivateMainTab, not here).
         ApplyMainWindowShowChrome(mainFrame, targetTab)
-        mainFrame.ActivateMainTab(targetTab, { persistLastTab = requestedTabKey ~= nil })
+        if mainFrame.currentTab ~= targetTab then
+            mainFrame.currentTab = targetTab
+            if ns.UI_UpdateMainFrameTabButtonStates then
+                ns.UI_UpdateMainFrameTabButtonStates(mainFrame)
+            end
+            ScheduleDeferredShowMainPopulate(mainFrame, targetTab)
+        end
         ScheduleMainWindowTooltipPrecache()
         NormalizeFramePosition(mainFrame)
     else
@@ -2339,6 +2350,7 @@ function WarbandNexus:CreateMainWindow()
         end
 
         f.currentTab = targetTab
+        f._wnMainTabInputGraceUntil = GetTime() + 0.2
         UpdateTabButtonStates(f)
         if targetTab ~= "settings" then
             ScrollMainNavEnsureTabVisible(f, targetTab)
@@ -4731,14 +4743,24 @@ function WarbandNexus:OpenOptions()
         self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
         return
     end
-    if not mainFrame or not mainFrame:IsShown() then
+    if ns.SettingsUI and ns.SettingsUI.SetActivePanel then
+        ns.SettingsUI.SetActivePanel("general")
+    end
+    if self.ShowMainWindow then
         self:ShowMainWindow("settings")
-    elseif mainFrame and mainFrame.ActivateMainTab then
+        return
+    end
+    if mainFrame and mainFrame.ActivateMainTab then
+        mainFrame._wnBypassMainTabInputGraceOnce = true
         mainFrame:ActivateMainTab("settings", { persistLastTab = false })
-    elseif self.DrawSettingsTab then
-        if mainFrame then
-            mainFrame.currentTab = "settings"
-            self:PopulateContent()
+        if mainFrame:IsShown() and ns.UI_UpdateMainFrameTabButtonStates then
+            ns.UI_UpdateMainFrameTabButtonStates(mainFrame)
+        end
+    elseif self.DrawSettingsTab and mainFrame then
+        mainFrame.currentTab = "settings"
+        self:PopulateContent()
+        if ns.UI_UpdateMainFrameTabButtonStates then
+            ns.UI_UpdateMainFrameTabButtonStates(mainFrame)
         end
     else
         self:Print("|cff9370DB[Warband Nexus]|r " .. ((ns.L and ns.L["SETTINGS_UI_UNAVAILABLE"]) or "Settings UI not available. Try /wn to open the main window."))

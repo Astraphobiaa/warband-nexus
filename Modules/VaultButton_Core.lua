@@ -195,6 +195,191 @@ function M.GetThemeColors()
     }
 end
 
+-- ============================================================================
+-- Launcher registry (Easy Access menu, Settings left-click, minimap shortcut menu)
+-- ============================================================================
+
+---@type table<string, boolean>
+local LAUNCHER_LEFT_CLICK_LOOKUP
+
+--- Ordered assignable left-click action ids (`plans` = Plans Tracker mini window; `plans_tab` = main To-Do tab).
+M.LAUNCHER_LEFT_CLICK_ORDER = {
+    "chars",
+    "items",
+    "gear",
+    "currency",
+    "reputations",
+    "pve",
+    "professions",
+    "collections",
+    "plans_tab",
+    "stats",
+    "vault",
+    "saved",
+    "plans",
+    "settings",
+}
+
+--- Easy Access right-click menu only (classic shortcuts; not every main-window tab).
+M.LAUNCHER_MENU_ORDER = {
+    "chars",
+    "pve",
+    "vault",
+    "saved",
+    "plans",
+    "settings",
+}
+
+---@class WnLauncherActionDef
+---@field kind "main_tab"|"vault"|"saved_instances"|"plans_tracker"|"settings"
+---@field tabKey string|nil main window tab for kind == main_tab
+---@field labelKey string locale for menu row
+---@field labelFallback string
+---@field settingsLabelKey string|nil Settings > Easy Access left-click checkbox
+---@field settingsDescKey string|nil
+---@field iconTab string|nil `UI_GetTabIcon` key
+---@field iconAtlas string|nil
+---@field icon string|nil texture path fallback
+---@field menuLeftClick boolean|nil false = row cannot be assigned as left-click target (Settings row)
+
+M.LAUNCHER_ACTION_DEFS = {
+    chars = {
+        kind = "main_tab", tabKey = "chars",
+        labelKey = "TAB_CHARACTERS", labelFallback = "Characters",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_CHARS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_CHARS_DESC",
+        iconTab = "characters",
+    },
+    items = {
+        kind = "main_tab", tabKey = "items",
+        labelKey = "TAB_ITEMS", labelFallback = "Bank",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_ITEMS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_ITEMS_DESC",
+        iconTab = "items",
+    },
+    gear = {
+        kind = "main_tab", tabKey = "gear",
+        labelKey = "TAB_GEAR", labelFallback = "Gear",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_GEAR", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_GEAR_DESC",
+        iconTab = "gear",
+    },
+    currency = {
+        kind = "main_tab", tabKey = "currency",
+        labelKey = "TAB_CURRENCIES", labelFallback = "Currencies",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_CURRENCY", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_CURRENCY_DESC",
+        iconTab = "currency",
+    },
+    reputations = {
+        kind = "main_tab", tabKey = "reputations",
+        labelKey = "TAB_REPUTATIONS", labelFallback = "Reputations",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_REPUTATIONS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_REPUTATIONS_DESC",
+        iconTab = "reputations",
+    },
+    pve = {
+        kind = "main_tab", tabKey = "pve",
+        labelKey = "TAB_PVE", labelFallback = "PvE",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_PVE", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_PVE_DESC",
+        iconTab = "pve",
+    },
+    professions = {
+        kind = "main_tab", tabKey = "professions",
+        labelKey = "TAB_PROFESSIONS", labelFallback = "Professions",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_PROFESSIONS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_PROFESSIONS_DESC",
+        iconTab = "professions",
+    },
+    collections = {
+        kind = "main_tab", tabKey = "collections",
+        labelKey = "TAB_COLLECTIONS", labelFallback = "Collections",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_COLLECTIONS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_COLLECTIONS_DESC",
+        iconTab = "collections",
+    },
+    plans_tab = {
+        kind = "main_tab", tabKey = "plans",
+        labelKey = "TAB_PLANS", labelFallback = "To-Do",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_PLANS_TAB", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_PLANS_TAB_DESC",
+        iconTab = "plans",
+    },
+    stats = {
+        kind = "main_tab", tabKey = "stats",
+        labelKey = "TAB_STATISTICS", labelFallback = "Statistics",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_STATS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_STATS_DESC",
+        iconTab = "stats",
+    },
+    vault = {
+        kind = "vault",
+        labelKey = "VAULT_BUTTON_MENU_TRACKER", labelFallback = "Vault Tracker",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_VAULT", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_VAULT_DESC",
+        iconAtlas = "GreatVault-32x32",
+        icon = "Interface\\Icons\\Achievement_Boss_Argus",
+    },
+    saved = {
+        kind = "saved_instances",
+        labelKey = "VAULT_BUTTON_MENU_SAVED", labelFallback = "Saved Instances",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_SAVED", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_SAVED_DESC",
+        icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+    },
+    plans = {
+        kind = "plans_tracker",
+        labelKey = "VAULT_BUTTON_MENU_PLANS", labelFallback = "Plans / Todo",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_PLANS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_PLANS_DESC",
+        iconTab = "plans",
+    },
+    settings = {
+        kind = "settings",
+        labelKey = "VAULT_BUTTON_MENU_SETTINGS", labelFallback = "Settings",
+        settingsLabelKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS", settingsDescKey = "CONFIG_VAULT_LEFT_CLICK_SETTINGS_DESC",
+        iconAtlas = "mechagon-projects",
+        icon = "Interface\\Icons\\Trade_Engineering",
+        menuLeftClick = false,
+    },
+}
+
+function M.GetLauncherActionLabel(actionId)
+    local def = M.LAUNCHER_ACTION_DEFS[actionId]
+    if not def then return actionId or "?" end
+    return EAL(def.labelKey, def.labelFallback)
+end
+
+function M.GetLauncherLeftClickLookup()
+    if LAUNCHER_LEFT_CLICK_LOOKUP then return LAUNCHER_LEFT_CLICK_LOOKUP end
+    local t = {}
+    for i = 1, #LAUNCHER_LEFT_CLICK_ORDER do
+        t[LAUNCHER_LEFT_CLICK_ORDER[i]] = true
+    end
+    LAUNCHER_LEFT_CLICK_LOOKUP = t
+    return t
+end
+
+function M.IsAllowedLeftClickAction(actionId)
+    if not actionId or actionId == "" then return false end
+    return M.GetLauncherLeftClickLookup()[actionId] == true
+end
+
+function M.NormalizeLeftClickAction(actionId)
+    if M.IsAllowedLeftClickAction(actionId) then return actionId end
+    return "pve"
+end
+
+function M.GetMinimapSettings()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile then
+        return { leftClickAction = "toggle" }
+    end
+    local profile = WarbandNexus.db.profile
+    profile.minimap = profile.minimap or {}
+    local settings = profile.minimap
+    if settings.leftClickAction == nil then
+        settings.leftClickAction = "toggle"
+    end
+    if settings.leftClickAction ~= "toggle" and not M.IsAllowedLeftClickAction(settings.leftClickAction) then
+        settings.leftClickAction = "toggle"
+    end
+    return settings
+end
+
+function M.NormalizeMinimapLeftClickAction(actionId)
+    if actionId == "toggle" then return "toggle" end
+    if M.IsAllowedLeftClickAction(actionId) then return actionId end
+    return "toggle"
+end
+
 M.EA_DISPLAY_DEFAULTS = {
     tooltipVault = true,
     tooltipGold = true,
@@ -252,10 +437,7 @@ function M.GetSettings()
     if settings.showManaflux == nil then settings.showManaflux = false end
     if settings.showSummaryOnMouseover == nil then settings.showSummaryOnMouseover = false end
     if settings.leftClickAction == nil and settings.leftClickQuickView == true then settings.leftClickAction = "vault" end
-    local allowedLeftClick = { pve = true, vault = true, saved = true, plans = true, chars = true }
-    if not allowedLeftClick[settings.leftClickAction] then
-        settings.leftClickAction = "pve"
-    end
+    settings.leftClickAction = M.NormalizeLeftClickAction(settings.leftClickAction)
     if settings.includeBountyOnly == nil then settings.includeBountyOnly = false end
     settings.columns = settings.columns or {}
     if settings.columns.raids == nil then settings.columns.raids = true end

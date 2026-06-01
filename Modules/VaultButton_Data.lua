@@ -399,6 +399,63 @@ function M.OpenWNSettingsTab()
     end
 end
 
+--- Run configured Easy Access / launcher left-click action (main tabs, vault table, mini windows).
+---@param action string|nil
+---@param anchor Frame|nil vault button anchor for vault quick view
+function M.RunLauncherAction(action, anchor)
+    action = M.NormalizeLeftClickAction(action)
+    local def = M.LAUNCHER_ACTION_DEFS[action]
+    if not def then
+        HideAllPanels()
+        OpenWNPveTab()
+        return
+    end
+
+    if def.kind == "vault" then
+        if S.tableFrame and S.tableFrame:IsShown() then
+            HideTable()
+        else
+            ShowQuickView(anchor or S.button)
+        end
+        return
+    end
+
+    if def.kind == "saved_instances" then
+        HideTable()
+        HideMenu()
+        ToggleSavedInstances()
+        return
+    end
+
+    if def.kind == "plans_tracker" then
+        HideTable()
+        HideMenu()
+        if WarbandNexus and WarbandNexus.TogglePlansTrackerWindow then
+            if InCombatLockdown and InCombatLockdown() then return end
+            WarbandNexus:TogglePlansTrackerWindow()
+        end
+        return
+    end
+
+    if def.kind == "settings" then
+        OpenWNSettingsTab()
+        return
+    end
+
+    if def.kind == "main_tab" and def.tabKey then
+        HideAllPanels()
+        HideMenu()
+        local tabKey = def.tabKey
+        if tabKey == "chars" then
+            ToggleWNCharsTab()
+        elseif tabKey == "pve" then
+            ToggleWNPveTab()
+        else
+            OpenWNTab(tabKey)
+        end
+    end
+end
+
 local WORLD_REWARD_QUALITY_BY_ILVL = {
     [233] = 3, [237] = 3, [240] = 3, [243] = 3,
     [246] = 4, [250] = 4, [253] = 4,

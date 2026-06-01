@@ -58,8 +58,19 @@ function WarbandNexus:InitializeMinimapButton()
     local charsGoldLbl  = (L and L["MINIMAP_CHARS_GOLD"])  or "Characters Gold:"
     local warbandGoldLbl = (L and L["HEADER_WARBAND_GOLD"]) or "Warband Gold"
     local totalGoldLbl  = (L and L["TOTAL_GOLD_LABEL"])    or "Total Gold:"
-    local leftClickLbl  = (L and L["LEFT_CLICK_TOGGLE"])   or "Left-Click: Toggle window"
-    local rightClickLbl = (L and L["RIGHT_CLICK_PLANS"])   or "Right-Click: Open Plans"
+    local function MinimapLeftClickTooltipLine()
+        local action = addon.GetMinimapLeftClickAction and addon:GetMinimapLeftClickAction() or "toggle"
+        local VB = ns.VaultButton
+        if action == "toggle" then
+            return (L and L["LEFT_CLICK_TOGGLE"]) or "Left-Click: Toggle window"
+        end
+        if VB and VB.GetLauncherActionLabel then
+            return ((L and L["MINIMAP_LEFT_CLICK_ACTION_FMT"]) or "Left-Click: %s")
+                :format(VB.GetLauncherActionLabel(action))
+        end
+        return (L and L["LEFT_CLICK_TOGGLE"]) or "Left-Click: Toggle window"
+    end
+    local rightClickLbl = (L and L["MINIMAP_RIGHT_CLICK_MENU"]) or "Right-Click: Menu"
     local holdShiftLbl  = (L and L["TOOLTIP_HOLD_SHIFT"])  or "  Hold [Shift] for full list"
     
     local FormatGold = ns.UI_FormatGold
@@ -147,7 +158,7 @@ function WarbandNexus:InitializeMinimapButton()
         tooltip:AddDoubleLine("|cffffffff" .. totalGoldLbl .. "|r",  "|cff00ff00" .. FormatGold(totalCopper + warbandCopper) .. "|r")
 
         tooltip:AddLine(" ")
-        tooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
+        tooltip:AddLine("|cff00ff00" .. MinimapLeftClickTooltipLine() .. "|r", 0.7, 0.7, 0.7)
         tooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
         
         tooltip:SetClampedToScreen(true)
@@ -161,7 +172,11 @@ function WarbandNexus:InitializeMinimapButton()
         OnClick = function(clickedframe, button)
             if InCombatLockdown() then return end
             if button == "LeftButton" then
-                addon:ToggleMainWindow()
+                if addon.RunMinimapLeftClickAction then
+                    addon:RunMinimapLeftClickAction()
+                else
+                    addon:ToggleMainWindow()
+                end
             elseif button == "RightButton" then
                 addon:ShowMinimapMenu(clickedframe)
             end
@@ -268,29 +283,47 @@ end
     Show right-click context menu
     Provides quick access to common actions
 ]]
+function WarbandNexus:GetMinimapLeftClickAction()
+    local VB = ns.VaultButton
+    local action = "toggle"
+    if VB and VB.GetMinimapSettings then
+        action = VB.GetMinimapSettings().leftClickAction or "toggle"
+    elseif self.db and self.db.profile and self.db.profile.minimap then
+        action = self.db.profile.minimap.leftClickAction or "toggle"
+    end
+    if VB and VB.NormalizeMinimapLeftClickAction then
+        action = VB.NormalizeMinimapLeftClickAction(action)
+    end
+    return action
+end
+
+function WarbandNexus:RunMinimapLeftClickAction()
+    if InCombatLockdown() then return end
+    local action = self:GetMinimapLeftClickAction()
+    if action == "toggle" then
+        self:ToggleMainWindow()
+        return
+    end
+    local VB = ns.VaultButton
+    local def = VB and VB.LAUNCHER_ACTION_DEFS and VB.LAUNCHER_ACTION_DEFS[action]
+    if def and def.kind == "main_tab" and def.tabKey and self.ShowMainWindow then
+        self:ShowMainWindow(def.tabKey)
+        return
+    end
+    if self.RunLauncherAction then
+        self:RunLauncherAction(action, nil)
+    elseif VB and VB.RunLauncherAction then
+        VB.RunLauncherAction(action, nil)
+    end
+end
+
 function WarbandNexus:ShowMinimapMenu(anchorFrame)
     -- Modern TWW 11.0+ menu system
     if MenuUtil and MenuUtil.CreateContextMenu then
         MenuUtil.CreateContextMenu(UIParent, function(ownerRegion, rootDescription)
-            local function OpenVaultTrackerView()
-                if InCombatLockdown() then return end
-                if self.db and self.db.profile then
-                    self.db.profile.pveVaultTrackerMode = true
-                    self.db.profile.lastTab = "pve"
-                end
-                ns._wnSessionLastTab = "pve"
-
-                if not self.mainFrame or not self.mainFrame:IsShown() then
-                    self:ShowMainWindow("pve")
-                elseif self.mainFrame.ActivateMainTab then
-                    self.mainFrame._wnBypassMainTabInputGraceOnce = true
-                    self.mainFrame:ActivateMainTab("pve", { persistLastTab = true })
-                end
-            end
-
             -- Header
             rootDescription:CreateTitle((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
-            
+
             -- Toggle Window
             rootDescription:CreateButton((ns.L and ns.L["TOGGLE_WINDOW"]) or "Toggle Window", function()
                 self:ToggleMainWindow()
@@ -322,23 +355,12 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
                 scanButton:SetEnabled(false)
             end
             
-            -- Plans Tracker
+            -- Plans Tracker (floating To-Do window)
             rootDescription:CreateButton((ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List", function()
                 if self.TogglePlansTrackerWindow then
                     self:TogglePlansTrackerWindow()
                 end
             end)
-
-            -- Easy Access (floating shortcut)
-            rootDescription:CreateButton((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", function()
-                if self.OpenVaultButtonQuickMenu then
-                    self:OpenVaultButtonQuickMenu(anchorFrame)
-                else
-                    OpenVaultTrackerView()
-                end
-            end)
-
-            rootDescription:CreateDivider()
 
             -- Options
             rootDescription:CreateButton((ns.L and ns.L["OPTIONS_MENU"]) or "Options", function()

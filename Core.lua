@@ -114,6 +114,8 @@ local defaults = {
             hide = false,
             minimapPos = 220,
             lock = false,
+            --- Left click: "toggle" = open/close main window (legacy), or any Easy Access left-click action id (e.g. professions).
+            leftClickAction = "toggle",
         },
         
         -- Behavior settings
