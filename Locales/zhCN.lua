@@ -1231,6 +1231,7 @@ L["PROF_INFO_READY"] = "就绪"
 L["PROF_INFO_LAST_UPDATE"] = "上次更新"
 L["PROF_INFO_LOCKED"] = "已锁定"
 L["PROF_INFO_UNLEARNED"] = "未学习"
+L["PROF_SECTIONS_COLLAPSED_HINT"] = "所有专业分区已折叠。展开收藏、角色或队伍分组标题以查看专业详情。"
 
 -- Track Item DB
 L["TRACK_ITEM_DB"] = "追踪物品数据库"

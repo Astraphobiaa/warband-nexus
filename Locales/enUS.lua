@@ -1716,6 +1716,7 @@ L["PROF_INFO_READY"] = "Ready"
 L["PROF_INFO_LAST_UPDATE"] = "Last Updated"
 L["PROF_INFO_LOCKED"] = "Locked"
 L["PROF_INFO_UNLEARNED"] = "Unlearned"
+L["PROF_SECTIONS_COLLAPSED_HINT"] = "All profession sections are collapsed. Expand Favorites, Characters, or a roster group header to view profession details."
 
 -- Track Item DB
 L["TRACK_ITEM_DB"] = "Track Item DB"

@@ -1670,6 +1670,29 @@ local function EnsureProfessionsSectionExpandDefaults(profile)
     end
 end
 
+--- True when at least one Professions tab section will paint character rows this draw.
+local function AnyProfessionsSectionExpanded(profile, customGroupsOrdered)
+    if not profile then return false end
+    local ui = profile.ui or {}
+    if ui.profFavoritesExpanded ~= false then return true end
+    if ui.profCharactersExpanded ~= false then return true end
+    if ui.profUntrackedExpanded == true then return true end
+    local ge = profile.characterGroupExpanded
+    if ge and customGroupsOrdered then
+        for gci = 1, #customGroupsOrdered do
+            local gid = customGroupsOrdered[gci] and customGroupsOrdered[gci].id
+            if gid and ge[gid] == true then return true end
+        end
+    end
+    return false
+end
+
+local function RequestProfessionsTabRepaint()
+    if WarbandNexus and WarbandNexus.schedulePopulateContent then
+        WarbandNexus.schedulePopulateContent(true)
+    end
+end
+
 --- First primary profession slot for OpenTradeSkill (skillLine / skillLineID from CollectProfessionData).
 local function GetFirstPrimaryProfessionSlot(char)
     if not char or not char.professions then return nil end
@@ -2672,6 +2695,11 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     self.db.profile.ui[sectionKey] = exp
                     if exp then self.profRecentlyExpanded[sectionKey] = GetTime() end
                 end
+                -- Rows are only queued during DrawProfessionsTab for expanded sections; expanding later
+                -- must repaint or the section body stays empty (0.1px placeholder).
+                if exp then
+                    RequestProfessionsTabRepaint()
+                end
             end,
         }) or {}
         if visualOpts and visualOpts.sectionPreset then
@@ -2801,7 +2829,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             trackedFavorites,
             (ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites",
             "profFavoritesExpanded",
-            false,
+            true,
             "GM-icon-assistActive-hover",
             { sectionPreset = "gold" }
         )
@@ -2832,7 +2860,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             trackedRegular,
             (ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters",
             "profCharactersExpanded",
-            false,
+            true,
             "GM-icon-headCount",
             nil
         )
@@ -2850,6 +2878,18 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     RelayoutProfessionsSectionStack()
+
+    if profDataCharCount > 0 and not AnyProfessionsSectionExpanded(self.db.profile, customGroupsOrdered) then
+        local hintY = parent._wnProfSectionStackTopY or yOffset
+        local hint = FontManager:CreateFontString(parent, DATA_FONT, "OVERLAY")
+        hint:SetPoint("TOPLEFT", contentSide + 12, -hintY - 8)
+        hint:SetWidth(stackWidth - 24)
+        hint:SetJustifyH("LEFT")
+        hint:SetText("|cffaaaaaa" .. ((ns.L and ns.L["PROF_SECTIONS_COLLAPSED_HINT"])
+            or "All profession sections are collapsed. Click Favorites, Characters, or a roster group header to expand and view profession details.") .. "|r")
+        yOffset = hintY + 36
+        parent._wnProfSectionStackTopY = yOffset
+    end
 
     local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     EnsureProfessionRowGradientScrollHook(mfRef)
@@ -3502,12 +3542,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         row[p.."Name"]:SetText("|cff" .. nameHex .. profName .. "|r")
 
         -- Skill: use expansion-specific data from professionExpansions.
-        -- Only fall back to the base prof.skill in "All" mode (it reflects the latest expansion
-        -- and is acceptable as a last-resort when no per-expansion data has been collected yet).
+        -- Fall back to base prof.skill when expansion rows are missing (alts not scanned this expansion).
         local curSkill, maxSkill = GetCurrentExpansionSkill(char, profName)
         if curSkill and maxSkill then
             row[p.."Skill"]:SetText(FormatSkill(curSkill, maxSkill))
-        elseif GetExpansionFilter() == "All" and prof.skill and prof.maxSkill then
+        elseif prof.skill and prof.maxSkill and (prof.maxSkill or 0) > 0 then
             row[p.."Skill"]:SetText(FormatSkill(prof.skill, prof.maxSkill))
         else
             row[p.."Skill"]:SetText("|cffffffff--|r")
