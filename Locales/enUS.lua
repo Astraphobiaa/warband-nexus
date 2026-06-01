@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - English Localization (Base)
     
     This is the default/fallback locale for all other languages.
@@ -1047,6 +1047,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time 
 
 -- What's New (only CHANGELOG_V<x><y><z> for current ADDON_VERSION - see NotificationManager.VersionToChangelogKey)
 
+-- What's New / changelog body for ADDON_VERSION 3.1.5b (key CHANGELOG_V315)
+L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+
+Professions tab lists alts again when you expand Favorites or Characters after every section was collapsed. Great Vault on the PvE tab no longer shows Ready after you claim rewards, and vault reward columns are wider so item levels are not cut off.
+
+CurseForge: Warband Nexus]=]
+
 -- What's New / changelog body for ADDON_VERSION 3.1.4 (key CHANGELOG_V314)
 L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
 
@@ -1143,7 +1150,7 @@ CurseForge: Warband Nexus]=]
 -- What's New / changelog body for ADDON_VERSION 3.0.0 (key CHANGELOG_V300)
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.4).
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.5b).
 
 CurseForge: Warband Nexus]=]
 
