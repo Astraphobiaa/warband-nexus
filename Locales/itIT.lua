@@ -1022,6 +1022,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
+L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+
+Replace Achievement Popup cambia lo stile degli avvisi: attivo solo toast Warband Nexus per achievement e criteri; disattivo solo banner Blizzard classici, senza popup duplicati. Prova con /wn testloot earn o progress.
+
+I personaggi tracciati e la tua lista non scompaiono piu dopo la pulizia automatica del database o lunghe pause tra un accesso e l'altro. L'ottimizzazione automatica rimuove solo personaggi non tracciati inattivi da 90+ giorni e te lo segnala in chat.
+
+I tooltip scelgono automaticamente il bordo migliore sullo schermo invece di saltare tra due posizioni al passaggio del mouse. Il layout viene eseguito una volta prima della visualizzazione; gli ancoraggi GameTooltip in Warband Nexus seguono le stesse regole.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 La scheda Professioni elenca di nuovo gli alt quando espandi Preferiti o Personaggi dopo aver chiuso tutte le sezioni. La Grande Camera nella scheda PvE non mostra piu Pronto dopo aver riscosso le ricompense, e le colonne delle ricompense sono piu larghe cosi i livelli oggetto non vengono tagliati. Il clic sinistro del pulsante minimappa si imposta in Impostazioni > Generale > Clic sinistro minimappa (ad esempio Collezioni o Professioni). Clic destro su Opzioni apre Impostazioni, e la barra laterale evidenzia la scheda visualizzata.

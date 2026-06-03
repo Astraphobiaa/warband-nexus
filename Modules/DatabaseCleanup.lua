@@ -36,12 +36,12 @@ function WarbandNexus:CleanupDatabase()
         deprecatedStorage = 0,
     }
     
-    -- Step 1: Remove invalid character entries (no name/realm)
+    -- Step 1: Remove structurally invalid character entries (repair legacy keys first)
     if self.db.global.characters then
         local toRemove = {}
         
         for charKey, charData in pairs(self.db.global.characters) do
-            if not charData.name or not charData.realm or charData.name == "" or charData.realm == "" then
+            if self.IsCharacterRowStructurallyInvalid and self:IsCharacterRowStructurallyInvalid(charKey, charData) then
                 toRemove[charKey] = true
                 cleaned.invalidEntries = cleaned.invalidEntries + 1
             end

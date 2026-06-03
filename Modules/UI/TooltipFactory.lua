@@ -142,6 +142,27 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.bodyDividerPool = {}
     frame.allLines = {}
     frame._balancedSplit = nil
+    frame._deferLayout = false
+    frame._layoutDirty = false
+
+    local function RequestLayout(tooltipFrame)
+        if tooltipFrame._deferLayout then
+            tooltipFrame._layoutDirty = true
+            return
+        end
+        tooltipFrame:LayoutLines()
+    end
+
+    frame.BeginBatchLayout = function(self)
+        self._deferLayout = true
+        self._layoutDirty = false
+    end
+
+    frame.EndBatchLayout = function(self)
+        self._deferLayout = false
+        RequestLayout(self)
+        self._layoutDirty = false
+    end
     
     -- Layout state (dynamic width, clamped to min/max)
     local MIN_WIDTH = 120
@@ -285,6 +306,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         self.paddingH = spacing.SIDE_MARGIN + 2
         self.paddingV = spacing.SIDE_MARGIN
         self:SetSize(self.fixedWidth, 10)
+        self._deferLayout = false
+        self._layoutDirty = false
     end
     
     -- ========================================================================
@@ -346,7 +369,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         line:Show()
         table.insert(self.titleAffixLines, line)
-        self:LayoutLines()
+        RequestLayout(self)
     end
 
     -- Character row under title: name (left) + ilvl (right), header band only.
@@ -364,7 +387,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         self.titleAffixPairLeft:Show()
         self.titleAffixPairRight:Show()
         self.hasTitleAffixPair = true
-        self:LayoutLines()
+        RequestLayout(self)
     end
     
     -- ========================================================================
@@ -406,7 +429,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         table.insert(self.lines, line)
         table.insert(self.allLines, {type = "single", element = line})
         
-        self:LayoutLines()
+        RequestLayout(self)
     end
     
     -- ========================================================================
@@ -433,7 +456,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             balanced = opts.balanced == true,
         })
         
-        self:LayoutLines()
+        RequestLayout(self)
     end
 
     frame.AddCenteredLine = function(self, text, r, g, b)
@@ -444,7 +467,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         line:Show()
         table.insert(self.lines, line)
         table.insert(self.allLines, { type = "centered", element = line })
-        self:LayoutLines()
+        RequestLayout(self)
     end
 
     frame.AddSectionLabel = function(self, text, r, g, b)
@@ -460,7 +483,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         line:Show()
         table.insert(self.lines, line)
         table.insert(self.allLines, { type = "section_label", element = line })
-        self:LayoutLines()
+        RequestLayout(self)
     end
 
     frame.GetOrCreateBodyDivider = function(self)
@@ -493,7 +516,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         spacerLine:Show()
         table.insert(self.lines, spacerLine)
         table.insert(self.allLines, {type = "spacer", element = spacerLine, height = height})
-        self:LayoutLines()
+        RequestLayout(self)
     end
     
     -- ========================================================================
@@ -614,7 +637,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         row.worldFs:Show()
         table.insert(self.vaultGridRows, row)
         table.insert(self.allLines, { type = "vault_grid", element = row })
-        self:LayoutLines()
+        RequestLayout(self)
     end
 
     -- ========================================================================
@@ -660,7 +683,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         row.worldFs:Show()
         table.insert(self.vaultTrackRows, row)
         table.insert(self.allLines, { type = "vault_track", element = row })
-        self:LayoutLines()
+        RequestLayout(self)
     end
     
     -- ========================================================================

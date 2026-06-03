@@ -807,7 +807,7 @@ local function BindProfColumnHeaderTooltip(frame, tooltipTitle)
     frame:EnableMouse(true)
     frame:SetScript("OnEnter", function(self)
         if ShowTooltip then
-            ShowTooltip(self, { type = "custom", title = tooltipTitle, lines = {}, anchor = "ANCHOR_TOP" })
+            ShowTooltip(self, { type = "custom", title = tooltipTitle, lines = {} })
         end
     end)
     frame:SetScript("OnLeave", function()
@@ -1717,7 +1717,7 @@ local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
     end
     local tipTitle = tooltipTitle or ((ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open recipe list")
     btn:SetScript("OnEnter", function(self)
-        if ShowTooltip then ShowTooltip(self, { type = "custom", title = tipTitle, lines = {}, anchor = "ANCHOR_TOP" }) end
+        if ShowTooltip then ShowTooltip(self, { type = "custom", title = tipTitle, lines = {} }) end
     end)
     btn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
 end
@@ -2785,7 +2785,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
                         local lines = {
                             { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = detailed, leftColor = {1,1,1}, rightColor = {1, 0.82, 0} },
                         }
-                        if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", lines = lines, anchor = "ANCHOR_TOP" }) end
+                        if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["CONCENTRATION"]) or "Concentration", lines = lines }) end
                     end
                 end
             end)
@@ -2814,7 +2814,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
                 else
                     msg = ((ns.L and ns.L["UNSPENT_KNOWLEDGE_TOOLTIP"]) or "Unspent knowledge points") .. ": " .. tostring(unspent)
                 end
-                if ShowTooltip then ShowTooltip(self, { type = "custom", title = msg, lines = {}, anchor = "ANCHOR_TOP" }) end
+                if ShowTooltip then ShowTooltip(self, { type = "custom", title = msg, lines = {} }) end
             end)
             row[p.."KnowWarn"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
         else
@@ -2945,7 +2945,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
                     end
                 end
                 if #lines > 0 and ShowTooltip then
-                    ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["COOLDOWNS"]) or "Cooldowns", lines = lines, anchor = "ANCHOR_TOP" })
+                    ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["COOLDOWNS"]) or "Cooldowns", lines = lines })
                 end
             end)
             cdHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
@@ -2975,7 +2975,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
                     lines[#lines+1] = { left = exp.name or "?", right = maxS > 0 and format("%d / %d", curS, maxS) or "--", leftColor = {1,1,1}, rightColor = sc }
                 end
             end
-            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["SKILL"]) or "Skill", lines = lines, anchor = "ANCHOR_TOP" }) end
+            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["SKILL"]) or "Skill", lines = lines }) end
         end)
         skillHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
 
@@ -3005,7 +3005,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
             end
         end)
         infoBtn:SetScript("OnEnter", function(self)
-            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["PROF_INFO_TOOLTIP"]) or "View profession details", lines = {}, anchor = "ANCHOR_TOP" }) end
+            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["PROF_INFO_TOOLTIP"]) or "View profession details", lines = {} }) end
         end)
         infoBtn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
         infoBtn:Show()
@@ -3088,7 +3088,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
                 local eqHint = (ns.L and ns.L["PROF_EQUIPMENT_HINT"]) or "Open profession (K) on this character to scan equipment."
                 lines[#lines+1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", right = eqData and "--" or "|cff888888" .. eqHint .. "|r", leftColor = {0.7,0.7,0.7}, rightColor = {0.5,0.5,0.5} }
             end
-            if #lines > 0 and ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = rowProfName, lines = lines, anchor = "ANCHOR_RIGHT" }) end
+            if #lines > 0 and ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = rowProfName, lines = lines }) end
         end)
         row[p.."Icon"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
     else

@@ -349,7 +349,6 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
             type = "currency",
             currencyID = currencyID,
             charKey = tipKey,
-            anchor = "ANCHOR_LEFT"
         })
     end)
     

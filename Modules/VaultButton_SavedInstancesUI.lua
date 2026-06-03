@@ -159,7 +159,6 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
                 { text = " " },
                 { text = (ns.L and ns.L["SAVED_INSTANCES_EXPAND_HINT"]) or "Click to expand character lockouts", color = {0.55, 0.55, 0.55} },
             },
-            anchor = "ANCHOR_RIGHT",
         })
     end)
     header:SetScript("OnLeave", function() WNTooltipHide() end)
@@ -351,7 +350,6 @@ function M.BuildInstanceCard(parent, group, cardSize)
             type = "custom",
             title = group.instanceName or "?",
             lines = lines,
-            anchor = "ANCHOR_RIGHT",
         })
     end)
     card:SetScript("OnLeave", function() WNTooltipHide() end)

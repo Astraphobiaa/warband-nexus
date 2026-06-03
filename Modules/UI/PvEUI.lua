@@ -2027,7 +2027,6 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                             icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
                             title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
                             lines = lines,
-                            anchor = "ANCHOR_TOP"
                         })
                     end)
 
@@ -2150,7 +2149,6 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                             icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
                             title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
                             lines = lines,
-                            anchor = "ANCHOR_TOP"
                         })
                     end)
 
@@ -2217,7 +2215,6 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                                 icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
                                 title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
                                 lines = lines,
-                                anchor = "ANCHOR_TOP"
                             })
                         end)
 
@@ -2524,7 +2521,6 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                                 icon = dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark",
                                 title = dungeon.name or (GetLocalizedText("VAULT_DUNGEON", "Dungeon")),
                                 lines = tooltipLines,
-                                anchor = "ANCHOR_TOP"
                             })
                         end)
                         iconFrame:SetScript("OnLeave", function(self)
@@ -2673,7 +2669,6 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                                         title = name or (GetLocalizedText("AFFIX_TITLE_FALLBACK", "Affix")),
                                         description = description,
                                         lines = {},
-                                        anchor = "ANCHOR_RIGHT"
                                     })
                                 end)
                                 affixIcon:SetScript("OnLeave", function(self)
@@ -2763,7 +2758,6 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                             type = "currency",
                             currencyID = curr.id,
                             charKey = charKey,
-                            anchor = "ANCHOR_TOP",
                         })
                     end)
                     crestIcon:SetScript("OnLeave", function()
@@ -4059,7 +4053,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                         iconIsAtlas = col.iconAtlas ~= nil,
                         title = tooltipTitle,
                         lines = {},
-                        anchor = "ANCHOR_BOTTOM"
                     })
                 end)
                 hitFrame:SetScript("OnLeave", function()
@@ -4874,7 +4867,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                                     type = "currency",
                                     currencyID = val.currencyID,
                                     charKey = charKey,
-                                    anchor = "ANCHOR_TOP",
                                 })
                             else
                                 L.ShowTooltip(self, {
@@ -4882,7 +4874,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                                     icon = val.tooltipIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
                                     title = val.tooltipTitle or (GetLocalizedText("TAB_CURRENCY", "Currency")),
                                     lines = val.tooltip,
-                                    anchor = "ANCHOR_TOP",
                                 })
                             end
                         end)
@@ -5180,7 +5171,6 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
         iconIsAtlas = true,
         title = title,
         lines = lines,
-        anchor = "ANCHOR_RIGHT",
         maxWidth = maxW,
     })
 end

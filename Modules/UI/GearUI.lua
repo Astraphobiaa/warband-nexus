@@ -1452,7 +1452,6 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
                 type = "item",
                 itemID = rowData.itemID,
                 itemLink = rowData.itemLink,
-                anchor = "ANCHOR_LEFT",
                 itemTooltipContext = itemTooltipContext,
             })
         end

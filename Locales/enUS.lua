@@ -1020,6 +1020,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
+L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+
+Replace Achievement Popup now switches alert style cleanly: when enabled you get Warband Nexus achievement and criteria toasts only; when disabled you get Blizzard classic banners only, with no duplicate popups. Try /wn testloot earn or progress to preview either mode.
+
+Tracked characters and your roster no longer disappear after auto database cleanup or long breaks between logins. Auto-optimize only removes untracked characters inactive for 90+ days and tells you when it happens.
+
+Tooltips now pick the best on-screen edge automatically instead of jumping between two positions on hover. Content layout runs once before show; GameTooltip anchors inside Warband Nexus follow the same placement rules.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 Professions tab draws character rows reliably after background loading finishes; expanding Favorites or Characters no longer leaves a blank list while the subtitle still shows profession data counts. Also includes collapsed-section expand without a full tab rebuild, Great Vault no longer showing Ready after claim, wider vault columns, and minimap left-click routing under Settings.
@@ -1112,7 +1122,7 @@ CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.5c).
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.6).
 
 CurseForge: Warband Nexus]=]
 

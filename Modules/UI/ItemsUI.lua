@@ -1389,7 +1389,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 end
                 return
             end
-            ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink, anchor = "ANCHOR_LEFT" })
+            ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
         end)
         row:SetScript("OnLeave", function()
             if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
@@ -3490,7 +3490,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     table.insert(additionalLines, {text = "|cffff6600" .. ((ns.L and ns.L["ITEMS_BANK_NOT_OPEN"]) or "Bank not open") .. "|r", color = {1, 1, 1}})
                 end
                 table.insert(additionalLines, {text = "|cff888888Shift+Left-Click|r " .. ((ns.L and ns.L["SHIFT_LEFT_CLICK_LINK"]) or "Link in chat"), color = {0.7, 0.7, 0.7}})
-                ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.link, additionalLines = additionalLines, anchor = "ANCHOR_LEFT" })
+                ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.link, additionalLines = additionalLines })
             end)
             row:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
             row:SetScript("OnMouseUp", function(_, button)

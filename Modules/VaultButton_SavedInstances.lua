@@ -551,7 +551,6 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
             type = "custom",
             title = "|cff" .. hex .. (charName or char.charKey) .. "|r",
             lines = lines,
-            anchor = "ANCHOR_RIGHT",
         })
     end)
     row:SetScript("OnLeave", function() WNTooltipHide() end)

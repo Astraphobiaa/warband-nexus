@@ -160,7 +160,7 @@ local function CreatePlanReminderAlertButton(card, plan)
             end
         end
         if ns.TooltipService then
-            ns.TooltipService:Show(btn, { type = "custom", title = tooltipTitle, icon = false, anchor = "ANCHOR_TOP", lines = tooltipLines })
+            ns.TooltipService:Show(btn, { type = "custom", title = tooltipTitle, icon = false, lines = tooltipLines })
         end
     end)
     alertBtn:SetScript("OnLeave", function(btn)
@@ -223,7 +223,7 @@ local function CreatePlanCardDeleteButton(parent, plan, opts)
     removeBtn:SetScript("OnClick", onRemove)
     removeBtn:SetScript("OnEnter", function(self)
         if ns.TooltipService and ns.TooltipService.Show then
-            ns.TooltipService:Show(self, { type = "custom", title = tip, icon = false, anchor = "ANCHOR_TOP", lines = {} })
+            ns.TooltipService:Show(self, { type = "custom", title = tip, icon = false, lines = {} })
         end
     end)
     removeBtn:SetScript("OnLeave", function()

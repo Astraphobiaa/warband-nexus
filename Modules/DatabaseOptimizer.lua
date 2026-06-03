@@ -132,8 +132,8 @@ function WarbandNexus:GetDatabaseStats()
         for key, charData in pairs(self.db.global.characters) do
             stats.characters = stats.characters + 1
             
-            local lastSeen = charData.lastSeen or 0
-            if (currentTime - lastSeen) > staleThreshold then
+            local age = self.GetCharacterLastSeenAge and self:GetCharacterLastSeenAge(charData, currentTime)
+            if age and self.IsCharacterEligibleForStaleRemoval and self:IsCharacterEligibleForStaleRemoval(charData, staleThreshold, currentTime) then
                 stats.staleCharacters = stats.staleCharacters + 1
             end
             
@@ -226,11 +226,14 @@ function WarbandNexus:CleanupInvalidCharacters()
     end
     
     for key, charData in pairs(self.db.global.characters) do
-        -- Check for required fields
-        if not charData.name or not charData.realm or not charData.class then
+        if self.IsCharacterRowStructurallyInvalid and self:IsCharacterRowStructurallyInvalid(key, charData) then
             self.db.global.characters[key] = nil
             removed = removed + 1
         end
+    end
+
+    if removed > 0 and self.InvalidateGetAllCharactersCache then
+        self:InvalidateGetAllCharactersCache()
     end
     
     return removed
@@ -410,8 +413,13 @@ function WarbandNexus:CheckAutoOptimization()
     local daysSince = (time() - lastOptimize) / (24 * 60 * 60)
     
     if daysSince >= 7 then
-        self:OptimizeDatabase()
+        local results = self:OptimizeDatabase()
         self.db.profile.lastOptimize = time()
+        if results and results.staleCharacters and results.staleCharacters > 0 then
+            self:Print("|cff00ff00" .. string.format(
+                (ns.L and ns.L["CLEANUP_REMOVED_FORMAT"]) or "Removed %d inactive character(s).",
+                results.staleCharacters) .. "|r")
+        end
     end
 end
 
@@ -651,39 +659,49 @@ function WarbandNexus:EnforceCharacterLimit(limit)
     local characters = self.db.global.characters or {}
     local favorites = self.db.global.favoriteCharacters or {}
     
-    -- Build list of characters with metadata
-    local charList = {}
+    local removable = {}
+    local total = 0
+
     for charKey, charData in pairs(characters) do
-        local isFavorite = false
-        for fi = 1, #favorites do
-            local favKey = favorites[fi]
-            if favKey == charKey then
-                isFavorite = true
-                break
+        total = total + 1
+        if type(charData) ~= "table" then
+            removable[#removable + 1] = { key = charKey, lastSeen = 0, name = (ns.L and ns.L["UNKNOWN"]) or "Unknown" }
+        else
+            local isFavorite = false
+            for fi = 1, #favorites do
+                if favorites[fi] == charKey then
+                    isFavorite = true
+                    break
+                end
+            end
+            local lastSeen = (type(charData.lastSeen) == "number" and charData.lastSeen > 0) and charData.lastSeen or nil
+            if isFavorite or charData.isTracked ~= false or not lastSeen then
+                -- Protected: favorites, tracked/default rows, unknown-age legacy rows
+            else
+                removable[#removable + 1] = {
+                    key = charKey,
+                    lastSeen = lastSeen,
+                    name = charData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
+                }
             end
         end
-        
-        table.insert(charList, {
-            key = charKey,
-            lastSeen = charData.lastSeen or 0,
-            isFavorite = isFavorite,
-            name = charData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        })
     end
-    
-    -- Sort: favorites first, then by lastSeen (newest first)
-    table.sort(charList, function(a, b)
-        if a.isFavorite ~= b.isFavorite then
-            return a.isFavorite
-        end
-        return a.lastSeen > b.lastSeen
+
+    if total <= limit then
+        return 0
+    end
+
+    table.sort(removable, function(a, b)
+        return (a.lastSeen or 0) < (b.lastSeen or 0)
     end)
     
-    -- Remove excess characters
     local removed = 0
-    for i = limit + 1, #charList do
-        local charKey = charList[i].key
-        local charName = charList[i].name
+    local count = total
+    for i = 1, #removable do
+        if count <= limit then break end
+        local entry = removable[i]
+        local charKey = entry.key
+        local charName = entry.name
         
         -- Clean up currency references for this character (v2.0: Direct DB)
         if self.db.global.currencyData and self.db.global.currencyData.currencies then
@@ -714,6 +732,7 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         -- Remove character
         characters[charKey] = nil
         removed = removed + 1
+        count = count - 1
         
         if IsDebugModeEnabled and IsDebugModeEnabled() then
             self:Print(string.format("Removed old character: %s", charName))

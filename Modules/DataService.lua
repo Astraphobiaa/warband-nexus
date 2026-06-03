@@ -311,6 +311,95 @@ function WarbandNexus:InvalidateGetAllCharactersCache()
     InvalidateGetAllCharactersCache()
 end
 
+--- Trustworthy age since last roster row update; nil when lastSeen is missing or invalid (never treat as infinitely stale).
+---@param char table|nil
+---@param currentTime number|nil
+---@return number|nil ageSeconds
+function WarbandNexus:GetCharacterLastSeenAge(char, currentTime)
+    if type(char) ~= "table" then return nil end
+    local lastSeen = char.lastSeen
+    if type(lastSeen) ~= "number" or lastSeen <= 0 then
+        return nil
+    end
+    local age = (currentTime or time()) - lastSeen
+    if age < 0 then return nil end
+    return age
+end
+
+--- Auto-prune only explicit untracked roster rows (`isTracked == false`) with valid lastSeen past threshold.
+--- Tracked rows (`isTracked` nil/true) and unknown-age rows are never removed here.
+---@param char table|nil
+---@param thresholdSeconds number
+---@param currentTime number|nil
+---@return boolean
+function WarbandNexus:IsCharacterEligibleForStaleRemoval(char, thresholdSeconds, currentTime)
+    if type(char) ~= "table" then return false end
+    if not thresholdSeconds or thresholdSeconds <= 0 then return false end
+    if char.isTracked ~= false then return false end
+    local age = self:GetCharacterLastSeenAge(char, currentTime)
+    if not age then return false end
+    return age > thresholdSeconds
+end
+
+--- Repair missing name/realm/class display fields from legacy Name-Realm storage keys.
+---@param charKey string|nil
+---@param charData table|nil
+---@return boolean repairedAny
+function WarbandNexus:RepairCharacterRowFromKey(charKey, charData)
+    if type(charData) ~= "table" then return false end
+    local repaired = false
+    local U = ns.Utilities
+    if U and U.SplitCharacterKey and charKey and type(charKey) == "string" then
+        if not (issecretvalue and issecretvalue(charKey)) then
+            if (not charData.name or charData.name == "") or (not charData.realm or charData.realm == "") then
+                local n, r = U:SplitCharacterKey(charKey)
+                if n and n ~= "" and (not charData.name or charData.name == "") then
+                    charData.name = n
+                    repaired = true
+                end
+                if r and r ~= "" and (not charData.realm or charData.realm == "") then
+                    charData.realm = r
+                    repaired = true
+                end
+            end
+        end
+    end
+    if (not charData.class or charData.class == "") and charData.classFile and charData.classFile ~= "" then
+        if not (issecretvalue and issecretvalue(charData.classFile)) then
+            charData.class = charData.classFile
+            repaired = true
+        end
+    end
+    return repaired
+end
+
+--- Row lacks minimum identity for roster display after optional repair.
+---@param charKey string|nil
+---@param charData table|nil
+---@return boolean invalid
+function WarbandNexus:IsCharacterRowStructurallyInvalid(charKey, charData)
+    if type(charData) ~= "table" then return true end
+    self:RepairCharacterRowFromKey(charKey, charData)
+    local name, realm = charData.name, charData.realm
+    if issecretvalue then
+        if name and issecretvalue(name) then name = nil end
+        if realm and issecretvalue(realm) then realm = nil end
+    end
+    local hasNameRealm = name and name ~= "" and realm and realm ~= ""
+    local g = charData.guid
+    local hasGuid = type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g))
+    if not hasNameRealm and not hasGuid then return true end
+    local cls, clsFile = charData.class, charData.classFile
+    if issecretvalue then
+        if cls and issecretvalue(cls) then cls = nil end
+        if clsFile and issecretvalue(clsFile) then clsFile = nil end
+    end
+    if (not cls or cls == "") and (not clsFile or clsFile == "") then
+        return not hasGuid
+    end
+    return false
+end
+
 ---Get comprehensive character data from DB
 ---DIRECT DB READ - No sessionCache (API > DB > UI pattern)
 ---@param forceRefresh boolean|nil Deprecated (kept for compatibility)
@@ -3656,7 +3745,8 @@ end
 
 --[[
     Clean up stale character data (90+ days old)
-    Removes only `db.global.characters` rows past threshold; does not remap subsidiaries (see CleanupOrphanedData).
+    Removes only **explicit untracked** `db.global.characters` rows with valid lastSeen past threshold.
+    Tracked rows and rows with missing/legacy lastSeen are preserved; subsidiaries unchanged (see CleanupOrphanedData).
     @param daysThreshold number - Days of inactivity before cleanup (default 90)
     @return number - Count of characters removed
 ]]
@@ -3671,12 +3761,16 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     end
     
     for key, char in pairs(self.db.global.characters) do
-        local lastSeen = char.lastSeen or 0
-        local age = currentTime - lastSeen
-        
-        if age > threshold then
+        if self:IsCharacterEligibleForStaleRemoval(char, threshold, currentTime) then
             self.db.global.characters[key] = nil
             removed = removed + 1
+        end
+    end
+
+    if removed > 0 then
+        self:InvalidateGetAllCharactersCache()
+        if self.SendMessage then
+            self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED)
         end
     end
     

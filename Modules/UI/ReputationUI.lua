@@ -1075,7 +1075,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 title = reputation.name or ((ns.L and ns.L["TAB_REPUTATION"]) or "Reputation"),
                 description = (reputation.description and reputation.description ~= "") and reputation.description or nil,
                 lines = lines,
-                anchor = "ANCHOR_RIGHT"
             })
         end)
         
@@ -1337,7 +1336,6 @@ local function PopulateReputationRow(row, entry)
                 title = reputation.name or ((ns.L and ns.L["TAB_REPUTATION"]) or "Reputation"),
                 description = (reputation.description and reputation.description ~= "") and reputation.description or nil,
                 lines = lines,
-                anchor = "ANCHOR_RIGHT"
             })
         end)
 

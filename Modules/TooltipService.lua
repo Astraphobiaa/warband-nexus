@@ -118,6 +118,9 @@ function TooltipService:Show(anchorFrame, data)
         self:Debug("Invalid tooltip data")
         return
     end
+
+    -- Hide while rebuilding so intermediate LayoutLines passes are never painted.
+    frame:Hide()
     
     -- Clear previous content
     frame:Clear()
@@ -125,6 +128,10 @@ function TooltipService:Show(anchorFrame, data)
     if data.maxWidth and tonumber(data.maxWidth) then
         local mw = tonumber(data.maxWidth)
         frame.fixedWidth = math.max(260, math.min(mw, 820))
+    end
+
+    if frame.BeginBatchLayout then
+        frame:BeginBatchLayout()
     end
 
     -- Render based on type
@@ -138,14 +145,18 @@ function TooltipService:Show(anchorFrame, data)
         self:RenderHybridTooltip(frame, data)
     end
     
-    -- Finalize layout (ensure size is correct even if no body lines were added)
-    frame:LayoutLines()
-    
-    -- Position and show
-    self:PositionTooltip(frame, anchorFrame, data.anchor or "ANCHOR_RIGHT")
-    frame:Show()
+    -- Finalize layout once (batch mode skips per-line LayoutLines during render).
+    if frame.EndBatchLayout then
+        frame:EndBatchLayout()
+    else
+        frame:LayoutLines()
+    end
     
     currentAnchor = anchorFrame
+    
+    -- Position then show (single visible frame at final anchor).
+    self:PositionTooltip(frame, anchorFrame, data.anchor or "ANCHOR_AUTO")
+    frame:Show()
     isVisible = true
     
     -- Fire event (if AceEvent available)
@@ -1357,8 +1368,8 @@ end
 -- ============================================================================
 
 -- Tooltip offset constants
--- Tooltip gap from anchor
 local TOOLTIP_GAP = 8
+local TOOLTIP_SCREEN_MARGIN = 4
 
 local function RectsOverlap(aLeft, aRight, aTop, aBottom, bLeft, bRight, bTop, bBottom, pad)
     pad = pad or 0
@@ -1370,6 +1381,165 @@ local function RectsOverlap(aLeft, aRight, aTop, aBottom, bLeft, bRight, bTop, b
         (aTop + pad) < bBottom or
         (aBottom - pad) > bTop
     )
+end
+
+---@param anchor string|nil ANCHOR_* from UI (AUTO = pick best side from screen position)
+---@return string auto|right|left|top|bottom
+local function NormalizeTooltipAnchorPref(anchor)
+    if not anchor or anchor == "ANCHOR_AUTO" then return "auto" end
+    if anchor == "ANCHOR_LEFT" then return "left" end
+    if anchor == "ANCHOR_TOP" then return "top" end
+    if anchor == "ANCHOR_BOTTOM" then return "bottom" end
+    return "right"
+end
+
+---@param pref string
+---@param aLeft number
+---@param aRight number
+---@param screenW number
+---@return string[] sideOrder
+local function ResolveSideOrder(pref, aLeft, aRight, screenW)
+    if pref == "left" then return { "left", "right" } end
+    if pref == "right" then return { "right", "left" } end
+    if pref == "top" or pref == "bottom" then return { "right", "left" } end
+    local centerX = (aLeft + aRight) * 0.5
+    if centerX < screenW * 0.55 then
+        return { "right", "left" }
+    end
+    return { "left", "right" }
+end
+
+--- Build ranked placement candidates (Blizzard-style: side first with vertical center, then top/bottom).
+---@param pref string
+---@param aLeft number
+---@param aRight number
+---@param screenW number
+---@return table[] { point, relativePoint, x, y, rank }
+local function BuildTooltipPlacementCandidates(pref, aLeft, aRight, screenW)
+    local gap = TOOLTIP_GAP
+    local out = {}
+    local rank = 1
+
+    local function push(point, relativePoint, x, y)
+        out[#out + 1] = { point, relativePoint, x, y, rank = rank }
+        rank = rank + 1
+    end
+
+    local function addSide(side)
+        if side == "right" then
+            push("LEFT", "RIGHT", gap, 0)
+            push("TOPLEFT", "TOPRIGHT", gap, 0)
+            push("BOTTOMLEFT", "BOTTOMRIGHT", gap, 0)
+        else
+            push("RIGHT", "LEFT", -gap, 0)
+            push("TOPRIGHT", "TOPLEFT", -gap, 0)
+            push("BOTTOMRIGHT", "BOTTOMLEFT", -gap, 0)
+        end
+    end
+
+    local function addVertical(vert)
+        if vert == "above" then
+            push("BOTTOMLEFT", "TOPLEFT", 0, gap)
+            push("BOTTOMRIGHT", "TOPRIGHT", 0, gap)
+        else
+            push("TOPLEFT", "BOTTOMLEFT", 0, -gap)
+            push("TOPRIGHT", "BOTTOMRIGHT", 0, -gap)
+        end
+    end
+
+    if pref == "top" then
+        addVertical("above")
+        addVertical("below")
+        for i = 1, #ResolveSideOrder(pref, aLeft, aRight, screenW) do
+            addSide(ResolveSideOrder(pref, aLeft, aRight, screenW)[i])
+        end
+    elseif pref == "bottom" then
+        addVertical("below")
+        addVertical("above")
+        for i = 1, #ResolveSideOrder(pref, aLeft, aRight, screenW) do
+            addSide(ResolveSideOrder(pref, aLeft, aRight, screenW)[i])
+        end
+    else
+        local sides = ResolveSideOrder(pref, aLeft, aRight, screenW)
+        addSide(sides[1])
+        addSide(sides[2])
+        addVertical("above")
+        addVertical("below")
+    end
+
+    return out
+end
+
+--- Score a candidate: prefer low rank, no anchor overlap, minimal off-screen overflow.
+local function ScoreTooltipPlacement(TooltipService, frame, anchorFrame, candidate, screenW, screenH, margin)
+    frame:ClearAllPoints()
+    frame:SetPoint(candidate[1], anchorFrame, candidate[2], candidate[3], candidate[4])
+    local left, right, top, bottom = frame:GetLeft(), frame:GetRight(), frame:GetTop(), frame:GetBottom()
+    if not left or not right or not top or not bottom then
+        return -1e9
+    end
+    local overflow = 0
+    if right > screenW - margin then overflow = overflow + (right - screenW + margin) end
+    if left < margin then overflow = overflow + (margin - left) end
+    if top > screenH - margin then overflow = overflow + (top - screenH + margin) end
+    if bottom < margin then overflow = overflow + (margin - bottom) end
+    local overlap = TooltipService:IsOverlappingAnchor(frame, anchorFrame)
+    local rankBonus = (20 - (candidate.rank or 20)) * 100
+    if overlap then
+        return rankBonus - 1e6 - overflow * 10
+    end
+    return rankBonus - overflow * 40
+end
+
+--- Pick the best on-screen placement for `frame` relative to `anchorFrame` (single pass, no post-show jump).
+---@param anchorPref string|nil ANCHOR_* token
+function TooltipService:ApplyBestTooltipPlacement(frame, anchorFrame, anchorPref, screenW, screenH)
+    if not frame or not anchorFrame then return end
+    screenW = screenW or GetScreenWidth()
+    screenH = screenH or GetScreenHeight()
+    local margin = TOOLTIP_SCREEN_MARGIN
+    local aLeft, aRight = anchorFrame:GetLeft(), anchorFrame:GetRight()
+    local aTop, aBottom = anchorFrame:GetTop(), anchorFrame:GetBottom()
+    if not aLeft or not aRight or not aTop or not aBottom then
+        frame:ClearAllPoints()
+        frame:SetPoint("LEFT", anchorFrame, "RIGHT", TOOLTIP_GAP, 0)
+        self:ClampToScreen(frame, screenW, screenH)
+        return
+    end
+
+    local pref = NormalizeTooltipAnchorPref(anchorPref)
+    local candidates = BuildTooltipPlacementCandidates(pref, aLeft, aRight, screenW)
+    local bestIdx = 1
+    local bestScore = -1e9
+    for i = 1, #candidates do
+        local score = ScoreTooltipPlacement(self, frame, anchorFrame, candidates[i], screenW, screenH, margin)
+        if score > bestScore then
+            bestScore = score
+            bestIdx = i
+        end
+    end
+
+    local best = candidates[bestIdx]
+    frame:ClearAllPoints()
+    frame:SetPoint(best[1], anchorFrame, best[2], best[3], best[4])
+    self:ClampToScreen(frame, screenW, screenH)
+
+    if self:IsOverlappingAnchor(frame, anchorFrame) then
+        for i = 1, #candidates do
+            if i ~= bestIdx then
+                local c = candidates[i]
+                frame:ClearAllPoints()
+                frame:SetPoint(c[1], anchorFrame, c[2], c[3], c[4])
+                self:ClampToScreen(frame, screenW, screenH)
+                if not self:IsOverlappingAnchor(frame, anchorFrame) then
+                    return
+                end
+            end
+        end
+        frame:ClearAllPoints()
+        frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, TOOLTIP_GAP + 12)
+        self:ClampToScreen(frame, screenW, screenH)
+    end
 end
 
 function TooltipService:IsOverlappingAnchor(frame, anchorFrame)
@@ -1388,99 +1558,28 @@ end
 function TooltipService:EnsureNoAnchorOverlap(frame, anchorFrame, anchor, screenW, screenH)
     if not frame or not anchorFrame then return end
     if not self:IsOverlappingAnchor(frame, anchorFrame) then return end
-
-    local gap = TOOLTIP_GAP
-    local candidates
-    if anchor == "ANCHOR_LEFT" then
-        candidates = {
-            {"TOPRIGHT", "TOPLEFT", -gap, 0},
-            {"BOTTOMRIGHT", "BOTTOMLEFT", -gap, 0},
-            {"TOPLEFT", "TOPRIGHT", gap, 0},
-            {"BOTTOMLEFT", "BOTTOMRIGHT", gap, 0},
-            {"BOTTOMLEFT", "TOPLEFT", 0, gap},
-            {"TOPLEFT", "BOTTOMLEFT", 0, -gap},
-        }
-    elseif anchor == "ANCHOR_TOP" then
-        candidates = {
-            {"BOTTOMLEFT", "TOPLEFT", 0, gap},
-            {"BOTTOMRIGHT", "TOPRIGHT", 0, gap},
-            {"TOPLEFT", "BOTTOMLEFT", 0, -gap},
-            {"TOPRIGHT", "BOTTOMRIGHT", 0, -gap},
-            {"TOPLEFT", "TOPRIGHT", gap, 0},
-            {"TOPRIGHT", "TOPLEFT", -gap, 0},
-        }
-    elseif anchor == "ANCHOR_BOTTOM" then
-        candidates = {
-            {"TOPLEFT", "BOTTOMLEFT", 0, -gap},
-            {"TOPRIGHT", "BOTTOMRIGHT", 0, -gap},
-            {"BOTTOMLEFT", "TOPLEFT", 0, gap},
-            {"BOTTOMRIGHT", "TOPRIGHT", 0, gap},
-            {"TOPLEFT", "TOPRIGHT", gap, 0},
-            {"TOPRIGHT", "TOPLEFT", -gap, 0},
-        }
-    else
-        candidates = {
-            {"TOPLEFT", "TOPRIGHT", gap, 0},
-            {"BOTTOMLEFT", "BOTTOMRIGHT", gap, 0},
-            {"TOPRIGHT", "TOPLEFT", -gap, 0},
-            {"BOTTOMRIGHT", "BOTTOMLEFT", -gap, 0},
-            {"BOTTOMLEFT", "TOPLEFT", 0, gap},
-            {"TOPLEFT", "BOTTOMLEFT", 0, -gap},
-        }
-    end
-
-    for i = 1, #candidates do
-        local c = candidates[i]
-        frame:ClearAllPoints()
-        frame:SetPoint(c[1], anchorFrame, c[2], c[3], c[4])
-        self:ClampToScreen(frame, screenW, screenH)
-        if not self:IsOverlappingAnchor(frame, anchorFrame) then
-            return
-        end
-    end
-
-    -- Final fallback: force above/below with larger gap.
-    frame:ClearAllPoints()
-    frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, gap + 12)
-    self:ClampToScreen(frame, screenW, screenH)
-    if self:IsOverlappingAnchor(frame, anchorFrame) then
-        frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -(gap + 12))
-        self:ClampToScreen(frame, screenW, screenH)
-    end
+    self:ApplyBestTooltipPlacement(frame, anchorFrame, anchor, screenW, screenH)
 end
 
 --[[
-    Position tooltip with smart screen-aware placement.
-    Tries the requested anchor first; if it goes off-screen, flips to the opposite side.
+    Position tooltip with smart screen-aware placement (score-based best candidate).
     @param frame Frame - Tooltip frame
     @param anchorFrame Frame - Anchor frame
-    @param anchor string - Preferred anchor point
+    @param anchor string|nil Preferred edge (ANCHOR_AUTO picks dynamically)
 ]]
 function TooltipService:PositionTooltip(frame, anchorFrame, anchor)
-    frame:ClearAllPoints()
-    
-    -- Get screen dimensions
-    local screenW = GetScreenWidth()
-    local screenH = GetScreenHeight()
-    local tooltipW = frame:GetWidth()
-    local tooltipH = frame:GetHeight()
-    
-    -- Get anchor frame bounds
-    local aLeft = anchorFrame:GetLeft() or 0
-    local aRight = anchorFrame:GetRight() or 0
-    local aTop = anchorFrame:GetTop() or 0
-    local aBottom = anchorFrame:GetBottom() or 0
-    
     if anchor == "ANCHOR_CURSOR" then
-        -- Follow cursor
+        frame:ClearAllPoints()
+        local screenW = GetScreenWidth()
+        local screenH = GetScreenHeight()
+        local tooltipW = frame:GetWidth()
+        local tooltipH = frame:GetHeight()
         local scale = frame:GetEffectiveScale()
         local x, y = GetCursorPosition()
         x = x / scale
         y = y / scale
         local finalX = x + 16
         local finalY = y + 4
-        -- Flip if off-screen
         if finalX + tooltipW > screenW then finalX = x - tooltipW - 4 end
         if finalY + tooltipH > screenH then finalY = y - tooltipH - 4 end
         if finalX < 0 then finalX = 4 end
@@ -1488,53 +1587,8 @@ function TooltipService:PositionTooltip(frame, anchorFrame, anchor)
         frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", finalX, finalY)
         return
     end
-    
-    -- Smart placement: try preferred side, then opposite side.
-    -- If neither side has enough room (wide row anchors), fall back to top/bottom
-    -- so tooltip does not get clamped over the hovered row/cursor area.
-    if anchor == "ANCHOR_RIGHT" or anchor == nil then
-        local canRight = (aRight + TOOLTIP_GAP + tooltipW <= screenW)
-        local canLeft = (aLeft - TOOLTIP_GAP - tooltipW >= 0)
-        if canRight then
-            frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_GAP, 0)
-        elseif canLeft then
-            frame:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -TOOLTIP_GAP, 0)
-        elseif aTop + TOOLTIP_GAP + tooltipH <= screenH then
-            frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, TOOLTIP_GAP)
-        else
-            frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
-        end
-    elseif anchor == "ANCHOR_LEFT" then
-        local canLeft = (aLeft - TOOLTIP_GAP - tooltipW >= 0)
-        local canRight = (aRight + TOOLTIP_GAP + tooltipW <= screenW)
-        if canLeft then
-            frame:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -TOOLTIP_GAP, 0)
-        elseif canRight then
-            frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_GAP, 0)
-        elseif aTop + TOOLTIP_GAP + tooltipH <= screenH then
-            frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, TOOLTIP_GAP)
-        else
-            frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
-        end
-    elseif anchor == "ANCHOR_TOP" then
-        if aTop + TOOLTIP_GAP + tooltipH <= screenH then
-            frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, TOOLTIP_GAP)
-        else
-            frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
-        end
-    elseif anchor == "ANCHOR_BOTTOM" then
-        if aBottom - TOOLTIP_GAP - tooltipH >= 0 then
-            frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
-        else
-            frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, TOOLTIP_GAP)
-        end
-    else
-        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_GAP, 0)
-    end
-    
-    -- Final clamp: ensure tooltip stays fully on-screen
-    self:ClampToScreen(frame, screenW, screenH)
-    self:EnsureNoAnchorOverlap(frame, anchorFrame, anchor, screenW, screenH)
+
+    self:ApplyBestTooltipPlacement(frame, anchorFrame, anchor)
 end
 
 --[[
@@ -1614,7 +1668,20 @@ function TooltipService:RegisterSafetyEvents()
         return false
     end
 
-    local ownerAdjustQueued = setmetatable({}, { __mode = "k" })
+    local function OwnerHasScreenBounds(owner)
+        if not owner or type(owner.GetLeft) ~= "function" then return false end
+        local l, r, t, b = owner:GetLeft(), owner:GetRight(), owner:GetTop(), owner:GetBottom()
+        return l ~= nil and r ~= nil and t ~= nil and b ~= nil
+    end
+
+    local function AdjustGameTooltipForOwner(tooltip, owner, anchor)
+        if not tooltip or not owner then return false end
+        if tooltip.GetOwner and tooltip:GetOwner() ~= owner then return false end
+        if not OwnerHasScreenBounds(owner) then return false end
+        local sw, sh = GetScreenWidth(), GetScreenHeight()
+        TooltipService:ApplyBestTooltipPlacement(tooltip, owner, anchor or "ANCHOR_AUTO", sw, sh)
+        return true
+    end
 
     if not self._gameTooltipOwnerHooked and hooksecurefunc and GameTooltip then
         self._gameTooltipOwnerHooked = true
@@ -1623,15 +1690,11 @@ function TooltipService:RegisterSafetyEvents()
             if not owner then return end
             if anchor == "ANCHOR_CURSOR" then return end
             if not IsWarbandNexusOwner(owner) then return end
-            if ownerAdjustQueued[owner] then return end
-            ownerAdjustQueued[owner] = true
+            local anch = anchor or "ANCHOR_AUTO"
+            -- Prefer sync adjust before caller Show() so the tooltip is not painted at a wrong point first.
+            if AdjustGameTooltipForOwner(tooltip, owner, anch) then return end
             SafeDefer(function()
-                ownerAdjustQueued[owner] = nil
-                if not GameTooltip or not GameTooltip:IsShown() then return end
-                if GameTooltip.GetOwner and GameTooltip:GetOwner() ~= owner then return end
-                if type(owner.GetLeft) ~= "function" or type(owner.GetRight) ~= "function" then return end
-                local sw, sh = GetScreenWidth(), GetScreenHeight()
-                TooltipService:EnsureNoAnchorOverlap(GameTooltip, owner, anchor or "ANCHOR_RIGHT", sw, sh)
+                AdjustGameTooltipForOwner(GameTooltip, owner, anch)
             end)
         end)
     end

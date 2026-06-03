@@ -1524,7 +1524,6 @@ local function AttachQuestRowTooltip(frame, quest)
                 type = "custom",
                 title = quest.title or ((ns.L and ns.L["SOURCE_TYPE_QUEST"]) or "Quest"),
                 icon = false,
-                anchor = "ANCHOR_RIGHT",
                 lines = lines,
             })
         else

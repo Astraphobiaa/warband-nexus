@@ -800,7 +800,6 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         icon = planIcon,
         iconIsAtlas = iconIsAtlas,
         title = FormatTextNumbers(displayName),
-        anchor = "ANCHOR_RIGHT",
         lines = lines,
     })
 end

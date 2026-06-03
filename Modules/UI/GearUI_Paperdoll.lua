@@ -1884,7 +1884,6 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
                     itemLink = slotData.itemLink,
                     additionalLines = additionalLines,
                     underTitleLines = underTitleLines,
-                    anchor = "ANCHOR_RIGHT",
                     itemTooltipContext = itemTooltipContext,
                 })
             elseif ns.TooltipService then
@@ -1894,7 +1893,6 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
                     itemLink = slotData.itemLink,
                     additionalLines = additionalLines,
                     underTitleLines = underTitleLines,
-                    anchor = "ANCHOR_RIGHT",
                     itemTooltipContext = itemTooltipContext,
                 })
             end
@@ -1907,7 +1905,6 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
                     lines = {
                         { text = (ns.L and ns.L["GEAR_NO_ITEM_EQUIPPED"]) or "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
                     },
-                    anchor = "ANCHOR_RIGHT",
                 })
             elseif ns.TooltipService then
                 ns.TooltipService:Show(self, {
@@ -1916,7 +1913,6 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
                     lines = {
                         { text = (ns.L and ns.L["GEAR_NO_ITEM_EQUIPPED"]) or "No item equipped in this slot.", color = { 0.65, 0.65, 0.7 } },
                     },
-                    anchor = "ANCHOR_RIGHT",
                 })
             end
         end

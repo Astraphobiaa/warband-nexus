@@ -241,7 +241,6 @@ local RefreshEasyAccessHoverTooltip = function()
         titleAffixPair = tip.titleAffixPair,
         description = tip.description,
         lines = tip.lines,
-        anchor = "ANCHOR_RIGHT",
         maxWidth = 360,
     })
 end
@@ -694,7 +693,6 @@ function M.ShowHoverTooltip(anchor)
             type = "custom",
             title = EAL("CONFIG_VAULT_BUTTON_SECTION", "Easy Access"),
             icon = ICON_TEXTURE,
-            anchor = "ANCHOR_RIGHT",
             maxWidth = 360,
             lines = {
                 {

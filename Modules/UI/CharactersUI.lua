@@ -1945,7 +1945,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 lines = {
                     {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_TOGGLE"]) or "Click to toggle") .. "|r", color = {1, 1, 1}}
                 },
-                anchor = "ANCHOR_RIGHT"
             })
         end)
         
@@ -2445,7 +2444,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     icon = prof.icon,
                     title = profName,
                     lines = lines,
-                    anchor = "ANCHOR_RIGHT"
                 })
             end)
             pFrame:SetScript("OnLeave", function(self)
@@ -2689,7 +2687,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     type = "custom",
                     title = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_TITLE"]) or "Custom header",
                     description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter → New custom header.",
-                    anchor = "ANCHOR_LEFT",
                 })
             end)
             row.headerAssignBtn:SetScript("OnLeave", HideTooltip)
@@ -2832,7 +2829,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                         {type = "spacer"},
                         {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_DELETE"]) or "Click to delete") .. "|r", color = {1, 1, 1}}
                     },
-                    anchor = "ANCHOR_LEFT"
                 })
             end)
             

@@ -1022,6 +1022,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
+L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+
+Replace Achievement Popup schaltet den Meldungsstil sauber um: aktiv nur Warband-Nexus-Erfolgs- und Kriterien-Toasts, deaktiviert nur klassische Blizzard-Banner, ohne doppelte Popups. Vorschau mit /wn testloot earn oder progress.
+
+Verfolgte Charaktere und deine Charakterliste verschwinden nicht mehr nach automatischer Datenbankbereinigung oder laengeren Pausen zwischen Logins. Auto-Optimierung entfernt nur nicht verfolgte Charaktere nach 90+ Tagen Inaktivitaet und meldet das im Chat.
+
+Tooltips waehlen automatisch die beste Bildschirmkante statt beim Hover zwischen zwei Positionen zu springen. Layout laeuft einmal vor dem Anzeigen; GameTooltip-Anker in Warband Nexus nutzen dieselben Platzierungsregeln.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 Im Berufe-Tab werden Twinks wieder angezeigt, wenn du Favoriten oder Charaktere aufklappst, nachdem alle Abschnitte zugeklappt waren. Die Grosse Schatzkammer im PvE-Tab zeigt nach dem Abholen der Belohnungen kein Bereit mehr, und die Belohnungsspalten sind breiter, damit Gegenstandsstufen nicht abgeschnitten werden. Linksklick der Minimap-Schaltflaeche wird unter Einstellungen > Allgemein > Minimap Linksklick festgelegt (z. B. Sammlungen oder Berufe). Rechtsklick auf Optionen oeffnet die Einstellungen, und die Seitenleiste hebt den aktuellen Tab hervor.

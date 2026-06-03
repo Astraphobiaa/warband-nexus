@@ -1022,6 +1022,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Скрывает системные с
 
 
 
+L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+
+Replace Achievement Popup cleanly switches alert style: when enabled you get Warband Nexus achievement and criteria toasts only; when disabled you get classic Blizzard banners only, with no duplicate popups. Try /wn testloot earn or progress.
+
+Отслеживаемые персонажи и ваш список больше не пропадают после автоочистки базы или длительных перерывов между входами. Автооптимизация удаляет только неотслеживаемых персонажей неактивных 90+ дней и сообщает об этом в чате.
+
+Подсказки автоматически выбирают лучший край экрана вместо скачка между двумя позициями при наведении. Разметка выполняется один раз перед показом; якоря GameTooltip внутри Warband Nexus следуют тем же правилам.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 Na vkladke Professionii snova otobrazhayutsya alty pri raskrytii Izbrannogo ili Personazhey posle svertyvaniya vsekh sekciy. Velikoe hranilishche na vkladke PvE bolshe ne pokazyvaet Gotovo posle polucheniya nagrad, a stolbcy nagrad stali shire, chtoby urovni predmetov ne obrezalis. Levyy klik po knopke minimapy nastraivaetsya v Nastroyki > Obshchee > Levyy klik minimapy (naprimer Kollektsii ili Professionii). Pravyy klik po Opciyam otkryvaet nastroyki, a bokovaya panel podsvetchivaet tekushchuyu vkladku.

@@ -1022,6 +1022,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
+L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+
+Replace Achievement Popup alterna o estilo de alertas: ativado, so toasts do Warband Nexus para conquistas e criterios; desativado, so banners classicos da Blizzard, sem popups duplicados. Teste com /wn testloot earn ou progress.
+
+Personagens rastreados e sua lista nao somem mais apos a limpeza automatica do banco ou longas pausas entre logins. A otimizacao automatica so remove personagens nao rastreados inativos ha 90+ dias e avisa no chat quando isso ocorrer.
+
+Tooltips agora escolhem automaticamente a melhor borda na tela em vez de saltar entre duas posicoes ao passar o mouse. O layout roda uma vez antes de exibir; ancoragens GameTooltip dentro do Warband Nexus seguem as mesmas regras.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 A aba Profissoes lista alts novamente ao expandir Favoritos ou Personagens depois que todas as secoes foram recolhidas. A Grande Camara na aba PvE nao mostra mais Pronto apos resgatar recompensas, e as colunas de recompensa ficaram mais largas para os niveis de item nao serem cortados. O clique esquerdo do botao do minimapa e definido em Configuracoes > Geral > Clique esquerdo do minimapa (por exemplo Colecoes ou Profissoes). Clique direito em Opcoes abre Configuracoes, e a barra lateral destaca a aba que voce esta vendo.

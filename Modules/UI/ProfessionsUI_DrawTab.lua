@@ -386,7 +386,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     ApplyProfColumnHeaderLabel(lbl, displayText, true)
                     SetHeaderLabelArrowInset(true)
                     if ShowTooltip and displayText ~= "" then
-                        ShowTooltip(hitBtn, { type = "custom", title = displayText, lines = {}, anchor = "ANCHOR_TOP" })
+                        ShowTooltip(hitBtn, { type = "custom", title = displayText, lines = {} })
                     end
                     if not isSorted then
                         arrow:SetAtlas("hud-MainMenuBar-arrowup")

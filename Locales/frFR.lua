@@ -1022,6 +1022,16 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
+L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+
+Replace Achievement Popup bascule proprement le style d'alertes : active, toasts Warband Nexus pour succes et criteres uniquement ; desactive, bannieres Blizzard classiques uniquement, sans popups en double. Essayez /wn testloot earn ou progress.
+
+Les personnages suivis et votre liste ne disparaissent plus apres le nettoyage automatique de la base ou de longues pauses entre les connexions. L'optimisation auto ne supprime que les personnages non suivis inactifs depuis 90 jours ou plus et vous previent dans le chat.
+
+Les infobulles choisissent automatiquement le meilleur bord a l'ecran au lieu de sauter entre deux positions au survol. La mise en page s'execute une fois avant l'affichage ; les ancres GameTooltip dans Warband Nexus suivent les memes regles.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 L'onglet Metiers liste a nouveau les rerolls lorsque vous depliez Favoris ou Personnages apres avoir replie toutes les sections. La Grande Chambre forte de l'onglet PvE n'affiche plus Pret apres la recuperation des recompenses, et les colonnes de recompenses sont plus larges pour que les niveaux d'objet ne soient pas tronques. Le clic gauche du bouton minimap se regle dans Parametres > General > Clic gauche minimap (par ex. Collectibles ou Metiers). Un clic droit sur Options ouvre les parametres, et le rail lateral met en surbrillance l'onglet affiche.
