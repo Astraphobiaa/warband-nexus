@@ -1020,9 +1020,9 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
-Professions tab lists alts again when you expand Favorites or Characters after every section was collapsed. Great Vault on the PvE tab no longer shows Ready after you claim rewards, and vault reward columns are wider so item levels are not cut off. Minimap button left-click is set under Settings > General > Minimap Left Click (for example Collections or Professions). Right-click Options opens Settings, and the side rail highlights the tab you are viewing.
+Professions tab draws character rows reliably after background loading finishes; expanding Favorites or Characters no longer leaves a blank list while the subtitle still shows profession data counts. Also includes collapsed-section expand without a full tab rebuild, Great Vault no longer showing Ready after claim, wider vault columns, and minimap left-click routing under Settings.
 
 CurseForge: Warband Nexus]=]
 
@@ -1112,7 +1112,7 @@ CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
 
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.5b).
+Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.5c).
 
 CurseForge: Warband Nexus]=]
 

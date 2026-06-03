@@ -29,6 +29,8 @@ end
 
 function WarbandNexus:DrawProfessionsTab(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    -- Invalidate any in-flight chunked row paint from a prior draw (tab switch uses AbortTabOperations too).
+    ProfUI.AbortChunkedRowPaint()
     profEquipResolveCache = {}
     SyncProfessionColumnOrder(WarbandNexus.db and WarbandNexus.db.profile)
 
@@ -523,8 +525,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
 
     local function RelayoutProfessionsSectionStack()
+        if parent._wnProfSectionStackRelayoutLock then return end
+        parent._wnProfSectionStackRelayoutLock = true
         local stack = parent._wnProfSectionStack
-        if not stack or #stack == 0 then return end
+        if not stack or #stack == 0 then
+            parent._wnProfSectionStackRelayoutLock = nil
+            return
+        end
         local w = parent._wnProfStackWidth or stackWidth
         local side = parent._wnProfContentSide or contentSide
         local y = parent._wnProfSectionStackTopY or 0
@@ -569,12 +576,20 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if mfRef and ns.UI_SyncMainTabScrollChrome then
             ns.UI_SyncMainTabScrollChrome(mfRef, parent, y)
         end
+        parent._wnProfSectionStackRelayoutLock = nil
     end
     parent._wnProfRelayoutSectionStack = RelayoutProfessionsSectionStack
 
     local function AcquireSectionContentFrame(anchorHeader)
-        local contentFrame = CreateFrame("Frame", nil, parent)
-        contentFrame:SetHeight(0.1)
+        local hostW = math.max(1, profStackW)
+        local Fact = ns.UI and ns.UI.Factory
+        local contentFrame
+        if Fact and Fact.CreateContainer then
+            contentFrame = Fact:CreateContainer(anchorHeader, hostW, 1, false)
+        else
+            contentFrame = CreateFrame("Frame", nil, anchorHeader)
+            contentFrame:SetSize(hostW, 1)
+        end
         if contentFrame.SetClipsChildren then
             contentFrame:SetClipsChildren(false)
         end
@@ -582,9 +597,35 @@ function WarbandNexus:DrawProfessionsTab(parent)
         contentFrame._wnSectionFullH = 0
         contentFrame:ClearAllPoints()
         contentFrame:SetPoint("TOPLEFT", anchorHeader, "BOTTOMLEFT", 0, 0)
-        contentFrame:SetWidth(profStackW)
+        contentFrame:SetPoint("TOPRIGHT", anchorHeader, "BOTTOMRIGHT", 0, 0)
+        contentFrame:SetHeight(0.1)
         tinsert(parent._wnProfSectionContents, contentFrame)
         return contentFrame
+    end
+
+    --- Queue row paint for every character in the section (Characters-tab parity); expand/collapse is show/hide only.
+    local function QueueProfessionsSectionRows(contentFrame, chars, sectionExpanded)
+        contentFrame._wnProfRunningYOffset = 0
+        contentFrame._wnProfSectionPaintExpanded = sectionExpanded
+        local betweenRows = (GetLayout().betweenRows) or 0
+        local rowStride = ROW_HEIGHT + betweenRows
+        local sectionYOffset = 0
+        if #chars == 0 then
+            contentFrame._wnSectionFullH = 0.1
+            return 0
+        end
+        if not parent._wnProfChunkQueue then
+            parent._wnProfChunkQueue = {}
+        end
+        for chi = 1, #chars do
+            tinsert(parent._wnProfChunkQueue, {
+                char = chars[chi],
+                sectionContent = contentFrame,
+            })
+            sectionYOffset = sectionYOffset + rowStride
+        end
+        contentFrame._wnSectionFullH = math.max(0.1, sectionYOffset)
+        return sectionYOffset
     end
 
     local function AnchorSectionHeader(headerFrame)
@@ -608,10 +649,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if #chars == 0 and not (visualOpts and visualOpts.forceWhenEmpty) then return end
 
         local isExpanded
-        if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
-            local gid = visualOpts.groupId
+        local groupId = visualOpts and visualOpts.groupId
+        if visualOpts and visualOpts.useCharacterGroupExpand and groupId then
             if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
-            isExpanded = self.db.profile.characterGroupExpanded[gid]
+            isExpanded = self.db.profile.characterGroupExpanded[groupId]
             if isExpanded == nil then isExpanded = defaultExpanded end
         else
             isExpanded = self.db.profile.ui[sectionKey]
@@ -621,25 +662,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         local sectionContent
         local headerVisualOpts = BuildCollapsibleSectionOpts({
             bodyGetter = function() return sectionContent end,
-            hideOnCollapse = true,
-            showOnExpand = true,
-            persistFn = function(exp)
-                if visualOpts and visualOpts.useCharacterGroupExpand and visualOpts.groupId then
-                    local gid = visualOpts.groupId
-                    if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
-                    self.db.profile.characterGroupExpanded[gid] = exp
-                    if exp then self.profRecentlyExpanded["cgrp_" .. tostring(gid)] = GetTime() end
-                else
-                    self.db.profile.ui[sectionKey] = exp
-                    if exp then self.profRecentlyExpanded[sectionKey] = GetTime() end
-                end
-                -- Rows are only queued during DrawProfessionsTab for expanded sections; expanding later
-                -- must repaint or the section body stays empty (0.1px placeholder).
-                if exp then
-                    RequestProfessionsTabRepaint()
-                end
-            end,
-        }) or {}
+        }) or { animatedContent = function() return sectionContent end }
         if visualOpts and visualOpts.sectionPreset then
             headerVisualOpts.sectionPreset = visualOpts.sectionPreset
         end
@@ -651,7 +674,27 @@ function WarbandNexus:DrawProfessionsTab(parent)
             headerLabel,
             sectionKey,
             isExpanded,
-            function(_expanded)
+            function(expanded)
+                if visualOpts and visualOpts.useCharacterGroupExpand and groupId then
+                    if not self.db.profile.characterGroupExpanded then self.db.profile.characterGroupExpanded = {} end
+                    self.db.profile.characterGroupExpanded[groupId] = expanded
+                    if expanded then self.profRecentlyExpanded["cgrp_" .. tostring(groupId)] = GetTime() end
+                else
+                    self.db.profile.ui[sectionKey] = expanded
+                    if expanded then self.profRecentlyExpanded[sectionKey] = GetTime() end
+                end
+                if sectionContent then
+                    sectionContent._wnProfSectionPaintExpanded = expanded
+                end
+                if expanded then
+                    if sectionContent then
+                        sectionContent:Show()
+                        sectionContent:SetHeight(math.max(0.1, sectionContent._wnSectionFullH or 0.1))
+                    end
+                elseif sectionContent then
+                    sectionContent:Hide()
+                    sectionContent:SetHeight(0.1)
+                end
                 RelayoutProfessionsSectionStack()
             end,
             headerAtlas,
@@ -691,26 +734,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
 
         sectionContent = AcquireSectionContentFrame(header)
-        sectionContent._wnProfRunningYOffset = 0
-        local sectionYOffset = 0
+        local sectionHeight = QueueProfessionsSectionRows(sectionContent, chars, isExpanded)
         if isExpanded then
-            if not parent._wnProfChunkQueue then
-                parent._wnProfChunkQueue = {}
-            end
-            for chi = 1, #chars do
-                tinsert(parent._wnProfChunkQueue, {
-                    char = chars[chi],
-                    sectionContent = sectionContent,
-                })
-            end
-            sectionContent._wnSectionFullH = 0.1
-            sectionContent:SetHeight(0.1)
             sectionContent:Show()
-            sectionYOffset = 0.1
+            sectionContent:SetHeight(math.max(0.1, sectionContent._wnSectionFullH or 0.1))
         else
-            sectionContent._wnSectionFullH = 0.1
-            sectionContent:SetHeight(0.1)
             sectionContent:Hide()
+            sectionContent:SetHeight(0.1)
         end
 
         if isCustomRosterSection and ns.UI_DecorateCustomHeader then
@@ -749,7 +779,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         previousSectionHeader = header
         previousSectionContent = sectionContent
         previousSectionExpanded = isExpanded == true
-        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT + (isExpanded and sectionYOffset or 0) + SECTION_HEADER_GAP
+        yOffset = yOffset + SECTION_COLLAPSE_HEADER_HEIGHT + (isExpanded and sectionHeight or 0) + SECTION_HEADER_GAP
     end
 
     local sectionFilter = "all"
@@ -817,8 +847,26 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     RelayoutProfessionsSectionStack()
 
+    local function EstimateProfessionsScrollBody()
+        local stack = parent._wnProfSectionStack
+        if not stack or #stack == 0 then
+            return (parent._wnProfSectionStackTopY or yOffset) + 24
+        end
+        local estY = parent._wnProfSectionStackTopY or yOffset
+        for si = 1, #stack do
+            local entry = stack[si]
+            local expanded = SectionExpandedNow(entry.sectionKey, entry.defaultExpanded, entry.visualOpts)
+            local bodyH = 0
+            if expanded and entry.content then
+                bodyH = math.max(0.1, entry.content._wnSectionFullH or entry.content._wnProfRunningYOffset or 0.1)
+            end
+            estY = estY + SECTION_COLLAPSE_HEADER_HEIGHT + bodyH + SECTION_HEADER_GAP
+        end
+        return estY + 24
+    end
+
     if profDataCharCount > 0 and not AnyProfessionsSectionExpanded(self.db.profile, customGroupsOrdered) then
-        local hintY = parent._wnProfSectionStackTopY or yOffset
+        local hintY = yOffset
         local hint = FontManager:CreateFontString(parent, DATA_FONT, "OVERLAY")
         hint:SetPoint("TOPLEFT", contentSide + 12, -hintY - 8)
         hint:SetWidth(stackWidth - 24)
@@ -837,7 +885,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
     parent._wnProfChunkQueue = nil
 
     if chunkQueue and #chunkQueue > 0 then
-        ProfUI.AbortChunkedRowPaint()
+        parent._wnProfChunkPending = true
+        parent._wnProfQueuedRowCount = #chunkQueue
+        parent._wnProfEstimatedScrollBody = EstimateProfessionsScrollBody()
         local drawGen = ProfUI._drawGen or 0
         local useChunked = #chunkQueue >= (ProfUI.CHUNK_MIN_CHARS or 5)
         ProfUI.RunChunkedRowPaint(self, parent, chunkQueue, drawGen, {
@@ -845,12 +895,21 @@ function WarbandNexus:DrawProfessionsTab(parent)
             currentPlayerKey = currentPlayerKey,
             rowIndex = rowIndex,
             syncAll = not useChunked,
-            onComplete = FinishProfessionsTabChrome,
+            onComplete = function()
+                parent._wnProfChunkPending = nil
+                parent._wnProfEstimatedScrollBody = nil
+                parent._wnProfQueuedRowCount = nil
+                FinishProfessionsTabChrome(parent)
+            end,
         })
     else
         FinishProfessionsTabChrome()
     end
 
-    return yOffset + 10
+    local retH = yOffset + 10
+    if parent._wnProfEstimatedScrollBody and parent._wnProfEstimatedScrollBody > retH then
+        retH = parent._wnProfEstimatedScrollBody
+    end
+    return retH
 end
 

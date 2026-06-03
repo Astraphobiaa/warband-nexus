@@ -3075,10 +3075,17 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     end
     -- Emit collectible toast only for a genuinely new completion (store already had .collected skips spam).
     -- AddAlert hook may still run; MarkAsNotified here prevents duplicate toast when priorCollected.
+    -- Toast: Replace mode uses AddAlert replacement; classic mode uses Blizzard AddAlert only.
+    local replaceAlerts = self.db and self.db.profile and self.db.profile.notifications
+        and self.db.profile.notifications.hideBlizzardAchievementAlert
     if priorAchievementCollected then
         MarkAsNotified("achievement", achievementID)
         MarkAsPermanentlyNotified("achievement", achievementID)
         DebugPrint("|cff888888[WN CollectionService]|r Skip achievement toast (already completed in collection store)")
+    elseif replaceAlerts then
+        MarkAsNotified("achievement", achievementID)
+        MarkAsPermanentlyNotified("achievement", achievementID)
+        DebugPrint("|cff888888[WN CollectionService]|r Skip achievement toast (AddAlert replacement handles popup)")
     elseif not WasRecentlyNotified("achievement", achievementID) then
         MarkAsNotified("achievement", achievementID)
         local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)

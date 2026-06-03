@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Portuguese (Brazil)
 ]]
 
@@ -1022,7 +1022,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 A aba Profissoes lista alts novamente ao expandir Favoritos ou Personagens depois que todas as secoes foram recolhidas. A Grande Camara na aba PvE nao mostra mais Pronto apos resgatar recompensas, e as colunas de recompensa ficaram mais largas para os niveis de item nao serem cortados. O clique esquerdo do botao do minimapa e definido em Configuracoes > Geral > Clique esquerdo do minimapa (por exemplo Colecoes ou Profissoes). Clique direito em Opcoes abre Configuracoes, e a barra lateral destaca a aba que voce esta vendo.
 

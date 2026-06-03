@@ -2907,7 +2907,8 @@ function WarbandNexus:CreateMainWindow()
             f.columnHeaderInner:SetPoint("BOTTOMLEFT", f.columnHeaderClip, "BOTTOMLEFT", -(value or 0), 0)
         end
         if f.currentTab == "professions" then
-            if ns.UI_RelayoutProfessionRowWidths and f.scrollChild then
+            if ns.UI_RelayoutProfessionRowWidths and f.scrollChild
+                and not f.scrollChild._wnProfSectionStackRelayoutLock then
                 ns.UI_RelayoutProfessionRowWidths(f.scrollChild)
             end
             if ns.UI_DebounceProfessionRowGradientRefresh then
@@ -4202,6 +4203,9 @@ local function PopulateContentBody(self)
     -- Set scrollChild height based on content + bottom padding
     local CONTENT_BOTTOM_PADDING = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
     local contentBottom = height + CONTENT_BOTTOM_PADDING
+    if tab == "professions" and scrollChild._wnProfEstimatedScrollBody then
+        contentBottom = math.max(contentBottom, scrollChild._wnProfEstimatedScrollBody + CONTENT_BOTTOM_PADDING)
+    end
     -- Gear tab: extend scrollChild to viewport so the gear card can fill downward (see DrawPaperDollCard fill).
     local viewportH = mainFrame.scroll and mainFrame.scroll:GetHeight() or 0
     -- First layout frame: GetHeight() can be 0 while anchors are valid — derive from geometry so scrollChild fills the viewport.

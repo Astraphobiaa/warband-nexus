@@ -2352,6 +2352,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 if WarbandNexus.UpdateChatFilter then
                     WarbandNexus:UpdateChatFilter()
                 end
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                end
             end,
         },
         {
@@ -2421,7 +2424,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             label = (ns.L and ns.L["LOOT_ALERTS"]) or "New Collectible Popup",
             tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Master toggle for collectible popups. Disabling this hides all collectible notifications.",
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
-            set = function(value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.showLootNotifications = value
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                end
+            end,
         },
         {
             key = "lootMount",
@@ -2477,7 +2485,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             label = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT"]) or "Achievement Notifications",
             tooltip = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT_TOOLTIP"]) or "Show notifications when you earn a new achievement.",
             get = function() return WarbandNexus.db.profile.notifications.showAchievementNotifications end,
-            set = function(value) WarbandNexus.db.profile.notifications.showAchievementNotifications = value end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.showAchievementNotifications = value
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                end
+            end,
         },
         {
             key = "showCriteriaProgress",
@@ -2485,7 +2498,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             label = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS"]) or "Criteria Progress Toast",
             tooltip = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS_TOOLTIP"]) or "Show a small notification when an achievement criteria is completed (Progress X/Y and criteria name).",
             get = function() return WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications end,
-            set = function(value) WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications = value end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications = value
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                end
+            end,
         },
     }
 

@@ -1687,12 +1687,6 @@ local function AnyProfessionsSectionExpanded(profile, customGroupsOrdered)
     return false
 end
 
-local function RequestProfessionsTabRepaint()
-    if WarbandNexus and WarbandNexus.schedulePopulateContent then
-        WarbandNexus.schedulePopulateContent(true)
-    end
-end
-
 --- First primary profession slot for OpenTradeSkill (skillLine / skillLineID from CollectProfessionData).
 local function GetFirstPrimaryProfessionSlot(char)
     if not char or not char.professions then return nil end
@@ -1922,49 +1916,73 @@ local function RefreshVisibleProfessionRowGradients(scrollChild)
 end
 ns.UI_RefreshProfessionRowGradients = RefreshVisibleProfessionRowGradients
 
+--- Re-anchor section bodies under headers without inflating collapsed sections (stretch helper used full _wnSectionFullH).
+local function RelayoutProfessionSectionBodies(scrollChild)
+    local sections = scrollChild and scrollChild._wnProfSectionContents
+    if not sections then return end
+    for si = 1, #sections do
+        local cf = sections[si]
+        local hdr = cf and cf._wnAnchorHeader
+        if cf and hdr then
+            cf:ClearAllPoints()
+            cf:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, 0)
+            cf:SetPoint("TOPRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
+            local paintH = 0.1
+            if cf._wnProfSectionPaintExpanded ~= false then
+                paintH = math.max(0.1, cf._wnSectionFullH or cf._wnProfRunningYOffset or 0.1)
+                cf:Show()
+            else
+                cf:Hide()
+            end
+            cf:SetHeight(paintH)
+        end
+    end
+end
+
 local function RelayoutProfessionRowWidths(scrollChild)
     if not scrollChild then return end
     local bodyW = scrollChild._wnProfStackWidth or scrollChild._wnProfBodyWidth
     local rows = scrollChild._wnProfNestedRows
-    if not rows then return end
-    local rowH = ROW_HEIGHT
-    local yKey = "_wnYOffset"
-    for ri = 1, #rows do
-        local row = rows[ri]
-        if row and row:IsShown() then
-            local rowParent = row:GetParent()
-            if rowParent then
-                local yOff = row[yKey] or 0
-                row:ClearAllPoints()
-                if rowH and row.SetHeight then
-                    row:SetHeight(rowH)
-                end
-                row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -yOff)
-                if bodyW and bodyW > 0 then
-                    row:SetWidth(bodyW)
-                    row._wnRowPaintWidth = bodyW
-                elseif rowParent.GetWidth then
-                    local pw = rowParent:GetWidth()
-                    if pw and pw > 0 then
-                        row:SetWidth(pw)
-                        row._wnRowPaintWidth = pw
+    if rows then
+        local rowH = ROW_HEIGHT
+        local yKey = "_wnYOffset"
+        for ri = 1, #rows do
+            local row = rows[ri]
+            if row and row:IsShown() then
+                local rowParent = row:GetParent()
+                if rowParent then
+                    local yOff = row[yKey] or 0
+                    row:ClearAllPoints()
+                    if rowH and row.SetHeight then
+                        row:SetHeight(rowH)
                     end
-                end
-                if row.SetClipsChildren then
-                    row:SetClipsChildren(false)
-                end
-                if row.bg and row.bg.SetAllPoints then
-                    row.bg:SetAllPoints()
-                end
-                if row._wnGradientRefresh then
-                    pcall(row._wnGradientRefresh)
+                    row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -yOff)
+                    if bodyW and bodyW > 0 then
+                        row:SetWidth(bodyW)
+                        row._wnRowPaintWidth = bodyW
+                    elseif rowParent.GetWidth then
+                        local pw = rowParent:GetWidth()
+                        if pw and pw > 0 then
+                            row:SetWidth(pw)
+                            row._wnRowPaintWidth = pw
+                        end
+                    end
+                    if row.SetClipsChildren then
+                        row:SetClipsChildren(false)
+                    end
+                    if row.bg and row.bg.SetAllPoints then
+                        row.bg:SetAllPoints()
+                    end
+                    if row._wnGradientRefresh then
+                        pcall(row._wnGradientRefresh)
+                    end
                 end
             end
         end
     end
-    if scrollChild._wnProfSectionContents and ns.UI_RelayoutStretchSectionBodies then
-        ns.UI_RelayoutStretchSectionBodies(scrollChild, ProfessionStretchRelayoutOpts(scrollChild))
-    end
+    RelayoutProfessionSectionBodies(scrollChild)
+    -- Do NOT call _wnProfRelayoutSectionStack here: UI_SyncMainTabScrollChrome -> SetHorizontalScroll
+    -- re-enters UI_RelayoutProfessionRowWidths and causes stack overflow (UI.lua h-scroll hook).
 end
 ns.UI_RelayoutProfessionRowWidths = RelayoutProfessionRowWidths
 
@@ -3173,6 +3191,8 @@ do
     c.PROF_COLUMN_HEADER_FONT = PROF_COLUMN_HEADER_FONT
     c.PROF_HEADER_ICON_BY_COL = PROF_HEADER_ICON_BY_COL
     c.PaintProfessionCompactColumnHeader = PaintProfessionCompactColumnHeader
+    c.profColHeaderHits = profColHeaderHits
+    c.profColHeaderLabels = profColHeaderLabels
     c.ProfColumnPickerHide = ProfColumnPickerHide
     c.ProfColumnPickerPopulateMenu = ProfColumnPickerPopulateMenu
     c.ProfColumnPickerPositionMenu = ProfColumnPickerPositionMenu
@@ -3181,11 +3201,11 @@ do
     c.ProfessionStackBodyWidth = ProfessionStackBodyWidth
     c.ReattachProfessionColumnHeaderBar = ReattachProfessionColumnHeaderBar
     c.RefreshVisibleProfessionRowGradients = RefreshVisibleProfessionRowGradients
+    c.ROW_HEIGHT = ROW_HEIGHT
     c.RegisterProfessionEvents = RegisterProfessionEvents
     c.RelayoutProfessionRowWidths = RelayoutProfessionRowWidths
     c.ReleaseAllPooledChildren = ReleaseAllPooledChildren
     c.ReleaseProfessionRow = ReleaseProfessionRow
-    c.RequestProfessionsTabRepaint = RequestProfessionsTabRepaint
     c.ResolveProfessionColumnHeaderInnerWidth = ResolveProfessionColumnHeaderInnerWidth
     c.SIDE_MARGIN = SIDE_MARGIN
     c.ShowTooltip = ShowTooltip
@@ -3227,12 +3247,14 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
                 touched[sc] = true
                 local h = math.max(0.1, sc._wnProfRunningYOffset or 0.1)
                 sc._wnSectionFullH = h
-                sc:SetHeight(h)
-                sc:Show()
+                if sc._wnProfSectionPaintExpanded ~= false then
+                    sc:SetHeight(h)
+                    sc:Show()
+                else
+                    sc:SetHeight(0.1)
+                    sc:Hide()
+                end
             end
-        end
-        if parent._wnProfRelayoutSectionStack then
-            parent._wnProfRelayoutSectionStack()
         end
     end
 
@@ -3259,11 +3281,18 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
                     end
                 else
                     sectionContent._wnProfRunningYOffset = sectionYOffset + rowStride
+                    if IsDebugModeEnabled and IsDebugModeEnabled() then
+                        local who = (char and char.name) or "?"
+                        DebugPrint("|cffff0000[ProfessionsUI] DrawProfessionRow failed for " .. tostring(who) .. ": " .. tostring(nextYOffset) .. "|r")
+                    end
                 end
             end
         end
         idx = limit + 1
         relayoutTouched(fromIdx, limit)
+        if parent._wnProfRelayoutSectionStack then
+            parent._wnProfRelayoutSectionStack()
+        end
 
         if idx > #queue then
             if ctx.onComplete then ctx.onComplete() end

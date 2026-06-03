@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Italian
 ]]
 
@@ -1022,7 +1022,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 La scheda Professioni elenca di nuovo gli alt quando espandi Preferiti o Personaggi dopo aver chiuso tutte le sezioni. La Grande Camera nella scheda PvE non mostra piu Pronto dopo aver riscosso le ricompense, e le colonne delle ricompense sono piu larghe cosi i livelli oggetto non vengono tagliati. Il clic sinistro del pulsante minimappa si imposta in Impostazioni > Generale > Clic sinistro minimappa (ad esempio Collezioni o Professioni). Clic destro su Opzioni apre Impostazioni, e la barra laterale evidenzia la scheda visualizzata.
 

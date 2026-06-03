@@ -2312,17 +2312,157 @@ local function ShortenCriteriaDisplayName(criteriaString)
     return (s ~= "" and s) or criteriaString
 end
 
+---@return table|nil
+local function GetNotificationProfileDb()
+    return WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+end
+
+---Replace Achievement Popup ON => WN alerts; OFF => Blizzard only (no WN achievement/criteria toasts).
+local function ShouldUseWnAchievementAlert()
+    local db = GetNotificationProfileDb()
+    return db and db.hideBlizzardAchievementAlert == true
+end
+
+---WN criteria progress toast (only when replace mode + criteria toggle).
+local function ShouldUseWnCriteriaProgress()
+    local db = GetNotificationProfileDb()
+    return db and db.hideBlizzardAchievementAlert == true and db.showCriteriaProgressNotifications ~= false
+end
+
+local wnAddAlertWrappers = setmetatable({}, { __mode = "k" })
+
+local function MarkWnAddAlertWrapper(fn)
+    if type(fn) == "function" then
+        wnAddAlertWrappers[fn] = true
+    end
+end
+
+local function IsWnAddAlertWrapper(fn)
+    return type(fn) == "function" and wnAddAlertWrappers[fn] == true
+end
+
+local function CaptureBlizzardAddAlertHandlers(addon)
+    if Utilities and Utilities.SafeLoadAddOn then
+        Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+    end
+    if AchievementAlertSystem and type(AchievementAlertSystem.AddAlert) == "function" then
+        local fn = AchievementAlertSystem.AddAlert
+        if not IsWnAddAlertWrapper(fn) then
+            addon._blizzAchievementAddAlert = fn
+        end
+    end
+    if CriteriaAlertSystem and type(CriteriaAlertSystem.AddAlert) == "function" then
+        local fn = CriteriaAlertSystem.AddAlert
+        if not IsWnAddAlertWrapper(fn) then
+            addon._blizzCriteriaAddAlert = fn
+        end
+    end
+end
+
+local function InstallBlizzardAlertFrameHideHooks()
+    local function hideIfReplace(frame)
+        if frame and frame.Hide and ShouldUseWnAchievementAlert() then
+            frame:Hide()
+        end
+    end
+    local max = _G.MAX_ACHIEVEMENT_ALERTS or 4
+    for i = 1, max do
+        for _, prefix in ipairs({ "AchievementAlertFrame", "CriteriaAlertFrame" }) do
+            local f = _G[prefix .. i]
+            if f and not f._wnAlertHideHooked then
+                f:HookScript("OnShow", function(self) hideIfReplace(self) end)
+                f._wnAlertHideHooked = true
+            end
+        end
+    end
+    local cf = _G.CriteriaAlertFrame
+    if cf and not cf._wnAlertHideHooked then
+        cf:HookScript("OnShow", function(self) hideIfReplace(self) end)
+        cf._wnAlertHideHooked = true
+    end
+end
+
+---@param orig function Blizzard AddAlert
+local function BuildAchievementAddAlertReplacement(orig)
+    return function(sys, a1, a2, ...)
+        if not ShouldUseWnAchievementAlert() then
+            return orig(sys, a1, a2, ...)
+        end
+        if type(a1) ~= "number" then
+            return orig(sys, a1, a2, ...)
+        end
+        local hasExtra = (a2 ~= nil) or (select("#", ...) > 0)
+        if not hasExtra then
+            if WarbandNexus and WarbandNexus.ShowAchievementNotification then
+                WarbandNexus:ShowAchievementNotification(a1)
+            end
+            return
+        end
+        local arg1, arg2 = a1, a2
+        local rest = { ... }
+        C_Timer.After(0, function()
+            if not ShouldUseWnAchievementAlert() then
+                pcall(orig, sys, arg1, arg2, unpack(rest))
+                return
+            end
+            local _, _, _, completed = GetAchievementInfo(arg1)
+            if completed then
+                if WarbandNexus and WarbandNexus.ShowAchievementNotification then
+                    WarbandNexus:ShowAchievementNotification(arg1)
+                end
+                return
+            end
+            if ShouldUseWnCriteriaProgress() and WarbandNexus and WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage(E.SHOW_CRITERIA_PROGRESS, { achievementID = arg1, criteriaIndex = arg2 })
+                return
+            end
+            pcall(orig, sys, arg1, arg2, unpack(rest))
+        end)
+    end
+end
+
+---@param orig function Blizzard CriteriaAlertSystem.AddAlert
+local function BuildCriteriaAddAlertReplacement(orig)
+    return function(sys, a1, a2, ...)
+        if not ShouldUseWnAchievementAlert() then
+            return orig(sys, a1, a2, ...)
+        end
+        if type(a1) ~= "number" then
+            return orig(sys, a1, a2, ...)
+        end
+        local arg1, arg2 = a1, a2
+        local rest = { ... }
+        C_Timer.After(0, function()
+            if not ShouldUseWnAchievementAlert() then
+                pcall(orig, sys, arg1, arg2, unpack(rest))
+                return
+            end
+            local _, _, _, completed = GetAchievementInfo(arg1)
+            if completed then
+                if WarbandNexus and WarbandNexus.ShowAchievementNotification then
+                    WarbandNexus:ShowAchievementNotification(arg1)
+                end
+                return
+            end
+            if ShouldUseWnCriteriaProgress() and WarbandNexus and WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage(E.SHOW_CRITERIA_PROGRESS, { achievementID = arg1, criteriaIndex = arg2 })
+                return
+            end
+            pcall(orig, sys, arg1, arg2, unpack(rest))
+        end)
+    end
+end
+
 ---Show toast for progressive achievements (e.g. Treasures of X, multi-step): one step completed = "Achievement Progress" title + criteria name only.
----Gated by showCriteriaProgressNotifications.
+---Only when Replace Achievement Popup is ON and Criteria Progress Toast is enabled.
 ---@param achievementID number
 ---@param criteriaIndex number|nil Optional; if nil we still show progress for the achievement.
 function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
     if not achievementID or type(achievementID) ~= "number" then return end
     local db = self.db and self.db.profile and self.db.profile.notifications
-    if not db or not db.showCriteriaProgressNotifications then return end
-    -- Dependency rule: criteria progress is an achievement sub-notification.
-    -- If achievement or collectible popups are disabled, skip progress toasts too.
-    if not db.showAchievementNotifications or not db.showLootNotifications then return end
+    if not db or not db.hideBlizzardAchievementAlert then return end
+    if not db.showCriteriaProgressNotifications then return end
+    if db.enabled == false then return end
     if issecretvalue and issecretvalue(achievementID) then return end
 
     -- Do not show progress toast when achievement is already completed (avoids overlap with "Achievement Earned" / collectible toast)
@@ -2396,133 +2536,88 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
     })
 end
 
----Install frame-level suppression: when "Replace Achievement Popup" is on, Blizzard alert
----frames are hidden as soon as they Show(), so we never see their toast.
-local function shouldSuppressBlizzardAlert()
-    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
-    return db and db.hideBlizzardAchievementAlert
-end
-
----Only hide Blizzard *criteria* toast frames (used when we suppress criteria progress).
----Full achievement path is left as-is; do not hide AchievementAlertFrame here.
-local function HideVisibleBlizzardCriteriaFramesOnly()
-    if not shouldSuppressBlizzardAlert() then return end
-    local max = _G.MAX_ACHIEVEMENT_ALERTS or 4
-    for i = 1, max do
-        local f = _G["CriteriaAlertFrame" .. i]
-        if f and f.IsShown and f:IsShown() and f.Hide then pcall(function() f:Hide() end) end
-    end
-    local cf = _G.CriteriaAlertFrame
-    if cf and cf.IsShown and cf:IsShown() and cf.Hide then pcall(function() cf:Hide() end) end
-end
-
----Only hook Criteria* frames so we hide Blizzard criteria toasts; leave Achievement* frames untouched.
-local function InstallBlizzardAlertFrameHooks()
-    local function hideIfSuppress(frame)
-        if frame and frame.Hide and shouldSuppressBlizzardAlert() then
-            frame:Hide()
-        end
-    end
-    local max = _G.MAX_ACHIEVEMENT_ALERTS or 4
-    for i = 1, max do
-        local f = _G["CriteriaAlertFrame" .. i]
-        if f and not f._wnHideHooked then
-            f:HookScript("OnShow", function(self) hideIfSuppress(self) end)
-            f._wnHideHooked = true
-        end
-    end
-    local cf = _G.CriteriaAlertFrame
-    if cf and not cf._wnHideHooked then
-        cf:HookScript("OnShow", function(self) hideIfSuppress(self) end)
-        cf._wnHideHooked = true
-    end
-end
-
----Suppress or restore Blizzard's default achievement alert popup
----When "Replace Achievement Popup" is enabled: suppress Blizzard, show only our notification.
----1) AddAlert hook so we show ours and don't call Blizzard. 2) Frame OnShow hook so if
----Blizzard's frame still appears it is hidden immediately.
+---Swap or restore Blizzard AddAlert based on Replace Achievement Popup (live db read on each call).
 function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-    local shouldHide = self.db and self.db.profile and self.db.profile.notifications
-        and self.db.profile.notifications.hideBlizzardAchievementAlert
+    CaptureBlizzardAddAlertHandlers(self)
+    local useWn = ShouldUseWnAchievementAlert()
 
-    -- 1) AddAlert hook: we show our notification and skip Blizzard
-    if AchievementAlertSystem then
-        if not self._origAchievementAddAlert then
-            self._origAchievementAddAlert = AchievementAlertSystem.AddAlert
-        end
-        local orig = self._origAchievementAddAlert
-        if shouldHide then
-            AchievementAlertSystem.AddAlert = function(sys, a1, a2, ...)
-                local hasExtra = (a2 ~= nil) or (select("#", ...) > 0)
-                -- Full achievement: show ours when "Replace" is on; if we don't show (e.g. notifications off), fallback to Blizzard next frame
-                if not hasExtra and type(a1) == "number" then
-                    local arg1, arg2 = a1, a2
-                    if WarbandNexus.ShowAchievementNotification then
-                        WarbandNexus:ShowAchievementNotification(a1)
-                    end
-                    C_Timer.After(0, function()
-                        if not ns.achievementNotificationShown then
-                            pcall(orig, sys, arg1, arg2)
-                        end
-                        ns.achievementNotificationShown = nil
-                    end)
-                    return
-                end
-                -- Progressive achievement: defer one frame so client has updated completed state; then show full achievement only if completed, else progress.
-                if hasExtra and type(a1) == "number" then
-                    local aid, a2copy = a1, a2
-                    C_Timer.After(0, function()
-                        local _, _, _, completed = GetAchievementInfo(aid)
-                        if completed and WarbandNexus.ShowAchievementNotification then
-                            WarbandNexus:ShowAchievementNotification(aid)
-                        else
-                            WarbandNexus:SendMessage(E.SHOW_CRITERIA_PROGRESS, { achievementID = aid, criteriaIndex = a2copy })
-                        end
-                        HideVisibleBlizzardCriteriaFramesOnly()
-                    end)
-                    return
-                end
-                return orig(sys, a1, a2, ...)
-            end
+    if AchievementAlertSystem and type(self._blizzAchievementAddAlert) == "function" then
+        if useWn then
+            local wrapper = BuildAchievementAddAlertReplacement(self._blizzAchievementAddAlert)
+            MarkWnAddAlertWrapper(wrapper)
+            AchievementAlertSystem.AddAlert = wrapper
         else
-            AchievementAlertSystem.AddAlert = orig
+            AchievementAlertSystem.AddAlert = self._blizzAchievementAddAlert
         end
     end
 
-    if CriteriaAlertSystem and CriteriaAlertSystem.AddAlert then
-        if not self._origCriteriaAddAlert then
-            self._origCriteriaAddAlert = CriteriaAlertSystem.AddAlert
-        end
-        local origCrit = self._origCriteriaAddAlert
-        if shouldHide then
-            CriteriaAlertSystem.AddAlert = function(sys, a1, a2, ...)
-                if type(a1) == "number" then
-                    local aid, a2copy = a1, a2
-                    C_Timer.After(0, function()
-                        local _, _, _, completed = GetAchievementInfo(aid)
-                        if completed and WarbandNexus.ShowAchievementNotification then
-                            WarbandNexus:ShowAchievementNotification(aid)
-                        else
-                            WarbandNexus:SendMessage(E.SHOW_CRITERIA_PROGRESS, { achievementID = aid, criteriaIndex = a2copy })
-                        end
-                        HideVisibleBlizzardCriteriaFramesOnly()
-                    end)
-                    return
-                end
-                return origCrit(sys, a1, a2, ...)
-            end
+    if CriteriaAlertSystem and type(self._blizzCriteriaAddAlert) == "function" then
+        if useWn then
+            local wrapperCrit = BuildCriteriaAddAlertReplacement(self._blizzCriteriaAddAlert)
+            MarkWnAddAlertWrapper(wrapperCrit)
+            CriteriaAlertSystem.AddAlert = wrapperCrit
         else
-            CriteriaAlertSystem.AddAlert = origCrit
+            CriteriaAlertSystem.AddAlert = self._blizzCriteriaAddAlert
         end
     end
 
-    -- 2) Frame-level: hook OnShow so frames hide when shown; retry so we catch lazily-created frames
-    if shouldHide then
-        InstallBlizzardAlertFrameHooks()
-        C_Timer.After(0.5, InstallBlizzardAlertFrameHooks)
-        C_Timer.After(2, InstallBlizzardAlertFrameHooks)
+    if useWn then
+        InstallBlizzardAlertFrameHideHooks()
+        C_Timer.After(0.5, InstallBlizzardAlertFrameHideHooks)
+        C_Timer.After(2, InstallBlizzardAlertFrameHideHooks)
     end
+end
+
+---Ensure achievement UI + current Replace toggle is applied (test + live share one AddAlert path).
+local function TestLootEnsureAchievementAlertUI(addon)
+    if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
+        Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+    end
+    if addon and addon.ApplyBlizzardAchievementAlertSuppression then
+        addon:ApplyBlizzardAchievementAlertSuppression()
+    end
+end
+
+local function TestLootPrintAchievementReplaceMode(addon)
+    local useWn = addon.db and addon.db.profile and addon.db.profile.notifications
+        and addon.db.profile.notifications.hideBlizzardAchievementAlert
+    if useWn then
+        addon:Print("|cffffcc00Mode:|r Replace ON — WN alert only")
+    else
+        addon:Print("|cffffcc00Mode:|r Replace OFF — Blizzard alert only")
+    end
+end
+
+---@return boolean ok
+---@return string|nil err
+local function TestLootFireAchievementAddAlert(addon, achievementID, criteriaIndex)
+    TestLootEnsureAchievementAlertUI(addon)
+    if not AchievementAlertSystem or not AchievementAlertSystem.AddAlert then
+        addon:Print("|cffff8800AchievementAlertSystem not loaded. Try /reload.|r")
+        return false, "no system"
+    end
+    if criteriaIndex ~= nil then
+        return pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID, criteriaIndex)
+    end
+    return pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID)
+end
+
+local function TestLootResolveAchievementWithCriteria(preferredID)
+    local tryIDs = { 6, 7, 8, 11, 12, 60981, 40752 }
+    if preferredID then
+        tryIDs = { preferredID, 6, 7, 8, 11, 12, 60981, 40752 }
+    end
+    for ti = 1, #tryIDs do
+        local fid = tryIDs[ti]
+        local name = select(2, GetAchievementInfo(fid))
+        if name and name ~= "" then
+            local ok, n = pcall(GetAchievementNumCriteria, fid)
+            if ok and n and n > 0 then
+                return fid, n
+            end
+        end
+    end
+    return nil, 0
 end
 
 ---Blizzard hooked progressive achievement / criteria AddAlert routes here (never calls ShowCriteriaProgressNotification directly — avoids stacking duplicate Alerts with WN_REMINDER lane).
@@ -2530,6 +2625,7 @@ end
 ---@param payload table|nil { achievementID, criteriaIndex }
 function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
     if not payload then return end
+    if not ShouldUseWnCriteriaProgress() then return end
     local aid = payload.achievementID
     local crit = payload.criteriaIndex
     -- aid guarded inside ShowCriteriaProgressNotification; criterion may be numeric index OR string criteria text from Blizzard
@@ -2664,25 +2760,37 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
-    if not self.db.profile.notifications.showLootNotifications then
-        NotifyDebug("|cffff6600BLOCKED: showLootNotifications = false|r")
+    if not self.db.profile.notifications.enabled then
+        NotifyDebug("|cffff6600BLOCKED: notifications.enabled = false|r")
         return
     end
-    
-    -- Per-type toggle check
-    local typeToggleMap = {
-        mount = "showMountNotifications",
-        pet = "showPetNotifications",
-        toy = "showToyNotifications",
-        transmog = "showTransmogNotifications",
-        illusion = "showIllusionNotifications",
-        title = "showTitleNotifications",
-        achievement = "showAchievementNotifications",
-    }
-    local toggleKey = typeToggleMap[data.type]
-    if toggleKey and self.db.profile.notifications[toggleKey] == false then
-        NotifyDebug("|cffff6600BLOCKED: %s = false|r", toggleKey)
+
+    -- Replace Achievement Popup: OFF => Blizzard classic only (never WN achievement toast).
+    if data.type == "achievement" and not self.db.profile.notifications.hideBlizzardAchievementAlert then
+        NotifyDebug("|cffff6600BLOCKED: achievement (Blizzard classic mode)|r")
         return
+    end
+
+    -- Loot master + per-type toggles (achievement in replace mode uses hideBlizzardAchievementAlert only).
+    if data.type ~= "achievement" then
+        if not self.db.profile.notifications.showLootNotifications then
+            NotifyDebug("|cffff6600BLOCKED: showLootNotifications = false|r")
+            return
+        end
+
+        local typeToggleMap = {
+            mount = "showMountNotifications",
+            pet = "showPetNotifications",
+            toy = "showToyNotifications",
+            transmog = "showTransmogNotifications",
+            illusion = "showIllusionNotifications",
+            title = "showTitleNotifications",
+        }
+        local toggleKey = typeToggleMap[data.type]
+        if toggleKey and self.db.profile.notifications[toggleKey] == false then
+            NotifyDebug("|cffff6600BLOCKED: %s = false|r", toggleKey)
+            return
+        end
     end
 
     -- TryCounter fires on loot; CollectionService fires on NEW_MOUNT / journal — same mount, two toasts.
@@ -2696,15 +2804,6 @@ function WarbandNexus:OnCollectibleObtained(event, data)
             return
         end
     end
-    
-    -- Achievement notifications: only show ours when we're hiding Blizzard's
-    -- If hideBlizzardAchievementAlert is false (unchecked), Blizzard shows its own popup,
-    -- so we skip ours to avoid duplicate notifications
-    if data.type == "achievement" and not self.db.profile.notifications.hideBlizzardAchievementAlert then
-        NotifyDebug("|cffff6600BLOCKED: achievement (Blizzard popup enabled)|r")
-        return
-    end
-    
     -- Build try count message for mount/pet/toy/illusion/item (the "BAM" moment — farmed drop obtained)
     -- When TryCounter sends preResetTryCount, we always show the celebratory message and flash.
     local tryMessage = nil
@@ -2933,53 +3032,45 @@ function WarbandNexus:TestLootNotification(type, id, step)
     
     -- Show help message
     if type == "help" or type == "?" then
-        self:Print("|cff00ccff=== Notification Test (simulate events) ===|r")
-        self:Print("|cff44ff44/wn testloot earn [id]|r - Simulate achievement EARNED (only WN notification, no Blizzard)")
-        self:Print("|cff44ff44/wn testloot progress [id] [step]|r - Simulate PROGRESSIVE step (Progress X/Y toast, e.g. Treasures of X)")
-        self:Print("|cff44ff44/wn testloot both [id] [step]|r - Show BOTH progress toast + full notification (for UI testing)")
-        self:Print("|cff888888  /wn testloot earn 6|r  Level 10 earned")
-        self:Print("|cff888888  /wn testloot progress|r  or |cff888888progress 6|r  (auto-picks ID with criteria)")
-        self:Print("|cff888888  /wn testloot both|r  or |cff888888both 6|r  (both toasts)")
-        self:Print("|cffffcc00/wn testloot mount [id]|r - Mount | |cffffcc00pet|r | |cffffcc00toy|r | |cffffcc00achievement [id]|r | |cffffcc00plan [id]|r")
-        self:Print("|cffffcc00/wn testloot blizzard [id]|r - Legacy: trigger Blizzard AddAlert (may show both)")
+        self:Print("|cff00ccff=== Achievement alert test (same path as in-game) ===|r")
+        self:Print("|cff44ff44/wn testloot earn [id]|r - Full achievement earned (AddAlert)")
+        self:Print("|cff44ff44/wn testloot progress [id] [step]|r - Criteria step complete (AddAlert)")
+        self:Print("|cff888888Replace ON => WN only. Replace OFF => Blizzard only.|r")
+        self:Print("|cffffcc00/wn testloot mount|r | |cffffcc00pet|r | |cffffcc00toy|r | |cffffcc00plan|r | |cffffcc00all|r")
         return
     end
 
-    -- Simulate "achievement earned" — only our notification, no Blizzard. Shows exactly what addon shows when you earn one.
+    -- Aliases (same AddAlert pipeline as earn / progress)
+    if type == "blizzard" or type == "achievement" then
+        type = "earn"
+    elseif type == "suppress" or type == "criteria" then
+        type = "progress"
+    elseif type == "both" then
+        self:Print("|cffff8800Use |cff44ff44/wn testloot earn|r and |cff44ff44/wn testloot progress|r separately (one alert system).|r")
+        return
+    end
+
+    -- Full achievement earned — single AddAlert(achievementID); respects Replace toggle.
     if type == "earn" then
         local achievementID = tonumber(id) or 6
-        local ok, name, _, _, _, _, _, _, _, icon = pcall(GetAchievementInfo, achievementID)
-        if not ok or not name then
+        local okInfo, name = pcall(GetAchievementInfo, achievementID)
+        if not okInfo or not name then
             self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
             return
         end
-        self:Print("|cff00ccffSimulating achievement earned (ID " .. achievementID .. ") — only WN notification:|r " .. tostring(name))
-        self:Notify("achievement", name, icon)
+        TestLootPrintAchievementReplaceMode(self)
+        self:Print("|cff00ccffAchievement earned test:|r " .. tostring(name) .. " (ID " .. achievementID .. ")")
+        local ok, err = TestLootFireAchievementAddAlert(self, achievementID, nil)
+        if not ok then
+            self:Print("|cffff8800AddAlert failed: " .. tostring(err) .. "|r")
+        end
         return
     end
 
-    -- Resolve achievement ID for progress/both: try preferredID first, then fallback list (40752 may not exist on all clients).
-    local function resolveAchievementWithCriteria(preferredID)
-        local tryIDs = { 6, 7, 8, 11, 12, 60981, 40752 }
-        if preferredID then
-            tryIDs = { preferredID, 6, 7, 8, 11, 12, 60981, 40752 }
-        end
-        for _, fid in ipairs(tryIDs) do
-            local name = select(2, GetAchievementInfo(fid))
-            if name and name ~= "" then
-                local ok, n = pcall(GetAchievementNumCriteria, fid)
-                if ok and n and n > 0 then
-                    return fid, n
-                end
-            end
-        end
-        return nil, 0
-    end
-
-    -- Simulate "progressive achievement step" (e.g. Treasures of X — one step done). Only our Progress X/Y toast.
+    -- Criteria / progress step — single AddAlert(achievementID, criteriaIndex).
     if type == "progress" then
         local preferredID = tonumber(id)
-        local achievementID, numCriteria = resolveAchievementWithCriteria(preferredID)
+        local achievementID, numCriteria = TestLootResolveAchievementWithCriteria(preferredID)
         if not achievementID then
             self:Print("|cffff0000No valid achievement with criteria found. Try: /wn testloot progress 6|r")
             return
@@ -2987,169 +3078,16 @@ function WarbandNexus:TestLootNotification(type, id, step)
         local criteriaIndex = math.min(tonumber(step) or 1, numCriteria)
         if criteriaIndex < 1 then criteriaIndex = 1 end
         local _, name = GetAchievementInfo(achievementID)
-        self:Print("|cff00ccffSimulating progressive step (ID " .. achievementID .. ", step " .. criteriaIndex .. "/" .. numCriteria .. ") — only WN toast:|r " .. tostring(name))
-        self:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
+        TestLootPrintAchievementReplaceMode(self)
+        self:Print("|cff00ccffCriteria progress test:|r " .. tostring(name) .. " (ID " .. achievementID .. ", step " .. criteriaIndex .. "/" .. numCriteria .. ")")
+        local ok, err = TestLootFireAchievementAddAlert(self, achievementID, criteriaIndex)
+        if not ok then
+            self:Print("|cffff8800AddAlert failed: " .. tostring(err) .. "|r")
+        end
         return
     end
 
-    -- Show both progress toast and full achievement notification (stacked, for UI testing)
-    if type == "both" then
-        local preferredID = tonumber(id)
-        local achievementID, numCriteria = resolveAchievementWithCriteria(preferredID)
-        if not achievementID then
-            self:Print("|cffff0000No valid achievement with criteria found. Try: /wn testloot both 6|r")
-            return
-        end
-        local criteriaIndex = math.min(tonumber(step) or 1, numCriteria)
-        if criteriaIndex < 1 then criteriaIndex = 1 end
-        local _, name, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
-        self:Print("|cff00ccffShowing BOTH (progress + full) for UI test:|r " .. tostring(name) .. " (ID " .. achievementID .. ")")
-        self:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
-        C_Timer.After(0.4, function()
-            if WarbandNexus and WarbandNexus.Notify then
-                WarbandNexus:Notify("achievement", name, icon, { achievementID = achievementID })
-            end
-        end)
-        return
-    end
-
-    -- Legacy: Test Blizzard achievement popup vs our notification
-    -- Loads Blizzard_AchievementUI first so AddAlert works without errors
-    if type == "blizzard" then
-        local achievementID = id or 6  -- Default: Level 10
-        local _, achievementName, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
-        if not achievementName then
-            self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
-            return
-        end
-        
-        -- Ensure Blizzard_AchievementUI is loaded (provides AchievementShield_OnLoad etc.)
-        -- TAINT GUARD: LoadAddOn is a protected action; cannot call during combat
-        if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
-            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-        end
-        
-        -- Check suppression state
-        local isSuppressed = self.db and self.db.profile and self.db.profile.notifications
-            and self.db.profile.notifications.hideBlizzardAchievementAlert
-        
-        self:Print("|cff00ccff=== Blizzard Achievement Alert Test ===|r")
-        self:Print("|cffffcc00Achievement:|r " .. achievementName .. " (ID: " .. achievementID .. ")")
-        self:Print("|cffffcc00Blizzard Alert Suppressed:|r " .. (isSuppressed and "|cff44ff44YES|r" or "|cffff4444NO|r"))
-        
-        -- Trigger Blizzard's popup through the CURRENT AddAlert function (our hook swallows it when suppressed)
-        if AchievementAlertSystem and AchievementAlertSystem.AddAlert then
-            local success, err = pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID)
-            if success then
-                if isSuppressed then
-                    self:Print("|cff888888Blizzard popup suppressed - you should NOT see it|r")
-                    -- Test-only: some builds show Blizzard frame via another path; hide it so test shows only ours
-                    local function hideBlizzardFramesForTest()
-                        for i = 1, (_G.MAX_ACHIEVEMENT_ALERTS or 4) do
-                            local f = _G["AchievementAlertFrame" .. i]
-                            if f and f.Hide then pcall(function() f:Hide() end) end
-                        end
-                    end
-                    C_Timer.After(0, hideBlizzardFramesForTest)
-                    C_Timer.After(0.1, hideBlizzardFramesForTest)
-                    C_Timer.After(0.35, hideBlizzardFramesForTest)
-                else
-                    self:Print("|cff00ff00Blizzard popup triggered - you should see it at top of screen|r")
-                end
-            else
-                self:Print("|cffff8800Blizzard alert error: " .. tostring(err) .. "|r")
-            end
-        end
-        
-        -- Show OUR notification
-        C_Timer.After(0.3, function()
-            self:Notify("achievement", achievementName, achIcon)
-        end)
-        
-        self:Print("|cff888888Toggle: Settings > Notifications > Replace Achievement Popup (Hide Blizzard)|r")
-        return
-    end
-    
-    -- Test suppression: trigger Blizzard's *criteria progress* alert; with "Replace Popup" ON only our toast should appear
-    if type == "suppress" then
-        local achievementID = id or 40752
-        local ok, n = pcall(GetAchievementNumCriteria, achievementID)
-        local numCriteria = (ok and n and n > 0) and n or nil
-        if not numCriteria then
-            local fallbackAchIds = { 6, 7, 8, 60981 }
-            for fi = 1, #fallbackAchIds do
-                local fid = fallbackAchIds[fi]
-                local ok2, n2 = pcall(GetAchievementNumCriteria, fid)
-                if ok2 and n2 and n2 > 0 then achievementID = fid; numCriteria = n2; break end
-            end
-        end
-        if not numCriteria or numCriteria == 0 then
-            self:Print("|cffff0000No achievement with criteria. Try: /wn testloot suppress 40752|r")
-            return
-        end
-        local _, achievementName = GetAchievementInfo(achievementID)
-        if not achievementName then
-            self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
-            return
-        end
-        if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
-            Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-        end
-        local isSuppressed = self.db and self.db.profile and self.db.profile.notifications
-            and self.db.profile.notifications.hideBlizzardAchievementAlert
-        self:Print("|cff00ccff=== Suppression Test (Criteria Progress) ===|r")
-        self:Print("|cffffcc00Achievement:|r " .. achievementName .. " (ID: " .. achievementID .. ", criteria 1/" .. numCriteria .. ")")
-        self:Print("|cffffcc00Replace Achievement Popup:|r " .. (isSuppressed and "|cff44ff44ON - only WN toast should appear|r" or "|cffff4444OFF - Blizzard toast may appear too|r"))
-        -- Trigger Blizzard's criteria progress AddAlert(achievementID, criteriaIndex); our hook shows our toast and suppresses theirs when setting is ON
-        if AchievementAlertSystem and AchievementAlertSystem.AddAlert then
-            pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID, 1)
-        end
-        self:Print("|cff888888Toggle: Settings > Notifications > Replace Achievement Popup|r")
-        return
-    end
-    
-    -- Test criteria progress toast (small Progress X/Y + criteria name); always shows for testing
-    if type == "criteria" then
-        local achievementID = id or 40752  -- Default: The Loremaster (has many criteria)
-        local ok, n = pcall(GetAchievementNumCriteria, achievementID)
-        local numCriteria = (ok and n and n > 0) and n or nil
-        if not numCriteria then
-            local tryAchIds = { 6, 7, 8, 60981, 11, 12 }
-            for ti = 1, #tryAchIds do
-                local fid = tryAchIds[ti]
-                local ok2, n2 = pcall(GetAchievementNumCriteria, fid)
-                if ok2 and n2 and n2 > 0 then achievementID = fid; numCriteria = n2; break end
-            end
-        end
-        if not numCriteria or numCriteria == 0 then
-            self:Print("|cffff0000No achievement with criteria. Try: /wn testloot criteria 40752|r")
-            return
-        end
-        local completed = 0
-        local criteriaName = ""
-        for i = 1, numCriteria do
-            local name, _, comp = GetAchievementCriteriaInfo(achievementID, i)
-            if comp then completed = completed + 1 end
-            if i == 1 and name and name ~= "" then criteriaName = name end
-        end
-        if criteriaName == "" then criteriaName = (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
-        local _, _, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
-        local progressStr = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", completed, numCriteria)
-        self:ShowModalNotification({
-            compact = true,
-            progressAnchor = true,
-            icon = achIcon or CATEGORY_ICONS.achievement,
-            criteriaTitle = progressStr,
-            itemName = criteriaName,
-            achievementID = achievementID,
-            playSound = false,
-            autoDismiss = 3,
-        })
-        self:Print("|cff00ff00Criteria progress toast shown (achievement ID: " .. achievementID .. ", " .. progressStr .. ")|r")
-        return
-    end
-    
-    -- Test weekly vault slot progress toast (2/2, 4/4 style)
+    local delay = 0
     if type == "vaultprogress" then
         local db = self.db and self.db.profile and self.db.profile.notifications
         if not db or not db.showCriteriaProgressNotifications then
@@ -3168,9 +3106,7 @@ function WarbandNexus:TestLootNotification(type, id, step)
         self:Print("|cff00ff00Vault progress toast shown (4/4 " .. cat.name .. ")|r")
         return
     end
-    
-    local delay = 0
-    
+
     -- Show mount test (Real mount ID: 460 = Grand Black War Mammoth)
     if type == "mount" or type == "all" then
         C_Timer.After(delay, function()
@@ -3226,24 +3162,20 @@ function WarbandNexus:TestLootNotification(type, id, step)
         delay = delay + 0.5
     end
     
-    -- Show achievement test
-    if type == "achievement" or type == "all" then
+    -- Achievement in "all" bundle uses the same AddAlert path as earn.
+    if type == "all" then
         C_Timer.After(delay, function()
+            local addon = WarbandNexus or self
             local achievementID = id or 60981
-            local _, achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
+            TestLootFireAchievementAddAlert(addon, achievementID, nil)
+            local _, achievementName = GetAchievementInfo(achievementID)
             if achievementName then
-                self:Notify("achievement", achievementName, icon)
-                self:Print("|cff00ff00Achievement notification: " .. achievementName .. " (ID: " .. achievementID .. ")|r")
-            else
-                self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
+                addon:Print("|cff00ff00Achievement alert (AddAlert): " .. achievementName .. " (ID: " .. achievementID .. ")|r")
             end
         end)
-        if type == "achievement" then
-            return
-        end
         delay = delay + 0.5
     end
-    
+
     -- Show illusion test
     if type == "illusion" or type == "all" then
         C_Timer.After(delay, function()

@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - French
 ]]
 
@@ -1022,7 +1022,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 L'onglet Metiers liste a nouveau les rerolls lorsque vous depliez Favoris ou Personnages apres avoir replie toutes les sections. La Grande Chambre forte de l'onglet PvE n'affiche plus Pret apres la recuperation des recompenses, et les colonnes de recompenses sont plus larges pour que les niveaux d'objet ne soient pas tronques. Le clic gauche du bouton minimap se regle dans Parametres > General > Clic gauche minimap (par ex. Collectibles ou Metiers). Un clic droit sur Options ouvre les parametres, et le rail lateral met en surbrillance l'onglet affiche.
 

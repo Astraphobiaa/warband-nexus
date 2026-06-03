@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Russian
 ]]
 
@@ -1022,7 +1022,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Скрывает системные с
 
 
 
-L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 Na vkladke Professionii snova otobrazhayutsya alty pri raskrytii Izbrannogo ili Personazhey posle svertyvaniya vsekh sekciy. Velikoe hranilishche na vkladke PvE bolshe ne pokazyvaet Gotovo posle polucheniya nagrad, a stolbcy nagrad stali shire, chtoby urovni predmetov ne obrezalis. Levyy klik po knopke minimapy nastraivaetsya v Nastroyki > Obshchee > Levyy klik minimapy (naprimer Kollektsii ili Professionii). Pravyy klik po Opciyam otkryvaet nastroyki, a bokovaya panel podsvetchivaet tekushchuyu vkladku.
 

@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Spanish (Mexico)
 ]]
 
@@ -1022,7 +1022,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 La pestana Profesiones vuelve a listar alts al expandir Favoritos o Personajes despues de haber colapsado todas las secciones. La Gran Camara en la pestana PvE ya no muestra Listo tras reclamar recompensas, y las columnas de recompensas son mas anchas para que los niveles de objeto no se corten. El clic izquierdo del boton del minimapa se configura en Configuracion > General > Clic izquierdo del minimapa (por ejemplo Colecciones o Profesiones). Clic derecho en Opciones abre Configuracion, y la barra lateral resalta la pestana que estas viendo.
 

@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - German
 ]]
 
@@ -1022,7 +1022,7 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V315"] = [=[v3.1.5b (2026-06-01)
+L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
 
 Im Berufe-Tab werden Twinks wieder angezeigt, wenn du Favoriten oder Charaktere aufklappst, nachdem alle Abschnitte zugeklappt waren. Die Grosse Schatzkammer im PvE-Tab zeigt nach dem Abholen der Belohnungen kein Bereit mehr, und die Belohnungsspalten sind breiter, damit Gegenstandsstufen nicht abgeschnitten werden. Linksklick der Minimap-Schaltflaeche wird unter Einstellungen > Allgemein > Minimap Linksklick festgelegt (z. B. Sammlungen oder Berufe). Rechtsklick auf Optionen oeffnet die Einstellungen, und die Seitenleiste hebt den aktuellen Tab hervor.
 
