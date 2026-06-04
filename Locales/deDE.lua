@@ -1022,13 +1022,9 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
-Replace Achievement Popup schaltet den Meldungsstil sauber um: aktiv nur Warband-Nexus-Erfolgs- und Kriterien-Toasts, deaktiviert nur klassische Blizzard-Banner, ohne doppelte Popups. Vorschau mit /wn testloot earn oder progress.
-
-Verfolgte Charaktere und deine Charakterliste verschwinden nicht mehr nach automatischer Datenbankbereinigung oder laengeren Pausen zwischen Logins. Auto-Optimierung entfernt nur nicht verfolgte Charaktere nach 90+ Tagen Inaktivitaet und meldet das im Chat.
-
-Tooltips waehlen automatisch die beste Bildschirmkante statt beim Hover zwischen zwei Positionen zu springen. Layout laeuft einmal vor dem Anzeigen; GameTooltip-Anker in Warband Nexus nutzen dieselben Platzierungsregeln.
+Waehrungs-, PvE-Tresor-, Wappen-, Truhen- und Try-Counter-Fortschritt auf Twinks bleibt nach einem vollstaendigen Neustart erhalten, statt sich zurueckzusetzen, wenn du alle Charaktere ausloggst. Automatische Bereinigung und Schluessel-Updates loeschen diesen gespeicherten Fortschritt nicht mehr versehentlich.
 
 CurseForge: Warband Nexus]=]
 

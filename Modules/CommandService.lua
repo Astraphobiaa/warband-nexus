@@ -179,11 +179,9 @@ function CommandService:HandleSlashCommand(addon, input)
         for i = 1, #characters do
             local char = characters[i]
             local keystone = nil
-            if addon.db and addon.db.global and addon.db.global.pveProgress then
-                local pve = addon.db.global.pveProgress[char.key]
-                if pve and pve.mythicPlus and pve.mythicPlus.keystone then
-                    keystone = pve.mythicPlus.keystone
-                end
+            if addon.GetPvEData then
+                local pve = addon:GetPvEData(char.key)
+                keystone = pve and pve.keystone
             end
             
             -- Fallback to v1 data if missing in v2

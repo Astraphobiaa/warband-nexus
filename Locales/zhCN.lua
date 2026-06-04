@@ -1020,13 +1020,9 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
-Replace Achievement Popup 现在可干净切换提醒样式：开启时仅显示 Warband Nexus 成就与标准进度 toast；关闭时仅显示暴雪经典横幅，不会重复弹出。可用 /wn testloot earn 或 progress 预览。
-
-已跟踪角色和角色列表在自动数据库清理或长时间未登录后不再消失。自动优化仅移除 90 天以上未活动的未跟踪角色，并在移除时于聊天中提示。
-
-工具提示会在悬停时自动选择屏幕上最佳边缘，而不会在两个位置之间跳动。内容布局在显示前只运行一次；Warband Nexus 内的 GameTooltip 锚点遵循相同的放置规则。
+小号上的货币、PvE 宝库、纹章、宝库箱和尝试计数进度在完全重启游戏后仍会保留，不会在全部角色下线后重置。自动清理和角色键更新不再误删这些已保存的进度。
 
 CurseForge: Warband Nexus]=]
 

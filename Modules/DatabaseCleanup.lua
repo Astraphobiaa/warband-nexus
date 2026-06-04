@@ -10,6 +10,24 @@ local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local WarbandNexus = ns.WarbandNexus
 
+--- True when itemStorage has at least one bucket for charKey (direct or alias).
+---@param storage table|nil
+---@param charKey string
+---@return boolean
+local function CharHasMigratedItemStorage(storage, charKey)
+    if type(storage) ~= "table" or not charKey or charKey == "" then return false end
+    local bucket = storage[charKey]
+    if type(bucket) == "table" and next(bucket) then return true end
+    if ns.VaultCharKeysMatch then
+        for k, v in pairs(storage) do
+            if type(v) == "table" and next(v) and ns.VaultCharKeysMatch(k, charKey) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 --============================================================================
 -- DATABASE CLEANUP
 --============================================================================
@@ -118,11 +136,24 @@ function WarbandNexus:CleanupDatabase()
         end
     end
     
-    -- Step 3: Clean deprecated storage structures
+    -- Step 3: Clean deprecated storage structures (only when v2 itemStorage holds the data)
     if self.db.global.personalBanks then
-        -- Old compressed storage (deprecated)
-        self.db.global.personalBanks = nil
-        cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
+        local pb = self.db.global.personalBanks
+        local storage = self.db.global.itemStorage
+        local removedPb = 0
+        for charKey in pairs(pb) do
+            if CharHasMigratedItemStorage(storage, charKey) then
+                pb[charKey] = nil
+                removedPb = removedPb + 1
+            end
+        end
+        if removedPb > 0 then
+            cleaned.deprecatedStorage = cleaned.deprecatedStorage + removedPb
+            DebugPrint("|cffff8000[WN Cleanup]|r Pruned " .. removedPb .. " legacy personalBanks row(s) with itemStorage")
+        end
+        if not next(pb) then
+            self.db.global.personalBanks = nil
+        end
     end
     
     if self.db.global.warbandBankV2 then

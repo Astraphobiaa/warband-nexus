@@ -1022,13 +1022,9 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
-Replace Achievement Popup cambia lo stile degli avvisi: attivo solo toast Warband Nexus per achievement e criteri; disattivo solo banner Blizzard classici, senza popup duplicati. Prova con /wn testloot earn o progress.
-
-I personaggi tracciati e la tua lista non scompaiono piu dopo la pulizia automatica del database o lunghe pause tra un accesso e l'altro. L'ottimizzazione automatica rimuove solo personaggi non tracciati inattivi da 90+ giorni e te lo segnala in chat.
-
-I tooltip scelgono automaticamente il bordo migliore sullo schermo invece di saltare tra due posizioni al passaggio del mouse. Il layout viene eseguito una volta prima della visualizzazione; gli ancoraggi GameTooltip in Warband Nexus seguono le stesse regole.
+Valute, vault PvE, creste, forzieri e contatore tentativi sugli alt restano dopo un riavvio completo del gioco invece di azzerarsi quando esci da tutti i personaggi. La pulizia automatica e gli aggiornamenti delle chiavi non eliminano piu per errore quel progresso salvato.
 
 CurseForge: Warband Nexus]=]
 

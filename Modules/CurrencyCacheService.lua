@@ -1626,25 +1626,6 @@ function WarbandNexus:GetCurrencyProgressEarnedFromAPI(currencyID)
     return progress
 end
 
----Get all cached currency data for a character (lean format from SV).
----Returns { [currencyID] = quantity } map.
----@param charKey string|nil Character key (defaults to current character)
----@return table { [currencyID] = quantity }
-function WarbandNexus:GetAllCurrencyData(charKey)
-    if not charKey then
-        charKey = CurrencySubsidiaryKey(nil)
-    else
-        charKey = CurrencySubsidiaryKey(charKey)
-    end
-    
-    if not charKey then return {} end
-    
-    local db = GetDB()
-    if not db or not db.currencies then return {} end
-    
-    return db.currencies[charKey] or {}
-end
-
 ---Normalize any character key representation to a comparable form.
 ---@param key string|nil
 ---@return string
@@ -1672,8 +1653,34 @@ local function ResolveCharCurrencyBucket(allCurrencies, rawCharKey, canonicalKey
         if NormalizeCharKey(existingKey) == targetCanon or NormalizeCharKey(existingKey) == targetRaw then
             return bucket
         end
+        if ns.VaultCharKeysMatch and rawCharKey and ns.VaultCharKeysMatch(existingKey, rawCharKey) then
+            return bucket
+        end
+        if ns.VaultCharKeysMatch and canonicalKey and ns.VaultCharKeysMatch(existingKey, canonicalKey) then
+            return bucket
+        end
     end
     return nil
+end
+
+---Get all cached currency data for a character (lean format from SV).
+---Returns { [currencyID] = quantity } map.
+---@param charKey string|nil Character key (defaults to current character)
+---@return table { [currencyID] = quantity }
+function WarbandNexus:GetAllCurrencyData(charKey)
+    if not charKey then
+        charKey = CurrencySubsidiaryKey(nil)
+    else
+        charKey = CurrencySubsidiaryKey(charKey)
+    end
+    
+    if not charKey then return {} end
+    
+    local db = GetDB()
+    if not db or not db.currencies then return {} end
+    
+    local bucket = ResolveCharCurrencyBucket(db.currencies, charKey, charKey)
+    return bucket or {}
 end
 
 ---Rebuild merged currency UI read model from AceDB (`db.currencies` / `db.totalEarned`) plus session metadata.

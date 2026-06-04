@@ -1022,13 +1022,9 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
-Replace Achievement Popup bascule proprement le style d'alertes : active, toasts Warband Nexus pour succes et criteres uniquement ; desactive, bannieres Blizzard classiques uniquement, sans popups en double. Essayez /wn testloot earn ou progress.
-
-Les personnages suivis et votre liste ne disparaissent plus apres le nettoyage automatique de la base ou de longues pauses entre les connexions. L'optimisation auto ne supprime que les personnages non suivis inactifs depuis 90 jours ou plus et vous previent dans le chat.
-
-Les infobulles choisissent automatiquement le meilleur bord a l'ecran au lieu de sauter entre deux positions au survol. La mise en page s'execute une fois avant l'affichage ; les ancres GameTooltip dans Warband Nexus suivent les memes regles.
+Les monnaies, la chambre forte PvE, les blasons, les coffres et le compteur de tentatives sur les alts survivent a un redemarrage complet du jeu au lieu de se reinitialiser quand vous deconnectez tous les personnages. Le nettoyage automatique et les mises a jour de cles ne suppriment plus ce progres enregistre par erreur.
 
 CurseForge: Warband Nexus]=]
 

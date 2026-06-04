@@ -759,6 +759,34 @@ function WarbandNexus:InitializePvECache()
         end
     end
     
+    self:LiftLegacyPveProgressToCache()
+end
+
+--- One-time import of db.global.pveProgress rows into pveCache (authoritative store).
+---@return number lifted Row count processed
+function WarbandNexus:LiftLegacyPveProgressToCache()
+    if not self.db or not self.db.global then return 0 end
+    if self.db.global._pveProgressLiftV1 then return 0 end
+
+    local legacy = self.db.global.pveProgress
+    if type(legacy) ~= "table" or not next(legacy) then
+        self.db.global._pveProgressLiftV1 = true
+        return 0
+    end
+
+    local lifted = 0
+    for charKey, progress in pairs(legacy) do
+        if type(progress) == "table" and self.ImportLegacyPvEData then
+            self:ImportLegacyPvEData(charKey, progress)
+            lifted = lifted + 1
+        end
+    end
+
+    self.db.global._pveProgressLiftV1 = true
+    if lifted > 0 and DebugPrint then
+        DebugPrint(string.format("|cff9370DB[PvECache]|r Lifted %d legacy pveProgress row(s) into pveCache", lifted))
+    end
+    return lifted
 end
 
 ---Save PvE cache to DB
@@ -1770,8 +1798,15 @@ function WarbandNexus:GetPvEData(charKey)
     
     if charKey then
         charKey = CanonicalizePvEKey(charKey)
-        local bestRuns = dbCache.mythicPlus and dbCache.mythicPlus.bestRuns and dbCache.mythicPlus.bestRuns[charKey] or {}
-        local dungeonScoresData = dbCache.mythicPlus and dbCache.mythicPlus.dungeonScores and dbCache.mythicPlus.dungeonScores[charKey]
+        local Lookup = ns.LookupPvECacheSubtable
+        local function PveSub(sub)
+            if not sub then return nil end
+            if Lookup then return Lookup(sub, charKey) end
+            return sub[charKey]
+        end
+
+        local bestRuns = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.bestRuns) or {}
+        local dungeonScoresData = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.dungeonScores)
         
         -- Get overall score from dungeonScores (primary) or bestRuns (fallback)
         local overallScore = 0
@@ -1822,8 +1857,8 @@ function WarbandNexus:GetPvEData(charKey)
         end
         
         -- Hydrate lockouts: raids vs dungeons (Instance Tracker merges both; PvE raid panel uses raids only).
-        local rawRaids = dbCache.lockouts and dbCache.lockouts.raids and dbCache.lockouts.raids[charKey] or {}
-        local rawDungeons = dbCache.lockouts and dbCache.lockouts.dungeons and dbCache.lockouts.dungeons[charKey] or {}
+        local rawRaids = PveSub(dbCache.lockouts and dbCache.lockouts.raids) or {}
+        local rawDungeons = PveSub(dbCache.lockouts and dbCache.lockouts.dungeons) or {}
         local raidLockouts = HydrateSavedLockoutsForChar(rawRaids, true)
         local dungeonLockouts = HydrateSavedLockoutsForChar(rawDungeons, false)
         local combinedLockouts = {}
@@ -1832,12 +1867,11 @@ function WarbandNexus:GetPvEData(charKey)
         table.sort(combinedLockouts, CmpNameSort)
 
         -- Return data for specific character
-        local vaultActivities = dbCache.greatVault and dbCache.greatVault.activities
-            and (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(dbCache.greatVault.activities, charKey)
-                or dbCache.greatVault.activities[charKey])
-        local keystoneData = dbCache.mythicPlus and dbCache.mythicPlus.keystones
-            and (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(dbCache.mythicPlus.keystones, charKey)
-                or dbCache.mythicPlus.keystones[charKey])
+        local vaultActivities = PveSub(dbCache.greatVault and dbCache.greatVault.activities)
+        local keystoneData = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.keystones)
+        local worldBosses = PveSub(dbCache.lockouts and dbCache.lockouts.worldBosses)
+        local delveCharacter = PveSub(dbCache.delves and dbCache.delves.characters) or {}
+        local runHistory = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.runHistory) or {}
         local returnData = {
             keystone = keystoneData,
             bestRuns = bestRuns,
@@ -1849,12 +1883,12 @@ function WarbandNexus:GetPvEData(charKey)
             raidLockouts = raidLockouts,
             dungeonLockouts = dungeonLockouts,
             lockouts = combinedLockouts,  -- Raids + dungeons for DataService / debug
-            worldBosses = dbCache.lockouts and dbCache.lockouts.worldBosses and dbCache.lockouts.worldBosses[charKey],
+            worldBosses = worldBosses,
             -- Delves data (companion is account-wide, per-char quest status)
             delves = {
                 companion = dbCache.delves and dbCache.delves.companion or {},
                 season = dbCache.delves and dbCache.delves.season or 0,
-                character = dbCache.delves and dbCache.delves.characters and dbCache.delves.characters[charKey] or {},
+                character = delveCharacter,
             },
             -- Add legacy-compatible mythicPlus structure
             mythicPlus = {
@@ -1862,7 +1896,7 @@ function WarbandNexus:GetPvEData(charKey)
                 dungeons = dungeons,
                 bestRuns = bestRuns,
                 dungeonScores = dungeonScoresData,
-                runHistory = dbCache.mythicPlus and dbCache.mythicPlus.runHistory and dbCache.mythicPlus.runHistory[charKey] or {},
+                runHistory = runHistory,
             },
         }
         

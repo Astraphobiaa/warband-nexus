@@ -1022,13 +1022,9 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Скрывает системные с
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
-Replace Achievement Popup cleanly switches alert style: when enabled you get Warband Nexus achievement and criteria toasts only; when disabled you get classic Blizzard banners only, with no duplicate popups. Try /wn testloot earn or progress.
-
-Отслеживаемые персонажи и ваш список больше не пропадают после автоочистки базы или длительных перерывов между входами. Автооптимизация удаляет только неотслеживаемых персонажей неактивных 90+ дней и сообщает об этом в чате.
-
-Подсказки автоматически выбирают лучший край экрана вместо скачка между двумя позициями при наведении. Разметка выполняется один раз перед показом; якоря GameTooltip внутри Warband Nexus следуют тем же правилам.
+Valyuty, PvE-hranilishche, grify, sunduki i schetchik popytok na altah sohranyayutsya posle polnogo perezapuska igry, a ne sbrosyvayutsya, kogda vy vykhodite so vseh personazhey. Avtoochistka i obnovleniya klyuchey bolshe ne udalyayut etot sohranyonnyy progress po oshibke.
 
 CurseForge: Warband Nexus]=]
 

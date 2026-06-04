@@ -1020,13 +1020,9 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6b (2026-06-03)
+L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
-Replace Achievement Popup now switches alert style cleanly: when enabled you get Warband Nexus achievement and criteria toasts only; when disabled you get Blizzard classic banners only, with no duplicate popups. Try /wn testloot earn or progress to preview either mode.
-
-Tracked characters and your roster no longer disappear after auto database cleanup or long breaks between logins. Auto-optimize only removes untracked characters inactive for 90+ days and tells you when it happens.
-
-Tooltips now pick the best on-screen edge automatically instead of jumping between two positions on hover. Content layout runs once before show; GameTooltip anchors inside Warband Nexus follow the same placement rules.
+Alt currency, PvE vault, crest, coffer, and try counter progress now survives a full game restart instead of resetting when you log out every character. Automatic cleanup and character key updates no longer drop that stored progress by mistake.
 
 CurseForge: Warband Nexus]=]
 

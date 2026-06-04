@@ -3226,121 +3226,14 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
         return
     end
     
-    -- Legacy fallback (Phase 3: will be removed)
-    if not charKey or not pveData then return end
-    
-    -- Initialize global structures
-    self.db.global.pveMetadata = self.db.global.pveMetadata or { dungeons = {}, raids = {}, lastUpdate = 0 }
-    self.db.global.pveProgress = self.db.global.pveProgress or {}
-    
-    -- Extract and store dungeon metadata globally
-    if pveData.mythicPlus and pveData.mythicPlus.dungeons then
-        for i = 1, #pveData.mythicPlus.dungeons do
-            local dungeon = pveData.mythicPlus.dungeons[i]
-            if dungeon.mapID and dungeon.name then
-                self.db.global.pveMetadata.dungeons[dungeon.mapID] = {
-                    name = dungeon.name,
-                    texture = dungeon.texture,
-                }
-            end
-        end
+    -- PvECacheService not loaded yet (should not happen after full init)
+    if ns.DebugPrint then
+        ns.DebugPrint("|cffff8000[DataService]|r UpdatePvEDataV2: ImportLegacyPvEData unavailable")
     end
-    
-    -- Extract and store raid metadata globally
-    if pveData.lockouts then
-        for i = 1, #pveData.lockouts do
-            local lockout = pveData.lockouts[i]
-            if lockout.instanceID and lockout.name then
-                self.db.global.pveMetadata.raids[lockout.instanceID] = {
-                    name = lockout.name,
-                    difficulty = lockout.difficulty,
-                }
-            end
-        end
-    end
-    
-    self.db.global.pveMetadata.lastUpdate = time()
-    
-    -- Store character-specific progress (without redundant metadata)
-    local progress = {
-        -- Great Vault: only store essential progress data
-        greatVault = {},
-        hasUnclaimedRewards = pveData.hasUnclaimedRewards or false,
-        
-        -- Lockouts: only store progress data, reference metadata by ID
-        lockouts = {},
-        
-        -- M+: store scores and references to dungeons by mapID
-        mythicPlus = {
-            overallScore = pveData.mythicPlus and pveData.mythicPlus.overallScore or 0,
-            weeklyBest = pveData.mythicPlus and pveData.mythicPlus.weeklyBest or 0,
-            runsThisWeek = pveData.mythicPlus and pveData.mythicPlus.runsThisWeek or 0,
-            keystone = pveData.mythicPlus and pveData.mythicPlus.keystone,
-            dungeonProgress = {},  -- { [mapID] = { score, bestLevel, affixes, ... } }
-        },
-        
-        lastUpdate = time(),
-    }
-    
-    -- Copy Great Vault data (minimal, no heavy metadata)
-    if pveData.greatVault then
-        for i = 1, #pveData.greatVault do
-            local activity = pveData.greatVault[i]
-            table.insert(progress.greatVault, {
-                type = activity.type,
-                index = activity.index,
-                progress = activity.progress,
-                threshold = activity.threshold,
-                level = activity.level,
-                rewardItemLevel = activity.rewardItemLevel,
-                nextLevel = activity.nextLevel,
-                nextLevelIlvl = activity.nextLevelIlvl,
-                maxLevel = activity.maxLevel,
-                maxIlvl = activity.maxIlvl,
-                upgradeItemLevel = activity.upgradeItemLevel,
-            })
-        end
-    end
-    
-    -- Copy Lockouts (reference by instanceID, not full metadata)
-    if pveData.lockouts then
-        for i = 1, #pveData.lockouts do
-            local lockout = pveData.lockouts[i]
-            table.insert(progress.lockouts, {
-                instanceID = lockout.instanceID or lockout.id,
-                name = lockout.name,  -- Keep name for display (small)
-                reset = lockout.reset,
-                difficulty = lockout.difficulty,
-                progress = lockout.progress,
-                total = lockout.total,
-                isRaid = lockout.isRaid,
-                extended = lockout.extended,
-            })
-        end
-    end
-    
-    -- Copy M+ dungeon progress (reference by mapID)
-    if pveData.mythicPlus and pveData.mythicPlus.dungeons then
-        for i = 1, #pveData.mythicPlus.dungeons do
-            local dungeon = pveData.mythicPlus.dungeons[i]
-            if dungeon.mapID then
-                progress.mythicPlus.dungeonProgress[dungeon.mapID] = {
-                    score = dungeon.score or 0,
-                    bestLevel = dungeon.bestLevel or 0,
-                    bestLevelAffixes = dungeon.bestLevelAffixes,
-                    bestOverallAffixes = dungeon.bestOverallAffixes,
-                }
-            end
-        end
-    end
-    
-    -- Store progress (uncompressed for now, can add compression later if needed)
-    self.db.global.pveProgress[charKey] = progress
 end
 
 --[[
     Get PvE data for a character (v2)
-    Reconstructs full data from global metadata + progress
     @param charKey string - Character key
     @return table - Full PvE data structure
 ]]
@@ -3348,58 +3241,10 @@ end
 ---@param charKey string Character key
 ---@return table|nil PvE data
 function WarbandNexus:GetPvEDataV2(charKey)
-    -- Phase 2: Route to PvECacheService
     if self.GetPvEData then
         return self:GetPvEData(charKey)
     end
-    
-    -- Legacy fallback (Phase 3: will be removed)
-    local progress = self.db.global.pveProgress and self.db.global.pveProgress[charKey]
-    local metadata = self.db.global.pveMetadata or { dungeons = {}, raids = {} }
-    
-    -- Fallback to old per-character storage for migration
-    if not progress then
-        local charData = self.db.global.characters and self.db.global.characters[charKey]
-        if charData and charData.pve then
-            return charData.pve
-        end
-        return nil
-    end
-    
-    -- Reconstruct full PvE data
-    local pve = {
-        greatVault = progress.greatVault or {},
-        hasUnclaimedRewards = progress.hasUnclaimedRewards or false,
-        lockouts = progress.lockouts or {},
-        mythicPlus = {
-            overallScore = progress.mythicPlus and progress.mythicPlus.overallScore or 0,
-            weeklyBest = progress.mythicPlus and progress.mythicPlus.weeklyBest or 0,
-            runsThisWeek = progress.mythicPlus and progress.mythicPlus.runsThisWeek or 0,
-            keystone = progress.mythicPlus and progress.mythicPlus.keystone,
-            dungeons = {},
-        },
-    }
-    
-    -- Reconstruct dungeon data with metadata
-    if progress.mythicPlus and progress.mythicPlus.dungeonProgress then
-        for mapID, dungeonProgress in pairs(progress.mythicPlus.dungeonProgress) do
-            local dungeonMeta = metadata.dungeons[mapID] or {}
-            table.insert(pve.mythicPlus.dungeons, {
-                mapID = mapID,
-                name = dungeonMeta.name or ("Dungeon " .. mapID),
-                texture = dungeonMeta.texture,
-                score = dungeonProgress.score or 0,
-                bestLevel = dungeonProgress.bestLevel or 0,
-                bestLevelAffixes = dungeonProgress.bestLevelAffixes,
-                bestOverallAffixes = dungeonProgress.bestOverallAffixes,
-            })
-        end
-        
-        -- Sort by name
-        table.sort(pve.mythicPlus.dungeons, CmpCharName)
-    end
-    
-    return pve
+    return nil
 end
 
 -- ============================================================================

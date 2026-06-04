@@ -199,7 +199,7 @@ function M.GetBountyStatus(charKey)
     local pveCache = GetPveCache()
     if not pveCache then return nil end
     local delveChar = pveCache.delves and pveCache.delves.characters
-        and pveCache.delves.characters[charKey]
+        and LookupPveCacheSubtable(pveCache.delves.characters, charKey)
     if not delveChar then return nil end
     return delveChar.bountifulComplete
 end
@@ -208,7 +208,7 @@ function M.GetGildedStashData(charKey)
     local pveCache = GetPveCache()
     if not pveCache then return nil end
     local delveChar = pveCache.delves and pveCache.delves.characters
-        and pveCache.delves.characters[charKey]
+        and LookupPveCacheSubtable(pveCache.delves.characters, charKey)
     if not delveChar then return nil end
     local current = tonumber(delveChar.gildedStashes)
     if current == nil then return nil end

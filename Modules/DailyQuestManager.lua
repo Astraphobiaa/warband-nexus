@@ -1184,7 +1184,9 @@ function WarbandNexus:GetWeeklyDashboard()
             
             -- Great Vault progress
             if pveCache and pveCache.greatVault and pveCache.greatVault.activities then
-                local vaultData = pveCache.greatVault.activities[charKey]
+                local vaultData = ns.LookupPvECacheSubtable
+                    and ns.LookupPvECacheSubtable(pveCache.greatVault.activities, charKey)
+                    or pveCache.greatVault.activities[charKey]
                 if vaultData then
                     entry.vault.raids = vaultData.raids or {}
                     entry.vault.mythicPlus = vaultData.mythicPlus or {}
@@ -1194,7 +1196,9 @@ function WarbandNexus:GetWeeklyDashboard()
             
             -- World Boss
             if pveCache and pveCache.lockouts and pveCache.lockouts.worldBosses then
-                local wb = pveCache.lockouts.worldBosses[charKey]
+                local wb = ns.LookupPvECacheSubtable
+                    and ns.LookupPvECacheSubtable(pveCache.lockouts.worldBosses, charKey)
+                    or pveCache.lockouts.worldBosses[charKey]
                 if wb then
                     for _ in pairs(wb) do
                         entry.worldBoss = true
@@ -1205,7 +1209,9 @@ function WarbandNexus:GetWeeklyDashboard()
             
             -- Delves
             if pveCache and pveCache.delves and pveCache.delves.characters then
-                entry.delves = pveCache.delves.characters[charKey] or {}
+                entry.delves = (ns.LookupPvECacheSubtable
+                    and ns.LookupPvECacheSubtable(pveCache.delves.characters, charKey))
+                    or pveCache.delves.characters[charKey] or {}
             end
             
             dashboard[charKey] = entry

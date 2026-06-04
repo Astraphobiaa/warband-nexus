@@ -2437,7 +2437,7 @@ end
 
 -- ============================================================================
 -- CURRENCY AFFORDABILITY CHECK
--- Uses stored currency data from db.global.currencies
+-- Uses stored currency data from db.global.currencyData (CurrencyCacheService)
 -- ============================================================================
 
 -- Strip all WoW escape sequences from text for clean parsing

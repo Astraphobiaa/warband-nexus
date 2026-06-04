@@ -481,6 +481,86 @@ function CharacterService:CharacterOwnsSubsidiaryKey(addon, subsidiaryKey)
     return false
 end
 
+--- Remove all matching keys (exact + alias) from a char-keyed subsidiary table.
+---@param tbl table|nil
+---@param charKey string
+---@return number removed
+local function PurgeCharKeyedEntries(tbl, charKey)
+    if type(tbl) ~= "table" or not charKey or charKey == "" then return 0 end
+    local removed = 0
+    local toNil = {}
+    for k in pairs(tbl) do
+        if k == charKey or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(k, charKey)) then
+            toNil[#toNil + 1] = k
+        end
+    end
+    for i = 1, #toNil do
+        tbl[toNil[i]] = nil
+        removed = removed + 1
+    end
+    return removed
+end
+
+--- Drop per-character subsidiary storage when a roster row is deleted or pruned by limit enforcement.
+---@param addon table WarbandNexus
+---@param charKey string
+---@return number removed Key buckets cleared
+function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
+    if not addon or not addon.db or not addon.db.global or not charKey or charKey == "" then
+        return 0
+    end
+    local g = addon.db.global
+    local removed = 0
+
+    local cd = g.currencyData
+    if cd then
+        if cd.currencies then removed = removed + PurgeCharKeyedEntries(cd.currencies, charKey) end
+        if cd.totalEarned then removed = removed + PurgeCharKeyedEntries(cd.totalEarned, charKey) end
+    end
+
+    removed = removed + PurgeCharKeyedEntries(g.gearData, charKey)
+    removed = removed + PurgeCharKeyedEntries(g.pveProgress, charKey)
+    removed = removed + PurgeCharKeyedEntries(g.statisticSnapshots, charKey)
+    removed = removed + PurgeCharKeyedEntries(g.personalBanks, charKey)
+    removed = removed + PurgeCharKeyedEntries(g.itemStorage, charKey)
+
+    local pc = g.pveCache
+    if type(pc) == "table" then
+        local mp = pc.mythicPlus
+        if mp then
+            removed = removed + PurgeCharKeyedEntries(mp.keystones, charKey)
+            removed = removed + PurgeCharKeyedEntries(mp.bestRuns, charKey)
+            removed = removed + PurgeCharKeyedEntries(mp.dungeonScores, charKey)
+            removed = removed + PurgeCharKeyedEntries(mp.runHistory, charKey)
+        end
+        local gv = pc.greatVault
+        if gv then
+            removed = removed + PurgeCharKeyedEntries(gv.activities, charKey)
+            removed = removed + PurgeCharKeyedEntries(gv.rewards, charKey)
+        end
+        local lo = pc.lockouts
+        if lo then
+            removed = removed + PurgeCharKeyedEntries(lo.raids, charKey)
+            removed = removed + PurgeCharKeyedEntries(lo.dungeons, charKey)
+            removed = removed + PurgeCharKeyedEntries(lo.worldBosses, charKey)
+        end
+        if pc.delves and pc.delves.characters then
+            removed = removed + PurgeCharKeyedEntries(pc.delves.characters, charKey)
+        end
+    end
+
+    for _, repData in pairs(g.reputations or {}) do
+        if type(repData) == "table" and repData.chars then
+            removed = removed + PurgeCharKeyedEntries(repData.chars, charKey)
+        end
+    end
+
+    if removed > 0 and DebugPrint then
+        DebugPrint(string.format("|cffff8000[WN Char]|r Subsidiary purge %s: %d bucket(s)", tostring(charKey), removed))
+    end
+    return removed
+end
+
 --- Canonical key for subsidiary globals (`db.global.currencies`, etc.) — same namespace rules as `characters`.
 --- @param addon table|nil WarbandNexus
 --- @param optionalCharKey string|nil Explicit character (UI / roster); nil = logged-in player

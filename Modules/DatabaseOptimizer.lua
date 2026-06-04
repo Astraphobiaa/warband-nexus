@@ -286,6 +286,11 @@ function WarbandNexus:DeleteCharacter(characterKey)
         self.db.profile.characterGroupAssignments[characterKey] = nil
     end
     
+    local CS = ns.CharacterService
+    if CS and CS.RemoveCharacterSubsidiaryKeys then
+        CS:RemoveCharacterSubsidiaryKeys(self, characterKey)
+    end
+    
     -- Delete character data
     self.db.global.characters[characterKey] = nil
     
@@ -460,6 +465,9 @@ function WarbandNexus:MigrateToV2()
     -- Create backup for safety (in memory only)
     local backup = {
         characters = {},
+        pveProgress = self.db.global.pveProgress,
+        pveMetadata = self.db.global.pveMetadata,
+        personalBanks = self.db.global.personalBanks,
         hadError = false
     }
     
@@ -632,10 +640,14 @@ function WarbandNexus:MigrateToV2()
             end
         end
         
-        -- Clear any partially migrated global data
-        self.db.global.pveProgress = nil
-        self.db.global.pveMetadata = nil
-        self.db.global.personalBanks = nil
+        -- Clear any partially migrated global data — restore pre-migration snapshots
+        self.db.global.pveProgress = backup.pveProgress
+        self.db.global.pveMetadata = backup.pveMetadata
+        self.db.global.personalBanks = backup.personalBanks
+        
+        if ns.DebugPrint then
+            ns.DebugPrint("|cffff0000[WN Migration]|r MigrateToV2 failed; restored character rows and global PvE/bank snapshots")
+        end
         
         self:Print("|cffff0000Database migration failed. Data restored.|r")
         if IsDebugModeEnabled and IsDebugModeEnabled() then
@@ -657,7 +669,8 @@ function WarbandNexus:EnforceCharacterLimit(limit)
     limit = limit or MAX_CHARACTERS
     
     local characters = self.db.global.characters or {}
-    local favorites = self.db.global.favoriteCharacters or {}
+    local CS = ns.CharacterService
+    local favoriteKeySet = (CS and CS.BuildFavoriteKeySet) and CS:BuildFavoriteKeySet(self) or {}
     
     local removable = {}
     local total = 0
@@ -667,13 +680,7 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         if type(charData) ~= "table" then
             removable[#removable + 1] = { key = charKey, lastSeen = 0, name = (ns.L and ns.L["UNKNOWN"]) or "Unknown" }
         else
-            local isFavorite = false
-            for fi = 1, #favorites do
-                if favorites[fi] == charKey then
-                    isFavorite = true
-                    break
-                end
-            end
+            local isFavorite = CS and CS.IsFavoriteFromKeySet and CS:IsFavoriteFromKeySet(favoriteKeySet, charKey)
             local lastSeen = (type(charData.lastSeen) == "number" and charData.lastSeen > 0) and charData.lastSeen or nil
             if isFavorite or charData.isTracked ~= false or not lastSeen then
                 -- Protected: favorites, tracked/default rows, unknown-age legacy rows
@@ -703,16 +710,8 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         local charKey = entry.key
         local charName = entry.name
         
-        -- Clean up currency references for this character (v2.0: Direct DB)
-        if self.db.global.currencyData and self.db.global.currencyData.currencies then
-            self.db.global.currencyData.currencies[charKey] = nil
-        end
-        
-        -- Clean up reputation references for this character
-        for factionID, repData in pairs(self.db.global.reputations or {}) do
-            if repData.chars then
-                repData.chars[charKey] = nil
-            end
+        if CS and CS.RemoveCharacterSubsidiaryKeys then
+            CS:RemoveCharacterSubsidiaryKeys(self, charKey)
         end
         
         -- Remove from character order lists
@@ -759,29 +758,66 @@ function WarbandNexus:CleanupOrphanedData()
         return characters[charKey] ~= nil
     end
 
-    -- Clean currencies (v2.0: Direct DB architecture)
-    if self.db.global.currencyData and self.db.global.currencyData.currencies then
-        for charKey in pairs(self.db.global.currencyData.currencies) do
+    local function purgeOrphans(tbl)
+        if type(tbl) ~= "table" then return end
+        for charKey in pairs(tbl) do
             if not keyStillOwned(charKey) then
-                self.db.global.currencyData.currencies[charKey] = nil
-                if self.db.global.currencyData.totalEarned then
-                    self.db.global.currencyData.totalEarned[charKey] = nil
-                end
+                tbl[charKey] = nil
                 removed = removed + 1
             end
+        end
+    end
+
+    -- Clean currencies (v2.0: Direct DB architecture)
+    if self.db.global.currencyData then
+        if self.db.global.currencyData.currencies then
+            purgeOrphans(self.db.global.currencyData.currencies)
+        end
+        if self.db.global.currencyData.totalEarned then
+            purgeOrphans(self.db.global.currencyData.totalEarned)
         end
     end
 
     -- Clean reputations
     for factionID, repData in pairs(self.db.global.reputations or {}) do
         if repData.chars then
-            for charKey in pairs(repData.chars) do
-                if not keyStillOwned(charKey) then
-                    repData.chars[charKey] = nil
-                    removed = removed + 1
-                end
-            end
+            purgeOrphans(repData.chars)
         end
+    end
+
+    purgeOrphans(self.db.global.gearData)
+    purgeOrphans(self.db.global.pveProgress)
+    purgeOrphans(self.db.global.statisticSnapshots)
+    purgeOrphans(self.db.global.personalBanks)
+    purgeOrphans(self.db.global.itemStorage)
+
+    local pc = self.db.global.pveCache
+    if type(pc) == "table" then
+        local mp = pc.mythicPlus
+        if mp then
+            purgeOrphans(mp.keystones)
+            purgeOrphans(mp.bestRuns)
+            purgeOrphans(mp.dungeonScores)
+            purgeOrphans(mp.runHistory)
+        end
+        local gv = pc.greatVault
+        if gv then
+            purgeOrphans(gv.activities)
+            purgeOrphans(gv.rewards)
+        end
+        local lo = pc.lockouts
+        if lo then
+            purgeOrphans(lo.raids)
+            purgeOrphans(lo.dungeons)
+            purgeOrphans(lo.worldBosses)
+        end
+        if pc.delves and pc.delves.characters then
+            purgeOrphans(pc.delves.characters)
+        end
+    end
+
+    if removed > 0 and ns.DebugPrint then
+        ns.DebugPrint("|cffff8000[WN Cleanup]|r Orphan subsidiary keys removed: " .. removed)
     end
 
     return removed

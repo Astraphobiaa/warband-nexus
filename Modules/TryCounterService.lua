@@ -3239,6 +3239,8 @@ function Fns.ResolveMergedStatisticIdsForDrop(drop, resolvedDropStatIds)
 end
 
 --- Remove statisticSnapshots rows with no matching db.global.characters entry (deleted alts).
+--- Uses CharacterOwnsSubsidiaryKey so GUID-backed snapshot keys are not dropped when the roster
+--- row still lives under a legacy Name-Realm table index (same class of bug as CleanupOrphanedData).
 --- Prevents inflated global totals when summing snapshots across characters.
 function Fns.PruneStatisticSnapshotsOrphanKeys()
     if not Fns.EnsureDB() then return end
@@ -3251,15 +3253,23 @@ function Fns.PruneStatisticSnapshotsOrphanKeys()
         nChar = nChar + 1
     end
     if nChar == 0 then return end
+
+    local CS = ns.CharacterService
     local removed = 0
     for ck in pairs(snaps) do
-        if not chars[ck] then
+        local owned = false
+        if CS and CS.CharacterOwnsSubsidiaryKey then
+            owned = CS:CharacterOwnsSubsidiaryKey(WarbandNexus, ck)
+        else
+            owned = chars[ck] ~= nil
+        end
+        if not owned then
             snaps[ck] = nil
             removed = removed + 1
         end
     end
     if removed > 0 then
-        WarbandNexus:Debug("TryCounter: Pruned %d orphan statisticSnapshots (no characters entry)", removed)
+        WarbandNexus:Debug("TryCounter: Pruned %d orphan statisticSnapshots (no roster match)", removed)
     end
 end
 

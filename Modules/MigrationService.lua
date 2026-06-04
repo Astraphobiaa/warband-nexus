@@ -121,6 +121,52 @@ local function MergeGearDataBucket(current, legacy)
     return target
 end
 
+--- Move/rename one top-level charKey bucket when roster keys change (GUID migration).
+---@param tbl table|nil
+---@param renames table<string,string>
+local function RemapCharKeyedBucket(tbl, renames)
+    if type(tbl) ~= "table" then return end
+    for oldKey, newKey in pairs(renames) do
+        if oldKey ~= newKey then
+            if tbl[oldKey] and not tbl[newKey] then
+                tbl[newKey] = tbl[oldKey]
+                tbl[oldKey] = nil
+            elseif tbl[oldKey] then
+                tbl[oldKey] = nil
+            end
+        end
+    end
+end
+
+--- Remap all per-character buckets in db.global.pveCache when roster keys move.
+---@param pveCache table|nil
+---@param renames table<string,string>
+local function RemapPveCacheCharacterKeys(pveCache, renames)
+    if type(pveCache) ~= "table" then return end
+    local mp = pveCache.mythicPlus
+    if mp then
+        RemapCharKeyedBucket(mp.keystones, renames)
+        RemapCharKeyedBucket(mp.bestRuns, renames)
+        RemapCharKeyedBucket(mp.dungeonScores, renames)
+        RemapCharKeyedBucket(mp.runHistory, renames)
+    end
+    local gv = pveCache.greatVault
+    if gv then
+        RemapCharKeyedBucket(gv.activities, renames)
+        RemapCharKeyedBucket(gv.rewards, renames)
+    end
+    local lo = pveCache.lockouts
+    if lo then
+        RemapCharKeyedBucket(lo.raids, renames)
+        RemapCharKeyedBucket(lo.dungeons, renames)
+        RemapCharKeyedBucket(lo.worldBosses, renames)
+    end
+    local delves = pveCache.delves
+    if delves and delves.characters then
+        RemapCharKeyedBucket(delves.characters, renames)
+    end
+end
+
 --[[
     Single-roof version check.
 
@@ -224,7 +270,26 @@ function MigrationService:RunMigrations(db)
     self:MigrateNotificationToastLaneDefaults(db)
     self:MigrateCustomSectionChangelogLog(db)
     self:MigrateReminderQuestCatalog(db)
+    self:DropStaleLegacyGlobalCurrencies(db)
     return false
+end
+
+--- Remove unused db.global.currencies table when currencyData is populated (no readers remain).
+function MigrationService:DropStaleLegacyGlobalCurrencies(db)
+    if not db or not db.global or db.global._legacyGlobalCurrenciesDropV1 then return end
+    local legacy = db.global.currencies
+    if type(legacy) ~= "table" then
+        db.global._legacyGlobalCurrenciesDropV1 = true
+        return
+    end
+    local cd = db.global.currencyData and db.global.currencyData.currencies
+    if cd and next(cd) then
+        db.global.currencies = nil
+        if DebugPrint then
+            DebugPrint("|cff9370DB[Migration]|r Dropped stale db.global.currencies (currencyData authoritative)")
+        end
+    end
+    db.global._legacyGlobalCurrenciesDropV1 = true
 end
 
 --- Seed maintained world-quest catalog (static + version bump).
@@ -667,18 +732,17 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
         return
     end
 
-    -- currencyData.currencies
+    local remapCount = 0
+    for _ in pairs(renames) do remapCount = remapCount + 1 end
+
+    -- currencyData.currencies + totalEarned
     local cd = db.global.currencyData
-    if cd and cd.currencies then
-        for oldKey, newKey in pairs(renames) do
-            if oldKey ~= newKey then
-                if cd.currencies[oldKey] and not cd.currencies[newKey] then
-                    cd.currencies[newKey] = cd.currencies[oldKey]
-                    cd.currencies[oldKey] = nil
-                elseif cd.currencies[oldKey] then
-                    cd.currencies[oldKey] = nil
-                end
-            end
+    if cd then
+        if cd.currencies then
+            RemapCharKeyedBucket(cd.currencies, renames)
+        end
+        if cd.totalEarned then
+            RemapCharKeyedBucket(cd.totalEarned, renames)
         end
     end
 
@@ -696,16 +760,12 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
 
     -- pveProgress
     if db.global.pveProgress then
-        for oldKey, newKey in pairs(renames) do
-            if oldKey ~= newKey then
-                if db.global.pveProgress[oldKey] and not db.global.pveProgress[newKey] then
-                    db.global.pveProgress[newKey] = db.global.pveProgress[oldKey]
-                    db.global.pveProgress[oldKey] = nil
-                elseif db.global.pveProgress[oldKey] then
-                    db.global.pveProgress[oldKey] = nil
-                end
-            end
-        end
+        RemapCharKeyedBucket(db.global.pveProgress, renames)
+    end
+
+    -- pveCache (active PvE storage)
+    if db.global.pveCache then
+        RemapPveCacheCharacterKeys(db.global.pveCache, renames)
     end
 
     -- statisticSnapshots
@@ -795,6 +855,10 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
                 end
             end
         end
+    end
+
+    if remapCount > 0 and DebugPrint then
+        DebugPrint(string.format("|cff9370DB[Migration]|r Character-keyed storage remapped: %d key(s)", remapCount))
     end
 end
 
