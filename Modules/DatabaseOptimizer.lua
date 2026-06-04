@@ -749,30 +749,41 @@ end
 ]]
 function WarbandNexus:CleanupOrphanedData()
     local removed = 0
-    local characters = self.db.global.characters or {}
-    
+    local CS = ns.CharacterService
+
+    local function keyStillOwned(charKey)
+        if CS and CS.CharacterOwnsSubsidiaryKey then
+            return CS:CharacterOwnsSubsidiaryKey(self, charKey)
+        end
+        local characters = self.db.global.characters or {}
+        return characters[charKey] ~= nil
+    end
+
     -- Clean currencies (v2.0: Direct DB architecture)
     if self.db.global.currencyData and self.db.global.currencyData.currencies then
         for charKey in pairs(self.db.global.currencyData.currencies) do
-            if not characters[charKey] then
+            if not keyStillOwned(charKey) then
                 self.db.global.currencyData.currencies[charKey] = nil
+                if self.db.global.currencyData.totalEarned then
+                    self.db.global.currencyData.totalEarned[charKey] = nil
+                end
                 removed = removed + 1
             end
         end
     end
-    
+
     -- Clean reputations
     for factionID, repData in pairs(self.db.global.reputations or {}) do
         if repData.chars then
             for charKey in pairs(repData.chars) do
-                if not characters[charKey] then
+                if not keyStillOwned(charKey) then
                     repData.chars[charKey] = nil
                     removed = removed + 1
                 end
             end
         end
     end
-    
+
     return removed
 end
 

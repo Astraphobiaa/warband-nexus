@@ -448,6 +448,39 @@ function CharacterService:ResolveCharactersTableKey(addon)
     return nil
 end
 
+--- True when `subsidiaryKey` belongs to a row in `db.global.characters` (GUID vs Name-Realm index safe).
+--- Used by orphan cleanup so per-character currency/PvE buckets are not deleted after GUID migration.
+--- @param addon table WarbandNexus
+--- @param subsidiaryKey string Storage key from currencyData / pveCache / etc.
+--- @return boolean
+function CharacterService:CharacterOwnsSubsidiaryKey(addon, subsidiaryKey)
+    if not subsidiaryKey or subsidiaryKey == "" then return false end
+    if issecretvalue and issecretvalue(subsidiaryKey) then return false end
+    if not addon or not addon.db or not addon.db.global then return false end
+    local chars = addon.db.global.characters
+    if type(chars) ~= "table" then return false end
+
+    if chars[subsidiaryKey] then return true end
+
+    local U = ns.Utilities
+    local canon = U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(subsidiaryKey) or subsidiaryKey
+    if canon and canon ~= "" and chars[canon] then return true end
+
+    for key, row in pairs(chars) do
+        if type(row) == "table" then
+            if key == subsidiaryKey or (canon and key == canon) then return true end
+            if U and U.ResolveCharacterRowKey then
+                local rowKey = U:ResolveCharacterRowKey(row)
+                if rowKey == subsidiaryKey or (canon and rowKey == canon) then return true end
+            end
+            if ns.VaultCharKeysMatch and (ns.VaultCharKeysMatch(key, subsidiaryKey) or (canon and ns.VaultCharKeysMatch(key, canon))) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 --- Canonical key for subsidiary globals (`db.global.currencies`, etc.) — same namespace rules as `characters`.
 --- @param addon table|nil WarbandNexus
 --- @param optionalCharKey string|nil Explicit character (UI / roster); nil = logged-in player

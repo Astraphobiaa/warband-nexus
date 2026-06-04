@@ -1832,13 +1832,19 @@ function WarbandNexus:GetPvEData(charKey)
         table.sort(combinedLockouts, CmpNameSort)
 
         -- Return data for specific character
-        local vaultActivities = dbCache.greatVault and dbCache.greatVault.activities and dbCache.greatVault.activities[charKey]
+        local vaultActivities = dbCache.greatVault and dbCache.greatVault.activities
+            and (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(dbCache.greatVault.activities, charKey)
+                or dbCache.greatVault.activities[charKey])
+        local keystoneData = dbCache.mythicPlus and dbCache.mythicPlus.keystones
+            and (ns.LookupPvECacheSubtable and ns.LookupPvECacheSubtable(dbCache.mythicPlus.keystones, charKey)
+                or dbCache.mythicPlus.keystones[charKey])
         local returnData = {
-            keystone = dbCache.mythicPlus and dbCache.mythicPlus.keystones and dbCache.mythicPlus.keystones[charKey],
+            keystone = keystoneData,
             bestRuns = bestRuns,
             dungeonScores = dungeonScoresData,
             vaultActivities = vaultActivities,
-            vaultRewards = dbCache.greatVault and dbCache.greatVault.rewards and dbCache.greatVault.rewards[charKey],
+            vaultRewards = dbCache.greatVault and dbCache.greatVault.rewards
+                and LookupVaultRewardsEntry(dbCache.greatVault.rewards, charKey),
             greatVault = vaultActivities or {},  -- Alias for legacy consumers
             raidLockouts = raidLockouts,
             dungeonLockouts = dungeonLockouts,

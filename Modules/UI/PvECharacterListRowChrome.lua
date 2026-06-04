@@ -158,10 +158,18 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     end
     realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
 
-    -- Horizontal start of the name column (same as gradient / level pack).
-    local nameLeft = (anchorRight:GetRight() or 0) - (charHeader:GetLeft() or 0) + 8
-    if nameLeft < 40 then
-        nameLeft = PvE_ComputeClassColumnLeftPx() + (CRC.class and CRC.class.width or 33) + 8
+    -- Horizontal start of the name column (computed layout; reject bad screen-coord reads before first layout).
+    local computedNameLeft = PvE_ComputeClassColumnLeftPx() + (CRC.class and CRC.class.width or 33) + 8
+    local nameLeft = computedNameLeft
+    if anchorRight and charHeader and anchorRight.GetRight and charHeader.GetLeft then
+        local hl = charHeader:GetLeft()
+        local ar = anchorRight:GetRight()
+        if hl and ar and hl > 0 then
+            local measured = ar - hl + 8
+            if measured >= 40 and measured <= computedNameLeft + 32 then
+                nameLeft = measured
+            end
+        end
     end
 
     -- Vertically center the two-line identity block in the row (level/iLvl stay on row midline).

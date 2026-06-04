@@ -389,6 +389,39 @@ local function CurrencySubsidiaryKey(optionalCharKey)
     return k
 end
 
+--- Read stored quantity from SV when keys differ (GUID write vs Name-Realm roster index).
+local function LookupStoredCurrencyValue(db, charKey, currencyID)
+    if not db or not db.currencies or not charKey or not currencyID then return nil end
+    local bucket = db.currencies[charKey]
+    if bucket and bucket[currencyID] ~= nil then
+        return bucket[currencyID]
+    end
+    if ns.VaultCharKeysMatch then
+        for k, row in pairs(db.currencies) do
+            if type(row) == "table" and ns.VaultCharKeysMatch(k, charKey) and row[currencyID] ~= nil then
+                return row[currencyID]
+            end
+        end
+    end
+    return nil
+end
+
+local function LookupStoredTotalEarned(db, charKey, currencyID)
+    if not db or not db.totalEarned or not charKey or not currencyID then return nil end
+    local bucket = db.totalEarned[charKey]
+    if bucket and bucket[currencyID] ~= nil then
+        return bucket[currencyID]
+    end
+    if ns.VaultCharKeysMatch then
+        for k, row in pairs(db.totalEarned) do
+            if type(row) == "table" and ns.VaultCharKeysMatch(k, charKey) and row[currencyID] ~= nil then
+                return row[currencyID]
+            end
+        end
+    end
+    return nil
+end
+
 -- ============================================================================
 -- ON-DEMAND METADATA RESOLVER (Session RAM only)
 -- ============================================================================
@@ -1506,8 +1539,8 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     end
 
     -- Non-current char or API failed: use SV
-    if quantity == nil and db.currencies[charKey] then
-        local stored = db.currencies[charKey][currencyID]
+    if quantity == nil then
+        local stored = LookupStoredCurrencyValue(db, charKey, currencyID)
         if stored ~= nil then
             if type(stored) == "number" then
                 quantity = stored
@@ -1519,12 +1552,10 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
 
     -- Last resort for current char: SV (e.g. API not ready yet)
     if quantity == nil and isCurrentChar then
-        if db.currencies[charKey] then
-            local stored = db.currencies[charKey][currencyID]
-            if stored ~= nil then
-                if type(stored) == "number" then quantity = stored
-                elseif type(stored) == "table" then quantity = stored.quantity or 0 end
-            end
+        local stored = LookupStoredCurrencyValue(db, charKey, currencyID)
+        if stored ~= nil then
+            if type(stored) == "number" then quantity = stored
+            elseif type(stored) == "table" then quantity = stored.quantity or 0 end
         end
     end
     
@@ -1550,8 +1581,8 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     
     -- Resolve totalEarned: live value for current char, SV for offline chars
     local totalEarned = liveTotalEarned
-    if not totalEarned and db.totalEarned and db.totalEarned[charKey] then
-        totalEarned = db.totalEarned[charKey][currencyID]
+    if not totalEarned then
+        totalEarned = LookupStoredTotalEarned(db, charKey, currencyID)
     end
 
     -- Same rule as Dawncrests: follow API useTotalEarnedForMaxQty (do not force shards — caused wrong "current" vs crest columns).
