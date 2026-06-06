@@ -58,11 +58,6 @@ WarbandNexus/
 # ---------------------------------------------------------------------------
 /*
 !.gitignore
-!.pkgmeta
-!.github/
-!.github/**
-!.github/state/
-.github/scripts/__pycache__/
 
 !WarbandNexus.toc
 !Core.lua
