@@ -41,8 +41,10 @@ jobs:
       - name: Package and upload (CurseForge + Wago + GitHub Release)
         uses: BigWigsMods/packager@v2
 
-      - name: Notify Discord
+      - name: Notify Discord (release bot)
         if: success()
         env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_RELEASE_CHANNEL_ID: ${{ secrets.DISCORD_RELEASE_CHANNEL_ID }}
           DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
         run: python .github/scripts/post_discord_release.py
