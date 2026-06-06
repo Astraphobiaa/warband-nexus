@@ -307,6 +307,12 @@ local function ResolvePlansCategoryFromSession()
     return currentCategory
 end
 
+--- Show Planned applies only on browse subtabs (Mounts, Pets, etc.), not To-Do List / Weekly Progress.
+local function IsPlansPlannedBrowseLocked()
+    ResolvePlansCategoryFromSession()
+    return currentCategory == "active" or currentCategory == "daily_tasks"
+end
+
 --- Update category bar active styling without rebuilding fixed header (sub-tab perf).
 local function ApplyPlansCategoryBarActive(categoryBar, activeKey)
     if not categoryBar or not categoryBar.buttons then return end
@@ -484,12 +490,14 @@ function WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, toCat)
     fromCat = fromCat or toCat
     ApplyPlansCategoryBarActive(mf._plansCategoryBar, currentCategory)
 
-    local plannedLocked = (currentCategory == "active" or currentCategory == "daily_tasks")
-    if mf._plansPlannedCheckbox then
+    local plannedLocked = IsPlansPlannedBrowseLocked()
+    if mf._plansApplyPlannedBrowseLockVisuals then
+        mf._plansApplyPlannedBrowseLockVisuals()
+    elseif mf._plansPlannedCheckbox then
         mf._plansPlannedCheckbox:SetAlpha(plannedLocked and 0.42 or 1)
-        mf._plansPlannedCheckbox:EnableMouse(not plannedLocked)
+        mf._plansPlannedCheckbox:EnableMouse(true)
     end
-    if mf._plansPlannedLabel then
+    if not mf._plansApplyPlannedBrowseLockVisuals and mf._plansPlannedLabel then
         mf._plansPlannedLabel:SetAlpha(plannedLocked and 0.42 or 1)
     end
 
@@ -1002,8 +1010,7 @@ function WarbandNexus:DrawPlansTab(parent)
             GameTooltip:Hide()
         end)
         
-        -- "Show Planned" only affects browse subtabs, but the control stays visible (dimmed on To-Do / Weekly Progress).
-        local plannedBrowseLocked = (currentCategory == "active" or currentCategory == "daily_tasks")
+        -- "Show Planned" only affects browse subtabs; dimmed on To-Do / Weekly Progress but always toggleable.
         local plannedCheckbox, plannedLabel
         plannedCheckbox = CreateThemedCheckbox(titleCard, showPlanned)
         if plannedCheckbox then
@@ -1026,16 +1033,17 @@ function WarbandNexus:DrawPlansTab(parent)
             plannedLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
 
             local function ApplyPlannedBrowseLockVisuals()
-                local dim = plannedBrowseLocked and 0.42 or 1
+                local dim = IsPlansPlannedBrowseLocked() and 0.42 or 1
                 plannedCheckbox:SetAlpha(dim)
                 plannedLabel:SetAlpha(dim)
-                plannedCheckbox:EnableMouse(not plannedBrowseLocked)
+                plannedCheckbox:EnableMouse(true)
             end
             ApplyPlannedBrowseLockVisuals()
 
             if mf then
                 mf._plansPlannedCheckbox = plannedCheckbox
                 mf._plansPlannedLabel = plannedLabel
+                mf._plansApplyPlannedBrowseLockVisuals = ApplyPlannedBrowseLockVisuals
             end
 
             local origPlannedOnClick = nil
@@ -1043,14 +1051,20 @@ function WarbandNexus:DrawPlansTab(parent)
                 local ok2, res2 = pcall(function() return plannedCheckbox:GetScript("OnClick") end)
                 if ok2 then origPlannedOnClick = res2 end
             end
-            plannedCheckbox:SetScript("OnClick", function(self)
-                if plannedBrowseLocked then return end
-                if origPlannedOnClick then origPlannedOnClick(self) end
-                showPlanned = NormalizeCheckButtonChecked(self)
+
+            local function ToggleShowPlannedFromControl(checkboxFrame)
+                if origPlannedOnClick then origPlannedOnClick(checkboxFrame) end
+                showPlanned = NormalizeCheckButtonChecked(checkboxFrame)
                 if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
                     WarbandNexus.db.profile.plansShowPlanned = showPlanned
                 end
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+                if not IsPlansPlannedBrowseLocked() then
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+                end
+            end
+
+            plannedCheckbox:SetScript("OnClick", function(self)
+                ToggleShowPlannedFromControl(self)
             end)
 
             local origPlannedEnter = nil
@@ -1058,17 +1072,18 @@ function WarbandNexus:DrawPlansTab(parent)
                 local ok3, res3 = pcall(function() return plannedCheckbox:GetScript("OnEnter") end)
                 if ok3 then origPlannedEnter = res3 end
             end
-            plannedCheckbox:SetScript("OnEnter", function(self)
-                if origPlannedEnter then origPlannedEnter(self) end
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            local function ShowPlannedTooltip(owner)
+                if origPlannedEnter then origPlannedEnter(owner) end
+                GameTooltip:SetOwner(owner, "ANCHOR_TOP")
                 GameTooltip:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned", 1, 1, 1)
-                if plannedBrowseLocked then
-                    GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_DISABLED_HERE"]) or "Not used on To-Do List or Weekly Progress. Open Mounts, Pets, Toys, or another browse tab to use this filter.", 0.72, 0.72, 0.76, true)
+                if IsPlansPlannedBrowseLocked() then
+                    GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_DISABLED_HERE"]) or "Does not filter the To-Do List or Weekly Progress. Toggle saves your preference for Mounts, Pets, Toys, and other browse tabs.", 0.72, 0.72, 0.76, true)
                 else
-                    GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_HELP"]) or "Browse tabs only: limit the list to items on your To-Do. Pair with Show Completed for still-needed vs already-finished planned items. Hidden on To-Do List and Weekly Progress.", 0.75, 0.75, 0.75, true)
+                    GameTooltip:AddLine((ns.L and ns.L["SHOW_PLANNED_HELP"]) or "Browse tabs only: limit the list to items on your To-Do. Pair with Show Completed for still-needed vs already-finished planned items.", 0.75, 0.75, 0.75, true)
                 end
                 GameTooltip:Show()
-            end)
+            end
+            plannedCheckbox:SetScript("OnEnter", ShowPlannedTooltip)
 
             local origPlannedLeave = nil
             if plannedCheckbox.GetScript then
