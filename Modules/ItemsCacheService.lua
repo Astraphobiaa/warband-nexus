@@ -301,7 +301,7 @@ local function ScheduleMetadataRefresh()
             -- Do NOT bump `ns._gearStorageInvGen` here: that invalidates Gear stash cache on every
             -- metadata batch and causes repeated full FindGearStorageUpgrades for the same character
             -- (visible as triple "Scan ... Reject/add" lines + frame spikes). Stash invalidation is
-            -- driven from UI.lua on ITEM_METADATA_READY / GET_ITEM_INFO via InvalidateGearStorageFindingsCacheForCanon.
+            -- driven from UI.lua on ITEM_METADATA_READY / GET_ITEM_INFO (narrow refresh; no invGen bump here).
             WarbandNexus:SendMessage(Constants.EVENTS.ITEM_METADATA_READY)
         end
     end)

@@ -3684,29 +3684,38 @@ function WarbandNexus:CreateMainWindow()
                 local recOn = WarbandNexus.IsGearStorageRecommendationsEnabled
                     and WarbandNexus:IsGearStorageRecommendationsEnabled()
                 local gearCanon = f._gearPopulateCanonKey
-                if recOn then
-                    local invInvalidated = false
-                    if gearCanon and WarbandNexus.InvalidateGearStorageFindingsCacheForCanon then
-                        invInvalidated = WarbandNexus:InvalidateGearStorageFindingsCacheForCanon(gearCanon) == true
-                    end
-                    -- Avoid invGen-only bumps during first paint (forces redundant full scans); soft invalidate covers ilvl warm-up.
-                    if not invInvalidated and not IsGearTabPopulateQuiet() then
-                        ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
-                    end
-                end
                 if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
                     WarbandNexus:TryRefreshAllGearEquipSlotIcons()
                 end
-                if recOn and gearCanon and WarbandNexus.IsGearStorageScanInFlightForCanon
+                if not recOn or not gearCanon then return end
+                -- Hyperlink warm-up storms during a yielded Find are expected; invalidating/deferring here
+                -- produced scan-complete -> deferred invalidate -> immediate rescan loops ("Scanning…" flash).
+                if WarbandNexus.IsGearStorageScanInFlightForCanon
                     and WarbandNexus:IsGearStorageScanInFlightForCanon(gearCanon) then
                     return
                 end
-                if recOn and WarbandNexus.TryGearStorageRedrawOnly and WarbandNexus:TryGearStorageRedrawOnly() then
+                if WarbandNexus.ShouldSkipGearStorageNarrowInvalidateForRapidRescan
+                    and WarbandNexus:ShouldSkipGearStorageNarrowInvalidateForRapidRescan(gearCanon) then
+                    ns._gearStorageAllowEquipSigInvBypass = true
+                    if WarbandNexus.RefreshGearStorageCacheEquipSigForCanon then
+                        WarbandNexus:RefreshGearStorageCacheEquipSigForCanon(gearCanon)
+                    end
+                    if WarbandNexus.TryGearStorageRedrawOnly then
+                        WarbandNexus:TryGearStorageRedrawOnly()
+                    end
+                    ns._gearStorageAllowEquipSigInvBypass = false
                     return
                 end
-                if recOn then
-                    ThrottledScheduleGearAsyncRepaint()
+                -- Prefer committed stash findings + fresh equip sig; full Invalidate only when redraw misses.
+                ns._gearStorageAllowEquipSigInvBypass = true
+                if WarbandNexus.RefreshGearStorageCacheEquipSigForCanon then
+                    WarbandNexus:RefreshGearStorageCacheEquipSigForCanon(gearCanon)
                 end
+                local redrawOk = WarbandNexus.TryGearStorageRedrawOnly
+                    and WarbandNexus:TryGearStorageRedrawOnly()
+                ns._gearStorageAllowEquipSigInvBypass = false
+                if redrawOk then return end
+                ThrottledScheduleGearAsyncRepaint()
             end
             local infoDelay = IsGearTabPopulateQuiet() and 0.38 or 0.08
             if C_Timer and C_Timer.NewTimer then

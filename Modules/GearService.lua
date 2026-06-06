@@ -184,6 +184,14 @@ function WarbandNexus:ProcessDeferredGearStorageUpdates(canonKey)
         ns._gearStorageDeferEquipRefreshCanon = deferEquip
     end
     if deferInv and norm(deferInv) == want then
+        -- GET_ITEM_INFO can queue invalidate mid-yield; after commit the cache is still strict-valid.
+        if self.ShouldSkipGearStorageNarrowInvalidateForRapidRescan
+            and self:ShouldSkipGearStorageNarrowInvalidateForRapidRescan(want) then
+            if self.RefreshGearStorageCacheEquipSigForCanon then
+                self:RefreshGearStorageCacheEquipSigForCanon(want)
+            end
+            return "equip_redraw"
+        end
         self:InvalidateGearStorageFindingsCacheImmediate(want)
         return "rescan"
     end
