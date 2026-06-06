@@ -1022,6 +1022,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
+L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
+
+Corrige:
+- Equipement: le stock recommande ne reste plus bloque en boucle "Scanning storage..." ni ne clignote apres le chargement des objets.
+- PvE: monnaie alt, coffre-fort, blason, cache et progression try counter ne sont plus perdus apres deconnexion ou nettoyage de cle personnage.
+- Plans To-Do: "Afficher planifie" se comporte correctement lors de la decoche sur Liste To-Do et Progression hebdo (onglets parcours inchanges).
+- Recherche: etat des cases et filtres harmonise dans Collections, Equipement, Monnaies et listes associees.
+- Collections: zone de defilement et hauteur de liste corrigees; le redimensionnement ne provoque plus de clipping ni de scintillement.
+- Defilement UI: listes virtuelles et barres alignees sur succes, Collections, Monnaies, Reputation et Metiers.
+
+Mis a jour:
+- Donnees sauvegardees: migrations de cache et nettoyage BD plus sures; les lignes de progression ne sont plus supprimees par erreur.
+- Parcours collections: listes montures/familiers/jouets et panneau modele se rafraichissent mieux apres recherche et filtres.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
 Les monnaies, la chambre forte PvE, les blasons, les coffres et le compteur de tentatives sur les alts survivent a un redemarrage complet du jeu au lieu de se reinitialiser quand vous deconnectez tous les personnages. Le nettoyage automatique et les mises a jour de cles ne suppriment plus ce progres enregistre par erreur.

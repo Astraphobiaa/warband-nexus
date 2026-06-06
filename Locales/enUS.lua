@@ -1020,6 +1020,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
+L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
+
+Fixed:
+- Gear tab: recommended storage no longer stuck in a "Scanning storage..." loop or flashing results away after item info loads.
+- PvE tab: alt currency, vault, crest, coffer, and try-counter progress no longer lost after logout or character-key cleanup.
+- Plans To-Do: "Show Planned" checkbox now behaves correctly when unchecked on To-Do List and Weekly Progress (browse tabs unchanged).
+- Search: checkbox and filter state standardized across Collections, Gear, Currency, and related browse lists.
+- Collections: scroll area and list height corrected so content is not clipped; resize drag no longer causes list/preview flicker.
+- UI scroll: virtual lists and scroll chrome aligned on Achievement browse, Collections, Currency, Reputation, and Professions tabs.
+
+Updated:
+- Saved-data pipeline: character cache migrations and database cleanup run more safely so progress rows are not dropped by mistake.
+- Collection browse: mount/pet/toy lists and model panel refresh more reliably after search and filter changes.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
 Alt currency, PvE vault, crest, coffer, and try counter progress now survives a full game restart instead of resetting when you log out every character. Automatic cleanup and character key updates no longer drop that stored progress by mistake.

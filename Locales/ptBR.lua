@@ -1022,6 +1022,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
+L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
+
+Corrigido:
+- Equipamento: armazenamento recomendado nao fica mais preso em loop "Scanning storage..." nem pisca apos carregar info de itens.
+- PvE: moeda alt, cofre, brasao, bau e progresso try counter nao se perdem mais apos logout ou limpeza de chave de personagem.
+- Planos To-Do: "Mostrar planejados" funciona corretamente ao desmarcar na Lista To-Do e Progresso semanal (abas de navegacao inalteradas).
+- Busca: estado de caixas e filtros padronizado em Colecoes, Equipamento, Moedas e listas relacionadas.
+- Colecoes: area de rolagem e altura da lista corrigidas; redimensionar nao corta mais nem causa flicker na lista/preview.
+- Rolagem UI: listas virtuais e barras alinhadas em conquistas, Colecoes, Moedas, Reputacao e Profissoes.
+
+Atualizado:
+- Dados salvos: migracoes de cache e limpeza de BD mais seguras; linhas de progresso nao sao mais removidas por engano.
+- Navegacao de colecoes: listas de montarias/mascotes/brinquedos e painel de modelo atualizam melhor apos busca e filtros.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
 Moedas, cofre PvE, brasoes, baus e contador de tentativas em alts permanecem apos reiniciar o jogo por completo, em vez de zerar quando voce desloga de todos os personagens. A limpeza automatica e atualizacoes de chaves nao removem mais esse progresso salvo por engano.

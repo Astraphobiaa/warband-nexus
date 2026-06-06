@@ -1022,6 +1022,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
+L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
+
+Corregido:
+- Equipo: el almacen recomendado ya no se queda en bucle "Scanning storage..." ni parpadea al cargar info de objetos.
+- PvE: moneda alt, boveda, emblema, cofre y progreso de try counter ya no se pierden al cerrar sesion o limpiar claves de personaje.
+- Planes To-Do: "Mostrar planeados" funciona bien al desmarcar en Lista To-Do y Progreso semanal (pestanas de exploracion sin cambios).
+- Busqueda: estado de casillas y filtros unificado en Colecciones, Equipo, Monedas y listas relacionadas.
+- Colecciones: area de scroll y altura de lista corregidas; redimensionar ya no recorta ni parpadea lista/vista previa.
+- Scroll UI: listas virtuales y barras alineadas en logros, Colecciones, Monedas, Reputacion y Profesiones.
+
+Actualizado:
+- Datos guardados: migraciones de cache y limpieza de BD mas seguras; filas de progreso no se eliminan por error.
+- Exploracion de colecciones: listas de monturas/mascotas/juguetes y panel 3D se actualizan mejor tras buscar y filtrar.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
 El progreso de monedas, boveda PvE, crestas, cofres y contador de intentos en alts sobrevive a un reinicio completo del juego en lugar de restablecerse al cerrar sesion con todos los personajes. La limpieza automatica y las actualizaciones de claves ya no eliminan ese progreso guardado por error.

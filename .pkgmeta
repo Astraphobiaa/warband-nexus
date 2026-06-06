@@ -3,6 +3,10 @@
 #   + Modules/, Locales/, libs/, Fonts/, Media/
 package-as: WarbandNexus
 
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
 ignore:
   # CurseForge rejects zips with multiple addon TOCs; root embeds.xml loads libs.
   - libs/Ace3.toc

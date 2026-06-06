@@ -1022,6 +1022,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
+L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
+
+Corretto:
+- Equipaggiamento: lo stash consigliato non resta piu in loop "Scanning storage..." ne lampeggia dopo il caricamento info oggetti.
+- PvE: valuta alt, vault, crest, forziere e progresso try counter non si perdono piu dopo logout o pulizia chiavi personaggio.
+- Piani To-Do: "Mostra pianificati" funziona correttamente quando deselezionato su Lista To-Do e Progresso settimanale (tab browse invariati).
+- Ricerca: stato checkbox e filtri standardizzato in Collezioni, Equipaggiamento, Valute e liste correlate.
+- Collezioni: area scroll e altezza lista corrette; il ridimensionamento non taglia piu ne fa flicker lista/anteprima.
+- Scroll UI: liste virtuali e barre allineate su achievement browse, Collezioni, Valute, Reputazione e Professioni.
+
+Aggiornato:
+- Dati salvati: migrazioni cache e pulizia DB piu sicure; righe di progresso non vengono piu eliminate per errore.
+- Browse collezioni: liste mount/pet/toy e pannello modello si aggiornano meglio dopo ricerca e filtri.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
 Valute, vault PvE, creste, forzieri e contatore tentativi sugli alt restano dopo un riavvio completo del gioco invece di azzerarsi quando esci da tutti i personaggi. La pulizia automatica e gli aggiornamenti delle chiavi non eliminano piu per errore quel progresso salvato.

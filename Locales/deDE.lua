@@ -1022,6 +1022,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
+L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
+
+Behoben:
+- Ausruestung: Empfohlene Lagerbestaende bleiben sichtbar statt in einer "Scanning storage..."-Schleife oder nach Item-Info-Flash zu verschwinden.
+- PvE: Alt-Waehrung, Tresor, Wappen, Truhe und Try-Counter-Fortschritt gehen nach Logout oder Charakter-Schluessel-Bereinigung nicht mehr verloren.
+- Plaene To-Do: "Geplant anzeigen" funktioniert beim Abwaehlen auf To-Do-Liste und Wochenfortschritt korrekt (Browse-Tabs unveraendert).
+- Suche: Checkbox- und Filterzustand in Sammlungen, Ausruestung, Waehrung und verwandten Listen vereinheitlicht.
+- Sammlungen: Scrollbereich und Listenhoehe korrigiert; Resize-Ziehen verursacht kein Abschneiden oder Flackern mehr.
+- UI-Scroll: Virtuelle Listen und Scroll-Leisten in Erfolg-Browse, Sammlungen, Waehrung, Ruf und Berufen ausgerichtet.
+
+Aktualisiert:
+- Gespeicherte Daten: Charakter-Cache-Migrationen und DB-Bereinigung laufen sicherer, Fortschrittszeilen werden nicht mehr faelschlich geloescht.
+- Sammlungs-Browse: Reittier-/Begleiter-/Spielzeug-Listen und Modell-Panel aktualisieren sich zuverlaessiger nach Suche und Filtern.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 
 Waehrungs-, PvE-Tresor-, Wappen-, Truhen- und Try-Counter-Fortschritt auf Twinks bleibt nach einem vollstaendigen Neustart erhalten, statt sich zurueckzusetzen, wenn du alle Charaktere ausloggst. Automatische Bereinigung und Schluessel-Updates loeschen diesen gespeicherten Fortschritt nicht mehr versehentlich.
