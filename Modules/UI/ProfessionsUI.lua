@@ -3353,7 +3353,7 @@ if ns.UI_RegisterTabViewportResize then
                 sc._wnProfRelayoutSectionStack()
             end
             EnsureProfessionRowGradientScrollHook(mf)
-            return false
+            return true
         end,
     })
 end

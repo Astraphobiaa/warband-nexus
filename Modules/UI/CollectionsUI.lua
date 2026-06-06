@@ -701,8 +701,9 @@ if ns.UI_LayoutCoordinator then
     end
     LC:RegisterTabAdapter("collections", {
         OnViewportWidthChanged = function(scrollChild, contentWidth, mf)
+            -- Corner-drag: shell only (Items/Chars parity). Full sub-tab Draw* during drag caused flicker + CPU spikes.
             if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mf) then
-                return CollectionsViewportRelayout(scrollChild, contentWidth, mf)
+                return true
             end
             local tokens = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SCROLL or {}
             local delay = tokens.COLLECTIONS_LIVE_RELAYOUT_DEBOUNCE_SEC or 0.12

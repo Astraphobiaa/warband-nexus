@@ -2390,6 +2390,7 @@ if ns.UI_RegisterTabViewportResize then
     ns.UI_RegisterTabViewportResize("reputations", {
         mode = ns.UI_VIEWPORT_RESIZE_MODE and ns.UI_VIEWPORT_RESIZE_MODE.RESULTS_CONTAINER,
         tabKey = "reputations",
+        freezeWhileResizing = true,
         results = { bottomInset = 8 },
     })
 end

@@ -344,11 +344,39 @@ end
 -- Binary search runs on parallel arrays built when the flat list is populated or section collapse changes.
 local wipe = table.wipe
 
+--- Scrollable height for mount/pet/toy lists: collapsed section bodies contribute 0.1px, not full row stack.
+function M.CollectionVirtual_ComputeScrollContentHeight(flatList, sectionContentH, collapsedHeaders, sectionSpacing, collapseHdrH, rowStride)
+    collapseHdrH = collapseHdrH or COLLAPSE_HEADER_HEIGHT_COLL
+    rowStride = rowStride or ROW_STRIDE
+    sectionSpacing = sectionSpacing or SECTION_SPACING
+    if not flatList then return 1 end
+    local y = 0
+    local firstSec = true
+    for i = 1, #flatList do
+        local it = flatList[i]
+        if it.type == "header" then
+            if not firstSec then
+                y = y + sectionSpacing
+            end
+            firstSec = false
+            local key = it.key
+            local secH = (sectionContentH and sectionContentH[key]) or 0
+            if secH <= 0 and it.itemCount then
+                secH = (it.itemCount * rowStride)
+            end
+            local expanded = collapsedHeaders and (collapsedHeaders[key] == false)
+            local bodyH = expanded and math.max(0.1, secH) or 0.1
+            y = y + collapseHdrH + bodyH
+        end
+    end
+    return math.max(y + PADDING, 1)
+end
+
 function M.CollectionVirtual_FillRowScrollIndex(flatList, sectionContentH, collapsedHeaders, sectionSpacing, outFlatIdx, outTops, outHeights)
     wipe(outFlatIdx)
     wipe(outTops)
     wipe(outHeights)
-    if not flatList then return end
+    if not flatList then return 1 end
     local y = 0
     local firstSec = true
     local bodyTopByKey = {}
@@ -379,6 +407,26 @@ function M.CollectionVirtual_FillRowScrollIndex(flatList, sectionContentH, colla
                     outHeights[#outHeights + 1] = it.height or ROW_HEIGHT
                 end
             end
+        end
+    end
+    return math.max(y + PADDING, 1)
+end
+
+local function CollectionVirtual_SyncListScrollChildHeight(scrollChild, scrollFrame, contentH)
+    if scrollChild and contentH and contentH > 0 then
+        scrollChild:SetHeight(contentH)
+    end
+    if scrollFrame then
+        if scrollFrame.GetVerticalScroll and scrollFrame.GetHeight and scrollFrame.SetVerticalScroll then
+            local viewH = scrollFrame:GetHeight() or 0
+            local scrollTop = scrollFrame:GetVerticalScroll() or 0
+            local maxScroll = math.max(0, (contentH or 0) - viewH)
+            if scrollTop > maxScroll then
+                scrollFrame:SetVerticalScroll(maxScroll)
+            end
+        end
+        if Factory and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(scrollFrame)
         end
     end
 end
@@ -421,7 +469,7 @@ end
 
 function M.CollectionVirtual_RefreshMountRowScrollIndex()
     local state = M.state
-    M.CollectionVirtual_FillRowScrollIndex(
+    local contentH = M.CollectionVirtual_FillRowScrollIndex(
         state._mountFlatList,
         state._mountSectionContentH,
         state._mountListCollapsedHeaders or {},
@@ -430,11 +478,13 @@ function M.CollectionVirtual_RefreshMountRowScrollIndex()
         state._mountRowScrollTops or {},
         state._mountRowScrollHeights or {}
     )
+    state._mountFlatListTotalHeight = contentH
+    CollectionVirtual_SyncListScrollChildHeight(state.mountListScrollChild, state.mountListScrollFrame, contentH)
 end
 
 function M.CollectionVirtual_RefreshPetRowScrollIndex()
     local state = M.state
-    M.CollectionVirtual_FillRowScrollIndex(
+    local contentH = M.CollectionVirtual_FillRowScrollIndex(
         state._petFlatList,
         state._petSectionContentH,
         state._petListCollapsedHeaders or {},
@@ -443,11 +493,13 @@ function M.CollectionVirtual_RefreshPetRowScrollIndex()
         state._petRowScrollTops or {},
         state._petRowScrollHeights or {}
     )
+    state._petFlatListTotalHeight = contentH
+    CollectionVirtual_SyncListScrollChildHeight(state.petListScrollChild, state.petListScrollFrame, contentH)
 end
 
 function M.CollectionVirtual_RefreshToyRowScrollIndex()
     local state = M.state
-    M.CollectionVirtual_FillRowScrollIndex(
+    local contentH = M.CollectionVirtual_FillRowScrollIndex(
         state._toyFlatList,
         state._toySectionContentH,
         state._toyListCollapsedHeaders or {},
@@ -456,6 +508,8 @@ function M.CollectionVirtual_RefreshToyRowScrollIndex()
         state._toyRowScrollTops or {},
         state._toyRowScrollHeights or {}
     )
+    state._toyFlatListTotalHeight = contentH
+    CollectionVirtual_SyncListScrollChildHeight(state.toyListScrollChild, state.toyListScrollFrame, contentH)
 end
 
 -- Forward declarations: scroll handlers schedule next-frame refresh via C_Timer.After(0).
@@ -942,8 +996,7 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
         regions[i]:Hide()
     end
 
-    local flatList, totalHeight = M.BuildFlatMountList(groupedData, collapsedHeaders)
-    scrollChild:SetHeight(totalHeight)
+    local flatList = M.BuildFlatMountList(groupedData, collapsedHeaders)
 
     M.state._mountSectionBodies = {}
     local mountSectionContentH = {}
@@ -1042,7 +1095,6 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
 
     -- Store state for virtual scroll callback (refreshVisible: row tıklanınca sadece seçim vurgusunu günceller)
     M.state._mountFlatList = flatList
-    M.state._mountFlatListTotalHeight = totalHeight
     M.state._mountSectionContentH = mountSectionContentH
     M.state._mountRowScrollFlatIdx = M.state._mountRowScrollFlatIdx or {}
     M.state._mountRowScrollTops = M.state._mountRowScrollTops or {}
@@ -1182,8 +1234,7 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
         regions[i]:Hide()
     end
 
-    local flatList, totalHeight = M.BuildFlatPetList(groupedData, collapsedHeaders)
-    scrollChild:SetHeight(totalHeight)
+    local flatList = M.BuildFlatPetList(groupedData, collapsedHeaders)
 
     M.state._petSectionBodies = {}
     local petSectionContentH = {}
@@ -1279,7 +1330,6 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
     end
 
     M.state._petFlatList = flatList
-    M.state._petFlatListTotalHeight = totalHeight
     M.state._petSectionContentH = petSectionContentH
     M.state._petRowScrollFlatIdx = M.state._petRowScrollFlatIdx or {}
     M.state._petRowScrollTops = M.state._petRowScrollTops or {}
@@ -1419,8 +1469,7 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
         regions[i]:Hide()
     end
 
-    local flatList, totalHeight = M.BuildFlatToyList(groupedData, collapsedHeaders, SD.TOY_SOURCE_CATEGORIES)
-    scrollChild:SetHeight(totalHeight)
+    local flatList = M.BuildFlatToyList(groupedData, collapsedHeaders, SD.TOY_SOURCE_CATEGORIES)
 
     M.state._toySectionBodies = {}
     local toySectionContentH = {}
@@ -1441,7 +1490,6 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
 
     local function finishToyListPopulate()
         M.state._toyFlatList = flatList
-        M.state._toyFlatListTotalHeight = totalHeight
         M.state._toySectionContentH = toySectionContentH
         M.state._toyRowScrollFlatIdx = M.state._toyRowScrollFlatIdx or {}
         M.state._toyRowScrollTops = M.state._toyRowScrollTops or {}

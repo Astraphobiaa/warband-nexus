@@ -772,6 +772,18 @@ local function ComputeScrollChildWidth(frame)
     return w
 end
 
+--- Live viewport width for LayoutCoordinator tab adapters (`scroll:GetWidth()`, not tab-min scrollChild).
+local function GetScrollViewportWidth(frame)
+    if ns.UI_GetMainScrollContentWidth then
+        local w = ns.UI_GetMainScrollContentWidth(frame)
+        if w and w > 0 then return w end
+    end
+    if frame and frame.scroll and frame.scroll.GetWidth then
+        return frame.scroll:GetWidth() or 0
+    end
+    return 0
+end
+
 -- Update scrollChild and frozen column header widths in one call.
 local function UpdateScrollLayout(frame)
     if not frame or not frame.scrollChild or not frame.scroll then return end
@@ -3189,7 +3201,7 @@ function WarbandNexus:CreateMainWindow()
             refreshFixedHeaderChrome = RefreshFixedHeaderChrome,
             refreshNavTabStrip = RefreshMainNavLayout,
             scrollNavEnsureTabVisible = ScrollMainNavEnsureTabVisible,
-            computeScrollContentWidth = ComputeScrollChildWidth,
+            computeScrollContentWidth = GetScrollViewportWidth,
             clampResizeBounds = function()
                 if WarbandNexus.UI_ClampMainFrameResizeBoundsFromProfile then
                     WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()

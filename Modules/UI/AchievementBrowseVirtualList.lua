@@ -34,6 +34,42 @@ local SECTION_SPACING = LAYOUT.SECTION_SPACING or LAYOUT.betweenSections or 8
 local MINI_SPACING = LAYOUT.MINI_SPACING or LAYOUT.miniSpacing or 4
 local ACHIEVEMENT_HEADER_CHUNK = 4
 
+--- Measure root section wraps on the achievement list scroll child (respects collapsed nested bodies).
+local function SyncAchievementBrowseScrollChildHeight(state)
+    local scrollChild = state and state.achievementListScrollChild
+    if not scrollChild or not scrollChild.GetTop then return end
+    local scTop = scrollChild:GetTop()
+    if not scTop then return end
+    local maxExtent = 0
+    local n = scrollChild:GetNumChildren() or 0
+    for i = 1, n do
+        local c = select(i, scrollChild:GetChildren())
+        if c and c.IsShown and c:IsShown() then
+            local bot = c:GetBottom()
+            if bot then
+                maxExtent = math.max(maxExtent, scTop - bot)
+            end
+        end
+    end
+    local contentH = math.max(maxExtent + PADDING, 1)
+    scrollChild:SetHeight(contentH)
+    state._achFlatListTotalHeight = contentH
+    local scrollFrame = state.achievementListScrollFrame
+    if scrollFrame then
+        if scrollFrame.GetVerticalScroll and scrollFrame.GetHeight and scrollFrame.SetVerticalScroll then
+            local viewH = scrollFrame:GetHeight() or 0
+            local scrollTop = scrollFrame:GetVerticalScroll() or 0
+            local maxScroll = math.max(0, contentH - viewH)
+            if scrollTop > maxScroll then
+                scrollFrame:SetVerticalScroll(maxScroll)
+            end
+        end
+        if Factory and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(scrollFrame)
+        end
+    end
+end
+
 local _populateAchievementBrowseBusy = false
 local _populateAchievementBrowseQueued = nil
 
@@ -320,8 +356,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
     end
 
     local listBuildOpts = (opts.rowHeightScale and type(opts.rowHeightScale) == "number") and { rowHeightScale = opts.rowHeightScale } or nil
-    local flatList, totalHeight = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
-    scrollChild:SetHeight(totalHeight)
+    local flatList = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
 
     state._achRowHeightUsed = ROW_HEIGHT
     for _fi = 1, #flatList do
@@ -527,7 +562,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     -- Bind flat list before header pump so expanded sections can paint rows per chunk.
     state._achFlatList = flatList
-    state._achFlatListTotalHeight = totalHeight
     state._achListWidth = listWidth
     state._achListSelectedID = selectedAchievementID
     state._achListOnSelect = onSelectAchievement
@@ -538,6 +572,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     local function finishAchievementBrowsePopulate()
         ReflowAchievementSectionHeights()
+        SyncAchievementBrowseScrollChildHeight(state)
         ensureAchievementBrowseScrollHooks()
         refreshVisibleInternal()
         if type(scheduleVisibleSync) == "function" then
@@ -639,6 +674,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
                 end,
                 onUpdate = function(drawH)
                     ReflowAchievementSectionHeights(key, drawH)
+                    SyncAchievementBrowseScrollChildHeight(state)
                 end,
                 updateVisibleFn = function()
                     refreshVisibleInternal()
@@ -648,6 +684,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
                         collapsedHeaders[key] = true
                     end
                     ReflowAchievementSectionHeights()
+                    SyncAchievementBrowseScrollChildHeight(state)
                     refreshVisibleInternal()
                 end,
             }))

@@ -3,8 +3,8 @@
     Central resize/reposition pipeline for WarbandNexusFrame and tab adapters.
 
     Responsive contract (main window):
-    - Viewport width: `scroll:GetWidth()` via `GetScrollContentWidth` / `UI_GetMainTabViewportWidth`.
-      Use for live drag relayout (gold cards, row paint width, explicit SetWidth).
+    - Viewport width: `scroll:GetWidth()` via shell `GetScrollViewportWidth` / `GetScrollContentWidth` / `UI_GetMainTabViewportWidth`.
+      Tab minimum scrollChild width (`ComputeScrollChildWidth`) applies on commit via `UpdateScrollLayout`, not during live adapter passes.
     - Scroll child width: `ComputeScrollChildWidth` (tab minimums). Frozen in `_wnResizeFreezeScrollChildW`
       during corner-drag so column rails do not jitter; horizontal scroll when viewport < min.
     - Content minimum: never assign column widths below tab-specific readable floors; clamp with
