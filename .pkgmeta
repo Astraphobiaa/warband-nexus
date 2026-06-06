@@ -1,0 +1,11 @@
+# Matches _ignored/scripts/Pack-WarbandNexus.ps1: committed addon tree only (no externals).
+# Root payload: WarbandNexus.toc, Core.lua, Config.lua, embeds.xml, Bindings.xml, LICENSE
+#   + Modules/, Locales/, libs/, Fonts/, Media/
+package-as: WarbandNexus
+
+ignore:
+  # CurseForge rejects zips with multiple addon TOCs; root embeds.xml loads libs.
+  - libs/Ace3.toc
+  - libs/LibDBIcon-1.0.toc
+  - Locales/.locale_translate_cache.json
+  - .github

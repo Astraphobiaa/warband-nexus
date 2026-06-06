@@ -58,6 +58,9 @@ WarbandNexus/
 # ---------------------------------------------------------------------------
 /*
 !.gitignore
+!.pkgmeta
+!.github/
+!.github/**
 
 !WarbandNexus.toc
 !Core.lua
