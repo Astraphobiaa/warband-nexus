@@ -341,6 +341,22 @@ local function CollectScrollChildFrames(parent)
     return { parent:GetChildren() }
 end
 
+--- Retail ScrollFrame:SetScrollChild rejects nil; reparent the child before hiding owned inner scroll.
+local function DetachOwnedPlansInnerScroll(st, reparentTo)
+    if not st or not st._plansAchInnerScroll then return end
+    local inner = st._plansAchInnerScroll
+    if inner.GetScrollChild then
+        local sc = inner:GetScrollChild()
+        if sc and sc.SetParent then
+            sc:SetParent(reparentTo)
+            if reparentTo then
+                sc:ClearAllPoints()
+            end
+        end
+    end
+    inner:Hide()
+end
+
 --- Stop Plans achievement virtual list (outer-scroll hook + visible row pool) before browse category switch.
 local function TeardownPlansAchievementBrowse(host)
     if not host then return end
@@ -370,12 +386,7 @@ local function TeardownPlansAchievementBrowse(host)
             end
             st._achVisibleRowFrames = {}
         end
-        if st._plansAchInnerScroll then
-            st._plansAchInnerScroll:Hide()
-            if st._plansAchInnerScroll.SetScrollChild then
-                st._plansAchInnerScroll:SetScrollChild(nil)
-            end
-        end
+        DetachOwnedPlansInnerScroll(st, nil)
         host._plansAchBrowseState = nil
     end
     if host.plansAchBrowseRoot then
@@ -422,6 +433,7 @@ local function ReleasePlansScrollBody(parent)
     TeardownPlansScrollChildBrowseArtifacts(parent)
     if HideEmptyStateCard then
         HideEmptyStateCard(parent, "plans")
+        HideEmptyStateCard(parent, "plans_browse")
     end
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -1284,6 +1296,9 @@ function WarbandNexus:DrawPlansTab(parent)
             local fromCat = currentCategory
             currentCategory = cat.key
             ns._sessionPlansCategory = cat.key
+            if ns.UI_ClearPlansCategorySearches then
+                ns.UI_ClearPlansCategorySearches()
+            end
             searchText = ""
             ns._plansCategoryBodyGen = (ns._plansCategoryBodyGen or 0) + 1
             local bodyGen = ns._plansCategoryBodyGen
@@ -1372,6 +1387,7 @@ function WarbandNexus:DrawPlansTab(parent)
             searchInput.Instructions:Hide()
         end
         searchInput:SetScript("OnEscapePressed", function(self)
+            ns.UI_CancelSearchRefresh("plans_active")
             self:SetText("")
             self:ClearFocus()
             ns._plansActiveSearch = nil
@@ -1388,17 +1404,30 @@ function WarbandNexus:DrawPlansTab(parent)
             end
             text = text or ""
             ns._plansActiveSearch = (text ~= "") and text or nil
-            -- Show/hide placeholder
             if self.Instructions then
                 if text ~= "" then self.Instructions:Hide() else self.Instructions:Show() end
             end
-            if WarbandNexus._plansSearchTimer then
-                WarbandNexus._plansSearchTimer:Cancel()
-            end
-            WarbandNexus._plansSearchTimer = C_Timer.NewTimer(0.3, function()
+            ns.UI_ScheduleSearchRefresh("plans_active", function()
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
             end)
         end)
+        searchInput:SetScript("OnEditFocusLost", function()
+            ns.UI_FlushSearchRefresh("plans_active")
+        end)
+        if ns.UI_RegisterSearchBoxClear then
+            ns.UI_RegisterSearchBoxClear("plans_active", function(fireCallback)
+                if fireCallback == nil then fireCallback = true end
+                ns.UI_CancelSearchRefresh("plans_active")
+                searchInput:SetText("")
+                if searchInput.Instructions then
+                    searchInput.Instructions:Show()
+                end
+                ns._plansActiveSearch = nil
+                if fireCallback and WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+                end
+            end)
+        end
         searchBar:EnableMouse(true)
         searchBar:SetScript("OnMouseDown", function() searchInput:SetFocus() end)
         searchBar:Show()
@@ -1566,7 +1595,10 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     end)
 
     if #filteredPlans == 0 then
-        local _, height = CreateEmptyStateCard(parent, "plans", yOffset)
+        if ns.UI_ShowTabEmptyStateCard then
+            return ns.UI_ShowTabEmptyStateCard(parent, "plans", yOffset, { fillParent = true }) + 10
+        end
+        local _, height = CreateEmptyStateCard(parent, "plans", yOffset, { fillParent = true })
         return yOffset + height + 10
     end
 
@@ -2101,6 +2133,7 @@ end
 function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     if HideEmptyStateCard then
         HideEmptyStateCard(parent, "plans")
+        HideEmptyStateCard(parent, "plans_browse")
     end
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -2208,8 +2241,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     
     if #plans == 0 then
         parent._plansCardLayoutManager = nil
-        -- Empty state card using standardized factory
-        local _, height = CreateEmptyStateCard(parent, "plans", yOffset)
+        if ns.UI_ShowTabEmptyStateCard then
+            return ns.UI_ShowTabEmptyStateCard(parent, "plans", yOffset, { fillParent = true }) + 10
+        end
+        local _, height = CreateEmptyStateCard(parent, "plans", yOffset, { fillParent = true })
         return yOffset + height + 10
     end
     
@@ -2603,6 +2638,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     parent._plansCardLayoutManager = nil
     if HideEmptyStateCard then
         HideEmptyStateCard(parent, "plans")
+        HideEmptyStateCard(parent, "plans_browse")
     end
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -2625,9 +2661,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     
     local searchPlaceholder = format((ns.L and ns.L["SEARCH_CATEGORY_FORMAT"]) or "Search %s...", category)
     local searchContainer = CreateSearchBox(parent, width, searchPlaceholder, function(text)
-        searchText = text
-        
-        -- Update search state via SearchStateManager (throttled, event-driven)
+        -- Update search state via SearchStateManager (debounced at search box)
         SearchStateManager:SetSearchQuery(searchId, text)
         
         -- Prepare container for rendering
@@ -2638,7 +2672,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         -- Redraw only results in the container
         local resultsYOffset = 0
         self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, text)
-    end, 0.3, initialSearchText or searchText)
+    end, nil, initialSearchText or "", searchId)
     searchContainer:SetPoint("TOPLEFT", padH, -yOffset)
     searchContainer:SetPoint("TOPRIGHT", -padH, -yOffset)
     
@@ -2646,7 +2680,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     
     -- Initial draw of results
     local resultsYOffset = 0
-    local actualResultsHeight = self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, searchText)
+    local actualResultsHeight = self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, initialSearchText or "")
 
     local measuredH = (resultsContainer and resultsContainer.GetHeight and resultsContainer:GetHeight()) or actualResultsHeight
     return yOffset + math.max(measuredH or 0, actualResultsHeight or 0, 1)
@@ -2797,17 +2831,10 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     end
     local st = parent._plansAchBrowseState
 
-    local oldInnerScroll = st.achievementListScrollFrame
-    if oldInnerScroll and oldInnerScroll.GetObjectType and oldInnerScroll:GetObjectType() == "ScrollFrame" then
-        oldInnerScroll:Hide()
-        if oldInnerScroll.SetScrollChild then
-            oldInnerScroll:SetScrollChild(nil)
-        end
-        oldInnerScroll:SetParent(nil)
+    -- Do not tear down st.achievementListScrollFrame here: on outer-scroll path it is the main tab ScrollFrame.
+    DetachOwnedPlansInnerScroll(st, rootFrame)
+    if st.achievementListScrollFrame == st._plansAchInnerScroll then
         st.achievementListScrollFrame = nil
-        if st.achievementListScrollChild and st.achievementListScrollChild:GetParent() == oldInnerScroll then
-            st.achievementListScrollChild = nil
-        end
     end
 
     if not st.achievementListScrollChild or st.achievementListScrollChild:GetParent() ~= rootFrame then
@@ -2837,12 +2864,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     scrollChild:SetWidth(listInnerW)
 
     if mainScrollAch then
-        if st._plansAchInnerScroll then
-            st._plansAchInnerScroll:Hide()
-            if st._plansAchInnerScroll.SetScrollChild then
-                st._plansAchInnerScroll:SetScrollChild(nil)
-            end
-        end
+        DetachOwnedPlansInnerScroll(st, rootFrame)
         scrollChild:SetParent(rootFrame)
         scrollChild:ClearAllPoints()
         scrollChild:SetPoint("TOPLEFT", rootFrame, "TOPLEFT", 0, 0)
@@ -2873,7 +2895,11 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
 
     local scrollFrame = st.achievementListScrollFrame
 
-    local _, totalPrev = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, { rowHeightScale = achRowScale })
+    local flatListOpts = { rowHeightScale = achRowScale }
+    if searchActive then
+        flatListOpts.searchActive = true
+    end
+    local _, totalPrev = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, flatListOpts)
     rootFrame:SetHeight(math.max(1, totalPrev))
     if parent.SetHeight then
         parent:SetHeight(math.max(1, (yOffset or 0) + totalPrev + innerPad))
@@ -3064,8 +3090,21 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         releaseRowFrame = releaseRowFrame,
         scheduleVisibleSync = SchedulePlansVisibleSync,
         rowHeightScale = achRowScale,
+        searchActive = searchActive,
+        searchText = searchText,
         drawGen = popGen,
         plansCategoryGen = catBodyGen,
+        onListReady = function()
+            if searchActive and mainScrollAch and mainScrollAch.SetVerticalScroll then
+                mainScrollAch:SetVerticalScroll(0)
+            end
+            if st._achListRefreshVisible then
+                st._achListRefreshVisible()
+            end
+            if ns.UI_EnsureMainScrollLayout then
+                ns.UI_EnsureMainScrollLayout()
+            end
+        end,
     }
 
     ns.UI_AchievementBrowse_Populate(populateOpts)
@@ -3219,52 +3258,51 @@ local function DrawPlansBrowseLoadingCard(parent, yOffset, category, categorySta
 end
 
 local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, searchText, showPlanned, showCompleted)
+    local st = searchText or ""
+    if st ~= "" and SearchResultsRenderer and SearchResultsRenderer.RenderEmptyState then
+        local searchId = "plans_" .. (category or "unknown"):lower()
+        return SearchResultsRenderer:RenderEmptyState(WarbandNexus, parent, st, searchId)
+    end
     local L = ns.L
     local labelCat = category or "item"
-    local st = searchText or ""
-    local hasSearch = st ~= ""
-    local titleR, titleG, titleB = 1, 1, 1
     local titleStr
     local descStr
-    if hasSearch then
-        titleStr = (L and L["NO_RESULTS"]) or "No results"
-        descStr = (L and L["TRY_ADJUSTING_SEARCH"]) or "Try adjusting your search or filters."
-    elseif showCompleted and showPlanned then
-        titleR, titleG, titleB = 1, 0.8, 0
+    if showCompleted and showPlanned then
         titleStr = (L and L["PLANS_BROWSE_EMPTY_PLANNED_ALL_TITLE"]) or "Nothing to show"
         descStr = (L and L["PLANS_BROWSE_EMPTY_PLANNED_ALL_DESC"])
             or "No planned items in this category match these filters. Add entries to your To-Do or adjust Show Planned / Show Completed."
     elseif showCompleted and not showPlanned then
-        titleR, titleG, titleB = 0.3, 1, 0.3
         titleStr = (L and L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_TITLE"]) or "No completed To-Do items"
         descStr = (L and L["PLANS_BROWSE_EMPTY_COMPLETED_PLANNED_DESC"])
             or "Nothing on your To-Do List in this category is collected or completed yet. Turn off Show Completed to see entries still in progress."
     elseif showPlanned and not showCompleted then
-        titleR, titleG, titleB = 1, 0.8, 0
         titleStr = (L and L["PLANS_BROWSE_EMPTY_IN_PROGRESS_TITLE"]) or "No in-progress To-Do items"
         descStr = (L and L["PLANS_BROWSE_EMPTY_IN_PROGRESS_DESC"])
             or "Nothing on your To-Do List in this category is still uncollected. Turn on Show Completed to see finished ones, or add goals from this tab."
     else
-        titleR, titleG, titleB = 0.3, 1, 0.3
         titleStr = (L and L["ALL_COLLECTED_CATEGORY"] and format(L["ALL_COLLECTED_CATEGORY"], labelCat))
             or ("All " .. labelCat .. "s collected!")
         descStr = (L and L["COLLECTED_EVERYTHING"]) or "You've collected everything in this category!"
     end
-    local noResultsCard = CreateCard(parent, 80)
-    noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
-    noResultsCard:SetPoint("TOPRIGHT", 0, -yOffset)
-    local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
-    noResultsText:SetPoint("CENTER", 0, 10)
-    noResultsText:SetTextColor(titleR, titleG, titleB)
-    noResultsText:SetText(titleStr)
-    local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
-    noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-    noResultsDesc:SetTextColor(1, 1, 1)
-    noResultsDesc:SetText(descStr)
-    noResultsDesc:SetWidth(width - 40)
-    noResultsDesc:SetJustifyH("CENTER")
-    noResultsCard:Show()
-    return yOffset + 100
+    local atlasByCategory = {
+        mount = "dragon-rostrum",
+        pet = "WildBattlePetCapturable",
+        toy = "CreationCatalyst-32x32",
+        transmog = "poi-transmogrifier",
+        illusion = "UpgradeItem-32x32",
+        title = "poi-legendsoftheharanir",
+        achievement = "Achievement-Icon",
+    }
+    if ns.UI_ShowTabEmptyStateCard then
+        return ns.UI_ShowTabEmptyStateCard(parent, "plans", yOffset, {
+            fillParent = true,
+            cacheKey = "plans_browse",
+            titleText = titleStr,
+            descText = descStr,
+            atlas = atlasByCategory[category] or "poi-workorders",
+        })
+    end
+    return yOffset + 200
 end
 
 --- Single browse card: To-Do unified expandable row (Mounts / Pets / Toys / Illusions / Titles / Transmog).

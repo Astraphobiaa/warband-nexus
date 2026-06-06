@@ -41,6 +41,7 @@ local SOURCE_CATEGORIES = {
     { key = "tcg",         label = (L and L["SOURCE_TYPE_TRADING_CARD"]) or "Trading Card Game",                    iconAtlas = "Auctioneer" },
     { key = "shop",        label = (L and L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop", iconAtlas = "coin-gold" },
     { key = "discovery",   label = (L and L["PARSE_DISCOVERY"]) or "Discovery",                                     iconAtlas = "VignetteLoot" },
+    { key = "tradingpost", label = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",                         iconAtlas = "Auctioneer" },
     { key = "unknown",     label = (L and L["SOURCE_OTHER"]) or "Other",                                            iconAtlas = "poi-town" },
 }
 
@@ -110,6 +111,7 @@ local MOUNT_SOURCETYPE_TO_CATEGORY = {
     [9]  = "tcg",
     [10] = "shop",
     [11] = "discovery",
+    [12] = "tradingpost",
 }
 -- Pets/toys use the C_PetJournal / C_ToyBox source filter index (BattlePetSources, 1-indexed).
 local BATTLEPET_SOURCETYPE_TO_CATEGORY = {

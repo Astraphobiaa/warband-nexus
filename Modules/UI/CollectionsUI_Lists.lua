@@ -998,6 +998,14 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
 
     local flatList = M.BuildFlatMountList(groupedData, collapsedHeaders)
 
+    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
+        M.state._mountFlatList = flatList
+        M.state._mountVisibleRowFrames = {}
+        _populateMountListBusy = false
+        return
+    end
+
     M.state._mountSectionBodies = {}
     local mountSectionContentH = {}
     for fi = 1, #flatList do
@@ -1236,6 +1244,14 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
 
     local flatList = M.BuildFlatPetList(groupedData, collapsedHeaders)
 
+    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
+        M.state._petFlatList = flatList
+        M.state._petVisibleRowFrames = {}
+        _populatePetListBusy = false
+        return
+    end
+
     M.state._petSectionBodies = {}
     local petSectionContentH = {}
     for fi = 1, #flatList do
@@ -1471,6 +1487,15 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
 
     local flatList = M.BuildFlatToyList(groupedData, collapsedHeaders, SD.TOY_SOURCE_CATEGORIES)
 
+    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
+        M.state._toyFlatList = flatList
+        M.state._toyVisibleRowFrames = {}
+        _populateToyListBusy = false
+        if onListReady then onListReady() end
+        return
+    end
+
     M.state._toySectionBodies = {}
     local toySectionContentH = {}
     for fi = 1, #flatList do
@@ -1643,6 +1668,8 @@ function M.UpdateAchievementListVisibleRange()
 end
 
 function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCategories, collapsedHeaders, selectedAchievementID, onSelectAchievement, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+    local searchSnap = M.state and M.state.searchText
+    local searchActive = searchSnap and searchSnap ~= ""
     ns.UI_AchievementBrowse_Populate({
         state = M.state,
         scrollChild = scrollChild,
@@ -1662,6 +1689,8 @@ function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCat
             M.ScheduleCollectionsVisibleSync("achievements", fn)
         end,
         rowHeightScale = ns.UI_ACHIEVEMENT_BROWSE_ROW_HEIGHT_SCALE or 1.155,
+        searchActive = searchActive,
+        searchText = searchSnap,
         drawGen = drawGen,
         collectionsSubTabGen = M.state._collectionsSubTabGen,
         onListReady = onListReady,

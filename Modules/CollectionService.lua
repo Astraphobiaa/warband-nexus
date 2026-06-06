@@ -1184,6 +1184,7 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
         if itemIdx == 1 then
             if currentType == "mount" then
                 petMatState, toyMatState = nil, nil
+                if self.EnsureMountSourceIndexMap then self:EnsureMountSourceIndexMap() end
                 items = COLLECTION_CONFIGS.mount.iterator()
             elseif currentType == "pet" then
                 toyMatState = nil
@@ -1234,7 +1235,11 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
                     elseif currentType == "pet" then
                         collectionData.pet[data.id] = data
                     elseif currentType == "toy" then
-                        collectionData.toy[data.id] = { id = data.id, name = data.name }
+                        collectionData.toy[data.id] = {
+                            id = data.id,
+                            name = data.name,
+                            sourceTypeIndex = data.sourceTypeIndex,
+                        }
                     end
                     if data.collected == true then
                         if currentType == "mount" then
@@ -1478,7 +1483,12 @@ function WarbandNexus:GetAllToysData()
                 local raw = PlayerHasToy(d.id)
                 if issecretvalue and raw and issecretvalue(raw) then collected = true else collected = raw == true end
             end
-            out[#out + 1] = { id = d.id, name = d.name or tostring(d.id), collected = collected }
+            out[#out + 1] = {
+                id = d.id,
+                name = d.name or tostring(d.id),
+                collected = collected,
+                sourceTypeIndex = d.sourceTypeIndex,
+            }
         end
     end
     return out
@@ -1498,9 +1508,10 @@ local TOY_SOURCE_TYPE_NAMES = {
     [6] = (ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement",
     [7] = (ns.L and ns.L["SOURCE_TYPE_WORLD_EVENT"]) or BATTLE_PET_SOURCE_7 or "World Event",
     [8] = (ns.L and ns.L["SOURCE_TYPE_PROMOTION"]) or BATTLE_PET_SOURCE_8 or "Promotion",
-    [9] = (ns.L and ns.L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop",
-    [10] = (ns.L and ns.L["PARSE_DISCOVERY"]) or "Discovery",
+    [9] = (ns.L and ns.L["SOURCE_TYPE_TRADING_CARD"]) or BATTLE_PET_SOURCE_9 or "Trading Card Game",
+    [10] = (ns.L and ns.L["SOURCE_TYPE_IN_GAME_SHOP"]) or BATTLE_PET_SOURCE_10 or "In-Game Shop",
     [11] = (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
+    [12] = (ns.L and ns.L["SOURCE_TYPE_PVP"]) or "PvP",
 }
 
 ---Build grouped toy tables from session itemID->sourceIndex map (no ToyBox filter sweep).
@@ -1627,6 +1638,158 @@ function WarbandNexus:GetToySourceTypeIndexForItem(itemID)
         cache.map = itemIDToSource or {}
     end
     return cache.map[itemID]
+end
+
+-- ============================================================================
+-- MOUNT: C_MountJournal source filter map (mirrors pet/toy SetSourceFilter sweep).
+-- GetMountInfoByID().sourceType is often 0 ("Other") while the journal source tab is correct.
+-- ============================================================================
+
+local MOUNT_SOURCE_FILTER_MAX = 24
+
+---@param val any
+---@return boolean|nil
+local function SafeJournalBool(val)
+    if val == nil then return nil end
+    if issecretvalue and issecretvalue(val) then return nil end
+    if val == true then return true end
+    if val == false then return false end
+    return nil
+end
+
+function WarbandNexus:GetMountSourceFilterCount()
+    if not C_MountJournal then return 0 end
+    EnsureBlizzardCollectionsLoaded()
+    if C_MountJournal.IsSourceChecked then
+        local maxIdx = 0
+        for i = 1, MOUNT_SOURCE_FILTER_MAX do
+            local ok, checked = pcall(C_MountJournal.IsSourceChecked, i)
+            if ok and checked ~= nil then
+                maxIdx = i
+            else
+                break
+            end
+        end
+        if maxIdx > 0 then return maxIdx end
+    end
+    return 11
+end
+
+---Build mountID -> journal source filter index (1=Drop, 10=Shop, ...). Persists in ns._mountIDToSourceIndex.
+function WarbandNexus:EnsureMountSourceIndexMap()
+    if ns._mountGroupedFromMapValid and ns._mountIDToSourceIndex and next(ns._mountIDToSourceIndex) then
+        return ns._mountIDToSourceIndex
+    end
+    local mountIDToSource = {}
+    if not C_MountJournal or not C_MountJournal.SetSourceFilter or not C_MountJournal.GetDisplayedMountInfo then
+        ns._mountIDToSourceIndex = mountIDToSource
+        ns._mountGroupedFromMapValid = false
+        return mountIDToSource
+    end
+    if InCombatLockdown() then
+        return ns._mountIDToSourceIndex or mountIDToSource
+    end
+    EnsureBlizzardCollectionsLoaded()
+    local count = self:GetMountSourceFilterCount()
+    local origSourceFilters = {}
+    for i = 1, count do
+        if C_MountJournal.IsSourceChecked then
+            local ok, checked = pcall(C_MountJournal.IsSourceChecked, i)
+            if ok and checked ~= nil then origSourceFilters[i] = checked end
+        end
+    end
+    local origSearch = (C_MountJournal.GetSearch and C_MountJournal.GetSearch()) or ""
+    pcall(function()
+        if C_MountJournal.SetSearch then C_MountJournal.SetSearch("") end
+        if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(false) end
+        if C_MountJournal.SetAllTypeFilters then C_MountJournal.SetAllTypeFilters(true) end
+        if C_MountJournal.SetCollectedFilterSetting then
+            C_MountJournal.SetCollectedFilterSetting(1, true)
+            C_MountJournal.SetCollectedFilterSetting(2, true)
+            C_MountJournal.SetCollectedFilterSetting(3, true)
+        end
+        for sourceIndex = 1, count do
+            if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(false) end
+            C_MountJournal.SetSourceFilter(sourceIndex, true)
+            local numDisplayed = (C_MountJournal.GetNumDisplayedMounts and C_MountJournal.GetNumDisplayedMounts()) or 0
+            if issecretvalue and numDisplayed and issecretvalue(numDisplayed) then numDisplayed = 0 end
+            for j = 1, numDisplayed do
+                local _, _, _, _, _, _, _, _, _, _, _, mountID = C_MountJournal.GetDisplayedMountInfo(j)
+                if mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+                    if not mountIDToSource[mountID] then
+                        mountIDToSource[mountID] = sourceIndex
+                    end
+                end
+            end
+        end
+        if C_MountJournal.SetAllSourceFilters then C_MountJournal.SetAllSourceFilters(true) end
+        if origSearch ~= "" and C_MountJournal.SetSearch then C_MountJournal.SetSearch(origSearch) end
+        for i, checked in pairs(origSourceFilters) do
+            C_MountJournal.SetSourceFilter(i, checked)
+        end
+    end)
+    ns._mountIDToSourceIndex = mountIDToSource
+    ns._mountGroupedFromMapValid = next(mountIDToSource) ~= nil
+    return mountIDToSource
+end
+
+---Resolve mount browse category integer: live sourceType when >0, else journal filter map.
+---@param mountID number
+---@return number|nil
+function WarbandNexus:GetMountBrowseSourceType(mountID)
+    if not mountID then return nil end
+    if C_MountJournal and C_MountJournal.GetMountInfoByID then
+        local _, _, _, _, _, sourceType = C_MountJournal.GetMountInfoByID(mountID)
+        if sourceType and not (issecretvalue and issecretvalue(sourceType)) and sourceType > 0 then
+            return sourceType
+        end
+    end
+    self:EnsureMountSourceIndexMap()
+    local fromMap = ns._mountIDToSourceIndex and ns._mountIDToSourceIndex[mountID]
+    if fromMap and fromMap > 0 then return fromMap end
+    return nil
+end
+
+---Hide journal-internal mounts (Soar, class placeholders). Keep cross-faction mounts visible.
+---@param mountID number
+---@return boolean true when the mount should be excluded from Collections / To-Do browse
+function WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)
+    if not mountID or not C_MountJournal or not C_MountJournal.GetMountInfoByID then return true end
+    local name, _, _, _, _, _, _, isFactionSpecific, _, shouldHideOnChar = C_MountJournal.GetMountInfoByID(mountID)
+    if not name or (issecretvalue and issecretvalue(name)) then return true end
+    local hide = SafeJournalBool(shouldHideOnChar)
+    if hide ~= true then return false end
+    local factionSpec = SafeJournalBool(isFactionSpecific)
+    if factionSpec == true then
+        return false
+    end
+    return true
+end
+
+---Pet species source filter index (1=Drop). Lazy-builds journal map when SV rows lack sourceTypeIndex.
+---@param speciesID number
+---@return number|nil
+function WarbandNexus:GetPetSourceTypeIndexForSpecies(speciesID)
+    if not speciesID then return nil end
+    local row = collectionStore.pet and collectionStore.pet[speciesID]
+    if row and row.sourceTypeIndex and row.sourceTypeIndex > 0 then
+        return row.sourceTypeIndex
+    end
+    if ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[speciesID] then
+        return ns._petSpeciesToSourceIndex[speciesID]
+    end
+    if InCombatLockdown() or not C_PetJournal then return nil end
+    if ns._petSpeciesToSourceIndex and next(ns._petSpeciesToSourceIndex) then
+        return ns._petSpeciesToSourceIndex[speciesID]
+    end
+    local st = PetJournalBuildMaterializeStep(FRAME_BUDGET_MS * 4, nil)
+    while st and not st.done do
+        st = PetJournalBuildMaterializeStep(FRAME_BUDGET_MS * 4, st)
+    end
+    if st and st.speciesToSource then
+        ns._petSpeciesToSourceIndex = st.speciesToSource
+    end
+    return ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[speciesID]
 end
 
 ---Flat list of all toys for UI (no categories). Returns array of { id, name, icon, collected } sorted by name.
@@ -1823,13 +1986,14 @@ function WarbandNexus:GetCollectionCountsFromAPI()
             local totalVisible = 0
             local collectedCount = 0
             for i = 1, #mountIDs do
-                local _, _, _, _, _, _, _, _, _, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountIDs[i])
-                -- Exclude mounts hidden on this character (faction/class restricted)
+                local _, _, _, _, _, _, _, isFactionSpecific, _, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountIDs[i])
                 local hidden = false
-                if issecretvalue and shouldHideOnChar and issecretvalue(shouldHideOnChar) then
-                    -- secret = treat as visible
-                elseif shouldHideOnChar == true then
-                    hidden = true
+                local hide = SafeJournalBool(shouldHideOnChar)
+                if hide == true then
+                    local factionSpec = SafeJournalBool(isFactionSpecific)
+                    if factionSpec ~= true then
+                        hidden = true
+                    end
                 end
                 if not hidden then
                     totalVisible = totalVisible + 1
@@ -2832,6 +2996,8 @@ local function InvalidateCollectionCountsCache(_, arg)
     -- Toy source lazy cache (GetToySourceTypeIndexForItem) must rebuild after collection changes
     ns._toyItemIDToSourceIndexCache = nil
     ns._toyGroupedFromMapValid = false
+    ns._mountGroupedFromMapValid = false
+    ns._mountIDToSourceIndex = nil
 
     local ctype = arg
     if type(arg) == "table" then
@@ -2840,6 +3006,10 @@ local function InvalidateCollectionCountsCache(_, arg)
     -- Pet journal source classification: clear on full invalidation or pet-specific updates (P1 staleness)
     if ctype == nil or ctype == "pet" then
         ns._petSpeciesToSourceIndex = nil
+    end
+    if ctype == nil or ctype == "mount" then
+        ns._mountGroupedFromMapValid = false
+        ns._mountIDToSourceIndex = nil
     end
 end
 
@@ -3504,6 +3674,9 @@ COLLECTION_CONFIGS = {
             if not name then return nil end
             -- Midnight 12.0: name or isCollected may be a secret value; guard against it
             if issecretvalue and name and issecretvalue(name) then return nil end
+            if WarbandNexus.ShouldExcludeMountFromCollectionBrowse and WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID) then
+                return nil
+            end
             local collected = false
             if issecretvalue and isCollected and issecretvalue(isCollected) then
                 collected = true
@@ -3520,13 +3693,22 @@ COLLECTION_CONFIGS = {
 
             local creatureDisplayID, description, source = C_MountJournal.GetMountInfoExtraByID(mountID)
 
+            local resolvedSourceType = sourceType
+            if issecretvalue and resolvedSourceType and issecretvalue(resolvedSourceType) then
+                resolvedSourceType = nil
+            end
+            if (not resolvedSourceType or resolvedSourceType == 0) and ns._mountIDToSourceIndex then
+                local fromMap = ns._mountIDToSourceIndex[mountID]
+                if fromMap and fromMap > 0 then resolvedSourceType = fromMap end
+            end
+
             return {
                 id = mountID,
                 name = name,
                 icon = icon,
                 spellID = spellID,
                 source = source or ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown"),
-                sourceType = sourceType,
+                sourceType = resolvedSourceType,
                 description = description,
                 creatureDisplayID = creatureDisplayID,
                 collected = collected,
@@ -3538,30 +3720,15 @@ COLLECTION_CONFIGS = {
         end,
         shouldInclude = function(data)
             if not data or data.collected then return false end
-            -- Pure API hide rule: shouldHideOnChar (live re-query — flag is character-specific)
-            if data.id and C_MountJournal and C_MountJournal.GetMountInfoByID then
-                local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(data.id)
-                if issecretvalue and liveHide and issecretvalue(liveHide) then
-                    -- secret = treat as visible
-                elseif liveHide == true then
-                    return false
-                end
-            elseif data.shouldHideOnChar then
-                return false
+            if data.id and WarbandNexus.ShouldExcludeMountFromCollectionBrowse then
+                return not WarbandNexus:ShouldExcludeMountFromCollectionBrowse(data.id)
             end
             return true
         end,
         shouldIncludeInAll = function(data)
             if not data then return false end
-            if data.id and C_MountJournal and C_MountJournal.GetMountInfoByID then
-                local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(data.id)
-                if issecretvalue and liveHide and issecretvalue(liveHide) then
-                    -- secret = treat as visible
-                elseif liveHide == true then
-                    return false
-                end
-            elseif data.shouldHideOnChar then
-                return false
+            if data.id and WarbandNexus.ShouldExcludeMountFromCollectionBrowse then
+                return not WarbandNexus:ShouldExcludeMountFromCollectionBrowse(data.id)
             end
             return true
         end,
@@ -4791,6 +4958,10 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             if not icon then usedFallbackIcon = true end
             local _, description, source = C_MountJournal.GetMountInfoExtraByID(id)
             if issecretvalue and sourceType and issecretvalue(sourceType) then sourceType = nil end
+            if (not sourceType or sourceType == 0) and self.GetMountBrowseSourceType then
+                local resolved = self:GetMountBrowseSourceType(id)
+                if resolved and resolved > 0 then sourceType = resolved end
+            end
             meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", sourceType = sourceType, description = description or "" }
             -- Current collected state (Midnight: isCollected may be secret)
             if issecretvalue and isCollected and issecretvalue(isCollected) then
@@ -4974,15 +5145,7 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
                     end
                 else
                     local includeInPlans = true
-                    -- Pure API hide rule: live-query shouldHideOnChar (character-specific)
-                    if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                        local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(mountID)
-                        if issecretvalue and liveHide and issecretvalue(liveHide) then
-                            -- secret = treat as visible
-                        elseif liveHide == true then
-                            includeInPlans = false
-                        end
-                    elseif d.shouldHideOnChar then
+                    if self.ShouldExcludeMountFromCollectionBrowse and self:ShouldExcludeMountFromCollectionBrowse(mountID) then
                         includeInPlans = false
                     end
 
@@ -5147,19 +5310,7 @@ function WarbandNexus:GetCollectedMounts(searchText, limit)
         if d then
             local meta = self:ResolveCollectionMetadata("mount", mountID)
             if meta and meta.isCollected then
-                -- Live-query shouldHideOnChar: DB value may be stale from another character
-                local shouldHide = false
-                if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                    local _, _, _, _, _, _, _, _, _, liveHide = C_MountJournal.GetMountInfoByID(mountID)
-                    if issecretvalue and liveHide and issecretvalue(liveHide) then
-                        -- secret = treat as visible
-                    elseif liveHide == true then
-                        shouldHide = true
-                    end
-                elseif d.shouldHideOnChar then
-                    shouldHide = true
-                end
-                if not shouldHide then
+                if not (self.ShouldExcludeMountFromCollectionBrowse and self:ShouldExcludeMountFromCollectionBrowse(mountID)) then
                     local name = meta.name or ("ID:" .. tostring(mountID))
                     if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
                         local row = {}

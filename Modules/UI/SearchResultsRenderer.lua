@@ -41,6 +41,10 @@ function SearchResultsRenderer:PrepareContainer(container)
     if container.emptyStateContainer then
         container.emptyStateContainer:Hide()
     end
+    local searchCardKey = "emptyStateCard_" .. (ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+    if container[searchCardKey] then
+        container[searchCardKey]:Hide()
+    end
     
     -- Release pooled children back to pool (if pooling is used)
     if ReleaseAllPooledChildren then
@@ -54,10 +58,11 @@ function SearchResultsRenderer:PrepareContainer(container)
 
     -- Clear remaining children EXCEPT emptyStateContainer / Plans achievement browse root (virtual list scroll host)
     local bin = ns.UI_RecycleBin
+    local IsProtected = ns.UI_IsProtectedResultsEmptyChild
     local children = {container:GetChildren()}
     for i = 1, #children do
         local child = children[i]
-        if child ~= container.emptyStateContainer and child ~= container.plansAchBrowseRoot then
+        if not (IsProtected and IsProtected(child, container)) then
             if ReleaseCurrencyRowsFromSubtree then
                 ReleaseCurrencyRowsFromSubtree(child)
             end
@@ -68,7 +73,7 @@ function SearchResultsRenderer:PrepareContainer(container)
     end
     for i = 1, #children do
         local child = children[i]
-        if child ~= container.emptyStateContainer and child ~= container.plansAchBrowseRoot then
+        if not (IsProtected and IsProtected(child, container)) then
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end
         end
@@ -92,13 +97,20 @@ function SearchResultsRenderer:RenderEmptyState(addon, container, searchText, ta
     
     local isSearch = searchText and searchText ~= ""
     
-    -- Use shared DrawEmptyState function (tabContext: e.g. plans_achievement, items, storage)
+    if isSearch and ns.UI_ShowSearchEmptyStateCard then
+        return ns.UI_ShowSearchEmptyStateCard(container, searchText, 0, { fillParent = true })
+    end
+
+    local tabKey = tabContext
+    if tabKey and tabKey ~= "" and ns.UI_ShowTabEmptyStateCard then
+        return ns.UI_ShowTabEmptyStateCard(container, tabKey, 0, { fillParent = true })
+    end
+
     if DrawEmptyState then
         return DrawEmptyState(addon, container, 0, isSearch, searchText, tabContext)
-    else
-        DebugPrint("[SearchResultsRenderer] ERROR: DrawEmptyState not found in namespace")
-        return 0
     end
+    DebugPrint("[SearchResultsRenderer] ERROR: no empty-state renderer available")
+    return 0
 end
 
 --[[
@@ -111,11 +123,19 @@ end
 function SearchResultsRenderer:NeedsClearing(container)
     if not container then return false end
     
+    local IsProtected = ns.UI_IsProtectedResultsEmptyChild
     local children = {container:GetChildren()}
     
-    -- If only emptyStateContainer exists, no clearing needed
+    -- If only protected empty-state children exist, no clearing needed
     if #children == 0 then return false end
-    if #children == 1 and children[1] == container.emptyStateContainer then
+    local protectedOnly = true
+    for i = 1, #children do
+        if not (IsProtected and IsProtected(children[i], container)) then
+            protectedOnly = false
+            break
+        end
+    end
+    if protectedOnly then
         return false
     end
     

@@ -69,6 +69,35 @@ local pcall = pcall
 local ipairs = ipairs
 local pairs = pairs
 local tinsert = table.insert
+
+local function ShouldSkipMountBrowse(mountID)
+    return mountID and WarbandNexus.ShouldExcludeMountFromCollectionBrowse
+        and WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)
+end
+
+local function ResolveMountSourceTypeForBrowse(mountID, stored)
+    if mountID and WarbandNexus.GetMountBrowseSourceType then
+        local live = WarbandNexus:GetMountBrowseSourceType(mountID)
+        if live and live > 0 then return live end
+    end
+    return stored
+end
+
+local function ResolvePetSourceIndexForBrowse(speciesID, stored)
+    if speciesID and WarbandNexus.GetPetSourceTypeIndexForSpecies then
+        local live = WarbandNexus:GetPetSourceTypeIndexForSpecies(speciesID)
+        if live and live > 0 then return live end
+    end
+    return stored
+end
+
+local function ResolveToySourceIndexForBrowse(itemID, stored)
+    if (not stored or stored == 0) and itemID and WarbandNexus.GetToySourceTypeIndexForItem then
+        local live = WarbandNexus:GetToySourceTypeIndexForItem(itemID)
+        if live and live > 0 then return live end
+    end
+    return stored
+end
 local tremove = table.remove
 local wipe = table.wipe
 
@@ -87,6 +116,11 @@ local MODEL_VIEWPORT_INSET = 2
 local MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH = 0.62
 local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.04
 local MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y = 14
+-- Mount Journal preview is ~square; Collections detail column is often wider — aspect-aware framing compensates.
+local MODEL_JOURNAL_REFERENCE_ASPECT = 1.05
+-- Large bounding radius (tall pillar mounts): do not shrink below this scale or the model becomes a dot.
+local TALL_MODEL_RADIUS_THRESHOLD = 1.08
+local TALL_MODEL_RADIUS_REFERENCE = 1.08
 local MODEL_SCALE_MIN = 0.15
 local MODEL_SCALE_MAX = 6.0
 local ZOOM_MULTIPLIER_MIN = 0.5
@@ -106,18 +140,51 @@ function M.Collections_SanitizeMountExtra(v, default)
     return v
 end
 
-function M.ApplyJournalModelSceneZoom(scene, zoomMultiplier)
+---Viewport aspect vs journal reference → distance multiplier (<1 zoom in) and ModelScene translate Y.
+---@param viewportW number|nil
+---@param viewportH number|nil
+---@return number distanceMul
+---@return number translateY
+function M.ComputeModelViewerAspectFraming(viewportW, viewportH)
+    local distanceMul = 1.0
+    local translateY = MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y
+    if not viewportW or not viewportH or viewportW <= 1 or viewportH <= 1 then
+        return distanceMul, translateY
+    end
+    local aspect = viewportW / viewportH
+    local ref = MODEL_JOURNAL_REFERENCE_ASPECT
+    if aspect > ref then
+        -- Wider than journal: authored scene reads small with empty bands — zoom in, reduce upward nudge.
+        local excess = (aspect / ref) - 1.0
+        distanceMul = 1.0 / (1.0 + excess * 0.58)
+        if distanceMul < 0.68 then distanceMul = 0.68 end
+        local tyScale = ref / aspect
+        if tyScale < 0.30 then tyScale = 0.30 end
+        translateY = translateY * tyScale
+    elseif aspect < ref * 0.88 then
+        -- Narrow/tall viewport: pull back slightly so wide wings stay inside clip.
+        local excess = (ref / aspect) - 1.0
+        distanceMul = 1.0 + math.min(0.45, excess * 0.40)
+    end
+    return distanceMul, translateY
+end
+
+function M.ApplyJournalModelSceneZoom(scene, zoomMultiplier, viewportFrame)
     if not scene then return end
-    local mul = MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT * (zoomMultiplier or 1.0)
+    local vw, vh = nil, nil
+    if viewportFrame and viewportFrame.GetWidth then
+        vw, vh = viewportFrame:GetWidth(), viewportFrame:GetHeight()
+    end
+    local aspectMul, translateY = M.ComputeModelViewerAspectFraming(vw, vh)
+    local mul = MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT * (zoomMultiplier or 1.0) * aspectMul
     if scene.SetCameraDistanceScale then
         pcall(scene.SetCameraDistanceScale, scene, mul)
     end
     if scene.SetCamDistanceScale then
         pcall(scene.SetCamDistanceScale, scene, mul)
     end
-    -- Mount Journal: önizleme biraz yukarıda; aksi halde binek+binici frame altında kalıyor
     if scene.SetViewTranslation then
-        pcall(scene.SetViewTranslation, scene, 0, MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y)
+        pcall(scene.SetViewTranslation, scene, 0, translateY)
     end
 end
 
@@ -476,7 +543,7 @@ function M.CreateModelViewer(parent, width, height)
             scene:SetResetCallback(function()
                 if panel._lastMountID and panel._mountDisplayUsesJournalScene and panel._journalMountScene then
                     M.ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
-                    M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+                    M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
                 end
             end)
         end
@@ -537,11 +604,20 @@ function M.CreateModelViewer(parent, width, height)
         modelViewport:SetPoint("BOTTOM", slot, "BOTTOM", 0, vPadBottom)
         ApplyModelToViewportInsets()
     end
+
+    -- Defined before ApplyTransform; set after ApplyTransform exists.
+    local ApplyTransform
+
+    local function RefreshModelFramingAfterLayout()
+        UpdateModelFrameSize()
+        if ApplyTransform then ApplyTransform() end
+    end
+    panel.RefreshModelFramingAfterLayout = RefreshModelFramingAfterLayout
     panel.UpdateModelFrameSize = UpdateModelFrameSize
     panel:SetScript("OnSizeChanged", function()
-        UpdateModelFrameSize()
+        RefreshModelFramingAfterLayout()
         if C_Timer and C_Timer.After then
-            C_Timer.After(0, function() UpdateModelFrameSize() end)
+            C_Timer.After(0, RefreshModelFramingAfterLayout)
         end
     end)
 
@@ -564,11 +640,13 @@ function M.CreateModelViewer(parent, width, height)
     panel._interactionLayer = interactionLayer
 
     -- Centered preview: UseModelCenterToTransform + optional pet vertical nudge; idle pose + zero pitch for consistency.
-    local function ApplyTransform()
+    ApplyTransform = function()
         if panel._mountDisplayUsesJournalScene and panel._journalMountScene then
-            M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
             return
         end
+        local vw, vh = modelViewport:GetWidth(), modelViewport:GetHeight()
+        local aspectMul = M.ComputeModelViewerAspectFraming(vw, vh)
         if panel._usesJournalCamera and panel._lastMountID then
             model:SetPosition(0, 0, 0)
             if model.UseModelCenterToTransform then model:UseModelCenterToTransform(true) end
@@ -576,7 +654,7 @@ function M.CreateModelViewer(parent, width, height)
             model:SetFacing(panel.modelRotation)
             if model.SetPortraitZoom then model:SetPortraitZoom(0) end
             if model.SetCamDistanceScale then
-                model:SetCamDistanceScale(FIXED_CAM_SCALE * panel.zoomMultiplier)
+                model:SetCamDistanceScale(FIXED_CAM_SCALE * panel.zoomMultiplier * aspectMul)
             end
             if model.SetViewTranslation then model:SetViewTranslation(0, 0) end
             return
@@ -595,31 +673,20 @@ function M.CreateModelViewer(parent, width, height)
         if panel.normalizedRadius then
             if model.SetModelScale then model:SetModelScale(panel.modelScale) end
             if model.SetCameraDistance then
-                local vw, vh = modelViewport:GetWidth(), modelViewport:GetHeight()
-                local aspectPad = 1.0
-                if vw and vh and vw > 1 and vh > 1 then
-                    local ratio = vw / vh
-                    if ratio > 1.12 then
-                        -- Wide preview: tall mounts (banners, wings) clip vertically — pull camera back
-                        -- proportionally to the aspect ratio so they fit.
-                        aspectPad = math.min(1.45, 1.0 + (ratio - 1.0) * 0.35)
-                    elseif ratio < 0.85 then
-                        -- Tall preview: wide mounts clip horizontally — same logic, mirrored.
-                        aspectPad = math.min(1.45, 1.0 + (1.0 / ratio - 1.0) * 0.35)
-                    end
-                end
                 local camDist = FIXED_CAM_DISTANCE
                     * MODEL_VIEWER_CAMERA_FIT_PADDING
-                    * aspectPad
+                    * aspectMul
                     * panel.zoomMultiplier
                     * panel.modelScale
                 local ok = pcall(model.SetCameraDistance, model, math.max(0.1, camDist))
                 if not ok and model.SetCamDistanceScale then
-                    model:SetCamDistanceScale(panel.camScale)
+                    model:SetCamDistanceScale(panel.camScale * aspectMul)
                 end
             end
         else
-            if model.SetCamDistanceScale then model:SetCamDistanceScale(panel.camScale) end
+            if model.SetCamDistanceScale then
+                model:SetCamDistanceScale(panel.camScale * aspectMul)
+            end
         end
         if model.SetViewTranslation then model:SetViewTranslation(0, 0) end
     end
@@ -647,6 +714,12 @@ function M.CreateModelViewer(parent, width, height)
         if not r or r <= 0 or not model.SetModelScale or not model.SetCameraDistance then return false end
         local scale = (REFERENCE_RADIUS / r) * 0.94
         if scale < MODEL_SCALE_MIN then scale = MODEL_SCALE_MIN elseif scale > MODEL_SCALE_MAX then scale = MODEL_SCALE_MAX end
+        -- Tall/narrow mounts: huge radius would shrink the model to a speck; floor scale for large r.
+        if r > TALL_MODEL_RADIUS_THRESHOLD then
+            local floorScale = (REFERENCE_RADIUS / TALL_MODEL_RADIUS_REFERENCE) * 0.94
+            if floorScale < MODEL_SCALE_MIN then floorScale = MODEL_SCALE_MIN end
+            if scale < floorScale then scale = floorScale end
+        end
         panel.normalizedRadius = true
         panel.modelScale = scale
         ApplyTransform()
@@ -723,7 +796,7 @@ function M.CreateModelViewer(parent, width, height)
             local m = panel.zoomMultiplier * (delta > 0 and 0.9 or 1.1)
             if m < ZOOM_MULTIPLIER_MIN then m = ZOOM_MULTIPLIER_MIN elseif m > ZOOM_MULTIPLIER_MAX then m = ZOOM_MULTIPLIER_MAX end
             panel.zoomMultiplier = m
-            M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
             return
         end
         if panel._usesJournalCamera then
@@ -875,7 +948,7 @@ function M.CreateModelViewer(parent, width, height)
     panel:SetScript("OnShow", function()
         if panel._mountDisplayUsesJournalScene and panel._lastMountID and panel._journalMountScene then
             M.ApplyMountJournalModelSceneDisplay(panel._journalMountScene, panel._lastMountID, panel._lastCreatureDisplayID, true)
-            M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+            M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
             return
         end
         local mid = panel._lastMountID
@@ -898,9 +971,9 @@ function M.CreateModelViewer(parent, width, height)
 
     local function scheduleModelViewerLayout()
         if C_Timer and C_Timer.After then
-            C_Timer.After(0, function() UpdateModelFrameSize() end)
+            C_Timer.After(0, RefreshModelFramingAfterLayout)
         else
-            UpdateModelFrameSize()
+            RefreshModelFramingAfterLayout()
         end
     end
 
@@ -939,11 +1012,11 @@ function M.CreateModelViewer(parent, width, height)
             if okJournal then
                 panel._mountDisplayUsesJournalScene = true
                 panel.zoomMultiplier = 1.0
-                M.ApplyJournalModelSceneZoom(journalScene, panel.zoomMultiplier)
+                M.ApplyJournalModelSceneZoom(journalScene, panel.zoomMultiplier, modelViewport)
                 if C_Timer and C_Timer.After then
                     C_Timer.After(0, function()
                         if panel._lastMountID ~= mountID or not panel._mountDisplayUsesJournalScene or not panel._journalMountScene then return end
-                        M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier)
+                        M.ApplyJournalModelSceneZoom(panel._journalMountScene, panel.zoomMultiplier, modelViewport)
                     end)
                 end
                 model:ClearModel()
@@ -2122,11 +2195,11 @@ end
 -- MOUNT DATA BUILDER (Source Grouped) — From global collection data (DB); fallback to API
 -- ============================================================================
 
--- Pure API: hide-decision is delegated to C_MountJournal.GetMountInfoByID().shouldHideOnChar.
--- Placeholder/ability mounts (e.g. "Soar", "Unstable Rocket") are flagged hidden by the API
--- on characters that cannot use them, so no addon-side blacklist is required.
+-- Pure API: hide internal/placeholder mounts via ShouldExcludeMountFromCollectionBrowse;
+-- cross-faction mounts (isFactionSpecific + shouldHideOnChar) stay visible in browse.
 
 function M.BuildGroupedMountData(searchText, showCollected, showUncollected, optionalMounts)
+    if WarbandNexus.EnsureMountSourceIndexMap then WarbandNexus:EnsureMountSourceIndexMap() end
     local grouped = {}
     local nameIndex = {}
     local classifyCache = {}
@@ -2177,28 +2250,15 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
     if useCache then
         for i = 1, #allMounts do
             local d = allMounts[i]
-            if d and d.id then
-                -- Live-query shouldHideOnChar: DB value may be stale from another character
-                local shouldSkip = false
-                if d.shouldHideOnChar then
-                    shouldSkip = true  -- default to DB value
-                    if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                        local _, _, _, _, _, _, _, _, _, sh = C_MountJournal.GetMountInfoByID(d.id)
-                        if issecretvalue and sh and issecretvalue(sh) then
-                            shouldSkip = false  -- secret = treat as visible
-                        elseif sh == false then
-                            shouldSkip = false  -- API says visible on this character
-                        end
-                    end
-                end
-                if not shouldSkip then
+            if d and d.id and not ShouldSkipMountBrowse(d.id) then
                     local name = d.name or tostring(d.id)
                     -- Pure API: isCollected from cache (no API call here).
                     local isCollected = (d.isCollected == true) or (d.collected == true)
                     if (showC and isCollected) or (showU and not isCollected) then
                         if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                             local sourceText = d.source or ""
-                            local catKey = classify(d.sourceType)
+                            local sourceTypeInt = ResolveMountSourceTypeForBrowse(d.id, d.sourceType)
+                            local catKey = classify(sourceTypeInt)
                             if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                             if not nameAlreadyInCategory(catKey, name) then
                                 addToCategory(catKey, {
@@ -2206,7 +2266,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
                                     name = name,
                                     icon = d.icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
                                     source = sourceText,
-                                    sourceType = d.sourceType,
+                                    sourceType = sourceTypeInt,
                                     description = d.description,
                                     creatureDisplayID = d.creatureDisplayID,
                                     isCollected = isCollected,
@@ -2217,7 +2277,6 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
                             end
                         end
                     end
-                end
             end
         end
     else
@@ -2225,19 +2284,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
         if #mountIDs == 0 then return grouped, 0 end
         for i = 1, #mountIDs do
             local mountID = mountIDs[i]
-            -- Skip hidden mounts: live-query shouldHideOnChar (10th return, API is character-specific)
-            local shouldHide = false
-            local liveSourceType = nil
-            if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                local _, _, _, _, _, st, _, _, _, sh = C_MountJournal.GetMountInfoByID(mountID)
-                if issecretvalue and sh and issecretvalue(sh) then
-                    -- secret = treat as visible
-                elseif sh == true then
-                    shouldHide = true
-                end
-                if not (issecretvalue and st and issecretvalue(st)) then liveSourceType = st end
-            end
-            if not shouldHide then
+            if not ShouldSkipMountBrowse(mountID) then
             local isCollected = M.SafeGetMountCollected(mountID)
             if (showC and isCollected) or (showU and not isCollected) then
                 local meta = WarbandNexus:ResolveCollectionMetadata("mount", mountID)
@@ -2256,7 +2303,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
                         local _, _, ic = C_MountJournal.GetMountInfoByID(mountID)
                         if ic and not (issecretvalue and issecretvalue(ic)) then icon = ic end
                     end
-                    local sourceTypeInt = (meta and meta.sourceType) or liveSourceType
+                    local sourceTypeInt = ResolveMountSourceTypeForBrowse(mountID, meta and meta.sourceType)
                     local catKey = classify(sourceTypeInt)
                     if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                     if not nameAlreadyInCategory(catKey, name) then
@@ -2291,6 +2338,7 @@ end
 
 -- Chunked build: process mounts in small chunks per frame so no single frame freezes for ~1s.
 function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncollected, drawGen, contentFrame, onComplete)
+    if WarbandNexus.EnsureMountSourceIndexMap then WarbandNexus:EnsureMountSourceIndexMap() end
     local grouped = {}
     local nameIndex = {}
     local classifyCache = {}
@@ -2327,27 +2375,14 @@ function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncoll
         local limit = math.min(startIdx + RUN_CHUNK_SIZE - 1, total)
         for i = startIdx, limit do
             local d = allMounts[i]
-            if d and d.id then
-                -- Live-query shouldHideOnChar: DB value may be stale from another character
-                local shouldSkip = false
-                if d.shouldHideOnChar then
-                    shouldSkip = true
-                    if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                        local _, _, _, _, _, _, _, _, _, sh = C_MountJournal.GetMountInfoByID(d.id)
-                        if issecretvalue and sh and issecretvalue(sh) then
-                            shouldSkip = false
-                        elseif sh == false then
-                            shouldSkip = false
-                        end
-                    end
-                end
-                if not shouldSkip then
+            if d and d.id and not ShouldSkipMountBrowse(d.id) then
                 local name = d.name or tostring(d.id)
                 local isCollected = (d.isCollected == true) or (d.collected == true)
                 if (showC and isCollected) or (showU and not isCollected) then
                     if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                         local sourceText = d.source or ""
-                        local catKey = classify(d.sourceType)
+                        local sourceTypeInt = ResolveMountSourceTypeForBrowse(d.id, d.sourceType)
+                        local catKey = classify(sourceTypeInt)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                         if not nameAlreadyInCategory(catKey, name) then
                             addToCategory(catKey, {
@@ -2355,7 +2390,7 @@ function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncoll
                                 name = name,
                                 icon = d.icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
                                 source = sourceText,
-                                sourceType = d.sourceType,
+                                sourceType = sourceTypeInt,
                                 description = d.description,
                                 creatureDisplayID = d.creatureDisplayID,
                                 isCollected = isCollected,
@@ -2366,7 +2401,6 @@ function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncoll
                     end
                 end
             end
-        end
         end
         startIdx = limit + 1
         if startIdx > total then
@@ -2425,7 +2459,8 @@ function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollecte
                 if (showC and isCollected) or (showU and not isCollected) then
                     if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                         local sourceText = d.source or ""
-                        local catKey = classify(d.sourceTypeIndex)
+                        local sourceTypeIndex = ResolvePetSourceIndexForBrowse(d.id, d.sourceTypeIndex)
+                        local catKey = classify(sourceTypeIndex)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                         if not nameAlreadyInCategory(catKey, name) then
                             addToCategory(catKey, {
@@ -2433,7 +2468,7 @@ function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollecte
                                 name = name,
                                 icon = d.icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
                                 source = sourceText,
-                                sourceTypeIndex = d.sourceTypeIndex,
+                                sourceTypeIndex = sourceTypeIndex,
                                 description = d.description,
                                 creatureDisplayID = d.creatureDisplayID,
                                 isCollected = isCollected,
@@ -2516,7 +2551,8 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
                 if (showC and isCollected) or (showU and not isCollected) then
                     if query == "" or (name and SafeLower(name):find(query, 1, true)) then
                         local sourceText = d.source or ""
-                        local catKey = classify(d.sourceTypeIndex)
+                        local sourceTypeIndex = ResolvePetSourceIndexForBrowse(d.id, d.sourceTypeIndex)
+                        local catKey = classify(sourceTypeIndex)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                         if not nameAlreadyInCategory(catKey, name) then
                             addToCategory(catKey, {
@@ -2524,7 +2560,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
                                 name = name,
                                 icon = d.icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
                                 source = sourceText,
-                                sourceTypeIndex = d.sourceTypeIndex,
+                                sourceTypeIndex = sourceTypeIndex,
                                 description = d.description,
                                 creatureDisplayID = d.creatureDisplayID,
                                 isCollected = isCollected,
@@ -2571,7 +2607,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
                             local _, ic = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
                             if ic and not (issecretvalue and issecretvalue(ic)) then icon = ic end
                         end
-                        local sourceTypeIndex = meta and meta.sourceTypeIndex or nil
+                        local sourceTypeIndex = ResolvePetSourceIndexForBrowse(speciesID, meta and meta.sourceTypeIndex)
                         local catKey = classify(sourceTypeIndex)
                         if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                         if not nameAlreadyInCategory(catKey, name) then
@@ -2657,9 +2693,9 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
     local showC = (showCollected ~= false)
     local showU = (showUncollected ~= false)
 
-    local resolveSourceIndex = (WarbandNexus.GetToySourceTypeIndexForItem and function(id)
-        return WarbandNexus:GetToySourceTypeIndexForItem(id)
-    end) or function() return nil end
+    local resolveSourceIndex = (WarbandNexus.GetToySourceTypeIndexForItem and function(id, stored)
+        return ResolveToySourceIndexForBrowse(id, stored)
+    end) or function(_, stored) return stored end
 
     for i = 1, #allToys do
         local d = allToys[i]
@@ -2668,7 +2704,7 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
             local isCollected = (d.isCollected == true) or (d.collected == true)
             if (showC and isCollected) or (showU and not isCollected) then
                 if query == "" or (name and SafeLower(name):find(query, 1, true)) then
-                    local sourceTypeIndex = d.sourceTypeIndex or resolveSourceIndex(d.id)
+                    local sourceTypeIndex = resolveSourceIndex(d.id, d.sourceTypeIndex)
                     local catKey = SD.ClassifyBattlePetByAPI(nil, sourceTypeIndex)
                     if not grouped[catKey] then grouped[catKey] = {} nameIndex[catKey] = {} end
                     if not nameAlreadyInCategory(catKey, name) then

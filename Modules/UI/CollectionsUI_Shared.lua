@@ -552,6 +552,26 @@ function M.ScheduleCollectionsVisibleSync(subTabKey, refreshFn)
     end)
 end
 
+--- True when flat list contains at least one data row (not just headers).
+function M.FlatListHasDataRows(flatList)
+    if not flatList then return false end
+    for i = 1, #flatList do
+        if flatList[i].type == "row" then return true end
+    end
+    return false
+end
+
+--- Standard search-no-results card inside Collections list scrollChild.
+---@return boolean shown
+function M.TryShowCollectionsListSearchEmpty(scrollChild)
+    if not scrollChild then return false end
+    local q = M.state and M.state.searchText or ""
+    if ns.UI_TryShowSearchEmptyInContainer then
+        return ns.UI_TryShowSearchEmptyInContainer(scrollChild, q, 0)
+    end
+    return false
+end
+
 -- Bind shared symbols for satellite modules (avoid duplicate locals in main chunk).
 M.WarbandNexus = WarbandNexus
 M.FontManager = FontManager

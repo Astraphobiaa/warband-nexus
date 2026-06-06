@@ -1494,8 +1494,12 @@ function WarbandNexus:DrawReputationList(container, width)
             SearchStateManager:UpdateResults("reputation", 0)
             return height
         else
-            -- General "no data" empty state: use standardized factory
-            local _, height = CreateEmptyStateCard(parent, "reputation", yOffset)
+            if ns.UI_ShowTabEmptyStateCard then
+                local height = ns.UI_ShowTabEmptyStateCard(parent, "reputation", yOffset, { fillParent = true })
+                SearchStateManager:UpdateResults("reputation", 0)
+                return height
+            end
+            local _, height = CreateEmptyStateCard(parent, "reputation", yOffset, { fillParent = true })
             SearchStateManager:UpdateResults("reputation", 0)
             return yOffset + height
         end
@@ -1766,6 +1770,28 @@ function WarbandNexus:DrawReputationList(container, width)
         return factionList, filtered, isSearching
     end
 
+    local repSearchActive = reputationSearchText and reputationSearchText ~= ""
+        and not (issecretvalue and issecretvalue(reputationSearchText))
+    if repSearchActive then
+        totalAccountWide = 0
+        for hi = 1, #accountWideHeaders do
+            local _, fl = BuildFilteredList(accountWideHeaders[hi], "AW")
+            totalAccountWide = totalAccountWide + #fl
+        end
+        totalCharacterBased = 0
+        for hi = 1, #characterBasedHeaders do
+            local _, fl = BuildFilteredList(characterBasedHeaders[hi], "CB")
+            totalCharacterBased = totalCharacterBased + #fl
+        end
+        if totalAccountWide + totalCharacterBased == 0 then
+            HideEmptyStateCard(parent, "reputation")
+            HideEmptyStateCard(parent, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, reputationSearchText, "reputation")
+            SearchStateManager:UpdateResults("reputation", 0)
+            return height
+        end
+    end
+
     local function RenderRowsIntoBody(body, bodyWidth, filteredFactionList)
         body._wnVirtualContentHeight = nil
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
@@ -2019,33 +2045,39 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
 
-    RenderSection(
-        "filtered-section-accountwide",
-        format((ns.L and ns.L["REP_SECTION_ACCOUNT_WIDE"]) or "Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
-        "dummy",
-        nil,
-        accountWideHeaders,
-        "AW"
-    )
+    if totalAccountWide > 0 or not repSearchActive then
+        RenderSection(
+            "filtered-section-accountwide",
+            format((ns.L and ns.L["REP_SECTION_ACCOUNT_WIDE"]) or "Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
+            "dummy",
+            nil,
+            accountWideHeaders,
+            "AW"
+        )
+    end
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-    RenderSection(
-        "filtered-section-characterbased",
-        format((ns.L and ns.L["REP_SECTION_CHARACTER_BASED"]) or "Character-Based Reputations (%s)", FormatNumber(totalCharacterBased)),
-        GetCharacterSpecificIcon and GetCharacterSpecificIcon() or nil,
-        true,
-        characterBasedHeaders,
-        "CB"
-    )
+    if totalCharacterBased > 0 or not repSearchActive then
+        RenderSection(
+            "filtered-section-characterbased",
+            format((ns.L and ns.L["REP_SECTION_CHARACTER_BASED"]) or "Character-Based Reputations (%s)", FormatNumber(totalCharacterBased)),
+            GetCharacterSpecificIcon and GetCharacterSpecificIcon() or nil,
+            true,
+            characterBasedHeaders,
+            "CB"
+        )
+    end
 
-    local noticeFrame = CreateNoticeFrame(
-        parent,
-        (ns.L and ns.L["REP_FOOTER_TITLE"]) or "Reputation Tracking",
-        (ns.L and ns.L["REP_FOOTER_DESC"]) or "Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.",
-        "info",
-        width - 20,
-        60
-    )
-    ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
+    if not repSearchActive then
+        local noticeFrame = CreateNoticeFrame(
+            parent,
+            (ns.L and ns.L["REP_FOOTER_TITLE"]) or "Reputation Tracking",
+            (ns.L and ns.L["REP_FOOTER_DESC"]) or "Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.",
+            "info",
+            width - 20,
+            60
+        )
+        ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
+    end
 
     local totalReputations = 0
     local aggHdrs = aggregatedHeaders or {}
@@ -2351,7 +2383,7 @@ function WarbandNexus:DrawReputationTab(parent)
         if parent.resultsContainer then
             self:RedrawReputationResultsOnly(false)
         end
-    end, 0.4, reputationSearchText)
+    end, nil, reputationSearchText, "reputation")
     
     searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
     searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)

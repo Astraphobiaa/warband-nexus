@@ -1,10 +1,9 @@
 --[[
     Warband Nexus - Search State Manager (Service Layer)
     
-    Service-Oriented, Event-Driven search state management
+    Service-Oriented search state management
     - Manages search queries and state per tab
-    - Throttles search updates to prevent performance issues
-    - Fires events for UI consumption (no direct UI manipulation)
+    - UI search boxes debounce redraws (`UI_CONSTANTS.SEARCH_DEBOUNCE_SEC`); this service stores the active query
     - Provides centralized API for all search operations
     
     Architecture: Pure Service Layer (UI-Agnostic)
@@ -26,23 +25,14 @@ local AceEvent = LibStub("AceEvent-3.0")
 -- STATE STORAGE
 --============================================================================
 
--- Per-tab search state
--- Structure: {
---   [tabId] = {
---     query = "",           -- Current search query (lowercase)
---     resultCount = 0,      -- Number of results (set by UI after rendering)
---     isEmpty = false,      -- Whether results are empty
---     timestamp = 0,        -- Last update timestamp
---     throttleTimer = nil   -- Active throttle timer
---   }
--- }
+-- Per-tab search state (query updated when debounced UI callback runs; no second timer here).
 local searchStates = {}
 
 --============================================================================
 -- CONSTANTS
 --============================================================================
 
-local THROTTLE_DELAY = 0.3  -- 300ms throttle (matches existing search boxes)
+-- List redraw debounce lives in UI (`UI_CONSTANTS.SEARCH_DEBOUNCE_SEC` / SearchBoxComponent).
 
 --============================================================================
 -- PRIVATE HELPERS
@@ -72,7 +62,6 @@ local function GetOrCreateState(tabId)
             resultCount = 0,
             isEmpty = false,
             timestamp = GetTime(),
-            throttleTimer = nil
         }
     end
     return searchStates[tabId]
@@ -99,7 +88,7 @@ end
 local SearchStateManager = {}
 
 --[[
-    Set search query for a tab (throttled)
+    Set search query for a tab (called from debounced search UI; no extra timer).
     @param tabId string - Tab identifier (e.g., "items", "currency")
     @param searchText string - Search query text
 ]]
@@ -109,27 +98,15 @@ function SearchStateManager:SetSearchQuery(tabId, searchText)
     local state = GetOrCreateState(tabId)
     local normalizedQuery = NormalizeSearchQuery(searchText)
     
-    -- Cancel previous throttle timer
-    if state.throttleTimer then
-        state.throttleTimer:Cancel()
-        state.throttleTimer = nil
-    end
-    
-    -- Update query immediately (for instant UI feedback)
     state.query = normalizedQuery
     state.timestamp = GetTime()
     
-    -- Fire immediate query update event (for search box display)
     AceEvent:SendMessage(E.SEARCH_QUERY_UPDATED, {
         tabId = tabId,
         searchText = normalizedQuery
     })
     
-    -- Throttle the actual search execution
-    state.throttleTimer = C_Timer.NewTimer(THROTTLE_DELAY, function()
-        state.throttleTimer = nil
-        FireStateChangedEvent(tabId)
-    end)
+    FireStateChangedEvent(tabId)
 end
 
 --[[
@@ -178,13 +155,6 @@ function SearchStateManager:ClearSearch(tabId)
     
     local state = GetOrCreateState(tabId)
     
-    -- Cancel throttle timer
-    if state.throttleTimer then
-        state.throttleTimer:Cancel()
-        state.throttleTimer = nil
-    end
-    
-    -- Reset state
     state.query = ""
     state.resultCount = 0
     state.isEmpty = false

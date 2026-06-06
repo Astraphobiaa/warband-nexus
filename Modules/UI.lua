@@ -951,19 +951,11 @@ ns.UI_ResetSessionSectionExpandState = ns.UI_ResetSessionSectionExpandState
 -- MAIN FUNCTIONS
 --============================================================================
 
--- Clear all search state on main tab change
-local SEARCH_TAB_IDS = { "items", "gear", "currency", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
-
+-- Clear all search state on main tab change (delegates to SearchBoxComponent).
 local function ClearAllSearchBoxes()
-    local SSM = ns.SearchStateManager
-    if SSM and SSM.ClearSearch then
-        for i = 1, #SEARCH_TAB_IDS do
-            SSM:ClearSearch(SEARCH_TAB_IDS[i])
-        end
+    if ns.UI_ClearAllSearchQueries then
+        ns.UI_ClearAllSearchQueries()
     end
-    -- Clear My Plans active search
-    ns._plansActiveSearch = nil
-    ns._gearSearchText = nil
 end
 
 ---Session-only main tab (hide/show same login). Cleared on /reload.
@@ -2410,6 +2402,9 @@ function WarbandNexus:CreateMainWindow()
             local function runPoolReleaseOnly()
                 local scrollChild = f.scrollChild
                 if scrollChild then
+                    if ns.UI_HideEphemeralScrollRegions then
+                        ns.UI_HideEphemeralScrollRegions(scrollChild)
+                    end
                     local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
                     for i = 1, nc do
                         local child = _uiChildEnumScratch[i]

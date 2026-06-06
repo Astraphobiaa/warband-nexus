@@ -150,6 +150,7 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
     local rowCounter = 0
     local baseRowH = LAYOUT.ROW_HEIGHT or 26
     local scale = (listOpts and type(listOpts.rowHeightScale) == "number") and listOpts.rowHeightScale or 1
+    local searchActive = listOpts and listOpts.searchActive == true
     local achRowH = math.max(18, math.floor(baseRowH * scale + 0.5))
     local achRowStride = achRowH + ACH_ROW_GAP
     local rD, gD, bD = (COLORS.textDim[1] or 0.55), (COLORS.textDim[2] or 0.55), (COLORS.textDim[3] or 0.55)
@@ -193,6 +194,10 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
     end
 
     local function CategoryShouldAppear(catID)
+        -- Search: only branches that contain matched achievements (skip empty API journal slots).
+        if searchActive then
+            return CountCategoryAchievements(catID) > 0
+        end
         if CountCategoryAchievements(catID) > 0 then return true end
         if GetApiCategoryAchievementCount(catID) > 0 then return true end
         -- Feats of Strength (and similar): journal sub-tabs exist before browse/scan data is ready on first login.
@@ -355,8 +360,33 @@ function ns.UI_AchievementBrowse_Populate(opts)
         _achRegionEnumScratch[i]:Hide()
     end
 
-    local listBuildOpts = (opts.rowHeightScale and type(opts.rowHeightScale) == "number") and { rowHeightScale = opts.rowHeightScale } or nil
+    local listBuildOpts = nil
+    if (opts.rowHeightScale and type(opts.rowHeightScale) == "number") or opts.searchActive then
+        listBuildOpts = {}
+        if opts.rowHeightScale and type(opts.rowHeightScale) == "number" then
+            listBuildOpts.rowHeightScale = opts.rowHeightScale
+        end
+        if opts.searchActive then
+            listBuildOpts.searchActive = true
+        end
+    end
     local flatList = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
+
+    if ns.UI_HideEmptyStateCard then
+        ns.UI_HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+    end
+    local searchTextRaw = opts.searchText or (state and state.searchText) or ""
+    if opts.searchActive and not (ns.UI_FlatListHasDataRows and ns.UI_FlatListHasDataRows(flatList)) then
+        if ns.UI_TryShowSearchEmptyInContainer and ns.UI_TryShowSearchEmptyInContainer(scrollChild, searchTextRaw, 0) then
+            state._achFlatList = flatList
+            state._achFlatListTotalHeight = math.max(200, (scrollChild:GetParent() and scrollChild:GetParent():GetHeight()) or 200)
+            scrollChild:SetHeight(state._achFlatListTotalHeight)
+            _populateAchievementBrowseBusy = false
+            InvokeAchievementBrowseListReady(opts)
+            DrainAchievementBrowsePopulateQueue()
+            return
+        end
+    end
 
     state._achRowHeightUsed = ROW_HEIGHT
     for _fi = 1, #flatList do
@@ -653,8 +683,11 @@ function ns.UI_AchievementBrowse_Populate(opts)
             end
 
             local sectionBody
+            local catIDForH = meta and meta.categoryID
             local secH = achSectionContentH[key] or 0
-            if secH <= 0 then
+            if secH <= 0 and catIDForH then
+                secH = ComputeAchievementContentHeight(catIDForH, nil, nil)
+            elseif secH <= 0 then
                 secH = ((it.itemCount or 0) * rowHAcc) or 0
             end
             local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)

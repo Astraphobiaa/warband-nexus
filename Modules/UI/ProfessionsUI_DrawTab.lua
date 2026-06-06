@@ -432,12 +432,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local yOffset = scrollTopY + COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
 
     -- ===== EMPTY STATE =====
+    if parent._wnProfEmptyScrollText then
+        parent._wnProfEmptyScrollText:Hide()
+    end
+    HideEmptyStateCard(parent, "professions")
     if totalProfChars == 0 then
-        local emptyText = FontManager:CreateFontString(parent, DATA_FONT, "OVERLAY")
-        emptyText:SetPoint("TOPLEFT", contentSide + 20, -yOffset - 30)
-        emptyText:SetWidth(stackWidth - 40)
-        emptyText:SetJustifyH("CENTER")
-        emptyText:SetText("|cffffffff" .. ((ns.L and ns.L["NO_PROFESSIONS_DATA"]) or "No profession data available yet. Open your profession window (default: K) on each character to collect data.") .. "|r")
+        if ns.UI_ShowTabEmptyStateCard then
+            return ns.UI_ShowTabEmptyStateCard(parent, "professions", yOffset, { fillParent = true }) + 20
+        end
         return yOffset + 100
     end
 
@@ -865,9 +867,17 @@ function WarbandNexus:DrawProfessionsTab(parent)
         return estY + 24
     end
 
+    if parent._wnProfCollapsedHint then
+        parent._wnProfCollapsedHint:Hide()
+    end
     if profDataCharCount > 0 and not AnyProfessionsSectionExpanded(self.db.profile, customGroupsOrdered) then
         local hintY = yOffset
-        local hint = FontManager:CreateFontString(parent, DATA_FONT, "OVERLAY")
+        if not parent._wnProfCollapsedHint then
+            parent._wnProfCollapsedHint = FontManager:CreateFontString(parent, DATA_FONT, "OVERLAY")
+            parent._wnProfCollapsedHint._wnEphemeralScrollOverlay = true
+        end
+        local hint = parent._wnProfCollapsedHint
+        hint:Show()
         hint:SetPoint("TOPLEFT", contentSide + 12, -hintY - 8)
         hint:SetWidth(stackWidth - 24)
         hint:SetJustifyH("LEFT")

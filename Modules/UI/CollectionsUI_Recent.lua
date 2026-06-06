@@ -342,12 +342,46 @@ function M.DrawRecentContent(contentFrame)
         qlower = qraw:lower()
     end
 
-    local searchEmptyTxt = (loc and loc["COLLECTIONS_RECENT_SEARCH_EMPTY"]) or "No matching entries."
+    local searchEmptyTxt = (ns.UI_FormatSearchEmptyMessage and ns.UI_FormatSearchEmptyMessage(qraw))
+        or ((loc and loc["NO_ITEMS_MATCH_GENERIC"]) or "No items match your search")
     local noneLine = (loc and loc["COLLECTIONS_RECENT_SECTION_NONE"]) or "No entries yet."
     local inset = CONTENT_INSET or 8
     local gap = CARD_GAP
 
     M.ClearRecentPanelChildren(panel)
+    if panel.emptyStateContainer then
+        panel.emptyStateContainer:Hide()
+    end
+
+    local pickedLists = {}
+    for si = 1, #RECENT_SECTION_ORDER do
+        pickedLists[si] = M.RecentPickForType(db, RECENT_SECTION_ORDER[si], qlower, nil)
+    end
+
+    if qlower then
+        local anyMatch = false
+        for si = 1, #RECENT_SECTION_ORDER do
+            if #pickedLists[si] > 0 then
+                anyMatch = true
+                break
+            end
+        end
+        if not anyMatch then
+            local inner_viewport = math.max(1, viewCap - headerBlockH)
+            local emptyExtent = 40
+            if ns.UI_RenderStandardSearchEmptyState then
+                emptyExtent = ns.UI_RenderStandardSearchEmptyState(WarbandNexus, panel, qraw, "collections_recent", emptyExtent) or emptyExtent
+            end
+            local finalContentH = math.max(viewCap, headerBlockH + emptyExtent + inset)
+            contentFrame:SetHeight(finalContentH)
+            if panel.SetHeight then
+                panel:SetHeight(math.max(1, inner_viewport))
+            end
+            M.ApplyCollectionsContentHeader(contentFrame, "recent", finalContentH)
+            SyncRecentMainHorizontalScroll()
+            return
+        end
+    end
 
     local innerW = math.max(1, cw - 2 * inset)
     local recentCols, cardW = M.ComputeRecentCardGrid(innerW, gap)
@@ -357,11 +391,6 @@ function M.DrawRecentContent(contentFrame)
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 8
     local listTopPad = headerBand + 4
     local RECENT_ROW_H_SUB = math.floor(44 * 1.05 + 0.5)
-
-    local pickedLists = {}
-    for si = 1, #RECENT_SECTION_ORDER do
-        pickedLists[si] = M.RecentPickForType(db, RECENT_SECTION_ORDER[si], qlower, nil)
-    end
 
     --- Pixel height of the scrollable list block inside one Recent card (rows only; excludes header band).
     local function RecentColumnListPixelHeight(typ, picked)

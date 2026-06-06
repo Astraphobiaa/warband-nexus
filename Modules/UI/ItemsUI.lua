@@ -103,11 +103,19 @@ local ITEMS_RESULTS_EMPTY_OPTS = { fillParent = true }
 local function HideAllItemsEmptyStateCards(scrollChild)
     if not scrollChild or not HideEmptyStateCard then return end
     HideEmptyStateCard(scrollChild, "items")
-    HideEmptyStateCard(scrollChild, "items_search")
+    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
     HideEmptyStateCard(scrollChild, "storage")
     for _, sub in ipairs({ "inventory", "personal", "warband", "guild" }) do
         HideEmptyStateCard(scrollChild, "items_" .. sub)
     end
+end
+
+--- Unified search-no-results card (query-aware description).
+local function ShowItemsSearchEmptyState(parent, searchText, baseYOffset)
+    if ns.UI_ShowSearchEmptyStateCard then
+        return ns.UI_ShowSearchEmptyStateCard(parent, searchText, baseYOffset or 0, ITEMS_RESULTS_EMPTY_OPTS)
+    end
+    return ShowItemsResultsEmptyState(parent, ns.UI_SEARCH_EMPTY_TAB_KEY or "search", baseYOffset)
 end
 
 --- Empty card inside resultsContainer (full width, same top gap as list headers).
@@ -116,6 +124,9 @@ local function ShowItemsResultsEmptyState(parent, tabName, baseYOffset)
         parent.emptyStateContainer:Hide()
     end
     local top = ItemsResultsTopGap(baseYOffset or 0)
+    if ns.UI_ShowTabEmptyStateCard then
+        return ns.UI_ShowTabEmptyStateCard(parent, tabName, top, ITEMS_RESULTS_EMPTY_OPTS)
+    end
     local _, extent = CreateEmptyStateCard(parent, tabName, top, ITEMS_RESULTS_EMPTY_OPTS)
     return top + (extent or 200)
 end
@@ -256,6 +267,11 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
                 return
             end
             ns.UI_SetItemsSubTab(tabInfo.key)
+            if ns.UI_ClearRegisteredSearchBox then
+                ns.UI_ClearRegisteredSearchBox("items", false)
+            elseif ns.SearchStateManager and ns.SearchStateManager.ClearSearch then
+                ns.SearchStateManager:ClearSearch("items")
+            end
             if not (WarbandNexus.RefreshItemsSubTabBodyOnly and WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, tabInfo.key)) then
                 WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "items", skipCooldown = true })
             end
@@ -1652,7 +1668,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     if storageSearchActive and not hasAnyMatches then
         stStop("Stor_scan")
         hideDrawIndicatorWithStagingGate()
-        local height = ShowItemsResultsEmptyState(parent, "items_search", yOffset)
+        local height = ShowItemsSearchEmptyState(parent, storageSearchText, yOffset)
         SearchStateManager:UpdateResults(searchResultTabKey, 0)
         return height
     end
@@ -3059,7 +3075,7 @@ function WarbandNexus:DrawItemList(parent)
                 ns.UI_AnnexResultsToScrollBottom(resultsContainer, parent, contentSide, 8)
             end
         end
-    end, 0.4, itemsSearchText)
+    end, nil, itemsSearchText, "items")
     
     searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
     searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
@@ -3403,8 +3419,12 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     local flatList, contentEndY, _itemCount, itemsSearchActive = self:BuildItemsVirtualFlatList(width, currentItemsSubTab, itemsSearchText, yOffset)
 
     if not flatList then
-        local emptyKey = itemsSearchActive and "items_search" or ("items_" .. currentItemsSubTab)
-        local height = ShowItemsResultsEmptyState(parent, emptyKey, yOffset)
+        local height
+        if itemsSearchActive then
+            height = ShowItemsSearchEmptyState(parent, itemsSearchText, yOffset)
+        else
+            height = ShowItemsResultsEmptyState(parent, "items_" .. currentItemsSubTab, yOffset)
+        end
         SearchStateManager:UpdateResults("items", 0)
         return height
     end

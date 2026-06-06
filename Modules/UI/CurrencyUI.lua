@@ -814,8 +814,13 @@ function WarbandNexus:DrawCurrencyList(container, width)
             return height
         else
             -- General "no data" empty state: use standardized factory
+            if ns.UI_ShowTabEmptyStateCard then
+                local height = ns.UI_ShowTabEmptyStateCard(parent, "currency", 0, { fillParent = true })
+                SearchStateManager:UpdateResults("currency", 0)
+                return height
+            end
             local yOffset = 100
-            local _, height = CreateEmptyStateCard(parent, "currency", yOffset)
+            local _, height = CreateEmptyStateCard(parent, "currency", yOffset, { fillParent = true })
             SearchStateManager:UpdateResults("currency", 0)
             return yOffset + height
         end
@@ -1205,8 +1210,13 @@ function WarbandNexus:DrawCurrencyList(container, width)
             return height
         else
             -- General "no data" empty state: use standardized factory
+            if ns.UI_ShowTabEmptyStateCard then
+                local height = ns.UI_ShowTabEmptyStateCard(parent, "currency", 0, { fillParent = true })
+                SearchStateManager:UpdateResults("currency", 0)
+                return height
+            end
             local yOffset = 100
-            local _, height = CreateEmptyStateCard(parent, "currency", yOffset)
+            local _, height = CreateEmptyStateCard(parent, "currency", yOffset, { fillParent = true })
             SearchStateManager:UpdateResults("currency", 0)
             return yOffset + height
         end
@@ -1470,7 +1480,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
             SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
             self:RedrawCurrencyResultsOnly(false)
         end
-    end, 0.4, currencySearchText)
+    end, nil, currencySearchText, "currency")
     
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -headerYOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)

@@ -47,6 +47,34 @@ local DrawPetsContent = M.DrawPetsContent
 local DrawToysContent = M.DrawToysContent
 local DrawAchievementsContent = M.DrawAchievementsContent
 
+local issecretvalue = issecretvalue
+
+local function RedrawCollectionsSearchContentImmediate()
+    local cf = M.state.contentFrame
+    if not cf then return end
+    local sub = M.state.currentSubTab
+    if sub == "recent" then
+        DrawRecentContent(cf)
+    elseif sub == "mounts" then
+        DrawMountsContent(cf)
+    elseif sub == "pets" then
+        DrawPetsContent(cf)
+    elseif sub == "toys" then
+        DrawToysContent(cf)
+    elseif sub == "achievements" then
+        DrawAchievementsContent(cf)
+    end
+end
+
+local function ScheduleCollectionsSearchRedraw()
+    local sub = M.state.currentSubTab or "collections"
+    ns.UI_ScheduleSearchRefresh("collections_" .. sub, RedrawCollectionsSearchContentImmediate)
+end
+
+local function CollectionsSearchRefreshKey()
+    return "collections_" .. (M.state.currentSubTab or "collections")
+end
+
 -- Fixed header: search bar uses full row width when Owned/Missing row is hidden (Recent).
 function M.LayoutCollectionsSearchBar(hdrCache)
     if not hdrCache or not hdrCache.searchBar or not hdrCache.searchRow then return end
@@ -226,12 +254,18 @@ function WarbandNexus:DrawCollectionsTab(parent)
             local fromSub = M.state.currentSubTab
             M.state.currentSubTab = tabKey
             ns._sessionCollectionsSubTab = tabKey
+            if fromSub and ns.UI_CancelSearchRefresh then
+                ns.UI_CancelSearchRefresh("collections_" .. fromSub)
+            end
             if M.state.subTabBar then
                 M.state.subTabBar:SetActiveTab(tabKey)
             end
             M.state.searchText = ""
             if M.state.searchBox then
                 M.state.searchBox:SetText("")
+                if M.state.searchBox.Instructions then
+                    M.state.searchBox.Instructions:Show()
+                end
             end
             M.HideAllCollectionsResultFrames()
             if M.ResetCollectionsListScrollPositions then
@@ -320,35 +354,20 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 if text ~= "" then self.Instructions:Hide() else self.Instructions:Show() end
             end
             if not userInput then return end
-            if M.state.contentFrame then
-                if M.state.currentSubTab == "recent" then
-                    M.DrawRecentContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "mounts" then
-                    M.DrawMountsContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "pets" then
-                    M.DrawPetsContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "toys" then
-                    M.DrawToysContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "achievements" then
-                    M.DrawAchievementsContent(M.state.contentFrame)
-                end
-            end
+            ScheduleCollectionsSearchRedraw()
         end)
         searchBox:SetScript("OnEscapePressed", function(self)
+            ns.UI_CancelSearchRefresh(CollectionsSearchRefreshKey())
             self:SetText("")
             self:ClearFocus()
             M.state.searchText = ""
             if self.Instructions then self.Instructions:Show() end
-            if M.state.contentFrame then
-                if M.state.currentSubTab == "recent" then M.DrawRecentContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "mounts" then M.DrawMountsContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "pets" then M.DrawPetsContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "toys" then M.DrawToysContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "achievements" then M.DrawAchievementsContent(M.state.contentFrame)
-                end
-            end
+            RedrawCollectionsSearchContentImmediate()
         end)
         searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        searchBox:SetScript("OnEditFocusLost", function()
+            ns.UI_FlushSearchRefresh(CollectionsSearchRefreshKey())
+        end)
         searchBar:EnableMouse(true)
         searchBar:SetScript("OnMouseDown", function() searchBox:SetFocus() end)
         M.state.searchBox = searchBox

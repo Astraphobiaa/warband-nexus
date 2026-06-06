@@ -3394,8 +3394,9 @@ local function ReleaseAllPooledChildren(parent)
             -- Non-pooled frame (like headers, cards, etc.)
             -- Skip persistent row elements (reorderButtons, deleteBtn, etc.)
             -- These are managed by their parent row and should not be hidden here
-            -- ALSO skip emptyStateContainer - it's managed by DrawEmptyState
-            if not child.isPersistentRowElement and child ~= parent.emptyStateContainer then
+            -- ALSO skip emptyStateContainer / search empty cards - managed by empty-state helpers
+            local IsProtected = ns.UI_IsProtectedResultsEmptyChild
+            if not child.isPersistentRowElement and not (IsProtected and IsProtected(child, parent)) then
                 pcall(function()
                     child:Hide()
                     child:ClearAllPoints()
@@ -6871,87 +6872,18 @@ ns.UI_CreateCharacterTabAdvancedFilterButton = CreateCharacterTabAdvancedFilterB
 --============================================================================
 
 local function DrawEmptyState(addon, parent, startY, isSearch, searchText, tabContext)
-    -- Validate parent frame
     if not parent or not parent.CreateTexture then
         return startY or 0
     end
-    
-    local topGap = (ns.UI_ItemsResultsTopGap and ns.UI_ItemsResultsTopGap(startY)) or ((startY or 0) + 50)
-    local yOffset = topGap
     tabContext = tabContext or ""
-    
-    -- Reuse existing container or create new one
-    local container = parent.emptyStateContainer
-    if not container then
-        container = CreateFrame("Frame", nil, parent)
-        container:SetAllPoints(parent)
-        parent.emptyStateContainer = container
-        
-        -- Create icon
-        container.icon = container:CreateTexture(nil, "ARTWORK")
-        container.icon:SetSize(48, 48)
-        container.icon:SetDesaturated(true)
-        container.icon:SetAlpha(0.4)
-        
-        -- Create title
-        container.title = FontManager:CreateFontString(container, UIFontRole("emptyStateTitle"), "OVERLAY")
-        
-        -- Create description
-        container.desc = FontManager:CreateFontString(container, UIFontRole("emptyStateBody"), "OVERLAY")
-        container.desc:SetTextColor(1, 1, 1)
-    end
-    
-    local L = ns.L
-    local defaultIcon = "Interface\\Icons\\INV_Misc_Bag_10_Blue"
-    local iconTex = defaultIcon
-    local titleText
-    local emptyMessage
-    
     if isSearch then
-        iconTex = "Interface\\Icons\\INV_Misc_Spyglass_02"
-        titleText = "|cff666666" .. ((L and L["NO_RESULTS"]) or "No results") .. "|r"
-        local displayText = searchText or ""
-        if displayText and displayText ~= "" then
-            emptyMessage = string.format((L and L["NO_ITEMS_MATCH"]) or "No items match '%s'", displayText)
-        else
-            emptyMessage = (L and L["NO_ITEMS_MATCH_GENERIC"]) or "No items match your search"
-        end
-    elseif tabContext == "plans_achievement" then
-        iconTex = "Interface\\Icons\\Achievement_General"
-        titleText = "|cff666666" .. ((L and L["PLANS_ACHIEVEMENTS_EMPTY_TITLE"]) or "No achievements to display") .. "|r"
-        emptyMessage = (L and L["PLANS_ACHIEVEMENTS_EMPTY_HINT"]) or "Add achievements to your To-Do from this list, or change Show Planned / Show Completed. Achievements scan in the background; try /reload if the list stays empty."
-    else
-        iconTex = defaultIcon
-        titleText = "|cff666666" .. ((L and L["NO_ITEMS_CACHED_TITLE"]) or "No items cached") .. "|r"
-        local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
-        if currentSubTab == "warband" then
-            emptyMessage = (L and L["ITEMS_WARBAND_BANK_HINT"]) or "Open Warband Bank to scan items (auto-scanned on first visit)"
-        else
-            emptyMessage = (L and L["ITEMS_SCAN_HINT"]) or "Items are scanned automatically. Try /reload if nothing appears."
-        end
+        return ns.UI_ShowSearchEmptyStateCard(parent, searchText, startY, { fillParent = true })
     end
-    
-    -- Update icon position and texture
-    container.icon:ClearAllPoints()
-    container.icon:SetPoint("TOP", 0, -yOffset)
-    container.icon:SetTexture(iconTex)
-    yOffset = yOffset + 60
-    
-    -- Update title position and text
-    container.title:ClearAllPoints()
-    container.title:SetPoint("TOP", 0, -yOffset)
-    container.title:SetText(titleText)
-    yOffset = yOffset + 30
-    
-    -- Update description position and text
-    container.desc:ClearAllPoints()
-    container.desc:SetPoint("TOP", 0, -yOffset)
-    container.desc:SetText(emptyMessage)
-    
-    -- Show container
-    container:Show()
-    
-    return yOffset + 50
+    local tabKey = (tabContext ~= "" and tabContext) or "items"
+    if ns.UI_ShowTabEmptyStateCard then
+        return ns.UI_ShowTabEmptyStateCard(parent, tabKey, startY, { fillParent = true })
+    end
+    return startY or 0
 end
 
 --============================================================================
@@ -6980,137 +6912,7 @@ local function DrawSectionEmptyState(parent, message, yOffset, height, width)
     return yOffset + (height or 30)
 end
 
---============================================================================
--- SEARCH BOX (Reusable component for Items and Storage tabs)
---============================================================================
-
---[[
-    Creates a search box with icon, placeholder, and throttled callback
-    
-    @param parent - Parent frame
-    @param width - Search box width
-    @param placeholder - Placeholder text (e.g., "Search items...")
-    @param onTextChanged - Callback function(searchText) - called after throttle
-    @param throttleDelay - Delay in seconds before callback (default 0.3)
-    @param initialValue - Initial text value (optional, for restoring state)
-    
-    @return searchContainer frame, clearFunction
-]]
-local function CreateSearchBox(parent, width, placeholder, onTextChanged, throttleDelay, initialValue)
-    local delay = throttleDelay or 0.3
-    local throttleTimer = nil
-    local initialText = initialValue or ""
-    
-    -- Container frame
-    local container = CreateFrame("Frame", nil, parent)
-    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
-    container:SetSize(width, searchH)
-    
-    -- Background frame with pixel-perfect border
-    local searchFrame = CreateFrame("Frame", nil, container)
-    container.searchFrame = searchFrame  -- Store reference for color updates
-    searchFrame:SetAllPoints()
-    
-    -- Apply pixel-perfect visuals with accent border
-    local accentColor = COLORS.accent
-    ApplyVisuals(searchFrame, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
-    
-    -- Search icon
-    local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
-    searchIcon:SetSize(16, 16)
-    searchIcon:SetPoint("LEFT", 10, 0)
-    searchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
-    searchIcon:SetAlpha(0.5)
-    -- Anti-flicker optimization
-    searchIcon:SetSnapToPixelGrid(false)
-    searchIcon:SetTexelSnappingBias(0)
-    
-    -- EditBox
-    local searchBox = CreateFrame("EditBox", nil, searchFrame)
-    searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 8, 0)
-    searchBox:SetPoint("RIGHT", -10, 0)
-    searchBox:SetHeight(20)
-    
-    -- Use FontManager for consistent font styling
-    -- Use FontManager for consistent font styling (SAFE version)
-    FontManager:SafeSetFont(searchBox, "body")
-    
-    searchBox:SetAutoFocus(false)
-    searchBox:SetMaxLetters(50)
-    
-    -- Set initial value if provided
-    if initialText and initialText ~= "" then
-        searchBox:SetText(initialText)
-    end
-    
-    -- Placeholder text
-    local placeholderText = FontManager:CreateFontString(searchBox, UIFontRole("searchPlaceholder"), "ARTWORK")
-    placeholderText:SetPoint("LEFT", 0, 0)
-    placeholderText:SetText(placeholder or ((ns.L and ns.L["SEARCH_PLACEHOLDER"]) or "Search..."))
-    placeholderText:SetTextColor(1, 1, 1, 0.4)  -- White with transparency
-    
-    -- Show/hide placeholder based on initial text
-    if initialText and initialText ~= "" then
-        placeholderText:Hide()
-    else
-        placeholderText:Show()
-    end
-    
-    -- OnTextChanged handler with throttle
-    searchBox:SetScript("OnTextChanged", function(self, userInput)
-        if not userInput then return end
-        
-        local text = self:GetText()
-        local newSearchText = ""
-        if issecretvalue and issecretvalue(text) then
-            placeholderText:Show()
-            newSearchText = ""
-        elseif type(text) == "string" and text ~= "" then
-            placeholderText:Hide()
-            newSearchText = text:lower()
-        else
-            placeholderText:Show()
-            newSearchText = ""
-        end
-        
-        -- Cancel previous throttle
-        if throttleTimer then
-            throttleTimer:Cancel()
-        end
-        
-        -- Throttle callback - refresh after delay (live search)
-        throttleTimer = C_Timer.NewTimer(delay, function()
-            if onTextChanged then
-                onTextChanged(newSearchText)
-            end
-            throttleTimer = nil
-        end)
-    end)
-    
-    -- Escape to clear
-    searchBox:SetScript("OnEscapePressed", function(self)
-        self:SetText("")
-        self:ClearFocus()
-    end)
-    
-    -- Enter to defocus
-    searchBox:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-
-    -- Select all text on click/focus
-    searchBox:SetScript("OnEditFocusGained", function(self)
-        self:HighlightText()
-    end)
-    
-    -- Clear function
-    local function ClearSearch()
-        searchBox:SetText("")
-        placeholderText:Show()
-    end
-    
-    return container, ClearSearch
-end
+-- Search box: Modules/UI/SearchBoxComponent.lua (loads after SharedWidgets; owns ns.UI_CreateSearchBox).
 
 --============================================================================
 -- SHARED UI CONSTANTS
@@ -7119,6 +6921,8 @@ end
 local UI_CONSTANTS = {
     BUTTON_HEIGHT = 32,  -- Standardized to match search boxes and header elements
     SEARCH_BOX_HEIGHT = 32,
+    --- Pause after last keystroke before search redraw (all tabs; SearchBoxComponent + Collections).
+    SEARCH_DEBOUNCE_SEC = 0.45,
     BUTTON_WIDTH_DEFAULT = 80,
     BORDER_SIZE = 1,
     BUTTON_BORDER_COLOR = function() return COLORS.accent end,
@@ -7503,7 +7307,6 @@ ns.UI_GetItemClassID = GetItemClassID
 ns.UI_GetTypeIcon = GetTypeIcon
 ns.UI_DrawEmptyState = DrawEmptyState
 ns.UI_DrawSectionEmptyState = DrawSectionEmptyState
-ns.UI_CreateSearchBox = CreateSearchBox
 ns.UI_RefreshColors = RefreshColors
 ns.UI_CalculateThemeColors = CalculateThemeColors
 
@@ -8374,12 +8177,11 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "No Items in Guild Bank",
         descFallback = "Open your Guild Bank to scan items.\nItems are cached automatically on first visit.",
     },
-    items_search = {
-        atlas = "talents-search",
+    --- Unified search-no-results card (all tabs; description built from query at show time).
+    search = {
+        atlas = "common-search-magnifyingglass",
         titleKey = "NO_RESULTS",
-        descKey = "NO_ITEMS_MATCH_GENERIC",
         titleFallback = "No results",
-        descFallback = "No items match your search.",
     },
     storage = {
         atlas = "Quartermaster",
@@ -8438,7 +8240,65 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "Coming Soon",
         descFallback = "Collection overview (mounts, pets, toys, transmog) will be available here.",
     },
+    plans_achievement = {
+        atlas = "Achievement-Icon",
+        titleKey = "PLANS_ACHIEVEMENTS_EMPTY_TITLE",
+        descKey = "PLANS_ACHIEVEMENTS_EMPTY_HINT",
+        titleFallback = "No achievements to display",
+        descFallback = "Add achievements from this list to your To-Do, or change Show Planned / Show Completed. The list fills as achievements are scanned; try /reload if nothing appears.",
+    },
+    gear = {
+        atlas = "poi-helm",
+        titleKey = "GEAR_NO_TRACKED_CHARACTERS_TITLE",
+        descKey = "GEAR_NO_TRACKED_CHARACTERS_DESC",
+        titleFallback = "No tracked characters",
+        descFallback = "Log in to a character to start tracking gear.",
+    },
+    gear_filter = {
+        atlas = "poi-helm",
+        titleKey = "GEAR_FILTER_EMPTY_TITLE",
+        descKey = "GEAR_FILTER_EMPTY_DESC",
+        titleFallback = "No characters match the level filter",
+        descFallback = "Turn off Hide or lower the level threshold using the Hide button above to show characters again.",
+    },
+    professions = {
+        atlas = "Professions-Icon-Accept-Order",
+        titleFallback = "No profession data",
+        descKey = "NO_PROFESSIONS_DATA",
+        descFallback = "Open your profession window (default: K) on each character to collect data.",
+    },
 }
+
+local SEARCH_EMPTY_TAB_KEY = "search"
+ns.UI_SEARCH_EMPTY_TAB_KEY = SEARCH_EMPTY_TAB_KEY
+
+local format = string.format
+
+local function BuildSearchEmptyDescription(searchText)
+    local L = ns.L
+    local q = searchText or ""
+    if issecretvalue and issecretvalue(q) then
+        q = ""
+    end
+    local body
+    if q ~= "" then
+        body = format((L and L["NO_ITEMS_MATCH"]) or "No items match '%s'", q)
+    else
+        body = (L and L["NO_ITEMS_MATCH_GENERIC"]) or "No items match your search"
+    end
+    local hint = (L and L["TRY_ADJUSTING_SEARCH"]) or "Try adjusting your search or filters."
+    return body .. "\n" .. hint
+end
+
+--- @return boolean
+function ns.UI_IsProtectedResultsEmptyChild(child, container)
+    if not child or not container then return false end
+    if child == container.emptyStateContainer then return true end
+    if child == container.plansAchBrowseRoot then return true end
+    if child._wnExcludedFromStorageExtent then return true end
+    if child == container["emptyStateCard_" .. SEARCH_EMPTY_TAB_KEY] then return true end
+    return false
+end
 
 -- Creates a standardized empty state card for any tab
 -- Centered vertically in parent with icon, title, and description
@@ -8478,7 +8338,21 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     end
 
     -- Get config for this tab
-    local config = EMPTY_STATE_CONFIG[tabName]
+    local configTabName = tabName
+    if tabName == SEARCH_EMPTY_TAB_KEY or (opts.searchText ~= nil) then
+        configTabName = SEARCH_EMPTY_TAB_KEY
+    end
+    local config = EMPTY_STATE_CONFIG[configTabName]
+    if opts.titleText or opts.descText or opts.atlas then
+        local base = config or {}
+        config = {
+            atlas = opts.atlas or base.atlas or "shop-icon-housing-characters-up",
+            titleKey = base.titleKey,
+            descKey = base.descKey,
+            titleFallback = opts.titleText or base.titleFallback or "No Data",
+            descFallback = opts.descText or base.descFallback or "",
+        }
+    end
     if not config then
         config = {
             atlas = "shop-icon-housing-characters-up",
@@ -8489,18 +8363,36 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
         }
     end
 
-    local atlasForIcon = config.atlas
-    if tabName == "reputation" and ns.UI_GetTabIcon then
+    local atlasForIcon = opts.atlas or config.atlas
+    if configTabName == "reputation" and not opts.atlas and ns.UI_GetTabIcon then
         local dyn = ns.UI_GetTabIcon("reputation")
         if dyn and dyn ~= "" then
             atlasForIcon = dyn
         end
     end
 
+    local function ResolveEmptyTitle()
+        if opts.titleText then return opts.titleText end
+        return (ns.L and config.titleKey and ns.L[config.titleKey]) or config.titleFallback
+    end
+
+    local function ResolveEmptyDesc()
+        if configTabName == SEARCH_EMPTY_TAB_KEY then
+            return BuildSearchEmptyDescription(opts.searchText)
+        end
+        if opts.descText then return opts.descText end
+        return (ns.L and config.descKey and ns.L[config.descKey]) or config.descFallback
+    end
+
     -- Reuse existing empty state card on parent
     -- PopulateContent moves scrollChild children to recycleBin each pass — reparent back every show.
-    local cacheKey = "emptyStateCard_" .. tabName
+    local cardStorageKey = opts.cacheKey or configTabName
+    if configTabName == SEARCH_EMPTY_TAB_KEY then
+        cardStorageKey = SEARCH_EMPTY_TAB_KEY
+    end
+    local cacheKey = "emptyStateCard_" .. cardStorageKey
     local card = parent[cacheKey]
+    local descText = ResolveEmptyDesc()
     if card then
         local visibleHeight = GetScrollViewportHeight(parent)
         local heightTrim = yOffset + sideInset + bottomPad
@@ -8517,6 +8409,15 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
             card._wnExcludedFromStorageExtent = true
         end
         ApplyStandardCardElevatedChrome(card)
+        if card._emptyIcon and atlasForIcon then
+            card._emptyIcon:SetAtlas(atlasForIcon)
+        end
+        if card._emptyTitle then
+            card._emptyTitle:SetText("|cff888888" .. ResolveEmptyTitle() .. "|r")
+        end
+        if card._emptyDesc and descText then
+            card._emptyDesc:SetText("|cff666666" .. descText .. "|r")
+        end
         card:Show()
         return card, cardHeight + bottomPad
     end
@@ -8554,20 +8455,24 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     icon:SetAllPoints(iconContainer)
     icon:SetAtlas(atlasForIcon)
     icon:SetAlpha(0.6)
+    card._emptyIcon = icon
 
     -- Title
     local title = FontManager:CreateFontString(contentContainer, UIFontRole("emptyCardTitle"), "OVERLAY")
     title:SetPoint("TOP", iconContainer, "BOTTOM", 0, -20)
-    local titleText = (ns.L and ns.L[config.titleKey]) or config.titleFallback
-    title:SetText("|cff888888" .. titleText .. "|r")
+    title:SetText("|cff888888" .. ResolveEmptyTitle() .. "|r")
+    card._emptyTitle = title
 
     -- Description
     local desc = FontManager:CreateFontString(contentContainer, UIFontRole("emptyCardBody"), "OVERLAY")
     desc:SetPoint("TOP", title, "BOTTOM", 0, -12)
     desc:SetWidth(380)
     desc:SetJustifyH("CENTER")
-    local descText = (ns.L and config.descKey and ns.L[config.descKey]) or config.descFallback
-    desc:SetText("|cff666666" .. descText .. "|r")
+    if not descText then
+        descText = ResolveEmptyDesc()
+    end
+    desc:SetText("|cff666666" .. (descText or "") .. "|r")
+    card._emptyDesc = desc
 
     card:Show()
     -- Second value is delta only (callers do: return yOffset + height)
@@ -8589,6 +8494,61 @@ end
 ns.UI_CreateEmptyStateCard = CreateEmptyStateCard
 ns.UI_HideEmptyStateCard = HideEmptyStateCard
 ns.UI_EMPTY_STATE_CONFIG = EMPTY_STATE_CONFIG
+
+--- True when a virtual flat list contains at least one data row.
+function ns.UI_FlatListHasDataRows(flatList)
+    if not flatList then return false end
+    for i = 1, #flatList do
+        if flatList[i].type == "row" then return true end
+    end
+    return false
+end
+
+--- Show unified search-no-results card when query is active; returns true if shown.
+function ns.UI_TryShowSearchEmptyInContainer(parent, searchText, yOffset)
+    if not parent then return false end
+    local q = searchText or ""
+    if q == "" or (issecretvalue and issecretvalue(q)) then
+        return false
+    end
+    if ns.UI_ShowSearchEmptyStateCard then
+        ns.UI_ShowSearchEmptyStateCard(parent, q, yOffset or 0, { fillParent = true })
+        return true
+    end
+    return false
+end
+
+--- Elevated card empty state for active search with zero matches (same chrome as tab empty cards).
+function ns.UI_ShowSearchEmptyStateCard(parent, searchText, yOffset, opts)
+    if not parent then return yOffset or 0 end
+    opts = opts or {}
+    if opts.fillParent == nil then
+        opts.fillParent = true
+    end
+    opts.searchText = searchText or ""
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    local _, extent = CreateEmptyStateCard(parent, SEARCH_EMPTY_TAB_KEY, yOffset or 0, opts)
+    return (yOffset or 0) + (extent or 200)
+end
+
+--- Standard tab/filter empty state (elevated card; use inside results containers).
+function ns.UI_ShowTabEmptyStateCard(parent, tabName, yOffset, opts)
+    if not parent then return yOffset or 0 end
+    opts = opts or {}
+    if opts.fillParent == nil then
+        opts.fillParent = true
+    end
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    if parent["emptyStateCard_" .. SEARCH_EMPTY_TAB_KEY] then
+        parent["emptyStateCard_" .. SEARCH_EMPTY_TAB_KEY]:Hide()
+    end
+    local _, extent = CreateEmptyStateCard(parent, tabName or "items", yOffset or 0, opts)
+    return (yOffset or 0) + (extent or 200)
+end
 
 -- Export Settings UI helpers
 ns.UI_CreateSection = CreateSection

@@ -75,7 +75,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
-    COLLECTION_CACHE_VERSION = "3.0.2",  -- Bump to force one-time collectionStore reload + EnsureCollectionData. Rescan without debug: /wn collection rescan (or sync force)
+    COLLECTION_CACHE_VERSION = "3.0.3",  -- Bump: mount/pet/toy sourceType from journal filter sweep; cross-faction mounts; hide internal-only mounts
     REPUTATION_CACHE_VERSION = "1.5.0",  -- Reputation (parse-first architecture + non-destructive rescan safety)
     CURRENCY_CACHE_VERSION = "2.0.0",    -- Currency (lean SV + on-demand metadata cache)
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)

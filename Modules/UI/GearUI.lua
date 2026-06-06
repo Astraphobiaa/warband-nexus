@@ -649,50 +649,6 @@ local function HasAnyTrackedCharacters()
     return false
 end
 
---- Gear-specific empty scroll body (DrawEmptyState expects addon/parent/startY; do not pass title strings as parent).
----@return number
-local function DrawGearTabEmptyState(parent, titleText, descText, startY)
-    startY = tonumber(startY) or 0
-    if not parent or not parent.CreateTexture or not FontManager then
-        return startY + 150
-    end
-    local topGap = (ns.UI_ItemsResultsTopGap and ns.UI_ItemsResultsTopGap(startY)) or (startY + 50)
-    local yOffset = topGap
-
-    local container = parent.emptyStateContainer
-    if not container then
-        container = CreateFrame("Frame", nil, parent)
-        container:SetAllPoints(parent)
-        parent.emptyStateContainer = container
-        container.icon = container:CreateTexture(nil, "ARTWORK")
-        container.icon:SetSize(48, 48)
-        container.icon:SetDesaturated(true)
-        container.icon:SetAlpha(0.4)
-        container.title = FontManager:CreateFontString(container, GFR("emptyStateTitle"), "OVERLAY")
-        container.desc = FontManager:CreateFontString(container, GFR("emptyStateBody"), "OVERLAY")
-        container.desc:SetTextColor(1, 1, 1)
-    end
-
-    container.icon:ClearAllPoints()
-    container.icon:SetPoint("TOP", 0, -yOffset)
-    container.icon:SetTexture("Interface\\Icons\\INV_Chest_Plate06")
-    yOffset = yOffset + 60
-
-    container.title:ClearAllPoints()
-    container.title:SetPoint("TOP", 0, -yOffset)
-    container.title:SetText("|cff666666" .. (titleText or "") .. "|r")
-    yOffset = yOffset + 30
-
-    container.desc:ClearAllPoints()
-    container.desc:SetPoint("TOP", 0, -yOffset)
-    container.desc:SetText(descText or "")
-    container.desc:SetWidth(math.max(280, (parent:GetWidth() or 400) - 48))
-    container.desc:SetJustifyH("CENTER")
-    container:Show()
-
-    return yOffset + 50
-end
-
 --- Format item level with quality color (real data only; empty slot = empty string).
 local function ColoredIlvl(ilvl, quality)
     if not ilvl or ilvl == 0 then return "" end
@@ -3121,20 +3077,13 @@ function WarbandNexus:DrawGearTab(parent)
         end
         local profile = self.db and self.db.profile
         local hideTh = GetLowLevelHideThreshold(profile)
-        local titleText
-        local descText
-        if hideTh > 0 and HasAnyTrackedCharacters() then
-            titleText = GetLocalizedText("GEAR_FILTER_EMPTY_TITLE", "No characters match the level filter")
-            descText = GetLocalizedText(
-                "GEAR_FILTER_EMPTY_DESC",
-                "Turn off Hide or lower the level threshold using the Hide button above to show characters again."
-            )
+        local gearEmptyKey = (hideTh > 0 and HasAnyTrackedCharacters()) and "gear_filter" or "gear"
+        local emptyH
+        if ns.UI_ShowTabEmptyStateCard then
+            emptyH = ns.UI_ShowTabEmptyStateCard(parent, gearEmptyKey, TOP_MARGIN, { fillParent = true })
         else
-            titleText = (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_TITLE"]) or "No tracked characters"
-            descText = (ns.L and ns.L["GEAR_NO_TRACKED_CHARACTERS_DESC"])
-                or "Log in to a character to start tracking gear."
+            emptyH = TOP_MARGIN + 200
         end
-        local emptyH = DrawGearTabEmptyState(parent, titleText, descText, TOP_MARGIN)
         return math.max(tonumber(emptyH) or 200, GearResultsViewportHeight(mfGearFrame))
     end
 

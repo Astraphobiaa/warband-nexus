@@ -803,8 +803,9 @@ local function ReleaseAllPooledChildren(parent)
             -- Non-pooled frame (like headers, cards, etc.)
             -- Skip persistent row elements (reorderButtons, deleteBtn, etc.)
             -- These are managed by their parent row and should not be hidden here
-            -- ALSO skip emptyStateContainer - it's managed by DrawEmptyState
-            if not child.isPersistentRowElement and child ~= parent.emptyStateContainer then
+            -- ALSO skip emptyStateContainer / search empty cards - managed by empty-state helpers
+            local IsProtected = ns.UI_IsProtectedResultsEmptyChild
+            if not child.isPersistentRowElement and not (IsProtected and IsProtected(child, parent)) then
                 pcall(function()
                     child:Hide()
                     child:ClearAllPoints()

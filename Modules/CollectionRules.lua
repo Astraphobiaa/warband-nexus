@@ -589,10 +589,11 @@ end
 -- UNOBTAINABLE FILTERS (API-only — Pure API approach, no keyword/blocklist logic)
 -- ============================================================================
 --[[
-    "Unobtainable" / "hidden" determination is delegated entirely to the WoW API:
-      - Mount: shouldHideOnChar (10th return of C_MountJournal.GetMountInfoByID)
+    "Unobtainable" / "hidden" determination is delegated to the WoW API:
+      - Mount: shouldHideOnChar unless isFactionSpecific (cross-faction catalog stays visible)
       - Pet:   obtainable (11th return of C_PetJournal.GetPetInfoBySpeciesID)
       - Toy:   C_ToyBox.GetToyInfo() returning nil for hidden/internal entries
+      - Mount/Pet/Toy category: journal source filter index (SetSourceFilter sweep when API sourceType is 0)
 
     The IsUnobtainable* methods below are kept as no-op stubs so external callers
     that still reference UnobtainableFilters do not break, but they always return

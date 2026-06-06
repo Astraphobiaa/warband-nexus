@@ -1,25 +1,22 @@
 --[[
     Warband Nexus - Search Box Component
     
-    Reusable search box with icon, placeholder, and throttled callback.
+    Reusable search box with icon, placeholder, and debounced callback.
 
     WN_FACTORY: Outer shell uses `Factory:CreateContainer` when available (`ApplyVisuals` on same frame); EditBox stays a native widget.
     
-    Features:
-    - Search icon with opacity
-    - Placeholder text
-    - Throttled text change callback (default 0.3s)
-    - ESC to clear, Enter to defocus
-    - Pixel-perfect border styling
-    - Initial value support (for state restoration)
-    
-    Extracted from SharedWidgets.lua (113 lines)
-    Location: Lines 1787-1914
+    Standard UX (all tabs):
+    - Typing updates the EditBox only; list redraw runs after SEARCH_DEBOUNCE_SEC idle (default 0.45s).
+    - Focus lost flushes a pending search immediately.
+    - ESC clears and applies an empty filter immediately.
+
+    Extracted from SharedWidgets.lua; SharedWidgets no longer duplicates this widget.
 ]]
 
 local ADDON_NAME, ns = ...
 
 local issecretvalue = issecretvalue
+local format = string.format
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
@@ -28,44 +25,110 @@ local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
 local FontManager = ns.FontManager
 
---============================================================================
--- RUNTIME DEPENDENCY VALIDATION
---============================================================================
+-- Per-owner debounce timers (Collections custom EditBox, Plans active list, etc.)
+local searchRefreshTimers = {}
+local searchRefreshPendingFn = {}
 
-local function ValidateDependencies()
-    local missing = {}
-    
-    if not COLORS then table.insert(missing, "UI_COLORS") end
-    if not ApplyVisuals then table.insert(missing, "UI_ApplyVisuals") end
-    if not FontManager then table.insert(missing, "FontManager") end
-    
-    if #missing > 0 then
-        DebugPrint("|cffff0000[WN SearchBox ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
-        DebugPrint("|cffff0000[WN SearchBox ERROR]|r Ensure SharedWidgets.lua loads before SearchBoxComponent.lua in .toc")
-        return false
+--- Registry: registryKey -> function(fireCallback) clears widget; fireCallback false = visual only.
+local searchClearByKey = {}
+
+---@param key string
+---@param clearFn function|nil function(fireCallback) — fireCallback false skips filter redraw callback
+function ns.UI_RegisterSearchBoxClear(key, clearFn)
+    if key and clearFn then
+        searchClearByKey[key] = clearFn
     end
-    
-    return true
 end
 
--- Defer validation to first use (allows SharedWidgets to complete loading)
+--- Clear one registered search box. fireCallback false: wipe EditBox + SSM only (no list redraw).
+---@param key string
+---@param fireCallback boolean|nil default true
+function ns.UI_ClearRegisteredSearchBox(key, fireCallback)
+    if not key then return end
+    if fireCallback == nil then fireCallback = true end
+    ns.UI_CancelSearchRefresh(key)
+    local clearFn = searchClearByKey[key]
+    if clearFn then
+        clearFn(fireCallback)
+    end
+    if not fireCallback then
+        local SSM = ns.SearchStateManager
+        if SSM and SSM.ClearSearch then
+            SSM:ClearSearch(key)
+        end
+    end
+end
+
+--- Clear every CreateSearchBox / registered widget (optional silent mode for tab switches).
+function ns.UI_ClearAllRegisteredSearchBoxes(fireCallback)
+    for key in pairs(searchClearByKey) do
+        ns.UI_ClearRegisteredSearchBox(key, fireCallback)
+    end
+end
+
+---@return number seconds
+local function GetSearchDebounceDelay(explicitDelay)
+    if type(explicitDelay) == "number" and explicitDelay > 0 then
+        return explicitDelay
+    end
+    local c = ns.UI_CONSTANTS
+    if c and type(c.SEARCH_DEBOUNCE_SEC) == "number" and c.SEARCH_DEBOUNCE_SEC > 0 then
+        return c.SEARCH_DEBOUNCE_SEC
+    end
+    return 0.45
+end
+
+--- Cancel a scheduled search refresh without running it.
+function ns.UI_CancelSearchRefresh(ownerKey)
+    if not ownerKey then return end
+    local t = searchRefreshTimers[ownerKey]
+    if t then
+        t:Cancel()
+        searchRefreshTimers[ownerKey] = nil
+    end
+    searchRefreshPendingFn[ownerKey] = nil
+end
+
+--- Run callback after user stops typing (debounce). Resets on each call with the same ownerKey.
+function ns.UI_ScheduleSearchRefresh(ownerKey, callback, delaySec)
+    if not ownerKey or type(callback) ~= "function" then return end
+    ns.UI_CancelSearchRefresh(ownerKey)
+    searchRefreshPendingFn[ownerKey] = callback
+    local delay = GetSearchDebounceDelay(delaySec)
+    searchRefreshTimers[ownerKey] = C_Timer.NewTimer(delay, function()
+        searchRefreshTimers[ownerKey] = nil
+        local fn = searchRefreshPendingFn[ownerKey]
+        searchRefreshPendingFn[ownerKey] = nil
+        if fn then fn() end
+    end)
+end
+
+--- If a debounced refresh is pending, run it now (e.g. focus lost).
+function ns.UI_FlushSearchRefresh(ownerKey)
+    if not ownerKey then return end
+    local fn = searchRefreshPendingFn[ownerKey]
+    ns.UI_CancelSearchRefresh(ownerKey)
+    if fn then fn() end
+end
 
 --============================================================================
 -- SEARCH BOX COMPONENT
 --============================================================================
 
----Creates a search box with icon, placeholder, and throttled callback
+---Creates a search box with icon, placeholder, and debounced callback
 ---@param parent Frame Parent frame
 ---@param width number Search box width
 ---@param placeholder string Placeholder text (e.g., "Search items...")
----@param onTextChanged function Callback function(searchText) - called after throttle
----@param throttleDelay number|nil Delay in seconds before callback (default 0.3)
+---@param onTextChanged function Callback function(searchText) - called after debounce idle
+---@param debounceDelay number|nil Override delay in seconds (default UI_CONSTANTS.SEARCH_DEBOUNCE_SEC)
 ---@param initialValue string|nil Initial text value (optional, for restoring state)
+---@param registryKey string|nil SearchStateManager tab id for clear-on-navigation (e.g. "items")
 ---@return Frame container Search box container frame
----@return function clearFunction Function to clear the search box
-local function CreateSearchBox(parent, width, placeholder, onTextChanged, throttleDelay, initialValue)
-    local delay = throttleDelay or 0.3
-    local throttleTimer = nil
+---@return function clearFunction function(fireCallback) — clears widget; pass false to skip filter callback
+local function CreateSearchBox(parent, width, placeholder, onTextChanged, debounceDelay, initialValue, registryKey)
+    local delay = GetSearchDebounceDelay(debounceDelay)
+    local debounceTimer = nil
+    local pendingSearchText = ""
     local initialText = initialValue or ""
 
     local Factory = ns.UI and ns.UI.Factory
@@ -81,47 +144,61 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     local accentColor = COLORS.accent
     ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
-    -- Search icon
     local searchIcon = container:CreateTexture(nil, "ARTWORK")
     searchIcon:SetSize(16, 16)
     searchIcon:SetPoint("LEFT", 10, 0)
     searchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
     searchIcon:SetAlpha(0.5)
-    -- Anti-flicker optimization
     searchIcon:SetSnapToPixelGrid(false)
     searchIcon:SetTexelSnappingBias(0)
     
-    -- EditBox
     local searchBox = CreateFrame("EditBox", nil, container)
     searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 8, 0)
     searchBox:SetPoint("RIGHT", -10, 0)
     searchBox:SetHeight(20)
     
-    -- Use FontManager for consistent font styling (SAFE version)
     FontManager:SafeSetFont(searchBox, FontManager:GetFontRole("searchEditBoxBody"))
     
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(50)
     
-    -- Set initial value if provided
     if initialText and initialText ~= "" then
         searchBox:SetText(initialText)
     end
     
-    -- Placeholder text
     local placeholderText = FontManager:CreateFontString(searchBox, FontManager:GetFontRole("searchPlaceholder"), "ARTWORK")
     placeholderText:SetPoint("LEFT", 0, 0)
     placeholderText:SetText(placeholder or "Search...")
-    placeholderText:SetTextColor(1, 1, 1, 0.4)  -- White with transparency
+    placeholderText:SetTextColor(1, 1, 1, 0.4)
     
-    -- Show/hide placeholder based on initial text
     if initialText and initialText ~= "" then
         placeholderText:Hide()
     else
         placeholderText:Show()
     end
+
+    local function CancelDebounce()
+        if debounceTimer then
+            debounceTimer:Cancel()
+            debounceTimer = nil
+        end
+    end
+
+    local function FireSearchCallback(text)
+        if onTextChanged then
+            onTextChanged(text)
+        end
+    end
+
+    local function ScheduleDebouncedSearch(text)
+        pendingSearchText = text
+        CancelDebounce()
+        debounceTimer = C_Timer.NewTimer(delay, function()
+            debounceTimer = nil
+            FireSearchCallback(pendingSearchText)
+        end)
+    end
     
-    -- OnTextChanged handler with throttle
     searchBox:SetScript("OnTextChanged", function(self, userInput)
         if not userInput then return end
         
@@ -137,55 +214,159 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
             placeholderText:Show()
             newSearchText = ""
         end
-        
-        -- Cancel previous throttle
-        if throttleTimer then
-            throttleTimer:Cancel()
-        end
-        
-        -- Throttle callback - refresh after delay (live search)
-        throttleTimer = C_Timer.NewTimer(delay, function()
-            if onTextChanged then
-                onTextChanged(newSearchText)
-            end
-            throttleTimer = nil
-        end)
+
+        ScheduleDebouncedSearch(newSearchText)
     end)
     
-    -- Escape to clear
     searchBox:SetScript("OnEscapePressed", function(self)
+        CancelDebounce()
         self:SetText("")
+        placeholderText:Show()
+        pendingSearchText = ""
         self:ClearFocus()
+        FireSearchCallback("")
     end)
     
-    -- Enter to defocus
     searchBox:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()
     end)
-    
-    -- Focus handlers removed (no backdrop)
-    
-    -- Cancel pending timer when container is hidden (prevent callbacks on destroyed frames)
-    container:SetScript("OnHide", function()
-        if throttleTimer then
-            throttleTimer:Cancel()
-            throttleTimer = nil
+
+    searchBox:SetScript("OnEditFocusLost", function()
+        if debounceTimer then
+            CancelDebounce()
+            FireSearchCallback(pendingSearchText)
         end
     end)
+
+    searchBox:SetScript("OnEditFocusGained", function(self)
+        self:HighlightText()
+    end)
     
-    -- Clear function
-    local function ClearSearch()
+    container:SetScript("OnHide", function()
+        CancelDebounce()
+    end)
+    
+    local function ClearSearchWidget(fireCallback)
+        if fireCallback == nil then fireCallback = true end
+        CancelDebounce()
         searchBox:SetText("")
         placeholderText:Show()
+        pendingSearchText = ""
+        if fireCallback then
+            FireSearchCallback("")
+        end
     end
     
-    return container, ClearSearch
+    container._wnClearSearch = ClearSearchWidget
+    if registryKey and registryKey ~= "" then
+        searchClearByKey[registryKey] = ClearSearchWidget
+        container._wnSearchRegistryKey = registryKey
+    end
+    
+    return container, ClearSearchWidget
 end
-
---============================================================================
--- NAMESPACE EXPORTS
---============================================================================
 
 ns.UI_CreateSearchBox = CreateSearchBox
 
--- Module loaded - verbose logging removed
+-- Tab ids registered with SearchStateManager (main + browse sub-tabs).
+ns.UI_SEARCH_TAB_IDS = {
+    "items", "gear", "currency", "reputation",
+    "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement",
+}
+
+local COLLECTIONS_SEARCH_REFRESH_KEYS = {
+    "collections_recent", "collections_mounts", "collections_pets", "collections_toys", "collections_achievements",
+}
+
+--- Hide FontStrings/textures tagged on scroll bodies (Professions hints, etc.) when switching tabs.
+function ns.UI_HideEphemeralScrollRegions(scrollFrame)
+    if not scrollFrame or not scrollFrame.GetNumRegions then return end
+    local n = scrollFrame:GetNumRegions()
+    for i = 1, n do
+        local r = select(i, scrollFrame:GetRegions())
+        if r and r._wnEphemeralScrollOverlay and r.Hide then
+            r:Hide()
+        end
+    end
+end
+
+local function CancelAllSearchRefreshTimers()
+    ns.UI_CancelSearchRefresh("plans_active")
+    for i = 1, #COLLECTIONS_SEARCH_REFRESH_KEYS do
+        ns.UI_CancelSearchRefresh(COLLECTIONS_SEARCH_REFRESH_KEYS[i])
+    end
+end
+
+--- Clear every in-addon search query (main tab switch, window hide).
+function ns.UI_ClearAllSearchQueries()
+    CancelAllSearchRefreshTimers()
+    ns.UI_ClearAllRegisteredSearchBoxes(false)
+
+    local SSM = ns.SearchStateManager
+    local ids = ns.UI_SEARCH_TAB_IDS
+    if SSM and SSM.ClearSearch and ids then
+        for i = 1, #ids do
+            SSM:ClearSearch(ids[i])
+        end
+    end
+    ns._plansActiveSearch = nil
+    ns._gearSearchText = nil
+    local coll = ns.CollectionsUI
+    if coll and coll.state then
+        coll.state.searchText = ""
+        if coll.state.searchBox then
+            coll.state.searchBox:SetText("")
+            if coll.state.searchBox.Instructions then
+                coll.state.searchBox.Instructions:Show()
+            end
+        end
+    end
+end
+
+--- Clear To-Do browse + active-plan search when switching Plans category chips.
+function ns.UI_ClearPlansCategorySearches()
+    local SSM = ns.SearchStateManager
+    local ids = ns.UI_SEARCH_TAB_IDS
+    if ids then
+        for i = 1, #ids do
+            local id = ids[i]
+            if id:find("^plans_", 1) then
+                ns.UI_ClearRegisteredSearchBox(id, false)
+                if SSM and SSM.ClearSearch then
+                    SSM:ClearSearch(id)
+                end
+            end
+        end
+    end
+    ns.UI_ClearRegisteredSearchBox("plans_active", false)
+    ns._plansActiveSearch = nil
+    ns.UI_CancelSearchRefresh("plans_active")
+end
+
+--- Standard search-no-results panel (icon + title + body) for every tab.
+function ns.UI_RenderStandardSearchEmptyState(addon, parent, searchText, tabContext, startY)
+    if parent and parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    if ns.UI_ShowSearchEmptyStateCard then
+        return ns.UI_ShowSearchEmptyStateCard(parent, searchText, startY or 0, { fillParent = true })
+    end
+    return startY or 0
+end
+
+--- Returns true when search text is non-empty and safe to filter on.
+function ns.UI_IsSearchQueryActive(searchText)
+    if not searchText or searchText == "" then return false end
+    if issecretvalue and issecretvalue(searchText) then return false end
+    return true
+end
+
+--- Shared one-line label for inline list rows (Recent column cards, etc.).
+function ns.UI_FormatSearchEmptyMessage(searchText)
+    local L = ns.L
+    local q = searchText or ""
+    if q ~= "" then
+        return format((L and L["NO_ITEMS_MATCH"]) or "No items match '%s'", q)
+    end
+    return (L and L["NO_ITEMS_MATCH_GENERIC"]) or "No items match your search"
+end
