@@ -859,7 +859,9 @@ end
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 if WarbandNexus and WarbandNexus.RegisterMessage and Constants and Constants.EVENTS then
-    WarbandNexus:RegisterMessage(Constants.EVENTS.ACHIEVEMENT_CATEGORY_CACHE_INVALIDATED, function()
+    local AchBrowseMsgListeners = ns._achBrowseMsgListeners or {}
+    ns._achBrowseMsgListeners = AchBrowseMsgListeners
+    WarbandNexus.RegisterMessage(AchBrowseMsgListeners, Constants.EVENTS.ACHIEVEMENT_CATEGORY_CACHE_INVALIDATED, function()
         ns.UI_InvalidateAchievementCategoryCaches()
     end)
 end

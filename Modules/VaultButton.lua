@@ -670,20 +670,22 @@ function M.HookWNMessages()
     if not WarbandNexus or not WarbandNexus.RegisterMessage then return end
     local E = ns.Constants and ns.Constants.EVENTS
     if not E then return end
+    local VBListeners = M._msgListeners or {}
+    M._msgListeners = VBListeners
     if E.PVE_UPDATED then
-        WarbandNexus:RegisterMessage(E.PVE_UPDATED, OnDataChanged)
+        WarbandNexus.RegisterMessage(VBListeners, E.PVE_UPDATED, OnDataChanged)
     end
     if E.CHARACTER_UPDATED then
-        WarbandNexus:RegisterMessage(E.CHARACTER_UPDATED, OnDataChanged)
+        WarbandNexus.RegisterMessage(VBListeners, E.CHARACTER_UPDATED, OnDataChanged)
     end
     if E.VAULT_REWARD_AVAILABLE then
-        WarbandNexus:RegisterMessage(E.VAULT_REWARD_AVAILABLE, OnDataChanged)
+        WarbandNexus.RegisterMessage(VBListeners, E.VAULT_REWARD_AVAILABLE, OnDataChanged)
     end
     if E.VAULT_SLOT_COMPLETED then
-        WarbandNexus:RegisterMessage(E.VAULT_SLOT_COMPLETED, OnDataChanged)
+        WarbandNexus.RegisterMessage(VBListeners, E.VAULT_SLOT_COMPLETED, OnDataChanged)
     end
     if E.CURRENCY_UPDATED then
-        WarbandNexus:RegisterMessage(E.CURRENCY_UPDATED, OnDataChanged)
+        WarbandNexus.RegisterMessage(VBListeners, E.CURRENCY_UPDATED, OnDataChanged)
     end
 end
 

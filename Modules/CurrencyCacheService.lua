@@ -633,12 +633,15 @@ function WarbandNexus:InitializeCurrencyCache()
             ns._currenciesForUICacheInvalidateGen = (ns._currenciesForUICacheInvalidateGen or 0) + 1
         end
         if WarbandNexus.RegisterMessage then
-            WarbandNexus:RegisterMessage(E.CURRENCY_UPDATED, bumpCurrenciesForUIMergeCache)
-            WarbandNexus:RegisterMessage(E.CURRENCIES_UPDATED, bumpCurrenciesForUIMergeCache)
-            WarbandNexus:RegisterMessage(E.CURRENCY_CACHE_CLEARED, bumpCurrenciesForUIMergeCache)
-            WarbandNexus:RegisterMessage(E.CHARACTER_UPDATED, bumpCurrenciesForUIMergeCache)
-            WarbandNexus:RegisterMessage(E.CHARACTER_TRACKING_CHANGED, bumpCurrenciesForUIMergeCache)
-            WarbandNexus:RegisterMessage(E.MONEY_UPDATED, bumpCurrenciesForUIMergeCache)
+            -- Unique listener self: AceEvent allows one handler per (self, message).
+            local CCListeners = CurrencyCache._msgListeners or {}
+            CurrencyCache._msgListeners = CCListeners
+            WarbandNexus.RegisterMessage(CCListeners, E.CURRENCY_UPDATED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus.RegisterMessage(CCListeners, E.CURRENCIES_UPDATED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus.RegisterMessage(CCListeners, E.CURRENCY_CACHE_CLEARED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus.RegisterMessage(CCListeners, E.CHARACTER_UPDATED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus.RegisterMessage(CCListeners, E.CHARACTER_TRACKING_CHANGED, bumpCurrenciesForUIMergeCache)
+            WarbandNexus.RegisterMessage(CCListeners, E.MONEY_UPDATED, bumpCurrenciesForUIMergeCache)
         end
     end
 

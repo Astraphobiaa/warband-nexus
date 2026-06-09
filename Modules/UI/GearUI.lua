@@ -3387,3 +3387,16 @@ ns.GearUI_IsPrimaryEnchantExpected = IsPrimaryEnchantExpected
 ns.GearUI_GetItemIconSafe = GetItemIconSafe
 ns.GearUI_BuildGearTabItemTooltipContext = BuildGearTabItemTooltipContext
 
+local GearUIVeilListeners = ns._gearUIVeilMsgListeners or {}
+ns._gearUIVeilMsgListeners = GearUIVeilListeners
+local GearEvents = ns.Constants and ns.Constants.EVENTS
+if WarbandNexus and WarbandNexus.RegisterMessage and GearEvents and GearEvents.GEAR_TAB_VEIL_DISMISS then
+    WarbandNexus.RegisterMessage(GearUIVeilListeners, GearEvents.GEAR_TAB_VEIL_DISMISS, function(_, payload)
+        local snapGen = payload and payload.snapGen
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if mf and snapGen then
+            TryDismissGearContentVeil(mf, snapGen)
+        end
+    end)
+end
+

@@ -459,7 +459,9 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     
     -- PLAYER_MONEY: owned by Core.lua → EventManager (OnMoneyChanged)
     -- DataService listens to WN_MONEY_UPDATED message instead
-    self:RegisterMessage(E.MONEY_UPDATED, function()
+    local DataServiceMsgListeners = ns._dataServiceMsgListeners or {}
+    ns._dataServiceMsgListeners = DataServiceMsgListeners
+    WarbandNexus.RegisterMessage(DataServiceMsgListeners, E.MONEY_UPDATED, function()
         self:UpdateCharacterCache("gold")
     end)
     

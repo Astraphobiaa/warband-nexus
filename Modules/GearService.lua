@@ -4271,8 +4271,8 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
                 WarbandNexus:RedrawGearStorageRecommendationsOnly(canon, snapGen, true)
                 ns._gearStorageAllowEquipSigInvBypass = false
             end
-            if ns.UI_TryDismissGearTabLoadingVeil and mf then
-                ns.UI_TryDismissGearTabLoadingVeil(mf, snapGen)
+            if Constants and Constants.EVENTS and Constants.EVENTS.GEAR_TAB_VEIL_DISMISS then
+                WarbandNexus:SendMessage(Constants.EVENTS.GEAR_TAB_VEIL_DISMISS, { snapGen = snapGen })
             end
         end)
     end
@@ -4556,7 +4556,9 @@ function WarbandNexus:GetGearUpgradePlaybookText(charKey)
 end
 
 -- After currency changes (e.g. crests spent on upgrade), re-scan gear so item ilvl/tier and watermarks stay in sync.
-WarbandNexus:RegisterMessage(Constants.EVENTS.CURRENCY_UPDATED, function()
+local GearServiceMsgListeners = ns._gearServiceMsgListeners or {}
+ns._gearServiceMsgListeners = GearServiceMsgListeners
+WarbandNexus.RegisterMessage(GearServiceMsgListeners, Constants.EVENTS.CURRENCY_UPDATED, function()
     InvalidateGearUpgradeCurrencyCaches()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
     if currencyGearScanTimer then currencyGearScanTimer:Cancel() end
@@ -4566,6 +4568,6 @@ WarbandNexus:RegisterMessage(Constants.EVENTS.CURRENCY_UPDATED, function()
     end)
 end)
 
-WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, function()
+WarbandNexus.RegisterMessage(GearServiceMsgListeners, Constants.EVENTS.CHARACTER_UPDATED, function()
     InvalidateGearUpgradeCurrencyCaches()
 end)

@@ -689,14 +689,13 @@ if EventUtil and EventUtil.ContinueOnAddOnLoaded then
 end
 
 if E and WarbandNexus and WarbandNexus.RegisterMessage then
-    WarbandNexus:RegisterMessage(E.PLANS_UPDATED, RefreshAllWNJournalIcons)
+    local AchFrameMsgListeners = ns._achFrameMsgListeners or {}
+    ns._achFrameMsgListeners = AchFrameMsgListeners
+    WarbandNexus.RegisterMessage(AchFrameMsgListeners, E.PLANS_UPDATED, RefreshAllWNJournalIcons)
     if E.COLLECTION_SCAN_COMPLETE then
-        WarbandNexus:RegisterMessage(E.COLLECTION_SCAN_COMPLETE, function(_, data)
+        WarbandNexus.RegisterMessage(AchFrameMsgListeners, E.COLLECTION_SCAN_COMPLETE, function(_, data)
             local cat = data and data.category
             if cat and cat ~= "achievement" and cat ~= "all" then return end
-            if ns.UI_InvalidateAchievementCategoryCaches then
-                ns.UI_InvalidateAchievementCategoryCaches()
-            end
             C_Timer.After(0.1, RefreshAllWNJournalIcons)
         end)
     end
