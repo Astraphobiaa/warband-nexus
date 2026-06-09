@@ -39,26 +39,14 @@ end
 -- Prevents overwriting other modules' handlers for the same message.
 local DataServiceEvents = {}
 
--- Roster list cache for GetAllCharacters (dedupe + sort is O(n log n); invalidated on character messages).
-local _allCharsRosterCache = { sig = nil, list = nil }
-
-local function ComputeCharactersRosterSig(chars)
-    if not chars then return "0:0" end
-    local n, acc = 0, 0
-    for _, row in pairs(chars) do
-        if type(row) == "table" then
-            n = n + 1
-            acc = acc + (tonumber(row.lastSeen) or 0)
-            acc = acc + ((tonumber(row.level) or 0) * 1315423911)
-        end
-    end
-    return tostring(n) .. ":" .. tostring(acc)
-end
-
-local function InvalidateGetAllCharactersCache()
-    _allCharsRosterCache.sig = nil
-    _allCharsRosterCache.list = nil
-end
+-- Roster helpers: DataService_RosterHelpers.lua (ns.DataServiceRoster)
+local Roster = ns.DataServiceRoster
+local _allCharsRosterCache = Roster and Roster.cache or { sig = nil, list = nil }
+local ComputeCharactersRosterSig = Roster and Roster.ComputeCharactersRosterSig
+local InvalidateGetAllCharactersCache = Roster and Roster.InvalidateGetAllCharactersCache
+local SafeGetMoneyCopperFromEntry = Roster and Roster.SafeGetMoneyCopperFromEntry
+local RelocateLegacyCharacterSlot = Roster and Roster.RelocateLegacyCharacterSlot
+local tableToItemArrayForStorage = Roster and Roster.tableToItemArrayForStorage
 
 -- Get library references
 local LibSerialize = LibStub("AceSerializer-3.0")
@@ -71,66 +59,12 @@ local RESTED_XP_GAIN_PER_8H = 0.05
 local SECONDS_PER_8H = 8 * 60 * 60
 local CollectRestedData
 
---- GetMoney() may return a secret value (Midnight+); math.floor/tonumber on it throws.
---- When secret, fall back to last saved gold/silver/copper from existingEntry if present.
-local function SafeGetMoneyCopperFromEntry(existingEntry)
-    local m = GetMoney()
-    if m == nil then return 0 end
-    if issecretvalue and issecretvalue(m) then
-        if existingEntry and type(existingEntry.gold) == "number" then
-            return math.floor((existingEntry.gold or 0) * 10000 + (existingEntry.silver or 0) * 100 + (existingEntry.copper or 0))
-        end
-        return 0
-    end
-    local n = tonumber(m)
-    if not n then return 0 end
-    return math.floor(n)
-end
-
---- After `characters` row moves from legacy Name-Realm index to guid-shaped key, remap subsidiary tables once.
-local function RelocateLegacyCharacterSlot(db, newKey, legacyKey)
-    if not db or not db.global or not db.global.characters then return end
-    if not newKey or not legacyKey or newKey == legacyKey then return end
-    if not db.global.characters[legacyKey] then return end
-    local MS = ns.MigrationService
-    if MS and MS.ApplyCharacterKeyedStorageRenames then
-        MS:ApplyCharacterKeyedStorageRenames(db, { [legacyKey] = newKey })
-    end
-    db.global.characters[legacyKey] = nil
-end
-
 local function GetRestedCapMultiplier(raceFile)
     return (raceFile == "Pandaren") and 3.0 or 1.5
 end
 
 local function GetRestedAccumulationMultiplier(raceFile)
     return (raceFile == "Pandaren") and 2 or 1
-end
-
---- Convert bag/bank table (bagIndex -> slotID -> item) to array for ItemsCacheService (avoids full character save from scan path).
-local function tableToItemArrayForStorage(tbl)
-    if not tbl or type(tbl) ~= "table" then return nil end
-    local arr = {}
-    for bagIndex, bagData in pairs(tbl) do
-        if type(bagData) == "table" then
-            for slotID, item in pairs(bagData) do
-                if type(item) == "table" and item.itemID then
-                    arr[#arr + 1] = {
-                        actualBagID = item.actualBagID or bagIndex,
-                        bagID = item.actualBagID or bagIndex,
-                        slotIndex = slotID,
-                        slot = slotID,
-                        itemID = item.itemID,
-                        itemLink = item.itemLink,
-                        stackCount = item.stackCount or 1,
-                        quality = item.quality,
-                        isBound = item.isBound or false,
-                    }
-                end
-            end
-        end
-    end
-    return #arr > 0 and arr or nil
 end
 
 -- ============================================================================

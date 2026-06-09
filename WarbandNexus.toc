@@ -53,6 +53,7 @@ Modules\CommandService.lua
 Modules\ErrorHandler.lua
 Modules\CollectionRules.lua
 Modules\DataService_Compression.lua
+Modules\DataService_RosterHelpers.lua
 Modules\DataService.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
@@ -142,6 +143,7 @@ Modules\UI\StorageSectionLayout.lua
 Modules\UI\ItemsUI.lua
 Modules\UI\PvECharacterListRowChrome.lua
 Modules\UI\PvEUI.lua
+Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
 Modules\UI\CollectionsUI_SourceData.lua
