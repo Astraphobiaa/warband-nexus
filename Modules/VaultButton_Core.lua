@@ -21,6 +21,7 @@ setfenv(1, VB__setfenv())
      Never read `ns.UI.Factory` at chunk load — it appears after SharedWidgets runs.
      All `ns.UI.Factory` / `VF` usages are inside button/table/menu construction paths (runtime).
 
+     WN_* listeners: `M.HookWNMessages` uses `M._msgListeners` as AceEvent self (see VaultButton.lua).
      Intentionally raw CreateFrame highlights: vault root dialogs (BackdropTemplate + global names),
      Blizzard `CheckButton` fallback when themed checkbox is absent, event coalescing frames,
      resize grip (Blizzard size grabber textures), Saved group header as full-surface `Button`,
