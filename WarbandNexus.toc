@@ -116,6 +116,7 @@ Modules\UI\ColumnOrderHelpers.lua
 Modules\UI\AchievementCriteriaHelpers.lua
 Modules\UI\SharedWidgets_CharRow.lua
 Modules\UI\SharedWidgets.lua
+Modules\UI\SharedWidgets_EmptyState.lua
 Modules\UI\SharedWidgets_CharacterFilter.lua
 Modules\UI\LayoutCoordinator.lua
 Modules\UI\NotificationToastFactory.lua
@@ -162,6 +163,7 @@ Modules\UI\GearUI_Layout.lua
 Modules\UI\InformationDialog.lua
 Modules\UI\GoldManagementPopup.lua
 Modules\UI\CharacterBankMoneyLogPopup.lua
+Modules\UI\UI_RefreshRouter.lua
 Modules\UI.lua
 
 # Gold Management (MUST load after UI modules)
