@@ -110,7 +110,6 @@ Modules\Data\UIMapContentKind.lua
 Modules\Data\ReminderZoneCatalog.lua
 Modules\Data\PlanGeography.lua
 Modules\ReminderService.lua
-Modules\UI\ReminderSetAlertDialog.lua
 Modules\GearService_Slots.lua
 Modules\GearService_UpgradeTracks.lua
 Modules\GearService.lua
@@ -137,6 +136,8 @@ Modules\UI\SearchResultsRenderer.lua
 Modules\UI\VirtualListModule.lua
 Modules\UI\TooltipFactory.lua
 Modules\UI\PlanCardFactory.lua
+Modules\UI\ReminderSetAlertDialog_Helpers.lua
+Modules\UI\ReminderSetAlertDialog.lua
 Modules\UI\SettingsUI_Shell.lua
 Modules\UI\SettingsUI_Keybind.lua
 Modules\UI\SettingsUI.lua

@@ -5,27 +5,15 @@ local issecretvalue = issecretvalue
 
 ns.ReminderSetAlertDialog = ns.ReminderSetAlertDialog or {}
 
---[[ WN_FACTORY: This module loads BEFORE SharedWidgets in `WarbandNexus.toc`. Do **not**
-     read `ns.UI.Factory` at file parse time — it is populated when SharedWidgets runs.
-     The dialog grabs `Factory` inside `Show` on first build (runtime), after full UI stack load.
+--[[ WN_FACTORY: Loads after SharedWidgets / WindowFactory in `WarbandNexus.toc`.
+     `Factory` is resolved inside `Show` on first build (runtime).
 
      Remaining intentional raw `CreateFrame`: modal root `f`, header chrome, ScrollFrame ScrollChild scaffold,
-     nested grid/card layout Frames, Blizzard `EditBox`, UIPanelScrollFrameTemplate-backed inner scroll hosts.
+     nested grid/card layout Frames, Blizzard `EditBox` fallback, UIPanelScrollFrameTemplate-backed inner scroll hosts.
 ]]
 
 local reminderDialog = nil
-
---- Positive integer from edit box; never tonumber() on secret GetText() (Midnight).
-local function SafePositiveIntFromMapEdit(edit)
-    if not edit or not edit.GetText then return nil end
-    local raw = edit:GetText()
-    if raw == nil then return nil end
-    if issecretvalue and issecretvalue(raw) then return nil end
-    if raw == "" then return nil end
-    local n = tonumber(raw)
-    if not n or n <= 0 then return nil end
-    return n
-end
+local H = ns.ReminderSetAlertDialogHelpers
 
 function ns.ReminderSetAlertDialog.Show(addon, planID)
     local B = ns.ReminderServiceBridge
@@ -812,16 +800,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local MAX_MANUAL_MAP_ROWS = 28
         local UIMT = Enum and Enum.UIMapType
 
-        local function ManualRowTagText(mapID)
-            local UICK = ns.UIMapContentKind
-            if UICK and UICK.Resolve and UICK.FormatPickerTag then
-                if UICK.EnsureJournalLoaded then UICK.EnsureJournalLoaded() end
-                local kind = UICK.Resolve(tonumber(mapID))
-                return UICK.FormatPickerTag(kind)
-            end
-            local Lz = ns.L
-            return (Lz and Lz["REMINDER_ZONE_CAT_TAG_ZONE"]) or "[Z]"
-        end
+        local ManualRowTagText = H and H.ManualRowTagText
 
         f._manualMapRows = {}
         for mri = 1, MAX_MANUAL_MAP_ROWS do
@@ -995,33 +974,11 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
         end
 
-        local function BindCatalogMouseWheel(scrollFrame)
-            if not scrollFrame or not scrollFrame.SetScript then return end
-            scrollFrame:EnableMouseWheel(true)
-            scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-                local step = (ns.UI_GetScrollStep and ns.UI_GetScrollStep())
-                    or ((ns.UI_LAYOUT or ns.UI_SPACING or {}).SCROLL_BASE_STEP or 28)
-                local cur = self:GetVerticalScroll() or 0
-                local mx = self:GetVerticalScrollRange() or 0
-                local nv = cur - delta * step
-                if nv < 0 then nv = 0 end
-                if nv > mx then nv = mx end
-                self:SetVerticalScroll(nv)
-            end)
-        end
-
-        local function TruncatePickerLabel(str, maxLen)
-            if not str then return "" end
-            maxLen = maxLen or 52
-            if #str <= maxLen then return str end
-            return str:sub(1, maxLen - 1) .. "…"
-        end
-
+        local BindCatalogMouseWheel = H and H.BindCatalogMouseWheel
+        local TruncatePickerLabel = H and H.TruncatePickerLabel
         local function LocaleOr(key, fallback)
-            if not key or key == "" then return fallback or "" end
-            local v = L and L[key]
-            if v and v ~= key then return v end
-            return fallback or key
+            if H and H.LocaleOr then return H.LocaleOr(L, key, fallback) end
+            return fallback or key or ""
         end
 
         f._selectedWQQuestIDs = {}
@@ -2567,7 +2524,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         function f:RefreshMapIdZonePreview()
             if not self.mapEdit or not self.mapIdZonePreview then return end
-            local n = SafePositiveIntFromMapEdit(self.mapEdit)
+            local n = H and H.SafePositiveIntFromMapEdit(self.mapEdit)
             if not n then
                 self.mapIdZonePreview:SetText("")
                 self.mapIdZonePreview:Hide()
@@ -2756,7 +2713,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     end
 
     local function CommitManualMapId()
-        local n = SafePositiveIntFromMapEdit(f.mapEdit)
+        local n = H and H.SafePositiveIntFromMapEdit(f.mapEdit)
         if not n then return end
         if NormalizeZoneReminderUIMapID then
             local canon = NormalizeZoneReminderUIMapID(n)
@@ -2893,7 +2850,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     f.saveBtn:SetScript("OnClick", function()
         local days = {}
         if f.daysBeforeCheck and f.daysBeforeCheck:GetChecked() and f.daysBeforeEdit then
-            local n = SafePositiveIntFromMapEdit(f.daysBeforeEdit)
+            local n = H and H.SafePositiveIntFromMapEdit(f.daysBeforeEdit)
             if n and n >= 1 and n <= 14 then
                 days[#days + 1] = math.floor(n)
             end
@@ -2918,7 +2875,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             zoneUseSourceHints = zoneHintsSaved,
             zoneManualMapIDs = (function()
                 if zoneOn then
-                    local pending = SafePositiveIntFromMapEdit(f.mapEdit)
+                    local pending = H and H.SafePositiveIntFromMapEdit(f.mapEdit)
                     if pending and pending > 0 then
                         local dup = false
                         for zi = 1, #(f._manualMapIDs or {}) do
