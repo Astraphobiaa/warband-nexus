@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "%s 추적에서 제거"
 L["CLICK_TO_DELETE"] = "클릭하여 삭제"
 L["CONFIRM_DELETE"] = "|cff00ccff%s|r을(를) 삭제하시겠습니까?"
 L["CANNOT_UNDO"] = "이 작업은 취소할 수 없습니다!"
+L["STALE_CHARACTER_COPIES_TITLE"] = "중복 캐릭터 항목"
+L["STALE_CHARACTER_COPIES_DESC"] = "서버 이전이나 진영 변경 후 이전 복사본이 남을 수 있습니다. 더 이상 플레이하지 않는 행은 삭제하거나 추적 아이콘을 사용하세요."
+L["STALE_CHARACTER_COPIES_DISMISS"] = "닫기"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "캐릭터 추적"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "클릭하여 추적 및 데이터 수집을 활성화합니다."
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "클릭하여 추적을 비활성화합니다(보기 전용)."
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "캐릭터 없음"

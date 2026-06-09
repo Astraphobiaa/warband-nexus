@@ -1097,6 +1097,45 @@ function WarbandNexus:DrawCharacterList(parent)
     else
         yOffset = yOffset + math.max(card12H, card3H) + 10
     end
+
+    if not self.db.profile.ui then self.db.profile.ui = {} end
+    local staleCopies = (ns.CharacterService and ns.CharacterService.FindProbableStaleCharacterCopies)
+        and ns.CharacterService:FindProbableStaleCharacterCopies(self) or {}
+    if #staleCopies > 0 and not self.db.profile.ui.dismissStaleCharacterCopiesBanner then
+        local bannerH = 52
+        local banner = CreateCard(parent, contentSide, bannerH, true)
+        banner:ClearAllPoints()
+        banner:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
+        banner:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -contentSide, -yOffset)
+        if ApplyVisuals then
+            ApplyVisuals(banner, { 0.12, 0.08, 0.05, 0.95 }, { 0.9, 0.55, 0.15, 0.85 })
+        end
+        local bannerTitle = FontManager:CreateFontString(banner, "header", "OVERLAY")
+        bannerTitle:SetPoint("TOPLEFT", 12, -8)
+        bannerTitle:SetPoint("RIGHT", banner, "RIGHT", -90, 0)
+        bannerTitle:SetJustifyH("LEFT")
+        bannerTitle:SetText("|cffffaa44" .. ((ns.L and ns.L["STALE_CHARACTER_COPIES_TITLE"]) or "Duplicate character entries") .. "|r")
+        local bannerBody = FontManager:CreateFontString(banner, "body", "OVERLAY")
+        bannerBody:SetPoint("TOPLEFT", bannerTitle, "BOTTOMLEFT", 0, -2)
+        bannerBody:SetPoint("RIGHT", banner, "RIGHT", -90, 0)
+        bannerBody:SetJustifyH("LEFT")
+        bannerBody:SetWordWrap(true)
+        bannerBody:SetMaxLines(2)
+        bannerBody:SetText((ns.L and ns.L["STALE_CHARACTER_COPIES_DESC"]) or "Delete old copies or use the tracking icon.")
+        local dismissBtn = ns.UI.Factory:CreateButton(banner, 72, 24, false)
+        dismissBtn:SetPoint("RIGHT", banner, "RIGHT", -8, 0)
+        if ApplyVisuals then
+            ApplyVisuals(dismissBtn, { 0.15, 0.15, 0.15, 0.9 }, COLORS and COLORS.accent or { 0.4, 0.2, 0.58 })
+        end
+        local dismissLabel = FontManager:CreateFontString(dismissBtn, "body", "OVERLAY")
+        dismissLabel:SetPoint("CENTER")
+        dismissLabel:SetText((ns.L and ns.L["STALE_CHARACTER_COPIES_DISMISS"]) or "Dismiss")
+        dismissBtn:SetScript("OnClick", function()
+            self.db.profile.ui.dismissStaleCharacterCopiesBanner = true
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
+        end)
+        yOffset = yOffset + bannerH + 8
+    end
     
     local sortOptions = {
         {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
@@ -2545,12 +2584,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local R_MARGIN = ns.UI_CHAR_ROW_RIGHT_MARGIN or 6
     local R_GAP = ns.UI_CHAR_ROW_RIGHT_GAP or 6
     local delW = CHAR_ROW_COLUMNS.delete and CHAR_ROW_COLUMNS.delete.width or 24
+    local trackW = CHAR_ROW_COLUMNS.tracking and CHAR_ROW_COLUMNS.tracking.width or 22
     local haTot = CHAR_ROW_COLUMNS.headerAssign and CHAR_ROW_COLUMNS.headerAssign.total or 26
     local lsW = CHAR_ROW_COLUMNS.lastSeen and CHAR_ROW_COLUMNS.lastSeen.width or 60
     local reoW = CHAR_ROW_COLUMNS.reorder and CHAR_ROW_COLUMNS.reorder.width or 44
-    local railW = (ns.UI_GetCharRowRightRailWidth and ns.UI_GetCharRowRightRailWidth()) or (R_MARGIN * 2 + delW + R_GAP + haTot + R_GAP + lsW + R_GAP + reoW)
+    local railW = (ns.UI_GetCharRowRightRailWidth and ns.UI_GetCharRowRightRailWidth()) or (R_MARGIN * 2 + delW + R_GAP + trackW + R_GAP + haTot + R_GAP + lsW + R_GAP + reoW)
     local insetDelete = 0
-    local insetHeader = delW + R_GAP
+    local insetTrack = (not isCurrent) and (delW + R_GAP) or 0
+    local insetHeader = insetTrack + trackW + R_GAP
     local insetLastSeen = insetHeader + haTot + R_GAP
     local insetReorder = insetLastSeen + lsW + R_GAP
 
@@ -2564,9 +2605,64 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     rail:SetPoint("TOPRIGHT", row, "TOPRIGHT", -R_MARGIN, 0)
     rail:Show()
 
-    if row.trackingIcon then
-        row.trackingIcon:Hide()
+    -- COLUMN: Tracking toggle (all rows; login not required for other characters)
+    local isCharTracked = char.isTracked ~= false
+    if not row.trackingBtn then
+        local tbtn = ns.UI.Factory:CreateButton(rail, 22, 22, true)
+        if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(tbtn) end
+        tbtn.isPersistentRowElement = true
+        tbtn.icon = tbtn:CreateTexture(nil, "ARTWORK")
+        tbtn.icon:SetAllPoints()
+        row.trackingBtn = tbtn
+    else
+        row.trackingBtn:SetParent(rail)
     end
+    row.trackingBtn:ClearAllPoints()
+    row.trackingBtn:SetPoint("RIGHT", rail, "RIGHT", -(insetTrack + 11), 0)
+    if ns.UI.Factory.ApplyIconOnlyButtonChrome then ns.UI.Factory:ApplyIconOnlyButtonChrome(row.trackingBtn) end
+    row.trackingBtn.charKey = charKey
+    row.trackingBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    if row.trackingBtn.icon then
+        if isCharTracked then
+            local ok = pcall(row.trackingBtn.icon.SetAtlas, row.trackingBtn.icon, "common-icon-checkmark", false)
+            if not ok then
+                row.trackingBtn.icon:SetTexture("Interface\\Icons\\Ability_Hunter_BeastTaming")
+            end
+            row.trackingBtn.icon:SetVertexColor(0.35, 1, 0.45)
+        else
+            local ok = pcall(row.trackingBtn.icon.SetAtlas, row.trackingBtn.icon, "common-icon-redx", false)
+            if not ok then
+                row.trackingBtn.icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
+            end
+            row.trackingBtn.icon:SetVertexColor(1, 0.55, 0.42)
+        end
+    end
+    if row.trackingBtn.HasScript and row.trackingBtn:HasScript("OnClick") then
+        row.trackingBtn:SetScript("OnClick", function(selfBtn)
+            local CS = ns.CharacterService
+            if not CS or not CS.ShowTrackingChangeConfirmation then return end
+            local ck = selfBtn.charKey
+            local cn = selfBtn.charName
+            local addon = WarbandNexus
+            local rowData = addon and addon.db and addon.db.global and addon.db.global.characters and ck and addon.db.global.characters[ck]
+            local tracked = rowData and rowData.isTracked ~= false
+            CS:ShowTrackingChangeConfirmation(addon, ck, cn, not tracked)
+        end)
+    end
+    if ShowTooltip and row.trackingBtn.SetScript then
+        row.trackingBtn:SetScript("OnEnter", function(selfBtn)
+            local tracked = char.isTracked ~= false
+            ShowTooltip(selfBtn, {
+                type = "custom",
+                title = (ns.L and ns.L["TRACKING_TOGGLE_TOOLTIP_TITLE"]) or "Character tracking",
+                description = tracked
+                    and ((ns.L and ns.L["TRACKING_TOGGLE_DISABLE_HINT"]) or "Click to disable tracking.")
+                    or ((ns.L and ns.L["TRACKING_TOGGLE_ENABLE_HINT"]) or "Click to enable tracking."),
+            })
+        end)
+        row.trackingBtn:SetScript("OnLeave", HideTooltip)
+    end
+    row.trackingBtn:Show()
 
     -- Reorder Buttons (leftmost slot in the right rail)
     if not row.reorderButtons then

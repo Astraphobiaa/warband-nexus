@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "%s aus der Verfolgung entfernen"
 L["CLICK_TO_DELETE"] = "Klicken zum Löschen"
 L["CONFIRM_DELETE"] = "Bist du sicher, dass du |cff00ccff%s|r löschen möchtest?"
 L["CANNOT_UNDO"] = "Diese Aktion kann nicht rückgängig gemacht werden!"
+L["STALE_CHARACTER_COPIES_TITLE"] = "Doppelte Charaktereinträge"
+L["STALE_CHARACTER_COPIES_DESC"] = "Nach Realm- oder Fraktionswechsel koennen alte Kopien bestehen bleiben. Loesche nicht mehr gespielte Zeilen oder nutze das Tracking-Symbol."
+L["STALE_CHARACTER_COPIES_DISMISS"] = "Ausblenden"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "Charakter-Tracking"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "Klicken, um Tracking und Datenerfassung zu aktivieren."
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "Klicken, um Tracking zu deaktivieren (nur Ansicht)."
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "Keine Charaktere gefunden"

@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "Retirer %s du suivi"
 L["CLICK_TO_DELETE"] = "Cliquer pour supprimer"
 L["CONFIRM_DELETE"] = "Êtes-vous sûr de vouloir supprimer |cff00ccff%s|r ?"
 L["CANNOT_UNDO"] = "Cette action est irréversible !"
+L["STALE_CHARACTER_COPIES_TITLE"] = "Entrees de personnage en double"
+L["STALE_CHARACTER_COPIES_DESC"] = "Apres un changement de royaume ou de faction, d'anciennes copies peuvent rester. Supprimez les lignes inutiles ou utilisez l'icone de suivi."
+L["STALE_CHARACTER_COPIES_DISMISS"] = "Masquer"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "Suivi du personnage"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "Cliquer pour activer le suivi et la collecte de donnees."
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "Cliquer pour desactiver le suivi (lecture seule)."
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "Aucun personnage trouvé"

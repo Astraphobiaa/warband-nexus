@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "將 %s 從追蹤中移除"
 L["CLICK_TO_DELETE"] = "點擊刪除"
 L["CONFIRM_DELETE"] = "確定要刪除 |cff00ccff%s|r？"
 L["CANNOT_UNDO"] = "此操作無法復原！"
+L["STALE_CHARACTER_COPIES_TITLE"] = "重複的角色項目"
+L["STALE_CHARACTER_COPIES_DESC"] = "轉服或轉陣營後可能留下舊副本。請刪除不再使用的列，或使用追蹤圖示。"
+L["STALE_CHARACTER_COPIES_DISMISS"] = "關閉"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "角色追蹤"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "點擊以啟用追蹤與資料收集。"
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "點擊以停用追蹤（僅檢視）。"
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "找不到角色"

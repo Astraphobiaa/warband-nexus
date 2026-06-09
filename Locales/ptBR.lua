@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "Remover %s do rastreamento"
 L["CLICK_TO_DELETE"] = "Clique para excluir"
 L["CONFIRM_DELETE"] = "Tem certeza de que deseja excluir |cff00ccff%s|r?"
 L["CANNOT_UNDO"] = "Esta ação não pode ser desfeita!"
+L["STALE_CHARACTER_COPIES_TITLE"] = "Entradas de personagem duplicadas"
+L["STALE_CHARACTER_COPIES_DESC"] = "Apos mudanca de reino ou faccao, copias antigas podem permanecer. Exclua linhas que nao joga mais ou use o icone de rastreamento."
+L["STALE_CHARACTER_COPIES_DISMISS"] = "Ocultar"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "Rastreamento do personagem"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "Clique para ativar rastreamento e coleta de dados."
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "Clique para desativar rastreamento (somente leitura)."
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "Nenhum personagem encontrado"

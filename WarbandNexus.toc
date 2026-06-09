@@ -134,7 +134,7 @@ Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
 Modules\UI\ItemsUI.lua
 Modules\UI\PvECharacterListRowChrome.lua
-Modules\UI\PveUI.lua
+Modules\UI\PvEUI.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
 Modules\UI\CollectionsUI_SourceData.lua

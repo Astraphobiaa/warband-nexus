@@ -1040,6 +1040,43 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     addon.trackingChangeDialog = dialog
 end
 
+---Other roster rows that share the logged-in character name but use a different storage key (realm transfer / faction copy leftovers).
+---@param addon table WarbandNexus
+---@return table[] copies { key, name, realm, lastSeen }
+function CharacterService:FindProbableStaleCharacterCopies(addon)
+    if not addon or not addon.db or not addon.db.global or not addon.db.global.characters then
+        return {}
+    end
+    local U = ns.Utilities
+    local currentKey = self:ResolveCharactersTableKey(addon)
+    if not currentKey and U and U.GetCharacterStorageKey then
+        currentKey = U:GetCharacterStorageKey(addon)
+    end
+    local playerName = UnitName("player")
+    if not playerName or playerName == "" or (issecretvalue and issecretvalue(playerName)) then
+        return {}
+    end
+    local nameLower = playerName:lower()
+    local copies = {}
+    local chars = addon.db.global.characters
+    for key, row in pairs(chars) do
+        if key ~= currentKey and type(row) == "table" then
+            local n = row.name
+            if type(n) == "string" and n ~= "" and not (issecretvalue and issecretvalue(n)) then
+                if n:lower() == nameLower then
+                    copies[#copies + 1] = {
+                        key = key,
+                        name = n,
+                        realm = row.realm,
+                        lastSeen = row.lastSeen,
+                    }
+                end
+            end
+        end
+    end
+    return copies
+end
+
 --============================================================================
 -- FAVORITE CHARACTERS
 --============================================================================

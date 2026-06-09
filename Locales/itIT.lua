@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "Rimuovi %s dal tracciamento"
 L["CLICK_TO_DELETE"] = "Clicca per eliminare"
 L["CONFIRM_DELETE"] = "Sei sicuro di voler eliminare |cff00ccff%s|r?"
 L["CANNOT_UNDO"] = "Questa azione non può essere annullata!"
+L["STALE_CHARACTER_COPIES_TITLE"] = "Voci personaggio duplicate"
+L["STALE_CHARACTER_COPIES_DESC"] = "Dopo un cambio reame o fazione possono restare copie vecchie. Elimina le righe non piu usate o usa l'icona di tracciamento."
+L["STALE_CHARACTER_COPIES_DISMISS"] = "Nascondi"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "Tracciamento personaggio"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "Clic per attivare il tracciamento e la raccolta dati."
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "Clic per disattivare il tracciamento (sola lettura)."
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "Nessun personaggio trovato"

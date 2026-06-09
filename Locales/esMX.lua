@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "Eliminar %s from tracking"
 L["CLICK_TO_DELETE"] = "Clic to delete"
 L["CONFIRM_DELETE"] = "¿Está seguro de que desea eliminar |cff00ccff%s|r?"
 L["CANNOT_UNDO"] = "¡Esta acción no se puede deshacer!"
+L["STALE_CHARACTER_COPIES_TITLE"] = "Entradas de personaje duplicadas"
+L["STALE_CHARACTER_COPIES_DESC"] = "Tras un cambio de reino o faccion pueden quedar copias antiguas. Elimina filas que ya no juegues o usa el icono de seguimiento."
+L["STALE_CHARACTER_COPIES_DISMISS"] = "Ocultar"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "Seguimiento del personaje"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "Clic para activar el seguimiento y la recopilacion de datos."
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "Clic para desactivar el seguimiento (solo lectura)."
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "No se encontraron caracteres"

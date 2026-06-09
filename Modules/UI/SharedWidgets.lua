@@ -5106,6 +5106,11 @@ local CHAR_ROW_COLUMNS = {
         spacing = 4,
         total = 26,
     },
+    tracking = {
+        width = 22,    -- Track / untrack (Characters tab right rail)
+        spacing = 4,
+        total = 26,
+    },
     delete = {
         width = 24,    -- Delete icon only (RIGHT-anchored, compact)
         spacing = 6,
@@ -5120,7 +5125,7 @@ local CHAR_ROW_COLUMNS = {
 ]]
 local function GetColumnOffset(columnKey)
     local offset = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "headerAssign", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "headerAssign", "tracking", "delete"}
     
     for oi = 1, #order do
         local key = order[oi]
@@ -5139,7 +5144,7 @@ end
 ]]
 local function GetCharRowTotalWidth()
     local width = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "headerAssign", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "headerAssign", "tracking", "delete"}
     
     for oi = 1, #order do
         width = width + CHAR_ROW_COLUMNS[order[oi]].total
@@ -5169,6 +5174,8 @@ local function GetCharRowRightRailWidth()
     local c = CHAR_ROW_COLUMNS
     return CHAR_ROW_RIGHT_MARGIN
         + (c.delete and c.delete.width or 24)
+        + CHAR_ROW_RIGHT_GAP
+        + (c.tracking and c.tracking.width or 22)
         + CHAR_ROW_RIGHT_GAP
         + (c.headerAssign and c.headerAssign.total or 26)
         + CHAR_ROW_RIGHT_GAP

@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "Remove %s from tracking"
 L["CLICK_TO_DELETE"] = "Click to delete"
 L["CONFIRM_DELETE"] = "Are you sure you want to delete |cff00ccff%s|r?"
 L["CANNOT_UNDO"] = "This action cannot be undone!"
+L["STALE_CHARACTER_COPIES_TITLE"] = "Duplicate character entries"
+L["STALE_CHARACTER_COPIES_DESC"] = "After a realm or faction change, older saved copies may remain. Delete rows you no longer play, or use the tracking icon to stop collecting data on alts you keep for reference."
+L["STALE_CHARACTER_COPIES_DISMISS"] = "Dismiss"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "Character tracking"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "Click to enable tracking and data collection."
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "Click to disable tracking (view-only, no new scans)."
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "No Characters Found"

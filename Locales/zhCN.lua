@@ -297,6 +297,12 @@ L["REMOVE_FROM_TRACKING_FORMAT"] = "将 %s 从追踪中移除"
 L["CLICK_TO_DELETE"] = "点击删除"
 L["CONFIRM_DELETE"] = "确定要删除 |cff00ccff%s|r？"
 L["CANNOT_UNDO"] = "此操作无法撤销！"
+L["STALE_CHARACTER_COPIES_TITLE"] = "重复的角色条目"
+L["STALE_CHARACTER_COPIES_DESC"] = "转服或转阵营后可能留下旧副本。请删除不再使用的行，或使用追踪图标。"
+L["STALE_CHARACTER_COPIES_DISMISS"] = "关闭"
+L["TRACKING_TOGGLE_TOOLTIP_TITLE"] = "角色追踪"
+L["TRACKING_TOGGLE_ENABLE_HINT"] = "点击以启用追踪和数据收集。"
+L["TRACKING_TOGGLE_DISABLE_HINT"] = "点击以停用追踪（仅查看）。"
 
 -- Empty state cards (SharedWidgets EMPTY_STATE_CONFIG)
 L["EMPTY_CHARACTERS_TITLE"] = "未找到角色"
