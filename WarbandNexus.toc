@@ -52,6 +52,7 @@ Modules\DebugService.lua
 Modules\CommandService.lua
 Modules\ErrorHandler.lua
 Modules\CollectionRules.lua
+Modules\DataService_Compression.lua
 Modules\DataService.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
@@ -61,6 +62,7 @@ Modules\ModuleManager.lua
 Modules\WindowManager.lua
 Modules\DatabaseOptimizer.lua
 Modules\DatabaseCleanup.lua
+Modules\CollectionService_Materialize.lua
 Modules\CollectionService_NotifyDedup.lua
 Modules\CollectionService.lua
 Modules\ReputationScanner.lua
@@ -149,6 +151,7 @@ Modules\UI\CollectionsUI_Model.lua
 Modules\UI\CollectionsUI_Recent.lua
 Modules\UI\CollectionsUI_Draw.lua
 Modules\UI\CollectionsUI.lua
+Modules\UI\PlansUI_SourceParser.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua
