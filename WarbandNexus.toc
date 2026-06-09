@@ -61,6 +61,7 @@ Modules\ModuleManager.lua
 Modules\WindowManager.lua
 Modules\DatabaseOptimizer.lua
 Modules\DatabaseCleanup.lua
+Modules\CollectionService_NotifyDedup.lua
 Modules\CollectionService.lua
 Modules\ReputationScanner.lua
 Modules\ReputationProcessor.lua
@@ -115,6 +116,7 @@ Modules\UI\ColumnOrderHelpers.lua
 Modules\UI\AchievementCriteriaHelpers.lua
 Modules\UI\SharedWidgets_CharRow.lua
 Modules\UI\SharedWidgets.lua
+Modules\UI\SharedWidgets_CharacterFilter.lua
 Modules\UI\LayoutCoordinator.lua
 Modules\UI\NotificationToastFactory.lua
 Modules\NotificationManager.lua

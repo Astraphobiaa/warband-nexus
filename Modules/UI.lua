@@ -3252,7 +3252,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEMS_UPDATED, function()
+    local function onItemsOrBagsInventoryUpdated()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "gear") then
             -- Bank > Warband aggregate can sit on this tab while cache finishes; 800ms POPULATE_COOLDOWN
             -- otherwise drops the follow-up populate and the list looks empty until a tab switch.
@@ -3264,7 +3264,8 @@ function WarbandNexus:CreateMainWindow()
                 SchedulePopulateContent()
             end
         end
-    end)
+    end
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEMS_UPDATED, onItemsOrBagsInventoryUpdated)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GEAR_UPDATED, function(_, payload)
         if f and f:IsShown() and f.currentTab == "gear" then
@@ -3461,23 +3462,16 @@ function WarbandNexus:CreateMainWindow()
     end)
     
     -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, function()
+    local function onProfessionsKnowledgeOrConcentrationUpdated()
         if not f or not f:IsShown() then return end
         if f.currentTab == "professions" then
             SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
             SchedulePopulateContent()
         end
-    end)
-    
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, function()
-        if not f or not f:IsShown() then return end
-        if f.currentTab == "professions" then
-            SchedulePopulateContent(true)
-        elseif f.currentTab == "chars" then
-            SchedulePopulateContent()
-        end
-    end)
+    end
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, onProfessionsKnowledgeOrConcentrationUpdated)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, onProfessionsKnowledgeOrConcentrationUpdated)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
@@ -3515,17 +3509,7 @@ function WarbandNexus:CreateMainWindow()
     
     -- BAGS_UPDATED also feeds the gear-tab recommendation scan (cross-character bag items
     -- are candidates) so newly looted BoEs surface without a manual reopen.
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.BAGS_UPDATED, function()
-        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "gear") then
-            if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" then
-                SchedulePopulateContent(true)
-            elseif f.currentTab == "gear" then
-                ScheduleGearTabInventoryNarrowRefresh()
-            else
-                SchedulePopulateContent()
-            end
-        end
-    end)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.BAGS_UPDATED, onItemsOrBagsInventoryUpdated)
 
     -- Money: chars Total Gold card, gear-tab affordability (gold-only upgrades).
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MONEY_UPDATED, function()
