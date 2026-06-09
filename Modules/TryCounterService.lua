@@ -123,26 +123,24 @@ local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Packed internal funcs: Lua 5.1 / WoW ~200 locals per function scope.
 local Fns = {}
+local TC = ns.TryCounter or {}
 
 -- =====================================================================
 -- CONSTANTS & UPVALUES (performance: resolved once at file load)
 -- =====================================================================
 
-local VALID_TYPES = { mount = true, pet = true, toy = true, illusion = true, item = true }
-local RECENT_KILL_TTL = 15       -- seconds to keep non-encounter recentKills entries
--- NOTE: Encounter kills (isEncounter=true) never expire by TTL.
--- They persist until loot is processed or the player leaves the instance.
--- This handles arbitrarily long RP phases, cinematics, and AFK between kill and loot.
-local PROCESSED_GUID_TTL = 300   -- seconds before allowing same GUID again
--- Same merged loot window (npcID + sorted source GUIDs): block duplicate try increments if a second
--- route fires before processedGUIDs applies, or after GUID TTL in edge cases (partial loot reopen).
-local MERGED_LOOT_TRY_DEDUP_TTL = 600
-local CLEANUP_INTERVAL = 60      -- seconds between cleanup ticks
-local ENCOUNTER_OBJECT_TTL = 300  -- seconds: max time between boss kill and chest loot for encounter+GameObject match
---- Sanctum of Domination (raid): GetInstanceInfo()[8] template id; mythic Sylvanas chest may use a new GameObject id.
-local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = 1193
-local RAID_MYTHIC_DIFFICULTY_ID = 16
-local SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = 368304
+local VALID_TYPES = TC.VALID_TYPES or { mount = true, pet = true, toy = true, illusion = true, item = true }
+local RECENT_KILL_TTL = TC.RECENT_KILL_TTL or 15
+local PROCESSED_GUID_TTL = TC.PROCESSED_GUID_TTL or 300
+local MERGED_LOOT_TRY_DEDUP_TTL = TC.MERGED_LOOT_TRY_DEDUP_TTL or 600
+local CLEANUP_INTERVAL = TC.CLEANUP_INTERVAL or 60
+local ENCOUNTER_OBJECT_TTL = TC.ENCOUNTER_OBJECT_TTL or 300
+local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 1193
+local RAID_MYTHIC_DIFFICULTY_ID = TC.RAID_MYTHIC_DIFFICULTY_ID or 16
+local SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 368304
+
+Fns.TryChat = TC.TryChat
+Fns.BuildObtainedChat = TC.BuildObtainedChat
 
 -- Upvalue WoW API functions (avoid global lookups in hot paths)
 local UnitGUID = UnitGUID
@@ -213,60 +211,7 @@ local lastLootSourceGUID
 local lastLootSourceTime
 local discoveryPendingNpcID
 
----Send try counter / drops lines via ns.ChatOutput.SendTryCounterMessage (Loot, WN_TRYCOUNTER, or all tabs — profile).
----Honors hideTryCounterChat: when true, all chat output is suppressed while counting continues.
----Falls back to WarbandNexus:Print if ChatMessageService not available.
----@param message string
-function Fns.TryChat(message)
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-        and WarbandNexus.db.profile.notifications
-        and WarbandNexus.db.profile.notifications.hideTryCounterChat then
-        return
-    end
-    if ns.ChatOutput and ns.ChatOutput.SendTryCounterMessage then
-        ns.ChatOutput.SendTryCounterMessage(message)
-    elseif ns.SendToChatFramesLootRepCurrency then
-        ns.SendToChatFramesLootRepCurrency(message)
-    elseif WarbandNexus and WarbandNexus.Print then
-        WarbandNexus:Print(message)
-    end
-end
-
----Build try-counter chat line: "N attempts for [item]" (or first-attempt variant), optional context tags.
----@param baseKey string Locale key for no-count fallback (e.g. TRYCOUNTER_OBTAINED)
----@param baseFallback string English fallback when preResetCount is nil
----@param itemLink string Formatted item link
----@param preResetCount number|nil Failed attempts before the successful one (total = preResetCount + 1)
----@return string
-function Fns.BuildObtainedChat(baseKey, baseFallback, itemLink, preResetCount)
-    local L = ns.L
-    local prefix = "|cff9370DB[WN-Counter]|r "
-    if preResetCount == nil then
-        return prefix .. format((L and L[baseKey]) or baseFallback, itemLink)
-    end
-    local totalTries = preResetCount + 1
-    local tags = {}
-    if baseKey and strfind(baseKey, "CONTAINER", 1, true) then
-        tags[#tags + 1] = (L and L["TRYCOUNTER_CHAT_TAG_CONTAINER"]) or "container"
-    end
-    if baseKey and strfind(baseKey, "CAUGHT", 1, true) then
-        tags[#tags + 1] = (L and L["TRYCOUNTER_CHAT_TAG_FISHING"]) or "fishing"
-    end
-    if baseKey and strfind(baseKey, "RESET", 1, true) then
-        tags[#tags + 1] = (L and L["TRYCOUNTER_CHAT_TAG_RESET"]) or "counter reset"
-    end
-    local tagStr = (#tags > 0) and (" |cff888888(" .. tconcat(tags, " · ") .. ")|r") or ""
-    -- Success lines must not reuse TRYCOUNTER_INCREMENT_CHAT wording ("N attempts for …"), which reads like a miss.
-    if totalTries <= 1 then
-        local fmt = (L and L["TRYCOUNTER_CHAT_OBTAINED_FIRST_LINK"])
-            or (L and L["TRYCOUNTER_CHAT_FIRST_FOR_LINK"])
-            or "You got %s on your first try!"
-        return prefix .. "|cffffffff" .. format(fmt, itemLink) .. "|r" .. tagStr
-    end
-    local fmt = (L and L["TRYCOUNTER_CHAT_OBTAINED_AFTER_LINK"])
-        or "You got %s after %d attempts!"
-    return prefix .. "|cffffffff" .. format(fmt, itemLink, totalTries) .. "|r" .. tagStr
-end
+-- TryChat / BuildObtainedChat: Modules/TryCounterService_Shared.lua (Fns.* aliases set above).
 
 -- =====================================================================
 -- RAW EVENT FRAMES

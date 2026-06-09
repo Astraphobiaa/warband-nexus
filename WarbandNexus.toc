@@ -88,6 +88,7 @@ Modules\VaultButton.lua
 Modules\PlansManager.lua
 Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB.lua
+Modules\TryCounterService_Shared.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
@@ -112,6 +113,7 @@ Modules\GearService.lua
 Modules\UI\FormatHelpers.lua
 Modules\UI\ColumnOrderHelpers.lua
 Modules\UI\AchievementCriteriaHelpers.lua
+Modules\UI\SharedWidgets_CharRow.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\LayoutCoordinator.lua
 Modules\UI\NotificationToastFactory.lua
