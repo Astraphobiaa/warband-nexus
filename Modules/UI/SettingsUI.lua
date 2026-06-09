@@ -178,29 +178,6 @@ local settingsKeybindIsListening = false
 local settingsKeybindButton = nil
 local settingsKeybindCaptureFrame = nil
 
----WarbandNexusFrame uses InstallESCHandler (EnableKeyboard true). With Settings open on top, the main
----window can still own the client keyboard stack — WASD / space stop working. Disable only while Settings is shown.
-local function SuppressMainWindowKeyboardWhileSettingsOpen()
-    local mf = _G.WarbandNexusFrame
-    if not mf or not mf:IsShown() then return end
-    if InCombatLockdown() then return end
-    if mf.EnableKeyboard then
-        mf:EnableKeyboard(false)
-    end
-end
-
-local function RestoreMainWindowKeyboardAfterSettingsClose()
-    local mf = _G.WarbandNexusFrame
-    if not mf or not mf:IsShown() then return end
-    if InCombatLockdown() then return end
-    if mf.EnableKeyboard then
-        mf:EnableKeyboard(true)
-    end
-    if mf.SetPropagateKeyboardInput then
-        mf:SetPropagateKeyboardInput(true)
-    end
-end
-
 ---Chat debug (Lua 5.1): only when WarbandNexus.db.profile.debugMode is true (Config → Debug Mode).
 local function SettingsEscDebug(msg, ...)
     local W = WarbandNexus
@@ -216,11 +193,6 @@ local function SettingsEscDebug(msg, ...)
     end
     W:Print("|cff00ccff[WN Settings ESC]|r " .. text)
 end
-local IGNORED_KEYS = {
-    LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true,
-    LALT = true, RALT = true, UNKNOWN = true,
-}
-
 -- ESC: Do NOT use SetOverrideBinding* on ESC for this panel. On current clients the API can report
 -- success while the synthetic CLICK never reaches an addon Button — ESC is then swallowed and
 -- ToggleGameMenu / UISpecialFrames never run. Close path: WindowManager + ToggleGameMenu / CloseAllWindows / CloseSpecialWindows hooks (settings root does NOT use InstallESCHandler — see below).
@@ -298,39 +270,7 @@ local function Settings_ShowWrappedTooltip(owner, text)
     GameTooltip:Show()
 end
 
-local function GetToggleBindingDisplayText()
-    local key = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-                and WarbandNexus.db.profile.toggleKeybind
-    if not key or key == "" then
-        return (ns.L and ns.L["KEYBINDING_UNBOUND"]) or "Not set"
-    end
-    return (GetBindingText and GetBindingText(key)) or key
-end
-
-local function IsForbiddenToggleKeybind(key)
-    if not key or key == "" then return false end
-    local k = tostring(key):upper()
-    return (k == "ESC" or k == "ESCAPE" or k == "ESCAPEKEY")
-end
-
-local function SaveToggleKeybind(key)
-    if not WarbandNexus or not WarbandNexus.db then return false end
-    if IsForbiddenToggleKeybind(key) then
-        WarbandNexus.db.profile.toggleKeybind = nil
-        if WarbandNexus.ApplyToggleKeybind then
-            WarbandNexus:ApplyToggleKeybind()
-        end
-        if WarbandNexus.Print then
-            WarbandNexus:Print("|cffff6600Toggle keybind cannot be ESC. Binding cleared.|r")
-        end
-        return false
-    end
-    WarbandNexus.db.profile.toggleKeybind = key
-    if WarbandNexus.ApplyToggleKeybind then
-        WarbandNexus:ApplyToggleKeybind()
-    end
-    return true
-end
+local SettingsKeybind = ns.SettingsKeybind
 
 --============================================================================
 -- GRID LAYOUT SYSTEM
@@ -1606,7 +1546,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     local keybindBtnText = FontManager:CreateFontString(keybindBtn, "body", "OVERLAY")
     keybindBtnText:SetPoint("CENTER")
-    keybindBtnText:SetText(GetToggleBindingDisplayText())
+    keybindBtnText:SetText(SettingsKeybind.GetToggleBindingDisplayText())
     keybindBtnText:SetTextColor(1, 1, 1, 1)
 
     local isListening = false
@@ -1633,7 +1573,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             end
             captureFrame:Hide()
         end
-        keybindBtnText:SetText(GetToggleBindingDisplayText())
+        keybindBtnText:SetText(SettingsKeybind.GetToggleBindingDisplayText())
         keybindBtnText:SetTextColor(1, 1, 1, 1)
         if ApplyVisuals then
             ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
@@ -1660,6 +1600,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         end
     end
     settingsKeybindStopListening = StopListening
+    SettingsKeybind.RegisterCaptureHooks(StopListening, keybindBtn)
     StopListening()
 
     keybindBtn:SetScript("OnClick", function()
@@ -1672,7 +1613,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     captureFrame:SetScript("OnKeyDown", function(_, key)
         if not isListening then return end
-        if IGNORED_KEYS[key] then return end
+        if SettingsKeybind.IGNORED_KEYS[key] then return end
 
         if key == "ESCAPE" then
             StopListening()
@@ -1693,8 +1634,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         if IsAltKeyDown() then prefix = "ALT-" .. prefix end
 
         local fullKey = prefix .. key
-        if IsForbiddenToggleKeybind(fullKey) then
-            SaveToggleKeybind(fullKey) -- existing path prints warning + clears
+        if SettingsKeybind.IsForbiddenToggleKeybind(fullKey) then
+            SettingsKeybind.SaveToggleKeybind(fullKey) -- existing path prints warning + clears
             StopListening()
             return
         end
@@ -1761,7 +1702,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     clearBtn:SetScript("OnClick", function()
         if InCombatLockdown() then return end
-        SaveToggleKeybind(nil)
+        SettingsKeybind.SaveToggleKeybind(nil)
         StopListening()
     end)
     clearBtn:SetScript("OnEnter", function(self)
@@ -4504,16 +4445,6 @@ end
 --============================================================================
 -- MAIN WINDOW TAB (embedded in WarbandNexusFrame content scroll)
 --============================================================================
-
-function WarbandNexus:StopSettingsKeybindCapture()
-    if settingsKeybindStopListening then
-        settingsKeybindStopListening()
-    end
-    if settingsKeybindButton and settingsKeybindButton.EnableKeyboard then
-        settingsKeybindButton:EnableKeyboard(false)
-    end
-    RestoreMainWindowKeyboardAfterSettingsClose()
-end
 
 ---Paint settings into the main window scroll host (replaces legacy floating panel).
 ---@param parent Frame

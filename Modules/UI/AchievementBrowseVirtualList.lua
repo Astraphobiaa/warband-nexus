@@ -855,3 +855,11 @@ function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
         end
     end
 end
+
+local WarbandNexus = ns.WarbandNexus
+local Constants = ns.Constants
+if WarbandNexus and WarbandNexus.RegisterMessage and Constants and Constants.EVENTS then
+    WarbandNexus:RegisterMessage(Constants.EVENTS.ACHIEVEMENT_CATEGORY_CACHE_INVALIDATED, function()
+        ns.UI_InvalidateAchievementCategoryCaches()
+    end)
+end

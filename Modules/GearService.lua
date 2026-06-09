@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Gear Service
     Scans and persists equipped gear per character.
     Provides upgrade analysis and cross-character storage upgrade finder.
@@ -280,77 +280,19 @@ local function CacheGearCraftedProbeResult(link, isCrafted)
 end
 
 -- ============================================================================
--- SLOT DEFINITIONS
+-- SLOT DEFINITIONS (GearService_Slots.lua)
 -- ============================================================================
-
--- Left column, right column, bottom row — mirrors Blizzard paper doll order.
-local GEAR_SLOTS = {
-    { id = 1,  key = "head",      label = INVTYPE_HEAD,      col = "left"   },
-    { id = 2,  key = "neck",      label = INVTYPE_NECK,      col = "left"   },
-    { id = 3,  key = "shoulder",  label = INVTYPE_SHOULDER,  col = "left"   },
-    { id = 15, key = "back",      label = INVTYPE_CLOAK,      col = "left"   },
-    { id = 5,  key = "chest",     label = INVTYPE_CHEST,     col = "left"   },
-    { id = 9,  key = "wrist",     label = INVTYPE_WRIST,     col = "left"   },
-    { id = 10, key = "hands",     label = INVTYPE_HAND,     col = "right"  },
-    { id = 6,  key = "waist",     label = INVTYPE_WAIST,     col = "right"  },
-    { id = 7,  key = "legs",      label = INVTYPE_LEGS,      col = "right"  },
-    { id = 8,  key = "feet",      label = INVTYPE_FEET,      col = "right"  },
-    { id = 11, key = "ring1",     label = "Ring",      col = "right"  },
-    { id = 12, key = "ring2",     label = "Ring",      col = "right"  },
-    { id = 13, key = "trinket1",  label = "Trinket",   col = "bottom" },
-    { id = 14, key = "trinket2",  label = "Trinket",   col = "bottom" },
-    { id = 16, key = "mainhand",  label = INVTYPE_WEAPONMAINHAND, col = "bottom" },
-    { id = 17, key = "offhand",   label = INVTYPE_WEAPONOFFHAND,  col = "bottom" },
-}
+local Slots = ns.GearServiceSlots
+local GEAR_SLOTS = Slots.GEAR_SLOTS
+local SLOT_BY_ID = Slots.SLOT_BY_ID
+local EQUIP_LOC_TO_SLOTS = Slots.EQUIP_LOC_TO_SLOTS
+local SLOT_PAIRS = Slots.SLOT_PAIRS
+local ARMOR_SLOT_IDS = Slots.ARMOR_SLOT_IDS
 
 local ITEM_CLASS_WEAPON = LE_ITEM_CLASS_WEAPON or 2
 local ITEM_CLASS_ARMOR = LE_ITEM_CLASS_ARMOR or 4
 
--- Reverse map: slotID -> slot def (O(1) lookup)
-local SLOT_BY_ID = {}
-for i = 1, #GEAR_SLOTS do
-    local s = GEAR_SLOTS[i]
-    SLOT_BY_ID[s.id] = s
-end
-
--- WoW uses shared "item redundancy" for rings, trinkets, and weapons: one watermark per group.
--- Ring 1/2, Trinket 1/2, and Main Hand/Off Hand all share their respective high watermark slot.
--- For paired slots, gold-only affordability must be capped by THIS item's ilvl — otherwise the
--- pair's higher ilvl makes upgrades look free when the upgrade NPC actually charges crests
--- (e.g. Off Hand at 285 falsely marks Main Hand 282→285 as gold-only).
-local SLOT_PAIRS = { [11] = 12, [12] = 11, [13] = 14, [14] = 13, [16] = 17, [17] = 16 }
-
--- Maps INVTYPE_ equip location -> which slot IDs that item can fill
--- C_Item.GetItemInfoInstant returns 4th value = itemEquipLoc (string, e.g. "INVTYPE_SHOULDER")
-local EQUIP_LOC_TO_SLOTS = {
-    INVTYPE_HEAD           = { 1  },
-    INVTYPE_NECK           = { 2  },
-    INVTYPE_SHOULDER       = { 3  },
-    INVTYPE_BACK           = { 15 },
-    INVTYPE_CLOAK          = { 15 },
-    INVTYPE_CHEST          = { 5  },
-    INVTYPE_ROBE           = { 5  },
-    INVTYPE_WRIST          = { 9  },
-    INVTYPE_HAND           = { 10 },
-    INVTYPE_WAIST          = { 6  },
-    INVTYPE_LEGS           = { 7  },
-    INVTYPE_FEET           = { 8  },
-    INVTYPE_FINGER         = { 11, 12 },
-    INVTYPE_TRINKET        = { 13, 14 },
-    INVTYPE_WEAPON         = { 16 },
-    INVTYPE_WEAPONMAINHAND = { 16 },
-    INVTYPE_2HWEAPON       = { 16 },
-    INVTYPE_WEAPONOFFHAND  = { 17 },
-    INVTYPE_SHIELD         = { 17 },
-    INVTYPE_HOLDABLE       = { 17 },
-    INVTYPE_RANGED         = { 16 },
-    INVTYPE_RANGEDRIGHT    = { 16 },
-}
-
-local ARMOR_SLOT_IDS = {
-    [1] = true, [3] = true, [5] = true, [6] = true, [7] = true, [8] = true, [9] = true, [10] = true, [15] = true,
-}
-
+-- ============================================================================
 -- Global specialization ID → primary stat for gear filtering (Midnight 12.x).
 -- Storage-upgrade matching: ResolveExpectedPrimaryStatFromCharacter → expected STR/AGI/INT,
 -- then compare to C_Item.GetItemStats / GetItemStats primary flags on the item link.
@@ -1075,17 +1017,13 @@ end
 -- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
 -- ============================================================================
 
--- Midnight Season 1: complete ilvl progression per upgrade track (tier 1-6).
--- Each track has 6 tiers. Adjacent tracks overlap by 2 tiers.
--- Increment pattern per track: +4, +3, +3, +3, +4
-local TRACK_ILVLS = {
-    Adventurer = { 220, 224, 227, 230, 233, 237 },
-    Veteran    = { 233, 237, 240, 243, 246, 250 },
-    Champion   = { 246, 250, 253, 256, 259, 263 },
-    Hero       = { 259, 263, 266, 269, 272, 276 },
-    Myth       = { 272, 276, 279, 282, 285, 289 },
-}
-local TRACK_ORDER = { "Adventurer", "Veteran", "Champion", "Hero", "Myth" }
+local GT = ns.GearUpgradeTracks
+local TRACK_ILVLS = GT.TRACK_ILVLS
+local TRACK_ORDER = GT.TRACK_ORDER
+local ILVL_TO_UPGRADE = GT.ILVL_TO_UPGRADE
+local TRACK_NAME_TO_CURRENCY_ID = GT.TRACK_NAME_TO_CURRENCY_ID
+local UPGRADE_CURRENCY_ID_SET_EARLY = GT.UPGRADE_CURRENCY_ID_SET_EARLY
+local CURRENCY_ID_TO_TRACK = GT.CURRENCY_ID_TO_TRACK
 
 --- Map API / tooltip track labels to English TRACK_ILVLS keys (localized names, "Veteran Dawncrest", etc.).
 ---@param raw string|nil
@@ -1112,18 +1050,6 @@ local function NormalizeUpgradeTrackName(raw)
     end
     return nil
 end
-
--- Reverse map: ilvl → { trackName, tier, maxTier }.
--- Overlapping ilvls: higher tracks overwrite lower, so 233 → Veteran 1/6 (not Adventurer 5/6).
-local ILVL_TO_UPGRADE = {}
-for i = 1, #TRACK_ORDER do
-    local trackName = TRACK_ORDER[i]
-    local tiers = TRACK_ILVLS[trackName]
-    for tier = 1, #tiers do
-        ILVL_TO_UPGRADE[tiers[tier]] = { trackName, tier, #tiers }
-    end
-end
-
 --- Tier index within a known track (never jumps to a higher track at overlap ilvls).
 ---@param trackName string
 ---@param itemLevel number
@@ -1252,26 +1178,6 @@ local function GetIlvlForTier(trackName, tier)
     if not tiers or tier < 1 or tier > #tiers then return nil end
     return tiers[tier]
 end
-
--- Flat cost per upgrade level: 20 Dawncrests + gold (Midnight Season 1)
-ns.UPGRADE_CREST_PER_LEVEL = 20
-ns.UPGRADE_GOLD_PER_LEVEL_COPPER = 10 * 10000
-
-local TRACK_NAME_TO_CURRENCY_ID = {
-    Adventurer = 3383,
-    Veteran    = 3341,
-    Champion   = 3343,
-    Hero       = 3345,
-    Myth       = 3347,
-}
-
-local UPGRADE_CURRENCY_ID_SET_EARLY = {}
-local CURRENCY_ID_TO_TRACK = {}
-for track, cid in pairs(TRACK_NAME_TO_CURRENCY_ID) do
-    UPGRADE_CURRENCY_ID_SET_EARLY[cid] = true
-    CURRENCY_ID_TO_TRACK[cid] = track
-end
-
 --- Dawncrest type for a persisted next-step cost row (Hero=3345, Myth=3347, ...).
 ---@param currencyID number
 ---@return string|nil trackName
@@ -1468,13 +1374,6 @@ local function InferSlotIsCraftedGear(slot, trackName, itemLevel)
     return false
 end
 
--- Export slot definitions and upgrade tables for use by GearUI
-ns.GEAR_SLOTS              = GEAR_SLOTS
-ns.SLOT_BY_ID              = SLOT_BY_ID
-ns.EQUIP_LOC_TO_SLOTS      = EQUIP_LOC_TO_SLOTS
-ns.TRACK_ILVLS             = TRACK_ILVLS
-ns.TRACK_ORDER             = TRACK_ORDER
-ns.TRACK_NAME_TO_CURRENCY_ID = TRACK_NAME_TO_CURRENCY_ID
 
 -- ============================================================================
 -- DB HELPERS
