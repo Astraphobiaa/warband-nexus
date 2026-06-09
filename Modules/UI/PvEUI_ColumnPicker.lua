@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - PvE tab column picker + low-level hide filter flyout.
     Split from PvEUI.lua (Lua 5.1 local limit).
     Loaded after Modules/UI/PvEUI.lua (uses ns.PvEUI column helpers).
@@ -573,3 +573,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
 end
 
 ns.PvE_AttachInlineColumnPicker = PvE_AttachInlineColumnPicker
+-- PvEDrawLibs snapshots ns refs at PvEUI.lua load; patch after this satellite loads.
+if ns.PvEDrawLibs then
+    ns.PvEDrawLibs.PvE_AttachInlineColumnPicker = PvE_AttachInlineColumnPicker
+end

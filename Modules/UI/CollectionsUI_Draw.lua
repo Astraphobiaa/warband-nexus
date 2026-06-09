@@ -398,10 +398,12 @@ function M.DrawMountsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
-                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent)
-                            if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
-                                Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
-                            end
+                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent, drawGen, function()
+                                if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
+                                    Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
+                                end
+                                M.state._drawMountsContentBusy = nil
+                            end)
                         end)
                     end
                 )
@@ -462,14 +464,17 @@ function M.DrawMountsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
-                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent)
-                            if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
-                                Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
-                            end
+                            M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent, drawGen, function()
+                                if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
+                                    Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
+                                end
+                                M.state._drawMountsContentBusy = nil
+                            end)
                         end)
                     end
                 )
             end)
+            return
         end
     end
     M.state._drawMountsContentBusy = nil
@@ -740,10 +745,12 @@ function M.DrawPetsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
-                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent)
-                            if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
-                                Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
-                            end
+                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent, drawGen, function()
+                                if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
+                                    Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
+                                end
+                                M.state._drawPetsContentBusy = nil
+                            end)
                         end)
                     end
                 )
@@ -804,14 +811,17 @@ function M.DrawPetsContent(contentFrame)
                         C_Timer.After(0, function()
                             if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
-                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent)
-                            if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
-                                Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
-                            end
+                            M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent, drawGen, function()
+                                if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
+                                    Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
+                                end
+                                M.state._drawPetsContentBusy = nil
+                            end)
                         end)
                     end
                 )
             end)
+            return
         end
     end
     M.state._drawPetsContentBusy = nil

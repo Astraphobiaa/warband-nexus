@@ -1,7 +1,6 @@
 --[[
-    PvE tab: paint per-character summary headers to match Professions-tab list rows
-    (46px zebra row, fav + class, two-line name/realm, level, iLvl — no faction/race/guild).
-    Inline PvE columns align after the iLvl column (same horizontal slot as gold on Characters).
+    PvE tab: per-character summary rows aligned with Professions-tab identity strip
+    (expand chevron + fav + class + name/realm + level + iLvl, then inline PvE grid).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -10,26 +9,53 @@ local max = math.max
 local issecretvalue = issecretvalue
 
 local PVE_ILVL_TO_INLINE_GAP = 6
-local PVE_ROW_BASE_PAD = 10
+-- ProfessionsUI: LEFT_PAD = 4, COL_SPACING = 8, fav/class = 33px.
+local PVE_LEFT_PAD = 4
+local PVE_COL_GAP = 8
+local PVE_FAV_COL_W = 33
+local PVE_CLASS_COL_W = 33
+local PVE_NAME_COL_MIN_W = 100
+local PVE_LEVEL_AFTER_NAME_GAP = 2
 
---- Left edge of class icon when faction/race columns are omitted (Professions parity).
-local function PvE_ComputeClassColumnLeftPx()
-    local crc = ns.UI_CHAR_ROW_COLUMNS or {}
-    local favTot = (crc.favorite and crc.favorite.total) or 38
-    return PVE_ROW_BASE_PAD + favTot
+--- Expand chevron column (CreateCollapsibleHeader) before Professions identity strip.
+local function PvE_GetChevronPrefixPx()
+    local ly = ns.UI_LAYOUT or {}
+    local chevLeft = ly.SECTION_HEADER_COLLAPSE_CHEVRON_LEFT or 12
+    local chevSz = ly.SECTION_COLLAPSE_CHEVRON_SIZE or 26
+    return chevLeft + chevSz + 4
 end
 
---- Pixels from row inner left (0) to the first inline PvE column (matches tight row chrome after iLvl).
-function ns.PvE_ComputeInlineColumnsStartPx(nameW)
+--- Shared identity layout: Professions fav/class/name rhythm + chevron + PvE level/iLvl.
+local function PvE_BuildIdentityLayout(nameW)
     local crc = ns.UI_CHAR_ROW_COLUMNS or {}
-    local nw = math.max(crc.name and crc.name.width or 100, tonumber(nameW) or 100)
-    local classLeft = PvE_ComputeClassColumnLeftPx()
-    local classW = (crc.class and crc.class.width) or 33
-    local iconEnd = classLeft + classW
-    local nameLeft = iconEnd + 8
-    local levelOffset = nameLeft + nw + 2
-    local itemLevelOffset = levelOffset + (crc.level and crc.level.total or 97)
-    return itemLevelOffset + (crc.itemLevel and crc.itemLevel.width or 75) + PVE_ILVL_TO_INLINE_GAP
+    local nw = math.max(PVE_NAME_COL_MIN_W, crc.name and crc.name.width or 100, tonumber(nameW) or 100)
+    local levelW = crc.level and crc.level.width or 82
+    local levelTot = crc.level and crc.level.total or 97
+    local ilvlW = crc.itemLevel and crc.itemLevel.width or 75
+
+    local base = PVE_LEFT_PAD + PvE_GetChevronPrefixPx()
+    local nameLeft = base + PVE_FAV_COL_W + PVE_COL_GAP + PVE_CLASS_COL_W + PVE_COL_GAP
+    local levelLeft = nameLeft + nw + PVE_LEVEL_AFTER_NAME_GAP
+    local ilvlLeft = levelLeft + levelTot
+
+    return {
+        favCenterX = base + PVE_FAV_COL_W * 0.5,
+        classCenterX = base + PVE_FAV_COL_W + PVE_COL_GAP + PVE_CLASS_COL_W * 0.5,
+        nameLeft = nameLeft,
+        nameColW = nw,
+        levelLeft = levelLeft,
+        levelColW = levelW,
+        levelTot = levelTot,
+        ilvlLeft = ilvlLeft,
+        ilvlColW = ilvlW,
+        inlineStart = ilvlLeft + ilvlW + PVE_ILVL_TO_INLINE_GAP,
+        identityGradientEnd = nameLeft + nw,
+    }
+end
+
+--- Pixels from row inner left (0) to the first inline PvE column.
+function ns.PvE_ComputeInlineColumnsStartPx(nameW)
+    return PvE_BuildIdentityLayout(nameW).inlineStart
 end
 
 --- Scroll/min-width prefix through identity + iLvl (same start as inline grid).
@@ -45,26 +71,26 @@ end
 function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     if not charHeader or not char or not opts then return end
 
-    local CRC = ns.UI_CHAR_ROW_COLUMNS or {}
     local rowIndex = tonumber(opts.rowIndex) or 1
     local charKey = opts.charKey
     local isFavorite = opts.isFavorite == true
     local isOnline = opts.isCurrentChar == true
-    local expandIcon = opts.expandIconFrame
-    local nameColW = math.max(CRC.name and CRC.name.width or 100, tonumber(opts.nameWidth) or (CRC.name and CRC.name.width) or 100)
+    local nameColW = math.max(PVE_NAME_COL_MIN_W, tonumber(opts.nameWidth) or PVE_NAME_COL_MIN_W)
+    local layout = PvE_BuildIdentityLayout(nameColW)
 
     if charHeader._wnSectionStripe then
         charHeader._wnSectionStripe:Hide()
     end
+    if charHeader._pveCharRowGuild then charHeader._pveCharRowGuild:Hide() end
+    if charHeader._pveCharRowFaction then charHeader._pveCharRowFaction:Hide() end
+    if charHeader._pveCharRowRace then charHeader._pveCharRowRace:Hide() end
 
-    if charHeader._pveCharRowGuild then
-        charHeader._pveCharRowGuild:Hide()
+    if charHeader._wnCollHeaderText then
+        charHeader._wnCollHeaderText:SetText("")
+        charHeader._wnCollHeaderText:Hide()
     end
-    if charHeader._pveCharRowFaction then
-        charHeader._pveCharRowFaction:Hide()
-    end
-    if charHeader._pveCharRowRace then
-        charHeader._pveCharRowRace:Hide()
+    if charHeader.SetText then
+        charHeader:SetText("")
     end
 
     if ns.UI and ns.UI.Factory then
@@ -76,7 +102,7 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
 
     local favBtn = charHeader._pveCharRowFav
     if not favBtn then
-        favBtn = ns.UI_CreateFavoriteButton(charHeader, charKey, isFavorite, CRC.favorite.width, "LEFT", 0, 0, function(key)
+        favBtn = ns.UI_CreateFavoriteButton(charHeader, charKey, isFavorite, PVE_FAV_COL_W, "CENTER", 0, 0, function(key)
             if ns.CharacterService and addon then
                 return ns.CharacterService:ToggleFavoriteCharacter(addon, key)
             end
@@ -86,48 +112,38 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     end
     favBtn.charKey = charKey
     favBtn:SetChecked(isFavorite)
-    -- PvE: do not change roster/favorites here (Character tab only). Still absorb clicks so the row header does not toggle expand.
     favBtn:SetScript("OnClick", function() end)
     favBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        -- Midnight: GameTooltip:SetText(text [, color, alpha, wrap]) — not legacy r,g,b,wrap four floats.
         GameTooltip:SetText((ns.L and ns.L["FAVORITE_EDIT_ON_CHARACTER_TAB"]) or "Change favorites on the Character tab.")
         GameTooltip:Show()
     end)
     favBtn:SetScript("OnLeave", GameTooltip_Hide)
     favBtn:ClearAllPoints()
-    if expandIcon then
-        favBtn:SetPoint("LEFT", expandIcon, "RIGHT", 4, 0)
-    else
-        local fo = PVE_ROW_BASE_PAD
-        favBtn:SetPoint("LEFT", charHeader, "LEFT", fo + ((CRC.favorite and CRC.favorite.spacing) or 5) / 2, 0)
-    end
+    favBtn:SetPoint("CENTER", charHeader, "LEFT", layout.favCenterX, 0)
     favBtn:Show()
-
-    local gap = (CRC.favorite and CRC.favorite.spacing) or 5
 
     local classIcon = charHeader._pveCharRowClass
     if char.classFile then
         if not classIcon then
-            classIcon = ns.UI_CreateClassIcon(charHeader, char.classFile, CRC.class.width, "LEFT", 0, 0)
+            classIcon = ns.UI_CreateClassIcon(charHeader, char.classFile, PVE_CLASS_COL_W, "CENTER", 0, 0)
             charHeader._pveCharRowClass = classIcon
         end
+        classIcon:SetSize(PVE_CLASS_COL_W, PVE_CLASS_COL_W)
         classIcon:ClearAllPoints()
-        classIcon:SetPoint("LEFT", favBtn, "RIGHT", gap, 0)
+        classIcon:SetPoint("CENTER", charHeader, "LEFT", layout.classCenterX, 0)
         classIcon:SetAtlas("classicon-" .. char.classFile)
         classIcon:Show()
     elseif classIcon then
         classIcon:Hide()
     end
 
-    local anchorRight = classIcon or favBtn
-
     local nameText = charHeader._pveCharRowName
     if not nameText then
-        nameText = FontManager:CreateFontString(charHeader, "subtitle", "OVERLAY")
+        nameText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
         charHeader._pveCharRowName = nameText
     end
-    nameText:SetWidth(nameColW)
+    nameText:SetWidth(layout.nameColW)
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
     nameText:SetNonSpaceWrap(false)
@@ -147,7 +163,7 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
         realmText = FontManager:CreateFontString(charHeader, "small", "OVERLAY")
         charHeader._pveCharRowRealm = realmText
     end
-    realmText:SetWidth(nameColW)
+    realmText:SetWidth(layout.nameColW)
     realmText:SetJustifyH("LEFT")
     realmText:SetWordWrap(false)
     realmText:SetNonSpaceWrap(false)
@@ -158,38 +174,27 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     end
     realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
 
-    -- Horizontal start of the name column (computed layout; reject bad screen-coord reads before first layout).
-    local computedNameLeft = PvE_ComputeClassColumnLeftPx() + (CRC.class and CRC.class.width or 33) + 8
-    local nameLeft = computedNameLeft
-    if anchorRight and charHeader and anchorRight.GetRight and charHeader.GetLeft then
-        local hl = charHeader:GetLeft()
-        local ar = anchorRight:GetRight()
-        if hl and ar and hl > 0 then
-            local measured = ar - hl + 8
-            if measured >= 40 and measured <= computedNameLeft + 32 then
-                nameLeft = measured
-            end
-        end
-    end
-
-    -- Vertically center the two-line identity block in the row (level/iLvl stay on row midline).
     local rowH = charHeader:GetHeight() or 46
     local nameRealmGap = 1
     local nh = max(nameText:GetStringHeight() or 0, 12)
     local rh = max(realmText:GetStringHeight() or 0, 10)
     local blockH = nh + nameRealmGap + rh
     local topInset = max((rowH - blockH) / 2, 0)
+
     nameText:ClearAllPoints()
     realmText:ClearAllPoints()
-    nameText:SetPoint("TOPLEFT", charHeader, "TOPLEFT", nameLeft, -topInset)
+    nameText:SetPoint("TOPLEFT", charHeader, "TOPLEFT", layout.nameLeft, -topInset)
     realmText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -nameRealmGap)
     if nameText.SetJustifyV then nameText:SetJustifyV("TOP") end
     if realmText.SetJustifyV then realmText:SetJustifyV("TOP") end
-    local swName = nameText:GetStringWidth() or 0
-    local swRealm = realmText:GetStringWidth() or 0
-    local nameBlockW = math.min(nameColW, math.max(swName, swRealm, 1) + 4)
+    if nameText.SetShadowOffset then
+        nameText:SetShadowOffset(0, 0)
+    end
+    nameText:Show()
+    realmText:Show()
+
     do
-        local gradientEnd = nameLeft + nameBlockW
+        local gradientEnd = layout.identityGradientEnd
         local rowW = charHeader:GetWidth() or 800
         if gradientEnd > rowW - 2 then
             gradientEnd = rowW - 2
@@ -199,11 +204,6 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
         end
     end
 
-    -- Tight pack: level starts right after measured name/realm block (no fixed 100px name column dead space).
-    local levelTightGap = 2
-    local levelOffset = nameLeft + nameBlockW + levelTightGap
-    local levelColW = CRC.level and CRC.level.width or 82
-
     local levelText = charHeader._pveCharRowLevel
     if not levelText then
         levelText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
@@ -212,37 +212,36 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     if charHeader._pveCharRowLevelRested then
         charHeader._pveCharRowLevelRested:Hide()
     end
-
-    levelText:SetWidth(levelColW)
+    levelText:SetWidth(layout.levelColW)
     levelText:SetJustifyH("CENTER")
     if levelText.SetJustifyV then levelText:SetJustifyV("MIDDLE") end
     levelText:SetWordWrap(false)
     levelText:SetMaxLines(1)
     levelText:ClearAllPoints()
-    levelText:SetPoint("LEFT", charHeader, "LEFT", levelOffset, 0)
+    levelText:SetPoint("LEFT", charHeader, "LEFT", layout.levelLeft, 0)
     levelText:SetText(string.format("|cff%02x%02x%02x%d|r",
         classColor.r * 255, classColor.g * 255, classColor.b * 255,
         char.level or 1))
     levelText:Show()
 
-    local itemLevelOffset = levelOffset + (CRC.level and CRC.level.total or 97)
     local itemLevelText = charHeader._pveCharRowIlvl
     if not itemLevelText then
         itemLevelText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
         charHeader._pveCharRowIlvl = itemLevelText
     end
-    itemLevelText:SetWidth(CRC.itemLevel and CRC.itemLevel.width or 75)
+    itemLevelText:SetWidth(layout.ilvlColW)
     itemLevelText:SetJustifyH("CENTER")
     if itemLevelText.SetJustifyV then itemLevelText:SetJustifyV("MIDDLE") end
     itemLevelText:SetMaxLines(1)
     itemLevelText:ClearAllPoints()
-    itemLevelText:SetPoint("LEFT", charHeader, "LEFT", itemLevelOffset, 0)
+    itemLevelText:SetPoint("LEFT", charHeader, "LEFT", layout.ilvlLeft, 0)
     local itemLevel = char.itemLevel or 0
     if itemLevel > 0 then
         itemLevelText:SetText(string.format("|cffffd700%s %d|r", (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
     else
         itemLevelText:SetText("|cff666666--|r")
     end
+    itemLevelText:Show()
 
-    charHeader._pveInlineStartPx = itemLevelOffset + (CRC.itemLevel and CRC.itemLevel.width or 75) + PVE_ILVL_TO_INLINE_GAP
+    charHeader._pveInlineStartPx = layout.inlineStart
 end

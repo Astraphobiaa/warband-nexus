@@ -4114,6 +4114,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     else
         headerText:SetTextColor(1, 1, 1)
     end
+    header._wnCollHeaderText = headerText
     if suppressSectionChrome then
         headerText:SetText("")
         headerText:Hide()

@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - PvE Progress Tab
     Display Great Vault, Mythic+ keystones, and Raid lockouts for all characters
     
@@ -286,6 +286,20 @@ local function PvE_GetDrawPoolMeasureFS()
         pool.measureFs:Hide()
     end
     return pool.measureFs
+end
+
+--- Park pooled column labels before rebuilding the header row (stale anchors/text caused orphan labels).
+local function PvEParkAllColHeaderLabels()
+    local pool = _pveDrawPool
+    local holder = PvE_EnsureDrawPoolHolder()
+    for _, fs in pairs(pool.headerLabels) do
+        if fs then
+            fs:Hide()
+            fs:ClearAllPoints()
+            fs:SetText("")
+            fs:SetParent(holder)
+        end
+    end
 end
 
 local function PvEAcquireColHeaderLabel(colHeaderRow, colKey, hitFrame, compactLabel, compactHex, colWidth)
@@ -2693,7 +2707,11 @@ local function PvEStackBodyWidth(scrollPaintW, contentSide)
 end
 
 local function PvEUI_DrawPvEProgressBody(self, parent, L)
+    if ns.PvEUI and ns.PvEUI.AbortChunkedPaint then
+        ns.PvEUI.AbortChunkedPaint()
+    end
     parent._pvePaintedCoreH = nil
+    parent._pveChunkPaintPending = nil
     local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
 
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
@@ -2898,7 +2916,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
 
     -- Column visibility (vault columns + PvE crest/shard/key toggles)
-    sortAnchor = L.PvE_AttachInlineColumnPicker(titleCard, sortAnchor, self)
+    local attachColumnPicker = L.PvE_AttachInlineColumnPicker or (L.ns and L.ns.PvE_AttachInlineColumnPicker)
+    if attachColumnPicker then
+        sortAnchor = attachColumnPicker(titleCard, sortAnchor, self)
+    end
 
     if L.ns.UI_HideTitleCardExpandCollapseControls then
         L.ns.UI_HideTitleCardExpandCollapseControls(parent)
@@ -3454,6 +3475,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
 
     -- ===== COLUMN HEADER ROW (icon + compact two-line labels) =====
+    PvEParkAllColHeaderLabels()
     local colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, pveStackW, COL_HEADER_HEIGHT)
     if not colHeaderRow then
         colHeaderRow = CreateFrame("Frame", nil, parent)
@@ -3681,6 +3703,21 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         for ri2 = 1, #regularDisplay do
             paintOrder[#paintOrder + 1] = { char = regularDisplay[ri2], secKey = "pve_reg" }
         end
+    end
+
+    do
+        local seenKeys = {}
+        local deduped = {}
+        for poi = 1, #paintOrder do
+            local ent = paintOrder[poi]
+            local ck = ent.char and GetRowCanonicalPvEKey(ent.char) or nil
+            local dedupeKey = (ck or ("?" .. poi)) .. "\0" .. tostring(ent.secKey or "")
+            if not seenKeys[dedupeKey] then
+                seenKeys[dedupeKey] = true
+                deduped[#deduped + 1] = ent
+            end
+        end
+        paintOrder = deduped
     end
 
     local secBodies = {}
@@ -4461,8 +4498,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
     end
 
+    local chunkPaintScheduled = false
+    local estimatedBodyH = totalLHBox.v + 12
     if #paintOrder > 0 then
-        PvEUIState.AbortChunkedPaint()
+        estimatedBodyH = estimatedBodyH + #paintOrder * (PVE_CHAR_ROW_HEADER_H + PVE_CHAR_ROW_GAP) + 80
         local pvePaintDrawGen = PvEUIState._paintDrawGen or 0
         local pveChunkSize = PvEUIState.PAINT_CHUNK_SIZE or 2
         local pvePaintCursor = 1
@@ -4470,10 +4509,19 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         if #paintOrder <= (PvEUIState.PAINT_CHUNK_MIN or 4) then
             paintPvERows(1, #paintOrder)
             finalizePveCharPaint()
+            estimatedBodyH = totalLHBox.v + 12
         else
+            chunkPaintScheduled = true
+            parent._pveChunkPaintPending = true
             local function pumpPvePaint()
-                if PvEUIState._paintDrawGen ~= pvePaintDrawGen then return end
-                if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then return end
+                if PvEUIState._paintDrawGen ~= pvePaintDrawGen then
+                    parent._pveChunkPaintPending = nil
+                    return
+                end
+                if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then
+                    parent._pveChunkPaintPending = nil
+                    return
+                end
                 local toI = math.min(pvePaintCursor + pveChunkSize - 1, #paintOrder)
                 paintPvERows(pvePaintCursor, toI)
                 pvePaintCursor = toI + 1
@@ -4481,6 +4529,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     finalizePveCharPaint()
                     local coreHDone = totalLHBox.v + 12
                     parent._pvePaintedCoreH = coreHDone
+                    parent._pveChunkPaintPending = nil
                     if mf and ns.UI_SyncMainTabScrollChrome then
                         ns.UI_SyncMainTabScrollChrome(mf, parent, coreHDone)
                     end
@@ -4495,9 +4544,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         end
     end
 
-    local coreH = totalLHBox.v + 12
+    local coreH = chunkPaintScheduled and estimatedBodyH or (totalLHBox.v + 12)
     parent._pvePaintedCoreH = coreH
-    if mf and ns.UI_SyncMainTabScrollChrome then
+    if not chunkPaintScheduled and mf and ns.UI_SyncMainTabScrollChrome then
         ns.UI_SyncMainTabScrollChrome(mf, parent, coreH)
     end
     return coreH

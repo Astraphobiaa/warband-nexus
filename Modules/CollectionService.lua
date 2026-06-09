@@ -486,7 +486,9 @@ function WarbandNexus:InitializeCollectionCache()
     end
     
     -- Initialize bag-detected collectibles DB (for duplicate prevention)
-    InitializeBagDetectedDB()
+    if Notify and Notify.InitializeBagDetectedDB then
+        Notify.InitializeBagDetectedDB()
+    end
 end
 
 ---Save collection store to DB (merkezi kaynak — Collections + Plans aynı veriden okur)
@@ -1686,7 +1688,9 @@ end
 ---Prevents false "You got it on your first try!" for already-owned items
 ---after addon update introduces the persistent dedup layer.
 local function SeedNotifiedFromOwned()
-    InitializeNotifiedDB()
+    if Notify and Notify.InitializeNotifiedDB then
+        Notify.InitializeNotifiedDB()
+    end
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
     local db = WarbandNexus.db.global.notifiedCollectibles
     if not db then return end
