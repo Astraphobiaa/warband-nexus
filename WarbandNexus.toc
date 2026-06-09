@@ -137,7 +137,9 @@ Modules\UI\VirtualListModule.lua
 Modules\UI\TooltipFactory.lua
 Modules\UI\PlanCardFactory.lua
 Modules\UI\ReminderSetAlertDialog_Helpers.lua
+Modules\UI\ReminderSetAlertDialog_ZonePanel.lua
 Modules\UI\ReminderSetAlertDialog_ZoneCatalog.lua
+Modules\UI\ReminderSetAlertDialog_QuestCatalog.lua
 Modules\UI\ReminderSetAlertDialog.lua
 Modules\UI\SettingsUI_Shell.lua
 Modules\UI\SettingsUI_Keybind.lua

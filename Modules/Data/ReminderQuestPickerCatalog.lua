@@ -1,6 +1,12 @@
 --[[
-    Set Alert quest picker: left-nav sections (WQ regions, Content Events, calendar World Events).
+    Set Alert quest picker: left-nav sections (WQ regions, Content Events, calendar World Events)
     with group headers. Save track modes remain worldQuests | contentEvents | worldEvents.
+
+    Data dependencies (read-only catalogs; no parallel quest id lists here):
+      ReminderWorldQuestIndex + ReminderWorldQuestCatalog / ReminderMidnightWorldQuestData — WQ rows
+      ReminderQuestCatalog + MidnightQuestCatalog — quest titles / content-event ids
+      ReminderHolidayEventCatalog — calendar world-event keys
+    UI: Modules/UI/ReminderSetAlertDialog_QuestCatalog.lua
 ]]
 
 local ADDON_NAME, ns = ...
