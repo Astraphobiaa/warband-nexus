@@ -755,84 +755,6 @@ function WarbandNexus:OnInitialize()
         end)
     end
     
-    -- CRITICAL FIX: Register PLAYER_ENTERING_WORLD early via raw frame
-    -- This ensures we catch the event even if it fires before AceEvent is ready
-    -- Direct timer-based save bypasses handler chain issues
-    if not self._rawEventFrame then
-        self._rawEventFrame = CreateFrame("Frame")
-        self._rawEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        self._rawEventFrame:SetScript("OnEvent", function(frame, event, isInitialLogin, isReloadingUi)
-            -- ONLY on initial login (not reload)
-            if isInitialLogin then
-                -- NOTE: Character tracking confirmation popup is handled by InitializationService
-                -- This handler only manages SaveCharacter and notifications
-                C_Timer.After(2, function()
-                    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
-                        return
-                    end
-                    
-                    -- SaveCharacter will be called automatically by:
-                    -- 1. InitializationService after tracking confirmation
-                    -- 2. CharacterService:ConfirmCharacterTracking when user confirms tracking
-                    -- 3. This handler as fallback for already-tracked characters
-                    
-                    -- Check if character is tracked and confirmation is done
-                    if ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-                        local charKey = (ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
-                            or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
-                            or ns.Utilities:GetCharacterKey()
-                        local charData = charKey and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-
-                        -- Only save if trackingConfirmed (popup already handled by InitializationService)
-                        if charData and charData.trackingConfirmed then
-                            if WarbandNexus.SaveCharacter then
-                                WarbandNexus:SaveCharacter()
-                            end
-
-                            -- NOTE: Notifications are now triggered by:
-                            -- 1. InitializationService (returning users - faster path at T+2.0s)
-                            -- 2. CharacterService:ConfirmCharacterTracking (first-time users - after popup)
-                            -- CheckNotificationsOnLogin() is idempotent, so no double-fire risk
-                        end
-                    else
-                        -- Untracked characters: save minimal data (level, gold, etc.) for CharactersUI.
-                        if WarbandNexus.SaveMinimalCharacterData then
-                            WarbandNexus:SaveMinimalCharacterData()
-                        end
-                    end
-                end)
-            else
-                -- Reload UI: Save character data (but respect tracking confirmation flow)
-                C_Timer.After(2, function()
-                    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
-                        return
-                    end
-                    
-                    -- CRITICAL: Only save if tracking has been confirmed by the user.
-                    -- After a schema reset + reload, the tracking popup hasn't appeared yet
-                    -- at t=2s (it shows at t=2.5s). Saving here with trackingConfirmed=true
-                    -- would permanently skip the popup, leaving the character untracked.
-                    local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
-                        or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
-                        or ns.Utilities:GetCharacterKey()
-                    local charData = charKey and WarbandNexus.db.global.characters
-                        and WarbandNexus.db.global.characters[charKey]
-                    
-                    if charData and charData.trackingConfirmed then
-                        if WarbandNexus.SaveCharacter then
-                            WarbandNexus:SaveCharacter()
-                        end
-                    else
-                        -- Untracked characters on reload: save minimal data
-                        if WarbandNexus.SaveMinimalCharacterData then
-                            WarbandNexus:SaveMinimalCharacterData()
-                        end
-                    end
-                end)
-            end
-        end)
-    end
-
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
@@ -1340,12 +1262,19 @@ function WarbandNexus:OnAddonLoaded(event, addonName)
     end
 end
 
---- Guild Bank Update handler (GUILDBANKBAGSLOTS_CHANGED)
+--- Guild Bank Update handler (GUILDBANKBAGSLOTS_CHANGED).
+--- Core.lua is the single owner of this event; both the GuildBankFrame OnShow hook and
+--- the first GUILDBANKBAGSLOTS_CHANGED can announce the open, so OnGuildBankOpened
+--- dedupes against its pending +0.5s open scan.
 function WarbandNexus:OnGuildBankUpdate()
     -- If bank wasn't open before, this is the open event
     if not self.guildBankIsOpen then
         self:OnGuildBankOpened()
     else
+        -- The +0.5s open scan hasn't run yet and will already capture this change.
+        if self._guildBankOpenScanAt and (GetTime() - self._guildBankOpenScanAt) < 0.5 then
+            return
+        end
         -- Debounce re-scan to batch rapid changes (2.5s window)
         if self._guildBankRescanTimer then
             self:CancelTimer(self._guildBankRescanTimer)
@@ -1356,7 +1285,12 @@ function WarbandNexus:OnGuildBankUpdate()
 end
 
 function WarbandNexus:OnGuildBankOpened()
+    -- OnShow hook and the first bag-slots event can both land here within the same open.
+    if self.guildBankIsOpen and self._guildBankOpenScanAt and (GetTime() - self._guildBankOpenScanAt) < 0.5 then
+        return
+    end
     self.guildBankIsOpen = true
+    self._guildBankOpenScanAt = GetTime()
 
     -- Scan guild bank
     if self.ScanGuildBank then
@@ -1445,6 +1379,31 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end
     end
     
+    -- Character save at T+2s, login and reload only (zoning PEW must not re-save).
+    -- The tracking popup shows at T+2.5s; saving with trackingConfirmed unset here would
+    -- permanently skip the popup, so untracked characters only get a minimal-data save.
+    -- SaveCharacter is also triggered by InitializationService and ConfirmCharacterTracking;
+    -- all three writers are idempotent.
+    if isInitialLogin or isReloadingUi then
+        C_Timer.After(2, function()
+            if not self.db or not self.db.global then return end
+            local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(self))
+                or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
+                or ns.Utilities:GetCharacterKey()
+            local charData = charKey and self.db.global.characters and self.db.global.characters[charKey]
+            if charData and charData.trackingConfirmed then
+                if self.SaveCharacter then
+                    self:SaveCharacter()
+                end
+            elseif not (isInitialLogin and ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)) then
+                -- Untracked characters: keep level/gold/class fresh for the Characters tab.
+                if self.SaveMinimalCharacterData then
+                    self:SaveMinimalCharacterData()
+                end
+            end
+        end)
+    end
+
     -- Run on BOTH initial login AND reload.
     -- PRIORITY TIERS (Core handles game data collection after DataServices):
     --   DataServices (T+0.5..3s): handled by InitializationService
