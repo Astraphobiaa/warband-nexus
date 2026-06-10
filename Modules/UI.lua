@@ -2980,7 +2980,10 @@ function WarbandNexus:CreateMainWindow()
         gearItemInfoCoalesceTimer = nil,
         gearStorageRecRefreshTimer = nil,
         gearStorageRecRefreshEquipOnly = false,
+        dirtyWhileHidden = false,
     }
+    -- PopulateContentBody (file scope) clears dirtyWhileHidden through this reference.
+    f._shellRefreshState = shellRefresh
     local POPULATE_DEBOUNCE = 0.1  -- 100ms coalesce window (resets on each new message = last event wins)
     local POPULATE_COOLDOWN = 0.8  -- Skip event-driven rebuild if one ran within 800ms
     -- This prevents duplicate rebuilds from WN_ITEMS_UPDATED (~0.5s) + WN_BAGS_UPDATED (~1.0s)
@@ -3115,6 +3118,13 @@ function WarbandNexus:CreateMainWindow()
         end
         local now = GetTime()
         if not useSkip and (now - shellRefresh.lastEventPopulateTime) < POPULATE_COOLDOWN then
+            -- Trailing edge: re-arm for the cooldown remainder instead of silently dropping
+            -- the last event of a burst. A newer SchedulePopulateContent bumps the gen and
+            -- obsoletes this timer, so coalescing behavior is unchanged.
+            local remain = POPULATE_COOLDOWN - (now - shellRefresh.lastEventPopulateTime) + 0.02
+            shellRefresh.pendingPopulateTimer = C_Timer.NewTimer(remain, function()
+                RunDebouncedPopulateTimerBody(myGen)
+            end)
             return
         end
         shellRefresh.lastEventPopulateTime = now
@@ -3336,6 +3346,21 @@ function WarbandNexus:CreateMainWindow()
         if WarbandNexus.ClearCollectionMetadataCache then WarbandNexus:ClearCollectionMetadataCache() end
     end)
 
+    -- Master OnShow: data-change messages that arrived while hidden marked the shell
+    -- dirty (UI_RefreshRouter HiddenOrMissing). Normal ShowMainWindow paths populate on
+    -- their own and clear the bit first; this catches raw Show() calls — most notably
+    -- the post-combat restore in Core.lua OnCombatEnd — so the window never reopens stale.
+    f:HookScript("OnShow", function(self)
+        if not shellRefresh.dirtyWhileHidden then return end
+        shellRefresh.lastEventPopulateTime = 0
+        C_Timer.After(0.2, function()
+            if not self:IsShown() then return end
+            if shellRefresh.dirtyWhileHidden then
+                SchedulePopulateContent(true)
+            end
+        end)
+    end)
+
     --- Show/hide header Reload button when debug mode is on (boolean or legacy SavedVars `1`; matches ProfileFlagOn / Settings toggles).
     function f:SyncMainHeaderDebugReloadLayout()
         local reloadBtn = self.reloadDebugBtn
@@ -3383,6 +3408,11 @@ local function PopulateContentBody(self)
     if InCombatLockdown and InCombatLockdown() and mainFrame:IsShown() then
         ArmPostCombatUIRefresh()
         return
+    end
+
+    -- A populate is happening: whatever arrived while hidden is now being painted.
+    if mainFrame._shellRefreshState then
+        mainFrame._shellRefreshState.dirtyWhileHidden = false
     end
 
     local populateWallStart = GetTime()

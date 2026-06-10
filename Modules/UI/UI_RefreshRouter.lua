@@ -25,6 +25,19 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     local ScrollMainNavEnsureTabVisible = ctx.scrollNavEnsureTabVisible
     local UpdateTabButtonStates = ctx.updateTabButtonStates
     local GEAR_STORAGE_REC_REFRESH_DEBOUNCE = ctx.gearStorageRecRefreshDebounce or 0.06
+
+    -- Data-change handlers below early-out while the shell is hidden. Record that an
+    -- update arrived so the master OnShow hook (UI.lua CreateMainWindow) can repaint
+    -- once on reopen; without this, events during combat-hide or a manual close leave
+    -- stale tab content until the user switches tabs.
+    local function HiddenOrMissing()
+        if not f then return true end
+        if not f:IsShown() then
+            st.dirtyWhileHidden = true
+            return true
+        end
+        return false
+    end
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
     -- overwriting other modules' handlers for the same AceEvent message.
     -- AceEvent allows only ONE handler per (event, self) pair.
@@ -33,7 +46,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Gear tab rebuilds 3D paperdoll + full card — avoid skipCooldown (full populate every ~0.1s) on
     -- rapid WN_CHARACTER_UPDATED (e.g. item level ticks at 0.3s, DataService) or models appear to "flicker".
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function(_, payload)
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         local tab = f.currentTab
         if tab ~= "chars" and tab ~= "stats" and tab ~= "gear" then return end
         -- Characters tab: avoid skipCooldown here — ilvl/zone/gold batching fires this often and full
@@ -59,7 +72,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end)
     
     local function onItemsOrBagsInventoryUpdated()
-        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "gear") then
+        if not HiddenOrMissing() and (f.currentTab == "items" or f.currentTab == "gear") then
             -- Bank > Warband aggregate can sit on this tab while cache finishes; 800ms POPULATE_COOLDOWN
             -- otherwise drops the follow-up populate and the list looks empty until a tab switch.
             if f.currentTab == "items" and ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() == "warband" then
@@ -74,7 +87,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEMS_UPDATED, onItemsOrBagsInventoryUpdated)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GEAR_UPDATED, function(_, payload)
-        if f and f:IsShown() and f.currentTab == "gear" then
+        if not HiddenOrMissing() and f.currentTab == "gear" then
             local gearQuiet = IsGearTabPopulateQuiet()
             -- ScanEquippedGear always reports the logged-in character. If the Gear tab is showing
             -- another roster entry (offline alt), a full PopulateContent here only bumps drawGen,
@@ -92,7 +105,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                 local equipOnly = st.gearStorageRecRefreshEquipOnly == true
                 st.gearStorageRecRefreshEquipOnly = false
                 st.gearStorageRecRefreshTimer = nil
-                if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                if HiddenOrMissing() or f.currentTab ~= "gear" then return end
                 local gearCanon = f._gearPopulateCanonKey
                 if not gearCanon then return end
                 local gen = ns._gearTabDrawGen or 0
@@ -119,7 +132,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                 if WarbandNexus.ScheduleGearStorageFindingsResolve then
                     WarbandNexus:ScheduleGearStorageFindingsResolve(gearCanon, gen, function()
                         C_Timer.After(0, function()
-                            if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                            if HiddenOrMissing() or f.currentTab ~= "gear" then return end
                             if WarbandNexus.RedrawGearStorageRecommendationsOnly then
                                 ns._gearStorageAllowEquipSigInvBypass = true
                                 WarbandNexus:RedrawGearStorageRecommendationsOnly(gearCanon, ns._gearTabDrawGen or 0, true)
@@ -161,7 +174,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
                 end
                 if f._gearDeferChainActive and WarbandNexus.TryRefreshGearEquipSlotsOnly then
                     C_Timer.After(0.15, function()
-                        if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                        if HiddenOrMissing() or f.currentTab ~= "gear" then return end
                         if WarbandNexus:TryRefreshGearEquipSlotsOnly(pl) then
                             if recEnabled then
                                 redrawStorageRecAfterEquipChange()
@@ -188,7 +201,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PVE_UPDATED, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         -- PvE tab + Characters tab (mythic key column reads character row; mirror updates from PvECacheService)
         if f.currentTab == "pve" then
             -- Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
@@ -204,7 +217,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- REMOVED: WARBAND_CURRENCIES_UPDATED — no SendMessage exists for this string; dead handler.
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_UPDATED, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab == "gear" then
             SchedulePopulateContent(true)
         elseif f.currentTab == "currency" then
@@ -225,14 +238,14 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Tab badge count: refresh cheaply when cache updates without full PopulateContent if user is elsewhere.
     -- ReputationUI.lua redraws the tab on these when active; only refresh the tab button badge when elsewhere.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.REPUTATION_UPDATED, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab ~= "reputations" then
             WarbandNexus:UpdateTabCountBadges("reputations")
         end
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.REPUTATION_CACHE_READY, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab ~= "reputations" then
             WarbandNexus:UpdateTabCountBadges("reputations")
         end
@@ -243,7 +256,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Plans / To-Do: add/remove/complete need immediate redraw (skip POPULATE_COOLDOWN).
     -- try_count_set / statistic reseeds can storm during farms — coalesce via debounce + 800ms cooldown.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PLANS_UPDATED, function(_, payload)
-        if f and f:IsShown() and f.currentTab == "plans" then
+        if not HiddenOrMissing() and f.currentTab == "plans" then
             local action = payload and payload.action
             local tryCountBurst = action == "try_count_set" or action == "statistics_reseeded"
                 or action == "statistics_seeded"
@@ -258,7 +271,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     
     -- Collection scan complete: collections needs immediate paint; plans browse coalesces (avoid redraw loop).
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         local tab = f.currentTab
         if tab == "collections" then
             SchedulePopulateContent(true)
@@ -269,7 +282,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     
     -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
     local function onProfessionsKnowledgeOrConcentrationUpdated()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
             SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
@@ -280,32 +293,32 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, onProfessionsKnowledgeOrConcentrationUpdated)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "professions" then
+        if not HiddenOrMissing() and f.currentTab == "professions" then
             SchedulePopulateContent(true)
         end
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CRAFTING_ORDERS_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "professions" then
+        if not HiddenOrMissing() and f.currentTab == "professions" then
             SchedulePopulateContent(true)
         end
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_DATA_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "professions" then
+        if not HiddenOrMissing() and f.currentTab == "professions" then
             SchedulePopulateContent(true)
         end
     end)
 
     -- Profession equipment (slots 20/21/22): refresh when chars or professions tab visible so equipped gear updates in real time
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_COOLDOWNS_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "professions" then
+        if not HiddenOrMissing() and f.currentTab == "professions" then
             SchedulePopulateContent(true)
         end
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_EQUIPMENT_UPDATED, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
             SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
@@ -319,7 +332,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
 
     -- Money: chars Total Gold card, gear-tab affordability (gold-only upgrades).
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MONEY_UPDATED, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab == "gear" then
             if WarbandNexus.TryRefreshGearUpgradeEconomy and WarbandNexus:TryRefreshGearUpgradeEconomy() then
                 return
@@ -332,7 +345,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
 
     -- Currency variants: gear upgrade panel + currency tab depend on full currency state.
     local function refreshCurrency()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab == "gear" then
             if WarbandNexus.TryRefreshGearUpgradeEconomy and WarbandNexus:TryRefreshGearUpgradeEconomy() then
                 return
@@ -354,7 +367,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Collections: obtained/scan results + achievement tracking flips need to redraw cards.
     -- Plans tab also reads obtained state for try-counter rows; Statistics tab shows collection counts.
     local function refreshCollection()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab == "collections" or f.currentTab == "plans" or f.currentTab == "stats" then
             -- Plans browse: coalesce COLLECTION_UPDATED storms during background scans (skipCooldown rebuild loop).
             if f.currentTab == "plans" then
@@ -373,7 +386,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Vault: any vault data delta (slot completion, reward available, plan completion) must
     -- propagate to PvE tab (vault card) and chars-tab vault badge.
     local function refreshVault()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         if f.currentTab == "pve" then
             st.lastEventPopulateTime = 0
             SchedulePopulateContent()
@@ -388,14 +401,14 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
 
     -- Tracking toggle changes the visible character roster on every tab that lists chars.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_TRACKING_CHANGED, function()
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
         SchedulePopulateContent(true)
     end)
 
     -- Pure UI state (sub-tab switches, expand/collapse, column pickers, theme accent): coalesced rebuild.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, function(_, payload)
-        if not f or not f:IsShown() then return end
+        if HiddenOrMissing() then return end
         local tab = payload and payload.tab
         if tab and f.currentTab ~= tab then return end
         local skipCooldown = true
@@ -412,7 +425,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             st.pendingPopulateTimer = nil
             st.populateDebounceGen = st.populateDebounceGen + 1
             st.pendingPopulateSkipCooldown = false
-            if not f or not f:IsShown() then return end
+            if HiddenOrMissing() then return end
             st.lastEventPopulateTime = GetTime()
             local P = ns.Profiler
             local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "UI_MAIN_REFRESH_instant")
@@ -426,12 +439,12 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
 
     -- Gold management edits + bank money log: chars tab gold cards / popup.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.GOLD_MANAGEMENT_CHANGED, function()
-        if f and f:IsShown() and f.currentTab == "chars" then
+        if not HiddenOrMissing() and f.currentTab == "chars" then
             SchedulePopulateContent(true)
         end
     end)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_BANK_MONEY_LOG_UPDATED, function()
-        if f and f:IsShown() and f.currentTab == "chars" then
+        if not HiddenOrMissing() and f.currentTab == "chars" then
             SchedulePopulateContent(true)
         end
     end)
@@ -440,7 +453,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- Gear tab storage recommendations rely on link-based ilvl (e.g. WuE 253 vs template 233);
     -- when the warm-up completes, re-scan so previously-skipped candidates surface.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEM_METADATA_READY, function()
-        if f and f:IsShown() and f.currentTab == "gear" then
+        if not HiddenOrMissing() and f.currentTab == "gear" then
             if WarbandNexus.TryRefreshAllGearEquipSlotIcons then
                 WarbandNexus:TryRefreshAllGearEquipSlotIcons()
             end
@@ -475,7 +488,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     do
         local handler = function(itemID, success)
             if not success then return end
-            if not f or not f:IsShown() then return end
+            if HiddenOrMissing() then return end
             if f.currentTab ~= "gear" then return end
             st.gearItemInfoCoalesceGen = st.gearItemInfoCoalesceGen + 1
             local myGen = st.gearItemInfoCoalesceGen
@@ -486,7 +499,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             local function runGearItemInfoBatch()
                 st.gearItemInfoCoalesceTimer = nil
                 if myGen ~= st.gearItemInfoCoalesceGen then return end
-                if not f or not f:IsShown() or f.currentTab ~= "gear" then return end
+                if HiddenOrMissing() or f.currentTab ~= "gear" then return end
                 local recOn = WarbandNexus.IsGearStorageRecommendationsEnabled
                     and WarbandNexus:IsGearStorageRecommendationsEnabled()
                 local gearCanon = f._gearPopulateCanonKey
@@ -534,7 +547,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)
-        if not f or not f:IsShown() or not f.tabButtons then return end
+        if HiddenOrMissing() or not f.tabButtons then return end
         -- Map module name to tab key (currencies -> currency; others same)
         local tabKey = (moduleName == "currencies") and "currency" or moduleName
         UpdateTabVisibility(f)
@@ -557,7 +570,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.FONT_CHANGED, function()
-        if f and f:IsShown() then
+        if not HiddenOrMissing() then
             SchedulePopulateContent()
         end
     end)
