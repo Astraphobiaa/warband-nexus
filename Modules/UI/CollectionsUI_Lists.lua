@@ -961,7 +961,21 @@ end
 -- contentFrameForRefresh, redrawFn: redrawFn(contentFrame) is called on next frame for refresh; pass same DrawMountsContent from caller so closure sees it.
 function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedMountID, onSelectMount, contentFrameForRefresh, redrawFn, drawGen, onListReady)
     if not scrollChild or not Factory then return end
-    if _populateMountListBusy then return end
+    if _populateMountListBusy then
+        -- An older pump is mid-chunk. Dropping this populate would leave the caller's
+        -- draw busy flag held; if superseded release it, otherwise retry next tick
+        -- (the old pump finishes or aborts on gen mismatch within a tick).
+        if drawGen and M.state._mountsDrawGen and M.state._mountsDrawGen ~= drawGen then
+            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+        elseif C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedMountID, onSelectMount, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+            end)
+        else
+            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+        end
+        return
+    end
     _populateMountListBusy = true
     collapsedHeaders = collapsedHeaders or {}
     local cf = contentFrameForRefresh
@@ -1069,10 +1083,12 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
     local function pumpMountHeaders()
         if drawGen and M.state._mountsDrawGen and M.state._mountsDrawGen ~= drawGen then
             _populateMountListBusy = false
+            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
             return
         end
         if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "mounts" then
             _populateMountListBusy = false
+            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
             return
         end
 
@@ -1251,7 +1267,19 @@ end
 
 function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedPetID, onSelectPet, contentFrameForRefresh, redrawFn, drawGen, onListReady)
     if not scrollChild or not Factory then return end
-    if _populatePetListBusy then return end
+    if _populatePetListBusy then
+        -- See PopulateMountList: never drop a populate while the caller holds its busy flag.
+        if drawGen and M.state._petDrawGen and M.state._petDrawGen ~= drawGen then
+            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
+        elseif C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedPetID, onSelectPet, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+            end)
+        else
+            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
+        end
+        return
+    end
     _populatePetListBusy = true
     collapsedHeaders = collapsedHeaders or {}
     local cf = contentFrameForRefresh
@@ -1357,10 +1385,12 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
     local function pumpPetHeaders()
         if drawGen and M.state._petDrawGen and M.state._petDrawGen ~= drawGen then
             _populatePetListBusy = false
+            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
             return
         end
         if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "pets" then
             _populatePetListBusy = false
+            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
             return
         end
 
@@ -1539,7 +1569,19 @@ end
 
 function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
     if not scrollChild or not Factory then return end
-    if _populateToyListBusy then return end
+    if _populateToyListBusy then
+        -- See PopulateMountList: never drop a populate while the caller holds its busy flag.
+        if drawGen and M.state._toysDrawGen and M.state._toysDrawGen ~= drawGen then
+            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
+        elseif C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedToyID, onSelectToy, contentFrameForRefresh, redrawFn, drawGen, onListReady)
+            end)
+        else
+            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
+        end
+        return
+    end
     _populateToyListBusy = true
     collapsedHeaders = collapsedHeaders or {}
     local cf = contentFrameForRefresh
@@ -1645,10 +1687,12 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
     local function pumpToyHeaders()
         if drawGen and M.state._toysDrawGen and M.state._toysDrawGen ~= drawGen then
             _populateToyListBusy = false
+            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
             return
         end
         if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "toys" then
             _populateToyListBusy = false
+            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
             return
         end
 

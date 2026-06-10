@@ -456,6 +456,15 @@ function M.ClearCollectionsDrawBusyFlags()
     end
 end
 
+--- Release a sub-tab draw busy flag, but only when the releasing chain still owns it.
+--- Async populate chains capture the drawGen they started with; a newer draw takes
+--- ownership by writing its own gen, so a stale chain's release becomes a no-op.
+function M.ReleaseCollectionsDrawBusy(kind, gen)
+    if gen == nil or M.state["_draw" .. kind .. "BusyGen"] == gen then
+        M.state["_draw" .. kind .. "ContentBusy"] = nil
+    end
+end
+
 --- Bump draw generations so RunChunked* callbacks exit (tab switch / AbortTabOperations).
 function WarbandNexus:AbortCollectionsChunkedBuilds()
     M.state._mountsDrawGen = (M.state._mountsDrawGen or 0) + 1

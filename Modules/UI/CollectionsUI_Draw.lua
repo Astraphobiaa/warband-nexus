@@ -135,22 +135,32 @@ end
 
 function M.DrawMountsContent(contentFrame)
     if M.state._drawMountsContentBusy then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if M.CollectionsDrawRetryAllowed(contentFrame, "mounts") then
-                    M.DrawMountsContent(contentFrame)
-                else
-                    M.state._drawMountsContentBusy = nil
-                end
-            end)
-        else
-            M.state._drawMountsContentBusy = nil
+        -- Self-heal: a leaked busy flag (abort path that missed its release) would
+        -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
+        local now = GetTime()
+        M.state._drawMountsBusyRetryStart = M.state._drawMountsBusyRetryStart or now
+        if (now - M.state._drawMountsBusyRetryStart) < 1 then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if M.CollectionsDrawRetryAllowed(contentFrame, "mounts") then
+                        M.DrawMountsContent(contentFrame)
+                    else
+                        M.state._drawMountsContentBusy = nil
+                        M.state._drawMountsBusyRetryStart = nil
+                    end
+                end)
+            else
+                M.state._drawMountsContentBusy = nil
+            end
+            return
         end
-        return
+        M.ClearCollectionsDrawBusyFlags()
     end
+    M.state._drawMountsBusyRetryStart = nil
     M.state._drawMountsContentBusy = true
     M.state._mountsDrawGen = (M.state._mountsDrawGen or 0) + 1
     local drawGen = M.state._mountsDrawGen
+    M.state._drawMountsBusyGen = drawGen
     local parent = contentFrame:GetParent()
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
@@ -402,7 +412,7 @@ function M.DrawMountsContent(contentFrame)
                                 if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
                                 end
-                                M.state._drawMountsContentBusy = nil
+                                M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
                             end)
                         end)
                     end
@@ -443,10 +453,11 @@ function M.DrawMountsContent(contentFrame)
             end
         else
             -- First time or list not built: chunked build then populate.
+            -- Busy is held across this chain; every abort must release it (gen-token guarded).
             C_Timer.After(0, function()
-                if M.state._mountsDrawGen ~= drawGen then return end
-                if M.state.currentSubTab ~= "mounts" then return end
-                if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then return end
+                if M.state._mountsDrawGen ~= drawGen then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
+                if M.state.currentSubTab ~= "mounts" then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
+                if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
                 M.RunChunkedMountBuild(
                     allMounts,
                     M.state.searchText or "",
@@ -455,20 +466,20 @@ function M.DrawMountsContent(contentFrame)
                     drawGen,
                     contentFrame,
                     function(grouped)
-                        if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
-                        if not sch:GetParent() or not contentFrame:IsVisible() then return end
+                        if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
+                        if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
                         M.state._lastGroupedMountData = grouped
                         M.state._mountLastSearchText = M.state.searchText or ""
                         M.state._mountLastShowCollected = M.state.showCollected
                         M.state._mountLastShowUncollected = M.state.showUncollected
                         C_Timer.After(0, function()
-                            if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
-                            if not sch:GetParent() or not contentFrame:IsVisible() then return end
+                            if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
+                            if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
                             M.PopulateMountList(sch, listW, grouped, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent, drawGen, function()
                                 if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
                                 end
-                                M.state._drawMountsContentBusy = nil
+                                M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
                             end)
                         end)
                     end
@@ -483,22 +494,32 @@ end
 -- DrawPetsContent: same layout as mounts, uses pet API and list.
 function M.DrawPetsContent(contentFrame)
     if M.state._drawPetsContentBusy then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if M.CollectionsDrawRetryAllowed(contentFrame, "pets") then
-                    M.DrawPetsContent(contentFrame)
-                else
-                    M.state._drawPetsContentBusy = nil
-                end
-            end)
-        else
-            M.state._drawPetsContentBusy = nil
+        -- Self-heal: a leaked busy flag (abort path that missed its release) would
+        -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
+        local now = GetTime()
+        M.state._drawPetsBusyRetryStart = M.state._drawPetsBusyRetryStart or now
+        if (now - M.state._drawPetsBusyRetryStart) < 1 then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if M.CollectionsDrawRetryAllowed(contentFrame, "pets") then
+                        M.DrawPetsContent(contentFrame)
+                    else
+                        M.state._drawPetsContentBusy = nil
+                        M.state._drawPetsBusyRetryStart = nil
+                    end
+                end)
+            else
+                M.state._drawPetsContentBusy = nil
+            end
+            return
         end
-        return
+        M.ClearCollectionsDrawBusyFlags()
     end
+    M.state._drawPetsBusyRetryStart = nil
     M.state._drawPetsContentBusy = true
     M.state._petDrawGen = (M.state._petDrawGen or 0) + 1
     local drawGen = M.state._petDrawGen
+    M.state._drawPetsBusyGen = drawGen
     local parent = contentFrame:GetParent()
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
@@ -749,7 +770,7 @@ function M.DrawPetsContent(contentFrame)
                                 if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
                                 end
-                                M.state._drawPetsContentBusy = nil
+                                M.ReleaseCollectionsDrawBusy("Pets", drawGen)
                             end)
                         end)
                     end
@@ -790,10 +811,11 @@ function M.DrawPetsContent(contentFrame)
             end
         else
             -- First time or list not built: chunked build then populate.
+            -- Busy is held across this chain; every abort must release it (gen-token guarded).
             C_Timer.After(0, function()
-                if M.state._petDrawGen ~= drawGen then return end
-                if M.state.currentSubTab ~= "pets" then return end
-                if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then return end
+                if M.state._petDrawGen ~= drawGen then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
+                if M.state.currentSubTab ~= "pets" then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
+                if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
                 M.RunChunkedPetBuild(
                     allPets,
                     M.state.searchText or "",
@@ -802,20 +824,20 @@ function M.DrawPetsContent(contentFrame)
                     drawGen,
                     contentFrame,
                     function(grouped)
-                        if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
-                        if not sch:GetParent() or not contentFrame:IsVisible() then return end
+                        if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
+                        if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
                         M.state._lastGroupedPetData = grouped
                         M.state._petLastSearchText = M.state.searchText or ""
                         M.state._petLastShowCollected = M.state.showCollected
                         M.state._petLastShowUncollected = M.state.showUncollected
                         C_Timer.After(0, function()
-                            if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
-                            if not sch:GetParent() or not contentFrame:IsVisible() then return end
+                            if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
+                            if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
                             M.PopulatePetList(sch, listW, grouped, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent, drawGen, function()
                                 if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
                                     Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
                                 end
-                                M.state._drawPetsContentBusy = nil
+                                M.ReleaseCollectionsDrawBusy("Pets", drawGen)
                             end)
                         end)
                     end
@@ -830,22 +852,32 @@ end
 -- DrawToysContent: list left (grouped by source), toy detail panel right (icon, name, source, description). No 3D viewer.
 function M.DrawToysContent(contentFrame)
     if M.state._drawToysContentBusy then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if M.CollectionsDrawRetryAllowed(contentFrame, "toys") then
-                    M.DrawToysContent(contentFrame)
-                else
-                    M.state._drawToysContentBusy = nil
-                end
-            end)
-        else
-            M.state._drawToysContentBusy = nil
+        -- Self-heal: a leaked busy flag (abort path that missed its release) would
+        -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
+        local now = GetTime()
+        M.state._drawToysBusyRetryStart = M.state._drawToysBusyRetryStart or now
+        if (now - M.state._drawToysBusyRetryStart) < 1 then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if M.CollectionsDrawRetryAllowed(contentFrame, "toys") then
+                        M.DrawToysContent(contentFrame)
+                    else
+                        M.state._drawToysContentBusy = nil
+                        M.state._drawToysBusyRetryStart = nil
+                    end
+                end)
+            else
+                M.state._drawToysContentBusy = nil
+            end
+            return
         end
-        return
+        M.ClearCollectionsDrawBusyFlags()
     end
+    M.state._drawToysBusyRetryStart = nil
     M.state._drawToysContentBusy = true
     M.state._toysDrawGen = (M.state._toysDrawGen or 0) + 1
     local drawGen = M.state._toysDrawGen
+    M.state._drawToysBusyGen = drawGen
     local parent = contentFrame:GetParent()
     local cw = contentFrame:GetWidth()
     local ch = contentFrame:GetHeight()
@@ -1310,7 +1342,7 @@ function M.DrawToysContent(contentFrame)
                 if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
                     Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
                 end
-                M.state._drawToysContentBusy = nil
+                M.ReleaseCollectionsDrawBusy("Toys", drawGen)
             end)
             return
         end
@@ -1321,19 +1353,28 @@ end
 -- DrawAchievementsContent: list left, achievement detail panel right (parent/children, criteria).
 function M.DrawAchievementsContent(contentFrame)
     if M.state._drawAchievementsContentBusy then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if M.CollectionsDrawRetryAllowed(contentFrame, "achievements") then
-                    M.DrawAchievementsContent(contentFrame)
-                else
-                    M.state._drawAchievementsContentBusy = nil
-                end
-            end)
-        else
-            M.state._drawAchievementsContentBusy = nil
+        -- Self-heal: a leaked busy flag (abort path that missed its release) would
+        -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
+        local now = GetTime()
+        M.state._drawAchievementsBusyRetryStart = M.state._drawAchievementsBusyRetryStart or now
+        if (now - M.state._drawAchievementsBusyRetryStart) < 1 then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if M.CollectionsDrawRetryAllowed(contentFrame, "achievements") then
+                        M.DrawAchievementsContent(contentFrame)
+                    else
+                        M.state._drawAchievementsContentBusy = nil
+                        M.state._drawAchievementsBusyRetryStart = nil
+                    end
+                end)
+            else
+                M.state._drawAchievementsContentBusy = nil
+            end
+            return
         end
-        return
+        M.ClearCollectionsDrawBusyFlags()
     end
+    M.state._drawAchievementsBusyRetryStart = nil
     M.state._drawAchievementsContentBusy = true
     local parent = contentFrame:GetParent()
     local cw = contentFrame:GetWidth()
@@ -1530,6 +1571,7 @@ function M.DrawAchievementsContent(contentFrame)
 
         M.state._achPopulateGen = (M.state._achPopulateGen or 0) + 1
         local popGen = M.state._achPopulateGen
+        M.state._drawAchievementsBusyGen = popGen
         local listW = listContentWidth - (CONTAINER_INSET * 2)
         local searchSnap = M.state.searchText or ""
         local showCSnap = M.state.showCollected
@@ -1556,7 +1598,7 @@ function M.DrawAchievementsContent(contentFrame)
             popGen,
             function()
                 if M.state.currentSubTab ~= "achievements" or M.state._achPopulateGen ~= popGen then
-                    M.state._drawAchievementsContentBusy = nil
+                    M.ReleaseCollectionsDrawBusy("Achievements", popGen)
                     return
                 end
                 if selAchID then
@@ -1573,7 +1615,7 @@ function M.DrawAchievementsContent(contentFrame)
                 if Factory.UpdateScrollBarVisibility and M.state.achievementListScrollFrame then
                     Factory:UpdateScrollBarVisibility(M.state.achievementListScrollFrame)
                 end
-                M.state._drawAchievementsContentBusy = nil
+                M.ReleaseCollectionsDrawBusy("Achievements", popGen)
             end
         )
         return
