@@ -1967,6 +1967,12 @@ end
 
 ---Initialize items cache on login
 function WarbandNexus:InitializeItemsCache()
+    -- Both InitializationService P4 and ConfirmCharacterTracking can reach this;
+    -- a second RegisterBucketEvent would create a duplicate 0.5s bucket (AceBucket
+    -- does not overwrite re-registrations the way AceEvent does).
+    if self._itemsCacheInitialized then return end
+    self._itemsCacheInitialized = true
+
     -- ── Event Ownership (single owner for all bag/bank events) ──
     WarbandNexus:RegisterBucketEvent("BAG_UPDATE", 0.5, "OnBagUpdate")
     WarbandNexus:RegisterBucketEvent("PLAYERBANKSLOTS_CHANGED", 0.5, "OnBagUpdate")

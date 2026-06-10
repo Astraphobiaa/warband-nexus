@@ -381,11 +381,14 @@ function InitializationService:InitializeDataServices(addon)
     -- P3: Character data + tracked-only caches (batched)
     -- CharacterCache is lightweight; Currency/PvE caches are event registration + DB init.
     -- Batching these saves 1s gap. Total frame cost: <3ms.
-    -- Only register loading tracker for tracked characters (untracked skip cache init).
-    local isTrackedEarly = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
-    local LT = ns.LoadingTracker
-    if LT and isTrackedEarly then LT:Register("caches", (ns.L and ns.L["LT_CURRENCY_CACHES"]) or "Currency & Caches") end
+    -- Tracking state is resolved inside each timer tick, never up front: IsCharacterTracked
+    -- can return a false negative at OnEnable time (GetNormalizedRealmName is briefly empty
+    -- after /reload), and gating the timers on that left the items cache dead all session.
     C_Timer.After(2, function()
+        local LT = ns.LoadingTracker
+        if LT and ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon) then
+            LT:Register("caches", (ns.L and ns.L["LT_CURRENCY_CACHES"]) or "Currency & Caches")
+        end
         SafeInit(function()
             -- Character cache events.
             if addon and addon.RegisterCharacterCacheEvents then
@@ -413,29 +416,28 @@ function InitializationService:InitializeDataServices(addon)
         end, "P3:CurrencyPvE")
     end)
 
-    -- P4: Items cache (tracked characters only)
+    -- P4: Items cache (tracked characters only; tracked state re-checked at run time)
     -- C_MythicPlus priming handled by RegisterPvECacheEvents (T+2s → +3s = T+5s).
     -- NOTE: OnUIInteract() removed — VaultScanner is the sole owner (PLAYER_ENTERING_WORLD, T+1s).
-    -- P4 completes LoadingTracker "caches" — must run even if InitializeItemsCache errors or was deferred from combat.
-    if isTrackedEarly then
-        C_Timer.After(3, function()
-            SafeInit(function()
-                local ok, err = pcall(function()
-                    local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
-                    if isTracked and addon and addon.InitializeItemsCache then
-                        addon:InitializeItemsCache()
-                    end
-                end)
-                if not ok then
-                    if IsDebugModeEnabled and IsDebugModeEnabled() then
-                        DebugPrint(string.format("|cffff4444[Init]|r P4 ItemsCache failed: %s", tostring(err)))
-                    end
+    -- P4 completes LoadingTracker "caches" — must run even if InitializeItemsCache errors or
+    -- was deferred from combat. Complete() on a never-registered key is a no-op.
+    C_Timer.After(3, function()
+        SafeInit(function()
+            local ok, err = pcall(function()
+                local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
+                if isTracked and addon and addon.InitializeItemsCache then
+                    addon:InitializeItemsCache()
                 end
-                local LT = ns.LoadingTracker
-                if LT then LT:Complete("caches") end
-            end, "P4:ItemsCache")
-        end)
-    end
+            end)
+            if not ok then
+                if IsDebugModeEnabled and IsDebugModeEnabled() then
+                    DebugPrint(string.format("|cffff4444[Init]|r P4 ItemsCache failed: %s", tostring(err)))
+                end
+            end
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("caches") end
+        end, "P4:ItemsCache")
+    end)
 end
 
 --[[
