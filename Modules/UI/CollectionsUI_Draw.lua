@@ -1149,10 +1149,8 @@ function M.DrawToysContent(contentFrame)
             M.state._toyDetailIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
         if M.state._toyDetailName then
-            local gR = (COLORS.gold and COLORS.gold[1]) or 1
-            local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
-            local gB = (COLORS.gold and COLORS.gold[3]) or 0
-            local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+            local gold = COLORS.gold or { 1, 0.82, 0 }
+            local goldHex = ns.UI_RGBToHex(gold[1], gold[2], gold[3])
             local trySuffix = (SD and SD.FormatMountPetToyListTrySuffix and itemID)
                 and SD.FormatMountPetToyListTrySuffix("toy", itemID) or ""
             M.state._toyDetailName:SetText(goldHex .. (displayName or "") .. "|r" .. trySuffix)
@@ -1166,10 +1164,8 @@ function M.DrawToysContent(contentFrame)
             if srcText == "SOURCE_UNKNOWN" then srcText = "Unknown" end
             local sourceTitle = (ns.L and ns.L["SOURCE"]) or "Source"
             if sourceTitle == "SOURCE" then sourceTitle = "Source" end
-            local gR = (COLORS.gold and COLORS.gold[1]) or 1
-            local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
-            local gB = (COLORS.gold and COLORS.gold[3]) or 0
-            local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+            local gold = COLORS.gold or { 1, 0.82, 0 }
+            local goldHex = ns.UI_RGBToHex(gold[1], gold[2], gold[3])
             srcLabel:SetText(goldHex .. sourceTitle .. ":|r |cffffffff" .. srcText .. "|r")
         end
         if M.state._toyDetailObtainedLine and M.state._toyDetailSourceLabel then

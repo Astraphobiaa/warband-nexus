@@ -300,18 +300,7 @@ end
 
 -- Strip WoW format codes from text (color, reset, newline etc.). Prevents visible leftovers like "cFFFFD200", "r", "n".
 local function StripWoWFormatCodes(text)
-    if not text or text == "" then return "" end
-    if issecretvalue and issecretvalue(text) then return "" end
-    local s = text
-    s = s:gsub("|n", "\n")
-    s = s:gsub("|T.-|t", "")
-    s = s:gsub("|c%x%x%x%x%x%x%x%x", "")
-    s = s:gsub("|c%x%x%x%x%x%x", "")
-    s = s:gsub("|r", "")
-    s = s:gsub("|H.-|h", "")
-    s = s:gsub("|h", "")
-    s = s:gsub("|%a", "")
-    return s
+    return ns.Utilities:StripFormattingCodes(text, "keep")
 end
 
 -- Show source text line by line: each source type (Drop, Location, Vendor, etc.) on its own line.

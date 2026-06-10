@@ -41,6 +41,16 @@ local function NormalizeColonLabelSpacing(label)
     return trimmed .. " : "
 end
 
+--- 0-1 RGB to a "|cffRRGGBB" escape. Single home for the inline color-prefix
+--- pattern that Collections detail panels were each rebuilding by hand.
+---@param r number
+---@param g number
+---@param b number
+---@return string
+function ns.UI_RGBToHex(r, g, b)
+    return format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
+end
+
 -- NUMBER FORMATTING
 
 ---Format gold amount with separators and icon (legacy - simple gold display)

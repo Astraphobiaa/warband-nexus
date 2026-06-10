@@ -22,6 +22,25 @@ local DebugPrint = ns.DebugPrint
 local COLORS = ns.UI_COLORS
 local GetPixelScale = ns.GetPixelScale
 
+--- Standing ID -> bar fill color. Deliberately more muted than ReputationUI's
+--- text palette: these tint wide fill areas, where the rainbow text colors are
+--- too loud. Do not merge the two tables.
+local BAR_STANDING_COLORS = {
+    [1] = {0.8, 0.13, 0.13}, -- Hated
+    [2] = {0.8, 0.13, 0.13}, -- Hostile
+    [3] = {0.75, 0.27, 0},   -- Unfriendly
+    [4] = {0.9, 0.7, 0},     -- Neutral
+    [5] = {0, 0.6, 0.1},     -- Friendly
+    [6] = {0, 0.6, 0.1},     -- Honored
+    [7] = {0, 0.6, 0.1},     -- Revered
+    [8] = {0, 0.6, 0.1},     -- Exalted
+}
+
+local function GetBarStandingColor(standingID)
+    local color = BAR_STANDING_COLORS[standingID] or BAR_STANDING_COLORS[4]
+    return color[1], color[2], color[3]
+end
+
 -- RUNTIME DEPENDENCY VALIDATION
 
 local function ValidateDependencies()
@@ -128,22 +147,7 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
             -- Paragon: Pink
             fillTexture:SetColorTexture(1, 0.4, 1, 1)
         elseif standingID then
-            -- Use standing color
-            local function GetStandingColor(standingID)
-                local colors = {
-                    [1] = {0.8, 0.13, 0.13}, -- Hated
-                    [2] = {0.8, 0.13, 0.13}, -- Hostile
-                    [3] = {0.75, 0.27, 0}, -- Unfriendly
-                    [4] = {0.9, 0.7, 0}, -- Neutral
-                    [5] = {0, 0.6, 0.1}, -- Friendly
-                    [6] = {0, 0.6, 0.1}, -- Honored
-                    [7] = {0, 0.6, 0.1}, -- Revered
-                    [8] = {0, 0.6, 0.1}, -- Exalted
-                }
-                local color = colors[standingID] or {0.9, 0.7, 0}
-                return color[1], color[2], color[3]
-            end
-            local r, g, b = GetStandingColor(standingID)
+            local r, g, b = GetBarStandingColor(standingID)
             fillTexture:SetColorTexture(r, g, b, 1)
         else
             -- Default: Gold (for Renown/Friendship)

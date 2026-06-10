@@ -935,9 +935,7 @@ local function ApplyCraftCountToSchematicFormTitle(schematicForm, recipeInfo)
     if not baseName or baseName == "" then return end
 
     local function stripColors(s)
-        if not s then return "" end
-        if issecretvalue and issecretvalue(s) then return "" end
-        return (tostring(s):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""))
+        return ns.Utilities:StripFormattingCodes(s)
     end
 
     local baseStrip = stripColors(baseName)

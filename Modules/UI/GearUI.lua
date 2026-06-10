@@ -1224,9 +1224,7 @@ end
 
 --- Plain item name for colored display (API name can include |c sequences in some builds).
 local function StripItemNameColorCodes(text)
-    if not text or text == "" then return "" end
-    if issecretvalue and issecretvalue(text) then return "" end
-    return tostring(text):gsub("|c%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+    return ns.Utilities:StripFormattingCodes(text)
 end
 
 --- Resolve quality for storage recommendation row.

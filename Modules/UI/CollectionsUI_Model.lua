@@ -1185,10 +1185,8 @@ function M.CreateModelViewer(parent, width, height)
             panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
         collectedBadge:Hide()
-        local gR = (COLORS.gold and COLORS.gold[1]) or 1
-        local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
-        local gB = (COLORS.gold and COLORS.gold[3]) or 0
-        local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+        local gold = COLORS.gold or { 1, 0.82, 0 }
+        local goldHex = ns.UI_RGBToHex(gold[1], gold[2], gold[3])
         nameText:SetText(goldHex .. (name or "") .. "|r" .. (SD.FormatMountPetToyListTrySuffix and SD.FormatMountPetToyListTrySuffix("mount", mountID) or ""))
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then
@@ -1382,10 +1380,8 @@ function M.CreateModelViewer(parent, width, height)
             panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
         collectedBadge:Hide()
-        local gR = (COLORS.gold and COLORS.gold[1]) or 1
-        local gG = (COLORS.gold and COLORS.gold[2]) or 0.82
-        local gB = (COLORS.gold and COLORS.gold[3]) or 0
-        local goldHex = format("|cff%02x%02x%02x", gR * 255, gG * 255, gB * 255)
+        local gold = COLORS.gold or { 1, 0.82, 0 }
+        local goldHex = ns.UI_RGBToHex(gold[1], gold[2], gold[3])
         nameText:SetText(goldHex .. (name or "") .. "|r" .. (SD.FormatMountPetToyListTrySuffix and SD.FormatMountPetToyListTrySuffix("pet", speciesID) or ""))
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then

@@ -277,6 +277,34 @@ function Utilities:SafeLower(s)
     return s:lower()
 end
 
+--- Strip WoW inline formatting codes (textures, 8/6-digit colors, color reset,
+--- hyperlink wrappers) from display text. Single canonical implementation — the
+--- per-file copies this replaced drifted apart (one even matched 7 hex digits).
+--- newlineMode "keep" converts |n to a real \n and clears residual |<letter>
+--- escapes (multiline display, e.g. source text panels); by default |n passes
+--- through untouched so parsers that split on it still can.
+---@param text any
+---@param newlineMode "keep"|nil
+---@return string
+function Utilities:StripFormattingCodes(text, newlineMode)
+    if not text or type(text) ~= "string" then return "" end
+    if issecretvalue and issecretvalue(text) then return "" end
+    local s = text
+    if newlineMode == "keep" then
+        s = s:gsub("|n", "\n")
+    end
+    s = s:gsub("|T.-|t", "")
+        :gsub("|c%x%x%x%x%x%x%x%x", "")
+        :gsub("|c%x%x%x%x%x%x", "")
+        :gsub("|r", "")
+        :gsub("|H.-|h", "")
+        :gsub("|h", "")
+    if newlineMode == "keep" then
+        s = s:gsub("|%a", "")
+    end
+    return s
+end
+
 --- Current character bag gold in copper. GetMoney() may be secret (Midnight); uses SafeNumber.
 ---@param fallbackCopper number|nil When unavailable or secret (default 0)
 ---@return number

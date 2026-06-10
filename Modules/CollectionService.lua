@@ -4174,8 +4174,9 @@ function WarbandNexus:GetToySourceInfo(itemID)
         return t
     end
     local function stripColorCodes(s)
+        -- nil-passthrough: callers below fall back to other sources when this stays nil
         if not s or type(s) ~= "string" then return s end
-        return s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|c%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
+        return Utilities:StripFormattingCodes(s)
     end
     local sourceKeywords = {
         BATTLE_PET_SOURCE_1 or "Drop",

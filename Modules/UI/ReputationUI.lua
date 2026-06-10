@@ -123,14 +123,6 @@ local function GetStandingColor(standingID)
     return color[1], color[2], color[3]
 end
 
----Get standing color hex from standing ID
----@param standingID number Standing ID (1-8)
----@return string Color hex (|cffRRGGBB)
-local function GetStandingColorHex(standingID)
-    local r, g, b = GetStandingColor(standingID)
-    return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
-end
-
 ---Format reputation progress text
 ---@param current number Current value
 ---@param max number Max value
