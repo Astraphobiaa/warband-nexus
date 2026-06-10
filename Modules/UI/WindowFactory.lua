@@ -389,7 +389,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._reward:SetMaxLines(2)
         popup._reward:SetWidth(CONTENT_WIDTH)
         
-        -- Button row (Track + Add) — Track: Add ile aynı köşesiz stil
+        -- Button row (Track + Add) — Track: same cornerless style as Add
         popup._trackBtn = CreateButton(popup, BTN_WIDTH, BTN_HEIGHT, nil, nil, true)
         if not popup._trackBtn then return end
         popup._trackBtn:SetPoint("BOTTOMLEFT", PADDING, 10)

@@ -806,11 +806,11 @@ local function GetCraftedIlvlRange(upInfo, currencyAmounts)
     }
 end
 
---- Hesaplama matematiği (upgrade affordability):
---- - Her tier 20 crest + gold. Watermark: o slotta daha önce ulaşılan max ilvl; o ilvl'e kadar tier'lar "gold only".
---- - Döngü: currTier+1 .. maxTier. Her adımda: ilvl <= watermark ise sadece gold düş; değilse 20 crest + gold düş.
---- - haveCrests / 20 = en fazla crest'li upgrade sayısı değil; tier-by-tier düşüyoruz (3/6→4/6 bir crest, 4/6→5/6 bir crest).
---- - Sonuç: totalAffordable = kaç tier atlanabiliyor, goldOnlyCount = bunlardan kaçı crest gerektirmiyor.
+--- Calculation math (upgrade affordability):
+--- - Each tier costs 20 crests + gold. Watermark: max ilvl previously reached in that slot; tiers up to that ilvl are "gold only".
+--- - Loop: currTier+1 .. maxTier. Each step: if ilvl <= watermark deduct gold only; otherwise deduct 20 crests + gold.
+--- - haveCrests / 20 is NOT the max number of crest upgrades; we deduct tier-by-tier (3/6→4/6 one crest, 4/6→5/6 one crest).
+--- - Result: totalAffordable = how many tiers can be climbed, goldOnlyCount = how many of those need no crests.
 ---
 --- Calculate affordable upgrades tier-by-tier, accounting for watermark (gold-only) levels.
 ---@param upInfo table slot upgrade info from GetPersistedUpgradeInfo

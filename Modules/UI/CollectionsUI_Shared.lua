@@ -262,7 +262,7 @@ function M.EnsureListScrollBarContainer(existingContainer, parent, anchorFrame, 
     return container
 end
 
--- Details scrollbar: üst/alt boşluk (küçük = scrollbar daha uzun, aşağı/yukarı uzar)
+-- Details scrollbar: top/bottom inset (smaller = longer scrollbar, extends up/down)
 local DETAIL_SCROLLBAR_VERTICAL_INSET = 4
 
 function M.EnsureDetailScrollBarContainer(existingContainer, parent, columnWidth, inset, verticalInset)

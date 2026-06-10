@@ -176,7 +176,7 @@ function M.DrawMountsContent(contentFrame)
     M.HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = M.ApplyCollectionsContentHeader(contentFrame, "mounts", ch)
 
-    -- LEFT CONTAINER: List only (scroll frame fills it; scrollbar ayrı sütunda)
+    -- LEFT CONTAINER: List only (scroll frame fills it; scrollbar in a separate column)
     if not M.state.mountListContainer then
         local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, innerCh, false)
         listContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -headerBlockH)
@@ -192,7 +192,7 @@ function M.DrawMountsContent(contentFrame)
         local scrollChild = M.CreateStandardScrollChild(scrollFrame, listContentWidth - (CONTAINER_INSET * 2))
         M.state.mountListScrollChild = scrollChild
 
-        -- SCROLLBAR REZERVE: Liste ile 3D view arasında görünür (eşit boşluk).
+        -- SCROLLBAR RESERVE: visible between list and 3D view (equal gap).
         local scrollBarContainer = M.EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP)
         M.state.mountListScrollBarContainer = scrollBarContainer
 
@@ -995,7 +995,7 @@ function M.DrawToysContent(contentFrame)
             Factory:PositionScrollBarInContainer(scroll.ScrollBar, M.state.toyDetailScrollBarContainer, CONTAINER_INSET)
         end
 
-        -- Header row: Mounts/Pets ile aynı sağ sütun (Wowhead + Add + try, try Add genişliğinde).
+        -- Header row: same right column as Mounts/Pets (Wowhead + Add + try, try at Add width).
         local CDL = ns.CollectionsDetailHeaderLayout or {}
         local toyRightColH = (CDL.ACTION_SLOT_H or 28) + (CDL.TRY_GAP or 4) + (CDL.TRY_ROW_H or 18)
         local toyHdrH = math.max(ROW_HEIGHT + TEXT_GAP_LINE, DETAIL_ICON_SIZE + TEXT_GAP_LINE, toyRightColH)
@@ -1410,7 +1410,7 @@ function M.DrawAchievementsContent(contentFrame)
     achListContainer = M.state.achievementListContainer
     achListContainer:SetSize(listContentWidth, innerCh)
     achListContainer:Show()
-    -- Liste etrafında border yok
+    -- No border around the list
     M.state.achievementListScrollBarContainer = M.EnsureListScrollBarContainer(
         M.state.achievementListScrollBarContainer,
         contentFrame,

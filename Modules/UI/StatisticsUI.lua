@@ -187,20 +187,20 @@ function WarbandNexus:DrawStatistics(parent)
     local numCollectedToys = collectionStats.toys.collected
     local numTotalToys = collectionStats.toys.total
     
-    -- Collection row: 3 cards (Mount, Pet, Toy). Dar pencerede taşmayı önlemek için 2 satıra geçer.
+    -- Collection row: 3 cards (Mount, Pet, Toy). Wraps to 2 rows to avoid overflow in narrow windows.
     local leftMargin = SIDE
     local rightMargin = SIDE
     local cardSpacing = CARD_GAP_M
-    local MIN_STAT_CARD_W = 220  -- Kartın kesilmeden görünmesi için minimum genişlik
+    local MIN_STAT_CARD_W = 220  -- Minimum width so the card shows without clipping
     local availableW = width - leftMargin - rightMargin
     local totalSpacing = cardSpacing * 2
     local threeCardWidth = (availableW - totalSpacing) / 3
     local useTwoRows = (threeCardWidth < MIN_STAT_CARD_W)
     local cardW, secondRowY
     if useTwoRows then
-        -- İlk satır: Mount + Pet yan yana; ikinci satır: Toy tam genişlik (taşma yok)
+        -- First row: Mount + Pet side by side; second row: Toy full width (no overflow)
         cardW = (availableW - cardSpacing) / 2
-        secondRowY = 90 + sectionGap  -- ilk satır yüksekliği
+        secondRowY = 90 + sectionGap  -- first row height
     else
         cardW = threeCardWidth
         secondRowY = nil
@@ -315,7 +315,7 @@ function WarbandNexus:DrawStatistics(parent)
     if ApplyPanelCardChrome then ApplyPanelCardChrome(petCard) end
     petCard:Show()
 
-    -- Toys Card: dar alanda ikinci satırda, geniş alanda aynı satırda
+    -- Toys Card: second row when narrow, same row when wide
     local toyCard = CreateCard(parent, 90)
     if useTwoRows then
         toyCard:SetPoint("TOPLEFT", leftMargin, -(yOffset + secondRowY))

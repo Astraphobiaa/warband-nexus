@@ -191,7 +191,7 @@ local function FormatMountPetToyListTrySuffix(collectibleType, id)
     return " |cff8e9098(" .. format(fmt, c) .. ")|r"
 end
 
--- Para birimi ikonu: cost/amount satırlarında fiyat yanında gösterilir.
+-- Currency icon: shown next to the price on cost/amount rows.
 -- Default gold icon (fallback when currency cannot be identified)
 local CURRENCY_ICON_GOLD = "|TInterface\\Icons\\INV_Misc_Coin_01:14:14:0:0:64:64:4:60:4:60|t"
 
@@ -298,7 +298,7 @@ local function GetCurrencyIconForCostLine(costValue)
     return ResolveCurrencyIconFromText(costValue)
 end
 
--- WoW format kodlarını metinden kaldır (renk, reset, newline vb.). Görünen "cFFFFD200", "r", "n" gibi artıkları önler.
+-- Strip WoW format codes from text (color, reset, newline etc.). Prevents visible leftovers like "cFFFFD200", "r", "n".
 local function StripWoWFormatCodes(text)
     if not text or text == "" then return "" end
     if issecretvalue and issecretvalue(text) then return "" end
@@ -314,8 +314,8 @@ local function StripWoWFormatCodes(text)
     return s
 end
 
--- Source metnini satır satır göster: her kaynak tipi (Drop, Location, Vendor, vb.) ayrı satır.
--- Format: Sarı "Label : " Beyaz "Value". Cost/Amount yanında currency icon.
+-- Show source text line by line: each source type (Drop, Location, Vendor, etc.) on its own line.
+-- Format: yellow "Label : " white "Value". Currency icon next to Cost/Amount.
 local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
     if not rawSource or rawSource == "" then return "" end
     if issecretvalue and issecretvalue(rawSource) then return "" end
@@ -344,13 +344,13 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
     local containedInKey = (L and L["PARSE_CONTAINED_IN"]) or "Contained in"
     local discoveryKey = (L and L["PARSE_DISCOVERY"]) or "Discovery"
 
-    -- Tüm kaynak etiketleri: satır kırma ve blok başlangıcı için (her biri ayrı veri = ayrı satır)
+    -- All source labels: for line breaks and block starts (each is separate data = separate line)
     local lineStartKeys = {
         dropKey, vendorKey, questKey, achievementKey, professionKey, worldEventKey, promotionKey,
         tradingPostKey, treasureKey, renownKey, pvpKey, locationKey, zoneKey, costKey, amountKey,
         factionKey, reputationKey, soldByKey, containedInKey, discoveryKey,
     }
-    -- Ön adım: " Key:" veya " Key :" geçen her yerde satır kır (API formatına bağlı kalmadan)
+    -- Pre-pass: break the line wherever " Key:" or " Key :" appears (independent of API format)
     for ki = 1, #lineStartKeys do
         local key = lineStartKeys[ki]
         if key and key ~= "" and type(key) == "string" then
@@ -377,7 +377,7 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
             end
         end
     end
-    -- |n'ı \n yap ki aşağıdaki parçalama çalışsın
+    -- Convert |n to \n so the splitting below works
     rawSource = rawSource:gsub("|n", "\n")
 
     local blockStartPrefixes = {}
@@ -396,7 +396,7 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
         return false
     end
 
-    -- " | " ve " . " ile parçalara böl; her "Type: value" kendi blokunda
+    -- Split into chunks on " | " and " . "; each "Type: value" in its own block
     local parts = {}
     for p in (rawSource:gsub("|%s*", "\n"):gsub("%.%s+", "\n") .. "\n"):gmatch("([^\n]*)\n") do
         p = p:gsub("^%s+", ""):gsub("%s+$", "")
@@ -418,7 +418,7 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
     if #current > 0 then blocks[#blocks + 1] = table.concat(current, " ") end
     if #blocks == 0 then blocks[#blocks + 1] = rawSource:gsub("^%s+", ""):gsub("%s+$", "") end
 
-    -- Her "Label:" veya "Label :" geçişinde satır kır (API bazen boşluklu "Location :" döner).
+    -- Break the line at every "Label:" or "Label :" occurrence (the API sometimes returns spaced "Location :").
     local function splitBlockIntoLines(s)
         for ki = 1, #lineStartKeys do
             local key = lineStartKeys[ki]
@@ -444,7 +444,7 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
                         pos = startIdx + 1
                     end
                 end
-                -- Satır başında olmayan "Key:" (örn. "X Location: Y")
+                -- "Key:" not at line start (e.g. "X Location: Y")
                 pos = 1
                 local needle2 = key .. ":"
                 local loopN2 = 0
@@ -501,7 +501,7 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
         end
     end
     local result = table.concat(allBlocksOut, "|n")
-    -- WoW'da satır kırma: |n kullan (FontString bazen \n'i tek satır gösterebiliyor)
+    -- Line breaks in WoW: use |n (FontString sometimes renders \n as a single line)
     return result
 end
 

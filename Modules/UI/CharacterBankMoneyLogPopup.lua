@@ -551,7 +551,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
             -- Net G/S/C: green if positive, red if negative (plain text so SetTextColor applies)
             local netVal = s.net or 0
-            -- Tam yeşil / tam kırmızı, ara ton yok
+            -- Full green / full red, no in-between shades
             local netColor = (netVal >= 0) and { 0.15, 1, 0.15, 1 } or { 1, 0.15, 0.15, 1 }
             local nG, nS, nC = FormatMoneyPartsSigned(netVal, true)
             local netParts = { nG, nS, nC }

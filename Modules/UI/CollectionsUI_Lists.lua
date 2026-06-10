@@ -77,7 +77,7 @@ local tremove = table.remove
 local wipe = table.wipe
 
 -- Build flat list for virtual scrolling: [{ type = "header", ... } | { type = "row", ... }], totalHeight
--- Sayılar (Drop 669, Quest 87, vb.) grouped[key] uzunluğundan gelir; liste ile tutarlıdır.
+-- Counts (Drop 669, Quest 87, etc.) come from grouped[key] length; consistent with the list.
 function M.BuildFlatMountList(groupedData, collapsedHeaders)
     local flat = {}
     local yOffset = 0
@@ -1836,7 +1836,7 @@ local CAM_SCALE_MIN = 0.6
 local CAM_SCALE_MAX = 6
 local ZOOM_STEP = 0.1
 local ROTATE_SENSITIVITY = 0.02
--- Tüm modeller aynı boyut/pozisyon: modeli REFERENCE_RADIUS'a scale ediyoruz, tek sabit kamera mesafesi.
+-- All models same size/position: we scale the model to REFERENCE_RADIUS, single fixed camera distance.
 -- Slightly below 1.0 so normalized mounts sit a bit smaller in frame (Mount Journal leaves headroom).
 local REFERENCE_RADIUS = 0.86
 -- Base camera distance after radius normalize; multiplied by MODEL_VIEWER_CAMERA_FIT_PADDING so wings/tails
@@ -1848,17 +1848,17 @@ local FIXED_CAM_DISTANCE = 3.55
 -- containment. Higher value = camera pulls back further = model occupies less of the box
 -- but stays fully inside it.
 local MODEL_VIEWER_CAMERA_FIT_PADDING = 1.60
--- Viewport üst boşluk (açıklama → model; Mount Journal’e yakın, sıkı)
+-- Viewport top gap (description → model; close to Mount Journal, tight)
 local MODEL_VIEWPORT_TOP_GAP = 6
--- Pet: ince bant hâlâ hafif yukarı; mount tam yükseklik kullandığında bu px devre dışı kalabilir
+-- Pet: the thin band still nudges slightly up; when a mount uses full height these px may be inactive
 local MOUNT_VIEWPORT_NUDGE_UP = 6
--- Viewport içinde 1–2 px: kenara yapışık görüntüyü yumuşatır (clip rect içinde).
+-- 1–2 px inside the viewport: softens the edge-hugging look (within the clip rect).
 local MODEL_VIEWPORT_INSET = 2
--- Pet/PlayerModel: geniş yuvarda yükseklik tavanı. Mount’ta bu tavan kaldırılır (aşağıda büyük boşluk + altta kırpma önlendi).
+-- Pet/PlayerModel: height ceiling in the wide slot. Removed for mounts (avoided large gap below + bottom clipping).
 local MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH = 0.62
--- ModelScene: Mount Journal’e yakın çerçeve; çok büyük mult ayak/alt kesilmesine yol açabiliyordu.
+-- ModelScene: framing close to Mount Journal; a too-large mult could clip feet/bottom.
 local MOUNT_JOURNAL_SCENE_BASE_DISTANCE_MULT = 1.04
--- ModelScene: içeriği hafif yukarı (ekran; ayak hizası Blizzard journal’e yakın)
+-- ModelScene: nudge content slightly up (screen space; foot line close to Blizzard journal)
 local MOUNT_JOURNAL_SCENE_VIEW_TRANSLATE_Y = 14
 local MODEL_SCALE_MIN = 0.15
 local MODEL_SCALE_MAX = 6.0

@@ -16,7 +16,7 @@ local FontManager = ns.FontManager
 ns.UI = ns.UI or {}
 ns.UI.Factory = ns.UI.Factory or {}
 
---- Semantic UI role → category (FontManager.FONT_ROLE / tek tema kaynağı)
+--- Semantic UI role → category (FontManager.FONT_ROLE / single theme source)
 local function UIFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
 end
@@ -4773,10 +4773,10 @@ local function GetCurrencyHeaderIcon(headerName)
     -- Legacy (all old expansions)
     if headerName:find("Legacy") then
         return "Interface\\Icons\\INV_Misc_Coin_01"
-    -- Midnight (12.0) — gece/shadow teması (client'ta var olan path)
+    -- Midnight (12.0) — night/shadow theme (path that exists in the client)
     elseif headerName:find("Midnight") then
         return "Interface\\Icons\\Spell_Shadow_Teleport"
-    -- Season headers (order matters: Season 1 before generic "Season"); hepsi oyunda var olan path
+    -- Season headers (order matters: Season 1 before generic "Season"); all paths exist in-game
     elseif headerName:find("Season 1") or headerName:find("Season1") then
         return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
     elseif headerName:find("Season 2") or headerName:find("Season2") then
@@ -4813,7 +4813,7 @@ local function GetCurrencyHeaderIcon(headerName)
     elseif headerName:find("Miscellaneous") then
         return "Interface\\Icons\\INV_Misc_Gear_01"
     end
-    -- Bilinmeyen header: para birimi ile alakalı genel ikon (soru işareti asla kullanılmaz)
+    -- Unknown header: generic currency-related icon (never use a question mark)
     return "Interface\\Icons\\INV_Misc_Coin_01"
 end
 

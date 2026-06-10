@@ -1110,7 +1110,7 @@ function WarbandNexus:DrawPlansTab(parent)
             ns.UI.Factory:ApplyHighlight(btn)
         end
 
-        -- Active indicator bar (Collections/Items sub-tab ile aynı)
+        -- Active indicator bar (same as Collections/Items sub-tab)
         local activeBar = btn:CreateTexture(nil, "OVERLAY")
         activeBar:SetHeight(3)
         activeBar:SetPoint("BOTTOMLEFT", 8, 4)
@@ -3498,7 +3498,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
 
-    -- Re-check loading: Core init (EnsureCollectionData) veya store boşken tetiklenen scan
+    -- Re-check loading: Core init (EnsureCollectionData) or a scan triggered while the store is empty
     if categoryState.isLoading or (ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading) then
         local loadingStateData = {
             isLoading = true,

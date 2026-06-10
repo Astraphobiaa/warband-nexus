@@ -114,9 +114,9 @@ local function P(n) return math.floor(n * PAPERDOLL_SCALE + 0.5) end
 local SLOT_SIZE      = P(38)
 local SLOT_GAP       = P(5)
 local DOLL_PAD       = P(12)
-local SLOT_TO_ARROW_GAP = P(4)   -- slot ile upgrade ikonu arası
-local ARROW_TO_TEXT_GAP = P(6)   -- ok ile yazı arası boşluk (artık yaslamalı olduğu için pozitif olmalı)
-local TRACK_TEXT_W   = P(136)  -- Track metin taşmasını engellemek için genişletildi
+local SLOT_TO_ARROW_GAP = P(4)   -- gap between slot and upgrade icon
+local ARROW_TO_TEXT_GAP = P(6)   -- gap between arrow and text (must be positive now that text is justified)
+local TRACK_TEXT_W   = P(136)  -- widened to prevent Track text overflow
 -- Paperdoll status: gem + enchant stacked on outer (track) side.
 -- Increase (upgrade) / lock: small icon inside the item square, corner chosen per column so it stays visible
 -- (center "toward model" sat under the 3D portrait sibling) and does not overlap the outer gem/enchant column.
@@ -145,9 +145,9 @@ local GEAR_STAT_PANEL_W = 292
 local GEAR_REC_STACK_MIN_H = 200
 local GEAR_REC_STACK_MAX_H = 280
 local CENTER_GAP     = P(10)
-local CURRENCY_PAPERDOLL_GAP = 14  -- boşluk crest paneli ile paperdoll arası
+local CURRENCY_PAPERDOLL_GAP = 14  -- gap between crest panel and paperdoll
 
--- Fixed panel widths: sol = yazı + ikon + slot, sağ = slot + ikon + yazı
+-- Fixed panel widths: left = text + icon + slot, right = slot + icon + text
 local LEFT_PANEL_W   = TRACK_TEXT_W + ARROW_TO_TEXT_GAP + STATUS_TEXT_WARD_W + SLOT_TO_ARROW_GAP + SLOT_SIZE
 local RIGHT_PANEL_W  = SLOT_SIZE + SLOT_TO_ARROW_GAP + STATUS_TEXT_WARD_W + 2 + ARROW_TO_TEXT_GAP + TRACK_TEXT_W
 local MODEL_W       = P(262)
@@ -189,7 +189,7 @@ local function GearPanelRowBgColor(zebra)
     return base[1] + lift, base[2] + lift, base[3] + lift * 1.05, base[4] or 0.98
 end
 
--- Paperdoll blok genişliği (sol kolon + model + sağ kolon) — kart içinde ortalanır
+-- Paperdoll block width (left column + model + right column) — centered inside the card
 local PAPERDOLL_BLOCK_W = LEFT_PANEL_W + CENTER_GAP + MODEL_W + CENTER_GAP + RIGHT_PANEL_W
 
 local SLOT_HALF = SLOT_SIZE / 2
@@ -1547,7 +1547,7 @@ end
 ---@param inspectListHost Frame|nil card root for deferred enchant/gem inspect (must match card._gearSlotInspectList)
 ---@return Frame btn
 local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, inspectListHost)
-    -- Slot her zaman aynı boyutta; ikon görünmese bile boşluk rezerve (empty texture)
+    -- Slot is always the same size; space reserved even when the icon is hidden (empty texture)
     local btn = GearFact:CreateButton(parent, SLOT_SIZE, SLOT_SIZE, true)
     btn:SetPoint("TOPLEFT", x, y)
     if btn.SetClipsChildren then btn:SetClipsChildren(false) end
@@ -1680,7 +1680,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     local isBottomLeft  = (side == "bottom" or side == "bottom_left")
     local isBottomRight = (side == "bottom_right")
 
-    -- Ortadan çizgi: yazı merkezi, ikon merkezi, slot merkezi aynı yatay çizgide (sol/sağ/alt)
+    -- Center line: text center, icon center, and slot center on the same horizontal line (left/right/bottom)
     local upSlot = upgradeInfo and upgradeInfo[slotID]
     local isCraftedSlot = upSlot and upSlot.isCrafted
     local arrowDisplay = (upSlot and ns.GearUI_GetUpgradeArrowDisplay)
@@ -1928,7 +1928,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     hi:SetAllPoints()
     hi:SetColorTexture(1, 1, 1, 0.12)
 
-    -- Slot adı (Head, Trinket 1, Main Hand vb.) — Veteran/Champion yazısının üstünde
+    -- Slot name (Head, Trinket 1, Main Hand etc.) — above the Veteran/Champion text
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
     local slotName = (slotDef and slotDef.label) and slotDef.label or ""
     -- Labels: API slot 11 = first finger, 12 = second (matches default Character frame top-to-bottom).
@@ -2674,7 +2674,7 @@ local function ApplyGearOfflineCenterChrome(centerRef, classFile)
     chrome:Show()
 end
 
---- Draw paperdoll: sol panel (yazı-ikon-slot) | orta (model) | sağ panel (slot-ikon-yazı).
+--- Draw paperdoll: left panel (text-icon-slot) | center (model) | right panel (slot-icon-text).
 --- paperParent: left column host (coordinates relative to its TOPLEFT).
 --- baseX: inset from paperParent left (typically PAPERDOLL_COL_INSET).
 --- paperOriginY: Y offset from paperParent TOPLEFT (0 when parent is leftColHost).
@@ -2689,7 +2689,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         paperParent._gearSlotInspectList = nil
     end
     local itemTooltipContext = ns.GearUI_BuildGearTabItemTooltipContext(charData)
-    -- Sol panel: fixed width; slot sağda (yazı - ikon - slot)
+    -- Left panel: fixed width; slot on the right (text - icon - slot)
     local leftX = baseX + LEFT_PANEL_W - SLOT_SIZE
     local leftColRight = baseX + LEFT_PANEL_W
     local rightX = baseX + LEFT_PANEL_W + CENTER_GAP + modelW + CENTER_GAP
@@ -2750,7 +2750,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         CreateSlotButton(paperParent, slotID, slotData, leftX, startY - (i - 1) * rowStep, SlotAffordsUpgrade(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
     end
 
-    -- Right column: 6 armor + 2 trinkets — slot | ikon | yazı (finger slots 11 then 12 = API order).
+    -- Right column: 6 armor + 2 trinkets — slot | icon | text (finger slots 11 then 12 = API order).
     for i = 1, #rightSlots do
         local slotID = rightSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
@@ -2775,7 +2775,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     end
 
     local numRightRows = #rightSlots  -- 8 (Hands .. Trinket 2)
-    local MODEL_H = (numRightRows - 1) * rowStep + SLOT_SIZE  -- trinket altına kadar
+    local MODEL_H = (numRightRows - 1) * rowStep + SLOT_SIZE  -- down to the bottom trinket
     local modelX    = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
 

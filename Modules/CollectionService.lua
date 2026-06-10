@@ -145,8 +145,8 @@ ns.ScheduleEnsureCollectionDataDeferred = ScheduleEnsureCollectionDataDeferred
     Profiler labels (when /wn profiler on): EnsureBlizzard_CollectionsLoad, BuildFullCollectionData [async], EnsureCollectionData [async], BuildCollectionCache / BuildCollectionCache_quiet [async].
 ]]
 
--- MERKEZİ KAYNAK: Tüm collection verileri tek yapıda. Collections (full) ve Plans (uncollected) aynı kaynaktan okur.
--- API sadece veri yoksa veya versiyon güncellemesinde devreye girer.
+-- SINGLE SOURCE: all collection data in one structure. Collections (full) and Plans (uncollected) read from the same source.
+-- The API only kicks in when data is missing or on a version update.
 local collectionStore = {
     version = CACHE_VERSION,
     lastBuilt = 0,
@@ -158,7 +158,7 @@ local collectionStore = {
     illusion = {},
 }
 
--- collectionData = collectionStore alias (GetAllMountsData vb. collectionData kullanıyor)
+-- collectionData = collectionStore alias (GetAllMountsData etc. use collectionData)
 local collectionData = collectionStore
 
 ---True when EnsureCollectionData would return immediately (SV version matches, store has all categories).
@@ -209,7 +209,7 @@ function WarbandNexus:IsPlansBrowseCategoryStoreEmpty(category)
     return not tbl or next(tbl) == nil
 end
 
--- collectionCache: deprecated; GetUncollected* artık collectionStore'dan filtreler. ScanCollection hâlâ uncollected yazıyor (geçiş).
+-- collectionCache: deprecated; GetUncollected* now filters from collectionStore. ScanCollection still writes uncollected (transitional).
 local collectionCache = {
     owned = { mounts = {}, pets = {}, toys = {} },
     uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, transmog = {}, illusion = {} },
@@ -384,7 +384,7 @@ function WarbandNexus:InitializeCollectionCache()
         collectionCache.lastAchievementScan = 0
     end
 
-    -- MERKEZİ KAYNAK: collectionStore yükle veya eski DB'den migrate et
+    -- SINGLE SOURCE: load collectionStore or migrate from the old DB
     local dbStore = self.db.global.collectionStore
     if dbStore and dbStore.version == CACHE_VERSION then
         collectionStore.mount = dbStore.mount or {}
@@ -483,7 +483,7 @@ function WarbandNexus:InitializeCollectionCache()
     end
 end
 
----Save collection store to DB (merkezi kaynak — Collections + Plans aynı veriden okur)
+---Save collection store to DB (single source — Collections + Plans read from the same data)
 ---Called after scan completion and real-time updates
 function WarbandNexus:SaveCollectionStore()
     if not self.db or not self.db.global then return end
@@ -555,7 +555,7 @@ function WarbandNexus:InvalidateCollectionCache(category)
     end
 end
 
----Save full collection data to DB (legacy — artık SaveCollectionStore kullan)
+---Save full collection data to DB (legacy — use SaveCollectionStore instead)
 function WarbandNexus:SaveCollectionData()
     self:SaveCollectionStore()
 end
@@ -731,7 +731,7 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
     nextBatch()
 end
 
----Ensure collection data is populated. Core-level init — versiyon değişti veya veri yoksa tam scan.
+---Ensure collection data is populated. Core-level init — full scan when the version changed or data is missing.
 ---Plans/Collections sekmelerinden tetiklenmez; sadece init.
 ---@param onComplete function|nil Callback when all scans finish
 function WarbandNexus:EnsureCollectionData(onComplete)
@@ -893,7 +893,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     end)
 end
 
----Legacy: EnsureFullCollectionData — artık EnsureCollectionData kullan
+---Legacy: EnsureFullCollectionData — use EnsureCollectionData instead
 function WarbandNexus:EnsureFullCollectionData()
     self:EnsureCollectionData()
 end
@@ -1614,7 +1614,7 @@ function WarbandNexus:RemoveFromUncollected(collectionType, id)
         collectionCache.uncollected[collectionType][id] = nil
     end
 
-    -- Merkezi kaynak: collectionStore güncelle (collected=true)
+    -- Single source: update collectionStore (collected=true)
     local store = collectionStore[collectionType]
     local didUpdate = false
     if store then
@@ -3771,7 +3771,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         return
     end
     
-    -- Check if scan is needed (collectionStore veya collectionCache dolu ve güncel)
+    -- Check if scan is needed (collectionStore or collectionCache populated and current)
     local storeHasData = collectionStore[collectionType] and next(collectionStore[collectionType]) ~= nil
     local cacheHasData = collectionCache.uncollected[collectionType] and next(collectionCache.uncollected[collectionType]) ~= nil
     local cacheExists = storeHasData or cacheHasData
@@ -3938,7 +3938,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             end
             collectionStore[collectionType] = results
         end
-        -- collectionCache.uncollected: Plans/GetUncollectedItems için id->name (sadece uncollected)
+        -- collectionCache.uncollected: id->name for Plans/GetUncollectedItems (uncollected only)
         local uncollectedMap = {}
         for id, d in pairs(results) do
             if d and (d.collected == false or d.collected == nil) then
@@ -4539,7 +4539,7 @@ function WarbandNexus:InvalidateUncollectedResultsCache()
     WipeUncollectedResultsCacheAndMergedAchievements()
 end
 
----Get uncollected mounts (UNIFIED: collectionStore-first, scan if empty). Plans sadece uncollected gösterir.
+---Get uncollected mounts (UNIFIED: collectionStore-first, scan if empty). Plans shows uncollected only.
 ---@param searchText string|nil Optional search filter
 ---@param limit number|nil Optional result limit
 ---@return table Array of uncollected mounts {id, name, icon, source, ...}
@@ -4621,7 +4621,7 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
     return {}
 end
 
----Get uncollected pets (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
+---Get uncollected pets (UNIFIED: collectionStore-first). Plans shows uncollected only.
 function WarbandNexus:GetUncollectedPets(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
 
@@ -4667,7 +4667,7 @@ function WarbandNexus:GetUncollectedPets(searchText, limit)
     return {}
 end
 
----Get uncollected toys (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
+---Get uncollected toys (UNIFIED: collectionStore-first). Plans shows uncollected only.
 ---When store has fallback source ("Toy Collection"/"Toy Box"), re-resolves from tooltip so Plans shows correct source.
 function WarbandNexus:GetUncollectedToys(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
@@ -5187,7 +5187,7 @@ function WarbandNexus:ScanAchievementsAsync()
     resumeCoroutine()
 end
 
----Get uncollected achievements (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
+---Get uncollected achievements (UNIFIED: collectionStore-first). Plans shows uncollected only.
 function WarbandNexus:GetUncollectedAchievements(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
 
@@ -5233,7 +5233,7 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
     return {}
 end
 
----Get completed achievements (UNIFIED: collectionStore-first). Collections sadece collected gösterir.
+---Get completed achievements (UNIFIED: collectionStore-first). Collections shows collected only.
 function WarbandNexus:GetCompletedAchievements(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
 
@@ -5282,7 +5282,7 @@ function WarbandNexus:GetCompletedAchievements(searchText, limit)
     return results
 end
 
----Get uncollected illusions (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
+---Get uncollected illusions (UNIFIED: collectionStore-first). Plans shows uncollected only.
 function WarbandNexus:GetUncollectedIllusions(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
 
@@ -5323,7 +5323,7 @@ function WarbandNexus:GetUncollectedIllusions(searchText, limit)
     return {}
 end
 
----Get uncollected titles (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
+---Get uncollected titles (UNIFIED: collectionStore-first). Plans shows uncollected only.
 function WarbandNexus:GetUncollectedTitles(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
 
@@ -5903,7 +5903,7 @@ end
     Stores IDs + names in DB for search bar functionality.
 ]]
 
----Legacy: ScanAllCollectionsOnLogin — artık EnsureCollectionData kullan (core init'te tetiklenir)
+---Legacy: ScanAllCollectionsOnLogin — use EnsureCollectionData instead (triggered in core init)
 function WarbandNexus:ScanAllCollectionsOnLogin()
     self:EnsureCollectionData()
 end

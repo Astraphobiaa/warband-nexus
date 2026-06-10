@@ -706,11 +706,7 @@ function WarbandNexus:OnInitialize()
                         if not (issecretvalue and issecretvalue(txt)) then
                             if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
                                 popup:Hide()
-                                local debugMode = WarbandNexus and WarbandNexus.db
-                                    and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
-                                if debugMode then
-                                    _G.print("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup")
-                                end
+                                ns.DebugChatPrint("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup")
                                 break
                             end
                         end
@@ -724,11 +720,7 @@ function WarbandNexus:OnInitialize()
         taintFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
         taintFrame:SetScript("OnEvent", function(frame, event, addonName, blockedFunc)
             if addonName == ADDON_NAME then
-                local debugMode = WarbandNexus and WarbandNexus.db
-                    and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
-                if debugMode then
-                    _G.print("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN event: " .. tostring(blockedFunc))
-                end
+                ns.DebugChatPrint("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN event: " .. tostring(blockedFunc))
                 C_Timer.After(0.05, function()
                     for i = 1, STATICPOPUP_NUMDIALOGS or 4 do
                         local popup = _G["StaticPopup" .. i]
@@ -737,9 +729,7 @@ function WarbandNexus:OnInitialize()
                             if not (issecretvalue and issecretvalue(txt)) then
                                 if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
                                     popup:Hide()
-                                    if debugMode then
-                                        _G.print("|cff9370DB[WN Taint]|r Safety net: hid popup #" .. i)
-                                    end
+                                    ns.DebugChatPrint("|cff9370DB[WN Taint]|r Safety net: hid popup #" .. i)
                                     break
                                 end
                             end

@@ -330,7 +330,7 @@ function M.GetEffectiveModelBoundingRadius(m)
     return best
 end
 
--- Mount API helpers — CreateModelViewer closure'ları bunlara ihtiyaç duyduğu için burada tanımlı.
+-- Mount API helpers — defined here because the CreateModelViewer closures need them.
 function M.SafeGetMountCollected(mountID)
     if not C_MountJournal or not C_MountJournal.GetMountInfoByID then return false end
     local _, _, _, _, _, _, _, _, _, _, collected = C_MountJournal.GetMountInfoByID(mountID)
@@ -587,7 +587,7 @@ function M.CreateModelViewer(parent, width, height)
         local sh = slot:GetHeight()
         if not sw or sw < 1 then sw = math.max(1, w - 2 * CONTENT_INSET) end
         if not sh or sh < 2 then sh = math.max(2, h * (1 - MODEL_FALLBACK_TOP_RATIO)) end
-        -- Mount: tüm slot yüksekliğini model için kullan (Blizzard Mount Journal; 0.62 tavan büyük üst/alt siyah bant yaratıyordu).
+        -- Mount: use the full slot height for the model (Blizzard Mount Journal; the 0.62 ceiling created big top/bottom black bands).
         local isMountView = panel._lastMountID and (not panel._lastPetID)
         local maxH = sw * MODEL_PREVIEW_MAX_HEIGHT_PER_WIDTH
         local vh = isMountView and sh or math.min(sh, maxH)
@@ -848,7 +848,7 @@ function M.CreateModelViewer(parent, width, height)
     local goldB = (COLORS.gold and COLORS.gold[3]) or 0
     local whiteR, whiteG, whiteB = 1, 1, 1
 
-    -- Sağ üst: Factory sütunu — Wowhead + Add/Added; try satırı yalnızca Add sütunu genişliğinde (hizalı).
+    -- Top right: Factory column — Wowhead + Add/Added; try row only as wide as the Add column (aligned).
     local addCol = Factory.CreateCollectionsDetailRightColumn and Factory:CreateCollectionsDetailRightColumn(textOverlay, { withTryRow = true })
     local addContainer = addCol and addCol.root
     local actionSlot = addCol and addCol.actionSlot
@@ -1062,7 +1062,7 @@ function M.CreateModelViewer(parent, width, height)
             panel._lastCreatureDisplayID = creatureDisplayID
             panel.modelRotation = 0
             panel.camScale = FIXED_CAM_SCALE
-            -- İlk frame zoom-in olmasın: başta normalizedRadius=true, modelScale=1 ile sabit kamera kullan; radius gelince güncelle.
+            -- Avoid zoom-in on the first frame: start with normalizedRadius=true, modelScale=1 and a fixed camera; update once the radius arrives.
             panel.normalizedRadius = true
             panel.modelScale = 1.0
             panel.zoomMultiplier = 1.0
@@ -1210,7 +1210,7 @@ function M.CreateModelViewer(parent, width, height)
             rawSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
         end
         local whiteHex = "|cffffffff"
-        -- Cost/Amount satırlarına para birimi ikonu (satın alma)
+        -- Currency icon on Cost/Amount rows (purchases)
         local L = ns.L
         local costKey = (L and L["PARSE_COST"]) or "Cost"
         local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
@@ -1220,7 +1220,7 @@ function M.CreateModelViewer(parent, width, height)
             local t = text:gsub("^%s+", "")
             return t:sub(1, #costKey):lower() == costKey:lower() or t:sub(1, #amountKey):lower() == amountKey:lower()
         end
-        -- API satırları: "Label: Value" ise etiket (Drop, Zone, Location vb.) sarı, değer beyaz
+        -- API rows: for "Label: Value", label (Drop, Zone, Location etc.) is yellow, value is white
         local lines = {}
         for line in (rawSource .. "\n"):gmatch("([^\n]*)\n") do
             line = line:gsub("^%s+", ""):gsub("%s+$", "")
@@ -1791,7 +1791,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
         local goldR = (COLORS.gold and COLORS.gold[1]) or 1
         local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local goldB = (COLORS.gold and COLORS.gold[3]) or 0
-        -- Sağ üst: mount/pet/toy ile aynı Factory sütunu (Wowhead en sağ, try satırı action genişliğinde; slot Add+Track için genişletildi)
+        -- Top right: same Factory column as mount/pet/toy (Wowhead rightmost, try row at action width; slot widened for Add+Track)
         local achActionW = ACH_ROW_ADD_WIDTH + ACH_ACTION_GAP + ACH_TRACK_WIDTH
         local achAddCol = Factory:CreateCollectionsDetailRightColumn(headerRow, {
             withTryRow = true,
@@ -2047,7 +2047,7 @@ local SUB_TABS = {
     { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), icon = "Interface\\Icons\\INV_Misc_Toy_07" },
 }
 
--- Plans category bar ile birebir aynı (catBtnHeight=40, catBtnSpacing=8, DEFAULT_CAT_BTN_WIDTH=150)
+-- Exactly matches the Plans category bar (catBtnHeight=40, catBtnSpacing=8, DEFAULT_CAT_BTN_WIDTH=150)
 local SUBTAB_BTN_HEIGHT = 40
 local SUBTAB_BTN_SPACING = 8
 local SUBTAB_ICON_SIZE = 28
@@ -2061,7 +2061,7 @@ function M.CreateSubTabBar(parent, onTabSelect)
     bar:SetPoint("TOPLEFT", 0, 0)
     bar:SetPoint("TOPRIGHT", 0, 0)
 
-    -- Plans gibi metne göre buton genişliği hesapla
+    -- Compute button width from text, like Plans
     local btnWidths = {}
     for i = 1, #SUB_TABS do
         local tabInfo = SUB_TABS[i]
@@ -2093,7 +2093,7 @@ function M.CreateSubTabBar(parent, onTabSelect)
             ns.UI.Factory:ApplyHighlight(btn)
         end
 
-        -- Active indicator bar (main window tab ile aynı: alt çizgi vurgusu)
+        -- Active indicator bar (same as main window tab: underline accent)
         local activeBar = btn:CreateTexture(nil, "OVERLAY")
         activeBar:SetHeight(3)
         activeBar:SetPoint("BOTTOMLEFT", 8, 4)
@@ -2231,7 +2231,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
     end
     local useCache = #allMounts > 0
 
-    -- Tab tıklandığında sadece DB/cache kullan; API çağrısı yapma (FPS ve performans).
+    -- On tab click use DB/cache only; no API calls (FPS and performance).
     local query = SafeLower(searchText)
     local totalCount = 0
     local showC = (showCollected ~= false)
@@ -2525,7 +2525,7 @@ function M.BuildGroupedPetData(searchText, showCollected, showUncollected, optio
     end
     local useCache = #allPets > 0
 
-    -- Tab tıklandığında sadece DB/cache kullan; API çağrısı yapma.
+    -- On tab click use DB/cache only; no API calls.
     local query = SafeLower(searchText)
     local totalCount = 0
     local showC = (showCollected ~= false)

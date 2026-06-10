@@ -29,11 +29,11 @@ local DebugPrint = ns.DebugPrint
 local FontManager = {}
 
 --[[
-    Semantic UI roles → size category (tek noktadan tema / Gear ve diğer sekmeler).
+    Semantic UI roles → size category (single theming point / Gear and other tabs).
     CreateFontString: FontManager:CreateFontString(parent, FontManager:GetFontRole("gearStatLabel"), layer)
 ]]
 FontManager.FONT_ROLE = {
-    -- Paylaşılan sekme / başlık / diyalog (tüm UI tek yerden)
+    -- Shared tab / title / dialog (all UI from one place)
     tabTitlePrimary = "header",
     tabSubtitle = "subtitle",
     sectionCollapsibleTitle = "title",
@@ -74,7 +74,7 @@ FontManager.FONT_ROLE = {
     cardHeaderLabel = "subtitle",
     cardHeaderValue = "body",
 
-    -- Ana pencere başlığı, nav sekmeleri, shell (UI.lua / WindowFactory)
+    -- Main window title, nav tabs, shell (UI.lua / WindowFactory)
     windowChromeTitle = "title",
     mainNavTabLabel = "body",
     mainNavTabCount = "small",
@@ -88,13 +88,13 @@ FontManager.FONT_ROLE = {
     loadingBarSecondaryText = "body",
     searchEditBoxBody = "body",
 
-    -- PvE sekmesi — kart başlığı / vault tracker etiketi
+    -- PvE tab — card title / vault tracker label
     pveVaultCardCharName = "title",
     pveVaultCardRealm = "subtitle",
     pveVaultCardStatus = "subtitle",
     pveTitleCardCheckboxLabel = "body",
 
-    -- Gear tab — panels & stats (3 sütun grid ile uyumlu body/small dengesi)
+    -- Gear tab — panels & stats (body/small balance that fits the 3-column grid)
     gearPanelTitle = "title",
     gearSectionTitle = "title",
     gearStatLabel = "body",
@@ -788,7 +788,7 @@ end
 -- Export to namespace
 ns.FontManager = FontManager
 ns.GetFilteredFontOptions = GetFilteredFontOptions
---- Tek kaynak font rol tablosu (modüller doğrudan okuyabilir)
+--- Single-source font role table (modules can read it directly)
 ns.UI_FONT_ROLE = FontManager.FONT_ROLE
 
 --- Global helper for UI modules: semantic role → category string

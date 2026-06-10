@@ -133,7 +133,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
     HideEmptyStateCard(parent, "collections")
 
-    -- Sabit üst alan (başlık kartı, alt sekmeler, arama): sekme içi değişimde frame'leri yeniden kullan.
+    -- Fixed top area (title card, sub-tabs, search): reuse frames on intra-tab changes.
     local hdrCache = M.state._fixedHeaderCache
 
     if hdrCache and hdrCache.titleCard then

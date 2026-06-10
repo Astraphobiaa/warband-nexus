@@ -149,7 +149,7 @@ local wipe = table.wipe
 local tinsert = table.insert
 local tremove = table.remove
 
--- Bank alt sekmeler: CollectionsUI CreateSubTabBar ile aynı ölçü ve davranış (ikon + hover + _active).
+-- Bank sub-tabs: same sizing and behavior as CollectionsUI CreateSubTabBar (icon + hover + _active).
 local ITEMS_BANK_SUBTAB_BTN_HEIGHT = 40
 local ITEMS_BANK_SUBTAB_BTN_SPACING = 8
 local ITEMS_BANK_SUBTAB_ICON_SIZE = 28
