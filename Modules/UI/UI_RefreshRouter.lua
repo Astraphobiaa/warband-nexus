@@ -465,6 +465,15 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         UIEvents._itemInfoFrame = infoFrame
         infoFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
         infoFrame:SetScript("OnEvent", function(_, _, itemID, success)
+            if UIEvents._itemInfoHandler then
+                UIEvents._itemInfoHandler(itemID, success)
+            end
+        end)
+    end
+    -- Handler is re-assigned on every registration so it closes over the current f/st;
+    -- the frame and its script above are created only once.
+    do
+        local handler = function(itemID, success)
             if not success then return end
             if not f or not f:IsShown() then return end
             if f.currentTab ~= "gear" then return end
@@ -520,7 +529,8 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             else
                 C_Timer.After(infoDelay, runGearItemInfoBatch)
             end
-        end)
+        end
+        UIEvents._itemInfoHandler = handler
     end
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.MODULE_TOGGLED, function(_, moduleName, enabled)

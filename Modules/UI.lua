@@ -1037,8 +1037,8 @@ function WarbandNexus:ToggleMainWindow()
     end
     if mainFrame and mainFrame:IsShown() then
         RememberSessionMainTab(mainFrame.currentTab)
+        -- Window object is a singleton; "closed" is IsShown() == false, the ref stays valid.
         mainFrame:Hide()
-        self.mainFrame = nil  -- Clear reference
     else
         self:ShowMainWindow()
     end
@@ -1219,10 +1219,8 @@ end
 function WarbandNexus:HideMainWindow()
     if mainFrame then
         RememberSessionMainTab(mainFrame.currentTab)
+        -- Window object is a singleton; "closed" is IsShown() == false, the ref stays valid.
         mainFrame:Hide()
-        if WarbandNexus.mainFrame then
-            WarbandNexus.mainFrame = nil
-        end
     end
 end
 
