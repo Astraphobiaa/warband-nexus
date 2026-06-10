@@ -8,9 +8,7 @@ local _, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
 
--- ============================================================================
 -- MOUNT / PET / TOY SOURCE CLASSIFICATION (Pure API)
--- ============================================================================
 --[[
     Categorization is driven exclusively by Blizzard's API source type integer.
     No string parsing, no keyword heuristics.
@@ -506,7 +504,6 @@ local function FormatSourceMultiline(rawSource, goldHex, whiteHex)
     -- WoW'da satır kırma: |n kullan (FontString bazen \n'i tek satır gösterebiliyor)
     return result
 end
-
 
 ns.CollectionsUI_SourceData = {
     SOURCE_CATEGORIES = SOURCE_CATEGORIES,

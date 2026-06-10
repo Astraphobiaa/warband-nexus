@@ -52,9 +52,7 @@ local function CurrentSessionCanonicalCharacterKey()
     return raw
 end
 
--- ============================================================================
 -- STATE
--- ============================================================================
 
 local hooksInstalled = false          -- Guard: install SchematicForm hook only once
 local PROFESSION_SCHEMA_VERSION = 1
@@ -192,9 +190,7 @@ local function EnsureSkillLineBucket(charData, skillLineID, professionName, expa
     return bucket, pd
 end
 
--- ============================================================================
 -- CONCENTRATION DATA COLLECTION
--- ============================================================================
 
 --[[
     Collect concentration data for the current character's open profession.
@@ -229,14 +225,12 @@ local function CollectConcentrationData()
         charData.concentration = {}
     end
 
-    -- ----------------------------------------------------------------
     -- Use C_TradeSkillUI.GetProfessionChildSkillLineID() to get the
     -- current child skillLineID, then query concentration via
     -- C_TradeSkillUI.GetConcentrationCurrencyID(skillLineID).
     --
     -- ProfessionInfo tables do NOT contain a skillLineID field,
     -- so we must use the dedicated API to retrieve it.
-    -- ----------------------------------------------------------------
 
     -- Get the base profession name (e.g. "Tailoring") for the storage key
     local baseProfName = nil
@@ -355,9 +349,7 @@ local function CollectConcentrationData()
     end
 end
 
--- ============================================================================
 -- PROFESSION KNOWLEDGE DATA COLLECTION (C_ProfSpecs API)
--- ============================================================================
 
 --[[
     Collect profession specialization knowledge data using the C_Traits API chain.
@@ -380,7 +372,7 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
     if not C_ProfSpecs or not C_Traits then return nil end
     if not skillLineID or skillLineID <= 0 then return nil end
 
-    -- Step 1: Get the trait config ID
+    -- Get the trait config ID
     local configID = nil
     if C_ProfSpecs.GetConfigIDForSkillLine then
         local ok, cid = pcall(C_ProfSpecs.GetConfigIDForSkillLine, skillLineID)
@@ -390,7 +382,7 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
     end
     if not configID then return nil end
 
-    -- Step 2: Get specialization tab IDs (these are also tree IDs)
+    -- Get specialization tab IDs (these are also tree IDs)
     local tabIDs = nil
     if C_ProfSpecs.GetSpecTabIDsForSkillLine then
         local ok, ids = pcall(C_ProfSpecs.GetSpecTabIDsForSkillLine, skillLineID)
@@ -717,9 +709,7 @@ local function CollectKnowledgeData()
     end
 end
 
--- ============================================================================
 -- PROFESSION EQUIPMENT DATA COLLECTION
--- ============================================================================
 
 --[[
     Collect profession equipment data from equipped items.
@@ -919,9 +909,7 @@ function WarbandNexus:CollectEquipmentOnLogin()
     end)
 end
 
--- ============================================================================
 -- RECIPE SELECTION HOOK
--- ============================================================================
 
 --[[
     Append " (N)" craft count from materials (not schematic.quantityMax) to the recipe detail title.
@@ -1028,9 +1016,7 @@ local function InstallRecipeHook()
     end
 end
 
--- ============================================================================
 -- EXPANSION SUB-PROFESSION COLLECTION
--- ============================================================================
 
 --[[
     Collect expansion sub-profession data for the CURRENTLY OPEN profession.
@@ -1199,9 +1185,7 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
     end
 end
 
--- ============================================================================
 -- HELPERS
--- ============================================================================
 
 --[[
     Get the parent profession name for the currently open trade skill.
@@ -1232,9 +1216,7 @@ GetCurrentProfessionName = function()
     return raw and NormalizeProfessionNameForEquipment(raw) or nil
 end
 
--- ============================================================================
 -- RECIPE SUMMARY DATA COLLECTION
--- ============================================================================
 
 local function IsRecipeFlagTrue(recipeInfo, key1, key2, key3, key4)
     if not recipeInfo then return false end
@@ -1284,7 +1266,6 @@ local function IsMidnightRecipeCategory(categoryID, cache)
 end
 
 -- Midnight weekly profession knowledge (MIDNIGHT_WEEKLY_SOURCES)
--- -----------------------------------------------------------------------------
 -- Detection: QuestProgressComplete() = flagged OR in-log complete OR ready for turn-in
 --   OR GetInfo(logIndex).isComplete (quest still in journal).
 -- Uniques / treasure: quest IDs match wow-professions.com "Treasure Check Macro" per profession
@@ -1693,9 +1674,7 @@ local function CollectRecipeSummaryData()
     end
 end
 
--- ============================================================================
 -- COOLDOWN DATA COLLECTION
--- ============================================================================
 
 --[[
     Collect recipe cooldown data for the currently open profession.
@@ -1859,9 +1838,7 @@ local function CollectCooldownData()
     end
 end
 
--- ============================================================================
 -- CRAFTING ORDERS DATA COLLECTION
--- ============================================================================
 
 --[[
     Collect crafting orders count for the currently open profession.
@@ -1955,9 +1932,7 @@ local function CollectCraftingOrdersData()
     end
 end
 
--- ============================================================================
 -- EVENT HANDLERS
--- ============================================================================
 
 --[[
     Called on TRADE_SKILL_SHOW (profession window opened).
@@ -2168,9 +2143,7 @@ function WarbandNexus:OnProfessionChanged()
     pcall(CollectAllExpansionProfessions, false)
 end
 
--- ============================================================================
 -- PUBLIC API
--- ============================================================================
 
 --[[
     Get concentration data for all characters, grouped by profession.
@@ -2553,9 +2526,7 @@ function WarbandNexus:GetConcentrationTimeToFullDetailed(entry)
     end
 end
 
--- ============================================================================
 -- PUBLIC API: KNOWLEDGE DATA
--- ============================================================================
 
 --[[
     Get knowledge data for a specific character and profession.
@@ -2749,9 +2720,7 @@ function WarbandNexus:PrintProfessionVerify()
     self:Print("|cff888888 Compare with in-game UI to verify numbers.|r")
 end
 
--- ============================================================================
 -- LOGIN-TIME CONCENTRATION COLLECTION
--- ============================================================================
 
 --[[
     Collect concentration data on login/reload.
@@ -2894,9 +2863,7 @@ function WarbandNexus:CollectExpansionProfessionsOnLogin()
     pcall(CollectAllExpansionProfessions, false)
 end
 
--- ============================================================================
 -- LOGIN-TIME KNOWLEDGE COLLECTION
--- ============================================================================
 
 --[[
     Collect knowledge data on login/reload for all discovered professions.
@@ -2957,9 +2924,7 @@ function WarbandNexus:CollectKnowledgeOnLogin()
     end
 end
 
--- ============================================================================
 -- REAL-TIME UPDATE SYSTEM
--- ============================================================================
 
 --[[
     Build a reverse lookup: concentrationCurrencyID → professionName
@@ -3084,9 +3049,7 @@ function WarbandNexus:RebuildConcentrationCurrencyMap()
     concentrationCurrencyMap = BuildConcentrationCurrencyMap()
 end
 
--- ============================================================================
 -- PERIODIC RECHARGE TIMER (1-minute tick)
--- ============================================================================
 
 --[[
     Start a 1-minute repeating ticker that fires WN_CONCENTRATION_UPDATED.
@@ -3130,8 +3093,6 @@ function WarbandNexus:StopRechargeTimer()
     end
 end
 
--- ============================================================================
 -- EXPORT
--- ============================================================================
 
 ns.ProfessionService = WarbandNexus

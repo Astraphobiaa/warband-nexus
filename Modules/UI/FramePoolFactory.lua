@@ -42,9 +42,7 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local UI_LAYOUT = ns.UI_LAYOUT
 local FontManager = ns.FontManager
 
---============================================================================
 -- FRAME POOL STORAGE
---============================================================================
 
 local ItemRowPool = {}
 local StorageRowPool = {}
@@ -63,9 +61,7 @@ local function MarkRowOutOfPool(row)
     if row then row._wnInFramePool = nil end
 end
 
---============================================================================
 -- CHARACTER ROW POOLING
---============================================================================
 
 ---Get a character row from pool or create new
 ---@param parent Frame Parent container
@@ -90,7 +86,7 @@ local function AcquireCharacterRow(parent)
     row:SetParent(parent)
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -150,9 +146,7 @@ local function ReleaseCharacterRowsFromSubtree(root)
     end
 end
 
---============================================================================
 -- REPUTATION ROW POOLING
---============================================================================
 
 ---Get a reputation row from pool or create new
 ---Enhanced to support width/height and proper child element reset for reuse.
@@ -180,13 +174,13 @@ local function AcquireReputationRow(parent, width, rowHeight)
         end
     end
     
-    -- CRITICAL: Always set parent when acquiring from pool
+    -- Always set parent when acquiring from pool
     row:SetParent(parent)
     row:SetSize(width or 200, rowHeight or 26)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -277,9 +271,7 @@ local function ReleaseReputationRowsFromSubtree(root)
     end
 end
 
---============================================================================
 -- PROFESSION ROW POOLING
---============================================================================
 
 ---Get a profession row from pool or create new
 ---@param parent Frame Parent container
@@ -338,9 +330,7 @@ local function ReleaseProfessionRow(row)
     tinsert(ProfessionRowPool, row)
 end
 
---============================================================================
 -- CURRENCY ROW POOLING
---============================================================================
 
 ---Get a currency row from pool or create new
 ---@param parent Frame Parent container
@@ -395,7 +385,7 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         end
     end
     
-    -- CRITICAL: Always set parent when acquiring from pool
+    -- Always set parent when acquiring from pool
     row:SetParent(parent)
     row:SetSize(width, rowHeight or 26)
     if row.SetClipsChildren then
@@ -404,7 +394,7 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -489,9 +479,7 @@ local function ReleaseCurrencyRowsFromSubtree(root)
     end
 end
 
---============================================================================
 -- ITEM ROW POOLING
---============================================================================
 
 ---Get an item row from pool or create new
 ---@param parent Frame Parent container
@@ -563,7 +551,7 @@ local function AcquireItemRow(parent, width, rowHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
 
@@ -605,9 +593,7 @@ local function ReleaseItemRow(row)
     tinsert(ItemRowPool, row)
 end
 
---============================================================================
 -- STORAGE ROW POOLING
---============================================================================
 
 ---Get storage row from pool (updated to match Items tab style)
 ---@param parent Frame Parent container
@@ -675,7 +661,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
 
@@ -734,9 +720,7 @@ local function ReleaseStorageRow(row)
     tinsert(StorageRowPool, row)
 end
 
---============================================================================
 -- GENERIC POOL CLEANUP
---============================================================================
 
 --- Single DFS: release every pooled list row under `root` (character / reputation / currency / item / storage / profession).
 --- Used for main-tab switch teardown: avoids ReleaseAllPooledChildren on scrollChild, which only visits *direct*
@@ -840,9 +824,7 @@ local function ReleaseAllPooledChildren(parent)
     end
 end
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 -- Export Acquire functions
 ns.UI_AcquireCharacterRow = AcquireCharacterRow

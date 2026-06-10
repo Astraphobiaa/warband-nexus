@@ -41,9 +41,7 @@ local function NormalizeColonLabelSpacing(label)
     return trimmed .. " : "
 end
 
---============================================================================
 -- NUMBER FORMATTING
---============================================================================
 
 ---Format gold amount with separators and icon (legacy - simple gold display)
 ---@param copper number Total copper amount
@@ -135,9 +133,7 @@ local function FormatTextNumbers(text)
     return result
 end
 
---============================================================================
 -- MONEY FORMATTING
---============================================================================
 
 ---Format money with gold, silver, and copper
 ---@param copper number Total copper amount
@@ -189,10 +185,8 @@ local function FormatMoney(copper, iconSize, showZero)
     return table.concat(parts, " ")
 end
 
---============================================================================
 -- SEASON / CAPPED CURRENCY LINE (Dawncrest, Coffer Key Shards, etc.)
 -- Matches Gear tab: bag qty colored by earn room; "/ seasonMax" muted.
---============================================================================
 
 local CC_CAP_OPEN = "|cff6ee7a0"
 local CC_CAPPED   = "|cffff6b6b"
@@ -238,12 +232,10 @@ local function FormatSeasonProgressCurrencyLine(cd)
     return CC_MUTED .. EM_DASH_U .. "|r"
 end
 
---============================================================================
 -- SHIFT-AWARE SEASON PROGRESS BINDING
 -- Default view: current bag balance only, colored by cap state (open=green, capped=red).
 -- Hold Shift: expanded "<bag> \194\183 <earned> / <cap>" view, same color rule.
 -- Bindings auto-refresh on MODIFIER_STATE_CHANGED. Weak keys so retired FontStrings GC cleanly.
---============================================================================
 
 local function ResolveSeasonCapState(cd)
     if not cd then return 0, 0, 0, false end
@@ -345,9 +337,7 @@ end
 
 -- Achievement criteria helpers: Modules/UI/AchievementCriteriaHelpers.lua (loaded after this file in TOC)
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 -- Create FormatHelpers service object
 local FormatHelpers = {

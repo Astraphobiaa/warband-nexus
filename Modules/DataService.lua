@@ -67,9 +67,7 @@ local function GetRestedAccumulationMultiplier(raceFile)
     return (raceFile == "Pandaren") and 2 or 1
 end
 
--- ============================================================================
 -- PLAYED TIME TRACKING
--- ============================================================================
 --[[
     Track cumulative /played time per character using RequestTimePlayed() API.
     TIME_PLAYED_MSG fires asynchronously with (totalTimePlayed, timePlayedThisLevel).
@@ -116,9 +114,7 @@ function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThi
     })
 end
 
--- ============================================================================
 -- PVE LOADING STATE MANAGEMENT
--- ============================================================================
 --[[
     PvE Loading State System
     Tracks data collection progress and provides visual feedback
@@ -145,9 +141,7 @@ ns.PvELoadingState = {
 local itemCountCache = {}
 local ITEM_COUNT_CACHE_TTL = 30
 
--- ============================================================================
 -- SESSION CACHE SYSTEM
--- ============================================================================
 --[[
     Session Cache System - Runtime memory cache for collection data
     
@@ -215,9 +209,7 @@ function WarbandNexus:InvalidateSessionCache(cacheKey)
     end
 end
 
--- ============================================================================
 -- CHARACTER DATA CACHE (Session-based, Event-driven)
--- ============================================================================
 --[[
     Character Data Cache System
     
@@ -680,9 +672,7 @@ function WarbandNexus:DecompressAndLoad()
     return true
 end
 
--- ============================================================================
 -- CHARACTER DATA COLLECTION
--- ============================================================================
 
 --[[
     Collect basic profession data
@@ -895,7 +885,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     local silver = math.floor(remainingCopper / 100)
     local copper = remainingCopper % 100
     
-    -- CRITICAL: Preserve existing tracking flags from the character entry.
+    -- Preserve existing tracking flags from the character entry.
     -- SaveMinimalCharacterData can run BEFORE the tracking confirmation popup
     -- is shown (race condition: SaveCharacter at 2s vs popup at 2.5s).
     -- If we overwrite trackingConfirmed here, the popup will never appear.
@@ -979,7 +969,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     end
     
     local name = UnitName("player")
-    local realm = GetNormalizedRealmName()  -- CRITICAL: Get realm name
+    local realm = GetNormalizedRealmName()  -- Get realm name
     if name and issecretvalue and issecretvalue(name) then return false end
     if realm and issecretvalue and issecretvalue(realm) then return false end
     
@@ -1003,7 +993,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     local guildName = IsInGuild() and GetGuildInfo("player") or nil
     if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
     
-    -- CRITICAL: Store as single totalCopper (Lua number = 64-bit)
+    -- Store as single totalCopper (Lua number = 64-bit)
     -- GetMoney() may be a secret value in some contexts — use SafeGetMoneyCopperFromEntry
     local chars = self.db.global.characters
     local existingSnapshot = (chars[key] or (legacyKey and chars[legacyKey])) or nil
@@ -1014,7 +1004,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Get gender with C_PlayerInfo fallback (more reliable in TWW)
     local gender = UnitSex("player")  -- 2 = male, 3 = female, 1 = neutral/unknown
     
-    -- CRITICAL FIX: Use C_PlayerInfo if available (more reliable)
+    -- Use C_PlayerInfo if available (more reliable)
     local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
     if raceInfo and raceInfo.gender ~= nil then
         -- C_PlayerInfo returns: 0 = male, 1 = female
@@ -1100,14 +1090,14 @@ function WarbandNexus:SaveCurrentCharacterData()
         if bankArray then self:SaveItemsCompressed(key, "bank", bankArray) end
     end
 
-    -- CRITICAL: WoW SavedVariables uses 32-bit integers (max: 2,147,483,647)
+    -- WoW SavedVariables uses 32-bit integers (max: 2,147,483,647)
     -- totalCopper can exceed this for high-gold characters (>214k gold)
     -- Solution: Store as gold/silver/copper breakdown (smaller numbers)
     local gold = math.floor(totalCopper / 10000)
     local silver = math.floor((totalCopper % 10000) / 100)
     local copper = math.floor(totalCopper % 100)
     
-    -- CRITICAL: Preserve trackingConfirmed flag from existing entry.
+    -- Preserve trackingConfirmed flag from existing entry.
     -- This flag is set by ConfirmCharacterTracking() when user makes a choice.
     -- Without preserving it, every save would lose the user's tracking confirmation.
     local existingEntry = existingSnapshot
@@ -1363,7 +1353,7 @@ function WarbandNexus:GetAllCharacters()
         return out
     end
     
-    -- CRITICAL: Deduplicate characters (keep newest by lastSeen). Prefer player GUID when present (post-rename duplicates).
+    -- Deduplicate characters (keep newest by lastSeen). Prefer player GUID when present (post-rename duplicates).
     local seen = {}  -- [mergeKey] = charData
     
     for key, data in pairs(charsTbl) do
@@ -1676,9 +1666,7 @@ function WarbandNexus:GenerateWeeklyAlerts()
     return alerts
 end
 
--- ============================================================================
 -- PVE LOADING STATE HELPERS
--- ============================================================================
 
 --[[
     Update PvE loading state and refresh UI
@@ -1766,9 +1754,7 @@ function WarbandNexus:ExecuteCoroutineAsync(co, callback, errorCallback)
     resume()
 end
 
--- ============================================================================
 -- PVE DATA VALIDATION
--- ============================================================================
 
 --[[
     Validate PvE data completeness
@@ -1833,9 +1819,7 @@ local function ValidatePvEDataCompleteness(pve)
     return not hasMissingData
 end
 
--- ============================================================================
 -- PVE DATA COLLECTION
--- ============================================================================
 
 --[[
     Collect comprehensive PvE data (Great Vault, Lockouts, M+)
@@ -2427,9 +2411,7 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
     end)
 end
 
--- ============================================================================
 -- ITEM SEARCH & AGGREGATION
--- ============================================================================
 
 --[[
     Perform item search across all characters and banks
@@ -2516,20 +2498,15 @@ function WarbandNexus:PerformItemSearch(searchTerm)
     return results
 end
 
--- ============================================================================
 -- CURRENCY DATA
--- ============================================================================
 
 --[[
     Important Currency IDs organized by expansion
 ]]
--- ============================================================================
 -- CURRENCY COLLECTION (Direct from Blizzard API)
--- ============================================================================
 -- NOTE: We no longer use a hardcoded currency list.
 -- Instead, we collect ALL currencies from C_CurrencyInfo.GetCurrencyListSize()
 -- This ensures we always match Blizzard's Currency UI exactly.
--- ============================================================================
 
 --[[
     Collect all currency data for current character
@@ -2904,10 +2881,7 @@ function WarbandNexus:UpdateCurrencyData()
     return
 end
 
-
--- ============================================================================
 -- V2: INCREMENTAL REPUTATION UPDATES
--- ============================================================================
 
 -- MOVED: Build* reputation functions → ReputationCacheService.lua
 -- These are now wrappers that delegate to ReputationCacheService
@@ -2967,7 +2941,7 @@ function WarbandNexus:UpdateSingleReputation(factionID)
             self.db.global.reputations[factionID].icon = majorData and majorData.textureKit
             self.db.global.reputations[factionID].isMajorFaction = true
             self.db.global.reputations[factionID].isRenown = true
-            -- CRITICAL: Always update isAccountWide from API
+            -- Always update isAccountWide from API
             self.db.global.reputations[factionID].isAccountWide = majorData and majorData.isAccountWide
             if self.db.global.reputations[factionID].isAccountWide == nil then
                 self.db.global.reputations[factionID].isAccountWide = true  -- Major factions default to true
@@ -2987,7 +2961,7 @@ function WarbandNexus:UpdateSingleReputation(factionID)
             self.db.global.reputations[factionID].icon = factionData.factionID and select(2, GetFactionInfoByID(factionData.factionID))
             self.db.global.reputations[factionID].isMajorFaction = false
             self.db.global.reputations[factionID].isRenown = false
-            -- CRITICAL: Always update isAccountWide from API if available
+            -- Always update isAccountWide from API if available
             if factionData.isAccountWide ~= nil then
                 self.db.global.reputations[factionID].isAccountWide = factionData.isAccountWide
             else
@@ -3013,10 +2987,7 @@ function WarbandNexus:UpdateSingleReputation(factionID)
     end
 end
 
-
--- ============================================================================
 -- V2: PVE DATA STORAGE (Global with Metadata Separation)
--- ============================================================================
 
 --[[
     Update PvE data to global storage (v2)
@@ -3068,9 +3039,7 @@ function WarbandNexus:GetPvEDataV2(charKey)
     return nil
 end
 
--- ============================================================================
 -- V2: PERSONAL BANK STORAGE (Global with Compression)
--- ============================================================================
 
 --[[
     Update personal bank to global storage (v2)
@@ -3195,9 +3164,7 @@ function WarbandNexus:GetPersonalBankV2(charKey)
     return nil
 end
 
--- ============================================================================
 -- WARBAND BANK V2 STORAGE (COMPRESSED)
--- ============================================================================
 
 --[[
     Update warband bank to global storage (v2)
@@ -3269,9 +3236,7 @@ function WarbandNexus:GetWarbandBankV2()
     return { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
 end
 
--- ============================================================================
 -- COLLECTION DATA
--- ============================================================================
 
 --[[
     Get collection statistics for current character
@@ -3365,9 +3330,7 @@ function WarbandNexus:ExportCharacterData(characterKey)
     }
 end
 
--- ============================================================================
 -- DATA VALIDATION & CLEANUP
--- ============================================================================
 
 --[[
     Validate character data integrity
@@ -3443,9 +3406,7 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     return removed
 end
 
--- ============================================================================
 -- BANK ITEMS HELPERS FOR ITEMS TAB
--- ============================================================================
 
 --[[
     Check if weekly reset has occurred since last scan
@@ -3564,7 +3525,7 @@ function WarbandNexus:GetPersonalBankItems()
     -- Get CURRENT character key
     local charKey = ns.Utilities:GetCharacterKey()
     
-    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    -- Use ItemsCacheService (new unified storage)
     if not self.GetItemsData then
         return items  -- ItemsCacheService not loaded yet
     end
@@ -3626,7 +3587,7 @@ function WarbandNexus:GetInventoryItems()
         charKey = ns.Utilities:GetCharacterKey()
     end
     
-    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    -- Use ItemsCacheService (new unified storage)
     if not self.GetItemsData then
         return items  -- ItemsCacheService not loaded yet
     end
@@ -3671,7 +3632,7 @@ function WarbandNexus:GetBankItems()
         charKey = ns.Utilities:GetCharacterKey()
     end
     
-    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    -- Use ItemsCacheService (new unified storage)
     if not self.GetItemsData then
         return items  -- ItemsCacheService not loaded yet
     end
@@ -4237,7 +4198,7 @@ end
 function WarbandNexus:GetWarbandBankItems(groupByCategory)
     local items = {}
     
-    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    -- Use ItemsCacheService (new unified storage)
     if not self.GetWarbandBankData then
         return items  -- ItemsCacheService not loaded yet
     end

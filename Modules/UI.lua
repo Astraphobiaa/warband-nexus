@@ -5,7 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
--- CRITICAL: FontManager is lazy-loaded to prevent initialization errors
+-- FontManager is lazy-loaded to prevent initialization errors
 local FontManager  -- Will be set on first access
 local L = ns.L
 
@@ -942,14 +942,10 @@ function ns.UI_ResetSessionSectionExpandState()
 end
 ns.UI_ResetSessionSectionExpandState = ns.UI_ResetSessionSectionExpandState
 
---============================================================================
 -- UI-SPECIFIC HELPERS
---============================================================================
 -- (Shared helpers are now imported from SharedWidgets at top of file)
 
---============================================================================
 -- MAIN FUNCTIONS
---============================================================================
 
 -- Clear all search state on main tab change (delegates to SearchBoxComponent).
 local function ClearAllSearchBoxes()
@@ -1109,7 +1105,7 @@ function WarbandNexus:ShowMainWindow(requestedTabKey)
         return
     end
     
-    -- CRITICAL: Lazy-load and verify FontManager
+    -- Lazy-load and verify FontManager
     local fm = GetFontManager()
     if not fm or not fm.CreateFontString then
         DebugPrint("|cffff0000[WN UI]|r ERROR: FontManager not ready. Please wait a moment and try again.")
@@ -1224,9 +1220,7 @@ function WarbandNexus:HideMainWindow()
     end
 end
 
---============================================================================
 -- TAB BUTTON STATE (must be defined before CreateMainWindow so tab OnClick closure can see it)
---============================================================================
 -- Tab key -> profile modulesEnabled key (tabs without entry are always shown: chars, stats)
 local TAB_TO_MODULE = {
     items = "items",
@@ -1537,8 +1531,6 @@ end
 
 ns.UI_UpdateMainFrameTabButtonStates = UpdateTabButtonStates
 
---============================================================================
---============================================================================
 --[[ WN_FACTORY — Main window raw `CreateFrame` inventory (this file loads after SharedWidgets).
   Main vertical scroll + scrollbar column + horizontal bar already use `ns.UI.Factory`.
 
@@ -1584,7 +1576,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
-    -- CRITICAL: Lazy-load and verify FontManager
+    -- Lazy-load and verify FontManager
     local fm = GetFontManager()
     if not fm or not fm.CreateFontString then
         -- Log error instead of throwing (prevent addon from breaking)
@@ -1608,7 +1600,7 @@ function WarbandNexus:CreateMainWindow()
 
     -- Intentionally raw: global `WarbandNexusFrame` — flat shell fill only (no `BackdropTemplate` side gutters).
     local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent)
-    f:Hide()  -- CRITICAL: Hide immediately to prevent position flash (frame inherits UIParent visibility)
+    f:Hide()  -- Hide immediately to prevent position flash (frame inherits UIParent visibility)
     f:SetSize(windowWidth, windowHeight)
     f:SetMovable(true)
     f:SetResizable(true)
@@ -3383,9 +3375,7 @@ function WarbandNexus:CreateMainWindow()
     return f
 end
 
---============================================================================
 -- POPULATE CONTENT
---============================================================================
 local function PopulateContentBody(self)
     if not mainFrame then return end
 
@@ -3537,7 +3527,7 @@ local function PopulateContentBody(self)
         columnHeaderInner:SetPoint("BOTTOMLEFT", columnHeaderClip, "BOTTOMLEFT", 0, 0)
     end
     
-    -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
+    -- Reset scrollChild height to prevent layout corruption across tabs
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
     
     if ns.TeardownPlansScrollChildBrowseArtifacts then
@@ -3918,9 +3908,7 @@ function WarbandNexus:PopulateContent()
     return PopulateContentBody(self)
 end
 
---============================================================================
 -- TAB COUNT BADGES
---============================================================================
 --- Update tab count badges next to nav labels.
 ---@param whichTab? string|nil If "currency" or "reputations", only refresh that badge (lighter than full counts pass).
 function WarbandNexus:UpdateTabCountBadges(whichTab)
@@ -3973,9 +3961,7 @@ function WarbandNexus:UpdateTabCountBadges(whichTab)
     end
 end
 
---============================================================================
 -- TRACKING REQUIRED BANNER
---============================================================================
 function WarbandNexus:DrawTrackingRequiredBanner(parent)
     local card = CreateCard(parent, 170)
     card:SetPoint("TOPLEFT", 10, -20)
@@ -4020,9 +4006,7 @@ function WarbandNexus:DrawTrackingRequiredBanner(parent)
     return 200
 end
 
---============================================================================
 -- UPDATE STATUS
---============================================================================
 function WarbandNexus:UpdateStatus()
     if not mainFrame then return end
 
@@ -4125,9 +4109,7 @@ end
 
 -- REMOVED: UpdateFooter — empty stub with no callers.
 
---============================================================================
 -- DRAW ITEM LIST
---============================================================================
 -- Track which bank type is selected in Items tab
 -- DEFAULT: Personal Bank (priority over Warband)
 -- Uses shared state declared above; do not redeclare here (avoids shadowing).
@@ -4137,9 +4119,7 @@ end
 -- Track expanded state for each category (persists across refreshes)
 -- Uses shared state declared above; do not redeclare here (avoids shadowing).
 
---============================================================================
 -- TAB DRAWING FUNCTIONS (All moved to separate modules)
---============================================================================
 -- DrawCharacterList moved to Modules/UI/CharactersUI.lua
 -- DrawItemList moved to Modules/UI/ItemsUI.lua
 -- DrawEmptyState moved to Modules/UI/ItemsUI.lua
@@ -4147,10 +4127,7 @@ end
 -- DrawPvEProgress moved to Modules/UI/PvEUI.lua
 -- DrawStatistics moved to Modules/UI/StatisticsUI.lua
 
-
---============================================================================
 -- REFRESH
---============================================================================
 
 -- Refresh throttle constants
 local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
@@ -4186,7 +4163,7 @@ function WarbandNexus:RefreshUI()
         return
     end
     
-    -- CRITICAL FIX: Always execute the refresh immediately (no throttle on user actions)
+    -- Always execute the refresh immediately (no throttle on user actions)
     -- This ensures rows are always drawn when headers are toggled or tabs are switched
     self.isRefreshing = true
     

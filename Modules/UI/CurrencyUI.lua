@@ -59,11 +59,9 @@ local function GetCurrencyCharQuantityFromSnapshot(currData, charKey)
     return 0
 end
 
--- ============================================================================
 -- HEADER HIERARCHY
 -- CurrencyCacheService v2.0 stores a proper tree in db.headers using the
 -- Blizzard API collapse/expand technique.  No client-side inference needed.
--- ============================================================================
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
@@ -116,9 +114,7 @@ local CURRENCY_LIST_ROW = {
     NAME_MIN_FOR_BADGE = 72,
 }
 
---============================================================================
 -- CURRENCY FORMATTING & HELPERS
---============================================================================
 
 ---Format currency quantity with cap indicator
 ---@param quantity number Current amount
@@ -155,15 +151,11 @@ local function CurrencyMatchesSearch(currency, searchText)
     return name:find(searchText, 1, true) or category:find(searchText, 1, true)
 end
 
---============================================================================
 -- EVENT-DRIVEN UI REFRESH
---============================================================================
 -- Event registration is now handled in DrawCurrencyTab (REPUTATION STYLE)
 -- This ensures events are registered only once per parent and matches ReputationUI pattern
 
---============================================================================
 -- CURRENCY ROW RENDERING (EXACT StorageUI style)
---============================================================================
 
 ---Populate a currency row frame with display data (shared by CreateCurrencyRow and virtual list createRowFn)
 ---@param row Frame Row frame from AcquireCurrencyRow
@@ -380,9 +372,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     return yOffset + ROW_HEIGHT + GetLayout().betweenRows
 end
 
---============================================================================
 -- AGGREGATE CURRENCIES (for Show All mode)
---============================================================================
 
 ---Aggregate currencies across all characters
 ---@param self table WarbandNexus instance
@@ -397,7 +387,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     }
     
     local globalCurrencies = self:GetCurrenciesForUI()
-    -- CRITICAL: Use actual SavedVariables row key (guid or Name-Realm) so currency DB lookups stay aligned.
+    -- Use actual SavedVariables row key (guid or Name-Realm) so currency DB lookups stay aligned.
     local charLookup = {}
     for ci = 1, #characters do
         local char = characters[ci]
@@ -597,9 +587,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     return result
 end
 
---============================================================================
 -- MAIN DRAW FUNCTION
---============================================================================
 
 function WarbandNexus:DrawCurrencyList(container, width)
     if not container then return 0 end
@@ -1296,9 +1284,7 @@ function WarbandNexus:RedrawCurrencyResultsOnly(animateHeight)
     end
 end
 
---============================================================================
 -- CURRENCY TAB WRAPPER (Fixes focus issue)
---============================================================================
 
 function WarbandNexus:DrawCurrencyTab(parent)
     if not parent then
@@ -1353,7 +1339,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(parent, "currency")
     
-    -- CRITICAL: Clear all old frames (REPUTATION STYLE) - Keep only persistent elements
+    -- Clear all old frames (REPUTATION STYLE) - Keep only persistent elements
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
         -- Keep only persistent UI elements (badge)

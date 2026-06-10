@@ -34,9 +34,7 @@ local function SafeCurrencyNum(v)
     return tonumber(v)
 end
 
--- ============================================================================
 -- CONSTANTS
--- ============================================================================
 
 local PREFIX_CURRENCY = "|cff9370DB[WN-Currency]|r "
 local PREFIX_REPUTATION = "|cff9370DB[WN-Reputation]|r "
@@ -65,9 +63,7 @@ local function FormatFactionFallbackName(factionID)
     return base .. " " .. tostring(factionID)
 end
 
--- ============================================================================
 -- HELPER FUNCTIONS
--- ============================================================================
 
 ---Format large numbers with thousands separator (e.g., 1,234,567)
 ---@param number number
@@ -105,11 +101,9 @@ local function GetQualityHex(quality)
     return "ffffff"
 end
 
--- ============================================================================
 -- MESSAGE QUEUE (FIFO — prevents overlap, ensures smooth flow)
 -- Uses table.remove(1) only: a head index + Lua # on sparse tables drops or
 -- corrupts queued lines when gains fire back-to-back (same as CurrencyCache fix).
--- ============================================================================
 
 local messageQueue = {}
 local isProcessing = false
@@ -151,9 +145,7 @@ local function QueueMessage(message, group)
     end)
 end
 
--- ============================================================================
 -- CURRENCY CHAT NOTIFICATIONS
--- ============================================================================
 
 ---Handle currency gain event
 ---Event payload: { currencyID, gainAmount, gainSource? = "quantity"|"progress" }
@@ -252,9 +244,7 @@ local function OnCurrencyGained(event, data)
     QueueMessage(message, ROUTE_GROUP_CURRENCY)
 end
 
--- ============================================================================
 -- REPUTATION CHAT NOTIFICATIONS
--- ============================================================================
 
 ---Handle reputation gain event (Snapshot-Diff payload)
 ---Event payload: {factionID, factionName, gainAmount, currentRep, maxRep, wasStandingUp, standingName?, standingColor?}
@@ -334,9 +324,7 @@ local function OnReputationGained(event, data)
     end
 end
 
--- ============================================================================
 -- MODULE INITIALIZATION
--- ============================================================================
 
 ---Initialize chat message service (register event listeners)
 function WarbandNexus:InitializeChatMessageService()

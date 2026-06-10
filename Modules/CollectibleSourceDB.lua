@@ -60,13 +60,11 @@
 
 local ADDON_NAME, ns = ...
 
--- =====================================================================
 -- BfA "Zone Drop" mounts - shared drop tables (referenced by multiple NPC entries)
 -- These mounts drop from specific mob factions within a zone, NOT every mob.
 --
 -- Cross-check: community-maintained BfA mount datasets (baseline npcs={} per itemId) and
 -- third-party "dropped by" listings (often larger: shared loot templates, phasing, creature templates).
--- =====================================================================
 local _duneScavenger = {
     { type = "mount", itemID = 163576, name = "Captured Dune Scavenger", repeatable = true },
 }
@@ -117,10 +115,8 @@ local _miscMechanica = {
     },
 }
 
--- =====================================================================
 -- MIDNIGHT 12.0 "Zone Rare" mounts - shared drop tables
 -- Any rare in the zone can drop these mounts (daily lockout per rare)
--- =====================================================================
 
 -- Quel'Thalas (Eversong Woods / Ghostlands) - 2 mounts from any zone rare
 local _quelThalasRareMounts = {
@@ -213,10 +209,8 @@ ns.CollectibleSourceDB = {
             drops = _netherWarpedEgg,
         },
 
-        -- =====================================================================
         -- MIDNIGHT 12.0 — Daily lockout quests for zone rares
         -- Each rare can be looted once per day; quest flag resets on daily reset.
-        -- =====================================================================
 
         -- Eversong Woods / Quel'Thalas (A Bloody Song) — 15 rares
         { sourceType = "lockout_quest", npcID = 246332, questID = 91280 },  -- Warden of Weeds
@@ -304,19 +298,15 @@ ns.CollectibleSourceDB = {
         { sourceType = "lockout_quest", npcID = 249776, questID = 92034 },  -- Thorm'belan (Harandar)
         { sourceType = "lockout_quest", npcID = 248864, questID = 92636 },  -- Predaxas (Voidstorm)
 
-        -- =====================================================================
         -- World Rares
-        -- =====================================================================
         { sourceType = "world_rare", npcID = 180978,
           -- Hirukon (Zereth Mortis, summoned via Aurelid Lure from Strange Goop)
           drops = { { type = "mount", itemID = 187676, name = "Deepstar Polyp" } },
         },
 
-        -- =====================================================================
         -- Game Objects (chests / post-boss caches)
         -- INTENTIONAL DUPLICATE mount itemIDs vs npcs: many raids put loot on a
         -- GameObject chest while the boss NPC row drives statistics/encounter context.
-        -- =====================================================================
         -- WotLK
         { sourceType = "object", objectID = 193081,  -- Alexstrasza's Gift (Eye of Eternity - post-Malygos chest)
           drops = {
@@ -348,9 +338,7 @@ ns.CollectibleSourceDB = {
           drops = { _miscMechanica[1] },
         },
 
-        -- =====================================================================
         -- Fishing
-        -- =====================================================================
         -- Global (any expansion zone fishing pool)
         { sourceType = "fishing", mapID = 0,
           drops = { { type = "mount", itemID = 46109, name = "Sea Turtle" } },
@@ -374,9 +362,7 @@ ns.CollectibleSourceDB = {
           drops = { { type = "item", itemID = 187662, name = "Strange Goop", repeatable = true } },
         },
 
-        -- =====================================================================
         -- Containers
-        -- =====================================================================
         -- WotLK
         { sourceType = "container", containerItemID = 39883,  -- Mysterious Egg (The Oracles, Sholazar Basin)
           drops = { { type = "mount", itemID = 44707, name = "Reins of the Green Proto-Drake" } },
@@ -534,7 +520,7 @@ ns.CollectibleSourceDB = {
           },
         },
         -- Holiday Containers
-        -- IMPORTANT: Holiday boss mounts drop from these container items, NOT from boss corpse loot.
+        -- Holiday boss mounts drop from these container items, NOT from boss corpse loot.
         -- Players receive the container once per day via LFG, open from bags → ProcessContainerLoot.
         { sourceType = "container", containerItemID = 54537,  -- Heart-Shaped Box (Love is in the Air)
           drops = {
@@ -571,9 +557,7 @@ ns.CollectibleSourceDB = {
           },
         },
 
-        -- =====================================================================
         -- Zone Drops
-        -- =====================================================================
         -- TWW: Isle of Dorn — Crackling Shard (any killable mob in zone, <1% for normals)
         -- 17 rares with ≥1% are also in npcs section for specific tracking.
         -- hostileOnly=true: tooltip only shows on attackable units (excludes friendly NPCs/vendors)
@@ -600,13 +584,9 @@ ns.CollectibleSourceDB = {
           drops = _voidstormRareMounts,  -- Voidstorm, Arcantina
         },
 
-        -- =====================================================================
         -- NPCs / Instance Bosses / World Rares
-        -- =====================================================================
 
-        -- ========================================
         -- CLASSIC
-        -- ========================================
         { sourceType = "instance_boss", npcID = 10440,  -- Baron Rivendare (Stratholme)
           drops = { { type = "mount", itemID = 13335, name = "Deathcharger's Reins" } },
           statisticIds = { 1097 },
@@ -661,9 +641,7 @@ ns.CollectibleSourceDB = {
           },
         },
 
-        -- ========================================
         -- THE BURNING CRUSADE
-        -- ========================================
         { sourceType = "instance_boss", npcID = 16152,  -- Attumen the Huntsman (Karazhan)
           drops = { { type = "mount", itemID = 30480, name = "Fiery Warhorse's Reins" } },
         },
@@ -679,9 +657,7 @@ ns.CollectibleSourceDB = {
           drops = { { type = "mount", itemID = 32768, name = "Reins of the Raven Lord" } },
         },
 
-        -- ========================================
         -- WRATH OF THE LICH KING
-        -- ========================================
         { sourceType = "instance_boss", npcID = 26693,  -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
           drops = { { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" } },
         },
@@ -746,9 +722,7 @@ ns.CollectibleSourceDB = {
           statisticIds = { 4657, 4658 },
         },
 
-        -- ========================================
         -- CATACLYSM
-        -- ========================================
         { sourceType = "instance_boss", npcID = 43873,  -- Altairus (Vortex Pinnacle)
           drops = { { type = "mount", itemID = 63040, name = "Reins of the Drake of the North Wind" } },
         },
@@ -785,9 +759,7 @@ ns.CollectibleSourceDB = {
           statisticIds = { 6167, 6168 },
         },
 
-        -- ========================================
         -- MISTS OF PANDARIA
-        -- ========================================
         -- World Bosses
         { sourceType = "world_rare", npcID = 60491,  -- Sha of Anger (Kun-Lai Summit)
           drops = { { type = "mount", itemID = 87771, name = "Reins of the Heavenly Onyx Cloud Serpent" } },
@@ -837,10 +809,8 @@ ns.CollectibleSourceDB = {
           dropDifficulty = "Mythic",
         },
 
-        -- =====================================================================
         -- Encounter ID → NPC(s) mappings (DungeonEncounter.ID)
         -- Every instance_boss/legacyNpc that fires ENCOUNTER_END needs an entry here.
-        -- =====================================================================
         -- The Burning Crusade
         { sourceType = "encounter", encounterID = 652,  npcIDs = { 16152 } },              -- Attumen the Huntsman (Karazhan)
         { sourceType = "encounter", encounterID = 733,  npcIDs = { 19622 } },              -- Kael'thas (The Eye)
@@ -916,9 +886,7 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter", encounterID = 3074, npcIDs = { 231865 } },             -- Degentrius (Magisters' Terrace)
         { sourceType = "encounter", encounterID = 3183, npcIDs = { 214650 } },             -- Midnight Falls (March on Quel'Danas)
 
-        -- =====================================================================
         -- Encounter Name → NPC(s) mappings (GUID fallback for Midnight)
-        -- =====================================================================
         { sourceType = "encounter_name", encounterName = "Restless Heart", npcIDs = { 231636 } },  -- Windrunner Spire
         { sourceType = "encounter_name", encounterName = "Degentrius",     npcIDs = { 231865 } },  -- Magisters' Terrace
         { sourceType = "encounter_name", encounterName = "Midnight Falls", npcIDs = { 214650 } },  -- March on Quel'Danas
@@ -945,10 +913,8 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter_name", encounterName = "실바나스 윈드러너", npcIDs = { 175732 } },
         { sourceType = "encounter_name", encounterName = "Sylvanas Rüzgarlaşan", npcIDs = { 175732 } },
 
-        -- =====================================================================
         -- Lockout Quests (older content: MoP through TWW 11.2)
         -- Midnight 12.0 lockout quests are listed earlier in this sources[] block.
-        -- =====================================================================
         -- MoP: World Bosses (weekly lockout via bonus roll quest)
         { sourceType = "lockout_quest", npcID = 60491, questID = 32099 },  -- Sha of Anger (Kun-Lai Summit)
         { sourceType = "lockout_quest", npcID = 62346, questID = 32098 },  -- Galleon (Valley of the Four Winds)
@@ -1101,15 +1067,11 @@ ns.CollectibleSourceDB = {
     legacyNpcs = {
         -- Classic/TBC/WotLK migrated to sources[].
 
-        -- ========================================
         -- CATACLYSM
-        -- ========================================
 
         -- Cataclysm + MoP migrated to sources[].
 
-        -- ========================================
         -- WARLORDS OF DRAENOR
-        -- ========================================
 
         -- World Boss
         [87493] = { -- Rukhmar (Spires of Arak) [Verified]
@@ -1157,9 +1119,7 @@ ns.CollectibleSourceDB = {
             -- NOTE: Mythic-only fel reaver mount from WoD
         },
 
-        -- ========================================
         -- LEGION
-        -- ========================================
 
         -- Dungeon Bosses
         [114895] = { -- Nightbane (Return to Karazhan Mythic)
@@ -1243,9 +1203,7 @@ ns.CollectibleSourceDB = {
             { type = "toy", itemID = 129149, name = "Skin of the Soulflayer" },
         },
 
-        -- ========================================
         -- BATTLE FOR AZEROTH
-        -- ========================================
 
         -- Darkshore / BfA World Rares
         [160708] = { -- Mail Muncher (Horrific Visions)
@@ -1503,9 +1461,7 @@ ns.CollectibleSourceDB = {
             -- NOTE: Mythic-only mount from final BfA raid boss
         },
 
-        -- ========================================
         -- SHADOWLANDS
-        -- ========================================
 
         -- Revendreth Rares
         [166521] = { -- Famu the Infinite (Revendreth) [Verified]
@@ -1646,9 +1602,7 @@ ns.CollectibleSourceDB = {
             dropDifficulty = "Mythic",
         },
 
-        -- ========================================
         -- DRAGONFLIGHT
-        -- ========================================
 
         -- Dragon Isles Rares
         [195353] = { -- Breezebiter (The Azure Span) [Verified]
@@ -1745,9 +1699,7 @@ ns.CollectibleSourceDB = {
             -- Try count uses loot miss / ENCOUNTER_END path, not GetStatistic seed.
         },
 
-        -- ========================================
         -- THE WAR WITHIN
-        -- ========================================
 
         -- Hallowfall
         [207802] = { -- Beledar's Spawn (Hallowfall) [Verified]
@@ -1853,10 +1805,8 @@ ns.CollectibleSourceDB = {
             statisticIds = { 41330, 41329, 41328, 41327 },  -- Gallywix kills (M, H, N, LFR)
         },
 
-        -- ========================================
         -- MIDNIGHT 12.0
         -- Midnight zone rare NPC IDs verified against in-game / wago DB2 at data entry
-        -- ========================================
 
         -- Harandar Zone Rares (Rootstalker Grimlynx / Vibrant Petalwing)
         [242086] = { -- Aln'sharan (unique: Echo of Aln'sharan)
@@ -1967,9 +1917,7 @@ ns.CollectibleSourceDB = {
             difficultyIDs = { 16 },  -- Mythic raid only (excludes M+ kills sharing this npcID)
         },
 
-        -- ========================================
         -- HOLIDAY EVENTS
-        -- ========================================
 
         -- Holiday bosses: mounts drop from CONTAINER ITEMS, not boss corpse loot.
         -- Headless Horseman â†’ Loot-Filled Pumpkin (container 209024)
@@ -1997,7 +1945,6 @@ ns.CollectibleSourceDB = {
         ["Darkfuse Precipitant"] = 231310,
     },
 
-    -- =================================================================
     -- NPC NAME â†’ NPC IDs REVERSE INDEX (Midnight 12.0 tooltip fallback)
     -- When UnitGUID returns secret values inside instances, the tooltip
     -- hook reads the NPC name from the tooltip text and looks up drops
@@ -2005,7 +1952,6 @@ ns.CollectibleSourceDB = {
     -- Names MUST match the in-game English NPC display name exactly.
     -- Only instance NPCs (dungeons/raids) need entries here;
     -- open-world rares work with GUID-based lookup.
-    -- =================================================================
     npcNameIndex = {
         -- Classic
         ["Baron Rivendare"] = { 10440 },
@@ -2173,10 +2119,8 @@ ns.CollectibleSourceDB = {
     },
 }
 
--- =================================================================
 -- SOURCE NORMALIZATION (typed `sources` -> legacy tables)
 -- Keeps backward compatibility while allowing a single standardized source schema.
--- =================================================================
 local function CopyDropArray(drops)
     if type(drops) ~= "table" then return nil end
     local copy = {}
@@ -2344,12 +2288,10 @@ local function MergeLegacyNpcs(db)
 end
 MergeLegacyNpcs(ns.CollectibleSourceDB)
 
--- =================================================================
 -- TOY SOURCE LOOKUP (for Plans + Collections)
 -- Returns display string when this toy is in the DB (npc/container/zone/fishing/rare).
 -- Used to enrich tooltip source when Blizzard returns "Toy Collection".
 -- Uses lazy-built O(1) index so repeated lookups do not scan all tables.
--- =================================================================
 function ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
     if not itemID or type(itemID) ~= "number" then return nil end
     local db = ns.CollectibleSourceDB
@@ -2457,12 +2399,10 @@ function ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
     return db._toySourceByItemID[itemID]
 end
 
--- =================================================================
 -- MOUNT SOURCE LOOKUP (for Plans when API returns empty)
 -- Returns display string when mount is in DB (fishing, zone_drop, npc, etc.).
 -- Used when C_MountJournal.GetMountInfoExtraByID returns empty (e.g. Nether-Warped Drake).
 -- Lazy-builds mountID -> sourceString index via GetMountFromItem(itemID).
--- =================================================================
 function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
     if not mountID or type(mountID) ~= "number" then return nil end
     local db = ns.CollectibleSourceDB
@@ -2568,14 +2508,12 @@ function ns.CollectibleSourceDB.GetSourceStringForMount(mountID)
     return db._mountSourceByMountID[mountID]
 end
 
--- =================================================================
 -- Drop rates LUT (per-kill/per-attempt community-documented rates).
 -- Keyed by mount teach-item itemID. Values are probabilities in [0,1].
 -- Used for "What a grind" messaging: cumulative P = 1 - (1-rate)^tries.
 -- Rates are approximate community baselines as of 2026-04; refine with in-game
 -- experience. Wrong rates only cause missed/false grind messages — gameplay safe.
 -- Omit an entry to disable the grind-check for that mount.
--- =================================================================
 ns.CollectibleSourceDB.dropRates = {
     -- Classic / Vanilla
     [13335]  = 0.01,    -- Deathcharger's Reins (Baron Rivendare, Strat)
@@ -2658,11 +2596,9 @@ ns.CollectibleSourceDB.dropRates = {
     [260916] = 0.0001,  -- Nether-Warped Drake (fishing, Midnight)
 }
 
--- =================================================================
 -- Returns the known per-attempt drop rate for a mount item, or nil.
 -- @param itemID number mount teach-item itemID
 -- @return number|nil rate in [0,1]
--- =================================================================
 function ns.CollectibleSourceDB.GetDropRate(itemID)
     if not itemID then return nil end
     local id = tonumber(itemID)
@@ -2672,13 +2608,11 @@ function ns.CollectibleSourceDB.GetDropRate(itemID)
     return rate
 end
 
--- =================================================================
 -- Cumulative probability of obtaining a drop in N independent attempts.
 -- P(obtained by N tries) = 1 - (1 - rate)^tries
 -- @param itemID number mount teach-item itemID
 -- @param tries number number of attempts (>= 0)
 -- @return number|nil P in [0,1], or nil when rate unknown
--- =================================================================
 function ns.CollectibleSourceDB.GetCumulativeProbability(itemID, tries)
     local rate = ns.CollectibleSourceDB.GetDropRate(itemID)
     if not rate then return nil end

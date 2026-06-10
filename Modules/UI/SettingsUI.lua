@@ -19,9 +19,7 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateSection = ns.UI_CreateSection
 
---============================================================================
 -- CONSTANTS
---============================================================================
 
 -- Import UI spacing constants
 local UI_SPACING = ns.UI_SPACING or {
@@ -272,9 +270,7 @@ end
 
 local SettingsKeybind = ns.SettingsKeybind
 
---============================================================================
 -- GRID LAYOUT SYSTEM
---============================================================================
 
 ---Apply disabled visual state to a checkbox + label pair
 ---@param checkbox CheckButton The checkbox widget
@@ -626,9 +622,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
     return yOffset - (totalRows * (buttonHeight + UI_SPACING.AFTER_ELEMENT)) - 15
 end
 
---============================================================================
 -- WIDGET BUILDERS
---============================================================================
 
 ---Close another open settings dropdown (UIParent-level click-catcher can sit above scroll content and steal clicks).
 local function CloseOtherSettingsDropdownForClick(currentDropdown)
@@ -1161,9 +1155,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     return yOffset - 65
 end
 
---============================================================================
 -- SECTION BUILDERS
---============================================================================
 
 -- Track subtitle elements for theme refresh
 local subtitleElements = {}
@@ -1301,9 +1293,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end
 
     if Want("general") then
-    --========================================================================
     -- GENERAL SETTINGS
-    --========================================================================
     yOffset = AppendSettingsPanelIntro(parent, "general", effectiveWidth, yOffset, sideInset)
     local generalSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(generalSection, yOffset)
@@ -1779,9 +1769,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end -- general panel
 
     if Want("modules") then
-    --========================================================================
     -- MODULE MANAGEMENT
-    --========================================================================
     yOffset = AppendSettingsPanelIntro(parent, "modules", effectiveWidth, yOffset, sideInset)
     local moduleSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(moduleSection, yOffset)
@@ -1926,9 +1914,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end -- modules panel
 
     if Want("access") then
-    --========================================================================
     -- EASY ACCESS (floating shortcut)
-    --========================================================================
     yOffset = AppendSettingsPanelIntro(parent, "access", effectiveWidth, yOffset, sideInset)
     local vaultSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(vaultSection, yOffset)
@@ -2165,9 +2151,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end -- access panel
 
     if Want("filters") then
-    --========================================================================
     -- TAB FILTERING
-    --========================================================================
     yOffset = AppendSettingsPanelIntro(parent, "filters", effectiveWidth, yOffset, sideInset)
     local tabSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(tabSection, yOffset)
@@ -2272,9 +2256,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end -- filters panel
 
     if Want("notifications") then
-    --========================================================================
     -- NOTIFICATIONS
-    --========================================================================
     yOffset = AppendSettingsPanelIntro(parent, "notifications", effectiveWidth, yOffset, sideInset)
     local notifSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(notifSection, yOffset)
@@ -3397,9 +3379,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end -- notifications panel
 
     if Want("appearance") then
-    --========================================================================
     -- THEME & APPEARANCE
-    --========================================================================
     yOffset = AppendSettingsPanelIntro(parent, "appearance", effectiveWidth, yOffset, sideInset)
     local themeSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(themeSection, yOffset)
@@ -3797,9 +3777,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end -- appearance panel
 
     if Want("advanced") then
-    --========================================================================
     -- TRACK ITEM DB
-    --========================================================================
     yOffset = AppendSettingsPanelIntro(parent, "advanced", effectiveWidth, yOffset, sideInset)
     local trackSection = CreateSection(parent, (ns.L and ns.L["TRACK_ITEM_DB"]) or "Track Item DB", effectiveWidth)
     AnchorSectionTop(trackSection, yOffset)
@@ -3829,9 +3807,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local trackYOffset = 0
     local trackContentWidth = effectiveWidth - 30
     
-    --================================================================
     -- SUB-PANEL: Item Tracking
-    --================================================================
     
     local manageHeader = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
     manageHeader:SetPoint("TOPLEFT", 0, trackYOffset)
@@ -4076,9 +4052,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end
     trackYOffset = trackYOffset - DETAIL_CARD_HEIGHT - 16
     
-    --================================================================
     -- SUB-PANEL: Custom Entries
-    --================================================================
     
     -- Divider line
     local trackDivider2 = trackSection.content:CreateTexture(nil, "OVERLAY")
@@ -4354,9 +4328,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local trackSectionYBase = yOffset  -- yOffset before track section
     yOffset = yOffset - COLLAPSED_HEIGHT - SETTINGS_SECTION_GAP  -- default collapsed offset
     
-    --========================================================================
     -- ADVANCED
-    --========================================================================
     
     local advSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(advSection, yOffset)
@@ -4442,9 +4414,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     parent:SetHeight(math.max(80, contentH) + SETTINGS_SCROLL_INSET_BOTTOM)
 end
 
---============================================================================
 -- MAIN WINDOW TAB (embedded in WarbandNexusFrame content scroll)
---============================================================================
 
 ---Paint settings into the main window scroll host (replaces legacy floating panel).
 ---@param parent Frame

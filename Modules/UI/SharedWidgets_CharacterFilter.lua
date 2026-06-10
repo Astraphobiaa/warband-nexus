@@ -7,9 +7,7 @@
 local _, ns = ...
 local UI_SPACING = ns.UI_SPACING or {}
 local UI_LAYOUT = ns.UI_LAYOUT or UI_SPACING
---============================================================================
 -- CHARACTER LIST SORT DROPDOWN (Reusable Icon Button)
---============================================================================
 
 local activeSortDropdownMenu = nil
 local activePickMenu = nil
@@ -213,9 +211,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     return btn
 end
 
---============================================================================
 -- CHARACTERS / PROFESSIONS: Filter + sort + section view (nested flyouts)
---============================================================================
 
 ---@param ownerBtn Button|nil
 local function WnCloseFullAdvFilter(ownerBtn)

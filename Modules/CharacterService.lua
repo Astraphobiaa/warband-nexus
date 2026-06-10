@@ -40,9 +40,7 @@ local function ClearBothAssignKeys(assign, charKey)
     end
 end
 
---============================================================================
 -- CHARACTER TRACKING
---============================================================================
 
 ---Confirm character tracking status and update database
 ---@param addon table The WarbandNexus addon instance
@@ -126,7 +124,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             LT:Register("pve", (ns.L and ns.L["LT_PVE_DATA"]) or "PvE Data")
         end
         
-        -- CRITICAL: Reset characterSaved flag (in case of DB wipe without reload)
+        -- Reset characterSaved flag (in case of DB wipe without reload)
         addon.characterSaved = false
 
         -- Ensure combat-safety frame exists before any SafeInit (tracking dialog can confirm before init drain).
@@ -136,7 +134,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         end
         local SafeInit = InitSvc and InitSvc.SafeInit
         
-        -- STEP 1: Register event listeners + character cache (skipped during init)
+        -- Register event listeners + character cache (skipped during init)
         -- Wrapped in SafeInit: user may confirm tracking while in combat
         C_Timer.After(0.05, function()
             local function doStep1()
@@ -172,7 +170,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(doStep1, "PostConfirm:EventListeners") else doStep1() end
         end)
         
-        -- STEP 2: Initial character data save (basic info)
+        -- Initial character data save (basic info)
         C_Timer.After(0.1, function()
             local function step2()
                 local addonInstance = _G.WarbandNexus or addon
@@ -183,7 +181,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step2, "PostConfirm:SaveCharacterInitial") else step2() end
         end)
         
-        -- STEP 3: Trigger items scan (fixes ItemsUI empty on first tracking)
+        -- Trigger items scan (fixes ItemsUI empty on first tracking)
         C_Timer.After(0.2, function()
             local function step3()
                 local addonInstance = _G.WarbandNexus or addon
@@ -208,7 +206,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step3, "PostConfirm:ScanInventoryBags") else step3() end
         end)
         
-        -- STEP 4: Trigger reputation scan
+        -- Trigger reputation scan
         C_Timer.After(1, function()
             local function step4()
                 local addonInstance = _G.WarbandNexus or addon
@@ -220,7 +218,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step4, "PostConfirm:ScanReputations") else step4() end
         end)
         
-        -- STEP 5: Trigger currency scan
+        -- Trigger currency scan
         C_Timer.After(1.5, function()
             local function step5()
                 if ns.CurrencyCache and ns.CurrencyCache.PerformFullScan then
@@ -230,7 +228,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step5, "PostConfirm:CurrencyPerformFullScan") else step5() end
         end)
         
-        -- STEP 6: Force item level update
+        -- Force item level update
         C_Timer.After(1.2, function()
             local function step6()
                 local addonInstance = _G.WarbandNexus or addon
@@ -241,7 +239,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step6, "PostConfirm:UpdateCharacterCacheIlvl") else step6() end
         end)
         
-        -- STEP 7: Re-save character data (ensures all data is fresh)
+        -- Re-save character data (ensures all data is fresh)
         C_Timer.After(1.8, function()
             local function step7()
                 local addonInstance = _G.WarbandNexus or addon
@@ -257,7 +255,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step7, "PostConfirm:SaveCharacterFinal") else step7() end
         end)
         
-        -- STEP 8: Notify UI to refresh (event-driven; UI listens for WN_CHARACTER_UPDATED)
+        -- Notify UI to refresh (event-driven; UI listens for WN_CHARACTER_UPDATED)
         C_Timer.After(2.2, function()
             local function doStep8()
                 local addonInstance = _G.WarbandNexus or addon
@@ -269,7 +267,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(doStep8, "PostConfirm:UIRefresh") else doStep8() end
         end)
         
-        -- STEP 9: Profession data collection
+        -- Profession data collection
         -- Core.lua timers (T+4-5s from login) may have already fired before user confirmed.
         -- These functions are safe to call multiple times (idempotent overwrites).
         C_Timer.After(3, function()
@@ -304,7 +302,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step9b, "PostConfirm:ProfessionsExpansion") else step9b() end
         end)
         
-        -- STEP 10: PvE data + Knowledge collection
+        -- PvE data + Knowledge collection
         C_Timer.After(4.5, function()
             local function step10()
                 local addonInstance = _G.WarbandNexus or addon
@@ -329,7 +327,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step10, "PostConfirm:PvEAndKnowledge") else step10() end
         end)
         
-        -- STEP 11: Played time + profession recharge timer
+        -- Played time + profession recharge timer
         -- These were gated on tracking in Core.lua/EventManager.lua
         C_Timer.After(2, function()
             local function step11()
@@ -349,7 +347,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step11, "PostConfirm:PlayedTimeRecharge") else step11() end
         end)
         
-        -- STEP 12: What's New notification
+        -- What's New notification
         C_Timer.After(0.5, function()
             local function step12()
                 local addonInstance = _G.WarbandNexus or addon
@@ -635,7 +633,7 @@ function CharacterService:IsCharacterTracked(addon)
         return false
     end
     
-    -- CRITICAL: Explicit true check - only track if user explicitly enabled tracking
+    -- Explicit true check - only track if user explicitly enabled tracking
     -- nil or false = not tracked (requires user action to enable)
     return charData.isTracked == true
 end
@@ -699,9 +697,7 @@ function CharacterService:FindProbableStaleCharacterCopies(addon)
     return copies
 end
 
---============================================================================
 -- FAVORITE CHARACTERS
---============================================================================
 
 ---Check if a character is marked as favorite
 ---@param addon table The WarbandNexus addon instance
@@ -814,11 +810,9 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
     end
 end
 
---============================================================================
 -- CUSTOM CHARACTER SECTIONS (profile: user-defined headers / buckets)
 -- Tracked, non-favorite characters may be assigned to one custom section.
 -- Favorites always render in the Favorites block; assignments for favorited keys are ignored.
---============================================================================
 
 local CUSTOM_GROUP_LIST_KEY_PREFIX = "group_"
 
@@ -1103,8 +1097,6 @@ function CharacterService:GetCharacterCustomSectionId(addon, charKey)
     return assign[charKey]
 end
 
---============================================================================
 -- EXPORT
---============================================================================
 
 return CharacterService

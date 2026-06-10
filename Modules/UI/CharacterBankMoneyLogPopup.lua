@@ -180,9 +180,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     dialog._moneyLogTab = dialog._moneyLogTab or "all"
 
-    --=========================================================================
     -- DATA HELPERS
-    --=========================================================================
     local function getFilteredEntries(filter)
         if not WarbandNexus.GetCharacterBankMoneyLogs or type(WarbandNexus.GetCharacterBankMoneyLogs) ~= "function" then
             return {}
@@ -206,9 +204,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         return WarbandNexus:GetCharacterBankMoneyLogSummary()
     end
 
-    --=========================================================================
     -- TAB BAR
-    --=========================================================================
     local TAB_DEFS = {
         { key = "all",           label = (ns.L and ns.L["MONEY_LOGS_FILTER_ALL"]) or "All" },
         { key = "deposit",       label = (ns.L and ns.L["MONEY_LOGS_DEPOSIT"]) or "Deposit" },
@@ -434,9 +430,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         logScrollChild:SetHeight(math.max(rowY + 8, 1))
     end
 
-    --=========================================================================
     -- CONTRIBUTIONS PANEL
-    --=========================================================================
     local contribPanel = AcquireStretchPanel(contentFrame)
     contribPanel:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -8)
     contribPanel:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -PADDING, 10)
@@ -577,9 +571,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         contribScrollChild:SetHeight(math.max(rowY + 8, 1))
     end
 
-    --=========================================================================
     -- TAB SWITCHING
-    --=========================================================================
     local function switchTab(tabKey)
         dialog._moneyLogTab = tabKey
         for idx = 1, #TAB_DEFS do

@@ -189,7 +189,6 @@ local function GetAchievementRequirementsText(achievementID)
     return header .. table.concat(parts, "\n")
 end
 
-
 -- Content helpers
 ---- List width shared by category bar, dropdown, and plan cards (matches scroll viewport).
 local function GetTrackerListWidth(frame)

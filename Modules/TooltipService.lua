@@ -27,9 +27,7 @@ local issecretvalue = issecretvalue
 local strsplit = strsplit
 local tonumber = tonumber
 
--- ============================================================================
 -- STATE MANAGEMENT
--- ============================================================================
 
 -- Singleton tooltip frame (lazy initialized)
 local tooltipFrame = nil
@@ -41,9 +39,7 @@ local isInitialized = false
 local TOOLTIP_SHOW = E.TOOLTIP_SHOW
 local TOOLTIP_HIDE = E.TOOLTIP_HIDE
 
--- ============================================================================
 -- TOOLTIP SERVICE
--- ============================================================================
 
 local TooltipService = {}
 
@@ -186,13 +182,11 @@ function TooltipService:Hide()
     end
 end
 
--- ============================================================================
 -- ITEM LINK TOOLTIP CONTEXT (linkLevel + specializationID in payload)
 -- Blizzard uses fields 9–10 of the item payload for primary-stat / set-bonus
 -- display. Links from another character (e.g. bank alt) keep that character's
 -- spec; rewrite so Gear tab tooltips match the viewed character.
 -- See https://warcraft.wiki.gg/wiki/ItemLink (linkLevel, specializationID).
--- ============================================================================
 
 ---@param itemLink string|nil
 ---@param itemID number|nil
@@ -642,9 +636,7 @@ local function GetProfessionCraftingQualityTierFromItemLinkAnyLineScan(itemLink)
     return ClampMidnightProfessionQualityTier(found)
 end
 
--- ============================================================================
 -- RENDERING METHODS
--- ============================================================================
 
 --[[
     Render custom tooltip with structured data
@@ -1363,9 +1355,7 @@ function TooltipService:RenderHybridTooltip(frame, data)
     -- Then add custom lines (already handled in item/currency methods)
 end
 
--- ============================================================================
 -- POSITIONING
--- ============================================================================
 
 -- Tooltip offset constants
 local TOOLTIP_GAP = 8
@@ -1620,9 +1610,7 @@ function TooltipService:ClampToScreen(frame, screenW, screenH)
     end
 end
 
--- ============================================================================
 -- SAFETY & AUTO-HIDE
--- ============================================================================
 
 --[[
     Register events that should auto-hide tooltip
@@ -1700,9 +1688,7 @@ function TooltipService:RegisterSafetyEvents()
     end
 end
 
--- ============================================================================
 -- SHARED COLLECTIBLE DROP LINES (used by Unit and Item tooltip hooks)
--- ============================================================================
 
 ---Inject collectible drop lines into a GameTooltip.
 ---Shows header, item hyperlinks, collected/repeatable status, and try counts.
@@ -2047,9 +2033,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
     -- Do not call tooltip:Show() here — retriggers TooltipDataProcessor post-call (refresh/flicker loop).
 end
 
--- ============================================================================
 -- ITEM DATA PRE-CACHE (eliminates first-hover tooltip delay)
--- ============================================================================
 
 --[[
     Pre-request all item data from CollectibleSourceDB so that GetItemInfo
@@ -2109,9 +2093,7 @@ function TooltipService:PreCacheCollectibleItems()
     ProcessBatch()
 end
 
--- ============================================================================
 -- GAME TOOLTIP INJECTION (TAINT-SAFE)
--- ============================================================================
 
 ---@param val any
 ---@return number|nil
@@ -2273,10 +2255,8 @@ function TooltipService:InitializeGameTooltipHook()
 
     InstallGameTooltipInjectionClearHooks()
 
-    -- ================================================================
     -- ITEM TOOLTIP — single post-call (counts + planned + container drops)
     -- One TooltipDataProcessor registration avoids triple invocation per hover.
-    -- ================================================================
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
         local itemID = ResolveItemTooltipID(data)
         local dataInstanceID = data and data.dataInstanceID
@@ -2383,10 +2363,8 @@ function TooltipService:InitializeGameTooltipHook()
 
     self:Debug("Item tooltip hook initialized (counts + planned + container drops)")
     
-    -- ----------------------------------------------------------------
     -- UNIT TOOLTIP: Collectible drop info from CollectibleSourceDB
     -- Shows item hyperlinks + collection status + try count on NPCs
-    -- ----------------------------------------------------------------
     if Enum.TooltipDataType and Enum.TooltipDataType.Unit then
         -- Upvalue WoW APIs used in the hook
         local UnitGUID = UnitGUID
@@ -2939,9 +2917,7 @@ function TooltipService:RunDiagnostics()
     return results
 end
 
--- ============================================================================
 -- CONCENTRATION TOOLTIP HOOK
--- ============================================================================
 
 --[[
     Append cross-character concentration data to tooltips showing Concentration.
@@ -3087,11 +3063,9 @@ end
 function TooltipService:InstallConcentrationTooltipHook()
     if concentrationHookInstalled then return end
 
-    -- ----------------------------------------------------------------
     -- Layer 1: TooltipDataProcessor for Currency tooltips (modern API)
     -- Concentration is a currency. When Blizzard calls
     -- GameTooltip:SetCurrencyByID(concentrationCurrencyID), this fires.
-    -- ----------------------------------------------------------------
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
         and Enum.TooltipDataType and Enum.TooltipDataType.Currency then
         local CURRENCY_TYPE = Enum.TooltipDataType.Currency
@@ -3110,10 +3084,8 @@ function TooltipService:InstallConcentrationTooltipHook()
         end)
     end
 
-    -- ----------------------------------------------------------------
     -- Layer 2: GameTooltip OnShow fallback
     -- Catches any non-currency code path (custom SetOwner + AddLine).
-    -- ----------------------------------------------------------------
     GameTooltip:HookScript("OnShow", function(tooltip)
         if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
         if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
@@ -3136,9 +3108,7 @@ end
 -- Install the hook immediately at load time — GameTooltip is always available.
 TooltipService:InstallConcentrationTooltipHook()
 
--- ============================================================================
 -- DEBUG
--- ============================================================================
 
 function TooltipService:Debug(msg)
     if WarbandNexus and WarbandNexus.Debug then
@@ -3146,9 +3116,7 @@ function TooltipService:Debug(msg)
     end
 end
 
--- ============================================================================
 -- EXPORT
--- ============================================================================
 
 -- Attach to WarbandNexus namespace
 WarbandNexus.Tooltip = TooltipService

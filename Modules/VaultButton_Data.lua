@@ -16,9 +16,7 @@ local function VB__setfenv()
 end
 setfenv(1, VB__setfenv())
 --[[ Shared API: M.* / S.* only across VaultButton_* chunks (see VaultButton_Core.lua). ]]
--- ============================================================================
 -- Data helpers
--- ============================================================================
 function M.GetClassHex(classFile)
     local c = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
     if c then
@@ -322,7 +320,6 @@ function M.FormatMythicScoreTooltipRight(charKey)
     end
     return "|cffd4af37" .. EAL("EA_TOOLTIP_MYTHIC_SCORE_VALUE", "%d", score) .. "|r"
 end
-
 
 --- Open WarbandNexus main window on a specific tab (nil = session / profile lastTab).
 function M.OpenWNTab(tabKey)
@@ -842,5 +839,4 @@ function M.CountReady()
     end
     return n
 end
-
 

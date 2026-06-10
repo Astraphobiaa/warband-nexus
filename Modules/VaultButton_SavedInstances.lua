@@ -15,9 +15,7 @@ local function VB__setfenv()
     })
 end
 setfenv(1, VB__setfenv())
--- ============================================================================
 -- Saved Instances (raid + dungeon lockouts)
--- ============================================================================
 M.DIFF_INFO = {
     [17] = { short = "LFR",    name = "Looking For Raid", color = {0.55, 0.55, 0.55}, hex = "aaaaaa" },
     [14] = { short = "N",      name = "Normal",           color = {0.12, 0.78, 0.12}, hex = "1eff00" },

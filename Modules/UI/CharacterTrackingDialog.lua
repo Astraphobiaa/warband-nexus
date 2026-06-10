@@ -10,7 +10,7 @@ local issecretvalue = issecretvalue
 ns.CharacterTrackingDialog = ns.CharacterTrackingDialog or {}
 
 function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
-    -- CRITICAL: If dialog already exists and is visible, don't create a new one
+    -- If dialog already exists and is visible, don't create a new one
     if addon.trackingDialog and addon.trackingDialog:IsVisible() then
         return
     end
@@ -204,7 +204,6 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     untrackedDesc:SetJustifyH("CENTER")
     untrackedDesc:SetText("|cffff8888" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n|cffffffff" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
     
-    
     -- ESC-to-close (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
     if not InCombatLockdown() then
         dialog:EnableKeyboard(true)
@@ -241,7 +240,7 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
 end
 
 function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableTracking)
-    -- CRITICAL: If dialog already exists and is visible, don't create a new one
+    -- If dialog already exists and is visible, don't create a new one
     if addon.trackingChangeDialog and addon.trackingChangeDialog:IsVisible() then
         return
     end

@@ -76,7 +76,6 @@ local tinsert = table.insert
 local tremove = table.remove
 local wipe = table.wipe
 
-
 -- Build flat list for virtual scrolling: [{ type = "header", ... } | { type = "row", ... }], totalHeight
 -- Sayılar (Drop 669, Quest 87, vb.) grouped[key] uzunluğundan gelir; liste ile tutarlıdır.
 function M.BuildFlatMountList(groupedData, collapsedHeaders)
@@ -338,9 +337,7 @@ function M.AnnotateFlatRowsByNearestHeader(flatList)
     end
 end
 
--- ============================================================================
 -- Mount/Pet/Toy virtual list: scroll-layout index + visible-range binary search
--- ============================================================================
 -- Scroll pixel Y for each row matches ChainSectionFrameBelow stacking: per section,
 -- wrap height = COLLAPSE_HEADER_HEIGHT_COLL + (expanded and bodyContentHeight or 0.1).
 -- Data rows use fixed ROW_HEIGHT within an expanded section; headers are not virtualized.
@@ -1831,10 +1828,8 @@ function M.PopulateAchievementList(scrollChild, listWidth, categoryData, rootCat
     })
 end
 
--- ============================================================================
 -- MODEL VIEWER PANEL — Mounts: Blizzard Mount Journal pipeline (ModelScene WrappedAndUnwrappedModelScene + TransitionToModelSceneID).
 -- Pets/fallback: Frame (clip) + PlayerModel + interaction layer. Layout: viewport below descText.
--- ============================================================================
 
 local FIXED_CAM_SCALE = 1.8
 local CAM_SCALE_MIN = 0.6

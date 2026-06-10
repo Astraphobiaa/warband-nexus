@@ -73,7 +73,6 @@ local tinsert = table.insert
 local tremove = table.remove
 local wipe = table.wipe
 
-
 function M.SetCollectionProgress(current, total)
     local bar = M.state.collectionProgressBar
     local lbl = M.state.collectionProgressLabel

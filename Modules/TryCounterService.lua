@@ -125,9 +125,7 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local Fns = {}
 local TC = ns.TryCounter or {}
 
--- =====================================================================
 -- CONSTANTS & UPVALUES (performance: resolved once at file load)
--- =====================================================================
 
 local VALID_TYPES = TC.VALID_TYPES or { mount = true, pet = true, toy = true, illusion = true, item = true }
 local RECENT_KILL_TTL = TC.RECENT_KILL_TTL or 15
@@ -213,7 +211,6 @@ local discoveryPendingNpcID
 
 -- TryChat / BuildObtainedChat: Modules/TryCounterService_Shared.lua (Fns.* aliases set above).
 
--- =====================================================================
 -- RAW EVENT FRAMES
 -- tryCounterFrame: loot, chat, encounter, spellcast, etc.
 --
@@ -221,7 +218,6 @@ local discoveryPendingNpcID
 -- addons. Invoking it (even inside pcall, even from another frame's OnEvent) still reports
 -- ADDON_ACTION_FORBIDDEN and can mark the addon unsafe for the session. No CLEU subscription;
 -- open-world AoE farms use loot-based farmCorpseMult (table + npcId + missed-item source scan).
--- =====================================================================
 local tryCounterReady = false
 local tryCounterInitializing = false
 local tryCounterEventsRegistered = false
@@ -576,9 +572,7 @@ local PROFESSION_LOOT_SPELLS = {
     [389191] = true,    -- Mass Prospecting (DF)
 }
 
--- =====================================================================
 -- STATE (file-local, zero global pollution)
--- =====================================================================
 
 -- DB references (set at init from ns.CollectibleSourceDB)
 npcDropDB = {}
@@ -1108,11 +1102,9 @@ function Fns.BuildTryCounterNpcEligible()
     end
 end
 
--- =====================================================================
 -- REVERSE LOOKUP INDICES (built once at InitializeTryCounter, O(1) lookups)
 -- Keys: [type .. "\0" .. itemID] = true
 -- These replace the old O(N) full-DB-scan approach in Is*Collectible().
--- =====================================================================
 local guaranteedIndex = {}    -- drop.guaranteed == true
 local repeatableIndex = {}    -- drop.repeatable == true
 local dropSourceIndex = {}    -- any drop entry (exists in DB at all)
@@ -1120,13 +1112,11 @@ local dropDifficultyIndex = {} -- drop/NPC dropDifficulty string (e.g. "Mythic",
 local repeatableItemDrops = {} -- [itemID] = drop for "item" type repeatable (reset + notify when received via CHAT_MSG_LOOT if loot window was cleared by autoLoot)
 local reverseIndicesBuilt = false
 
--- =====================================================================
 -- REVERSE INDEX BUILDER
 -- Called once from InitializeTryCounter after DB references are loaded.
 -- Iterates all drop sources once, building O(1) lookup tables keyed by
 -- type+itemID. This eliminates the O(N) full-DB scans that previously
 -- ran on every cache-miss call to Is*Collectible().
--- =====================================================================
 
 ---Index a single drop entry into the reverse lookup tables
 ---@param drop table { type, itemID, name [, guaranteed] [, repeatable] [, dropDifficulty] }
@@ -1538,9 +1528,7 @@ local function RegisterQuestStarterMountKey(mountKey, srcItemID)
     arr[#arr + 1] = mountKey
 end
 
--- =====================================================================
 -- DATABASE HELPERS
--- =====================================================================
 
 ---Ensure SavedVariable structure exists
 function Fns.EnsureDB()
@@ -1588,9 +1576,7 @@ function Fns.IsItemMarkedObtained(itemID)
     return tc and tc.obtained and tc.obtained[itemID] == true
 end
 
--- =====================================================================
 -- PUBLIC API (manual get/set/increment - unchanged from before)
--- =====================================================================
 
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number
@@ -1888,9 +1874,7 @@ function WarbandNexus:GetQuestStarterMountsForBrowser()
     return out
 end
 
--- =====================================================================
 -- GUID PARSING (minimal allocation)
--- =====================================================================
 
 ---Extract NPC ID from a creature/vehicle GUID (retail GUIDs have variable segment counts;
 ---the old %-.-%-.-…%-(%d+) pattern often grabbed map/instance ids instead of the entry id).
@@ -1972,9 +1956,7 @@ Fns.GetObjectIDFromGUID = function(guid)
     return nil
 end
 
--- =====================================================================
 -- COLLECTIBLE ID RESOLUTION (runtime mount/pet ID lookup)
--- =====================================================================
 
 ---Resolve collectibleID from itemID at runtime
 ---Returns the native collectible ID (mountID/speciesID) if the API can resolve it.
@@ -2061,9 +2043,7 @@ function Fns.GetTryCountTypeAndKey(drop)
     return drop.type, key
 end
 
--- =====================================================================
 -- PUBLIC QUERY API (O(1) index lookups, replaces old O(N) full-DB scans)
--- =====================================================================
 -- After InitializeTryCounter builds the reverse indices, these functions
 -- do a simple hash table lookup instead of iterating the entire DB.
 -- For non-toy types, we also check the native collectible ID (mountID/speciesID)
@@ -2655,9 +2635,7 @@ function WarbandNexus:GetDropDifficulty(collectibleType, id)
     return nil
 end
 
--- =====================================================================
 -- COLLECTED CHECK (skip already-owned collectibles)
--- =====================================================================
 
 ---True if the summoning spell for this mount item is known (mount already learned).
 ---Midnight 12.0+: GetMountFromItem / GetMountInfoByID may return secret values in instances;
@@ -2780,9 +2758,7 @@ Fns.IsCollectibleCollected = function(drop)
     return false
 end
 
--- =====================================================================
 -- LOOT WINDOW SCANNING
--- =====================================================================
 
 ---Scan loot window and return set of found itemIDs.
 ---When cachedNumLoot and cachedSlotData are provided (from LOOT_OPENED capture), uses them so we don't re-read the window.
@@ -2828,9 +2804,7 @@ function Fns.ScanLootForItems(expectedDrops, cachedNumLoot, cachedSlotData)
     return found
 end
 
--- =====================================================================
 -- TRY COUNT INCREMENT + CHAT MESSAGE
--- =====================================================================
 
 ---Get the item hyperlink (quality-colored) for a drop entry.
 ---Uses full link from GetItemInfo when cached (quality color comes from link). Falls back to constructed link with quality color when not cached.
@@ -3486,9 +3460,7 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
     end)
 end
 
--- =====================================================================
 -- SETTING CHECK
--- =====================================================================
 
 ---True when the Try Counter module toggle is enabled (ignores autoTryCounter notification).
 ---@return boolean
@@ -3553,9 +3525,7 @@ function Fns.IsTryCounterInstanceEntryDropLinesEnabled()
     return true
 end
 
--- =====================================================================
 -- LOCKOUT QUEST CHECK (daily/weekly rare kill gating)
--- =====================================================================
 
 ---Check if an NPC's lockout quest indicates a duplicate kill (no loot possible).
 ---Returns true if the try counter should SKIP this NPC (already attempted this period).
@@ -3642,9 +3612,7 @@ function Fns.SyncLockoutState()
     end
 end
 
--- =====================================================================
 -- LOCKOUT QUEST AUTO-DISCOVERY
--- =====================================================================
 -- When an NPC in our drop DB has no lockout quest, detect the hidden
 -- tracking quest that flipped by comparing pre-kill and post-kill quest
 -- flags.  Approach: maintain a running snapshot of completed quest IDs
@@ -3755,9 +3723,7 @@ function Fns.MergeDiscoveredLockoutQuests()
     end
 end
 
--- =====================================================================
 -- EVENT HANDLERS
--- =====================================================================
 
 ---ENCOUNTER_START handler (warcraft.wiki.gg/wiki/ENCOUNTER_START).
 ---Fires at pull (before heavy secret-value enforcement in many contexts) with payload:
@@ -4016,7 +3982,6 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         end
     end
     
-
     -- DELAYED FALLBACK: If no loot window opens within 5s, manually increment try counters.
     -- Global debounce prevents double-count vs LOOT_OPENED/CHAT_MSG_LOOT paths.
     if addedCount > 0 then
@@ -4107,12 +4072,10 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     end)
 end
 
--- =====================================================================
 -- INSTANCE ENTRY (Encounter Journal helpers kept for debug / TryCounterShowInstanceDrops if invoked manually)
 -- Full boss-by-boss chat dump on zone-in was removed (spam). On entry: optional [WN-Drops] lines if the
 -- instance has any Try Counter mount in DB (wrong difficulty shows red); else a one-line hint only when
 -- at least one drop is trackable on the current difficulty — see TryCounterAnnounceCollectibleMountsOnInstanceEntry.
--- =====================================================================
 
 local function TryCounterAnnounceCollectibleMountsOnInstanceEntry(WN)
     if not WN or not WN.Print then return end
@@ -4834,9 +4797,7 @@ function WarbandNexus:OnTryCounterSpellcastFailed(event, unit, castGUID, spellID
     end)
 end
 
--- =====================================================================
 -- SAFE GUID HELPERS (must be defined before event handlers)
--- =====================================================================
 
 ---Safely get unit GUID (Midnight 12.0: UnitGUID returns secret values for NPC/object units)
 ---@param unit string e.g. "target", "mouseover"
@@ -4896,9 +4857,7 @@ function Fns.IsFishingSourceCompatible(sourceGUIDs)
     return true
 end
 
--- =====================================================================
 -- LOOT READY / LOOT CLOSED HANDLERS
--- =====================================================================
 
 ---LOOT_READY handler (warcraft.wiki.gg/wiki/LOOT_READY).
 ---Fires when looting begins, BEFORE the loot window is shown. Loot APIs valid until LOOT_CLOSED.
@@ -5384,7 +5343,6 @@ function Fns.CollectFishingDropsForZone()
     local mapID = Fns.GetSafeMapID()
     local drops = {}
     local seen = {}  -- dedup: same drop registered at child + parent map would double-count
-    -- IMPORTANT:
     -- Do not auto-merge fishingDropDB[0] (global pool) into every map.
     -- Global entries (e.g. Sea Turtle) would make every zone look like a fishing
     -- try-counter zone and cause wrong attribution in Midnight maps.
@@ -5456,9 +5414,7 @@ Fns.IsInTrackableFishingZone = function()
     return false
 end
 
--- =====================================================================
 -- LOOT SESSION HELPERS (shared by LOOT_READY, LOOT_OPENED, LOOT_CLOSED)
--- =====================================================================
 
 ---True if GUID is a Creature or Vehicle (corpse / NPC loot context). Gathering nodes are GameObject.
 function Fns.UnitGuidLooksLikeMobCorpse(guid)
@@ -5663,7 +5619,6 @@ Fns.PromoteLootReadyToSession = function()
     end
 end
 
--- =====================================================================
 -- CLASSIFY-LOCK-PROCESS ROUTER
 -- Determines exactly ONE route per loot session. Once classified, no
 -- other source type can run. Each classification is based on hard
@@ -5676,7 +5631,6 @@ end
 --   3. FISHING    — IsFishingLoot() API OR structural bobber/pool sources in fishable zone;
 --                   never from cast timer + empty sources alone.
 --   4. NPC/OBJECT — ProcessNPCLoot (exact GUID→ID match only)
--- =====================================================================
 
 ---Classify the loot session source into exactly one route.
 ---@return string route "skip"|"container"|"fishing"|"npc"|"none"
@@ -5868,9 +5822,7 @@ Fns.RouteLootSession = function(self, source, isFromItem)
     end
 end
 
--- =====================================================================
 -- LOOT EVENT HANDLERS
--- =====================================================================
 
 ---LOOT_OPENED handler (warcraft.wiki.gg/wiki/LOOT_OPENED).
 ---Fires AFTER LOOT_READY, but ONLY when the loot frame is actually rendered.
@@ -5885,10 +5837,7 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     Fns.RouteLootSession(self, "opened", isFromItem)
 end
 
-
--- =====================================================================
 -- PROCESSING PATHS
--- =====================================================================
 
 ---Collect ALL unique loot source GUIDs from the loot window.
 ---GetLootSourceInfo(slot) returns guid1, quantity1, guid2, quantity2, ... for merged loot.
@@ -5966,12 +5915,10 @@ Fns.GetAllLootSourceGUIDs = function()
     return uniqueGUIDs
 end
 
--- =====================================================================
 -- SOURCE RESOLVERS (P1-P4) — each populates ctx when a match is found.
 -- ProcessNPCLoot calls them in strict sequence; first match wins.
 -- Every match requires EXACT ID equality (npcID in npcDropDB, objectID
 -- in objectDropDB, etc.). No heuristic guessing.
--- =====================================================================
 
 ---Shared context for source resolution chain.
 ---@class ResolveCtx
@@ -6728,9 +6675,7 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self)
     return true
 end
 
--- =====================================================================
 -- ProcessNPCLoot — orchestrator: P1→P2→P3→P4, first match wins, exact IDs only.
--- =====================================================================
 
 ---DungeonEncounterID for CHAT/loot dedup (must match BuildTryCountSourceKey encounter_*).
 ---@param npcID number|nil
@@ -6837,13 +6782,11 @@ function WarbandNexus:ProcessNPCLoot()
         C_Timer.After(2, Fns.TryDiscoverLockoutQuest)
     end
 
-    -- ===================================================================
     -- HOUSEKEEPING: Mark GUIDs and clean encounter entries BEFORE filtering.
     -- These MUST run even when all drops are collected (#trackable == 0),
     -- otherwise encounter entries leak and block subsequent boss loot in
     -- multi-boss raids, or cause spurious matches on mining/herbing/skinning
     -- LOOT_OPENED events while still inside the instance.
-    -- ===================================================================
 
     local now = GetTime()
     if dedupGUID and (type(dedupGUID) ~= "string" or not dedupGUID:match("^zone_")) then
@@ -7359,9 +7302,7 @@ function WarbandNexus:ProcessContainerLoot()
     Fns.ScanLootForItems(uncollected)
 end
 
--- =====================================================================
 -- KEY RECONCILIATION (fix itemID→nativeID mismatch on obtain)
--- =====================================================================
 
 ---When a collectible is obtained, the WoW API can now resolve the native ID
 ---(mountID/speciesID) reliably. If the TryCounter previously stored counts under
@@ -7436,7 +7377,7 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
     -- Search CollectibleSourceDB for any drop entries matching this type
     -- where the itemID was used as a fallback key in the try count table.
     --
-    -- IMPORTANT: Only include sources whose values are drop-entry arrays.
+    -- Only include sources whose values are drop-entry arrays.
     -- encounterDB has a DIFFERENT format: [encounterID] = { npcID1, npcID2 }
     --   → indexing a number crashes ("attempt to index a number value")
     -- containerDropDB uses nested format: [id] = { drops = { {...} } }
@@ -7500,9 +7441,7 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
     Fns.EmitTryCounterObtainChatFromCollectibleEvent(WarbandNexus, data)
 end
 
--- =====================================================================
 -- TRACKDB MERGE (Custom entries overlay on CollectibleSourceDB)
--- =====================================================================
 
 --- Merge user-defined custom entries into runtime DB tables and
 --- remove entries the user has disabled. Called from InitializeTryCounter
@@ -7609,9 +7548,7 @@ function Fns.MergeTrackDB()
     Fns.BuildTryCounterNpcEligible()
 end
 
--- =====================================================================
 -- STATISTICS SEEDING (WoW Achievement Statistics API)
--- =====================================================================
 
 --- Seed try counts from WoW's Statistics system (GetStatistic).
 --- Per-character accumulation: each character's stats are stored separately,
@@ -7881,9 +7818,7 @@ function WarbandNexus:ForceTryCounterStatisticsSync()
     end
 end
 
--- =====================================================================
 -- CRUD API (Track Item DB management)
--- =====================================================================
 
 --- Add a custom drop entry to the user's trackDB.
 ---@param sourceType string "npc" or "object"
@@ -8116,9 +8051,7 @@ function WarbandNexus:RebuildTrackDB()
     Fns.RebuildMergedStatisticSeedIndex()
 end
 
--- =====================================================================
 -- INITIALIZATION
--- =====================================================================
 
 ---Initialize the automatic try counter system
 function WarbandNexus:InitializeTryCounter()
@@ -8319,9 +8252,7 @@ function WarbandNexus:TryCounterAuditMountStatisticBuckets()
     end
 end
 
--- =====================================================================
 -- DEBUG: Try counter state simulation (/wn trydebug)
--- =====================================================================
 
 ---Print current try-counter state to chat (instance, difficulty, loot sources, target, recentKills, zone, Statistics).
 ---Uses guarded APIs; secret values are shown as "(secret)". Call from /wn trydebug when debug mode is on.
@@ -8434,9 +8365,7 @@ function WarbandNexus:TryCounterDebugReport()
     if #sampleStatIds == 0 then msg("GetStatistic: (no sample stat IDs in DB)") end
 end
 
--- =====================================================================
 -- CHECK TARGET DROPS (debug helper)
--- =====================================================================
 
 ---Check what collectibles drop from current target or mouseover
 ---Prints detailed info about NPC/Object drops, encounter mapping, and collection status
@@ -8655,11 +8584,9 @@ function WarbandNexus:CheckTargetDrops()
     msg("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 end
 
--- =====================================================================
 -- LEGACY MOUNT TRACKER IMPORT (optional cross-addon merge)
 -- Reads a third-party addon global (AceDB profile.groups.mounts); only mount rows with attempts > 0.
 -- Try keys: mount journal ID from C_MountJournal.GetMountFromItem(itemId), else itemId.
--- =====================================================================
 
 local LEGACY_MOUNT_TRACKER_GLOBAL = "Ra" .. "rity"
 
@@ -8927,9 +8854,7 @@ function WarbandNexus:DebugLegacyMountTrackerImportPreview()
     self:Print(format("|cff9370DB[WN]|r Mount rows with attempts: %d", n))
 end
 
--- =====================================================================
 -- NAMESPACE EXPORT
--- =====================================================================
 
 --- Called from DatabaseCleanup (delayed) to drop snapshot rows for removed characters.
 function WarbandNexus:PruneOrphanStatisticSnapshots()

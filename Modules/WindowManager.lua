@@ -97,9 +97,7 @@ the hierarchy above.
 -- Internal registry: { { frame, priority, closeFunc, wasVisibleBeforeCombat } }
 local registry = {}
 
--- ============================================================================
 -- REGISTRATION
--- ============================================================================
 
 --[[
     Register a window with the manager.
@@ -129,9 +127,7 @@ function WindowManager:Unregister(frame)
     end
 end
 
--- ============================================================================
 -- ESC HIERARCHY
--- ============================================================================
 
 --[[
     Close the highest-priority visible window.
@@ -219,9 +215,7 @@ function WindowManager:InstallESCHandler(frame)
     end)
 end
 
--- ============================================================================
 -- STRATA / LEVEL HELPERS
--- ============================================================================
 
 --[[
     Apply the recommended strata and level for a given priority.
@@ -237,9 +231,7 @@ function WindowManager:ApplyStrata(frame, priority)
     end
 end
 
--- ============================================================================
 -- COMBAT HIDE / RESTORE
--- ============================================================================
 
 local combatFrame = CreateFrame("Frame")
 combatFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -283,9 +275,7 @@ combatFrame:SetScript("OnEvent", function(_, event)
     end
 end)
 
--- ============================================================================
 -- DRAG PROTECTION HELPER
--- ============================================================================
 
 local function StartScaledDrag(dragFrame, moveFrame)
     local left = moveFrame:GetLeft()
@@ -350,9 +340,7 @@ function WindowManager:InstallDragHandler(dragFrame, moveFrame, onDragStop)
     end)
 end
 
--- ============================================================================
 -- ESC BINDING (ToggleGameMenu) — works without frame keyboard focus
--- ============================================================================
 --
 -- NEVER assign _G.ToggleGameMenu = function() ... prev() end from addon code: that taints the
 -- binding path and Blizzard’s implementation can hit ADDON_ACTION_FORBIDDEN on protected

@@ -15,9 +15,7 @@ local colorPickerTicker = nil
 local lastR, lastG, lastB = nil, nil, nil
 local colorPickerConfirmed = false
 
---============================================================================
 -- HELPER FUNCTIONS (DRY - Don't Repeat Yourself)
---============================================================================
 
 --- Create a module toggle handler (eliminates 6x duplicate code)
 local function CreateModuleToggleHandler(moduleName)
@@ -1322,7 +1320,7 @@ local options = {
 -- the frame's script handler chain, causing ADDON_ACTION_FORBIDDEN on /reload in TWW.
 local function InstallColorPickerPreviewHook()
     if colorPickerHookInstalled then return end
-    -- CRITICAL: Don't hook Blizzard frames during combat
+    -- Don't hook Blizzard frames during combat
     if InCombatLockdown() then return end
     if not ColorPickerFrame then return end
     colorPickerHookInstalled = true
@@ -1512,7 +1510,5 @@ end
     This duplicate has been removed to prevent conflicts.
 ]]
 
---============================================================================
 -- OVERFLOW WARNING SYSTEM (Removed - now handled in SettingsUI.lua)
---============================================================================
 -- Real-time overflow detection is now integrated directly into the font scale slider

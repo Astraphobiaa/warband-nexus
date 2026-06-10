@@ -9,12 +9,10 @@ local ADDON_NAME, ns = ...
 local Utilities = {}
 ns.Utilities = Utilities
 
---============================================================================
 -- CHARACTER IDENTIFICATION
 -- Canonical persisted identity for subsidiary tables: GetCharacterStorageKey / ResolveCharacterRowKey / GetCanonicalCharacterKey.
 -- Logged-in `db.global.characters` index: CharacterService:ResolveCharactersTableKey(addon); writes / tracking: GetCharactersTablePersistKey; subsidiary caches: ResolveSubsidiaryCharacterKey.
 -- Live writes: CharacterService:ResolveCharactersTableKey(addon) or GetCharacterStorageKey(addon); messages/UI legacy keys: GetCanonicalCharacterKey.
---============================================================================
 
 --- Split a stored "Name-Realm" key using only the **first** hyphen.
 --- Realms may contain hyphens (e.g. Azjol-Nerub); player names do not use `-` in WoW.
@@ -50,7 +48,7 @@ function Utilities:GetCharacterKey(name, realm)
     end
     if not realm or (issecretvalue and issecretvalue(realm)) then return nil end
     
-    -- CRITICAL: Normalize key to prevent duplicates
+    -- Normalize key to prevent duplicates
     -- Remove spaces for consistent matching (e.g. "Twisting Nether" -> "TwistingNether")
     name = name:gsub("%s+", "")
     realm = realm:gsub("%s+", "")
@@ -191,9 +189,7 @@ function Utilities:GetCurrentCharacterDisplayLabel()
     return name
 end
 
---============================================================================
 -- MODULE CHECKS
---============================================================================
 
 --- Check if a module is enabled in settings
 --- Eliminates 20+ duplicate checks across codebase
@@ -209,13 +205,10 @@ function Utilities:IsModuleEnabled(moduleName)
     return modules[moduleName] ~= false
 end
 
---============================================================================
 -- MIDNIGHT 12.0 SECRET-VALUE GUARDS
---============================================================================
 -- WoW 12.0 (Midnight) can return "secret" values from secure APIs; using them
 -- in string ops, comparisons, or as table keys causes ADDON_ACTION_FORBIDDEN.
 -- Use these helpers before any such use. issecretvalue is nil pre-12.0.
---============================================================================
 
 local issecretvalue = issecretvalue
 
@@ -294,9 +287,7 @@ function Utilities:GetLiveCharacterMoneyCopper(fallbackCopper)
     return (type(n) == "number") and n or fallbackCopper
 end
 
---============================================================================
 -- GOLD/CURRENCY HELPERS
---============================================================================
 
 --- Get character's total copper (calculated from gold/silver/copper breakdown)
 --- Prevents SavedVariables 32-bit overflow by using breakdown format
@@ -360,9 +351,7 @@ function Utilities:GetWarbandBankMoney()
     return 0
 end
 
---============================================================================
 -- BANK/BAG HELPERS
---============================================================================
 
 --- Check if a bag ID is a Warband bag
 --- Uses the global WARBAND_BAGS table from namespace
@@ -421,9 +410,7 @@ function Utilities:IsWarbandBankOpen(addon)
     return false
 end
 
---============================================================================
 -- ITEM HELPERS
---============================================================================
 
 --- Get display name for an item (handles caged pets)
 --- Caged pets show "Pet Cage" in item name but have the real pet name in tooltip line 3
@@ -544,18 +531,14 @@ function Utilities:GetPetNameFromTooltip(itemID)
     return nil
 end
 
---============================================================================
 -- BAG UTILITIES
---============================================================================
 
 -- GetBagFingerprint: REMOVED — Dead code, never called from any module.
 -- ItemsCacheService uses hash-based change detection (GenerateItemHash) instead.
 -- This function was iterating all bags 0-4 with GetContainerNumSlots + GetContainerItemInfo
 -- per slot (~100+ API calls) and was redundant with the hash system.
 
---============================================================================
 -- TIME FORMATTING
---============================================================================
 
 --- Format time remaining until a given timestamp
 --- @param resetTime number Unix timestamp of reset time
@@ -565,9 +548,7 @@ function Utilities:FormatTimeUntilReset(resetTime)
     return self:FormatTimeCompact(diff)
 end
 
---============================================================================
 -- TIME FORMATTING
---============================================================================
 
 ---Format a number of seconds into a human-readable compact time string
 ---@param seconds number Seconds remaining
@@ -620,9 +601,7 @@ function Utilities:FormatPlayedTime(seconds)
     return table.concat(parts, " ")
 end
 
---============================================================================
 -- ICON HELPERS
---============================================================================
 
 ---Check if a texture string is an atlas name (no path separators)
 ---@param texturePath string|number|nil The texture value to check
@@ -633,9 +612,7 @@ function Utilities:IsAtlasName(texturePath)
     return not texturePath:find("\\") and not texturePath:find("/")
 end
 
---============================================================================
 -- CURRENCY DISPLAY (season progress — Dawncrests; weekly + bank — Coffer Key Shards)
---============================================================================
 
 local CC_CAP_OPEN = "|cff80ff80"
 local CC_CAPPED   = "|cffff5959"
@@ -720,9 +697,7 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
     return CC_MUTED .. EM_DASH_CUR .. "|r"
 end
 
---============================================================================
 -- OPTIONAL BLIZZARD ADDON LOADING (C_AddOns — Midnight 12.0.5)
---============================================================================
 
 --- Load an optional Blizzard addon via C_AddOns. Uses pcall; no-op while in combat lockdown.
 --- Replaces scattered C_AddOns.LoadAddOn / legacy LoadAddOn branches across modules.
@@ -752,9 +727,7 @@ function Utilities:CheckAddOnLoaded(addonName)
     return false
 end
 
---============================================================================
 -- WOWHEAD URL
---============================================================================
 
 local WOWHEAD_TYPE_MAP = {
     mount       = "spell",
@@ -781,9 +754,7 @@ function Utilities:GetWowheadURL(entityType, id)
     return "https://www.wowhead.com/" .. wowheadType .. "=" .. id
 end
 
---============================================================================
 -- SAFE CALL + CHAT ERROR (user-visible; no BugGrabber dependency)
---============================================================================
 
 --- Run `fn(...)` inside pcall. On failure, print a red-tinted line to chat (WarbandNexus:Print when available).
 --- Use for optional diagnostics and non-critical paths; hot paths should keep local pcall without chat spam.
@@ -823,8 +794,6 @@ function Utilities:SafePlainStringFromEdit(edit)
     return t
 end
 
---============================================================================
 -- EXPORT
---============================================================================
 
 return Utilities

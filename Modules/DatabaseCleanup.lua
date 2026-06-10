@@ -28,9 +28,7 @@ local function CharHasMigratedItemStorage(storage, charKey)
     return false
 end
 
---============================================================================
 -- DATABASE CLEANUP
---============================================================================
 
 ---Clean duplicate characters and deprecated storage
 ---Should be called once on addon load
@@ -54,7 +52,7 @@ function WarbandNexus:CleanupDatabase()
         deprecatedStorage = 0,
     }
     
-    -- Step 1: Remove structurally invalid character entries (repair legacy keys first)
+    -- Remove structurally invalid character entries (repair legacy keys first)
     if self.db.global.characters then
         local toRemove = {}
         
@@ -72,12 +70,12 @@ function WarbandNexus:CleanupDatabase()
         end
     end
     
-    -- Step 1b: Same GUID duplicates first (merge row payloads, remap subsidiaries, single canonical slot).
+    -- Same GUID duplicates first (merge row payloads, remap subsidiaries, single canonical slot).
     if self.db.global.characters and ns.MigrationService and ns.MigrationService.DeduplicateGlobalCharactersByGuid then
         ns.MigrationService:DeduplicateGlobalCharactersByGuid(self.db)
     end
 
-    -- Step 2: Remove duplicate characters by identity (GUID when present, else Name-Realm).
+    -- Remove duplicate characters by identity (GUID when present, else Name-Realm).
     -- Subsidiary tables must remap before dropping a row key (currency/gear/PvE/itemStorage).
     if self.db.global.characters then
         local seen = {}  -- [mergeKey] = survivor table key
@@ -136,7 +134,7 @@ function WarbandNexus:CleanupDatabase()
         end
     end
     
-    -- Step 3: Clean deprecated storage structures (only when v2 itemStorage holds the data)
+    -- Clean deprecated storage structures (only when v2 itemStorage holds the data)
     if self.db.global.personalBanks then
         local pb = self.db.global.personalBanks
         local storage = self.db.global.itemStorage
@@ -162,7 +160,7 @@ function WarbandNexus:CleanupDatabase()
         cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
     end
     
-    -- Step 4: Clean old per-character storage
+    -- Clean old per-character storage
     if self.db.global.characters then
         for charKey, charData in pairs(self.db.global.characters) do
             -- Remove old storage fields (moved to ItemsCacheService)
@@ -179,14 +177,14 @@ function WarbandNexus:CleanupDatabase()
         end
     end
     
-    -- Step 5: Clean old warband bank
+    -- Clean old warband bank
     if self.db.global.warbandBank and self.db.global.warbandBank.items then
         -- Keep gold tracking, remove items (moved to ItemsCacheService)
         self.db.global.warbandBank.items = nil
         cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
     end
 
-    -- Step 6: Try Counter — remove statistic snapshot rows for characters no longer in db (deleted alts).
+    -- Try Counter — remove statistic snapshot rows for characters no longer in db (deleted alts).
     -- TryCounterService registers this method after DatabaseCleanup loads; Core delays cleanup 10s so it exists.
     if self.PruneOrphanStatisticSnapshots then
         self:PruneOrphanStatisticSnapshots()

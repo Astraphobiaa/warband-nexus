@@ -1517,9 +1517,7 @@ function M.CreateModelViewer(parent, width, height)
     return panel
 end
 
--- ============================================================================
 -- DESCRIPTION PANEL (standalone; used only if we need separate panel elsewhere)
--- ============================================================================
 
 function M.CreateDescriptionPanel(parent, width, height)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -1529,9 +1527,7 @@ function M.CreateDescriptionPanel(parent, width, height)
     return panel
 end
 
--- ============================================================================
 -- LOADING STATE PANEL
--- ============================================================================
 
 function M.GetOrCreateLoadingPanel(parent)
     local UI_CreateLoadingStatePanel = ns.UI_CreateLoadingStatePanel
@@ -1548,9 +1544,7 @@ function M.GetOrCreateLoadingPanel(parent)
     return fallback
 end
 
--- ============================================================================
 -- ACHIEVEMENT DETAIL PANEL — Parent/Children, Description, Criteria (replaces model viewer)
--- ============================================================================
 -- Achievement detail header: icon-only To-Do + Track (same WN vertex icons as list rows).
 local ACH_ACTION_ICON_SZ = (ns.CollectionsDetailHeaderLayout and ns.CollectionsDetailHeaderLayout.DETAIL_ACTION_SIZE) or 32
 local ACH_ROW_ADD_WIDTH = ACH_ACTION_ICON_SZ
@@ -2043,9 +2037,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
     return panel
 end
 
--- ============================================================================
 -- SUB-TAB BUTTONS
--- ============================================================================
 
 local SUB_TABS = {
     { key = "recent", label = (ns.L and ns.L["COLLECTIONS_SUBTAB_RECENT"]) or "Recent", icon = "Interface\\Icons\\INV_Misc_Note_01" },
@@ -2191,9 +2183,7 @@ function M.CreateSubTabBar(parent, onTabSelect)
     return bar
 end
 
--- ============================================================================
 -- MOUNT DATA BUILDER (Source Grouped) — From global collection data (DB); fallback to API
--- ============================================================================
 
 -- Pure API: hide internal/placeholder mounts via ShouldExcludeMountFromCollectionBrowse;
 -- cross-faction mounts (isFactionSpecific + shouldHideOnChar) stay visible in browse.
@@ -2730,11 +2720,9 @@ function M.BuildGroupedToyData(searchText, showCollected, showUncollected, optio
     return grouped
 end
 
--- ============================================================================
 -- DRAW MOUNTS CONTENT
 -- Layout: LEFT = Header + Rows (scroll list), RIGHT = Model viewer (vertical, text inside same frame).
 -- All in Factory containers; responsive width/height from window.
--- ============================================================================
 
 local CONTENT_GAP = LAYOUT.CARD_GAP or 8
 

@@ -25,9 +25,7 @@ end
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
---============================================================================
 -- PIXEL PERFECT HELPERS
---============================================================================
 
 -- Cached pixel scale (calculated once per UI load, reused everywhere)
 -- Cache for pixel scale (automatically invalidated on scale changes)
@@ -107,9 +105,7 @@ scaleHandler:SetScript("OnEvent", function(self, event)
     end)
 end)
 
---============================================================================
 -- COLOR CONSTANTS
---============================================================================
 
 -- Calculate all theme variations from a master color
 local function CalculateThemeColors(masterR, masterG, masterB)
@@ -297,9 +293,7 @@ ns.UI_MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
     "stats",
 }
 
---============================================================================
 -- PLAN UI COLORS (factory-standardized for Plans, WN Plan, Collections achievement UIs)
---============================================================================
 ns.PLAN_UI_COLORS = {
     completed = "|cff44ff44",       -- criteria completed (green tick)
     incomplete = "|cffffffff",      -- criteria incomplete
@@ -320,9 +314,7 @@ local function GetColors()
     return COLORS
 end
 
---============================================================================
 -- SPACING CONSTANTS (Standardized across all tabs)
---============================================================================
 
 -- Unified spacing constants (UPPER_CASE standard)
 local UI_SPACING = {
@@ -671,9 +663,7 @@ function ns.UI_GetVerticalScrollbarLaneReserve()
     return col + gap
 end
 
---============================================================================
 -- PACKAGED UI ICONS (Media/*.tga — vertex-tinted stroke art)
---============================================================================
 
 local WN_ICON_PATHS = nil
 
@@ -1047,9 +1037,7 @@ function ns.UI_CreateIconActionButton(parent, size, iconKey, opts)
     return btn
 end
 
---============================================================================
 -- COLLAPSE / EXPAND CHEVRON (shared control — single Button, one texture, state = packaged icon)
---============================================================================
 
 local function WnCollapseExpandApply(tex, isExpanded)
     if not tex then return end
@@ -1104,9 +1092,7 @@ function ns.UI_CreateCollapseExpandControl(parent, isExpanded, opts)
     return btn
 end
 
---============================================================================
 -- PLANS TAB (To-Do List expandable rows + Browse grid cards): single source of truth
---============================================================================
 local PLANS_GRID_SPACING = UI_SPACING.CARD_GAP or 8
 
 --- @class PlansCardMetrics
@@ -1295,9 +1281,7 @@ function ns.UI_PlansTodoExpandableHeaderHeight(panelWidth, summaryLineCount)
     return math.max(minH, math.min(cap, math.floor(w * 0.10)))
 end
 
---============================================================================
 -- BUTTON SIZE CONSTANTS
---============================================================================
 
 -- Standardized button sizes for "+" buttons and "Added" indicators
 local BUTTON_SIZES = {
@@ -1556,9 +1540,7 @@ function ns.UI_FormatUpgradeTrackMarkup(englishName, displayText, fallbackQualit
     return "|cff" .. hex .. displayText .. "|r"
 end
 
---============================================================================
 -- FACTORY PATTERN (Service-Oriented Architecture)
---============================================================================
 --[[
     Phase 1: Foundation - Factory Pattern Implementation
     
@@ -1585,9 +1567,7 @@ ns.UI.Factory = ns.UI.Factory or {}
 ns.UI.Layout = UI_SPACING  -- Direct reference (no copy, always current)
 ns.UI.Theme = COLORS       -- Direct reference (no copy, always current)
 
---============================================================================
 -- VISUAL SYSTEM (Pixel Perfect 4-Texture Borders)
---============================================================================
 
 -- Registry for all frames with ApplyVisuals (for live color updates)
 -- MUST be initialized before any ApplyVisuals calls
@@ -2488,9 +2468,7 @@ end
 -- Export to namespace
 ns.UI_UpdateBorderColor = UpdateBorderColor
 
---============================================================================
 -- COMMON UI FRAME WRAPPERS (Reusable Components)
---============================================================================
 
 --[[
     Create a notice/error frame with icon, title, and description
@@ -2710,9 +2688,7 @@ ns.UI_CreateNoticeFrame = CreateNoticeFrame
 ns.UI_CreateResultsContainer = CreateResultsContainer
 ns.UI_CreateStatsBar = CreateStatsBar
 
---============================================================================
 -- UI COMPONENT FACTORY (Pixel-Perfect Components with Auto-Border)
---============================================================================
 --[[
     These factory functions create standard UI components with automatic:
     - Pixel-perfect borders (4-texture sandwich method)
@@ -2976,9 +2952,7 @@ ns.UI_CreateStatusBar = CreateStatusBar
 ns.UI_CreateButton = CreateButton
 ns.UI_CreateParagonIcon = CreateParagonIcon
 
---============================================================================
 -- FRAME POOLING SYSTEM (Performance Optimization)
---============================================================================
 -- Reuse frames instead of creating new ones on every refresh
 -- This dramatically reduces memory churn and GC pressure
 
@@ -3009,7 +2983,7 @@ local function AcquireCharacterRow(parent)
         row:SetClipsChildren(true)
     end
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -3060,7 +3034,7 @@ local function AcquireReputationRow(parent, width, rowHeight)
     end
     row:Show()
 
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -3132,13 +3106,13 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         end
     end
     
-    -- CRITICAL: Always set parent when acquiring from pool
+    -- Always set parent when acquiring from pool
     row:SetParent(parent)
     row:SetSize(math.max(1, width or 200), math.max(1, rowHeight or 26))
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -3258,7 +3232,7 @@ local function AcquireItemRow(parent, width, rowHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -3345,7 +3319,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     
-    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
@@ -3431,9 +3405,7 @@ local function ReleaseAllPooledChildren(parent)
     end
 end
 
---============================================================================
 -- UI HELPER FUNCTIONS
---============================================================================
 
 -- Get accent color as hex string
 local function GetAccentHexColor()
@@ -3441,11 +3413,9 @@ local function GetAccentHexColor()
     return string.format("%02x%02x%02x", c[1] * 255, c[2] * 255, c[3] * 255)
 end
 
---============================================================================
 -- PROFESSION CRAFTING QUALITY ATLASES (Midnight — R1 / R2 / R3 chat icons)
 -- Required atlases: Professions-ChatIcon-Quality-12-Tier1 | Tier2 | Tier3
 -- Recipe Companion + Gear tab; tier reflects actual enchant rank.
---============================================================================
 
 local PROFESSION_QUALITY_ATLAS_MIDNIGHT_12 = {
     [1] = "Professions-ChatIcon-Quality-12-Tier1",
@@ -3635,11 +3605,9 @@ end
 
 ns.UI_ApplyCharacterRowClassGradientAccent = ApplyCharacterRowClassGradientAccent
 
---============================================================================
 -- STRETCH ROW VIEWPORT RELAYOUT (shared across tabs)
 -- Tabs register row lists on scrollChild; LayoutCoordinator live resize calls tab adapters
 -- that delegate here. Characters virtual lists use VirtualListModule instead.
---============================================================================
 
 --- Refresh `_wnGradientRefresh` on visible rows (Characters / Professions / PvE chrome).
 function ns.UI_RefreshRegisteredRowGradients(rows)
@@ -4241,9 +4209,7 @@ local function GetTypeIcon(classID)
     return icons[classID] or "Interface\\Icons\\INV_Misc_Gear_01"
 end
 
---============================================================================
 -- CHARACTER ICON HELPERS (Faction, Race, Class)
---============================================================================
 
 --[[
     Get faction icon texture path
@@ -4290,7 +4256,7 @@ end
     @return string - Atlas name
 ]]
 local function GetRaceIcon(raceFile, gender)
-    -- NEW: Use atlas system with gender support
+    -- Use atlas system with gender support
     return GetRaceGenderAtlas(raceFile, gender or 2)  -- Default to male if not provided
 end
 
@@ -4356,9 +4322,7 @@ ns.UI_GetRaceGenderAtlas = GetRaceGenderAtlas
 ns.UI_CreateFactionIcon = CreateFactionIcon
 ns.UI_CreateRaceIcon = CreateRaceIcon
 
--- ============================================================================
 -- HEADER ICON SYSTEM (Standardized icon+border for all tab headers)
--- ============================================================================
 
 -- Centralized icon mapping for all tabs (keys match `Modules/UI.lua` MAIN_TAB_ORDER + legacy aliases).
 local TAB_HEADER_ICONS = {
@@ -4742,9 +4706,7 @@ function ns.UI_ReanchorStandardTabTitleLayout(headerIcon, titleCard, textContain
     end
 end
 
--- ============================================================================
 -- CURRENT CHARACTER ICON (Global, easily customizable)
--- ============================================================================
 
 --[[
     Get the atlas name for "Current Character" icon
@@ -4765,9 +4727,7 @@ end
 -- Export
 ns.UI_GetCurrentCharacterIcon = GetCurrentCharacterIcon
 
--- ============================================================================
 -- CHARACTER-SPECIFIC ICON (Used in headers across multiple tabs)
--- ============================================================================
 
 --[[
     Get the atlas name for "Character-Specific" contexts
@@ -4911,9 +4871,7 @@ end
 ns.UI_GetClassIcon = GetClassIcon
 ns.UI_CreateClassIcon = CreateClassIcon
 
---============================================================================
 -- FAVORITE ICON HELPERS
---============================================================================
 
 -- Constants
 local FAVORITE_ICON_ATLAS = "transmog-icon-favorite"
@@ -4993,9 +4951,7 @@ ns.UI_GetFavoriteIconTexture = GetFavoriteIconTexture
 ns.UI_StyleFavoriteIcon = StyleFavoriteIcon
 ns.UI_CreateFavoriteButton = CreateFavoriteButton
 
---============================================================================
 -- ONLINE INDICATOR HELPERS
---============================================================================
 
 -- Constants
 local ONLINE_ICON_TEXTURE = "Interface\\FriendsFrame\\StatusIcon-Online"
@@ -5084,7 +5040,6 @@ local function ComputeCharactersTitleToolbarReserve()
 end
 
 -- Character sort/filter flyouts: SharedWidgets_CharacterFilter.lua (loaded after this file)
-
 
 local function WnFormatRealmDisplay(raw)
     if not raw or raw == "" then return "" end
@@ -5624,11 +5579,9 @@ function ns.UI_ShowCustomHeaderMembersMenu(anchorFrame, groupId, profile, charac
     end
 end
 
---============================================================================
 -- CUSTOM HEADER DECORATOR (Characters / Professions / PvE single source)
 -- Defined in Characters tab (profile.characterCustomGroups), consumed identically
 -- in related tabs. Layout: [chevron] [icon] [gold-star] [title] ... [add-btn] [count]
---============================================================================
 
 -- Migrate legacy per-tab field names so a header decorated by an older code path
 -- (e.g. ProfessionsUI's `_wnProfSectionGoldStar`/`_wnProfSectionCount`) reuses the
@@ -5889,9 +5842,7 @@ ns.UI_ComputeCharactersTitleToolbarReserve = ComputeCharactersTitleToolbarReserv
 -- Empty state cards: SharedWidgets_EmptyState.lua
 -- Search box: Modules/UI/SearchBoxComponent.lua (loads after SharedWidgets; owns ns.UI_CreateSearchBox).
 
---============================================================================
 -- SHARED UI CONSTANTS
---============================================================================
 
 local UI_CONSTANTS = {
     BUTTON_HEIGHT = 32,  -- Standardized to match search boxes and header elements
@@ -5912,9 +5863,7 @@ function ns.UI_ApplyHeaderToolbarControlHeight(frame)
     frame:SetHeight(UI_CONSTANTS.BUTTON_HEIGHT)
 end
 
---============================================================================
 -- SHARED BUTTON WIDGET
---============================================================================
 
 --[[
     Create a themed button with consistent styling
@@ -5950,13 +5899,9 @@ local function CreateThemedButton(parent, text, width)
     return btn
 end
 
---============================================================================
 -- SHARED CHECKBOX WIDGET
---============================================================================
 
---============================================================================
 -- SHARED TOGGLE INDICATOR (unified base for checkbox & radio)
---============================================================================
 
 -- Shared visual constants for all toggle indicators
 local TOGGLE_SIZE = 16
@@ -6082,9 +6027,7 @@ local function CreateThemedRadioButton(parent, isSelected)
     return radioButton
 end
 
---============================================================================
 -- TABLE ROW FACTORY
---============================================================================
 
 --[[
     Create a generic table row with configurable columns
@@ -6122,9 +6065,7 @@ local function CreateTableRow(parent, width, height, columns)
     return row
 end
 
---============================================================================
 -- VERTICAL SECTION CHAIN (parent-relative X + BOTTOM→TOP stack; Storage / VLM parity)
---============================================================================
 
 --- Anchor `frame` below `prevAnchorFrame` so section height changes stack siblings correctly.
 --- Horizontal position is **parent-relative** (`desiredLeftFromParent`), cancelling the anchor's own indent.
@@ -6148,9 +6089,7 @@ local function ChainSectionFrameBelow(parent, frame, prevAnchorFrame, desiredLef
     end
 end
 
---============================================================================
 -- GAME TOOLTIP + CLASS COLOR HELPERS (Collections Recent, etc.)
---============================================================================
 
 local strupper = string.upper
 
@@ -6263,9 +6202,7 @@ function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
     return "|cffaaaaaa"
 end
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 -- ns.UI_GetQualityHex assigned with GetQualityHex (early export — before FormatUpgradeTrackMarkup)
 ns.UI_GetAccentHexColor = GetAccentHexColor
@@ -6297,9 +6234,7 @@ ns.UI_CreateTableRow = CreateTableRow
 
 -- Modal / external dialogs: authoritative shell in Modules/UI/WindowFactory.lua (`ns.UI_CreateExternalWindow`).
 
---============================================================================
 -- TOOLTIP API
---============================================================================
 
 -- Expose tooltip service API for use in UI modules
 ns.UI_ShowTooltip = function(frame, data)
@@ -6314,9 +6249,7 @@ ns.UI_HideTooltip = function()
     end
 end
 
---============================================================================
 -- TRY COUNT ROW (Factory — same click path as popup everywhere)
---============================================================================
 
 ---@class WnTryCountClickableOptions
 ---@field height number|nil default 18
@@ -6643,9 +6576,7 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     }
 end
 
---============================================================================
 -- TRY COUNT POPUP (Plans / Collections / Tracker)
---============================================================================
 
 local tryCountPopupFrame = nil
 
@@ -6816,9 +6747,7 @@ ns.PixelSnap = PixelSnap
 ns.ResetPixelScale = ResetPixelScale
 ns.SafeColorArray = SafeColorArray
 
---============================================================================
 -- SETTINGS UI HELPERS
---============================================================================
 
 --[[
     Create a bordered section/group container
@@ -6956,9 +6885,7 @@ local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, la
     }
 end
 
---============================================================================
 -- DISABLED MODULE STATE CARD
---============================================================================
 
 -- Creates a centered card showing module disabled state with Warband logo
 -- @param parent: Parent frame to attach to
@@ -7030,9 +6957,7 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     return parentHeight - yOffset
 end
 
---============================================================================
 -- RESET TIMER WIDGET
---============================================================================
 
 -- Creates a standardized reset timer with clock icon
 -- @param parent: Parent frame to attach to
@@ -7105,9 +7030,7 @@ ns.UI_CreateDisabledModuleCard = CreateDisabledModuleCard
 ns.UI_CreateSection = CreateSection
 ns.UI_CreateBorder = CreateBorder
 
---============================================================================
 -- DB VERSION BADGE (Debug Logging)
---============================================================================
 
 ---Creates a small badge showing which DB/cache is being used by this tab
 ---@param parent Frame Parent frame (tab content)
@@ -7182,9 +7105,7 @@ end
 ns.UI_CreateDBVersionBadge = CreateDBVersionBadge
 ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 
---============================================================================
 -- FACTORY METHODS (Standardized Frame Creation)
---============================================================================
 
 -- NOTE: CreateContainer implementation moved to line 4789 (Factory pattern wrapper)
 -- NOTE: CreateButton implementation moved to line 4809 (Factory pattern wrapper)
@@ -8163,9 +8084,7 @@ end
 -- NOTE: CreateEditBox implementation moved to line 4816 (Factory pattern wrapper)
 -- This duplicate implementation was removed to avoid confusion
 
--- ============================================================================
 -- LOADING STATE WIDGETS (Standardized Progress Indicator)
--- ============================================================================
 
 ---Create standardized loading state card with animated spinner and progress bar
 ---@param parent Frame - Parent frame
@@ -8416,9 +8335,7 @@ ns.UI_CreateErrorStateCard = UI_CreateErrorStateCard
 ns.UI_CreateInlineLoadingSpinner = UI_CreateInlineLoadingSpinner
 ns.UI_CreateLoadingStatePanel = UI_CreateLoadingStatePanel
 
---============================================================================
 -- FACTORY PATTERN BRIDGE (ns.UI.Factory.* → Local Functions)
---============================================================================
 -- Bridge ns.UI.Factory calls to internal functions
 -- Ensures PlansUI and other modules can use Factory pattern
 
@@ -8587,7 +8504,6 @@ function ns.UI.Factory:ApplyOnlineCharacterHighlight(frame, isOnline)
         end
     end
 end
-
 
 --- Create a data row with alternating background color.
 --- Standard pattern for creating new rows with proper positioning and alternating bg.
@@ -9103,9 +9019,7 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
     end
 end
 
---============================================================================
 -- WOWHEAD URL COPY POPUP
---============================================================================
 
 local wowheadCopyFrame = nil
 

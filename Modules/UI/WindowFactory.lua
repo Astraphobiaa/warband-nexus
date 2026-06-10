@@ -17,7 +17,6 @@
 
 local ADDON_NAME, ns = ...
 
-
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 -- Import dependencies from namespace
@@ -29,16 +28,12 @@ local CreateIcon = ns.UI_CreateIcon
 local CreateButton = ns.UI_CreateButton
 local Factory = ns.UI and ns.UI.Factory
 
---============================================================================
 -- RUNTIME DEPENDENCY VALIDATION
---============================================================================
 
 -- Defer validation to first use (allows SharedWidgets to complete loading)
 -- Dependencies checked at runtime in CreateExternalWindow function
 
---============================================================================
 -- EXTERNAL WINDOW SYSTEM
---============================================================================
 
 ---Creates a standardized external window/dialog with modern UI features
 ---@param config table Configuration table
@@ -151,7 +146,7 @@ local function CreateExternalWindow(config)
     local iconIsAtlas = config.iconIsAtlas or false
     local iconFrame = CreateIcon(header, config.icon, 28, iconIsAtlas, nil, true)
     iconFrame:SetPoint("LEFT", 12, 0)
-    iconFrame:Show()  -- CRITICAL: Show the header icon!
+    iconFrame:Show()  -- Show the header icon!
     
     -- Title
     local titleText = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
@@ -264,9 +259,7 @@ local function CreateExternalWindow(config)
     return dialog, contentFrame, header
 end
 
---============================================================================
 -- ACHIEVEMENT CRITERIA POPUP (Shared, pooled frame)
---============================================================================
 
 local achievementPopup = nil  -- Single shared frame, reused across clicks
 
@@ -600,9 +593,7 @@ local function HideAchievementPopup()
     end
 end
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 ns.UI_CreateExternalWindow = CreateExternalWindow
 ns.UI_ShowAchievementPopup = ShowAchievementPopup

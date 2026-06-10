@@ -34,9 +34,7 @@ end
 local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 
--- ============================================================================
 -- COLLECTION RULES REGISTRY
--- ============================================================================
 
 local CollectionRules = {}
 
@@ -48,9 +46,7 @@ local CollectionRules = {}
     - GetCharacterEligibility(itemID): Returns eligibility info table
 ]]
 
--- ============================================================================
 -- TRANSMOG RULES
--- ============================================================================
 
 CollectionRules.TRANSMOG = {
     --[[
@@ -146,9 +142,7 @@ CollectionRules.TRANSMOG = {
     end
 }
 
--- ============================================================================
 -- MOUNT RULES
--- ============================================================================
 
 CollectionRules.MOUNT = {
     --[[
@@ -245,9 +239,7 @@ CollectionRules.MOUNT = {
     end
 }
 
--- ============================================================================
 -- PET RULES
--- ============================================================================
 
 CollectionRules.PET = {
     --[[
@@ -301,9 +293,7 @@ CollectionRules.PET = {
     end
 }
 
--- ============================================================================
 -- TOY RULES
--- ============================================================================
 
 CollectionRules.TOY = {
     --[[
@@ -355,9 +345,7 @@ CollectionRules.TOY = {
     end
 }
 
--- ============================================================================
 -- ILLUSION RULES
--- ============================================================================
 
 CollectionRules.ILLUSION = {
     --[[
@@ -424,9 +412,7 @@ CollectionRules.ILLUSION = {
     end
 }
 
--- ============================================================================
 -- ACHIEVEMENT RULES
--- ============================================================================
 
 CollectionRules.ACHIEVEMENT = {
     --[[
@@ -473,9 +459,7 @@ CollectionRules.ACHIEVEMENT = {
     end
 }
 
--- ============================================================================
 -- TITLE RULES
--- ============================================================================
 
 CollectionRules.TITLE = {
     --[[
@@ -522,9 +506,7 @@ CollectionRules.TITLE = {
     end
 }
 
--- ============================================================================
 -- PUBLIC API
--- ============================================================================
 
 --[[
     Get collection rule by type
@@ -585,9 +567,7 @@ function WarbandNexus:GetCollectionEligibility(collectionType, id)
     return rule.GetCharacterEligibility(id)
 end
 
--- ============================================================================
 -- UNOBTAINABLE FILTERS (API-only — Pure API approach, no keyword/blocklist logic)
--- ============================================================================
 --[[
     "Unobtainable" / "hidden" determination is delegated to the WoW API:
       - Mount: shouldHideOnChar unless isFactionSpecific (cross-faction catalog stays visible)
@@ -620,9 +600,7 @@ function CollectionRules.UnobtainableFilters:IsUnobtainableIllusion(_)
     return false
 end
 
--- ============================================================================
 -- EXPORT TO NAMESPACE
--- ============================================================================
 
 ns.CollectionRules = CollectionRules
 

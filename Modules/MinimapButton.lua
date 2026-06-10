@@ -31,9 +31,7 @@ end
 local LDB = LibStub("LibDataBroker-1.1", true)
 local LDBI = LibStub("LibDBIcon-1.0", true)
 
--- ============================================================================
 -- DATA BROKER OBJECT
--- ============================================================================
 
 --[[
     Initialize LibDataBroker object
@@ -275,9 +273,7 @@ function WarbandNexus:UpdateMinimapTooltip()
     -- Note: Uses consolidated UpdateTooltip function via OnTooltipShow callback
 end
 
--- ============================================================================
 -- RIGHT-CLICK MENU
--- ============================================================================
 
 --[[
     Show right-click context menu
@@ -380,9 +376,7 @@ function WarbandNexus:ShowMinimapMenu(anchorFrame)
     end
 end
 
--- ============================================================================
 -- SLASH COMMANDS
--- ============================================================================
 
 --[[
     Legacy hook: minimap visibility is toggled from Settings → Minimap (no slash command).

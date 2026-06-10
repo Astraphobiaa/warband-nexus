@@ -56,9 +56,7 @@ local tinsert = table.insert
 local tremove = table.remove
 local issecretvalue = issecretvalue
 
--- ============================================================================
 -- MODULE DEFINITION
--- ============================================================================
 
 local Profiler = {
     enabled = false,
@@ -272,9 +270,7 @@ end
 ns.ProfilerPrint = ProfilerPrint
 local print = ProfilerPrint
 
--- ============================================================================
 -- COLOR CONSTANTS
--- ============================================================================
 
 local C_HEADER  = "|cff00ccff"  -- cyan
 local C_LABEL   = "|cffffd700"  -- gold
@@ -655,9 +651,7 @@ function Profiler:EnsureDevWindow()
     self._devWindowScroll = scroll
 end
 
--- ============================================================================
 -- CORE TIMING API
--- ============================================================================
 
 ---Start timing a named operation.
 ---@param label string Unique operation name
@@ -766,14 +760,12 @@ function Profiler:StopAsync(label)
     return elapsed
 end
 
--- ============================================================================
 -- BLIZZARD EVENT / HANDLER TRACE (dev-only; WN_TRACE buffer)
 -- Community payload reference (verify in-game when uncertain):
 --   CURRENCY_DISPLAY_UPDATE — https://warcraft.wiki.gg/wiki/CURRENCY_DISPLAY_UPDATE
 --   UPDATE_FACTION — https://warcraft.wiki.gg/wiki/UPDATE_FACTION (no payload)
 --   MAJOR_FACTION_RENOWN_LEVEL_CHANGED — https://warcraft.wiki.gg/wiki/MAJOR_FACTION_RENOWN_LEVEL_CHANGED
 --   CHAT_MSG_COMBAT_FACTION_CHANGE — https://warcraft.wiki.gg/wiki/CHAT_MSG_COMBAT_FACTION_CHANGE (17 args; text/guid may be secret)
--- ============================================================================
 
 --- Format WoW event payloads for logs (no raw text for possible API secrets).
 ---@return string
@@ -844,9 +836,7 @@ function Profiler:TraceInternalHandler(label, startTime, extraDetail)
     self:_Record(self:SliceLabel(self.CAT.MSG, "evt_" .. tostring(label)), elapsed)
 end
 
--- ============================================================================
 -- INTERNAL RECORDING
--- ============================================================================
 
 ---Record a timing measurement for a label.
 ---@param label string Operation name
@@ -872,9 +862,7 @@ function Profiler:_Record(label, elapsedMs)
     if elapsedMs > e.maxMs then e.maxMs = elapsedMs end
 end
 
--- ============================================================================
 -- FRAME SPIKE DETECTION
--- ============================================================================
 
 ---@return number
 function Profiler:_SpikeCount()
@@ -956,9 +944,7 @@ function Profiler:SetFrameTracking(enable)
     end
 end
 
--- ============================================================================
 -- DISPLAY / REPORTING
--- ============================================================================
 
 ---Print the performance summary table to chat.
 function Profiler:PrintSummary()
@@ -1134,9 +1120,7 @@ function Profiler:Reset()
     print(PREFIX .. C_GOOD .. "All profiling data cleared." .. C_R)
 end
 
--- ============================================================================
 -- SLASH COMMAND HANDLER
--- ============================================================================
 
 ---Handle /wn profiler subcommands.
 ---@param addon table WarbandNexus addon instance
@@ -1347,9 +1331,7 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
     end
 end
 
--- ============================================================================
 -- CONVENIENCE: Auto-instrument common patterns
--- ============================================================================
 
 ---Create a profiled version of a function (useful for hooking).
 ---@param label string Operation name

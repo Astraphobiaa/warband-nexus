@@ -76,9 +76,7 @@ local function GetIllusionCollectedForPlanId(illusionKey)
     return illusionCollectedById[illusionKey] == true
 end
 
--- ============================================================================
 -- PLAN TYPES
--- ============================================================================
 
 local PLAN_TYPES = {
     MOUNT = "mount",
@@ -93,9 +91,7 @@ local PLAN_TYPES = {
 
 ns.PLAN_TYPES = PLAN_TYPES
 
--- ============================================================================
 -- PLAN LOOKUP INDEX (O(1) Hash Table)
--- ============================================================================
 --[[
     O(1) hash table for IsPlanned() lookups.
     Without this, each browse card does O(n) scan through all plans.
@@ -292,9 +288,7 @@ function WarbandNexus:RefreshPlanCache()
     end
 end
 
--- ============================================================================
 -- PLAN TRACKING & NOTIFICATIONS
--- ============================================================================
 
 --[[
     Initialize plan completion tracking
@@ -348,9 +342,7 @@ function WarbandNexus:InitializePlanTracking()
     end)
 end
 
--- ============================================================================
 -- PRE-RESOLVE PLAN DATA (Login-Time API Resolution)
--- ============================================================================
 --[[
     Resolve all plan display data (name, icon, source, progress) at login time
     and store results in DB. The Plans tab then reads ONLY from DB fields.
@@ -841,9 +833,7 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
     self:Print("|cff00ff00" .. ((ns.L and ns.L["PLAN_COMPLETED"]) or "Plan completed: ") .. "|r" .. displayName)
 end
 
--- ============================================================================
 -- WEEKLY VAULT TRACKING
--- ============================================================================
 
 --[[
     Get weekly vault progress from API
@@ -1638,8 +1628,6 @@ function WarbandNexus:OnPvEUpdateCheckPlans()
     end
 end
 
-
-
 ---Check if a Blizzard daily reset has occurred since the given timestamp.
 ---Uses C_DateAndTime.GetSecondsUntilDailyReset to derive the last reset moment.
 ---@param sinceTimestamp number epoch seconds
@@ -1752,9 +1740,7 @@ function WarbandNexus:CheckWeeklyReset()
     end
 end
 
--- ============================================================================
 -- CRUD OPERATIONS
--- ============================================================================
 
 ---Build AddPlan() payload for a journal achievement (single source for Blizzard UI quick-add).
 ---@param achievementID number
@@ -2341,15 +2327,10 @@ function WarbandNexus:IsTitlePlanned(titleID)
     return self.planCache.titleIDs[titleID] == true
 end
 
-
--- ============================================================================
 -- COLLECTION DATA FETCHERS
--- ============================================================================
 
--- ============================================================================
 -- SOURCE TEXT KEYWORDS (LOCALIZED)
 -- Uses Blizzard globals and L[] keys to match API-localized source text
--- ============================================================================
 local function BuildSourceKeywords()
     local L = ns.L
     local keywords = {}
@@ -2435,10 +2416,8 @@ local function HasSourceKeyword(text)
     return false
 end
 
--- ============================================================================
 -- CURRENCY AFFORDABILITY CHECK
 -- Uses stored currency data from db.global.currencyData (CurrencyCacheService)
--- ============================================================================
 
 -- Strip all WoW escape sequences from text for clean parsing
 local function StripAllEscapes(text)
@@ -2452,12 +2431,7 @@ local function StripAllEscapes(text)
     return result
 end
 
--- ============================================================================
-
-
--- ============================================================================
 -- RECIPE MATERIAL CHECKER
--- ============================================================================
 
 --[[
     Get recipe schematic (reagents) for a recipe
@@ -2611,9 +2585,7 @@ function WarbandNexus:FindItemLocations(itemID)
     return self:CheckMaterialsAcrossWarband({{ itemID = itemID, quantity = 1 }})[1]
 end
 
--- ============================================================================
 -- PLAN PROGRESS CHECKING
--- ============================================================================
 
 --[[
     Check progress for a plan
@@ -2743,9 +2715,7 @@ function WarbandNexus:IsActivePlanComplete(plan)
     return false
 end
 
--- ============================================================================
 -- MULTI-SOURCE PARSER
--- ============================================================================
 
 --[[
     Strip WoW escape sequences from text for clean display
@@ -2995,9 +2965,7 @@ function WarbandNexus:ParseMultipleSources(sourceText)
     return sources
 end
 
--- ============================================================================
 -- CHAT LINKS (To-Do plan cards: mount / pet / toy / achievement / item types)
--- ============================================================================
 
 local function SafeChatLinkString(link)
     if not link or type(link) ~= "string" or link == "" then return nil end
@@ -3129,9 +3097,4 @@ function WarbandNexus:InsertPlanChatLink(plan)
         pcall(ChatEdit_InsertLink, link)
     end
 end
-
-
-
-
-
 

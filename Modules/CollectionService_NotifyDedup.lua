@@ -18,9 +18,7 @@ local function DebugPrintf(fmt, ...)
         DebugPrint(string.format(fmt, ...))
     end
 end
--- ============================================================================
 -- RING BUFFER: O(1) bounded dedup cache
--- ============================================================================
 -- Fixed-size circular array. When full, the oldest entry is evicted automatically.
 -- Supports time-based cooldown checks via the stored timestamp.
 
@@ -111,9 +109,7 @@ local NOTIFICATION_COOLDOWN = 5    -- By type_id: 5 seconds
 local NAME_DEBOUNCE_COOLDOWN = 2   -- By item name: 2 seconds
 local BAG_PET_NAME_COOLDOWN = 60   -- Pet name fallback: 60 seconds
 
--- ============================================================================
 -- LAYER 0: Persistent DB (notifiedCollectibles) — permanent dedup
--- ============================================================================
 -- Records every collectible that was successfully notified. Prevents
 -- duplicate notifications across sessions (e.g. WoW re-fires NEW_TOY_ADDED
 -- on login for already-owned toys). Keys: "type_id" → true.
@@ -150,9 +146,7 @@ local function MarkAsPermanentlyNotified(collectibleType, collectibleID)
     WarbandNexus.db.global.notifiedCollectibles[key] = true
 end
 
--- ============================================================================
 -- LAYER 1: Persistent DB (bagDetectedCollectibles) — unchanged semantics
--- ============================================================================
 
 ---Initialize bag-detected collectibles DB (persistent across reloads)
 local function InitializeBagDetectedDB()
@@ -201,9 +195,7 @@ local function MarkAsDetectedInBag(collectibleType, collectibleID)
     DebugPrintf("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED", collectibleType, collectibleID)
 end
 
--- ============================================================================
 -- LAYER 2: Session ring buffer — O(1) dedup for all short-term checks
--- ============================================================================
 
 ---Check if an item name was recently shown (2s debounce)
 ---@param itemName string The item/collectible name

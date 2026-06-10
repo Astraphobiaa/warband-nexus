@@ -33,9 +33,7 @@ local FontManager = {}
     CreateFontString: FontManager:CreateFontString(parent, FontManager:GetFontRole("gearStatLabel"), layer)
 ]]
 FontManager.FONT_ROLE = {
-    --------------------------------------------------------------------
     -- Paylaşılan sekme / başlık / diyalog (tüm UI tek yerden)
-    --------------------------------------------------------------------
     tabTitlePrimary = "header",
     tabSubtitle = "subtitle",
     sectionCollapsibleTitle = "title",
@@ -76,9 +74,7 @@ FontManager.FONT_ROLE = {
     cardHeaderLabel = "subtitle",
     cardHeaderValue = "body",
 
-    --------------------------------------------------------------------
     -- Ana pencere başlığı, nav sekmeleri, shell (UI.lua / WindowFactory)
-    --------------------------------------------------------------------
     windowChromeTitle = "title",
     mainNavTabLabel = "body",
     mainNavTabCount = "small",
@@ -92,17 +88,13 @@ FontManager.FONT_ROLE = {
     loadingBarSecondaryText = "body",
     searchEditBoxBody = "body",
 
-    --------------------------------------------------------------------
     -- PvE sekmesi — kart başlığı / vault tracker etiketi
-    --------------------------------------------------------------------
     pveVaultCardCharName = "title",
     pveVaultCardRealm = "subtitle",
     pveVaultCardStatus = "subtitle",
     pveTitleCardCheckboxLabel = "body",
 
-    --------------------------------------------------------------------
     -- Gear tab — panels & stats (3 sütun grid ile uyumlu body/small dengesi)
-    --------------------------------------------------------------------
     gearPanelTitle = "title",
     gearSectionTitle = "title",
     gearStatLabel = "body",
@@ -139,9 +131,7 @@ function FontManager:GetFontRole(roleKey)
     return "body"
 end
 
---============================================================================
 -- CONFIGURATION
---============================================================================
 
 -- Migration: map old DB path values to LSM keys (for profiles created before LSM integration)
 local PATH_TO_LSM_KEY = {
@@ -183,9 +173,7 @@ if LSM and LSM.MediaType and LSM.LOCALE_BIT_western then
     LSM:Register("font", "Expressway", "Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf", LSM.LOCALE_BIT_western)
 end
 
---============================================================================
 -- FONT PRELOADING (forces WoW to load .ttf files during loading screen)
---============================================================================
 -- CreateFont() objects tell WoW's engine to load font files BEFORE PLAYER_LOGIN.
 -- Without this, custom .ttf files are loaded lazily on first SetFont() call,
 -- causing blank text on early UI elements (e.g., notifications) because the GPU
@@ -229,12 +217,10 @@ local AA_OPTIONS = {
     THICKOUTLINE = "THICKOUTLINE",
 }
 
---============================================================================
 -- PRIVATE HELPERS
---============================================================================
 
 -- Get active scale multiplier from user settings
--- CRITICAL: Safe fallback if DB not initialized yet (prevents ghost window bug)
+-- Safe fallback if DB not initialized yet (prevents ghost window bug)
 local function GetScaleMultiplier()
     -- GUARD: Check if namespace and DB exist (race condition protection)
     if not ns or not ns.db then
@@ -286,9 +272,7 @@ local function GetFontResolutionNormalization()
     return cachedFontResNorm
 end
 
---============================================================================
 -- FONT WARM-UP (forces GPU to rasterize custom fonts before use)
---============================================================================
 
 -- Reusable off-screen frame for font preloading
 local warmupFrame = nil
@@ -371,16 +355,12 @@ warmupLoader:SetScript("OnEvent", function(self)
     WarmupAllFonts()
 end)
 
---============================================================================
 -- FONT REGISTRY (for live updates)
---============================================================================
 
 -- Registry of all FontStrings created via FontManager
 local FONT_REGISTRY = {}
 
---============================================================================
 -- PUBLIC API
---============================================================================
 
 --[[
     Calculate final font size for a given category

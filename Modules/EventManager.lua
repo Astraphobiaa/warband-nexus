@@ -18,9 +18,7 @@ local E = Constants.EVENTS
 -- Unique AceEvent handler identity for EventManager
 local EventManagerEvents = {}
 
--- ============================================================================
 -- EVENT CONFIGURATION
--- ============================================================================
 
 local EVENT_CONFIG = {
     -- Throttle delays (seconds) - minimum time between processing
@@ -32,9 +30,7 @@ local EVENT_CONFIG = {
 
 local activeTimers = {}    -- Active throttle/debounce timers
 
--- ============================================================================
 -- THROTTLE & DEBOUNCE UTILITIES
--- ============================================================================
 
 --[[
     Throttle a function call
@@ -80,9 +76,7 @@ local function Debounce(key, interval, func)
     end)
 end
 
--- ============================================================================
 -- PUBLIC API (WarbandNexus Event Handlers)
--- ============================================================================
 
 --[[
     Debounced COLLECTION_CHANGED handler
@@ -101,7 +95,6 @@ function WarbandNexus:OnCollectionChangedDebounced(event, ...)
     -- Invalidate collection cache for any other collection change
     self:InvalidateCollectionCache()
 end
-
 
 --[[
     Debounced PET_LIST_CHANGED handler
@@ -179,10 +172,7 @@ function WarbandNexus:OnItemLevelChanged()
     end)
 end
 
-
--- ============================================================================
 -- REPUTATION & CURRENCY EVENT OWNERSHIP
--- ============================================================================
 -- UPDATE_FACTION / MAJOR_FACTION_RENOWN_LEVEL_CHANGED: owned by ReputationCacheService
 -- CURRENCY_DISPLAY_UPDATE / CHAT_MSG_CURRENCY: owned by CurrencyCacheService
 -- Do NOT register or handle these here — single owner prevents duplicate processing.
@@ -236,9 +226,6 @@ function WarbandNexus:OnMoneyChanged()
         end)
     end
 end
-
-
-
 
 -- REMOVED: WarbandNexus:CHALLENGE_MODE_COMPLETED / MYTHIC_PLUS_NEW_WEEKLY_RECORD
 -- These were orphaned methods never registered as AceEvent handlers.
@@ -330,9 +317,7 @@ end
 -- REMOVED: WarbandNexus:OnPvEDataChangedThrottled
 -- Orphaned method — no call sites. PvECacheService handles PvE event throttling directly.
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 --[[
     UI Scale/Resolution change handler

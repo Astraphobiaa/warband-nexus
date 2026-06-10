@@ -27,9 +27,7 @@ local function GetTooltipUISpacing()
     return { SIDE_MARGIN = 10, TOP_MARGIN = 8, AFTER_ELEMENT = 8 }
 end
 
--- ============================================================================
 -- TOOLTIP FACTORY
--- ============================================================================
 
 ns.UI = ns.UI or {}
 ns.UI.TooltipFactory = {}
@@ -174,9 +172,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.paddingV = spacing.SIDE_MARGIN
     frame.hasIcon = false
     
-    -- ========================================================================
     -- API: Clear all content
-    -- ========================================================================
     frame.Clear = function(self)
         -- Hide icon
         self.iconFrame:Hide()
@@ -310,9 +306,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         self._layoutDirty = false
     end
     
-    -- ========================================================================
     -- API: Set icon (top-left corner)
-    -- ========================================================================
     frame.SetIcon = function(self, iconPath, isAtlas)
         local tex = self.iconFrame.texture
         if iconPath then
@@ -341,9 +335,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         self.iconFrame:Show()
     end
     
-    -- ========================================================================
     -- API: Set title (always at top, next to icon if present)
-    -- ========================================================================
     frame.SetTitle = function(self, text, r, g, b)
         local titleLine = self:GetOrCreateTitleLine()
         titleLine:SetText(text or "")
@@ -390,9 +382,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         RequestLayout(self)
     end
     
-    -- ========================================================================
     -- API: Set description (below title, smaller font, wrapping)
-    -- ========================================================================
     frame.SetDescription = function(self, text, r, g, b)
         if not text or text == "" then return end
         local descLine = self:GetOrCreateDescLine()
@@ -404,9 +394,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         descLine:Show()
     end
     
-    -- ========================================================================
     -- API: Add single text line
-    -- ========================================================================
     frame.AddLine = function(self, text, r, g, b, wrap)
         local line = self:GetOrCreateLine()
         line:SetText(text)
@@ -432,9 +420,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         RequestLayout(self)
     end
     
-    -- ========================================================================
     -- API: Add double-column line (left/right text)
-    -- ========================================================================
     frame.AddDoubleLine = function(self, leftText, rightText, lr, lg, lb, rr, rg, rb, opts)
         opts = opts or {}
         local dLine = self:GetOrCreateDoubleLine()
@@ -505,9 +491,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         self:AddSpacer(6)
     end
 
-    -- ========================================================================
     -- API: Add spacer
-    -- ========================================================================
     frame.AddSpacer = function(self, height)
         height = height or 6
         local spacerLine = self:GetOrCreateLine()
@@ -519,9 +503,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         RequestLayout(self)
     end
     
-    -- ========================================================================
     -- INTERNAL: Get or create title line (larger font)
-    -- ========================================================================
     frame.GetOrCreateTitleLine = function(self)
         if not self.titleLine then
             self.titleLine = FontManager:CreateFontString(self, "large", "OVERLAY")
@@ -530,9 +512,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         return self.titleLine
     end
     
-    -- ========================================================================
     -- INTERNAL: Get or create description line
-    -- ========================================================================
     frame.GetOrCreateDescLine = function(self)
         if not self.descLine then
             self.descLine = FontManager:CreateFontString(self, "body", "OVERLAY")
@@ -541,9 +521,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         return self.descLine
     end
     
-    -- ========================================================================
     -- INTERNAL: Get or create single line from pool
-    -- ========================================================================
     frame.GetOrCreateLine = function(self)
         if #self.linePool > 0 then
             return table.remove(self.linePool)
@@ -553,9 +531,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         return line
     end
     
-    -- ========================================================================
     -- INTERNAL: Get or create double line from pool
-    -- ========================================================================
     frame.GetOrCreateDoubleLine = function(self)
         if #self.doubleLinePool > 0 then
             return table.remove(self.doubleLinePool)
@@ -568,9 +544,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         return dLine
     end
 
-    -- ========================================================================
     -- INTERNAL: Vault summary row — fixed columns (name | realm | raid | m+ | world)
-    -- ========================================================================
     frame.GetOrCreateVaultGridRow = function(self)
         if #self.vaultGridLinePool > 0 then
             return table.remove(self.vaultGridLinePool)
@@ -640,9 +614,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         RequestLayout(self)
     end
 
-    -- ========================================================================
     -- INTERNAL: Three-column vault track row (Raid / M+ / World only)
-    -- ========================================================================
     frame.GetOrCreateVaultTrackRow = function(self)
         if #self.vaultTrackLinePool > 0 then
             return table.remove(self.vaultTrackLinePool)
@@ -686,9 +658,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         RequestLayout(self)
     end
     
-    -- ========================================================================
     -- INTERNAL: Layout - header (icon + title + desc) then body lines
-    -- ========================================================================
     frame.LayoutLines = function(self)
         local spacing = GetTooltipUISpacing()
         local padding = self.paddingH or (spacing.SIDE_MARGIN + 2)
@@ -1028,9 +998,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         self:SetHeight(self.currentHeight)
     end
     
-    -- ========================================================================
     -- API: Update theme colors
-    -- ========================================================================
     frame.UpdateTheme = function(self)
         COLORS = ns.UI_COLORS or {
             bgCard = {0.08, 0.08, 0.10, 1},

@@ -72,12 +72,10 @@ local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 -- Performance: Local function references
 local format = string.format
 
---============================================================================
 -- COLLECTION STATS CACHE
 -- Mount/Pet/Toy iteration is extremely expensive (1000+ API calls per frame).
 -- Cache results with a short TTL so visual-only operations like expand/collapse
 -- don't re-run thousands of synchronous WoW API calls.
---============================================================================
 local STATS_CACHE_TTL = 60  -- seconds before cache is considered stale (invalidated on WN_COLLECTION_UPDATED)
 local _statsCache = nil     -- { mounts={}, pets={}, toys={}, achievements={}, timestamp=number }
 
@@ -113,9 +111,7 @@ local function GetCachedCollectionStats()
     return _statsCache
 end
 
---============================================================================
 -- DRAW STATISTICS (Modern Design)
---============================================================================
 
 function WarbandNexus:DrawStatistics(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame

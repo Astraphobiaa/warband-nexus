@@ -12,9 +12,7 @@ local E = ns.Constants.EVENTS
 local lastActionTime = 0
 local ACTION_COOLDOWN = 2
 
---============================================================================
 -- SETTINGS RESOLUTION: per-character override → profile fallback
---============================================================================
 
 local function GetEffectiveGoldSettings()
     if not WarbandNexus.db then return nil end
@@ -25,9 +23,7 @@ local function GetEffectiveGoldSettings()
     return WarbandNexus.db.profile and WarbandNexus.db.profile.goldManagement
 end
 
---============================================================================
 -- CORE LOGIC
---============================================================================
 
 local function PerformGoldManagement()
     local settings = GetEffectiveGoldSettings()
@@ -90,13 +86,11 @@ local function PerformGoldManagement()
     end
 end
 
---============================================================================
 -- EVENTS
 -- Gold management runs once per bank open (ItemsCacheService BANKFRAME_OPENED →
 -- TriggerGoldManagement), not on every PLAYER_MONEY tick — so users can move
 -- gold manually for the rest of the session. WN_GOLD_MANAGEMENT_CHANGED applies
 -- new settings immediately while the bank is open.
---============================================================================
 
 function WarbandNexus:WN_GOLD_MANAGEMENT_CHANGED()
     lastActionTime = 0
@@ -105,9 +99,7 @@ function WarbandNexus:WN_GOLD_MANAGEMENT_CHANGED()
     end
 end
 
---============================================================================
 -- INIT
---============================================================================
 
 function WarbandNexus:InitializeGoldManagementService()
     self:RegisterMessage(E.GOLD_MANAGEMENT_CHANGED)

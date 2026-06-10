@@ -38,9 +38,7 @@ local function PrintSlashHelp(addon)
     end
 end
 
---============================================================================
 -- MAIN SLASH COMMAND HANDLER
---============================================================================
 
 --- Main slash command router
 --- Handles all /wn and /warbandnexus commands
@@ -498,9 +496,7 @@ function CommandService:HandleSlashCommand(addon, input)
     end
 end
 
---============================================================================
 -- UI MAP DEBUG (reminder zone picker / C_Map)
---============================================================================
 
 local function uiMapSafeName(info)
     if not info then return nil end
@@ -671,9 +667,7 @@ function CommandService:HandleUiMapDebug(addon, input)
     banner("|cffff6600Unknown subcommand.|r Try |cff00ccff/wn uimap help|r")
 end
 
---============================================================================
 -- ITEM DUMP (debug)
---============================================================================
 
 --- Dump persisted/API item data for support (/wn dumpitem). Chat output is the product.
 ---@param addon table WarbandNexus addon table
@@ -783,9 +777,7 @@ function CommandService:DumpItemReport(addon, itemID)
     end
 end
 
---============================================================================
 -- DEBUG TOGGLE
---============================================================================
 
 --- Toggle debug mode on/off
 ---@param addon table WarbandNexus addon instance

@@ -95,9 +95,7 @@ local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 
 local GetCharKey = ns.UI_GetCharKey
 
---============================================================================
 -- LAYOUT CONSTANTS
---============================================================================
 
 -- Canonical expansion ordering, newest-first, for sorting the filter dropdown
 local EXPANSION_ORDER = {
@@ -181,11 +179,9 @@ local LINE1_Y = PROF_LINE_CENTER_Y
 local LINE2_Y = -PROF_LINE_CENTER_Y
 local PROF_BAND_HEIGHT = ROW_HEIGHT / 2
 
---============================================================================
 -- COLUMN DEFINITIONS
 -- Each column: width, spacing (gap after this column), align for data
 -- Order matters for offset calculation.
---============================================================================
 
 local COLUMNS = {
     favIcon     = { width = 33,  spacing = COL_SPACING },
@@ -1154,10 +1150,8 @@ local HEADER_DEFS = {
     { col = "cooldowns",   label = "COOLDOWNS",              text = ns.L and ns.L["COOLDOWNS"],     align = "CENTER", sortable = true },
 }
 
---============================================================================
 -- COLUMN SORT STATE & COMPARATORS
 -- Stored in db.profile.professionColumnSort = { col = "skill", dir = "asc"|"desc" }
---============================================================================
 
 local function GetColumnSortState()
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
@@ -1187,9 +1181,7 @@ ToggleColumnSort = function(col)
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
 end
 
---============================================================================
 -- CONCENTRATION BAR
---============================================================================
 
 local BAR_HEIGHT = 16
 local BAR_BORDER = 1
@@ -1285,9 +1277,7 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
     return bar
 end
 
---============================================================================
 -- EVENT REGISTRATION
---============================================================================
 
 local function InvalidateProfessionsTradeSessionCaches()
     wipe(profSessionIconBySkillLine)
@@ -1316,9 +1306,7 @@ local function RegisterProfessionEvents(parent)
     -- CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
 
---============================================================================
 -- CHARACTER SORTING (mirrors CharactersUI)
---============================================================================
 
 local function SortCharacters(list, orderKey)
     if not WarbandNexus.db or not WarbandNexus.db.profile then
@@ -1438,9 +1426,7 @@ local function FormatRealmName(realm)
     return realm:gsub("(%l)(%u)", "%1 %2")
 end
 
---============================================================================
 -- EXPANSION FILTER HELPERS (strict: only selected expansion's data)
---============================================================================
 
 local function GetExpansionFilter()
     return "Midnight"
@@ -1534,9 +1520,7 @@ local function GetSkillLineIDForFilter(char, profName)
     return nil
 end
 
---============================================================================
 -- FORMAT HELPERS (all return white text, colored where meaningful)
---============================================================================
 
 ---Returns skill level for the expansion that matches the current expansion filter.
 ---When filter is "All", returns first expansion with skill; otherwise the matching expansion.
@@ -1732,11 +1716,9 @@ local function FormatProgressPair(entry)
     return format("|c%s%d / %d|r", color, current, total)
 end
 
---============================================================================
 -- COLUMN SORT: FLAT LIST BUILDER & COMPARATOR
 -- Placed after all helper functions to ensure GetExpansionFilter,
 -- GetSkillLineIDForFilter, GetCurrentExpansionSkill are in scope.
---============================================================================
 
 -- Extracts the best (max across both professions) sortable numeric value for a character.
 local function GetCharSortValue(char, col)
@@ -1884,9 +1866,7 @@ local function GetColumnSortCharComparator()
     end
 end
 
---============================================================================
 -- DRAW TAB
---============================================================================
 
 local PROF_STRETCH_RELAYOUT_OPTS = {
     rowsKey = "_wnProfNestedRows",
@@ -2292,11 +2272,9 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     return yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0), row
 end
 
---============================================================================
 -- COLUMN TOOLTIP HIT-FRAME HELPER
 -- Creates an invisible button over a column area for mouse-over tooltips.
 -- Reuses frames across redraws via row[key].
---============================================================================
 
 local function AcquireColumnHitFrame(row, key, colKey, centerY)
     local FactHit = ns.UI and ns.UI.Factory
@@ -2508,9 +2486,7 @@ local function SetProfessionLineIconTexture(tex, prof, isEmptySlot)
     tex:Show()
 end
 
---============================================================================
 -- DRAW PROFESSION LINE (single profession within a row)
---============================================================================
 
 function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
     local p = "l" .. lineIndex

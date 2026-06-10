@@ -640,9 +640,7 @@ local ICON_GOLD = "Interface\\MONEYFRAME\\UI-GoldIcon"
 
 -- Source parser: PlansUI_SourceParser.lua
 
--- ============================================================================
 -- MAIN DRAW FUNCTION
--- ============================================================================
 
 function WarbandNexus:DrawPlansTab(parent)
     -- Hide empty state container (will be shown again if needed)
@@ -1140,7 +1138,7 @@ function WarbandNexus:DrawPlansTab(parent)
             else
                 iconTexture:SetSnapToPixelGrid(false)
                 iconTexture:SetTexelSnappingBias(0)
-                iconFrame:Show()  -- CRITICAL: Show atlas icon!
+                iconFrame:Show()  -- Show atlas icon!
             end
         end
         
@@ -1148,7 +1146,7 @@ function WarbandNexus:DrawPlansTab(parent)
         if not iconFrame and cat.icon then
             iconFrame = CreateIcon(btn, cat.icon, 28, false, nil, true)
             iconFrame:SetPoint("LEFT", 10, 0)
-            iconFrame:Show()  -- CRITICAL: Show category tab icon (My Plans, Daily Tasks, Achievements)!
+            iconFrame:Show()  -- Show category tab icon (My Plans, Daily Tasks, Achievements)!
         end
         
         local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
@@ -1324,9 +1322,7 @@ function WarbandNexus:DrawPlansTab(parent)
     return yOffset + 20
 end
 
--- ============================================================================
 -- ACTIVE PLANS DISPLAY
--- ============================================================================
 
 local function GetCategoryStats(plan, categoryKey)
     if not plan or not plan.questTypes or not plan.questTypes[categoryKey] then
@@ -2497,9 +2493,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     return finalYOffset
 end
 
--- ============================================================================
 -- EVENT HANDLERS
--- ============================================================================
 
 --[[
     Handle WN_PLANS_UPDATED event
@@ -2507,10 +2501,7 @@ end
 ]]
 -- REMOVED: OnPlansUpdated — UI.lua's SchedulePopulateContent handles WN_PLANS_UPDATED centrally.
 
-
--- ============================================================================
 -- BROWSER (Mounts, Pets, Toys, Recipes)
--- ============================================================================
 
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     parent._plansCardLayoutManager = nil
@@ -2564,9 +2555,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     return yOffset + math.max(measuredH or 0, actualResultsHeight or 0, 1)
 end
 
--- ============================================================================
 -- ACHIEVEMENTS BROWSE (To-Do ▸ Achievements) — Collections-parity virtual list + collapsible headers (AchievementBrowseVirtualList).
--- ============================================================================
 
 local COLLECTED_COLOR_PLANS_ACH = "|cff33e533"
 local DEFAULT_ICON_PLANS_ACHIEVEMENT = "Interface\\Icons\\Achievement_General"
@@ -3003,10 +2992,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     return (yOffset or 0) + totalH + innerPad
 end
 
-
--- ============================================================================
 -- BROWSER RESULTS RENDERING (Separated for search refresh)
--- ============================================================================
 
 -- Phase 4.4: Performance limit for browse results rendering
 local MAX_BROWSE_RESULTS = 100
@@ -3780,9 +3766,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     return totalH
 end
 
--- ============================================================================
 -- CUSTOM PLAN DIALOG
--- ============================================================================
 
 function WarbandNexus:ShowCustomPlanDialog()
     -- Disable Add Custom button to prevent multiple dialogs
@@ -3791,7 +3775,6 @@ function WarbandNexus:ShowCustomPlanDialog()
         self.addCustomBtn:SetAlpha(0.5)
     end
 
-    
     -- Get character info
     local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
     local currentRealm = SafeRealmName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
@@ -4302,9 +4285,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     titleInput:SetFocus()
 end
 
--- ============================================================================
 -- CUSTOM PLAN STORAGE
--- ============================================================================
 
 function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount, infiniteRepeat)
     if not self.db.global.customPlans then
@@ -4404,9 +4385,7 @@ function WarbandNexus:RemoveCustomPlan(planId)
     end
 end
 
--- ============================================================================
 -- WEEKLY VAULT PLAN DIALOG
--- ============================================================================
 
 function WarbandNexus:ShowWeeklyPlanDialog()
     local COLORS = ns.UI_COLORS
@@ -4742,9 +4721,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     dialog:Show()
 end
 
--- ============================================================================
 -- CLOSE ALL PLAN DIALOGS
--- ============================================================================
 
 function WarbandNexus:CloseAllPlanDialogs()
     -- Close Weekly Plan Dialog
@@ -4763,9 +4740,7 @@ function WarbandNexus:CloseAllPlanDialogs()
     end
 end
 
--- ============================================================================
 -- DAILY QUEST PLAN DIALOG
--- ============================================================================
 
 function WarbandNexus:ShowDailyPlanDialog()
     local COLORS = ns.UI_COLORS
@@ -4915,9 +4890,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     dialog:Show()
 end
 
--- ============================================================================
 -- TRANSMOG BROWSER
--- ============================================================================
 
 -- Module state for transmog browser
 local currentTransmogSubCategory = "all"
@@ -4962,7 +4935,7 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     wipDesc:SetJustifyH("CENTER")
     wipDesc:SetText((ns.L and ns.L["TRANSMOG_WIP_DESC"]) or "Transmog collection tracking is currently under development.\n\nThis feature will be available in a future update with improved\nperformance and better integration with Warband systems.")
     
-    -- CRITICAL: Show the card and icon!
+    -- Show the card and icon!
     wipCard:Show()
     wipIconFrame2:Show()
     

@@ -21,9 +21,7 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled or function() return false end
 local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled or function() return false end
 local IsModuleDebugTraceActive = ns.IsModuleDebugTraceActive or function() return false end
 
---============================================================================
 -- DEBUG LOGGING
---============================================================================
 
 -- Noisy prefixes: only shown when debugVerbose is true (avoids cache/scan/tooltip spam)
 local DEBUG_VERBOSE_PREFIXES = {
@@ -64,9 +62,7 @@ function DebugService:Debug(addon, message)
     end
 end
 
---============================================================================
 -- BANK DEBUGGING
---============================================================================
 
 --- Print comprehensive bank debug information
 --- Helps diagnose Warband Bank detection issues
@@ -133,9 +129,7 @@ function DebugService:ForceScanWarbandBank(addon)
     end
 end
 
---============================================================================
 -- CHARACTER & PVE DEBUG INFO
---============================================================================
 
 --- Print list of all tracked characters with their info
 ---@param addon table WarbandNexus addon instance
@@ -270,9 +264,7 @@ function DebugService:PrintPvEData(addon)
     end
 end
 
---============================================================================
 -- DATA MANAGEMENT
---============================================================================
 
 --- Wipe all addon data and reload UI
 --- WARNING: This is a destructive operation that cannot be undone

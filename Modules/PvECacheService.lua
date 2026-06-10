@@ -531,9 +531,7 @@ local function PruneExpiredKeystonesForWeeklyReset()
     return removed
 end
 
--- ============================================================================
 -- CONSTANTS
--- ============================================================================
 
 local Constants = ns.Constants
 local CACHE_VERSION = Constants.PVE_CACHE_VERSION
@@ -639,9 +637,7 @@ local function GetGildedStashCounts()
     return current, weeklyMax
 end
 
--- ============================================================================
 -- NO LOCAL CACHE - DIRECT DB ACCESS ONLY
--- ============================================================================
 -- Architecture: API > DB > UI (same as Reputation and Currency)
 -- All data operations go directly to self.db.global.pveCache
 -- No local variables, no RAM cache, no sync issues!
@@ -695,9 +691,7 @@ local function ScheduleKeystoneRetry(charKey)
     end)
 end
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 ---Initialize PvE cache from DB
 ---Called on addon load to restore previous scan results
@@ -745,7 +739,7 @@ function WarbandNexus:InitializePvECache()
     -- Weekly hygiene: do not keep stale pre-reset keystones across sessions.
     PruneExpiredKeystonesForWeeklyReset()
     
-    -- CRITICAL: Validate and clear corrupted vault data
+    -- Validate and clear corrupted vault data
     -- Each character should have max 3 activities per type (raids, mythicPlus, pvp, world)
     if self.db.global.pveCache.greatVault and self.db.global.pveCache.greatVault.activities then
         for charKey, charData in pairs(self.db.global.pveCache.greatVault.activities) do
@@ -801,16 +795,14 @@ function WarbandNexus:SavePvECache()
     
 end
 
--- ============================================================================
 -- MYTHIC+ DATA
--- ============================================================================
 
 ---Update current week's Mythic+ affixes (lean: only IDs stored in SV).
 ---Metadata (name, description, icon) resolved on-demand from C_ChallengeMode.GetAffixInfo().
 function WarbandNexus:UpdateMythicPlusAffixes()
     if not C_MythicPlus or not C_ChallengeMode or not self.db.global.pveCache then return end
     
-    -- CRITICAL: C_MythicPlus.GetCurrentAffixes() returns affixID list OR struct array
+    -- C_MythicPlus.GetCurrentAffixes() returns affixID list OR struct array
     local affixes = C_MythicPlus.GetCurrentAffixes()
     
     if affixes and #affixes > 0 then
@@ -1139,9 +1131,7 @@ function WarbandNexus:UpdateDungeonScores(charKey)
     end
 end
 
--- ============================================================================
 -- GREAT VAULT DATA
--- ============================================================================
 
 ---Update Great Vault activities for current character
 ---@param charKey string Character key (name-realm)
@@ -1171,7 +1161,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     
     local activities = C_WeeklyRewards.GetActivities()
     if not activities or #activities == 0 then 
-        -- CRITICAL: Do NOT create empty arrays when API returns nil/empty.
+        -- Do NOT create empty arrays when API returns nil/empty.
         -- Server may not have responded to OnUIInteract() yet.
         -- Overwriting with empty data would wipe VaultScanner's persisted data.
         PvECacheUserDebug(
@@ -1358,7 +1348,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
         #(charData.world or {}),
         #(charData.pvp or {}))
         
-    -- CRITICAL: Save to DB after data is populated
+    -- Save to DB after data is populated
     WarbandNexus:SavePvECache()
     
     -- NOTE: PVE_UPDATED is NOT fired here. Both callers (UpdatePvEData and
@@ -1457,9 +1447,7 @@ function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     })
 end
 
--- ============================================================================
 -- LOCKOUT DATA
--- ============================================================================
 
 ---Update saved instance lockouts (raids + dungeons) for current character
 ---@param charKey string Character key (name-realm)
@@ -1611,9 +1599,7 @@ function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
     self.db.global.pveCache.mythicPlus.runHistory[charKey] = history
 end
 
--- ============================================================================
 -- DELVES DATA
--- ============================================================================
 
 ---True if any configured Bountiful / Trovehunter weekly quest is flagged complete for the **current** client session.
 ---Call only while the relevant character is logged in; PvE UI uses per-char cache from UpdateDelvesData for other rows.
@@ -1702,9 +1688,7 @@ function WarbandNexus:UpdateDelvesData(charKey)
     end
 end
 
--- ============================================================================
 -- UPDATE ORCHESTRATION
--- ============================================================================
 
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
@@ -1785,15 +1769,13 @@ function WarbandNexus:ProcessPendingPvEUpdate()
     end
 end
 
--- ============================================================================
 -- PUBLIC API (FOR UI AND DATASERVICE)
--- ============================================================================
 
 ---Get PvE data for a specific character or all characters
 ---@param charKey string|nil Character key (nil = return all)
 ---@return table PvE data
 function WarbandNexus:GetPvEData(charKey)
-    -- CRITICAL: Always read directly from DB (no cache)
+    -- Always read directly from DB (no cache)
     local dbCache = self.db and self.db.global and self.db.global.pveCache or {}
     
     if charKey then
@@ -2243,9 +2225,7 @@ function WarbandNexus:ClearPvECache()
     self:SavePvECache()
 end
 
--- ============================================================================
 -- VAULT CLAIM / KEYSTONE SYNC (Easy Access, PvE tab, Vault Tracker)
--- ============================================================================
 
 ---When live API reports no pending vault but SV still has hasAvailableRewards=true, heal the row.
 ---@param charKey string
@@ -2338,9 +2318,7 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     end
 end
 
--- ============================================================================
 -- WEEKLY REWARDS FRAME HOOKS
--- ============================================================================
 
 ---Hook Blizzard WeeklyRewardsFrame hide so claim/close clears cached Ready state promptly.
 function WarbandNexus:EnsureWeeklyRewardsFrameHooks()
@@ -2359,9 +2337,7 @@ function WarbandNexus:EnsureWeeklyRewardsFrameHooks()
     end)
 end
 
--- ============================================================================
 -- EVENT REGISTRATION (Auto-register on module load)
--- ============================================================================
 
 ---Register PvE event listeners
 function WarbandNexus:RegisterPvECacheEvents()
@@ -2515,9 +2491,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     
 end
 
--- ============================================================================
 -- EVENT HANDLERS (Called by registered events above)
--- ============================================================================
 
 ---Handle WEEKLY_REWARDS_UPDATE event (vault data received from server)
 ---NOTE: Named OnVaultDataReceived to avoid collision with PlansManager:OnPvEUpdateCheckPlans
@@ -2735,9 +2709,7 @@ function WarbandNexus:OnChallengeModeCompleted()
     self:UpdatePvEData()
 end
 
--- ============================================================================
 -- PLAYER_LOGOUT: persist PvE cache (no API refresh)
--- ============================================================================
 -- Do NOT call UpdatePvEData() here. During logout/teardown, Mythic+ and Weekly
 -- Rewards APIs often return empty/zero; a full refresh overwrites pveCache with
 -- bogus data for the logging-out character (missing vault, Overall Score 0).
@@ -2754,9 +2726,7 @@ logoutFrame:SetScript("OnEvent", function()
     WarbandNexus:SavePvECache()
 end)
 
--- ============================================================================
 -- LOAD MESSAGE
--- ============================================================================
 
 -- Module loaded (silent)
 -- Module loaded - verbose logging hidden (debug mode only)

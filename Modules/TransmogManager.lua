@@ -15,9 +15,7 @@ local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
--- ============================================================================
 -- CONSTANTS AND CONFIGURATION
--- ============================================================================
 
 local FRAME_BUDGET_MS = 16  -- Maximum processing time per frame (16ms = ~60 FPS)
 local BATCH_SIZE = 10       -- Number of items to process before checking frame budget (reduced for more frequent yields)
@@ -62,9 +60,7 @@ end
 ns.GetTransmogCategories = GetTransmogCategories
 ns.TRANSMOG_CATEGORIES = nil -- Will be set on first access
 
--- ============================================================================
 -- API AVAILABILITY CHECK
--- ============================================================================
 
 local function CheckTransmogAPIs()
     if not C_TransmogCollection then
@@ -82,9 +78,7 @@ local function CheckTransmogAPIs()
     return true
 end
 
--- ============================================================================
 -- CATEGORY MANAGEMENT
--- ============================================================================
 
 --[[
     Get list of all transmog categories
@@ -126,9 +120,7 @@ function WarbandNexus:GetTransmogCategoryByID(categoryID)
     return nil
 end
 
--- ============================================================================
 -- COROUTINE-BASED TRANSMOG FETCHING
--- ============================================================================
 
 --[[
     Process transmog items with frame budgeting to prevent FPS drops
@@ -281,9 +273,7 @@ function WarbandNexus:ProcessTransmogCoroutine(categoryID, callback, progressCal
     end)
 end
 
--- ============================================================================
 -- ASYNCHRONOUS ITEM DATA LOADING (ItemMixin)
--- ============================================================================
 
 --[[
     Load transmog item data asynchronously using ItemMixin
@@ -370,9 +360,7 @@ function WarbandNexus:LoadTransmogItemsBatch(transmogItems, onItemLoaded, onComp
     end
 end
 
--- ============================================================================
 -- SOURCE TEXT PARSING (Hybrid Approach)
--- ============================================================================
 
 --[[
     Get source text from boss drops API (fastest method)
@@ -417,7 +405,7 @@ function WarbandNexus:GetSourceFromTooltip(sourceID)
         return nil
     end
     
-    -- FIX: GetTransmogrifyItem expects transmogLocation, use GetItemByID for itemID
+    -- GetTransmogrifyItem expects transmogLocation, use GetItemByID for itemID
     local tooltipData = C_TooltipInfo.GetItemByID(sourceInfo.itemID)
     if not tooltipData or not tooltipData.lines then
         return nil
@@ -512,9 +500,7 @@ function WarbandNexus:ProcessTransmogSources(transmogItems, onComplete)
     end
 end
 
--- ============================================================================
 -- HIGH-LEVEL API FUNCTIONS
--- ============================================================================
 
 --[[
     Get uncollected transmog items for a category
@@ -644,9 +630,7 @@ function WarbandNexus:GetAllUncollectedTransmog(callback, progressCallback)
     end
 end
 
--- ============================================================================
 -- UTILITY FUNCTIONS
--- ============================================================================
 
 --[[
     Check if a specific transmog source is collected

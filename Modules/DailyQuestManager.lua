@@ -102,9 +102,7 @@ end
 -- PEW: coalesce delayed plan rescans when several PLAYER_ENTERING_WORLD bursts arrive close together.
 local dailyQuestLoginRescanTimer = nil
 
--- ============================================================================
 -- MIDNIGHT ZONE DATA
--- ============================================================================
 
 local MIDNIGHT_MAPS = {
     [2393] = "Silvermoon",
@@ -123,16 +121,12 @@ for mapID in pairs(MIDNIGHT_MAPS) do
 end
 ns.MIDNIGHT_MAPS_FOR_SA = MIDNIGHT_MAPS_LIST
 
--- ============================================================================
 -- KNOWN QUESTS (MidnightQuestCatalog — reliable weekly / content-event tracking)
--- ============================================================================
 
 local KNOWN_WEEKLY_QUESTS = (ns.MidnightQuestCatalog and ns.MidnightQuestCatalog.GetEntries and ns.MidnightQuestCatalog.GetEntries()) or {}
 local KNOWN_QUEST_LOOKUP = (ns.MidnightQuestCatalog and ns.MidnightQuestCatalog.GetLookup and ns.MidnightQuestCatalog.GetLookup()) or {}
 
--- ============================================================================
 -- QUEST CATEGORIES
--- ============================================================================
 
 local QUEST_CATEGORIES = {
     { key = "weeklyQuests",    order = 1 },
@@ -197,9 +191,7 @@ local function NormalizeQuestTypes(questTypes)
     }
 end
 
--- ============================================================================
 -- QUEST FLAG HELPERS
--- ============================================================================
 
 local function IsSecretValue(value)
     return value and issecretvalue and issecretvalue(value)
@@ -395,9 +387,7 @@ local function GetAllObjectiveDetails(questID)
     return #result > 0 and result or nil
 end
 
--- ============================================================================
 -- QUEST CATEGORIZATION
--- ============================================================================
 
 local function DetermineQuestCategory(questID, questTitle, flags)
     if KNOWN_QUEST_LOOKUP[questID] then
@@ -468,9 +458,7 @@ local function DetermineQuestCategory(questID, questTitle, flags)
     return nil
 end
 
--- ============================================================================
 -- QUEST SCANNING
--- ============================================================================
 
 function WarbandNexus:ScanMidnightQuests()
     local quests = {
@@ -827,9 +815,7 @@ function WarbandNexus:ScanMidnightQuests()
     return quests
 end
 
--- ============================================================================
 -- PLAN MANAGEMENT
--- ============================================================================
 
 function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
     if not characterName or not characterRealm then
@@ -978,9 +964,7 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     })
 end
 
--- ============================================================================
 -- EVENT HANDLERS
--- ============================================================================
 
 function WarbandNexus:InitializeDailyQuestManager()
     if self._dailyQuestManagerInitialized then
@@ -1140,9 +1124,7 @@ function WarbandNexus:OnDailyQuestUpdate()
     end)
 end
 
--- ============================================================================
 -- CROSS-CHARACTER WEEKLY DASHBOARD AGGREGATOR
--- ============================================================================
 
 ---Aggregate weekly/daily completion status across all tracked characters.
 ---Returns a summary table keyed by charKey, each containing quest/vault/boss status.

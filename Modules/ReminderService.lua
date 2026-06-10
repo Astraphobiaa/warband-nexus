@@ -54,9 +54,7 @@ local function ReminderToastThemeFields()
     }
 end
 
--- ============================================================================
 -- CONSTANTS
--- ============================================================================
 
 local REMINDER_THROTTLE_SECONDS = 300
 local MAX_REMINDERS_PER_LOGIN = 5
@@ -138,9 +136,7 @@ ns.REMINDER_TRIGGER_KINDS = KIND
 
 local REMINDER_TRIGGERS_VERSION = 1
 
--- ============================================================================
 -- DYNAMIC ZONE DISCOVERY (C_Map API)
--- ============================================================================
 
 local ZONE_LOOKUP = nil
 local MIN_ZONE_NAME_LEN = 4
@@ -180,12 +176,10 @@ local function BuildZoneLookup()
     return ZONE_LOOKUP
 end
 
--- ============================================================================
 -- MAP IDS FROM PLAN SOURCE / NAME (hints only — no Blizzard “required zone” API)
 -- Do not inject parentMapID closures here: adding e.g. Eastern Kingdoms (13) after matching
 -- “Stormwind City” makes ancestor-based zone_enter match every EK sub-zone (Silvermoon, etc.).
 -- Dungeon name hints likewise pulled in Silvermoon when the dungeon’s parent is that city.
--- ============================================================================
 
 local function GetMapIDsFromPlanSource(plan)
     if not plan then return nil end
@@ -215,9 +209,7 @@ local function GetMapIDsFromPlanSource(plan)
     return matchedMapIDs
 end
 
--- ============================================================================
 -- TRIGGER TABLE HELPERS
--- ============================================================================
 
 local function EnsureTriggersStructure(r)
     if not r.triggers or type(r.triggers) ~= "table" then
@@ -440,9 +432,7 @@ local function UpsertTriggerEntry(r, entry)
     end
 end
 
--- ============================================================================
 -- SETTINGS / DATA HELPERS
--- ============================================================================
 
 local function GetReminderSettings()
     if not WarbandNexus.db or not WarbandNexus.db.global then return nil end
@@ -474,9 +464,7 @@ local function EnsureReminderField(plan)
     return plan.reminder
 end
 
--- ============================================================================
 -- PUBLIC API: SET / REMOVE / TOGGLE REMINDER
--- ============================================================================
 
 function WarbandNexus:SetPlanReminder(planID, settings)
     local plan = self:GetPlanByID(planID)
@@ -681,9 +669,7 @@ function WarbandNexus:DismissReminders(planID)
     self:SendMessage(E.PLANS_UPDATED, { action = "reminder_dismissed", planID = planID })
 end
 
--- ============================================================================
 -- ACTIVE REMINDER STATE
--- ============================================================================
 
 local function SafePlanToastTitle(plan)
     if not plan then
@@ -837,9 +823,7 @@ local function ActivateReminder(plan, triggerLabel, opts)
     end
 end
 
--- ============================================================================
 -- THROTTLE CHECK
--- ============================================================================
 
 local function CanShowReminder(plan, triggerKey)
     if not plan or not plan.reminder or not plan.reminder.lastShown then return true end
@@ -894,9 +878,7 @@ local function CleanStaleReminderKeys(plan)
     end
 end
 
--- ============================================================================
 -- CHECK: DAILY / MONTHLY LOGIN REMINDERS
--- ============================================================================
 
 local function CheckDailyLoginReminders()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
@@ -987,9 +969,7 @@ local function CheckMonthlyLoginReminders()
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
--- ============================================================================
 -- CHECK: WEEKLY RESET REMINDERS
--- ============================================================================
 
 local function CheckWeeklyResetReminders()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
@@ -1027,9 +1007,7 @@ local function CheckWeeklyResetReminders()
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
--- ============================================================================
 -- CHECK: DAYS BEFORE RESET REMINDERS
--- ============================================================================
 
 local function CheckDaysBeforeResetReminders()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
@@ -1079,9 +1057,7 @@ local function CheckDaysBeforeResetReminders()
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
--- ============================================================================
 -- INSTANCE HELPERS (secret-safe)
--- ============================================================================
 
 local function SafeIsInInstance()
     local ok, a = pcall(IsInInstance)
@@ -1525,9 +1501,7 @@ local function CheckInstanceReminders()
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
--- ============================================================================
 -- EVENT HANDLERS
--- ============================================================================
 
 local zoneChangeTimer = nil
 local calendarResetReminderTimer = nil
@@ -1658,9 +1632,7 @@ OnLoginRemindersCheck = function()
     FlushCalendarToastBatch()
 end
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 function WarbandNexus:InitializeReminderService()
     if not self.db or not self.db.global then return end
@@ -1734,7 +1706,6 @@ function WarbandNexus:InitializeReminderService()
         OnLoginRemindersCheck()
     end
 end
-
 
 local function UniqueSortedInts(t)
     local seen = {}

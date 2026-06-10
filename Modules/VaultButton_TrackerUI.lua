@@ -16,7 +16,6 @@ local function VB__setfenv()
 end
 setfenv(1, VB__setfenv())
 -- Main button
--- ============================================================================
 function M.CreateMenuCheckbox(parent, labelText, y, getValue, setValue, tooltipText)
     if ns.UI_CreateThemedCheckbox then
         cb = ns.UI_CreateThemedCheckbox(parent, getValue() == true)

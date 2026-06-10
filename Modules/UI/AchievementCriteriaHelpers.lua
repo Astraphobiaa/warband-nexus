@@ -26,9 +26,7 @@ local tostring = tostring
 
 local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(floor(n or 0)) end
 
---============================================================================
 -- Blizzard criteriaType constants (wiki API_GetAchievementCriteriaInfo)
---============================================================================
 
 local CRITERIA_TYPE = {
     MONSTER_KILL = 0,
@@ -181,9 +179,7 @@ local TYPE_TO_HANDLER = {
     [CRITERIA_TYPE.GUILD_CREST] = HANDLER.GUILD,
 }
 
---============================================================================
 -- Low-level parsing
---============================================================================
 
 --- Wiki GetAchievementInfo: id, name, points, completed, month, day, year, description (8th).
 local function GetAchievementDescriptionAndPoints(achievementID)
@@ -261,9 +257,7 @@ local function ClassifyCriteriaHandler(criteriaType, duration)
     return HANDLER.GENERIC
 end
 
---============================================================================
 -- Per-handler helpers
---============================================================================
 
 local HandlerApi = {}
 
@@ -350,9 +344,7 @@ local AGGREGATE = {
     [HANDLER.GENERIC] = HandlerApi.aggregateChecklist,
 }
 
---============================================================================
 -- Fetch & summarize
---============================================================================
 
 ---@param achievementID number
 ---@param criteriaIndex number
@@ -456,9 +448,7 @@ local function SummarizeAchievementCriteria(achievementID)
     return summary
 end
 
---============================================================================
 -- Formatting (headers + row suffixes)
---============================================================================
 
 local function FormatChecklistProgressHeader(summary)
     local denom = summary.rawNumCriteria or 0
@@ -718,9 +708,7 @@ local function BuildAchievementCriteriaListItems(achievementID)
     return items, summary
 end
 
---============================================================================
 -- Public API (ns)
---============================================================================
 
 local M = {
     CRITERIA_TYPE = CRITERIA_TYPE,

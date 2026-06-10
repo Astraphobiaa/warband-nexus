@@ -830,7 +830,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     card._sources = sources
     card._planBodyFallbackFS = nil
     
-    -- CRITICAL: Restore source expansion state from persistent storage (like achievement cards)
+    -- Restore source expansion state from persistent storage (like achievement cards)
     if not card.cardKey then
         card.cardKey = "plan_" .. (plan.id or "unknown")
     end
@@ -843,7 +843,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         -- Restore from persistent storage
         card._isSourceExpanded = ns.expandedCards[sourceExpandKey] or false
     end
-    -- CRITICAL: Ensure state is boolean (not nil) before using it
+    -- Ensure state is boolean (not nil) before using it
     if type(card._isSourceExpanded) ~= "boolean" then
         card._isSourceExpanded = false
     end
@@ -872,7 +872,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         -- If content exceeds card height, enable expand/collapse
         local needsExpand = estimatedContentHeight > maxContentHeight
         
-        -- CRITICAL: If expand button exists, content definitely exceeds card height
+        -- If expand button exists, content definitely exceeds card height
         -- Set _needsExpand flag if expand button exists
         if card._sourceExpandButton then
             card._needsExpand = true
@@ -882,19 +882,19 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         end
         
         -- In collapsed view, show only first source if content exceeds card height
-        -- CRITICAL: Use _needsExpand flag or expand button existence to determine collapse state
+        -- Use _needsExpand flag or expand button existence to determine collapse state
         local sourcesToShow
         
         -- Determine if we should collapse (show only first source)
-        -- CRITICAL: If expand button exists, we ALWAYS need to respect expansion state
+        -- If expand button exists, we ALWAYS need to respect expansion state
         -- Priority: 1) If expand button exists, ALWAYS use expansion state (most reliable)
         --           2) Otherwise, use _needsExpand flag or calculated needsExpand
         local shouldCollapse = false
         
-        -- CRITICAL: Ensure _isSourceExpanded is boolean before checking
+        -- Ensure _isSourceExpanded is boolean before checking
         local isExpanded = (card._isSourceExpanded == true)
         
-        -- CRITICAL: If expand button exists, content definitely exceeds card height
+        -- If expand button exists, content definitely exceeds card height
         -- We MUST respect the expansion state - if collapsed, show only first source
         -- This is the MOST RELIABLE check - if button exists, we know content exceeds
         if card._sourceExpandButton then
@@ -909,8 +909,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             shouldCollapse = not isExpanded
         end
         
-        
-        -- CRITICAL: Always respect shouldCollapse if expand button exists
+        -- Always respect shouldCollapse if expand button exists
         -- This ensures that after expand->collapse, we show only first source
         -- FORCE collapse if expand button exists and not expanded
         if card._sourceExpandButton and not isExpanded then
@@ -924,9 +923,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             sourcesToShow = sources
         end
         
-        
         -- Create source container frame (similar to achievement's expandedContent)
-        -- CRITICAL: Destroy and recreate container to ensure clean state
+        -- Destroy and recreate container to ensure clean state
         -- This is more reliable than trying to clear all children
         if card._sourceContainer then
             -- Destroy old container completely
@@ -954,12 +952,10 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         sourceContainer:SetHeight(1)  -- Will be calculated dynamically
         card._sourceContainer = sourceContainer
         
-        
         -- Create source elements inside container
-        -- CRITICAL: Ensure container is visible before creating elements
+        -- Ensure container is visible before creating elements
         card._sourceContainer:Show()
         local containerY = 0
-        
         
         for i = 1, #sourcesToShow do
             local source = sourcesToShow[i]
@@ -1134,7 +1130,6 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         card._planBodyFallbackFS = sourceText
         lastTextElement = sourceText
     end
-    
     
     if not lastTextElement then
         local placeholderText = FontManager:CreateFontString(card, "body", "OVERLAY")
@@ -1738,7 +1733,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     -- Set up expand/collapse handler
     self:SetupAchievementExpandHandler(card, plan)
     
-    -- CRITICAL: Restore expanded state if card was previously expanded
+    -- Restore expanded state if card was previously expanded
     -- This ensures UI matches the persisted state after window resize or layout recalculation
     if card.isExpanded then
         local achievementID = plan.achievementID
@@ -1927,7 +1922,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     end
     local Factory = ns.UI and ns.UI.Factory
 
-    -- CRITICAL: Re-anchor expandedContent to requirementsHeader to ensure correct positioning
+    -- Re-anchor expandedContent to requirementsHeader to ensure correct positioning
     local anchorFrame = card.requirementsHeader
     if anchorFrame then
         -- Clear all points and re-anchor to ensure correct position
@@ -2342,7 +2337,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
         -- Use same container approach as non-achievement cards
         self:CreateCustomDescription(card, plan, -60)
         
-        -- CRITICAL: Restore expanded state if card was previously expanded
+        -- Restore expanded state if card was previously expanded
         if card._isDescriptionExpanded and card.descriptionText and card.fullDescription then
             -- Update description text to full version
             card.descriptionText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
@@ -2750,7 +2745,7 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
         local wasExpanded = cardFrame._isSourceExpanded or false
         cardFrame._isSourceExpanded = not wasExpanded
         
-        -- CRITICAL: Save state to persistent storage (like achievement cards)
+        -- Save state to persistent storage (like achievement cards)
         if cardFrame.cardKey then
             local sourceExpandKey = cardFrame.cardKey .. "_source"
             if not ns.expandedCards then
@@ -2759,12 +2754,12 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
             ns.expandedCards[sourceExpandKey] = cardFrame._isSourceExpanded
         end
         
-        -- CRITICAL: Ensure _needsExpand is set if expand button exists
+        -- Ensure _needsExpand is set if expand button exists
         if cardFrame._sourceExpandButton then
             cardFrame._needsExpand = true
         end
         
-        -- CRITICAL: Ensure state is boolean, not nil
+        -- Ensure state is boolean, not nil
         if cardFrame._isSourceExpanded == nil then
             cardFrame._isSourceExpanded = false
         end

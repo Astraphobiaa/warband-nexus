@@ -13,9 +13,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- ============================================================================
 -- ERROR STORAGE
--- ============================================================================
 
 local errorLog = {}  -- {timestamp, message, stack, count}
 local errorStats = {
@@ -26,9 +24,7 @@ local errorStats = {
 
 local MAX_ERRORS = 50  -- Keep only last 50 errors
 
--- ============================================================================
 -- SAFE FUNCTION EXECUTION
--- ============================================================================
 
 --[[
     Safely execute a function with error handling
@@ -64,9 +60,7 @@ function WarbandNexus:SafeCall(func, context, ...)
     return true, result
 end
 
--- ============================================================================
 -- ERROR LOGGING
--- ============================================================================
 
 --[[
     Log an error with stack trace
@@ -154,9 +148,7 @@ function WarbandNexus:ClearErrorLog()
     self:Print("Error log cleared")
 end
 
--- ============================================================================
 -- USER INTERFACE
--- ============================================================================
 
 --[[
     Print error statistics to chat
@@ -265,9 +257,7 @@ function WarbandNexus:ShowErrorDetails(errorIndex)
     end
 end
 
--- ============================================================================
 -- SAFE WRAPPERS FOR CRITICAL FUNCTIONS
--- ============================================================================
 
 --[[
     Wrap critical addon functions with error handling
@@ -315,9 +305,7 @@ function WarbandNexus:WrapCriticalFunctions()
     end
 end
 
--- ============================================================================
 -- EMERGENCY RECOVERY
--- ============================================================================
 
 --[[
     Attempt to recover from a critical error
@@ -381,9 +369,7 @@ function WarbandNexus:ExportErrorLog()
     return table.concat(export, "\n")
 end
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 --[[
     Initialize error handler

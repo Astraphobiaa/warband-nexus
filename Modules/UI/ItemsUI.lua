@@ -469,9 +469,7 @@ local function ResolveItemsSubTabStatsMetrics(addon, currentItemsSubTab)
     return 0, 0, 0, 0, "ffffff"
 end
 
---============================================================================
 -- EVENT LISTENERS (Real-time Updates)
---============================================================================
 
 local function RegisterItemsEvents(parent)
     if parent.itemsUpdateHandler then
@@ -527,11 +525,9 @@ local function RegisterItemsEvents(parent)
     end
 end
 
---============================================================================
 -- STORAGE / WARBAND AGGREGATE TREE (merged from StorageUI.lua)
 -- Saved data: unchanged (db.profile.storage*, db.global.*). Warband aggregate UI uses Items module toggle.
 -- Requires StorageSectionLayout.lua to load BEFORE this file (see WarbandNexus.toc).
---============================================================================
 
 local function CompareCharNameLower(a, b)
     return SafeLower(a.name) < SafeLower(b.name)
@@ -1002,9 +998,7 @@ function WarbandNexus:_ApplyStorageTypeLeafTogglePartial(wrap)
     end
 end
 
---============================================================================
 -- STORAGE RESULTS RENDERING (Separated for search refresh)
---============================================================================
 
 local function StorageTreeHasExpandedCategory(expanded)
     if not expanded or not expanded.categories then
@@ -2160,9 +2154,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 searchQueryTabKey = searchResultTabKey,
                             }
                             charBodyAdvance = charBodyAdvance + typeSectionWrap:GetHeight() + SECTION_SPACING
-                            end  -- if displayCount > 0
-                        end  -- if not skipped by search
-                    end  -- for charSortedTypes
+                            end
+                        end
+                    end
 
                     local charInnerH = math.max(0.1, charBodyAdvance - SECTION_SPACING)
                     charBody._wnSectionFullH = charInnerH
@@ -2185,9 +2179,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     personalInnerTail = charWrap
 
                 hasAnyPersonalItems = true
-            end  -- else (closes the else at line 449)
-        end  -- if itemsData
-        end  -- for char
+            end
+        end
+        end
 
         personalBody._wnSectionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
         personalBody:Show()
@@ -2205,7 +2199,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         personalWrap:SetHeight(MAIN_SECTION_HEADER_H + personalBody:GetHeight())
         storageStackAnchor = personalWrap
-    end  -- if personalTotalMatches > 0
+    end
     stStop("Stor_personal")
     
     stStart("Stor_warband")
@@ -2604,7 +2598,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         warbandWrap:SetHeight(MAIN_SECTION_HEADER_H + warbandBody:GetHeight())
         storageStackAnchor = warbandWrap
-    end  -- if warbandTotalMatches > 0
+    end
     
     stStop("Stor_warband")
     local stageNow = mfPaint and mfPaint._wnStorageLeafStage
@@ -2794,9 +2788,7 @@ local function RepositionItemsFixedHeader(mf, hdrCache, headerParent, chrome, he
     return headerYOffset
 end
 
---============================================================================
 -- DRAW ITEM LIST (Main Items Tab)
---============================================================================
 
 function WarbandNexus:DrawItemList(parent)
     -- Register event listeners (only once)
@@ -3119,7 +3111,7 @@ function WarbandNexus:DrawItemList(parent)
     elseif fixedHeader then
         fixedHeader:SetHeight(headerYOffset)
     end
-    end -- not headerDone
+    end
 
     -- ===== RESULTS CONTAINER (in scroll area) =====
     local resultsContainer = CreateResultsContainer(parent, scrollTopY, contentSide)
@@ -3401,9 +3393,7 @@ function WarbandNexus:ApplyItemsVirtualFlatListOnly()
     end
 end
 
---============================================================================
 -- ITEMS RESULTS RENDERING (Separated for search refresh)
---============================================================================
 
 function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
     if currentItemsSubTab == "warband" and ItemsWarbandUsesStorageTree() then

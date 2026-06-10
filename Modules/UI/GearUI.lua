@@ -482,9 +482,7 @@ local function FormatFloat2(value)
     return format("%.2f", n)
 end
 
--- ============================================================================
 -- CONSTANTS / LAYOUT  (addon theme: ns.UI_LAYOUT when available)
--- ============================================================================
 
 local function GetLayout() return ns.UI_LAYOUT or {} end
 local UI_LAYOUT      = ns.UI_LAYOUT or {}
@@ -528,9 +526,7 @@ end
 local GEAR_PAPERDOLL_REFRESH_SLOT_IDS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 }
 -- [[/WN_GEAR_PAPERDOLL_MOVED]]
 
--- ============================================================================
 -- SESSION STATE  (selected character; persists within session)
--- ============================================================================
 
 local selectedCharKey = nil  -- nil = auto-select current player
 
@@ -592,9 +588,7 @@ end
 -- Gear event refresh is centralized in UI.lua SchedulePopulateContent
 -- (WN_GEAR_UPDATED, WN_ITEMS_UPDATED, WN_CHARACTER_UPDATED, WN_CURRENCY_UPDATED).
 
--- ============================================================================
 -- HELPERS
--- ============================================================================
 
 --- Get tracked characters honoring user prefs:
 ---   * `db.profile.hideLowLevelThreshold` filters out chars below level 80/90.
@@ -691,9 +685,7 @@ local function GetItemIconSafe(linkOrId)
     return (ok and result) or nil
 end
 
--- ============================================================================
 -- UPGRADE AFFORDABILITY (currency map + tier simulation)
--- ============================================================================
 
 --- Full copper for gold entry (Gear currencies list stores gold/silver/copper on id 0).
 ---@param currencyAmounts table|nil
@@ -764,9 +756,7 @@ local function IsNextStepGoldOnlyUpgrade(upInfo)
     return GetNextStepCrestNeed(upInfo) <= 0
 end
 
--- ============================================================================
 -- CRAFTED ITEM RECRAFT RANGE
--- ============================================================================
 
 --- Calculate achievable ilvl range for a crafted item based on player's crest inventory.
 --- Crafted items can be recrafted with crests to jump to higher ilvl tiers.
@@ -2251,9 +2241,7 @@ function WarbandNexus:TryGearStorageRedrawOnly()
     return self:RedrawGearStorageRecommendationsOnly(canon, gen, true) == true
 end
 
--- ============================================================================
 -- CHARACTER SELECTOR  (dropdown button)
--- ============================================================================
 
 -- Singleton dropdown frames (reused to avoid frame buildup)
 local gearCharDropdownMenu = nil
@@ -2770,9 +2758,7 @@ local function CreateGearHeaderHideButton(parent)
     return btn
 end
 
--- ============================================================================
 -- POPULATE DEDUPE SIGNATURE (same-tab redundant PopulateContent)
--- ============================================================================
 
 --- Stable fingerprint of everything DrawGearTab reads from DB/cache for the current selection.
 --- Used by Modules/UI.lua to skip teardown+full redraw when WN_* debounce fires with no real delta.
@@ -2880,9 +2866,7 @@ function WarbandNexus:GetGearPopulateSignatureFromDrawCaches(gearData, currencie
     return out
 end
 
--- ============================================================================
 -- MAIN DRAW FUNCTION
--- ============================================================================
 
 --- Phase timings for first-open / roster freezes: WN Trace visible or /wn profiler tabperf on.
 local function ShouldLogGearOpenPhases()

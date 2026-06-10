@@ -27,9 +27,7 @@ setfenv(1, VB__setfenv())
      resize grip (Blizzard size grabber textures), Saved group header as full-surface `Button`,
      lockout row inner highlights, main floating vault `WarbandNexusVaultButton`.]]
 
--- ============================================================================
 -- Constants
--- ============================================================================
 M.BUTTON_SIZE = 48
 M.BADGE_SIZE = 18
 M.ROW_H = 28
@@ -181,10 +179,7 @@ function M.GetCurrencyIcon(currencyID, fallback)
     return fallback
 end
 
-
--- ============================================================================
 -- DB helpers
--- ============================================================================
 function M.GetThemeColors()
     return ns.UI_COLORS or {
         accent = {0.40, 0.20, 0.58},
@@ -196,9 +191,7 @@ function M.GetThemeColors()
     }
 end
 
--- ============================================================================
 -- Launcher registry (Easy Access menu, Settings left-click, minimap shortcut menu)
--- ============================================================================
 
 ---@type table<string, boolean>
 local LAUNCHER_LEFT_CLICK_LOOKUP
@@ -548,7 +541,6 @@ function M.GetTableWidth()
     return FRAME_PAD*2 + COL_NAME + COL_ILVL + categoryWidth + optionalWidth + COL_STATUS + 10
 end
 
-
 function M.GetPveCache()
     return WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
         and WarbandNexus.db.global.pveCache or nil
@@ -588,7 +580,6 @@ function M.SaveTablePos(point, relativePoint, x, y)
         y = y or 0,
     }
 end
-
 
 M.state = M.state or {
     button=nil, icon=nil, badge=nil, badgeBg=nil, border=nil,

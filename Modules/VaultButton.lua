@@ -17,9 +17,7 @@ end
 setfenv(1, VB__setfenv())
 --[[ Entry chunk: bare names resolve via M (see VaultButton_Core.lua). Use M.EA_CAT_TIP etc. for shared tables. ]]
 
--- ============================================================================
 -- Easy Access shortcut menu
--- ============================================================================
 local MENU_SUMMARY_LINE_H = 14
 local MENU_SUMMARY_PAD_TOP = 22
 local MENU_SUMMARY_MAX_LINES = 8
@@ -635,9 +633,7 @@ function M.BuildButton()
     UpdateBadge()
 end
 
--- ============================================================================
 -- Events
--- ============================================================================
 local eFrame = CreateFrame("Frame")
 eFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eFrame:SetScript("OnEvent", function(self)

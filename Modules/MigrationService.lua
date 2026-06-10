@@ -12,7 +12,6 @@
 
 local ADDON_NAME, ns = ...
 
-
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 
@@ -334,7 +333,7 @@ function MigrationService:CheckSchemaReset(db)
     -- Wipe global (itemStorage, reputationData, characters, etc.)
     if db.global then wipe(db.global) end
 
-    -- CRITICAL: db.char is only the current character's slice. Wipe the raw SV char table
+    -- db.char is only the current character's slice. Wipe the raw SV char table
     -- so ALL characters (Y, Z, ...) are removed; otherwise other chars stay in SV.
     local raw = _G.WarbandNexusDB
     if raw and raw.char then
@@ -558,7 +557,7 @@ function MigrationService:MigrateRarityMountSyncReseed(db)
 end
 
 ---Migrate reputation cache to v2.1.0 (per-character storage)
----CRITICAL: This migration only converts OLD reputationCache → NEW reputationData format.
+--- This migration only converts OLD reputationCache → NEW reputationData format.
 ---It MUST NOT wipe existing reputationData when the structure is already valid.
 ---The version field inside reputationData is managed by ReputationCacheService (may differ
 ---from Constants.REPUTATION_CACHE_VERSION after version bumps) — that's normal and expected.
@@ -571,7 +570,7 @@ function MigrationService:MigrateReputationToV2(db)
     local newCache = db.global.reputationData
     
     -- If new cache exists with valid STRUCTURE, no migration needed.
-    -- CRITICAL: Check structure (accountWide + characters tables exist), NOT version string.
+    -- Check structure (accountWide + characters tables exist), NOT version string.
     -- ReputationCacheService manages its own version field and may bump it independently.
     -- Matching on exact version here caused data wipe on every login when versions diverged.
     if newCache and type(newCache) == "table"
@@ -652,7 +651,7 @@ function MigrationService:MigrateGoldFormat(db)
                 charData.copper = math.floor(tonumber(charData.copper) or 0)
             end
             
-            -- CRITICAL: Delete ALL legacy fields that might cause overflow
+            -- Delete ALL legacy fields that might cause overflow
             charData.goldAmount = nil
             charData.silverAmount = nil
             charData.copperAmount = nil

@@ -16,9 +16,7 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
--- ============================================================================
 -- CACHE MANAGEMENT
--- ============================================================================
 
 -- Map cache name → DB path the cache is stored at. Backups + version-resets
 -- operate via this table so the call sites stay declarative.
@@ -68,9 +66,7 @@ function WarbandNexus:RestoreCacheBackup(name)
     return true
 end
 
--- ============================================================================
 -- DATABASE ANALYSIS
--- ============================================================================
 
 --[[
     Calculate approximate database size
@@ -160,9 +156,7 @@ function WarbandNexus:GetDatabaseStats()
     return stats
 end
 
--- ============================================================================
 -- CLEANUP OPERATIONS
--- ============================================================================
 
 --[[
     Remove invalid/deleted items from database
@@ -348,9 +342,7 @@ function WarbandNexus:OptimizeDatabase()
     return results
 end
 
--- ============================================================================
 -- USER INTERFACE
--- ============================================================================
 
 --[[
     Print database statistics
@@ -401,9 +393,7 @@ function WarbandNexus:RunOptimization()
     end
 end
 
--- ============================================================================
 -- AUTO-OPTIMIZATION
--- ============================================================================
 
 --[[
     Check if auto-optimization should run
@@ -428,9 +418,7 @@ function WarbandNexus:CheckAutoOptimization()
     end
 end
 
--- ============================================================================
 -- DATABASE MIGRATION (v1 -> v2)
--- ============================================================================
 
 -- Constants
 local Constants = ns.Constants
@@ -823,9 +811,7 @@ function WarbandNexus:CleanupOrphanedData()
     return removed
 end
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 --[[
     Initialize database optimizer

@@ -1526,9 +1526,7 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
     st.ready = true
 end
 
--- ============================================================================
 -- SLOT ICON BUTTON
--- ============================================================================
 
 --- Create a single equipment slot icon button.
 ---@param parent Frame
@@ -2066,9 +2064,7 @@ local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, 
     return btn
 end
 
--- ============================================================================
 -- PAPERDOLL CARD  (full width; doll centered like Characters screen)
--- ============================================================================
 
 local CURRENCY_ROW_H = 26
 local ROW_H = 34

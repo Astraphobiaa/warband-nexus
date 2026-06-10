@@ -152,9 +152,7 @@ function M.ApplyButtonVisibility(isMouseOver)
     end
 end
 
--- ============================================================================
 -- Table frame
--- ============================================================================
 local HideTable = function()
     if S.tableFrame then S.tableFrame:Hide() end
     if S.optionsFrame then S.optionsFrame:Hide() end

@@ -90,9 +90,7 @@ function M.LayoutCollectionsSearchBar(hdrCache)
     end
 end
 
--- ============================================================================
 -- DRAW COLLECTIONS TAB (Main Entry)
--- ============================================================================
 
 --- Live resize: relayout active sub-tab split chrome without full main-window PopulateContent.
 function ns.Collections_RelayoutActiveSubTabChrome()
@@ -536,7 +534,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
     yOffset = yOffset + contentHeight + bottomPad
 
     -- Event-driven updates (same events as Plans): all sub-tabs (Mounts, Pets, Achievements) refresh when these fire.
-    -- CRITICAL: Use a dedicated listener key (CUIListeners) instead of WarbandNexus as self.
+    -- Use a dedicated listener key (CUIListeners) instead of WarbandNexus as self.
     -- AceEvent allows only ONE handler per (event, self) pair — using WarbandNexus would
     -- overwrite CollectionService's handlers for the same events (e.g. RemoveFromUncollected).
     if not M.state._messageRegistered then

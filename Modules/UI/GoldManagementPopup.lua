@@ -53,9 +53,7 @@ local function StripFormatting(str)
     return str:gsub("[^%d]", "")
 end
 
---============================================================================
 -- GOLD MANAGEMENT POPUP
---============================================================================
 
 ---Shows the Gold Management configuration popup
 ---@param anchorFrame Frame|nil Optional frame to anchor near (default: center screen)
@@ -491,9 +489,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     dialog:Show()
 end
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 -- Export to namespace
 ns.UI_ShowGoldManagementPopup = function(...) WarbandNexus:ShowGoldManagementPopup(...) end

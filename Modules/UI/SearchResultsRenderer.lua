@@ -19,9 +19,7 @@ local WarbandNexus = ns.WarbandNexus
 local DrawEmptyState = ns.UI_DrawEmptyState
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
---============================================================================
 -- SEARCH RESULTS RENDERER
---============================================================================
 
 local SearchResultsRenderer = {}
 
@@ -158,9 +156,7 @@ function SearchResultsRenderer:SmartPrepare(container)
     end
 end
 
---============================================================================
 -- INITIALIZATION
---============================================================================
 
 -- Expose to namespace
 ns.SearchResultsRenderer = SearchResultsRenderer

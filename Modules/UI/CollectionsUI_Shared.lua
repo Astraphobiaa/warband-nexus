@@ -166,9 +166,7 @@ end
 
 local SD = ns.CollectionsUI_SourceData
 
--- ============================================================================
 -- MOUNT LIST (Factory layout: ScrollFrame + SectionHeader + DataRow)
--- ============================================================================
 
 local Factory = ns.UI.Factory
 local PADDING = SIDE_MARGIN
@@ -283,9 +281,7 @@ function M.EnsureDetailScrollBarContainer(existingContainer, parent, columnWidth
     return container
 end
 
--- ============================================================================
 -- DETAILS WINDOW DIFFERENCES: Mounts vs ToyBox vs Achievement
--- ============================================================================
 -- Mounts: viewerContainer (CreateContainer) → mountDetailEmptyOverlay + modelViewer (CreateModelViewer).
 --   Single panel: icon, name, source, description, 3D model. No scroll; content fixed in one panel.
 -- ToyBox: toyDetailContainer (CreateContainer) → toyDetailEmptyOverlay + _toyDetailScroll (ScrollFrame).
@@ -294,7 +290,6 @@ end
 --   achievementDetailPanel = CreateAchievementDetailPanel (Frame + inner ScrollFrame, dynamic content:
 --   description, achievement series list, criteria). Panel has its own border/ApplyVisuals and scroll.
 -- All three use M.CreateDetailEmptyOverlay(container, typeKey) for empty state; same overlay styling.
--- ============================================================================
 
 -- Empty detail state: single centered line "Select a X to see details." (all 4 collection tabs)
 -- Neutral grey background, no border. Inset by 1px so parent's accent border stays visible.

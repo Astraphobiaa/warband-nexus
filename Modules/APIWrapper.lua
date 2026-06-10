@@ -8,9 +8,7 @@ local ADDON_NAME, ns = ...
 
 local WarbandNexus = ns.WarbandNexus
 
--- ============================================================================
 -- MONEY/GOLD UTILITIES
--- ============================================================================
 
 --[[
     Format money as colored string with icons
@@ -56,10 +54,7 @@ function WarbandNexus:API_FormatMoney(amount)
     return str
 end
 
-
--- ============================================================================
 -- SCREEN & UI SCALE UTILITIES
--- ============================================================================
 
 --[[
     Get screen dimensions and UI scale.

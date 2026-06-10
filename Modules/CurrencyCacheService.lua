@@ -100,9 +100,7 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(
     { verboseOnly = true, suppressWhenTryCounterLoot = true }
 )) or function() end
 
--- ============================================================================
 -- STATE (Minimal - No RAM cache)
--- ============================================================================
 
 local CurrencyCache = {
     -- Metadata only (no data storage)
@@ -150,9 +148,7 @@ ns.CurrencyLoadingState = ns.CurrencyLoadingState or {
     currentStage = "Preparing...",
 }
 
--- ============================================================================
 -- SESSION-ONLY METADATA CACHE (never persisted)
--- ============================================================================
 
 local currencyMetadataCache = {}          -- [currencyID] = { name, icon, ... }
 local currencyMetadataCacheOrder = {}     -- Circular buffer eviction order
@@ -245,7 +241,6 @@ local function SafeCurrencyNumber(v)
     if issecretvalue and issecretvalue(v) then return nil end
     return tonumber(v)
 end
-
 
 --- Legacy global (if present): earned-this-week may differ from structured API on some builds.
 ---@param currencyID number
@@ -348,9 +343,7 @@ local function NormalizationCapFromCurrencyInfo(currencyID, info)
     return normCap
 end
 
--- ============================================================================
 -- DB ACCESS (Direct - No RAM cache)
--- ============================================================================
 
 ---Get direct reference to currency DB
 ---@return table|nil DB reference
@@ -422,9 +415,7 @@ local function LookupStoredTotalEarned(db, charKey, currencyID)
     return nil
 end
 
--- ============================================================================
 -- ON-DEMAND METADATA RESOLVER (Session RAM only)
--- ============================================================================
 
 ---Resolve currency metadata from WoW API (cached in session RAM, never persisted).
 ---@param currencyID number
@@ -497,9 +488,7 @@ function WarbandNexus:ClearCurrencyMetadataCache()
     ns._currenciesForUICacheInvalidateGen = (ns._currenciesForUICacheInvalidateGen or 0) + 1
 end
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 ---Initialize currency cache (validates DB structure, does NOT clear data)
 function WarbandNexus:InitializeCurrencyCache()
@@ -648,9 +637,7 @@ function WarbandNexus:InitializeCurrencyCache()
     CurrencyCache.isInitialized = true
 end
 
--- ============================================================================
 -- CURRENCY DATA RETRIEVAL (Direct from API)
--- ============================================================================
 
 ---Fetch live currency info from WoW API (used for scans and event processing).
 ---Returns a lightweight table with quantity + fields needed for internal logic.
@@ -697,9 +684,7 @@ local function FetchCurrencyFromAPI(currencyID)
     }
 end
 
--- ============================================================================
 -- UPDATE OPERATIONS (Direct DB)
--- ============================================================================
 
 --- Dawncrest / useTotalEarnedForMaxQty: Blizzard may fire two updates for one drop (bag qty vs totalEarned).
 --- Same gain amount on alternate "quantity" vs "progress" dispatches within this window = one physical gain.
@@ -890,13 +875,11 @@ local function UpdateSingleCurrency(currencyID, eventHint)
     return true
 end
 
--- ============================================================================
 -- HIERARCHY DETECTION (Collapse/Expand technique)
 -- Blizzard's C_CurrencyInfo API returns a flat list with no depth field.
 -- We collapse all headers first, then expand one-at-a-time to discover the
 -- parent→child relationships. This produces the REAL hierarchy that matches
 -- the Blizzard Currency panel (e.g. Midnight → Season 1 → Crests).
--- ============================================================================
 
 ---Recursively scan a header's direct children.
 ---PRE: header at `headerIndex` is visible and collapsed. All sub-headers
@@ -1066,9 +1049,7 @@ local function BuildHierarchyFromAPI()
     return roots, currencyDataCollector
 end
 
--- ============================================================================
 -- HEADER MERGE (accumulate currency IDs across character scans)
--- ============================================================================
 
 ---Build a flat lookup: headerName → set of currency IDs from a header tree
 ---@param headers table Array of header nodes (tree or flat)
@@ -1122,9 +1103,7 @@ local function MergeOldCurrencyIDs(newHeaders, oldLookup)
     end
 end
 
--- ============================================================================
 -- FULL SCAN
--- ============================================================================
 
 ---Perform full scan of all currencies (Direct DB architecture).
 ---Builds a proper header tree from Blizzard's API hierarchy (supports Midnight+).
@@ -1272,7 +1251,7 @@ function CurrencyCache:UpdateAll(currencyDataArray)
         return false
     end
 
-    -- CRITICAL: Clear ONLY current character's data (preserve other characters)
+    -- Clear ONLY current character's data (preserve other characters)
     if not db.currencies[currentCharKey] then
         db.currencies[currentCharKey] = {}
     else
@@ -1316,23 +1295,16 @@ function CurrencyCache:UpdateAll(currencyDataArray)
     return true
 end
 
--- ============================================================================
 -- EVENT HANDLERS
--- ============================================================================
 
--- ============================================================================
 -- EVENT HANDLERS (Direct DB)
--- ============================================================================
 
--- ============================================================================
 -- CURRENCY UPDATE QUEUE (FIFO, time-budgeted drain)
--- ============================================================================
 -- Multi-currency / same-currency bursts enqueue many IDs. Events may fire while we are
 -- inside UpdateSingleCurrency or PerformFullScan — those handlers only append. One drain
 -- session runs until the queue is empty; each frame processes up to CURRENCY_DRAIN_BUDGET_MS
 -- then resumes on the next frame (C_Timer.After(0)) so loot bursts do not monopolize one frame.
 -- Never wipe the queue after a pass: that dropped updates appended while isDraining was true.
--- ============================================================================
 
 -- Max CPU per frame for synchronous currency queue drain (loot bursts enqueue many IDs).
 local CURRENCY_DRAIN_BUDGET_MS = 4.5
@@ -1483,9 +1455,7 @@ end
 
 -- REMOVED: OnMoneyUpdate — never registered; gold tracking is owned by EventManager:OnMoneyChanged.
 
--- ============================================================================
 -- PUBLIC API (Direct DB Access)
--- ============================================================================
 
 ---Get currency data for a specific currency.
 ---Combines SV quantity (per-char) + on-demand metadata from API.
@@ -1840,7 +1810,7 @@ function CurrencyCache:Clear(clearDB)
             -- Get current character key
             local currentCharKey = CurrencySubsidiaryKey(nil)
             
-            -- IMPORTANT: Only clear CURRENT character's currency data
+            -- Only clear CURRENT character's currency data
             if db.currencies and db.currencies[currentCharKey] then
                 wipe(db.currencies[currentCharKey])
             end
@@ -1901,9 +1871,7 @@ function CurrencyCache:OnCurrencyChatSignal()
     ScheduleDebouncedBroadCurrencyScan()
 end
 
--- ============================================================================
 -- EVENT REGISTRATION
--- ============================================================================
 
 ---Register currency cache events
 function WarbandNexus:RegisterCurrencyCacheEvents()
@@ -2003,9 +1971,7 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
 end
 
--- ============================================================================
 -- ACCOUNT WIDE SYNCHRONIZATION
--- ============================================================================
 
 ---Synchronize a specific currency or all known currencies across all characters using the C_CurrencyInfo API.
 ---This function sets up the asynchronous fetch from the server.

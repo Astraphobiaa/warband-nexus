@@ -550,8 +550,6 @@ local defaults = {
     → Modules/MinimapButton.lua: InitializeDataBroker (now InitializeMinimapButton)
 ============================================================================]]
 
-
-
 ---C_WowTokenPublic: price arrives asynchronously after UpdateMarketPrice().
 function WarbandNexus:OnTokenMarketPriceUpdated()
     local mf = self.UI and self.UI.mainFrame
@@ -589,7 +587,7 @@ function WarbandNexus:OnInitialize()
     -- Initialize database with defaults
     self.db = LibStub("AceDB-3.0"):New("WarbandNexusDB", defaults, true)
     
-    -- CrITICAL: Export db to namespace for FontManager and other modules
+    -- Export db to namespace for FontManager and other modules
     ns.db = self.db
     
     -- Restore profiler measurement flags before session decompress so DB path can be timed.
@@ -620,7 +618,7 @@ function WarbandNexus:OnInitialize()
     
     -- Single-roof version check (addon / game build / per-cache schema). Cache
     -- invalidation is selective and non-destructive — see MigrationService:CheckVersions.
-    -- CRITICAL: Must run BEFORE migrations so caches are coherent before any reads.
+    -- Must run BEFORE migrations so caches are coherent before any reads.
     if ns.MigrationService then
         ns.MigrationService:CheckVersions(self.db, self)
     end
@@ -689,13 +687,10 @@ function WarbandNexus:OnInitialize()
         self:PruneCollectionsRecentObtained()
     end
     
-    -- =========================================================================
     -- TAINT SUPPRESSION: ADDON_ACTION_FORBIDDEN popup prevention
-    -- =========================================================================
     -- Strategy: hooksecurefunc (post-hook, taint-safe) + event-based hide.
     -- NEVER replace StaticPopup_Show directly — that taints the entire popup
     -- system and breaks Blizzard UI (PurchaseBankTab, UpgradeItem, etc.).
-    -- =========================================================================
     if not self._taintSuppressInstalled then
         self._taintSuppressInstalled = true
 
@@ -1008,14 +1003,13 @@ function WarbandNexus:OnEnable()
         end
     end)
 
-
     -- Collection events: owned by EventManager (debounced) → CollectionService (handlers)
     -- ACHIEVEMENT_EARNED: owned by CollectionService (OnAchievementEarned)
     -- TRANSMOG_COLLECTION_UPDATED: owned by EventManager → CollectionService
     -- NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED: owned by EventManager → CollectionService
     -- Do NOT register here — single-owner pattern prevents duplicate processing
     
-    -- CRITICAL: Check for addon conflicts immediately on enable (only if bank module enabled)
+    -- Check for addon conflicts immediately on enable (only if bank module enabled)
     -- This runs on both initial login AND /reload
     -- Detect if user re-enabled conflicting addons/modules
     
@@ -1223,14 +1217,11 @@ end
     EVENT HANDLERS
 ============================================================================]]
 
-
 --[[============================================================================
     EVENT HANDLERS (Continued - Bank Events)
     BANKFRAME_OPENED/CLOSED: owned by ItemsCacheService
     See Modules/ItemsCacheService.lua OnBankOpened() / OnBankClosed()
 ============================================================================]]
-
-
 
 --[[============================================================================
     GUILD BANK HANDLERS (Updated for 10.0+ compatibility)
@@ -1623,7 +1614,6 @@ function WarbandNexus:OnCombatEnd()
         wipe(hidden)
     end
     
-
 end
 --[[
     Event handler for pet journal changes (cage/release)
@@ -1690,8 +1680,6 @@ function WarbandNexus:OnPetListChanged()
     end)
 end
 
-
-
 --[[
     Utility Functions
 ]]
@@ -1755,9 +1743,7 @@ function WarbandNexus:OnMailUpdated()
     end
 end
 
--- ============================================================================
 -- DEBUG HELPERS
--- ==========================================================================================================================
 
 --[[============================================================================
     NOTE: Additional delegate functions and utility wrappers are defined at the

@@ -39,24 +39,18 @@ local function CurrentScannerCharacterKey()
     return raw
 end
 
--- ============================================================================
 -- DEBUG HELPER
--- ============================================================================
 
 local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00ff00[RepScanner]|r"))
     or ns.DebugPrint
     or function() end
 
--- ============================================================================
 -- REPUTATION SCANNER (Pure API Layer)
--- ============================================================================
 
 local ReputationScanner = {}
 ns.ReputationScanner = ReputationScanner
 
--- ============================================================================
 -- CORE API: Fetch Single Faction
--- ============================================================================
 
 ---Fetch faction data from Blizzard API
 ---@param factionID number
@@ -141,7 +135,7 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
     end
     
     -- Fetch Paragon info (if applicable)
-    -- IMPORTANT: Paragon can exist for:
+    -- Paragon can exist for:
     -- 1. Classic factions at Exalted (reaction = 8)
     -- 2. Renown factions at max level (isMajorFaction = true, renownLevelThreshold = 0)
     -- 3. Friendship factions at max rank
@@ -209,7 +203,7 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
             }
             
             -- Fetch friendship ranks (if available)
-            -- CRITICAL FIX: Declare ranksInfo in outer scope so it's accessible below
+            -- Declare ranksInfo in outer scope so it's accessible below
             local ranksInfo = nil
             if C_GossipInfo.GetFriendshipReputationRanks then
                 ranksInfo = C_GossipInfo.GetFriendshipReputationRanks(factionID)
@@ -221,7 +215,7 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
                 end
             end
             
-            -- IMPORTANT: Check for Friendship Paragon
+            -- Check for Friendship Paragon
             -- Friendships work differently from classic/renown:
             -- - When level = maxLevel, paragon progression begins
             -- - Each friendship has its own paragon threshold (not based on standing/maxRep overflow)
@@ -249,9 +243,7 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
     return result
 end
 
--- ============================================================================
 -- BATCH API: Fetch All Factions
--- ============================================================================
 
 local FETCH_BUDGET_MS = 4  -- max milliseconds per batch frame
 
@@ -353,8 +345,6 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
     ScanBatch()
 end
 
--- ============================================================================
 -- EXPORTS
--- ============================================================================
 
 return ReputationScanner

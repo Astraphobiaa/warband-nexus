@@ -22,9 +22,7 @@ local function ApplyStandardCardElevatedChrome(frame)
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     end
 end
---============================================================================
 -- DRAW EMPTY STATE (Shared by Items and Storage tabs)
---============================================================================
 
 local function DrawEmptyState(addon, parent, startY, isSearch, searchText, tabContext)
     if not parent or not parent.CreateTexture then
@@ -41,9 +39,7 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText, tabCo
     return startY or 0
 end
 
---============================================================================
 -- DRAW SECTION EMPTY STATE (Collapsed section empty message)
---============================================================================
 
 ---Draw empty state for a collapsed section
 ---@param parent Frame Parent frame
@@ -67,9 +63,7 @@ local function DrawSectionEmptyState(parent, message, yOffset, height, width)
     return yOffset + (height or 30)
 end
 
---============================================================================
 -- EMPTY STATE CARD (Standardized "no data" state for all tabs)
---============================================================================
 
 -- Per-tab empty state configuration
 -- Uses the same atlas icons as TAB_HEADER_ICONS but larger and desaturated

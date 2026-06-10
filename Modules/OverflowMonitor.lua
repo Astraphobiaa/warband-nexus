@@ -8,9 +8,7 @@ local ADDON_NAME, ns = ...
 local OverflowMonitor = {}
 ns.OverflowMonitor = OverflowMonitor
 
---============================================================================
 -- SIMPLE OVERFLOW CHECK
---============================================================================
 
 --[[
     Check if a FontString's text is overflowing its container
@@ -43,7 +41,7 @@ ns.OverflowMonitor.IsTextOverflowing = IsTextOverflowing
     @return boolean - True if any overflow detected
 ]]
 function OverflowMonitor:CheckCharacterRows()
-    -- CRITICAL FIX: Use namespace reference instead of global
+    -- Use namespace reference instead of global
     local WarbandNexus = ns.WarbandNexus
     if not WarbandNexus then return false end
     
@@ -77,7 +75,7 @@ end
     @return boolean - True if any overflow detected
 ]]
 function OverflowMonitor:CheckPlanCards()
-    -- CRITICAL FIX: Use namespace reference instead of global
+    -- Use namespace reference instead of global
     local WarbandNexus = ns.WarbandNexus
     if not WarbandNexus then return false end
     

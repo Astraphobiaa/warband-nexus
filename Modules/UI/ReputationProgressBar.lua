@@ -16,16 +16,13 @@
 
 local ADDON_NAME, ns = ...
 
-
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 -- Import dependencies from namespace
 local COLORS = ns.UI_COLORS
 local GetPixelScale = ns.GetPixelScale
 
---============================================================================
 -- RUNTIME DEPENDENCY VALIDATION
---============================================================================
 
 local function ValidateDependencies()
     local missing = {}
@@ -43,9 +40,7 @@ end
 
 -- Defer validation to first use (allows SharedWidgets to complete loading)
 
---============================================================================
 -- REPUTATION PROGRESS BAR
---============================================================================
 
 ---Create a reputation progress bar with dynamic fill and colors
 ---Handles Paragon, Renown, and Classic reputation systems
@@ -221,9 +216,7 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
     return bgFrame, fillTexture
 end
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 ns.UI_CreateReputationProgressBar = CreateReputationProgressBar
 

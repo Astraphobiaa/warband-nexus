@@ -24,7 +24,6 @@
 
 local ADDON_NAME, ns = ...
 
-
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 
@@ -261,7 +260,7 @@ function InitializationService:InitializeCoreInfrastructure(addon)
             local shouldShowPopup = not charData or charData.trackingConfirmed ~= true
 
             if shouldShowPopup then
-                -- CRITICAL: DON'T set trackingConfirmed here!
+                -- DON'T set trackingConfirmed here!
                 -- The flag will be set by ConfirmCharacterTracking() when user makes a choice
                 -- This prevents the popup from appearing again
 

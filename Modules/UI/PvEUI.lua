@@ -675,9 +675,7 @@ end
 
 -- PvE event refresh is centralized in UI.lua SchedulePopulateContent (WN_PVE_UPDATED).
 
---============================================================================
 -- GREAT VAULT HELPER FUNCTIONS
---============================================================================
 
 --[[
     Determine if a vault activity slot is at maximum completion level
@@ -916,7 +914,7 @@ local function GetVaultActivityDisplayText(activity, typeName)
         local difficulty = unknownLabel
         if activity.level then
             -- Raid difficultyIDs: 14=Normal, 15=Heroic, 16=Mythic, 17=LFR
-            -- CRITICAL: Use exact matches — LFR (17) > Mythic (16) by ID
+            -- Use exact matches — LFR (17) > Mythic (16) by ID
             if activity.level == 16 then
                 difficulty = mythicLabel
             elseif activity.level == 15 then
@@ -1246,7 +1244,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
     local cardHeight = cellHeight * numRows + borderPadding * 2
 
-    -- CRITICAL: Set card dimensions for proper border
+    -- Set card dimensions for proper border
     vaultCard:SetHeight(cardHeight)
     vaultCard:SetWidth(cardWidth)
 
@@ -1557,7 +1555,6 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                     end)
                     BindForwardScrollWheel(slotFrame)
                 end
-
 
             elseif activity and not isComplete then
                 -- State: in-progress — amber tint
@@ -2312,7 +2309,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
         -- Get vault activities (from PvECacheService structure)
         local vaultActivitiesData = pve.vaultActivities
         
-        -- CRITICAL: Create a NEW table on each render (don't reuse old data)
+        -- Create a NEW table on each render (don't reuse old data)
         local vaultActivities = {}
         
         -- Flatten vault activities (raids, mythicPlus, pvp, world) into single array.
@@ -2349,7 +2346,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             local vaultByType = {}
             for i = 1, #vaultActivities do
                 local activity = vaultActivities[i]
-                -- CRITICAL: Use locale-independent internal keys for vaultByType.
+                -- Use locale-independent internal keys for vaultByType.
                 -- Helper functions (IsVaultSlotAtMax, GetVaultActivityDisplayText, etc.)
                 -- expect "Raid", "M+", "World", "PvP" — NOT locale strings.
                 local internalKey = nil
@@ -2597,9 +2594,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     return sectionContent
 end
 
---============================================================================
 -- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
---============================================================================
 
 ns.PvEUI = ns.PvEUI or {}
 ns.PvEUI.BuildPvEColumnKeySequence = BuildPvEColumnKeySequence
@@ -3177,7 +3172,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     
     for i = 1, #characters do
         local char = characters[i]
-        -- CRITICAL: Same canonical key as PvECacheService + row loop below (vault/M+ are per-key in pveCache)
+        -- Same canonical key as PvECacheService + row loop below (vault/M+ are per-key in pveCache)
         local charKey = GetRowCanonicalPvEKey(char)
         
         -- Separate current character
@@ -3858,7 +3853,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
         local char = ent.char
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
-        -- CRITICAL: Match DB keys (currency + PvE cache) — prefer characters table index via _key for canonical resolution.
+        -- Match DB keys (currency + PvE cache) — prefer characters table index via _key for canonical resolution.
         local charKey = GetRowCanonicalPvEKey(char)
         local isFavorite = L.ns.CharacterService and L.ns.CharacterService:IsFavoriteCharacter(self, charKey)
         
@@ -4463,7 +4458,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         buildPvEDetailIfNeeded = function()
             ns.PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
         end
-
 
         if charExpanded then
             buildPvEDetailIfNeeded()

@@ -600,9 +600,7 @@ local function ApplyPendingMailIconTexture(tex)
     tex:SetTexture("Interface/Minimap/Tracking/Mailbox")
 end
 
---============================================================================
 -- EVENT-DRIVEN UI REFRESH
---============================================================================
 
 ---Register event listener for character updates
 ---@param parent Frame Parent frame for event registration
@@ -619,9 +617,7 @@ local function RegisterCharacterEvents(parent)
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
 
---============================================================================
 -- DRAW CHARACTER LIST
---============================================================================
 
 function WarbandNexus:DrawCharacterList(parent)
     -- Request updated WoW Token market price (async) — heavily throttled; not tied to tab redraw frequency.
@@ -1907,9 +1903,7 @@ function WarbandNexus:DrawCharacterList(parent)
     return yOffset
 end
 
---============================================================================
 -- DRAW SINGLE CHARACTER ROW
---============================================================================
 
 ---@param existingRow Frame|nil When set (virtual list), draw into this pooled row instead of acquiring a second frame.
 function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey, existingRow)
@@ -1994,7 +1988,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end)
     end
     
-    
     -- Icon border color (accent) — used for profession icons
     local iconBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
     
@@ -2016,7 +2009,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.factionIcon:Hide()
     end
     
-    
     -- COLUMN 3: Race icon
     local raceOffset = GetColumnOffset("race")
     if char.raceFile then
@@ -2030,7 +2022,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.raceIcon:Hide()
     end
     
-    
     -- COLUMN 4: Class icon
     local classOffset = GetColumnOffset("class")
     if char.classFile then
@@ -2042,7 +2033,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     elseif row.classIcon then
         row.classIcon:Hide()
     end
-    
     
     -- COLUMN 5: Name
     local nameOffset = GetColumnOffset("name")
@@ -2178,7 +2168,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.itemLevelText:SetText("|cff666666--|r")
     end
     
-    
     -- COLUMN 8: Gold (dynamic offset, chained from itemLevel column)
     local goldOffset = itemLevelOffset + (CHAR_ROW_COLUMNS.itemLevel.total or 90)
     if not row.goldText then
@@ -2191,7 +2180,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.goldText:SetPoint("LEFT", goldOffset, 0)
     local totalCopper = ns.Utilities:GetCharTotalCopper(char)
     row.goldText:SetText(FormatMoney(totalCopper, 12))
-    
     
     -- COLUMN 9: Professions (dynamic offset, chained from gold column)
     local profOffset = goldOffset + (CHAR_ROW_COLUMNS.gold.total or 205)
@@ -2519,7 +2507,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    
     -- COLUMN 10: Mythic Keystone (dynamic offset, chained from professions column)
     local mythicKeyOffset = profOffset + (CHAR_ROW_COLUMNS.professions.total or 150)
     
@@ -2703,7 +2690,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if row.reorderButtons.down then row.reorderButtons.down:SetScript("OnClick", nil) end
     end
     
-    
     -- COLUMN: Last Seen (RIGHT-anchored, compact)
     if isCurrent then
         if not row.onlineText then
@@ -2747,7 +2733,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.lastSeenText:SetTextColor(1, 1, 1)
         row.lastSeenText:Show()
     end
-    
     
     -- COLUMN: Custom section assign (folder) — tracked non-favorites in regular or custom group lists
     local showHeaderAssign = (char.isTracked ~= false) and (not isFavorite)
@@ -2949,8 +2934,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-
-    
     row._wnGradientRefresh = function()
         if not row.nameText or not row.realmText or not ns.UI_ApplyCharacterRowClassGradientAccent then
             return
@@ -2986,10 +2969,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     return yOffset + 46 + betweenRows, row  -- Row 46px + spacing + row ref for pool tracking
 end
 
-
---============================================================================
 -- REORDER CHARACTER IN LIST
---============================================================================
 
 function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     if not char or not listKey then
@@ -3125,9 +3105,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
 end
 
---============================================================================
 -- CUSTOM CHARACTER HEADERS — dialogs (Filter menu entry points)
---============================================================================
 
 function WarbandNexus:OpenCustomCharacterHeaderDialog()
     local CreateExternalWindow = ns.UI_CreateExternalWindow

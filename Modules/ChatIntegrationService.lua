@@ -47,9 +47,7 @@ local Utilities = ns.Utilities
 local Constants = ns.Constants
 local issecretvalue = issecretvalue
 
--- ============================================================================
 -- CHAT OUTPUT (ns.ChatOutput)
--- ============================================================================
 
 ns.ChatOutput = ns.ChatOutput or {}
 local ChatOutput = ns.ChatOutput
@@ -543,9 +541,7 @@ ns.SendToChatFramesLootRepCurrency = function(message)
     ChatOutput.SendToChatFramesMatchingLoot(message)
 end
 
--- ============================================================================
 -- CHAT_MSG_SYSTEM — backup filter (played lines that use the event path)
--- ============================================================================
 
 local playedTimeChatPrefixes
 
@@ -589,9 +585,7 @@ local function IsPlayedTimeSystemChatMessage(msg)
     return false
 end
 
--- ============================================================================
 -- INSTALL (once)
--- ============================================================================
 
 local playedTimeRewrapScheduled = false
 

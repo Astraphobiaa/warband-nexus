@@ -77,9 +77,7 @@ local format = string.format
 -- Singleton frame
 local infoFrame = nil
 
--- ============================================================================
 -- POSITION / SIZE (db.global.professionInfo)
--- ============================================================================
 
 local function GetProfInfoDB()
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return nil end
@@ -135,9 +133,7 @@ local function IsMidnightExpansion(name, skillLineID)
         and name:find("Midnight", 1, true)
 end
 
--- ============================================================================
 -- HELPERS
--- ============================================================================
 
 local function ColorText(text, color)
     if not color then return "|cffffffff" .. tostring(text) .. "|r" end
@@ -194,9 +190,7 @@ local function ResolveProfessionEquipment(charData, profName)
     return eqData
 end
 
--- ============================================================================
 -- SCROLL CONTENT BUILDER
--- ============================================================================
 
 local function AddSectionHeader(scrollChild, yOffset, text)
     yOffset = yOffset + SECTION_GAP
@@ -256,9 +250,7 @@ local function AddEmptyMessage(scrollChild, yOffset, message)
     return yOffset + LINE_HEIGHT * 3
 end
 
--- ============================================================================
 -- TALENT TREE VISUAL HELPERS
--- ============================================================================
 
 -- Create a small progress bar
 local function AddProgressBar(scrollChild, yOffset, current, maximum, barColor, indent)
@@ -350,9 +342,7 @@ local function AddTabHeader(scrollChild, yOffset, tabName, isUnlocked, spentRank
     return yOffset + 26
 end
 
--- ============================================================================
 -- TREE LAYOUT ENGINE
--- ============================================================================
 
 -- Build a tree structure from flat node list using edges and positions
 local function BuildTreeHierarchy(nodes)
@@ -597,9 +587,7 @@ local function AddTalentTree(scrollChild, yOffset, nodes)
     return yOffset
 end
 
--- ============================================================================
 -- POPULATE WINDOW CONTENT
--- ============================================================================
 
 local function PopulateContent(scrollChild, charData, charKey, profName, profSlot)
     -- Update content width from current frame size (for resizable window)
@@ -949,9 +937,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
     end
 end
 
--- ============================================================================
 -- CREATE / SHOW WINDOW
--- ============================================================================
 
 local function CreateInfoFrame()
     if infoFrame then return infoFrame end
@@ -1114,9 +1100,7 @@ local function CreateInfoFrame()
     return frame
 end
 
--- ============================================================================
 -- PUBLIC API
--- ============================================================================
 
 function WarbandNexus:ShowProfessionInfo(charKey, profName, profSlot)
     if not charKey or not profName then return end

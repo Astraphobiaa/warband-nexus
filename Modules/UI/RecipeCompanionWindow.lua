@@ -72,9 +72,7 @@ local bagUpdateRegistered = false
 local collapsedSlots = {}          -- { [slotIndex] = true } for collapsed reagent sections
 local craftersSectionCollapsed = false  -- Collapse state for "Crafters" section
 
--- ============================================================================
 -- FLOATING WINDOW POSITION (db.global.recipeCompanion)
--- ============================================================================
 
 local function GetDB()
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return nil end
@@ -118,9 +116,7 @@ local function RestorePosition(frame)
     frame:SetSize(w, h)
 end
 
--- ============================================================================
 -- REAGENT DATA EXTRACTION
--- ============================================================================
 
 --[[
     Create atlas markup for quality tier icon.
@@ -307,9 +303,7 @@ local function FetchReagentData(recipeID)
     return result
 end
 
--- ============================================================================
 -- RENDERING
--- ============================================================================
 
 --[[
     Sum all values in a numeric-keyed table.
@@ -426,9 +420,7 @@ local function RenderContent(scrollChild)
     local yOffset = 4
     rowCounter = 0  -- Reset alternating row counter each render
 
-    -- ========================================================================
     -- CRAFTERS SECTION — "Who Can Craft This?" (top of window)
-    -- ========================================================================
     if currentRecipeID then
         local crafters = WarbandNexus:GetCraftersForRecipe(currentRecipeID)
         if crafters and #crafters > 0 then
@@ -651,7 +643,7 @@ local function RenderContent(scrollChild)
                     totalRightText:SetText(totalColor .. totalHave .. "|r")
                 end
 
-            end -- end if not isCollapsed
+            end
 
             -- Spacing between reagent sections
             yOffset = yOffset + SECTION_SPACING
@@ -696,9 +688,7 @@ local function RenderContent(scrollChild)
     end
 end
 
--- ============================================================================
 -- REFRESH
--- ============================================================================
 
 --[[
     Header: recipe name + crafts possible from materials (GetRecipeCraftCountFromMaterials — not quantityMax).
@@ -738,9 +728,7 @@ local function RefreshCompanion()
     end)
 end
 
--- ============================================================================
 -- EVENT HANDLERS
--- ============================================================================
 
 --[[
     Called when a recipe is selected in the profession UI.
@@ -823,9 +811,7 @@ local function OnProfessionWindowClosed()
     currentReagentData = nil
 end
 
--- ============================================================================
 -- WINDOW CREATION
--- ============================================================================
 
 --[[
     Create the companion window frame. Floating, movable, resizable (like Plans Tracker).
@@ -1058,9 +1044,7 @@ local function CreateCompanionWindow()
     return frame
 end
 
--- ============================================================================
 -- INITIALIZATION (called from EventManager after events are wired)
--- ============================================================================
 
 function WarbandNexus:InitializeRecipeCompanion()
     -- Create the frame (hidden)
@@ -1084,7 +1068,7 @@ function WarbandNexus:InitializeRecipeCompanion()
     end)
 
     -- BAG_UPDATE_DELAYED: refresh counts when inventory changes (guard with module check)
-    -- CRITICAL FIX: Uses RecipeCompanionEvents as 'self' key so we don't overwrite
+    -- Uses RecipeCompanionEvents as 'self' key so we don't overwrite
     -- ItemsCacheService's BAG_UPDATE_DELAYED → OnInventoryBagsChanged handler.
     if not bagUpdateRegistered then
         bagUpdateRegistered = true
@@ -1105,9 +1089,7 @@ function WarbandNexus:InitializeRecipeCompanion()
     end)
 end
 
--- ============================================================================
 -- EXPORT
--- ============================================================================
 
 ns.RecipeCompanionWindow = {
     Show = function()

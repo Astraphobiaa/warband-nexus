@@ -7,9 +7,7 @@
 local _, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local issecretvalue = issecretvalue
--- ============================================================================
 -- SOURCE TEXT PARSER
--- ============================================================================
 
 --[[
     Parse source text into structured parts

@@ -47,9 +47,7 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter(
     { verboseOnly = true, suppressWhenTryCounterLoot = true }
 )) or function() end
 
--- ============================================================================
 -- STATE (Minimal - No RAM cache)
--- ============================================================================
 
 local ReputationCache = {
     -- Metadata only (no data storage)
@@ -148,9 +146,7 @@ local function ScheduleUIRefresh(immediate)
     end)
 end
 
--- ============================================================================
 -- DB INTERFACE (Direct Access)
--- ============================================================================
 
 ---Get direct reference to DB reputation data
 ---@return table DB table (WarbandNexus.db.global.reputationData)
@@ -192,9 +188,7 @@ local function CurrentReputationSubsidiaryKey()
     return raw
 end
 
--- ============================================================================
 -- SESSION-ONLY METADATA CACHE (never persisted)
--- ============================================================================
 
 local repMetadataCache = {}           -- [factionID] = { name, description, type, ... }
 local repMetadataCacheOrder = {}      -- Circular buffer eviction order
@@ -203,7 +197,7 @@ local REP_METADATA_CACHE_MAX = 256
 
 ---Resolve faction metadata from WoW API (cached in session RAM, never persisted).
 ---Returns faction-level info: name, description, type, isAccountWide, isMajorFaction, etc.
----IMPORTANT: Does NOT cache results where the API returned nil/empty name.
+--- Does NOT cache results where the API returned nil/empty name.
 ---This allows re-fetching on next call once the API has loaded the data.
 ---@param factionID number
 ---@return table|nil metadata
@@ -283,9 +277,7 @@ function WarbandNexus:ClearReputationMetadataCache()
     repMetadataCacheHead = 1
 end
 
--- ============================================================================
 -- COMPACT ↔ HYDRATE: SV stores only progress data, metadata fetched on-demand
--- ============================================================================
 
 ---Extract compact progress-only data from a normalized faction object.
 ---This is what gets persisted to SV. Essential metadata is preserved to avoid
@@ -437,9 +429,7 @@ local function HydrateFactionData(factionID, compact, isAccountWide)
     return hydrated
 end
 
--- ============================================================================
 -- UNIFIED FACTION LOOKUP (Single Source of Truth)
--- ============================================================================
 
 ---Resolve the best available DB entry for a factionID and hydrate it.
 ---Priority:
@@ -947,22 +937,18 @@ function ReputationCache:RegisterEventListeners()
         return
     end
     
-    -- ============================================================
     -- DB-FIRST ARCHITECTURE (v5.0.0)
     --
     -- Flow: Event → Parse → Queue → FullScan (DB Update) → Chat from DB
     --
-    -- CRITICAL: Do NOT register PLAYER_ENTERING_WORLD or WN_REPUTATION_CACHE_READY
+    -- Do NOT register PLAYER_ENTERING_WORLD or WN_REPUTATION_CACHE_READY
     -- on WarbandNexus — AceEvent allows only ONE handler per event per object.
     -- Core.lua and ReputationUI.lua already register those.
     --
     -- 3 events, 1 frame, 1 message filter. Zero type-specific logic in event handlers.
-    -- ============================================================
     
-    -- ============================================================
     -- MESSAGE PARSE PATTERNS (Blizzard global strings → locale-safe)
     -- Built once at registration time. nil-safe for missing globals.
-    -- ============================================================
     
     ---Convert a Blizzard format string (e.g. "Reputation with %s increased by %d.")
     ---into a Lua pattern with capture groups: "Reputation with (.+) increased by (%d+)%."
@@ -1363,7 +1349,6 @@ function ReputationCache:RegisterEventListeners()
 
     -- Blizzard rep chat suppression: ChatIntegrationService.lua (single CHAT_MSG_COMBAT_FACTION_CHANGE hook).
     
-    -- ============================================================
     -- DB-FIRST ARCHITECTURE (v5.0.0)
     --
     -- Flow: Event → Parse → Queue → FullScan (DB Update) → Chat from DB
@@ -1380,7 +1365,6 @@ function ReputationCache:RegisterEventListeners()
     -- After FullScan updates the DB, ProcessPendingChatNotifications reads
     -- the PROCESSED DB data (from ReputationProcessor) and fires WN_REPUTATION_GAINED.
     -- Zero type-specific logic here — the Processor handles all of it.
-    -- ============================================================
     local repEventFrame = CreateFrame("Frame")
     repEventFrame:RegisterEvent("CHAT_MSG_COMBAT_FACTION_CHANGE")
     repEventFrame:RegisterEvent("CHAT_MSG_LOOT")
@@ -1415,11 +1399,9 @@ function ReputationCache:RegisterEventListeners()
             return
         end
         
-        -- ────────────────────────────────────────────────────────────
         -- CHAT_MSG_COMBAT_FACTION_CHANGE: Parse → Buffer → Queue
         -- Parse the message, buffer rapid gains for 0.3s,
         -- then queue for chat notification after DB update.
-        -- ────────────────────────────────────────────────────────────
         if event == "CHAT_MSG_COMBAT_FACTION_CHANGE" then
             local message = ...
             local factionName, gainAmount, isDecrease = ParseReputationMessage(message)
@@ -1458,11 +1440,9 @@ function ReputationCache:RegisterEventListeners()
             return
         end
         
-        -- ────────────────────────────────────────────────────────────
         -- MAJOR_FACTION_RENOWN_LEVEL_CHANGED: Queue renown level-up
         -- Provides (majorFactionID, newRenownLevel, oldRenownLevel) — see Warcraft Wiki MAJOR_FACTION_RENOWN_LEVEL_CHANGED.
         -- Queued for processing after DB update (same as CHAT_MSG flow).
-        -- ────────────────────────────────────────────────────────────
         if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
             local majorFactionID, newRenownLevel, oldRenownLevelFromEvent = ...
             if not majorFactionID or not newRenownLevel then return end
@@ -1533,12 +1513,10 @@ function ReputationCache:RegisterEventListeners()
             return
         end
 
-        -- ────────────────────────────────────────────────────────────
         -- CHAT_MSG_LOOT: companion XP item safety-net
         -- Some Delves companion XP rewards only show as loot items.
         -- Seed a pending rep notification so the next FullScan can
         -- derive the exact gain from friendship snapshot diff.
-        -- ────────────────────────────────────────────────────────────
         if event == "CHAT_MSG_LOOT" then
             local message = ...
             local itemID = ExtractLootItemID(message)
@@ -1572,10 +1550,8 @@ function ReputationCache:RegisterEventListeners()
             return
         end
         
-        -- ────────────────────────────────────────────────────────────
         -- UPDATE_FACTION: Background DB sync only (no chat notification)
         -- Schedule FullScan to keep DB and UI in sync.
-        -- ────────────────────────────────────────────────────────────
         if event == "UPDATE_FACTION" then
             if not ReputationCache.updateThrottle then
                 ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
@@ -1593,12 +1569,10 @@ function ReputationCache:RegisterEventListeners()
     end
 end)
     
-    -- ============================================================
     -- FULL FLOW SIMULATION (developer / internal testing)
     -- Defined inside RegisterEventListeners for closure access to:
     --   QueueChatNotification, ScheduleFullScanForChat, pendingGains
     -- Simulates the REAL pipeline: Queue → 0.5s → FullScan → DB → Chat
-    -- ============================================================
     
     ---Simulate a reputation gain through the full DB-first pipeline.
     ---Tests: QueueChatNotification → ScheduleFullScanForChat → FullScan → DB → ProcessPending → Chat
@@ -1611,10 +1585,10 @@ end)
         
         DebugPrint("|cff9370DB[ReputationCache]|r [SIM] Simulating gain: " .. factionName .. " +" .. gainAmount)
         
-        -- Step 1: Queue notification (captures old standing from DB — same as real flow)
+        -- Queue notification (captures old standing from DB — same as real flow)
         QueueChatNotification(factionName, gainAmount)
         
-        -- Step 2: If renown level-up, also mark it (same as MAJOR_FACTION handler)
+        -- If renown level-up, also mark it (same as MAJOR_FACTION handler)
         if opts.isRenownLevelUp then
             local pending = self._pendingChatNotifications
             if pending[factionName] then
@@ -1622,15 +1596,13 @@ end)
             end
         end
         
-        -- Step 3: Schedule FullScan with real timing (0.5s → DB update → ProcessPending → Chat)
+        -- Schedule FullScan with real timing (0.5s → DB update → ProcessPending → Chat)
         ScheduleFullScanForChat()
     end
     
-    -- ============================================================
     -- INITIAL SNAPSHOT BUILD (direct timer — no event dependency)
     -- 4s delay ensures API is ready and avoids overlap with BuildCollectionCache at T+2s.
     -- Uses async version to spread work across frames.
-    -- ============================================================
     C_Timer.After(4, function()
         if not ReputationCache._snapshotReady then
             ReputationCache:BuildSnapshotAsync()
@@ -1639,9 +1611,7 @@ end)
     
 end
 
--- ============================================================================
 -- UPDATE OPERATIONS (Direct DB writes)
--- ============================================================================
 
 ---Update single faction (stores compact progress data in SV, strips metadata).
 ---@param factionID number
@@ -1720,7 +1690,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     -- Get current character key
     local currentCharKey = CurrentReputationSubsidiaryKey()
     
-    -- CRITICAL: Clear ONLY current character's data (preserve other characters)
+    -- Clear ONLY current character's data (preserve other characters)
     if not db.characters[currentCharKey] then
         db.characters[currentCharKey] = {}
     else
@@ -1731,7 +1701,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     db.factionInfo = db.factionInfo or {}
     
     -- MERGE data into DB (compact format — progress only, metadata stripped)
-    -- CRITICAL: All factionIDs are normalized to NUMBER keys to prevent type mismatches
+    -- All factionIDs are normalized to NUMBER keys to prevent type mismatches
     local awCount = 0
     local charCount = 0
     
@@ -1759,7 +1729,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
         end
     end
     
-    -- CRITICAL: Purge stale character entries for factions that are now account-wide.
+    -- Purge stale character entries for factions that are now account-wide.
     -- Old scans (before isAccountWide fix or from other characters) may have stored
     -- account-wide factions in db.characters[charKey]. Remove them so they don't
     -- appear in both Account-Wide and Character-Based sections.
@@ -1892,9 +1862,7 @@ function ReputationCache:BuildHeaders()
     db.headers = headers
 end
 
--- ============================================================================
 -- READ OPERATIONS (Direct DB reads)
--- ============================================================================
 
 ---Get single faction from DB (unified lookup)
 ---@param factionID number
@@ -1985,9 +1953,7 @@ function ReputationCache:Clear(clearDB)
     end
 end
 
--- ============================================================================
 -- SCAN OPERATIONS
--- ============================================================================
 
 ---Perform full scan of all reputations
 function ReputationCache:PerformFullScan(bypassThrottle)
@@ -2148,11 +2114,9 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     end)
 end
 
--- ============================================================================
 -- PENDING CHAT NOTIFICATIONS (DB-first architecture)
 -- Reads PROCESSED DB data (from ReputationProcessor) and fires WN_REPUTATION_GAINED.
 -- Zero type-specific logic — the Processor already handled renown/friendship/paragon/classic.
--- ============================================================================
 
 ---Process all pending chat notifications using freshly updated DB data.
 ---Called at the end of PerformFullScan after DB has been updated.
@@ -2244,7 +2208,6 @@ function ReputationCache:ProcessPendingChatNotifications()
     wipe(pending)
 end
 
--- ============================================================================
 -- DELVE COMPANION DIRECT WATCHER
 -- Captures Valeera's raw rep values from the live faction list before companion-XP loot,
 -- then diffs after a short delay to trigger FullScan so the DB/UI stay in sync.
@@ -2252,7 +2215,6 @@ end
 -- + CHAT_MSG_COMBAT_FACTION_CHANGE). Do not Send WN_REPUTATION_GAINED from here: raw
 -- C_Reputation.GetFactionDataByID (e.g. nextReactionThreshold) does not match Processor DB
 -- totals and produced duplicate lines (e.g. 41,248/41,248 vs 217k/262k + Level).
--- ============================================================================
 
 local function WalkFactionsForCompanion()
     -- Scan the live faction list and return (factionID, currentValue, friendshipStanding)
@@ -2344,9 +2306,7 @@ function ReputationCache:CheckCompanionRepDelta()
     self:PerformFullScan(true)
 end
 
--- ============================================================================
 -- PUBLIC API (Attached to WarbandNexus)
--- ============================================================================
 
 -- GetAllReputations() hydrates every stored faction row; ReputationUI calls it on each tab draw.
 -- Without caching, first open / tab switch can spend several seconds rebuilding identical tables.
@@ -2447,7 +2407,7 @@ function WarbandNexus:GetAllReputations()
     end
     
     -- Add character-specific reputations (from ALL characters, hydrated)
-    -- CRITICAL: Skip any factionID that already exists in accountWide
+    -- Skip any factionID that already exists in accountWide
     for charKey, charFactions in pairs(db.characters) do
         local charClass = classByCharKey[charKey] or "WARRIOR"
         for factionID, compact in pairs(charFactions) do
@@ -2501,9 +2461,7 @@ function WarbandNexus:ClearReputationCache()
     ReputationCache:Clear(true)
 end
 
--- ============================================================================
 -- WARBAND REPUTATION AGGREGATION
--- ============================================================================
 
 ---Aggregate reputation data across all characters into a warband-wide view.
 ---For each faction, returns the best standing across all tracked characters.
@@ -2576,9 +2534,7 @@ function WarbandNexus:GetWarbandReputationSummary()
     return summary
 end
 
--- ============================================================================
 -- EXPORT
--- ============================================================================
 
 ns.ReputationCache = ReputationCache
 

@@ -16,9 +16,7 @@ local function VB__setfenv()
 end
 setfenv(1, VB__setfenv())
 --[[ Shared API: M.* / S.* only across VaultButton_* chunks (see VaultButton_Core.lua). ]]
--- ============================================================================
 -- Badge
--- ============================================================================
 local UpdateBadge = function()
     if not S.badge then return end
     local count = CountReady()
@@ -40,9 +38,7 @@ local UpdateBadge = function()
     if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
 end
 
--- ============================================================================
 -- Easy Access tooltip copy (clear text; table cells keep icons)
--- ============================================================================
 
 function M.GetBountyColumnIcon()
     local primary = (ns.Constants and ns.Constants.TROVEHUNTERS_BOUNTY_ITEM_ID) or BOUNTY_ITEM_ID
@@ -635,10 +631,8 @@ BuildEasyAccessTooltipData = function(charKey, entry)
     }
 end
 
--- ============================================================================
 -- Themed tooltip helpers (delegate to ns.UI_ShowTooltip / ns.UI_HideTooltip,
 -- with GameTooltip fallback before TooltipService is initialised).
--- ============================================================================
 WNTooltipShow = function(anchor, data)
     if ns.UI_ShowTooltip and WarbandNexus and WarbandNexus.Tooltip then
         ns.UI_ShowTooltip(anchor, data)
@@ -678,9 +672,7 @@ WNTooltipHide = function()
     if ns.UI_HideTooltip then ns.UI_HideTooltip() else GameTooltip:Hide() end
 end
 
--- ============================================================================
 -- Hover tooltip (current character summary)
--- ============================================================================
 function M.ShowHoverTooltip(anchor)
     EnsureVaultShiftWatcher()
     local charKey = GetCurrentCharKey()
@@ -714,6 +706,4 @@ M.BuildEasyAccessTooltipData = BuildEasyAccessTooltipData
 M.RefreshEasyAccessHoverTooltip = RefreshEasyAccessHoverTooltip
 M.WNTooltipShow = WNTooltipShow
 M.WNTooltipHide = WNTooltipHide
-
--- ============================================================================
 

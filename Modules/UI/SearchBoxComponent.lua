@@ -111,9 +111,7 @@ function ns.UI_FlushSearchRefresh(ownerKey)
     if fn then fn() end
 end
 
---============================================================================
 -- SEARCH BOX COMPONENT
---============================================================================
 
 ---Creates a search box with icon, placeholder, and debounced callback
 ---@param parent Frame Parent frame

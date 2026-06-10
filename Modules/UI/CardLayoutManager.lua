@@ -16,9 +16,7 @@ local sort = table.sort
 local DebugVerbosePrint = ns.DebugVerbosePrint
 local IsDebugVerboseEnabled = ns.IsDebugVerboseEnabled
 
---============================================================================
 -- DYNAMIC CARD LAYOUT MANAGER
---============================================================================
 
 --[[
     Dynamic Card Layout Manager
@@ -287,9 +285,7 @@ function CardLayoutManager:RefreshLayout(instance)
     end
 end
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 -- Export to namespace
 ns.UI_CardLayoutManager = CardLayoutManager

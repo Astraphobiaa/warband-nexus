@@ -35,12 +35,10 @@ local ADDON_NAME, ns = ...
 
 ---@class Constants
 local Constants = {
-    --==========================================================================
     -- ADDON VERSION
-    --==========================================================================
     
     -- Main addon version (must match ## Version in WarbandNexus.toc)
-    -- IMPORTANT: Update this whenever you update the TOC version!
+    -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
     ADDON_VERSION = "3.1.7",
@@ -61,16 +59,12 @@ local Constants = {
         },
     },
     
-    --==========================================================================
     -- EXPANSION TARGETING
-    --==========================================================================
     
     CURRENT_EXPANSION_INTERFACE = 120005,   -- Midnight 12.0.5 (## Interface in TOC; must match WarbandNexus.toc)
     CURRENT_EXPANSION_NAME = "Midnight",    -- Used for filtering profession content to latest expansion
     
-    --==========================================================================
     -- CACHE VERSIONS
-    --==========================================================================
     -- Start all caches at 1.0.0 for consistency
     -- Increment PATCH version (third number) when cache schema changes
     
@@ -81,9 +75,7 @@ local Constants = {
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)
     ITEMS_CACHE_VERSION = "1.0.0",       -- Items (lean itemID+stack+quality; metadata on-demand)
     
-    --==========================================================================
     -- PACKAGED MEDIA (minimap / Easy Access / header / dialogs)
-    --==========================================================================
     --- Shipped `Media/icon.tga` — explicit extension; basename `Media\\icon` can bind to the wrong asset on some clients.
     ADDON_MEDIA_ICON = "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga",
 
@@ -101,16 +93,12 @@ local Constants = {
     WN_ICON_CREDITS = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
     WN_ICON_TRACKING = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Tracking.tga",
     
-    --==========================================================================
     -- DATABASE VERSIONS
-    --==========================================================================
     
     DB_VERSION = 1,  -- Main database schema version (for migrations)
                      -- Increment when database structure changes require migration
     
-    --==========================================================================
     -- PERFORMANCE CONSTANTS
-    --==========================================================================
     
     -- Throttle timings (in seconds)
     THROTTLE = {
@@ -130,9 +118,7 @@ local Constants = {
     -- Collections tab → Recent strip: SavedVariables rows older than this are removed (seconds)
     COLLECTIONS_RECENT_RETENTION_SEC = 604800, -- 7 days
     
-    --==========================================================================
     -- EVENT NAMES (STANDARDIZED)
-    --==========================================================================
     -- All events use WN_ prefix for consistency
     
     EVENTS = {
@@ -224,16 +210,12 @@ local Constants = {
         GOLD_MANAGEMENT_CHANGED = "WN_GOLD_MANAGEMENT_CHANGED",
     },
     
-    --==========================================================================
     -- FEATURE FLAGS
-    --==========================================================================
     
     ENABLE_GUILD_BANK = false,  -- Set to true when Guild Bank features are ready
     ENABLE_DEBUG_MODE = false,  -- Global debug mode (can be overridden per-profile)
     
-    --==========================================================================
     -- WOW CLASS COLORS (Hex codes for text coloring)
-    --==========================================================================
     -- Standard WoW class colors in hex format for use in text strings
     CLASS_COLORS = {
         WARRIOR = "|cffC79C6E",      -- Tan/Brown
@@ -258,9 +240,7 @@ local Constants = {
         DRUID = 11, DEMONHUNTER = 12, EVOKER = 13,
     },
     
-    --==========================================================================
     -- MIDNIGHT KEY CURRENCIES (auto-highlighted in UI)
-    --==========================================================================
     
     MIDNIGHT_KEY_CURRENCIES = {
         [3378] = { name = "Dawnlight Manaflux", category = "catalyst" },   -- Catalyst charges
@@ -270,9 +250,7 @@ local Constants = {
         [3089] = { name = "Coffer Key", category = "delves" },             -- Delve Coffer Keys
     },
 
-    --==========================================================================
     -- DAWNCREST UI COLUMN ORDER (Gear tab + PvE summary only)
-    --==========================================================================
     -- Chat notifications and CurrencyCache use C_CurrencyInfo flags (useTotalEarnedForMaxQty, etc.),
     -- not this list — so new patch currencies do not require ID updates for WN-Currency messages.
     DAWNCREST_UI = {
@@ -362,9 +340,7 @@ local Constants = {
     TROVEHUNTERS_BOUNTY_ITEM_ID = 252415,
     TROVEHUNTERS_BOUNTY_ITEM_ID_ALT = 265714,
     
-    --==========================================================================
     -- REPUTATION STANDARDS (for validation)
-    --==========================================================================
     -- Classic Reputation uses FIXED threshold ranges (never changes)
     -- These are Blizzard's standard values used across all Classic reputations
     
@@ -379,19 +355,15 @@ local Constants = {
         [8] = {min = 42000, max = 999999, range = 0},       -- Exalted (capped, no range)
     },
 
-    --==========================================================================
     -- PLAN REMINDERS / ALERTS (card badge, Set Alert dialog, toasts)
     -- Primary: Blizzard UI atlas (SetAtlas). If SetAtlas fails, PlanCardFactory / CreateIcon fall back to texture.
-    --==========================================================================
     REMINDER_ALERT_ATLAS = "icon_cooldownmanager",
     REMINDER_ALERT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Horn_01",
     -- RGB for reminder chrome: card glow, compact To-Do reminder toast (border, icon ring, TopBottom glow).
     REMINDER_HORN_UI_COLOR = { 1, 0.82, 0.22 },
 
-    --==========================================================================
     -- RACE ICON ATLAS (raceFile / clientFileString -> middle segment of atlas name)
     -- Used by SharedWidgets: string.format("raceicon128-%s-%s", prefix, gender)
-    --==========================================================================
     RACE_FILE_TO_ATLAS_PREFIX = {
         ["BloodElf"] = "bloodelf",
         ["DarkIronDwarf"] = "darkirondwarf",
@@ -427,11 +399,9 @@ local Constants = {
     -- Friendship: Each faction has different rank systems (5, 6, 10 ranks with custom names)
     -- For these types: Trust API data, only validate for negatives/zero-division
 
-    --==========================================================================
     -- NOTIFICATION SOUNDS (PlaySound kit IDs)
     -- Progress / criteria lane: short objective-style cue — never READY_CHECK (raid horn).
     -- Compact achievement-style lane: existing default for collector-style toasts.
-    --==========================================================================
     NOTIFICATION_SOUND_PROGRESS = 44294,
     NOTIFICATION_SOUND_COMPACT_DEFAULT = 44295,
 }

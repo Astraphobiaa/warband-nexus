@@ -21,22 +21,16 @@ local WarbandNexus = ns.WarbandNexus
 -- Ace3 Event System
 local AceEvent = LibStub("AceEvent-3.0")
 
---============================================================================
 -- STATE STORAGE
---============================================================================
 
 -- Per-tab search state (query updated when debounced UI callback runs; no second timer here).
 local searchStates = {}
 
---============================================================================
 -- CONSTANTS
---============================================================================
 
 -- List redraw debounce lives in UI (`UI_CONSTANTS.SEARCH_DEBOUNCE_SEC` / SearchBoxComponent).
 
---============================================================================
 -- PRIVATE HELPERS
---============================================================================
 
 -- Flexible validation: accept any non-empty string
 -- Supports main tabs (items, currency) and sub-tabs (plans_mount, plans_achievement)
@@ -81,9 +75,7 @@ local function FireStateChangedEvent(tabId)
     })
 end
 
---============================================================================
 -- PUBLIC API
---============================================================================
 
 local SearchStateManager = {}
 
@@ -193,9 +185,7 @@ function SearchStateManager:GetQuery(tabId)
     return q
 end
 
---============================================================================
 -- INITIALIZATION
---============================================================================
 
 -- Expose to namespace
 ns.SearchStateManager = SearchStateManager

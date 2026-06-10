@@ -12,9 +12,7 @@
 
 local ADDON_NAME, ns = ...
 
--- ============================================================================
 -- CONSTANTS
--- ============================================================================
 
 -- Standing colors (Custom - Gold for max rank consistency)
 -- Exported via ns for reuse across modules (single source of truth)
@@ -54,16 +52,12 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cffff00ff[
     or ns.DebugPrint
     or function() end
 
--- ============================================================================
 -- REPUTATION PROCESSOR
--- ============================================================================
 
 local ReputationProcessor = {}
 ns.ReputationProcessor = ReputationProcessor
 
--- ============================================================================
 -- MAIN ENTRY POINT
--- ============================================================================
 
 ---Process raw API data into normalized format
 ---@param rawData table Raw faction data from Scanner
@@ -81,15 +75,15 @@ function ReputationProcessor:Process(rawData)
         
         -- Structure flags
         isHeader = rawData.isHeader or false,
-        isHeaderWithRep = rawData.isHeaderWithRep or false,  -- NEW: User requirement
-        -- CRITICAL: If parentFactionID exists, this IS a child (even if API says isChild=false)
+        isHeaderWithRep = rawData.isHeaderWithRep or false,  -- User requirement
+        -- If parentFactionID exists, this IS a child (even if API says isChild=false)
         isChild = (rawData.parentFactionID ~= nil) or (rawData.isChild or false),
         isCollapsed = rawData.isCollapsed or false,
         isAccountWide = rawData.isAccountWide or false,
         isMajorFaction = rawData.isMajorFaction or false,
-        parentFactionID = rawData.parentFactionID,  -- NEW: For parent-child linkage
+        parentFactionID = rawData.parentFactionID,  -- For parent-child linkage
         
-        -- CRITICAL: Convert parentHeaders array to parentFactionName string
+        -- Convert parentHeaders array to parentFactionName string
         -- BuildHeaders() uses parentFactionName (first expansion header) for grouping
         parentFactionName = (rawData.parentHeaders and rawData.parentHeaders[1]) or nil,
         parentHeaders = rawData.parentHeaders,  -- Keep original array for reference
@@ -103,11 +97,11 @@ function ReputationProcessor:Process(rawData)
         -- Metadata
         _scanTime = rawData._scanTime or time(),
         _scanSource = rawData._scanSource or "unknown",
-        _scanIndex = rawData._scanIndex,  -- Critical: Used for Blizzard UI ordering
+        _scanIndex = rawData._scanIndex,  -- Used for Blizzard UI ordering
     }
     
     -- Determine faction type and process accordingly
-    -- CRITICAL: type = base system (renown/friendship/classic)
+    -- type = base system (renown/friendship/classic)
     -- hasParagon = flag indicating max level + paragon available
     
     -- HEADER DETECTION: A "pure header" has NO reputation bar.
@@ -203,7 +197,7 @@ function ReputationProcessor:Process(rawData)
             normalized.standingColor = ns.PARAGON_COLOR
         end
     elseif normalized.type == "friendship" and normalized.friendship then
-        -- CRITICAL FIX: Friendship Max Display
+        -- Friendship Max Display
         -- If at max level WITHOUT paragon, normalize to 1/1 for clean "Max." display
         local friendship = normalized.friendship
         if friendship.level >= friendship.maxLevel and not normalized.hasParagon then
@@ -211,7 +205,7 @@ function ReputationProcessor:Process(rawData)
             normalized.maxValue = 1
         end
     elseif normalized.type == "renown" and normalized.renown then
-        -- CRITICAL FIX: Renown Max Display
+        -- Renown Max Display
         -- ProcessRenown already handles max-level detection (sets max=1, current=1)
         -- This catches any remaining edge cases where max is still 0 or current==0 at max
         if (normalized.renown.max <= 1 and normalized.renown.current <= 1) and not normalized.hasParagon then
@@ -228,7 +222,7 @@ function ReputationProcessor:Process(rawData)
     normalized._scanTime = time()
     
     -- Preserve scan order from API (for correct sorting in UI)
-    -- CRITICAL: Ensure _scanIndex always has a value (fallback to high number if missing)
+    -- Ensure _scanIndex always has a value (fallback to high number if missing)
     normalized._scanIndex = rawData._scanIndex or 99999
     
     -- Preserve alternate name from Scanner (GetFactionDataByIndex name vs GetFactionDataByID name)
@@ -236,15 +230,13 @@ function ReputationProcessor:Process(rawData)
     -- Blizzard chat messages use the ByIndex name, so we need this for nameToIDLookup
     normalized._chatName = rawData._chatName
     
-    -- CRITICAL: Preserve parentHeaders from Scanner (needed for BuildHeaders)
+    -- Preserve parentHeaders from Scanner (needed for BuildHeaders)
     normalized.parentHeaders = rawData.parentHeaders or {}
     
     return normalized
 end
 
--- ============================================================================
 -- CLASSIC REPUTATION
--- ============================================================================
 
 ---Process classic reputation (1-8 standing)
 ---@param rawData table Raw faction data
@@ -287,7 +279,7 @@ function ReputationProcessor:ProcessClassic(rawData)
                 expectedMax
             ))
             
-            -- FIX: Use standard threshold
+            -- Use standard threshold
             DebugPrint("  → Correcting to standard threshold:", expectedMax)
             current = currentStanding - standard.min
             max = expectedMax
@@ -335,9 +327,7 @@ function ReputationProcessor:ProcessClassic(rawData)
     }
 end
 
--- ============================================================================
 -- RENOWN (MAJOR FACTION)
--- ============================================================================
 
 ---Process renown reputation
 ---@param rawData table Raw faction data
@@ -428,9 +418,7 @@ function ReputationProcessor:ProcessRenown(rawData)
     }
 end
 
--- ============================================================================
 -- FRIENDSHIP
--- ============================================================================
 
 ---Process friendship reputation
 ---@param rawData table Raw faction data
@@ -514,7 +502,7 @@ function ReputationProcessor:ProcessFriendship(rawData)
         if current > max then current = max end
     else
         -- Standard friendship (9 levels or less)
-        -- CRITICAL: Determine progress based on available data
+        -- Determine progress based on available data
         
         if nextThreshold > 0 and reactionThreshold >= 0 then
             -- We have threshold data - use it for accurate progress
@@ -581,9 +569,7 @@ function ReputationProcessor:ProcessFriendship(rawData)
     }
 end
 
--- ============================================================================
 -- PARAGON
--- ============================================================================
 
 ---Process paragon reputation (Exalted+)
 ---@param rawData table Raw faction data
@@ -604,7 +590,7 @@ function ReputationProcessor:ProcessParagon(rawData)
     if threshold <= 0 then threshold = 10000 end  -- Default paragon threshold
     
     -- Calculate cycles and current cycle progress
-    -- CRITICAL: Handle edge case where totalValue == threshold exactly
+    -- Handle edge case where totalValue == threshold exactly
     -- Should show FULL bar (threshold/threshold), not empty bar (0/threshold)
     local completedCycles = math.floor(totalValue / threshold)
     local current = totalValue % threshold
@@ -627,9 +613,7 @@ function ReputationProcessor:ProcessParagon(rawData)
     }
 end
 
--- ============================================================================
 -- BATCH PROCESSING
--- ============================================================================
 
 ---Process multiple raw factions
 ---@param rawFactions table Array of raw faction data
@@ -653,9 +637,7 @@ function ReputationProcessor:ProcessBatch(rawFactions)
     return normalized
 end
 
--- ============================================================================
 -- SPEC FORMAT OUTPUT
--- ============================================================================
 
 ---Convert normalized faction data to specification format
 ---@param normalized table Normalized faction data from Process()
@@ -710,8 +692,6 @@ function ReputationProcessor:ToSpecFormatBatch(normalizedFactions)
     return results
 end
 
--- ============================================================================
 -- EXPORTS
--- ============================================================================
 
 return ReputationProcessor

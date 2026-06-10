@@ -2187,7 +2187,6 @@ function WarbandNexus:CheckNotificationsOnLogin()
     end
 end
 
-
 --[[============================================================================
     EVENT-DRIVEN NOTIFICATION SYSTEM
     Central event listener for all notification types
@@ -2218,7 +2217,6 @@ function WarbandNexus:InitializeNotificationListeners()
     -- ⚠ ADDING A NEW CONSUMER:
     --   Add a new entry to collectibleDispatch below. Do NOT register for
     --   WN_COLLECTIBLE_OBTAINED via RegisterMessage anywhere else in the codebase.
-    -- ─────────────────────────────────────────────────────────────────────────
     -- Direct dispatch with pcall isolation.
     -- Each consumer is called explicitly (no table indirection).
     -- pcall ensures one consumer's error doesn't break the others.
@@ -2663,9 +2661,7 @@ function WarbandNexus:OnShowNotification(event, payload)
     self:ShowModalNotification(payload.data)
 end
 
--- ============================================================================
 -- SCREEN FLASH EFFECT
--- ============================================================================
 
 local screenFlashFrame = nil
 
@@ -2988,7 +2984,6 @@ function WarbandNexus:OnQuestCompleted(event, data)
     })
 end
 
-
 ---Vault reward available handler
 ---@param event string Event name
 ---@param data table Vault reward data (optional)
@@ -3023,7 +3018,6 @@ function WarbandNexus:InitializeLootNotifications()
     -- CollectionService handles collection detection
     -- NotificationManager only provides display functions
 end
-
 
 ---Test loot notification system (All notification types with real data)
 function WarbandNexus:TestLootNotification(type, id, step)
@@ -3496,7 +3490,4 @@ function WarbandNexus:TestVaultCheck()
     
     self:Print("|cff00ccff======================|r")
 end
-
-
-
 

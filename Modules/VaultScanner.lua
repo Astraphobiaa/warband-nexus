@@ -41,9 +41,7 @@ local vaultCache = {
 -- Hidden frame for event handling
 local scannerFrame = CreateFrame("Frame")
 
--- ============================================================================
 -- HELPER FUNCTIONS
--- ============================================================================
 
 ---Parse item level from item link using native API
 ---@param itemLink string Item hyperlink
@@ -85,9 +83,7 @@ local function FormatSlotStatus(slot)
     end
 end
 
--- ============================================================================
 -- CORE LOGIC
--- ============================================================================
 
 ---Probe the season to find maximum item level caps for each activity type
 ---This runs ONCE (lazy-loaded) and memoizes the results
@@ -99,9 +95,7 @@ local function GetSeasonMaxRewards(activities)
         return vaultCache.seasonMax
     end
     
-    -- ========================================
     -- MYTHIC+ MAX PROBE
-    -- ========================================
     if C_WeeklyRewards and C_WeeklyRewards.GetNextMythicPlusIncrease then
         local maxMPlusIlvl = 0
         local safetyCounter = 0
@@ -158,7 +152,7 @@ local function UpdateVaultData()
         return
     end
     
-    -- CRITICAL: Probe season max rewards (pass activities for Raid/World detection)
+    -- Probe season max rewards (pass activities for Raid/World detection)
     local seasonMax = GetSeasonMaxRewards(activities)
     
     -- Sort by index to ensure proper slot order
@@ -281,7 +275,7 @@ local function UpdateVaultData()
     vaultCache.lastUpdate = time()
     vaultCache.initialized = true
     
-    -- CRITICAL: Forward data to PvECacheService for UI consumption
+    -- Forward data to PvECacheService for UI consumption
     if ns.WarbandNexus and ns.WarbandNexus.SyncVaultDataFromScanner then
         ns.WarbandNexus:SyncVaultDataFromScanner(vaultCache.slots)
     end
@@ -314,9 +308,7 @@ local function UpdateVaultData()
     end
 end
 
--- ============================================================================
 -- EVENT HANDLERS
--- ============================================================================
 
 scannerFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 scannerFrame:RegisterEvent("WEEKLY_REWARDS_UPDATE")
@@ -336,9 +328,7 @@ scannerFrame:SetScript("OnEvent", function(self, event, ...)
     end
 end)
 
--- ============================================================================
 -- PUBLIC API
--- ============================================================================
 
 ns.VaultScanner = {
     ---Get cached vault slot data

@@ -86,9 +86,7 @@ local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
 local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
---============================================================================
 -- REPUTATION FORMATTING & HELPERS
---============================================================================
 
 ---Get standing name from standing ID
 ---@param standingID number Standing ID (1-8)
@@ -421,9 +419,7 @@ local function ReputationMatchesSearch(reputation, searchText)
     return name:find(searchText, 1, true)
 end
 
---============================================================================
 -- FILTERED VIEW AGGREGATION
---============================================================================
 
 -- Phase 2.4: Cache for filtered search results
 local cachedSearchText = nil
@@ -505,7 +501,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     local function BuildReputationObject(cachedData)
         return {
             -- Core
-            factionID = cachedData.factionID,  -- CRITICAL: Need this for tooltip matching
+            factionID = cachedData.factionID,  -- Need this for tooltip matching
             name = cachedData.name,
             description = cachedData.description or "",
             iconTexture = cachedData.icon,
@@ -548,7 +544,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             -- Metadata
             lastUpdated = cachedData._scanTime or time(),
             
-            -- CRITICAL: Preserve _scanIndex for Blizzard UI ordering
+            -- Preserve _scanIndex for Blizzard UI ordering
             _scanIndex = cachedData._scanIndex or 99999,
         }
     end
@@ -600,7 +596,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                     }
                 end
             end
-        end  -- end if not isHeader
+        end
     end
     
     -- PHASE 2: For each faction, find HIGHEST progress character and build allCharData
@@ -626,7 +622,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             })
             
             -- Check if this is the best character (highest progress)
-            -- FIXED: Use IsReputationHigher() for proper comparison (handles Renown, Paragon, Friendship, etc.)
+            -- Use IsReputationHigher() for proper comparison (handles Renown, Paragon, Friendship, etc.)
             if not bestReputation or IsReputationHigher(reputation, bestReputation) then
                 bestCharKey = charKey
                 bestReputation = reputation
@@ -635,14 +631,14 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         end
         
         -- Sort allCharData by reputation progress (highest first)
-        -- FIXED: Use IsReputationHigher() for consistent sorting
+        -- Use IsReputationHigher() for consistent sorting
         table.sort(allCharData, function(a, b)
             return IsReputationHigher(a.reputation, b.reputation)
         end)
         
         -- Create factionMap entry with BEST character as primary
         if bestCharKey and bestReputation and bestChar then
-            -- CRITICAL: Use the hydrated data's isAccountWide flag, NOT hardcoded false.
+            -- Use the hydrated data's isAccountWide flag, NOT hardcoded false.
             -- If the WoW API says this faction is account-wide, respect that even if
             -- it was stored in the character bucket (old data before migration).
             local resolvedAW = (bestReputation and bestReputation.isAccountWide) or false
@@ -668,7 +664,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         local parentID = entry.data.parentFactionID
         if parentID then
             childCount = childCount + 1
-            -- CRITICAL: Type normalization - ensure both are numbers
+            -- Type normalization - ensure both are numbers
             local numParentID = tonumber(parentID) or parentID
             local numFactionID = tonumber(factionID) or factionID
             
@@ -685,7 +681,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         end
     end
     
-    -- CRITICAL: Sort subfactions by _scanIndex (Blizzard order), NOT alphabetically
+    -- Sort subfactions by _scanIndex (Blizzard order), NOT alphabetically
     for factionID, entry in pairs(factionMap) do
         if entry.subfactions and #entry.subfactions > 0 then
             table.sort(entry.subfactions, function(a, b)
@@ -710,7 +706,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     
     -- Fallback to old global headers if new cache not ready
     local globalHeaders = (#cacheHeaders > 0) and cacheHeaders or (WarbandNexus.db.global.reputationHeaders or {})
-    
     
     for ghi = 1, #globalHeaders do
         local headerData = globalHeaders[ghi]
@@ -772,12 +767,12 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                     characterLevel = factionData.characterLevel,
                     isAccountWide = factionData.isAccountWide,
                     subfactions = factionData.subfactions,  -- NOW populated (built above!)
-                    allCharData = factionData.allCharData or {},  -- CRITICAL: Pass allCharData!
+                    allCharData = factionData.allCharData or {},  -- Pass allCharData!
                 })
             end
         end
         
-        -- CRITICAL: Sort by _scanIndex (Blizzard API order), NOT alphabetically
+        -- Sort by _scanIndex (Blizzard API order), NOT alphabetically
         table.sort(headerFactions, function(a, b)
             local indexA = (a.data and a.data._scanIndex) or 99999
             local indexB = (b.data and b.data._scanIndex) or 99999
@@ -816,9 +811,7 @@ local function TruncateText(text, maxLength)
     return string.sub(text, 1, maxLength - 3) .. "..."
 end
 
---============================================================================
 -- REPUTATION ROW RENDERING
---============================================================================
 
 ---Create a single reputation row with progress bar
 ---PERFORMANCE: Uses pooled rows with lazy child creation (no frame leaks)
@@ -1357,9 +1350,7 @@ local function PopulateReputationRow(row, entry)
     end)
 end
 
---============================================================================
 -- MAIN DRAW FUNCTION
---============================================================================
 
 function WarbandNexus:DrawReputationList(container, width)
     if not container then return 0 end
@@ -1406,7 +1397,6 @@ function WarbandNexus:DrawReputationList(container, width)
     local COLLAPSE_H_REP = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
     
     -- ===== TITLE CARD (Always shown) =====
-    
     
     -- Check if C_Reputation API is available (for modern WoW)
     if not C_Reputation or not C_Reputation.GetNumFactions then
@@ -2095,9 +2085,7 @@ function WarbandNexus:DrawReputationList(container, width)
     return finalHeight
 end
 
---============================================================================
 -- REPUTATION TAB WRAPPER (Fixes focus issue)
---============================================================================
 
 local function ApplyReputationResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, _animate, _fromResultsH, _fromScrollChildH)
     if not mainFrame or not scrollChild or not resultsContainer then return end

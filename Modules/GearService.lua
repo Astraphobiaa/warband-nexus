@@ -279,9 +279,7 @@ local function CacheGearCraftedProbeResult(link, isCrafted)
     end
 end
 
--- ============================================================================
 -- SLOT DEFINITIONS (GearService_Slots.lua)
--- ============================================================================
 local Slots = ns.GearServiceSlots
 local GEAR_SLOTS = Slots.GEAR_SLOTS
 local SLOT_BY_ID = Slots.SLOT_BY_ID
@@ -292,7 +290,6 @@ local ARMOR_SLOT_IDS = Slots.ARMOR_SLOT_IDS
 local ITEM_CLASS_WEAPON = LE_ITEM_CLASS_WEAPON or 2
 local ITEM_CLASS_ARMOR = LE_ITEM_CLASS_ARMOR or 4
 
--- ============================================================================
 -- Global specialization ID → primary stat for gear filtering (Midnight 12.x).
 -- Storage-upgrade matching: ResolveExpectedPrimaryStatFromCharacter → expected STR/AGI/INT,
 -- then compare to C_Item.GetItemStats / GetItemStats primary flags on the item link.
@@ -1013,9 +1010,7 @@ local function BuildCharacterModelSnapshot()
     return snap
 end
 
--- ============================================================================
 -- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
--- ============================================================================
 
 local GT = ns.GearUpgradeTracks
 local TRACK_ILVLS = GT.TRACK_ILVLS
@@ -1374,10 +1369,7 @@ local function InferSlotIsCraftedGear(slot, trackName, itemLevel)
     return false
 end
 
-
--- ============================================================================
 -- DB HELPERS
--- ============================================================================
 
 local function GetDB()
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return nil end
@@ -1512,9 +1504,7 @@ local function MigrateLegacyGearDataKey(db, storageKey)
     db[legacy] = nil
 end
 
--- ============================================================================
 -- ITEM LEVEL RESOLUTION
--- ============================================================================
 
 --- Get the effective (bonus-ID-aware) item level from an item link.
 --- Uses dual-API approach: compares GetDetailedItemLevelInfo (bonus-ID inflated)
@@ -1597,9 +1587,7 @@ local function GetEquipLoc(itemLink)
     return loc
 end
 
--- ============================================================================
 -- TOOLTIP UPGRADE SCAN  (Fallback when C_ItemUpgrade API is unavailable/empty)
--- ============================================================================
 
 --- Parse upgrade track info from the item tooltip of an equipped slot.
 --- Reads "Upgrade Level: TrackName X/Y" line from C_TooltipInfo.GetInventoryItem.
@@ -1649,9 +1637,7 @@ local function ScanUpgradeFromTooltip(slotID)
     return result
 end
 
--- ============================================================================
 -- UPGRADE DATA PERSISTENCE  (Captures C_ItemUpgrade state during gear scan)
--- ============================================================================
 
 ---@param levelInfos table|nil
 ---@param upgradeLevel number
@@ -1875,9 +1861,7 @@ function WarbandNexus:OverlayLiveEquippedIlvlOnGearData(gearData)
     return gearData
 end
 
--- ============================================================================
 -- GEAR SCANNING  (Current character only — requires live API)
--- ============================================================================
 
 --- Merge one equipped slot into working tables (live inventory). Mutates slots / watermarks / changedSlotIDs.
 ---@param slotID number
@@ -2314,9 +2298,7 @@ function WarbandNexus:SaveGearModelViewState(charKey, rotation, zoom)
     entry.modelView.lastUpdate = time()
 end
 
--- ============================================================================
 -- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
--- ============================================================================
 
 --- Align one upgrade row with persisted slot ilvl/track (paperdoll icon and upgrade text share this).
 ---@param up table|nil
@@ -2725,9 +2707,7 @@ function WarbandNexus:GearStorageUpgradeDebugReportAll()
     end
 end
 
--- ============================================================================
 -- STORAGE UPGRADE FINDER  (Cross-character — reads persisted item data)
--- ============================================================================
 
 --- Resolve equipped ilvl for one slot (persisted gearData + live inventory when viewing self).
 ---@param charKey string
@@ -4342,9 +4322,7 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
     C_Timer.After(0, pump)
 end
 
--- ============================================================================
 -- CURRENCY SNAPSHOT  (Resources available for upgrading)
--- ============================================================================
 
 -- Currency IDs for item upgrades (Dawncrest column order — UI only; see Constants.DAWNCREST_UI)
 local UPGRADE_CURRENCY_IDS = (Constants.DAWNCREST_UI and Constants.DAWNCREST_UI.COLUMN_IDS)
@@ -4528,9 +4506,7 @@ function WarbandNexus:GetGearUpgradeCurrencies(charKey)
     return self:GetGearUpgradeCurrenciesFromDB(charKey)
 end
 
--- ============================================================================
 -- GEAR UPGRADE PLAYBOOK (removed from Gear tab UI; GetGearUpgradePlaybookText is a no-op stub)
--- ============================================================================
 
 local function LocalizeDawncrestTierShortName(englishFirstWord)
     if not englishFirstWord or englishFirstWord == "" then return englishFirstWord end

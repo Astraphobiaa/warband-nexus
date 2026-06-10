@@ -32,9 +32,7 @@ local DebugVerbosePrint = ns.DebugVerbosePrint or function() end
 local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
--- ============================================================================
 -- CONSTANTS
--- ============================================================================
 
 local Constants = ns.Constants
 local CACHE_VERSION = Constants.ITEMS_CACHE_VERSION
@@ -86,9 +84,7 @@ for i = 1, #WARBAND_BAGS do
     BAG_TYPE_LOOKUP[id] = "warband"
 end
 
--- ============================================================================
 -- STATE MANAGEMENT
--- ============================================================================
 
 -- Global loading state (accessible from UI)
 ns.ItemsLoadingState = {
@@ -110,20 +106,16 @@ local bagHashCache = {} -- [bagID] = hash
 local lastUpdateTime = {}
 local pendingUpdates = {}
 
--- ============================================================================
 -- DECOMPRESSED DATA SESSION CACHE
 -- Avoids repeated decompress+deserialize on every GetItemsData()/tooltip hover.
 -- Invalidated per-key when items are scanned. Cleared on UI OnHide.
--- ============================================================================
 local decompressedItemCache = {}  -- [charKey] = { bags={}, bank={}, bagsLastUpdate=N, bankLastUpdate=N }
 local decompressedWarbandCache = nil  -- { items={}, lastUpdate=N }
 
--- ============================================================================
 -- PRE-INDEXED ITEM COUNT SUMMARY
 -- Instead of iterating ALL items on every tooltip hover, maintain a
 -- pre-computed { [itemID] = { bags=N, bank=N } } per character.
 -- Rebuilt lazily: marked "pending" when items change, processed on next tooltip access.
--- ============================================================================
 local itemSummaryIndex = {
     characters = {},  -- [charKey] = { [itemID] = { bags=N, bank=N } }
     warband = {},     -- [itemID] = N
@@ -142,9 +134,7 @@ local ITEM_METADATA_CACHE_MAX = 2048
 local pendingItemLoads = {}              -- [itemID] = true (prevents duplicate async loads)
 local pendingMetadataRefreshTimer = nil  -- Debounce timer for UI refresh after batch resolution
 
--- ============================================================================
 -- COMPRESSION UTILITIES
--- ============================================================================
 
 ---Compress item data for storage
 ---@param data table Item data
@@ -212,9 +202,7 @@ local function DecompressItemData(compressed)
     return data
 end
 
--- ============================================================================
 -- ON-DEMAND ITEM METADATA RESOLVER (Session RAM only)
--- ============================================================================
 
 ---Add a fully-resolved metadata entry to the FIFO eviction cache.
 ---@param itemID number
@@ -512,9 +500,7 @@ function WarbandNexus:ClearItemMetadataCache()
     itemSummaryIndex.warbandPending = false
 end
 
--- ============================================================================
 -- HASH GENERATION (CHANGE DETECTION) + BAG SCANNING
--- ============================================================================
 
 -- Per-bag cache: stores raw GetContainerItemInfo results from the hash pass
 -- so ScanBag can reuse them instead of re-querying every slot.
@@ -886,9 +872,7 @@ function WarbandNexus:ScanWarbandBank()
     return allItems
 end
 
--- ============================================================================
 -- THROTTLED UPDATE SYSTEM
--- ============================================================================
 
 ---Throttled bag update (prevents BAG_UPDATE spam)
 ---Returns true if the update was processed (or scheduled), false if suppressed.
@@ -966,9 +950,7 @@ function WarbandNexus:ProcessPendingBagUpdates()
     end
 end
 
--- ============================================================================
 -- EVENT HANDLERS (Will be registered by EventManager)
--- ============================================================================
 
 ---Handle BAG_UPDATE event (from RegisterBucketEvent)
 ---Batches all bag updates and sends ONE coalesced ITEMS_UPDATED message
@@ -1171,9 +1153,7 @@ function WarbandNexus:OnReagentBankChanged()
     end
 end
 
--- ============================================================================
 -- COMPRESSED STORAGE (SAVE/LOAD)
--- ============================================================================
 
 ---Save items data (compressed)
 ---@param charKey string Character key
@@ -1281,11 +1261,9 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
     BumpGearStorageScanGeneration()
 end
 
--- ============================================================================
 -- MERGE: v2 itemStorage + legacy character inventory + personalBanks
 -- `itemStorage[charKey] = {}` (empty) or v2-only must still see legacy table rows;
 -- `characters[charKey]` and canonical key may differ.
--- ============================================================================
 
 ---@param item table
 ---@return string|nil
@@ -1410,9 +1388,7 @@ local function MergeExtraItemSourcesIntoItemsData(self, result, charKey)
     HydrateItems(result.bank)
 end
 
--- ============================================================================
 -- PUBLIC API (FOR UI AND DATASERVICE)
--- ============================================================================
 
 --- One-time slotCount backfill for legacy compressed buckets (persists in AceDB on next save).
 ---@param bucket table
@@ -1758,11 +1734,9 @@ function WarbandNexus:GetWarbandBankData()
     return result
 end
 
--- ============================================================================
 -- PRE-INDEXED ITEM COUNT SUMMARY
 -- O(1) tooltip lookup instead of iterating all items on every hover.
 -- Summary rebuilt lazily: marked "pending" on item change, processed on next access.
--- ============================================================================
 
 ---Build item count summary for a single character (bags + bank).
 ---@param charKey string Character key
@@ -1961,9 +1935,7 @@ function WarbandNexus:RefreshAllBags()
     self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = CanonicalItemsMessageKey(charKey)})
 end
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 ---Initialize items cache on login
 function WarbandNexus:InitializeItemsCache()
@@ -2012,8 +1984,6 @@ function WarbandNexus:InitializeItemsCache()
     end)
 end
 
--- ============================================================================
 -- LOAD MESSAGE
--- ============================================================================
 
 -- Module loaded - verbose logging hidden (debug mode only)

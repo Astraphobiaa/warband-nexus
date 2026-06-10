@@ -23,9 +23,7 @@ local FontManager = ns.FontManager
 
 -- Dependencies will be loaded lazily on first use (deferred loading)
 
---============================================================================
 -- EXPANDABLE ROW FACTORY
---============================================================================
 
 -- Phase 4.7: Extract duplicate details-frame creation code into shared function
 --[[
@@ -672,7 +670,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         -- Show the same pixel border as Plan cards (CreateIcon noBorder=false) so To-Do rows match grid cards.
         iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, false)
         iconFrame:SetPoint("LEFT", ICON_LEFT, rowNudgeY)
-        iconFrame:Show()  -- CRITICAL: Show the row icon!
+        iconFrame:Show()  -- Show the row icon!
         row.iconFrame = iconFrame
     end
 
@@ -799,9 +797,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     return row
 end
 
---============================================================================
 -- NAMESPACE EXPORTS
---============================================================================
 
 -- Export to namespace
 ns.UI_CreateExpandableRow = CreateExpandableRow

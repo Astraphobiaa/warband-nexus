@@ -84,9 +84,7 @@ local function GetCategoryAchievementListCount(categoryID)
     return select(1, GetCategoryNumAchievements(categoryID)) or 0
 end
 
--- ============================================================================
 -- CONSTANTS
--- ============================================================================
 
 local Constants = ns.Constants
 local E = Constants.EVENTS
@@ -126,9 +124,7 @@ local function ScheduleEnsureCollectionDataDeferred()
 end
 ns.ScheduleEnsureCollectionDataDeferred = ScheduleEnsureCollectionDataDeferred
 
--- ============================================================================
 -- COLLECTION CACHE (PERSISTENT IN DB)
--- ============================================================================
 --[[
     Unified cache for both real-time and background scanning:
     - owned: {mountID/speciesID/itemID -> true} - O(1) lookups (RAM only)
@@ -299,9 +295,7 @@ local function WipeUncollectedResultsCacheAndMergedAchievements()
     ClearAchievementMergedListCache()
 end
 
--- ============================================================================
 -- DUPLICATE NOTIFICATION PREVENTION (BAG SCAN + COLLECTION EVENTS)
--- ============================================================================
 --[[
     Two-layer dedup architecture:
     
@@ -322,9 +316,7 @@ local isInitialized = false  -- Track if we've done initial scan
 
 -- Notification dedup: CollectionService_NotifyDedup.lua (ns.CollectionNotify)
 
--- ============================================================================
 -- COLLECTION CACHE INITIALIZATION
--- ============================================================================
 
 ---Initialize collection cache from DB (load persisted data)
 ---Called on addon load to restore previous scan results
@@ -335,7 +327,7 @@ function WarbandNexus:InitializeCollectionCache()
     DebugPrint("|cff9370DB[WN CollectionService]|r InitializeCollectionCache called")
     end
     
-    -- CRITICAL: Ensure DB is initialized
+    -- Ensure DB is initialized
     if not self.db or not self.db.global then
         if debugMode then
     DebugPrint("|cffff0000[WN CollectionService]|r ERROR: DB not initialized yet!")
@@ -963,9 +955,7 @@ function WarbandNexus:GetAllToysData()
     return out
 end
 
--- ============================================================================
 -- TOY: C_ToyBox source type only. Categories = Blizzard Sources (Drop, Quest, Vendor, ...).
--- ============================================================================
 local TOY_SOURCE_TYPE_MAX = 32
 -- Blizzard Toy Box Filter > Sources order (fallback when TOY_SOURCE_TYPE_N globals missing or SOURCE_TYPE_OTHER)
 local TOY_SOURCE_TYPE_NAMES = {
@@ -1109,10 +1099,8 @@ function WarbandNexus:GetToySourceTypeIndexForItem(itemID)
     return cache.map[itemID]
 end
 
--- ============================================================================
 -- MOUNT: C_MountJournal source filter map (mirrors pet/toy SetSourceFilter sweep).
 -- GetMountInfoByID().sourceType is often 0 ("Other") while the journal source tab is correct.
--- ============================================================================
 
 local MOUNT_SOURCE_FILTER_MAX = 24
 
@@ -1658,9 +1646,7 @@ end
 -- Active coroutines for async scanning
 local activeCoroutines = {}
 
--- ============================================================================
 -- ASYNC SCAN ABORT PROTOCOL (for tab switches)
--- ============================================================================
 
 ---Abort all active collection scans (called when switching away from Plans tab)
 function WarbandNexus:AbortCollectionScans()
@@ -1679,9 +1665,7 @@ function WarbandNexus:AbortCollectionScans()
     end
 end
 
--- ============================================================================
 -- NOTIFICATION SEEDING (must be defined before BuildCollectionCache)
--- ============================================================================
 
 ---One-time seed: mark all currently owned collectibles as notified.
 ---Runs once per account (when notifiedCollectibles DB is first created).
@@ -1716,9 +1700,7 @@ local function SeedNotifiedFromOwned()
     DebugPrintf("|cff00ccff[WN CollectionService]|r Seeded notifiedCollectibles: %d entries from owned cache", count)
 end
 
--- ============================================================================
 -- REAL-TIME CACHE BUILDING (Fast O(1) Lookup)
--- ============================================================================
 
 ---Build or refresh owned collection cache (mount/pet/toy O(1) ownership for notifications and try-counter).
 ---@param opts table|nil Optional `{ quiet = true }`: skip LoadingTracker "collections" (used when SV store is already warm to avoid duplicate progress rows vs EnsureCollectionData).
@@ -1917,9 +1899,7 @@ function WarbandNexus:IsCollectibleOwned(collectibleType, id)
     return cache and cache[id] == true
 end
 
--- ============================================================================
 -- REAL-TIME EVENT HANDLERS (NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED)
--- ============================================================================
 
 ---Handle NEW_MOUNT_ADDED event
 ---Fires when player learns a new mount
@@ -2787,12 +2767,10 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
 end
 
 -- Register achievement earned event for cache invalidation
--- CRITICAL: Must be AFTER function definition
+-- Must be AFTER function definition
 WarbandNexus:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
 
--- ============================================================================
 -- REAL-TIME COLLECTION DETECTION
--- ============================================================================
 
 ---Check if an item is a NEW collectible that player doesn't own
 ---Used for real-time detection (inventory/bank scanning)
@@ -2827,35 +2805,27 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         end
     end
     
-    -- ========================================
     -- MOUNT (classID 15, subclass 5)
-    -- ========================================
     if classID == 15 and subclassID == 5 then
         local result = self:_DetectMount(itemID, itemName, itemIcon)
         if result then return result end
     end
     
-    -- ========================================
     -- PETS (Battle Pets: classID 17, Companion Pets: classID 15/subclass 2)
-    -- ========================================
     if classID == 17 or (classID == 15 and subclassID == 2) then
         local result = self:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID, subclassID)
         if result then return result end
     end
     
-    -- ========================================
     -- TOY (classID 15/subclass 0, or classID 0 - Consumable-type toys like vendor elixirs)
-    -- ========================================
     if (classID == 15 and subclassID == 0) or classID == 0 then
         local result = self:_DetectToy(itemID, itemName, itemIcon)
         if result then return result end
     end
     
-    -- ========================================
     -- FALLBACK: classID 15/0 items that didn't match specific branches
     -- Some vendor pets/mounts have unexpected subclassIDs (e.g., subclass 4 "Other")
     -- Only check items that have a "Use:" spell (skips junk like Spare Parts, Pet Charms)
-    -- ========================================
     if (classID == 15 or classID == 0) and subclassID ~= 5 and subclassID ~= 2 then
         -- Only try fallback if the item is DIRECTLY convertible to a collectible
         -- Check if any collection API recognizes this item (skip generic "Use:" items)
@@ -2881,10 +2851,8 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         end
     end
     
-    -- ========================================
     -- FALLBACK 2: classID 15 subclass 2 where GetPetInfoByItemID failed
     -- Try hyperlink-based detection as alternative
-    -- ========================================
     if classID == 15 and subclassID == 2 and hyperlink then
         -- GetPetInfoByItemID failed in the pet branch above
         -- Try tooltip-based detection via C_TooltipInfo
@@ -2898,9 +2866,7 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     return nil
 end
 
--- ============================================================================
 -- DETECTION HELPERS (DRY extraction from CheckNewCollectible)
--- ============================================================================
 
 ---Try to detect a mount from itemID
 ---@param itemID number
@@ -2956,7 +2922,7 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
     end
     
     -- Method 2: Companion Pet Item - use C_PetJournal.GetPetInfoByItemID
-    -- IMPORTANT: Return signature is (name, icon, petType, creatureID, sourceText, description,
+    -- Return signature is (name, icon, petType, creatureID, sourceText, description,
     --   isWild, canBattle, tradeable, unique, obtainable, displayID, speciesID)
     -- speciesID is the 13th return value, NOT the 1st!
     if not speciesID and C_PetJournal.GetPetInfoByItemID then
@@ -2981,13 +2947,11 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
         return self:_BuildPetResult(speciesID, speciesName or itemName, speciesIcon or itemIcon)
     end
     
-    -- ========================================
     -- Method 4: ITEM-BASED FALLBACK
     -- C_PetJournal.GetPetInfoByItemID doesn't support all items (API limitation).
     -- For confirmed companion pet items (classID=15, subclass=2), verify via GetItemSpell
     -- and use item info (name/icon) for the notification instead of species info.
     -- The NEW_PET_ADDED event will handle the authoritative collection detection when learned.
-    -- ========================================
     if classID == 15 and subclassID == 2 then
         -- C_Item.GetItemSpell (10.2.5+) with global fallback for older API signatures
         local getItemSpell = (C_Item and C_Item.GetItemSpell) or _G.GetItemSpell
@@ -3120,9 +3084,7 @@ function WarbandNexus:_DetectToy(itemID, itemName, itemIcon)
     }
 end
 
--- ============================================================================
 -- BACKGROUND SCANNING (Async Coroutine-Based)
--- ============================================================================
 
 -- Runtime cache for illusions (used during scan to avoid API re-calls)
 local illusionRuntimeCache = nil
@@ -3208,7 +3170,7 @@ COLLECTION_CONFIGS = {
         iterator = function()
             if not C_PetJournal then return {} end
             
-            -- CRITICAL: Pet journal filter functions require Blizzard_Collections to be loaded
+            -- Pet journal filter functions require Blizzard_Collections to be loaded
             Mat.EnsureBlizzardCollectionsLoaded()
             
             -- Save original filter state
@@ -3267,7 +3229,7 @@ COLLECTION_CONFIGS = {
 
             local numPets = C_PetJournal.GetNumPets() or 0
             
-            -- CRITICAL: Resolve speciesIDs NOW while "show all" filters are active
+            -- Resolve speciesIDs NOW while "show all" filters are active
             -- GetPetInfoByIndex depends on current filter state
             local pets = {}
             local seen = {}
@@ -3350,7 +3312,7 @@ COLLECTION_CONFIGS = {
         iterator = function()
             if not C_ToyBox then return {} end
             
-            -- CRITICAL: C_ToyBox filter functions require Blizzard_Collections to be loaded.
+            -- C_ToyBox filter functions require Blizzard_Collections to be loaded.
             -- Without it, GetNumFilteredToys() returns 0 and filter manipulation has no effect.
             Mat.EnsureBlizzardCollectionsLoaded()
             
@@ -3395,7 +3357,7 @@ COLLECTION_CONFIGS = {
                 numToys = C_ToyBox.GetNumToys() or 0
             end
             
-            -- CRITICAL: Resolve itemIDs NOW while "show all" filters are active.
+            -- Resolve itemIDs NOW while "show all" filters are active.
             -- GetToyFromIndex uses the current filter state, so we must capture
             -- actual itemIDs before restoring original filters.
             local toys = {}
@@ -3659,7 +3621,7 @@ COLLECTION_CONFIGS = {
             for i = 1, #illusions do
                 local illusionInfo = illusions[i]
                 if illusionInfo and illusionInfo.sourceID then
-                    -- CRITICAL: Use sourceID (not visualID!) - GetIllusionStrings needs sourceID
+                    -- Use sourceID (not visualID!) - GetIllusionStrings needs sourceID
                     illusionRuntimeCache[illusionInfo.sourceID] = illusionInfo
                     table.insert(illusionList, illusionInfo.sourceID)
                 end
@@ -3803,13 +3765,13 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         return
     end
     
-    -- CRITICAL: Prevent duplicate scans (already scanning)
+    -- Prevent duplicate scans (already scanning)
     if activeCoroutines[collectionType] then
     DebugPrint("|cffffcc00[WN CollectionService]|r Scan already in progress for: " .. tostring(collectionType) .. ", skipping")
         return
     end
     
-    -- CRITICAL: Check if scan is needed (collectionStore veya collectionCache dolu ve güncel)
+    -- Check if scan is needed (collectionStore veya collectionCache dolu ve güncel)
     local storeHasData = collectionStore[collectionType] and next(collectionStore[collectionType]) ~= nil
     local cacheHasData = collectionCache.uncollected[collectionType] and next(collectionCache.uncollected[collectionType]) ~= nil
     local cacheExists = storeHasData or cacheHasData
@@ -3820,7 +3782,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         -- If cache exists and scan was recent (< 5 minutes), skip
         if timeSinceLastScan < 300 then
     DebugPrint("|cffffcc00[WN CollectionService]|r Cache exists and recent for " .. tostring(collectionType) .. " (scanned " .. timeSinceLastScan .. "s ago), skipping scan")
-            -- CRITICAL: EnsureCollectionData relies on onComplete to advance the queue; always invoke when skipping
+            -- EnsureCollectionData relies on onComplete to advance the queue; always invoke when skipping
             if onComplete then onComplete(collectionStore[collectionType] or {}) end
             return
         end
@@ -3918,7 +3880,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             ns.PlansLoadingState[collectionType].loadingProgress = 100
             ns.PlansLoadingState[collectionType].currentStage = "Complete!"
             SendCollectionScanProgress(self, collectionType, 100, 0, 0)
-            -- CRITICAL: EnsureCollectionData queue advances only when onComplete is called (e.g. illusion/title empty scan)
+            -- EnsureCollectionData queue advances only when onComplete is called (e.g. illusion/title empty scan)
             if onComplete then onComplete(results) end
             if Constants and Constants.EVENTS then
                 self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = collectionType, results = results, elapsed = 0 })
@@ -4406,7 +4368,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     -- Track whether we got a real icon from API or used fallback
     local usedFallbackIcon = false
     
-    -- CRITICAL: Do NOT use `X and X.func()` pattern for multi-return APIs!
+    -- Do NOT use `X and X.func()` pattern for multi-return APIs!
     -- In Lua 5.1, `X and func()` truncates to 1 return value because `and` is a
     -- binary expression, not a function call. Only raw function calls at the tail
     -- of an expression list preserve multiple returns.
@@ -4967,7 +4929,6 @@ function WarbandNexus:GetCollectedTitles(searchText, limit)
     return results
 end
 
-
 ---Async achievement scanner (background scanning with coroutine)
 ---Scans all achievements and populates achievement cache
 ---NOTE: Titles are now scanned separately via Title API
@@ -4978,7 +4939,7 @@ function WarbandNexus:ScanAchievementsAsync()
         return
     end
     
-    -- CRITICAL FIX: Use separate lastScan timestamp for achievements
+    -- Use separate lastScan timestamp for achievements
     -- Don't share with mount/pet/toy (they update global lastScan)
     local lastAchievementScan = collectionCache.lastAchievementScan or 0
     local timeSinceLastScan = time() - lastAchievementScan
@@ -5050,7 +5011,7 @@ function WarbandNexus:ScanAchievementsAsync()
                             ns.CollectionLoadingState.loadingProgress = progress
                             ns.CollectionLoadingState.scannedItems = scannedCount
                             
-                            -- CRITICAL: Also update PlansLoadingState for UI (achievement uses PlansLoadingState)
+                            -- Also update PlansLoadingState for UI (achievement uses PlansLoadingState)
                             if ns.PlansLoadingState and ns.PlansLoadingState.achievement then
                                 ns.PlansLoadingState.achievement.loadingProgress = progress
                                 ns.PlansLoadingState.achievement.currentStage = string.format("Scanning Achievements... (%d/%d)", scannedCount, totalEstimated)
@@ -5150,7 +5111,7 @@ function WarbandNexus:ScanAchievementsAsync()
         ns.CollectionLoadingState.loadingProgress = 100
         ns.CollectionLoadingState.scannedItems = scannedCount
         
-        -- CRITICAL: Update PlansLoadingState for UI (achievement uses PlansLoadingState, not CollectionLoadingState)
+        -- Update PlansLoadingState for UI (achievement uses PlansLoadingState, not CollectionLoadingState)
         if ns.PlansLoadingState and ns.PlansLoadingState.achievement then
             ns.PlansLoadingState.achievement.isLoading = false
             ns.PlansLoadingState.achievement.loadingProgress = 100
@@ -5362,7 +5323,6 @@ function WarbandNexus:GetUncollectedIllusions(searchText, limit)
     return {}
 end
 
-
 ---Get uncollected titles (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedTitles(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
@@ -5404,9 +5364,7 @@ function WarbandNexus:GetUncollectedTitles(searchText, limit)
     return {}
 end
 
--- ============================================================================
 -- ACHIEVEMENT REWARD SCANNER
--- ============================================================================
 
 ---Scan achievement rewards and categorize them (mount, pet, toy, transmog, etc.)
 ---@param achievementID number Achievement ID
@@ -5512,9 +5470,7 @@ function WarbandNexus:EnhanceItemWithAchievement(itemData, achievementID)
     return itemData
 end
 
--- ============================================================================
 -- BAG SCAN SYSTEM (BAG_UPDATE_DELAYED LOOT DETECTION)
--- ============================================================================
 -- Note: Helper functions (WasRecentlyNotified, MarkAsNotified) defined at top of file
 
 -- Pending items: items detected in bag but GetItemInfo returned nil (data not loaded yet)
@@ -5757,9 +5713,7 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
     end
 end
 
--- ============================================================================
 -- INDEPENDENT BAG SCAN EVENT LISTENER (Self-Contained)
--- ============================================================================
 --[[
     CollectionService owns its own BAG_UPDATE_DELAYED listener via a raw frame.
     This decouples collectible detection from ItemsCacheService, ensuring:
@@ -5941,9 +5895,7 @@ do
     end)
 end
 
--- ============================================================================
 -- UNIFIED LOGIN-TIME COLLECTION SCAN
--- ============================================================================
 --[[
     Single entry point for scanning all collection types at login.
     Runs sequentially (mount → pet → toy) with time-budgeted batching.
@@ -5960,8 +5912,6 @@ end
 ns.CollectionService = ns.CollectionService or {}
 ns.CollectionService.collectionCache = collectionCache
 
--- ============================================================================
 -- INITIALIZATION
--- ============================================================================
 
 -- Module loaded - verbose logging removed for normal users
