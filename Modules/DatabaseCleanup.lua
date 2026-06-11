@@ -159,7 +159,13 @@ function WarbandNexus:CleanupDatabase()
         self.db.global.warbandBankV2 = nil
         cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
     end
-    
+
+    if self.db.global.sessionCache then
+        -- Old compressed session cache blob (subsystem removed)
+        self.db.global.sessionCache = nil
+        cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
+    end
+
     -- Clean old per-character storage
     if self.db.global.characters then
         for charKey, charData in pairs(self.db.global.characters) do

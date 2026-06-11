@@ -46,7 +46,7 @@ local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateIcon = ns.UI_CreateIcon
--- CreateReputationProgressBar no longer imported - progress bar is now inline lazy-created on pooled rows
+-- Progress bar is inline lazy-created on pooled rows (no shared widget import)
 -- (eliminates ~150 Frame + ~900 texture creations per refresh cycle)
 local FormatNumber = ns.UI_FormatNumber
 local ShowTooltip = ns.UI_ShowTooltip

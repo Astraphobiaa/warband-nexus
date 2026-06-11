@@ -238,10 +238,6 @@ local function SyncGridColumnDividers(parent, xPositions, height)
     end
 end
 
-local function CreateCharRowColumnDivider(parent, xOffset)
-    return EnsureGridColumnDivider(parent, 1, xOffset, 38)
-end
-
 ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
 ns.UI_GetColumnOffset = GetColumnOffset
 ns.UI_GetCharRowTotalWidth = GetCharRowTotalWidth
@@ -252,5 +248,4 @@ ns.UI_CHAR_ROW_RIGHT_MARGIN = CHAR_ROW_RIGHT_MARGIN
 ns.UI_CHAR_ROW_RIGHT_GAP = CHAR_ROW_RIGHT_GAP
 ns.UI_ResolveCharactersTabRowWidth = ResolveCharactersTabRowWidth
 ns.UI_ComputeCharactersMinScrollWidth = ComputeCharactersMinScrollWidth
-ns.UI_CreateCharRowColumnDivider = CreateCharRowColumnDivider
 ns.UI_SyncGridColumnDividers = SyncGridColumnDividers

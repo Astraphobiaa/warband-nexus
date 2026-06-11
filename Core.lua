@@ -155,11 +155,6 @@ local defaults = {
             tryCounter = true,   -- Automatic try counter for drop attempts
         },
         
-        -- Weekly Planner settings
-        showWeeklyPlanner = true,      -- Show Weekly Planner section in Characters tab
-        weeklyPlannerDays = 3,         -- Only show chars logged in within X days
-        weeklyPlannerCollapsed = false, -- Collapse state of the planner section
-        
         -- Currency settings
         currencyShowZero = true,  -- Show currencies with 0 quantity
         
@@ -545,7 +540,7 @@ local defaults = {
     → Modules/CharacterService.lua: ConfirmCharacterTracking, IsCharacterTracked, ShowCharacterTrackingConfirmation, IsFavoriteCharacter, ToggleFavoriteCharacter
     → Modules/DebugService.lua: Debug, PrintCharacterList, PrintPvEData, PrintBankDebugInfo, ForceScanWarbandBank, WipeAllData
     → Modules/CommandService.lua: SlashCommand (full routing logic)
-    → Modules/DataService.lua: SaveCurrentCharacterData, UpdateCharacterGold, CollectPvEData, GetAllCharacters, PerformItemSearch
+    → Modules/DataService.lua: SaveCurrentCharacterData, UpdateCharacterGold, CollectPvEData, GetAllCharacters
     → Modules/UI.lua: RefreshUI, RefreshPvEUI, OpenOptions
     → Modules/MinimapButton.lua: InitializeDataBroker (now InitializeMinimapButton)
 ============================================================================]]
@@ -599,22 +594,6 @@ function WarbandNexus:OnInitialize()
     self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileReset", "OnProfileChanged")
-    
-    -- SessionCache: LibDeflate + LibSerialize can hitch ADDON_LOADED on large SavedVariables blobs.
-    -- Seed empty structure now; decompress next tick so this frame finishes with AceDB + migrations first.
-    -- No addon code reads session cache during OnInitialize/OnEnable before timers fire.
-    if self.InitializeSessionCache then
-        self:InitializeSessionCache()
-    end
-    if self.DecompressAndLoad and C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if WarbandNexus and WarbandNexus.DecompressAndLoad then
-                WarbandNexus:DecompressAndLoad()
-            end
-        end)
-    elseif self.DecompressAndLoad then
-        self:DecompressAndLoad()
-    end
     
     -- Single-roof version check (addon / game build / per-cache schema). Cache
     -- invalidation is selective and non-destructive — see MigrationService:CheckVersions.
@@ -1126,10 +1105,6 @@ function WarbandNexus:OnPlayerLogout()
     -- Save runtime-discovered NPC names to cache for next session
     if self._saveNpcNameCache then
         self._saveNpcNameCache()
-    end
-    -- Compress and save session cache (LibDeflate + AceSerialize)
-    if self.CompressAndSave then
-        self:CompressAndSave()
     end
 end
 

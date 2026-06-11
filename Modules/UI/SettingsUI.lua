@@ -1322,16 +1322,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             set = function(value) WarbandNexus.db.profile.requestPlayedTimeOnLogin = value end,
         },
         {
-            key = "showWeeklyPlanner",
-            label = (ns.L and ns.L["SHOW_WEEKLY_PLANNER"]) or "Weekly Planner (Characters)",
-            tooltip = (ns.L and ns.L["SHOW_WEEKLY_PLANNER_TOOLTIP"]) or "Show or hide the Weekly Planner section inside the Characters tab",
-            get = function() return WarbandNexus.db.profile.showWeeklyPlanner end,
-            set = function(value)
-                WarbandNexus.db.profile.showWeeklyPlanner = value
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "chars", skipCooldown = true })
-            end,
-        },
-        {
             key = "vaultButtonEnabled",
             label = (ns.L and ns.L["CONFIG_VAULT_BUTTON"]) or "Easy Access",
             tooltip = (ns.L and ns.L["CONFIG_VAULT_BUTTON_DESC"]) or "Show the draggable Easy Access shortcut on screen. Left-click runs your chosen action; right-click opens the WN shortcut menu (Vault Tracker, Saved Instances, Plans / Todo, Settings).",

@@ -369,8 +369,6 @@ local function RelayoutCharactersGoldCards(scrollChild, contentWidth, mf)
     return ApplyCharactersGoldCardsGeometry(bundle, hostW)
 end
 
-ns.UI_RelayoutCharactersGoldCards = RelayoutCharactersGoldCards
-
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
 --- Live resize: reposition width-dependent columns + class gradient (no full DrawCharacterRow).
@@ -3492,7 +3490,6 @@ local function RefreshCharactersVirtualLayout(scrollChild, contentWidth)
     return any
 end
 
-ns.UI_RefreshCharactersTabLiveLayout = RefreshCharactersVirtualLayout
 ns.UI_ForEachCharactersVirtualContainer = ForEachCharactersVirtualContainer
 
 local function CharactersTabViewportRelayout(scrollChild, contentWidth, mf)

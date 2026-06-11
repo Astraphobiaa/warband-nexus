@@ -562,11 +562,6 @@ function WarbandNexus:InvalidateCollectionCache(category)
     end
 end
 
----Save full collection data to DB (legacy — use SaveCollectionStore instead)
-function WarbandNexus:SaveCollectionData()
-    self:SaveCollectionStore()
-end
-
 -- Blizzard materialize: CollectionService_Materialize.lua (ns.CollectionMaterialize)
 
 ---Build full collection data (all mounts, pets, toys with id, name, icon, source, description).
@@ -1254,50 +1249,6 @@ function WarbandNexus:GetPetSourceTypeIndexForSpecies(speciesID)
         ns._petSpeciesToSourceIndex = st.speciesToSource
     end
     return ns._petSpeciesToSourceIndex and ns._petSpeciesToSourceIndex[speciesID]
-end
-
----Flat list of all toys for UI (no categories). Returns array of { id, name, icon, collected } sorted by name.
-function WarbandNexus:GetToysFlatList()
-    local out = {}
-    if not C_ToyBox or not C_ToyBox.GetToyInfo then return out end
-    Mat.EnsureBlizzardCollectionsLoaded()
-    if InCombatLockdown() then return out end
-    local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
-    local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
-    local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
-    pcall(function()
-        C_ToyBox.SetCollectedShown(true)
-        C_ToyBox.SetUncollectedShown(true)
-        C_ToyBox.SetAllSourceTypeFilters(true)
-        C_ToyBox.SetFilterString("")
-        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-        local numToys = (C_ToyBox.GetNumFilteredToys and C_ToyBox.GetNumFilteredToys()) or (C_ToyBox.GetNumToys and C_ToyBox.GetNumToys()) or 0
-        if issecretvalue and numToys and issecretvalue(numToys) then numToys = 0 end
-        for i = 1, numToys do
-            local itemID = C_ToyBox.GetToyFromIndex(i)
-            if itemID and itemID > 0 and not (issecretvalue and issecretvalue(itemID)) then
-                local _, toyName, icon = C_ToyBox.GetToyInfo(itemID)
-                if issecretvalue and toyName and issecretvalue(toyName) then toyName = nil end
-                local name = (toyName and toyName ~= "") and toyName or tostring(itemID)
-                if not icon and (C_Item and C_Item.GetItemInfo) then
-                    local _, _, _, _, _, _, _, _, _, tex = C_Item.GetItemInfo(itemID)
-                    if tex then icon = tex end
-                end
-                local collected = false
-                if PlayerHasToy then
-                    local raw = PlayerHasToy(itemID)
-                    if issecretvalue and raw and issecretvalue(raw) then collected = true else collected = raw == true end
-                end
-                out[#out + 1] = { id = itemID, name = name, icon = icon, collected = collected, isCollected = collected }
-            end
-        end
-        if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
-        if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
-        if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
-        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-    end)
-    table.sort(out, CmpItemName)
-    return out
 end
 
 ---Toys grouped by Blizzard source type for UI. Each item: id, name, icon, collected. DB stores only id+name.
@@ -3498,117 +3449,6 @@ COLLECTION_CONFIGS = {
         end,
     },
 
-    title = {
-        name = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
-        iterator = function()
-            if not GetCategoryList then return {} end
-            
-            local categoryList = GetCategoryList() or {}
-            local allTitles = {}
-            
-            for i = 1, #categoryList do
-                local categoryID = categoryList[i]
-                if categoryID then
-                    local numAchievements = GetCategoryAchievementListCount(categoryID)
-                    for achIndex = 1, numAchievements do
-                        table.insert(allTitles, {categoryID = categoryID, achIndex = achIndex})
-                    end
-                end
-            end
-            
-            return allTitles
-        end,
-        extract = function(item)
-            local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, item.categoryID, item.achIndex)
-            if not success or not id or not name then return nil end
-            
-            -- Get reward info (titles only)
-            local rewardTitle
-            local rewardSuccess, rewardItem, title = pcall(GetAchievementReward, id)
-            if rewardSuccess then
-                if type(title) == "string" and title ~= "" then
-                    rewardTitle = title
-                elseif type(rewardItem) == "string" and rewardItem ~= "" then
-                    rewardTitle = rewardItem
-                end
-            end
-            
-            -- Only include if has title reward
-            if not rewardTitle then return nil end
-            
-            return {
-                id = id,
-                name = name,
-                icon = icon,
-                points = points,
-                description = description,
-                source = description or ((ns.L and ns.L["FALLBACK_PLAYER_TITLE"]) or "Title Reward"),
-                collected = completed,
-                rewardText = rewardTitle,
-            }
-        end,
-        shouldInclude = function(data)
-            if not data or data.collected then return false end
-            return true
-        end,
-        shouldIncludeInAll = function(data)
-            return data ~= nil
-        end,
-    },
-
-    transmog = {
-        name = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog",
-        iterator = function()
-            if not C_TransmogCollection or not C_TransmogCollection.GetAllAppearanceSources then
-                return {}
-            end
-            
-            -- Get all appearance sources (efficient built-in API)
-            local allSources = C_TransmogCollection.GetAllAppearanceSources()
-            if not allSources then return {} end
-            
-            local sourceList = {}
-            for sourceID, _ in pairs(allSources) do
-                table.insert(sourceList, sourceID)
-            end
-            
-            return sourceList
-        end,
-        extract = function(sourceID)
-            if not C_TransmogCollection then return nil end
-            
-            local sourceInfo = C_TransmogCollection.GetSourceInfo(sourceID)
-            if not sourceInfo then return nil end
-            
-            local itemID = sourceInfo.itemID
-            local visualID = sourceInfo.visualID
-            local isCollected = sourceInfo.isCollected
-            local sourceText = sourceInfo.sourceText or ((ns.L and ns.L["FALLBACK_TRANSMOG_COLLECTION"]) or "Transmog Collection")
-            
-            -- Get item info (C_Item namespace for Midnight 12.0+)
-            local itemName, _, _, _, icon
-            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
-            if itemID then
-                itemName, _, _, _, _, _, _, _, _, icon = GetItemInfoFn(itemID)
-            end
-            
-            return {
-                id = sourceID,
-                name = itemName or ("Transmog Source " .. sourceID),
-                icon = icon or 134400,
-                sourceText = sourceText,
-                source = sourceText,
-                collected = isCollected,
-                itemID = itemID,
-                visualID = visualID,
-            }
-        end,
-        shouldInclude = function(data)
-            if not data or data.collected then return false end
-            return true
-        end
-    },
-    
     illusion = {
         name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
         iterator = function()
@@ -3945,7 +3785,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             end
             collectionStore[collectionType] = results
         end
-        -- collectionCache.uncollected: id->name for Plans/GetUncollectedItems (uncollected only)
+        -- collectionCache.uncollected: id->name map (uncollected only)
         local uncollectedMap = {}
         for id, d in pairs(results) do
             if d and (d.collected == false or d.collected == nil) then
@@ -4052,13 +3892,6 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
     end
 
     resumeCoroutine()
-end
-
----Get uncollected items from cache (for Browse UI). Raw id->name map (minimal format).
----@param collectionType string "mount", "pet", "toy", "achievement", "title", "illusion"
----@return table|nil Uncollected items {id -> name string}
-function WarbandNexus:GetUncollectedItems(collectionType)
-    return collectionCache.uncollected[collectionType]
 end
 
 ---Session-only metadata cache: circular buffer eviction (O(1) instead of O(n) table.remove).
@@ -4540,11 +4373,6 @@ function WarbandNexus:ClearCollectionMetadataCache()
     metadataCacheHead = 1
     WipeUncollectedResultsCacheAndMergedAchievements()
     if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
-end
-
----Invalidate the uncollected results cache (call when collection data changes).
-function WarbandNexus:InvalidateUncollectedResultsCache()
-    WipeUncollectedResultsCacheAndMergedAchievements()
 end
 
 ---Get uncollected mounts (UNIFIED: collectionStore-first, scan if empty). Plans shows uncollected only.
@@ -5911,18 +5739,6 @@ do
     end)
 end
 
--- UNIFIED LOGIN-TIME COLLECTION SCAN
---[[
-    Single entry point for scanning all collection types at login.
-    Runs sequentially (mount → pet → toy) with time-budgeted batching.
-    Integrates with LoadingTracker for sync state display.
-    Stores IDs + names in DB for search bar functionality.
-]]
-
----Legacy: ScanAllCollectionsOnLogin — use EnsureCollectionData instead (triggered in core init)
-function WarbandNexus:ScanAllCollectionsOnLogin()
-    self:EnsureCollectionData()
-end
 
 -- Expose CollectionService reference for external modules
 ns.CollectionService = ns.CollectionService or {}

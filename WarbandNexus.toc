@@ -129,7 +129,6 @@ Modules\UI\AchievementBrowseVirtualList.lua
 Modules\UI\FramePoolFactory.lua
 Modules\UI\WindowFactory.lua
 Modules\UI\SearchBoxComponent.lua
-Modules\UI\ReputationProgressBar.lua
 Modules\UI\CardLayoutManager.lua
 Modules\UI\ExpandableRowFactory.lua
 Modules\UI\SearchResultsRenderer.lua

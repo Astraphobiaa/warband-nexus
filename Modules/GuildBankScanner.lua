@@ -21,11 +21,6 @@ local wipe = wipe
 local pairs = pairs
 local tinsert = table.insert
 
--- Minimal logging for operations (disabled)
-local function LogOperation(operationName, status, trigger)
-    -- Logging disabled
-end
-
 -- Supersede in-flight chunked scans (new ScanGuildBank or close invalidates via guildBankIsOpen check)
 local guildBankScanGeneration = 0
 local MAX_GUILDBANK_SLOTS_PER_TAB = 98
@@ -38,9 +33,7 @@ function WarbandNexus:ScanGuildBank()
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Character not tracked")
         return false
     end
-    
-    LogOperation("Guild Bank Scan", "Started", self.currentTrigger or "Manual")
-    
+
     if not self.guildBankIsOpen then
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Guild bank not open (guildBankIsOpen=false)")
         return false
@@ -108,7 +101,6 @@ function WarbandNexus:ScanGuildBank()
             guildData.goldLastUpdated = time()
         end
         DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
-        LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
         ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
         self:SendMessage(E.ITEMS_UPDATED)
     end
