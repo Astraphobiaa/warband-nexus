@@ -355,6 +355,10 @@ function WarbandNexus:InitializeCollectionCache()
     
     local defaultUncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, transmog = {}, illusion = {} }
 
+    -- Reset the legacy cache when missing or version-mismatched, but DO NOT return
+    -- early: the collectionStore load below must still run. The cache and the store
+    -- are written by different paths and their SV versions can diverge — bailing out
+    -- here used to discard a perfectly valid persisted store for the whole session.
     if not self.db.global.collectionCache then
         self.db.global.collectionCache = {
             uncollected = defaultUncollected,
@@ -364,22 +368,18 @@ function WarbandNexus:InitializeCollectionCache()
         if debugMode then
     DebugPrint("|cffffcc00[WN CollectionService]|r Initialized NEW collection cache (empty)")
         end
-        return
-    end
-
-    local dbCache = self.db.global.collectionCache
-
-    if dbCache.version ~= CACHE_VERSION then
+    elseif self.db.global.collectionCache.version ~= CACHE_VERSION then
         if debugMode then
-    DebugPrint("|cffffcc00[WN CollectionService]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Cache version mismatch (DB: " .. tostring(self.db.global.collectionCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
         end
         self.db.global.collectionCache = {
             uncollected = defaultUncollected,
             version = CACHE_VERSION,
             lastScan = time()
         }
-        return
     end
+
+    local dbCache = self.db.global.collectionCache
 
     collectionCache.uncollected = dbCache.uncollected or defaultUncollected
     collectionCache.completed = dbCache.completed or { achievement = {} }
