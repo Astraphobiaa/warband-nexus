@@ -996,7 +996,11 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
         M.state._mountVisibleRowFrames = {}
     end
 
-    -- Clear existing children (headers from previous run); unparent to avoid accumulating on re-populate
+    -- Clear existing children (headers from previous run); unparent to avoid accumulating on re-populate.
+    -- KNOWN COST: section wraps/headers are rebuilt per populate (search keystroke after
+    -- debounce, filter toggle). Reusing them needs an update mode on the
+    -- CreateCollapsibleHeader factory (label/count text, expanded state, re-chaining)
+    -- plus closure-lifetime review — a planned refactor, not a drop-in change here.
     local children = { scrollChild:GetChildren() }
     for i = 1, #children do
         local c = children[i]
