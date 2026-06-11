@@ -2476,33 +2476,39 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
     local tinsert = table.insert
     local results = {}
 
-    -- Decompress warband + each personal bank once per call (not once per reagent).
-    local wbData = nil
-    if self.db.global and self.db.global.warbandBankV2 then
-        wbData = self:DecompressWarbandBank()
+    -- Read once per call through the live ItemsCacheService model (session-cached
+    -- decompression). This used to gate on the deprecated warbandBankV2/personalBanks
+    -- tables and call Decompress* methods that no longer exist anywhere — a guaranteed
+    -- nil-call error whenever those transitional tables were present.
+    local wbItems = nil
+    if self.GetWarbandBankData then
+        local wbData = self:GetWarbandBankData()
+        wbItems = wbData and wbData.items
     end
 
-    local personalDecoded = {}
-    if self.db.global and self.db.global.personalBanks then
-        for charKey in pairs(self.db.global.personalBanks) do
-            personalDecoded[charKey] = self:DecompressPersonalBank(charKey)
+    local bankDecoded = {}
+    if self.GetItemsData and self.db.global and self.db.global.characters then
+        for charKey in pairs(self.db.global.characters) do
+            local itemsData = self:GetItemsData(charKey)
+            if itemsData and itemsData.bank and #itemsData.bank > 0 then
+                bankDecoded[charKey] = itemsData.bank
+            end
         end
     end
 
     local function addWarbandMatches(itemID, locations)
         local found = 0
-        if not wbData or not wbData.items then return found end
-        for bagID, bagData in pairs(wbData.items) do
-            for slotID, item in pairs(bagData) do
-                if item.itemID == itemID then
-                    found = found + (item.stackCount or 1)
-                    tinsert(locations, {
-                        type = "warband",
-                        bag = bagID,
-                        slot = slotID,
-                        count = item.stackCount or 1,
-                    })
-                end
+        if not wbItems then return found end
+        for i = 1, #wbItems do
+            local item = wbItems[i]
+            if item.itemID == itemID then
+                found = found + (item.stackCount or 1)
+                tinsert(locations, {
+                    type = "warband",
+                    bag = item.bagID,
+                    slot = item.slot,
+                    count = item.stackCount or 1,
+                })
             end
         end
         return found
@@ -2510,21 +2516,18 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
 
     local function addPersonalBankMatches(itemID, locations)
         local found = 0
-        for charKey, bankData in pairs(personalDecoded) do
-            if bankData then
-                for bagID, bagData in pairs(bankData) do
-                    for slotID, item in pairs(bagData) do
-                        if item.itemID == itemID then
-                            found = found + (item.stackCount or 1)
-                            tinsert(locations, {
-                                type = "personal",
-                                character = charKey,
-                                bag = bagID,
-                                slot = slotID,
-                                count = item.stackCount or 1,
-                            })
-                        end
-                    end
+        for charKey, bankItems in pairs(bankDecoded) do
+            for i = 1, #bankItems do
+                local item = bankItems[i]
+                if item.itemID == itemID then
+                    found = found + (item.stackCount or 1)
+                    tinsert(locations, {
+                        type = "personal",
+                        character = charKey,
+                        bag = item.bagID,
+                        slot = item.slot,
+                        count = item.stackCount or 1,
+                    })
                 end
             end
         end

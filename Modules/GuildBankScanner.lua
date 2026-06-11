@@ -194,12 +194,6 @@ function WarbandNexus:InvalidateGuildBankScan()
 end
 
 --[[
-    Get all Warband bank items as a flat list
-    Groups by item category if requested
-    v2: Uses GetWarbandBankV2() with fallback to current session data
-]]
-
---[[
     Get all Guild Bank items as a flat list
 ]]
 function WarbandNexus:GetGuildBankItems(groupByCategory)

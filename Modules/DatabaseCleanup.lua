@@ -118,6 +118,19 @@ function WarbandNexus:CleanupDatabase()
             end
         end
 
+        -- Resolve chains before remapping (A→B, B→C ⇒ A→C). With 3+ duplicates of one
+        -- identity the map is chained, and RemapCharKeyedBucket iterates in undefined
+        -- pairs order — A's currency/PvE/item buckets could be parked under B's key
+        -- right after row B was deleted, silently orphaning them.
+        for loserKey, survivorKey in pairs(renames) do
+            local visited = { [loserKey] = true }
+            while renames[survivorKey] and not visited[survivorKey] do
+                visited[survivorKey] = true
+                survivorKey = renames[survivorKey]
+            end
+            renames[loserKey] = survivorKey
+        end
+
         if next(renames) and MS and MS.ApplyCharacterKeyedStorageRenames then
             MS:ApplyCharacterKeyedStorageRenames(self.db, renames)
         end

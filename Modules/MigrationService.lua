@@ -121,6 +121,10 @@ local function MergeGearDataBucket(current, legacy)
 end
 
 --- Move/rename one top-level charKey bucket when roster keys change (GUID migration).
+--- Callers must pass a transitively-resolved rename map (every loser points at the
+--- final survivor — see CleanupDatabase). When the survivor already has a bucket it
+--- wins and the loser's is discarded: bucket schemas differ per table, so a generic
+--- merge isn't possible, and the survivor is always the most recently seen row.
 ---@param tbl table|nil
 ---@param renames table<string,string>
 local function RemapCharKeyedBucket(tbl, renames)

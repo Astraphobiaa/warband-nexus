@@ -18,8 +18,6 @@
     DEPRECATED WRAPPERS (route to cache services internally):
     - CollectPvEData() → PvECacheService:UpdatePvEData()
     - UpdatePvEDataV2() → PvECacheService:ImportLegacyPvEData()
-    - GetPersonalBankV2() → ItemsCacheService:GetItemsData()
-    - GetWarbandBankV2() → ItemsCacheService:GetWarbandBankData()
 ]]
 
 local ADDON_NAME, ns = ...
@@ -1947,153 +1945,9 @@ function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
     
 end
 
-local function ConvertItemsDataToLegacyBagIndexed(itemsData)
-    if not itemsData then
-        return nil
-    end
-
-    local combined = {}
-
-    if itemsData.bags then
-        for i = 1, #itemsData.bags do
-            local item = itemsData.bags[i]
-            local bagID = item.bagID or 0
-            local slot = item.slot or 1
-            if not combined[bagID] then
-                combined[bagID] = {}
-            end
-            combined[bagID][slot] = item
-        end
-    end
-
-    if itemsData.bank then
-        for i = 1, #itemsData.bank do
-            local item = itemsData.bank[i]
-            local bagID = item.bagID or -1
-            local slot = item.slot or 1
-            if not combined[bagID] then
-                combined[bagID] = {}
-            end
-            combined[bagID][slot] = item
-        end
-    end
-
-    return combined
-end
-
-local function ConvertWarbandDataToLegacyBagIndexed(warbandData)
-    local result = {
-        items = {},
-        gold = 0, -- Legacy field (not tracked by ItemsCacheService)
-        lastScan = warbandData and warbandData.lastUpdate or 0,
-        totalSlots = 0, -- Legacy field
-        usedSlots = 0, -- Legacy field
-    }
-
-    if warbandData and warbandData.items then
-        for i = 1, #warbandData.items do
-            local item = warbandData.items[i]
-            local bagID = item.bagID or 13
-            local slot = item.slot or 1
-            if not result.items[bagID] then
-                result.items[bagID] = {}
-            end
-            result.items[bagID][slot] = item
-        end
-    end
-
-    return result
-end
-
---[[
-    Get personal bank data for a character (v2)
-    DEPRECATED: Redirects to ItemsCacheService:GetItemsData()
-    @param charKey string - Character key
-    @return table - Personal bank data
-]]
-function WarbandNexus:GetPersonalBankV2(charKey)
-    -- Redirect to ItemsCacheService (unified storage)
-    if self.GetItemsData then
-        local itemsData = self:GetItemsData(charKey)
-        if itemsData then
-            return ConvertItemsDataToLegacyBagIndexed(itemsData)
-        end
-    end
-    
-    return nil
-end
-
--- WARBAND BANK V2 STORAGE (COMPRESSED)
-
---[[
-    Update warband bank to global storage (v2)
-    Uses LibDeflate compression to reduce file size
-    @param bankData table - Warband bank data (items, gold, metadata)
-]]
-function WarbandNexus:UpdateWarbandBankV2(bankData)
-    -- Check if module is enabled
-    if not ns.Utilities:IsModuleEnabled("items") then
-        return
-    end
-    
-    -- Initialize global structure
-    self.db.global.warbandBankV2 = self.db.global.warbandBankV2 or {}
-    
-    if not bankData then
-        return
-    end
-    
-    -- Separate metadata from items for efficient storage
-    local metadata = {
-        gold = bankData.gold or 0,
-        lastScan = bankData.lastScan or time(),
-        totalSlots = bankData.totalSlots or 0,
-        usedSlots = bankData.usedSlots or 0,
-    }
-    
-    -- Try to compress the items data
-    local itemsCompressed = nil
-    if bankData.items and next(bankData.items) then
-        itemsCompressed = self:CompressTable(bankData.items)
-    end
-    
-    if itemsCompressed and type(itemsCompressed) == "string" then
-        -- Store compressed data
-        self.db.global.warbandBankV2 = {
-            compressed = true,
-            items = itemsCompressed,
-            metadata = metadata,
-        }
-    else
-        -- Fallback: store uncompressed
-        self.db.global.warbandBankV2 = {
-            compressed = false,
-            items = bankData.items or {},
-            metadata = metadata,
-        }
-    end
-    
-    self.db.global.warbandBankLastUpdate = time()
-    
-end
-
---[[
-    Get warband bank data (v2)
-    DEPRECATED: Redirects to ItemsCacheService:GetWarbandBankData()
-    @return table - Full warband bank data structure
-]]
-function WarbandNexus:GetWarbandBankV2()
-    -- Redirect to ItemsCacheService (unified storage)
-    if self.GetWarbandBankData then
-        local warbandData = self:GetWarbandBankData()
-        if warbandData then
-            return ConvertWarbandDataToLegacyBagIndexed(warbandData)
-        end
-    end
-    
-    -- Fallback
-    return { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
-end
+-- NOTE: the GetPersonalBankV2 / UpdateWarbandBankV2 / GetWarbandBankV2 redirect
+-- wrappers were removed (zero callers). ItemsCacheService owns item storage;
+-- warbandBankV2 is deprecated and purged by DatabaseCleanup.
 
 -- DATA VALIDATION & CLEANUP
 
@@ -2496,8 +2350,12 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
         self.db.char.personalBank.lastScan = time()
         self.db.char.personalBank.totalSlots = totalSlots
         self.db.char.personalBank.usedSlots = usedSlots
-        -- Persist to itemStorage only (no full character save from bank scan path)
-        local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        -- Persist to itemStorage only (no full character save from bank scan path).
+        -- Resolve the same GUID-preferred key ItemsCacheService writes under; the legacy
+        -- Name-Realm derivation parked a second bank blob the UI never read.
+        local key = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(self))
+            or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
+            or ns.Utilities:GetCharacterKey()
         if key and self.SaveItemsCompressed then
             local arr = tableToItemArrayForStorage(self.db.char.personalBank and self.db.char.personalBank.items)
             if arr then self:SaveItemsCompressed(key, "bank", arr) end

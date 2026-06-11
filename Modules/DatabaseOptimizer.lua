@@ -696,23 +696,11 @@ function WarbandNexus:InitializeDatabaseOptimizer()
         end)
     end
     
-    -- Check if Warband Bank needs migration to v2 (compressed)
-    local needsWarbandMigration = addon.db.global.warbandBank 
-        and addon.db.global.warbandBank.items 
-        and next(addon.db.global.warbandBank.items)
-        and not addon.db.global.warbandBankV2
-    
-    if needsWarbandMigration then
-        C_Timer.After(4.5, function()
-            if WarbandNexus and WarbandNexus.UpdateWarbandBankV2 then
-                WarbandNexus:UpdateWarbandBankV2(WarbandNexus.db.global.warbandBank)
-                if IsDebugModeEnabled and IsDebugModeEnabled() then
-                    addon:Print("|cff00ff00Warband bank migrated to v2 format!|r")
-                end
-            end
-        end)
-    end
-    
+    -- NOTE: no warbandBank -> warbandBankV2 migration here. warbandBankV2 is
+    -- deprecated (DatabaseCleanup deletes it every login) and has no readers;
+    -- recreating it from the legacy table was a pure write-then-delete cycle.
+    -- ItemsCacheService owns the live warband bank storage.
+
     -- Check if auto-optimization should run
     C_Timer.After(5, function()
         if WarbandNexus and WarbandNexus.CheckAutoOptimization then

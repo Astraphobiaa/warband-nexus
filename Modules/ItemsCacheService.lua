@@ -57,6 +57,10 @@ local function CanonicalItemsMessageKey(storageKey)
     return k
 end
 
+-- Forward declaration (defined with the read-model helpers below); incremental
+-- bag updates need alias-aware bucket resolution without the legacy merge.
+local ResolveItemStorageRow
+
 --- Bump when persisted bag/bank/warband data or item metadata changes so Gear storage scan cache invalidates.
 local function BumpGearStorageScanGeneration()
     ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
@@ -701,11 +705,22 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
         return {}
     end
     
-    -- Get current data from DB
-    local currentData = self:GetItemsData(charKey)
+    -- Read-modify-write the canonical v2 bucket only (alias-aware, NO legacy merge).
+    -- GetItemsData appends rows from legacy characters.items/.bank and personalBanks
+    -- on every read; writing that merged view back baked long-deleted "phantom"
+    -- items into itemStorage on every incremental bag update.
     local dataType = isInventoryBag and "bags" or "bank"
-    local allItems = isInventoryBag and (currentData.bags or {}) or (currentData.bank or {})
-    
+    local storage = ResolveItemStorageRow(charKey)
+    local bucket = storage and storage[dataType]
+    local allItems
+    if bucket and bucket.compressed then
+        allItems = DecompressItemData(bucket.data) or {}
+    elseif bucket then
+        allItems = bucket.data or {}
+    else
+        allItems = {}
+    end
+
     -- Remove old items from this specific bag
     for i = #allItems, 1, -1 do
         if allItems[i].bagID == bagID then
@@ -1445,9 +1460,10 @@ local function OccupiedSlotsFromStorageBucket(bucket, allowLazyBackfill)
 end
 
 --- Resolve v2 itemStorage row for a character key (GUID / Name-Realm aliases).
+--- (Local is forward-declared near the top of the file.)
 ---@param charKey string
 ---@return table|nil storageRow
-local function ResolveItemStorageRow(charKey)
+function ResolveItemStorageRow(charKey)
     local globalIS = WarbandNexus.db.global.itemStorage
     if not globalIS or not charKey or charKey == "" then
         return nil
