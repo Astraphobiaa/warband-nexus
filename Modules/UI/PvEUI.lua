@@ -1277,7 +1277,12 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
         -- Calculate Y position (row 0, 1, 2) with border padding
         local rowY = borderPadding + ((rowIndex - 1) * cellHeight)
 
-        -- Create row frame container (using Factory pattern)
+        -- Create row frame container. DELIBERATELY fresh each paint: the slot
+        -- interiors below are deep state-branching (per-completion fontstrings,
+        -- arrows, tooltip closures), so half-reusing the frames would stack new
+        -- children onto old ones. This surface only repaints on row expand and
+        -- on rare PVE_UPDATED events; the wipe path parks old frames in the
+        -- recycle bin. The `if not X` guards below are for the fresh frame only.
         local rowFrame = ns.UI.Factory:CreateContainer(vaultCard)
         rowFrame:SetPoint("TOPLEFT", borderPadding, -rowY)
         rowFrame:SetSize(cardWidth - (borderPadding * 2), cellHeight)

@@ -1482,29 +1482,42 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local expandedGroups = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
 
     -- ===== WEEKLY RESET TIMER BAR =====
+    -- Persistent across repaints (same pattern as the Characters gold trio):
+    -- the bar + its children used to be recreated and binned on every Plans paint.
     local padH = PlansContentPadH()
     local resetBarH = 30
-    local resetBar = CreateCard(parent, resetBarH)
+    local resetBar = parent._wnPlansResetBar
+    local resetTimeText
+    if resetBar then
+        resetBar:SetParent(parent)
+        resetTimeText = resetBar._resetTimeText
+    else
+        resetBar = CreateCard(parent, resetBarH)
+        parent._wnPlansResetBar = resetBar
+
+        local resetIcon = resetBar:CreateTexture(nil, "ARTWORK")
+        resetIcon:SetSize(16, 16)
+        resetIcon:SetPoint("LEFT", 12, 0)
+        resetIcon:SetAtlas("characterupdate_clock-icon", true)
+
+        local resetLabel = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
+        resetLabel:SetPoint("LEFT", resetIcon, "RIGHT", 6, 0)
+        resetLabel:SetTextColor(0.8, 0.8, 0.8)
+        resetLabel:SetText((ns.L and ns.L["WEEKLY_RESET_LABEL"]) or "Weekly Reset")
+
+        resetTimeText = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
+        resetTimeText:SetPoint("RIGHT", -12, 0)
+        resetTimeText:SetTextColor(0.3, 0.9, 0.3)
+        resetBar._resetTimeText = resetTimeText
+    end
+    resetBar:SetHeight(resetBarH)
+    resetBar:ClearAllPoints()
     resetBar:SetPoint("TOPLEFT", padH, -yOffset)
     resetBar:SetPoint("TOPRIGHT", -padH, -yOffset)
     if ApplyVisuals then
         local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
         ApplyVisuals(resetBar, bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
     end
-
-    local resetIcon = resetBar:CreateTexture(nil, "ARTWORK")
-    resetIcon:SetSize(16, 16)
-    resetIcon:SetPoint("LEFT", 12, 0)
-    resetIcon:SetAtlas("characterupdate_clock-icon", true)
-
-    local resetLabel = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
-    resetLabel:SetPoint("LEFT", resetIcon, "RIGHT", 6, 0)
-    resetLabel:SetTextColor(0.8, 0.8, 0.8)
-    resetLabel:SetText((ns.L and ns.L["WEEKLY_RESET_LABEL"]) or "Weekly Reset")
-
-    local resetTimeText = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
-    resetTimeText:SetPoint("RIGHT", -12, 0)
-    resetTimeText:SetTextColor(0.3, 0.9, 0.3)
     do
         local ok, seconds = pcall(function()
             if self.GetWeeklyResetTime then
