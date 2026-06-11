@@ -540,7 +540,6 @@ L["USE_ALERTFRAME_POSITION"] = "Использовать позицию AlertFra
 L["USE_ALERTFRAME_POSITION_ACTIVE"] = "Используется позиция Blizzard AlertFrame"
 L["NOTIFICATION_GHOST_MAIN"] = "Достижение / уведомление"
 L["NOTIFICATION_GHOST_CRITERIA"] = "Прогресс критериев"
-L["SHOW_WEEKLY_PLANNER"] = "Еженедельный планировщик (персонажи)"
 L["LOCK_MINIMAP_ICON"] = "Закрепить кнопку миникарты"
 L["BACKPACK_LABEL"] = "Рюкзак"
 L["REAGENT_LABEL"] = "Реагент"
@@ -712,7 +711,6 @@ L["ACHIEVEMENT_PROGRESS_FORMAT"] = "%s из %s (%s%%)"
 
 -- Settings - General Tooltips
 L["SHOW_ITEM_COUNT_TOOLTIP"] = "Показывать количество в хранилище и предметах"
-L["SHOW_WEEKLY_PLANNER_TOOLTIP"] = "Показывать планировщик вкладки «Персонажи»"
 L["LOCK_MINIMAP_TOOLTIP"] = "Закрепить кнопку миникарты"
 L["SCROLL_SPEED_TOOLTIP"] = "Множитель скорости прокрутки (1.0x = 28 px за шаг)"
 L["UI_SCALE"] = "Масштаб интерфейса"

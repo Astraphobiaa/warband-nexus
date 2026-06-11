@@ -908,13 +908,12 @@ local options = {
                 WarbandNexus:ShowWipeDataConfirmation()
             end,
         },
+        -- ===== TRACK ITEM DB =====
         spacer11 = {
             order = 199,
             type = "description",
             name = "\n",
         },
-        
-        -- ===== TRACK ITEM DB =====
         trackDBHeader = {
             order = 200,
             type = "header",
