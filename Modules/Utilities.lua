@@ -10,9 +10,24 @@ local Utilities = {}
 ns.Utilities = Utilities
 
 -- CHARACTER IDENTIFICATION
--- Canonical persisted identity for subsidiary tables: GetCharacterStorageKey / ResolveCharacterRowKey / GetCanonicalCharacterKey.
--- Logged-in `db.global.characters` index: CharacterService:ResolveCharactersTableKey(addon); writes / tracking: GetCharactersTablePersistKey; subsidiary caches: ResolveSubsidiaryCharacterKey.
--- Live writes: CharacterService:ResolveCharactersTableKey(addon) or GetCharacterStorageKey(addon); messages/UI legacy keys: GetCanonicalCharacterKey.
+--
+-- Three resolvers exist on purpose; they are NOT interchangeable and must not be
+-- merged — SavedVariables hold rows under every historical key form, and changing
+-- derivation would orphan existing user data.
+--
+--   GetCharacterKey()                      Legacy "Name-Realm" derivation from the live
+--                                          unit. Display/lookup fallback only.
+--   GetCharacterStorageKey(addon)          GUID-preferred WRITE key (Midnight rename-safe).
+--                                          Use when persisting new rows.
+--   CharacterService:
+--     ResolveCharactersTableKey(addon)     READ-side resolver: searches db.global.characters
+--                                          across all historical key forms, including a GUID
+--                                          scan that finds renamed characters.
+--
+-- Standard lookup chain (see Core.lua login save / guild check):
+--   ResolveCharactersTableKey -> GetCharacterStorageKey -> GetCharacterKey
+-- Subsidiary caches (currency/gear/PvE/itemStorage): ResolveSubsidiaryCharacterKey.
+-- Messages/UI legacy keys: GetCanonicalCharacterKey.
 
 --- Split a stored "Name-Realm" key using only the **first** hyphen.
 --- Realms may contain hyphens (e.g. Azjol-Nerub); player names do not use `-` in WoW.
