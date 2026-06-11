@@ -839,6 +839,7 @@ local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
 
     local totalAffordable = 0
     local goldOnlyCount = 0
+    local watermark = tonumber(upInfo.watermarkIlvl) or 0
 
     for nextTier = currTier + 1, maxTier do
         local stepGold = goldPerUpgrade
@@ -850,6 +851,11 @@ local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
             if upInfo.crestCost ~= nil then
                 stepCrest = upInfo.crestCost
             end
+        elseif watermark > 0 and tiers[nextTier] and tiers[nextTier] <= watermark then
+            -- High-watermark rule (see math comment above): steps at or below the
+            -- slot's previously-reached ilvl cost gold only. The loop charged crests
+            -- for every step, undercounting affordable upgrades after a catch-up.
+            stepCrest = 0
         end
 
         if haveGoldCopper < stepGold then break end
