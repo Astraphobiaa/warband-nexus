@@ -241,7 +241,6 @@ end
 ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
 ns.UI_GetColumnOffset = GetColumnOffset
 ns.UI_GetCharRowTotalWidth = GetCharRowTotalWidth
-ns.UI_GetCharRowTotalWidthForGuild = GetCharRowTotalWidthForGuild
 ns.UI_GetCharRowRightRailWidth = GetCharRowRightRailWidth
 ns.UI_ComputeCharRowGuildColumnWidth = ComputeCharRowGuildColumnWidth
 ns.UI_CHAR_ROW_RIGHT_MARGIN = CHAR_ROW_RIGHT_MARGIN

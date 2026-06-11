@@ -387,7 +387,6 @@ local function ScrollMainNavEnsureTabVisible(f, tabKey)
 end
 
 ns.UI_RefreshMainNavTabStrip = RefreshMainNavLayout
-ns.UI_RefreshMainNavLayout = RefreshMainNavLayout
 ns.UI_ScrollMainNavEnsureTabVisible = ScrollMainNavEnsureTabVisible
 
 --- Wall-time DrawTab trace (GetTime) when debug+verbose tab perf monitor is on; aligns with WN-PERF heavy-tab inventory.

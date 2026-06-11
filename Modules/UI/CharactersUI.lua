@@ -480,7 +480,6 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
     end
 end
 
-ns.UI_ApplyCharacterRowInteriorLayout = ApplyCharacterRowInteriorLayout
 
 local function StyleCharacterDeleteIcon(icon, highlighted)
     if not icon then return end
@@ -3556,7 +3555,6 @@ local function RefreshCharactersVirtualLayout(scrollChild, contentWidth)
     return any
 end
 
-ns.UI_ForEachCharactersVirtualContainer = ForEachCharactersVirtualContainer
 
 local function CharactersTabViewportRelayout(scrollChild, contentWidth, mf)
     if not mf or mf.currentTab ~= "chars" then return false end

@@ -1477,7 +1477,6 @@ local QUALITY_COLORS = {
 
 -- Export to namespace
 ns.UI_COLORS = COLORS
-ns.UI_QUALITY_COLORS = QUALITY_COLORS
 
 --- Must be above ns.UI_FormatUpgradeTrackMarkup (Lua 5.1: local visible only after this line).
 local function GetQualityHex(quality)
@@ -3812,7 +3811,6 @@ local function CreateRaceIcon(parent, raceFile, gender, size, point, x, y)
 end
 
 -- Export to namespace
-ns.UI_GetFactionIcon = GetFactionIcon
 ns.UI_GetRaceIcon = GetRaceIcon
 ns.UI_GetRaceGenderAtlas = GetRaceGenderAtlas
 ns.UI_CreateFactionIcon = CreateFactionIcon
@@ -3858,7 +3856,6 @@ local TAB_NAV_TEXTURE_FALLBACK = {
     about = "Interface\\AddOns\\WarbandNexus\\Media\\Icon-Credits.tga",
 }
 
-ns.UI_MAIN_TAB_NAV_MEDIA = TAB_NAV_TEXTURE_FALLBACK
 
 local function NormalizeMainNavTabMediaKey(tabKey)
     if not tabKey then return nil end
@@ -4221,7 +4218,6 @@ local function GetCurrentCharacterIcon()
 end
 
 -- Export
-ns.UI_GetCurrentCharacterIcon = GetCurrentCharacterIcon
 
 -- CHARACTER-SPECIFIC ICON (Used in headers across multiple tabs)
 
@@ -4364,7 +4360,6 @@ local function CreateClassIcon(parent, classFile, size, point, x, y)
 end
 
 -- Exports
-ns.UI_GetClassIcon = GetClassIcon
 ns.UI_CreateClassIcon = CreateClassIcon
 
 -- FAVORITE ICON HELPERS
@@ -4443,7 +4438,6 @@ local function CreateFavoriteButton(parent, charKey, isFavorite, size, point, x,
 end
 
 -- Exports
-ns.UI_GetFavoriteIconTexture = GetFavoriteIconTexture
 ns.UI_StyleFavoriteIcon = StyleFavoriteIcon
 ns.UI_CreateFavoriteButton = CreateFavoriteButton
 
@@ -4479,9 +4473,7 @@ local function CreateOnlineIndicator(parent, size, point, x, y)
 end
 
 -- Exports
-ns.UI_GetOnlineIconTexture = GetOnlineIconTexture
 ns.UI_CreateOnlineIndicator = CreateOnlineIndicator
-ns.UI_ONLINE_ICON_SIZE = ONLINE_ICON_SIZE
 
 -- Character row column layout: Modules/UI/SharedWidgets_CharRow.lua (loaded before this file).
 

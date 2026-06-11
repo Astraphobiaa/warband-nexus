@@ -1894,7 +1894,6 @@ local function RefreshVisibleProfessionRowGradients(scrollChild)
         ns.UI_RefreshRegisteredRowGradients(scrollChild._wnProfNestedRows)
     end
 end
-ns.UI_RefreshProfessionRowGradients = RefreshVisibleProfessionRowGradients
 
 --- Re-anchor section bodies under headers without inflating collapsed sections (stretch helper used full _wnSectionFullH).
 local function RelayoutProfessionSectionBodies(scrollChild)

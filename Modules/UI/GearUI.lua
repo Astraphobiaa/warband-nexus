@@ -3352,8 +3352,6 @@ function WarbandNexus:DrawGearTab(parent)
     return paintGearScrollBody(false)
 end
 
-ns.UI_EnsureGearTabLoadingVeil = EnsureGearContentVeil
-ns.UI_TryDismissGearTabLoadingVeil = TryDismissGearContentVeil
 -- Runtime hooks for GearUI_Paperdoll.lua (loads before this file)
 ns.GearUI_TryStartPendingGearStorageScan = TryStartPendingGearStorageScan
 ns.GearUI_TryDismissGearContentVeil = TryDismissGearContentVeil
@@ -3366,11 +3364,9 @@ ns.GearUI_EnsureUpgradeRowCurrencyMatchesTrack = EnsureUpgradeRowCurrencyMatches
 ns.GearUI_GetNextStepCrestNeed = GetNextStepCrestNeed
 ns.GearUI_IsNextStepGoldOnlyUpgrade = IsNextStepGoldOnlyUpgrade
 ns.GearUI_GetGearCurrencyGoldCopper = GetGearCurrencyGoldCopper
-ns.GearUI_CalculateAffordableUpgrades = CalculateAffordableUpgrades
 ns.GearUI_CanAffordNextUpgrade = CanAffordNextUpgrade
 ns.GearUI_CanAffordImmediateNextStep = CanAffordImmediateNextStep
 ns.GearUI_GetUpgradeArrowDisplay = GetUpgradeArrowDisplay
-ns.GearUI_GearUpgradeInfoHasPath = GearUpgradeInfoHasPath
 ns.GearUI_IsPrimaryEnchantExpected = IsPrimaryEnchantExpected
 ns.GearUI_GetItemIconSafe = GetItemIconSafe
 ns.GearUI_BuildGearTabItemTooltipContext = BuildGearTabItemTooltipContext

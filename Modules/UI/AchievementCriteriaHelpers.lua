@@ -742,17 +742,10 @@ ns.AchievementCriteriaHelpers = M
 -- Legacy aliases (call sites use ns.UI_*)
 ns.UI_SummarizeAchievementCriteria = SummarizeAchievementCriteria
 ns.UI_FormatAchievementProgressHeader = FormatAchievementProgressHeader
-ns.UI_FormatAchievementCriteriaQuantitySuffix = FormatAchievementCriteriaQuantitySuffix
 ns.UI_FormatCriterionRowSuffix = FormatCriterionRowSuffix
 ns.UI_BuildAchievementCriteriaListItems = BuildAchievementCriteriaListItems
-ns.UI_ClassifyAchievementCriteriaHandler = ClassifyCriteriaHandler
 ns.UI_GetAchievementCriteriaTypeTable = function() return CRITERIA_TYPE end
-ns.UI_FormatAchievementTodoSummaryLine = FormatAchievementTodoSummaryLine
 ns.UI_BuildAchievementTodoSummaryLines = BuildAchievementTodoSummaryLines
-ns.UI_BuildAchievementTodoSummaryFields = BuildAchievementTodoSummaryFields
-ns.UI_SummaryFieldsToColoredLines = SummaryFieldsToColoredLines
 ns.UI_ShouldAchievementTodoExpand = ShouldAchievementTodoExpand
-ns.UI_FormatAchievementProgressParenthetical = FormatAchievementProgressParenthetical
-ns.UI_GetAchievementDescription = GetAchievementDescription
 ns.UI_GetCustomPlanBodyText = GetCustomPlanBodyText
 ns.UI_BuildCustomPlanTodoSummaryLines = BuildCustomPlanTodoSummaryLines

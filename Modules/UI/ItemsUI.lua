@@ -753,7 +753,6 @@ local function RegisterStorageEvents(parent)
     end)
 end
 
-ns.UI_RegisterStorageEmbedListeners = RegisterStorageEvents
 
 --- Redraw Storage scroll content only (results container). Skips PopulateContent, scrollChild purge,
 --- and UI_MAIN_REFRESH_REQUESTED debounce — use after section toggles for perf.

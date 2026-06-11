@@ -4343,14 +4343,9 @@ P.GEAR_PAPER_COL_FIXED_W = GEAR_PAPER_COL_FIXED_W
 
 ns.GearUI_PaperdollColumnWidth = GearPaperdollColumnWidth
 ns.GearUI_GetGearTabMinCardInnerW_Paperdoll = GetGearTabMinCardInnerW
-ns.GearUI_ResolveGearTabCardInnerWidth = ResolveGearTabCardInnerWidth
 ns.GearUI_DrawPaperDollCard = DrawPaperDollCard
 ns.GearUI_GetSlotTrackText = GetSlotTrackText
 ns.GearUI_GearSlotApplyDeferredEnchantGemInspect = GearSlotApplyDeferredEnchantGemInspect
 ns.GearUI_GearSlotPaperdollVisualEquals = GearSlotPaperdollVisualEquals
-ns.GearUI_ComputeGearSocketLayout = ComputeGearSocketLayout
 ns.GearUI_BuildLiveEquippedSlotSnapshot = BuildLiveEquippedSlotSnapshot
 ns.GearUI_GearSlotHasInspectableItemLink = GearSlotHasInspectableItemLink
-ns.GearUI_ApplyGearSubpanelChrome = ApplyGearSubpanelChrome
-ns.GearUI_ApplyGearInnerPanelChrome = ApplyGearSubpanelChrome
-ns.GearUI_GearPanelRowBgColor = GearPanelRowBgColor

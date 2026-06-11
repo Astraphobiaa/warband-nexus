@@ -426,7 +426,6 @@ end
 -- Export empty state helpers
 ns.UI_CreateEmptyStateCard = CreateEmptyStateCard
 ns.UI_HideEmptyStateCard = HideEmptyStateCard
-ns.UI_EMPTY_STATE_CONFIG = EMPTY_STATE_CONFIG
 
 --- True when a virtual flat list contains at least one data row.
 function ns.UI_FlatListHasDataRows(flatList)

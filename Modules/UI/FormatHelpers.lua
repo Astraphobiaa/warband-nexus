@@ -368,7 +368,6 @@ ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
 ns.UI_BindSeasonProgressAmount = BindSeasonProgressAmount
 ns.UI_UnbindSeasonProgressAmount = UnbindSeasonProgressAmount
-ns.UI_RefreshSeasonProgressAmount = RefreshSeasonProgressAmount
 ns.UI_NormalizeColonLabelSpacing = NormalizeColonLabelSpacing
 
 -- Module loaded - verbose logging removed

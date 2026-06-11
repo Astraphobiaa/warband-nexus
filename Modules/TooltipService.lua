@@ -3147,4 +3147,3 @@ ns.TooltipService = TooltipService
 ns.UI_GetEnchantmentCraftingQualityTierFromItemLink = GetEnchantmentCraftingQualityTierFromItemLink
 
 --- Crafting-quality tier from first matching line on item tooltip (socketed gems, etc.).
-ns.UI_GetProfessionCraftingQualityTierFromItemLinkAnyLine = GetProfessionCraftingQualityTierFromItemLinkAnyLineScan
