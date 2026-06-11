@@ -907,21 +907,62 @@ function WarbandNexus:DrawCharacterList(parent)
     local card12H = gm.card12H
     local card3H = gm.card3H
 
-    -- Characters Gold Card (left)
-    local charGoldCard = CreateCard(parent, card12H)
-    charGoldCard:SetWidth(goldCardW1)
-    charGoldCard:SetPoint("TOPLEFT", parent, "TOPLEFT", leftMargin, -yOffset)
-    
-    -- Current Character icon (same as Characters header)
-    -- Use factory for standardized card header layout
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-    
+
     local goldDisplayText = isLoadingCharacterData and "|cff888888" .. ((ns.L and ns.L["LOADING"]) or "Loading...") .. "|r" or FormatMoney(currentCharGold, 14)
-    
+    local charIconTex = GetCharacterSpecificIcon()
+
+    -- PERSISTENT CARD TRIO: the gold summary repaints on every CHARACTER_UPDATED
+    -- (gold ticks), and recreating three cards + children each time was the hottest
+    -- chrome-churn path in the addon. The bundle (already maintained for the viewport
+    -- adapter) now also carries the frames; teardown parks them in the recycle bin
+    -- and we re-adopt here. A character-icon change (rare) rebuilds from scratch.
+    local bundle = parent._wnCharsGoldBundle
+    if bundle and bundle.charIconTex ~= charIconTex then
+        local bin = ns.UI_RecycleBin
+        for _, f in ipairs({ bundle.char, bundle.wb, bundle.total }) do
+            if f then f:Hide(); f:ClearAllPoints(); if bin then f:SetParent(bin) end end
+        end
+        bundle = nil
+        parent._wnCharsGoldBundle = nil
+    end
+
+    local charGoldCard, wbGoldCard, totalGoldCard
+
+    if bundle then
+        -- REUSE: re-adopt and update texts only.
+        charGoldCard, wbGoldCard, totalGoldCard = bundle.char, bundle.wb, bundle.total
+        charGoldCard:SetParent(parent)
+        wbGoldCard:SetParent(parent)
+        totalGoldCard:SetParent(parent)
+        if bundle.cg1Value then bundle.cg1Value:SetText(goldDisplayText) end
+        if bundle.wb1Value then bundle.wb1Value:SetText(FormatMoney(warbandBankGold, 14)) end
+        if bundle.tgValue then bundle.tgValue:SetText(FormatMoney(totalWithWarband, 14)) end
+        -- Spinner lifecycle matters now that the card persists across paints.
+        if isLoadingCharacterData and bundle.cg1Value then
+            if charGoldCard.loadingSpinner then
+                charGoldCard.loadingSpinner:Show()
+            elseif ns.UI_CreateInlineLoadingSpinner then
+                charGoldCard.loadingSpinner = ns.UI_CreateInlineLoadingSpinner(
+                    charGoldCard, bundle.cg1Value, "LEFT", bundle.cg1Value:GetStringWidth() + 4, 0, 16)
+            end
+        elseif charGoldCard.loadingSpinner then
+            charGoldCard.loadingSpinner:Hide()
+        end
+        bundle.yOffset = yOffset
+        bundle.leftMargin = leftMargin
+        bundle.rightMargin = rightMargin
+        bundle.cardSpacing = cardSpacing
+        bundle._gm = gm
+    else
+
+    -- Characters Gold Card (left)
+    charGoldCard = CreateCard(parent, card12H)
+
     local cg1Layout = CreateCardHeaderLayout(
         charGoldCard,
-        GetCharacterSpecificIcon(),
+        charIconTex,
         40,
         true,
         (ns.L and ns.L["HEADER_CURRENT_CHARACTER"]) or "CURRENT CHARACTER",
@@ -929,7 +970,7 @@ function WarbandNexus:DrawCharacterList(parent)
         "subtitle",
         "body"
     )
-    
+
     -- Add inline loading spinner if data is being collected (Factory pattern)
     if isLoadingCharacterData and cg1Layout.value then
         local UI_CreateInlineLoadingSpinner = ns.UI_CreateInlineLoadingSpinner
@@ -944,19 +985,11 @@ function WarbandNexus:DrawCharacterList(parent)
             )
         end
     end
-    -- (No spinner cleanup needed here: charGoldCard is created fresh above,
-    -- so the non-loading branch can never carry a stale spinner or OnUpdate.)
 
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
 
     -- Warband Gold Card (middle)
-    local wbGoldCard = CreateCard(parent, card12H)
-    wbGoldCard:SetWidth(goldCardW2)
-    if stackGoldCards then
-        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
-    else
-        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "TOPRIGHT", cardSpacing, 0)
-    end
+    wbGoldCard = CreateCard(parent, card12H)
     
     -- Use factory for standardized card header layout
     local wb1Layout = CreateCardHeaderLayout(
@@ -971,15 +1004,9 @@ function WarbandNexus:DrawCharacterList(parent)
     )
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
-    
+
     -- Total Gold + Token Card (right; same width as siblings in row mode)
-    local totalGoldCard = CreateCard(parent, card3H)
-    totalGoldCard:SetWidth(goldCardW3)
-    if stackGoldCards then
-        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
-    else
-        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "TOPRIGHT", cardSpacing, 0)
-    end
+    totalGoldCard = CreateCard(parent, card3H)
 
     -- Vertical divider (hidden when Total Gold + Token are stacked)
     local divider = totalGoldCard:CreateTexture(nil, "ARTWORK")
@@ -1001,16 +1028,13 @@ function WarbandNexus:DrawCharacterList(parent)
     tgLabel:SetPoint("LEFT", tgTextContainer, "LEFT", 0, 0)
 
     local tgValue = FontManager:CreateFontString(tgTextContainer, "body", "OVERLAY")
-    tgValue:SetText(FormatMoney(totalWithWarband, 14))
+    tgValue:SetText(FormatMoney(totalWithWarband, 14))  -- updated in the reuse branch on later paints
     tgValue:SetJustifyH("LEFT")
     tgValue:SetPoint("TOP", tgTextContainer, "CENTER", 0, -4)
     tgValue:SetPoint("LEFT", tgTextContainer, "LEFT", 0, 0)
     tgValue:SetNonSpaceWrap(false)
 
     -- Right block: WoW Token (icon + label + price with token count)
-    -- GetCurrentMarketPrice updates asynchronously after UpdateMarketPrice(); TOKEN_MARKET_PRICE_UPDATED refreshes the tab (Core.lua).
-    local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice and select(1, C_WowTokenPublic.GetCurrentMarketPrice())
-
     local tkIcon = totalGoldCard:CreateTexture(nil, "ARTWORK")
     tkIcon:SetSize(28, 28)
     tkIcon:SetTexture("Interface\\Icons\\WoW_Token01")
@@ -1048,12 +1072,46 @@ function WarbandNexus:DrawCharacterList(parent)
         tkTextContainer = tkTextContainer,
         midRule = nil,
         _gm = gm,
+        -- Reuse-path references (see the persistent-trio branch above)
+        charIconTex = charIconTex,
+        cg1Value = cg1Layout.value,
+        wb1Value = wb1Layout.value,
+        tgValue = tgValue,
+        tkValue = tkValue,
     }
-    ApplyTotalGoldCardInterior(parent._wnCharsGoldBundle, stackGoldTokenInCard3)
+    end -- persistent card trio: create/reuse split
 
+    bundle = parent._wnCharsGoldBundle
+
+    -- COMMON LAYOUT (runs for both fresh and reused cards): metrics can change
+    -- between paints (resize, stack-mode flip), so size and anchor every time.
+    charGoldCard:SetSize(goldCardW1, card12H)
+    charGoldCard:ClearAllPoints()
+    charGoldCard:SetPoint("TOPLEFT", parent, "TOPLEFT", leftMargin, -yOffset)
+    wbGoldCard:SetSize(goldCardW2, card12H)
+    wbGoldCard:ClearAllPoints()
+    if stackGoldCards then
+        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+    else
+        wbGoldCard:SetPoint("TOPLEFT", charGoldCard, "TOPRIGHT", cardSpacing, 0)
+    end
+    totalGoldCard:SetSize(goldCardW3, card3H)
+    totalGoldCard:ClearAllPoints()
+    if stackGoldCards then
+        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "BOTTOMLEFT", 0, -cardSpacing)
+    else
+        totalGoldCard:SetPoint("TOPLEFT", wbGoldCard, "TOPRIGHT", cardSpacing, 0)
+    end
+
+    ApplyTotalGoldCardInterior(bundle, stackGoldTokenInCard3)
+
+    -- GetCurrentMarketPrice updates asynchronously after UpdateMarketPrice();
+    -- TOKEN_MARKET_PRICE_UPDATED refreshes the tab (Core.lua).
+    local tokenPrice = C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice and select(1, C_WowTokenPublic.GetCurrentMarketPrice())
+    local tkValueRef = bundle.tkValue
     if tokenPrice and tokenPrice > 0 then
         local affordableCount = math.floor(totalWithWarband / tokenPrice)
-        tkValue:SetText(
+        tkValueRef:SetText(
             FormatMoney(tokenPrice, 12)
                 .. "  |cff66c0ff("
                 .. affordableCount
@@ -1062,7 +1120,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 .. ")|r"
         )
     else
-        tkValue:SetText("|cff888888" .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
+        tkValueRef:SetText("|cff888888" .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
         -- One-shot retry if price not ready yet (event-driven path is primary).
         if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
             C_Timer.After(1.25, function()
