@@ -2103,6 +2103,18 @@ local function SafeTooltipNumber(val)
     return tonumber(val)
 end
 
+--- Blizzard UI widget tooltips (map vignettes, etc.) attach widgetSetID to GameTooltip.
+--- Do not inject lines or HookScript on these paths — widget layout uses secret numbers on Hide.
+---@param tooltip Frame|nil
+---@return boolean
+local function IsBlizzardWidgetTooltip(tooltip)
+    if not tooltip then return false end
+    local widgetSetID = tooltip.widgetSetID
+    if widgetSetID == nil then return false end
+    if issecretvalue and issecretvalue(widgetSetID) then return true end
+    return widgetSetID ~= 0
+end
+
 ---@param link string|nil
 ---@return number|nil
 local function ParseItemIDFromItemLink(link)
@@ -2157,10 +2169,13 @@ end
 
 local function InstallGameTooltipInjectionClearHooks()
     if TooltipService._injectionHideHooked then return end
+    if not hooksecurefunc then return end
     TooltipService._injectionHideHooked = true
+    -- hooksecurefunc(Hide) is taint-safe; HookScript(OnHide) taints GameTooltip and breaks
+    -- Blizzard UI widget layout (secret number compares) when map vignette tooltips hide.
     local function hookHide(frame)
-        if not frame or not frame.HookScript then return end
-        frame:HookScript("OnHide", function(self)
+        if not frame then return end
+        hooksecurefunc(frame, "Hide", function(self)
             ClearTooltipInjectionTokens(self)
         end)
     end
@@ -2258,6 +2273,7 @@ function TooltipService:InitializeGameTooltipHook()
     -- ITEM TOOLTIP — single post-call (counts + planned + container drops)
     -- One TooltipDataProcessor registration avoids triple invocation per hover.
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        if IsBlizzardWidgetTooltip(tooltip) then return end
         local itemID = ResolveItemTooltipID(data)
         local dataInstanceID = data and data.dataInstanceID
 
@@ -2523,6 +2539,7 @@ function TooltipService:InitializeGameTooltipHook()
 
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
             if tooltip ~= GameTooltip then return end
+            if IsBlizzardWidgetTooltip(tooltip) then return end
 
             local sourceDB = ns.CollectibleSourceDB
             if not sourceDB or not sourceDB.npcs then return end
@@ -2536,7 +2553,7 @@ function TooltipService:InitializeGameTooltipHook()
             local function GetCurrentZoneDrops()
                 if not sourceDB.zones then return nil, false, false end
                 local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-                local mapID = (rawMapID and not (issecretvalue and issecretvalue(rawMapID))) and rawMapID or nil
+                local mapID = SafeTooltipNumber(rawMapID)
                 while mapID and mapID > 0 do
                     local zData = sourceDB.zones[mapID]
                     if zData then
@@ -2548,8 +2565,7 @@ function TooltipService:InitializeGameTooltipHook()
                         return zData, false, false
                     end
                     local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
-                    local nextID = mapInfo and mapInfo.parentMapID
-                    mapID = (nextID and not (issecretvalue and issecretvalue(nextID))) and nextID or nil
+                    mapID = SafeTooltipNumber(mapInfo and mapInfo.parentMapID)
                 end
                 return nil, false, false
             end
@@ -2929,7 +2945,7 @@ end
        (concentrationCurrencyID), Blizzard uses SetCurrencyByID or similar
        to populate the tooltip. This fires reliably.
        
-    2. GameTooltip:HookScript("OnShow") — Fallback for any non-currency
+    2. hooksecurefunc(GameTooltip, "Show") — Fallback for any non-currency
        tooltip path that still shows "Concentration" in the first line.
     
     Both are installed once at load time on GameTooltip (always available).
@@ -3057,7 +3073,7 @@ local function AppendConcentrationData(tooltip)
         end
     end
 
-    tooltip:Show()
+    -- Do not call tooltip:Show() — retriggers widget layout and taints GameTooltip (Midnight).
 end
 
 function TooltipService:InstallConcentrationTooltipHook()
@@ -3071,6 +3087,7 @@ function TooltipService:InstallConcentrationTooltipHook()
         local CURRENCY_TYPE = Enum.TooltipDataType.Currency
         TooltipDataProcessor.AddTooltipPostCall(CURRENCY_TYPE, function(tooltip, data)
             if tooltip ~= GameTooltip then return end
+            if IsBlizzardWidgetTooltip(tooltip) then return end
             if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
             if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
             if not data or not data.id or not IsConcentrationCurrencyID(data.id) then return end
@@ -3084,24 +3101,26 @@ function TooltipService:InstallConcentrationTooltipHook()
         end)
     end
 
-    -- Layer 2: GameTooltip OnShow fallback
-    -- Catches any non-currency code path (custom SetOwner + AddLine).
-    GameTooltip:HookScript("OnShow", function(tooltip)
-        if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
-        if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
-        if not IsConcentrationTooltip(tooltip) then return end
-        if HasAlreadyInjected(tooltip) then return end
+    -- Layer 2: hooksecurefunc(Show) fallback — taint-safe (no HookScript on GameTooltip).
+    if hooksecurefunc and GameTooltip then
+        hooksecurefunc(GameTooltip, "Show", function(tooltip)
+            if IsBlizzardWidgetTooltip(tooltip) then return end
+            if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
+            if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
+            if not IsConcentrationTooltip(tooltip) then return end
+            if HasAlreadyInjected(tooltip) then return end
 
-        if WarbandNexus and WarbandNexus.Debug then
-            WarbandNexus:Debug("[Conc Tooltip] OnShow fallback matched")
-        end
+            if WarbandNexus and WarbandNexus.Debug then
+                WarbandNexus:Debug("[Conc Tooltip] Show fallback matched")
+            end
 
-        pcall(AppendConcentrationData, tooltip)
-    end)
+            pcall(AppendConcentrationData, tooltip)
+        end)
+    end
 
     concentrationHookInstalled = true
     if self.Debug then
-        self:Debug("Concentration tooltip hook installed (TooltipDataProcessor + OnShow dual strategy)")
+        self:Debug("Concentration tooltip hook installed (TooltipDataProcessor + Show hooksecurefunc)")
     end
 end
 
