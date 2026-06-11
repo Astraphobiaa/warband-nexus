@@ -162,7 +162,7 @@ local collectionStore = {
 local collectionData = collectionStore
 
 ---True when EnsureCollectionData would return immediately (SV version matches, store has all categories).
----Includes toy-count sanity vs ToyBox (same rules as EnsureCollectionData).
+---Includes toy/pet count sanity vs journal totals (same rules as EnsureCollectionData).
 ---@param self table WarbandNexus
 ---@return boolean
 local function IsCollectionEnsureDataComplete(self)
@@ -184,6 +184,18 @@ local function IsCollectionEnsureDataComplete(self)
         if apiTotal and apiTotal > 0 then
             local storeCount = 0
             for _ in pairs(collectionStore.toy) do
+                storeCount = storeCount + 1
+            end
+            if storeCount < (apiTotal * 0.5) then
+                return false
+            end
+        end
+    end
+    if hasPets and C_PetJournal and C_PetJournal.GetNumPets then
+        local apiTotal = C_PetJournal.GetNumPets() or 0
+        if apiTotal and apiTotal > 0 then
+            local storeCount = 0
+            for _ in pairs(collectionStore.pet) do
                 storeCount = storeCount + 1
             end
             if storeCount < (apiTotal * 0.5) then
@@ -767,6 +779,24 @@ function WarbandNexus:EnsureCollectionData(onComplete)
             if storeCount < (apiTotal * 0.5) then
                 DebugPrintf("|cffffcc00[WN CollectionService]|r Toy store size (%d) << ToyBox total (%d) — forcing full rebuild", storeCount, apiTotal)
                 hasMounts = false   -- trigger BuildFullCollectionData (mount/pet/toy) below
+                hasPets = false
+                hasToys = false
+            end
+        end
+    end
+
+    -- Same net for pets: an in-combat materialize cannot reset journal filters and
+    -- can persist a truncated pet store; toys had this check, pets did not.
+    if hasPets and C_PetJournal and C_PetJournal.GetNumPets then
+        local apiTotal = C_PetJournal.GetNumPets() or 0
+        if apiTotal and apiTotal > 0 then
+            local storeCount = 0
+            for _ in pairs(collectionStore.pet) do
+                storeCount = storeCount + 1
+            end
+            if storeCount < (apiTotal * 0.5) then
+                DebugPrintf("|cffffcc00[WN CollectionService]|r Pet store size (%d) << journal total (%d) — forcing full rebuild", storeCount, apiTotal)
+                hasMounts = false
                 hasPets = false
                 hasToys = false
             end
@@ -2192,7 +2222,10 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
 
     -- Fire data-update event so UI refreshes (even when notification is deduped).
     -- NOTE: Do NOT call InvalidateCollectionCache here — incremental updates are sufficient.
+    -- The fast-path map (_toyGroupedFromMapValid gate) must drop too; clearing only the
+    -- fallback cache kept serving a source index that lacked the new toy.
     if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
+    ns._toyGroupedFromMapValid = false
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "toy")
     end
@@ -2619,18 +2652,37 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
                     
                     local safePoints = points
                     if safePoints and issecretvalue and issecretvalue(safePoints) then safePoints = nil end
+                    local safeIcon = (icon and not (issecretvalue and issecretvalue(icon))) and icon or nil
                     collectionCache.uncollected.achievement[nextAchievementID] = {
                         id = nextAchievementID,
                         name = name,
                         points = safePoints,
                         description = safeDesc,
-                        icon = (icon and not (issecretvalue and issecretvalue(icon))) and icon or nil,
+                        icon = safeIcon,
                         type = "achievement",
                         rewardItemID = rewardItemID,
                         rewardTitle = rewardTitle,
                         categoryID = categoryID
                     }
-                    
+
+                    -- Store-driven Plans/Collections read collectionStore, not the legacy
+                    -- cache; without this record the chained achievement stays invisible
+                    -- until the next full achievement scan.
+                    if not collectionStore.achievement[nextAchievementID] then
+                        collectionStore.achievement[nextAchievementID] = {
+                            id = nextAchievementID,
+                            name = name,
+                            icon = safeIcon,
+                            points = safePoints,
+                            description = safeDesc,
+                            collected = false,
+                            categoryID = categoryID,
+                            rewardItemID = rewardItemID,
+                            rewardTitle = rewardTitle,
+                        }
+                        self:SaveCollectionStore()
+                    end
+
     DebugPrint("|cff00ff00[WN CollectionService]|r Added chained achievement to cache: " .. tostring(name))
                     
                     -- Trigger UI refresh (no cache invalidation needed!)
@@ -5680,6 +5732,9 @@ do
                     bagsToScan[bagID] = true
                     hasBags = true
                 end
+                -- Consume the snapshot like the BAG_UPDATE_DELAYED path does; leaving it
+                -- meant the delayed debounce rescanned the exact same bags right after.
+                wipe(changedBagIDs)
                 if not hasBags then
                     bagsToScan[0] = true
                 end
