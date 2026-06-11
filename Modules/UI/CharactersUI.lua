@@ -143,7 +143,9 @@ end
 local CHAR_GOLD_ROW_MIN_WIDTH = 500
 local GOLD_CARD_STD_HEIGHT = 90
 local GOLD_CARD_TALL_HEIGHT = 108
-local GOLD_TOKEN_MIN_SPLIT_WIDTH = 300
+-- Side-by-side Total Gold | Token needs room for two icons + two long money strings;
+-- at 300 the value texts met in the middle (now clamped, but stack earlier anyway).
+local GOLD_TOKEN_MIN_SPLIT_WIDTH = 340
 
 local CHAR_GOLD_STACK_HYSTERESIS = 24
 
@@ -1032,6 +1034,10 @@ function WarbandNexus:DrawCharacterList(parent)
     tgValue:SetJustifyH("LEFT")
     tgValue:SetPoint("TOP", tgTextContainer, "CENTER", 0, -4)
     tgValue:SetPoint("LEFT", tgTextContainer, "LEFT", 0, 0)
+    -- RIGHT clamp: without it, large gold strings grew past the container and
+    -- overlapped the divider/token block at intermediate card widths.
+    tgValue:SetPoint("RIGHT", tgTextContainer, "RIGHT", 0, 0)
+    tgValue:SetWordWrap(false)
     tgValue:SetNonSpaceWrap(false)
 
     -- Right block: WoW Token (icon + label + price with token count)
@@ -1054,6 +1060,8 @@ function WarbandNexus:DrawCharacterList(parent)
     tkValue:SetJustifyH("LEFT")
     tkValue:SetPoint("TOP", tkTextContainer, "CENTER", 0, -4)
     tkValue:SetPoint("LEFT", tkTextContainer, "LEFT", 0, 0)
+    tkValue:SetPoint("RIGHT", tkTextContainer, "RIGHT", 0, 0)
+    tkValue:SetWordWrap(false)
     tkValue:SetNonSpaceWrap(false)
 
     parent._wnCharsGoldBundle = {

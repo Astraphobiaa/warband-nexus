@@ -6282,22 +6282,30 @@ local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, la
     label:SetJustifyH("LEFT")
     
     -- Create value (if provided)
+    -- Texts are clamped to the container's RIGHT edge with wrapping off: long
+    -- values (large gold amounts) used to grow past the container and overlap
+    -- neighboring card content at intermediate widths.
     local value
     if valueText and valueText ~= "" then
         value = FontManager:CreateFontString(textContainer, valueFont, "OVERLAY")
         value:SetText(valueText)
         value:SetJustifyH("LEFT")
-        
+        value:SetWordWrap(false)
+
         -- Position texts centered in container
         label:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
         label:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        label:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
         value:SetPoint("TOP", textContainer, "CENTER", 0, -4)    -- Value below center
         value:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        value:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
     else
         -- Single text, center it
         label:SetPoint("CENTER", textContainer, "CENTER", 0, 0)
         label:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        label:SetPoint("RIGHT", textContainer, "RIGHT", 0, 0)
     end
+    label:SetWordWrap(false)
     
     -- Position container: LEFT from icon, CENTER vertically to CARD
     textContainer:SetPoint("LEFT", iconFrame, "RIGHT", 12, 0)
