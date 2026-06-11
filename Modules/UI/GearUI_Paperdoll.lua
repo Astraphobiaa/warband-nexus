@@ -2142,7 +2142,8 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, s
     if up.isCrafted then
         local currentEnglish = up.craftedTierName or up.trackName or "Crafted"
         local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
-        if currentEnglish == "Myth" and maxT > 5 then
+        -- Crafted gear caps at 5/6 on every tier (not only Myth) — see GearService.
+        if maxT > 5 then
             maxT = 5
             if curT > 5 then curT = 5 end
         end

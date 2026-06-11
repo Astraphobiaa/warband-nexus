@@ -246,7 +246,7 @@ local GEAR_CRAFTED_PROBE_CACHE_CAP = 512
 
 -- Session-only: canonical gear row key -> { lastScan = number, upgrades = table } for GetPersistedUpgradeInfo.
 local persistedUpgradeInfoSessionCache = {}
-local PERSISTED_UPGRADE_INFO_LOGIC_VER = 14
+local PERSISTED_UPGRADE_INFO_LOGIC_VER = 15
 
 -- Session-only: offline-view canonical key -> currency array from GetGearUpgradeCurrenciesFromDB (amounts follow Currency UI snapshot).
 local gearUpgradeCurrencyOfflineCache = {}
@@ -2418,19 +2418,23 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
                 watermarkIlvl = watermarks[slotID] or 0,
             }
         elseif slot.isCrafted or trackName == "Crafted" then
-            -- Crafted items: recraft with crests to reach higher ilvl.
-            -- Crafted gear caps at 285 (Myth), not 289 like dropped gear.
-            -- Determine current tier name from ilvl (table is highest → lowest; scan 1→N to match highest first).
+            -- Crafted items: NO Hero/Myth crest-track upgrades — they recraft with
+            -- crests to jump tiers (separate system). Caps at 285 (Myth), not 289.
+            -- Tier name = the RANGE the ilvl falls in: above the next-lower tier's cap.
+            -- (Comparing against the tier's own cap mislabeled e.g. 280 as Hero.)
             local craftedTierName = "Crafted"
             for ci = 1, #CRAFTED_CREST_TIERS do
-                if itemLevel >= CRAFTED_CREST_TIERS[ci].maxIlvl then
+                local lowerCap = CRAFTED_CREST_TIERS[ci + 1] and CRAFTED_CREST_TIERS[ci + 1].maxIlvl or 0
+                if itemLevel > lowerCap then
                     craftedTierName = CRAFTED_CREST_TIERS[ci].name
                     break
                 end
             end
             local canUpgrade = (itemLevel < CRAFTED_CREST_TIERS[1].maxIlvl)
+            -- Crafted gear caps at tier 5/6 on EVERY track (285 Myth, 272 Hero, ...),
+            -- not only on Myth; the Blizzard maxUpgrade=6 comes from the dropped track.
             local craftedMaxTier = maxUpgrade or 0
-            if craftedTierName == "Myth" and craftedMaxTier > 5 then
+            if craftedMaxTier > 5 then
                 craftedMaxTier = 5
                 if currUpgrade and currUpgrade > 5 then
                     currUpgrade = 5
