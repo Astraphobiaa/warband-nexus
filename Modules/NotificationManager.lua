@@ -746,9 +746,10 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         -- Mark version as seen
         self.db.profile.notifications.lastSeenVersion = CURRENT_VERSION
         
-        -- Close popup
+        -- Close popup (park in the recycle bin; SetParent(nil) frames leak forever)
         backdrop:Hide()
-        backdrop:SetParent(nil)
+        local bin = ns.UI_RecycleBin
+        if bin then backdrop:SetParent(bin) else backdrop:SetParent(nil) end
         
         -- Process next notification
         ProcessNotificationQueue()
@@ -1284,7 +1285,10 @@ local function RemoveAlert(alert)
     end
     
     alert:Hide()
-    alert:SetParent(nil)
+    do
+        local bin = ns.UI_RecycleBin
+        if bin then alert:SetParent(bin) else alert:SetParent(nil) end
+    end
     
     -- IMMEDIATELY reposition remaining alerts to fill the gap (no delay)
     if WarbandNexus and WarbandNexus.activeAlerts and #WarbandNexus.activeAlerts > 0 then

@@ -343,7 +343,9 @@ function M.ToggleMainWindow()
     end
     local mf = WarbandNexus and WarbandNexus.mainFrame
     if mf and mf:IsShown() then
-        mf:Hide()
+        -- HideMainWindow (not a raw Hide) so session-tab memory stays consistent
+        -- with every other close path.
+        if WarbandNexus.HideMainWindow then WarbandNexus:HideMainWindow() else mf:Hide() end
         return
     end
     OpenWNTab(nil)
@@ -362,7 +364,7 @@ function M.ToggleWNCharsTab()
     end
     local mf = WarbandNexus and WarbandNexus.mainFrame
     if mf and mf:IsShown() and mf.currentTab == "chars" then
-        mf:Hide()
+        if WarbandNexus.HideMainWindow then WarbandNexus:HideMainWindow() else mf:Hide() end
         return
     end
     OpenWNCharsTab()
@@ -377,7 +379,7 @@ function M.ToggleWNPveTab()
     end
     local mf = WarbandNexus and WarbandNexus.mainFrame
     if mf and mf:IsShown() and mf.currentTab == "pve" then
-        mf:Hide()
+        if WarbandNexus.HideMainWindow then WarbandNexus:HideMainWindow() else mf:Hide() end
         return
     end
     OpenWNPveTab()
