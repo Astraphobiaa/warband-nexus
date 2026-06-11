@@ -149,7 +149,7 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
             ns.CharacterService:ConfirmCharacterTracking(addon, charKey, true)
         end
         dialog:Hide()
-        dialog:SetParent(nil)
+        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
     end)
     
     local trackedTitle = ns.FontManager:CreateFontString(trackedFrame, "header", "OVERLAY")
@@ -191,7 +191,7 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
             ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
         end
         dialog:Hide()
-        dialog:SetParent(nil)
+        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
     end)
     
     local untrackedTitle = ns.FontManager:CreateFontString(untrackedFrame, "header", "OVERLAY")
@@ -225,7 +225,7 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     -- OnHide cleanup: clear addon reference so dialog can be shown again (e.g. next login or Track from Characters tab)
     dialog:SetScript("OnHide", function(self)
         self:SetScript("OnHide", nil)
-        self:SetParent(nil)
+        if ns.UI_RecycleBin then self:SetParent(ns.UI_RecycleBin) else self:SetParent(nil) end
         if addon then
             addon.trackingDialog = nil
         end
@@ -285,7 +285,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     closeIcon:SetVertexColor(0.9, 0.3, 0.3)
     closeBtn:SetScript("OnClick", function()
         dialog:Hide()
-        dialog:SetParent(nil)
+        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
     end)
     closeBtn:SetScript("OnEnter", function(self)
         if closeIcon then closeIcon:SetVertexColor(1, 0.2, 0.2) end
@@ -339,7 +339,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
             ns.CharacterService:ConfirmCharacterTracking(addon, charKey, enableTracking)
         end
         dialog:Hide()
-        dialog:SetParent(nil)
+        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
     end)
     local yesText = ns.FontManager:CreateFontString(yesCard, "body", "OVERLAY")
     yesText:SetPoint("CENTER")
@@ -366,7 +366,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     end)
     noCard:SetScript("OnClick", function()
         dialog:Hide()
-        dialog:SetParent(nil)
+        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
     end)
     local noText = ns.FontManager:CreateFontString(noCard, "body", "OVERLAY")
     noText:SetPoint("CENTER")
@@ -389,7 +389,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     -- OnHide cleanup
     dialog:SetScript("OnHide", function(self)
         self:SetScript("OnHide", nil)
-        self:SetParent(nil)
+        if ns.UI_RecycleBin then self:SetParent(ns.UI_RecycleBin) else self:SetParent(nil) end
         _G["WarbandNexusTrackingChangeDialog"] = nil
     end)
     

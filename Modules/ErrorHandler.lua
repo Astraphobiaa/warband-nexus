@@ -139,12 +139,13 @@ end
     Clear error log
 ]]
 function WarbandNexus:ClearErrorLog()
-    errorLog = {}
-    errorStats = {
-        total = 0,
-        byFunction = {},
-        lastError = nil,
-    }
+    -- Wipe in place: ns.ErrorLog / ns.ErrorStats export these exact tables, so
+    -- reassigning the locals froze external readers on the pre-clear data.
+    wipe(errorLog)
+    wipe(errorStats)
+    errorStats.total = 0
+    errorStats.byFunction = {}
+    errorStats.lastError = nil
     self:Print("Error log cleared")
 end
 
