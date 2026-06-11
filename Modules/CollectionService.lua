@@ -1557,8 +1557,28 @@ function WarbandNexus:GetCollectionCountsFromAPI()
     return data
 end
 
----Invalidate the API counts cache so next GetCollectionCountsFromAPI() recomputes (e.g. after collection change).
-function WarbandNexus:InvalidateCollectionCountsAPICache()
+---Invalidate the API counts cache so next GetCollectionCountsFromAPI() recomputes.
+---For a confirmed mount/pet/toy OBTAIN the cached counters adjust in place instead:
+---during farm sessions every obtain wiped the cache, so the next UI access paid the
+---full O(journals) API pass again. Totals can drift by at most one until the 60s TTL
+---recomputes (only when a journal entry is added in the same window — patch days).
+---@param obtainedType string|nil "mount"|"pet"|"toy" from a COLLECTIBLE_OBTAINED payload; anything else wipes
+function WarbandNexus:InvalidateCollectionCountsAPICache(obtainedType)
+    local c = _collectionCountsAPICache
+    if c and c.data then
+        if obtainedType == "mount" and c.data.mounts then
+            c.data.mounts.collected = (c.data.mounts.collected or 0) + 1
+            return
+        elseif obtainedType == "toy" and c.data.toys then
+            c.data.toys.collected = (c.data.toys.collected or 0) + 1
+            return
+        elseif obtainedType == "pet" and c.data.pets then
+            c.data.pets.collected = (c.data.pets.collected or 0) + 1
+            c.data.pets.uniqueSpecies = (c.data.pets.uniqueSpecies or 0) + 1
+            c.data.pets.journalEntries = (c.data.pets.journalEntries or 0) + 1
+            return
+        end
+    end
     _collectionCountsAPICache = nil
 end
 
@@ -2446,8 +2466,16 @@ end
 -- COLLECTION_UPDATED sends (message, collectionType string). COLLECTIBLE_OBTAINED passes payload table { type = ... }.
 -- Must be declared before WN_COLLECTIBLE_OBTAINED RegisterMessage below: Lua 5.1 local function scope starts after this `end`.
 local function InvalidateCollectionCountsCache(_, arg)
+    -- Table arg = COLLECTIBLE_OBTAINED payload (a confirmed +1); string arg =
+    -- COLLECTION_UPDATED (journal refresh, counts may not have changed) → full wipe.
+    local ctype = arg
+    local isObtain = false
+    if type(arg) == "table" then
+        ctype = arg.type
+        isObtain = true
+    end
     if WarbandNexus.InvalidateCollectionCountsAPICache then
-        WarbandNexus:InvalidateCollectionCountsAPICache()
+        WarbandNexus:InvalidateCollectionCountsAPICache(isObtain and ctype or nil)
     end
     WipeUncollectedResultsCacheAndMergedAchievements()
     -- Toy source lazy cache (GetToySourceTypeIndexForItem) must rebuild after collection changes
@@ -2455,11 +2483,6 @@ local function InvalidateCollectionCountsCache(_, arg)
     ns._toyGroupedFromMapValid = false
     ns._mountGroupedFromMapValid = false
     ns._mountIDToSourceIndex = nil
-
-    local ctype = arg
-    if type(arg) == "table" then
-        ctype = arg.type
-    end
     -- Pet journal source classification: clear on full invalidation or pet-specific updates (P1 staleness)
     if ctype == nil or ctype == "pet" then
         ns._petSpeciesToSourceIndex = nil
