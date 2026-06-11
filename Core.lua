@@ -1496,11 +1496,11 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end)
     end
     
-    -- Collection scan: EnsureCollectionData (InitializationService P1.5) — versiyon/veri yoksa core'da tetiklenir
-    -- Plans/Collections sekmelerinden tetiklenmez
+    -- Collection scan: EnsureCollectionData (InitializationService P1.5) — triggered from
+    -- core only when the version changed or data is missing, never from the Plans/Collections tabs.
 
-    -- NOTE: Character save is now handled by raw frame event handler in OnInitialize()
-    -- This ensures early event capture before AceEvent is fully initialized
+    -- Character save runs from the T+2s timer in OnPlayerEnteringWorld (login/reload only),
+    -- plus InitializationService / ConfirmCharacterTracking; all writers are idempotent.
 end
 
 --[[

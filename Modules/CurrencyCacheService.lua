@@ -1918,7 +1918,9 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
             local wDB = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
             if db and db.currencies and wDB and wDB.characters then
                 for charKey, charData in pairs(wDB.characters) do
-                    -- Match by GUID (or fallback to partial name match if GUID is missing)
+                    -- Match by GUID only. A name-based fallback existed here, but GUID
+                    -- strings ("Player-####-XXXXXXXX") never contain character names,
+                    -- so it could not match; rows without a stored guid are skipped.
                     local guidMatch = false
                     if charData.guid and sourceCharacterGUID then
                         local cg = charData.guid
@@ -1926,14 +1928,7 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
                             guidMatch = (cg == sourceCharacterGUID)
                         end
                     end
-                    local nameMatch = false
-                    if not charData.guid and charData.name and sourceCharacterGUID then
-                        local cn = charData.name
-                        if not (issecretvalue and issecretvalue(cn)) then
-                            nameMatch = string.find(sourceCharacterGUID, cn) ~= nil
-                        end
-                    end
-                    if guidMatch or nameMatch then
+                    if guidMatch then
                         if db.currencies[charKey] and db.currencies[charKey][currencyID] then
                             local oldQty = db.currencies[charKey][currencyID]
                             local newQty = math.max(0, oldQty - quantity)

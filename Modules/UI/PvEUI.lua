@@ -1786,11 +1786,15 @@ end
 
 local function PvEUI_WipeExpandedDetailSurface(charDetailContent)
     if not charDetailContent then return end
+    local bin = ns.UI_RecycleBin
     local children = { charDetailContent:GetChildren() }
     for i = 1, #children do
         local ch = children[i]
         ch:Hide()
-        ch:SetParent(nil)
+        ch:ClearAllPoints()
+        -- SetParent(nil) keeps the frame alive but unreachable; park in the
+        -- recycle bin like every other teardown path (frames are never GC'd).
+        if bin then ch:SetParent(bin) else ch:SetParent(nil) end
     end
     charDetailContent._pveCardContainer = nil
 end

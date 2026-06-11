@@ -1645,6 +1645,45 @@ function WarbandNexus:GetTryCount(collectibleType, id)
     return Fns.MaxTryCountAliasKeys(collectibleType, id, n)
 end
 
+---Visit every alias key (resolved journal id, teaching itemID, species id) a count for
+---this collectible may be stored under. Mirrors GetTryCountKey's "slightly inconsistent
+---keys" storage; both GetTryCount (max) and ResetTryCount (zero) must walk the same set.
+---@param collectibleType string
+---@param id number|string
+---@param visit fun(key: number)
+function Fns.ForEachTryCountAliasKey(collectibleType, id, visit)
+    local idNum = tonumber(id)
+    if not idNum then return end
+    if collectibleType ~= "mount" and collectibleType ~= "pet" then return end
+    if resolvedIDsReverse and resolvedIDsReverse[idNum] then
+        visit(resolvedIDsReverse[idNum])
+    end
+    if collectibleType == "mount" and C_MountJournal then
+        if C_MountJournal.GetMountFromItem then
+            local ok, mid = pcall(C_MountJournal.GetMountFromItem, idNum)
+            if ok and type(mid) == "number" and mid > 0 and mid ~= idNum
+                and not (issecretvalue and issecretvalue(mid)) then
+                visit(mid)
+            end
+        end
+        if C_MountJournal.GetMountItemID then
+            local ok, itemID = pcall(C_MountJournal.GetMountItemID, idNum)
+            if ok and type(itemID) == "number" and itemID > 0
+                and not (issecretvalue and issecretvalue(itemID)) then
+                visit(itemID)
+            end
+        end
+    elseif collectibleType == "pet" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+        local ok, sid = pcall(function()
+            return select(13, C_PetJournal.GetPetInfoByItemID(idNum))
+        end)
+        if ok and type(sid) == "number" and sid > 0
+            and not (issecretvalue and issecretvalue(sid)) then
+            visit(sid)
+        end
+    end
+end
+
 ---Highest stored try count across native id, teaching itemID, and journal aliases (plan UI uses mountID).
 ---@param collectibleType string
 ---@param id number|string
@@ -1652,44 +1691,13 @@ end
 ---@return number
 function Fns.MaxTryCountAliasKeys(collectibleType, id, primary)
     local best = type(primary) == "number" and primary or 0
-    local idNum = tonumber(id)
-    if not idNum or not VALID_TYPES[collectibleType] or not Fns.EnsureDB() then return best end
+    if not VALID_TYPES[collectibleType] or not Fns.EnsureDB() then return best end
     local tbl = WarbandNexus.db.global.tryCounts[collectibleType]
     if not tbl then return best end
-    local function consider(key)
-        if not key then return end
+    Fns.ForEachTryCountAliasKey(collectibleType, id, function(key)
         local v = tbl[key]
         if type(v) == "number" and v > best then best = v end
-    end
-    if collectibleType == "mount" or collectibleType == "pet" then
-        if resolvedIDsReverse then
-            consider(resolvedIDsReverse[idNum])
-        end
-        if collectibleType == "mount" and C_MountJournal then
-            if C_MountJournal.GetMountFromItem then
-                local ok, mid = pcall(C_MountJournal.GetMountFromItem, idNum)
-                if ok and type(mid) == "number" and mid > 0 and mid ~= idNum
-                    and not (issecretvalue and issecretvalue(mid)) then
-                    consider(mid)
-                end
-            end
-            if C_MountJournal.GetMountItemID then
-                local ok, itemID = pcall(C_MountJournal.GetMountItemID, idNum)
-                if ok and type(itemID) == "number" and itemID > 0
-                    and not (issecretvalue and issecretvalue(itemID)) then
-                    consider(itemID)
-                end
-            end
-        elseif collectibleType == "pet" and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-            local ok, sid = pcall(function()
-                return select(13, C_PetJournal.GetPetInfoByItemID(idNum))
-            end)
-            if ok and type(sid) == "number" and sid > 0
-                and not (issecretvalue and issecretvalue(sid)) then
-                consider(sid)
-            end
-        end
-    end
+    end)
     return best
 end
 
@@ -1738,12 +1746,20 @@ end
 
 ---Reset try count to 0 for a repeatable collectible (BoE/farmable mounts).
 ---Called when a repeatable mount is obtained so the counter restarts for the next farm session.
+---Alias keys must be zeroed too: GetTryCount maxes across them, so a reset that only
+---touched the exact key resurrected the old count on the next read.
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number
 function WarbandNexus:ResetTryCount(collectibleType, id)
     if not VALID_TYPES[collectibleType] or not id then return end
     if not Fns.EnsureDB() then return end
-    WarbandNexus.db.global.tryCounts[collectibleType][id] = 0
+    local tbl = WarbandNexus.db.global.tryCounts[collectibleType]
+    tbl[id] = 0
+    Fns.ForEachTryCountAliasKey(collectibleType, id, function(key)
+        if type(tbl[key]) == "number" and tbl[key] > 0 then
+            tbl[key] = 0
+        end
+    end)
 end
 
 -- Bag scan (BAG_UPDATE_DELAYED) fires the same moment as loot; suppress duplicate mount/pet/toy toasts.

@@ -26,6 +26,7 @@ local ADDON_NAME, ns = ...
 
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
+local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 ---@class InitializationService
 local InitializationService = {}

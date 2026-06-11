@@ -259,7 +259,7 @@ local options = {
             name = function() return ((ns.L and ns.L["CONFIG_AUTOMATION_DESC"]) or "Control what happens automatically when you open your Warband Bank.") .. "\n" end,
         },
         autoOptimize = {
-            order = 45,
+            order = 42,
             type = "toggle",
             name = function() return (ns.L and ns.L["CONFIG_AUTO_OPTIMIZE"]) or "Auto-Optimize Database" end,
             desc = function() return (ns.L and ns.L["CONFIG_AUTO_OPTIMIZE_DESC"]) or "Automatically optimize the database on login to keep storage efficient." end,
@@ -268,24 +268,26 @@ local options = {
             set = function(_, value) WarbandNexus.db.profile.autoOptimize = value end,
         },
         spacer3 = {
-            order = 39,
+            order = 43,
             type = "description",
             name = "\n",
         },
-        
+
         -- ===== DISPLAY =====
+        -- Orders must not collide with the Automation block (40-42): AceConfig breaks
+        -- ties alphabetically, which interleaved the two sections nondeterministically.
         displayHeader = {
-            order = 40,
+            order = 44,
             type = "header",
             name = function() return (ns.L and ns.L["DISPLAY_SETTINGS"]) or "Display" end,
         },
         displayDesc = {
-            order = 41,
+            order = 45,
             type = "description",
             name = function() return ((ns.L and ns.L["DISPLAY_SETTINGS_DESC"]) or "Customize how items and information are displayed.") .. "\n" end,
         },
         showItemCount = {
-            order = 43,
+            order = 46,
             type = "toggle",
             name = function() return (ns.L and ns.L["CONFIG_SHOW_ITEM_COUNT"]) or "Show Item Count" end,
             desc = function() return (ns.L and ns.L["CONFIG_SHOW_ITEM_COUNT_DESC"]) or "Display item count tooltips showing how many of each item you have across all characters." end,
@@ -297,7 +299,7 @@ local options = {
             end,
         },
         recipeCompanionEnabled = {
-            order = 44,
+            order = 47,
             type = "toggle",
             name = function() return (ns.L and ns.L["CONFIG_RECIPE_COMPANION"]) or "Recipe Companion" end,
             desc = function() return (ns.L and ns.L["CONFIG_RECIPE_COMPANION_DESC"]) or "Show the Recipe Companion window alongside the Professions UI, displaying reagent availability per character." end,

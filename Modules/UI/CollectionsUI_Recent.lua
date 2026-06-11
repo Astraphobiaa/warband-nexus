@@ -241,10 +241,12 @@ end
 
 function M.ClearRecentPanelChildren(panel)
     if not panel then return end
+    local bin = ns.UI_RecycleBin
     local ch = { panel:GetChildren() }
     for i = 1, #ch do
-        ch[i]:SetParent(nil)
         ch[i]:Hide()
+        ch[i]:ClearAllPoints()
+        if bin then ch[i]:SetParent(bin) else ch[i]:SetParent(nil) end
     end
 end
 

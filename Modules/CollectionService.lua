@@ -425,13 +425,20 @@ function WarbandNexus:InitializeCollectionCache()
             end
             collectionStore.lastBuilt = cd.lastBuilt or 0
         end
-        -- collectionCache.completed.achievement → collectionStore.achievement (merge)
+        -- collectionCache.completed.achievement → collectionStore.achievement (merge).
+        -- The completed cache stores plain display-name STRINGS (see ScanAchievementsAsync);
+        -- older versions stored record tables. Handle both — assigning a field on a string
+        -- raises and would abort P0 init.
         if collectionCache.completed and collectionCache.completed.achievement then
             for id, ach in pairs(collectionCache.completed.achievement) do
                 if ach and not collectionStore.achievement[id] then
-                    collectionStore.achievement[id] = ach
-                    if collectionStore.achievement[id].collected == nil then
-                        collectionStore.achievement[id].collected = true
+                    if type(ach) == "table" then
+                        collectionStore.achievement[id] = ach
+                        if collectionStore.achievement[id].collected == nil then
+                            collectionStore.achievement[id].collected = true
+                        end
+                    else
+                        collectionStore.achievement[id] = { id = id, name = tostring(ach), collected = true }
                     end
                 end
             end
@@ -5094,9 +5101,10 @@ function WarbandNexus:ScanAchievementsAsync()
             end
         end
         
-        -- Update last scan times
-        collectionCache.lastScan = time()  -- General last scan (for other collection types)
-        collectionCache.lastAchievementScan = time()  -- Achievement-specific timestamp
+        -- Achievement-specific timestamp only. Writing the shared lastScan here made
+        -- ScanCollection's 5-minute skip gate treat title/illusion caches as fresh and
+        -- starve those scans right after an achievement pass.
+        collectionCache.lastAchievementScan = time()
         
         -- Save to DB
         self:SaveCollectionCache()
@@ -5140,6 +5148,13 @@ function WarbandNexus:ScanAchievementsAsync()
     activeCoroutines["achievements"] = co
     
     local function resetAchievementLoadingState()
+        -- Normal completion already reset both loading states and sent
+        -- COLLECTION_SCAN_COMPLETE from inside the coroutine; firing again here made
+        -- every listener (UI refresh, results-cache wipe) process the scan twice.
+        -- Only act for abnormal exits (resume error, mid-scan abort).
+        local stillLoading = ns.CollectionLoadingState.isLoading
+            or (ns.PlansLoadingState and ns.PlansLoadingState.achievement and ns.PlansLoadingState.achievement.isLoading)
+        if not stillLoading then return end
         ns.CollectionLoadingState.isLoading = false
         ns.CollectionLoadingState.loadingProgress = 100
         if ns.PlansLoadingState and ns.PlansLoadingState.achievement then

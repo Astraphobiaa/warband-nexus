@@ -155,8 +155,10 @@ function WarbandNexus:OnItemLevelChanged()
         if entry then
             local _, avgItemLevelEquipped = GetAverageItemLevel()
             if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then return end
-            
-            entry.itemLevel = avgItemLevelEquipped
+
+            -- Floor like DataService does; alternating integer/fractional writes to the
+            -- same DB field made ilvl displays flicker between "489" and "489.25".
+            entry.itemLevel = type(avgItemLevelEquipped) == "number" and math.floor(avgItemLevelEquipped) or avgItemLevelEquipped
             entry.lastSeen = time()
             
             -- Fire event for UI update (DB-First pattern)

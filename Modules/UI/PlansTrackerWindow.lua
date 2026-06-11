@@ -1306,10 +1306,12 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         end
 
         if scrollChild then
+            local bin = ns.UI_RecycleBin
             local ch = { scrollChild:GetChildren() }
             for i = 1, #ch do
                 ch[i]:Hide()
-                ch[i]:SetParent(nil)
+                ch[i]:ClearAllPoints()
+                if bin then ch[i]:SetParent(bin) else ch[i]:SetParent(nil) end
             end
         end
 

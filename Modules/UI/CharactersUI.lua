@@ -945,16 +945,12 @@ function WarbandNexus:DrawCharacterList(parent)
                 16
             )
         end
-    else
-        -- Cleanup spinner if data loaded
-        charGoldCard:SetScript("OnUpdate", nil)
-        if charGoldCard.loadingSpinner then
-            charGoldCard.loadingSpinner:Hide()
-        end
     end
-    
+    -- (No spinner cleanup needed here: charGoldCard is created fresh above,
+    -- so the non-loading branch can never carry a stale spinner or OnUpdate.)
+
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
-    
+
     -- Warband Gold Card (middle)
     local wbGoldCard = CreateCard(parent, card12H)
     wbGoldCard:SetWidth(goldCardW2)
@@ -1529,6 +1525,10 @@ function WarbandNexus:DrawCharacterList(parent)
                         end
                     end,
                     resizeLayoutOnly = true,
+                    -- Required for resizeLayoutOnly to actually engage: without sig-based
+                    -- reuse, frameReused is never true and every paint re-runs the full
+                    -- DrawCharacterRow per visible row (rowReuseSig is set on each entry).
+                    incrementalRowReuse = true,
                     fixedRowWidthFromEntry = true,
                     rowSpanContainerWidth = true,
                     rowPaintRightPad = 0,

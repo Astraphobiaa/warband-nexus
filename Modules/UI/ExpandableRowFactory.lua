@@ -268,7 +268,11 @@ end
 local function DestroyRowDetailsFrame(row)
     if row.detailsFrame then
         row.detailsFrame:Hide()
-        row.detailsFrame:SetParent(nil)
+        row.detailsFrame:ClearAllPoints()
+        -- Park in the recycle bin: this runs on every expand toggle, and
+        -- SetParent(nil) subtrees are never garbage collected in WoW.
+        local bin = ns.UI_RecycleBin
+        if bin then row.detailsFrame:SetParent(bin) else row.detailsFrame:SetParent(nil) end
         row.detailsFrame = nil
     end
     row._fullDetailsH = nil

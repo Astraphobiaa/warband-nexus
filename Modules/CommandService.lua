@@ -178,7 +178,8 @@ function CommandService:HandleSlashCommand(addon, input)
             local char = characters[i]
             local keystone = nil
             if addon.GetPvEData then
-                local pve = addon:GetPvEData(char.key)
+                -- GetAllCharacters rows carry the table key as _key (no .key field).
+                local pve = addon:GetPvEData(char._key)
                 keystone = pve and pve.keystone
             end
             

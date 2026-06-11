@@ -1143,7 +1143,9 @@ function WarbandNexus:SaveCurrentCharacterData()
         itemLevel = itemLevel,
         mythicKey = keystoneData,
         isTracked = true,     -- Track this character (API calls, data updates enabled)
-        trackingConfirmed = preserveConfirmed or true,  -- Preserve existing, default true for tracked chars
+        -- Preserve the user's explicit choice (false must survive a save or the
+        -- tracking popup gets skipped); default true only when no choice exists yet.
+        trackingConfirmed = preserveConfirmed == nil and true or preserveConfirmed,
         lastSeen = time(),
         professions = professionData,
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)

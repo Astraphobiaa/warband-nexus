@@ -582,7 +582,11 @@ local function ReleaseItemRow(row)
     row:ClearAllPoints()
     row:SetScript("OnEnter", nil)
     row:SetScript("OnLeave", nil)
-    
+    -- Item rows register clicks (shift-link closures capture the item) — clear like
+    -- the other Release* functions so a recycled row can't fire a stale handler.
+    row:SetScript("OnClick", nil)
+    row:SetScript("OnMouseUp", nil)
+
     -- Phase 2.5: Clear stale state on release
     if row.icon then row.icon:SetTexture(nil) end
     if row.nameText then row.nameText:SetText("") end
