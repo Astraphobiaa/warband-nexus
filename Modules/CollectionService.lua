@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Unified Collection Service
     
     Unified collection system with persistent DB-backed cache
@@ -1923,6 +1923,14 @@ function WarbandNexus:IsCollectibleOwned(collectibleType, id)
 end
 
 -- REAL-TIME EVENT HANDLERS (NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED)
+--
+-- The three handlers below share a skeleton (retry → owned/store update → dedup
+-- gates → toast → COLLECTION_UPDATED) but are DELIBERATELY kept as parallel flat
+-- functions, not a shared core: the dedup chains differ in both content and ORDER
+-- (pets check fanfare/wrapped state and duplicate-species count before the common
+-- layers, mounts add the grind chat line, toys invalidate their source caches),
+-- and a callback-config abstraction here would obscure exactly the part that has
+-- to be auditable. Keep edits synchronized across all three by hand.
 
 ---Handle NEW_MOUNT_ADDED event
 ---Fires when player learns a new mount
@@ -1995,7 +2003,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
     elseif Notify.WasDetectedInBag("mount", mountID) then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (detected in bag before, permanent block)")
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (detected in bag before; 2h bag-detect window)")
     elseif Notify.WasRecentlyNotified("mount", mountID) then
         skipNotification = true
         DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (notified within 5s)")
@@ -2158,7 +2166,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. notifyPetName)
     elseif not skipNotification and Notify.WasDetectedInBag("pet", speciesID) then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. notifyPetName .. " (detected in bag before, permanent block)")
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. notifyPetName .. " (detected in bag before; 2h bag-detect window)")
     elseif not skipNotification and Notify.IsPetNameBagCooldownActive(notifyPetName) then
         skipNotification = true
         DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. notifyPetName .. " (item-based bag detection)")
@@ -2232,7 +2240,7 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
         DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: toy " .. itemID .. " (already notified)")
     elseif Notify.WasDetectedInBag("toy", itemID) then
         skipNotification = true
-        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. name .. " (detected in bag before, permanent block)")
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. name .. " (detected in bag before; 2h bag-detect window)")
     elseif Notify.WasRecentlyNotified("toy", itemID) then
         skipNotification = true
         DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. name .. " (notified within 5s)")
