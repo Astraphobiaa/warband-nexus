@@ -382,6 +382,39 @@ local function CurrencySubsidiaryKey(optionalCharKey)
     return k
 end
 
+-- Memoized alias-bucket resolution for cross-key SV lookups (GUID write key vs
+-- Name-Realm roster index). Positive matches are permanent — alias relations do
+-- not change within a session; misses expire after 30s so a bucket created later
+-- (a character's first write) becomes visible without invalidation plumbing.
+-- Without this, the merged read-model rebuild degraded to O(currencies × chars²).
+local currencyAliasBuckets = {}  -- [charKey] = { k1, k2, ... } matching bucket keys
+local currencyAliasMissAt = {}   -- [charKey] = GetTime() of last full-scan miss
+
+-- Per-currency throttle for the current character's live API refetch in GetCurrencyData.
+local currencyLiveFetchAt = {}   -- [currencyID] = GetTime() of last live fetch
+
+local function ResolveCurrencyAliasBuckets(currencies, charKey)
+    local hit = currencyAliasBuckets[charKey]
+    if hit then return hit end
+    local missAt = currencyAliasMissAt[charKey]
+    if missAt and (GetTime() - missAt) < 30 then return nil end
+    if not ns.VaultCharKeysMatch then return nil end
+    local matches = nil
+    for k, row in pairs(currencies) do
+        if type(row) == "table" and k ~= charKey and ns.VaultCharKeysMatch(k, charKey) then
+            matches = matches or {}
+            matches[#matches + 1] = k
+        end
+    end
+    if matches then
+        currencyAliasBuckets[charKey] = matches
+        currencyAliasMissAt[charKey] = nil
+        return matches
+    end
+    currencyAliasMissAt[charKey] = GetTime()
+    return nil
+end
+
 --- Read stored quantity from SV when keys differ (GUID write vs Name-Realm roster index).
 local function LookupStoredCurrencyValue(db, charKey, currencyID)
     if not db or not db.currencies or not charKey or not currencyID then return nil end
@@ -389,9 +422,11 @@ local function LookupStoredCurrencyValue(db, charKey, currencyID)
     if bucket and bucket[currencyID] ~= nil then
         return bucket[currencyID]
     end
-    if ns.VaultCharKeysMatch then
-        for k, row in pairs(db.currencies) do
-            if type(row) == "table" and ns.VaultCharKeysMatch(k, charKey) and row[currencyID] ~= nil then
+    local aliases = ResolveCurrencyAliasBuckets(db.currencies, charKey)
+    if aliases then
+        for i = 1, #aliases do
+            local row = db.currencies[aliases[i]]
+            if type(row) == "table" and row[currencyID] ~= nil then
                 return row[currencyID]
             end
         end
@@ -1487,11 +1522,16 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     local function norm(k) return (k and k:gsub("%s+", "")) or "" end
     local isCurrentChar = (currentKey and norm(charKey) == norm(currentKey))
 
-    -- Current character: always fetch live from API so we never show stale DB/dummy data
+    -- Current character: fetch live from API so we never show stale DB/dummy data.
+    -- Throttled per currency: CURRENCY_DISPLAY_UPDATE pushes real changes into the SV
+    -- cache the moment they happen, so this fetch only guards against a missed event —
+    -- without the throttle, every UI iteration paid one API call per currency.
     local liveTotalEarned = nil
     local liveSeasonMax = nil
     local liveUseTotalEarned = nil
-    if isCurrentChar then
+    if isCurrentChar and (not currencyLiveFetchAt[currencyID]
+        or (GetTime() - currencyLiveFetchAt[currencyID]) >= 5) then
+        currencyLiveFetchAt[currencyID] = GetTime()
         local liveData = FetchCurrencyFromAPI(currencyID)
         if liveData and liveData.quantity ~= nil then
             quantity = liveData.quantity
@@ -1701,6 +1741,14 @@ local function RebuildMergedCurrenciesUIReadModel()
         end
     end
 
+    -- Resolve each character's currency bucket ONCE: the resolution is independent of
+    -- the currency ID, but the loop below used to redo the alias scan per currency ×
+    -- per character (O(currencies × chars²) on mixed GUID/Name-Realm SVs).
+    for i = 1, #trackedCharacters do
+        local tracked = trackedCharacters[i]
+        tracked.bucket = ResolveCharCurrencyBucket(db.currencies, tracked.rawKey, tracked.canonicalKey)
+    end
+
     local currencyIDSet = {}
     if db.currencies then
         for _, currencies in pairs(db.currencies) do
@@ -1739,7 +1787,7 @@ local function RebuildMergedCurrenciesUIReadModel()
             local rawKey = tracked.rawKey
             local canonicalKey = tracked.canonicalKey
             local qty = 0
-            local currencies = ResolveCharCurrencyBucket(db.currencies, rawKey, canonicalKey)
+            local currencies = tracked.bucket
             local stored = currencies and currencies[currencyID]
             if type(stored) == "number" then qty = stored
             elseif type(stored) == "table" then qty = stored.quantity or 0 end
