@@ -292,8 +292,9 @@ local metadataCacheHead = 1     -- Circular buffer head index
 
 -- Short-lived results cache for GetUncollected* functions.
 -- Prevents expensive store re-iteration on rapid UI redraws (category switches, toggle clicks).
--- Invalidated by collection events (scan complete, collectible obtained).
-local RESULTS_CACHE_TTL = 2 -- seconds
+-- Invalidated by collection events (scan complete, collectible obtained) — those wipes,
+-- not this TTL, are what keep results fresh, so the TTL can comfortably outlive redraw cadence.
+local RESULTS_CACHE_TTL = 10 -- seconds
 local uncollectedResultsCache = {}
 --- Merged achievement list for GetAllAchievementsData; cleared with uncollectedResultsCache.
 local _allAchievementsMergedCache = nil
@@ -500,6 +501,20 @@ function WarbandNexus:InitializeCollectionCache()
     if Notify and Notify.InitializeBagDetectedDB then
         Notify.InitializeBagDetectedDB()
     end
+end
+
+-- Coalesce store persists triggered from READ paths (GetUncollected* drift sync):
+-- serializing the whole store inside a getter on every cache miss is wasteful, and
+-- the synced collected-flags are re-derived from the API anyway if a save is missed.
+local deferredStoreSaveTimer
+local function ScheduleDeferredCollectionStoreSave()
+    if deferredStoreSaveTimer then return end
+    deferredStoreSaveTimer = C_Timer.NewTimer(2, function()
+        deferredStoreSaveTimer = nil
+        if WarbandNexus and WarbandNexus.SaveCollectionStore then
+            WarbandNexus:SaveCollectionStore()
+        end
+    end)
 end
 
 ---Save collection store to DB (single source — Collections + Plans read from the same data)
@@ -4483,7 +4498,7 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
                         count = count + 1
                         if limit and count >= limit then
                             if storeChanged then
-                                self:SaveCollectionStore()
+                                ScheduleDeferredCollectionStoreSave()
                             end
                             uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
                             return results
@@ -4494,7 +4509,7 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
             end
         end
         if storeChanged then
-            self:SaveCollectionStore()
+            ScheduleDeferredCollectionStoreSave()
         end
         uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
         return results
