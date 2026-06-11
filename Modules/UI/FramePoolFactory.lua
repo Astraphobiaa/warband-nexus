@@ -486,31 +486,40 @@ end
 ---@param width number Row width
 ---@param rowHeight number Row height
 ---@return Frame row Pooled or new item row
-local function AcquireItemRow(parent, width, rowHeight)
-    local row = tremove(ItemRowPool)
+--- Shared builder for the item/storage list rows. The two pools differ only in:
+--- background texture (item rows), rowType tag, default height (storage: 26) and
+--- the post-acquire child show-reset (Gear recommendations hide storage children).
+---@param pool table
+---@param parent Frame
+---@param width number
+---@param rowHeight number|nil
+---@param cfg table { rowType, withBackground, defaultHeight, resetChildVisibility }
+local function AcquireListRowFromPool(pool, parent, width, rowHeight, cfg)
+    local row = tremove(pool)
     if row then
         MarkRowOutOfPool(row)
     end
 
     if not row then
-        -- Create new button with all children
+        -- Create new button with all children (Button for hover effects)
         row = CreateFrame("Button", nil, parent)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        
-        -- Background texture
-        row.bg = row:CreateTexture(nil, "BACKGROUND")
-        row.bg:SetAllPoints()
-        -- Anti-flicker optimization
-        row.bg:SetSnapToPixelGrid(false)
-        row.bg:SetTexelSnappingBias(0)
-        
+
+        if cfg.withBackground then
+            row.bg = row:CreateTexture(nil, "BACKGROUND")
+            row.bg:SetAllPoints()
+            -- Anti-flicker optimization
+            row.bg:SetSnapToPixelGrid(false)
+            row.bg:SetTexelSnappingBias(0)
+        end
+
         -- Quantity text (left)
         row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.qtyText:SetPoint("LEFT", 15, 0)
         row.qtyText:SetWidth(45)
         row.qtyText:SetJustifyH("RIGHT")
-        
+
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
         local iconSize = UI_LAYOUT.ROW_ICON_SIZE
@@ -520,7 +529,7 @@ local function AcquireItemRow(parent, width, rowHeight)
         -- Anti-flicker optimization
         row.icon:SetSnapToPixelGrid(false)
         row.icon:SetTexelSnappingBias(0)
-        
+
         -- Name text (pinned between icon column and location column)
         row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
@@ -537,20 +546,19 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
 
         row.isPooled = true
-        row.rowType = "item"  -- Mark as ItemRow
-        
+        row.rowType = cfg.rowType
+
         -- Apply highlight effect (only on initial creation)
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
             ns.UI.Factory:ApplyHighlight(row)
         end
     end
-    
-    -- No border for items rows
+
     row:SetParent(parent)
-    row:SetSize(width, rowHeight)
+    row:SetSize(width, rowHeight or cfg.defaultHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
-    
+
     -- Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
@@ -569,7 +577,21 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.nameText:SetJustifyH("LEFT")
     end
 
+    -- Other tabs (e.g. Gear recommendations) may Hide qty/icon/location for a full-width name line.
+    if cfg.resetChildVisibility then
+        if row.qtyText and row.qtyText.Show then row.qtyText:Show() end
+        if row.icon and row.icon.Show then row.icon:Show() end
+        if row.nameText and row.nameText.Show then row.nameText:Show() end
+        if row.locationText and row.locationText.Show then row.locationText:Show() end
+    end
+
     return row
+end
+
+local ITEM_ROW_CFG = { rowType = "item", withBackground = true }
+
+local function AcquireItemRow(parent, width, rowHeight)
+    return AcquireListRowFromPool(ItemRowPool, parent, width, rowHeight, ITEM_ROW_CFG)
 end
 
 ---Return item row to pool
@@ -599,96 +621,15 @@ end
 
 -- STORAGE ROW POOLING
 
----Get storage row from pool (updated to match Items tab style)
+local STORAGE_ROW_CFG = { rowType = "storage", defaultHeight = 26, resetChildVisibility = true }
+
+---Get storage row from pool (same chassis as item rows; no background texture)
 ---@param parent Frame Parent container
 ---@param width number Row width
 ---@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new storage row
 local function AcquireStorageRow(parent, width, rowHeight)
-    local row = tremove(StorageRowPool)
-    if row then
-        MarkRowOutOfPool(row)
-    end
-
-    if not row then
-        -- Create new button with all children (Button for hover effects)
-        row = CreateFrame("Button", nil, parent)
-        row:EnableMouse(true)
-        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        
-        -- Background texture removed (naked frame)
-        
-        -- Quantity text (left)
-        row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.qtyText:SetPoint("LEFT", 15, 0)
-        row.qtyText:SetWidth(45)
-        row.qtyText:SetJustifyH("RIGHT")
-        
-        -- Icon
-        row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
-        row.icon:SetSize(iconSize, iconSize)
-        row.icon:SetPoint("LEFT", 70, 0)
-        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
-        -- Anti-flicker optimization
-        row.icon:SetSnapToPixelGrid(false)
-        row.icon:SetTexelSnappingBias(0)
-        
-        -- Name text (pinned between icon column and location column)
-        row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.nameText:SetPoint("LEFT", 98, 0)
-        row.nameText:SetJustifyH("LEFT")
-        row.nameText:SetWordWrap(false)
-
-        -- Location text (inset from scrollbar / scroll child right edge)
-        row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        local locInset2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
-        local locMaxW2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
-        row.locationText:SetPoint("RIGHT", row, "RIGHT", -locInset2, 0)
-        row.locationText:SetWidth(locMaxW2)
-        row.locationText:SetJustifyH("RIGHT")
-        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
-
-        row.isPooled = true
-        row.rowType = "storage"  -- Mark as StorageRow
-        
-        -- Apply highlight effect (only on initial creation)
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-            ns.UI.Factory:ApplyHighlight(row)
-        end
-    end
-    
-    -- No border for storage rows
-    
-    row:SetParent(parent)
-    row:SetSize(width, rowHeight or 26)
-    row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
-    row:Show()
-    
-    -- Reset alpha and stop animations to prevent invisible rows
-    row:SetAlpha(1)
-    if row.anim then row.anim:Stop() end
-
-    if row.locationText and row.nameText then
-        local li2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_RIGHT_INSET) or 28
-        local lw2 = (UI_LAYOUT and UI_LAYOUT.LIST_ROW_LOCATION_MAX_WIDTH) or 120
-        row.locationText:ClearAllPoints()
-        row.locationText:SetPoint("RIGHT", row, "RIGHT", -li2, 0)
-        row.locationText:SetWidth(lw2)
-        row.locationText:SetJustifyH("RIGHT")
-        row.nameText:ClearAllPoints()
-        row.nameText:SetPoint("LEFT", row, "LEFT", 98, 0)
-        row.nameText:SetPoint("RIGHT", row.locationText, "LEFT", -10, 0)
-        row.nameText:SetJustifyH("LEFT")
-    end
-
-    -- Other tabs (e.g. Gear recommendations) may Hide qty/icon/location for a full-width name line.
-    if row.qtyText and row.qtyText.Show then row.qtyText:Show() end
-    if row.icon and row.icon.Show then row.icon:Show() end
-    if row.nameText and row.nameText.Show then row.nameText:Show() end
-    if row.locationText and row.locationText.Show then row.locationText:Show() end
-
-    return row
+    return AcquireListRowFromPool(StorageRowPool, parent, width, rowHeight, STORAGE_ROW_CFG)
 end
 
 ---Return storage row to pool
