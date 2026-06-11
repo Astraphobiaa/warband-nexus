@@ -1370,6 +1370,8 @@ function ReputationCache:RegisterEventListeners()
     repEventFrame:RegisterEvent("CHAT_MSG_LOOT")
     repEventFrame:RegisterEvent("UPDATE_FACTION")
     repEventFrame:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
+    -- Drains the combat-deferred UPDATE_FACTION sync (see handler below).
+    repEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     
     -- Per-faction gain buffer: merges rapid gains (e.g. multi-source) within 0.3s window
     local pendingGains = {}  -- { [factionName] = totalGainAmount }
@@ -1550,14 +1552,33 @@ function ReputationCache:RegisterEventListeners()
             return
         end
         
-        -- UPDATE_FACTION: Background DB sync only (no chat notification)
-        -- Schedule FullScan to keep DB and UI in sync.
+        -- UPDATE_FACTION: Background DB sync only (no chat notification — those run
+        -- through the bypass path in ScheduleFullScanForChat and are unaffected here).
+        -- During combat the main window is hidden anyway, so the ~200-faction full
+        -- scan buys nothing: mark dirty and run one sync when combat ends.
         if event == "UPDATE_FACTION" then
+            if InCombatLockdown and InCombatLockdown() then
+                ReputationCache.combatScanPending = true
+                return
+            end
             if not ReputationCache.updateThrottle then
                 ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
                     ReputationCache.updateThrottle = nil
                     ReputationCache:PerformFullScan()
                 end)
+            end
+            return
+        end
+
+        if event == "PLAYER_REGEN_ENABLED" then
+            if ReputationCache.combatScanPending then
+                ReputationCache.combatScanPending = nil
+                if not ReputationCache.updateThrottle then
+                    ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
+                        ReputationCache.updateThrottle = nil
+                        ReputationCache:PerformFullScan()
+                    end)
+                end
             end
             return
         end
@@ -1970,16 +1991,27 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         return
     end
     
-    -- Throttle check: skip full scan but still run diff-before-rebuild safety net
+    -- Throttle check: skip full scan but still run diff-before-rebuild safety net.
+    -- The interval is relaxed while the main window is hidden — nobody is looking at
+    -- the table, and during rep grinds this scan otherwise runs essentially nonstop.
     if not bypassThrottle then
         local now = time()
         local timeSinceLastScan = now - self.lastFullScan
-        local MIN_SCAN_INTERVAL = 5  -- 5 seconds
-        
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        local MIN_SCAN_INTERVAL = (mf and mf:IsShown()) and 5 or 20
+
         if timeSinceLastScan < MIN_SCAN_INTERVAL then
             -- Run diff only — catches gains that earlier diffs missed, no DB/UI overhead
             if self._snapshotReady then
                 self:PerformSnapshotDiff()
+            end
+            -- Trailing edge: re-arm for the remainder so the last gain of a burst
+            -- still reaches the DB instead of being silently dropped.
+            if not self._trailingScanTimer then
+                self._trailingScanTimer = C_Timer.NewTimer(MIN_SCAN_INTERVAL - timeSinceLastScan + 0.5, function()
+                    ReputationCache._trailingScanTimer = nil
+                    ReputationCache:PerformFullScan()
+                end)
             end
             return
         end
