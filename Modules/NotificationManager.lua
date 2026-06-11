@@ -2866,10 +2866,6 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         local ptsFmt = (ns.L and ns.L["ACHIEVEMENT_POINTS_FORMAT"]) or "%d pts"
         overrides.action = string.format("%s  ·  %s", doneMsg, string.format(ptsFmt, pts))
     end
-    -- So AddAlert hook fallback knows we showed ours (don't show Blizzard)
-    if data.type == "achievement" then
-        ns.achievementNotificationShown = true
-    end
     -- Farmed drop obtained: keep notification on screen longer for the "yeeey" moment
     if hasTryCount then
         overrides.autoDismiss = 7

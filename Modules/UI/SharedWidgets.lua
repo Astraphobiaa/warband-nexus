@@ -3968,12 +3968,6 @@ function ns.UI_GetTitleCardIconCenterX(iconSize, pad, inset)
     return inset + pad + (iconSize * 0.5)
 end
 
--- Export size configuration (legacy callers: size, outerSize, inset, 0).
-ns.UI_GetHeaderIconSize = function()
-    local outer = HEADER_ICON_SIZE + (HEADER_ICON_PAD * 2)
-    return HEADER_ICON_SIZE, outer, HEADER_ICON_INSET, 0
-end
-
 --[[
     Tab title icon: fixed square tile + centered glyph (does not stretch with card height).
     @param parent Frame
@@ -7185,13 +7179,6 @@ function ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
     end
 end
 
-ns.UI_ComputeDropdownMenuHeights = function(rowCount, rowHeight, opts)
-    local F = ns.UI and ns.UI.Factory
-    if F and F.ComputeDropdownMenuHeights then
-        return F:ComputeDropdownMenuHeights(rowCount, rowHeight, opts)
-    end
-    return 200, 200
-end
 
 ns.UI_ApplyDropdownScrollLayout = function(menu, rowCount, rowHeight, opts)
     local F = ns.UI and ns.UI.Factory

@@ -308,7 +308,6 @@ function ns.UI_ClearAllSearchQueries()
         end
     end
     ns._plansActiveSearch = nil
-    ns._gearSearchText = nil
     local coll = ns.CollectionsUI
     if coll and coll.state then
         coll.state.searchText = ""

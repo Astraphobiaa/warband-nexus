@@ -266,8 +266,6 @@ end
 
 local LEFT_PAD = 4                   -- In-row inset; row already anchored with SIDE_MARGIN
 
-ns.MIN_PROFESSIONS_GRID_W = 0
-
 -- Expansion filter: dynamically built from discovered expansion data across all characters.
 -- Falls back to a static list if no character data is available yet.
 local EXPANSION_FILTER_STATIC_FALLBACK = {

@@ -489,7 +489,4 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     dialog:Show()
 end
 
--- NAMESPACE EXPORTS
-
--- Export to namespace
-ns.UI_ShowGoldManagementPopup = function(...) WarbandNexus:ShowGoldManagementPopup(...) end
+-- (Popup opens through WarbandNexus:ShowGoldManagementPopup — see ItemsUI.)

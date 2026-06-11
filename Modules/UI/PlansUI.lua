@@ -3384,7 +3384,6 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         row.headerFrame:SetScript("OnMouseDown", function(_, button)
             if button == "LeftButton" then
                 self:ShowTab("achievements")
-                ns.PendingAchievementHighlight = item.sourceAchievement
             end
         end)
     end

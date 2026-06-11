@@ -744,7 +744,6 @@ ns.UI_SummarizeAchievementCriteria = SummarizeAchievementCriteria
 ns.UI_FormatAchievementProgressHeader = FormatAchievementProgressHeader
 ns.UI_FormatCriterionRowSuffix = FormatCriterionRowSuffix
 ns.UI_BuildAchievementCriteriaListItems = BuildAchievementCriteriaListItems
-ns.UI_GetAchievementCriteriaTypeTable = function() return CRITERIA_TYPE end
 ns.UI_BuildAchievementTodoSummaryLines = BuildAchievementTodoSummaryLines
 ns.UI_ShouldAchievementTodoExpand = ShouldAchievementTodoExpand
 ns.UI_GetCustomPlanBodyText = GetCustomPlanBodyText

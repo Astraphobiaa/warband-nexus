@@ -902,7 +902,6 @@ ns.UI_SetItemsSubTab = function(val)
     -- No longer syncing BankFrame tabs (read-only mode)
 end
 ns.UI_GetExpandedGroups = function() return expandedGroups end
-ns.UI_GetExpandAllActive = function() return WarbandNexus.itemsExpandAllActive end
 
 --- Reset collapsible section trees to default collapsed at login (session persistence until logout).
 function ns.UI_ResetSessionSectionExpandState()

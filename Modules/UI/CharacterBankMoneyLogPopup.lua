@@ -626,6 +626,4 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     dialog:Show()
 end
 
-ns.UI_ShowCharacterBankMoneyLogPopup = function(...)
-    WarbandNexus:ShowCharacterBankMoneyLogPopup(...)
-end
+-- (Popup opens through WarbandNexus:ShowCharacterBankMoneyLogPopup — see ItemsUI.)
