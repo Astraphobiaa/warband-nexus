@@ -246,7 +246,7 @@ local GEAR_CRAFTED_PROBE_CACHE_CAP = 512
 
 -- Session-only: canonical gear row key -> { lastScan = number, upgrades = table } for GetPersistedUpgradeInfo.
 local persistedUpgradeInfoSessionCache = {}
-local PERSISTED_UPGRADE_INFO_LOGIC_VER = 15
+local PERSISTED_UPGRADE_INFO_LOGIC_VER = 16
 
 -- Session-only: offline-view canonical key -> currency array from GetGearUpgradeCurrenciesFromDB (amounts follow Currency UI snapshot).
 local gearUpgradeCurrencyOfflineCache = {}
@@ -277,6 +277,25 @@ local function CacheGearCraftedProbeResult(link, isCrafted)
         gearCraftedProbeCache[link] = isCrafted and true or false
         gearCraftedProbeCacheSize = 1
     end
+end
+
+--- Definitive crafted check from the item LINK (session-cached). Crafted items carry a
+--- crafting quality; C_TradeSkillUI.GetItemCraftedQualityByItemInfo returns it (else nil).
+--- The tooltip-line scan alone missed crafted gear whenever the Upgrade Level line did
+--- not parse — those slots then showed dropped-track Hero/Myth upgrade suggestions.
+---@param link string|nil
+---@return boolean|nil isCrafted nil = undeterminable (no API / secret link)
+local function GearLinkIsCrafted(link)
+    if not link or link == "" then return nil end
+    if issecretvalue and issecretvalue(link) then return nil end
+    local cached = gearCraftedProbeCache[link]
+    if cached ~= nil then return cached end
+    if not (C_TradeSkillUI and C_TradeSkillUI.GetItemCraftedQualityByItemInfo) then return nil end
+    local ok, quality = pcall(C_TradeSkillUI.GetItemCraftedQualityByItemInfo, link)
+    if not ok then return nil end
+    local isCrafted = type(quality) == "number" and quality > 0
+    CacheGearCraftedProbeResult(link, isCrafted)
+    return isCrafted
 end
 
 -- SLOT DEFINITIONS (GearService_Slots.lua)
@@ -1734,14 +1753,20 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
         if maxUpgrade > 0 and currUpgrade >= maxUpgrade then
             slotEntry.notUpgradeable = true
         end
-        -- Mark crafted items: check track name AND tooltip for "Crafted" quality line.
-        -- Midnight crafted items show "Myth 5/6" as track, not "Crafted", so tooltip scan is needed.
+        -- Mark crafted items: link probe is definitive (crafting quality on the link);
+        -- Midnight crafted items show "Myth 5/6" as track, not "Crafted", and the
+        -- tooltip-line fallback fails whenever the Upgrade Level line does not parse.
         if trackName == "Crafted" then
             slotEntry.isCrafted = true
         elseif not slotEntry.isCrafted then
-            local tooltipInfo = ScanUpgradeFromTooltip(slotID)
-            if tooltipInfo and tooltipInfo.isCrafted then
-                slotEntry.isCrafted = true
+            local probed = GearLinkIsCrafted(slotEntry.itemLink)
+            if probed ~= nil then
+                slotEntry.isCrafted = probed
+            else
+                local tooltipInfo = ScanUpgradeFromTooltip(slotID)
+                if tooltipInfo and tooltipInfo.isCrafted then
+                    slotEntry.isCrafted = true
+                end
             end
         end
 
@@ -2399,11 +2424,19 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
             slot.notUpgradeable = true
         end
 
-        -- Crafted / not-upgradeable come from ScanSlotUpgradeData (C_ItemUpgrade.GetItemUpgradeItemInfo
-        -- itemUpgradeable + scan-time tooltip). Do not re-probe hyperlinks in GetPersistedUpgradeInfo —
-        -- that ran per slot on every Gear draw and caused frame spikes.
+        -- Crafted / not-upgradeable normally come from ScanSlotUpgradeData. For slots
+        -- persisted by older scans (isCrafted never written) run the cheap link probe
+        -- once and PERSIST the verdict — without this, a crafted 285 item fell into the
+        -- dropped Myth track and advertised a 6/6 (289) crest upgrade it cannot take.
+        -- (The expensive C_TooltipInfo.GetHyperlink probe stays out of this path.)
         if slot.isCrafted == nil and trackName == "Crafted" then
             slot.isCrafted = true
+        end
+        if slot.isCrafted == nil and slot.itemLink then
+            local probed = GearLinkIsCrafted(slot.itemLink)
+            if probed ~= nil then
+                slot.isCrafted = probed
+            end
         end
         if InferSlotIsCraftedGear(slot, trackName, itemLevel) then
             slot.isCrafted = true
