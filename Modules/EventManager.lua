@@ -303,9 +303,7 @@ function WarbandNexus:OnKeystoneChanged()
                     end
                     
                     -- Same channel as CHALLENGE_MODE_COMPLETED / PvECache (UI.lua + PlansManager listen)
-                    if WarbandNexus.SendMessage then
-                        WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
-                    end
+                    WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
                 else
                     -- Keystone unchanged (verbose logging removed)
                 end
@@ -360,7 +358,6 @@ local COLLECTION_EM_DEFER_SEC = 2.5
 function WarbandNexus:EnsureEventManagerCollectionListeners()
     if self._wnEventMgrCollectionRegistered then return end
     if not (ns.Utilities and ns.Utilities:IsModuleEnabled("collections")) then return end
-    if not self.RegisterEvent then return end
     self._wnEventMgrCollectionRegistered = true
     self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")
     self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChangedDebounced")
@@ -368,10 +365,8 @@ end
 
 function WarbandNexus:ClearEventManagerCollectionListeners()
     if not self._wnEventMgrCollectionRegistered then return end
-    if self.UnregisterEvent then
-        self:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED")
-        self:UnregisterEvent("PET_JOURNAL_LIST_UPDATE")
-    end
+    self:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED")
+    self:UnregisterEvent("PET_JOURNAL_LIST_UPDATE")
     self._wnEventMgrCollectionRegistered = false
 end
 
@@ -401,7 +396,7 @@ function WarbandNexus:InitializeEventManager()
     -- Do NOT register here — AceEvent allows only one handler per event per object,
     -- and re-registering here would OVERWRITE the CollectionService handlers.
     -- TRANSMOG + PET_JOURNAL: deferred + collections toggle — see EnsureEventManagerCollectionListeners.
-    if not self._wnEventMgrCollectionMsgHooked and self.RegisterMessage then
+    if not self._wnEventMgrCollectionMsgHooked then
         self._wnEventMgrCollectionMsgHooked = true
         self:RegisterMessage(E.MODULE_TOGGLED, function(_, moduleName, enabled)
             if moduleName ~= "collections" then return end
