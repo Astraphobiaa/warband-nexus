@@ -2589,42 +2589,9 @@ local function GetAffordableCountAndNextCrestNeed(upInfo, currencyAmounts)
     return totalAffordable, effectiveCrestNeed
 end
 
-local function CountCrestStepsRemaining(upInfo)
-    if not upInfo or upInfo.isCrafted then return 0 end
-    local curr = upInfo.currUpgrade or 0
-    local maxT = upInfo.maxUpgrade or 0
-    local wm = upInfo.watermarkIlvl or 0
-    local tiers = TRACK_ILVLS and TRACK_ILVLS[upInfo.trackName]
-    if not tiers then return 0 end
-    local count = 0
-    for nextTier = curr + 1, maxT do
-        local nIlvl = tiers[nextTier]
-        if not nIlvl then break end
-        if nIlvl > wm then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-local function SumRemainingCrestCosts(upInfo)
-    return CountCrestStepsRemaining(upInfo) * (upInfo.crestCost or ns.UPGRADE_CREST_PER_LEVEL or 20)
-end
-
-local function GetEffectiveNextStepCrestCost(upInfo)
-    if not upInfo or upInfo.isCrafted then return nil end
-    if not upInfo.canUpgrade then return nil end
-    local currTier = upInfo.currUpgrade or 0
-    local maxTier = upInfo.maxUpgrade or 0
-    if currTier >= maxTier then return nil end
-    local tiers = TRACK_ILVLS and TRACK_ILVLS[upInfo.trackName]
-    if not tiers then return nil end
-    local wmIlvl = upInfo.watermarkIlvl or 0
-    local nextIlvl = tiers[currTier + 1]
-    if not nextIlvl then return nil end
-    if nextIlvl <= wmIlvl then return 0 end
-    return upInfo.crestCost or ns.UPGRADE_CREST_PER_LEVEL or 20
-end
+-- NOTE: CountCrestStepsRemaining / SumRemainingCrestCosts / GetEffectiveNextStepCrestCost
+-- were removed (zero callers). The LIVE affordability math is CalculateAffordableUpgrades
+-- in GearUI.lua; GetAffordableCountAndNextCrestNeed above serves only the debug report.
 
 --- Gear tab item hover: Dawncrest + Sources blocks removed (no vendor playbook in tooltip).
 ---@return table lines always empty; upgrade row stays on paperdoll only.
