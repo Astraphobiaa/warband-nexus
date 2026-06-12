@@ -166,8 +166,6 @@ end
 --- Display-only: pretty-print API/normalized realm (e.g. "TwistingNether" -> "Twisting Nether").
 --- Persisted `charData.realm` and keys stay as returned by GetNormalizedRealmName / UnitName — do not rewrite storage.
 --- Inserts a space before each uppercase letter that follows a lowercase letter.
----@param realm string Realm name (possibly normalized / spaceless)
----@return string Display-friendly realm name with proper spacing
 function Utilities:FormatRealmName(realm)
     if not realm or realm == "" then return "" end
     return realm:gsub("(%l)(%u)", "%1 %2")
@@ -208,8 +206,6 @@ end
 
 --- Check if a module is enabled in settings
 --- Eliminates 20+ duplicate checks across codebase
----@param moduleName string Module name (e.g., "pve", "currencies")
----@return boolean Whether the module is enabled
 function Utilities:IsModuleEnabled(moduleName)
     local db = ns.WarbandNexus and ns.WarbandNexus.db
     if not db or not db.profile then return false end
@@ -228,9 +224,6 @@ end
 local issecretvalue = issecretvalue
 
 --- Safe string for display/indexing. Returns fallback if value is nil or secret.
----@param val any Value that might be a string or secret
----@param fallback string|nil Fallback when secret/nil (default "")
----@return string Safe string to use
 function Utilities:SafeString(val, fallback)
     if val == nil then return fallback or "" end
     if issecretvalue and issecretvalue(val) then return fallback or "" end
@@ -238,9 +231,6 @@ function Utilities:SafeString(val, fallback)
 end
 
 --- Safe number for comparisons/math. Returns fallback if value is secret or not a number.
----@param val any Value that might be a number or secret
----@param fallback number|nil Fallback when secret/invalid (default nil)
----@return number|nil Safe number or fallback
 function Utilities:SafeNumber(val, fallback)
     if val == nil then return fallback end
     if issecretvalue and issecretvalue(val) then return fallback end
@@ -249,9 +239,6 @@ function Utilities:SafeNumber(val, fallback)
 end
 
 --- Safe boolean. Returns fallback if value is secret.
----@param val any Value that might be boolean or secret
----@param fallback boolean|nil Fallback when secret (default false)
----@return boolean
 function Utilities:SafeBool(val, fallback)
     if val == nil then return fallback ~= nil and fallback or false end
     if issecretvalue and issecretvalue(val) then return fallback ~= nil and fallback or false end
@@ -259,8 +246,6 @@ function Utilities:SafeBool(val, fallback)
 end
 
 --- Safe UnitGUID. Returns nil if GUID is secret (Midnight instanced content).
----@param unit string Unit token (e.g. "player", "target")
----@return string|nil GUID or nil if secret/unavailable
 function Utilities:SafeGuid(unit)
     if not unit then return nil end
     local guid = UnitGUID(unit)
@@ -270,22 +255,17 @@ function Utilities:SafeGuid(unit)
 end
 
 --- Whether the current runtime has secret-value API (Midnight 12.0+).
----@return boolean
 function Utilities:HasSecretValueAPI()
     return issecretvalue ~= nil
 end
 
 --- Check if a value is secret; safe to call (no string/table ops on val).
----@param val any
----@return boolean True if val is a secret value
 function Utilities:IsSecretValue(val)
     if val == nil then return false end
     return issecretvalue and issecretvalue(val) or false
 end
 
 --- Lowercase for search/sort when the string is safe to touch (never call `:lower()` on secret values).
----@param s string|nil
----@return string
 function Utilities:SafeLower(s)
     if not s or s == "" then return "" end
     if issecretvalue and issecretvalue(s) then return "" end
@@ -321,8 +301,6 @@ function Utilities:StripFormattingCodes(text, newlineMode)
 end
 
 --- Current character bag gold in copper. GetMoney() may be secret (Midnight); uses SafeNumber.
----@param fallbackCopper number|nil When unavailable or secret (default 0)
----@return number
 function Utilities:GetLiveCharacterMoneyCopper(fallbackCopper)
     fallbackCopper = tonumber(fallbackCopper) or 0
     if not GetMoney then return fallbackCopper end
@@ -384,7 +362,6 @@ end
 
 --- Get Warband Bank money from C_Bank API (TWW 11.0+)
 --- Simple wrapper for C_Bank.FetchDepositedMoney (read-only)
----@return number Account money in copper
 function Utilities:GetWarbandBankMoney()
     -- TWW (11.0+) API for getting warband bank gold
     if C_Bank and C_Bank.FetchDepositedMoney then
@@ -398,8 +375,6 @@ end
 
 --- Check if a bag ID is a Warband bag
 --- Uses the global WARBAND_BAGS table from namespace
----@param bagID number The bag ID to check
----@return boolean Whether the bag is a Warband bag
 function Utilities:IsWarbandBag(bagID)
     local wbBags = ns.WARBAND_BAGS
     for bi = 1, #wbBags do
@@ -414,8 +389,6 @@ end
 --- Check if Warband bank is currently open
 --- Uses event-based tracking combined with bag access verification
 --- NOTE: Requires WarbandNexus addon instance for state tracking
----@param addon table The WarbandNexus addon instance
----@return boolean Whether the Warband bank is open
 function Utilities:IsWarbandBankOpen(addon)
     if not addon then return false end
     
@@ -457,10 +430,6 @@ end
 
 --- Get display name for an item (handles caged pets)
 --- Caged pets show "Pet Cage" in item name but have the real pet name in tooltip line 3
----@param itemID number The item ID
----@param itemName string The item name from cache
----@param classID number|nil The item class ID (17 = Battle Pet)
----@return string displayName The display name (pet name for caged pets, item name otherwise)
 function Utilities:GetItemDisplayName(itemID, itemName, classID)
     -- If this is a caged pet (classID 17), try to get the pet name from tooltip
     if classID == 17 and itemID then
@@ -476,8 +445,6 @@ end
 
 --- Extract pet name from item tooltip (locale-independent)
 --- Used for caged pets where item name is "Pet Cage" but tooltip has the real pet name
----@param itemID number The item ID
----@return string|nil petName The pet's name extracted from tooltip
 function Utilities:GetPetNameFromTooltip(itemID)
     if not itemID then
         return nil
@@ -584,18 +551,12 @@ end
 -- TIME FORMATTING
 
 --- Format time remaining until a given timestamp
---- @param resetTime number Unix timestamp of reset time
---- @return string Formatted time string (e.g., "2d 5h", "3h 45m", "30m")
 function Utilities:FormatTimeUntilReset(resetTime)
     local diff = (resetTime or 0) - time()
     return self:FormatTimeCompact(diff)
 end
 
--- TIME FORMATTING
-
 ---Format a number of seconds into a human-readable compact time string
----@param seconds number Seconds remaining
----@return string Formatted time string (e.g., "2d 5h", "3h 45m", "30m", "Now")
 function Utilities:FormatTimeCompact(seconds)
     if not seconds or seconds <= 0 then return "Now" end
     
@@ -613,8 +574,6 @@ function Utilities:FormatTimeCompact(seconds)
 end
 
 ---Format a number of seconds into a human-readable played time string
----@param seconds number Total seconds played
----@return string Formatted time string (e.g., "363 Days 16 Hours 55 Minutes")
 function Utilities:FormatPlayedTime(seconds)
     local L = ns.L
     local dayS   = (L and L["PLAYED_DAYS"])    or "Days"
@@ -647,8 +606,6 @@ end
 -- ICON HELPERS
 
 ---Check if a texture string is an atlas name (no path separators)
----@param texturePath string|number|nil The texture value to check
----@return boolean Whether the value is an atlas name
 function Utilities:IsAtlasName(texturePath)
     if not texturePath or type(texturePath) == "number" then return false end
     if type(texturePath) ~= "string" then return false end
@@ -744,8 +701,6 @@ end
 
 --- Load an optional Blizzard addon via C_AddOns. Uses pcall; no-op while in combat lockdown.
 --- Replaces scattered C_AddOns.LoadAddOn / legacy LoadAddOn branches across modules.
----@param addonName string
----@return boolean ok True if already loaded or LoadAddOn pcall succeeded
 function Utilities:SafeLoadAddOn(addonName)
     if not addonName or addonName == "" then return false end
     if InCombatLockdown() then return false end
@@ -760,8 +715,6 @@ function Utilities:SafeLoadAddOn(addonName)
 end
 
 --- Whether another addon is loaded (C_AddOns only; Midnight 12.0.5).
----@param addonName string
----@return boolean
 function Utilities:CheckAddOnLoaded(addonName)
     if not addonName or addonName == "" then return false end
     if C_AddOns and C_AddOns.IsAddOnLoaded then
