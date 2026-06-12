@@ -2288,7 +2288,6 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             vaultCard:SetPoint("TOPLEFT", PixelSnap(card1Width + card2Width), 0)
             local baseCardWidth = card3Width
             
-            -- Helper function to get WoW icon textures for vault activity types
             local function GetVaultTypeIcon(typeName)
                 local icons = {
                     ["Raid"] = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
