@@ -3303,8 +3303,11 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
+    ns._wnMainWindowVisible = f:IsShown()
+
     -- Master OnHide: cleanup when addon window closes
     f:SetScript("OnHide", function(self)
+        ns._wnMainWindowVisible = false
         if shellRefresh.pendingPopulateTimer then
             if shellRefresh.pendingPopulateTimer.Cancel then
                 shellRefresh.pendingPopulateTimer:Cancel()
@@ -3341,6 +3344,7 @@ function WarbandNexus:CreateMainWindow()
     -- their own and clear the bit first; this catches raw Show() calls — most notably
     -- the post-combat restore in Core.lua OnCombatEnd — so the window never reopens stale.
     f:HookScript("OnShow", function(self)
+        ns._wnMainWindowVisible = true
         if not shellRefresh.dirtyWhileHidden then return end
         shellRefresh.lastEventPopulateTime = 0
         C_Timer.After(0.2, function()
@@ -3368,7 +3372,19 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     f:SyncMainHeaderDebugReloadLayout()
-    
+
+    local shellEv = ns.Constants and ns.Constants.EVENTS
+    if WarbandNexus.RegisterMessage and shellEv and shellEv.UI_DEBUG_HEADER_SYNC then
+        if not ns._uiDebugHeaderSyncListener then
+            ns._uiDebugHeaderSyncListener = {}
+            WarbandNexus.RegisterMessage(ns._uiDebugHeaderSyncListener, shellEv.UI_DEBUG_HEADER_SYNC, function()
+                if f.SyncMainHeaderDebugReloadLayout then
+                    f:SyncMainHeaderDebugReloadLayout()
+                end
+            end)
+        end
+    end
+
     -- Frame is already hidden (Hide() called immediately after CreateFrame)
     return f
 end
