@@ -24,15 +24,12 @@ Started: 2026-06-12
 
 Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver essays, or claims not backed by code.
 
-**Fixed in pass 1:** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`
+**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`
 
 **Remaining (sample):**
 
-- `Modules/MinimapButton.lua` — bullet `Features:` list
-- `Modules/ItemsCacheService.lua`, `Modules/ReputationCacheService.lua`, `Modules/TooltipService.lua` — pipeline `Architecture:` blurbs
-- `Modules/DatabaseOptimizer.lua`, `Modules/ErrorHandler.lua`, `Modules/TransmogManager.lua` — `Features:` lists
-- `Modules/UI/SearchResultsRenderer.lua`, `Modules/SearchStateManager.lua` — SOA lecture headers
 - `Modules/UI/SearchBoxComponent.lua` — long UX spec in header (partially useful; trim not delete)
+- `Modules/UI/SharedWidgets.lua` — Factory Phase 1 migration essay (~line 1536)
 
 ### B — `@param` / block JavaDoc on obvious functions (P0)
 
@@ -70,15 +67,16 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 
 Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 
-## Pass 1 changes (uncommitted)
+## Pass 1 changes (committed on chore/de-ai-fixes)
 
 | File | Change |
 |------|--------|
-| `Modules/CollectionRules.lua` | Short header; removed Rule Interface doc + 27 `@param` blocks + section banners |
+| `Modules/CollectionRules.lua` | Short header; removed Rule Interface doc + 27 `@param` blocks + section banners; fixed duplicate `GetItemInfo` in TRANSMOG |
 | `Modules/Constants.lua` | Replaced 30-line semver essay with 3-line header |
-| `Modules/EventManager.lua` | Removed false feature claims (priority queue, stats); stripped 9 `@param` blocks |
+| `Modules/EventManager.lua` | Removed false feature claims (priority queue, stats); stripped `@param` blocks |
 | `Modules/PvECacheService.lua` | Trimmed architecture marketing header |
-| `Modules/APIWrapper.lua` | Stripped 3 `@param` block comments |
+| `Modules/APIWrapper.lua` | Stripped `@param` block comments |
+| 15 additional service/UI modules | Trimmed `Features:` / `Architecture:` headers (see git log) |
 
 ## Phased plan
 
@@ -87,7 +85,7 @@ Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 - [x] Branch `chore/de-ai-fixes`
 - [x] Inventory (this file)
 - [x] 5-file pilot strip
-- [ ] Batch-trim remaining `Features:` / `Architecture:` headers in cache/service modules
+- [x] Batch-trim remaining `Features:` / `Architecture:` headers in cache/service modules (20 files)
 - [ ] Fix headers that describe non-existent behavior (audit each claim)
 
 ### Phase 2 — Comment noise in services
