@@ -4137,11 +4137,18 @@ local function GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText
     local lockShown = sb._gearLockIcon and sb._gearLockIcon:IsShown() == true
     if wantLock ~= lockShown then return false end
 
-    local tNew = (type(trackText) == "string" and trackText ~= "") and trackText or ""
+    local tNew = ""
+    if type(trackText) == "string" and trackText ~= ""
+        and not (issecretvalue and issecretvalue(trackText)) then
+        tNew = trackText
+    end
     local tOld = ""
     local tl = sb._gearTrackLabel
     if tl and tl.IsShown and tl:IsShown() and tl.GetText then
-        tOld = tl:GetText() or ""
+        local rawOld = tl:GetText()
+        if rawOld and not (issecretvalue and issecretvalue(rawOld)) then
+            tOld = rawOld
+        end
     end
     if tNew ~= tOld then return false end
 
