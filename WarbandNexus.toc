@@ -78,6 +78,7 @@ Modules\ChatMessageService.lua
 # Modules (Features)
 Modules\ProfessionService.lua
 Modules\MinimapButton.lua
+Modules\TooltipService_GameTooltip.lua
 Modules\TooltipService.lua
 Modules\GuildBankScanner.lua
 Modules\VaultScanner.lua
@@ -89,6 +90,8 @@ Modules\VaultButton_TrackerUI.lua
 Modules\VaultButton_SavedInstances.lua
 Modules\VaultButton_SavedInstancesUI.lua
 Modules\VaultButton.lua
+Modules\PlansManager_Vault.lua
+Modules\PlansManager_Quests.lua
 Modules\PlansManager.lua
 Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB.lua
@@ -96,6 +99,7 @@ Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
 Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
+Modules\TryCounterService_Handlers.lua
 Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
 Modules\DailyQuestManager.lua
@@ -115,6 +119,7 @@ Modules\ReminderService.lua
 Modules\GearService_Slots.lua
 Modules\GearService_UpgradeTracks.lua
 Modules\GearService.lua
+Modules\GearService_StorageFind.lua
 
 # UI Modules (FormatHelpers before SharedWidgets — ns.UI_Format* / money helpers)
 Modules\UI\FormatHelpers.lua
@@ -173,6 +178,7 @@ Modules\UI\CollectionsUI_Recent.lua
 Modules\UI\CollectionsUI_Draw.lua
 Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI_SourceParser.lua
+Modules\UI\PlansUI_Browse.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua

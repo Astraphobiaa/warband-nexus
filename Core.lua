@@ -1689,6 +1689,10 @@ function WarbandNexus:AbortTabOperations(tabKey)
         if ns.PvEUI and ns.PvEUI.AbortChunkedPaint then
             ns.PvEUI.AbortChunkedPaint()
         end
+    elseif tabKey == "items" then
+        if self.AbortStorageChunkedPaint then
+            self:AbortStorageChunkedPaint()
+        end
     end
 end
 
