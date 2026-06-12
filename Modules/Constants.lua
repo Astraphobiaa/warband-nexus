@@ -1,34 +1,7 @@
 --[[
     Warband Nexus - Constants
-    Centralized version management and configuration constants
-    
-    VERSIONING STRATEGY (Semantic Versioning):
-    ==========================================
-    
-    Format: MAJOR.MINOR.PATCH (e.g., 1.0.1)
-    
-    1. PATCH (third number): 1.0.0 → 1.0.1
-       - Bug fixes
-       - Small cache schema changes
-       - Performance improvements
-       - No breaking changes
-       
-    2. MINOR (second number): 1.0.0 → 1.1.0
-       - New features
-       - Deprecations (with backwards compatibility)
-       - Cache restructuring
-       
-    3. MAJOR (first number): 1.0.0 → 2.0.0
-       - Breaking changes
-       - Complete rewrites
-       - Incompatible API changes
-    
-    WHEN TO UPDATE VERSIONS:
-    ========================
-    - Cache schema changed? → Increment PATCH version (e.g., 1.0.0 → 1.0.1)
-    - New field added to cache? → Increment PATCH version
-    - Cache format completely changed? → Increment MINOR version (e.g., 1.0.0 → 1.1.0)
-    - Breaking change? → Increment MAJOR version (e.g., 1.0.0 → 2.0.0)
+    Version, cache schema keys, and shared configuration.
+    Bump ADDON_VERSION + TOC + CHANGELOG together (see WN-LOCALES-changelog.mdc).
 ]]
 
 local ADDON_NAME, ns = ...
