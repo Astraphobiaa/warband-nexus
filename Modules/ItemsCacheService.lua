@@ -1,21 +1,7 @@
 --[[
     Warband Nexus - Items Cache Service
-    Smart bag/bank scanning with hash-based change detection
-    
-    Architecture:
-    - Hash-based BAG_UPDATE filtering (ignore durability/charges/cooldown changes)
-    - Event-based bank frame detection (only scan when bank is open)
-    - DB-backed persistence (per-character storage)
-    - Throttled updates (2s spam prevention)
-    
-    Events fired:
-    - WN_ITEMS_UPDATED: Bag/bank contents changed (UI should refresh)
-    
-    Events handled:
-    - BAG_UPDATE(bagID) - Fires on item add/remove/move/durability/charges
-    - BANKFRAME_OPENED - Bank UI opened
-    - BANKFRAME_CLOSED - Bank UI closed
-    - PLAYERREAGENTBANKSLOTS_CHANGED - Reagent bank changed
+    Hash-filtered bag/bank scans with per-character DB persistence.
+    Emits WN_ITEMS_UPDATED after writes.
 ]]
 
 local ADDON_NAME, ns = ...
