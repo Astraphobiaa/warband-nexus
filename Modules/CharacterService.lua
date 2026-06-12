@@ -642,6 +642,11 @@ end
 ---@param addon table The WarbandNexus addon instance
 ---@param charKey string Character key ("Name-Realm")
 function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+    local ev = E and E.CHARACTER_TRACKING_DIALOG_REQUESTED
+    if ev and addon and addon.SendMessage then
+        addon:SendMessage(ev, { mode = "initial", charKey = charKey })
+        return
+    end
     local D = ns.CharacterTrackingDialog
     if D and D.ShowInitial then
         D.ShowInitial(addon, charKey)
@@ -654,6 +659,16 @@ end
 ---@param charName string Character name (for display)
 ---@param enableTracking boolean True to enable, False to disable
 function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charName, enableTracking)
+    local ev = E and E.CHARACTER_TRACKING_DIALOG_REQUESTED
+    if ev and addon and addon.SendMessage then
+        addon:SendMessage(ev, {
+            mode = "change",
+            charKey = charKey,
+            charName = charName,
+            enableTracking = enableTracking == true,
+        })
+        return
+    end
     local D = ns.CharacterTrackingDialog
     if D and D.ShowChange then
         D.ShowChange(addon, charKey, charName, enableTracking)

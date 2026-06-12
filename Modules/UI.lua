@@ -16,6 +16,15 @@ local issecretvalue = issecretvalue
 -- 'self' table to prevent overwriting other modules' handlers for the same event.
 local UIEvents = {}
 
+local function SyncMainWindowVisibilityState(visible)
+    ns._wnMainWindowVisible = visible == true
+    local C = ns.Constants
+    local ev = C and C.EVENTS and C.EVENTS.MAIN_WINDOW_VISIBILITY_CHANGED
+    if ev and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage(ev, { visible = visible == true })
+    end
+end
+
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
@@ -1056,6 +1065,7 @@ function WarbandNexus:ToggleMainWindow()
         RememberSessionMainTab(mainFrame.currentTab)
         -- Window object is a singleton; "closed" is IsShown() == false, the ref stays valid.
         mainFrame:Hide()
+        SyncMainWindowVisibilityState(false)
     else
         self:ShowMainWindow()
     end
@@ -1195,6 +1205,8 @@ function WarbandNexus:ShowMainWindow(requestedTabKey)
         NormalizeFramePosition(mainFrame)
     end
 
+    SyncMainWindowVisibilityState(true)
+
     -- Loading overlay is standalone — no action needed here
     
     -- SAFETY: Deferred tab label re-render (catches font loading race conditions)
@@ -1238,6 +1250,7 @@ function WarbandNexus:HideMainWindow()
         RememberSessionMainTab(mainFrame.currentTab)
         -- Window object is a singleton; "closed" is IsShown() == false, the ref stays valid.
         mainFrame:Hide()
+        SyncMainWindowVisibilityState(false)
     end
 end
 
