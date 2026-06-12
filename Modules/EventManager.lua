@@ -1,13 +1,6 @@
 --[[
     Warband Nexus - Event Manager Module
-    Centralized event handling with throttling, debouncing, and priority queues
-    
-    Features:
-    - Event throttling (limit frequency of event processing)
-    - Event debouncing (delay processing until events stop)
-    - Priority queue (process high-priority events first)
-    - Batch event processing (combine multiple events)
-    - Event statistics and monitoring
+    Centralized WoW event registration with throttle/debounce helpers.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -32,13 +25,6 @@ local activeTimers = {}    -- Active throttle/debounce timers
 
 -- THROTTLE & DEBOUNCE UTILITIES
 
---[[
-    Throttle a function call
-    Ensures function is not called more than once per interval
-    @param key string - Unique throttle key
-    @param interval number - Throttle interval (seconds)
-    @param func function - Function to call
-]]
 local function Throttle(key, interval, func)
     -- If already throttled, skip
     if activeTimers[key] then
@@ -56,13 +42,6 @@ local function Throttle(key, interval, func)
     return true
 end
 
---[[
-    Debounce a function call
-    Delays execution until calls stop for specified interval
-    @param key string - Unique debounce key
-    @param interval number - Debounce interval (seconds)
-    @param func function - Function to call
-]]
 local function Debounce(key, interval, func)
     -- Cancel existing timer
     if activeTimers[key] then
@@ -179,21 +158,6 @@ end
 -- CURRENCY_DISPLAY_UPDATE / CHAT_MSG_CURRENCY: owned by CurrencyCacheService
 -- Do NOT register or handle these here — single owner prevents duplicate processing.
 
---[[
-    Throttled currency change handler
-    Uses incremental updates when currencyID is available
-    @param event string - Event name
-    @param currencyType number - Currency ID that changed
-    @param quantity number - New quantity
-    @param quantityChange number - Amount changed
-    @param quantityGainSource number - Source of gain
-    @param quantityLostSource number - Source of loss
-]]
-
---[[
-    Called when player money changes
-    Delegates to DataService and fires event for UI updates
-]]
 function WarbandNexus:OnMoneyChanged()
     local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
 
@@ -228,10 +192,6 @@ function WarbandNexus:OnMoneyChanged()
         end)
     end
 end
-
--- REMOVED: WarbandNexus:CHALLENGE_MODE_COMPLETED / MYTHIC_PLUS_NEW_WEEKLY_RECORD
--- These were orphaned methods never registered as AceEvent handlers.
--- PvECacheService owns the actual event registration and processing.
 
 --[[
     Called when keystone changes (picked up, upgraded, depleted)
@@ -313,9 +273,6 @@ function WarbandNexus:OnKeystoneChanged()
         end
     end)
 end
-
--- REMOVED: WarbandNexus:OnPvEDataChangedThrottled
--- Orphaned method — no call sites. PvECacheService handles PvE event throttling directly.
 
 -- INITIALIZATION
 

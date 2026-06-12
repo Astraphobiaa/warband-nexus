@@ -1,17 +1,7 @@
---[[============================================================================
-    DEBUG SERVICE
-    Centralized debugging and testing utilities for Warband Nexus
-    
-    Handles:
-    - Debug logging with profile-based control
-    - Bank debugging utilities
-    - Force scanning and data wiping
-    
-    Architecture: Service Pattern
-    - All methods accept addon instance as first parameter
-    - No direct state storage, uses addon.db
-    - Provides utilities for slash commands
-============================================================================]]
+--[[
+    Warband Nexus - Debug Service
+    Slash-command helpers: debug logging, bank probes, and forced scans.
+]]
 
 local addonName, ns = ...
 local issecretvalue = issecretvalue

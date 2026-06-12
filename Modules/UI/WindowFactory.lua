@@ -1,18 +1,7 @@
 --[[
     Warband Nexus - Window Factory
-    
-    Unified external window/dialog system with modern UI conventions.
-    
-    Provides:
-    - Standardized dialog/popup creation
-    - Duplicate prevention
-    - Draggable headers
-    - Click outside to close
-    - ESC key to close
-    - Modern styling with borders
-    - Close button with icon
-    
-    Canonical implementation (SharedWidgets retains CreateContainer / ApplyVisuals; duplicate dialog builder was removed from SharedWidgets).
+    External dialog/popup builder (draggable header, ESC/outside close, duplicate guard).
+    Canonical path; SharedWidgets keeps CreateContainer / ApplyVisuals only.
 ]]
 
 local ADDON_NAME, ns = ...

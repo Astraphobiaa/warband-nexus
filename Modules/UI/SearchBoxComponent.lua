@@ -1,16 +1,8 @@
 --[[
-    Warband Nexus - Search Box Component
-    
-    Reusable search box with icon, placeholder, and debounced callback.
+    Search box with icon, placeholder, debounced callback, and SearchStateManager registry.
 
     WN_FACTORY: Outer shell uses `Factory:CreateContainer` when available (`ApplyVisuals` on same frame); EditBox stays a native widget.
-    
-    Standard UX (all tabs):
-    - Typing updates the EditBox only; list redraw runs after SEARCH_DEBOUNCE_SEC idle (default 0.45s).
-    - Focus lost flushes a pending search immediately.
-    - ESC clears and applies an empty filter immediately.
-
-    Extracted from SharedWidgets.lua; SharedWidgets no longer duplicates this widget.
+    Debounce SEARCH_DEBOUNCE_SEC (default 0.45s); focus lost flushes pending; ESC clears filter.
 ]]
 
 local ADDON_NAME, ns = ...

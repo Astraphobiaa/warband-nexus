@@ -677,7 +677,6 @@ function WarbandNexus:DrawPlansTab(parent)
         ns.expandedCards = {}
     end
     
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for action buttons =====
     local activePlanCount = self:GetActiveNonDailyIncompleteCount()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -1047,7 +1046,6 @@ function WarbandNexus:DrawPlansTab(parent)
         self._plansEventRegistered = true
     end
     
-    -- ===== CATEGORY BUTTONS (in fixedHeader - non-scrolling) =====
     local categoryBar = ns.UI.Factory:CreateContainer(headerParent, nil, nil, false)
     categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
     categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
@@ -1219,7 +1217,6 @@ function WarbandNexus:DrawPlansTab(parent)
 
     local yOffset = scrollTopY
 
-    -- ===== SEARCH BAR FOR MY PLANS (active tab only) =====
     if currentCategory == "active" then
         local searchBar = ns.UI.Factory:CreateContainer(parent, nil, 32, false)
         local padH = PlansContentPadH()
@@ -1312,7 +1309,6 @@ function WarbandNexus:DrawPlansTab(parent)
         yOffset = yOffset + searchH + GetLayout().afterElement
     end
 
-    -- ===== CONTENT AREA =====
     if currentCategory == "active" or currentCategory == "daily_tasks" then
         yOffset = self:DrawActivePlans(parent, yOffset, width, currentCategory)
     else
@@ -1481,7 +1477,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local ROW_H = GetLayout().rowHeight
     local expandedGroups = ns.UI_GetExpandedGroups and ns.UI_GetExpandedGroups() or {}
 
-    -- ===== WEEKLY RESET TIMER BAR =====
     -- Persistent across repaints (same pattern as the Characters gold trio):
     -- the bar + its children used to be recreated and binned on every Plans paint.
     local padH = PlansContentPadH()
@@ -1557,7 +1552,6 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     resetBar:Show()
     yOffset = yOffset + resetBarH + 6
 
-    -- ===== PER-CHARACTER DETAIL SECTIONS (collapsible: character + categories) =====
     local Factory = ns.UI.Factory
     local SECTION_COLLAPSE_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     local sectionSpacing = (GetLayout().SECTION_SPACING) or 8
@@ -2135,7 +2129,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         return yOffset + height + 10
     end
     
-    -- === 2-COLUMN CARD GRID (same column math + chrome as Browse — ns.UI_PlansCardGridColumnWidth) ===
     local PCM = ns.UI_PLANS_CARD_METRICS
     local gridW = ResolvePlansContentWidth(parent, width)
     local cardWidth, cardSpacing, gridPadH
@@ -2167,7 +2160,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         local plan = plans[i]
         local progress = self:GetResolvedPlanProgress(plan)
         
-        -- === WEEKLY VAULT PLANS (Full Width Card via Factory) ===
         if plan.type == "weekly_vault" then
             local weeklyCardHeight = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, gridW)) or 174
 
@@ -2203,7 +2195,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             card:Show()
         
-        -- === DAILY QUEST PLANS (Single Full-Width Card, vault-style) ===
         elseif plan.type == "daily_quests" then
             local questCardHeight = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, gridW)) or 174
 
@@ -2233,7 +2224,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card:Show()
         
         else
-            -- === REGULAR PLANS: unified expandable row (fixed header; expand for full criteria/sources) ===
             local listCardWidth = cardWidth
             local col = (regularCountBefore[i] or 0) % 2
             local planComplete = memoIsActivePlanComplete(plan)
@@ -3707,7 +3697,6 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         parent:SetClipsChildren(false)
     end
 
-    -- === 2-COLUMN CARD GRID (metrics match To-Do expandable rows — SharedWidgets ns.UI_PLANS_CARD_METRICS) ===
     local PCM = ns.UI_PLANS_CARD_METRICS
     local gridW = ResolvePlansContentWidth(parent, width)
     -- `parent` is the browse results container (already inset to match the search bar).

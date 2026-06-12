@@ -1,15 +1,6 @@
 --[[
-    Warband Nexus - Formatting Helpers
-    
-    Common formatting utilities for numbers, money, and text processing.
-    
-    Provides:
-    - Number formatting with thousand separators
-    - Money formatting (gold/silver/copper with icons)
-    - Text number auto-formatting
-    - Legacy gold formatting
-    
-    SharedWidgets no longer duplicates these; load order: FormatHelpers → SharedWidgets (.toc).
+    Warband Nexus - Format Helpers
+    Number/money/text formatters; load before SharedWidgets (.toc).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -22,11 +13,6 @@ local find = string.find
 local sub = string.sub
 local insert = table.insert
 local gmatch = string.gmatch
-
---- Trim trailing colon/spaces from a UI label and append a consistent ` … : ` separator.
---- Used for plan/source lines (Drop / Location / Vendor) so colon has balanced spaces.
----@param label string|nil
----@return string
 local function NormalizeColonLabelSpacing(label)
     if label == nil then return "" end
     if type(label) ~= "string" then
@@ -40,22 +26,11 @@ local function NormalizeColonLabelSpacing(label)
     trimmed = trimmed:gsub("%s*:%s*$", "")
     return trimmed .. " : "
 end
-
---- 0-1 RGB to a "|cffRRGGBB" escape. Single home for the inline color-prefix
---- pattern that Collections detail panels were each rebuilding by hand.
----@param r number
----@param g number
----@param b number
----@return string
 function ns.UI_RGBToHex(r, g, b)
     return format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
 end
 
 -- NUMBER FORMATTING
-
----Format gold amount with separators and icon (legacy - simple gold display)
----@param copper number Total copper amount
----@return string Formatted gold string with icon
 local function FormatGold(copper)
     local gold = floor((copper or 0) / 10000)
     local goldStr = tostring(gold)
@@ -66,10 +41,6 @@ local function FormatGold(copper)
     end
     return goldStr .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
 end
-
----Format number with thousand separators (e.g., 1.234.567)
----@param number number Number to format
----@return string Formatted number string with dots as thousand separators
 local function FormatNumber(number)
     if not number or number == 0 then return "0" end
     
@@ -96,10 +67,6 @@ local function FormatNumber(number)
     
     return formatted
 end
-
----Format all numbers in text with thousand separators (e.g., "Get 50000 kills" -> "Get 50.000 kills")
----@param text string Text containing numbers
----@return string Text with all numbers formatted
 local function FormatTextNumbers(text)
     if not text or text == "" then return text end
     if issecretvalue and issecretvalue(text) then return text end
@@ -144,12 +111,6 @@ local function FormatTextNumbers(text)
 end
 
 -- MONEY FORMATTING
-
----Format money with gold, silver, and copper
----@param copper number Total copper amount
----@param iconSize number|nil Icon size (optional, default 14)
----@param showZero boolean|nil Show zero values (optional, default false)
----@return string Formatted money string with colors and icons
 local function FormatMoney(copper, iconSize, showZero)
     -- Validate and sanitize inputs
     copper = tonumber(copper) or 0
@@ -206,14 +167,6 @@ local CC_CAP_VAL  = "|cffb4bcc8"
 local CC_MUTED    = "|cff7a8494"
 local CC_SEP      = "|cff5c6570"
 local EM_DASH_U   = "\226\128\148"
-
----@param cd table|nil GetCurrencyData result (quantity, maxQuantity, totalEarned, seasonMax)
----@return string Colored amount text for FontString:SetText
----Three-segment season-progress format: `<current> · <earned> / <cap>`
----  current = bag balance (cd.quantity)             — white
----  earned  = season totalEarned (cd.totalEarned)   — green if room left, red if capped
----  cap     = season cap (cd.seasonMax/maxQuantity) — muted
----Falls back to current/cap when totalEarned is missing, or just current when no cap exists.
 local function FormatSeasonProgressCurrencyLine(cd)
     if ns.Utilities and ns.Utilities.FormatCurrencySeasonProgressLine then
         return ns.Utilities.FormatCurrencySeasonProgressLine(cd)
@@ -246,7 +199,6 @@ end
 -- Default view: current bag balance only, colored by cap state (open=green, capped=red).
 -- Hold Shift: expanded "<bag> \194\183 <earned> / <cap>" view, same color rule.
 -- Bindings auto-refresh on MODIFIER_STATE_CHANGED. Weak keys so retired FontStrings GC cleanly.
-
 local function ResolveSeasonCapState(cd)
     if not cd then return 0, 0, 0, false end
     local qty = tonumber(cd.quantity) or 0
@@ -257,7 +209,6 @@ local function ResolveSeasonCapState(cd)
     local capped = (cap > 0) and (progress >= cap)
     return qty, progress, cap, capped
 end
-
 local function FormatSeasonProgressShiftAware(cd, expanded, compactRemainingOnly)
     if not cd then return CC_MUTED .. "0|r" end
     local qty, progress, cap, capped = ResolveSeasonCapState(cd)
@@ -285,7 +236,6 @@ local function FormatSeasonProgressShiftAware(cd, expanded, compactRemainingOnly
     if qty > 0 then return CC_AMOUNT .. FormatNumber(qty) .. "|r" end
     return CC_MUTED .. EM_DASH_U .. "|r"
 end
-
 local function ResolveSeasonBinding(entry)
     if type(entry) == "table" and entry.cd ~= nil then
         return entry.cd, entry.compactShift == true
@@ -295,7 +245,6 @@ end
 
 local _seasonAmountBindings = setmetatable({}, { __mode = "k" })
 local _seasonAmountWatcher
-
 local function EnsureSeasonAmountWatcher()
     if _seasonAmountWatcher then return end
     _seasonAmountWatcher = CreateFrame("Frame")
@@ -311,12 +260,6 @@ local function EnsureSeasonAmountWatcher()
         end
     end)
 end
-
----Bind a FontString to a currency-data object so it shows current-only by default
----and current\194\183earned/cap when Shift is held. Handles refresh on shift toggle.
----@param fs FontString
----@param cd table|nil
----@param opts table|nil { compactShift = boolean } table cells: Shift shows remaining-to-cap only
 local function BindSeasonProgressAmount(fs, cd, opts)
     if not fs or not fs.SetText then return end
     EnsureSeasonAmountWatcher()
@@ -324,13 +267,9 @@ local function BindSeasonProgressAmount(fs, cd, opts)
     _seasonAmountBindings[fs] = { cd = cd, compactShift = compact }
     fs:SetText(FormatSeasonProgressShiftAware(cd, IsShiftKeyDown() and true or false, compact))
 end
-
----Remove shift-aware binding so a reused FontString stops tracking stale currency data.
 local function UnbindSeasonProgressAmount(fs)
     if fs then _seasonAmountBindings[fs] = nil end
 end
-
----Update binding (e.g. on data refresh) and re-render with current shift state.
 local function RefreshSeasonProgressAmount(fs, cd, opts)
     if not fs or not fs.SetText then return end
     local compact = opts and opts.compactShift == true

@@ -1,36 +1,7 @@
 --[[
-    Warband Nexus - Currency Cache Service (v3.0 - Lean SV + On-Demand Metadata)
-    
-    ARCHITECTURE: Direct AceDB + Synchronous FIFO Queue + On-Demand Metadata
-    
-    Single merged snapshot for all UI (READ-ONLY; do not mutate entries):
-    WarbandNexus:GetCurrenciesForUI()  ->  [currencyID] = { name, icon, chars = {...}, ... }
-    Quantities come only from AceDB (writers: PerformFullScan, UpdateSingleCurrency). No C_CurrencyInfo in the merge path.
-    Metadata (name, icon, caps, split flags) is session RAM via ResolveCurrencyMetadata (one API hit per cold ID).
-    Rebuilt when InvalidateCurrenciesForUICache / WN_CURRENCY_* / character / money bumps the merge generation.
-    Consumers: Currency tab (CurrencyUI), Gear upgrade strip (GearService:GetGearUpgradeCurrenciesFromDB), PvE delve columns (PvEUI).
-    
-    SV Format (minimal — only data that can't be fetched from API for offline chars):
-    {
-      version = "2.0.0",
-      lastScan = timestamp,
-      currencies = {
-        [charKey] = {
-          [currencyID] = quantity,   -- just a number!
-        }
-      },
-      headers = { ... },  -- UI grouping structure
-    }
-    
-    Metadata (name, icon, maxQuantity, isAccountWide, description, etc.) is ALWAYS
-    fetched on-demand from C_CurrencyInfo.GetCurrencyInfo() and cached in session-only
-    RAM (bounded, FIFO eviction). Never persisted to SV.
-    
-    Data Flow:
-    1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
-    2) DrainCurrencyQueue() table.remove FIFO until empty (handles bursts + nested events)
-    3) UpdateSingleCurrency: API → store quantity in DB → gain detection → fire lean event
-    4) UI calls GetCurrencyData (per-char DB) or GetCurrenciesForUI (merged read model: DB quantities + cached metadata; no live merge API).
+    Warband Nexus - Currency Cache Service
+    Lean per-character quantity cache; metadata from C_CurrencyInfo on demand.
+    Emits WN_CURRENCY_UPDATED and WN_CURRENCY_GAINED after writes.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -40,17 +11,12 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 -- Midnight 12.0+: GUIDs from APIs may be secret — never compare or substring without guarding.
 local issecretvalue = issecretvalue
 
----@param name any
----@return boolean
 local function IsUsableCurrencyName(name)
     if name == nil or name == "" then return false end
     if issecretvalue and issecretvalue(name) then return false end
     return true
 end
 
----@param currencyID number
----@param nameFallback string|nil
----@return string
 local function CurrencyNameForLogic(currencyID, nameFallback)
     if IsUsableCurrencyName(nameFallback) then
         return nameFallback
@@ -59,8 +25,6 @@ local function CurrencyNameForLogic(currencyID, nameFallback)
 end
 
 ---Tracker / meta rows in the currency list (not player-facing gains).
----@param nm string|nil
----@return boolean
 local function IsTrackerMetaCurrencyName(nm)
     if not nm or nm == "" then return false end
     if issecretvalue and issecretvalue(nm) then return false end
@@ -191,8 +155,6 @@ end
 ---Some capped currencies report (max + current); we want display = current on hand.
 
 ---Coffer Key Shards: ID drifts by patch — detect by localized name only.
----@param info table|nil C_CurrencyInfo.GetCurrencyInfo result
----@return boolean
 local function IsCofferKeyShardByApiInfo(info)
     if not info or not info.name then return false end
     local nm = info.name
@@ -203,9 +165,6 @@ end
 
 ---Season-style UI: Blizzard marks progress-style currencies with useTotalEarnedForMaxQty.
 ---No hardcoded currency ID lists — new 12.0.x currencies work when the API sets these flags.
----@param currencyID number
----@param info table|nil C_CurrencyInfo.GetCurrencyInfo result
----@return boolean
 local function IsSeasonProgressSplitCurrency(currencyID, info)
     if not info then return false end
     if info.isHeader then return false end
@@ -217,9 +176,6 @@ end
 --- Prefer maxQuantity when set (Blizzard's season cap for Dawncrests/shards). Some currencies
 --- expose only maxWeeklyQuantity for the same cap — if we leave seasonMax nil, UI falls back to
 --- weekly branch and treats bag qty 0 as "not capped" → wrong green for capped Coffer Key Shards.
----@param currencyID number
----@param info table C_CurrencyInfo.GetCurrencyInfo result
----@return number|nil
 local function SeasonMaxFromSplitCurrencyInfo(currencyID, info)
     if not info or not IsSeasonProgressSplitCurrency(currencyID, info) then return nil end
     local maxQ = tonumber(info.maxQuantity) or 0
@@ -234,8 +190,6 @@ local function SeasonMaxFromSplitCurrencyInfo(currencyID, info)
 end
 
 --- Safe tonumber for C_CurrencyInfo fields (Midnight may return secret values).
----@param v any
----@return number|nil
 local function SafeCurrencyNumber(v)
     if v == nil then return nil end
     if issecretvalue and issecretvalue(v) then return nil end
@@ -243,8 +197,6 @@ local function SafeCurrencyNumber(v)
 end
 
 --- Legacy global (if present): earned-this-week may differ from structured API on some builds.
----@param currencyID number
----@return number|nil
 local function LegacyEarnedThisWeekFromGlobal(currencyID)
     local gf = rawget(_G, "GetCurrencyInfo")
     if type(gf) ~= "function" then return nil end
@@ -257,9 +209,6 @@ end
 --- Progress for Season line + cap color.
 --- Coffer Key Shards: Blizzard "Weekly Maximum" uses quantityEarnedThisWeek; totalEarned may be 0, wrong, or secret
 --- while useTotalEarnedForMaxQty is true — must not stop at totalEarned only.
----@param currencyID number
----@param info table C_CurrencyInfo.GetCurrencyInfo result
----@return number|nil
 local function ProgressEarnedFromCurrencyInfo(currencyID, info)
     if not info then return nil end
     local te = SafeCurrencyNumber(info.totalEarned)
@@ -307,10 +256,6 @@ local function ProgressEarnedFromCurrencyInfo(currencyID, info)
 end
 
 ---When quantity > maxQuantity we treat as (cap + current) and use quantity - cap.
----@param rawQuantity number|nil
----@param maxQuantity number|nil
----@param useTotalEarnedForMaxQty boolean|nil (unused; kept for API compatibility)
----@return number
 local function NormalizeQuantity(rawQuantity, maxQuantity, useTotalEarnedForMaxQty)
     local quantity = tonumber(rawQuantity) or 0
     local cap = tonumber(maxQuantity) or 0
@@ -326,9 +271,6 @@ end
 --- Cap for NormalizeQuantity (strip Blizzard "cap + held" encoding when quantity > cap).
 --- Coffer Key Shards: bag quantity is literal; maxWeeklyQuantity is weekly earn cap only —
 --- using it as normCap turns e.g. 1625 into 1025 when weekly max is 600.
----@param currencyID number
----@param info table C_CurrencyInfo.GetCurrencyInfo result
----@return number
 local function NormalizationCapFromCurrencyInfo(currencyID, info)
     if not info then return 0 end
     local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
@@ -346,7 +288,6 @@ end
 -- DB ACCESS (Direct - No RAM cache)
 
 ---Get direct reference to currency DB
----@return table|nil DB reference
 local function GetDB()
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
         return nil
@@ -453,8 +394,6 @@ end
 -- ON-DEMAND METADATA RESOLVER (Session RAM only)
 
 ---Resolve currency metadata from WoW API (cached in session RAM, never persisted).
----@param currencyID number
----@return table|nil { name, icon, maxQuantity, isAccountWide, isAccountTransferable, description, quality, normalizationCap, isSeasonProgressSplit, isCofferKeyShard, ... }
 local function ResolveCurrencyMetadata(currencyID)
     if not currencyID or currencyID == 0 then return nil end
     
@@ -677,8 +616,6 @@ end
 ---Fetch live currency info from WoW API (used for scans and event processing).
 ---Returns a lightweight table with quantity + fields needed for internal logic.
 ---Metadata (name, icon, etc.) is NOT persisted — see ResolveCurrencyMetadata.
----@param currencyID number Currency ID
----@return table|nil { currencyID, quantity, name, isDiscovered, isAccountWide, isAccountTransferable }
 local function FetchCurrencyFromAPI(currencyID)
     if not currencyID or currencyID == 0 then return nil end
     if not C_CurrencyInfo then return nil end
@@ -726,9 +663,6 @@ end
 local CROSS_SOURCE_CHAT_DEDUP_SEC = 1.25
 local lastCurrencyGainChatByID = {} -- [currencyID] = { t = number, amount = number, source = string }
 
----@param currencyData table FetchCurrencyFromAPI result row
----@param gainSource string|"quantity"|"progress"
----@return boolean wouldHaveSent True if not blocked by tracker deny-list
 local function DispatchCurrencyGainChat(currencyID, currencyData, gainAmount, gainSource)
     if not currencyData or gainAmount <= 0 then return false end
     if CurrencyCache.suppressCurrencyGainChatUntilScan then
@@ -777,11 +711,6 @@ end
 
 ---Merge API quantity with CURRENCY_DISPLAY_UPDATE payload when the client API is one frame stale
 ---(multi-currency loot: first ID updates, second still reads old values from GetCurrencyInfo).
----@param oldQuantity number
----@param apiQuantity number
----@param eventHint table|nil { absQuantity?, quantityChange? }
----@return number newQuantity
----@return boolean usedHint
 local function MergeCurrencyQuantityWithEventHint(oldQuantity, apiQuantity, eventHint)
     local n = tonumber(apiQuantity) or 0
     if not eventHint then return n, false end
@@ -801,9 +730,6 @@ end
 
 ---Update a single currency in DB for current character.
 ---SV stores only quantity (number). Metadata comes from ResolveCurrencyMetadata on-demand.
----@param currencyID number Currency ID to update
----@param eventHint table|nil optional { absQuantity?, quantityChange? } from CURRENCY_DISPLAY_UPDATE
----@return boolean success True if updated successfully
 local function UpdateSingleCurrency(currencyID, eventHint)
     if not currencyID or currencyID == 0 then return false end
     
@@ -920,10 +846,6 @@ end
 ---PRE: header at `headerIndex` is visible and collapsed. All sub-headers
 ---     within it are collapsed too (from the initial CollapseAll pass).
 ---POST: header at `headerIndex` is collapsed again.
----@param headerIndex number List index of the header to scan
----@param depth number Current depth (0 = root)
----@param currencyDataCollector table Array that receives FetchCurrencyFromAPI results
----@return table|nil headerNode { name, depth, currencies = {id,...}, children = {node,...} }
 local function ScanHeaderNode(headerIndex, depth, currencyDataCollector)
     local hInfo = C_CurrencyInfo.GetCurrencyListInfo(headerIndex)
     if not hInfo or not hInfo.isHeader then return nil end
@@ -1008,8 +930,6 @@ end
 
 ---Build the full currency hierarchy from the Blizzard API.
 ---Uses collapse-all / expand-one-at-a-time to discover parent→child links.
----@return table roots Array of root header nodes (tree)
----@return table currencyDataArray Array of { currencyID, quantity, ... }
 local function BuildHierarchyFromAPI()
     if not C_CurrencyInfo then return {}, {} end
 
@@ -1087,8 +1007,6 @@ end
 -- HEADER MERGE (accumulate currency IDs across character scans)
 
 ---Build a flat lookup: headerName → set of currency IDs from a header tree
----@param headers table Array of header nodes (tree or flat)
----@return table { [headerName] = { [currencyID] = true } }
 local function BuildOldCurrencyLookup(headers)
     local lookup = {}
     local hdrs = headers or {}
@@ -1114,8 +1032,6 @@ local function BuildOldCurrencyLookup(headers)
 end
 
 ---Merge old currency IDs into a new header tree (preserves IDs from prior scans)
----@param newHeaders table New header tree (roots)
----@param oldLookup table From BuildOldCurrencyLookup
 local function MergeOldCurrencyIDs(newHeaders, oldLookup)
     for i = 1, #newHeaders do
         local h = newHeaders[i]
@@ -1269,8 +1185,6 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
 end
 
 ---Update all currencies in DB (lean format: only quantity per currency).
----@param currencyDataArray table Array of { currencyID, quantity, ... } from FetchCurrencyFromAPI
----@return boolean success
 function CurrencyCache:UpdateAll(currencyDataArray)
     if not currencyDataArray or #currencyDataArray == 0 then
         return false
@@ -1455,9 +1369,6 @@ end
 ---Handle CURRENCY_DISPLAY_UPDATE event (FIFO queue + synchronous drain)
 ---Event payload (Retail): currencyType, quantity, quantityChange, quantityGainSource, destroyReason
 ---When multiple currencies drop in one moment, GetCurrencyInfo can lag; pass quantity/quantityChange through.
----@param currencyType number|nil Currency type/ID
----@param quantity number|nil Post-update quantity hint from the event
----@param quantityChange number|nil Delta from the event (authoritative when API is stale)
 local function OnCurrencyUpdate(currencyType, quantity, quantityChange, quantityGainSource, destroyReason)
     local P = ns.Profiler
     local t0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
@@ -1495,9 +1406,6 @@ end
 ---Get currency data for a specific currency.
 ---Combines SV quantity (per-char) + on-demand metadata from API.
 ---Current character: always prefers live API quantity so UI never shows stale/dummy SV.
----@param currencyID number Currency ID
----@param charKey string|nil Character key (defaults to current character)
----@return table|nil { currencyID, quantity, name, icon, iconFileID, maxQuantity, isAccountWide, ... }
 function WarbandNexus:GetCurrencyData(currencyID, charKey)
     if not currencyID or currencyID == 0 then return nil end
     
@@ -1625,8 +1533,6 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
 end
 
 --- Live API: blended season/weekly progress (matches FetchCurrencyFromAPI totalEarned semantics).
----@param currencyID number
----@return number|nil
 function WarbandNexus:GetCurrencyProgressEarnedFromAPI(currencyID)
     if not currencyID or not C_CurrencyInfo then return nil end
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
@@ -1640,17 +1546,11 @@ function WarbandNexus:GetCurrencyProgressEarnedFromAPI(currencyID)
 end
 
 ---Normalize any character key representation to a comparable form.
----@param key string|nil
----@return string
 local function NormalizeCharKey(key)
     return (key and tostring(key):gsub("%s+", "")) or ""
 end
 
 ---Resolve the best matching currency bucket for a character from DB, handling legacy key formats.
----@param allCurrencies table|nil
----@param rawCharKey string|nil
----@param canonicalKey string|nil
----@return table|nil
 local function ResolveCharCurrencyBucket(allCurrencies, rawCharKey, canonicalKey)
     if type(allCurrencies) ~= "table" then return nil end
     if canonicalKey and allCurrencies[canonicalKey] then
@@ -1678,8 +1578,6 @@ end
 
 ---Get all cached currency data for a character (lean format from SV).
 ---Returns { [currencyID] = quantity } map.
----@param charKey string|nil Character key (defaults to current character)
----@return table { [currencyID] = quantity }
 function WarbandNexus:GetAllCurrencyData(charKey)
     if not charKey then
         charKey = CurrencySubsidiaryKey(nil)
@@ -1815,7 +1713,6 @@ end
 ---Get all currencies in UI format: [currencyID] = { name, icon, maxQuantity, chars = { [key] = qty, ... } }.
 ---Per-character `chars` may list the same quantity under both SV row key (e.g. GUID) and Name-Realm so UI row keys always resolve.
 ---Read-only merged view: rebuilt from AceDB when invalidated; metadata from ResolveCurrencyMetadata (session RAM).
----@return table { [currencyID] = { name, icon, value, chars = { [key] = quantity } } }
 function WarbandNexus:GetCurrenciesForUI()
     local db = GetDB()
     if not db then return {} end
@@ -1850,7 +1747,6 @@ function WarbandNexus:ClearCurrencyCache()
 end
 
 ---Clear currency data for current character only
----@param clearDB boolean Also clear SavedVariables
 function CurrencyCache:Clear(clearDB)
     if clearDB then
         local db = GetDB()
@@ -2018,7 +1914,6 @@ end
 
 ---Synchronize a specific currency or all known currencies across all characters using the C_CurrencyInfo API.
 ---This function sets up the asynchronous fetch from the server.
----@param specificCurrencyID number|nil If provided, only this currency will be synced.
 function CurrencyCache:SyncAccountCurrencies(specificCurrencyID)
     ns.DebugPrint("SyncAccountCurrencies requesting data from server...")
     

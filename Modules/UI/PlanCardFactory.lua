@@ -910,7 +910,6 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         end
         
         -- Always respect shouldCollapse if expand button exists
-        -- This ensures that after expand->collapse, we show only first source
         -- FORCE collapse if expand button exists and not expanded
         if card._sourceExpandButton and not isExpanded then
             -- Expand button exists and collapsed - MUST show only first source
@@ -1734,7 +1733,6 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     self:SetupAchievementExpandHandler(card, plan)
     
     -- Restore expanded state if card was previously expanded
-    -- This ensures UI matches the persisted state after window resize or layout recalculation
     if card.isExpanded then
         local achievementID = plan.achievementID
         if achievementID then
@@ -1986,7 +1984,6 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     end
     
     -- Information text is now updated in card.infoText directly (not in expandedContent)
-    -- This ensures it's shown/hidden correctly on expand/collapse
     local contentY = 0
     
     -- Criteria grid: max 2 columns when wide, 1 column when narrow
@@ -2797,23 +2794,6 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
     card._sourceExpandButton = expandButton
 end
 
---[[
-    Setup generic expand handler for achievement cards only
-    NOTE: This is now handled by SetupAchievementExpandHandler
-    This function is kept for backward compatibility but does nothing
-]]
-function PlanCardFactory:SetupExpandHandler(card, plan, planType, anchorFrame)
-    -- Only Achievement cards have expand functionality
-    -- But this is now handled by SetupAchievementExpandHandler
-    -- This function is kept for backward compatibility
-    if planType ~= "achievement" then
-        return
-    end
-end
-
---[[
-    Expand card content based on type
-]]
 function PlanCardFactory:ExpandCardContent(card, planType)
     local expandedContent = card.expandedContent
     if not expandedContent then return end

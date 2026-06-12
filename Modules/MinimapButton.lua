@@ -1,12 +1,6 @@
 --[[
     Warband Nexus - Minimap Button Module
-    LibDBIcon integration for easy access
-    
-    Features:
-    - Click to toggle main window
-    - Right-click for quick menu
-    - Tooltip with summary info
-    - Draggable icon position
+    LibDBIcon broker for toggle, right-click menu, and draggable position.
 
     WN_NONUI_UI: `shiftPollFrame` (+ LibDBIcon) owns hidden polling/event frames; unrelated to SharedWidgets tabs.
 ]]
@@ -222,10 +216,6 @@ function WarbandNexus:InitializeMinimapButton()
     end
 end
 
---[[
-    Show/hide minimap button
-    @param show boolean - True to show, false to hide
-]]
 function WarbandNexus:SetMinimapButtonVisible(show)
     if not LDBI then return end
     

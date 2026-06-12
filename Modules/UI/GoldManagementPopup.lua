@@ -1,15 +1,6 @@
 --[[
     Warband Nexus - Gold Management Popup
-    
-    Provides a UI for configuring automatic gold management between character and warband bank.
-    
-    Features:
-    - Deposit: Keep X gold on character, deposit excess to warband bank
-    - Withdraw: Keep X gold on character, withdraw from warband bank if below
-    - Both: Automatically maintain X gold on character (deposit/withdraw as needed)
-    
-    NOTE: WoW does NOT provide API functions to move gold programmatically.
-    This feature MONITORS gold and NOTIFIES the user when action is needed.
+    Configures deposit/withdraw targets; monitors balances and notifies (no API to move gold).
 ]]
 
 local ADDON_NAME, ns = ...

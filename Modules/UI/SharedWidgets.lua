@@ -1532,24 +1532,7 @@ function ns.UI_FormatUpgradeTrackMarkup(englishName, displayText, fallbackQualit
     return "|cff" .. hex .. displayText .. "|r"
 end
 
--- FACTORY PATTERN (Service-Oriented Architecture)
---[[
-    Phase 1: Foundation - Factory Pattern Implementation
-    
-    The Factory pattern centralizes UI component creation and provides:
-    - Standardized access to Layout and Theme constants
-    - Type-safe widget creation methods
-    - Eliminates load-order issues from file-level caching
-    
-    Architecture:
-    - ns.UI.Factory: Main factory object for creating widgets
-    - ns.UI.Layout: Runtime-accessible layout constants (replaces UI_SPACING)
-    - ns.UI.Theme: Runtime-accessible theme colors (replaces COLORS)
-    
-    Migration Strategy:
-    - New code: Use ns.UI.Factory methods
-    - Legacy code: Backward compatible via ns.UI_* exports
-]]
+-- Factory: ns.UI.Factory, ns.UI.Layout, ns.UI.Theme (runtime refs to UI_SPACING / COLORS).
 
 -- Factory namespace (also initialized at file top for mid-file Factory methods).
 ns.UI = ns.UI or {}

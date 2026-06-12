@@ -489,7 +489,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         if charKey then charLookup[charKey] = char end
     end
     
-    -- Helper function to build reputation object from cached data
     local function BuildReputationObject(cachedData)
         return {
             -- Core
@@ -648,8 +647,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         end
     end
     
-    -- v2.0.0: FIRST - Build parent-child relationships (BEFORE building header groups!)
-    -- This ensures subfactions array is populated when we reference it
+    -- v2.0.0: build parent-child relationships before header groups
     local childCount = 0
     
     for factionID, entry in pairs(factionMap) do
@@ -1487,7 +1485,6 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
     
-    -- Helper function to get header icon
     local function GetHeaderIcon(headerName)
         if not headerName or headerName == "" then
             return "Interface\\Icons\\Achievement_Reputation_01"

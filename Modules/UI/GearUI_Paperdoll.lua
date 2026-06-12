@@ -151,7 +151,6 @@ local CURRENCY_PAPERDOLL_GAP = 14  -- gap between crest panel and paperdoll
 local LEFT_PANEL_W   = TRACK_TEXT_W + ARROW_TO_TEXT_GAP + STATUS_TEXT_WARD_W + SLOT_TO_ARROW_GAP + SLOT_SIZE
 local RIGHT_PANEL_W  = SLOT_SIZE + SLOT_TO_ARROW_GAP + STATUS_TEXT_WARD_W + 2 + ARROW_TO_TEXT_GAP + TRACK_TEXT_W
 local MODEL_W       = P(262)
---- Inner 3D portrait viewport: tiled fill only (`paperChrome` is clip host — no extra border).
 local GEAR_MODEL_VIEWPORT_BACKDROP = {
     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
     tile = true,
@@ -159,11 +158,6 @@ local GEAR_MODEL_VIEWPORT_BACKDROP = {
     insets = { left = 0, right = 0, top = 0, bottom = 0 },
 }
 
----@param parent Frame
----@param width number
----@param height number
----@param accent table|nil
----@return Frame
 local function CreateGearSubpanel(parent, width, height, accent)
     local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     f:SetSize(width or 100, height or 100)
@@ -182,7 +176,6 @@ local function ApplyGearModelViewportFill(frame)
     frame:SetBackdropColor(bg[1], bg[2], bg[3], (bg[4] or 1) * 0.95)
 end
 
---- Row striping inside sub-cards: subtle lift on bgCard (avoid viewport-gray slabs).
 local function GearPanelRowBgColor(zebra)
     local base = COLORS.bgCard or COLORS.bg or { 0.118, 0.118, 0.145, 0.98 }
     local lift = (zebra % 2 == 0) and 0.014 or 0.005
@@ -199,18 +192,11 @@ local PAPERDOLL_COL_INSET = 4
 local PAPER_TRACK_EDGE_PAD = 12
 local MAX_PAPER_MODEL_BOOST = 48
 
---- Right edge of right-column track labels (CENTER anchor + LEFT justify within TRACK_TEXT_W).
----@param baseX number
----@param modelW number
----@return number contentRightX
 local function GearPaperdollContentRightX(baseX, modelW)
     local rightX = baseX + LEFT_PANEL_W + CENTER_GAP + modelW + CENTER_GAP
     return rightX + SLOT_HALF + TEXT_OFFSET_FROM_SLOT_CENTER + math.ceil(TRACK_TEXT_W * 0.5) + PAPER_TRACK_EDGE_PAD
 end
 
----@param modelW number
----@param baseX number|nil
----@return number columnWidth
 local function GearPaperdollColumnWidth(modelW, baseX)
     local bx = baseX or PAPERDOLL_COL_INSET
     return math.ceil(GearPaperdollContentRightX(bx, modelW) + PAPERDOLL_COL_INSET)
@@ -252,11 +238,6 @@ local function ComputeGearLayoutWidths(cardInnerW, recEnabled)
     return paperW, math.max(0, inner - paperW)
 end
 
---- Body zones: single row paperdoll (left) | recommendations (right).
----@param card Frame
----@param layout table
----@param panelTopY number
----@param recEnabled boolean
 local function EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if not card or not layout then return end
     if not layout.bodyHost then
@@ -339,12 +320,6 @@ local function EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     end
 end
 
---- Stretch top row: paperdoll | recommendations (equal height, header-aligned insets).
----@param card Frame
----@param layout table
----@param panelTopY number
----@param recEnabled boolean
----@return number|nil storageW measured recommendations column width
 local function RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if not card or not layout then return nil end
     EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled == true)
@@ -543,12 +518,6 @@ local function RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     return storageW
 end
 
---- Vertically center the slot columns inside the paperdoll top band.
----@param paperZoneH number|nil
----@param maxRows number
----@param anchorY number|nil
----@param extraTopInset number|nil
----@return number startY
 local function ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extraTopInset)
     local rowStep = SLOT_SIZE + SLOT_GAP
     local columnH = (maxRows - 1) * rowStep + SLOT_SIZE
@@ -557,10 +526,6 @@ local function ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extr
     return (tonumber(anchorY) or 0) - padTop - (tonumber(extraTopInset) or 0)
 end
 
---- Model viewport backdrop only (must stay behind slots/track labels, not over the paper band).
----@param chrome Frame|nil
----@param modelHost Frame|nil
----@param cardRef Frame|nil
 local function AnchorGearPaperChromeBehindModel(chrome, modelHost, cardRef)
     if not chrome then return end
     if not modelHost or not modelHost.IsShown or not modelHost:IsShown() then
@@ -581,9 +546,6 @@ local function AnchorGearPaperChromeBehindModel(chrome, modelHost, cardRef)
     end
 end
 
---- Re-anchor paperdoll slots + center model after live resize (DrawPaperDollInCard positions are fixed at paint time).
----@param card Frame
----@param layout table
 local function RelayoutGearPaperdollInCard(card, layout)
     if not card or not layout then return end
     local slotList = card._gearSlotInspectList
@@ -703,12 +665,6 @@ local function ResolveGearTabCardInnerWidth(scrollChildW)
     return GetGearTabMinCardInnerW()
 end
 
---- Stretch gear card across scroll child; horizontal scroll when inner width exceeds viewport.
----@param card Frame
----@param parent Frame
----@param yOffset number
----@param mf Frame|nil
----@return number cardInnerW
 local function AnchorGearCardFillWidth(card, parent, yOffset, mf)
     if not card or not parent then return GetGearTabMinCardInnerW() end
     local side = SIDE_MARGIN or 16
@@ -720,8 +676,6 @@ local function AnchorGearCardFillWidth(card, parent, yOffset, mf)
     return math.max(1, outerW - 2 * CARD_PAD)
 end
 
----@param card Frame|nil
----@return number cardInnerW
 local function GetGearCardInnerWidthFromCard(card)
     if not card or not card.GetWidth then
         return GetGearTabMinCardInnerW()
@@ -782,7 +736,6 @@ local function ItemLinkHasEnchantment(itemLink)
     return false
 end
 
---- Enchant spell id from item hyperlink payload (same field as ItemLinkHasEnchantment).
 local function GetItemHyperlinkEnchantmentId(itemLink)
     if not itemLink or type(itemLink) ~= "string" then return nil end
     if issecretvalue and issecretvalue(itemLink) then return nil end
@@ -815,10 +768,6 @@ local function ResolveGearSpellName(spellID)
     return nil
 end
 
---- Permanent enchant row tier from C_TooltipInfo (same source as Blizzard “Enchanted:” glyph).
---- Item:GetCraftingQuality() is the base item’s craft tier — wrong when enchant rank differs (e.g. R2 enchant on R1 item).
----@param itemLink string|nil
----@return number|nil 1–3 for display, or nil if unknown
 local function GetGearSlotEnchantQualityTier(itemLink)
     if not itemLink or type(itemLink) ~= "string" then return nil end
     if not GetEnchantmentCraftingQualityTierFromItemLink then return nil end
@@ -828,7 +777,6 @@ local function GetGearSlotEnchantQualityTier(itemLink)
     return nil
 end
 
---- Apply profession crafting-quality atlas or engraving fallback.
 local function SetupGearSlotEnchantQualityTexture(tex, tierIdx, pixelSize)
     if not tex then return false end
     local tier = tonumber(tierIdx) or 1
@@ -935,11 +883,6 @@ local function GetItemGemForSocket(itemLink, socketIndex)
     return nil
 end
 
----@param itemLink string
----@param slotID number|nil
----@param useLiveSlot boolean|nil When true, retry C_Item.GetItemNumSockets(ItemLocation) for equipped item.
----@return table entries { { gemLink = string|nil, emptyTexture = string }, ... }
----@return string sig Dedupe signature for GearSlotPaperdollVisualEquals
 local function ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
     local entries = {}
     if not itemLink or type(itemLink) ~= "string" or (issecretvalue and issecretvalue(itemLink)) then
@@ -1021,7 +964,6 @@ local function HideGearSocketCluster(btn)
     if c then c:Hide() end
 end
 
---- Layout mode for paperdoll flanks: left column + main hand vs right column + off-hand.
 local function GetGearStatusLayoutMode(side)
     if side == "left" or side == "bottom" or side == "bottom_left" then
         return "left"
@@ -1045,7 +987,6 @@ local function EnsureGearOuterSideHost(btn)
     return btn._gearOuterSideHost
 end
 
---- Outer column: gem + enchant stacked when both; single cell vertically centered when only one.
 local function ApplyGearOuterSideCellLayout(outer, gemCell, encCell, hasGem, hasEnc)
     gemCell:ClearAllPoints()
     encCell:ClearAllPoints()
@@ -1082,7 +1023,6 @@ local function ApplyGearOuterSideCellLayout(outer, gemCell, encCell, hasGem, has
     end
 end
 
---- Gem/enchant on outer (track) side; mirrored for right column.
 local function PlaceGearOuterSideHost(btn, side, hasGem, hasEnc)
     local icon = btn.iconTex or btn
     local mode = GetGearStatusLayoutMode(side)
@@ -1097,7 +1037,6 @@ local function PlaceGearOuterSideHost(btn, side, hasGem, hasEnc)
     return outer, gemCell, encCell
 end
 
---- Upgrade chip: optional green border (outer) + dark fill + arrow; and/or lock.
 local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBgBorder, upgradeArrowBg, upgradeArrow, lockIcon)
     if not icon then return end
     local baseSz = STATUS_UPGRADE_ICON - 2 * STATUS_ICON_INSET
@@ -1158,12 +1097,6 @@ local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBgBo
     end
 end
 
---- Dawncrest rows in PvE column order with the same currency icons as the PvE tab (GetCurrencyData).
----@param currencies table|nil from GetGearUpgradeCurrenciesFromDB
----@param charKey string|nil
----@param isCurrentChar boolean|nil
----@return table rows
----@return table|nil goldCurrency
 local function BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
     local rows = {}
     local goldCurrency = nil
@@ -1241,10 +1174,6 @@ local function GearSlotHideLegacyIncreaseLabels(btn)
     btn._gearLastIncTarget = nil
 end
 
---- Upgrade chip on slot icon (green = affordable, yellow = upgrade path but short on crests).
----@param btn Frame
----@param slotData table|nil
----@param notUpgradeable boolean|nil
 local function GearSlotRefreshUpgradeArrow(btn, slotData, notUpgradeable)
     if not btn or not btn._gearUpgradeArrow then return end
     local slotID = btn._slotID
@@ -1385,8 +1314,6 @@ local function UpdateGearSocketCluster(btn, entries, opts)
     end
 end
 
---- GetItemStats + socket scan per slot is expensive when multiplied by ~16 slots on Gear first paint.
---- Run once on the next frame (WN-PERF heavy tab first paint).
 local function GearSlotApplyDeferredEnchantGemInspect(btn)
     if not btn then return end
     local slotData = btn._slotDataRef
@@ -1528,24 +1455,6 @@ end
 
 -- SLOT ICON BUTTON
 
---- Create a single equipment slot icon button.
----@param parent Frame
----@param slotID number
----@param slotData table|nil  { itemLink, itemLevel, quality, name, ... }
----@param x number x offset from parent TOPLEFT
----@param y number y offset (negative = downward) from parent TOPLEFT
----@param hasUpgradePath boolean|nil if true, show upgrade arrow (next tier exists; may tint when unaffordable)
----@param statusText string|nil e.g. "Veteran 6/6", "Champion 4/8", or nil to show ilvl/"—"
----@param textSide string|nil "right" | "left" | "top" — where to place status text relative to icon
----@param isNotUpgradeable boolean|nil if true, show a lock icon overlay (item confirmed not upgradeable)
----@param centerTextOnIcon boolean|nil if true, center slot name + track text relative to slot icon (weapon row)
----@param upgradeInfo table|nil optional; when set, tooltip shows next upgrade tier and cost for this slot
----@param currencyAmounts table|nil optional; map currencyID -> amount (for "you have X" in tooltip if needed)
----@param itemTooltipContext table|nil optional { level, specID } — rewrite item link for C_TooltipInfo primary-stat lines (Gear tab / viewed character)
----@param charKey string|nil canonical character key for persisted upgrade tooltip append
----@param isCurrentChar boolean|nil live player — enables tooltip scan fallback in GearService
----@param inspectListHost Frame|nil card root for deferred enchant/gem inspect (must match card._gearSlotInspectList)
----@return Frame btn
 local function CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, inspectListHost)
     -- Slot is always the same size; space reserved even when the icon is hidden (empty texture)
     local btn = GearFact:CreateButton(parent, SLOT_SIZE, SLOT_SIZE, true)
@@ -2069,10 +1978,6 @@ end
 local CURRENCY_ROW_H = 26
 local ROW_H = 34
 
---- Crest/gold have vs need for next upgrade step (discounted cost when API flagged).
----@param up table
----@param currencyAmounts table|nil
----@return string|nil markup suffix e.g. " |cff66ee88(45/20)|r"
 local function FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
     if not up or not up.canUpgrade or up.notUpgradeable then return nil end
     if up.isCrafted then
@@ -2106,8 +2011,6 @@ local function FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
     return " |cff" .. hex .. "(" .. format(fmt, haveGold, needGold) .. ")|r"
 end
 
---- Build track/tier string from upgradeInfo[slotID], e.g. "Hero 3/6".
---- slotData optional: live ilvl sync only (track comes from scan/GetPersistedUpgradeInfo).
 local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData)
     local up = upgradeInfo and (upgradeInfo[slotID] or upgradeInfo[tostring(slotID)])
     if not up and slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
@@ -2232,16 +2135,6 @@ local function MergeOfflineSecondaryForGear(savedSec)
     return out
 end
 
---- Shared bottom-band row: label (optional icon) left, value right — stats + currencies use the same layout.
----@param col Frame
----@param rowY number
----@param rowH number
----@param pad number
----@param valueColW number
----@param label string
----@param valueStr string
----@param iconFileID number|nil
----@return number nextY
 local function PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueStr, iconFileID)
     local labelLeft = pad
     if iconFileID then
@@ -2271,7 +2164,6 @@ local function PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, val
     return rowY - rowH
 end
 
---- Label + "Straight Value (Percentage)" in one right column (no separate % column).
 local function PaintGearStatGridRow(statCol, statY, statRowH, statPad, valueColW, label, valueStr, pctStr)
     local displayVal = valueStr or ""
     if pctStr and pctStr ~= "" then
@@ -2281,14 +2173,10 @@ local function PaintGearStatGridRow(statCol, statY, statRowH, statPad, valueColW
     return PaintGearPaperBandRow(statCol, statY, statRowH, statPad, valueColW, label, displayVal, nil)
 end
 
---- Combined value column width for straight + (pct) layout.
 local function ComputeGearPaperStatValueColW(statInnerW, statPad)
     return math.max(96, math.floor((statInnerW - statPad * 2) * 0.42 + 0.5))
 end
 
---- Safe numeric for stat display (Midnight: UnitStat / combat ratings may be secret).
----@param val any
----@return number|nil
 local function SafeGearStatNumber(val)
     if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
@@ -2296,16 +2184,12 @@ local function SafeGearStatNumber(val)
     return val
 end
 
----@param val any
----@return string|nil
 local function FormatGearStatDisplayNumber(val)
     local n = SafeGearStatNumber(val)
     if not n then return nil end
     return FormatNumber and FormatNumber(math.floor(n)) or tostring(math.floor(n))
 end
 
----@return table primaryRows
----@return table secondaryRows
 local function BuildGearPaperStatRows(charData, isCurrentChar)
     local primaryRows = {}
     local secondaryRows = {}
@@ -2395,11 +2279,6 @@ end
 
 local GEAR_VIEWPORT_IDENTITY_H = 42
 
---- Name + realm on top line, item level on the line below (inside model frame).
----@param viewportHost Frame
----@param charData table|nil
----@param accent table|nil
----@return Frame|nil bar
 local function PaintGearViewportIdentity(viewportHost, charData, accent)
     if not viewportHost then return nil end
     local pad = 8
@@ -2451,10 +2330,6 @@ local function PaintGearViewportIdentity(viewportHost, charData, accent)
     return bar
 end
 
---- Heights for stats (left) + currencies (right) inside the paperdoll column bottom band.
----@return number bandH
----@return number statPanelH
----@return number currPanelH
 local function ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH)
     local hasDivider = (#primaryRows > 0 and #secondaryRows > 0)
     local statContentRows = #primaryRows + #secondaryRows
@@ -2467,18 +2342,6 @@ local function ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, cre
     return bandH, statH, currH
 end
 
---- Stats bottom-left, currencies bottom-right (single bottom panel, split columns).
----@param bottomHost Frame
----@param paperColW number
----@param bandH number
----@param charData table|nil
----@param isCurrentChar boolean
----@param currencies table
----@param charKey string|nil
----@param accent table
----@param primaryRows table|nil
----@param secondaryRows table|nil
----@return Frame|nil bandPanel
 local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows)
     if not bottomHost or paperColW < 1 or bandH < 1 then return nil end
     local gearChrome = ns.GearUI_Chrome
@@ -2615,9 +2478,6 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
     return bandPanel
 end
 
---- Offline character center panel: class-accent top rule + bottom bar with badge (3D/2D preview only).
----@param centerRef Frame
----@param classFile string|nil
 local function ApplyGearOfflineCenterChrome(centerRef, classFile)
     if not centerRef then return end
     local chrome = ns._gearOfflineCenterChrome
@@ -2675,10 +2535,6 @@ local function ApplyGearOfflineCenterChrome(centerRef, classFile)
     chrome:Show()
 end
 
---- Draw paperdoll: left panel (text-icon-slot) | center (model) | right panel (slot-icon-text).
---- paperParent: left column host (coordinates relative to its TOPLEFT).
---- baseX: inset from paperParent left (typically PAPERDOLL_COL_INSET).
---- paperOriginY: Y offset from paperParent TOPLEFT (0 when parent is leftColHost).
 local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX, charKey, paperOriginY, paperdollNaturalH, paperBandH, opts)
     opts = opts or {}
     paperParent = paperParent or opts.cardRef
@@ -2714,7 +2570,6 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         if live.quality and live.quality > 0 then merged.quality = live.quality end
         return merged
     end
-    --- Upgrade chip only when the immediate next step is affordable (correct track crest pool).
     local function SlotAffordsUpgrade(slotID)
         local up = upgradeInfo and upgradeInfo[slotID]
         if not up or up.notUpgradeable or not up.canUpgrade then return false end
@@ -2790,7 +2645,6 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     -- re-parented (same pattern as the old PlayerModel paperdoll).
     local scrollParent = card:GetParent()
 
-    --- Resolve creature display ID for portrait: saved gear snapshot, or live for logged-in char.
     local function ResolveGearPaperdollDisplayID()
         local snap = gearData and gearData.modelSnapshot
         local id = snap and snap.displayID
@@ -3408,12 +3262,6 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     runPaperdollCenterPaint()
 end
 
---- Viewport-aware gear card body height (paperdoll | recommendations share this band).
----@param mf Frame|nil
----@param yOffset number
----@param contentBandMinH number minimum two-column band height
----@param paperdollNaturalH number
----@return number panelH
 local function ResolveGearTabPanelHeight(mf, yOffset, contentBandMinH, paperdollNaturalH)
     local panelH = math.max(contentBandMinH or 0, paperdollNaturalH or 0)
     local bodyAvailH = (ns.UI_GetMainTabScrollBodyHeight and ns.UI_GetMainTabScrollBodyHeight(mf)) or 0
@@ -3425,11 +3273,6 @@ local function ResolveGearTabPanelHeight(mf, yOffset, contentBandMinH, paperdoll
     return panelH
 end
 
---- Record min row width; narrow viewports use stack layout (RelayoutGearCardColumnHosts), not scroll widening.
----@param card Frame|nil
----@param layout table
----@param mf Frame|nil
----@return boolean relayoutAgain always false (no scrollChild mutation)
 local function EnforceGearTopRowNoOverlap(card, layout, mf)
     if not layout then return false end
     local gap = layout.panelGutter or GEAR_PANEL_GAP
@@ -3445,11 +3288,6 @@ local function EnforceGearTopRowNoOverlap(card, layout, mf)
     return false
 end
 
---- Equipped gear card: paperdoll (left) | recommendations (right); hero ribbon above.
---- charKey: key from dropdown (used for currency/gold lookup).
---- isCurrentChar: true if selected character is the logged-in one (live portrait fallback).
---- currencies: array from GetGearUpgradeCurrenciesFromDB (passed to avoid duplicate API calls).
----@param storageScanPending boolean When true and there are no rows yet, show a loading line instead of the empty-state copy.
 local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings, storageScanPending)
     local rowStep = SLOT_SIZE + SLOT_GAP
     -- Content height: section + slot columns + gap + weapon row (Main/Off Hand) + bottom pad so card border is below weapons
@@ -4005,9 +3843,6 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     return yOffset - cardH - 12, cardH
 end
 
---- Sync recommendations host metrics after column width changes (resize commit / relayout).
----@param mf Frame|nil
----@param layout table|nil
 local function SyncGearStorageRecHostFromLayout(mf, layout)
     if not mf or not layout then return end
     local host = mf._gearStorageRecHost
@@ -4030,11 +3865,6 @@ local function SyncGearStorageRecHostFromLayout(mf, layout)
     host.sbCol = layout.sbCol or host.sbCol
 end
 
---- Live resize / post-populate: stretch gear card columns to scroll body bottom (footer).
----@param mf Frame|nil
----@param contentWidth number|nil scroll viewport width (prefer over frozen scrollChild during corner-drag)
----@param opts table|nil `{ chromeOnly = boolean }` skip storage row repaint during live drag (anchors still run)
----@return boolean handled
 function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
     opts = opts or {}
     local chromeOnly = opts.chromeOnly == true
@@ -4248,22 +4078,12 @@ local function BuildLiveEquippedSlotSnapshot(slotID)
     }
 end
 
---- True when slot data or prior ref carries a non-empty item link (not secret).
----@param slotRef table|nil
----@return boolean
 local function GearSlotHasInspectableItemLink(slotRef)
     if not slotRef or not slotRef.itemLink or slotRef.itemLink == "" then return false end
     if issecretvalue and issecretvalue(slotRef.itemLink) then return true end
     return true
 end
 
---- Skip redundant _gearApplySlotVisual when icon/labels/overlays already match.
----@param sb Frame|nil
----@param slotData table|nil
----@param canUpgrade boolean|nil
----@param trackText string|nil
----@param notUpgradeable boolean|nil
----@return boolean
 local function GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, notUpgradeable)
     if not sb then return false end
     local prev = sb._slotDataRef

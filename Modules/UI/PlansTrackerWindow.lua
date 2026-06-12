@@ -317,7 +317,6 @@ end
 
 --- Build a stack of icon+label info rows (Drop/Vendor/Quest/Zone) on a parent frame.
 --- Anchored TOP to whichever is LOWER: topAnchor.BOTTOM or minTopY (negative offset from parent.TOP).
---- This ensures info rows sit under the portrait icon AND under the name (no overlap with either).
 local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, minTopY)
     local sources = ResolveTrackerPlanSources(plan)
     local L = ns.L
