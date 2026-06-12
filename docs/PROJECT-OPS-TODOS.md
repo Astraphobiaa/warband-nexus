@@ -1,8 +1,19 @@
 # Project Operations Backlog — Warband Nexus
 
-Branch: `chore/ops-integration`  
+Branch: `chore/ops-deferred-wave-1` (wave 1) · prior: `chore/ops-integration` (#41)  
 Source: `PROJECT-CLEANUP-AUDIT.md`, Epic ABC (#39/#40), codebase inventory (2026-06-12)  
 Target: Midnight 12.0.1 (`Interface: 120005`)
+
+### Wave 1 manual QA test plan (ops-048 / ops-050 / ops-051 — post-merge)
+
+No in-game runner in CI. After `/reload` on Midnight 12.0.x:
+
+1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua` and `TryCounterService_Events.lua` load before dependents (TOC order).
+2. **Pixel borders** — resize window / change UI scale; 1px chrome on main shell and pooled rows stays crisp (border registry refresh).
+3. **Try counter** — open loot on NPC; `/wn` debug trace still registers `LOOT_*` / `ENCOUNTER_*` when debug enabled.
+4. **Gear paperdoll** — swap gear on logged-in character; track-label skip-repaint path unchanged (no stale labels).
+5. **Collections rows** — subtitle layout on mount/pet rows with two-line titles.
+6. **Profiler** (optional) — `/wn profiler on`, switch Chars / Gear / Plans tabs; `Pop_drawTab` within prior budget.
 
 **Priority key:** P0 = merge blocker / load failure risk · P1 = architecture or taint · P2 = hygiene or perf · P3 = polish / docs
 
@@ -65,14 +76,14 @@ Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices +
 
 ### SharedWidgets factory phases
 
-- [ ] **ops-026** · P0 · `Modules/UI/SharedWidgets.lua` (7894 lines, ~100 locals) — **Phase 2:** extract pixel/layout helpers → `SharedWidgets_Layout.lua` before Factory table growth. _deferred — separate epic_
+- [x] **ops-026** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 2 (pixel slice only):** `SharedWidgets_Pixel.lua` (scale, snap, border registry). _Phases 2 layout table + 3–5 still deferred — separate epic_
 - [ ] **ops-027** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 3:** extract `ns.UI.Factory` method table → `SharedWidgets_Factory.lua` (buttons, scroll, section headers). _deferred — separate epic_
 - [ ] **ops-028** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 4:** extract row chrome helpers still inline → extend `SharedWidgets_CharRow.lua` / new `SharedWidgets_RowPool.lua`. _deferred — separate epic_
 - [ ] **ops-029** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 5:** extract search bar, collapsible header, icon helpers → dedicated satellites; entry file <120 locals. _deferred — separate epic_
 
 ### Service & domain monoliths
 
-- [ ] **ops-030** · P0 · `Modules/TryCounterService.lua` (7628 lines, ~100 locals) — Split encounter/difficulty handlers → `TryCounterService_Encounters.lua`; loot/chat → `TryCounterService_Loot.lua`. _deferred — separate epic_
+- [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — **Partial:** event/debug/blocking tables → `TryCounterService_Events.lua`. _Encounter/loot handler split still deferred — separate epic_
 - [ ] **ops-031** · P0 · `Modules/CollectionService.lua` (5510 lines) — Split bag-scan/event host → `CollectionService_Scanner.lua`; notify path already partial in `CollectionService_NotifyDedup.lua`. _deferred — separate epic_
 - [ ] **ops-032** · P1 · `Modules/GearService.lua` (3905 lines) — Split storage recommendation engine → `GearService_Storage.lua` (slots/tracks already split). _deferred — separate epic_
 - [ ] **ops-033** · P1 · `Modules/TooltipService.lua` (2731 lines) — Split GameTooltip hook/injection → `TooltipService_GameTooltip.lua`; keep `TooltipService.lua` as facade + `ns.TooltipService`. _deferred — separate epic_
@@ -91,7 +102,7 @@ Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices +
 ### Overflow & misc structure
 
 - [x] **ops-042** · P2 · `Modules/OverflowMonitor.lua` — **N/A:** dead service removed; no relocation needed.
-- [ ] **ops-043** · P2 · `WarbandNexus.toc` — After each split batch: verify Linux-casing, dependency order, and `assert(ns.Module)` guards in satellites. _deferred — follows split epics_
+- [x] **ops-043** · P2 · `WarbandNexus.toc` — Wave-1 split batch: `SharedWidgets_Pixel`, `TryCounterService_Events` casing/order + satellite `assert` guards.
 
 ---
 
@@ -106,11 +117,11 @@ Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices +
 
 ## Verification — Gates per batch
 
-- [ ] **ops-048** · P0 · In-game — `/reload` smoke after every split or SOA PR; zero Lua load errors. _deferred — manual QA post-merge_
-- [ ] **ops-049** · P1 · `python scripts/check_locales.py` — Run when `Locales/` or `ns.L` keys change.
-- [ ] **ops-050** · P1 · `/wn profiler` — Tab paint budget: `Pop_drawTab` / `Lay_*` slices per `Modules/UI/_layout_audit.md` after layout-touching PRs. _deferred — manual QA_
-- [ ] **ops-051** · P1 · Manual QA matrix — 1080p/1440p/4K × UI scale 100–150% per tab (`Modules/UI/_layout_audit.md`). _deferred — manual QA_
-- [ ] **ops-052** · P1 · Taint — Midnight instance smoke: tooltip hover, encounter end, loot chat; grep `issecretvalue` gaps in `TryCounterService`, `CollectionService`, `GearUI_Paperdoll`, `PlanCardFactory`. _deferred — separate epic (massive audit)_
+- [ ] **ops-048** · P0 · In-game — `/reload` smoke after every split or SOA PR; zero Lua load errors. _manual QA — test plan above_
+- [x] **ops-049** · P1 · Locale check — **N/A wave 1** (no `Locales/` or `ns.L` key changes); `check_locales.py` not in repo root.
+- [ ] **ops-050** · P1 · `/wn profiler` — Tab paint budget after layout-touching PRs. _manual QA — test plan above_
+- [ ] **ops-051** · P1 · Manual QA matrix — 1080p/1440p/4K × UI scale 100–150% per tab. _manual QA — test plan above_
+- [x] **ops-052** · P1 · Taint — **Wave-1 subset:** `GearUI_Paperdoll` track-label `GetText` + `trackText` guards; `SharedWidgets` collection row subtitle `GetText`. Grep audit: UI `GetText` hot paths in PlansUI/SettingsUI already guarded. _Remainder: TryCounterService/CollectionService/PlanCardFactory full pass — deferred_
 - [ ] **ops-053** · P2 · `Modules/MigrationService.lua` — SV backup + migration smoke after any `db.global` schema touch.
 - [ ] **ops-054** · P2 · `Modules/CollectibleSourceDB.lua` — In-game verify Kosumoth lockout quest/drop IDs (#40 wiki pass) on live toon. _deferred — manual QA_
 - [ ] **ops-055** · P2 · Storage tab — Profiler evidence for incremental/staged draw if `ItemsUI`/`DrawStorageResults` refactors land (`WN-PERF-warband-nexus.mdc`). _deferred — separate epic_
@@ -121,8 +132,8 @@ Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices +
 
 | File | Lines | `@param` density | Notes |
 |------|------:|-----------------|-------|
-| `SharedWidgets.lua` | 7894 | stripped (Factory-only policy) | Phases 2–5 deferred |
-| `TryCounterService.lua` | 7628 | export policy in header | ~100 locals — split P0 deferred |
+| `SharedWidgets.lua` | ~7820 | stripped (Factory-only policy) | Pixel → `SharedWidgets_Pixel.lua`; layout/factory phases deferred |
+| `TryCounterService.lua` | ~7580 | export policy in header | Events → `TryCounterService_Events.lua`; encounter/loot split deferred |
 | `CollectionService.lua` | 5510 | stripped | SOA + split deferred |
 | `PlansUI.lua` | 4629 | ~3 | Split browse deferred |
 | `PvEUI.lua` | 4482 | ~20 | Split vault grid deferred |
