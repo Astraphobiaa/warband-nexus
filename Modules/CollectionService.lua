@@ -1,29 +1,8 @@
 --[[
-    Warband Nexus - Unified Collection Service
-    
-    Unified collection system with persistent DB-backed cache
-    
-    Replaces deprecated modules:
-    - CollectionManager.lua (REMOVED)
-    - CollectionScanner.lua (REMOVED)
-    
-    Provides:
-    1. Real-time detection when mounts/pets/toys are obtained
-    2. Background async scanning for Browse UI (uncollected items)
-    3. Persistent DB-backed cache (survives /reload)
-    4. Incremental updates (no full rescans)
-    5. Event-driven notifications
-    
-    Pipeline (high level):
-    - EnsureBlizzardCollectionsLoaded: load Blizzard_Collections once (mount/pet/toy APIs).
-    - collectionStore: persisted browse metadata (mount/pet rows include collected + source fields; toys id+name in SV; collected via API when building owned/UI).
-    - collectionCache.owned: RAM-only O(1) ownership for notifications / IsCollectibleOwned (filled by BuildCollectionCache or during BuildFullCollectionData).
-    - EnsureCollectionData: version / empty-table gate then queued BuildFullCollectionData + achievement + title + illusion.
-    
-    Events fired:
-    - WN_COLLECTIBLE_OBTAINED: Real-time detection
-    - WN_COLLECTION_SCAN_COMPLETE: Background scan finished
-    - WN_COLLECTION_SCAN_PROGRESS: Scan progress updates
+    Warband Nexus - Collection Service
+    DB-backed mount/pet/toy browse cache + real-time obtain detection.
+    collectionStore (SV) + collectionCache.owned (RAM); incremental EnsureCollectionData scans.
+    Emits WN_COLLECTIBLE_OBTAINED, WN_COLLECTION_SCAN_COMPLETE, WN_COLLECTION_SCAN_PROGRESS.
 
     WN_NONUI_UI: `bagScanFrame` (and similar) are background event hosts (`CreateFrame`); Browse UI stays in Modules/UI.
 ]]
