@@ -252,40 +252,9 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
     end
 end)
 
--- Fishing cast spell IDs (fired on UNIT_SPELLCAST_SENT / UNIT_SPELLCAST_CHANNEL_START).
--- NOTE: Spell 471021 / 471008 are PASSIVE profession-rank unlocks for Midnight Fishing —
--- they never fire UNIT_SPELLCAST_* events and were removed accordingly (see warcraft.wiki.gg).
--- The actual Midnight cast uses 1239033 / 1257770 / 1239227 / 1281823 / 1281824 variants.
-local FISHING_SPELLS = {
-    -- Classic / Cataclysm / MoP
-    [7620]    = true,  -- Fishing (classic legacy)
-    [131474]  = true,  -- Fishing (Cataclysm/MoP base channel)
-    [110412]  = true,  -- Fishing (Zen Master, Pandaria)
-    -- Battle for Azeroth
-    [271616]  = true,  -- Fishing (BfA base cast)
-    [271990]  = true,  -- Fishing (BfA Kul Tiran rank)
-    [271991]  = true,  -- Fishing (BfA Zandalari rank)
-    -- Dragonflight
-    [384481]  = true,  -- Fishing (Dragonflight)
-    [389234]  = true,  -- Fishing (Dragonflight alt)
-    -- The War Within
-    [463743]  = true,  -- Fishing (TWW Astral Void)
-    -- Midnight 12.0+ (all observed cast variants)
-    [1239033] = true,  -- Fishing (Midnight base)
-    [1239227] = true,  -- Fishing for Salmon (Midnight)
-    [1257770] = true,  -- Midnight Fishing (3.2s channel)
-    [1281823] = true,  -- Fishing (Midnight variant)
-    [1281824] = true,  -- Fishing (Midnight instant cast)
-}
-
--- Creature NPC ids for the fishing bobber (GUID type is Creature — not a lootable corpse).
--- Without this, LootSessionHasAnyMobCorpseSources blocks the fishing route and auto-loot
--- (LOOT_OPENED skipped) misroutes to ProcessNPCLoot → P2 no match.
-local FISHING_BOBBER_NPC_IDS = {
-    [124736] = true, -- default Fishing Bobber
-    [35591] = true,  -- alternate bobber (some clients/expansions)
-    [216204] = true, -- Fishing Bobber (retail alternate template, DF+)
-}
+-- ops-030: fishing + classify constants -> TryCounterService_Process.lua (mutable bobber table)
+local FISHING_SPELLS = TC.FISHING_SPELLS or {}
+local FISHING_BOBBER_NPC_IDS = TC.FISHING_BOBBER_NPC_IDS or {}
 
 function Fns.IsFishingBobberNpcId(npcID)
     return npcID and FISHING_BOBBER_NPC_IDS[npcID] == true
@@ -460,14 +429,14 @@ local lastDifficultySkipChatKey = nil
 local lastDifficultySkipChatTime = 0
 local lastLockoutSkipChatKey = nil
 local lastLockoutSkipChatTime = 0
-local SKIP_CHAT_DEDUP_SEC = 15
+local SKIP_CHAT_DEDUP_SEC = TC.SKIP_CHAT_DEDUP_SEC or 15
 local fishingCtx = {
     active = false,            -- set on fishing cast, cleared when fishing loot processed (or 30s timer)
     castTime = 0,              -- timestamp of last fishing cast
     lootWasFishing = false,    -- true after ProcessFishingLoot ran with trackable; LOOT_CLOSED only clears active then
     resetTimer = nil,          -- safety timer: auto-reset active after 30s (handles cancelled casts)
 }
-local FISHING_CAST_CONTEXT_TTL = 35 -- seconds: valid window for treating loot as fishing context
+local FISHING_CAST_CONTEXT_TTL = TC.FISHING_CAST_CONTEXT_TTL or 35
 local isPickpocketing = false -- set on pickpocket cast, cleared on LOOT_CLOSED
 local isProfessionLooting = false -- set on profession spell cast, cleared on LOOT_CLOSED
 isBlockingInteractionOpen = false -- true when bank/vendor/AH/mail/trade UI is open

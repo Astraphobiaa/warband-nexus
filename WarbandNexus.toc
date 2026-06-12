@@ -94,6 +94,7 @@ Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB.lua
 Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
+Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
