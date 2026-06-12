@@ -1,25 +1,10 @@
 --[[
     Warband Nexus - PvE Progress Tab
-    Display Great Vault, Mythic+ keystones, and Raid lockouts for all characters
-    
-    DATA FLOW ARCHITECTURE (CACHE-FIRST):
-    ==========================================
-    1. PvECacheService: Event-driven data collection (WEEKLY_REWARDS_UPDATE, MYTHIC_PLUS_*, etc.)
-    2. Database: Persistent storage (db.global.pveCache)
-    3. UI (this file): Reads from cache via GetPvEData(charKey)
-    
-    ACCEPTABLE API CALLS (UI-only):
-    - C_DateAndTime.GetSecondsUntilWeeklyReset() - Fallback for weekly reset timer
-    - C_ChallengeMode.GetMapUIInfo() - Dungeon name/icon (not cached, static data)
-    - C_CurrencyInfo.GetCurrencyInfo() - Currency details for display (Midnight)
-    - C_Item.GetItemIconByID() - Trovehunter's Bounty icon for Bountiful column header
-    
+    Great Vault, M+, and raid lockouts per character (reads PvECacheService / db.global.pveCache).
+
     WN_FACTORY: Column picker catcher + Hide-menu fullscreen catcher stay raw Buttons (FULLSCREEN_DIALOG
     strata + propagate flags). Drawer shells use `ns.UI.Factory` where parity allows; Vault slot Buttons
     and dynamic scroll children keep CreateFrame paths documented inline.
-    Inline crest/vault columns: vertical 1px rules in each gap via `ns.UI_SyncGridColumnDividers` (header + rows).
-    
-    Event-driven refresh: WN_PVE_UPDATED (see UI.lua listeners; cache writes in PvECacheService.lua).
 ]]
 
 local ADDON_NAME, ns = ...
