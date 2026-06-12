@@ -3,7 +3,8 @@
 
     WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton` with guarded fallbacks when
     Factory is unavailable (plain `BackdropTemplate` buttons + ApplyVisuals); item rows/storage use pooled factories elsewhere.
-    WN_PERF: Virtual lists where applicable (`VirtualListModule`); storage warband subtree is profiler-sliced (`Stor_*` timings in DrawStorageResults).
+    WN_PERF: Virtual lists where applicable (`VirtualListModule`); `DrawStorageResults` uses generation tokens +
+    `C_Timer.After` chunk pumps for personal char sections, warband type headers, and leaf rows (`Stor_*` profiler slices).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -79,6 +80,12 @@ local STORAGE_LEAF_ROW_SYNC_MAX = 40
 local STORAGE_LEAF_ROW_SYNC_MAX_EMBED = 12
 local STORAGE_WARBAND_TYPE_CHUNK_EMBED = 2
 local STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED = 3
+local STORAGE_WARBAND_TYPE_CHUNK = 4
+local STORAGE_WARBAND_TYPE_SYNC_MAX = 8
+local STORAGE_CHAR_CHUNK_EMBED = 2
+local STORAGE_CHAR_SYNC_MAX_EMBED = 3
+local STORAGE_CHAR_CHUNK = 4
+local STORAGE_CHAR_SYNC_MAX = 6
 --- Bags / Bank / Guild virtual list rows: same stride as storage leaves (BuildItemsVirtualFlatList + VirtualListModule + AcquireItemRow).
 local ITEMS_VIRTUAL_ROW_HEIGHT = STORAGE_ROW_HEIGHT
 local function DataRowGap()
@@ -137,6 +144,30 @@ local function ItemsWarbandUsesStorageTree()
         return false
     end
     return ns.Utilities and ns.Utilities:IsModuleEnabled("items")
+end
+
+local function IsStorageDrawContextActive()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "items" then
+        return false
+    end
+    return ItemsWarbandUsesStorageTree()
+end
+
+local function StorageChunkedPaintStillValid(mf, paintGen)
+    if not mf or mf._wnStorageLeafPaintGen ~= paintGen then
+        return false
+    end
+    return IsStorageDrawContextActive()
+end
+
+function WarbandNexus:AbortStorageChunkedPaint()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf then
+        return
+    end
+    mf._wnStorageLeafPaintGen = (mf._wnStorageLeafPaintGen or 0) + 1
+    mf._wnStorageLeafStage = { gen = mf._wnStorageLeafPaintGen, pending = 0 }
 end
 
 --- Consistent visual gaps between stats segments (items | slots | last scan).
@@ -1181,10 +1212,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         hideWarbandBanner()
     end
-    if embedItemsWarband then
-        loadIndicator = EnsureWarbandDrawIndicator(parent)
-        if loadIndicator then loadIndicator:Show() end
-    end
+    loadIndicator = EnsureWarbandDrawIndicator(parent)
 
     local globalRowIdxAll = 0
     --- Vertical chain tail: major headers + type wraps share one anchor stack so sibling layout
@@ -1506,8 +1534,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
         local tiCursor = 1
         local yAcc = 0
+        if loadIndicator then loadIndicator:Show() end
+
         local function processChunk()
-            if not mfPaint or mfPaint._wnStorageLeafPaintGen ~= leafPaintGen then
+            if not StorageChunkedPaintStillValid(mfPaint, leafPaintGen) then
                 consumeLeafStagingCredit()
                 return
             end
@@ -2611,8 +2641,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
 
         local typeCount = #sortedTypes
-        local typeSyncMax = embedItemsWarband and STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED or typeCount
-        local useTypePump = embedItemsWarband and typeCount > typeSyncMax and C_Timer and C_Timer.After
+        local typeSyncMax = embedItemsWarband and STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED or STORAGE_WARBAND_TYPE_SYNC_MAX
+        local typeChunkSize = embedItemsWarband and STORAGE_WARBAND_TYPE_CHUNK_EMBED or STORAGE_WARBAND_TYPE_CHUNK
+        local useTypePump = typeCount > typeSyncMax and C_Timer and C_Timer.After
 
         if not useTypePump then
             for sti = 1, typeCount do
@@ -2620,6 +2651,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
             finalizeWarbandBodyShell()
         else
+            if loadIndicator then loadIndicator:Show() end
             local stPatchTypes = mfPaint and mfPaint._wnStorageLeafStage
             if stPatchTypes and stPatchTypes.gen == leafPaintGen then
                 stPatchTypes.pending = (stPatchTypes.pending or 0) + 1
@@ -2639,7 +2671,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
             local typeIdx = 1
             local function pumpWarbandTypes()
-                if not mfPaint or mfPaint._wnStorageLeafPaintGen ~= leafPaintGen then
+                if not StorageChunkedPaintStillValid(mfPaint, leafPaintGen) then
                     consumeTypeStagingCredit()
                     return
                 end
@@ -2647,7 +2679,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     C_Timer.After(0, pumpWarbandTypes)
                     return
                 end
-                local limit = math.min(typeIdx + STORAGE_WARBAND_TYPE_CHUNK_EMBED - 1, typeCount)
+                local limit = math.min(typeIdx + typeChunkSize - 1, typeCount)
                 for sti = typeIdx, limit do
                     buildWarbandTypeSection(sti)
                 end
@@ -2776,9 +2808,8 @@ function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
     fromSub = fromSub or sub
 
     -- Cancel in-flight storage leaf / warband-type chunk pumps before sub-tab chrome updates.
-    if mf then
-        mf._wnStorageLeafPaintGen = (mf._wnStorageLeafPaintGen or 0) + 1
-        mf._wnStorageLeafStage = { gen = mf._wnStorageLeafPaintGen, pending = 0 }
+    if self.AbortStorageChunkedPaint then
+        self:AbortStorageChunkedPaint()
     end
 
     local perfOn = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()
