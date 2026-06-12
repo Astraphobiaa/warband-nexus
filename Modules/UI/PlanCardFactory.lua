@@ -1195,9 +1195,11 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     return lastTextElement
 end
 
---[[
-    Create expandable content frame
--- ops-041: expanded slice -> PlanCardFactory_Expanded.lua
+-- (Expandable-content creation moved to PlanCardFactory_Expanded.lua — ops-041.)
+
+--- Remeasure achievement card text/body heights after width changes or wrap layout.
+--- NOTE: the ops-041 slice accidentally commented this whole function out (the long
+--- comment above swallowed it to line 1318) — five live call sites were nil-calling.
 function PlanCardFactory:ReflowAchievementCard(card, opts)
     if not card or not card.plan or card.plan.type ~= "achievement" then return end
     local deferLayout = opts and opts.deferLayout
