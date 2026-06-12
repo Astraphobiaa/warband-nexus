@@ -24,9 +24,9 @@ Started: 2026-06-12
 
 Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver essays, or claims not backed by code.
 
-**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`, `SearchBoxComponent.lua`, `SharedWidgets.lua`, `VaultScanner.lua`, `InitializationService.lua`, `ProfessionService.lua`, `GearService.lua`, `WindowFactory.lua`, `FormatHelpers.lua`, `CollectionService.lua`, `TryCounterService.lua`
+**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`, `SearchBoxComponent.lua`, `SharedWidgets.lua`, `VaultScanner.lua`, `InitializationService.lua`, `ProfessionService.lua`, `GearService.lua`, `WindowFactory.lua`, `FormatHelpers.lua`, `CollectionService.lua`, `TryCounterService.lua`, `PvEUI.lua`, `UI.lua`, `PlansUI.lua`
 
-**Remaining (sample):** large UI tabs with `Features:` essays (`PvEUI.lua`, `UI.lua`, `PlansUI.lua`)
+**Remaining (sample):** `CharactersUI.lua`, `SettingsUI.lua` section banners; `CurrencyUI.lua` headers
 
 ### B — `@param` / block JavaDoc on obvious functions (P0)
 
@@ -38,9 +38,10 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 
 **Fixed in batch 4 (2026-06-12):** `TryCounterService.lua` (112-line header → 10 lines; ~50 local-helper `---@` strips), `GearService.lua` (241 local-helper annotation lines), `GearUI_Paperdoll.lua` (paint-helper `---@` strip), `FormatHelpers.lua` (header + internal `@param`)
 
+**Fixed in batch 5 (2026-06-12):** `ItemsCacheService.lua`, `TooltipService.lua`, `CurrencyCacheService.lua` (internal `---@param` / block `@param` strips); `PvEUI.lua`, `UI.lua` (header trim); `PvEUI.lua`, `ReputationUI.lua` (narration); `PvEUI.lua`, `PlansUI.lua` (section banners); `CollectionRules.lua` (UnobtainableFilters essay trim; `C_Item.GetItemInfo` verified)
+
 **High density (grep `@param` count):**
 
-- `ItemsCacheService.lua`, `TooltipService.lua`, `CurrencyCacheService.lua`
 - `TryCounterService.lua`, `GearService.lua` — `WarbandNexus:` export annotations retained by policy
 
 ### C — `---@` LuaLS annotations (P1)
@@ -100,12 +101,14 @@ Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 - [x] `NotificationManager.lua` local `---@param` strip
 - [x] `GearService.lua` header + first internal `@param` cluster
 - [x] `TryCounterService.lua` local-helper `---@param` strip + header trim (batch 4)
-- [ ] Remove `Helper function to` one-liners in `PvEUI.lua`, `ReputationUI.lua`
+- [x] `ItemsCacheService.lua`, `TooltipService.lua`, `CurrencyCacheService.lua` internal `@param` (batch 5)
+- [x] Remove `Helper function to` one-liners in `PvEUI.lua`, `ReputationUI.lua` (batch 5)
 
 ### Phase 3 — UI layer
 
 - [x] `PlanCardFactory.lua` — removed "This ensures" narration (partial)
 - [x] `SettingsUI.lua` — narration comments (batch 4)
+- [x] `PvEUI.lua`, `UI.lua` headers; `PvEUI.lua`, `PlansUI.lua` section banners (batch 5)
 - Do **not** mass-delete `WN_FACTORY` / `WN_NONUI_UI` tags (agent markers, useful)
 
 ### Phase 4 — Dead code & compat
