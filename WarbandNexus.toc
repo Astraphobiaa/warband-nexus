@@ -58,7 +58,6 @@ Modules\DataService.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
 Modules\SearchStateManager.lua
-Modules\OverflowMonitor.lua
 Modules\ModuleManager.lua
 Modules\WindowManager.lua
 Modules\DatabaseOptimizer.lua

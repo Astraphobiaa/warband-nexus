@@ -1,23 +1,7 @@
 ﻿--[[
     Warband Nexus - Data Service Module
-    Centralized data collection, processing, and retrieval
-    
-    REFACTOR STATUS (Phase 3 in progress):
-    ======================================
-    Specialized cache services now own their domains:
-    - PvE data → PvECacheService.lua (direct via UpdatePvEData)
-    - Items/Bank → ItemsCacheService.lua
-    - Currency → CurrencyCacheService.lua
-    - Reputation → ReputationCacheService.lua
-    
-    Current Responsibilities:
-    - Character orchestration (gold, level, class, spec, hero talent, profession)
-    - Cross-character aggregation queries
-    - Legacy wrappers (kept for internal callers, external callers migrated)
-    
-    DEPRECATED WRAPPERS (route to cache services internally):
-    - CollectPvEData() → PvECacheService:UpdatePvEData()
-    - UpdatePvEDataV2() → PvECacheService:ImportLegacyPvEData()
+    Character orchestration, cross-character aggregation, and legacy cache wrappers.
+    Domain caches: PvECacheService, ItemsCacheService, CurrencyCacheService, ReputationCacheService.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -954,7 +938,7 @@ function WarbandNexus:SaveCurrentCharacterData()
 
     RelocateLegacyCharacterSlot(self.db, key, legacyKey)
 
-    -- ========== V2: Store PvE data globally ==========
+    -- Store PvE data globally (v2 path)
     self:UpdatePvEDataV2(key, pveData)
     
     -- Bags/bank stored via SaveItemsCompressed above (itemStorage); no duplicate in character record or personalBanks from this path
@@ -1899,7 +1883,7 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     if removed > 0 then
         self:InvalidateGetAllCharactersCache()
         if self.SendMessage then
-            self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED)
+            self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { dataType = "rosterPrune", removed = removed })
         end
     end
     
@@ -2068,39 +2052,7 @@ function WarbandNexus:GetBankItems()
     return items
 end
 
---[[
-============================================================================
-BAG & BANK SCANNING ARCHITECTURE (Service Layer)
-============================================================================
-
-This module owns ALL bag and bank scanning logic:
-- Warband Bank (ScanWarbandBank)
-- Personal Bank (ScanPersonalBank)
-
-EVENT FLOW:
-1. WoW fires: BAG_UPDATE, BAG_UPDATE_DELAYED, BANKFRAME_OPENED
-2. Core.lua handles events (with throttling/debounce)
-3. Core.lua calls DataService scan methods WITH SPECIFIC bagIDs
-4. DataService performs INCREMENTAL scan (only changed bags)
-5. DataService stores in db.char / db.global
-6. DataService fires internal events: WN_BAGS_UPDATED, WN_BANK_UPDATED
-7. UI modules subscribe to internal events, read from db
-
-PERFORMANCE OPTIMIZATIONS:
-- INCREMENTAL SCANNING: Only scan bags that changed (not all)
-  Example: Bag 1 changes â†’ scan ONLY Bag 1 (not 0-5)
-  Example: Warband Tab 2 changes â†’ scan ONLY Tab 2 (not all 5 tabs)
-- Hash-based change detection (GenerateItemHash in ItemsCacheService) detects changes
-- Event throttling via AceBucket (0.15s for BAG_UPDATE)
-- Debouncing for bulk operations (1s delay for BAG_UPDATE_DELAYED)
-- C_Container.HasContainerItem() skips empty slots
-- Merge updates into existing cache (don't wipe on partial scan)
-
-BACKWARD COMPATIBILITY:
-- nil specificBagIDs = Full scan (all bags)
-- table specificBagIDs = Incremental scan (only specified bags)
-============================================================================
-]]
+-- Bag/bank scanning lives in ItemsCacheService; DataService retains personal-bank helpers below.
 
 -- Local references for performance
 local wipe = wipe

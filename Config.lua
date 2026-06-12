@@ -1511,5 +1511,6 @@ end
     This duplicate has been removed to prevent conflicts.
 ]]
 
--- OVERFLOW WARNING SYSTEM (Removed - now handled in SettingsUI.lua)
--- Real-time overflow detection is now integrated directly into the font scale slider
+-- OVERFLOW WARNING SYSTEM (removed)
+-- Font-scale overflow hint is static copy in SettingsUI.lua (FONT_SCALE_WARNING).
+-- Modules/OverflowMonitor.lua was deleted: zero callers; it violated SOA by walking mainFrame.scrollChild from a service layer.

@@ -399,3 +399,21 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     -- Store reference
     addon.trackingChangeDialog = dialog
 end
+
+do
+    local WarbandNexus = ns.WarbandNexus
+    local Constants = ns.Constants
+    local ev = Constants and Constants.EVENTS and Constants.EVENTS.CHARACTER_TRACKING_DIALOG_REQUESTED
+    if ev and WarbandNexus and WarbandNexus.RegisterMessage then
+        local TrackingDialogEvents = {}
+        WarbandNexus.RegisterMessage(TrackingDialogEvents, ev, function(_, payload)
+            if not payload or not payload.mode then return end
+            local addon = WarbandNexus
+            if payload.mode == "initial" then
+                ns.CharacterTrackingDialog.ShowInitial(addon, payload.charKey)
+            elseif payload.mode == "change" then
+                ns.CharacterTrackingDialog.ShowChange(addon, payload.charKey, payload.charName, payload.enableTracking == true)
+            end
+        end)
+    end
+end

@@ -131,8 +131,10 @@ local Constants = {
         PLANS_UPDATED = "WN_PLANS_UPDATED",
         PLAN_COMPLETED = "WN_PLAN_COMPLETED",
         QUEST_COMPLETED = "WN_QUEST_COMPLETED",
-        --- Daily / weekly quest plan progress (not WN_ prefix — legacy identifier)
-        QUEST_PROGRESS_UPDATED = "WARBAND_QUEST_PROGRESS_UPDATED",
+        --- Daily / weekly quest plan progress (canonical WN_ id; legacy key WARBAND_QUEST_PROGRESS_UPDATED aliases same string)
+        QUEST_PROGRESS_UPDATED = "WN_QUEST_PROGRESS_UPDATED",
+        --- CollectionService → Plans browse: one deferred ensure per category (payload: { category = "mount"|"pet"|"toy" })
+        PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED = "WN_PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED",
         
         -- Vault
         VAULT_CHECKPOINT_COMPLETED = "WN_VAULT_CHECKPOINT_COMPLETED",
@@ -160,6 +162,8 @@ local Constants = {
         --- UI-initiated full main-window content rebuild (debounced via SchedulePopulateContent).
         --- Payload: { tab?, skipCooldown? (default true), instantPopulate? (skip debounce; immediate PopulateContent) }
         UI_MAIN_REFRESH_REQUESTED = "WN_UI_MAIN_REFRESH_REQUESTED",
+        --- Main window shown/hidden (payload: { visible = boolean }). Canonical flag: ns._wnMainWindowVisible.
+        MAIN_WINDOW_VISIBILITY_CHANGED = "WN_MAIN_WINDOW_VISIBILITY_CHANGED",
         LOADING_UPDATED = "WN_LOADING_UPDATED",
         LOADING_COMPLETE = "WN_LOADING_COMPLETE",
         
@@ -183,6 +187,7 @@ local Constants = {
         MODULE_TOGGLED = "WN_MODULE_TOGGLED",
 
         -- Character / tracking / gold UI
+        CHARACTER_TRACKING_DIALOG_REQUESTED = "WN_CHARACTER_TRACKING_DIALOG_REQUESTED",
         CHARACTER_TRACKING_CHANGED = "WN_CHARACTER_TRACKING_CHANGED",
         CHARACTER_BANK_MONEY_LOG_UPDATED = "WN_CHARACTER_BANK_MONEY_LOG_UPDATED",
         GOLD_MANAGEMENT_CHANGED = "WN_GOLD_MANAGEMENT_CHANGED",
@@ -386,6 +391,9 @@ local Constants = {
 
 -- Export to namespace
 ns.Constants = Constants
+
+-- Legacy listen/emit alias (same string as QUEST_PROGRESS_UPDATED; no MigrationService)
+Constants.EVENTS.WARBAND_QUEST_PROGRESS_UPDATED = Constants.EVENTS.QUEST_PROGRESS_UPDATED
 
 -- Backwards compatibility exports
 ns.ADDON_VERSION = Constants.ADDON_VERSION

@@ -540,7 +540,6 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     nameText:SetMaxLines(2)
     nameText:EnableMouse(false)
     card.nameText = nameText
-    card.planNameText = nameText  -- Store reference for overflow checking
     
     -- Wowhead + optional chat link (top-right of name row; name truncates to their left)
     local Factory = ns.UI and ns.UI.Factory
@@ -3551,8 +3550,6 @@ local FULL_WIDTH_PLAN_BOTTOM_PAD = 12
 
 local DAILY_QUEST_CATEGORY_ORDER = { "weeklyQuests", "worldQuests", "assignments", "dailyQuests", "events" }
 
----@param plan table
----@param cardWidth number|nil unused; reserved for future responsive slot rows
 ---@return number
 function ns.UI_MeasureFullWidthPlanCardHeight(plan, cardWidth)
     if not plan then

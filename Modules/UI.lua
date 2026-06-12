@@ -16,6 +16,15 @@ local issecretvalue = issecretvalue
 -- 'self' table to prevent overwriting other modules' handlers for the same event.
 local UIEvents = {}
 
+local function SyncMainWindowVisibilityState(visible)
+    ns._wnMainWindowVisible = visible == true
+    local C = ns.Constants
+    local ev = C and C.EVENTS and C.EVENTS.MAIN_WINDOW_VISIBILITY_CHANGED
+    if ev and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage(ev, { visible = visible == true })
+    end
+end
+
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
@@ -859,6 +868,29 @@ function WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
 end
 
 local mainFrame = nil
+
+--- True when `owner` belongs to Warband Nexus UI (GameTooltip placement hook; View-layer only).
+function ns.IsWarbandNexusUIFrame(owner)
+    if not owner then return false end
+    local root = mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+    local cur = owner
+    for _ = 1, 20 do
+        if not cur then break end
+        if root and cur == root then return true end
+        local n = (type(cur.GetName) == "function") and cur:GetName() or nil
+        if n and type(n) == "string" and not (issecretvalue and issecretvalue(n))
+            and n:find("WarbandNexus", 1, true) then
+            return true
+        end
+        if type(cur.GetParent) == "function" then
+            cur = cur:GetParent()
+        else
+            break
+        end
+    end
+    return false
+end
+
 -- REMOVED: local currentTab - now using mainFrame.currentTab (fixes tab switching bug)
 local currentItemsSubTab = "inventory" -- Default: Bags (current character); Warband sub-tab shows account-wide tree (former Storage tab).
 local expandedGroups = {} -- Persisted expand/collapse state for item groups
@@ -1033,6 +1065,7 @@ function WarbandNexus:ToggleMainWindow()
         RememberSessionMainTab(mainFrame.currentTab)
         -- Window object is a singleton; "closed" is IsShown() == false, the ref stays valid.
         mainFrame:Hide()
+        SyncMainWindowVisibilityState(false)
     else
         self:ShowMainWindow()
     end
@@ -1172,6 +1205,8 @@ function WarbandNexus:ShowMainWindow(requestedTabKey)
         NormalizeFramePosition(mainFrame)
     end
 
+    SyncMainWindowVisibilityState(true)
+
     -- Loading overlay is standalone — no action needed here
     
     -- SAFETY: Deferred tab label re-render (catches font loading race conditions)
@@ -1215,6 +1250,7 @@ function WarbandNexus:HideMainWindow()
         RememberSessionMainTab(mainFrame.currentTab)
         -- Window object is a singleton; "closed" is IsShown() == false, the ref stays valid.
         mainFrame:Hide()
+        SyncMainWindowVisibilityState(false)
     end
 end
 

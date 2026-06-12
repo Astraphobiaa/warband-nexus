@@ -599,10 +599,6 @@ local function ApplyPendingMailIconTexture(tex)
     tex:SetTexture("Interface/Minimap/Tracking/Mailbox")
 end
 
--- EVENT-DRIVEN UI REFRESH
-
----Register event listener for character updates
----@param parent Frame Parent frame for event registration
 local function RegisterCharacterEvents(parent)
     -- Register only once per parent
     if parent.characterUpdateHandler then
@@ -615,8 +611,6 @@ local function RegisterCharacterEvents(parent)
     
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
-
--- DRAW CHARACTER LIST
 
 function WarbandNexus:DrawCharacterList(parent)
     -- Request updated WoW Token market price (async) â€” heavily throttled; not tied to tab redraw frequency.
@@ -1961,8 +1955,6 @@ function WarbandNexus:DrawCharacterList(parent)
     return yOffset
 end
 
--- DRAW SINGLE CHARACTER ROW
-
 ---@param existingRow Frame|nil When set (virtual list), draw into this pooled row instead of acquiring a second frame.
 function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey, existingRow)
     local row = existingRow
@@ -3023,8 +3015,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     return yOffset + 46 + betweenRows, row  -- Row 46px + spacing + row ref for pool tracking
 end
 
--- REORDER CHARACTER IN LIST
-
 function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     if not char or not listKey then
         return
@@ -3158,8 +3148,6 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
 end
-
--- CUSTOM CHARACTER HEADERS â€” dialogs (Filter menu entry points)
 
 function WarbandNexus:OpenCustomCharacterHeaderDialog()
     local CreateExternalWindow = ns.UI_CreateExternalWindow

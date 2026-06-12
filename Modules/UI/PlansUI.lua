@@ -991,6 +991,15 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- WN_PLANS_UPDATED: handled by UI.lua SchedulePopulateContent (debounced).
         -- Registering here caused double rebuild (immediate redraw + debounced PopulateContent).
+
+        if Constants.EVENTS.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED then
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED, function(_, payload)
+                local cat = payload and payload.category
+                if cat and ns.RequestPlansBrowseCollectionEnsure then
+                    ns.RequestPlansBrowseCollectionEnsure(cat)
+                end
+            end)
+        end
         
         -- Collection scan progress: milestone refresh only (full tab rebuild every 500ms caused profiler spam).
         if Constants and Constants.EVENTS then

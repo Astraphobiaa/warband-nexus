@@ -8,6 +8,7 @@
     Events: LOOT_*, CHAT_MSG_LOOT, ENCOUNTER_*, BOSS_KILL, spellcast/fishing hooks, ITEM_LOCK_CHANGED.
 
     WN_NONUI_UI: `tryCounterFrame` (near RAW EVENT FRAMES) is an AceEvent-only host (`CreateFrame`); owns no Visible UI chrome.
+    LuaLS: retain ---@ on WarbandNexus: export surface only; IIFE locals stay comment-only.
 ]]
 
 local ADDON_NAME, ns = ...
