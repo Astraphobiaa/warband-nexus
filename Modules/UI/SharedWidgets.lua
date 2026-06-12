@@ -203,6 +203,41 @@ local SURFACE_VARIANTS = {
         textMuted = {0.34, 0.34, 0.38, 1},
         textDim = {0.46, 0.46, 0.50, 1},
     },
+    -- High-contrast variants (accessibility): hard black/white text, opaque surfaces,
+    -- strong borders. Every text role collapses toward maximum contrast so "greyish
+    -- smears" become defined edges for low-vision users.
+    darkHC = {
+        bg = {0.000, 0.000, 0.000, 1},
+        surfaceViewport = {0.030, 0.030, 0.030, 1},
+        bgLight = {0.080, 0.080, 0.080, 1},
+        bgCard = {0.100, 0.100, 0.100, 1},
+        surfaceHeaderChrome = {0.060, 0.060, 0.060, 1},
+        surfaceRowEven = {0.090, 0.090, 0.090, 1},
+        surfaceRowOdd = {0.040, 0.040, 0.040, 1},
+        borderLight = {0.85, 0.85, 0.85, 1},
+        tabInactive = {0.02, 0.02, 0.02, 1},
+        gold = {1.00, 0.85, 0.10, 1},
+        textBright = {1, 1, 1, 1},
+        textNormal = {1, 1, 1, 1},
+        textMuted = {0.92, 0.92, 0.92, 1},
+        textDim = {0.80, 0.80, 0.80, 1},
+    },
+    lightHC = {
+        bg = {1.000, 1.000, 1.000, 1},
+        surfaceViewport = {0.985, 0.985, 0.985, 1},
+        bgLight = {0.960, 0.960, 0.960, 1},
+        bgCard = {0.945, 0.945, 0.945, 1},
+        surfaceHeaderChrome = {0.970, 0.970, 0.970, 1},
+        surfaceRowEven = {0.955, 0.955, 0.955, 1},
+        surfaceRowOdd = {0.985, 0.985, 0.985, 1},
+        borderLight = {0.20, 0.20, 0.20, 1},
+        tabInactive = {0.93, 0.93, 0.93, 1},
+        gold = {0.55, 0.40, 0.00, 1},
+        textBright = {0, 0, 0, 1},
+        textNormal = {0, 0, 0, 1},
+        textMuted = {0.15, 0.15, 0.15, 1},
+        textDim = {0.28, 0.28, 0.28, 1},
+    },
 }
 
 local function IsLightModeEnabled()
@@ -227,7 +262,11 @@ local function UpdateColorsFromTheme()
     COLORS.tabHover[1], COLORS.tabHover[2], COLORS.tabHover[3] = theme.tabHover[1], theme.tabHover[2], theme.tabHover[3]
 
     -- Surface/text variant swap (in-place so cached references stay live)
-    local variant = SURFACE_VARIANTS[IsLightModeEnabled() and "light" or "dark"]
+    local variantKey = IsLightModeEnabled() and "light" or "dark"
+    if db and db.highContrast == true then
+        variantKey = variantKey .. "HC"
+    end
+    local variant = SURFACE_VARIANTS[variantKey]
     for key, src in pairs(variant) do
         local dst = COLORS[key]
         if dst then

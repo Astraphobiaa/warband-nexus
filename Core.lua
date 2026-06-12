@@ -226,6 +226,7 @@ local defaults = {
         -- When true, UI accent (and derived tab/border tones) follows the logged-in character's class color; falls back to themeColors.accent if class is unavailable.
         useClassColorAccent = false,
         lightMode = false,  -- Accessibility: light background + dark text palette
+        highContrast = false,  -- Accessibility: max-contrast variant of the active mode
         showItemCount = true,
         showTooltipItemCount = true,
         recipeCompanionEnabled = true,

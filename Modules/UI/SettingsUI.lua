@@ -3530,6 +3530,43 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local lightRowH = math.max(ns.UI_TOGGLE_SIZE or 22, lightModeLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
         cy = cy - lightRowH - GetHeaderToolbarGap()
 
+        -- Accessibility: high-contrast variant of whichever mode is active.
+        local hcCb = CreateThemedCheckbox(inner)
+        hcCb:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, cy)
+        local hcTip = (ns.L and ns.L["HIGH_CONTRAST_TOOLTIP"]) or "Maximum-contrast text and surfaces (pure black/white text, strong borders) on top of the current dark or light mode. A /reload is recommended."
+        local hcLbl = FontManager:CreateFontString(inner, "body", "OVERLAY")
+        hcLbl:SetPoint("TOPLEFT", hcCb, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
+        hcLbl:SetWidth(math.max(120, iw - SETTINGS_CHECKBOX_GRID_INDENT - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT))
+        hcLbl:SetJustifyH("LEFT")
+        hcLbl:SetWordWrap(true)
+        hcLbl:SetText((ns.L and ns.L["HIGH_CONTRAST"]) or "High contrast")
+        ns.UI_SetTextColorRole(hcLbl, "Bright")
+        hcCb:SetChecked(WarbandNexus.db.profile.highContrast)
+        if hcCb.checkTexture then
+            hcCb.checkTexture:SetShown(WarbandNexus.db.profile.highContrast)
+        end
+        hcCb:SetScript("OnClick", function(self)
+            local v = self:GetChecked() and true or false
+            WarbandNexus.db.profile.highContrast = v
+            if self.checkTexture then self.checkTexture:SetShown(v) end
+            if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+            RefreshSubtitles()
+            if WarbandNexus.Print then
+                WarbandNexus:Print((ns.L and ns.L["LIGHT_MODE_RELOAD_HINT"]) or "Theme mode changed — /reload to apply it everywhere.")
+            end
+        end)
+        hcCb:SetScript("OnEnter", function(self)
+            Settings_ShowWrappedTooltip(self, hcTip)
+        end)
+        hcCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        hcLbl:SetScript("OnEnter", function(self)
+            Settings_ShowWrappedTooltip(self, hcTip)
+        end)
+        hcLbl:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        local hcRowH = math.max(ns.UI_TOGGLE_SIZE or 22, hcLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
+        cy = cy - hcRowH - GetHeaderToolbarGap()
+
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & Readability",
             iw, cy, {})
