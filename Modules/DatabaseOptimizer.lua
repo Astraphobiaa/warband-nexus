@@ -1,13 +1,6 @@
 --[[
     Warband Nexus - Database Optimizer Module
-    SavedVariables optimization and cleanup
-    
-    Features:
-    - Remove stale character data (90+ days)
-    - Remove deleted/invalid items
-    - Deduplicate data
-    - Database size reporting
-    - Auto-cleanup on login (optional)
+    SavedVariables cleanup, cache backup/reset, and optional login trim.
 ]]
 
 local ADDON_NAME, ns = ...
