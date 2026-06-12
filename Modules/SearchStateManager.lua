@@ -1,12 +1,6 @@
 --[[
-    Warband Nexus - Search State Manager (Service Layer)
-    
-    Service-Oriented search state management
-    - Manages search queries and state per tab
-    - UI search boxes debounce redraws (`UI_CONSTANTS.SEARCH_DEBOUNCE_SEC`); this service stores the active query
-    - Provides centralized API for all search operations
-    
-    Architecture: Pure Service Layer (UI-Agnostic)
+    Warband Nexus - Search State Manager
+    Per-tab search query storage (UI debounces redraws separately).
 ]]
 
 local ADDON_NAME, ns = ...
