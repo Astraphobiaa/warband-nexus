@@ -96,6 +96,7 @@ Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
 Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
+Modules\TryCounterService_Handlers.lua
 Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
 Modules\DailyQuestManager.lua
