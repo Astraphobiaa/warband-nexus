@@ -1,6 +1,6 @@
 # Project Operations Backlog — Warband Nexus
 
-Branch: `chore/ops-deferred-wave-1` (wave 1) · prior: `chore/ops-integration` (#41)  
+Branch: `chore/ops-deferred-soa-splits` (SOA + service splits) · prior: `chore/ops-deferred-wave-1` (#42)  
 Source: `PROJECT-CLEANUP-AUDIT.md`, Epic ABC (#39/#40), codebase inventory (2026-06-12)  
 Target: Midnight 12.0.1 (`Interface: 120005`)
 
@@ -58,12 +58,12 @@ Service → bus → view; no service-driven tab paint.
 - [x] **ops-016** · P1 · `Modules/CollectionService.lua` — Replace inline `PopulateContent` loop guards with narrow `WN_COLLECTION_*` or `WN_UI_MAIN_REFRESH_REQUESTED` tab payloads.
 - [x] **ops-017** · P1 · `Modules/TooltipService.lua` — Decouple `WarbandNexus.UI.mainFrame` walk from tooltip safety; use visibility flag or message like reputation scan (#40).
 - [x] **ops-018** · P1 · `Modules/CommandService.lua` — Route debug/header mutations through `WN_UI_DEBUG_HEADER_SYNC` instead of direct frame pokes.
-- [ ] **ops-019** · P2 · `Modules/NotificationManager.lua` — Thin `RegisterMessage` handlers; move toast layout work behind `WN_SHOW_NOTIFICATION` debounce in UI layer. _deferred — separate epic_
+- [x] **ops-019** · P2 · `Modules/NotificationManager.lua` — `OnShowNotification` debounces `WN_SHOW_NOTIFICATION` (80ms); layout stays in `ShowModalNotification`.
 - [x] **ops-020** · P2 · `Modules/Constants.lua` — Add `WN_MAIN_WINDOW_VISIBILITY_CHANGED` (or document `ns._wnMainWindowVisible` as canonical); replace ad-hoc visibility checks repo-wide.
 - [x] **ops-021** · P2 · `Modules/Constants.lua` — Rename legacy non-`WN_` daily/weekly quest message identifiers to `WN_*` with MigrationService-free alias shim.
-- [ ] **ops-022** · P2 · `Modules/UI.lua`, `Modules/UI/UI_RefreshRouter.lua` — Deduplicate overlapping `RegisterMessage` listeners that both call `SchedulePopulateContent`. _deferred — separate epic (tab modules already removed duplicate ITEMS/PLANS listeners)_
+- [x] **ops-022** · P2 · `Modules/UI/UI_RefreshRouter.lua` — Profession-tab `RegisterMessage` handlers deduplicated to shared `onProfessionsTabRefresh` / `onProfessionsOrCharsRefresh` (main shell listeners remain in router only).
 - [x] **ops-023** · P2 · `Modules/DataService.lua` — Emit granular messages (`WN_CHARACTER_UPDATED` with `charKey`) instead of broad refresh triggers from roster helpers.
-- [ ] **ops-024** · P2 · `Modules/ProfessionService.lua` — Audit 20 `SendMessage` sites; coalesce profession-window bursts into `WN_PROFESSION_DATA_UPDATED` where safe. _deferred — separate epic_
+- [x] **ops-024** · P2 · `Modules/ProfessionService.lua` — `TRADE_SKILL_SHOW` collector passes coalesce to one debounced `WN_PROFESSION_DATA_UPDATED` emit (granular messages retained for list/knowledge deltas).
 - [x] **ops-025** · P3 · `Modules/**/*.lua` — Grep audit: services calling `PopulateContent`, `mainFrame`, or tab draw fns; file violations in PR notes.
 
 **Bonus (integration):** `WN_CHARACTER_TRACKING_DIALOG_REQUESTED` — CharacterService emits; `CharacterTrackingDialog.lua` listens.
@@ -77,32 +77,32 @@ Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices +
 ### SharedWidgets factory phases
 
 - [x] **ops-026** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 2 (pixel slice only):** `SharedWidgets_Pixel.lua` (scale, snap, border registry). _Phases 2 layout table + 3–5 still deferred — separate epic_
-- [ ] **ops-027** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 3:** extract `ns.UI.Factory` method table → `SharedWidgets_Factory.lua` (buttons, scroll, section headers). _deferred — separate epic_
-- [ ] **ops-028** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 4:** extract row chrome helpers still inline → extend `SharedWidgets_CharRow.lua` / new `SharedWidgets_RowPool.lua`. _deferred — separate epic_
-- [ ] **ops-029** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 5:** extract search bar, collapsible header, icon helpers → dedicated satellites; entry file <120 locals. _deferred — separate epic_
+- [x] **ops-027** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 3:** extract `ns.UI.Factory` method table → `SharedWidgets_Factory.lua` (buttons, scroll, section headers).
+- [x] **ops-028** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 4:** extract row chrome helpers still inline → extend `SharedWidgets_CharRow.lua` / new `SharedWidgets_RowPool.lua`.
+- [x] **ops-029** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 5:** extract search bar, collapsible header, icon helpers → dedicated satellites; entry file <120 locals.
 
 ### Service & domain monoliths
 
 - [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — **Partial:** event/debug/blocking tables → `TryCounterService_Events.lua`. _Encounter/loot handler split still deferred — separate epic_
-- [ ] **ops-031** · P0 · `Modules/CollectionService.lua` (5510 lines) — Split bag-scan/event host → `CollectionService_Scanner.lua`; notify path already partial in `CollectionService_NotifyDedup.lua`. _deferred — separate epic_
+- [x] **ops-031** · P0 · `Modules/CollectionService.lua` — Bag-scan/event host → `CollectionService_Scan.lua` (`ns.CollectionScan`); notify dedup remains `CollectionService_NotifyDedup.lua`.
 - [ ] **ops-032** · P1 · `Modules/GearService.lua` (3905 lines) — Split storage recommendation engine → `GearService_Storage.lua` (slots/tracks already split). _deferred — separate epic_
 - [ ] **ops-033** · P1 · `Modules/TooltipService.lua` (2731 lines) — Split GameTooltip hook/injection → `TooltipService_GameTooltip.lua`; keep `TooltipService.lua` as facade + `ns.TooltipService`. _deferred — separate epic_
 - [ ] **ops-034** · P1 · `Modules/PlansManager.lua` (2930 lines) — Split vault/daily quest plan writers → `PlansManager_Vault.lua` and `PlansManager_Quests.lua`. _deferred — separate epic_
-- [ ] **ops-035** · P1 · `Modules/NotificationManager.lua` (3245 lines) — Split changelog/what's-new UI from toast queue → `NotificationManager_Changelog.lua`. _deferred — separate epic_
+- [x] **ops-035** · P1 · `Modules/NotificationManager.lua` — Changelog / What's New → `NotificationManager_Changelog.lua` (`ns.NotificationChangelog`, `ns.CHANGELOG`).
 
 ### UI tab monoliths
 
 - [ ] **ops-036** · P1 · `Modules/UI/PlansUI.lua` (4629 lines) — Split browse card grid → `PlansUI_Browse.lua`; keep thin orchestrator + `CardLayoutManager` hook. _deferred — separate epic_
-- [ ] **ops-037** · P1 · `Modules/UI/PvEUI.lua` (4482 lines) — Split vault grid and character list chrome (partial rows exist) → `PvEUI_VaultGrid.lua`. _deferred — separate epic_
-- [ ] **ops-038** · P1 · `Modules/UI/SettingsUI.lua` (4277 lines) — Finish shell split: move module toggles → `SettingsUI_Modules.lua` (extend `SettingsUI_Shell.lua`). _deferred — separate epic_
-- [ ] **ops-039** · P1 · `Modules/UI.lua` (4163 lines) — Move refresh router-only code to `UI_RefreshRouter.lua`; target entry <2000 lines. _deferred — separate epic_
-- [ ] **ops-040** · P1 · `Modules/UI/GearUI_Paperdoll.lua` (3886 lines) — Split slot button factory vs outward label paint → `GearUI_Paperdoll_Slots.lua`. _deferred — separate epic_
-- [ ] **ops-041** · P2 · `Modules/UI/PlanCardFactory.lua` (3723 lines) — Split expanded-content actions vs collapsed card chrome → `PlanCardFactory_Expanded.lua`. _deferred — separate epic_
+- [x] **ops-037** · P1 · `Modules/UI/PvEUI.lua` — **Partial:** vault grid + track column helpers → `PvEUI_VaultGrid.lua` (`PaintPvEVaultGridOnCard`, `FormatVaultTrackColumn`). Character list chrome remains `PvECharacterListRowChrome.lua`.
+- [x] **ops-038** · P1 · `Modules/UI/SettingsUI.lua` — Module toggles panel → `SettingsUI_Modules.lua` (`AppendModulesPanel` + helper ctx).
+- [x] **ops-039** · P1 · `Modules/UI.lua` / `UI_RefreshRouter.lua` — **Partial:** shell lifecycle hooks (`RegisterShellLifecycleHooks`: OnShow dirty repaint + `UI_DEBUG_HEADER_SYNC`). Full `SchedulePopulateContent` closure still in `UI.lua` (>500-line risk).
+- [x] **ops-040** · P1 · `Modules/UI/GearUI_Paperdoll.lua` — Slot button factory → `GearUI_Paperdoll_Slots.lua` (`CreateSlotButton` via `_slotDeps` bind).
+- [x] **ops-041** · P2 · `Modules/UI/PlanCardFactory.lua` — Expanded-content actions → `PlanCardFactory_Expanded.lua` (expand handlers + mount/source expanded bodies).
 
 ### Overflow & misc structure
 
 - [x] **ops-042** · P2 · `Modules/OverflowMonitor.lua` — **N/A:** dead service removed; no relocation needed.
-- [x] **ops-043** · P2 · `WarbandNexus.toc` — Wave-1 split batch: `SharedWidgets_Pixel`, `TryCounterService_Events` casing/order + satellite `assert` guards.
+- [x] **ops-043** · P2 · `WarbandNexus.toc` — Split batch: `SharedWidgets_Pixel`, `TryCounterService_Events`, `CollectionService_Scan`, `NotificationManager_Changelog` + satellite `assert` guards.
 
 ---
 
@@ -132,11 +132,12 @@ Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices +
 
 | File | Lines | `@param` density | Notes |
 |------|------:|-----------------|-------|
-| `SharedWidgets.lua` | ~7820 | stripped (Factory-only policy) | Pixel → `SharedWidgets_Pixel.lua`; layout/factory phases deferred |
+| `SharedWidgets.lua` | ~4130 | stripped (Factory-only policy) | Pixel/CharRow/Icons/Collapsible/Factory/RowPool/Search satellites (ops-027–029) |
 | `TryCounterService.lua` | ~7580 | export policy in header | Events → `TryCounterService_Events.lua`; encounter/loot split deferred |
-| `CollectionService.lua` | 5510 | stripped | SOA + split deferred |
+| `CollectionService.lua` | ~5340 | stripped | Bag scan → `CollectionService_Scan.lua` |
+| `NotificationManager.lua` | ~3080 | stripped | Changelog → `NotificationManager_Changelog.lua` |
 | `PlansUI.lua` | 4629 | ~3 | Split browse deferred |
-| `PvEUI.lua` | 4482 | ~20 | Split vault grid deferred |
+| `PvEUI.lua` | ~3400 | ~20 | Vault grid → `PvEUI_VaultGrid.lua` (ops-037) |
 | `TooltipService.lua` | 2731 | stripped Tier A | Split hooks deferred |
 
 **Policy decisions (open):**
