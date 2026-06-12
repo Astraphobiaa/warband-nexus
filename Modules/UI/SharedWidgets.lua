@@ -1754,7 +1754,6 @@ ns.UI_ApplyBorderlessSurface = ApplyBorderlessSurface
 ns.UI_HideFrameBorderQuartet = HideFrameBorderQuartet
 
 --- Resolve a surface tier color (borderless depth ladder).
----@param tier string|nil "canvas"|"viewport"|"card"|"section"|"rowEven"|"rowOdd"|"elevated"
 ---@return table rgba
 local function ResolveSurfaceTierColor(tier)
     local C = COLORS or {}
@@ -2134,12 +2133,6 @@ function ns.UI_ClearTextureSliceSafe(tex)
 end
 
 --- Shared atlas/tile mid-layer (viewport + section chrome); one texture per frame.
----@param frame Frame
----@param texKey string
----@param nameKey string
----@param inset number
----@param candidates string[]|nil
----@param fallbackTex string|nil
 local function WnApplyAtlasChromeUnderlayCore(frame, texKey, nameKey, inset, candidates, fallbackTex)
     if not frame or not texKey or not nameKey then return end
 
@@ -2215,9 +2208,6 @@ local function WnApplyAtlasChromeUnderlayCore(frame, texKey, nameKey, inset, can
     end
 end
 
----@param frame Frame
----@param texKey string
----@param alphaShellKey string
 local function WnRefreshAtlasChromeUnderlayTint(frame, texKey, alphaShellKey)
     local tex = frame and texKey and frame[texKey]
     if not tex or not alphaShellKey then return end
@@ -5546,7 +5536,6 @@ function ns.UI_SetGameTooltipSmartOwner(frame, xOffset, yOffset)
 end
 
 --- English class token (WARRIOR, MAGE, …) from a `db.global.characters` entry.
----@param charData table
 ---@return string|nil
 local function ResolveClassFileTokenFromCharData(charData)
     if type(charData) ~= "table" then return nil end
@@ -6435,11 +6424,6 @@ ns.UI_CreateSection = CreateSection
 -- DB VERSION BADGE (Debug Logging)
 
 ---Creates a small badge showing which DB/cache is being used by this tab
----@param parent Frame Parent frame (tab content)
----@param dataSource string Description of data source (e.g., "CurrencyCache v1.0.0", "db.global.currencies [LEGACY]")
----@param anchorPoint string Anchor point (default "TOPRIGHT")
----@param xOffset number X offset from anchor (default -10)
----@param yOffset number Y offset from anchor (default -10)
 ---@return Frame Badge frame
 local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yOffset)
     local FontManager = ns.FontManager
@@ -7649,7 +7633,6 @@ end
 --- Create a persistent loading state panel that fills its parent.
 --- Reusable: call panel:ShowLoading(title, progress, stage) / panel:HideLoading().
 --- Visual style matches UI_CreateLoadingStateCard for consistency.
----@param parent Frame - Parent container to fill
 ---@return Frame panel - Panel with :ShowLoading() / :HideLoading()
 local function UI_CreateLoadingStatePanel(parent)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")

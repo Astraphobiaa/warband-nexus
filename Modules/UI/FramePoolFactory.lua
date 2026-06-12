@@ -64,7 +64,6 @@ end
 -- CHARACTER ROW POOLING
 
 ---Get a character row from pool or create new
----@param parent Frame Parent container
 ---@return Frame row Pooled or new character row
 local function AcquireCharacterRow(parent)
     local row = tremove(CharacterRowPool)
@@ -94,7 +93,6 @@ local function AcquireCharacterRow(parent)
 end
 
 ---Return character row to pool
----@param row Frame Row to release
 local function ReleaseCharacterRow(row)
     if not row or not row.isPooled then return end
     if row._wnInFramePool then return end
@@ -151,9 +149,6 @@ end
 ---Get a reputation row from pool or create new
 ---Enhanced to support width/height and proper child element reset for reuse.
 ---Child elements are lazy-created in ReputationUI and reused across pool cycles.
----@param parent Frame Parent container
----@param width number|nil Row width (default 200)
----@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new reputation row
 local function AcquireReputationRow(parent, width, rowHeight)
     local row = tremove(ReputationRowPool)
@@ -202,7 +197,6 @@ end
 
 ---Return reputation row to pool
 ---Properly cleans up all child elements to prevent state leaks between reuses.
----@param row Frame Row to release
 local function ReleaseReputationRow(row)
     if not row or not row.isPooled then return end
     if row._wnInFramePool then return end
@@ -274,7 +268,6 @@ end
 -- PROFESSION ROW POOLING
 
 ---Get a profession row from pool or create new
----@param parent Frame Parent container
 ---@return Frame row Pooled or new profession row
 local function AcquireProfessionRow(parent)
     local row = tremove(ProfessionRowPool)
@@ -299,7 +292,6 @@ end
 
 ---Return profession row to pool
 ---Resets scripts and hides lazy-created concentration bars to prevent stale visuals on reuse.
----@param row Frame Row to release
 local function ReleaseProfessionRow(row)
     if not row or not row.isPooled then return end
     if row._wnInFramePool then return end
@@ -333,9 +325,6 @@ end
 -- CURRENCY ROW POOLING
 
 ---Get a currency row from pool or create new
----@param parent Frame Parent container
----@param width number Row width
----@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new currency row
 local function AcquireCurrencyRow(parent, width, rowHeight)
     local row = tremove(CurrencyRowPool)
@@ -402,7 +391,6 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
 end
 
 ---Return currency row to pool
----@param row Frame Row to release
 local function ReleaseCurrencyRow(row)
     if not row or not row.isPooled then return end
     if row._wnInFramePool then return end
@@ -482,18 +470,10 @@ end
 -- ITEM ROW POOLING
 
 ---Get an item row from pool or create new
----@param parent Frame Parent container
----@param width number Row width
----@param rowHeight number Row height
 ---@return Frame row Pooled or new item row
 --- Shared builder for the item/storage list rows. The two pools differ only in:
 --- background texture (item rows), rowType tag, default height (storage: 26) and
 --- the post-acquire child show-reset (Gear recommendations hide storage children).
----@param pool table
----@param parent Frame
----@param width number
----@param rowHeight number|nil
----@param cfg table { rowType, withBackground, defaultHeight, resetChildVisibility }
 local function AcquireListRowFromPool(pool, parent, width, rowHeight, cfg)
     local row = tremove(pool)
     if row then
@@ -595,7 +575,6 @@ local function AcquireItemRow(parent, width, rowHeight)
 end
 
 ---Return item row to pool
----@param row Frame Row to release
 local function ReleaseItemRow(row)
     if not row or not row.isPooled then return end
     if row._wnInFramePool then return end
@@ -624,16 +603,12 @@ end
 local STORAGE_ROW_CFG = { rowType = "storage", defaultHeight = 26, resetChildVisibility = true }
 
 ---Get storage row from pool (same chassis as item rows; no background texture)
----@param parent Frame Parent container
----@param width number Row width
----@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new storage row
 local function AcquireStorageRow(parent, width, rowHeight)
     return AcquireListRowFromPool(StorageRowPool, parent, width, rowHeight, STORAGE_ROW_CFG)
 end
 
 ---Return storage row to pool
----@param row Frame Row to release
 local function ReleaseStorageRow(row)
     if not row or not row.isPooled then return end
     if row._wnInFramePool then return end
@@ -708,7 +683,6 @@ local function ReleasePooledRowsInSubtree(root)
 end
 
 ---Release all pooled children of a frame (and hide non-pooled ones)
----@param parent Frame Parent container to clean up
 local function ReleaseAllPooledChildren(parent)
     local n = PackVariadicInto(_poolChildScratch, parent:GetChildren())
     for i = 1, n do
