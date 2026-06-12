@@ -46,8 +46,8 @@ local COLORS = ns.UI_COLORS
 local ColumnOrder = ns.ColumnOrder
 
 -- Import shared UI layout constants
+-- (ns.GetUILayoutTokens never existed anywhere — the guard branch was dead.)
 local function GetLayout()
-    if ns.GetUILayoutTokens then return ns.GetUILayoutTokens() end
     return ns.UI_LAYOUT or {}
 end
 local ROW_HEIGHT = GetLayout().rowHeight or 26

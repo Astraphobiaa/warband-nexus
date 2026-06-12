@@ -38,7 +38,6 @@ local CreateIcon = ns.UI_CreateIcon
 
 -- Single source for layout (matches CurrencyUI, PlansUI, SharedWidgets)
 function M.GetLayout()
-    if ns.GetUILayoutTokens then return ns.GetUILayoutTokens() end
     return ns.UI_LAYOUT or ns.UI_SPACING or {}
 end
 local LAYOUT, SIDE_MARGIN, TOP_MARGIN, CARD_GAP, AFTER_ELEMENT, ROW_ICON_SIZE
