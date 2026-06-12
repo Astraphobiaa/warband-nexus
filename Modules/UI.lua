@@ -3271,6 +3271,16 @@ function WarbandNexus:CreateMainWindow()
         })
     end
 
+    if ns.UI_RefreshRouter and ns.UI_RefreshRouter.RegisterShellLifecycleHooks then
+        ns.UI_RefreshRouter.RegisterShellLifecycleHooks({
+            addon = WarbandNexus,
+            frame = f,
+            state = shellRefresh,
+            schedulePopulate = SchedulePopulateContent,
+            syncDebugHeader = true,
+        })
+    end
+
     -- Loading bar is now a standalone floating frame (see CreateLoadingOverlay below)
 
     -- Footer: left disclaimer / hints, right add-on version (TOC metadata).
@@ -3373,22 +3383,6 @@ function WarbandNexus:CreateMainWindow()
         if WarbandNexus.ClearCollectionMetadataCache then WarbandNexus:ClearCollectionMetadataCache() end
     end)
 
-    -- Master OnShow: data-change messages that arrived while hidden marked the shell
-    -- dirty (UI_RefreshRouter HiddenOrMissing). Normal ShowMainWindow paths populate on
-    -- their own and clear the bit first; this catches raw Show() calls — most notably
-    -- the post-combat restore in Core.lua OnCombatEnd — so the window never reopens stale.
-    f:HookScript("OnShow", function(self)
-        ns._wnMainWindowVisible = true
-        if not shellRefresh.dirtyWhileHidden then return end
-        shellRefresh.lastEventPopulateTime = 0
-        C_Timer.After(0.2, function()
-            if not self:IsShown() then return end
-            if shellRefresh.dirtyWhileHidden then
-                SchedulePopulateContent(true)
-            end
-        end)
-    end)
-
     --- Show/hide header Reload button when debug mode is on (boolean or legacy SavedVars `1`; matches ProfileFlagOn / Settings toggles).
     function f:SyncMainHeaderDebugReloadLayout()
         local reloadBtn = self.reloadDebugBtn
@@ -3406,18 +3400,6 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     f:SyncMainHeaderDebugReloadLayout()
-
-    local shellEv = ns.Constants and ns.Constants.EVENTS
-    if WarbandNexus.RegisterMessage and shellEv and shellEv.UI_DEBUG_HEADER_SYNC then
-        if not ns._uiDebugHeaderSyncListener then
-            ns._uiDebugHeaderSyncListener = {}
-            WarbandNexus.RegisterMessage(ns._uiDebugHeaderSyncListener, shellEv.UI_DEBUG_HEADER_SYNC, function()
-                if f.SyncMainHeaderDebugReloadLayout then
-                    f:SyncMainHeaderDebugReloadLayout()
-                end
-            end)
-        end
-    end
 
     -- Frame is already hidden (Hide() called immediately after CreateFrame)
     return f
