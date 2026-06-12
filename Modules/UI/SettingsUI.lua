@@ -1149,8 +1149,6 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     return yOffset - 65
 end
 
--- SECTION BUILDERS
-
 -- Track subtitle elements for theme refresh
 local subtitleElements = {}
 local sliderElements = {}

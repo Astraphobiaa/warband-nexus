@@ -426,8 +426,6 @@ function WarbandNexus:InitializeEventManager()
         end
     end)
     
-    -- ====== REAL-TIME PROFESSION UPDATES ======
-    
     -- Concentration: piggyback on CurrencyCacheService's output
     -- WN_CURRENCY_UPDATED fires with currencyID when a single currency changes.
     -- We check if it's a concentration currency and refresh if so.

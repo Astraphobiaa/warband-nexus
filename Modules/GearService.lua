@@ -6,6 +6,7 @@
     Gold-only (0-crest) upgrades use per-slot ilvl watermarks when the upgrade NPC window is closed.
 
     WN_NONUI_UI: Transient DressUp/model preview frames constructed in this module are helpers only; Gear tab visuals live in Modules/UI/GearUI.lua.
+    LuaLS: retain ---@ on WarbandNexus: export surface only; local helpers stay comment-only.
 ]]
 
 local ADDON_NAME, ns = ...
