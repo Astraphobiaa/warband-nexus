@@ -16,8 +16,6 @@ local issecretvalue = issecretvalue
 local strsplit = strsplit
 local tonumber = tonumber
 
--- STATE MANAGEMENT
-
 -- Singleton tooltip frame (lazy initialized)
 local tooltipFrame = nil
 local isVisible = false
@@ -28,14 +26,8 @@ local isInitialized = false
 local TOOLTIP_SHOW = E.TOOLTIP_SHOW
 local TOOLTIP_HIDE = E.TOOLTIP_HIDE
 
--- TOOLTIP SERVICE
-
 local TooltipService = {}
 
---[[
-    Initialize tooltip service
-    Creates the singleton frame and registers safety events
-]]
 function TooltipService:Initialize()
     if isInitialized then return end
     
@@ -48,9 +40,6 @@ function TooltipService:Initialize()
     self:RegisterSafetyEvents()
 end
 
---[[
-    Get or create tooltip frame (lazy init)
-]]
 local function GetTooltipFrame()
     if not tooltipFrame and ns.UI and ns.UI.TooltipFactory then
         tooltipFrame = ns.UI.TooltipFactory:CreateTooltipFrame()
@@ -58,11 +47,6 @@ local function GetTooltipFrame()
     return tooltipFrame
 end
 
---[[
-    Validate tooltip data structure
-    @param data table - Tooltip data
-    @return boolean - Valid or not
-]]
 function TooltipService:ValidateData(data)
     if not data or type(data) ~= "table" then
         return false
@@ -87,11 +71,6 @@ function TooltipService:ValidateData(data)
     return false
 end
 
---[[
-    Show tooltip
-    @param anchorFrame Frame - Frame to anchor to
-    @param data table - Tooltip data structure
-]]
 function TooltipService:Show(anchorFrame, data)
     local frame = GetTooltipFrame()
     if not frame or not anchorFrame or not data then 
@@ -150,9 +129,6 @@ function TooltipService:Show(anchorFrame, data)
     end
 end
 
---[[
-    Hide tooltip
-]]
 function TooltipService:Hide()
     local frame = GetTooltipFrame()
     if not frame or not isVisible then 
@@ -177,11 +153,6 @@ end
 -- spec; rewrite so Gear tab tooltips match the viewed character.
 -- See https://warcraft.wiki.gg/wiki/ItemLink (linkLevel, specializationID).
 
----@param itemLink string|nil
----@param itemID number|nil
----@param linkLevel number
----@param specializationID number
----@return string|nil
 local function ApplyItemLinkTooltipContext(itemLink, itemID, linkLevel, specializationID)
     if not linkLevel or linkLevel < 1 or not specializationID or specializationID < 1 then
         return itemLink
@@ -226,8 +197,6 @@ local function ApplyItemLinkTooltipContext(itemLink, itemID, linkLevel, speciali
 end
 
 ---Strip |cn / |cHEX+ / |r so SetTextColor applies (embedded colors override FontString color).
----@param text string|nil
----@return string
 local function StripTooltipTextForStatMatch(text)
     if not text or type(text) ~= "string" then return "" end
     if issecretvalue and issecretvalue(text) then return "" end
@@ -241,9 +210,6 @@ local function StripTooltipTextForStatMatch(text)
     return (s:gsub("|r", ""))
 end
 
----@param leftText string|nil
----@param rightText string|nil
----@return boolean
 local function IsItemTooltipClassRestrictionLine(leftText, rightText)
     if leftText and issecretvalue and issecretvalue(leftText) then return false end
     if rightText and issecretvalue and issecretvalue(rightText) then return false end
@@ -261,8 +227,6 @@ local function IsItemTooltipClassRestrictionLine(leftText, rightText)
     return false
 end
 
----@param line table|nil
----@return boolean
 local function IsVisuallyEmptyTooltipDataLine(line)
     if not line then return true end
     local l, r = line.leftText, line.rightText
@@ -292,8 +256,6 @@ local SPEC_ID_PRIMARY_KIND = {
     [71] = "strength", [72] = "strength", [73] = "strength", [1446] = "strength",
 }
 
----@param n number|nil
----@return string|nil
 local function PrimaryStatCodeToKind(n)
     n = tonumber(n)
     if not n then return nil end
@@ -313,8 +275,6 @@ local _primaryKindLookupFailed = {}
 --- Primary stat line kind for tooltip coloring: Str/Agi/Int that matches the character's spec.
 --- Order: (1) C_SpecializationInfo for that spec+class (covers all client-defined specs, future patches),
 --- (2) static SPEC_ID_PRIMARY_KIND, (3) C_SpecializationInfo.GetSpecPrimaryStat if present, (4) return scan.
----@param specID number
----@return string|nil
 local function ResolvePrimaryStatKindForSpec(specID)
     if not specID or specID < 1 then return nil end
     if _primaryKindBySpec[specID] then return _primaryKindBySpec[specID] end
@@ -398,9 +358,6 @@ local function ResolvePrimaryStatKindForSpec(specID)
     return nil
 end
 
----@param leftText string|nil
----@param rightText string|nil
----@return string
 local function GetCombinedPlainLeftRight(leftText, rightText)
     local l = StripTooltipTextForStatMatch(leftText or "")
     local r = StripTooltipTextForStatMatch(rightText or "")
@@ -412,8 +369,6 @@ local function GetCombinedPlainLeftRight(leftText, rightText)
 end
 
 ---Which primary stat this "+N …" line is (not Stamina / secondaries).
----@param plain string
----@return string|nil "strength"|"agility"|"intellect"
 local function DetectPrimaryStatLineKindFromPlain(plain)
     if not plain or plain == "" or not plain:find("^%s*%+?%d+") then return nil end
     local L = ns.L
@@ -434,8 +389,6 @@ local function DetectPrimaryStatLineKindFromPlain(plain)
 end
 
 ---Only the selected spec's main stat is white; other Str/Agi/Int on the same item stay dimmed.
----@param line table TooltipDataLine (mutated)
----@param ctx table itemTooltipContext { specID, level }
 local function ApplyGearTabPrimaryStatLineHighlight(line, ctx)
     if not line or not ctx then return end
     local specID = tonumber(ctx.specID)
@@ -625,13 +578,6 @@ local function GetProfessionCraftingQualityTierFromItemLinkAnyLineScan(itemLink)
     return ClampMidnightProfessionQualityTier(found)
 end
 
--- RENDERING METHODS
-
---[[
-    Render custom tooltip with structured data
-    @param frame Frame - Tooltip frame
-    @param data table - Tooltip data
-]]
 function TooltipService:RenderCustomTooltip(frame, data)
     -- 1) Icon (top-left; icon=false explicitly hides icon, nil falls back to question mark)
     if data.icon == false then
@@ -719,11 +665,6 @@ function TooltipService:RenderCustomTooltip(frame, data)
     end
 end
 
---[[
-    Render item tooltip using C_TooltipInfo (full Blizzard data in our custom frame)
-    @param frame Frame - Tooltip frame
-    @param data table - Tooltip data {itemID, itemLink, additionalLines}
-]]
 function TooltipService:RenderItemTooltip(frame, data)
     local itemID = data.itemID
     local itemLink = data.itemLink
@@ -916,9 +857,6 @@ end
 --[[
     Return tooltip stat lines for an item (for use under profession equipment in custom tooltips).
     Skips title line; returns left/right lines with colors. Safe for secret values (Midnight).
-    @param itemLink string|nil - Item hyperlink (preferred)
-    @param itemID number|nil - Item ID fallback when itemLink is nil
-    @return table - Array of { left, right, leftColor, rightColor }
 ]]
 function TooltipService:GetItemTooltipStatLines(itemLink, itemID)
     if not C_TooltipInfo then return {} end
@@ -1050,10 +988,6 @@ end
 --[[
     Return only item level, stats, and equip-effect lines for profession equipment tooltips.
     Plus a first line for slot type (Tool / Head / Chest / etc.).
-    @param itemLink string|nil
-    @param itemID number|nil
-    @param slotKey string "tool" | "accessory1" | "accessory2"
-    @return table - Array of { left, right, leftColor, rightColor }
 ]]
 function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
     local out = {}
@@ -1173,8 +1107,6 @@ end
 
 --[[
     Render currency tooltip (Blizzard data + custom additions)
-    @param frame Frame - Tooltip frame
-    @param data table - Tooltip data
 ]]
 function TooltipService:RenderCurrencyTooltip(frame, data)
     local currencyID = data.currencyID
@@ -1330,8 +1262,6 @@ end
 
 --[[
     Render hybrid tooltip (Blizzard + custom mixed)
-    @param frame Frame - Tooltip frame
-    @param data table - Tooltip data
 ]]
 function TooltipService:RenderHybridTooltip(frame, data)
     -- First render Blizzard data
@@ -1343,8 +1273,6 @@ function TooltipService:RenderHybridTooltip(frame, data)
     
     -- Then add custom lines (already handled in item/currency methods)
 end
-
--- POSITIONING
 
 -- Tooltip offset constants
 local TOOLTIP_GAP = 8
@@ -1362,8 +1290,6 @@ local function RectsOverlap(aLeft, aRight, aTop, aBottom, bLeft, bRight, bTop, b
     )
 end
 
----@param anchor string|nil ANCHOR_* from UI (AUTO = pick best side from screen position)
----@return string auto|right|left|top|bottom
 local function NormalizeTooltipAnchorPref(anchor)
     if not anchor or anchor == "ANCHOR_AUTO" then return "auto" end
     if anchor == "ANCHOR_LEFT" then return "left" end
@@ -1372,11 +1298,6 @@ local function NormalizeTooltipAnchorPref(anchor)
     return "right"
 end
 
----@param pref string
----@param aLeft number
----@param aRight number
----@param screenW number
----@return string[] sideOrder
 local function ResolveSideOrder(pref, aLeft, aRight, screenW)
     if pref == "left" then return { "left", "right" } end
     if pref == "right" then return { "right", "left" } end
@@ -1389,11 +1310,6 @@ local function ResolveSideOrder(pref, aLeft, aRight, screenW)
 end
 
 --- Build ranked placement candidates (Blizzard-style: side first with vertical center, then top/bottom).
----@param pref string
----@param aLeft number
----@param aRight number
----@param screenW number
----@return table[] { point, relativePoint, x, y, rank }
 local function BuildTooltipPlacementCandidates(pref, aLeft, aRight, screenW)
     local gap = TOOLTIP_GAP
     local out = {}
@@ -1471,7 +1387,6 @@ local function ScoreTooltipPlacement(TooltipService, frame, anchorFrame, candida
 end
 
 --- Pick the best on-screen placement for `frame` relative to `anchorFrame` (single pass, no post-show jump).
----@param anchorPref string|nil ANCHOR_* token
 function TooltipService:ApplyBestTooltipPlacement(frame, anchorFrame, anchorPref, screenW, screenH)
     if not frame or not anchorFrame then return end
     screenW = screenW or GetScreenWidth()
@@ -1542,9 +1457,6 @@ end
 
 --[[
     Position tooltip with smart screen-aware placement (score-based best candidate).
-    @param frame Frame - Tooltip frame
-    @param anchorFrame Frame - Anchor frame
-    @param anchor string|nil Preferred edge (ANCHOR_AUTO picks dynamically)
 ]]
 function TooltipService:PositionTooltip(frame, anchorFrame, anchor)
     if anchor == "ANCHOR_CURSOR" then
@@ -1570,10 +1482,6 @@ function TooltipService:PositionTooltip(frame, anchorFrame, anchor)
     self:ApplyBestTooltipPlacement(frame, anchorFrame, anchor)
 end
 
---[[
-    Clamp tooltip frame to stay within screen boundaries.
-    Adjusts position if any edge extends beyond the screen.
-]]
 function TooltipService:ClampToScreen(frame, screenW, screenH)
     local left = frame:GetLeft()
     local right = frame:GetRight()
@@ -1599,11 +1507,6 @@ function TooltipService:ClampToScreen(frame, screenW, screenH)
     end
 end
 
--- SAFETY & AUTO-HIDE
-
---[[
-    Register events that should auto-hide tooltip
-]]
 function TooltipService:RegisterSafetyEvents()
     -- PLAYER_REGEN_DISABLED: owned by Core.lua (OnCombatStart — hides main UI + tooltip)
     -- PLAYER_LEAVING_WORLD: use dedicated frame (avoids AceEvent collision)
@@ -1677,14 +1580,9 @@ function TooltipService:RegisterSafetyEvents()
     end
 end
 
--- SHARED COLLECTIBLE DROP LINES (used by Unit and Item tooltip hooks)
-
 ---Inject collectible drop lines into a GameTooltip.
 ---Shows header, item hyperlinks, collected/repeatable status, and try counts.
 ---Shared across NPC (Unit) and Container (Item) tooltip hooks.
----@param tooltip Frame GameTooltip or compatible tooltip frame
----@param drops table Array of drop entries { type, itemID, name [, guaranteed] [, repeatable] }
----@param npcID number|nil Optional NPC ID for lockout quest checking
 local function InjectCollectibleDropLines(tooltip, drops, npcID)
     if not drops or #drops == 0 then return end
 
@@ -2022,15 +1920,6 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
     -- Do not call tooltip:Show() here — retriggers TooltipDataProcessor post-call (refresh/flicker loop).
 end
 
--- ITEM DATA PRE-CACHE (eliminates first-hover tooltip delay)
-
---[[
-    Pre-request all item data from CollectibleSourceDB so that GetItemInfo
-    returns instantly when the user hovers over an NPC / container / object.
-    Without this, the first hover triggers an async server request and the
-    tooltip renders with a fallback name instead of a quality-colored link.
-    Batched over multiple frames to avoid FPS spikes.
-]]
 function TooltipService:PreCacheCollectibleItems()
     local sourceDB = ns.CollectibleSourceDB
     if not sourceDB then return end
@@ -2082,10 +1971,6 @@ function TooltipService:PreCacheCollectibleItems()
     ProcessBatch()
 end
 
--- GAME TOOLTIP INJECTION (TAINT-SAFE)
-
----@param val any
----@return number|nil
 local function SafeTooltipNumber(val)
     if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
@@ -2094,8 +1979,6 @@ end
 
 --- Blizzard UI widget tooltips (map vignettes, etc.) attach widgetSetID to GameTooltip.
 --- Do not inject lines or HookScript on these paths — widget layout uses secret numbers on Hide.
----@param tooltip Frame|nil
----@return boolean
 local function IsBlizzardWidgetTooltip(tooltip)
     if not tooltip then return false end
     local widgetSetID = tooltip.widgetSetID
@@ -2104,8 +1987,6 @@ local function IsBlizzardWidgetTooltip(tooltip)
     return widgetSetID ~= 0
 end
 
----@param link string|nil
----@return number|nil
 local function ParseItemIDFromItemLink(link)
     if not link or type(link) ~= "string" or (issecretvalue and issecretvalue(link)) then
         return nil
@@ -2115,8 +1996,6 @@ local function ParseItemIDFromItemLink(link)
 end
 
 --- Resolve item id for WN Search counts (Struct TooltipData.id + hyperlink; Midnight-safe).
----@param data table|nil TooltipData from TooltipDataProcessor post-call
----@return number|nil
 local function ResolveItemTooltipID(data)
     if not data then return nil end
     local id = SafeTooltipNumber(data.id)
@@ -2125,17 +2004,12 @@ local function ResolveItemTooltipID(data)
 end
 
 --- Per-tooltip injection guard (prevents post-call + Show() refresh loops).
----@param tooltip Frame
----@param token string
----@return boolean
 local function TooltipInjectionAlreadyDone(tooltip, token)
     if not tooltip or not token then return false end
     local tokens = tooltip._wnInjectTokens
     return tokens and tokens[token] == true
 end
 
----@param tooltip Frame
----@param token string
 local function MarkTooltipInjectionDone(tooltip, token)
     if not tooltip or not token then return end
     if not tooltip._wnInjectTokens then
@@ -2144,7 +2018,6 @@ local function MarkTooltipInjectionDone(tooltip, token)
     tooltip._wnInjectTokens[token] = true
 end
 
----@param tooltip Frame|nil
 local function ClearTooltipInjectionTokens(tooltip)
     if not tooltip then return end
     tooltip._wnInjectTokens = nil
@@ -2172,9 +2045,6 @@ local function InstallGameTooltipInjectionClearHooks()
     if ItemRefTooltip then hookHide(ItemRefTooltip) end
 end
 
----@param tooltip Frame
----@param itemID number
----@return boolean injected
 local function AppendWNItemCountLines(tooltip, itemID)
     if not tooltip or not itemID or not tooltip.AddLine or not tooltip.AddDoubleLine then
         return false
@@ -2245,11 +2115,6 @@ local function AppendWNItemCountLines(tooltip, itemID)
     return true
 end
 
---[[
-    Initialize GameTooltip hook for item count display
-    Uses TooltipDataProcessor (TWW API) - TAINT-SAFE
-    Shows item counts across all characters + total
-]]
 function TooltipService:InitializeGameTooltipHook()
     -- Modern TWW API (taint-safe)
     if not TooltipDataProcessor then
@@ -2841,7 +2706,6 @@ end
 
 ---Run self-diagnostic on tooltip systems. Called by /wn validate tooltip.
 ---Verifies localized npcNameIndex, lockout quest integration, and EJ API availability.
----@return table results { passed = bool, checks = { {name, status, detail} } }
 function TooltipService:RunDiagnostics()
     local results = { passed = true, checks = {} }
     local function addCheck(name, ok, detail)
@@ -2922,24 +2786,6 @@ function TooltipService:RunDiagnostics()
     return results
 end
 
--- CONCENTRATION TOOLTIP HOOK
-
---[[
-    Append cross-character concentration data to tooltips showing Concentration.
-    
-    Strategy (dual-layer, frame-path independent):
-    
-    1. TooltipDataProcessor (Currency type) — Blizzard's official modern API
-       for post-processing tooltips. Since Concentration is a currency
-       (concentrationCurrencyID), Blizzard uses SetCurrencyByID or similar
-       to populate the tooltip. This fires reliably.
-       
-    2. hooksecurefunc(GameTooltip, "Show") — Fallback for any non-currency
-       tooltip path that still shows "Concentration" in the first line.
-    
-    Both are installed once at load time on GameTooltip (always available).
-    No ProfessionsFrame frame-path discovery needed.
-]]
 local concentrationHookInstalled = false
 local WN_CONCENTRATION_MARKER = (ns.L and ns.L["TOOLTIP_CONCENTRATION_MARKER"]) or "Warband Nexus - Concentration"
 local CONCENTRATION_CACHE_TTL = 10
@@ -3116,15 +2962,11 @@ end
 -- Install the hook immediately at load time — GameTooltip is always available.
 TooltipService:InstallConcentrationTooltipHook()
 
--- DEBUG
-
 function TooltipService:Debug(msg)
     if WarbandNexus and WarbandNexus.Debug then
         WarbandNexus:Debug("[Tooltip] " .. msg)
     end
 end
-
--- EXPORT
 
 -- Attach to WarbandNexus namespace
 WarbandNexus.Tooltip = TooltipService
