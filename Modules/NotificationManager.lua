@@ -1980,8 +1980,12 @@ local function BuildAchievementAddAlertReplacement(orig)
         end
         local hasExtra = (a2 ~= nil) or (select("#", ...) > 0)
         if not hasExtra then
-            if WarbandNexus and WarbandNexus.ShowAchievementNotification then
-                WarbandNexus:ShowAchievementNotification(a1)
+            local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
+                and WarbandNexus:ShowAchievementNotification(a1)
+            if not shown then
+                -- WN toast will not appear (notifications off / dedup) — fall back to
+                -- Blizzard's popup instead of swallowing the alert entirely.
+                return orig(sys, a1, a2, ...)
             end
             return
         end
@@ -1994,8 +1998,10 @@ local function BuildAchievementAddAlertReplacement(orig)
             end
             local _, _, _, completed = GetAchievementInfo(arg1)
             if completed then
-                if WarbandNexus and WarbandNexus.ShowAchievementNotification then
-                    WarbandNexus:ShowAchievementNotification(arg1)
+                local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
+                    and WarbandNexus:ShowAchievementNotification(arg1)
+                if not shown then
+                    pcall(orig, sys, arg1, arg2, unpack(rest))
                 end
                 return
             end
@@ -2025,8 +2031,10 @@ local function BuildCriteriaAddAlertReplacement(orig)
             end
             local _, _, _, completed = GetAchievementInfo(arg1)
             if completed then
-                if WarbandNexus and WarbandNexus.ShowAchievementNotification then
-                    WarbandNexus:ShowAchievementNotification(arg1)
+                local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
+                    and WarbandNexus:ShowAchievementNotification(arg1)
+                if not shown then
+                    pcall(orig, sys, arg1, arg2, unpack(rest))
                 end
                 return
             end
@@ -2325,6 +2333,9 @@ end
 ---Collectible obtained handler (mount/pet/toy/achievement/title/illusion)
 function WarbandNexus:OnCollectibleObtained(event, data)
     if not data or not data.type then return end
+    -- Classic achievement mode: the message feeds try-counter/recent/caches upstream,
+    -- but Blizzard's own popup is the visible alert — no WN toast on top of it.
+    if data.suppressToast then return end
     -- Achievement can have nil/empty name (hidden achievements); use fallback for display
     local displayName = data.name
     if displayName and issecretvalue and issecretvalue(displayName) then return end

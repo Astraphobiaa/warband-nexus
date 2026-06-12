@@ -2733,6 +2733,9 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         local displayName = achName or ((ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement")
         local displayIcon = achIcon
         Notify.MarkAsPermanentlyNotified("achievement", achievementID)
+        -- Classic mode (Replace OFF): Blizzard's own popup is the visible alert; the
+        -- message still feeds try-counter/recent-ring/caches but must not ALSO toast
+        -- (it double-popped). suppressToast skips only the popup in NotificationManager.
         self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "achievement",
             id = achievementID,
@@ -2741,15 +2744,23 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
             achievementPoints = (type(achPoints) == "number" and achPoints > 0) and achPoints or nil,
             obtainedBy = Notify.CollectiblePayloadObtainedBy(),
             accountFirstEarn = true,
+            suppressToast = true,
         })
     end
 end
 
----Called from AddAlert hook when "Replace Achievement Popup" is on. Builds payload, marks notified, sends WN_COLLECTIBLE_OBTAINED. If we don't show (e.g. notifications off), Blizzard popup is shown as fallback by the hook.
+---Called from AddAlert hook when "Replace Achievement Popup" is on. Builds payload, marks notified, sends WN_COLLECTIBLE_OBTAINED.
+---@return boolean shown false when the WN toast will NOT appear — the AddAlert hook then falls back to the Blizzard popup
 function WarbandNexus:ShowAchievementNotification(achievementID)
-    if not achievementID or type(achievementID) ~= "number" then return end
-    if issecretvalue and issecretvalue(achievementID) then return end
-    if Notify.WasRecentlyNotified("achievement", achievementID) then return end
+    if not achievementID or type(achievementID) ~= "number" then return false end
+    if issecretvalue and issecretvalue(achievementID) then return false end
+    -- Notifications master switch off: WN toast can never appear; tell the hook to
+    -- show Blizzard's popup instead of swallowing the alert entirely.
+    local notif = self.db and self.db.profile and self.db.profile.notifications
+    if not notif or notif.enabled == false then return false end
+    -- Recently shown by WN: report handled (true) — falling back to Blizzard here
+    -- would double-pop the same achievement from the second alert system.
+    if Notify.WasRecentlyNotified("achievement", achievementID) then return true end
     Notify.MarkAsNotified("achievement", achievementID)
     local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)
     if not ok then achName = nil; achIcon = nil; achPoints = nil end
@@ -2779,6 +2790,7 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         obtainedBy = Notify.CollectiblePayloadObtainedBy(),
         accountFirstEarn = accountFirstEarn,
     })
+    return true
 end
 
 -- Register achievement earned event for cache invalidation
