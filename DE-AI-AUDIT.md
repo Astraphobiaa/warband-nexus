@@ -24,12 +24,11 @@ Started: 2026-06-12
 
 Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver essays, or claims not backed by code.
 
-**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`
+**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`, `SearchBoxComponent.lua`, `SharedWidgets.lua`, `VaultScanner.lua`, `InitializationService.lua`, `ProfessionService.lua`, `GearService.lua`
 
 **Remaining (sample):**
 
-- `Modules/UI/SearchBoxComponent.lua` — long UX spec in header (partially useful; trim not delete)
-- `Modules/UI/SharedWidgets.lua` — Factory Phase 1 migration essay (~line 1536)
+- `Modules/UI/WindowFactory.lua`, `FormatHelpers.lua`, `CollectionService.lua` — `Provides:` bullet headers
 
 ### B — `@param` / block JavaDoc on obvious functions (P0)
 
@@ -37,11 +36,13 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 
 **Fixed in pass 1:** `CollectionRules.lua` (27 blocks), `APIWrapper.lua` (3), `EventManager.lua` (9)
 
+**Fixed in pass 2 (batch 2026-06-12):** `DataService.lua` (Phase 2 `@return` blocks + roster helpers), `Utilities.lua` (redundant LuaLS on Safe*/formatters), `NotificationManager.lua` (55 local `---@param`), `GearService.lua` (header + storage/primary-stat cluster)
+
 **High density (grep `@param` count):**
 
-- `TryCounterService.lua`, `GearService.lua`, `GearUI_Paperdoll.lua` (100+ each)
-- `ItemsCacheService.lua`, `NotificationManager.lua`, `TooltipService.lua`, `CurrencyCacheService.lua`
-- `PlanCardFactory.lua`, `DataService.lua`, `Utilities.lua`
+- `TryCounterService.lua`, `GearUI_Paperdoll.lua` (100+ each)
+- `ItemsCacheService.lua`, `TooltipService.lua`, `CurrencyCacheService.lua`
+- `GearService.lua` (remainder after cluster strip)
 
 ### C — `---@` LuaLS annotations (P1)
 
@@ -86,17 +87,22 @@ Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 - [x] Inventory (this file)
 - [x] 5-file pilot strip
 - [x] Batch-trim remaining `Features:` / `Architecture:` headers in cache/service modules (20 files)
+- [x] VaultScanner / InitializationService / ProfessionService / GearService header trim
 - [ ] Fix headers that describe non-existent behavior (audit each claim)
 
 ### Phase 2 — Comment noise in services
 
-- Scripted strip of `--[[ ... @param ... ]]` in files with >20 occurrences
-- Manual pass on `TryCounterService.lua` / `GearService.lua` (split: keep encounter-ID tables, trim prose)
-- Remove `Helper function to` one-liners in `PvEUI.lua`, `ReputationUI.lua`
+- [x] `DataService.lua` Phase 2 (`--[[ @return ]]` + roster helpers)
+- [x] `Utilities.lua` redundant LuaLS on obvious exports
+- [x] `NotificationManager.lua` local `---@param` strip
+- [x] `GearService.lua` header + first internal `@param` cluster
+- [ ] Scripted strip of `--[[ ... @param ... ]]` in files with >20 occurrences (`TryCounterService.lua`)
+- [ ] Remove `Helper function to` one-liners in `PvEUI.lua`, `ReputationUI.lua`
 
 ### Phase 3 — UI layer
 
-- `SharedWidgets.lua`, `PlanCardFactory.lua`, `SettingsUI.lua` — narration comments only where logic is opaque
+- [x] `PlanCardFactory.lua` — removed "This ensures" narration (partial)
+- [ ] `SettingsUI.lua` — narration comments where logic is opaque
 - Do **not** mass-delete `WN_FACTORY` / `WN_NONUI_UI` tags (agent markers, useful)
 
 ### Phase 4 — Dead code & compat
