@@ -151,6 +151,7 @@ Modules\UI\ReminderSetAlertDialog_QuestCatalog.lua
 Modules\UI\ReminderSetAlertDialog.lua
 Modules\UI\SettingsUI_Shell.lua
 Modules\UI\SettingsUI_Keybind.lua
+Modules\UI\SettingsUI_Modules.lua
 Modules\UI\SettingsUI.lua
 Modules\UI\CharacterTrackingDialog.lua
 Modules\UI\CharactersUI.lua
@@ -158,6 +159,7 @@ Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
 Modules\UI\ItemsUI.lua
 Modules\UI\PvECharacterListRowChrome.lua
+Modules\UI\PvEUI_VaultGrid.lua
 Modules\UI\PvEUI.lua
 Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
