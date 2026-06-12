@@ -216,10 +216,6 @@ function WarbandNexus:InitializeMinimapButton()
     end
 end
 
---[[
-    Show/hide minimap button
-    @param show boolean - True to show, false to hide
-]]
 function WarbandNexus:SetMinimapButtonVisible(show)
     if not LDBI then return end
     
