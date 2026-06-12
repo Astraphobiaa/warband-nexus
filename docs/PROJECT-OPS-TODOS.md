@@ -8,7 +8,7 @@ Target: Midnight 12.0.1 (`Interface: 120005`)
 
 After `/reload` on Midnight 12.0.x:
 
-1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua`, `TryCounterService_Events.lua`, and `TryCounterService_Process.lua` load before dependents (TOC order).
+1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua`, `TryCounterService_Events.lua`, `TryCounterService_Process.lua`, and `TryCounterService_Handlers.lua` load in TOC order (Handlers after main).
 2. **Pixel borders** — resize window / change UI scale; 1px chrome on main shell and pooled rows stays crisp (border registry refresh).
 3. **Try counter** — open loot on NPC; `/wn` debug trace still registers `LOOT_*` / `ENCOUNTER_*` when debug enabled.
 4. **Gear paperdoll** — swap gear on logged-in character; track-label skip-repaint path unchanged (no stale labels).
@@ -19,7 +19,7 @@ After `/reload` on Midnight 12.0.x:
 9. **Profiler** (ops-050) — `/wn profiler on`, switch Chars / Gear / Plans tabs; `Pop_drawTab` within prior budget.
 10. **Resolution matrix** (ops-051) — spot-check 1080p + 150% UI scale on Plans, Settings, Currency tabs (layout chrome intact).
 11. **Kosumoth lockout** (ops-054) — on a live toon with Kosumoth WQ available: hover NPC 111573 tooltip; confirm lockout quest 43798 grays drops when flagged completed; mount 138201 / pet 140261 IDs match CollectibleSourceDB.
-12. **Storage profiler** (ops-055) — open Gear tab storage panel; `/wn profiler on`; switch characters; note `Pop_drawTab` / storage draw slice vs prior baseline (incremental draw not yet implemented).
+12. **Storage profiler** (ops-055) — Items > Warband (aggregate tree): `/wn profiler on`; expand Personal with many alts; confirm `Stor_*` slices and no single-frame spike; rapid tab/sub-tab switch cancels staged pumps without stale rows.
 
 ### Wave 2 grep audit results (2026-06-12, `chore/ops-deferred-final`)
 
@@ -33,7 +33,7 @@ After `/reload` on Midnight 12.0.x:
 | ops-025 mainFrame (non-UI services) | `Modules/*.lua` excl. `UI/**` | VaultButton_Data, EventManager only (UI-adjacent; no service tab paint) |
 | ops-053 migration | No `db.global` schema / `MigrationService` edits this wave | **N/A** — re-run after next SV migration PR |
 | ops-054 Kosumoth | CollectibleSourceDB lockout IDs | **Manual QA** — checklist item 11 |
-| ops-055 Storage profiler | `DrawStorageResults` incremental draw | **Manual QA** — checklist item 12; staged draw deferred |
+| ops-055 Storage profiler | `DrawStorageResults` incremental draw | **Done** — generation token + `C_Timer.After` chunk pumps (chars, warband types, leaf rows); `AbortStorageChunkedPaint` on tab leave |
 
 **Priority key:** P0 = merge blocker / load failure risk · P1 = architecture or taint · P2 = hygiene or perf · P3 = polish / docs
 
@@ -98,7 +98,7 @@ After `/reload` on Midnight 12.0.x:
 
 ### Service & domain monoliths
 
-- [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — Events → `TryCounterService_Events.lua`; classify/fishing constants → `TryCounterService_Process.lua`. Encounter/loot handler bodies remain in main IIFE (shared upvalues; full handler split blocked — see below).
+- [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — Events → `TryCounterService_Events.lua`; classify/fishing constants → `TryCounterService_Process.lua`. Encounter/loot/CHAT_MSG_LOOT handlers → `TryCounterService_Handlers.lua` via `ns.TryCounter.Runtime` + `TC.Fns` (loads after main).
 - [x] **ops-031** · P0 · `Modules/CollectionService.lua` — Bag-scan/event host → `CollectionService_Scan.lua` (`ns.CollectionScan`); notify dedup remains `CollectionService_NotifyDedup.lua`.
 - [x] **ops-032** · P1 · `Modules/GearService.lua` — **blocked** — storage-find engine shares `gearStorageFindingsCache`, `EvaluateItem`, and 40+ locals with upgrade-track/paperdoll paths in one chunk; extract risks load-order nil refs without full GearService refactor.
 - [x] **ops-033** · P1 · `Modules/TooltipService.lua` — **blocked** — GameTooltip hooks share `InjectCollectibleDropLines`, concentration injection, and 20+ closure upvalues with facade `Show()`; satellite split needs hook relocation pass (separate epic).
@@ -139,7 +139,7 @@ After `/reload` on Midnight 12.0.x:
 - [x] **ops-052** · P1 · Taint — **Full pass (wave 2):** PlansUI, SettingsUI, PlanCardFactory, PlanCardFactory_Expanded, AchievementCriteriaHelpers, CurrencyUI, PlansTrackerWindow — `issecretvalue` before `GetText`/`:match`/`:find`/`:gsub`. TryCounterService/CollectionService GUID/loot `:match` paths remain in main IIFE (pre-existing; separate epic).
 - [x] **ops-053** · P2 · `Modules/MigrationService.lua` — **N/A wave 2** (no schema touch); grep audit table above.
 - [x] **ops-054** · P2 · `Modules/CollectibleSourceDB.lua` — Kosumoth lockout quest 43798 / NPC 111573 / drops documented (#40 wiki pass). _manual QA — checklist item 11_
-- [x] **ops-055** · P2 · Storage tab — Profiler evidence checklist item 12; incremental/staged `DrawStorageResults` not implemented. _manual QA baseline capture; staged draw blocked — separate perf epic_
+- [x] **ops-055** · P2 · Storage tab — Incremental/staged `DrawStorageResults` in `ItemsUI.lua` (`AbortStorageChunkedPaint`, personal-char / warband-type / leaf-row chunk pumps, loading banner). _manual QA — checklist item 12_
 
 ---
 
