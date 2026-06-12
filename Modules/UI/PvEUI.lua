@@ -1831,7 +1831,6 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             -- Card height will be calculated from vault card grid (with fallback)
             local cardHeight = 200  -- Default fallback height
             
-            -- === CARD 1: OVERALL SCORE + M+ DUNGEONS (35%) ===
             local baseCardHeight = 200
             local mplusCard = CreateCard(cardContainer, baseCardHeight)
             mplusCard:SetPoint("TOPLEFT", 0, 0)
@@ -2056,7 +2055,6 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             mplusCard:SetHeight(mplusNeededH)
             mplusCard:Show()
             
-            -- === CARD 2: KEYSTONE + AFFIXES (35%) ===
             local summaryCard = CreateCard(cardContainer, cardHeight)
             summaryCard:SetPoint("TOPLEFT", PixelSnap(card1Width), 0)
             summaryCard:SetWidth(PixelSnap(card2Width - cardSpacing))
@@ -2283,7 +2281,6 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             summaryCard:SetHeight(summaryNeededH)
             summaryCard:Show()
             
-            -- === CARD 3: GREAT VAULT (30%) ===
             local vaultCard = CreateCard(cardContainer, baseCardHeight)
             vaultCard:SetPoint("TOPLEFT", PixelSnap(card1Width + card2Width), 0)
             local baseCardWidth = card3Width
@@ -2737,7 +2734,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         end
     end
     
-    -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
     local charKey = (L.ns.Utilities.GetCharacterStorageKey and L.ns.Utilities:GetCharacterStorageKey(L.WarbandNexus))
         or L.ns.Utilities:GetCharacterKey()
     local pveData = self:GetPvEData(charKey)
@@ -2797,7 +2793,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         end
     end
     
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for timer/sort/columns =====
     local r, g, b = L.COLORS.accent[1], L.COLORS.accent[2], L.COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local titleTextContent = "|cff" .. hexColor .. (GetLocalizedText("PVE_TITLE", "PvE Progress")) .. "|r"
@@ -2922,7 +2917,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
 
-    -- ===== COLUMN HEADER ROW (inline PvE status summary) =====
     -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
     local PVE_DAWNCRESTS = L.GetPvEDawnCrestColumnDefinitions()
     local PVE_RESTORED_KEY_FALLBACK_ID = 3089
@@ -3157,7 +3151,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         end
     end
 
-    -- ===== SORT CHARACTERS WITH FAVORITES ALWAYS ON TOP =====
     -- Use the same sorting logic as Characters tab
     local currentChar = nil
     local favorites = {}
@@ -3371,7 +3364,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local rosterChanged = (L._pveDrawPool.rosterSig ~= rosterSig)
     L.PvESyncPvEPools(rosterSig, colSig, currentKeySet, visiblePveColumnKeys)
 
-    -- ===== LOADING / ERROR / EMPTY (before column strip) =====
     if L.ns.PvELoadingState and L.ns.PvELoadingState.isLoading then
         local UI_CreateLoadingStateCard = L.ns.UI_CreateLoadingStateCard
         if UI_CreateLoadingStateCard then
@@ -3397,7 +3389,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         return yOffset + height
     end
     
-    -- ===== NAME WIDTH (measured from longest name; no compression — scroll handles overflow) =====
     local tempMeasure = L.PvE_GetDrawPoolMeasureFS()
     tempMeasure:Hide()
     local maxNameRealmWidth = 0
@@ -3462,7 +3453,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         columnHeaderClip:Hide()
     end
 
-    -- ===== COLUMN HEADER ROW (icon + compact two-line labels) =====
     PvEParkAllColHeaderLabels()
     local colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, pveStackW, COL_HEADER_HEIGHT)
     if not colHeaderRow then
@@ -3749,7 +3739,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
     local prevDet = nil
 
-    -- ===== CHARACTER ROWS (Favorites / custom / Characters sections only; online toon merged above) =====
     local PvEUIState = ns.PvEUI
     local function finalizePveCharPaint()
         if #paintOrder > 0 then
@@ -3973,7 +3962,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
         totalLHBox.v = totalLHBox.v + PVE_CHAR_ROW_HEADER_H
 
-        -- ===== INLINE COLUMN DATA (right-aligned, matching column headers) =====
         do
             local shardData = (PVE_SHARDS_ID and L.WarbandNexus:GetCurrencyData(PVE_SHARDS_ID, charKey)) or nil
             local shardQty = shardData and shardData.quantity or 0
