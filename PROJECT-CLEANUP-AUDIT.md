@@ -1,12 +1,12 @@
-# De-AI Audit — Warband Nexus
+# Project Cleanup Audit — Warband Nexus
 
-Branch: `chore/de-ai-fixes`  
+Branch: `chore/project-cleanup`  
 Started: 2026-06-12  
 **Tier A status: COMPLETE — merge-ready** (2026-06-12)
 
 ## Tier A finish line
 
-Tier A (P0 headers, narration cleanup, orphan tombstones, pilot `@param` strips in named hot files) is **done** on `chore/de-ai-fixes`. Safe to merge for comment-only de-AI; no TOC or behavior changes in this tier.
+Tier A (P0 headers, narration cleanup, orphan tombstones, pilot `@param` strips in named hot files) is **done** on `chore/project-cleanup`. Safe to merge for comment-only hygiene; no TOC or behavior changes in this tier.
 
 **Deferred explicitly (do not batch without a new plan):**
 
@@ -15,9 +15,9 @@ Tier A (P0 headers, narration cleanup, orphan tombstones, pilot `@param` strips 
 
 ## Scope
 
-| Area | Files | De-AI priority | Notes |
-|------|------:|----------------|-------|
-| `Modules/**/*.lua` | 138 | **P0** | Primary addon logic; mixed native + AI-era headers |
+| Area | Files | Cleanup priority | Notes |
+|------|------:|------------------|-------|
+| `Modules/**/*.lua` | 138 | **P0** | Primary addon logic; mixed native + verbose tutorial headers |
 | `Core.lua`, `Config.lua` | 2 | P1 | Large config surface; some tutorial comments |
 | `Locales/*.lua` | 12 | P2 | Player copy; check marketing tone vs enUS ASCII rules |
 | `libs/**` | 47 | **Exclude** | Third-party Ace3/Lib* — do not rewrite |
@@ -28,13 +28,13 @@ Tier A (P0 headers, narration cleanup, orphan tombstones, pilot `@param` strips 
 
 **Addon-owned Lua total:** 151 files (~200 with libs).
 
-## AI artifact categories
+## Comment hygiene categories
 
 ### A — Verbose / inaccurate file headers (P0)
 
 Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver essays, or claims not backed by code.
 
-**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`, `SearchBoxComponent.lua`, `SharedWidgets.lua`, `VaultScanner.lua`, `InitializationService.lua`, `ProfessionService.lua`, `GearService.lua`, `WindowFactory.lua`, `FormatHelpers.lua`, `CollectionService.lua`, `TryCounterService.lua`, `PvEUI.lua`, `UI.lua`, `PlansUI.lua`
+**Fixed (chore/project-cleanup P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`, `SearchBoxComponent.lua`, `SharedWidgets.lua`, `VaultScanner.lua`, `InitializationService.lua`, `ProfessionService.lua`, `GearService.lua`, `WindowFactory.lua`, `FormatHelpers.lua`, `CollectionService.lua`, `TryCounterService.lua`, `PvEUI.lua`, `UI.lua`, `PlansUI.lua`
 
 **Remaining (sample):** `CharactersUI.lua`, `SettingsUI.lua` section banners; `CurrencyUI.lua` headers
 
@@ -58,7 +58,7 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 
 ### C — `---@` LuaLS annotations (P1)
 
-~70 module files use `---@param` / `---@return`. Not always AI — but often redundant on private locals. Policy: keep on exported `ns.*` / `WarbandNexus:` APIs; strip on internal helpers in hot files.
+~70 module files use `---@param` / `---@return`. Not always redundant — but often unnecessary on private locals. Policy: keep on exported `ns.*` / `WarbandNexus:` APIs; strip on internal helpers in hot files.
 
 ### D — Section banner comments (P2)
 
@@ -84,7 +84,7 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 
 Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 
-## Pass 1 changes (committed on chore/de-ai-fixes)
+## Pass 1 changes (committed on chore/project-cleanup)
 
 | File | Change |
 |------|--------|
@@ -99,7 +99,7 @@ Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 
 ### Phase 1 — Headers & lies (current)
 
-- [x] Branch `chore/de-ai-fixes`
+- [x] Branch `chore/project-cleanup`
 - [x] Inventory (this file)
 - [x] 5-file pilot strip
 - [x] Batch-trim remaining `Features:` / `Architecture:` headers in cache/service modules (20 files)
@@ -131,7 +131,7 @@ Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 ### Phase 5 — Locales & docs
 
 - Player-facing string review in `enUS.lua` only; mirror to locales after approval
-- `DESCRIPTION.md` — optional human tone pass (separate from code de-ai)
+- `DESCRIPTION.md` — optional human tone pass (separate from code comment hygiene)
 
 ## Verification
 
@@ -141,5 +141,29 @@ After each batch: `/reload` in-game, `python scripts/check_locales.py` if locale
 
 1. **`---@` LuaLS policy** — strip all internal annotations, or keep on `ns.*` exports only?
 2. **`.cursor/` corpus** — leave as-is (recommended) or shorten agent rules separately?
-3. **Large files** — de-ai only, or combine with planned splits (`TryCounterService`, `SharedWidgets`)?
-4. **DESCRIPTION.md** — exclude from de-ai (marketing) or include tone edit?
+3. **Large files** — comment hygiene only, or combine with planned splits (`TryCounterService`, `SharedWidgets`)?
+4. **DESCRIPTION.md** — exclude from cleanup (marketing) or include tone edit?
+
+## Merge guidance
+
+**Recommended merge strategy:** GitHub **squash merge** into `main`.
+
+**Suggested PR title:**
+
+```
+chore: project cleanup — comment and header hygiene
+```
+
+**Suggested PR body template:**
+
+```markdown
+## Summary
+- Trim verbose file headers (`Features:` / `Architecture:` blocks) and redundant `@param` narration across service and UI modules
+- Remove orphan tombstone comments and obvious helper narration; no TOC or runtime behavior changes
+- Tier B/C work (residual LuaLS, locale tone, `.cursor/` corpus) deferred per PROJECT-CLEANUP-AUDIT.md
+
+## Test plan
+- [ ] `/reload` in-game — addon loads without Lua errors
+- [ ] Spot-check main UI tabs (Characters, Items, PvE, Plans) for normal behavior
+- [ ] No SavedVariables migration or TOC changes expected
+```
