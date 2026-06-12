@@ -2794,23 +2794,6 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
     card._sourceExpandButton = expandButton
 end
 
---[[
-    Setup generic expand handler for achievement cards only
-    NOTE: This is now handled by SetupAchievementExpandHandler
-    This function is kept for backward compatibility but does nothing
-]]
-function PlanCardFactory:SetupExpandHandler(card, plan, planType, anchorFrame)
-    -- Only Achievement cards have expand functionality
-    -- But this is now handled by SetupAchievementExpandHandler
-    -- This function is kept for backward compatibility
-    if planType ~= "achievement" then
-        return
-    end
-end
-
---[[
-    Expand card content based on type
-]]
 function PlanCardFactory:ExpandCardContent(card, planType)
     local expandedContent = card.expandedContent
     if not expandedContent then return end
