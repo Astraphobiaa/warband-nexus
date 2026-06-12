@@ -1711,7 +1711,7 @@ L["PROF_EQUIPMENT_HINT"] = "Open profession (K) on this character to scan equipm
 
 -- Professions: Info Window
 L["PROF_INFO_TOOLTIP"] = "View profession details"
-L["PROF_INFO_NO_DATA"] = "No profession data available.\nPlease login on this character and open the Profession window (K) to collect data."
+L["PROF_INFO_NO_DATA"] = "No profession data available.\nLog in on this character and open the Profession window (K) to collect data."
 L["PROF_INFO_SKILLS"] = "Expansion Skills"
 L["PROF_INFO_TOOL"] = "Tool"
 L["PROF_INFO_ACC1"] = "Accessory 1"
