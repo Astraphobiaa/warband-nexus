@@ -1,13 +1,6 @@
 --[[
-    Warband Nexus - Reputation Scanner (Pure API Layer)
-    
-    Responsibilities:
-    - Fetch raw data from WoW API
-    - Zero business logic
-    - Zero data transformation
-    - Pure data collection
-    
-    Architecture: API → Scanner → Processor → Cache → UI
+    Warband Nexus - Reputation Scanner
+    Raw WoW API reads for reputation data (no transforms).
 ]]
 
 local ADDON_NAME, ns = ...

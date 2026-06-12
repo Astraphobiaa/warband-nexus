@@ -1,13 +1,6 @@
 --[[
-    Warband Nexus - Reputation Processor (Phase 2)
-    
-    Responsibilities:
-    - Transform raw API data into normalized, UI-ready format
-    - Calculate 0-based progress (current/max)
-    - Resolve standing names and colors
-    - Type-specific processing (Classic, Renown, Friendship, Paragon)
-    
-    Architecture: Scanner → Processor → Cache → UI
+    Warband Nexus - Reputation Processor
+    Normalizes scanner output into UI-ready standing/progress records.
 ]]
 
 local ADDON_NAME, ns = ...
