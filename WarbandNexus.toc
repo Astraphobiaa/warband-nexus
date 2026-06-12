@@ -135,6 +135,7 @@ Modules\UI\ExpandableRowFactory.lua
 Modules\UI\SearchResultsRenderer.lua
 Modules\UI\VirtualListModule.lua
 Modules\UI\TooltipFactory.lua
+Modules\UI\PlanCardFactory_Expanded.lua
 Modules\UI\PlanCardFactory.lua
 Modules\UI\ReminderSetAlertDialog_Helpers.lua
 Modules\UI\ReminderSetAlertDialog_ZonePanel.lua
@@ -143,6 +144,7 @@ Modules\UI\ReminderSetAlertDialog_QuestCatalog.lua
 Modules\UI\ReminderSetAlertDialog.lua
 Modules\UI\SettingsUI_Shell.lua
 Modules\UI\SettingsUI_Keybind.lua
+Modules\UI\SettingsUI_Modules.lua
 Modules\UI\SettingsUI.lua
 Modules\UI\CharacterTrackingDialog.lua
 Modules\UI\CharactersUI.lua
@@ -150,6 +152,7 @@ Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
 Modules\UI\ItemsUI.lua
 Modules\UI\PvECharacterListRowChrome.lua
+Modules\UI\PvEUI_VaultGrid.lua
 Modules\UI\PvEUI.lua
 Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
@@ -170,6 +173,7 @@ Modules\UI\ProfessionsUI.lua
 Modules\UI\ProfessionsUI_DrawTab.lua
 Modules\UI\GearUI_Chrome.lua
 Modules\UI\GearUI_Paperdoll.lua
+Modules\UI\GearUI_Paperdoll_Slots.lua
 Modules\UI\GearUI_LayoutGrid.lua
 Modules\UI\GearUI.lua
 Modules\UI\GearUI_Layout.lua
