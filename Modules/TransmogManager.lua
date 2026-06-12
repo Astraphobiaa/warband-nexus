@@ -1,13 +1,6 @@
 --[[
     Warband Nexus - Transmog Manager Module
-    Handles transmog collection tracking with async data loading and performance optimization
-    
-    Features:
-    - C_TransmogCollection API integration
-    - Coroutine-based frame budgeting (50ms/frame)
-    - ItemMixin async data loading
-    - Hybrid source text parsing (Drops API + TooltipInfo)
-    - Warbands-compatible (account-wide collection)
+    C_TransmogCollection scans with coroutine frame budgeting and async item loads.
 ]]
 
 local ADDON_NAME, ns = ...
