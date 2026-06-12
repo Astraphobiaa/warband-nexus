@@ -1859,6 +1859,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
         end
         
+        local charsToPaint = {}
         for ci = 1, #characters do
             local char = characters[ci]
             local charKey = char._key
@@ -1875,25 +1876,50 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             local hasCharStorage = (bagN + bankN) > 0 or bagLast > 0 or bankLast > 0
                 or charCategoryExpanded
                 or expandAllActive
-            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+            local itemsData = self:GetItemsData(charKey)
             if hasCharStorage and itemsData and (itemsData.bags or itemsData.bank) then
-                -- Extract name and realm from character data
-                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                local charRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                
-                -- Apply class color
-                local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
-                local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",
-                    classColor.r * 255, classColor.g * 255, classColor.b * 255,
-                    charName,
-                    charRealm)
-                
-                -- Skip character if search active and no matches
-                if storageSearchActive and not categoriesWithMatches[charCategoryKey] then
-                    -- Skip this character
-                else
-                    -- Default collapsed; expand-all / search matches override.
-                    local isCharExpanded = (self.storageExpandAllActive == true) or (expanded.categories[charCategoryKey] == true)
+                if not (storageSearchActive and not categoriesWithMatches[charCategoryKey]) then
+                    charsToPaint[#charsToPaint + 1] = char
+                end
+            end
+        end
+
+        local function finalizePersonalBodyShell()
+            personalBody._wnSectionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
+            personalBody:Show()
+            personalBody:SetHeight(personalBody._wnSectionFullH)
+            personalBody._wnStorageMajorBodyBuilt = true
+        end
+
+        local function syncPersonalChromePartial()
+            personalWrap:SetHeight(MAIN_SECTION_HEADER_H + personalBody:GetHeight())
+            storageStackAnchor = personalWrap
+            parent._wnStorageLayoutTail = storageStackAnchor
+            WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+            if embedItemsWarband and mfPaint then
+                local sc = parent:GetParent()
+                if sc then
+                    local ext = MeasureStorageResultsContentExtent(parent)
+                    SyncItemsTabScrollChrome(mfPaint, sc, ext or (parent.GetHeight and parent:GetHeight()) or 1)
+                end
+            end
+        end
+
+        local function buildPersonalCharSection(char)
+            local charKey = char._key
+            local charCategoryKey = "personal_" .. charKey
+            local itemsData = self:GetItemsData(charKey)
+            if not itemsData or not (itemsData.bags or itemsData.bank) then
+                return false
+            end
+            local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+            local charRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+            local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
+            local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",
+                classColor.r * 255, classColor.g * 255, classColor.b * 255,
+                charName,
+                charRealm)
+            local isCharExpanded = (self.storageExpandAllActive == true) or (expanded.categories[charCategoryKey] == true)
                     if storageSearchActive and categoriesWithMatches[charCategoryKey] then
                         isCharExpanded = true
                     end
@@ -2173,18 +2199,74 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         charBody:SetHeight(0.1)
                         charWrap:SetHeight(MAIN_SECTION_HEADER_H + 0.1)
                     end
-                    personalInnerAccum = personalInnerAccum + charWrap:GetHeight() + SECTION_SPACING
-                    personalInnerTail = charWrap
+            personalInnerAccum = personalInnerAccum + charWrap:GetHeight() + SECTION_SPACING
+            personalInnerTail = charWrap
+            hasAnyPersonalItems = true
+            return true
+        end
 
-                hasAnyPersonalItems = true
+        local charSyncMax = embedItemsWarband and STORAGE_CHAR_SYNC_MAX_EMBED or STORAGE_CHAR_SYNC_MAX
+        local charChunkSize = embedItemsWarband and STORAGE_CHAR_CHUNK_EMBED or STORAGE_CHAR_CHUNK
+        local useCharPump = #charsToPaint > charSyncMax and C_Timer and C_Timer.After
+
+        if not useCharPump then
+            for pci = 1, #charsToPaint do
+                buildPersonalCharSection(charsToPaint[pci])
             end
-        end
-        end
+            finalizePersonalBodyShell()
+        else
+            if loadIndicator then loadIndicator:Show() end
+            local stPatchChars = mfPaint and mfPaint._wnStorageLeafStage
+            if stPatchChars and stPatchChars.gen == leafPaintGen then
+                stPatchChars.pending = (stPatchChars.pending or 0) + 1
+            end
+            local charCreditConsumed = false
+            local function consumeCharStagingCredit()
+                if charCreditConsumed then return end
+                charCreditConsumed = true
+                local st = mfPaint and mfPaint._wnStorageLeafStage
+                if st and st.gen == leafPaintGen then
+                    st.pending = math.max(0, (st.pending or 1) - 1)
+                    if st.pending <= 0 then
+                        hideWarbandBanner()
+                    end
+                end
+            end
 
-        personalBody._wnSectionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
-        personalBody:Show()
-        personalBody:SetHeight(personalBody._wnSectionFullH)
-        personalBody._wnStorageMajorBodyBuilt = true
+            local charPaintIdx = 1
+            local function pumpPersonalChars()
+                if not StorageChunkedPaintStillValid(mfPaint, leafPaintGen) then
+                    consumeCharStagingCredit()
+                    return
+                end
+                if InCombatLockdown and InCombatLockdown() then
+                    C_Timer.After(0, pumpPersonalChars)
+                    return
+                end
+                local limit = math.min(charPaintIdx + charChunkSize - 1, #charsToPaint)
+                for pci = charPaintIdx, limit do
+                    buildPersonalCharSection(charsToPaint[pci])
+                end
+                charPaintIdx = limit + 1
+                syncPersonalChromePartial()
+
+                if charPaintIdx <= #charsToPaint then
+                    C_Timer.After(0, pumpPersonalChars)
+                else
+                    finalizePersonalBodyShell()
+                    consumeCharStagingCredit()
+                    hideDrawIndicatorWithStagingGate()
+                end
+            end
+
+            personalInnerAccum = math.max(
+                personalInnerAccum,
+                #charsToPaint * (MAIN_SECTION_HEADER_H + SECTION_SPACING + 20)
+            )
+            personalBody:SetHeight(math.max(0.1, personalInnerAccum - SECTION_SPACING))
+            syncPersonalChromePartial()
+            pumpPersonalChars()
+        end
         end  -- populatePersonalMajorBody
 
         personalWrap._wnStorageMajorPopulateFn = populatePersonalMajorBody
