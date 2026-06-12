@@ -952,7 +952,6 @@ local function CreateDropdownWidget(parent, option, yOffset)
         
         menu:Show()
         
-        -- Close on ESC (combat-safe)
         if not InCombatLockdown() then menu:SetPropagateKeyboardInput(false) end
         menu:SetScript("OnKeyDown", function(self, key)
             if key == "ESCAPE" then
@@ -964,8 +963,6 @@ local function CreateDropdownWidget(parent, option, yOffset)
             end
         end)
         
-        -- Phase 4.5: Replace OnUpdate polling with click-catcher frame
-        -- Create click-catcher (full-screen invisible frame)
         local clickCatcher = dropdown._clickCatcher
         if not clickCatcher then
             clickCatcher = ns.UI.Factory:CreateContainer(menuParent, 1, 1, false)
@@ -974,8 +971,6 @@ local function CreateDropdownWidget(parent, option, yOffset)
                 clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
                 clickCatcher:SetFrameLevel(math.max(0, (menu:GetFrameLevel() or 0) - 1))
                 clickCatcher:EnableMouse(true)
-                -- MouseUp: opening click finishes on the dropdown; showing catcher same-frame (or on MouseDown)
-                -- caused the first "outside" event to fire immediately and close the list.
                 clickCatcher:SetScript("OnMouseUp", function(_, button)
                     if button and button ~= "LeftButton" then return end
                     menu:Hide()
@@ -995,7 +990,6 @@ local function CreateDropdownWidget(parent, option, yOffset)
             end)
         end
 
-        -- Ensure click-catcher is hidden when menu is hidden (single stable handler).
         if not menu._clickCatcherHideHandlerInstalled then
             menu._clickCatcherHideHandlerInstalled = true
             menu:SetScript("OnHide", function()
@@ -1235,7 +1229,6 @@ local function StackSettingsSubPanel(hostContent, panelWidth, stackY, buildInner
     return stackY - panel:GetHeight() - gap
 end
 
--- Helper: Refresh subtitle colors after theme change
 local function RefreshSubtitles()
     for si = 1, #subtitleElements do
         local subtitle = subtitleElements[si]
@@ -1251,7 +1244,6 @@ local function RefreshSubtitles()
                 thumb:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             end
             if slider.SetBackdropBorderColor then
-                -- Border also uses accent color
                 slider:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             end
         end
