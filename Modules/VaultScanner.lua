@@ -1,22 +1,6 @@
 --[[
-    VaultScanner.lua
-    
-    ARCHITECTURE: Event-driven Great Vault tracker for Mythic+ Dungeons.
-    
-    WHY THIS EXISTS:
-    - WoW server does NOT send vault data automatically on login
-    - Must explicitly request data via C_WeeklyRewards.OnUIInteract()
-    - This service properly initializes and tracks all 3 M+ vault slots
-    
-    API FLOW:
-    1. PLAYER_ENTERING_WORLD -> Call OnUIInteract() to request data from server
-    2. WEEKLY_REWARDS_UPDATE -> Process data when server responds
-    3. Store results in cache for UI consumption
-    
-    RULES:
-    - NO hardcoded iLvl tables (use native APIs only)
-    - Event-driven only (no polling/OnUpdate)
-    - Safe nil handling for all API calls
+    Warband Nexus - Vault Scanner
+    Event-driven Great Vault tracker; requests data via C_WeeklyRewards.OnUIInteract on PLAYER_ENTERING_WORLD.
 
     WN_NONUI_UI: `scannerFrame` is an event-host `CreateFrame` only; Vault UI dialogs live in Modules/VaultButton.lua.
 ]]
