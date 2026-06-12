@@ -136,7 +136,6 @@ local NM_SUN_CORE_RGB = { 1, 1, 0.92 }
 local NM_SHEEN_PEAK_ALPHA = 0.72
 local NM_SHEEN_WIDTH_RATIO = 0.44
 
----@param fxFrame Frame
 local function NM_IgnoreParentAlpha(fxFrame)
     if fxFrame and fxFrame.SetIgnoreParentAlpha then
         fxFrame:SetIgnoreParentAlpha(true)
@@ -144,9 +143,6 @@ local function NM_IgnoreParentAlpha(fxFrame)
 end
 
 ---Sun-like radial burst + warm full-panel wash on toast appear.
----@param toastHost Frame
----@param toastWidth number
----@param toastHeight number
 local function NM_PlayToastSunGlow(toastHost, toastWidth, toastHeight)
     if not toastHost or not toastWidth or not toastHeight then
         return
@@ -252,9 +248,6 @@ local function NM_PlayToastSunGlow(toastHost, toastWidth, toastHeight)
 end
 
 ---White horizontal sweep across toast (custom band, clipped to frame).
----@param toastHost Frame
----@param toastWidth number
----@param toastHeight number
 local function NM_PlayToastSweepShine(toastHost, toastWidth, toastHeight)
     if not toastHost or not toastWidth or not toastHeight then
         return
@@ -323,10 +316,6 @@ local function NM_PlayToastSweepShine(toastHost, toastWidth, toastHeight)
     ag:Play()
 end
 
----@param toastHost Frame
----@param toastWidth number|nil
----@param toastHeight number|nil
----@return number width, number height
 local function NM_ResolveToastFxSize(toastHost, toastWidth, toastHeight)
     local w = toastHost:GetWidth() or toastHost._toastFxWidth or toastWidth or 0
     local h = toastHost:GetHeight() or toastHost._toastFxHeight or toastHeight or 0
@@ -336,10 +325,6 @@ local function NM_ResolveToastFxSize(toastHost, toastWidth, toastHeight)
 end
 
 ---Sun glow + sweep together when the toast appears.
----@param toastHost Frame
----@param toastWidth number
----@param toastHeight number
----@return boolean played
 local function NM_PlayToastEntranceEffects(toastHost, toastWidth, toastHeight)
     if not toastHost or toastHost.isClosing or toastHost._removed or not toastHost:IsShown() then
         return false
@@ -354,9 +339,6 @@ local function NM_PlayToastEntranceEffects(toastHost, toastWidth, toastHeight)
 end
 
 ---Play entrance VFX once per toast; retry briefly if layout is not ready yet.
----@param toastHost Frame
----@param toastWidth number
----@param toastHeight number
 local function NM_TriggerToastEntranceEffects(toastHost, toastWidth, toastHeight)
     if not toastHost then return end
     toastHost._toastFxWidth = toastWidth
@@ -393,7 +375,6 @@ local function NM_TriggerToastEntranceEffects(toastHost, toastWidth, toastHeight
 end
 
 ---Fallback if entrance finishes before deferred VFX could run (stack spam / timer coalesce).
----@param toastHost Frame
 local function NM_EnsureToastEntranceEffects(toastHost)
     if not toastHost or toastHost._entranceFxPlayed then return end
     NM_TriggerToastEntranceEffects(toastHost, toastHost._toastFxWidth, toastHost._toastFxHeight)
@@ -414,8 +395,6 @@ local notificationQueueHead = 1
 local lastCollectibleLootToastShownAt = {}
 local COLLECTIBLE_LOOT_TOAST_DEDUP_SEC = 12
 
----@param data table|nil
----@return string|nil
 local function BuildCollectibleLootToastDedupeKey(data)
     if not data or not data.type or data.id == nil then return nil end
     local t = data.type
@@ -443,7 +422,6 @@ local function BuildCollectibleLootToastDedupeKey(data)
 end
 
 ---Add a notification to the queue
----@param notification table Notification data
 local function QueueNotification(notification)
     notificationQueue[#notificationQueue + 1] = notification
 end
@@ -512,10 +490,6 @@ function WarbandNexus:IsNewVersion()
 end
 
 ---Populate changelog content (deferred to first show so fonts/layout are ready)
----@param scrollChild Frame
----@param scrollFrame Frame
----@param changelogData table
----@param geometry table { CONTENT_WIDTH, TEXT_WIDTH, TEXT_PAD, LINE_SPACING, SECTION_SPACING, PARAGRAPH_SPACING }
 local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData, geometry)
     if not scrollChild or not scrollFrame or not changelogData or not changelogData.changes or not geometry then return end
     local CONTENT_WIDTH = geometry.CONTENT_WIDTH
@@ -964,7 +938,6 @@ local ALERT_PROGRESS_ICON_LEADING_PAD = 10
 
 ---Get Blizzard's alert frame position so we can match it when "Use AlertFrame Position" is on.
 ---Tries AchievementAlertFrame1, CriteriaAlertFrame1, AlertFrameHolder, then any visible AlertFrame child.
----@return string|nil point, number|nil x, number|nil y Or nil if frame not found.
 local function GetBlizzardAlertFramePosition()
     local tryNames = { "AchievementAlertFrame1", "CriteriaAlertFrame1", "AlertFrameHolder", "GroupLootFrame1" }
     local f
@@ -1000,7 +973,6 @@ local function GetBlizzardAlertFramePosition()
 end
 
 ---Match Blizzard criteria alert position when "Use CriteriaAlert position" is on (criteria lane only).
----@return string|nil point, number|nil x, number|nil y
 local function GetBlizzardCriteriaAlertFramePosition()
     local f = _G.CriteriaAlertFrame1
     if not f or not f.GetPoint or f:GetNumPoints() < 1 then return nil, nil, nil end
@@ -1021,8 +993,6 @@ local function GetBlizzardCriteriaAlertFramePosition()
     return "TOP", offsetX, offsetY
 end
 
----@param db table notifications profile slice
----@return string point, number x, number y
 local function CriteriaAnchorFromDb(db)
     if not db then return "TOP", 0, -100 end
     if db.useCriteriaAlertFramePosition then
@@ -1035,8 +1005,6 @@ local function CriteriaAnchorFromDb(db)
 end
 
 ---Resolve UIParent anchor for a toast lane. unifiedToastLayout=true uses one stack anchor for all lanes.
----@param lane string "achievement" | "criteria" | "tryCounter" | "reminder"
----@return string point, number x, number y
 local function ResolveToastAnchor(lane)
     local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
     if not db then return "TOP", 0, -100 end
@@ -1073,8 +1041,6 @@ local function ResolveToastAnchor(lane)
     return "TOP", 0, -100
 end
 
----@param config table ShowModalNotification config
----@return string lane
 local function InferToastLane(config)
     if type(config.toastLane) == "string" and config.toastLane ~= "" then
         return config.toastLane
@@ -1090,15 +1056,12 @@ local function InferToastLane(config)
     return "achievement"
 end
 
----@param compact boolean|nil Legacy parameter; unused.
----@return string point, number x, number y
 local function GetSavedPosition(compact)
     return ResolveToastAnchor("achievement")
 end
 
 ---Outer width for progress-lane toasts (criteria, vault checkpoints, To-Do reminders): match live Blizzard CriteriaAlertFrame* when loaded.
 ---Fallback 300 matches AchievementAlertFrameTemplate (FrameXML alert lane) before CriteriaAlert frames exist.
----@return number
 local function GetBlizzardProgressAlertToastWidth()
     for i = 1, 10 do
         local f = _G["CriteriaAlertFrame" .. i]
@@ -1116,10 +1079,6 @@ end
 
 ---Determine growth direction based on anchor position on screen (always AUTO)
 ---Returns 1 for DOWN (negative Y), -1 for UP (positive Y)
----@param point string|nil Optional anchor point (else from GetSavedPosition)
----@param x number|nil Optional X (else from GetSavedPosition)
----@param y number|nil Optional Y (else from GetSavedPosition)
----@return number direction (1 = down, -1 = up)
 local function GetGrowthDirection(point, x, y)
     if not point then
         point, x, y = GetSavedPosition()
@@ -1145,17 +1104,12 @@ local function GetGrowthDirection(point, x, y)
 end
 
 ---Get height of an alert frame (full and compact both fixed) for stacking
----@param alert Frame
----@return number height in pixels
 local function GetAlertHeight(alert)
     return (alert and alert._alertHeight) or ALERT_HEIGHT
 end
 
 ---Calculate Y offset for a new alert that will be appended to a group (cumulative height of existing alerts in that anchor).
 ---Used so achievement and criteria progress never overlap regardless of order or mix.
----@param anchorKey string Key from (point.."|"..bx.."|"..by)
----@param direction number 1 = down, -1 = up
----@return number yOffset from baseY (positive = down from anchor when direction 1)
 local function GetCumulativeOffsetForNewAlert(anchorKey, direction)
     local cumulative = 0
     for _, alert in ipairs(WarbandNexus.activeAlerts) do
@@ -1172,7 +1126,6 @@ local function GetCumulativeOffsetForNewAlert(anchorKey, direction)
 end
 
 ---Reposition all active alerts (when one closes, others fill the gap). Alerts with same anchor stack together; slot Y uses each alert's actual height so full and compact never overlap.
----@param instant boolean If true, cancel all animations and reposition instantly
 local function RepositionAlerts(instant)
     local defaultPoint, defaultX, defaultY = GetSavedPosition()
     -- Group alerts by anchor (point,x,y) so each stack has its own slot indices
@@ -1245,7 +1198,6 @@ local function RepositionAlerts(instant)
 end
 
 ---Remove alert and process queue
----@param alert Frame The alert frame to remove
 local function RemoveAlert(alert)
     if not alert then 
         return
@@ -2288,8 +2240,6 @@ function WarbandNexus:InitializeNotificationListeners()
 end
 
 ---Shorten Blizzard's long criteria description to a display name (e.g. "Player Has Opened all X" -> "X").
----@param criteriaString string Full criteria text from GetAchievementCriteriaInfo
----@return string Short display name
 local function ShortenCriteriaDisplayName(criteriaString)
     if not criteriaString or criteriaString == "" then return (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
     local s = criteriaString:gsub("^%s+", ""):gsub("%s+$", "")
@@ -2314,7 +2264,6 @@ local function ShortenCriteriaDisplayName(criteriaString)
     return (s ~= "" and s) or criteriaString
 end
 
----@return table|nil
 local function GetNotificationProfileDb()
     return WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
 end
@@ -2384,7 +2333,6 @@ local function InstallBlizzardAlertFrameHideHooks()
     end
 end
 
----@param orig function Blizzard AddAlert
 local function BuildAchievementAddAlertReplacement(orig)
     return function(sys, a1, a2, ...)
         if not ShouldUseWnAchievementAlert() then
@@ -2423,7 +2371,6 @@ local function BuildAchievementAddAlertReplacement(orig)
     end
 end
 
----@param orig function Blizzard CriteriaAlertSystem.AddAlert
 local function BuildCriteriaAddAlertReplacement(orig)
     return function(sys, a1, a2, ...)
         if not ShouldUseWnAchievementAlert() then
@@ -2590,8 +2537,6 @@ local function TestLootPrintAchievementReplaceMode(addon)
     end
 end
 
----@return boolean ok
----@return string|nil err
 local function TestLootFireAchievementAddAlert(addon, achievementID, criteriaIndex)
     TestLootEnsureAchievementAlertUI(addon)
     if not AchievementAlertSystem or not AchievementAlertSystem.AddAlert then
