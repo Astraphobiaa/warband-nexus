@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Plan Card Factory
     Centralized factory for creating plan cards with unified structure
     Supports all plan types: Achievement, Mount, Pet, Toy, Illusion, Title, Weekly Vault, Daily Quest
@@ -505,7 +505,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         iconIsAtlas = plan.iconIsAtlas or false
     end
 
-    -- Fallback: empty, nil, or blank icon → question mark
+    -- Fallback: empty, nil, or blank icon â†’ question mark
     if not iconTexture or iconTexture == "" then
         iconTexture = FALLBACK_ICON
         iconIsAtlas = false
@@ -517,7 +517,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         iconFrameObj:EnableMouse(false)
     end
 
-    -- (WN circular badge on the achievement icon was removed per user request — the To-Do already
+    -- (WN circular badge on the achievement icon was removed per user request â€” the To-Do already
     -- conveys this is "your" plan; the badge added visual noise inside the addon.)
 
     -- Completed state: green-tint name only (checkmark removed per design decision)
@@ -631,7 +631,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         card.chatLinkBtn = linkBtn
     end
 
-    -- Reminder horn (all standard collection cards — vault/DQ use same helper with different anchors)
+    -- Reminder horn (all standard collection cards â€” vault/DQ use same helper with different anchors)
     local reminderBtn = CreatePlanReminderAlertButton(card, plan)
     card.reminderAlertBtn = reminderBtn
     if reminderBtn then
@@ -1028,7 +1028,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 containerY = PlanSourceAdvanceY(containerY, questText, true)
             end
             
-            -- Location (Zone) — append difficulty label for mounts (consistent white; avoid duplication)
+            -- Location (Zone) â€” append difficulty label for mounts (consistent white; avoid duplication)
             if source.zone then
                 local zoneDiffLabel = ""
                 if plan and plan.type == "mount" and WarbandNexus and WarbandNexus.GetDropDifficulty then
@@ -1360,7 +1360,7 @@ function PlanCardFactory:ReflowAchievementCard(card, opts)
 
     -- Compute header bottom (icon row, name, points badge) so wrapped 2-line titles push body down.
     -- nameText is anchored LEFT to icon and RIGHT to action buttons, but the engine's anchor-driven
-    -- width is lazy — synchronous GetStringHeight() can return single-line height even if the text
+    -- width is lazy â€” synchronous GetStringHeight() can return single-line height even if the text
     -- visibly wraps. Force-set nameText width here so wrapped height is measured correctly.
     if card.nameText then
         local CDL = ns.CollectionsDetailHeaderLayout or {}
@@ -1369,12 +1369,12 @@ function PlanCardFactory:ReflowAchievementCard(card, opts)
         local nameGap = ns.PLAN_CARD_NAME_TO_WOWHEAD_GAP or 6
         local LINK_GAP = 4
         local REMINDER_BTN_W = 20
-        -- Header controls right-to-left: wowhead, [chat], [reminder], nameGap — reserve width for wrapped title.
+        -- Header controls right-to-left: wowhead, [chat], [reminder], nameGap â€” reserve width for wrapped title.
         local rightReserve = whInset + whW
         if card.chatLinkBtn then rightReserve = rightReserve + LINK_GAP + whW end
         if card.reminderAlertBtn then rightReserve = rightReserve + LINK_GAP + REMINDER_BTN_W end
         rightReserve = rightReserve + nameGap
-        -- nameText TOPLEFT is at iconBorder TOPRIGHT(+10) → x ~= iconBorderX(10) + iconW(46) + 10 = 66
+        -- nameText TOPLEFT is at iconBorder TOPRIGHT(+10) â†’ x ~= iconBorderX(10) + iconW(46) + 10 = 66
         local nameLeftX = 66
         local cw = card:GetWidth() or 200
         local nameW = math.max(60, cw - nameLeftX - rightReserve)
@@ -1475,7 +1475,7 @@ function PlanCardFactory:ReflowSourcePlanCard(card, opts)
     end
 end
 
---- Batch reflow after grid width changes (resize) — one masonry pass at the end.
+--- Batch reflow after grid width changes (resize) â€” one masonry pass at the end.
 function PlanCardFactory:ReflowAllPlanCards(layoutInstance)
     if not layoutInstance or not layoutInstance.cards then return end
     for i = 1, #layoutInstance.cards do
@@ -1655,7 +1655,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         end
     end
 
-    -- Description: word-wrap to card width (no manual substring truncation — avoids false ellipsis when space remains)
+    -- Description: word-wrap to card width (no manual substring truncation â€” avoids false ellipsis when space remains)
     if description and not (issecretvalue and issecretvalue(description)) and description ~= "" then
         description = description:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
         card.fullDescription = description
@@ -1681,7 +1681,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     progressLabel:SetJustifyH("LEFT")
     progressLabel:SetWordWrap(true)
     progressLabel:SetNonSpaceWrap(false)
-    progressLabel:SetMaxLines(0)  -- Show full progress sentence — never truncate.
+    progressLabel:SetMaxLines(0)  -- Show full progress sentence â€” never truncate.
     card.progressLabel = progressLabel  -- Store for later update
     card.planAchievementID = plan.achievementID  -- Store for progress calculation
     
@@ -2076,7 +2076,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
 end
 
 --[[
-    Expand achievement with no criteria — Criteria yoksa hiçbir yerde gösterme (header + bölüm gizli)
+    Expand achievement with no criteria â€” Criteria yoksa hiÃ§bir yerde gÃ¶sterme (header + bÃ¶lÃ¼m gizli)
 ]]
 function PlanCardFactory:ExpandAchievementEmpty(card)
     local expandedContent = card.expandedContent
@@ -2907,7 +2907,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     yOffset = PlanSourceAdvanceY(yOffset, questText, true)
                 end
                 
-                -- Location (Zone) — append difficulty label for mounts (consistent white; avoid duplication)
+                -- Location (Zone) â€” append difficulty label for mounts (consistent white; avoid duplication)
                 if source.zone then
                     local zoneDiffLabel = ""
                     if plan and plan.type == "mount" and WarbandNexus and WarbandNexus.GetDropDifficulty then
@@ -3220,7 +3220,6 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         end
     end
     
-    -- === HEADER WITH ICON ===
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     
@@ -3265,7 +3264,6 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         titleText:SetPoint("RIGHT", hdr.titleAnchor, "LEFT", -(hdr.titleGap or 12), 0)
     end
     
-    -- === 3 PROGRESS SLOTS ===
     local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
         dungeonCount = 0,
         raidBossCount = 0,
@@ -3364,7 +3362,6 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         end
     end
     
-    -- === HEADER WITH ICON ===
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     
@@ -3447,7 +3444,6 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         titleText:SetPoint("RIGHT", hdr.titleAnchor, "LEFT", -(hdr.titleGap or 12), 0)
     end
     
-    -- === CATEGORY PROGRESS SLOTS ===
     local contentY = -70
     local cardWidth = card:GetWidth()
     local availableWidth = cardWidth - 10 - 15

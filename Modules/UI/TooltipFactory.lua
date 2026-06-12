@@ -1,15 +1,15 @@
---[[
+﻿--[[
     Warband Nexus - Tooltip Factory
     UI frame creation for custom tooltips
     
     Layout:
-    ┌──────────────────────────────────┐
-    │ [Icon]  Title                    │
-    │         Description (optional)   │
-    │─────────────────────────────────│
-    │ Data lines...                    │
-    │ Left:                     Right  │
-    └──────────────────────────────────┘
+    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+    â”‚ [Icon]  Title                    â”‚
+    â”‚         Description (optional)   â”‚
+    â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚
+    â”‚ Data lines...                    â”‚
+    â”‚ Left:                     Right  â”‚
+    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
     
     Follows SharedWidgets pattern:
     - Theme-aware styling
@@ -57,7 +57,7 @@ local WIDTH_CAP_TOP = 820
 local VAULT_GRID_GAP_NAME_REALM = 10
 local VAULT_GRID_GAP_BEFORE_VAULT = 12
 local VAULT_GRID_GAP_VAULT_COL = 6
--- Minimum width per Raid/M+/World column (three slot icons or “Pending…”).
+-- Minimum width per Raid/M+/World column (three slot icons or â€œPendingâ€¦â€).
 local VAULT_GRID_TRACK_MIN_W = 72
 local VAULT_TRACK_GAP_COL = 10
 
@@ -343,7 +343,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         titleLine:Show()
     end
 
-    -- Lines directly under the colored title (before separator) — e.g. Gear "need more crests".
+    -- Lines directly under the colored title (before separator) â€” e.g. Gear "need more crests".
     frame.AddTitleAffix = function(self, text, r, g, b, wrap)
         local line = self:GetOrCreateLine()
         line:SetText(text or "")
@@ -544,7 +544,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         return dLine
     end
 
-    -- INTERNAL: Vault summary row — fixed columns (name | realm | raid | m+ | world)
+    -- INTERNAL: Vault summary row â€” fixed columns (name | realm | raid | m+ | world)
     frame.GetOrCreateVaultGridRow = function(self)
         if #self.vaultGridLinePool > 0 then
             return table.remove(self.vaultGridLinePool)
@@ -571,7 +571,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     --[[
         Five-column row for Great Vault summary tooltip (aligned name/realm + vault tracks).
         widths = { nameW, realmW, raidW, mplusW, worldW } in pixels.
-        opts.isHeader — gold column labels for vault headers.
+        opts.isHeader â€” gold column labels for vault headers.
     ]]
     frame.AddVaultGridRow = function(self, nameText, realmText, colRaid, colMplus, colWorld, widths, opts)
         opts = opts or {}
@@ -665,7 +665,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local paddingV = self.paddingV or spacing.SIDE_MARGIN
         local lineSpacing = 2
         
-        -- ── Phase 1: Measure natural content width ──
+        -- â”€â”€ Phase 1: Measure natural content width â”€â”€
         local maxContentW = 0
         
         -- Measure title
@@ -768,10 +768,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             end
         end
         
-        -- ── Phase 2: Position elements ──
+        -- â”€â”€ Phase 2: Position elements â”€â”€
         local yOffset = -paddingV
         
-        -- ===== HEADER SECTION: Icon + Title + Description =====
         local textLeftX = padding
         local headerBottom = yOffset
         
@@ -837,7 +836,6 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         headerBottom = math.min(iconBottom, descBottom)
         
-        -- ===== SEPARATOR =====
         local bodyStartY = headerBottom
         local showSeparator = false
         if self.titleLine and self.titleLine:IsShown() and #self.allLines > 0 then
@@ -862,7 +860,6 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             self.separator:Hide()
         end
         
-        -- ===== BODY LINES =====
         yOffset = bodyStartY
         local prevElement = nil
         

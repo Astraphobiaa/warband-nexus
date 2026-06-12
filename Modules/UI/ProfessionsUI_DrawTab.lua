@@ -1,4 +1,4 @@
---[[ Warband Nexus - Professions tab draw (Lua 5.1 upvalue cap)
+﻿--[[ Warband Nexus - Professions tab draw (Lua 5.1 upvalue cap)
      Loaded after ProfessionsUI.lua; resolves helpers via ProfUI._drawChunk. ]]
 
 local ADDON_NAME, ns = ...
@@ -99,7 +99,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
         tm.filterW or 96,
     })) or (expBadgeWidth + filterBtnW + 40 + hdrGapEc)
 
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — tracked roster vs saved profession rows =====
     local subLine = format(
         (ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s tracked - %s with profession data",
         FormatNumber(totalProfChars),
@@ -140,7 +139,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
         expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
     end
     
-    -- ===== COLUMNS BUTTON (column visibility toggle) =====
     local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local filterBtn = ns.UI.Factory:CreateButton(titleCard, filterBtnW, filterBtnH, false)
     if ApplyVisuals then
@@ -257,7 +255,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
 
-    -- ===== COLUMN HEADER ROW (scrollChild — PvE parity; crest/icons sit directly above sections) =====
     local mainFrameRef = WarbandNexus.UI.mainFrame
     local columnHeaderClip = mainFrameRef and mainFrameRef.columnHeaderClip
     if columnHeaderClip then
@@ -431,7 +428,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     local yOffset = scrollTopY + COLUMN_HEADER_HEIGHT + COLUMN_HEADER_PAD
 
-    -- ===== EMPTY STATE =====
     if parent._wnProfEmptyScrollText then
         parent._wnProfEmptyScrollText:Hide()
     end
@@ -443,7 +439,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
         return yOffset + 100
     end
 
-    -- ===== SECTION HEADERS & CHARACTER ROWS =====
     local currentPlayerKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
         or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
         or ns.Utilities:GetCharacterKey()

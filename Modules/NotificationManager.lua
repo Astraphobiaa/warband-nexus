@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Notification Manager
     Handles in-game notifications and reminders
 
@@ -110,7 +110,7 @@ local function NM_GetShellContentInset()
     return ms.FRAME_CONTENT_INSET or 2
 end
 
---- Replaces legacy hard-coded horizontal `30` (≈ three × `SIDE_MARGIN` at defaults).
+--- Replaces legacy hard-coded horizontal `30` (â‰ˆ three Ã— `SIDE_MARGIN` at defaults).
 local function NM_WhatsNewPopupSidePad()
     local side = (ns.UI_SPACING and ns.UI_SPACING.SIDE_MARGIN) or 10
     return math.max(side * 3, NM_GetShellContentInset() * 12)
@@ -388,8 +388,8 @@ local notificationQueue = {}
 local notificationQueueHead = 1
 
 -- TryCounter + CollectionService can both send WN_COLLECTIBLE_OBTAINED within a short window:
---   • bag scan right after loot (item hits bags while Try Counter already toasted), or
---   • NEW_MOUNT journal event after loot (name differs: item vs mount journal).
+--   â€¢ bag scan right after loot (item hits bags while Try Counter already toasted), or
+--   â€¢ NEW_MOUNT journal event after loot (name differs: item vs mount journal).
 -- Bag duplicate is suppressed at source (TryCounterService + CollectionService); this is a second line of defense.
 -- Dedupe popup only; dispatch consumers (TryCounter migration, Plans) still run first in handler order.
 local lastCollectibleLootToastShownAt = {}
@@ -546,7 +546,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     local ar, ag, ab = accent[1], accent[2], accent[3]
     local changelogSidePad = NM_WhatsNewPopupSidePad()
     local changelogCloseBottom = math.max(15, NM_GetShellContentInset() * 7 + 1)
-    --- Distinct layout band: separator → label → scroll (must match scrollbar column inset).
+    --- Distinct layout band: separator â†’ label â†’ scroll (must match scrollbar column inset).
     local changelogScrollTop = 185
     local changelogScrollBottom = 60
     
@@ -920,7 +920,7 @@ end
 
 -- Alert positioning constants
 local ALERT_HEIGHT = 88       -- Full achievement toast height
-local ALERT_HEIGHT_COMPACT = 88  -- Compact notification lane (collectibles, etc.) — wide frame
+local ALERT_HEIGHT_COMPACT = 88  -- Compact notification lane (collectibles, etc.) â€” wide frame
 local ALERT_GAP = 10          -- Pixel gap between stacked alerts
 local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP  -- Legacy: total slot spacing (98px)
 -- Full + compact notification width (achievement / collector lane)
@@ -1095,7 +1095,7 @@ local function GetGrowthDirection(point, x, y)
         anchorScreenY = (screenHeight / 2) + y
     end
     
-    -- If anchor is in the top 55% of screen → grow DOWN, else grow UP
+    -- If anchor is in the top 55% of screen â†’ grow DOWN, else grow UP
     if anchorScreenY > screenHeight * 0.45 then
         return 1   -- DOWN (negative Y offsets)
     else
@@ -1295,7 +1295,7 @@ function WarbandNexus:ShowModalNotification(config)
     local iconTexture = config.iconFileID or config.icon or "Interface\\Icons\\Achievement_Quests_Completed_08"
     local iconAtlas = config.iconAtlas or nil
     
-    -- Auto-detect atlas if not explicitly set (factory pattern — centralized detection)
+    -- Auto-detect atlas if not explicitly set (factory pattern â€” centralized detection)
     if not iconAtlas and ns.Utilities:IsAtlasName(iconTexture) then
         iconAtlas = iconTexture
         iconTexture = nil
@@ -1398,7 +1398,7 @@ function WarbandNexus:ShowModalNotification(config)
         local iconCompact = iconSlotCompact:CreateTexture(nil, "ARTWORK")
         iconCompact:SetSize(iconSizeCompact, iconSizeCompact)
         iconCompact:SetPoint("CENTER", iconSlotCompact, "CENTER", 0, 0)
-        -- Use resolved atlas/fileID locals (IsAtlasName promotes config.icon → iconAtlas; compact must not read config.iconAtlas only).
+        -- Use resolved atlas/fileID locals (IsAtlasName promotes config.icon â†’ iconAtlas; compact must not read config.iconAtlas only).
         if iconAtlas and iconAtlas ~= "" then
             iconCompact:SetAtlas(iconAtlas)
         else
@@ -1418,7 +1418,7 @@ function WarbandNexus:ShowModalNotification(config)
         iconBlingCompact:SetTexCoord(0, 0.5625, 0, 0.5625)
         iconBlingCompact:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
         iconBlingCompact:SetBlendMode("BLEND")
-        -- Match achievement toast icon chrome (UI-Achievement-IconFrame). Progress lane showed “naked” icons before.
+        -- Match achievement toast icon chrome (UI-Achievement-IconFrame). Progress lane showed â€œnakedâ€ icons before.
         if laneUsesProgressSizing and config.progressAchievementFrame == false then
             iconBlingCompact:Hide()
         end
@@ -1428,7 +1428,7 @@ function WarbandNexus:ShowModalNotification(config)
         contentFrameCompact:SetFrameLevel(2)
         contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad + ICON_SLOT_WIDTH_COMPACT, 0)
         
-        -- Theme: TopBottom glow in effects layer (behind black) — spans ENTIRE toast for Blizzard-style coverage
+        -- Theme: TopBottom glow in effects layer (behind black) â€” spans ENTIRE toast for Blizzard-style coverage
         -- Progress slot defaults to no glow (helper/criteria-like).
         local compactGlowAtlas = glowAtlas
         if laneUsesProgressSizing and config.progressGlow ~= true then
@@ -1452,7 +1452,7 @@ function WarbandNexus:ShowModalNotification(config)
             bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
             bottomLine:SetBlendMode("ADD")
         end
-        -- Progress lane (criteria + To-Do reminder): one layout — accent header, white body, optional gray detail; symmetric padding in the text column (icon column separate).
+        -- Progress lane (criteria + To-Do reminder): one layout â€” accent header, white body, optional gray detail; symmetric padding in the text column (icon column separate).
         local criteriaTitle = config.criteriaTitle
         local progressStr = (messageText or actionText or "")
         if type(progressStr) == "string" and issecretvalue and issecretvalue(progressStr) then progressStr = "" end
@@ -1786,7 +1786,6 @@ function WarbandNexus:ShowModalNotification(config)
     edgeShineBottom:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.2)
     edgeShineBottom:SetBlendMode("ADD")
     
-    -- === CONTENT: text centered in content frame ===
     -- Symmetric layout: text block center = content frame center.
     local popupWidth = contentFrameWidth
     local popupHeight = ALERT_HEIGHT
@@ -1936,13 +1935,11 @@ function WarbandNexus:ShowModalNotification(config)
     
     popup.isClosing = false
     
-    -- === PLAY SOUND ===
     if playSound then
         local Constants = ns.Constants
         PlaySound(config.soundID or (Constants and Constants.NOTIFICATION_SOUND_COMPACT_DEFAULT) or 44295)
     end
     
-    -- === ENTRANCE (compact-aligned order: stack → hide → reposition → show → VFX → slide) ===
     local slideOffset = 50 * -direction
     local startYOffset = yOffset + slideOffset
     local finalYOffset = yOffset
@@ -2155,22 +2152,22 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage(E.SHOW_REMINDER_TOAST, "OnShowReminderToast")
     self:RegisterMessage(E.SHOW_CRITERIA_PROGRESS, "OnShowCriteriaProgressMessage")
     
-    -- ── BULLETPROOF COLLECTIBLE DISPATCH ──────────────────────────────────────
+    -- â”€â”€ BULLETPROOF COLLECTIBLE DISPATCH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     -- WN_COLLECTIBLE_OBTAINED has MULTIPLE consumers on WarbandNexus:
-    --   1. OnTryCounterCollectibleObtained (try counter reconciliation — TryCounterService)
-    --   2. OnCollectibleObtained (popup notification — NotificationManager)
-    --   3. OnPlanCollectionUpdated (plan completion detection — PlansManager)
+    --   1. OnTryCounterCollectibleObtained (try counter reconciliation â€” TryCounterService)
+    --   2. OnCollectibleObtained (popup notification â€” NotificationManager)
+    --   3. OnPlanCollectionUpdated (plan completion detection â€” PlansManager)
     --
     -- WHY THIS PATTERN:
     --   AceEvent allows only ONE handler per event per object. Without this dispatch,
-    --   the last module to register silently overwrites the others — causing notifications
+    --   the last module to register silently overwrites the others â€” causing notifications
     --   to stop working with NO error message (the root cause of past breakage).
     --
     -- HOW IT WORKS:
     --   Single RegisterMessage handler iterates a dispatch table with pcall protection.
     --   Each consumer is isolated: if one throws an error, the others still run.
     --
-    -- ⚠ ADDING A NEW CONSUMER:
+    -- âš  ADDING A NEW CONSUMER:
     --   Add a new entry to collectibleDispatch below. Do NOT register for
     --   WN_COLLECTIBLE_OBTAINED via RegisterMessage anywhere else in the codebase.
     -- Direct dispatch with pcall isolation.
@@ -2421,7 +2418,7 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
     local numCriteria = GetAchievementNumCriteria(achievementID)
     if not numCriteria or numCriteria == 0 then return end
 
-    -- Blizzard AddAlert passes (achievementID, criteriaName) — that string IS the display name (progress completed). Use it as-is.
+    -- Blizzard AddAlert passes (achievementID, criteriaName) â€” that string IS the display name (progress completed). Use it as-is.
     local displayNameFromEvent = nil
     if type(criteriaIndex) == "string" and criteriaIndex ~= "" then
         displayNameFromEvent = criteriaIndex
@@ -2531,9 +2528,9 @@ local function TestLootPrintAchievementReplaceMode(addon)
     local useWn = addon.db and addon.db.profile and addon.db.profile.notifications
         and addon.db.profile.notifications.hideBlizzardAchievementAlert
     if useWn then
-        addon:Print("|cffffcc00Mode:|r Replace ON — WN alert only")
+        addon:Print("|cffffcc00Mode:|r Replace ON â€” WN alert only")
     else
-        addon:Print("|cffffcc00Mode:|r Replace OFF — Blizzard alert only")
+        addon:Print("|cffffcc00Mode:|r Replace OFF â€” Blizzard alert only")
     end
 end
 
@@ -2567,7 +2564,7 @@ local function TestLootResolveAchievementWithCriteria(preferredID)
     return nil, 0
 end
 
----Blizzard hooked progressive achievement / criteria AddAlert routes here (never calls ShowCriteriaProgressNotification directly — avoids stacking duplicate Alerts with WN_REMINDER lane).
+---Blizzard hooked progressive achievement / criteria AddAlert routes here (never calls ShowCriteriaProgressNotification directly â€” avoids stacking duplicate Alerts with WN_REMINDER lane).
 ---@param _ string AceEvent prefix
 ---@param payload table|nil { achievementID, criteriaIndex }
 function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
@@ -2592,7 +2589,7 @@ function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
     end
 end
 
----Dedicated To-Do reminder toast lane (ReminderService ActivateReminder → WN_SHOW_REMINDER_TOAST).
+---Dedicated To-Do reminder toast lane (ReminderService ActivateReminder â†’ WN_SHOW_REMINDER_TOAST).
 ---@param _ string AceEvent prefix
 ---@param payload table|nil { data = ShowModalNotification config }
 function WarbandNexus:OnShowReminderToast(_, payload)
@@ -2600,7 +2597,7 @@ function WarbandNexus:OnShowReminderToast(_, payload)
     self:ShowModalNotification(payload.data)
 end
 
----Generic notification handler (non–reminder modals — legacy / external callers)
+---Generic notification handler (nonâ€“reminder modals â€” legacy / external callers)
 ---@param event string Event name
 ---@param payload table Notification payload
 function WarbandNexus:OnShowNotification(event, payload)
@@ -2626,7 +2623,7 @@ function WarbandNexus:PlayScreenFlash(duration)
     -- Don't flash during combat
     if InCombatLockdown() then return end
     
-    -- Create frame on first use (intentional fullscreen texture host — not SharedWidgets bordered shell)
+    -- Create frame on first use (intentional fullscreen texture host â€” not SharedWidgets bordered shell)
     if not screenFlashFrame then
         local f = CreateFrame("Frame", nil, UIParent)
         f:SetAllPoints(UIParent)
@@ -2635,7 +2632,7 @@ function WarbandNexus:PlayScreenFlash(duration)
         f:EnableMouse(false)
         f:SetMouseClickEnabled(false)
         
-        -- Center flash (full screen, soft white → transparent)
+        -- Center flash (full screen, soft white â†’ transparent)
         local flash = f:CreateTexture(nil, "BACKGROUND")
         flash:SetAllPoints()
         flash:SetTexture("Interface\\BUTTONS\\WHITE8X8")
@@ -2738,8 +2735,8 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         end
     end
 
-    -- TryCounter fires on loot; CollectionService fires on NEW_MOUNT / journal — same mount, two toasts.
-    -- Normalize mount itemID → mountID so both payloads share one dedupe key.
+    -- TryCounter fires on loot; CollectionService fires on NEW_MOUNT / journal â€” same mount, two toasts.
+    -- Normalize mount itemID â†’ mountID so both payloads share one dedupe key.
     local lootToastDedupeKey = BuildCollectibleLootToastDedupeKey(data)
     if lootToastDedupeKey then
         local nowDedupe = GetTime()
@@ -2749,13 +2746,13 @@ function WarbandNexus:OnCollectibleObtained(event, data)
             return
         end
     end
-    -- Build try count message for mount/pet/toy/illusion/item (the "BAM" moment — farmed drop obtained)
+    -- Build try count message for mount/pet/toy/illusion/item (the "BAM" moment â€” farmed drop obtained)
     -- When TryCounter sends preResetTryCount, we always show the celebratory message and flash.
     local tryMessage = nil
     local hasTryCount = false
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true, item = true }
     if tryCountTypes[data.type] and data.id then
-        -- If TryCounter sent preResetTryCount, this is a detected drop — always treat as drop source for celebration
+        -- If TryCounter sent preResetTryCount, this is a detected drop â€” always treat as drop source for celebration
         local isDropSource = (data.preResetTryCount ~= nil) or (self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id))
         -- Use preResetTryCount if provided (0 = first try; counter was reset before notification fired)
         local failedCount = (data.preResetTryCount ~= nil) and data.preResetTryCount or (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
@@ -2809,7 +2806,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         end
         local doneMsg = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!"
         local ptsFmt = (ns.L and ns.L["ACHIEVEMENT_POINTS_FORMAT"]) or "%d pts"
-        overrides.action = string.format("%s  ·  %s", doneMsg, string.format(ptsFmt, pts))
+        overrides.action = string.format("%s  Â·  %s", doneMsg, string.format(ptsFmt, pts))
     end
     -- Farmed drop obtained: keep notification on screen longer for the "yeeey" moment
     if hasTryCount then
@@ -2821,7 +2818,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         lastCollectibleLootToastShownAt[lootToastDedupeKey] = GetTime()
     end
 
-    -- Screen flash (setting: screenFlashEffect) + optional screenshot — try-tracked collectible drop
+    -- Screen flash (setting: screenFlashEffect) + optional screenshot â€” try-tracked collectible drop
     if hasTryCount then
         self:PlayScreenFlash(0.6)
         if self.db.profile.notifications.tryCounterDropScreenshot ~= false then
@@ -2841,7 +2838,7 @@ end
 function WarbandNexus:OnPlanCompleted(event, data)
     if not data or not data.name then return end
     
-    -- Use planType icon fallback chain: data.icon → planType category icon → plan default
+    -- Use planType icon fallback chain: data.icon â†’ planType category icon â†’ plan default
     local icon = data.icon or CATEGORY_ICONS[data.planType] or CATEGORY_ICONS.plan
     self:Notify("plan", data.name, icon)
 end
@@ -2951,7 +2948,7 @@ end
     LOOT NOTIFICATIONS (MOUNT/PET/TOY)
 ============================================================================]]
 
----Show loot notification (compatibility wrapper — resolves icon then delegates to Notify)
+---Show loot notification (compatibility wrapper â€” resolves icon then delegates to Notify)
 ---@param itemID number Item ID (or mount/pet ID)
 ---@param itemLink string Item link
 ---@param itemName string Item name
@@ -2989,7 +2986,7 @@ function WarbandNexus:TestLootNotification(type, id, step)
         return
     end
 
-    -- Full achievement earned — single AddAlert(achievementID); respects Replace toggle.
+    -- Full achievement earned â€” single AddAlert(achievementID); respects Replace toggle.
     if type == "earn" then
         local achievementID = tonumber(id) or 6
         local okInfo, name = pcall(GetAchievementInfo, achievementID)
@@ -3006,7 +3003,7 @@ function WarbandNexus:TestLootNotification(type, id, step)
         return
     end
 
-    -- Criteria / progress step — single AddAlert(achievementID, criteriaIndex).
+    -- Criteria / progress step â€” single AddAlert(achievementID, criteriaIndex).
     if type == "progress" then
         local preferredID = tonumber(id)
         local achievementID, numCriteria = TestLootResolveAchievementWithCriteria(preferredID)
@@ -3406,14 +3403,14 @@ function WarbandNexus:TestVaultCheck()
         self:Print("|cffff0000ERROR: C_WeeklyRewards API not found!|r")
         return
     else
-        self:Print("|cff00ff00âœ“ C_WeeklyRewards API available|r")
+        self:Print("|cff00ff00Ã¢Å“â€œ C_WeeklyRewards API available|r")
     end
     
     if not C_WeeklyRewards.HasAvailableRewards then
         self:Print("|cffff0000ERROR: HasAvailableRewards function not found!|r")
         return
     else
-        self:Print("|cff00ff00âœ“ HasAvailableRewards function available|r")
+        self:Print("|cff00ff00Ã¢Å“â€œ HasAvailableRewards function available|r")
     end
     
     -- Check rewards and current-period/claimable APIs
@@ -3427,10 +3424,10 @@ function WarbandNexus:TestVaultCheck()
     local wouldShow = self:HasUnclaimedVaultRewards()
     self:Print("HasUnclaimedVaultRewards() (would show reminder): " .. tostring(wouldShow))
     if wouldShow then
-        self:Print("|cff00ff00âœ“ YOU HAVE UNCLAIMED REWARDS!|r")
+        self:Print("|cff00ff00Ã¢Å“â€œ YOU HAVE UNCLAIMED REWARDS!|r")
         self:ShowVaultReminder({})
     else
-        self:Print("|cff888888âœ— No unclaimed (or not current period / not claimable)|r")
+        self:Print("|cff888888Ã¢Å“â€” No unclaimed (or not current period / not claimable)|r")
     end
     
     self:Print("|cff00ccff======================|r")

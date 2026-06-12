@@ -2754,7 +2754,6 @@ function WarbandNexus:CreateMainWindow()
     
     -- Footer strip (text + version): MAIN_FOOTER_H + CONTENT_BOTTOM_OFFSET defined above rail shell.
 
-    -- ===== CONTENT AREA =====
     -- Factory candidate: `Factory:CreateContainer` — inherits `BackdropTemplate` mixin immediately below for panel BG tint.
     local content = CreateFrame("Frame", nil, f)
     if navLayoutMode == "rail" and navRail then
@@ -2954,7 +2953,6 @@ function WarbandNexus:CreateMainWindow()
     end
     WarbandNexus.UI.mainFrame = f
     
-    -- ===== EVENT-DRIVEN UI UPDATES (DB-First Pattern) =====
     -- UI automatically refreshes when DB data changes.
     -- All listeners use SchedulePopulateContent() to coalesce rapid events
     -- (e.g., bank open fires WN_ITEMS_UPDATED + WN_BAGS_UPDATED + WN_ITEM_METADATA_READY
@@ -3303,8 +3301,11 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
+    ns._wnMainWindowVisible = f:IsShown()
+
     -- Master OnHide: cleanup when addon window closes
     f:SetScript("OnHide", function(self)
+        ns._wnMainWindowVisible = false
         if shellRefresh.pendingPopulateTimer then
             if shellRefresh.pendingPopulateTimer.Cancel then
                 shellRefresh.pendingPopulateTimer:Cancel()
@@ -3341,6 +3342,7 @@ function WarbandNexus:CreateMainWindow()
     -- their own and clear the bit first; this catches raw Show() calls — most notably
     -- the post-combat restore in Core.lua OnCombatEnd — so the window never reopens stale.
     f:HookScript("OnShow", function(self)
+        ns._wnMainWindowVisible = true
         if not shellRefresh.dirtyWhileHidden then return end
         shellRefresh.lastEventPopulateTime = 0
         C_Timer.After(0.2, function()
@@ -3368,7 +3370,19 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     f:SyncMainHeaderDebugReloadLayout()
-    
+
+    local shellEv = ns.Constants and ns.Constants.EVENTS
+    if WarbandNexus.RegisterMessage and shellEv and shellEv.UI_DEBUG_HEADER_SYNC then
+        if not ns._uiDebugHeaderSyncListener then
+            ns._uiDebugHeaderSyncListener = {}
+            WarbandNexus.RegisterMessage(ns._uiDebugHeaderSyncListener, shellEv.UI_DEBUG_HEADER_SYNC, function()
+                if f.SyncMainHeaderDebugReloadLayout then
+                    f:SyncMainHeaderDebugReloadLayout()
+                end
+            end)
+        end
+    end
+
     -- Frame is already hidden (Hide() called immediately after CreateFrame)
     return f
 end
@@ -4266,7 +4280,6 @@ function WarbandNexus:OpenOptions()
     end
 end
 
--- ===== STANDALONE LOADING OVERLAY =====
 -- Floating bar that appears on screen during init, independent of the addon window.
 -- Uses lightweight polling (0.5s ticker) to track LoadingTracker state.
 -- AceEvent message hooks don't work from standalone contexts (plain tables

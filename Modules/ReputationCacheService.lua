@@ -1970,8 +1970,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     if not bypassThrottle then
         local now = time()
         local timeSinceLastScan = now - self.lastFullScan
-        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        local MIN_SCAN_INTERVAL = (mf and mf:IsShown()) and 5 or 20
+        local MIN_SCAN_INTERVAL = (ns._wnMainWindowVisible == true) and 5 or 20
 
         if timeSinceLastScan < MIN_SCAN_INTERVAL then
             -- Run diff only — catches gains that earlier diffs missed, no DB/UI overhead

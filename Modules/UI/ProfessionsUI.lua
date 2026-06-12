@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Professions Tab
 
     Layout: Single row per character, two profession lines stacked vertically.
@@ -13,7 +13,7 @@
     between all columns. Vertical rules only in the profession data grid (not identity columns).
 
     Column grid (character row + per profession line):
-        [FavIcon] [ClassIcon] [Name/Realm] [Open]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] …
+        [FavIcon] [ClassIcon] [Name/Realm] [Open]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] â€¦
     Open is one control per character (vertically centered); disabled when no primary profession or not logged in.
 
     Default column visibility matches prior behavior (Columns toggles persist in SavedVariables).
@@ -85,7 +85,7 @@ local wipe = table.wipe
 -- Invalidated on profession/recipe/equipment data messages (see bottom-of-file RegisterMessage hooks).
 local profSessionIconBySkillLine = {}
 local profSessionRecipeMapByCharKey = {}
--- Per-draw: equipment name fallback scan (pairs(eqByProf)) — at most once per char+prof per redraw.
+-- Per-draw: equipment name fallback scan (pairs(eqByProf)) â€” at most once per char+prof per redraw.
 local profEquipResolveCache = nil
 local EQUIP_CACHE_MISS = {}
 
@@ -106,7 +106,7 @@ local EXPANSION_ORDER = {
 }
 
 -- Extracts the base expansion key from an expansion-qualified name.
--- e.g. "Midnight Tailoring" → "Midnight", "Khaz Algar Alchemy" → "Khaz Algar"
+-- e.g. "Midnight Tailoring" â†’ "Midnight", "Khaz Algar Alchemy" â†’ "Khaz Algar"
 local function ExtractExpansionKey(expName)
     if not expName or expName == "" then return nil end
     if issecretvalue and issecretvalue(expName) then return nil end
@@ -118,7 +118,7 @@ local function ExtractExpansionKey(expName)
 end
 
 -- Builds expansion filter options dynamically from all characters' discovered expansion data.
--- Always "All" first, then discovered expansions sorted newest→oldest.
+-- Always "All" first, then discovered expansions sorted newestâ†’oldest.
 -- Falls back to "Midnight" when no expansion data has been collected yet.
 local function BuildDynamicExpansionOptions()
     local seen = {}
@@ -628,7 +628,7 @@ function ns.ComputeProfessionsGridWidth()
     return math.ceil(2 * sideMargin + LEFT_PAD + total)
 end
 
--- Cached row width — set once per DrawProfessionsTab call so columns fill available space.
+-- Cached row width â€” set once per DrawProfessionsTab call so columns fill available space.
 local cachedRowWidth = nil
 
 -- Scale factor considers two inputs and picks the larger:
@@ -700,7 +700,7 @@ local function ColCenterX(key)
     return ColOffset(key) + ColWidth(key) / 2
 end
 
---- Center X of gaps in the profession data grid only (after Profession column — not identity/open).
+--- Center X of gaps in the profession data grid only (after Profession column â€” not identity/open).
 local function BuildProfessionColumnDividerXs()
     local xs = {}
     local inDataGrid = false
@@ -727,7 +727,7 @@ local function BuildProfessionColumnDividerXs()
                         break
                     end
                 end
-                -- No rule before the info (?) column — too tight against the button.
+                -- No rule before the info (?) column â€” too tight against the button.
                 if nextKey ~= "info" then
                     local spacing = (COLUMNS[k] and COLUMNS[k].spacing) or COL_SPACING
                     xs[#xs + 1] = ColOffset(k) + ColWidth(k) + spacing * 0.5
@@ -771,7 +771,7 @@ local function AnchorCellInColumn(frame, colKey, row, centerY, hAlign)
     end
 end
 
---- Plain header text (no |c escapes — they wrap as stray "|..." in narrow columns).
+--- Plain header text (no |c escapes â€” they wrap as stray "|..." in narrow columns).
 local function StripProfHeaderDisplayText(text)
     if type(text) ~= "string" then return "" end
     return text
@@ -1089,7 +1089,7 @@ local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef,
     end)
 end
 
--- Column header definitions — alignment matches each column's data alignment
+-- Column header definitions â€” alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 -- sortable = true means clicking the header toggles ascending/descending sort
 --- Column header icons mapped to retail profession UI (Gethe/wow-ui-source live, May 2026).
@@ -1104,7 +1104,7 @@ local PROF_HEADER_ICON_BY_COL = {
     equipment   = { iconAtlases = { "Professions-Slot-Plus", "creationgear-32x32", "ItemUpgrade_Icon" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\INV_Hammer_20" },
     -- Skill-ups: Professions-Icon-Skill-* (RecipeList.lua); in_progress is reliable legacy fallback
     skill       = { iconAtlases = { "professions_recipes_in_progress", "Professions-Icon-Skill-Medium", "Professions-Icon-Skill-High", "Professions-Icon-Skill-Low" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Trade_Engineering" },
-    -- Concentration currency icon (ProfessionsCurrencyTemplate XML — file, not atlas)
+    -- Concentration currency icon (ProfessionsCurrencyTemplate XML â€” file, not atlas)
     conc        = { iconPaths = { "Interface\\ICONS\\UI_Concentration" }, iconAtlases = { "Capacitance-General-32x32" }, iconFallback = "Interface\\Icons\\Spell_Nature_Manaregen" },
     -- Recharge / expiration: auctionhouse-icon-clock (Templates sort header)
     recharge    = { iconAtlases = { "auctionhouse-icon-clock", "Capacitance-General-WorkOrderArrow", "Capacitance-General-32x32" }, iconIsAtlas = true, iconFallback = "Interface\\Icons\\Spell_Nature_TimeStop" },
@@ -1295,9 +1295,9 @@ local function RegisterProfessionEvents(parent)
         end
     end
 
-    -- CONCENTRATION_UPDATED, KNOWLEDGE_UPDATED, RECIPE_DATA_UPDATED: REMOVED —
+    -- CONCENTRATION_UPDATED, KNOWLEDGE_UPDATED, RECIPE_DATA_UPDATED: REMOVED â€”
     -- UI.lua's SchedulePopulateContent already handles professions tab refresh for these events.
-    -- Having both caused double PopulateContent → DrawProfessionsTab per event.
+    -- Having both caused double PopulateContent â†’ DrawProfessionsTab per event.
     
     -- Keep CHARACTER_UPDATED: UI.lua does not schedule professions-tab refresh for this event.
     WarbandNexus.RegisterMessage(ProfessionsUIEvents, Constants.EVENTS.CHARACTER_UPDATED, Refresh)
@@ -2680,7 +2680,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
     end
     AnchorCellInColumn(row[p.."InfoBtn"], "info", row, centerY, "CENTER")
 
-    -- ===== POPULATE =====
     if prof and prof.name then
         if row[p .. "EquipEmpty"] then row[p .. "EquipEmpty"]:Hide() end
         local profName = prof.name
@@ -2935,7 +2934,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         SetEquipCell(acc1Cell, eqData, "accessory1")
         SetEquipCell(acc2Cell, eqData, "accessory2")
 
-        -- ===== SKILL COLUMN TOOLTIP (expansion breakdown — unique data) =====
         skillHit:SetScript("OnEnter", function(self)
             local lines = {}
             local expansions = char.professionExpansions and char.professionExpansions[profName]
@@ -2966,7 +2964,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
             row[p.."Icon"].knowledgeBadge:Hide()
         end
 
-        -- Info button: always enabled — shows read-only DB data for any character
+        -- Info button: always enabled â€” shows read-only DB data for any character
         local infoBtn = row[p.."InfoBtn"]
         local infoProfSlot = prof
         local infoCharKey = GetCharKey(char)

@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Statistics Tab
     Display account-wide statistics: gold, collections, storage overview
 ]]
@@ -140,7 +140,6 @@ function WarbandNexus:DrawStatistics(parent)
         return headerYOffset + (height or 120)
     end
 
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
@@ -172,7 +171,6 @@ function WarbandNexus:DrawStatistics(parent)
     -- Get statistics
     local stats = self:GetBankStatistics()
     
-    -- ===== PLAYER STATS CARDS =====
     -- Use cached collection stats to avoid expensive API iteration on every redraw
     -- (mount/pet scanning is 1000+ API calls; cache is invalidated on real data changes)
     local collectionStats = GetCachedCollectionStats()
@@ -294,7 +292,7 @@ function WarbandNexus:DrawStatistics(parent)
     bpValue:SetText("|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
     bpValue:SetJustifyH("LEFT")
     
-    -- Right column: Unique Pets — start after Battle Pets *value* (not only the label), or counts merge visually.
+    -- Right column: Unique Pets â€” start after Battle Pets *value* (not only the label), or counts merge visually.
     local upLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
     upLabel:SetPoint("TOP", bpLabel, "TOP", 0, 0)
     upLabel:SetPoint("LEFT", bpValue, "RIGHT", 20, 0)
@@ -351,7 +349,6 @@ function WarbandNexus:DrawStatistics(parent)
 
     yOffset = yOffset + (useTwoRows and (90 + 90 + sectionGap) or 90) + sectionGap
     
-    -- ===== WARBAND WEALTH =====
     local GW_VISIBLE_ROWS = 5
     local GW_ROW_HEIGHT = 22
     local GW_ROW_SPACING = 1
@@ -456,7 +453,7 @@ function WarbandNexus:DrawStatistics(parent)
             if charInfo.copper > 0 then
                 goldText:SetText(FormatMoney(charInfo.copper, 12))
             else
-                goldText:SetText("|cff555555—|r")
+                goldText:SetText("|cff555555â€”|r")
             end
             goldText:SetJustifyH("RIGHT")
             
@@ -538,7 +535,6 @@ function WarbandNexus:DrawStatistics(parent)
         yOffset = yOffset + goldCardHeight + sectionGap
     end
     
-    -- ===== MOST PLAYED CARD =====
     local MP_VISIBLE_ROWS = 5
     local MP_ROW_HEIGHT = 22
     local MP_ROW_SPACING = 1
@@ -636,7 +632,7 @@ function WarbandNexus:DrawStatistics(parent)
         mpCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
         if ApplyPanelCardChrome then ApplyPanelCardChrome(mpCard) end
 
-        -- ── Header: Icon + "MOST PLAYED" at top-left ──
+        -- â”€â”€ Header: Icon + "MOST PLAYED" at top-left â”€â”€
         local mpIcon = CreateIcon(mpCard, "Interface\\Icons\\Spell_Holy_BorrowedTime", 28, false, nil, true)
         mpIcon:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 15, -10)
         mpIcon:Show()
@@ -647,7 +643,7 @@ function WarbandNexus:DrawStatistics(parent)
         mpTitle:SetTextColor(1, 1, 1)
         mpTitle:SetJustifyH("LEFT")
 
-        -- ── Format toggle button (WoW ↔ Steam) ──
+        -- â”€â”€ Format toggle button (WoW â†” Steam) â”€â”€
         local fmtBtn = ns.UI.Factory:CreateButton(mpCard, 60, 20)
         fmtBtn:SetPoint("LEFT", mpTitle, "RIGHT", 10, 0)
         ns.UI.Factory:ApplyHighlight(fmtBtn)
@@ -668,14 +664,14 @@ function WarbandNexus:DrawStatistics(parent)
                     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
         end)
 
-        -- ── Total played time at top-right (full format for header) ──
+        -- â”€â”€ Total played time at top-right (full format for header) â”€â”€
         local mpTotal = FontManager:CreateFontString(mpCard, "header", "OVERLAY")
         mpTotal:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, -24)
         local totalFormatted = steamMode and FormatPlayedSteam(totalPlayedSeconds) or ns.Utilities:FormatPlayedTime(totalPlayedSeconds)
         mpTotal:SetText("|cff00ccff" .. totalFormatted .. "|r")
         mpTotal:SetJustifyH("RIGHT")
         
-        -- ── Character rows ──
+        -- â”€â”€ Character rows â”€â”€
         local rowYStart = MP_HEADER_AREA
         for i = 1, visibleCount do
             local charInfo = playedChars[i]
@@ -720,14 +716,14 @@ function WarbandNexus:DrawStatistics(parent)
                 timeText:SetText(FormatPlayed(charInfo.timePlayed))
                 timeText:SetTextColor(0.85, 0.85, 0.85)
             else
-                timeText:SetText("|cff555555—|r")
+                timeText:SetText("|cff555555â€”|r")
             end
             timeText:SetJustifyH("RIGHT")
             
             rowYStart = rowYStart + MP_ROW_HEIGHT + MP_ROW_SPACING
         end
         
-        -- ── Expand/Collapse (PlanCardFactory pattern: glues-characterSelect atlas) ──
+        -- â”€â”€ Expand/Collapse (PlanCardFactory pattern: glues-characterSelect atlas) â”€â”€
         if hasOverflow then
             local hiddenCount = #playedChars - MP_VISIBLE_ROWS
             
@@ -776,7 +772,6 @@ function WarbandNexus:DrawStatistics(parent)
         yOffset = yOffset + cardHeight + sectionGap
     end
     
-    -- ===== STORAGE STATS (bottom) =====
     local storageCard = CreateCard(parent, 100)
     storageCard:SetPoint("TOPLEFT", SIDE, -yOffset)
     storageCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)

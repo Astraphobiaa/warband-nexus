@@ -933,7 +933,7 @@ ns.CollectibleSourceDB = {
         { sourceType = "lockout_quest", npcID = 95056, questID = 39289 },  -- Doomroller
 
         -- Legion: World Bosses (biweekly lockout)
-        { sourceType = "lockout_quest", npcID = 111573, questID = 43798 },  -- Kosumoth the Hungering — TODO: verify questID in-game
+        { sourceType = "lockout_quest", npcID = 111573, questID = 43798 },  -- Kosumoth (wiki: DANGER: Kosumoth the Hungering, biweekly WQ)
         -- Legion: Argus rares (daily lockout)
         { sourceType = "lockout_quest", npcID = 122958, questID = 49183 },  -- Blistermaw (Antoran Wastes)
         { sourceType = "lockout_quest", npcID = 126040, questID = 48809 },  -- Puscilla (Antoran Wastes)
@@ -1194,8 +1194,7 @@ ns.CollectibleSourceDB = {
             { type = "pet",   itemID = 140261, name = "Hungering Claw" },
             -- NOTE: Biweekly world boss; region alternates between mount and pet reward weekly.
             -- Requires attunement (activate 10 Hungering Orbs hidden across Broken Isles).
-            -- Lockout quest: 43798 (DANGER: Kosumoth the Hungering).
-            -- TODO: Verify NPC ID, item IDs, and questID in-game.
+            -- Lockout quest 43798 (DANGER: Kosumoth the Hungering); NPC 111573; mount 138201 / pet 140261 (warcraft.wiki.gg).
         },
 
         -- Toys
