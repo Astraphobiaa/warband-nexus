@@ -75,9 +75,7 @@ function WarbandNexus:RequestPlayedTime()
     RequestTimePlayed()
 end
 
---- Handle TIME_PLAYED_MSG event
---- @param totalTimePlayed number Total seconds played on this character
---- @param timePlayedThisLevel number Seconds played at current level
+--- Handle TIME_PLAYED_MSG event.
 function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThisLevel)
     if totalTimePlayed == nil then return end
     if issecretvalue and issecretvalue(totalTimePlayed) then return end
@@ -161,9 +159,6 @@ function WarbandNexus:InvalidateGetAllCharactersCache()
 end
 
 --- Trustworthy age since last roster row update; nil when lastSeen is missing or invalid (never treat as infinitely stale).
----@param char table|nil
----@param currentTime number|nil
----@return number|nil ageSeconds
 function WarbandNexus:GetCharacterLastSeenAge(char, currentTime)
     if type(char) ~= "table" then return nil end
     local lastSeen = char.lastSeen
@@ -177,10 +172,6 @@ end
 
 --- Auto-prune only explicit untracked roster rows (`isTracked == false`) with valid lastSeen past threshold.
 --- Tracked rows (`isTracked` nil/true) and unknown-age rows are never removed here.
----@param char table|nil
----@param thresholdSeconds number
----@param currentTime number|nil
----@return boolean
 function WarbandNexus:IsCharacterEligibleForStaleRemoval(char, thresholdSeconds, currentTime)
     if type(char) ~= "table" then return false end
     if not thresholdSeconds or thresholdSeconds <= 0 then return false end
@@ -191,9 +182,6 @@ function WarbandNexus:IsCharacterEligibleForStaleRemoval(char, thresholdSeconds,
 end
 
 --- Repair missing name/realm/class display fields from legacy Name-Realm storage keys.
----@param charKey string|nil
----@param charData table|nil
----@return boolean repairedAny
 function WarbandNexus:RepairCharacterRowFromKey(charKey, charData)
     if type(charData) ~= "table" then return false end
     local repaired = false
@@ -223,9 +211,6 @@ function WarbandNexus:RepairCharacterRowFromKey(charKey, charData)
 end
 
 --- Row lacks minimum identity for roster display after optional repair.
----@param charKey string|nil
----@param charData table|nil
----@return boolean invalid
 function WarbandNexus:IsCharacterRowStructurallyInvalid(charKey, charData)
     if type(charData) ~= "table" then return true end
     self:RepairCharacterRowFromKey(charKey, charData)
@@ -1274,10 +1259,7 @@ end
 
 -- PVE LOADING STATE HELPERS
 
---[[
-    Update PvE loading state and refresh UI
-    @param state table - State updates {isLoading, loadingProgress, attempts, etc.}
-]]
+--- Update PvE loading state and refresh UI.
 function WarbandNexus:UpdatePvELoadingState(state)
     if not state then return end
     
@@ -1295,12 +1277,7 @@ end
 
 -- PVE DATA COLLECTION
 
---[[
-    Collect comprehensive PvE data (Great Vault, Lockouts, M+)
-    @return table - PvE data structure
-]]
----Collect PvE data (Phase 2: DEPRECATED - Routes to PvECacheService)
----@return table|nil PvE data
+--- Collect PvE data (deprecated; routes to PvECacheService).
 function WarbandNexus:CollectPvEData()
     -- GUARD: Only collect if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -1634,14 +1611,7 @@ function WarbandNexus:CollectPvEData()
     return result
 end
 
---[[
-    Collect PvE data with staggered approach (performance optimized)
-    Spreads collection across 3 stages to prevent FPS drops
-    Stage 1 (3s):  Great Vault (priority 1) → 33% progress
-    Stage 2 (5s):  M+ Scores (priority 2) → 66% progress
-    Stage 3 (7s):  Lockouts (priority 3) → 100% progress
-    @param charKey string - Character key (name-realm)
-]]
+--- Collect PvE data in three staggered stages (vault, M+, lockouts).
 function WarbandNexus:CollectPvEDataStaggered(charKey)
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("pve") then
@@ -1846,15 +1816,7 @@ end
 
 -- V2: PVE DATA STORAGE (Global with Metadata Separation)
 
---[[
-    Update PvE data to global storage (v2)
-    Separates metadata (dungeon names, textures) from progress data
-    @param charKey string - Character key
-    @param pveData table - PvE data from CollectPvEData
-]]
----Update PvE data for character (Phase 2: Routes to PvECacheService)
----@param charKey string Character key
----@param pveData table PvE data
+--- Update PvE data (deprecated; routes to PvECacheService).
 function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("pve") then
@@ -1881,14 +1843,7 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     end
 end
 
---[[
-    Get PvE data for a character (v2)
-    @param charKey string - Character key
-    @return table - Full PvE data structure
-]]
----Get PvE data for character (Phase 2: Routes to PvECacheService)
----@param charKey string Character key
----@return table|nil PvE data
+--- Get PvE data for a character (deprecated; routes to PvECacheService).
 function WarbandNexus:GetPvEDataV2(charKey)
     if self.GetPvEData then
         return self:GetPvEData(charKey)
@@ -1898,13 +1853,7 @@ end
 
 -- V2: PERSONAL BANK STORAGE (Global with Compression)
 
---[[
-    Update personal bank to global storage (v2)
-    DEPRECATED: This function redirects to ItemsCacheService for compatibility
-    New code should use ItemsCacheService:SaveItemsCompressed() directly
-    @param charKey string - Character key
-    @param bankData table - Personal bank data (old bagID/slot format)
-]]
+--- Update personal bank (deprecated; prefer ItemsCacheService:SaveItemsCompressed).
 function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("items") then
@@ -1951,13 +1900,7 @@ end
 
 -- DATA VALIDATION & CLEANUP
 
---[[
-    Clean up stale character data (90+ days old)
-    Removes only **explicit untracked** `db.global.characters` rows with valid lastSeen past threshold.
-    Tracked rows and rows with missing/legacy lastSeen are preserved; subsidiaries unchanged (see CleanupOrphanedData).
-    @param daysThreshold number - Days of inactivity before cleanup (default 90)
-    @return number - Count of characters removed
-]]
+--- Remove explicit untracked roster rows past daysThreshold (default 90); returns count removed.
 function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     daysThreshold = daysThreshold or 90
     local currentTime = time()
@@ -1987,12 +1930,7 @@ end
 
 -- BANK ITEMS HELPERS FOR ITEMS TAB
 
---[[
-    Check if weekly reset has occurred since last scan
-    EU: Tuesday 07:00 UTC, US: Tuesday 15:00 UTC
-    @param lastScanTime number - Unix timestamp of last scan
-    @return boolean - True if reset occurred
-]]
+--- True when a weekly reset occurred since lastScanTime (EU Tue 07:00 / US Tue 15:00 UTC fallback).
 function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
     if not lastScanTime then return true end
     
@@ -2213,14 +2151,7 @@ local time = time
 -- the ItemsCacheService version (which loads later per WarbandNexus.toc order).
 -- Removed 2026-04 as dead code. See Core.lua delegate table for the canonical reference.
 
---[[
-    Scan Personal Bank (Character-specific bank storage)
-    
-    @param specificBagIDs table|nil - Optional: Specific bag IDs to scan
-                                      nil = Full scan (all bank bags)
-                                      {-1, 6} = Scan only main bank + bag 1
-    @return boolean - Success status
-]]
+--- Scan personal bank; optional specificBagIDs limits which bags are read.
 function WarbandNexus:ScanPersonalBank(specificBagIDs)
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -2370,12 +2301,7 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
     return true
 end
 
---[[
-    Get all Warband Bank items as a flat list
-    
-    @param groupByCategory boolean - If true, group items by category
-    @return table - Array of items (or grouped categories)
-]]
+--- Flat list of Warband Bank items; optional groupByCategory buckets by category.
 function WarbandNexus:GetWarbandBankItems(groupByCategory)
     local items = {}
     
