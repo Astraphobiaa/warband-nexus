@@ -540,7 +540,6 @@ local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData,
 end
 
 ---Show update notification popup
----@param changelogData table Changelog data
 function WarbandNexus:ShowUpdateNotification(changelogData)
     local accent = GetThemeAccentColor()
     local ar, ag, ab = accent[1], accent[2], accent[3]
@@ -793,10 +792,6 @@ local ACTION_TEXT = {
 }
 
 ---Build a standardized notification config
----@param notifType string Notification type key (mount/pet/toy/achievement/title/illusion/plan)
----@param name string Display name
----@param icon string|number|nil Icon path, texture ID, or nil (falls back to category icon)
----@param overrides table|nil Optional overrides for any config field
 ---@return table config Ready to pass to ShowModalNotification
 function WarbandNexus:BuildNotificationConfig(notifType, name, icon, overrides)
     local resolvedIcon = icon or CATEGORY_ICONS[notifType] or "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -821,10 +816,6 @@ function WarbandNexus:BuildNotificationConfig(notifType, name, icon, overrides)
 end
 
 ---Shortcut: build config and immediately show notification
----@param notifType string Notification type key
----@param name string Display name
----@param icon string|number|nil Icon (falls back to category)
----@param overrides table|nil Optional config overrides
 function WarbandNexus:Notify(notifType, name, icon, overrides)
     local config = self:BuildNotificationConfig(notifType, name, icon, overrides)
     self:ShowModalNotification(config)
@@ -1282,7 +1273,6 @@ end
 
 ---Show an achievement-style notification with all visual effects (WoW AlertFrame style)
 ---Addon-created toast frames are not secure; showing them during combat is safe (no taint).
----@param config table Configuration: {icon, title, message, subtitle, category, glowAtlas}
 function WarbandNexus:ShowModalNotification(config)
     -- Queue when at capacity; dequeue on dismiss via C_Timer (no polling queue logic).
     if #self.activeAlerts >= NOTIFICATION_MAX_VISIBLE_ALERTS then
@@ -2044,7 +2034,6 @@ function WarbandNexus:HasUnclaimedVaultRewards()
 end
 
 ---Show vault reminder popup (simplified wrapper)
----@param data table Vault data
 ---@deprecated Use SendMessage(E.VAULT_REWARD_AVAILABLE) instead
 function WarbandNexus:ShowVaultReminder(data)
     -- Send vault reward event
@@ -2401,8 +2390,6 @@ end
 
 ---Show toast for progressive achievements (e.g. Treasures of X, multi-step): one step completed = "Achievement Progress" title + criteria name only.
 ---Only when Replace Achievement Popup is ON and Criteria Progress Toast is enabled.
----@param achievementID number
----@param criteriaIndex number|nil Optional; if nil we still show progress for the achievement.
 function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
     if not achievementID or type(achievementID) ~= "number" then return end
     local db = self.db and self.db.profile and self.db.profile.notifications
@@ -2565,8 +2552,6 @@ local function TestLootResolveAchievementWithCriteria(preferredID)
 end
 
 ---Blizzard hooked progressive achievement / criteria AddAlert routes here (never calls ShowCriteriaProgressNotification directly â€” avoids stacking duplicate Alerts with WN_REMINDER lane).
----@param _ string AceEvent prefix
----@param payload table|nil { achievementID, criteriaIndex }
 function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
     if not payload then return end
     if not ShouldUseWnCriteriaProgress() then return end
@@ -2590,16 +2575,12 @@ function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
 end
 
 ---Dedicated To-Do reminder toast lane (ReminderService ActivateReminder â†’ WN_SHOW_REMINDER_TOAST).
----@param _ string AceEvent prefix
----@param payload table|nil { data = ShowModalNotification config }
 function WarbandNexus:OnShowReminderToast(_, payload)
     if not payload or not payload.data then return end
     self:ShowModalNotification(payload.data)
 end
 
 ---Generic notification handler (nonâ€“reminder modals â€” legacy / external callers)
----@param event string Event name
----@param payload table Notification payload
 function WarbandNexus:OnShowNotification(event, payload)
     if not payload or not payload.data then return end
     
@@ -2612,7 +2593,6 @@ end
 local screenFlashFrame = nil
 
 ---Play a full-screen flash effect (accent-colored edge vignette that fades out)
----@param duration number Duration in seconds (default 0.6)
 function WarbandNexus:PlayScreenFlash(duration)
     duration = duration or 0.6
     
@@ -2679,8 +2659,6 @@ function WarbandNexus:PlayScreenFlash(duration)
 end
 
 ---Collectible obtained handler (mount/pet/toy/achievement/title/illusion)
----@param event string Event name
----@param data table {type, id, name, icon}
 function WarbandNexus:OnCollectibleObtained(event, data)
     if not data or not data.type then return end
     -- Achievement can have nil/empty name (hidden achievements); use fallback for display
@@ -2833,8 +2811,6 @@ function WarbandNexus:OnCollectibleObtained(event, data)
 end
 
 ---Plan completed handler
----@param event string Event name
----@param data table {planType, name, icon}
 function WarbandNexus:OnPlanCompleted(event, data)
     if not data or not data.name then return end
     
@@ -2862,8 +2838,6 @@ local QUEST_CATEGORIES = {
 }
 
 ---Vault checkpoint completed handler (individual progress gain)
----@param event string Event name
----@param data table {characterName, category, progress}
 function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     if not data or not data.characterName or not data.category or not data.progress then return end
     
@@ -2883,8 +2857,6 @@ function WarbandNexus:OnVaultCheckpointCompleted(event, data)
 end
 
 ---Vault slot completed handler
----@param event string Event name
----@param data table {characterName, category, slotIndex, threshold}
 function WarbandNexus:OnVaultSlotCompleted(event, data)
     if not data or not data.characterName or not data.category then return end
 
@@ -2901,8 +2873,6 @@ function WarbandNexus:OnVaultSlotCompleted(event, data)
 end
 
 ---Vault plan fully completed handler
----@param event string Event name
----@param data table {characterName}
 function WarbandNexus:OnVaultPlanCompleted(event, data)
     if not data or not data.characterName then return end
     
@@ -2913,8 +2883,6 @@ function WarbandNexus:OnVaultPlanCompleted(event, data)
 end
 
 ---Quest completed handler
----@param event string Event name
----@param data table {characterName, category, questTitle}
 function WarbandNexus:OnQuestCompleted(event, data)
     if not data or not data.characterName or not data.questTitle then return end
     
@@ -2927,8 +2895,6 @@ function WarbandNexus:OnQuestCompleted(event, data)
 end
 
 ---Vault reward available handler
----@param event string Event name
----@param data table Vault reward data (optional)
 function WarbandNexus:OnVaultRewardAvailable(event, data)
     -- Check if vault notifications are enabled
     if not self.db or not self.db.profile or not self.db.profile.notifications then
@@ -2949,9 +2915,6 @@ end
 ============================================================================]]
 
 ---Show loot notification (compatibility wrapper â€” resolves icon then delegates to Notify)
----@param itemID number Item ID (or mount/pet ID)
----@param itemLink string Item link
----@param itemName string Item name
 ---Initialize loot notification system
 function WarbandNexus:InitializeLootNotifications()
     -- Initialize event-driven notification system

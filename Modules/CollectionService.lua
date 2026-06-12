@@ -103,6 +103,21 @@ local function ScheduleEnsureCollectionDataDeferred()
 end
 ns.ScheduleEnsureCollectionDataDeferred = ScheduleEnsureCollectionDataDeferred
 
+local function EmitPlansBrowseCollectionEnsure(category)
+    if not category then return end
+    if E.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage(E.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED, { category = category })
+        return
+    end
+    if ns.RequestPlansBrowseCollectionEnsure then
+        ns.RequestPlansBrowseCollectionEnsure(category)
+        return
+    end
+    if WarbandNexus.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
+        ScheduleEnsureCollectionDataDeferred()
+    end
+end
+
 -- COLLECTION CACHE (PERSISTENT IN DB)
 --[[
     Unified cache for both real-time and background scanning:
@@ -142,7 +157,6 @@ local collectionData = collectionStore
 
 ---True when EnsureCollectionData would return immediately (SV version matches, store has all categories).
 ---Includes toy/pet count sanity vs journal totals (same rules as EnsureCollectionData).
----@param self table WarbandNexus
 ---@return boolean
 local function IsCollectionEnsureDataComplete(self)
     if not self.db or not self.db.global then return false end
@@ -192,7 +206,6 @@ function WarbandNexus:IsCollectionEnsureDataComplete()
 end
 
 --- Plans browse: true when collectionStore has no rows for mount/pet/toy/illusion/title yet.
----@param category string
 ---@return boolean
 function WarbandNexus:IsPlansBrowseCategoryStoreEmpty(category)
     if not category then return true end
@@ -542,7 +555,6 @@ end
 
 ---Invalidate collection cache (mark for refresh)
 ---Called when collection data changes (e.g., new mount obtained)
----@param category string|nil Optional category to invalidate ("mount","pet","toy","achievement","title","illusion"). nil = mount/pet/toy only (safe default).
 function WarbandNexus:InvalidateCollectionCache(category)
     if category then
         if category == "mount" or category == "pet" or category == "toy" then
@@ -572,7 +584,6 @@ end
 
 ---Build full collection data (all mounts, pets, toys with id, name, icon, source, description).
 ---Runs on login when DB has no data or version changed. Stores result in collectionStore and DB.
----@param onComplete function|nil Callback when done (used by EnsureCollectionData)
 function WarbandNexus:BuildFullCollectionData(onComplete)
     -- Prevent re-entrant calls while already building
     if self._buildingCollectionData then
@@ -741,7 +752,6 @@ end
 
 ---Ensure collection data is populated. Core-level init — full scan when the version changed or data is missing.
 ---Plans/Collections sekmelerinden tetiklenmez; sadece init.
----@param onComplete function|nil Callback when all scans finish
 function WarbandNexus:EnsureCollectionData(onComplete)
     if not self.db or not self.db.global then
         if onComplete then onComplete() end
@@ -925,7 +935,6 @@ function WarbandNexus:EnsureFullCollectionData()
 end
 
 ---Get single mount record from global collection data (id, name, icon, source, description, creatureDisplayID, collected).
----@param mountID number
 ---@return table|nil
 function WarbandNexus:GetMountData(mountID)
     if not mountID or not collectionData.mount then return nil end
@@ -1000,8 +1009,6 @@ local TOY_SOURCE_TYPE_NAMES = {
 }
 
 ---Build grouped toy tables from session itemID->sourceIndex map (no ToyBox filter sweep).
----@param addon WarbandNexus
----@param itemIDToSource table
 ---@return table grouped same shape as GetToysGroupedBySourceType
 local function BuildToyGroupedTablesFromMap(addon, itemIDToSource)
     local grouped = {}
@@ -1108,7 +1115,6 @@ end
 
 ---Pure-API toy source classifier: returns the BattlePetSources filter index (1-based).
 ---Mirrors GetToySourceTypeNameForItem but exposes the raw integer for UI categorization.
----@param itemID number Toy item ID
 ---@return number|nil sourceIndex (1=Drop, 2=Quest, 3=Vendor, ...) or nil if untracked
 function WarbandNexus:GetToySourceTypeIndexForItem(itemID)
     if not itemID then return nil end
@@ -1130,7 +1136,6 @@ end
 
 local MOUNT_SOURCE_FILTER_MAX = 24
 
----@param val any
 ---@return boolean|nil
 local function SafeJournalBool(val)
     if val == nil then return nil end
@@ -1217,7 +1222,6 @@ function WarbandNexus:EnsureMountSourceIndexMap()
 end
 
 ---Resolve mount browse category integer: live sourceType when >0, else journal filter map.
----@param mountID number
 ---@return number|nil
 function WarbandNexus:GetMountBrowseSourceType(mountID)
     if not mountID then return nil end
@@ -1234,7 +1238,6 @@ function WarbandNexus:GetMountBrowseSourceType(mountID)
 end
 
 ---Hide journal-internal mounts (Soar, class placeholders). Keep cross-faction mounts visible.
----@param mountID number
 ---@return boolean true when the mount should be excluded from Collections / To-Do browse
 function WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)
     if not mountID or not C_MountJournal or not C_MountJournal.GetMountInfoByID then return true end
@@ -1250,7 +1253,6 @@ function WarbandNexus:ShouldExcludeMountFromCollectionBrowse(mountID)
 end
 
 ---Pet species source filter index (1=Drop). Lazy-builds journal map when SV rows lack sourceTypeIndex.
----@param speciesID number
 ---@return number|nil
 function WarbandNexus:GetPetSourceTypeIndexForSpecies(speciesID)
     if not speciesID then return nil end
@@ -1541,7 +1543,6 @@ end
 ---during farm sessions every obtain wiped the cache, so the next UI access paid the
 ---full O(journals) API pass again. Totals can drift by at most one until the 60s TTL
 ---recomputes (only when a journal entry is added in the same window — patch days).
----@param obtainedType string|nil "mount"|"pet"|"toy" from a COLLECTIBLE_OBTAINED payload; anything else wipes
 function WarbandNexus:InvalidateCollectionCountsAPICache(obtainedType)
     local c = _collectionCountsAPICache
     if c and c.data then
@@ -1605,8 +1606,6 @@ end
 
 ---Remove collectible from uncollected cache (incremental update when player obtains it)
 ---This is called by event handlers when player collects a new mount/pet/toy
----@param collectionType string "mount", "pet", or "toy"
----@param id number mountID, speciesID, or itemID
 function WarbandNexus:RemoveFromUncollected(collectionType, id)
     local uncollected = collectionCache.uncollected[collectionType]
     local entry = uncollected and uncollected[id]
@@ -1705,7 +1704,6 @@ end
 -- REAL-TIME CACHE BUILDING (Fast O(1) Lookup)
 
 ---Build or refresh owned collection cache (mount/pet/toy O(1) ownership for notifications and try-counter).
----@param opts table|nil Optional `{ quiet = true }`: skip LoadingTracker "collections" (used when SV store is already warm to avoid duplicate progress rows vs EnsureCollectionData).
 ---Uses time-budgeted batching: each phase yields when the 4ms budget is exceeded.
 function WarbandNexus:BuildCollectionCache(opts)
     opts = opts or {}
@@ -1885,8 +1883,6 @@ function WarbandNexus:BuildCollectionCache(opts)
 end
 
 ---Check if player owns a collectible
----@param collectibleType string "mount", "pet", or "toy"
----@param id number mountID, speciesID, or itemID
 ---@return boolean owned
 function WarbandNexus:IsCollectibleOwned(collectibleType, id)
     local key = collectibleType and (collectibleType .. "s") or nil
@@ -1913,8 +1909,6 @@ end
 
 ---Handle NEW_MOUNT_ADDED event
 ---Fires when player learns a new mount
----@param mountID number The mount ID
----@param retryCount number|nil Internal retry counter
 function WarbandNexus:OnNewMount(event, mountID, retryCount)
     if not mountID then return end
     retryCount = retryCount or 0
@@ -2053,8 +2047,6 @@ end
 
 ---Handle NEW_PET_ADDED event
 ---Fires when player learns a new battle pet
----@param petGUID string The pet GUID (e.g., "BattlePet-0-000013DED8E1")
----@param retryCount number|nil Internal retry counter
 function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     if not petGUID then return end
     retryCount = retryCount or 0
@@ -2179,9 +2171,6 @@ end
 
 ---Handle NEW_TOY_ADDED event
 ---Fires when player learns a new toy
----@param itemID number The toy item ID
----@param _isFavorite any WoW payload (ignored)
----@param _retryCount number|nil Internal retry counter (only set by self-retry)
 function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     if not itemID then return end
     local retryCount = (type(_retryCount) == "number") and _retryCount or 0
@@ -2353,7 +2342,6 @@ function WarbandNexus:PruneCollectionsRecentObtained()
 end
 
 ---Remove all Collections → Recent rows for one collectible type (Recent tab per-card reset).
----@param collectibleType string achievement|mount|pet|toy
 function WarbandNexus:ClearCollectionsRecentObtainedForType(collectibleType)
     if not collectibleType or not self.db or not self.db.global then return end
     local list = self.db.global.collectionsRecentObtained
@@ -2367,7 +2355,6 @@ function WarbandNexus:ClearCollectionsRecentObtainedForType(collectibleType)
 end
 
 ---Persist newest collectible acquisitions for the Collections tab "Recently obtained" strip.
----@param data table WN_COLLECTIBLE_OBTAINED payload
 function WarbandNexus:AppendCollectionsRecentObtained(data)
     if not data or type(data) ~= "table" or not data.type then return end
     local allowed = {
@@ -2434,8 +2421,6 @@ function WarbandNexus:AppendCollectionsRecentObtained(data)
 end
 
 ---Unix time when the addon last recorded this collectible as obtained (WN_COLLECTIBLE_OBTAINED), or nil.
----@param collectibleType string mount|pet|toy|achievement|title|illusion|transmog
----@param id number
 ---@return number|nil
 function WarbandNexus:GetCollectionsAcquiredAt(collectibleType, id)
     if not collectibleType or id == nil then return nil end
@@ -2559,7 +2544,6 @@ function WarbandNexus:RequestCollectionDataRefreshForce()
 end
 
 --- DEBUG ONLY (gated by CommandService + IsDebugModeEnabled): simulate a collectionStore version bump and re-fetch mount/pet/toy for profiler runs.
----@param full boolean|nil When true, also clears achievements/titles/illusions so the full EnsureCollectionData queue runs.
 function WarbandNexus:DebugForceCollectionRebuild(full)
     full = full == true
     if not self.db or not self.db.global then
@@ -2604,7 +2588,6 @@ end
 
 ---Handle ACHIEVEMENT_EARNED event
 ---Removes completed achievement from cache and handles chained achievements
----@param achievementID number The completed achievement ID
 function WarbandNexus:OnAchievementEarned(event, achievementID)
     if not achievementID then return end
     
@@ -2765,7 +2748,6 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
 end
 
 ---Called from AddAlert hook when "Replace Achievement Popup" is on. Builds payload, marks notified, sends WN_COLLECTIBLE_OBTAINED. If we don't show (e.g. notifications off), Blizzard popup is shown as fallback by the hook.
----@param achievementID number
 function WarbandNexus:ShowAchievementNotification(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return end
     if issecretvalue and issecretvalue(achievementID) then return end
@@ -2809,8 +2791,6 @@ WarbandNexus:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
 
 ---Check if an item is a NEW collectible that player doesn't own
 ---Used for real-time detection (inventory/bank scanning)
----@param itemID number The item ID
----@param hyperlink string|nil Item hyperlink (required for caged pets)
 ---@return table|nil {type, id, name, icon} or nil if not a new collectible
 function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     if not itemID then return nil end
@@ -2904,9 +2884,6 @@ end
 -- DETECTION HELPERS (DRY extraction from CheckNewCollectible)
 
 ---Try to detect a mount from itemID
----@param itemID number
----@param itemName string|nil
----@param itemIcon number|string|nil
 ---@return table|nil
 function WarbandNexus:_DetectMount(itemID, itemName, itemIcon)
     if not C_MountJournal or not C_MountJournal.GetMountFromItem then
@@ -2934,12 +2911,6 @@ function WarbandNexus:_DetectMount(itemID, itemName, itemIcon)
 end
 
 ---Try to detect a pet from itemID/hyperlink using multiple methods
----@param itemID number
----@param hyperlink string|nil
----@param itemName string|nil
----@param itemIcon number|string|nil
----@param classID number
----@param subclassID number
 ---@return table|nil
 function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID, subclassID)
     if not C_PetJournal then return nil end
@@ -3017,9 +2988,6 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
 end
 
 ---Build pet result after speciesID is confirmed
----@param speciesID number
----@param fallbackName string|nil
----@param fallbackIcon number|string|nil
 ---@return table|nil
 function WarbandNexus:_BuildPetResult(speciesID, fallbackName, fallbackIcon)
     if not C_PetJournal then return nil end
@@ -3050,7 +3018,6 @@ end
 
 ---Try to extract speciesID from item tooltip data
 ---Uses C_TooltipInfo API to check for battle pet markers in tooltip
----@param itemID number
 ---@return number|nil speciesID
 function WarbandNexus:_DetectPetFromTooltip(itemID)
     -- Method: C_TooltipInfo.GetItemByID returns structured tooltip data
@@ -3086,9 +3053,6 @@ function WarbandNexus:_DetectPetFromTooltip(itemID)
 end
 
 ---Try to detect a toy from itemID
----@param itemID number
----@param itemName string|nil
----@param itemIcon number|string|nil
 ---@return table|nil
 function WarbandNexus:_DetectToy(itemID, itemName, itemIcon)
     if not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
@@ -3674,9 +3638,6 @@ COLLECTION_CONFIGS = {
 }
 
 ---Scan a collection type asynchronously (coroutine-based with duplicate protection)
----@param collectionType string "mount", "pet", "toy", "achievement", "title", "transmog", "illusion"
----@param onProgress function|nil Progress callback (current, total, itemData)
----@param onComplete function|nil Completion callback (results)
 function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
     DebugPrint("|cff9370DB[WN CollectionService]|r ScanCollection called for: " .. tostring(collectionType))
     
@@ -4002,7 +3963,6 @@ local function TrimText(text)
 end
 
 ---Validate that toy source text is source-like (not random tooltip garbage).
----@param sourceText string|nil
 ---@return boolean
 function WarbandNexus:IsReliableToySource(sourceText)
     if type(sourceText) ~= "string" then return false end
@@ -4051,7 +4011,6 @@ end
 
 ---Single place for toy metadata: C_ToyBox.GetToyInfo (name, icon, itemQuality) + tooltip (source, description) + CollectibleSourceDB when tooltip is fallback.
 ---API note: GetToyInfo returns itemID, toyName, icon, isFavorite, hasFanfare, itemQuality — no sourceText; source comes from tooltip/DB.
----@param itemID number Toy item ID (C_ToyBox uses item ID)
 ---@return table|nil { name, icon, source, description, itemQuality } or nil
 function WarbandNexus:GetToySourceInfo(itemID)
     if not itemID or not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
@@ -4184,8 +4143,6 @@ end
 
 ---Resolve icon/source/description for a collection entry on demand. Uses session RAM cache; cleared on tab leave.
 ---Mount metadata is API-authoritative to avoid stale legacy DB source text in Plans.
----@param collectionType string "mount", "pet", "toy", "achievement", "title", "illusion"
----@param id number
 ---@return table|nil { name, icon, source, description, ... } or nil if API fails
 function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     if not id or not collectionType then return nil end
@@ -4453,8 +4410,6 @@ function WarbandNexus:ClearCollectionMetadataCache()
 end
 
 ---Get uncollected mounts (UNIFIED: collectionStore-first, scan if empty). Plans shows uncollected only.
----@param searchText string|nil Optional search filter
----@param limit number|nil Optional result limit
 ---@return table Array of uncollected mounts {id, name, icon, source, ...}
 function WarbandNexus:GetUncollectedMounts(searchText, limit)
     searchText = NormalizeCollectionSearchText(searchText)
@@ -4525,12 +4480,8 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
         return results
     end
 
-    -- Store empty: one deferred ensure per category (Plans browse PopulateContent loop guard).
-    if ns.RequestPlansBrowseCollectionEnsure then
-        ns.RequestPlansBrowseCollectionEnsure("mount")
-    elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-        ScheduleEnsureCollectionDataDeferred()
-    end
+    -- Store empty: one deferred ensure per category (Plans browse loop guard via message bus).
+    EmitPlansBrowseCollectionEnsure("mount")
     return {}
 end
 
@@ -4640,11 +4591,7 @@ function WarbandNexus:GetCollectedMounts(searchText, limit)
 
     local store = collectionStore.mount
     if not store or next(store) == nil then
-        if ns.RequestPlansBrowseCollectionEnsure then
-            ns.RequestPlansBrowseCollectionEnsure("mount")
-        elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            ScheduleEnsureCollectionDataDeferred()
-        end
+        EmitPlansBrowseCollectionEnsure("mount")
         return {}
     end
 
@@ -4684,11 +4631,7 @@ function WarbandNexus:GetCollectedPets(searchText, limit)
 
     local store = collectionStore.pet
     if not store or next(store) == nil then
-        if ns.RequestPlansBrowseCollectionEnsure then
-            ns.RequestPlansBrowseCollectionEnsure("pet")
-        elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            ScheduleEnsureCollectionDataDeferred()
-        end
+        EmitPlansBrowseCollectionEnsure("pet")
         return {}
     end
 
@@ -4729,11 +4672,7 @@ function WarbandNexus:GetCollectedToys(searchText, limit)
 
     local store = collectionStore.toy
     if not store or next(store) == nil then
-        if ns.RequestPlansBrowseCollectionEnsure then
-            ns.RequestPlansBrowseCollectionEnsure("toy")
-        elseif self.EnsureCollectionData and not ns.CollectionLoadingState.isLoading then
-            ScheduleEnsureCollectionDataDeferred()
-        end
+        EmitPlansBrowseCollectionEnsure("toy")
         return {}
     end
 
@@ -5288,7 +5227,6 @@ end
 -- ACHIEVEMENT REWARD SCANNER
 
 ---Scan achievement rewards and categorize them (mount, pet, toy, transmog, etc.)
----@param achievementID number Achievement ID
 ---@return table|nil Reward info {type, itemID, itemName, icon}
 function WarbandNexus:GetAchievementRewardInfo(achievementID)
     if not achievementID then return nil end
@@ -5373,8 +5311,6 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
 end
 
 ---Add achievement link to item description
----@param itemData table Item data {id, name, icon, ...}
----@param achievementID number Achievement ID that grants this item
 ---@return table Enhanced item data with achievement link
 function WarbandNexus:EnhanceItemWithAchievement(itemData, achievementID)
     if not itemData or not achievementID then return itemData end
@@ -5399,7 +5335,6 @@ end
 local pendingRetryItems = {}  -- { [slotKey] = { itemID=n, hyperlink=s, retries=n } }
 
 ---Scan bags for new uncollected collectibles (mount/pet/toy items)
----@param specificBagIDs table|nil Optional set of bag IDs to scan {[bagID]=true}. nil = scan all 0-4.
 ---@return table|nil New collectible info {type, itemID, itemLink, itemName, icon}
 local function ScanBagsForNewCollectibles(specificBagIDs)
     local currentBagContents = {}

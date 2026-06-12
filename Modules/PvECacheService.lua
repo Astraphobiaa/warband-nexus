@@ -792,7 +792,6 @@ function WarbandNexus:UpdateMythicPlusAffixes()
 end
 
 ---Update character's keystone data
----@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateCharacterKeystone(charKey)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -891,7 +890,6 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
 end
 
 ---Update character's best M+ runs
----@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -980,7 +978,6 @@ local function DungeonScoresBucketHasProgress(scoreEntry)
 end
 
 ---Update character's dungeon scores (overall + per-dungeon breakdown)
----@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateDungeonScores(charKey)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -1106,7 +1103,6 @@ end
 -- GREAT VAULT DATA
 
 ---Update Great Vault activities for current character
----@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateGreatVaultActivities(charKey)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -1126,7 +1122,6 @@ function WarbandNexus:UpdateGreatVaultActivities(charKey)
 end
 
 ---Process Great Vault activities after server responds
----@param charKey string Character key (name-realm)
 function WarbandNexus:ProcessGreatVaultActivities(charKey)
     if not C_WeeklyRewards or not charKey or not self.db.global.pveCache then return end
     charKey = CanonicalizePvEKey(charKey)
@@ -1332,8 +1327,6 @@ end
 ---Update Great Vault reward availability
 ---Only sets hasAvailableRewards when rewards are for current period and claimable
 ---(uses AreRewardsForCurrentRewardPeriod/CanClaimRewards when available; avoids post-season stale true).
----@param charKey string Character key (name-realm)
----@param allowClaimTransition boolean|nil Allow a true -> false reward change after an explicit vault item event
 function WarbandNexus:UpdateGreatVaultRewards(charKey, allowClaimTransition)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -1422,7 +1415,6 @@ end
 -- LOCKOUT DATA
 
 ---Update saved instance lockouts (raids + dungeons) for current character
----@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateRaidLockouts(charKey)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -1505,7 +1497,6 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
 end
 
 ---Update world boss kills for current character
----@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateWorldBossKills(charKey)
     if not charKey or not self.db.global.pveCache then return end
     charKey = CanonicalizePvEKey(charKey)
@@ -1531,7 +1522,6 @@ function WarbandNexus:UpdateWorldBossKills(charKey)
 end
 
 ---Collect M+ run history for current character (this week only)
----@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateMythicPlusRunHistory(charKey)
     if not charKey or not self.db.global.pveCache then return end
     if not C_MythicPlus or not C_MythicPlus.GetRunHistory then return end
@@ -1744,7 +1734,6 @@ end
 -- PUBLIC API (FOR UI AND DATASERVICE)
 
 ---Get PvE data for a specific character or all characters
----@param charKey string|nil Character key (nil = return all)
 ---@return table PvE data
 function WarbandNexus:GetPvEData(charKey)
     -- Always read directly from DB (no cache)
@@ -1943,8 +1932,6 @@ end
 ---Import legacy PvE data for a specific character into pveCache.
 ---Used by DatabaseOptimizer migration and UpdatePvEDataV2 fallback.
 ---Maps the old DataService progress format → PvECacheService structure.
----@param charKey string Character key (name-realm)
----@param legacyData table Legacy pveProgress entry or CollectPvEData result
 function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
     if not charKey or not legacyData then return end
     charKey = CanonicalizePvEKey(charKey)
@@ -2200,7 +2187,6 @@ end
 -- VAULT CLAIM / KEYSTONE SYNC (Easy Access, PvE tab, Vault Tracker)
 
 ---When live API reports no pending vault but SV still has hasAvailableRewards=true, heal the row.
----@param charKey string
 function WarbandNexus:HealStaleVaultRewardsCache(charKey)
     if not charKey or not self.db or not self.db.global or not self.db.global.pveCache then
         return
@@ -2229,7 +2215,6 @@ end
 
 ---After claiming a Great Vault reward (or closing the vault UI): refresh reward flags,
 ---keystone (vault can grant a key), and emit WN_PVE_UPDATED for all vault UIs.
----@param charKey string|nil nil = current character storage key
 function WarbandNexus:RefreshVaultClaimState(charKey)
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -2494,7 +2479,6 @@ function WarbandNexus:OnVaultDataReceived()
 end
 
 ---Sync vault data from VaultScanner to PvECacheService
----@param vaultSlots table Array of vault slot data from VaultScanner
 function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     if not vaultSlots or type(vaultSlots) ~= "table" then
         return

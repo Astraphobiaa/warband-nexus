@@ -1630,7 +1630,6 @@ end
 
 ---Check if a Blizzard daily reset has occurred since the given timestamp.
 ---Uses C_DateAndTime.GetSecondsUntilDailyReset to derive the last reset moment.
----@param sinceTimestamp number epoch seconds
 ---@return boolean
 function WarbandNexus:HasDailyResetOccurredSince(sinceTimestamp)
     if not sinceTimestamp or sinceTimestamp == 0 then return true end
@@ -1640,7 +1639,6 @@ function WarbandNexus:HasDailyResetOccurredSince(sinceTimestamp)
 end
 
 ---Check if a Blizzard weekly reset has occurred since the given timestamp.
----@param sinceTimestamp number epoch seconds
 ---@return boolean
 function WarbandNexus:HasWeeklyResetOccurredSince(sinceTimestamp)
     if not sinceTimestamp or sinceTimestamp == 0 then return true end
@@ -1743,7 +1741,6 @@ end
 -- CRUD OPERATIONS
 
 ---Build AddPlan() payload for a journal achievement (single source for Blizzard UI quick-add).
----@param achievementID number
 ---@return table|nil
 function WarbandNexus:BuildAchievementPlanPayload(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return nil end
@@ -2234,7 +2231,6 @@ function WarbandNexus:IsAchievementPlanned(achievementID)
 end
 
 ---Check whether an achievement is tracked in Blizzard objectives.
----@param achievementID number
 ---@return boolean
 function WarbandNexus:IsAchievementTracked(achievementID)
     if not achievementID then return false end
@@ -2260,7 +2256,6 @@ function WarbandNexus:IsAchievementTracked(achievementID)
 end
 
 ---Toggle achievement tracking in Blizzard objectives and broadcast event.
----@param achievementID number
 ---@return boolean changed True when a toggle attempt was made
 function WarbandNexus:ToggleAchievementTracking(achievementID)
     if not achievementID then return false end
@@ -2975,7 +2970,6 @@ local function SafeChatLinkString(link)
 end
 
 --- Resolve the collectible id used for try-count storage/display on plan cards.
----@param plan table
 ---@return number|nil
 function WarbandNexus:GetPlanCollectibleID(plan)
     if not plan or not plan.type then return nil end

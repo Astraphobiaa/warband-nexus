@@ -75,7 +75,6 @@ local DELVE_COMPANION_XP_ITEM_IDS = {
     [228072] = true, -- Chunk of Companion Experience (TWW variant / deprecated row)
 }
 
----@param factionID number|string|nil
 ---@return string
 local function FormatFactionFallbackName(factionID)
     local base = (ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction"
@@ -174,7 +173,6 @@ local REP_METADATA_CACHE_MAX = 256
 ---Returns faction-level info: name, description, type, isAccountWide, isMajorFaction, etc.
 --- Does NOT cache results where the API returned nil/empty name.
 ---This allows re-fetching on next call once the API has loaded the data.
----@param factionID number
 ---@return table|nil metadata
 local function ResolveFactionMetadata(factionID)
     if not factionID or factionID == 0 then return nil end
@@ -257,7 +255,6 @@ end
 ---Extract compact progress-only data from a normalized faction object.
 ---This is what gets persisted to SV. Essential metadata is preserved to avoid
 ---API dependency at render time (prevents "Faction #XXXX" placeholder names).
----@param normalized table Full normalized faction data from Processor
 ---@return table compact Progress data + essential metadata (name, type, isAccountWide)
 local function CompactFactionData(normalized)
     local compact = {
@@ -311,9 +308,6 @@ end
 
 ---Hydrate compact SV data into full normalized format by combining with API metadata.
 ---Priority: stored compact metadata > live API metadata > fallback defaults.
----@param factionID number
----@param compact table Compact data from SV (includes _name, _type, _isAccountWide)
----@param isAccountWide boolean Whether this is from the accountWide bucket
 ---@return table hydrated Full normalized faction data for UI consumption
 local function HydrateFactionData(factionID, compact, isAccountWide)
     local metadata = ResolveFactionMetadata(factionID)
@@ -411,7 +405,6 @@ end
 ---  2. Account-wide entry with real progress (maxValue > 1)
 ---  3. Current character entry (even without progress)
 ---  4. Account-wide entry (even without progress)
----@param factionID number
 ---@return table|nil data Hydrated faction data
 local function ResolveFactionData(factionID)
     local db = GetDB()
@@ -597,7 +590,6 @@ end
 ---Build or rebuild the snapshot from current WoW API state.
 ---Iterates all factions via GetFactionDataByIndex (requires header expansion).
 ---Stored on ReputationCache._snapshot (not local) so it can be called from PerformFullScan.
----@param silent boolean If true, suppress all chat output
 function ReputationCache:BuildSnapshot(silent)
     DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotBuild triggered (sync)")
     if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
@@ -663,9 +655,6 @@ function ReputationCache:BuildSnapshotAsync()
 end
 
 ---Process a single faction for snapshot building.
----@param index number Faction index from GetFactionDataByIndex
----@param targetSnapshot table|nil Defaults to self._snapshot
----@param targetNameToID table|nil Defaults to self._nameToID
 function ReputationCache:_ProcessSnapshotFaction(index, targetSnapshot, targetNameToID)
     targetSnapshot = targetSnapshot or self._snapshot
     targetNameToID = targetNameToID or self._nameToID
@@ -943,7 +932,6 @@ function ReputationCache:RegisterEventListeners()
     ---1) remove color escapes
     ---2) unwrap hyperlinks to visible text
     ---3) trim leading/trailing spaces
-    ---@param message string
     ---@return string
     local function NormalizeReputationMessage(message)
         if not message or type(message) ~= "string" then return "" end
@@ -958,7 +946,6 @@ function ReputationCache:RegisterEventListeners()
     end
 
     ---Extract integer amount from a localized amount token.
-    ---@param amountText string|number|nil
     ---@return number
     local function ParseLocalizedAmount(amountText)
         if amountText == nil then return 0 end
@@ -1111,8 +1098,6 @@ function ReputationCache:RegisterEventListeners()
     ---Queue a parsed reputation gain for chat notification AFTER DB update.
     ---Stores the gain + pre-update standing info for change detection.
     ---Chat message fires only after FullScan updates the DB with fresh API data.
-    ---@param parsedName string Parsed faction name from chat message
-    ---@param gainAmount number Parsed gain amount
     local function QueueChatNotification(parsedName, gainAmount)
         local factionID = ResolveFactionID(parsedName)
         
@@ -1160,7 +1145,6 @@ function ReputationCache:RegisterEventListeners()
     end
 
     ---Extract itemID from a CHAT_MSG_LOOT message item link.
-    ---@param message string
     ---@return number|nil
     local function ExtractLootItemID(message)
         if not message or type(message) ~= "string" then return nil end
@@ -1239,7 +1223,6 @@ function ReputationCache:RegisterEventListeners()
 
     ---Seed a pending companion rep notification from a known companion XP loot item.
     ---The exact gain is derived later from FullScan DB delta when chat parsing is absent.
-    ---@param itemID number
     local function QueueCompanionLootFallback(itemID, forceAllow)
         if not forceAllow then
             if not itemID or not DELVE_COMPANION_XP_ITEM_IDS[itemID] then return false end
@@ -1570,10 +1553,6 @@ end)
     
     ---Simulate a reputation gain through the full DB-first pipeline.
     ---Tests: QueueChatNotification → ScheduleFullScanForChat → FullScan → DB → ProcessPending → Chat
-    ---@param factionName string Faction name (must match DB)
-    ---@param factionID number Faction ID
-    ---@param gainAmount number Simulated gain amount
-    ---@param opts table|nil Optional: { isRenownLevelUp=bool, newRenownLevel=number }
     function ReputationCache:SimulateReputationGain(factionName, factionID, gainAmount, opts)
         opts = opts or {}
         
@@ -1608,8 +1587,6 @@ end
 -- UPDATE OPERATIONS (Direct DB writes)
 
 ---Update single faction (stores compact progress data in SV, strips metadata).
----@param factionID number
----@param normalizedData table Normalized faction data from Processor
 function ReputationCache:UpdateFaction(factionID, normalizedData)
     if not factionID or factionID == 0 then
         return false
@@ -1670,7 +1647,6 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
 end
 
 ---Update all factions (MERGE into DB, stores compact progress data).
----@param normalizedDataArray table Array of normalized faction data from Processor
 function ReputationCache:UpdateAll(normalizedDataArray)
     if not normalizedDataArray or #normalizedDataArray == 0 then
         return false
@@ -1859,7 +1835,6 @@ end
 -- READ OPERATIONS (Direct DB reads)
 
 ---Get single faction from DB (unified lookup)
----@param factionID number
 ---@return table|nil Normalized faction data
 function ReputationCache:GetFaction(factionID)
     return ResolveFactionData(factionID)
@@ -1889,7 +1864,6 @@ function ReputationCache:GetHeaders()
 end
 
 ---Clear ALL reputation data (nuclear wipe — fixes duplication from stale entries)
----@param clearDB boolean Also clear SavedVariables
 function ReputationCache:Clear(clearDB)
     if clearDB then
         local db = GetDB()

@@ -79,7 +79,6 @@ local function GearGetFrameContentInset()
 end
 
 --- Visible height of the results scroll viewport (scrollChild is often 1px tall during PopulateContent teardown).
----@param mf Frame|nil
 ---@return number
 local function GearResultsViewportHeight(mf)
     local scroll = mf and mf.scroll
@@ -96,9 +95,6 @@ local function GearResultsViewportHeight(mf)
 end
 
 --- Loading veil inside the tab results container (scrollChild) only — not over header or chrome.
----@param scrollChild Frame
----@param mf Frame|nil
----@param gen number
 local function EnsureGearContentVeil(scrollChild, mf, gen)
     if not scrollChild or not mf then return end
     if mf._gearVeilMinDismissTimer and mf._gearVeilMinDismissTimer.Cancel then
@@ -169,8 +165,6 @@ local function DismissGearContentVeil(mf, gen)
     veil:Hide()
 end
 
----@param mf Frame|nil
----@param gen number
 local function TryDismissGearContentVeil(mf, gen)
     if not mf or gen ~= (ns._gearTabDrawGen or 0) then return end
     if ns._gearStorageDeferAwaiting or ns._gearStorageYieldCo then return end
@@ -199,8 +193,6 @@ end
 
 --- Live selection can be nil for a frame (GUID migration, dropdown refresh). Defer must not treat that as
 --- "selection != pending" or applyStorageScanUI would skip with nil ~= capCanon and strand "Scanning…".
----@param mf Frame|nil
----@param pendingCapCanon string|nil
 ---@return string|nil
 local function ResolveGearTabSelectionKeyForStorageScan(mf, pendingCapCanon)
     local sel = GetSelectedCharKey and GetSelectedCharKey() or nil
@@ -229,8 +221,6 @@ local function ResolveGearTabSelectionKeyForStorageScan(mf, pendingCapCanon)
 end
 
 --- Start yielded storage scan after paperdoll defer chain (never same frame as DressUpModel / row paint).
----@param mf Frame|nil
----@param paintGen number
 local function TryStartPendingGearStorageScan(mf, paintGen)
     if not WarbandNexus:IsGearStorageRecommendationsEnabled() then
         WarbandNexus:GearStoragePanelDebug("TryStart skip (stash rec disabled)")
@@ -424,8 +414,6 @@ local WEAPON_ENCHANT_EQUIP_LOCS = {
 }
 
 ---Midnight primary-enchant expectation by slot + equip location.
----@param slotID number
----@param slotData table|nil
 ---@return boolean
 local function IsPrimaryEnchantExpected(slotID, slotData)
     local enchantableSlots = ns.Constants and ns.Constants.GEAR_ENCHANTABLE_SLOTS
@@ -650,7 +638,6 @@ local function ColoredIlvl(ilvl, quality)
     return format("|cff%s%d|r", hex, ilvl)
 end
 
----@param linkOrId string|number itemLink or itemID
 ---@return number|string|nil texture (fileID or path)
 local function GetItemIconSafe(linkOrId)
     if not linkOrId then return nil end
@@ -688,7 +675,6 @@ end
 -- UPGRADE AFFORDABILITY (currency map + tier simulation)
 
 --- Full copper for gold entry (Gear currencies list stores gold/silver/copper on id 0).
----@param currencyAmounts table|nil
 ---@return number copper
 local function GetGearCurrencyGoldCopper(currencyAmounts)
     if not currencyAmounts then return 0 end
@@ -697,7 +683,6 @@ local function GetGearCurrencyGoldCopper(currencyAmounts)
 end
 
 --- Build currencyID -> amount map from GetGearUpgradeCurrenciesFromDB rows.
----@param currencies table
 ---@return table currencyAmounts
 local function BuildGearCurrencyAmounts(currencies)
     local currencyAmounts = {}
@@ -721,7 +706,6 @@ local function BuildGearCurrencyAmounts(currencies)
 end
 
 --- Affordability must use the crest pool for up.trackName (Hero/Myth), not a mismatched API currencyID.
----@param upInfo table|nil
 local function EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
     if not upInfo or upInfo.isCrafted then return end
     local track = upInfo.trackName
@@ -736,7 +720,6 @@ end
 
 --- Crest cost for the very next tier step from API-persisted slot data (0 = vendor gold-only for this step).
 --- Do not infer gold-only from TRACK_ILVLS watermark — that disagrees with C_ItemUpgrade costs (Midnight).
----@param upInfo table
 ---@return number
 local function GetNextStepCrestNeed(upInfo)
     EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
@@ -750,7 +733,6 @@ local function GetNextStepCrestNeed(upInfo)
 end
 
 --- Gold-only when API reports zero crest cost for the immediate next step.
----@param upInfo table|nil
 ---@return boolean
 local function IsNextStepGoldOnlyUpgrade(upInfo)
     return GetNextStepCrestNeed(upInfo) <= 0
@@ -762,8 +744,6 @@ end
 --- Crafted items can be recrafted with crests to jump to higher ilvl tiers.
 --- Each tier has its own crest type and cost (e.g. Myth = 80 crests, Hero = 60).
 --- Also returns the next unaffordable tier info so UI can show what's needed.
----@param upInfo table slot upgrade info with isCrafted=true
----@param currencyAmounts table map currencyID → amount
 ---@return table|nil { minIlvl, maxIlvl, bestCrestName, bestCrestCost, nextTierName, nextTierCost, nextTierHave, nextTierMaxIlvl } or nil if no crests
 local function GetCraftedIlvlRange(upInfo, currencyAmounts)
     if not upInfo or not upInfo.isCrafted then return nil end
@@ -813,8 +793,6 @@ end
 --- - Result: totalAffordable = how many tiers can be climbed, goldOnlyCount = how many of those need no crests.
 ---
 --- Calculate affordable upgrades tier-by-tier, accounting for watermark (gold-only) levels.
----@param upInfo table slot upgrade info from GetPersistedUpgradeInfo
----@param currencyAmounts table map currencyID → amount (0 = gold in gold units)
 ---@return number totalAffordable how many upgrades the player can afford
 ---@return number goldOnlyCount how many of those are gold-only (below watermark)
 local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
@@ -875,8 +853,6 @@ local function CalculateAffordableUpgrades(upInfo, currencyAmounts)
 end
 
 --- Check if the player can afford at least one upgrade for this slot.
----@param upInfo table slot upgrade info from GetPersistedUpgradeInfo
----@param currencyAmounts table map currencyID → amount
 ---@return boolean
 local function CanAffordNextUpgrade(upInfo, currencyAmounts)
     if not upInfo or not upInfo.canUpgrade then return false end
@@ -889,8 +865,6 @@ local function CanAffordNextUpgrade(upInfo, currencyAmounts)
 end
 
 --- Afford exactly one upgrade step (curr+1), not multi-step simulation.
----@param upInfo table
----@param currencyAmounts table|nil
 ---@return boolean
 local function CanAffordImmediateNextStep(upInfo, currencyAmounts)
     EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
@@ -918,8 +892,6 @@ local function GearUpgradeInfoHasPath(upInfo)
 end
 
 --- Paperdoll upgrade chip: green = next step needs crests and is affordable; yellow = crest step but short; hide gold-only catch-up.
----@param upInfo table|nil
----@param currencyAmounts table|nil
 ---@return string|nil "green" | "yellow" | nil
 local function GetUpgradeArrowDisplay(upInfo, currencyAmounts)
     EnsureUpgradeRowCurrencyMatchesTrack(upInfo)
@@ -937,8 +909,6 @@ local function GetUpgradeArrowDisplay(upInfo, currencyAmounts)
 end
 
 --- Attach affordableUpgrades / canAffordNext on each slot row (paperdoll + refresh).
----@param upgradeInfo table
----@param currencyAmounts table
 local function EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
     if not upgradeInfo then return end
     currencyAmounts = currencyAmounts or {}
@@ -1133,11 +1103,6 @@ local function GetGearStorageRecColumnLayout(contentW)
 end
 
 --- Vertically center a FontString inside a storage recommendation row/column band.
----@param fs FontString
----@param host Frame
----@param leftX number
----@param width number
----@param justify string|nil
 local function AnchorGearStorageRecColText(fs, host, leftX, width, justify)
     if not fs or not host then return end
     fs:ClearAllPoints()
@@ -1149,8 +1114,6 @@ local function AnchorGearStorageRecColText(fs, host, leftX, width, justify)
 end
 
 --- Anchor icon + name + summary + source for one recommendation row.
----@param line Frame
----@param lay table
 local function ApplyGearStorageRecRowAnchors(line, lay)
     if not line or not lay then return end
     local colInset = 2
@@ -1189,8 +1152,6 @@ local function ApplyGearStorageRecRowAnchors(line, lay)
 end
 
 --- Live resize: reflow recommendation table columns without rebuilding rows.
----@param recContent Frame|nil
----@param contentW number|nil
 local function RelayoutGearStorageRecColumns(recContent, contentW)
     if not recContent or not contentW or contentW < 40 then return end
     recContent:SetWidth(contentW)
@@ -1482,9 +1443,6 @@ local function ShowGearStorageScanningInRecContent(recContent)
 end
 
 ---Yielded storage scan for UI redraw paths (never block the main thread with FindGearStorageUpgrades).
----@param canonKey string
----@param drawGen number
----@param onDone function|nil
 function WarbandNexus:ScheduleGearStorageFindingsResolve(canonKey, drawGen, onDone)
     if not WarbandNexus:IsGearStorageRecommendationsEnabled() then
         if onDone then onDone() end
@@ -1603,9 +1561,6 @@ local function BuildStorageRecommendationRows(findings, gearData)
 end
 
 --- After deferred storage scan: repaint only the recommendations scroll (same-frame gen + canon guards).
----@param expectedCanonKey string
----@param expectedDrawGen number
----@param trustEquipSigWhenInvMiss boolean|nil When true, after a strict cache miss try canon+equipSig match (invEpoch must match unless ns._gearStorageAllowEquipSigInvBypass — set only for one post-yield redraw in DrawGearTab).
 ---@return boolean ok true when the scroll was repainted (caller skips full PopulateContent).
 function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, expectedDrawGen, trustEquipSigWhenInvMiss)
     WarbandNexus:GearStoragePanelDebug(("Redraw ENTER want=%s gen=%s trustInvBypassPath=%s"):format(
@@ -1930,7 +1885,6 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
 end
 
 --- Minimal slot snapshot from live inventory (equip events before DB read catches up).
----@param slotID number
 ---@return table|nil
 
 --- Paperdoll slot refresh during first-paint quiet / yielded storage scan causes socket/enchant flicker.
@@ -1965,7 +1919,6 @@ function WarbandNexus:TryRefreshGearUpgradeEconomy()
 end
 
 --- In-place paperdoll slot refresh after equip/unequip (no full tab teardown).
----@param payload table|nil { charKey, slotIDs = { number, ... }, refreshAllSlots = boolean|nil, forcePaperdoll = boolean|nil }
 ---@return boolean ok
 ---@return boolean|nil needFollowUp When true, PLAYER_EQUIPMENT_CHANGED path should retry next tick (live link lag viewing current character).
 function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
@@ -2128,8 +2081,6 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
 end
 
 --- After equip-only updates: repaint Recommended from cached bag findings + fresh equipped gear (no full storage scan).
----@param expectedCanonKey string
----@param expectedDrawGen number
 ---@return boolean ok
 function WarbandNexus:TryRedrawGearStorageRecAfterEquipChange(expectedCanonKey, expectedDrawGen)
     if not WarbandNexus:IsGearStorageRecommendationsEnabled() then return false end
@@ -2158,7 +2109,6 @@ end
 
 --- Live paperdoll repaint from equipment events before debounced ScanEquippedGear / WN_GEAR_UPDATED.
 --- Inventory APIs can lag PLAYER_EQUIPMENT_CHANGED by a frame; we coalesce paired slots and retry.
----@param changedSlotID number
 function WarbandNexus:TryRefreshGearEquipSlotsImmediate(changedSlotID)
     if not changedSlotID or type(changedSlotID) ~= "number" then return end
     local sid = math.floor(changedSlotID)
@@ -2193,7 +2143,6 @@ function WarbandNexus:TryRefreshAllGearEquipSlotIcons()
 end
 
 --- Item-level-only refresh (no PopulateContent): paperdoll ilvl badge + populate signature.
----@param charKeyFromMsg string|nil canonical or storage key from WN_CHARACTER_UPDATED
 ---@return boolean ok true when the gear tab was showing that character and the badge was refreshed
 function WarbandNexus:TryRefreshGearTabItemLevelOnly(charKeyFromMsg)
     if not charKeyFromMsg or charKeyFromMsg == "" then return false end
@@ -2766,9 +2715,6 @@ end
 
 --- Stable fingerprint of everything DrawGearTab reads from DB/cache for the current selection.
 --- Used by Modules/UI.lua to skip teardown+full redraw when WN_* debounce fires with no real delta.
----@param cachedGearData table|nil When non-nil, skips GetEquippedGear (DrawGearTab / storage redraw already fetched).
----@param cachedCurrencies table|nil When non-nil, skips GetGearUpgradeCurrenciesFromDB.
----@param cachedUpgradeInfo table|nil When non-nil, skips GetPersistedUpgradeInfo.
 local function ComputeGearPopulateSignatureCore(self, parts, curBlob, upPieces, cachedGearData, cachedCurrencies, cachedUpgradeInfo)
     local mf = self.UI and self.UI.mainFrame
     if not mf or mf.currentTab ~= "gear" then return nil end
@@ -2851,9 +2797,6 @@ function WarbandNexus:GetGearPopulateSignature()
 end
 
 --- Same string as GetGearPopulateSignature() but reuses tables already read in DrawGearTab / storage redraw (avoids a second GetEquippedGear and duplicate currency/upgrade DB reads when those tables are passed).
----@param gearData table|nil
----@param currencies table|nil
----@param upgradeInfo table|nil
 ---@return string|nil
 function WarbandNexus:GetGearPopulateSignatureFromDrawCaches(gearData, currencies, upgradeInfo)
     _gearPopulateSigDepth = _gearPopulateSigDepth + 1

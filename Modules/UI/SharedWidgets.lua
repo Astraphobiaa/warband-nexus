@@ -1,6 +1,7 @@
 ﻿--[[
     Warband Nexus - Shared UI Widgets & Helpers
-    Common UI components and utility functions used across all tabs
+    Common UI components and utility functions used across all tabs.
+    LuaLS: reserve ---@ on ns.UI.Factory public methods and WarbandNexus: exports only.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -943,9 +944,6 @@ function ns.UI_ResolveListContentWidth(scrollChild, fallbackWidth, extraPad)
 end
 
 --- Flush section header to wrap edges (no extra side inset — parent scroll/results already has tab margin).
----@param header Frame
----@param wrap Frame
----@param stackW number|nil explicit width; else wrap:GetWidth()
 function ns.UI_AnchorSectionHeaderInWrap(header, wrap, stackW)
     if not header or not wrap then return end
     local w = stackW
@@ -1052,9 +1050,6 @@ function ns.UI_CollapseExpandSetState(btn, isExpanded)
     end
 end
 
----@param parent Frame
----@param isExpanded boolean When true, section is expanded (up chevron = collapse affordance).
----@param opts table|nil `{ enableMouse = false|true, vertexColor = {r,g,b,a?} }`
 ---@return Button btn Child has `_wnCollapseTex` (Texture). Mouse defaults to enabled; pass `enableMouse = false` when the parent header handles clicks.
 function ns.UI_CreateCollapseExpandControl(parent, isExpanded, opts)
     opts = type(opts) == "table" and opts or {}
@@ -1148,7 +1143,6 @@ function ns.UI_PlansContentPadH()
 end
 
 --- Plans / Collections browse grid: card width, spacing, horizontal pad (clamp-safe).
----@param opts table|nil `{ padH = number }` — pass `padH = 0` when parent is already inset (browse results container).
 function ns.UI_PlansCardGridLayout(contentInnerWidth, columns, opts)
     columns = columns or 2
     opts = opts or {}
@@ -1507,7 +1501,6 @@ local function NormalizeColorMarkupHex(hex)
     return hex
 end
 
----@param englishName string|nil Adventurer, Veteran, Champion, Hero, Myth, …
 ---@return string|nil six-digit RRGGBB
 function ns.UI_GetUpgradeTrackTierHex(englishName)
     if not englishName or englishName == "" then return nil end
@@ -1517,9 +1510,6 @@ function ns.UI_GetUpgradeTrackTierHex(englishName)
 end
 
 --- Safe |cff…|r for upgrade-track labels (gear slots, crest rows).
----@param englishName string|nil
----@param displayText string
----@param fallbackQuality number|nil item quality when track name unknown
 ---@return string
 function ns.UI_FormatUpgradeTrackMarkup(englishName, displayText, fallbackQuality)
     if not displayText or displayText == "" then return "" end
@@ -1804,8 +1794,6 @@ ns.UI_ApplyMainWindowShellFill = ApplyMainWindowShellFill
 ns.UI_ApplyMainWindowShellBackdrop = ApplyMainWindowShellBackdrop
 
 --- Compact rail width for main shell body (below header): ratio of inner width, clamped.
----@param innerBodyWidth number Usable width below header (frame width minus chrome insets).
----@param shell table|nil MAIN_SHELL layout slice
 ---@return number railWidth
 function ns.UI_ComputeGoldenRailWidth(innerBodyWidth, shell)
     shell = shell or (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
@@ -1820,7 +1808,6 @@ function ns.UI_ComputeGoldenRailWidth(innerBodyWidth, shell)
 end
 
 --- Unified scroll-area metrics for tab painters (header, results, cards).
----@param mainFrame Frame|nil
 ---@return table|nil metrics { contentWidth, sideMargin, topMargin, sectionGap }
 function ns.UI_GetMainTabLayoutMetrics(mainFrame)
     if not mainFrame then return nil end
@@ -1852,7 +1839,6 @@ function ns.UI_GetMainTabLayoutMetrics(mainFrame)
 end
 
 --- Top inset inside Items resultsContainer before list or empty card (parity across Bags / Warband / Guild).
----@param baseYOffset number|nil
 ---@return number
 function ns.UI_ItemsResultsTopGap(baseYOffset)
     local layout = ns.UI_LAYOUT or {}
@@ -1869,8 +1855,6 @@ function ns.UI_GetTabSideMargin()
 end
 
 --- Scroll viewport width (between scroll chrome). Replaces legacy full-width guesses.
----@param mainFrame Frame|nil
----@param parent Frame|nil scrollChild fallback when metrics unavailable
 ---@return number contentWidth
 ---@return table|nil metrics
 function ns.UI_ResolveMainTabContentWidth(mainFrame, parent)
@@ -1896,8 +1880,6 @@ function ns.UI_ResolveMainTabContentWidth(mainFrame, parent)
 end
 
 --- Inner body width after symmetric side insets (`bodyWidth` in metrics). Replaces `parent:GetWidth() - 20`.
----@param mainFrame Frame|nil
----@param parent Frame|nil
 ---@return number bodyWidth
 ---@return table|nil metrics
 function ns.UI_ResolveMainTabBodyWidth(mainFrame, parent)
@@ -1917,8 +1899,6 @@ function ns.UI_ResolveMainTabBodyWidth(mainFrame, parent)
 end
 
 --- List paint width inside `resultsContainer` (incremental redraw / Draw*List).
----@param mainFrame Frame|nil
----@param resultsContainer Frame|nil
 ---@return number
 function ns.UI_ResolveResultsContainerPaintWidth(mainFrame, resultsContainer)
     if resultsContainer and resultsContainer.GetWidth then
@@ -1932,7 +1912,6 @@ function ns.UI_ResolveResultsContainerPaintWidth(mainFrame, resultsContainer)
 end
 
 --- Begin fixedHeader layout pass for a tab (unified top inset + side margins).
----@param mainFrame Frame|nil
 ---@return table|nil chrome { mainFrame, headerParent, metrics, yOffset, side }
 function ns.UI_BeginTabChromeLayout(mainFrame)
     if not mainFrame then return nil end
@@ -1960,9 +1939,6 @@ function ns.UI_AnchorTabTitleCard(titleCard, chrome)
 end
 
 --- Advance chrome Y after a fixedHeader block (title card, sub-tab bar, search row, …).
----@param yOffset number
----@param blockHeight number|nil
----@param gapAfter number|nil
 ---@return number
 function ns.UI_AdvanceTabChromeYOffset(yOffset, blockHeight, gapAfter)
     local sp = UI_SPACING or {}
@@ -1971,8 +1947,6 @@ function ns.UI_AdvanceTabChromeYOffset(yOffset, blockHeight, gapAfter)
 end
 
 --- Commit fixedHeader height after laying out chrome blocks.
----@param mainFrame Frame|nil
----@param yOffset number
 ---@return number
 function ns.UI_CommitTabFixedHeader(mainFrame, yOffset)
     if mainFrame and mainFrame.fixedHeader then
@@ -2041,7 +2015,6 @@ function ns.UI_GetTabScrollContentBottomPad()
 end
 
 --- Scroll body height between fixedHeader and footer (viewport minus top/bottom chrome insets).
----@param mainFrame Frame|nil
 ---@return number
 function ns.UI_GetMainTabScrollBodyHeight(mainFrame)
     if not mainFrame or not mainFrame.scroll then return 0 end
@@ -2059,9 +2032,6 @@ function ns.UI_GetMainTabScrollBodyHeight(mainFrame)
 end
 
 --- Rail tab active / idle visuals (subtle outer glow on selected tab).
----@param btn Button
----@param isActive boolean
----@param accentColor table|nil {r,g,b}
 function ns.UI_ApplyRailTabActiveVisuals(btn, isActive, accentColor)
     if not btn or not btn._wnRailTextMode then return end
     local shell = (UI_SPACING and UI_SPACING.MAIN_SHELL) or {}
@@ -2079,7 +2049,6 @@ function ns.UI_ApplyRailTabActiveVisuals(btn, isActive, accentColor)
 end
 
 --- Scroll viewport width for active main tab (after golden rail + insets).
----@param mainFrame Frame|nil
 ---@return number
 --- Shell / content / scroll canvas background (unified panel tone).
 ---@return table {r,g,b,a}
@@ -2233,19 +2202,16 @@ local function WnRefreshAtlasChromeUnderlayTint(frame, texKey, alphaShellKey)
 end
 
 --- Theme tint for `UI_ApplyViewportAtlasUnderlay` mid-layer (`ns.UI_RefreshColors`).
----@param frame Frame
 function ns.UI_RefreshViewportAtlasUnderlayTint(frame)
     WnRefreshAtlasChromeUnderlayTint(frame, "_wnViewportAtlasUnderlay", "VIEWPORT_UNDERLAY_VERTEX_ALPHA")
 end
 
 --- Theme tint for section / card atlas underlay (`ns.UI_RefreshColors`).
----@param frame Frame
 function ns.UI_RefreshSectionChromeUnderlayTint(frame)
     WnRefreshAtlasChromeUnderlayTint(frame, "_wnSectionChromeUnderlay", "SECTION_HEADER_UNDERLAY_VERTEX_ALPHA")
 end
 
 --- Main viewport mid-layer atlas/tile (`viewportBorder`): `C_Texture.GetAtlasInfo` + `sliceData` -> SetTextureSliceMargins (TextureBase wiki); fallback tooltip tile + tint.
----@param frame Frame
 function ns.UI_ApplyViewportAtlasUnderlay(frame)
     if not frame then return end
 
@@ -2266,7 +2232,6 @@ function ns.UI_ApplyViewportAtlasUnderlay(frame)
 end
 
 --- Collapsible headers, Factory section headers, `CreateSection` cards: same probe as viewport + lower alpha (`MAIN_SHELL`).
----@param frame Frame
 function ns.UI_ApplySectionChromeUnderlay(frame)
     if not frame then return end
 
@@ -2310,7 +2275,6 @@ ns.UI_ApplyStandardCardElevatedChrome = ApplyStandardCardElevatedChrome
 
 --- Apply detail container styling (bg + accent border) using the shared 4-texture border system.
 --- Use for Collections right panel (viewer/detail), or any "detail" panel that should match.
----@param frame Frame
 function ns.UI_ApplyDetailContainerVisuals(frame)
     if not frame then return end
     local colors = GetColors and GetColors() or COLORS or ns.UI_COLORS
@@ -2465,10 +2429,6 @@ end
 
 --- Fills the band from `resultsContainer` bottom to `scrollParent` bottom (same tone as scroll chrome).
 --- Use when list height is intrinsic but the scroll viewport is taller (avoids a dead strip above the footer).
----@param resultsContainer Frame
----@param scrollParent Frame
----@param sideMargin number|nil
----@param bottomInset number|nil
 function ns.UI_AnnexResultsToScrollBottom(resultsContainer, scrollParent, sideMargin, bottomInset)
     if not resultsContainer or not scrollParent then return end
     local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
@@ -2502,7 +2462,6 @@ function ns.UI_AnnexResultsToScrollBottom(resultsContainer, scrollParent, sideMa
 end
 
 --- Full scrollChild canvas fill (viewport tone) so short tabs do not show a dead black band above the footer.
----@param scrollChild Frame
 function ns.UI_EnsureScrollChildViewportFill(scrollChild)
     if not scrollChild then return end
     local fill = scrollChild._wnViewportCanvasFill
@@ -2519,9 +2478,6 @@ function ns.UI_EnsureScrollChildViewportFill(scrollChild)
 end
 
 --- Characters / list tabs: scrollChild fills viewport between title chrome and footer.
----@param mainFrame Frame|nil
----@param scrollChild Frame|nil
----@param tabBodyHeight number|nil content extent below scroll top inset
 function ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, tabBodyHeight)
     if not mainFrame or not scrollChild or not mainFrame.scroll then return end
     local bottomPad = (ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12
@@ -2557,7 +2513,6 @@ function ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, tabBodyHeight)
 end
 
 --- Tint annex sheet to match viewport (visible on OLED).
----@param annex Frame|nil
 function ns.UI_RefreshScrollAnnexChrome(annex)
     if not annex or not annex._wnAnnexTex then return end
     local c = ResolveSurfaceTierColor("viewport")
@@ -2565,7 +2520,6 @@ function ns.UI_RefreshScrollAnnexChrome(annex)
 end
 
 --- Re-anchor annex after PopulateContent sets scrollChild height.
----@param scrollParent Frame
 function ns.UI_RefreshScrollAnnexLayout(scrollParent)
     if not scrollParent then return end
     local annex = scrollParent._wnResultsAnnexSheet
@@ -3089,8 +3043,6 @@ function ns.UI_RefreshRegisteredRowGradients(rows)
 end
 
 --- Re-anchor collapsible section bodies under their headers (full scroll width).
----@param scrollChild Frame
----@param opts table|nil sections array, sideMargin, anchorKey (default `_wnAnchorHeader`)
 function ns.UI_RelayoutStretchSectionBodies(scrollChild, opts)
     opts = opts or {}
     local sections = opts.sections
@@ -3871,13 +3823,8 @@ ns.UI_GetTabIcon = function(tabName)
 end
 
 --- Main nav strip / rail: Blizzard atlas (`UI_GetTabIcon`) then built-in texture paths (packaged TGAs optional).
----@param tex Texture
----@param tabKey string
 ---@return boolean usedPackaged Unused; kept for call-site compatibility (always false when Media lacks matching files).
 --- Title card glyph: atlas/tab icon with uniform inset crop (consistent visual weight per tab).
----@param tex Texture
----@param tabKey string|nil
----@param atlasName string|nil
 function ns.UI_ApplyTitleCardGlyph(tex, tabKey, atlasName)
     if not tex then return end
     local applied = false
@@ -3987,8 +3934,6 @@ local function CreateHeaderIcon(parent, atlasName, options)
 end
 
 --- Items / Gear: open result lists on content tone (no viewport rim box or scroll fill band).
----@param mainFrame Frame|nil
----@param tab string|nil
 function ns.UI_ConfigureMainScrollViewportForTab(mainFrame, tab)
     if not mainFrame then return end
     local vp = mainFrame.viewportBorder
@@ -4467,8 +4412,6 @@ function ns.UI_GetTitleCardToolbarMetrics()
 end
 
 --- Reserve width for title/subtitle text (right-to-left control chain on title card).
----@param widths number[]|nil control widths outermost (card edge) to innermost
----@param opts table|nil `{ extraTrailingGap = number }`
 ---@return number
 function ns.UI_ComputeTitleToolbarReserve(widths, opts)
     local m = ns.UI_GetTitleCardToolbarMetrics()
@@ -5513,9 +5456,6 @@ local strupper = string.upper
 --- GameTooltip owner: horizontal flip so narrow columns (e.g. Collections Recent) open toward screen center.
 --- Does not call `GameTooltip_SetDefaultAnchor` (that path grows from owner top-right and often covers the next column).
 --- Call with `GameTooltip:ClearLines()` already done if you replace prior contents.
----@param frame Frame
----@param xOffset number|nil
----@param yOffset number|nil
 function ns.UI_SetGameTooltipSmartOwner(frame, xOffset, yOffset)
     if not frame or not GameTooltip then return end
     xOffset = xOffset or 0
@@ -5576,7 +5516,6 @@ local function ResolveClassFileTokenFromCharData(charData)
 end
 
 --- `|cffrrggbb` prefix for `displayName` using `db.global.characters` (case-insensitive name; `classFile`, `classID`, or localized `class`).
----@param displayName string
 ---@return string
 function ns.UI_GetClassColorHexForWarbandCharacter(displayName)
     if not displayName or displayName == "" or (issecretvalue and issecretvalue(displayName)) then
@@ -5674,8 +5613,6 @@ end
 ---@field popupOnRightClick boolean|nil default true — To-Do list / tracker: set false so only left-click opens editor
 
 ---Creates a full-width (caller anchors) or fixed-size try-count button; mouse opens WNTryCount popup per options.
----@param parent Frame
----@param options WnTryCountClickableOptions|nil
 ---@return Frame row with .text (FontString) and :WnUpdateTryCount(type, id, displayName)
 function ns.UI.Factory:CreateTryCountClickable(parent, options)
     options = options or {}
@@ -5910,8 +5847,6 @@ function ns.UI.Factory:CenterCollectionsDetailActionButton(shell, btn)
 end
 
 ---Right column: [action slot][Wowhead] with optional try row aligned to the action slot only (not full column width).
----@param parent Frame
----@param opts { withTryRow: boolean|nil, actionSlotWidth: number|nil, actionSlotHeight: number|nil } withTryRow defaults true; actionSlot* override default action cell size (e.g. Achievement: Add + Track).
 ---@return { root: Frame, actionSlot: Frame, wowheadBtn: Button, tryCountRow: Frame|nil }
 function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
     opts = opts or {}
@@ -5993,9 +5928,6 @@ end
 
 local tryCountPopupFrame = nil
 
----@param collectibleType string mount|pet|toy|illusion
----@param collectibleID number
----@param displayName string|nil shown under header
 function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
     if not collectibleType or not collectibleID then return end
     local COLORS = ns.UI_COLORS or { accent = { 0.40, 0.20, 0.58 }, accentDark = { 0.28, 0.14, 0.41 }, bg = { 0.06, 0.06, 0.08 }, border = { 0.20, 0.20, 0.25 } }
@@ -6500,9 +6432,6 @@ ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 --- Create a scroll frame with styled vertical scroll bar (Button | Bar | Button).
 --- Bar and buttons are created but not positioned; caller must call PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
 --- Use CreateScrollBarColumn(parent, width, topInset, bottomInset) to get a container, or your own frame (e.g. Collections list/detail columns).
----@param parent Frame Parent frame
----@param template string|nil Optional template (default: "UIPanelScrollFrameTemplate")
----@param customStyle boolean|nil If true, applies custom scroll bar styling (default: true)
 ---@return ScrollFrame scrollFrame The created scroll frame
 function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     if not parent then
@@ -6934,9 +6863,6 @@ function ns.UI.Factory:GetDropdownLayout()
     }
 end
 
----@param rowCount number
----@param rowHeight number|nil
----@param opts table|nil maxVisibleRows, menuEdge, insetTop, insetBottom
 ---@return number menuOuterH, number scrollContentH
 function ns.UI.Factory:ComputeDropdownMenuHeights(rowCount, rowHeight, opts)
     opts = opts or {}
@@ -6959,10 +6885,6 @@ function ns.UI.Factory:ComputeDropdownMenuHeights(rowCount, rowHeight, opts)
 end
 
 --- Anchor metadata for UpdateScrollBarVisibility (hide scrollbar column when content fits).
----@param scrollFrame ScrollFrame
----@param host Frame
----@param barColumn Frame
----@param opts table|nil menuEdge, scrollGap
 function ns.UI.Factory:WireScrollBarColumnLayout(scrollFrame, host, barColumn, opts)
     if not scrollFrame or not host or not barColumn then return end
     opts = opts or {}
@@ -6977,10 +6899,6 @@ function ns.UI.Factory:WireScrollBarColumnLayout(scrollFrame, host, barColumn, o
 end
 
 --- Create or reuse scroll + scrollbar column on a dropdown menu host; sizes viewport to shared row cap.
----@param menu Frame dropdown panel
----@param rowCount number
----@param rowHeight number|nil
----@param opts table|nil maxVisibleRows, menuEdge, recreate
 ---@return ScrollFrame|nil scroll, Frame|nil scrollChild, Frame|nil barColumn, number menuOuterH, number scrollContentH
 function ns.UI.Factory:ApplyDropdownScrollLayout(menu, rowCount, rowHeight, opts)
     if not menu then return nil, nil, nil, 0, 0 end
@@ -7070,10 +6988,6 @@ end
 
 --- Create a frame for the vertical scroll bar column (same pattern as Collections: list | bar column | details).
 --- Caller anchors this to the right of the scroll content, then calls PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
----@param parent Frame Parent (e.g. content area)
----@param width number Width of the column (matches `SCROLLBAR_COLUMN_WIDTH`, default 26)
----@param topInset number|nil Inset from parent top (default 0)
----@param bottomInset number|nil Inset from parent bottom (default 0)
 ---@return Frame container The frame to pass to PositionScrollBarInContainer
 function ns.UI.Factory:CreateScrollBarColumn(parent, width, topInset, bottomInset)
     if not parent then return nil end
@@ -7093,9 +7007,6 @@ end
 
 --- Standard layout when scroll bar is placed in an external container (e.g. list | gap | scrollbar | gap | details).
 --- Ensures Button (top) | Bar | Button (bottom) with same dimensions everywhere (SCROLL_BAR_BUTTON_SIZE, SCROLL_BAR_WIDTH).
----@param scrollBar table Slider (ScrollBar from CreateScrollFrame)
----@param scrollBarContainer Frame Container to reparent bar and buttons into
----@param inset number|nil Optional top/bottom inset (default 2)
 function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, inset)
     if not scrollBar or not scrollBarContainer then return end
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
@@ -7139,7 +7050,6 @@ function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContaine
 end
 
 ---Update scroll bar visibility based on content height (call after content changes)
----@param scrollFrame ScrollFrame The scroll frame to update
 function ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
     if scrollFrame and scrollFrame.UpdateScrollBarVisibility then
         scrollFrame:UpdateScrollBarVisibility()
@@ -7157,9 +7067,6 @@ end
 
 ---Create a horizontal scrollbar matching the vertical scrollbar style.
 ---Usage: attach to an existing ScrollFrame and call UpdateHorizontalScrollBarVisibility after content width changes.
----@param scrollFrame ScrollFrame Target scroll frame (SetHorizontalScroll target)
----@param parent Frame Parent frame for the horizontal bar and buttons
----@param customStyle boolean|nil If true, applies custom modern styling (default: true)
 ---@return Slider|nil hBar The created horizontal slider
 function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyle)
     if not scrollFrame or not parent then return nil end
@@ -7444,7 +7351,6 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
 end
 
 ---Update horizontal scrollbar visibility based on content width (call after content changes)
----@param scrollFrame ScrollFrame The scroll frame to update
 function ns.UI.Factory:UpdateHorizontalScrollBarVisibility(scrollFrame)
     if scrollFrame and scrollFrame.UpdateHorizontalScrollBarVisibility then
         scrollFrame:UpdateHorizontalScrollBarVisibility()
@@ -7466,10 +7372,6 @@ end
 -- LOADING STATE WIDGETS (Standardized Progress Indicator)
 
 ---Create standardized loading state card with animated spinner and progress bar
----@param parent Frame - Parent frame
----@param yOffset number - Y offset from top
----@param loadingState table - Loading state object with {isLoading, loadingProgress or scanProgress, currentStage, error}
----@param title string - Loading title (e.g., "Loading PvE Data")
 ---@return number newYOffset - New Y offset after card
 function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     if not loadingState or not loadingState.isLoading then
@@ -7571,9 +7473,6 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
 end
 
 ---Create standardized error state card
----@param parent Frame - Parent frame
----@param yOffset number - Y offset from top
----@param errorMessage string - Error message to display
 ---@return number newYOffset - New Y offset after card
 function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     if not errorMessage or errorMessage == "" then
@@ -7604,12 +7503,6 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
 end
 
 ---Create inline loading spinner (for small widgets like gold display)
----@param parent Frame - Parent frame
----@param anchorFrame Frame - Frame to anchor spinner next to
----@param anchorPoint string - Anchor point (e.g., "LEFT", "RIGHT")
----@param xOffset number - X offset from anchor
----@param yOffset number - Y offset from anchor
----@param size number - Spinner size (optional, default 16)
 ---@return Frame spinnerFrame - Spinner frame for cleanup
 function UI_CreateInlineLoadingSpinner(parent, anchorFrame, anchorPoint, xOffset, yOffset, size)
     size = size or 16
@@ -7718,10 +7611,6 @@ ns.UI_CreateLoadingStatePanel = UI_CreateLoadingStatePanel
 -- Ensures PlansUI and other modules can use Factory pattern
 
 --- Create a basic frame container (NO BORDERS by default)
----@param parent Frame - Parent frame
----@param width number - Container width (optional)
----@param height number - Container height (optional)
----@param withBorder boolean - If true, apply border (default: false)
 ---@return Frame container
 function ns.UI.Factory:CreateContainer(parent, width, height, withBorder, globalName)
     if not parent then return nil end
@@ -7738,10 +7627,6 @@ function ns.UI.Factory:CreateContainer(parent, width, height, withBorder, global
 end
 
 --- Create a button with theme
----@param parent Frame - Parent frame
----@param width number - Button width
----@param height number - Button height
----@param noBorder boolean|nil - If true, skip border (default false)
 ---@return Button button
 function ns.UI.Factory:CreateButton(parent, width, height, noBorder)
     return CreateButton(parent, width, height, nil, nil, noBorder)
@@ -7756,8 +7641,6 @@ end
 --- Create a themed horizontal slider (accent-colored thumb + border).
 --- Single source of truth for slider styling; SettingsUI and tracker popups both use this
 --- so the look stays consistent and we don't reinvent the widget for each call site.
----@param parent Frame
----@param opts table { min, max, step, value, onChange(function(v)), height(number) }
 ---@return Slider slider
 function ns.UI.Factory:CreateThemedSlider(parent, opts)
     if not parent then return nil end
@@ -7805,7 +7688,6 @@ function ns.UI.Factory:CreateThemedSlider(parent, opts)
 end
 
 --- Create an EditBox
----@param parent Frame - Parent frame
 ---@return EditBox editbox
 function ns.UI.Factory:CreateEditBox(parent)
     if not parent then return nil end
@@ -7836,8 +7718,6 @@ end
 --- Apply alternating row background color to any frame.
 --- Central helper that replaces inline ROW_COLOR_EVEN/ODD logic across all tabs.
 --- Works with both newly created rows and pooled/reused rows.
----@param row Frame - The row frame to apply background to
----@param rowIndex number - Row index for even/odd alternation (1-based)
 function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     if not row then return end
     local tier = (rowIndex % 2 == 0) and "rowEven" or "rowOdd"
@@ -7852,8 +7732,6 @@ end
 
 ---Apply (or clear) the online-character highlight on a character row or header.
 ---Uses the live theme accent color so it respects user customization.
----@param frame Frame  The row/header frame to highlight.
----@param isOnline boolean  True = this is the currently logged-in character.
 function ns.UI.Factory:ApplyOnlineCharacterHighlight(frame, isOnline)
     if not frame then return end
     local ac = COLORS and COLORS.accent or ns.UI_COLORS and ns.UI_COLORS.accent
@@ -7886,10 +7764,6 @@ end
 --- Create a data row with alternating background color.
 --- Standard pattern for creating new rows with proper positioning and alternating bg.
 --- For pooled/reused rows, use Factory:ApplyRowBackground() instead.
----@param parent Frame - Parent frame (scrollChild)
----@param yOffset number - Current vertical offset
----@param rowIndex number - Row index for even/odd alternation (1-based)
----@param height number|nil - Row height (defaults to UI_SPACING.ROW_HEIGHT = 26)
 ---@return Frame row, number newYOffset
 function ns.UI.Factory:CreateDataRow(parent, yOffset, rowIndex, height)
     if not parent then return nil, yOffset end
@@ -7908,14 +7782,6 @@ end
 
 --- Create a collapsible section header with border, arrow, title, hover.
 --- Uses ApplyVisuals for consistent border rendering (same as CharactersUI/PlansUI headers).
----@param parent Frame - Parent frame (scrollChild)
----@param yOffset number - Current vertical offset
----@param isCollapsed boolean - Current collapse state
----@param titleStr string - Formatted title string (with color codes)
----@param rightStr string|nil - Optional right-aligned text
----@param onToggle function - Callback when header is clicked
----@param height number|nil - Header height (defaults to `SECTION_COLLAPSE_HEADER_HEIGHT`)
----@param leftIndent number|nil - Left indent in pixels (for sub-headers, e.g. 15 or 30)
 ---@return number newYOffset, Frame header
 function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleStr, rightStr, onToggle, height, leftIndent)
     if not parent then return yOffset, nil end
@@ -8060,8 +7926,6 @@ end
 
 --- Collection list row: status icon (check/cross) + item icon + label. Same layout for Mounts, Pets, Achievements.
 --- Caller sets position (virtual scroll). Use ApplyCollectionListRowContent to set content and selection.
----@param parent Frame - Parent (e.g. scrollChild)
----@param height number|nil - Row height (defaults to UI_SPACING.ROW_HEIGHT)
 ---@return Frame row
 function ns.UI.Factory:CreateCollectionListRow(parent, height)
     if not parent then return nil end
@@ -8320,16 +8184,6 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
 end
 
 --- Apply content and selection to a collection list row (from CreateCollectionListRow). Use for virtual scroll.
----@param row Frame - Row from CreateCollectionListRow
----@param rowIndex number - For alternating background (1-based)
----@param iconPath string - Texture path for item icon
----@param labelText string - Formatted label (e.g. "|cff33e533Name|r" or "|cffffffffName|r (10 pts)")
----@param isCollected boolean - True = check icon, false = cross icon
----@param isSelected boolean - Show selection highlight
----@param onClick function|nil - OnMouseDown script
----@param rightAlignedText string|nil Optional right column (e.g. relative time); main label stops before it.
----@param subtitleText string|nil Optional second line (small) under title; row height should be set by caller.
----@param planSlotState table|nil Optional `{ onTodo, onTrack, achievementRow?, achievementCollected?, showTrackSlot?, onTodoClick?, onTrackClick?, todoTooltip?, trackTooltip? }` — `achievementCollected` defaults from `isCollected` when omitted (mount/pet/toy). To-Do/pin grey when completed, on list, or (pin) already tracking.
 function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText, subtitleText, planSlotState)
     if not row then return end
     local pad = UI_SPACING.SIDE_MARGIN or 10
@@ -8402,9 +8256,6 @@ end
 local wowheadCopyFrame = nil
 
 ---Show a small popup with a Wowhead URL for the user to copy (Ctrl+C).
----@param entityType string "mount"|"pet"|"toy"|"achievement"|"item"|"quest"|"spell"|"npc"|"currency"|"illusion"|"title"
----@param id number
----@param anchorFrame Frame|nil Optional frame to anchor near (defaults to UIParent center)
 function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
     if not ns.Utilities or not ns.Utilities.GetWowheadURL then return end
     local url = ns.Utilities:GetWowheadURL(entityType, id)

@@ -3550,8 +3550,6 @@ local FULL_WIDTH_PLAN_BOTTOM_PAD = 12
 
 local DAILY_QUEST_CATEGORY_ORDER = { "weeklyQuests", "worldQuests", "assignments", "dailyQuests", "events" }
 
----@param plan table
----@param cardWidth number|nil unused; reserved for future responsive slot rows
 ---@return number
 function ns.UI_MeasureFullWidthPlanCardHeight(plan, cardWidth)
     if not plan then
