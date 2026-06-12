@@ -127,8 +127,6 @@ local pendingMetadataRefreshTimer = nil  -- Debounce timer for UI refresh after 
 -- COMPRESSION UTILITIES
 
 ---Compress item data for storage
----@param data table Item data
----@return string|nil compressed Compressed string or nil on failure
 local function CompressItemData(data)
     if not LibSerialize or not LibDeflate then
         return nil
@@ -160,8 +158,6 @@ local function CompressItemData(data)
 end
 
 ---Decompress item data from storage
----@param compressed string Compressed string
----@return table|nil data Decompressed data or nil on failure
 local function DecompressItemData(compressed)
     if not LibSerialize or not LibDeflate then
         return nil
@@ -195,7 +191,6 @@ end
 -- ON-DEMAND ITEM METADATA RESOLVER (Session RAM only)
 
 ---Add a fully-resolved metadata entry to the FIFO eviction cache.
----@param itemID number
 local function AddToFIFOCache(itemID)
     if #itemMetadataCacheOrder >= ITEM_METADATA_CACHE_MAX then
         local evictID = itemMetadataCacheOrder[itemMetadataCacheHead]
@@ -216,7 +211,6 @@ end
 ---HydrateItem does value copies (not references), so after async resolution
 ---the cached items still have name=nil, pending=true. This function patches
 ---them in-place so the UI sees updated names without a full re-hydration.
----@return number syncedCount Number of items that were patched
 local function SyncDecompressedCacheWithMetadata()
     local syncedCount = 0
     -- Sync personal item caches (bags + bank per character)
@@ -287,7 +281,6 @@ end
 
 ---Queue async item load via Item:CreateFromItemID + ContinueOnItemLoad.
 ---When the item data becomes available, updates the metadata cache and schedules a UI refresh.
----@param itemID number
 local function QueueAsyncItemLoad(itemID)
     if pendingItemLoads[itemID] then return end  -- Already queued
     pendingItemLoads[itemID] = true
@@ -317,8 +310,6 @@ end
 
 ---Resolve item metadata from WoW API (session RAM cache, never persisted).
 ---Uses ContinueOnItemLoad for async resolution of uncached items.
----@param itemID number
----@return table|nil { name, link, icon, classID, subclassID, itemType, pending? }
 local function ResolveItemMetadata(itemID)
     if not itemID or itemID == 0 then return nil end
     
@@ -430,8 +421,6 @@ end
 ---Hydrate a lean item (from SV) with on-demand metadata (value copy, not reference).
 ---Sets item.pending = true if the item name is still being loaded asynchronously.
 ---NOTE: After async resolution, SyncDecompressedCacheWithMetadata() patches items in-place.
----@param item table Lean item { itemID, stackCount, quality, isBound, bagID, slotIndex, ... }
----@return table hydrated Full item with name, link, icon, classID, etc.
 local function HydrateItem(item)
     if not item or not item.itemID then return item end
     
@@ -460,8 +449,6 @@ local function HydrateItem(item)
 end
 
 ---Hydrate an array of lean items with metadata.
----@param items table Array of lean items
----@return table items Same array, items hydrated in-place
 local function HydrateItems(items)
     if not items then return items end
     for i = 1, #items do
@@ -499,8 +486,6 @@ local cachedSlotData = {}  -- [bagID] = { [slot] = itemInfo, numSlots = n }
 ---Generate hash for a bag to detect real changes.
 ---Also caches raw slot data for ScanBag to reuse (avoids double API calls).
 ---Hash includes: item count + item links (ignores durability, charges, cooldowns)
----@param bagID number Bag ID
----@return string hash Hash string
 local function GenerateItemHash(bagID)
     local items = {}
     local n = 0
@@ -526,8 +511,6 @@ local function GenerateItemHash(bagID)
 end
 
 ---Check if bag contents actually changed (not just durability/charges)
----@param bagID number Bag ID
----@return boolean changed True if contents changed
 local function HasBagChanged(bagID)
     local newHash = GenerateItemHash(bagID)
     local oldHash = bagHashCache[bagID]
@@ -543,11 +526,6 @@ local function HasBagChanged(bagID)
 end
 
 --- Snapshot ilvl at scan time so Gear storage recommendations do not depend on cold GetItemInfo.
----@param bagID number
----@param slot number
----@param itemID number|nil
----@param itemLink string|nil
----@return number
 local function CaptureContainerSlotItemLevel(bagID, slot, itemID, itemLink)
     if bagID ~= nil and slot and ItemLocation and ItemLocation.CreateFromBagAndSlot
         and C_Item and C_Item.GetCurrentItemLevel then
@@ -582,8 +560,6 @@ end
 ---Reuses cached slot data from GenerateItemHash when available (single pass).
 ---Only stores: itemID, stackCount, quality, isBound, positional fields.
 ---Metadata (name, link, icon, classID) is resolved on-demand when reading.
----@param bagID number Bag ID
----@return table items Array of lean item data
 local function ScanBag(bagID)
     local items = {}
     local n = 0  -- Manual count avoids #items overhead per insert
@@ -653,10 +629,7 @@ local function ScanBag(bagID)
 end
 
 ---Scan all inventory bags for current character
----@param charKey string Character key
 ---INCREMENTAL UPDATE: Update only specific bag (single bag scan)
----@param charKey string Character key
----@param bagID number Specific bag to update
 function WarbandNexus:UpdateSingleBag(charKey, bagID)
     -- GUARD: Only update bags if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -729,7 +702,6 @@ end
 
 ---INCREMENTAL UPDATE: Update only a specific warband bank bag (single tab scan)
 ---Avoids full ScanWarbandBank() which scans all 5 tabs on every change
----@param bagID number Warband bag ID (13-17)
 function WarbandNexus:UpdateSingleWarbandBag(bagID)
     
     -- GUARD: Only update if character is tracked
@@ -777,7 +749,6 @@ function WarbandNexus:UpdateSingleWarbandBag(bagID)
 end
 
 ---FULL SCAN: Scan all inventory bags (used on login or manual refresh)
----@param charKey string Character key
 function WarbandNexus:ScanInventoryBags(charKey)
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -818,7 +789,6 @@ function WarbandNexus:ScanInventoryBags(charKey)
 end
 
 ---Scan all bank bags for current character
----@param charKey string Character key
 function WarbandNexus:ScanBankBags(charKey)
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -877,8 +847,6 @@ end
 
 ---Throttled bag update (prevents BAG_UPDATE spam)
 ---Returns true if the update was processed (or scheduled), false if suppressed.
----@param bagID number Bag ID
----@return boolean processed
 local function ThrottledBagUpdate(bagID)
     -- Suppress during bank open deferred scans (OnBankOpened handles it)
     if bankScanInProgress then
@@ -955,7 +923,6 @@ end
 
 ---Handle BAG_UPDATE event (from RegisterBucketEvent)
 ---Batches all bag updates and sends ONE coalesced ITEMS_UPDATED message
----@param bagIDs table Table of bagIDs that were updated (from bucket)
 function WarbandNexus:OnBagUpdate(bagIDs)
     DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r [Items Event] BAG_UPDATE (bucket) triggered")
     -- GUARD: Only process bag updates if character is tracked
@@ -987,7 +954,6 @@ function WarbandNexus:OnBagUpdate(bagIDs)
 end
 
 ---Chunked bank-area scan: one bag (container) per frame to cap frame cost (inventory → bank → warband).
----@param charKey string
 function WarbandNexus:RunBudgetedBankOpenScan(charKey)
     if not charKey then
         charKey = ResolveCurrentItemStorageKey()
@@ -1157,9 +1123,6 @@ end
 -- COMPRESSED STORAGE (SAVE/LOAD)
 
 ---Save items data (compressed)
----@param charKey string Character key
----@param dataType string "bags" or "bank"
----@param items table Items array
 function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
     -- GUARD: Only save if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -1216,7 +1179,6 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
 end
 
 ---Save warband bank data (compressed)
----@param items table Items array
 function WarbandNexus:SaveWarbandBankCompressed(items)
     if not items then return end
     
@@ -1266,8 +1228,6 @@ end
 -- `itemStorage[charKey] = {}` (empty) or v2-only must still see legacy table rows;
 -- `characters[charKey]` and canonical key may differ.
 
----@param item table
----@return string|nil
 local function ItemMergeDedupeKey(item)
     if not item or not item.itemID then return nil end
     local link = item.itemLink or item.link
@@ -1280,8 +1240,6 @@ local function ItemMergeDedupeKey(item)
     return "I:" .. tostring(item.itemID) .. ":" .. tostring(item.quality or 0)
 end
 
----@param list table|nil
----@param seen table<string, boolean>
 local function AddSeenFromItemList(list, seen)
     if not list or not seen then return end
     for i = 1, #list do
@@ -1293,9 +1251,6 @@ local function AddSeenFromItemList(list, seen)
     end
 end
 
----@param target table
----@param source table
----@param seen table<string, boolean>
 local function AppendItemsDeduped(target, source, seen)
     if not target or not source or not seen then return end
     for i = 1, #source do
@@ -1310,8 +1265,6 @@ local function AppendItemsDeduped(target, source, seen)
     end
 end
 
----@param pb table|nil
----@return table
 local function PersonalBankToItemArray(pb)
     if not pb then return {} end
     local bankData = pb.compressed and (DecompressItemData(pb.data) or {}) or (pb.data or {})
@@ -1339,9 +1292,6 @@ local function PersonalBankToItemArray(pb)
     return bankArr
 end
 
----@param self table
----@param result table
----@param charKey string
 local function MergeExtraItemSourcesIntoItemsData(self, result, charKey)
     if not result or not charKey or charKey == "" then return end
     result.bags = result.bags or {}
@@ -1392,9 +1342,6 @@ end
 -- PUBLIC API (FOR UI AND DATASERVICE)
 
 --- One-time slotCount backfill for legacy compressed buckets (persists in AceDB on next save).
----@param bucket table
----@return number|nil slotCount
----@return number|nil stackTotal
 local function LazyBackfillSlotCountFromCompressed(bucket)
     if not bucket or bucket.slotCount or not bucket.compressed or not bucket.data then
         return nil, nil
@@ -1414,11 +1361,6 @@ local function LazyBackfillSlotCountFromCompressed(bucket)
 end
 
 --- Occupied slots + stack totals from a persisted itemStorage bucket without decompress.
----@param bucket table|nil
----@param allowLazyBackfill boolean|nil
----@return number|nil slotCount
----@return number|nil stackTotal
----@return number|nil lastUpdate
 local function OccupiedSlotsFromStorageBucket(bucket, allowLazyBackfill)
     if not bucket then
         return nil, nil, nil
@@ -1447,8 +1389,6 @@ end
 
 --- Resolve v2 itemStorage row for a character key (GUID / Name-Realm aliases).
 --- (Local is forward-declared near the top of the file.)
----@param charKey string
----@return table|nil storageRow
 function ResolveItemStorageRow(charKey)
     local globalIS = WarbandNexus.db.global.itemStorage
     if not globalIS or not charKey or charKey == "" then
@@ -1484,12 +1424,6 @@ function ResolveItemStorageRow(charKey)
 end
 
 --- Fast occupied-slot tally for one character bucket (bags/bank) — no decompress.
----@param charKey string
----@param dataType string "bags"|"bank"
----@param allowLazyBackfill boolean|nil
----@return number slotCount
----@return number stackTotal
----@return number lastUpdate
 function WarbandNexus:GetItemStorageOccupiedSlotTally(charKey, dataType, allowLazyBackfill)
     local storage = ResolveItemStorageRow(charKey)
     local bucket = storage and storage[dataType]
@@ -1538,10 +1472,6 @@ function WarbandNexus:GetItemStorageOccupiedSlotTally(charKey, dataType, allowLa
 end
 
 --- Fast warband bank occupied slots — no decompress when slotCount metadata exists.
----@param allowLazyBackfill boolean|nil
----@return number slotCount
----@return number stackTotal
----@return number lastUpdate
 function WarbandNexus:GetWarbandBankOccupiedSlotTally(allowLazyBackfill)
     if decompressedWarbandCache and decompressedWarbandCache.items then
         local items = decompressedWarbandCache.items
@@ -1574,10 +1504,6 @@ function WarbandNexus:GetWarbandBankOccupiedSlotTally(allowLazyBackfill)
 end
 
 --- Sum tracked roster personal storage using fast slot tallies (Items > Warband stats + tree scan).
----@param allowLazyBackfill boolean|nil When false, skip legacy compressed decompress (collapsed embed stats).
----@return number stackTotal
----@return number usedSlots
----@return number lastScan
 function WarbandNexus:SumTrackedPersonalStorageSlotTally(allowLazyBackfill)
     local stackTotal, usedSlots, lastScan = 0, 0, 0
     local allCharacters = self.GetAllCharacters and self:GetAllCharacters() or {}
@@ -1596,8 +1522,6 @@ end
 
 ---Get items data for a specific character (decompressed + hydrated with metadata).
 ---Uses session RAM cache to avoid repeated decompression. Invalidated when items are scanned.
----@param charKey string Character key
----@return table data {bags, bank, lastUpdate}
 function WarbandNexus:GetItemsData(charKey)
     -- Check session cache first (avoids repeated decompress+deserialize)
     local cached = decompressedItemCache[charKey]
@@ -1685,7 +1609,6 @@ end
 
 ---Get warband bank data (decompressed + hydrated with metadata).
 ---Uses session RAM cache. Invalidated when warband bank is scanned.
----@return table data {items, lastUpdate}
 function WarbandNexus:GetWarbandBankData()
     -- Check session cache first
     if decompressedWarbandCache then return decompressedWarbandCache end
@@ -1741,7 +1664,6 @@ end
 -- Summary rebuilt lazily: marked "pending" on item change, processed on next access.
 
 ---Build item count summary for a single character (bags + bank).
----@param charKey string Character key
 local function BuildCharacterSummary(charKey)
     local summary = {}  -- [itemID] = { bags=N, bank=N }
     
@@ -1820,8 +1742,6 @@ end
 
 ---Get detailed item counts for tooltip display (O(1) lookup after lazy rebuild).
 ---Replaces the old DataService:GetDetailedItemCounts which iterated all items per hover.
----@param itemID number
----@return table|nil { warbandBank=N, personalBankTotal=N, characters={{charName,classFile,bagCount,bankCount,total},...} }
 function WarbandNexus:GetDetailedItemCountsFast(itemID)
     if not itemID then return nil end
     
@@ -1903,7 +1823,6 @@ end
 
 ---Invalidate item summary for a character (call when bags/bank change).
 ---The summary will be rebuilt lazily on next tooltip access.
----@param charKey string|nil Character key (nil = invalidate all + warband)
 function WarbandNexus:InvalidateItemSummary(charKey)
     if charKey then
         itemSummaryIndex.pending[charKey] = true
