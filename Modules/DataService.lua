@@ -457,10 +457,7 @@ end
 
 -- CHARACTER DATA COLLECTION
 
---[[
-    Collect basic profession data
-    @return table - Profession data
-]]
+--- Collect basic profession data.
 function WarbandNexus:CollectProfessionData()
     -- GUARD: Only collect if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -509,7 +506,6 @@ function WarbandNexus:CollectProfessionData()
 end
 
 --- Collect current player stats for persistence (Gear tab offline display).
---- @return table|nil { primary = { [statId] = value }, secondary = { { label, rating, pct }, ... } } or nil
 local function CollectPlayerStats()
     local primary = {}
     for id = 1, 4 do
@@ -582,11 +578,7 @@ CollectRestedData = function()
     }
 end
 
---[[
-    Save minimal character data for UNTRACKED characters
-    Identity + gold/level only for the Characters tab row. No ilvl/spec/stats/rested/professions/PvE/etc.
-    @return boolean - Success status
-]]
+--- Save minimal character data for untracked characters (identity + gold/level only).
 function WarbandNexus:SaveMinimalCharacterData()
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()
@@ -708,12 +700,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     return true
 end
 
---[[
-    Save complete character data
-    Called on login/reload and when significant changes occur
-    v2: No longer stores currencies/reputations per character (stored globally)
-    @return boolean - Success status
-]]
+--- Save complete character data (login/reload and significant changes).
 function WarbandNexus:SaveCurrentCharacterData()
     -- Check tracking status
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
@@ -1045,11 +1032,7 @@ function WarbandNexus:UpdateMailStatus()
     end
 end
 
---[[
-    Update only gold for current character (lightweight, called on PLAYER_MONEY)
-    Works for BOTH tracked and untracked characters (gold is part of minimal data)
-    @return boolean - Success status
-]]
+--- Update only gold for current character (PLAYER_MONEY; tracked and untracked).
 function WarbandNexus:UpdateCharacterGold()
     -- No tracking guard here - gold updates for both tracked and untracked characters
     local rawKey = ns.Utilities:GetCharacterKey()
@@ -1081,12 +1064,7 @@ function WarbandNexus:UpdateCharacterGold()
     return false
 end
 
---[[
-    Get all characters (tracked AND untracked) (DB-First pattern)
-    Direct DB access, no RAM cache
-    Returns both tracked and untracked characters - UI modules should filter as needed
-    @return table - Array of character data sorted by level then name
-]]
+--- Get all characters (tracked and untracked), sorted by level then name.
 function WarbandNexus:GetAllCharacters()
     local characters = {}
     
@@ -1980,11 +1958,7 @@ function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
     return lastScanTime < getLastResetTime(now)
 end
 
---[[
-    Query current character's Mythic Keystone via C_MythicPlus API
-    API-first approach — no bag scanning needed (O(1) vs O(n*slots))
-    @return table|nil - {level, dungeonID, dungeonName, scanTime} or nil if no keystone
-]]
+--- Query current character's Mythic Keystone via C_MythicPlus API.
 function WarbandNexus:ScanMythicKeystone()
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -2015,13 +1989,7 @@ function WarbandNexus:ScanMythicKeystone()
     }
 end
 
---[[
-    Get Inventory Items ONLY (bags 0-5, excluding personal bank)
-    Used by the new Inventory sub-tab
-    
-    CRITICAL: Only returns items for the logged-in character, not all characters
-    @return table - Array of items with metadata
-]]
+--- Get inventory items only (logged-in character bags 0-5).
 function WarbandNexus:GetInventoryItems()
     local items = {}
     
@@ -2061,13 +2029,7 @@ function WarbandNexus:GetInventoryItems()
     return items
 end
 
---[[
-    Get Personal Bank Items ONLY (excluding inventory bags)
-    Used by the new Personal Bank sub-tab
-    
-    CRITICAL: Only returns items for the logged-in character, not all characters
-    @return table - Array of items with metadata
-]]
+--- Get personal bank items only (logged-in character).
 function WarbandNexus:GetBankItems()
     local items = {}
     
@@ -2351,20 +2313,7 @@ function WarbandNexus:GetWarbandBankItems(groupByCategory)
     return items
 end
 
---[[
-    Get bank statistics (slots, items, gold)
-    
-    CRITICAL CONTRACT: This function MUST always return a valid stats table with ALL fields initialized.
-    UI modules depend on these fields existing (even if 0) to prevent nil comparison errors.
-    
-    @return table - Statistics for warband, personal, and guild banks
-        Structure: {
-            warband = { totalSlots, usedSlots, freeSlots, itemCount, gold, lastScan },
-            personal = { totalSlots, usedSlots, freeSlots, itemCount, lastScan },
-            guild = { totalSlots, usedSlots, freeSlots, itemCount, lastScan }
-        }
-        All numeric fields default to 0 if data unavailable.
-]]
+--- Get bank statistics (warband, personal, guild). Always returns initialized numeric fields.
 function WarbandNexus:GetBankStatistics()
     -- Initialize with safe defaults (never return nil fields)
     local stats = {
