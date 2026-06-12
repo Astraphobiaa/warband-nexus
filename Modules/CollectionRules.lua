@@ -1,15 +1,6 @@
 --[[
     Warband Nexus - Collection Rules
-    Modular collection logic for all collection types
-    
-    This module provides a unified interface for checking collection status
-    and character eligibility across all WoW collection systems (Transmog, Mounts, Pets, etc.)
-    
-    Key Features:
-    - Warband-wide collection status (isCollected)
-    - Character eligibility checks (canDisplayOnPlayer, playerCanCollect)
-    - Unified API for tooltip and UI integration
-    - TWW 11.0+ compatibility with backward compatibility fallbacks
+    Per-type collection status and character eligibility (transmog, mounts, pets, etc.).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -34,39 +25,15 @@ end
 local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 
--- COLLECTION RULES REGISTRY
-
 local CollectionRules = {}
 
---[[
-    Rule Interface:
-    Each rule must implement:
-    - CheckIfItemID(itemID): Returns true if itemID belongs to this collection type
-    - GetStatus(itemID): Returns "KNOWN" or "UNKNOWN"
-    - GetCharacterEligibility(itemID): Returns eligibility info table
-]]
-
--- TRANSMOG RULES
-
 CollectionRules.TRANSMOG = {
-    --[[
-        Check if itemID is a transmog source
-        @param itemID number - Item ID to check
-        @return boolean - True if item is a transmog source
-    ]]
     CheckIfItemID = function(itemID)
         if not itemID or not C_TransmogCollection then
             return false
         end
         
-        -- Check if item has transmog source info
-        local sourceInfo = C_Item.GetItemInfo(itemID)
-        if not sourceInfo then
-            return false
-        end
-        
-        -- Check item class/subclass (armor, weapons)
-        local _, _, _, _, _, _, _, _, itemEquipLoc, _, _, classID = C_Item.GetItemInfo(itemID)
+        local _, _, _, _, _, _, _, _, _, _, _, classID = C_Item.GetItemInfo(itemID)
         if not classID then
             return false
         end
@@ -74,12 +41,6 @@ CollectionRules.TRANSMOG = {
         -- Transmog items are: Weapons (2), Armor (4)
         return classID == 2 or classID == 4
     end,
-    
-    --[[
-        Get collection status for a transmog source
-        @param sourceID number - Transmog source ID (not itemID!)
-        @return string - "KNOWN" or "UNKNOWN"
-    ]]
     GetStatus = function(sourceID)
         if not sourceID or not C_TransmogCollection then
             return "UNKNOWN"
@@ -92,12 +53,6 @@ CollectionRules.TRANSMOG = {
         
         return sourceInfo.isCollected and "KNOWN" or "UNKNOWN"
     end,
-    
-    --[[
-        Get character eligibility for a transmog source
-        @param sourceID number - Transmog source ID
-        @return table - {canUse: boolean, reason: string, isCollected: boolean}
-    ]]
     GetCharacterEligibility = function(sourceID)
         if not sourceID or not C_TransmogCollection then
             return {
@@ -142,14 +97,7 @@ CollectionRules.TRANSMOG = {
     end
 }
 
--- MOUNT RULES
-
 CollectionRules.MOUNT = {
-    --[[
-        Check if itemID is a mount
-        @param itemID number - Item ID to check
-        @return boolean - True if item teaches a mount
-    ]]
     CheckIfItemID = function(itemID)
         if not itemID or not C_MountJournal then
             return false
@@ -173,12 +121,6 @@ CollectionRules.MOUNT = {
         end
         return false
     end,
-    
-    --[[
-        Get collection status for a mount
-        @param mountID number - Mount ID
-        @return string - "KNOWN" or "UNKNOWN"
-    ]]
     GetStatus = function(mountID)
         if not mountID or not C_MountJournal then
             return "UNKNOWN"
@@ -191,12 +133,6 @@ CollectionRules.MOUNT = {
         end
         return isCollected and "KNOWN" or "UNKNOWN"
     end,
-    
-    --[[
-        Get character eligibility for a mount
-        @param mountID number - Mount ID
-        @return table - {canUse: boolean, reason: string, isCollected: boolean}
-    ]]
     GetCharacterEligibility = function(mountID)
         if not mountID or not C_MountJournal then
             return {
@@ -239,14 +175,7 @@ CollectionRules.MOUNT = {
     end
 }
 
--- PET RULES
-
 CollectionRules.PET = {
-    --[[
-        Check if itemID is a battle pet
-        @param itemID number - Item ID to check
-        @return boolean - True if item is a pet cage/item
-    ]]
     CheckIfItemID = function(itemID)
         if not itemID or not C_PetJournal then
             return false
@@ -256,12 +185,6 @@ CollectionRules.PET = {
         local _, _, _, _, _, _, _, _, _, _, _, classID = C_Item.GetItemInfo(itemID)
         return classID == 17
     end,
-    
-    --[[
-        Get collection status for a pet
-        @param speciesID number - Pet species ID
-        @return string - "KNOWN" or "UNKNOWN"
-    ]]
     GetStatus = function(speciesID)
         if not speciesID or not C_PetJournal then
             return "UNKNOWN"
@@ -270,12 +193,6 @@ CollectionRules.PET = {
         local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
         return (numOwned and numOwned > 0) and "KNOWN" or "UNKNOWN"
     end,
-    
-    --[[
-        Get character eligibility for a pet
-        @param speciesID number - Pet species ID
-        @return table - {canUse: boolean, reason: string, isCollected: boolean}
-    ]]
     GetCharacterEligibility = function(speciesID)
         if not speciesID or not C_PetJournal then
             return {canUse = true, reason = "", isCollected = false}
@@ -293,14 +210,7 @@ CollectionRules.PET = {
     end
 }
 
--- TOY RULES
-
 CollectionRules.TOY = {
-    --[[
-        Check if itemID is a toy
-        @param itemID number - Item ID to check
-        @return boolean - True if item is a toy
-    ]]
     CheckIfItemID = function(itemID)
         if not itemID or not C_ToyBox then
             return false
@@ -309,12 +219,6 @@ CollectionRules.TOY = {
         -- Direct API check
         return C_ToyBox.GetToyInfo(itemID) ~= nil
     end,
-    
-    --[[
-        Get collection status for a toy
-        @param itemID number - Toy item ID
-        @return string - "KNOWN" or "UNKNOWN"
-    ]]
     GetStatus = function(itemID)
         if not itemID then
             return "UNKNOWN"
@@ -323,12 +227,6 @@ CollectionRules.TOY = {
         local isCollected = PlayerHasToy(itemID)
         return isCollected and "KNOWN" or "UNKNOWN"
     end,
-    
-    --[[
-        Get character eligibility for a toy
-        @param itemID number - Toy item ID
-        @return table - {canUse: boolean, reason: string, isCollected: boolean}
-    ]]
     GetCharacterEligibility = function(itemID)
         if not itemID then
             return {canUse = true, reason = "", isCollected = false}
@@ -345,14 +243,7 @@ CollectionRules.TOY = {
     end
 }
 
--- ILLUSION RULES
-
 CollectionRules.ILLUSION = {
-    --[[
-        Check if itemID is an illusion
-        @param itemID number - Item ID to check
-        @return boolean - True if item provides an illusion
-    ]]
     CheckIfItemID = function(itemID)
         if not itemID or not C_TransmogCollection then
             return false
@@ -362,12 +253,6 @@ CollectionRules.ILLUSION = {
         -- This is a heuristic; better to use illusion ID directly
         return false -- Illusions use illusionID, not itemID
     end,
-    
-    --[[
-        Get collection status for an illusion
-        @param illusionID number - Illusion ID
-        @return string - "KNOWN" or "UNKNOWN"
-    ]]
     GetStatus = function(illusionID)
         if not illusionID or not C_TransmogCollection then
             return "UNKNOWN"
@@ -383,12 +268,6 @@ CollectionRules.ILLUSION = {
 
         return "UNKNOWN"
     end,
-    
-    --[[
-        Get character eligibility for an illusion
-        @param illusionID number - Illusion ID
-        @return table - {canUse: boolean, reason: string, isCollected: boolean}
-    ]]
     GetCharacterEligibility = function(illusionID)
         if not illusionID or not C_TransmogCollection then
             return {canUse = true, reason = "", isCollected = false}
@@ -412,23 +291,10 @@ CollectionRules.ILLUSION = {
     end
 }
 
--- ACHIEVEMENT RULES
-
 CollectionRules.ACHIEVEMENT = {
-    --[[
-        Check if itemID relates to an achievement
-        @param itemID number - Item ID to check
-        @return boolean - Always false (achievements don't have itemIDs)
-    ]]
     CheckIfItemID = function(itemID)
         return false -- Achievements use achievementID, not itemID
     end,
-    
-    --[[
-        Get collection status for an achievement
-        @param achievementID number - Achievement ID
-        @return string - "KNOWN" or "UNKNOWN"
-    ]]
     GetStatus = function(achievementID)
         if not achievementID then
             return "UNKNOWN"
@@ -437,12 +303,6 @@ CollectionRules.ACHIEVEMENT = {
         local _, _, _, completed = GetAchievementInfo(achievementID)
         return completed and "KNOWN" or "UNKNOWN"
     end,
-    
-    --[[
-        Get character eligibility for an achievement
-        @param achievementID number - Achievement ID
-        @return table - {canUse: boolean, reason: string, isCollected: boolean}
-    ]]
     GetCharacterEligibility = function(achievementID)
         if not achievementID then
             return {canUse = true, reason = "", isCollected = false}
@@ -459,23 +319,10 @@ CollectionRules.ACHIEVEMENT = {
     end
 }
 
--- TITLE RULES
-
 CollectionRules.TITLE = {
-    --[[
-        Check if itemID relates to a title
-        @param itemID number - Item ID to check
-        @return boolean - Always false (titles don't have itemIDs)
-    ]]
     CheckIfItemID = function(itemID)
         return false -- Titles use titleID, not itemID
     end,
-    
-    --[[
-        Get collection status for a title
-        @param titleID number - Title ID
-        @return string - "KNOWN" or "UNKNOWN"
-    ]]
     GetStatus = function(titleID)
         if not titleID then
             return "UNKNOWN"
@@ -484,12 +331,6 @@ CollectionRules.TITLE = {
         local isKnown = IsTitleKnown(titleID)
         return isKnown and "KNOWN" or "UNKNOWN"
     end,
-    
-    --[[
-        Get character eligibility for a title
-        @param titleID number - Title ID
-        @return table - {canUse: boolean, reason: string, isCollected: boolean}
-    ]]
     GetCharacterEligibility = function(titleID)
         if not titleID then
             return {canUse = true, reason = "", isCollected = false}
@@ -507,21 +348,9 @@ CollectionRules.TITLE = {
 }
 
 -- PUBLIC API
-
---[[
-    Get collection rule by type
-    @param collectionType string - Type of collection (e.g., "TRANSMOG", "MOUNT")
-    @return table|nil - Rule object or nil
-]]
 function WarbandNexus:GetCollectionRule(collectionType)
     return CollectionRules[collectionType]
 end
-
---[[
-    Check if item is part of any collection
-    @param itemID number - Item ID to check
-    @return string|nil - Collection type or nil
-]]
 function WarbandNexus:GetItemCollectionType(itemID)
     if not itemID then
         return nil
@@ -536,13 +365,6 @@ function WarbandNexus:GetItemCollectionType(itemID)
     
     return nil
 end
-
---[[
-    Get collection status for any collection type
-    @param collectionType string - Type of collection
-    @param id number - Collection ID (sourceID, mountID, speciesID, etc.)
-    @return string - "KNOWN" or "UNKNOWN"
-]]
 function WarbandNexus:GetCollectionStatus(collectionType, id)
     local rule = CollectionRules[collectionType]
     if not rule then
@@ -551,13 +373,6 @@ function WarbandNexus:GetCollectionStatus(collectionType, id)
     
     return rule.GetStatus(id)
 end
-
---[[
-    Get character eligibility for any collection type
-    @param collectionType string - Type of collection
-    @param id number - Collection ID
-    @return table - {canUse: boolean, reason: string, isCollected: boolean}
-]]
 function WarbandNexus:GetCollectionEligibility(collectionType, id)
     local rule = CollectionRules[collectionType]
     if not rule then
