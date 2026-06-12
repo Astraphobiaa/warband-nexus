@@ -10,11 +10,6 @@ local WarbandNexus = ns.WarbandNexus
 
 -- MONEY/GOLD UTILITIES
 
---[[
-    Format money as colored string with icons
-    @param amount number - Money in copper
-    @return string - Formatted string (e.g., "12g 34s 56c")
-]]
 function WarbandNexus:API_FormatMoney(amount)
     amount = tonumber(amount) or 0
     if amount < 0 then amount = 0 end
@@ -127,12 +122,6 @@ function WarbandNexus:API_GetMainWindowContentMinimums()
     return w, h
 end
 
---[[
-    Calculate optimal window dimensions based on screen size
-    @param contentMinWidth number - Minimum width required for content
-    @param contentMinHeight number - Minimum height required for content
-    @return number, number, number, number - Optimal width, height, max width, max height
-]]
 function WarbandNexus:API_CalculateOptimalWindowSize(contentMinWidth, contentMinHeight)
     local screen = self:API_GetScreenInfo()
     local mw = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_WINDOW) or {}
