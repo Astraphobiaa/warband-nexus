@@ -1,7 +1,7 @@
 --[[
     Warband Nexus - Try Counter process pipeline constants (ops-030 slice)
-    Classify-Lock-Process loot routing tables; encounter/loot handlers remain in
-    TryCounterService.lua IIFE (shared upvalues). Loaded after Events, before main.
+    Classify-Lock-Process loot routing tables. Encounter/loot/CHAT_MSG_LOOT handlers
+    in TryCounterService_Handlers.lua (ns.TryCounter.Runtime). Loaded after Events, before main.
 ]]
 
 local _, ns = ...

@@ -8,7 +8,7 @@ Target: Midnight 12.0.1 (`Interface: 120005`)
 
 After `/reload` on Midnight 12.0.x:
 
-1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua`, `TryCounterService_Events.lua`, and `TryCounterService_Process.lua` load before dependents (TOC order).
+1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua`, `TryCounterService_Events.lua`, `TryCounterService_Process.lua`, and `TryCounterService_Handlers.lua` load in TOC order (Handlers after main).
 2. **Pixel borders** — resize window / change UI scale; 1px chrome on main shell and pooled rows stays crisp (border registry refresh).
 3. **Try counter** — open loot on NPC; `/wn` debug trace still registers `LOOT_*` / `ENCOUNTER_*` when debug enabled.
 4. **Gear paperdoll** — swap gear on logged-in character; track-label skip-repaint path unchanged (no stale labels).
@@ -98,7 +98,7 @@ After `/reload` on Midnight 12.0.x:
 
 ### Service & domain monoliths
 
-- [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — Events → `TryCounterService_Events.lua`; classify/fishing constants → `TryCounterService_Process.lua`. Encounter/loot handler bodies remain in main IIFE (shared upvalues; full handler split blocked — see below).
+- [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — Events → `TryCounterService_Events.lua`; classify/fishing constants → `TryCounterService_Process.lua`. Encounter/loot/CHAT_MSG_LOOT handlers → `TryCounterService_Handlers.lua` via `ns.TryCounter.Runtime` + `TC.Fns` (loads after main).
 - [x] **ops-031** · P0 · `Modules/CollectionService.lua` — Bag-scan/event host → `CollectionService_Scan.lua` (`ns.CollectionScan`); notify dedup remains `CollectionService_NotifyDedup.lua`.
 - [x] **ops-032** · P1 · `Modules/GearService.lua` — **blocked** — storage-find engine shares `gearStorageFindingsCache`, `EvaluateItem`, and 40+ locals with upgrade-track/paperdoll paths in one chunk; extract risks load-order nil refs without full GearService refactor.
 - [x] **ops-033** · P1 · `Modules/TooltipService.lua` — GameTooltip hooks → `TooltipService_GameTooltip.lua` (`ns.TooltipGameTooltip`, `GT.Install` + owner `SetOwner` hook).
