@@ -859,6 +859,29 @@ function WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
 end
 
 local mainFrame = nil
+
+--- True when `owner` belongs to Warband Nexus UI (GameTooltip placement hook; View-layer only).
+function ns.IsWarbandNexusUIFrame(owner)
+    if not owner then return false end
+    local root = mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+    local cur = owner
+    for _ = 1, 20 do
+        if not cur then break end
+        if root and cur == root then return true end
+        local n = (type(cur.GetName) == "function") and cur:GetName() or nil
+        if n and type(n) == "string" and not (issecretvalue and issecretvalue(n))
+            and n:find("WarbandNexus", 1, true) then
+            return true
+        end
+        if type(cur.GetParent) == "function" then
+            cur = cur:GetParent()
+        else
+            break
+        end
+    end
+    return false
+end
+
 -- REMOVED: local currentTab - now using mainFrame.currentTab (fixes tab switching bug)
 local currentItemsSubTab = "inventory" -- Default: Bags (current character); Warband sub-tab shows account-wide tree (former Storage tab).
 local expandedGroups = {} -- Persisted expand/collapse state for item groups

@@ -1528,24 +1528,15 @@ function TooltipService:RegisterSafetyEvents()
     end
 
     local function IsWarbandNexusOwner(owner)
+        local isWNFrame = ns.IsWarbandNexusUIFrame
+        if type(isWNFrame) == "function" then
+            return isWNFrame(owner)
+        end
+        -- UI.lua not loaded yet: name-only fallback on owner (no View-layer frame refs).
         if not owner then return false end
-        local mainFrame = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        local cur = owner
-        for _ = 1, 20 do
-            if not cur then break end
-            if cur == mainFrame then return true end
-            if type(cur.GetParent) == "function" then
-                cur = cur:GetParent()
-            else
-                break
-            end
-        end
         local n = (type(owner.GetName) == "function") and owner:GetName() or nil
-        if n and type(n) == "string" and not (issecretvalue and issecretvalue(n))
-            and n:find("WarbandNexus", 1, true) then
-            return true
-        end
-        return false
+        return n and type(n) == "string" and not (issecretvalue and issecretvalue(n))
+            and n:find("WarbandNexus", 1, true) or false
     end
 
     local function OwnerHasScreenBounds(owner)
