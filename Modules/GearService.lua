@@ -1,45 +1,9 @@
 ﻿--[[
     Warband Nexus - Gear Service
-    Scans and persists equipped gear per character.
-    Provides upgrade analysis and cross-character storage upgrade finder.
+    Scans/persists equipped gear (db.global.gearData[charKey]); ilvl-based upgrade analysis and cross-character storage finder.
 
-    Data stored in db.global.gearData[charKey]:
-    {
-        version  = "1.0.0",
-        lastScan = timestamp,
-        slots    = {
-            [slotID] = {
-                itemID    = number,
-                itemLink  = string,   -- hyperlink with bonus IDs
-                itemLevel = number,
-                quality   = number,
-                equipLoc  = string,   -- e.g. "INVTYPE_HEAD"
-                name      = string,
-            }
-        }
-    }
-
-    Upgrade data is ilvl-based from persisted gear (no C_ItemUpgrade API); works offline.
-    Storage upgrade findings are cached per (character, equipped signature, inventory epoch);
-    see FindGearStorageUpgrades, GetGearStorageFindingsIfCached (UI fast path), and ns._gearStorageInvGen bumps
-    (real bag/bank/warband persistence edits in ItemsCacheService Save* paths; UI.lua CHARACTER_TRACKING_CHANGED;
-    logged-in player bags/bank in Find also read live C_Container so loot and unequip-to-bag surface before itemStorage save).
-    GET_ITEM_INFO when no cache to Invalidate). ITEM_METADATA_READY does not bump invGen (coalesced Invalidate on Gear).
-    GET_ITEM_INFO coalesced batches prefer InvalidateGearStorageFindingsCacheForCanon (gear tab) over a blind invGen bump so strict cache is not dirtied without a storage edit.
-    Post-yield redraw may use ns._gearStorageAllowEquipSigInvBypass (one frame) when invGen drifts
-    without a real bag change (see GearUI applyStorageScanUI). Find commits cache with invEpoch
-    refreshed to the current ns._gearStorageInvGen so item-info bumps during a yielded scan do not
-    force a second synchronous Find. ns._gearStorageYieldFindCanon marks an in-flight yielded scan.
-    Soft invalidate (InvalidateGearStorageFindingsCacheForCanon) bumps ns._gearStorageFindingsDirtyToken;
-    Find commit sets ns._gearStorageFindingsCleanToken so GearUI can coalesce duplicate FULLFIND in
-    the same GetTime() tick when dirty==clean, equipSig matches cache, and ns._gearStorageSameFrameFullFind matches.
-    While ns._gearStorageYieldCo runs, invalidate/equip events defer to ns._gearStorageDeferInvalidateCanon /
-    ns._gearStorageDeferEquipRefreshCanon and flush via OnGearStorageYieldedScanComplete (no mid-scan dirty abort).
-
-    0-crest (gold-only) detection: C_ItemUpgrade cost APIs only return real costs when the
-    Item Upgrade NPC window is open. We detect gold-only upgrades offline via persisted
-    watermarks (per-slot max ilvl this character has ever had). Upgrades to ilvl <= watermark
-    are treated as gold-only; no API cost query needed.
+    Storage-findings cache keys on equip signature + inventory epoch; yielded Find defers invalidation mid-scan.
+    Gold-only (0-crest) upgrades use per-slot ilvl watermarks when the upgrade NPC window is closed.
 
     WN_NONUI_UI: Transient DressUp/model preview frames constructed in this module are helpers only; Gear tab visuals live in Modules/UI/GearUI.lua.
 ]]
@@ -103,7 +67,6 @@ function WarbandNexus:SetGearStoragePanelDebug(enabled)
 end
 
 --- Verbose stash-rec panel logging (controlled by `SetGearStoragePanelDebug`). Trace only.
----@param msg string|any
 function WarbandNexus:GearStoragePanelDebug(msg)
     if not ns.WN_GEAR_STORAGE_PANEL_DEBUG then return end
     local P = ns.Profiler
@@ -113,8 +76,6 @@ function WarbandNexus:GearStoragePanelDebug(msg)
 end
 
 --- Always visible (not gated by debugMode): coroutine / storage pipeline failures.
----@param err any
----@param context string|nil
 function WarbandNexus:ReportGearStorageError(err, context)
     local ctx = (context and context ~= "") and context or "error"
     local msg = "Gear storage " .. ctx .. ": " .. tostring(err)
@@ -128,8 +89,6 @@ function WarbandNexus:ReportGearStorageError(err, context)
     end
 end
 
----@param canonKey string|nil
----@return boolean
 function WarbandNexus:IsGearStorageScanInFlightForCanon(canonKey)
     if not canonKey or not ns._gearStorageYieldCo then return false end
     local flightCanon = ns._gearStorageYieldFindCanon
@@ -143,7 +102,6 @@ function WarbandNexus:IsGearStorageScanInFlightForCanon(canonKey)
 end
 
 --- Equip-only: refresh cache equipSig; never invalidate mid-yielded-scan (avoids dirty mid-scan commit drop).
----@param canonKey string|nil
 function WarbandNexus:NotifyGearStorageEquipChanged(canonKey)
     if not canonKey then return end
     if WarbandNexus.IsGearStorageRecommendationsEnabled
@@ -161,8 +119,6 @@ function WarbandNexus:NotifyGearStorageEquipChanged(canonKey)
 end
 
 --- Bag / item-info invalidation: defer while yielded Find runs for the same character.
----@param canonKey string|nil
----@return string|nil "rescan" when a follow-up yielded find was scheduled; nil otherwise
 function WarbandNexus:ProcessDeferredGearStorageUpdates(canonKey)
     if not canonKey then return nil end
     local U = ns.Utilities
@@ -205,9 +161,6 @@ function WarbandNexus:ProcessDeferredGearStorageUpdates(canonKey)
 end
 
 --- After yielded Find completes: apply deferred equip/inventory work, optionally chain one rescan.
----@param canonKey string
----@param paintGen number
----@param afterFn function|nil
 function WarbandNexus:OnGearStorageYieldedScanComplete(canonKey, paintGen, afterFn)
     local action = self:ProcessDeferredGearStorageUpdates(canonKey)
     local function runTail()
@@ -283,8 +236,6 @@ end
 --- crafting quality; C_TradeSkillUI.GetItemCraftedQualityByItemInfo returns it (else nil).
 --- The tooltip-line scan alone missed crafted gear whenever the Upgrade Level line did
 --- not parse — those slots then showed dropped-track Hero/Myth upgrade suggestions.
----@param link string|nil
----@return boolean|nil isCrafted nil = undeterminable (no API / secret link)
 local function GearLinkIsCrafted(link)
     if not link or link == "" then return nil end
     if issecretvalue and issecretvalue(link) then return nil end
@@ -455,10 +406,6 @@ end
 --- Expected primary stat for the *selected* character in Gear storage scan.
 --- Uses SPEC_MAIN_STAT: live specialization when the selected row is the logged-in player (accurate respec),
 --- otherwise saved charData.specID (with index→global ID resolution) or first spec for the class.
----@param charData table|nil db.global.characters[key]
----@param selectedIsLoggedInPlayer boolean
----@return string|nil "STR"|"AGI"|"INT"
----@return string source debug label
 local function ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLoggedInPlayer)
     if selectedIsLoggedInPlayer and GetSpecialization and GetSpecializationInfo then
         local specIndex = GetSpecialization()
@@ -521,9 +468,6 @@ local function TableHasPrimaryStats(statTable)
 end
 
 --- Tooltip line mentions a localized primary stat (not Requires/Use meta).
----@param lineText string
----@param statLabel string
----@return boolean
 local function TooltipLineMentionsPrimaryStat(lineText, statLabel)
     if not lineText or statLabel == "" then return false end
     if issecretvalue and issecretvalue(lineText) then return false end
@@ -536,11 +480,6 @@ end
 
 --- Fallback when C_Item.GetItemStats / GetItemStats has no primary keys (cold SV links).
 --- Wiki: https://warcraft.wiki.gg/wiki/API_C_TooltipInfo.GetHyperlink
----@param itemLink string|nil
----@param itemID number|nil
----@return boolean hasStr
----@return boolean hasAgi
----@return boolean hasInt
 local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
     if not C_TooltipInfo then return false, false, false end
     local cacheKey = itemLink
@@ -604,11 +543,6 @@ local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
 end
 
 --- C_Item.GetItemStats first; tooltip probe when stat table is missing or has no primary keys.
----@param itemLink string|nil
----@param itemID number|nil
----@return boolean hasStr
----@return boolean hasAgi
----@return boolean hasInt
 local function ResolveItemPrimaryStatFlags(itemLink, itemID)
     local statTable = GetItemStatTableForLink(itemLink)
     if statTable then
@@ -622,9 +556,6 @@ end
 
 --- Match item primary stats to expectedMainStat for storage-upgrade filtering.
 --- Wiki: API_C_Item.GetItemStats, API_C_TooltipInfo.GetHyperlink (see WN-VERSION-wiki-browser.mdc).
----@param expectedMainStat string|nil "STR"|"AGI"|"INT"
----@param selectedIsLoggedInPlayer boolean|nil
----@param itemID number|nil optional for tooltip fallback
 local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, slotID, selectedIsLoggedInPlayer, itemID)
     if selectedIsLoggedInPlayer == nil then
         selectedIsLoggedInPlayer = true
