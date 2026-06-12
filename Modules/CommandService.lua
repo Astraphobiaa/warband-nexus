@@ -801,9 +801,9 @@ function CommandService:HandleDebugToggle(addon)
         ns.Profiler:SyncWithDebugMode()
     end
 
-    local mf = addon.mainFrame
-    if mf and mf.SyncMainHeaderDebugReloadLayout then
-        mf:SyncMainHeaderDebugReloadLayout()
+    local ev = ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.UI_DEBUG_HEADER_SYNC
+    if ev and addon.SendMessage then
+        addon:SendMessage(ev)
     end
 end
 
@@ -839,8 +839,8 @@ function CommandService:HandleDebugOff(addon)
     if ns.Profiler and ns.Profiler.SyncWithDebugMode then
         ns.Profiler:SyncWithDebugMode()
     end
-    local mf = addon.mainFrame
-    if mf and mf.SyncMainHeaderDebugReloadLayout then
-        mf:SyncMainHeaderDebugReloadLayout()
+    local ev = ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.UI_DEBUG_HEADER_SYNC
+    if ev and addon.SendMessage then
+        addon:SendMessage(ev)
     end
 end
