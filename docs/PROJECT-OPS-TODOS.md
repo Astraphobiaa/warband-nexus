@@ -166,3 +166,13 @@ After `/reload` on Midnight 12.0.x:
 ---
 
 *All ops IDs tracked in this backlog are complete or explicitly blocked with reason. Update only when new work is scoped.*
+
+---
+
+## Commit message policy
+
+- Use human-authored messages only: imperative summary, optional body for why.
+- Do **not** add Co-authored-by, tool names, or vendor emails (Cursor, Claude, cursoragent@cursor.com, etc.).
+- GitHub squash-merge PRs: edit the final squash message before merge; strip any trailer lines Cursor may append.
+- Rewriting **merged** main history requires an explicit maintainer decision (not default).
+
