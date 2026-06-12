@@ -505,12 +505,24 @@ function WarbandNexus:CleanupOrphanedData()
     local removed = 0
     local CS = ns.CharacterService
 
+    -- SAFETY: if the roster looks empty/not-yet-loaded, every subsidiary bucket would
+    -- be classified as orphaned and deleted — exactly the "all my other characters'
+    -- data is wiped between sessions" failure mode. Never purge against an empty roster.
+    local chars = self.db.global.characters
+    if type(chars) ~= "table" or next(chars) == nil then
+        return 0
+    end
+
+    -- Subsidiary tables may carry NON-character keys that must never be purged
+    -- (itemStorage.warbandBank is the account-wide bank bucket).
+    local PROTECTED_KEYS = { warbandBank = true }
+
     local function keyStillOwned(charKey)
+        if PROTECTED_KEYS[charKey] then return true end
         if CS and CS.CharacterOwnsSubsidiaryKey then
             return CS:CharacterOwnsSubsidiaryKey(self, charKey)
         end
-        local characters = self.db.global.characters or {}
-        return characters[charKey] ~= nil
+        return chars[charKey] ~= nil
     end
 
     local function purgeOrphans(tbl)
