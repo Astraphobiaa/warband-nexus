@@ -382,20 +382,7 @@ function WarbandNexus:GetCollectionEligibility(collectionType, id)
     return rule.GetCharacterEligibility(id)
 end
 
--- UNOBTAINABLE FILTERS (API-only — Pure API approach, no keyword/blocklist logic)
---[[
-    "Unobtainable" / "hidden" determination is delegated to the WoW API:
-      - Mount: shouldHideOnChar unless isFactionSpecific (cross-faction catalog stays visible)
-      - Pet:   obtainable (11th return of C_PetJournal.GetPetInfoBySpeciesID)
-      - Toy:   C_ToyBox.GetToyInfo() returning nil for hidden/internal entries
-      - Mount/Pet/Toy category: journal source filter index (SetSourceFilter sweep when API sourceType is 0)
-
-    The IsUnobtainable* methods below are kept as no-op stubs so external callers
-    that still reference UnobtainableFilters do not break, but they always return
-    false (i.e. nothing is filtered out by name/keyword heuristics anymore).
-    Filtering happens in CollectionService.COLLECTION_CONFIGS via the API checks
-    listed above.
-]]
+-- UnobtainableFilters: no-op stubs; filtering uses journal APIs in CollectionService.
 
 CollectionRules.UnobtainableFilters = {}
 
@@ -415,15 +402,10 @@ function CollectionRules.UnobtainableFilters:IsUnobtainableIllusion(_)
     return false
 end
 
--- EXPORT TO NAMESPACE
-
 ns.CollectionRules = CollectionRules
 
 -- Backwards compatibility: Keep WarbandNexus.UnobtainableFilters reference
 if WarbandNexus then
     WarbandNexus.UnobtainableFilters = CollectionRules.UnobtainableFilters
 end
-
--- Load message
--- Module loaded - verbose logging removed
 
