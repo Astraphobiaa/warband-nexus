@@ -1,25 +1,8 @@
 --[[
-    WarbandNexus - Initialization Service
-    Manages addon module initialization with proper sequencing
-    
-    Responsibilities:
-    - Coordinate module startup sequence
-    - Manage initialization timings (prevent addon load lag)
-    - Handle dependencies between modules
-    - Centralize all C_Timer.After() calls
+    Warband Nexus - Initialization Service
+    Coordinates deferred module startup (C_Timer staging) and combat-safe init deferral.
 
-    Data rule (SOA): writers persist to AceDB (services); UI reads DB + messages — no duplicate API in consumers.
-
-    Load pipeline (first session hitch):
-    - Core OnInitialize: AceDB, CheckVersions, RunMigrations (same frame); SessionCache decompress is deferred
-      one tick (see Core.lua) so deflate/deserialize does not stack with migrations on ADDON_LOADED.
-    - Core OnEnable: registers events, then InitializeAllModules (this file) which spreads cache/UI work
-      across T+0.3s … T+8s (see stage comments below). P0 DailyQuest + CollectionCache share the Stage1 T+0.5s tick with EventManager.
-    - PLAYER_ENTERING_WORLD payload (Warcraft Wiki): login, /reload, or instance zoning; Patch 8.0.1 adds
-      isInitialLogin and isReloadingUi (AceEvent: event, isInitialLogin, isReloadingUi). Cold prefetch runs only
-      when either flag is true (login/reload), not on zoning-only transitions.
-
-    WN_NONUI_UI: `combatSafetyFrame` bootstrap uses a hidden CreateFrame shell (see SetupCombatSafety) — not addon tab UI.
+    WN_NONUI_UI: `combatSafetyFrame` bootstrap uses a hidden CreateFrame shell (SetupCombatSafety) — not addon tab UI.
 ]]
 
 local ADDON_NAME, ns = ...
