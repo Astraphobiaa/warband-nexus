@@ -929,7 +929,7 @@ function M.CreateModelViewer(parent, width, height)
     local obtainedAtLine = FontManager:CreateFontString(textOverlay, "small", "OVERLAY")
     obtainedAtLine:SetJustifyH("LEFT")
     obtainedAtLine:SetWordWrap(true)
-    obtainedAtLine:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(obtainedAtLine, "Bright")
     obtainedAtLine:Hide()
     panel.obtainedAtLine = obtainedAtLine
 
@@ -1909,7 +1909,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
                 obtFs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)
                 obtFs:SetJustifyH("LEFT")
                 obtFs:SetWordWrap(true)
-                obtFs:SetTextColor(1, 1, 1, 1)
+                ns.UI_SetTextColorRole(obtFs, "Bright")
                 obtFs:SetText(obtStr)
                 addDetailElement(obtFs)
                 lastAnchor = obtFs
@@ -2153,7 +2153,7 @@ function M.CreateSubTabBar(parent, onTabSelect)
                     ApplyVisuals(btn, {acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1}, {acc[1], acc[2], acc[3], 1})
                 end
                 if btn._text then
-                    btn._text:SetTextColor(1, 1, 1)
+                    ns.UI_SetTextColorRole(btn._text, "Bright")
                     local font, size = btn._text:GetFont()
                     if font and size then btn._text:SetFont(font, size, "OUTLINE") end
                 end
@@ -2166,7 +2166,7 @@ function M.CreateSubTabBar(parent, onTabSelect)
                     ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1})
                 end
                 if btn._text then
-                    btn._text:SetTextColor(0.7, 0.7, 0.7)
+                    ns.UI_SetTextColorRole(btn._text, "Muted")
                     local font, size = btn._text:GetFont()
                     if font and size then btn._text:SetFont(font, size, "") end
                 end
@@ -2759,7 +2759,7 @@ function M.ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
         hdr._subtitle:SetWordWrap(false)
         hdr._subtitle:SetNonSpaceWrap(false)
         hdr._subtitle:SetMaxLines(1)
-        hdr._subtitle:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(hdr._subtitle, "Bright")
         M.state._collectionsContentSubHeader = hdr
     end
     hdr:SetParent(contentFrame)

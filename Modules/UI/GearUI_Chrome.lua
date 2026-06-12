@@ -111,7 +111,7 @@ function Chrome.CreateSectionHeader(parent, titleText, accent, opts)
         if tc then
             fs:SetTextColor(tc[1], tc[2], tc[3])
         else
-            fs:SetTextColor(0.93, 0.93, 0.96)
+            ns.UI_SetTextColorRole(fs, "Bright")
         end
         fs:SetText(titleText or "")
     end
@@ -187,7 +187,7 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
     if realmFs then
         realmFs:SetPoint("TOPLEFT", nameFs, "BOTTOMLEFT", 0, -2)
         realmFs:SetJustifyH("LEFT")
-        realmFs:SetTextColor(0.62, 0.64, 0.70)
+        ns.UI_SetTextColorRole(realmFs, "Muted")
         realmFs:SetText(realm ~= "" and realm or "")
     end
 

@@ -34,7 +34,7 @@ function M.CreateMenuCheckbox(parent, labelText, y, getValue, setValue, tooltipT
     end
     label:SetPoint("LEFT", cb, "RIGHT", (ns.UI_SPACING and ns.UI_SPACING.AFTER_ELEMENT) or 6, 0)
     label:SetText(labelText)
-    label:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(label, "Bright")
     label:SetJustifyH("LEFT")
 
     if tooltipText and tooltipText ~= "" then
@@ -121,7 +121,7 @@ function M.BuildOptionsFrame()
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     title:SetText("Vault Tracker")
-    title:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(title, "Bright")
     f.title = title
 
     local close = VF:CreateButton(chrome, 28, 28, true)

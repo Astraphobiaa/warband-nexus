@@ -179,7 +179,7 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
     local filterLabel = FontManager:CreateFontString(root, "small", "OVERLAY")
     filterLabel:SetPoint("TOPLEFT", root, "TOPLEFT", 8, -6)
     filterLabel:SetText((L and L["CUSTOM_HEADER_PICKER_FILTER_LABEL"]) or "Search")
-    filterLabel:SetTextColor(0.65, 0.68, 0.74)
+    ns.UI_SetTextColorRole(filterLabel, "Muted")
 
     local filterBg = Factory:CreateContainer(root, 100, filterAreaH - 6, true)
     filterBg:SetPoint("TOPLEFT", filterLabel, "BOTTOMLEFT", 0, -4)
@@ -325,7 +325,7 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
             fs:SetPoint("LEFT", padL, 0)
             fs:SetPoint("RIGHT", wrap, "RIGHT", -10, 0)
             fs:SetJustifyH("LEFT")
-            fs:SetTextColor(0.45, 0.45, 0.48)
+            ns.UI_SetTextColorRole(fs, "Dim")
             fs:SetText(text)
             y = y + h + 4
         end
@@ -340,19 +340,19 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
             c1:SetPoint("LEFT", hf, "LEFT", nameL, 0)
             c1:SetWidth(nameW)
             c1:SetJustifyH("LEFT")
-            c1:SetTextColor(0.52, 0.55, 0.6)
+            ns.UI_SetTextColorRole(c1, "Dim")
             c1:SetText((L and L["CUSTOM_HEADER_COL_CHARACTER"]) or "Character")
             local c2 = FontManager:CreateFontString(hf, "small", "OVERLAY")
             c2:SetPoint("LEFT", hf, "LEFT", lvX, 0)
             c2:SetWidth(LVL_COL_W)
             c2:SetJustifyH("CENTER")
-            c2:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(c2, "Bright")
             c2:SetText((L and L["CUSTOM_HEADER_COL_LEVEL"]) or "Level")
             local c3 = FontManager:CreateFontString(hf, "small", "OVERLAY")
             c3:SetPoint("LEFT", hf, "LEFT", realmX, 0)
             c3:SetWidth(math.max(48, contentRight - realmX))
             c3:SetJustifyH("LEFT")
-            c3:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(c3, "Bright")
             c3:SetText((L and L["CUSTOM_HEADER_COL_REALM"]) or "Realm")
             y = y + hdrH + 4
         end

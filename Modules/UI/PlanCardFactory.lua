@@ -1605,7 +1605,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     anchorBodyTop(requirementsHeader, lastTextElement)
     requirementsHeader:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
     requirementsHeader:SetJustifyH("LEFT")
-    requirementsHeader:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(requirementsHeader, "Bright")
     card.requirementsHeader = requirementsHeader
     
     -- Create expandable content
@@ -2209,7 +2209,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
             checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
             local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
             label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
-            label:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(label, "Bright")
             local progressText = format("%d / %d", slotProgress, threshold)
             label:SetText(FormatTextNumbers(progressText))
         end
@@ -2716,7 +2716,7 @@ function PlanCardFactory.CreateAddButton(parent, options)
             btnText:SetPoint("CENTER")
         end
         btnText:SetText(label)
-        btnText:SetTextColor(0.92, 0.94, 0.98, 1)
+        ns.UI_SetTextColorRole(btnText, "Bright")
         if btnText.EnableMouse then
             btnText:EnableMouse(false)
         end

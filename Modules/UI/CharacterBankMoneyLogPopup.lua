@@ -251,7 +251,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         local lbl = FontManager:CreateFontString(btn, "body", "OVERLAY")
         lbl:SetPoint("CENTER")
         lbl:SetText(def.label)
-        lbl:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(lbl, "Bright")
         lbl:SetJustifyH("CENTER")
         lbl:SetWordWrap(false)
         tabButtons[idx] = btn
@@ -351,7 +351,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local resetLabel = FontManager:CreateFontString(resetBtn, "body", "OVERLAY")
     resetLabel:SetPoint("CENTER")
     resetLabel:SetText((ns.L and ns.L["MONEY_LOGS_RESET"]) or "Reset")
-    resetLabel:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(resetLabel, "Bright")
 
     local function populateLogScroll(filter)
         local kids = { logScrollChild:GetChildren() }
@@ -364,7 +364,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             local emptyText = FontManager:CreateFontString(logScrollChild, "body", "OVERLAY")
             emptyText:SetPoint("TOPLEFT", ROW_INDENT, -10)
             emptyText:SetText((ns.L and ns.L["MONEY_LOGS_EMPTY"]) or "No money transactions recorded yet.")
-            emptyText:SetTextColor(0.7, 0.7, 0.7, 1)
+            ns.UI_SetTextColorRole(emptyText, "Muted")
             logScrollChild:SetHeight(rowHeight + 8)
             return
         end
@@ -408,7 +408,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             toFromText:SetWidth(LOG_COL_TOFROM - 4)
             toFromText:SetWordWrap(false)
             toFromText:SetText(GetToFromText(entry.type))
-            toFromText:SetTextColor(0.8, 0.8, 0.85, 1)
+            ns.UI_SetTextColorRole(toFromText, "Normal")
             lx = lx + LOG_COL_TOFROM + LOG_COL_GAP
 
             -- Amount as G/S/C (same alignment as Contributions)
@@ -421,7 +421,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
                 t:SetWidth(amountWidths[j])
                 t:SetJustifyH("RIGHT")
                 t:SetText(amountParts[j] or "")
-                t:SetTextColor(1, 1, 1, 1)
+                ns.UI_SetTextColorRole(t, "Bright")
                 lx = lx + amountWidths[j]
             end
 
@@ -495,7 +495,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             local emptyText = FontManager:CreateFontString(contribScrollChild, "body", "OVERLAY")
             emptyText:SetPoint("TOPLEFT", ROW_INDENT, -10)
             emptyText:SetText((ns.L and ns.L["MONEY_LOGS_EMPTY"]) or "No money transactions recorded yet.")
-            emptyText:SetTextColor(0.7, 0.7, 0.7, 1)
+            ns.UI_SetTextColorRole(emptyText, "Muted")
             contribScrollChild:SetHeight(rowHeight + 8)
             return
         end

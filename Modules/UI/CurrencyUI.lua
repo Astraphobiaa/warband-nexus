@@ -264,7 +264,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     local displayName = currency.name or ((ns.L and ns.L["CURRENCY_UNKNOWN"]) or "Unknown Currency")
     row.nameText:SetText(displayName)
     if hasQuantity then
-        row.nameText:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(row.nameText, "Bright")
     else
         row.nameText:SetTextColor(1, 1, 1, zeroAlpha)
     end
@@ -273,7 +273,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     if showBadge then
         row.badgeText:SetText(currency.characterName)
         if hasQuantity then
-            row.badgeText:SetTextColor(1, 1, 1, 1)
+            ns.UI_SetTextColorRole(row.badgeText, "Bright")
         else
             row.badgeText:SetTextColor(1, 1, 1, zeroAlpha)
         end
@@ -310,7 +310,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     end
     -- Season/cap lines embed |cff colors; do not dim with SetTextColor or capped red (e.g. 0 / 600) washes out.
     if usedSeasonProgressLine or hasQuantity then
-        row.amountText:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(row.amountText, "Bright")
     else
         row.amountText:SetTextColor(1, 1, 1, zeroAlpha)
     end

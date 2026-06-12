@@ -229,7 +229,7 @@ function M.BuildTableFrame()
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     title:SetText("Vault Tracker")
-    title:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(title, "Bright")
     S.title = title
 
     -- Close button (atlas style, matches main window)
@@ -400,7 +400,7 @@ local RefreshTable = function()
         content:SetSize(tableW - FRAME_PAD*2, 40)
         local msg = VBFontString(content, "body")
         msg:SetPoint("CENTER", content, "CENTER")
-        msg:SetTextColor(0.5, 0.5, 0.5)
+        ns.UI_SetTextColorRole(msg, "Dim")
         msg:SetText("No vault activity this week.")
         S.tableFrame:Show()
         VBSyncVaultTableScrollBar(list, content, 40)

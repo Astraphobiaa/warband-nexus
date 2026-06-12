@@ -261,7 +261,7 @@ function M.BuildSavedInstancesFrame()
     end
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     title:SetText((ns.L and ns.L["SAVED_INSTANCES_TITLE"]) or "Saved Instances")
-    title:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(title, "Bright")
 
     local close = VF:CreateButton(chrome, 28, 28, true)
     close:SetPoint("RIGHT", -8, 0)
@@ -341,7 +341,7 @@ function M.BuildSavedInstancesFrame()
         summary = VBFontString(filterRow, "small")
     end
     summary:SetPoint("RIGHT", filterRow, "RIGHT", -lay.pad, 0)
-    summary:SetTextColor(0.75, 0.75, 0.8)
+    ns.UI_SetTextColorRole(summary, "Muted")
     f.summary = summary
 
     -- Scroll body — same anchors as Vault Tracker table (symmetric FRAME_PAD; bar inside scroll frame).
@@ -502,7 +502,7 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
     resetFS:SetPoint("RIGHT", row, "RIGHT", -PAD, 0)
     resetFS:SetWidth(RESET_W)
     resetFS:SetJustifyH("RIGHT")
-    resetFS:SetTextColor(0.55, 0.55, 0.6)
+    ns.UI_SetTextColorRole(resetFS, "Dim")
     if char.reset and char.reset > 0 then
         local hours = math.floor(char.reset / 3600)
         local days = math.floor(hours / 24)

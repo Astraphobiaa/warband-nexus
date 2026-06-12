@@ -148,7 +148,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
             -- ilvl label (only when slot has an item link and valid ilvl)
             if btn.ilvlLabel and data.itemLink and data.itemLevel and data.itemLevel > 0 then
                 btn.ilvlLabel:SetText(tostring(math.floor(tonumber(data.itemLevel) or 0)))
-                btn.ilvlLabel:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(btn.ilvlLabel, "Bright")
                 btn.ilvlLabel:SetShadowOffset(1, -1)
                 btn.ilvlLabel:SetShadowColor(0, 0, 0, 1)
                 btn.ilvlLabel:Show()

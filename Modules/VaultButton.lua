@@ -183,7 +183,7 @@ function M.CreateMenuItem(parent, opts, y)
     end
     label:SetPoint("LEFT", 32, 0)
     label:SetText(opts.label)
-    label:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(label, "Bright")
 
     -- Left-click indicator (larger than legacy GameFont "*" glyph)
     local STAR_SIZE = 18
@@ -329,7 +329,7 @@ function M.BuildMenu()
     end
     titleFS:SetPoint("LEFT", headerIcon, "RIGHT", 6, 0)
     titleFS:SetText((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access")
-    titleFS:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(titleFS, "Bright")
 
     f.eaSummaryPanel = nil
     f.eaSummarySep = nil
@@ -555,7 +555,7 @@ function M.BuildButton()
     badge:SetPoint("CENTER", badgeBg, "CENTER", 0, 0)
     badge:SetJustifyH("CENTER")
     badge:SetJustifyV("MIDDLE")
-    badge:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(badge, "Bright")
     badge:Hide()
     S.badge = badge
 

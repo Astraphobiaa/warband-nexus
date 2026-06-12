@@ -280,11 +280,11 @@ local function SetCheckboxDisabled(checkbox, label, disabled)
     if disabled then
         checkbox:Disable()
         checkbox:SetAlpha(0.35)
-        label:SetTextColor(0.4, 0.4, 0.4, 0.6)
+        ns.UI_SetTextColorRole(label, "Dim", 0.6)
     else
         checkbox:Enable()
         checkbox:SetAlpha(1.0)
-        label:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(label, "Bright")
     end
 end
 
@@ -373,7 +373,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
         local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
         label:SetJustifyH("LEFT")
         label:SetText(option.label)
-        label:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(label, "Bright")
         label:SetPoint("TOPLEFT", checkbox, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
         -- Constrain label width (reserve nested indent so text stays inside the card)
         local toggleW = (ns.UI_TOGGLE_SIZE or 16)
@@ -594,7 +594,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
             if ApplyVisuals then
                 ApplyVisuals(button, {0.12, 0.12, 0.14, 1}, {btnColor[1], btnColor[2], btnColor[3], 1})
             end
-            buttonText:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(buttonText, "Bright")
             
             if btnData.tooltip then
                 Settings_ShowWrappedTooltip(self, btnData.tooltip)
@@ -698,7 +698,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
     label:SetWordWrap(true)
     local optionName = type(option.name) == "function" and option.name() or option.name
     label:SetText(optionName)
-    label:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(label, "Bright")
 
     -- Dropdown button
     local dropdown = ns.UI.Factory:CreateButton(parent)
@@ -742,7 +742,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
     valueText:SetPoint("LEFT", 12, 0)
     valueText:SetPoint("RIGHT", -32, 0)
     valueText:SetJustifyH("LEFT")
-    valueText:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(valueText, "Bright")
     if valueText.EnableMouse then valueText:EnableMouse(false) end
     
     -- Arrow icon
@@ -921,7 +921,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
             if isCurrent then
                 btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             else
-                btnText:SetTextColor(0.9, 0.9, 0.9)
+                ns.UI_SetTextColorRole(btnText, "Bright")
             end
             
             -- Hover
@@ -1039,7 +1039,7 @@ local function CreateInputWidget(parent, option, yOffset)
     label:SetPoint("TOPLEFT", 0, yOffset)
     local optionName = type(option.name) == "function" and option.name() or option.name
     label:SetText(optionName)
-    label:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(label, "Bright")
 
     -- Tooltip on label
     if option.desc then
@@ -1104,7 +1104,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     -- Label with value
     local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
     label:SetPoint("TOPLEFT", 0, yOffset)
-    label:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(label, "Bright")
     
     local optionName = type(option.name) == "function" and option.name() or option.name
     local function UpdateLabel()
@@ -1486,7 +1486,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         langLabel:SetWordWrap(true)
         local currentLangLabel = (ns.L and ns.L["CURRENT_LANGUAGE"]) or "Current Language:"
         langLabel:SetText(currentLangLabel .. " " .. (GetLocale() or "enUS"))
-        langLabel:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(langLabel, "Bright")
 
         langLabel:SetScript("OnEnter", function(self)
             local langTooltip = (ns.L and ns.L["LANGUAGE_TOOLTIP"]) or "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
@@ -1505,7 +1505,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         keybindLabel:SetJustifyH("LEFT")
         keybindLabel:SetWordWrap(false)
         keybindLabel:SetText(keybindTitle .. ":")
-        keybindLabel:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(keybindLabel, "Bright")
 
         local keybindBtn = ns.UI.Factory:CreateButton(inner, 168, SETTINGS_BTN_H, false)
         settingsKeybindButton = keybindBtn
@@ -1517,7 +1517,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local keybindBtnText = FontManager:CreateFontString(keybindBtn, "body", "OVERLAY")
     keybindBtnText:SetPoint("CENTER")
     keybindBtnText:SetText(SettingsKeybind.GetToggleBindingDisplayText())
-    keybindBtnText:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(keybindBtnText, "Bright")
 
     local isListening = false
     local captureFrame = settingsKeybindCaptureFrame
@@ -1544,7 +1544,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             captureFrame:Hide()
         end
         keybindBtnText:SetText(SettingsKeybind.GetToggleBindingDisplayText())
-        keybindBtnText:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(keybindBtnText, "Bright")
         if ApplyVisuals then
             ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
         end
@@ -2536,7 +2536,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                     if isEnabled then
                         dep.widget:SetTextColor(dep.color[1], dep.color[2], dep.color[3], dep.color[4] or 1)
                     else
-                        dep.widget:SetTextColor(0.4, 0.4, 0.4, 0.6)
+                        ns.UI_SetTextColorRole(dep.widget, "Dim", 0.6)
                     end
                 end
             end
@@ -2701,13 +2701,13 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         title:SetPoint("TOPRIGHT", -14, cy)
         title:SetJustifyH("LEFT")
         title:SetText((ns.L and ns.L["SETTINGS_NOTIF_COORD_TITLE"]) or "Notification position (pixels)")
-        title:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(title, "Bright")
         cy = cy - math.max(22, title:GetStringHeight()) - 10
 
         local anchLbl = FontManager:CreateFontString(dlg, "body", "OVERLAY")
         anchLbl:SetPoint("TOPLEFT", 14, cy)
         anchLbl:SetText((ns.L and ns.L["SETTINGS_NOTIF_COORD_ANCHOR"]) or "Anchor")
-        anchLbl:SetTextColor(0.85, 0.85, 0.85, 1)
+        ns.UI_SetTextColorRole(anchLbl, "Normal")
 
         dlg.selectedAnchor = "TOP"
         local anchorBtns = {}
@@ -2732,7 +2732,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             local abText = ab:GetFontString() or FontManager:CreateFontString(ab, "body", "OVERLAY")
             abText:SetPoint("CENTER")
             abText:SetText(ap)
-            abText:SetTextColor(1, 1, 1, 1)
+            ns.UI_SetTextColorRole(abText, "Bright")
             ab:SetFontString(abText)
             ApplySettingsAccentChromeIdle(ab)
             WireSettingsAccentButtonHover(ab)
@@ -2744,7 +2744,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local xLbl = FontManager:CreateFontString(dlg, "body", "OVERLAY")
         xLbl:SetPoint("TOPLEFT", 14, cy)
         xLbl:SetText((ns.L and ns.L["SETTINGS_NOTIF_COORD_X"]) or "X offset")
-        xLbl:SetTextColor(0.85, 0.85, 0.85, 1)
+        ns.UI_SetTextColorRole(xLbl, "Normal")
         local xBox = ns.UI.Factory:CreateEditBox(dlg)
         xBox:SetSize(160, 28)
         xBox:SetPoint("TOPLEFT", dlg, "TOPLEFT", 140, cy - 2)
@@ -2757,7 +2757,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local yLbl = FontManager:CreateFontString(dlg, "body", "OVERLAY")
         yLbl:SetPoint("TOPLEFT", 14, cy)
         yLbl:SetText((ns.L and ns.L["SETTINGS_NOTIF_COORD_Y"]) or "Y offset")
-        yLbl:SetTextColor(0.85, 0.85, 0.85, 1)
+        ns.UI_SetTextColorRole(yLbl, "Normal")
         local yBox = ns.UI.Factory:CreateEditBox(dlg)
         yBox:SetSize(160, 28)
         yBox:SetPoint("TOPLEFT", dlg, "TOPLEFT", 140, cy - 2)
@@ -2860,7 +2860,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local useAlertFrameLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     useAlertFrameLabel:SetJustifyH("LEFT")
     useAlertFrameLabel:SetText((ns.L and ns.L["USE_ALERTFRAME_POSITION"]) or "Use AlertFrame position")
-    useAlertFrameLabel:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(useAlertFrameLabel, "Bright")
     useAlertFrameLabel:SetPoint("LEFT", useAlertFrameCheck, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
     useAlertFrameCheck:SetChecked(WarbandNexus.db.profile.notifications.useAlertFramePosition)
     if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(WarbandNexus.db.profile.notifications.useAlertFramePosition) end
@@ -2946,7 +2946,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             or (lane == "tryCounter" and "NOTIF_GHOST_LABEL_TRY")
             or "NOTIF_GHOST_LABEL_REMINDER"
         ghostText:SetText((ns.L and ns.L[labelKey]) or lane)
-        ghostText:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(ghostText, "Bright")
         holder:SetPoint(pt, UIParent, pt, px, py)
         holder:SetScript("OnDragStart", function(self)
             if InCombatLockdown() then return end
@@ -3008,7 +3008,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             local ghostText = FontManager:CreateFontString(topPane, "body", "OVERLAY")
             ghostText:SetPoint("CENTER")
             ghostText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_MAIN"]) or "Achievement / notification")
-            ghostText:SetTextColor(1, 1, 1, 1)
+            ns.UI_SetTextColorRole(ghostText, "Bright")
         end
         local botPane = ns.UI.Factory:CreateContainer(holder, 400, 88, true)
         if botPane then
@@ -3017,7 +3017,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             local ghostCriteriaText = FontManager:CreateFontString(botPane, "body", "OVERLAY")
             ghostCriteriaText:SetPoint("CENTER")
             ghostCriteriaText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_CRITERIA"]) or "Criteria / To-Do lane")
-            ghostCriteriaText:SetTextColor(1, 1, 1, 1)
+            ns.UI_SetTextColorRole(ghostCriteriaText, "Bright")
         end
 
         holder:SetPoint(pt, UIParent, pt, px, py)
@@ -3101,7 +3101,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     notifPerLaneLabel:SetWordWrap(true)
     notifPerLaneLabel:SetNonSpaceWrap(false)
     notifPerLaneLabel:SetText((ns.L and ns.L["NOTIF_PER_LANE_HINT"]) or "Separate anchors: use each button, drag the preview, right-click for X/Y. Click the same button again to save.")
-    notifPerLaneLabel:SetTextColor(0.82, 0.82, 0.82, 1)
+    ns.UI_SetTextColorRole(notifPerLaneLabel, "Normal")
     notifGridYOffset = notifGridYOffset - math.max(SETTINGS_ANCHOR_DESC_MIN_HEIGHT, notifPerLaneLabel:GetStringHeight()) - GetHeaderToolbarGap()
 
     local laneBtnW = math.floor((notifInnerW - 3 * btnGap) / 4)
@@ -3119,7 +3119,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local lt = lb:GetFontString() or FontManager:CreateFontString(lb, "small", "OVERLAY")
         lt:SetPoint("CENTER", 0, 0)
         lt:SetText((ns.L and ns.L[ld.loc]) or ld.fallback)
-        lt:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(lt, "Bright")
         lb:SetFontString(lt)
         ApplySettingsAccentChromeIdle(lb)
         WireSettingsAccentButtonHover(lb)
@@ -3137,7 +3137,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local unifiedLayoutLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     unifiedLayoutLabel:SetJustifyH("LEFT")
     unifiedLayoutLabel:SetText((ns.L and ns.L["NOTIF_UNIFIED_TOAST_LAYOUT"]) or "Single stack anchor (all toast types share one position)")
-    unifiedLayoutLabel:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(unifiedLayoutLabel, "Bright")
     unifiedLayoutLabel:SetPoint("LEFT", unifiedLayoutCheck, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
     unifiedLayoutCheck:SetChecked(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false)
     if unifiedLayoutCheck.checkTexture then unifiedLayoutCheck.checkTexture:SetShown(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false) end
@@ -3222,7 +3222,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 dep.widget:Disable()
                 dep.widget:SetAlpha(0.35)
             elseif dep.type == "label" then
-                dep.widget:SetTextColor(0.4, 0.4, 0.4, 0.6)
+                ns.UI_SetTextColorRole(dep.widget, "Dim", 0.6)
             end
         end
     end
@@ -3367,7 +3367,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             if ApplyVisuals then
                 ApplyVisuals(colorPickerBtn, {0.12, 0.12, 0.14, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
             end
-            btnText:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(btnText, "Bright")
 
             Settings_ShowWrappedTooltip(self, (ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color")
         end)
@@ -3467,7 +3467,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         classAccentLbl:SetJustifyH("LEFT")
         classAccentLbl:SetWordWrap(true)
         classAccentLbl:SetText((ns.L and ns.L["USE_CLASS_COLOR_ACCENT"]) or "Use class color as accent")
-        classAccentLbl:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(classAccentLbl, "Bright")
         classAccentCb:SetChecked(WarbandNexus.db.profile.useClassColorAccent)
         if classAccentCb.checkTexture then
             classAccentCb.checkTexture:SetShown(WarbandNexus.db.profile.useClassColorAccent)
@@ -3490,6 +3490,45 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
         local classRowH = math.max(ns.UI_TOGGLE_SIZE or 22, classAccentLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
         cy = cy - classRowH - GetHeaderToolbarGap()
+
+        -- Accessibility: light background mode (requested by low-vision users —
+        -- dark themes with grey text are unreadable for some; see CurseForge feedback).
+        local lightModeCb = CreateThemedCheckbox(inner)
+        lightModeCb:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, cy)
+        local lightModeTip = (ns.L and ns.L["LIGHT_MODE_TOOLTIP"]) or "Switch the addon to a light background with dark text (accessibility). A /reload is recommended so every panel picks up the new palette."
+        local lightModeLbl = FontManager:CreateFontString(inner, "body", "OVERLAY")
+        lightModeLbl:SetPoint("TOPLEFT", lightModeCb, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
+        lightModeLbl:SetWidth(math.max(120, iw - SETTINGS_CHECKBOX_GRID_INDENT - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT))
+        lightModeLbl:SetJustifyH("LEFT")
+        lightModeLbl:SetWordWrap(true)
+        lightModeLbl:SetText((ns.L and ns.L["LIGHT_MODE"]) or "Light mode (light background, dark text)")
+        ns.UI_SetTextColorRole(lightModeLbl, "Bright")
+        lightModeCb:SetChecked(WarbandNexus.db.profile.lightMode)
+        if lightModeCb.checkTexture then
+            lightModeCb.checkTexture:SetShown(WarbandNexus.db.profile.lightMode)
+        end
+        lightModeCb:SetScript("OnClick", function(self)
+            local v = self:GetChecked() and true or false
+            WarbandNexus.db.profile.lightMode = v
+            if self.checkTexture then self.checkTexture:SetShown(v) end
+            if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+            RefreshSubtitles()
+            -- Most text/surfaces sample the palette at creation time; offer the reload.
+            if WarbandNexus.Print then
+                WarbandNexus:Print((ns.L and ns.L["LIGHT_MODE_RELOAD_HINT"]) or "Theme mode changed — /reload to apply it everywhere.")
+            end
+        end)
+        lightModeCb:SetScript("OnEnter", function(self)
+            Settings_ShowWrappedTooltip(self, lightModeTip)
+        end)
+        lightModeCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        lightModeLbl:SetScript("OnEnter", function(self)
+            Settings_ShowWrappedTooltip(self, lightModeTip)
+        end)
+        lightModeLbl:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        local lightRowH = math.max(ns.UI_TOGGLE_SIZE or 22, lightModeLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
+        cy = cy - lightRowH - GetHeaderToolbarGap()
 
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & Readability",
@@ -3756,7 +3795,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     detailInfoText:SetPoint("TOPLEFT", 10, -26)
     detailInfoText:SetPoint("RIGHT", detailCard, "RIGHT", -10, 0)
     detailInfoText:SetJustifyH("LEFT")
-    detailInfoText:SetTextColor(0.60, 0.60, 0.60)
+    ns.UI_SetTextColorRole(detailInfoText, "Muted")
     detailInfoText:SetWordWrap(true)
     
     -- Tracked checkbox (inside detail card)
@@ -3766,7 +3805,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local trackedLabel = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
     trackedLabel:SetPoint("LEFT", trackedCheckbox, "RIGHT", 6, 0)
     trackedLabel:SetText((ns.L and ns.L["TRACKED"]) or "Tracked")
-    trackedLabel:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(trackedLabel, "Bright")
     
     -- Repeatable checkbox (inside detail card, right of Tracked)
     local repeatableCheckbox = CreateThemedCheckbox(detailCard)
@@ -3775,7 +3814,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local repeatableLabel = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
     repeatableLabel:SetPoint("LEFT", repeatableCheckbox, "RIGHT", 6, 0)
     repeatableLabel:SetText((ns.L and ns.L["REPEATABLE_LABEL"]) or "Repeatable")
-    repeatableLabel:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(repeatableLabel, "Bright")
     
     -- Placeholder when nothing is selected
     local detailPlaceholder = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
@@ -3987,7 +4026,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local itemIDLabel = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
     itemIDLabel:SetPoint("TOPLEFT", 0, trackYOffset)
     itemIDLabel:SetText((ns.L and ns.L["ITEM_ID_INPUT"]) or "Item ID")
-    itemIDLabel:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(itemIDLabel, "Bright")
     itemIDLabel:SetScript("OnEnter", function(self)
         Settings_ShowWrappedTooltip(self, (ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.")
     end)
@@ -4059,7 +4098,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         if ApplyVisuals then
             ApplyVisuals(lookupBtn, {0.12, 0.12, 0.14, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 1})
         end
-        lookupBtnText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(lookupBtnText, "Bright")
         Settings_ShowWrappedTooltip(self, (ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.")
     end)
     lookupBtn:SetScript("OnLeave", function()

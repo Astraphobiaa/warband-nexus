@@ -129,7 +129,7 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
     lastText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
     lastText:SetJustifyH("CENTER")
     lastText:SetText((ns.L and ns.L["REPORT_BUGS"]) or "Report bugs or share suggestions on CurseForge to help improve the addon.")
-    lastText:SetTextColor(0.8, 0.8, 0.8)
+    ns.UI_SetTextColorRole(lastText, "Normal")
     lastText:SetWordWrap(true)
     yOffset = yOffset + lastText:GetStringHeight() + 20
     lastElement = lastText
@@ -149,7 +149,7 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
         local okBtnText = FontManager:CreateFontString(okBtn, "body", "OVERLAY")
         okBtnText:SetPoint("CENTER")
         okBtnText:SetText((ns.L and ns.L["OK_BUTTON"]) or "OK")
-        okBtnText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(okBtnText, "Bright")
         okBtn:SetScript("OnClick", function()
             if opts.onOk then opts.onOk() end
         end)
@@ -255,7 +255,7 @@ function WarbandNexus:ShowInfoDialog()
     local title = FontManager:CreateFontString(header, FontManager:GetFontRole("tabTitlePrimary"), "OVERLAY")
     title:SetPoint("CENTER", header, "CENTER", 0, 0)
     title:SetText((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
-    title:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(title, "Bright")
 
     local closeBtn
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then

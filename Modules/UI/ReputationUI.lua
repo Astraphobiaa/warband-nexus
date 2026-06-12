@@ -384,7 +384,7 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
         row.progressText:ClearAllPoints()
         row.progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)
         row.progressText:SetText(FormatReputationProgress(currentValue, maxValue))
-        row.progressText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.progressText, "Bright")
         row.progressText:Show()
     end
 
@@ -931,7 +931,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)
         row.nameText:SetWidth(actualMaxWidth)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
-        row.nameText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
     else
         -- No standing: hide standing/separator, show name directly
@@ -950,7 +950,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)
         row.nameText:SetWidth(actualMaxWidth)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
-        row.nameText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
     end
     
@@ -1187,7 +1187,7 @@ local function PopulateReputationRow(row, entry)
         local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)
         row.nameText:SetWidth(actualMaxWidth)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
-        row.nameText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
     else
         if row.standingText then row.standingText:Hide() end
@@ -1205,7 +1205,7 @@ local function PopulateReputationRow(row, entry)
         local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)
         row.nameText:SetWidth(actualMaxWidth)
         row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
-        row.nameText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.nameText, "Bright")
         row.nameText:Show()
     end
 

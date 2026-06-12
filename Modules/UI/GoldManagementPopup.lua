@@ -101,7 +101,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local enabledLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     enabledLabel:SetPoint("LEFT", enabledCB, "RIGHT", 8, 0)
     enabledLabel:SetText(L["GOLD_MANAGEMENT_ENABLE"] or "Enable Gold Management")
-    enabledLabel:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(enabledLabel, "Bright")
     
     yOffset = yOffset + 32
     
@@ -114,7 +114,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local perCharLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     perCharLabel:SetPoint("LEFT", perCharCB, "RIGHT", 8, 0)
     perCharLabel:SetText(string.format(L["GOLD_MANAGEMENT_CHAR_ONLY"] or "Only For This Character (%s)", charName))
-    perCharLabel:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(perCharLabel, "Bright")
     
     -- Tooltip for per-char checkbox
     local perCharTooltip = L["GOLD_MANAGEMENT_CHAR_ONLY_DESC"] or "Use separate gold management settings for this character only. Other characters will use the shared profile settings."
@@ -195,7 +195,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         local labelText = FontManager:CreateFontString(btn, "body", "OVERLAY")
         labelText:SetPoint("LEFT", radioButton, "RIGHT", 6, 0)
         labelText:SetText(label)
-        labelText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(labelText, "Bright")
         
         if settings.mode == mode then
             selectedModeBtn = btn
@@ -285,7 +285,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         pcall(inputBox.SetFont, inputBox, p, s, f)
     end
     inputBox:SetTextInsets(8, 8, 0, 0)
-    inputBox:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(inputBox, "Bright")
     
     local function CopperToGoldString(copper)
         return FormatNumberSep(math.floor((copper or 0) / 10000))

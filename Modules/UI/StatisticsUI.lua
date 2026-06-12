@@ -224,7 +224,7 @@ function WarbandNexus:DrawStatistics(parent)
     )
     -- Override label color to white (factory defaults to white, but ensure it)
     if achLayout.label then
-        achLayout.label:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(achLayout.label, "Bright")
     end
     
     local accountWideLabel = (ns.L and ns.L["ACCOUNT_WIDE"]) or "Account-wide"
@@ -232,7 +232,7 @@ function WarbandNexus:DrawStatistics(parent)
     local achNote = FontManager:CreateFontString(achCard, "small", "OVERLAY")
     achNote:SetPoint("BOTTOMRIGHT", -10, 10)
     achNote:SetText(accountWideLabel)
-    achNote:SetTextColor(1, 1, 1)  -- White
+    ns.UI_SetTextColorRole(achNote, "Bright") -- White
     
     achCard:Show()
 
@@ -256,13 +256,13 @@ function WarbandNexus:DrawStatistics(parent)
     )
     -- Override label color to white (factory defaults to white, but ensure it)
     if mountLayout.label then
-        mountLayout.label:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(mountLayout.label, "Bright")
     end
     
     local mountNote = FontManager:CreateFontString(mountCard, "small", "OVERLAY")
     mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
     mountNote:SetText(accountWideLabel)
-    mountNote:SetTextColor(1, 1, 1)  -- White
+    ns.UI_SetTextColorRole(mountNote, "Bright") -- White
     
     if ApplyPanelCardChrome then ApplyPanelCardChrome(mountCard) end
     mountCard:Show()
@@ -284,7 +284,7 @@ function WarbandNexus:DrawStatistics(parent)
     local bpLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
     bpLabel:SetPoint("BOTTOMLEFT", petIcon, "RIGHT", 10, 2)
     bpLabel:SetText((ns.L and ns.L["BATTLE_PETS"]) or "BATTLE PETS")
-    bpLabel:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(bpLabel, "Bright")
     bpLabel:SetJustifyH("LEFT")
     
     local bpValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
@@ -297,7 +297,7 @@ function WarbandNexus:DrawStatistics(parent)
     upLabel:SetPoint("TOP", bpLabel, "TOP", 0, 0)
     upLabel:SetPoint("LEFT", bpValue, "RIGHT", 20, 0)
     upLabel:SetText((ns.L and ns.L["UNIQUE_PETS"]) or "UNIQUE PETS")
-    upLabel:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(upLabel, "Bright")
     upLabel:SetJustifyH("LEFT")
     
     local upValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
@@ -308,7 +308,7 @@ function WarbandNexus:DrawStatistics(parent)
     local petNote = FontManager:CreateFontString(petCard, "small", "OVERLAY")
     petNote:SetPoint("BOTTOMRIGHT", -10, 8)
     petNote:SetText(accountWideLabel)
-    petNote:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(petNote, "Bright")
     
     if ApplyPanelCardChrome then ApplyPanelCardChrome(petCard) end
     petCard:Show()
@@ -336,13 +336,13 @@ function WarbandNexus:DrawStatistics(parent)
     )
     -- Override label color to white (factory defaults to white, but ensure it)
     if toyLayout.label then
-        toyLayout.label:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(toyLayout.label, "Bright")
     end
     
     local toyNote = FontManager:CreateFontString(toyCard, "small", "OVERLAY")
     toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
     toyNote:SetText(accountWideLabel)
-    toyNote:SetTextColor(1, 1, 1)  -- White
+    ns.UI_SetTextColorRole(toyNote, "Bright") -- White
     
     if ApplyPanelCardChrome then ApplyPanelCardChrome(toyCard) end
     toyCard:Show()
@@ -403,7 +403,7 @@ function WarbandNexus:DrawStatistics(parent)
         local gwTitle = FontManager:CreateFontString(goldCard, "subtitle", "OVERLAY")
         gwTitle:SetPoint("LEFT", gwIcon, "RIGHT", 10, 0)
         gwTitle:SetText((ns.L and ns.L["WARBAND_WEALTH"]) or "WARBAND WEALTH")
-        gwTitle:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(gwTitle, "Bright")
         gwTitle:SetJustifyH("LEFT")
         
         local gwTotal = FontManager:CreateFontString(goldCard, "header", "OVERLAY")
@@ -640,7 +640,7 @@ function WarbandNexus:DrawStatistics(parent)
         local mpTitle = FontManager:CreateFontString(mpCard, "subtitle", "OVERLAY")
         mpTitle:SetPoint("LEFT", mpIcon, "RIGHT", 10, 0)
         mpTitle:SetText((ns.L and ns.L["MOST_PLAYED"]) or "MOST PLAYED")
-        mpTitle:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(mpTitle, "Bright")
         mpTitle:SetJustifyH("LEFT")
 
         -- â”€â”€ Format toggle button (WoW â†” Steam) â”€â”€
@@ -651,13 +651,13 @@ function WarbandNexus:DrawStatistics(parent)
         local fmtBtnLabel = FontManager:CreateFontString(fmtBtn, "body", "OVERLAY")
         fmtBtnLabel:SetPoint("CENTER")
         fmtBtnLabel:SetText((ns.L and ns.L["FORMAT_BUTTON"]) or "Format")
-        fmtBtnLabel:SetTextColor(0.85, 0.85, 0.85)
+        ns.UI_SetTextColorRole(fmtBtnLabel, "Normal")
 
         fmtBtn:SetScript("OnEnter", function()
             fmtBtnLabel:SetTextColor(0.6, 0.9, 1)
         end)
         fmtBtn:SetScript("OnLeave", function()
-            fmtBtnLabel:SetTextColor(0.85, 0.85, 0.85)
+            ns.UI_SetTextColorRole(fmtBtnLabel, "Normal")
         end)
         fmtBtn:SetScript("OnClick", function()
             ns._statisticsExpandedStates["mostPlayedSteamMode"] = not steamMode
@@ -714,7 +714,7 @@ function WarbandNexus:DrawStatistics(parent)
             timeText:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, rowCenterY)
             if charInfo.timePlayed > 0 then
                 timeText:SetText(FormatPlayed(charInfo.timePlayed))
-                timeText:SetTextColor(0.85, 0.85, 0.85)
+                ns.UI_SetTextColorRole(timeText, "Normal")
             else
                 timeText:SetText("|cff555555â€”|r")
             end
@@ -788,7 +788,7 @@ function WarbandNexus:DrawStatistics(parent)
         local l = FontManager:CreateFontString(statParent, "small", "OVERLAY")
         l:SetPoint("TOPLEFT", x, y)
         l:SetText(label)
-        l:SetTextColor(0.8, 0.8, 0.8)
+        ns.UI_SetTextColorRole(l, "Normal")
         
         local v = FontManager:CreateFontString(statParent, "title", "OVERLAY")
         v:SetPoint("TOPLEFT", x, y - 16)
@@ -796,7 +796,7 @@ function WarbandNexus:DrawStatistics(parent)
         if color then
             v:SetTextColor(unpack(color))
         else
-            v:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(v, "Bright")
         end
     end
     

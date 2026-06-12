@@ -126,7 +126,7 @@ local function EnsureGearContentVeil(scrollChild, mf, gen)
             titleFs:SetText("|cff00ccff" .. GearTabL("GEAR_TAB_LOADING", "Loading gear...") .. "|r")
             local hintFs = FontManager:CreateFontString(host, GFR("loadingCardHint"), "OVERLAY")
             hintFs:SetPoint("TOP", titleFs, "BOTTOM", 0, -4)
-            hintFs:SetTextColor(0.55, 0.58, 0.62)
+            ns.UI_SetTextColorRole(hintFs, "Dim")
             hintFs:SetText(GearTabL("PLEASE_WAIT", "Please wait..."))
         end
         scrollChild._gearLoadingHost = host
@@ -1288,7 +1288,7 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         slotText:Show()
         slotText:SetWordWrap(false)
         slotText:SetText(rowData.slotName or "Slot")
-        slotText:SetTextColor(0.92, 0.93, 0.98)
+        ns.UI_SetTextColorRole(slotText, "Bright")
     end
 
     local cur = math.floor(tonumber(rowData.currentIlvl) or 0)
@@ -1339,7 +1339,7 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         local iq = GetStorageRecRowItemQuality(rowData)
         local qhex = GetQualityHex and GetQualityHex(iq) or "ffffff"
         itemNameFs:SetText(format("|cff%s%s|r", qhex, dispPlain))
-        itemNameFs:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(itemNameFs, "Bright")
     end
 
     local sourceText = line.sourceText
@@ -1436,7 +1436,7 @@ local function ShowGearStorageScanningInRecContent(recContent)
     scanFs:SetJustifyH("CENTER")
     scanFs:SetJustifyV("MIDDLE")
     scanFs:SetText(GearTabL("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
-    scanFs:SetTextColor(0.65, 0.68, 0.75)
+    ns.UI_SetTextColorRole(scanFs, "Muted")
     if mfG then
         mfG._gearStorageScanningShownAt = GetTime()
     end
@@ -1821,7 +1821,7 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
         empty:SetJustifyH("CENTER")
         empty:SetJustifyV("MIDDLE")
         empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY", "No transferable stash upgrade beats your equipped items for these slots."))
-        empty:SetTextColor(0.55, 0.55, 0.6)
+        ns.UI_SetTextColorRole(empty, "Dim")
         WarbandNexus:GearStoragePanelDebug("Redraw painted EMPTY list (0 upgrade rows after filter)")
     elseif AcquireStorageRow then
         stStop("Gear_StorageRec_paint")
@@ -2348,7 +2348,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local hex   = GetClassHex(cData.classFile)
             local namePart = "|cff" .. hex .. (cData.name or "") .. "|r"
             nm:SetText(namePart)
-            nm:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(nm, "Bright")
             local realm = cData.realm and cData.realm ~= "" and cData.realm or nil
             if realm and rm then
                 local realmShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(realm)) or realm
@@ -2358,7 +2358,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             end
         elseif charKey and charKey ~= "" then
             nm:SetText(charKey)
-            nm:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(nm, "Bright")
             if rm then rm:SetText("") end
         else
             nm:SetText("")
@@ -2483,7 +2483,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local namePart = "|cff" .. hex .. (cData.name or cKey) .. "|r"
             local r = cData.realm and cData.realm ~= "" and cData.realm or ""
             entryBtn._nameLabel:SetText(namePart)
-            entryBtn._nameLabel:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(entryBtn._nameLabel, "Bright")
             if r ~= "" then
                 local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(r)) or r
                 entryBtn._realmLabel:SetText("|cffffffff" .. rShown .. "|r")
@@ -2494,7 +2494,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             if cKey == selKey then
                 entryBtn._realmLabel:SetTextColor(accent[1] + 0.2, accent[2] + 0.2, accent[3] + 0.2)
             else
-                entryBtn._realmLabel:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(entryBtn._realmLabel, "Bright")
             end
 
             entryBtn:SetScript("OnClick", function()
@@ -2575,7 +2575,7 @@ local function CreateGearHeaderHideButton(parent)
         local txt = FontManager:CreateFontString(btn, "body", "OVERLAY")
         txt:SetPoint("CENTER", 0, 0)
         txt:SetJustifyH("CENTER")
-        txt:SetTextColor(0.9, 0.9, 0.9)
+        ns.UI_SetTextColorRole(txt, "Bright")
         btn._text = txt
         gearHideFilterBtn = btn
     end
@@ -2649,7 +2649,7 @@ local function CreateGearHeaderHideButton(parent)
             fs:SetPoint("LEFT", cb, "RIGHT", 6, 0)
             fs:SetJustifyH("LEFT")
             fs:SetText(opt.label)
-            fs:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(fs, "Bright")
             row:SetScript("OnClick", function()
                 local active = GetLowLevelHideThreshold(WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile)
                 local nextThreshold = (active == opt.value) and 0 or opt.value

@@ -112,7 +112,7 @@ local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData,
             if change:match(":$") then
                 line:SetTextColor(1, 0.84, 0)
             else
-                line:SetTextColor(0.9, 0.9, 0.9)
+                ns.UI_SetTextColorRole(line, "Bright")
             end
             local lineH = line:GetStringHeight() or 0
             if lineH < MIN_LINE_HEIGHT then
@@ -194,7 +194,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         versionText:SetPoint("TOP", title, "BOTTOM", 0, -5)
         local versionLabel = (ns.L and ns.L["VERSION"]) or "Version"
         versionText:SetText(versionLabel .. " " .. changelogData.version .. " - " .. changelogData.date)
-        versionText:SetTextColor(0.6, 0.6, 0.6)
+        ns.UI_SetTextColorRole(versionText, "Muted")
     end
     
     -- Separator line
@@ -270,7 +270,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         fallbackText:SetJustifyH("LEFT")
         fallbackText:SetWordWrap(true)
         fallbackText:SetText((changelogData.changes and table.concat(changelogData.changes, "\n")) or "")
-        fallbackText:SetTextColor(0.9, 0.9, 0.9)
+        ns.UI_SetTextColorRole(fallbackText, "Bright")
         scrollChild:SetScript("OnSizeChanged", function()
             fallbackText:SetWidth(scrollChild:GetWidth() - (TEXT_PAD * 2))
         end)

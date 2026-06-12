@@ -3269,11 +3269,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                     if val.vaultColumnData and L.ns.UI_BindVaultColumnDisplay then
                         if UnbindSeason then UnbindSeason(colText) end
                         L.ns.UI_BindVaultColumnDisplay(colText, val.vaultColumnData)
-                        colText:SetTextColor(1, 1, 1)
+                        ns.UI_SetTextColorRole(colText, "Bright")
                     elseif val.seasonProgressData and L.ns.UI_BindSeasonProgressAmount then
                         if UnbindVaultCol then UnbindVaultCol(colText) end
                         L.ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData, { compactShift = true })
-                        colText:SetTextColor(1, 1, 1)
+                        ns.UI_SetTextColorRole(colText, "Bright")
                     else
                         if UnbindSeason then UnbindSeason(colText) end
                         if UnbindVaultCol then UnbindVaultCol(colText) end
@@ -3281,7 +3281,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                         if not val.richText and val.color then
                             colText:SetTextColor(val.color[1], val.color[2], val.color[3])
                         elseif val.richText then
-                            colText:SetTextColor(1, 1, 1)
+                            ns.UI_SetTextColorRole(colText, "Bright")
                         end
                     end
                     if val.tooltip and L.ShowTooltip then

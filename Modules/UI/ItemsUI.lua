@@ -349,7 +349,7 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
                     ApplyVisuals(btn, {acc2[1] * 0.3, acc2[2] * 0.3, acc2[3] * 0.3, 1}, {acc2[1], acc2[2], acc2[3], 1})
                 end
                 if btn._text then
-                    btn._text:SetTextColor(1, 1, 1)
+                    ns.UI_SetTextColorRole(btn._text, "Bright")
                     local font, size = btn._text:GetFont()
                     if font and size then btn._text:SetFont(font, size, "OUTLINE") end
                 end
@@ -363,14 +363,14 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
                         ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc2[1] * 0.6, acc2[2] * 0.6, acc2[3] * 0.6, 1})
                     end
                     if btn._text then
-                        btn._text:SetTextColor(0.7, 0.7, 0.7)
+                        ns.UI_SetTextColorRole(btn._text, "Muted")
                         local font, size = btn._text:GetFont()
                         if font and size then btn._text:SetFont(font, size, "") end
                     end
                     if UpdateBorderColor then UpdateBorderColor(btn, {acc2[1] * 0.6, acc2[2] * 0.6, acc2[3] * 0.6, 1}) end
                     if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
                 elseif btn._text then
-                    btn._text:SetTextColor(0.45, 0.45, 0.45)
+                    ns.UI_SetTextColorRole(btn._text, "Dim")
                 end
             end
         end
@@ -1415,7 +1415,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
 
         row.locationText:SetText(locText or "")
-        row.locationText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.locationText, "Bright")
         row.locationText:SetWordWrap(false)
         row.locationText:SetNonSpaceWrap(false)
 
@@ -2795,7 +2795,7 @@ local function ApplyItemsSubTabStatsText(addon, statsText, currentItemsSubTab)
     local itemCount, usedSlots, totalSlots, lastScan, colorHex =
         ResolveItemsSubTabStatsMetrics(addon, currentItemsSubTab)
     statsText:SetText(FormatItemsBankStatsLine(colorHex, itemCount, usedSlots, totalSlots, lastScan))
-    statsText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(statsText, "Bright")
 end
 
 function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
@@ -2994,7 +2994,7 @@ function WarbandNexus:DrawItemList(parent)
     local goldMgrText = FontManager:CreateFontString(goldMgrBtn, "body", "OVERLAY")
     goldMgrText:SetPoint("CENTER")
     goldMgrText:SetText((ns.L and ns.L["GOLD_MANAGER_BTN"]) or "Gold Target")
-    goldMgrText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(goldMgrText, "Bright")
     goldMgrText:SetJustifyH("CENTER")
     goldMgrText:SetWordWrap(false)
     
@@ -3034,7 +3034,7 @@ function WarbandNexus:DrawItemList(parent)
     local moneyLogsText = FontManager:CreateFontString(moneyLogsBtn, "body", "OVERLAY")
     moneyLogsText:SetPoint("CENTER")
     moneyLogsText:SetText((ns.L and ns.L["MONEY_LOGS_BTN"]) or "Money Logs")
-    moneyLogsText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(moneyLogsText, "Bright")
     moneyLogsText:SetJustifyH("CENTER")
     moneyLogsText:SetWordWrap(false)
 
@@ -3187,7 +3187,7 @@ function WarbandNexus:DrawItemList(parent)
     local itemCount, usedSlots, totalSlots, lastScan, colorHex =
         ResolveItemsSubTabStatsMetrics(self, currentItemsSubTab)
     statsText:SetText(FormatItemsBankStatsLine(colorHex, itemCount, usedSlots, totalSlots, lastScan))
-    statsText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(statsText, "Bright")
 
     parent._itemsSubTabBar = itemsBankSubTabBar
     parent._itemsGoldDisplay = goldDisplay
@@ -3576,7 +3576,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 end
             end
             row.locationText:SetText(locText)
-            row.locationText:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(row.locationText, "Bright")
             row.locationText:SetWordWrap(false)
             row.locationText:SetNonSpaceWrap(false)
 

@@ -1015,7 +1015,7 @@ function WarbandNexus:DrawCharacterList(parent)
 
     local tgLabel = FontManager:CreateFontString(tgTextContainer, "subtitle", "OVERLAY")
     tgLabel:SetText((ns.L and ns.L["HEADER_TOTAL_GOLD"]) or "TOTAL GOLD")
-    tgLabel:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(tgLabel, "Bright")
     tgLabel:SetJustifyH("LEFT")
     tgLabel:SetPoint("BOTTOM", tgTextContainer, "CENTER", 0, 0)
     tgLabel:SetPoint("LEFT", tgTextContainer, "LEFT", 0, 0)
@@ -1042,7 +1042,7 @@ function WarbandNexus:DrawCharacterList(parent)
 
     local tkLabel = FontManager:CreateFontString(tkTextContainer, "subtitle", "OVERLAY")
     tkLabel:SetText((ns.L and ns.L["WOW_TOKEN_LABEL"]) or "WOW TOKEN")
-    tkLabel:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(tkLabel, "Bright")
     tkLabel:SetJustifyH("LEFT")
     tkLabel:SetPoint("BOTTOM", tkTextContainer, "CENTER", 0, 0)
     tkLabel:SetPoint("LEFT", tkTextContainer, "LEFT", 0, 0)
@@ -2120,7 +2120,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.realmText:SetWordWrap(false)
         row.realmText:SetNonSpaceWrap(false)  -- Prevent long word overflow
         row.realmText:SetMaxLines(1)  -- Single line only
-        row.realmText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.realmText, "Bright")
     end
     local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     row.realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
@@ -2776,7 +2776,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             lastSeenStr = string.format(daysFormat, math.floor(timeDiff / 86400))
         end
         row.lastSeenText:SetText(lastSeenStr)
-        row.lastSeenText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.lastSeenText, "Bright")
         row.lastSeenText:Show()
     end
     
@@ -3177,7 +3177,7 @@ function WarbandNexus:OpenCustomCharacterHeaderDialog()
     hint:SetJustifyH("LEFT")
     hint:SetJustifyV("TOP")
     if hint.SetWordWrap then hint:SetWordWrap(true) end
-    hint:SetTextColor(0.78, 0.80, 0.84)
+    ns.UI_SetTextColorRole(hint, "Normal")
     hint:SetText((L and L["CUSTOM_HEADER_NEW_DIALOG_HINT"]) or "Name (max 32). Search and tick optional. Enter in name saves.")
 
     local nameLabel = FontMgr:CreateFontString(contentFrame, "tabSubtitle", "OVERLAY")
@@ -3310,7 +3310,7 @@ function WarbandNexus:OpenCustomHeaderRosterWindow(groupId)
     hint:SetWidth(innerW)
     hint:SetJustifyH("LEFT")
     if hint.SetWordWrap then hint:SetWordWrap(true) end
-    hint:SetTextColor(0.78, 0.80, 0.84)
+    ns.UI_SetTextColorRole(hint, "Normal")
     hint:SetText((L and L["CUSTOM_HEADER_ROSTER_WINDOW_HINT"]) or "First list: boxes start checked (still in this section). Uncheck to queue a removal. Second list: tick to queue adds. Nothing is saved until you click Add selected.")
 
     local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, innerW, 40)

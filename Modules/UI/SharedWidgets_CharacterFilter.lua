@@ -37,12 +37,12 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     text:SetPoint("CENTER", btn, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetText((ns.L and ns.L["FILTER_LABEL"]) or "Filter")
-    text:SetTextColor(0.9, 0.9, 0.9)
+    ns.UI_SetTextColorRole(text, "Bright")
     icon:SetPoint("RIGHT", text, "LEFT", -6, 0)
 
     btn:SetScript("OnEnter", function(self)
         icon:SetVertexColor(1, 1, 1)
-        text:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
         end
@@ -52,7 +52,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     end)
     btn:SetScript("OnLeave", function(self)
         icon:SetVertexColor(0.8, 0.8, 0.8)
-        text:SetTextColor(0.9, 0.9, 0.9)
+        ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
         end
@@ -156,7 +156,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
             if isSelected then
                 optionText:SetTextColor(ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3])
             else
-                optionText:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(optionText, "Bright")
             end
 
             if ns.UI_ApplyVisuals then
@@ -273,7 +273,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     text:SetPoint("CENTER", btn, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetText((ns.L and ns.L["FILTER_LABEL"]) or "Filter")
-    text:SetTextColor(0.9, 0.9, 0.9)
+    ns.UI_SetTextColorRole(text, "Bright")
     icon:SetPoint("RIGHT", text, "LEFT", -6, 0)
 
     local itemHeight = (UI_SPACING and UI_SPACING.DROPDOWN_MENU_ROW_HEIGHT) or (UI_SPACING and UI_SPACING.ROW_HEIGHT) or 26
@@ -333,7 +333,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             if isSel then
                 optionText:SetTextColor(ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3])
             else
-                optionText:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(optionText, "Bright")
             end
             if ns.UI_ApplyVisuals then ns.UI_ApplyVisuals(optionBtn, {0.08, 0.08, 0.10, 0}, {0, 0, 0, 0}) end
             if ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(optionBtn) end
@@ -349,7 +349,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
 
     btn:SetScript("OnEnter", function(self)
         icon:SetVertexColor(1, 1, 1)
-        text:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
         end
@@ -359,7 +359,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     end)
     btn:SetScript("OnLeave", function(self)
         icon:SetVertexColor(0.8, 0.8, 0.8)
-        text:SetTextColor(0.9, 0.9, 0.9)
+        ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
         end
@@ -407,7 +407,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             if ns.FontManager then ns.FontManager:ApplyFont(fs, "body") else fs:SetFontObject("GameFontNormal") end
             fs:SetPoint("LEFT", 10, 0)
             fs:SetJustifyH("LEFT")
-            fs:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(fs, "Bright")
             fs:SetText(label)
             rowBtn:SetScript("OnClick", function()
                 onActivate(rowBtn)
@@ -572,12 +572,12 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
             optionText:SetJustifyH("LEFT")
             optionText:SetText(r.label or "")
             if r.disabled then
-                optionText:SetTextColor(0.45, 0.45, 0.48)
+                ns.UI_SetTextColorRole(optionText, "Dim")
                 optionBtn:EnableMouse(false)
             elseif r.selected then
                 optionText:SetTextColor(ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3])
             else
-                optionText:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(optionText, "Bright")
             end
             if ns.UI_ApplyVisuals then ns.UI_ApplyVisuals(optionBtn, {0.08, 0.08, 0.10, 0}, {0, 0, 0, 0}) end
             if ns.UI.Factory.ApplyHighlight and not r.disabled then ns.UI.Factory:ApplyHighlight(optionBtn) end

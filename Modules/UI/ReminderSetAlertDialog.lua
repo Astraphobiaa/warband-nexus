@@ -146,7 +146,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         headerTitle:SetJustifyH("LEFT")
         headerTitle:SetMaxLines(1)
         headerTitle:SetText((L and L["SET_ALERT_TITLE"]) or "Set Alert")
-        headerTitle:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(headerTitle, "Bright")
         f.headerTitle = headerTitle
 
         header:EnableMouse(true)
@@ -580,7 +580,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         daysBeforeEdit:SetNumeric(true)
         daysBeforeEdit:SetMaxLetters(2)
         daysBeforeEdit:SetText("3")
-        daysBeforeEdit:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(daysBeforeEdit, "Bright")
         daysBeforeEdit:SetAutoFocus(false)
         daysEditBg:SetScript("OnMouseDown", function()
             daysBeforeEdit:SetFocus()
@@ -956,7 +956,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     local function RefreshZoneCheckboxGate()
         f.zoneCheck:Enable()
         f.zoneCheck:SetAlpha(1)
-        f.zoneLabel:SetTextColor(0.9, 0.9, 0.9)
+        ns.UI_SetTextColorRole(f.zoneLabel, "Bright")
         if f.ApplyZoneDependentControlsState then
             f:ApplyZoneDependentControlsState()
         end
@@ -1047,7 +1047,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     if f.SyncThemedCheck then f:SyncThemedCheck(f.zoneCheck, zoneSaved) end
     f.zoneCheck:Enable()
     f.zoneCheck:SetAlpha(1)
-    f.zoneLabel:SetTextColor(0.9, 0.9, 0.9)
+    ns.UI_SetTextColorRole(f.zoneLabel, "Bright")
 
     f._selectedWQQuestIDs = {}
     f._selectedEventQuestIDs = {}

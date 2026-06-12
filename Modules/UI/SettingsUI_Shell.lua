@@ -145,7 +145,7 @@ function M.ApplyCategoryNavStates(parent, activeId)
             if isActive then
                 btn.active = true
                 if btn.label then
-                    btn.label:SetTextColor(1, 1, 1)
+                    ns.UI_SetTextColorRole(btn.label, "Bright")
                     local font, size = btn.label:GetFont()
                     if font and size then
                         btn.label:SetFont(font, size, "OUTLINE")
@@ -169,7 +169,7 @@ function M.ApplyCategoryNavStates(parent, activeId)
             else
                 btn.active = false
                 if btn.label then
-                    btn.label:SetTextColor(0.92, 0.92, 0.94)
+                    ns.UI_SetTextColorRole(btn.label, "Bright")
                     local font, size = btn.label:GetFont()
                     if font and size then
                         btn.label:SetFont(font, size, "")
@@ -254,7 +254,7 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(false)
     fs:SetText(label)
-    fs:SetTextColor(0.92, 0.92, 0.94)
+    ns.UI_SetTextColorRole(fs, "Bright")
     btn.label = fs
 
     return btn

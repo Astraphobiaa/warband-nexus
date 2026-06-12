@@ -125,7 +125,7 @@ function M.EnsureCollectionProgressBar(rightCol)
         end
         progressFs:SetJustifyH("CENTER")
         progressFs:SetJustifyV("MIDDLE")
-        progressFs:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(progressFs, "Bright")
         progressFs:SetText("— / —")
     end
     M.state.collectionProgressLabel = progressFs
@@ -1074,7 +1074,7 @@ function M.DrawToysContent(contentFrame)
         local toyObtainedLine = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
         toyObtainedLine:SetJustifyH("LEFT")
         toyObtainedLine:SetWordWrap(true)
-        toyObtainedLine:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(toyObtainedLine, "Bright")
         toyObtainedLine:Hide()
         M.state._toyDetailObtainedLine = toyObtainedLine
     else

@@ -1659,7 +1659,7 @@ local function PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, val
         val:SetPoint("TOPRIGHT", col, "TOPRIGHT", -pad, rowY)
         val:SetWidth(valueColW)
         val:SetJustifyH("RIGHT")
-        val:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(val, "Bright")
         val:SetText(valueStr)
     end
     local labelRightInset = pad + valueColW + 8
@@ -1667,7 +1667,7 @@ local function PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, val
     row:SetPoint("TOPLEFT", col, "TOPLEFT", labelLeft, rowY)
     row:SetPoint("TOPRIGHT", col, "TOPRIGHT", -labelRightInset, rowY)
     row:SetJustifyH("LEFT")
-    row:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(row, "Bright")
     row:SetText(label or "")
     return rowY - rowH
 end
@@ -1928,7 +1928,7 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
         noStats:SetPoint("TOPLEFT", statCol, "TOPLEFT", statPad, statY)
         noStats:SetWidth(statInnerW)
         noStats:SetJustifyH("LEFT")
-        noStats:SetTextColor(0.55, 0.55, 0.55)
+        ns.UI_SetTextColorRole(noStats, "Dim")
         noStats:SetText((ns.L and ns.L["GEAR_STATS_CURRENT_ONLY"]) or "Stats available for\ncurrent character only")
     end
 
@@ -2017,7 +2017,7 @@ local function ApplyGearOfflineCenterChrome(centerRef, classFile)
         local label = FontManager:CreateFontString(chrome, GFR("gearChromeHint"), "OVERLAY")
         label:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 10, 7)
         label:SetJustifyH("LEFT")
-        label:SetTextColor(0.93, 0.94, 0.96, 0.95)
+        ns.UI_SetTextColorRole(label, "Bright", 0.95)
         label:SetShadowOffset(1, -1)
         label:SetShadowColor(0, 0, 0, 0.9)
         chrome._label = label
@@ -2553,7 +2553,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             meta:SetPoint("TOP", name, "BOTTOM", 0, -2)
             meta:SetWidth(modelW - 16)
             meta:SetJustifyH("CENTER")
-            meta:SetTextColor(0.78, 0.8, 0.88, 1)
+            ns.UI_SetTextColorRole(meta, "Normal")
             meta:SetShadowOffset(1, -1)
             meta:SetShadowColor(0, 0, 0, 0.85)
             portrait._meta = meta
@@ -3073,10 +3073,10 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                 empty:SetJustifyV("MIDDLE")
                 if storageScanPending then
                     empty:SetText(GetLocalizedText("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
-                    empty:SetTextColor(0.65, 0.68, 0.75)
+                    ns.UI_SetTextColorRole(empty, "Muted")
                 else
                     empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY", "No transferable stash upgrade beats your equipped items for these slots."))
-                    empty:SetTextColor(0.55, 0.55, 0.6)
+                    ns.UI_SetTextColorRole(empty, "Dim")
                 end
             end
             if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then

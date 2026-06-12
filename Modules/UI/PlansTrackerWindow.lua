@@ -1337,7 +1337,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
             if currentCategoryKey == cat.key then
                 btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             else
-                btnText:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(btnText, "Bright")
             end
 
             -- Hover visual
@@ -1513,7 +1513,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     titleText:SetPoint("LEFT", hIcon, "RIGHT", 8, 0)
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
     titleText:SetText(collectionPlansLabel)
-    titleText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(titleText, "Bright")
 
     -- Close button (Factory)
     local closeBtn = Factory:CreateButton(header, 22, 22, true)

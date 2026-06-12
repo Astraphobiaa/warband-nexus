@@ -128,7 +128,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     expBadgeText:SetPoint("CENTER", 0, 0)
     expBadgeText:SetJustifyH("CENTER")
     expBadgeText:SetText((ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight")
-    expBadgeText:SetTextColor(0.9, 0.9, 0.9)
+    ns.UI_SetTextColorRole(expBadgeText, "Bright")
     expBadge:SetScript("OnClick", nil)
     expBadge:SetScript("OnEnter", nil)
     expBadge:SetScript("OnLeave", nil)
@@ -148,7 +148,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     filterBtnText:SetPoint("CENTER", 0, 0)
     filterBtnText:SetJustifyH("CENTER")
     filterBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
-    filterBtnText:SetTextColor(0.9, 0.9, 0.9)
+    ns.UI_SetTextColorRole(filterBtnText, "Bright")
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(filterBtn) end
     local hdrGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
     if ns.UI_AnchorTitleCardToolbarControl then

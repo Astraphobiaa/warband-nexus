@@ -76,7 +76,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     nameFS:SetWordWrap(false)
     nameFS:SetMaxLines(1)
     nameFS:SetText(group.instanceName)
-    nameFS:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(nameFS, "Bright")
 
     -- Right side fixed columns: [characters] [progress]
     local bosses = AggregateBosses(group)
@@ -105,7 +105,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     end
     progressFS:SetJustifyH("CENTER")
     progressFS:SetWordWrap(false)
-    progressFS:SetTextColor(0.85, 0.85, 0.9)
+    ns.UI_SetTextColorRole(progressFS, "Normal")
     progressFS:SetWidth(SAVED_GROUP_PROGRESS_W)
     progressFS:SetPoint("RIGHT", chev, "LEFT", -10, 0)
     local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
@@ -118,7 +118,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     end
     countLabelFS:SetJustifyH("LEFT")
     countLabelFS:SetWordWrap(false)
-    countLabelFS:SetTextColor(0.85, 0.85, 0.9)
+    ns.UI_SetTextColorRole(countLabelFS, "Normal")
     countLabelFS:SetWidth(86)
     countLabelFS:SetPoint("RIGHT", progressFS, "LEFT", -10, 0)
     countLabelFS:SetText(#group.characters == 1 and "character" or "characters")
@@ -130,7 +130,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     end
     countNumFS:SetJustifyH("RIGHT")
     countNumFS:SetWordWrap(false)
-    countNumFS:SetTextColor(0.85, 0.85, 0.9)
+    ns.UI_SetTextColorRole(countNumFS, "Normal")
     countNumFS:SetWidth(18)
     countNumFS:SetPoint("RIGHT", countLabelFS, "LEFT", -6, 0)
     countNumFS:SetText(string.format("%2d", #group.characters))
@@ -413,7 +413,7 @@ local RefreshSavedInstances = function()
             msg = VBFontString(content, "body")
         end
         msg:SetPoint("CENTER", content, "CENTER", 0, -20)
-        msg:SetTextColor(0.6, 0.6, 0.6)
+        ns.UI_SetTextColorRole(msg, "Muted")
         if #list == 0 then
             msg:SetText((ns.L and ns.L["SAVED_INSTANCES_EMPTY"]) or "No saved lockouts yet.\nLog in a character with raid or dungeon lockouts.")
         else

@@ -334,11 +334,11 @@ local function ApplyPlansCategoryBarActive(categoryBar, activeKey)
         end
         if btn._text then
             if isActive then
-                btn._text:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(btn._text, "Bright")
                 local font, size = btn._text:GetFont()
                 if font and size then btn._text:SetFont(font, size, "OUTLINE") end
             else
-                btn._text:SetTextColor(0.7, 0.7, 0.7)
+                ns.UI_SetTextColorRole(btn._text, "Muted")
                 local font, size = btn._text:GetFont()
                 if font and size then btn._text:SetFont(font, size, "") end
             end
@@ -1141,11 +1141,11 @@ function WarbandNexus:DrawPlansTab(parent)
         btn._text = label
         categoryButtons[cat.key] = btn
         if isActive then
-            label:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(label, "Bright")
             local font, size = label:GetFont()
             if font and size then label:SetFont(font, size, "OUTLINE") end
         else
-            label:SetTextColor(0.7, 0.7, 0.7)
+            ns.UI_SetTextColorRole(label, "Muted")
             local font, size = label:GetFont()
             if font and size then label:SetFont(font, size, "") end
         end
@@ -1227,7 +1227,7 @@ function WarbandNexus:DrawPlansTab(parent)
             local f = FontManager:GetAAFlags()
             pcall(searchInput.SetFont, searchInput, p, s, f)
         end
-        searchInput:SetTextColor(1, 1, 1, 1)
+        ns.UI_SetTextColorRole(searchInput, "Bright")
         searchInput:SetAutoFocus(false)
         searchInput:SetMaxLetters(50)
         local searchPlaceholder = (ns.L and ns.L["SEARCH_PLANS"]) or "Search plans..."
@@ -1238,7 +1238,7 @@ function WarbandNexus:DrawPlansTab(parent)
         searchInput.Instructions:SetPoint("LEFT", 0, 0)
         searchInput.Instructions:SetPoint("RIGHT", 0, 0)
         searchInput.Instructions:SetJustifyH("LEFT")
-        searchInput.Instructions:SetTextColor(0.5, 0.5, 0.5, 0.8)
+        ns.UI_SetTextColorRole(searchInput.Instructions, "Dim", 0.8)
         searchInput.Instructions:SetText(searchPlaceholder)
         if ns._plansActiveSearch and ns._plansActiveSearch ~= "" then
             searchInput:SetText(ns._plansActiveSearch)
@@ -1482,7 +1482,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
         local resetLabel = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
         resetLabel:SetPoint("LEFT", resetIcon, "RIGHT", 6, 0)
-        resetLabel:SetTextColor(0.8, 0.8, 0.8)
+        ns.UI_SetTextColorRole(resetLabel, "Normal")
         resetLabel:SetText((ns.L and ns.L["WEEKLY_RESET_LABEL"]) or "Weekly Reset")
 
         resetTimeText = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
@@ -1834,7 +1834,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                     emptyIcon:SetVertexColor(0.4, 0.4, 0.4)
                     local emptyFs = FontManager:CreateFontString(emptyRow, "body", "OVERLAY")
                     emptyFs:SetPoint("LEFT", 32, 0)
-                    emptyFs:SetTextColor(0.5, 0.5, 0.5)
+                    ns.UI_SetTextColorRole(emptyFs, "Dim")
                     emptyFs:SetText((ns.L and ns.L["NO_ACTIVE_CONTENT"]) or "No active content this week")
                 else
                     for qi = 1, #questList do
@@ -2587,7 +2587,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     local titleInput = ns.UI.Factory:CreateEditBox(titleInputBg)
     titleInput:SetSize(395, 30)
     titleInput:SetPoint("LEFT", 8, 0)
-    titleInput:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(titleInput, "Bright")
     titleInput:SetAutoFocus(false)
     titleInput:SetMaxLetters(32)  -- Max 32 characters
     titleInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -2624,7 +2624,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     local descInput = ns.UI.Factory:CreateEditBox(descInputBg)
     descInput:SetSize(395, 30)
     descInput:SetPoint("LEFT", 8, 0)
-    descInput:SetTextColor(1, 1, 1, 1)
+    ns.UI_SetTextColorRole(descInput, "Bright")
     descInput:SetAutoFocus(false)
     descInput:SetMultiLine(false)  -- Single line only - prevents Enter from creating new lines
     descInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -2738,7 +2738,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
         text:SetPoint("CENTER")
         text:SetText(label)
-        text:SetTextColor(0.7, 0.7, 0.7)
+        ns.UI_SetTextColorRole(text, "Muted")
         btn.label = text
         btn.value = value
 
@@ -2762,7 +2762,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     local durationLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
     durationLabel:SetPoint("TOPLEFT", 0, -2)
-    durationLabel:SetTextColor(0.7, 0.7, 0.7)
+    ns.UI_SetTextColorRole(durationLabel, "Muted")
     
     -- Minus button (paired with Factory +plusBtn where SharedWidgets Factory is live)
     local minusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
@@ -2784,12 +2784,12 @@ function WarbandNexus:ShowCustomPlanDialog()
     local minusText = FontManager:CreateFontString(minusBtn, "title", "OVERLAY")
     minusText:SetPoint("CENTER", 0, 1)
     minusText:SetText("-")
-    minusText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(minusText, "Bright")
     
     -- Count display
     local countDisplay = FontManager:CreateFontString(durationRow, "title", "OVERLAY")
     countDisplay:SetPoint("TOPLEFT", minusBtn, "TOPRIGHT", 12, 0)
-    countDisplay:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(countDisplay, "Bright")
     countDisplay:SetWidth(30)
     countDisplay:SetJustifyH("CENTER")
     
@@ -2812,7 +2812,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     local plusText = FontManager:CreateFontString(plusBtn, "title", "OVERLAY")
     plusText:SetPoint("CENTER", 0, 1)
     plusText:SetText("+")
-    plusText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(plusText, "Bright")
     
     -- Update duration display
     local function UpdateDurationDisplay()
@@ -2823,7 +2823,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Unit label after count
     local unitLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
     unitLabel:SetPoint("TOPLEFT", plusBtn, "TOPRIGHT", 10, 0)
-    unitLabel:SetTextColor(0.7, 0.7, 0.7)
+    ns.UI_SetTextColorRole(unitLabel, "Muted")
 
     local foreverCb = CreateThemedCheckbox(durationRow, false)
     if foreverCb then
@@ -2837,7 +2837,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     end
     foreverLabel:SetPoint("TOPRIGHT", durationRow, "TOPRIGHT", 0, -34)
     foreverLabel:SetJustifyH("LEFT")
-    foreverLabel:SetTextColor(0.75, 0.75, 0.75)
+    ns.UI_SetTextColorRole(foreverLabel, "Muted")
     foreverLabel:SetWordWrap(true)
     foreverLabel:SetMaxLines(2)
     foreverLabel:SetText((ns.L and ns.L["CUSTOM_PLAN_REPEAT_UNTIL_REMOVED"]) or "Repeat until this plan is deleted")
@@ -2929,11 +2929,11 @@ function WarbandNexus:ShowCustomPlanDialog()
             elseif btn.value == selectedResetType then
                 btn:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
                 btn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-                btn.label:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(btn.label, "Bright")
             else
                 btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
                 btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
-                btn.label:SetTextColor(0.7, 0.7, 0.7)
+                ns.UI_SetTextColorRole(btn.label, "Muted")
             end
         end
         
@@ -3211,7 +3211,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         if classColors then
             charName:SetTextColor(classColors.r, classColors.g, classColors.b)
         else
-            charName:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(charName, "Bright")
         end
         charName:SetText(currentName .. "-" .. currentRealm)
         
@@ -3292,7 +3292,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 if titleText.SetMaxLines then titleText:SetMaxLines(2) end
                 titleText:SetJustifyH("CENTER")
                 titleText:SetPoint("TOP", iconFrame2, "BOTTOM", 0, -TITLE_UNDER_ICON)
-                titleText:SetTextColor(0.96, 0.96, 0.96)
+                ns.UI_SetTextColorRole(titleText, "Bright")
                 titleText:SetText(title)
 
                 -- Three vault slots in a row: star + text only (no slot panel background).
@@ -3337,7 +3337,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     if isComplete then
                         milestoneText:SetTextColor(0.35, 1, 0.4)
                     else
-                        milestoneText:SetTextColor(0.78, 0.78, 0.8)
+                        ns.UI_SetTextColorRole(milestoneText, "Muted")
                     end
                     milestoneText:SetText(
                         format("%s / %s", FormatNumber(math.min(current, thresholds[ti])), FormatNumber(thresholds[ti]))
@@ -3589,7 +3589,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         
         local desc = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
         desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
-        desc:SetTextColor(0.6, 0.6, 0.6)
+        ns.UI_SetTextColorRole(desc, "Muted")
         desc:SetText(categoryDescs[catKey] or "")
         
         cb:SetScript("OnClick", function(self)
@@ -3657,7 +3657,7 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     local wipDesc = FontManager:CreateFontString(wipCard, "body", "OVERLAY")
     wipDesc:SetPoint("TOP", wipTitle, "BOTTOM", 0, -15)
     wipDesc:SetWidth(width - 100)
-    wipDesc:SetTextColor(1, 1, 1)  -- White
+    ns.UI_SetTextColorRole(wipDesc, "Bright") -- White
     wipDesc:SetJustifyH("CENTER")
     wipDesc:SetText((ns.L and ns.L["TRANSMOG_WIP_DESC"]) or "Transmog collection tracking is currently under development.\n\nThis feature will be available in a future update with improved\nperformance and better integration with Warband systems.")
     

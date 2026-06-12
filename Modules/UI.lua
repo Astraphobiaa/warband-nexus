@@ -1353,7 +1353,7 @@ local function UpdateTabButtonStates(f)
             if key == f.currentTab then
                 btn.active = true
                 if btn.label and (btn._wnRailTextMode or not btn._wnRailCompact) then
-                    btn.label:SetTextColor(1, 1, 1)
+                    ns.UI_SetTextColorRole(btn.label, "Bright")
                     local font, size = btn.label:GetFont()
                     if font and size then
                         btn.label:SetFont(font, size, "OUTLINE")
@@ -1385,9 +1385,9 @@ local function UpdateTabButtonStates(f)
                 btn.active = false
                 if btn.label and (btn._wnRailTextMode or not btn._wnRailCompact) then
                     if railFlat then
-                        btn.label:SetTextColor(0.92, 0.92, 0.94)
+                        ns.UI_SetTextColorRole(btn.label, "Bright")
                     else
-                        btn.label:SetTextColor(0.7, 0.7, 0.7)
+                        ns.UI_SetTextColorRole(btn.label, "Muted")
                     end
                     local font, size = btn.label:GetFont()
                     if font and size then
@@ -1431,7 +1431,7 @@ local function UpdateTabButtonStates(f)
         if isActive then
             settingsBtn.active = true
             if settingsBtn.label and (settingsBtn._wnRailTextMode or not settingsBtn._wnRailCompact) then
-                settingsBtn.label:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(settingsBtn.label, "Bright")
                 local font, size = settingsBtn.label:GetFont()
                 if font and size then
                     settingsBtn.label:SetFont(font, size, "OUTLINE")
@@ -1457,9 +1457,9 @@ local function UpdateTabButtonStates(f)
             settingsBtn.active = false
             if settingsBtn.label and (settingsBtn._wnRailTextMode or not settingsBtn._wnRailCompact) then
                 if railFlat then
-                    settingsBtn.label:SetTextColor(0.92, 0.92, 0.94)
+                    ns.UI_SetTextColorRole(settingsBtn.label, "Bright")
                 else
-                    settingsBtn.label:SetTextColor(0.7, 0.7, 0.7)
+                    ns.UI_SetTextColorRole(settingsBtn.label, "Muted")
                 end
                 local font, size = settingsBtn.label:GetFont()
                 if font and size then
@@ -1500,7 +1500,7 @@ local function UpdateTabButtonStates(f)
         if isAboutActive then
             aboutBtn.active = true
             if aboutBtn.label and (aboutBtn._wnRailTextMode or not aboutBtn._wnRailCompact) then
-                aboutBtn.label:SetTextColor(1, 1, 1)
+                ns.UI_SetTextColorRole(aboutBtn.label, "Bright")
                 local font, size = aboutBtn.label:GetFont()
                 if font and size then
                     aboutBtn.label:SetFont(font, size, "OUTLINE")
@@ -1526,9 +1526,9 @@ local function UpdateTabButtonStates(f)
             aboutBtn.active = false
             if aboutBtn.label and (aboutBtn._wnRailTextMode or not aboutBtn._wnRailCompact) then
                 if railFlat then
-                    aboutBtn.label:SetTextColor(0.92, 0.92, 0.94)
+                    ns.UI_SetTextColorRole(aboutBtn.label, "Bright")
                 else
-                    aboutBtn.label:SetTextColor(0.7, 0.7, 0.7)
+                    ns.UI_SetTextColorRole(aboutBtn.label, "Muted")
                 end
                 local font, size = aboutBtn.label:GetFont()
                 if font and size then
@@ -1823,7 +1823,7 @@ function WarbandNexus:CreateMainWindow()
     local title = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     title:SetPoint("LEFT", iconHolder, "RIGHT", 8, 0)
     title:SetText((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
-    title:SetTextColor(1, 1, 1)  -- Always white
+    ns.UI_SetTextColorRole(title, "Bright") -- Always white
     f.title = title  -- Store reference
     
     -- Close button (Factory pattern with atlas icon)
@@ -2625,7 +2625,7 @@ function WarbandNexus:CreateMainWindow()
             label:SetJustifyH("LEFT")
             label:SetWordWrap(false)
             label:SetText(text)
-            label:SetTextColor(1, 1, 1)
+            ns.UI_SetTextColorRole(label, "Bright")
         else
             label:SetPoint("LEFT", tabIcon, "RIGHT", iconGap, 1)
             label:SetPoint("RIGHT", btn, "RIGHT", -(iconRight + countReserve), 1)
@@ -2637,7 +2637,7 @@ function WarbandNexus:CreateMainWindow()
         -- Row count badge (dimmed)
         local countLabel = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
         countLabel:SetJustifyH("RIGHT")
-        countLabel:SetTextColor(0.5, 0.5, 0.5, 0.8)
+        ns.UI_SetTextColorRole(countLabel, "Dim", 0.8)
         countLabel:SetText("")
         countLabel:Hide()
         btn.countLabel = countLabel
@@ -3320,7 +3320,7 @@ function WarbandNexus:CreateMainWindow()
         local footerVersion = FontManager:CreateFontString(footerBar, "small", "OVERLAY")
         footerVersion:SetPoint("RIGHT", footerBar, "RIGHT", -8, 0)
         footerVersion:SetJustifyH("RIGHT")
-        footerVersion:SetTextColor(0.72, 0.74, 0.8, 0.95)
+        ns.UI_SetTextColorRole(footerVersion, "Muted", 0.95)
         local verFmt = (L and L["MAIN_FOOTER_VERSION_FMT"]) or "v%s"
         footerVersion:SetText(string.format(verFmt, metaVer))
         f.footerVersionText = footerVersion
@@ -3331,7 +3331,7 @@ function WarbandNexus:CreateMainWindow()
         footerLeft:SetJustifyH("LEFT")
         footerLeft:SetWordWrap(false)
         footerLeft:SetNonSpaceWrap(true)
-        footerLeft:SetTextColor(0.5, 0.52, 0.56, 0.92)
+        ns.UI_SetTextColorRole(footerLeft, "Dim", 0.92)
         footerLeft:SetText((L and L["MAIN_FOOTER_LEFT"]) or "Crafted with care, for everyone who plays.")
         f.footerLeftText = footerLeft
 
@@ -4017,7 +4017,7 @@ function WarbandNexus:DrawTrackingRequiredBanner(parent)
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     desc:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -8)
     desc:SetJustifyH("LEFT")
-    desc:SetTextColor(0.88, 0.88, 0.88)
+    ns.UI_SetTextColorRole(desc, "Normal")
     desc:SetText((ns.L and ns.L["TRACKING_TAB_LOCKED_DESC"]) or "This tab works only for tracked characters.\nEnable tracking from the Characters page using the tracking icon.")
 
     local openCharsBtn = CreateThemedButton(card, (ns.L and ns.L["OPEN_CHARACTERS_TAB"]) or "Open Characters", 170)

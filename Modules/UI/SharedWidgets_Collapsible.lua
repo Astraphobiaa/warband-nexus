@@ -254,9 +254,9 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     headerText:SetJustifyH("LEFT")
     headerText:SetText(text)
     if preset == "danger" then
-        headerText:SetTextColor(0.7, 0.7, 0.7)
+        ns.UI_SetTextColorRole(headerText, "Muted")
     else
-        headerText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(headerText, "Bright")
     end
     header._wnCollHeaderText = headerText
     if suppressSectionChrome then

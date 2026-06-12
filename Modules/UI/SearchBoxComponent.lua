@@ -159,7 +159,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     local placeholderText = FontManager:CreateFontString(searchBox, FontManager:GetFontRole("searchPlaceholder"), "ARTWORK")
     placeholderText:SetPoint("LEFT", 0, 0)
     placeholderText:SetText(placeholder or "Search...")
-    placeholderText:SetTextColor(1, 1, 1, 0.4)
+    ns.UI_SetTextColorRole(placeholderText, "Bright", 0.4)
     
     if initialText and initialText ~= "" then
         placeholderText:Hide()

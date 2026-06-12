@@ -225,6 +225,7 @@ local defaults = {
         },
         -- When true, UI accent (and derived tab/border tones) follows the logged-in character's class color; falls back to themeColors.accent if class is unavailable.
         useClassColorAccent = false,
+        lightMode = false,  -- Accessibility: light background + dark text palette
         showItemCount = true,
         showTooltipItemCount = true,
         recipeCompanionEnabled = true,
@@ -800,6 +801,13 @@ end
     Called when the addon becomes enabled
 ]]
 function WarbandNexus:OnEnable()
+    -- Apply the persisted theme (accent + light/dark surfaces) now that the DB is
+    -- loaded: SharedWidgets builds its palette at file load, before SavedVariables
+    -- exist, so light mode would otherwise only apply after a manual re-theme.
+    if ns.UI_RefreshColors then
+        ns.UI_RefreshColors()
+    end
+
     -- If schema reset is pending, block all initialization and ask user to reload.
     -- Taint: ReloadUI() is protected; addon code is tainted (timers, events, OnUpdate).
     -- Only user-initiated execution (button click) can call protected functions.

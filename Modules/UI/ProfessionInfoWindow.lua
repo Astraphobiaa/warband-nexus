@@ -1003,7 +1003,7 @@ local function CreateInfoFrame()
     frame.titleText:SetPoint("LEFT", frame.headerIcon, "RIGHT", 8, 0)
     frame.titleText:SetPoint("RIGHT", header, "RIGHT", -40, 0)
     frame.titleText:SetJustifyH("LEFT")
-    frame.titleText:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(frame.titleText, "Bright")
 
     -- Close button
     local closeBtn = CreateButton(header, 24, 24, {0.12, 0.12, 0.14, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}, false)

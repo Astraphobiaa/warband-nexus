@@ -161,9 +161,55 @@ local COLORS = {
     red = {0.95, 0.30, 0.30, 1},
     textBright = {1, 1, 1, 1},
     textNormal = {0.85, 0.85, 0.85, 1},
+    textMuted = {0.70, 0.70, 0.72, 1},
     textDim = {0.55, 0.55, 0.55, 1},
     white = {1, 1, 1, 1},
 }
+
+-- Accessibility light mode (profile.lightMode): same surface/text KEYS, inverted values.
+-- Everything that reads COLORS.* picks these up; takes full effect after /reload because
+-- many regions sample the palette at creation time. Money/quality |cff escapes keep their
+-- colors (known v1 limitation).
+local SURFACE_VARIANTS = {
+    dark = {
+        bg = {0.042, 0.042, 0.055, 0.98},
+        surfaceViewport = {0.068, 0.068, 0.086, 0.98},
+        bgLight = {0.108, 0.108, 0.132, 0.98},
+        bgCard = {0.118, 0.118, 0.145, 0.98},
+        surfaceHeaderChrome = {0.098, 0.098, 0.122, 0.97},
+        surfaceRowEven = {0.112, 0.112, 0.138, 0.96},
+        surfaceRowOdd = {0.090, 0.090, 0.112, 0.96},
+        borderLight = {0.30, 0.30, 0.38, 1},
+        tabInactive = {0.05, 0.05, 0.065, 1},
+        gold = {1.00, 0.82, 0.00, 1},
+        textBright = {1, 1, 1, 1},
+        textNormal = {0.85, 0.85, 0.85, 1},
+        textMuted = {0.70, 0.70, 0.72, 1},
+        textDim = {0.55, 0.55, 0.55, 1},
+    },
+    light = {
+        bg = {0.905, 0.905, 0.920, 0.99},
+        surfaceViewport = {0.935, 0.935, 0.945, 0.99},
+        bgLight = {0.958, 0.958, 0.966, 0.99},
+        bgCard = {0.972, 0.972, 0.980, 0.99},
+        surfaceHeaderChrome = {0.948, 0.948, 0.958, 0.99},
+        surfaceRowEven = {0.952, 0.952, 0.960, 0.98},
+        surfaceRowOdd = {0.922, 0.922, 0.932, 0.98},
+        borderLight = {0.62, 0.62, 0.68, 1},
+        tabInactive = {0.88, 0.88, 0.90, 1},
+        gold = {0.62, 0.47, 0.00, 1},  -- readable amber on light surfaces
+        textBright = {0.10, 0.10, 0.12, 1},
+        textNormal = {0.20, 0.20, 0.24, 1},
+        textMuted = {0.34, 0.34, 0.38, 1},
+        textDim = {0.46, 0.46, 0.50, 1},
+    },
+}
+
+local function IsLightModeEnabled()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    return db and db.lightMode == true
+end
+ns.UI_IsLightMode = IsLightModeEnabled
 
 -- Update COLORS in-place from theme (zero allocation)
 local function UpdateColorsFromTheme()
@@ -179,6 +225,38 @@ local function UpdateColorsFromTheme()
     COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3] = theme.accentDark[1], theme.accentDark[2], theme.accentDark[3]
     COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3] = theme.tabActive[1], theme.tabActive[2], theme.tabActive[3]
     COLORS.tabHover[1], COLORS.tabHover[2], COLORS.tabHover[3] = theme.tabHover[1], theme.tabHover[2], theme.tabHover[3]
+
+    -- Surface/text variant swap (in-place so cached references stay live)
+    local variant = SURFACE_VARIANTS[IsLightModeEnabled() and "light" or "dark"]
+    for key, src in pairs(variant) do
+        local dst = COLORS[key]
+        if dst then
+            dst[1], dst[2], dst[3] = src[1], src[2], src[3]
+            if src[4] ~= nil then dst[4] = src[4] end
+        end
+    end
+    -- Light mode: derived tab colors from the accent are too dark a fill for light
+    -- surfaces; soften them toward the background so labels stay readable.
+    if IsLightModeEnabled() then
+        local bgL = COLORS.bgLight
+        for _, key in ipairs({ "tabActive", "tabHover" }) do
+            local c = COLORS[key]
+            c[1] = c[1] * 0.35 + bgL[1] * 0.65
+            c[2] = c[2] * 0.35 + bgL[2] * 0.65
+            c[3] = c[3] * 0.35 + bgL[3] * 0.65
+        end
+    end
+end
+
+--- Role-based text color from the live palette (theme/light-mode aware at call time).
+--- Roles: "Bright" | "Normal" | "Muted" | "Dim".
+---@param fs FontString
+---@param role string
+---@param alpha number|nil
+function ns.UI_SetTextColorRole(fs, role, alpha)
+    if not fs or not fs.SetTextColor then return end
+    local c = COLORS["text" .. role] or COLORS.textNormal
+    fs:SetTextColor(c[1], c[2], c[3], alpha or c[4] or 1)
 end
 
 -- Apply theme colors on initial load
@@ -2149,7 +2227,7 @@ local function CreateNoticeFrame(parent, title, description, iconType, width, he
     descText:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -15)
     descText:SetPoint("RIGHT", -10, 0)
     descText:SetJustifyH("LEFT")
-    descText:SetTextColor(1, 1, 1)  -- White
+    ns.UI_SetTextColorRole(descText, "Bright") -- White
     descText:SetText(description)
     
     return frame
@@ -2301,7 +2379,7 @@ local function CreateStatsBar(parent, height)
     
     local text = FontManager:CreateFontString(bar, UIFontRole("statsBarText"), "OVERLAY")
     text:SetPoint("LEFT", 10, 0)
-    text:SetTextColor(1, 1, 1)  -- White
+    ns.UI_SetTextColorRole(text, "Bright") -- White
     
     return bar, text
 end
@@ -2782,7 +2860,7 @@ local function CreateStandardTabTitleCard(headerParent, opts)
 
     local subtitleFs = FontManager:CreateFontString(textContainer, UIFontRole("tabSubtitle"), "OVERLAY")
     subtitleFs:SetText(opts.subtitleText or "")
-    subtitleFs:SetTextColor(0.88, 0.88, 0.90)
+    ns.UI_SetTextColorRole(subtitleFs, "Normal")
     subtitleFs:SetJustifyH("LEFT")
     subtitleFs:SetWordWrap(false)
     subtitleFs:SetNonSpaceWrap(false)
@@ -3434,13 +3512,13 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local headerTitle = FontManager:CreateFontString(header, UIFontRole("tryPopupHeader"), "OVERLAY")
         headerTitle:SetPoint("CENTER")
         headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
-        headerTitle:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(headerTitle, "Bright")
         f.headerTitle = headerTitle
 
         local nameLabel = FontManager:CreateFontString(f, UIFontRole("tryPopupBody"), "OVERLAY")
         nameLabel:SetPoint("TOP", header, "BOTTOM", 0, -12)
         nameLabel:SetJustifyH("CENTER")
-        nameLabel:SetTextColor(0.9, 0.9, 0.9)
+        ns.UI_SetTextColorRole(nameLabel, "Bright")
         f.nameLabel = nameLabel
 
         local editBoxBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -3455,7 +3533,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         editBox:SetNumeric(true)
         editBox:SetMaxLetters(6)
         editBox:SetFont(FontManager:GetFontFace(), FontManager:GetFontSize("body"), "")
-        editBox:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(editBox, "Bright")
         editBox:SetJustifyH("CENTER")
         f.editBox = editBox
 
@@ -3468,7 +3546,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local saveBtnText = FontManager:CreateFontString(saveBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         saveBtnText:SetPoint("CENTER")
         saveBtnText:SetText((ns.L and ns.L["SAVE"]) or "Save")
-        saveBtnText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(saveBtnText, "Bright")
         saveBtn:SetScript("OnEnter", function(self)
             ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
         end)
@@ -3484,7 +3562,7 @@ function ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
         local cancelBtnText = FontManager:CreateFontString(cancelBtn, UIFontRole("dialogButtonLabel"), "OVERLAY")
         cancelBtnText:SetPoint("CENTER")
         cancelBtnText:SetText(_G.CANCEL or "Cancel")
-        cancelBtnText:SetTextColor(0.8, 0.8, 0.8)
+        ns.UI_SetTextColorRole(cancelBtnText, "Normal")
         cancelBtn:SetScript("OnEnter", function(self)
             ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
         end)
@@ -3632,7 +3710,7 @@ local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, la
     -- Create label (centered in container)
     local label = FontManager:CreateFontString(textContainer, labelFont, "OVERLAY")
     label:SetText(labelText)
-    label:SetTextColor(1, 1, 1)
+    ns.UI_SetTextColorRole(label, "Bright")
     label:SetJustifyH("LEFT")
     
     -- Create value (if provided)
@@ -3974,7 +4052,7 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     local hintText = FontManager:CreateFontString(loadingCard, UIFontRole("loadingCardHint"), "OVERLAY")
     hintText:SetPoint("TOPLEFT", barBg, "BOTTOMLEFT", 0, -6)
     hintText:SetPoint("RIGHT", loadingCard, "RIGHT", -16, 0)
-    hintText:SetTextColor(0.6, 0.6, 0.6)
+    ns.UI_SetTextColorRole(hintText, "Muted")
     hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
     
     loadingCard:SetScript("OnUpdate", function()
@@ -4076,7 +4154,7 @@ local function UI_CreateLoadingStatePanel(parent)
     local progressText = FM:CreateFontString(panel, FM:GetFontRole("loadingPanelProgress"), "OVERLAY")
     progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -6)
     progressText:SetJustifyH("CENTER")
-    progressText:SetTextColor(0.55, 0.55, 0.55)
+    ns.UI_SetTextColorRole(progressText, "Dim")
     panel._progressText = progressText
 
     -- Progress bar

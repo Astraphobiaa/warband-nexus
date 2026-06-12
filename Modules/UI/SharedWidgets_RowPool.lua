@@ -858,7 +858,7 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
             row.subtitle:SetJustifyH("LEFT")
             row.subtitle:SetJustifyV("MIDDLE")
             row.subtitle:SetWordWrap(false)
-            row.subtitle:SetTextColor(1, 1, 1, 1)
+            ns.UI_SetTextColorRole(row.subtitle, "Bright")
         end
         row.subtitle:SetText(subtitleText)
         row.subtitle:Show()

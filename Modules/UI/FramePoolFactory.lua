@@ -421,12 +421,12 @@ local function ReleaseCurrencyRow(row)
     -- Reset texts
     if row.nameText then
         row.nameText:SetText("")
-        row.nameText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.nameText, "Bright")
     end
     
     if row.amountText then
         row.amountText:SetText("")
-        row.amountText:SetTextColor(1, 1, 1)
+        ns.UI_SetTextColorRole(row.amountText, "Bright")
     end
     
     -- Reset badge text (for Show All mode)

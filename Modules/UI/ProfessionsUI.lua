@@ -2174,7 +2174,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     end
     row.realmText:ClearAllPoints()
     row.realmText:SetWidth(nameW)
-    row.realmText:SetTextColor(0.75, 0.75, 0.78)
+    ns.UI_SetTextColorRole(row.realmText, "Muted")
     row.realmText:SetText("|cffb0b0b8" .. FormatRealmName(char.realm or "") .. "|r")
 
     -- Vertically center name + realm block with icon column (icons use y=0 on row LEFT).
