@@ -3,7 +3,8 @@
 
     WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton` with guarded fallbacks when
     Factory is unavailable (plain `BackdropTemplate` buttons + ApplyVisuals); item rows/storage use pooled factories elsewhere.
-    WN_PERF: Virtual lists where applicable (`VirtualListModule`); storage warband subtree is profiler-sliced (`Stor_*` timings in DrawStorageResults).
+    WN_PERF: Virtual lists where applicable (`VirtualListModule`); `DrawStorageResults` uses generation tokens +
+    `C_Timer.After` chunk pumps for personal char sections, warband type headers, and leaf rows (`Stor_*` profiler slices).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -79,6 +80,12 @@ local STORAGE_LEAF_ROW_SYNC_MAX = 40
 local STORAGE_LEAF_ROW_SYNC_MAX_EMBED = 12
 local STORAGE_WARBAND_TYPE_CHUNK_EMBED = 2
 local STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED = 3
+local STORAGE_WARBAND_TYPE_CHUNK = 4
+local STORAGE_WARBAND_TYPE_SYNC_MAX = 8
+local STORAGE_CHAR_CHUNK_EMBED = 2
+local STORAGE_CHAR_SYNC_MAX_EMBED = 3
+local STORAGE_CHAR_CHUNK = 4
+local STORAGE_CHAR_SYNC_MAX = 6
 --- Bags / Bank / Guild virtual list rows: same stride as storage leaves (BuildItemsVirtualFlatList + VirtualListModule + AcquireItemRow).
 local ITEMS_VIRTUAL_ROW_HEIGHT = STORAGE_ROW_HEIGHT
 local function DataRowGap()
@@ -137,6 +144,30 @@ local function ItemsWarbandUsesStorageTree()
         return false
     end
     return ns.Utilities and ns.Utilities:IsModuleEnabled("items")
+end
+
+local function IsStorageDrawContextActive()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "items" then
+        return false
+    end
+    return ItemsWarbandUsesStorageTree()
+end
+
+local function StorageChunkedPaintStillValid(mf, paintGen)
+    if not mf or mf._wnStorageLeafPaintGen ~= paintGen then
+        return false
+    end
+    return IsStorageDrawContextActive()
+end
+
+function WarbandNexus:AbortStorageChunkedPaint()
+    local mf = self.UI and self.UI.mainFrame
+    if not mf then
+        return
+    end
+    mf._wnStorageLeafPaintGen = (mf._wnStorageLeafPaintGen or 0) + 1
+    mf._wnStorageLeafStage = { gen = mf._wnStorageLeafPaintGen, pending = 0 }
 end
 
 --- Consistent visual gaps between stats segments (items | slots | last scan).
@@ -1181,10 +1212,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         hideWarbandBanner()
     end
-    if embedItemsWarband then
-        loadIndicator = EnsureWarbandDrawIndicator(parent)
-        if loadIndicator then loadIndicator:Show() end
-    end
+    loadIndicator = EnsureWarbandDrawIndicator(parent)
 
     local globalRowIdxAll = 0
     --- Vertical chain tail: major headers + type wraps share one anchor stack so sibling layout
@@ -1506,8 +1534,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
         local tiCursor = 1
         local yAcc = 0
+        if loadIndicator then loadIndicator:Show() end
+
         local function processChunk()
-            if not mfPaint or mfPaint._wnStorageLeafPaintGen ~= leafPaintGen then
+            if not StorageChunkedPaintStillValid(mfPaint, leafPaintGen) then
                 consumeLeafStagingCredit()
                 return
             end
@@ -1859,6 +1889,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
         end
         
+        local charsToPaint = {}
         for ci = 1, #characters do
             local char = characters[ci]
             local charKey = char._key
@@ -1875,25 +1906,50 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             local hasCharStorage = (bagN + bankN) > 0 or bagLast > 0 or bankLast > 0
                 or charCategoryExpanded
                 or expandAllActive
-            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+            local itemsData = self:GetItemsData(charKey)
             if hasCharStorage and itemsData and (itemsData.bags or itemsData.bank) then
-                -- Extract name and realm from character data
-                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                local charRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                
-                -- Apply class color
-                local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
-                local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",
-                    classColor.r * 255, classColor.g * 255, classColor.b * 255,
-                    charName,
-                    charRealm)
-                
-                -- Skip character if search active and no matches
-                if storageSearchActive and not categoriesWithMatches[charCategoryKey] then
-                    -- Skip this character
-                else
-                    -- Default collapsed; expand-all / search matches override.
-                    local isCharExpanded = (self.storageExpandAllActive == true) or (expanded.categories[charCategoryKey] == true)
+                if not (storageSearchActive and not categoriesWithMatches[charCategoryKey]) then
+                    charsToPaint[#charsToPaint + 1] = char
+                end
+            end
+        end
+
+        local function finalizePersonalBodyShell()
+            personalBody._wnSectionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
+            personalBody:Show()
+            personalBody:SetHeight(personalBody._wnSectionFullH)
+            personalBody._wnStorageMajorBodyBuilt = true
+        end
+
+        local function syncPersonalChromePartial()
+            personalWrap:SetHeight(MAIN_SECTION_HEADER_H + personalBody:GetHeight())
+            storageStackAnchor = personalWrap
+            parent._wnStorageLayoutTail = storageStackAnchor
+            WarbandNexus:SyncStorageResultsLayoutFromTail(parent)
+            if embedItemsWarband and mfPaint then
+                local sc = parent:GetParent()
+                if sc then
+                    local ext = MeasureStorageResultsContentExtent(parent)
+                    SyncItemsTabScrollChrome(mfPaint, sc, ext or (parent.GetHeight and parent:GetHeight()) or 1)
+                end
+            end
+        end
+
+        local function buildPersonalCharSection(char)
+            local charKey = char._key
+            local charCategoryKey = "personal_" .. charKey
+            local itemsData = self:GetItemsData(charKey)
+            if not itemsData or not (itemsData.bags or itemsData.bank) then
+                return false
+            end
+            local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+            local charRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+            local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
+            local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",
+                classColor.r * 255, classColor.g * 255, classColor.b * 255,
+                charName,
+                charRealm)
+            local isCharExpanded = (self.storageExpandAllActive == true) or (expanded.categories[charCategoryKey] == true)
                     if storageSearchActive and categoriesWithMatches[charCategoryKey] then
                         isCharExpanded = true
                     end
@@ -2173,18 +2229,74 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         charBody:SetHeight(0.1)
                         charWrap:SetHeight(MAIN_SECTION_HEADER_H + 0.1)
                     end
-                    personalInnerAccum = personalInnerAccum + charWrap:GetHeight() + SECTION_SPACING
-                    personalInnerTail = charWrap
+            personalInnerAccum = personalInnerAccum + charWrap:GetHeight() + SECTION_SPACING
+            personalInnerTail = charWrap
+            hasAnyPersonalItems = true
+            return true
+        end
 
-                hasAnyPersonalItems = true
+        local charSyncMax = embedItemsWarband and STORAGE_CHAR_SYNC_MAX_EMBED or STORAGE_CHAR_SYNC_MAX
+        local charChunkSize = embedItemsWarband and STORAGE_CHAR_CHUNK_EMBED or STORAGE_CHAR_CHUNK
+        local useCharPump = #charsToPaint > charSyncMax and C_Timer and C_Timer.After
+
+        if not useCharPump then
+            for pci = 1, #charsToPaint do
+                buildPersonalCharSection(charsToPaint[pci])
             end
-        end
-        end
+            finalizePersonalBodyShell()
+        else
+            if loadIndicator then loadIndicator:Show() end
+            local stPatchChars = mfPaint and mfPaint._wnStorageLeafStage
+            if stPatchChars and stPatchChars.gen == leafPaintGen then
+                stPatchChars.pending = (stPatchChars.pending or 0) + 1
+            end
+            local charCreditConsumed = false
+            local function consumeCharStagingCredit()
+                if charCreditConsumed then return end
+                charCreditConsumed = true
+                local st = mfPaint and mfPaint._wnStorageLeafStage
+                if st and st.gen == leafPaintGen then
+                    st.pending = math.max(0, (st.pending or 1) - 1)
+                    if st.pending <= 0 then
+                        hideWarbandBanner()
+                    end
+                end
+            end
 
-        personalBody._wnSectionFullH = math.max(0.1, personalInnerAccum - SECTION_SPACING)
-        personalBody:Show()
-        personalBody:SetHeight(personalBody._wnSectionFullH)
-        personalBody._wnStorageMajorBodyBuilt = true
+            local charPaintIdx = 1
+            local function pumpPersonalChars()
+                if not StorageChunkedPaintStillValid(mfPaint, leafPaintGen) then
+                    consumeCharStagingCredit()
+                    return
+                end
+                if InCombatLockdown and InCombatLockdown() then
+                    C_Timer.After(0, pumpPersonalChars)
+                    return
+                end
+                local limit = math.min(charPaintIdx + charChunkSize - 1, #charsToPaint)
+                for pci = charPaintIdx, limit do
+                    buildPersonalCharSection(charsToPaint[pci])
+                end
+                charPaintIdx = limit + 1
+                syncPersonalChromePartial()
+
+                if charPaintIdx <= #charsToPaint then
+                    C_Timer.After(0, pumpPersonalChars)
+                else
+                    finalizePersonalBodyShell()
+                    consumeCharStagingCredit()
+                    hideDrawIndicatorWithStagingGate()
+                end
+            end
+
+            personalInnerAccum = math.max(
+                personalInnerAccum,
+                #charsToPaint * (MAIN_SECTION_HEADER_H + SECTION_SPACING + 20)
+            )
+            personalBody:SetHeight(math.max(0.1, personalInnerAccum - SECTION_SPACING))
+            syncPersonalChromePartial()
+            pumpPersonalChars()
+        end
         end  -- populatePersonalMajorBody
 
         personalWrap._wnStorageMajorPopulateFn = populatePersonalMajorBody
@@ -2529,8 +2641,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
 
         local typeCount = #sortedTypes
-        local typeSyncMax = embedItemsWarband and STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED or typeCount
-        local useTypePump = embedItemsWarband and typeCount > typeSyncMax and C_Timer and C_Timer.After
+        local typeSyncMax = embedItemsWarband and STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED or STORAGE_WARBAND_TYPE_SYNC_MAX
+        local typeChunkSize = embedItemsWarband and STORAGE_WARBAND_TYPE_CHUNK_EMBED or STORAGE_WARBAND_TYPE_CHUNK
+        local useTypePump = typeCount > typeSyncMax and C_Timer and C_Timer.After
 
         if not useTypePump then
             for sti = 1, typeCount do
@@ -2538,6 +2651,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
             finalizeWarbandBodyShell()
         else
+            if loadIndicator then loadIndicator:Show() end
             local stPatchTypes = mfPaint and mfPaint._wnStorageLeafStage
             if stPatchTypes and stPatchTypes.gen == leafPaintGen then
                 stPatchTypes.pending = (stPatchTypes.pending or 0) + 1
@@ -2557,7 +2671,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
             local typeIdx = 1
             local function pumpWarbandTypes()
-                if not mfPaint or mfPaint._wnStorageLeafPaintGen ~= leafPaintGen then
+                if not StorageChunkedPaintStillValid(mfPaint, leafPaintGen) then
                     consumeTypeStagingCredit()
                     return
                 end
@@ -2565,7 +2679,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     C_Timer.After(0, pumpWarbandTypes)
                     return
                 end
-                local limit = math.min(typeIdx + STORAGE_WARBAND_TYPE_CHUNK_EMBED - 1, typeCount)
+                local limit = math.min(typeIdx + typeChunkSize - 1, typeCount)
                 for sti = typeIdx, limit do
                     buildWarbandTypeSection(sti)
                 end
@@ -2694,9 +2808,8 @@ function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
     fromSub = fromSub or sub
 
     -- Cancel in-flight storage leaf / warband-type chunk pumps before sub-tab chrome updates.
-    if mf then
-        mf._wnStorageLeafPaintGen = (mf._wnStorageLeafPaintGen or 0) + 1
-        mf._wnStorageLeafStage = { gen = mf._wnStorageLeafPaintGen, pending = 0 }
+    if self.AbortStorageChunkedPaint then
+        self:AbortStorageChunkedPaint()
     end
 
     local perfOn = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()
