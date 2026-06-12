@@ -1,36 +1,7 @@
 --[[
-    Warband Nexus - Currency Cache Service (v3.0 - Lean SV + On-Demand Metadata)
-    
-    ARCHITECTURE: Direct AceDB + Synchronous FIFO Queue + On-Demand Metadata
-    
-    Single merged snapshot for all UI (READ-ONLY; do not mutate entries):
-    WarbandNexus:GetCurrenciesForUI()  ->  [currencyID] = { name, icon, chars = {...}, ... }
-    Quantities come only from AceDB (writers: PerformFullScan, UpdateSingleCurrency). No C_CurrencyInfo in the merge path.
-    Metadata (name, icon, caps, split flags) is session RAM via ResolveCurrencyMetadata (one API hit per cold ID).
-    Rebuilt when InvalidateCurrenciesForUICache / WN_CURRENCY_* / character / money bumps the merge generation.
-    Consumers: Currency tab (CurrencyUI), Gear upgrade strip (GearService:GetGearUpgradeCurrenciesFromDB), PvE delve columns (PvEUI).
-    
-    SV Format (minimal — only data that can't be fetched from API for offline chars):
-    {
-      version = "2.0.0",
-      lastScan = timestamp,
-      currencies = {
-        [charKey] = {
-          [currencyID] = quantity,   -- just a number!
-        }
-      },
-      headers = { ... },  -- UI grouping structure
-    }
-    
-    Metadata (name, icon, maxQuantity, isAccountWide, description, etc.) is ALWAYS
-    fetched on-demand from C_CurrencyInfo.GetCurrencyInfo() and cached in session-only
-    RAM (bounded, FIFO eviction). Never persisted to SV.
-    
-    Data Flow:
-    1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
-    2) DrainCurrencyQueue() table.remove FIFO until empty (handles bursts + nested events)
-    3) UpdateSingleCurrency: API → store quantity in DB → gain detection → fire lean event
-    4) UI calls GetCurrencyData (per-char DB) or GetCurrenciesForUI (merged read model: DB quantities + cached metadata; no live merge API).
+    Warband Nexus - Currency Cache Service
+    Lean per-character quantity cache; metadata from C_CurrencyInfo on demand.
+    Emits WN_CURRENCY_UPDATED and WN_CURRENCY_GAINED after writes.
 ]]
 
 local ADDON_NAME, ns = ...
