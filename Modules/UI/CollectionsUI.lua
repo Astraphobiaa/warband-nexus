@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Collections Tab (entry: DrawCollectionsTab, listeners)
     Sub-modules: CollectionsUI_Shared, _Lists, _Model, _Recent, _Draw.
 ]]
@@ -208,7 +208,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
         hdrCache = {}
         M.state._fixedHeaderCache = hdrCache
 
-        -- ===== HEADER CARD — Characters-tab standard title layout =====
         local accent = (COLORS and COLORS.accent) or { 0.40, 0.20, 0.58 }
         local r, g, b = accent[1], accent[2], accent[3]
         local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -241,7 +240,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
             ns.UI_HideTitleCardExpandCollapseControls(parent)
         end
 
-        -- ===== SUB-TAB BAR (in fixedHeader - non-scrolling) =====
         local subTabBar = CreateSubTabBar(headerParent, function(tabKey)
             if M.state.currentSubTab == tabKey then
                 if M.state.subTabBar then
@@ -286,7 +284,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
         headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
-        -- ===== SEARCH ROW (in fixedHeader - non-scrolling) =====
         local rowWsr = math.max(200, headerParent:GetWidth() or ((headerParent.GetParent and headerParent:GetParent() and headerParent:GetParent():GetWidth()) or 660))
         local searchRow = Factory:CreateContainer(headerParent, rowWsr, SEARCH_ROW_HEIGHT, false)
         if not searchRow then
@@ -371,7 +368,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.state.searchBox = searchBox
         hdrCache.searchBar = searchBar
 
-        -- ===== FILTERS (right side of search row: Owned | Missing) =====
         local lblOwned = (ns.L and (ns.L["FILTER_SHOW_OWNED"] or ns.L["FILTER_COLLECTED"])) or "Owned"
         local lblMissing = (ns.L and (ns.L["FILTER_SHOW_MISSING"] or ns.L["FILTER_UNCOLLECTED"])) or "Missing"
 
@@ -451,7 +447,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
     local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
 
-    -- ===== CONTENT AREA =====
     local scrollFrame = parent:GetParent()
     local viewHeight = (scrollFrame and scrollFrame:GetHeight()) or 450
     local bottomPad = 0
@@ -535,7 +530,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
     -- Event-driven updates (same events as Plans): all sub-tabs (Mounts, Pets, Achievements) refresh when these fire.
     -- Use a dedicated listener key (CUIListeners) instead of WarbandNexus as self.
-    -- AceEvent allows only ONE handler per (event, self) pair — using WarbandNexus would
+    -- AceEvent allows only ONE handler per (event, self) pair â€” using WarbandNexus would
     -- overwrite CollectionService's handlers for the same events (e.g. RemoveFromUncollected).
     if not M.state._messageRegistered then
         M.state._messageRegistered = true

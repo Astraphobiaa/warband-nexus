@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Items tab (Bags / Bank / Guild: virtual list; Warband: Personal + character tree + Warband Bank).
 
     WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton` with guarded fallbacks when
@@ -25,7 +25,7 @@ local ItemsUIEvents = {}
 -- Storage aggregate tree (DrawStorageResults) needs StorageSectionLayout loaded first (TOC order).
 local StorageSectionLayout = ns.StorageSectionLayout
 if not StorageSectionLayout then
-    error("StorageSectionLayout missing — load Modules/UI/StorageSectionLayout.lua before ItemsUI.lua in WarbandNexus.toc")
+    error("StorageSectionLayout missing â€” load Modules/UI/StorageSectionLayout.lua before ItemsUI.lua in WarbandNexus.toc")
 end
 
 -- Services
@@ -72,10 +72,10 @@ local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
 --- Storage tree leaf rows only (FramePoolFactory AcquireStorageRow); body-font glyphs need > ROW_HEIGHT so descenders clear the next row background.
 local STORAGE_ROW_HEIGHT = GetLayout().STORAGE_ROW_HEIGHT or GetLayout().storageRowHeight or ROW_HEIGHT
---- WN-PERF (`WN-PERF-warband-nexus`): Personal/Warband aggregate leaf tables exceed sync cap → `C_Timer.After(0)` chunks + paint generation cancel.
+--- WN-PERF (`WN-PERF-warband-nexus`): Personal/Warband aggregate leaf tables exceed sync cap â†’ `C_Timer.After(0)` chunks + paint generation cancel.
 local STORAGE_LEAF_ROW_CHUNK = 40
 local STORAGE_LEAF_ROW_SYNC_MAX = 40
---- Items > Warband embed: lower sync cap + staged type headers (personal → warband sub-tab spike).
+--- Items > Warband embed: lower sync cap + staged type headers (personal â†’ warband sub-tab spike).
 local STORAGE_LEAF_ROW_SYNC_MAX_EMBED = 12
 local STORAGE_WARBAND_TYPE_CHUNK_EMBED = 2
 local STORAGE_WARBAND_TYPE_SYNC_MAX_EMBED = 3
@@ -496,8 +496,8 @@ local function RegisterItemsEvents(parent)
         end
     end
     
-    -- WN_ITEMS_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
-    -- items tab refresh via PopulateContent → DrawItemList. Having both caused double rebuild.
+    -- WN_ITEMS_UPDATED: REMOVED â€” UI.lua's SchedulePopulateContent already handles
+    -- items tab refresh via PopulateContent â†’ DrawItemList. Having both caused double rebuild.
     
     -- Async item metadata resolution (items that were "Loading..." now have real names)
     -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
@@ -507,7 +507,7 @@ local function RegisterItemsEvents(parent)
         if ItemsWarbandUsesStorageTree() then
             return
         end
-        -- Virtual list (Bags / Bank / Guild): item rows reference live cache objects — repaint visible rows only.
+        -- Virtual list (Bags / Bank / Guild): item rows reference live cache objects â€” repaint visible rows only.
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         local rc = mf and mf.scrollChild and mf.scrollChild.resultsContainer
         if rc and rc._virtualUpdater then
@@ -755,7 +755,7 @@ end
 
 
 --- Redraw Storage scroll content only (results container). Skips PopulateContent, scrollChild purge,
---- and UI_MAIN_REFRESH_REQUESTED debounce — use after section toggles for perf.
+--- and UI_MAIN_REFRESH_REQUESTED debounce â€” use after section toggles for perf.
 function WarbandNexus:RedrawStorageResultsOnly()
     local mf = self.UI and self.UI.mainFrame
     if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return end
@@ -1223,7 +1223,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     end
 
     --- Major section (Personal / Warband / Guild / character): wrapped header + body (instant expand/collapse).
-    --- Optional `stackReflowCtx`: { stackParent, outerWrap, outerHeaderH } for nested stacks (Personal → characters).
+    --- Optional `stackReflowCtx`: { stackParent, outerWrap, outerHeaderH } for nested stacks (Personal â†’ characters).
     local function MajorStorageSectionOpts(wrapFrame, bodyGetter, headerH, persistFn, stackReflowCtx)
         return BuildCollapsibleSectionOpts({
             wrapFrame = wrapFrame,
@@ -1324,7 +1324,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         })
     end
 
-    -- Per-draw caches: class/type work repeats per slot; rows duplicate C_Item.GetItemInfo for shared itemIDs (cold chars→storage path).
+    -- Per-draw caches: class/type work repeats per slot; rows duplicate C_Item.GetItemInfo for shared itemIDs (cold charsâ†’storage path).
     local storageDrawClassIDByItemID = {}
     local storageDrawTypeNameByClassID = {}
     local storageDrawItemInfoNameByItemID = {}
@@ -1733,7 +1733,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     
     stStop("Stor_scan")
     
-    -- ===== PERSONAL BANKS SECTION =====
     local characters = trackedCharacters
     local expandAllActive = self.storageExpandAllActive == true
     
@@ -2731,7 +2730,7 @@ function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
     return true
 end
 
---- Reposition cached Items fixedHeader chrome (Collections _fixedHeaderCache parity — WN-PERF tab revisit).
+--- Reposition cached Items fixedHeader chrome (Collections _fixedHeaderCache parity â€” WN-PERF tab revisit).
 local function RepositionItemsFixedHeader(mf, hdrCache, headerParent, chrome, headerYOffset, contentSide, addon)
     local titleCard = hdrCache.titleCard
     titleCard:SetParent(headerParent)
@@ -2835,7 +2834,6 @@ function WarbandNexus:DrawItemList(parent)
     end
 
     if not headerDone then
-    -- ===== HEADER CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local accentColor = COLORS.accent
@@ -2857,7 +2855,6 @@ function WarbandNexus:DrawItemList(parent)
         titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
     
-    -- ===== GOLD MANAGER BUTTON (Header - ALWAYS visible) =====
     local titleEdgeInset = tm.edgeInset or 0
     local hdrToolbarGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
     local goldMgrBtn = HeaderFact and HeaderFact.CreateButton and HeaderFact:CreateButton(titleCard, 100, headerBtnH, true)
@@ -2902,7 +2899,6 @@ function WarbandNexus:DrawItemList(parent)
         end
     end)
 
-    -- ===== MONEY LOGS BUTTON (Left of Gold Target) =====
     local moneyLogsBtn = HeaderFact and HeaderFact.CreateButton and HeaderFact:CreateButton(titleCard, 100, headerBtnH, true)
     if not moneyLogsBtn then
         moneyLogsBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
@@ -2966,7 +2962,6 @@ function WarbandNexus:DrawItemList(parent)
         return scrollTopY + cardHeight
     end
     
-    -- ===== LOADING STATE (INITIAL SCAN) =====
     if ns.ItemsLoadingState and ns.ItemsLoadingState.isLoading then
         if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
@@ -2982,11 +2977,9 @@ function WarbandNexus:DrawItemList(parent)
     itemsSearchText = SearchStateManager:GetQuery("items") or itemsSearchText
     local expandedGroups = ns.UI_GetExpandedGroups()
     
-    -- ===== SUB-TAB BAR (Collections CreateSubTabBar parity: 40px, icons, hover, gold reserve) =====
     local accentColor = COLORS.accent
     local itemsBankSubTabBar = CreateItemsBankSubTabBar(headerParent, headerYOffset, currentItemsSubTab, accentColor, contentSide)
 
-    -- ===== GOLD DISPLAY (Per Sub-Tab; personal bank has no account gold — hide to avoid stale text) =====
     local goldDisplay = FontManager:CreateFontString(itemsBankSubTabBar, "body", "OVERLAY")
     goldDisplay:SetPoint("RIGHT", itemsBankSubTabBar, "RIGHT", -10, 0)
     local FormatMoney = ns.UI_FormatMoney
@@ -3044,7 +3037,6 @@ function WarbandNexus:DrawItemList(parent)
 
     headerYOffset = headerYOffset + ITEMS_BANK_SUBTAB_BTN_HEIGHT + GetLayout().afterElement
     
-    -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
     local itemsSearchText = SearchStateManager:GetQuery("items")
     
@@ -3074,7 +3066,6 @@ function WarbandNexus:DrawItemList(parent)
     local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
     headerYOffset = headerYOffset + searchH + GetLayout().afterElement
     
-    -- ===== STATS BAR (in fixedHeader) =====
     local statsBar, statsText = CreateStatsBar(headerParent, 24)
     statsBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
     statsBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
@@ -3112,7 +3103,6 @@ function WarbandNexus:DrawItemList(parent)
     end
     end
 
-    -- ===== RESULTS CONTAINER (in scroll area) =====
     local resultsContainer = CreateResultsContainer(parent, scrollTopY, contentSide)
     parent.resultsContainer = resultsContainer
 
@@ -3131,7 +3121,7 @@ function WarbandNexus:DrawItemList(parent)
 end
 
 --- Redraw Items scroll results only (virtual list + group headers). Skips PopulateContent /
---- scrollChild purge — same contract as RedrawStorageResultsOnly for expand/collapse perf.
+--- scrollChild purge â€” same contract as RedrawStorageResultsOnly for expand/collapse perf.
 function WarbandNexus:RedrawItemsResultsOnly()
     local mf = self.UI and self.UI.mainFrame
     if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return end
@@ -3331,7 +3321,7 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
     return flatList, yOffset, #items, itemsSearchActive
 end
 
---- Group header toggle: swap flat list only (same header keys) — avoids full DrawItemsResults / ClearVirtualScroll.
+--- Group header toggle: swap flat list only (same header keys) â€” avoids full DrawItemsResults / ClearVirtualScroll.
 function WarbandNexus:ApplyItemsVirtualFlatListOnly()
     local mf = self.UI and self.UI.mainFrame
     if not mf or not mf:IsShown() or mf.currentTab ~= "items" then return end
@@ -3420,7 +3410,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
 
     yOffset = contentEndY
 
-    -- ===== VIRTUAL SCROLL SETUP =====
     local mainFrame = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local VLM = ns.VirtualListModule
     if mainFrame and VLM and VLM.ClearVirtualScroll then

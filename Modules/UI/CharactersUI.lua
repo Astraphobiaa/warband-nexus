@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Characters Tab
     Display all tracked characters with gold, level, and last seen info
 
@@ -28,7 +28,7 @@ end
 -- Unique AceEvent handler identity for CharactersUI
 local CharactersUIEvents = {}
 
--- Throttle WoW Token market request (C_WowTokenPublic.UpdateMarketPrice) — avoid per-tab-draw Blizzard work.
+-- Throttle WoW Token market request (C_WowTokenPublic.UpdateMarketPrice) â€” avoid per-tab-draw Blizzard work.
 local _wnCharsTabLastTokenReq = 0
 local WN_CHARS_TAB_TOKEN_REQ_INTERVAL = 600
 
@@ -564,11 +564,11 @@ local function BuildGuildText(char, isCurrentCharacter)
     end
 
     if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= "" then
-        -- Guild name: soft lavender so it’s visible but not louder than name
+        -- Guild name: soft lavender so itâ€™s visible but not louder than name
         return string.format("|cffffffff%s|r", guildName)
     end
 
-    return "|cff5c5c5c—|r"
+    return "|cff5c5c5câ€”|r"
 end
 
 ---Pending-mail badge next to character name. Inline |T paths are unreliable in modern clients; use a Texture.
@@ -610,8 +610,8 @@ local function RegisterCharacterEvents(parent)
     end
     parent.characterUpdateHandler = true
     
-    -- WN_CHARACTER_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
-    -- chars tab refresh via PopulateContent → DrawCharacterList. Having both caused double rebuild.
+    -- WN_CHARACTER_UPDATED: REMOVED â€” UI.lua's SchedulePopulateContent already handles
+    -- chars tab refresh via PopulateContent â†’ DrawCharacterList. Having both caused double rebuild.
     
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
 end
@@ -619,7 +619,7 @@ end
 -- DRAW CHARACTER LIST
 
 function WarbandNexus:DrawCharacterList(parent)
-    -- Request updated WoW Token market price (async) — heavily throttled; not tied to tab redraw frequency.
+    -- Request updated WoW Token market price (async) â€” heavily throttled; not tied to tab redraw frequency.
     if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
         local now = GetTime()
         if (now - _wnCharsTabLastTokenReq) >= WN_CHARS_TAB_TOKEN_REQ_INTERVAL then
@@ -679,7 +679,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local characters = self:GetAllCharacters()
 
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — shared Characters-tab layout =====
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local CHAR_TITLE_RIGHT_RESERVE = (ns.UI_ComputeCharactersTitleToolbarReserve and ns.UI_ComputeCharactersTitleToolbarReserve())
@@ -851,7 +850,6 @@ function WarbandNexus:DrawCharacterList(parent)
     local titleBodyGap = (GetLayout().TAB_TITLE_TO_BODY_GAP) or (ns.UI_LAYOUT and ns.UI_LAYOUT.TAB_TITLE_TO_BODY_GAP) or 6
     yOffset = yOffset + titleBodyGap
 
-    -- ===== TOTAL GOLD DISPLAY =====
     -- Get current character's gold (only if tracked)
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
     local currentCharGold = 0
@@ -1219,7 +1217,6 @@ function WarbandNexus:DrawCharacterList(parent)
     local favoriteKeySet = (ns.CharacterService and ns.CharacterService.BuildFavoriteKeySet)
         and ns.CharacterService:BuildFavoriteKeySet(self) or {}
     
-    -- ===== SORT CHARACTERS: FAVORITES -> REGULAR =====
     local trackedFavorites = {}
     local trackedRegular = {}
     local untracked = {}
@@ -1383,7 +1380,7 @@ function WarbandNexus:DrawCharacterList(parent)
             
             return ordered
         else
-            -- Default sort: level desc â†’ name asc (ignore table header sorting for now)
+            -- Default sort: level desc Ã¢â€ â€™ name asc (ignore table header sorting for now)
             table.sort(list, function(a, b)
                 if (a.level or 0) ~= (b.level or 0) then
                     return (a.level or 0) > (b.level or 0)
@@ -1480,7 +1477,6 @@ function WarbandNexus:DrawCharacterList(parent)
         self._charsListStableGuildColW = self._charListMaxGuildWidth
     end
     
-    -- ===== EMPTY STATE =====
     if #characters == 0 then
         local _, height = CreateEmptyStateCard(parent, "characters", yOffset)
         return yOffset + height
@@ -1497,7 +1493,6 @@ function WarbandNexus:DrawCharacterList(parent)
         self.db.profile.ui.charactersExpanded = true
     end
     
-    -- ===== COLLAPSIBLE CHARACTER SECTIONS (instant expand/collapse; no height tween) =====
     local SECTION_H = (GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT) or 36
     local SECTION_HEADER_GAP = GetLayout().SECTION_STACK_GAP_UNDER_HEADER or sectionGap or 12
     local SECTION_HEADER_TEXT_INSET = 12
@@ -1525,7 +1520,7 @@ function WarbandNexus:DrawCharacterList(parent)
     end
 
     -- Leaf rows only are virtualized; headers/cards stay real.
-    -- Row stripes (ApplyRowBackground index): still **per-section** 1..n — not one merged index across Favorites + Characters + Untracked.
+    -- Row stripes (ApplyRowBackground index): still **per-section** 1..n â€” not one merged index across Favorites + Characters + Untracked.
     local function DrawCharactersIntoSection(contentFrame, list, isFavorite, listKey, emptyMessage)
         contentFrame._wnVirtualContentHeight = nil
         local sectionYOffset = 0
@@ -2051,7 +2046,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end)
     end
     
-    -- Icon border color (accent) — used for profession icons
+    -- Icon border color (accent) â€” used for profession icons
     local iconBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
     
     -- COLUMN 2: Faction icon
@@ -2138,7 +2133,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     row.realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
     
-    -- COLUMN: Guild — width from max guild name; text centered; strictly between Name and Level
+    -- COLUMN: Guild â€” width from max guild name; text centered; strictly between Name and Level
     local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
     local guildColW = self._charsListStableGuildColW
         or self._charListMaxGuildWidth
@@ -2254,7 +2249,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     if char.professions then
-        local iconSize = 39  -- Increased 15% (34 → 39)
+        local iconSize = 39  -- Increased 15% (34 â†’ 39)
         local iconSpacing = 5  -- Icon spacing
         
         -- Count total professions first
@@ -2337,7 +2332,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local profName = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession")
                 local lines = {}
 
-                -- ====== SECTION 1: Expansion sub-professions (skill levels) ======
                 local expansions = char.professionExpansions and char.professionExpansions[profName]
                 if expansions and #expansions > 0 then
                     for i = 1, #expansions do
@@ -2358,7 +2352,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                         if maxSkill > 0 then
                             skillText = string.format("%d / %d", curSkill, maxSkill)
                         else
-                            skillText = "—"
+                            skillText = "â€”"
                         end
 
                         lines[#lines + 1] = {
@@ -2380,7 +2374,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     end
                 end
 
-                -- ====== SECTION 2: Knowledge Data (C_Traits) ======
                 local kd = nil
                 if char.knowledgeData then
                     -- Prefer highest skillLineID (newest expansion) for current data
@@ -2424,7 +2417,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     end
                 end
 
-                -- ====== SECTION 3: Concentration ======
                 local concData = char.concentration and char.concentration[profName]
                 if concData and concData.max and concData.max > 0 then
                     -- Spacer
@@ -2466,7 +2458,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     end
                 end
 
-                -- ====== SECTION 4: Profession equipment (per-profession only; no fallback to avoid showing wrong profession's equipment) ======
                 local eqByProf = char.professionEquipment
                 local eqData = eqByProf and eqByProf[profName] or nil
                 if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
@@ -2576,7 +2567,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Create keystone icon (shared for has-key and no-key)
     if not row.keystoneIcon then
         row.keystoneIcon = row:CreateTexture(nil, "ARTWORK")
-        row.keystoneIcon:SetSize(24, 24)  -- Increased 20% (20 → 24)
+        row.keystoneIcon:SetSize(24, 24)  -- Increased 20% (20 â†’ 24)
 
         -- Use atlas with fallback
         local atlasInfo = C_Texture.GetAtlasInfo("ChromieTime-32x32")
@@ -2604,9 +2595,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Format content based on keystone status
     if char.mythicKey and char.mythicKey.level and char.mythicKey.level > 0 then
-        -- HAS KEY: +Level • Dungeon (colored, bright icon)
+        -- HAS KEY: +Level â€¢ Dungeon (colored, bright icon)
         local dungeonAbbrev = char.mythicKey.dungeonName:sub(1, 4):upper()
-        local keystoneText = string.format("|cffff8000+%d|r |cff999999•|r |cffffd700%s|r", 
+        local keystoneText = string.format("|cffff8000+%d|r |cff999999â€¢|r |cffffd700%s|r", 
             char.mythicKey.level, dungeonAbbrev)
         
         row.keystoneText:SetText(keystoneText)
@@ -2616,8 +2607,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.keystoneIcon:SetVertexColor(1, 1, 1)
         row.keystoneIcon:SetAlpha(1.0)
     else
-        -- NO KEY: +0 • None (dimmed, desaturated icon)
-        local keystoneText = "|cff888888+0|r |cff666666•|r |cffaaaaaa" .. ((ns.L and ns.L["NONE_LABEL"]) or "None") .. "|r"
+        -- NO KEY: +0 â€¢ None (dimmed, desaturated icon)
+        local keystoneText = "|cff888888+0|r |cff666666â€¢|r |cffaaaaaa" .. ((ns.L and ns.L["NONE_LABEL"]) or "None") .. "|r"
         
         row.keystoneText:SetText(keystoneText)
         
@@ -2797,7 +2788,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.lastSeenText:Show()
     end
     
-    -- COLUMN: Custom section assign (folder) — tracked non-favorites in regular or custom group lists
+    -- COLUMN: Custom section assign (folder) â€” tracked non-favorites in regular or custom group lists
     local showHeaderAssign = (char.isTracked ~= false) and (not isFavorite)
         and (listKey == "regular" or (ns.CharacterService and ns.CharacterService.ParseCustomGroupIdFromListKey(listKey)))
     if showHeaderAssign then
@@ -2830,7 +2821,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 ShowTooltip(selfBtn, {
                     type = "custom",
                     title = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_TITLE"]) or "Custom header",
-                    description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter → New custom header.",
+                    description = (ns.L and ns.L["CUSTOM_HEADER_ASSIGN_TOOLTIP_DESC"]) or "Move this character into a header. Use the + button (left of Filter) to create headers, or Filter â†’ New custom header.",
                 })
             end)
             row.headerAssignBtn:SetScript("OnLeave", HideTooltip)
@@ -3168,7 +3159,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
 end
 
--- CUSTOM CHARACTER HEADERS — dialogs (Filter menu entry points)
+-- CUSTOM CHARACTER HEADERS â€” dialogs (Filter menu entry points)
 
 function WarbandNexus:OpenCustomCharacterHeaderDialog()
     local CreateExternalWindow = ns.UI_CreateExternalWindow

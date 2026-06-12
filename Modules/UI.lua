@@ -2754,7 +2754,6 @@ function WarbandNexus:CreateMainWindow()
     
     -- Footer strip (text + version): MAIN_FOOTER_H + CONTENT_BOTTOM_OFFSET defined above rail shell.
 
-    -- ===== CONTENT AREA =====
     -- Factory candidate: `Factory:CreateContainer` — inherits `BackdropTemplate` mixin immediately below for panel BG tint.
     local content = CreateFrame("Frame", nil, f)
     if navLayoutMode == "rail" and navRail then
@@ -2954,7 +2953,6 @@ function WarbandNexus:CreateMainWindow()
     end
     WarbandNexus.UI.mainFrame = f
     
-    -- ===== EVENT-DRIVEN UI UPDATES (DB-First Pattern) =====
     -- UI automatically refreshes when DB data changes.
     -- All listeners use SchedulePopulateContent() to coalesce rapid events
     -- (e.g., bank open fires WN_ITEMS_UPDATED + WN_BAGS_UPDATED + WN_ITEM_METADATA_READY
@@ -4282,7 +4280,6 @@ function WarbandNexus:OpenOptions()
     end
 end
 
--- ===== STANDALONE LOADING OVERLAY =====
 -- Floating bar that appears on screen during init, independent of the addon window.
 -- Uses lightweight polling (0.5s ticker) to track LoadingTracker state.
 -- AceEvent message hooks don't work from standalone contexts (plain tables

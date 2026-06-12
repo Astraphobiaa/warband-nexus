@@ -1,7 +1,7 @@
---[[
+﻿--[[
     Warband Nexus - Profession Info Window
     Read-only detail window showing profession data for any character from DB.
-    No API calls — all data comes from db.global.characters[charKey].
+    No API calls â€” all data comes from db.global.characters[charKey].
 
     Shows: expansion skills, concentration, knowledge (spec tabs with node details),
     equipment, recipe list, weekly knowledge progress, cooldowns.
@@ -357,9 +357,9 @@ local function BuildTreeHierarchy(nodes)
         end
     end
 
-    -- Build parent→children map from edges
-    local children = {}    -- parentID → { childNode, ... }
-    local hasParent = {}   -- nodeID → true if this node is a child of another
+    -- Build parentâ†’children map from edges
+    local children = {}    -- parentID â†’ { childNode, ... }
+    local hasParent = {}   -- nodeID â†’ true if this node is a child of another
     for i = 1, #nodes do
         local n = nodes[i]
         if n.edges and n.nodeID then
@@ -682,7 +682,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         return
     end
 
-    -- ===== EXPANSION SKILLS (Midnight only) =====
     if hasExpansions then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["PROF_INFO_SKILLS"]) or "Expansion Skills")
         for exi = 1, #midnightExpansions do
@@ -694,7 +693,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         end
     end
 
-    -- ===== CONCENTRATION =====
     if hasConcentration then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["CONCENTRATION"]) or "Concentration")
         for sli = 1, #relevantSkillLines do
@@ -722,7 +720,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         end
     end
 
-    -- ===== KNOWLEDGE & TALENT TREES =====
     if hasKnowledge then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["KNOWLEDGE"]) or "Knowledge")
         for sli = 1, #relevantSkillLines do
@@ -779,7 +776,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         end
     end
 
-    -- ===== EQUIPMENT =====
     if hasEquipment then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["EQUIPMENT"]) or "Equipment")
         local slotLabels = {
@@ -798,7 +794,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         end
     end
 
-    -- ===== RECIPES =====
     if hasRecipes then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["RECIPES"]) or "Recipes")
         for sli = 1, #relevantSkillLines do
@@ -842,7 +837,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         end
     end
 
-    -- ===== WEEKLY KNOWLEDGE PROGRESS (Midnight) =====
     local hasWeeklyProgress = false
     local weeklyData = {}
     for sli = 1, #relevantSkillLines do
@@ -883,7 +877,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         end
     end
 
-    -- ===== COOLDOWNS =====
     if hasCooldowns then
         yOffset = AddSectionHeader(scrollChild, yOffset, (ns.L and ns.L["PROF_INFO_COOLDOWNS"]) or "Cooldowns")
         local now = time()
@@ -912,7 +905,6 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         end
     end
 
-    -- ===== LAST UPDATE =====
     yOffset = yOffset + SECTION_GAP
     local lastUpdate = 0
     if charData.professionData and charData.professionData.lastUpdate then
@@ -976,7 +968,7 @@ local function CreateInfoFrame()
         ApplyVisuals(frame, {0.03, 0.03, 0.05, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
 
-    -- Header (Factory shell; width synced on resize — no TOPRIGHT anchor)
+    -- Header (Factory shell; width synced on resize â€” no TOPRIGHT anchor)
     local header = factory:CreateContainer(frame, math.max(1, frame:GetWidth() - PROF_EDGE_PAD), HEADER_HEIGHT, false)
     if not header then return nil end
     frame._profInfoHeaderShell = header

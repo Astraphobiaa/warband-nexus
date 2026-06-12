@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Reputation Tab
     Display all reputations across characters with progress bars, Renown, and Paragon support
 
@@ -6,8 +6,8 @@
     custom BORDER/ARTWORK textures; fall back to plain `CreateFrame` if Factory absent).
 
     Hierarchy (All Characters view - matches Filtered View):
-    - Character Header (0px) → HEADER_SPACING (40px)
-      - Expansion Header (BASE_INDENT = 15px) → HEADER_HEIGHT (32px)
+    - Character Header (0px) â†’ HEADER_SPACING (40px)
+      - Expansion Header (BASE_INDENT = 15px) â†’ HEADER_HEIGHT (32px)
         - Reputation Rows (BASE_INDENT = 15px, same as header)
         - Sub-Rows (BASE_INDENT + BASE_INDENT + SUBROW_EXTRA_INDENT = 40px)
 ]]
@@ -162,7 +162,7 @@ local function ComputeBaseReputationMaxed(reputation)
     return false
 end
 
----Progress bar, paragon icon, checkmark (inline pooled bar — pre-MetricBar style).
+---Progress bar, paragon icon, checkmark (inline pooled bar â€” pre-MetricBar style).
 ---@return Frame|nil progressBg
 local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     local currentValue = reputation.currentValue or 0
@@ -553,7 +553,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             
             if cachedData.isAccountWide then
                 -- ACCOUNT-WIDE: Create entry with no characters
-                -- NOTE: No search filter here — filtering happens in the UI rendering phase
+                -- NOTE: No search filter here â€” filtering happens in the UI rendering phase
                 -- to preserve parent-child relationships (child may match even if parent doesn't)
                 local reputation = BuildReputationObject(cachedData)
                 
@@ -575,7 +575,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 if char then
                     local reputation = BuildReputationObject(cachedData)
                     
-                    -- NOTE: No search filter here — filtering happens in UI rendering
+                    -- NOTE: No search filter here â€” filtering happens in UI rendering
                     if not factionCharacterMap[factionID] then
                         factionCharacterMap[factionID] = {}
                     end
@@ -828,7 +828,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- Alternating background (centralized helper)
     ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     
-    -- ===== COLLAPSE BUTTON (conditional: only for rows with subfactions) =====
     local isExpanded = false
     local hasSubfactions = subfactions and #subfactions > 0
     
@@ -858,7 +857,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         row.collapseBtn:Show()
     end
     
-    -- ===== STANDING DISPLAY (normalized data) =====
     local standingWord = ""
     local standingNumber = ""
     local standingColorCode = ""
@@ -892,7 +890,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         standingColorCode = "|cffff0000"
     end
     
-    -- ===== TEXT ELEMENTS (lazy-created, reused across pool cycles) =====
     local repChevronW = (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
     local textStartOffset = hasSubfactions and (6 + repChevronW + 4) or 10
 
@@ -957,7 +954,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         row.nameText:Show()
     end
     
-    -- ===== CHARACTER BADGE (conditional: only for filtered view) =====
     if characterInfo then
         if not row.badgeText then
             row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
@@ -987,7 +983,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     
-    -- ===== TOOLTIPS =====
     row:SetScript("OnEnter", function(self)
         local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
         if not tooltipService then return end
@@ -1078,7 +1073,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end)
     
-    -- ===== ANIMATION: Staggered fade-in (centralized helper) =====
     return yOffset + REP_ROW_HEIGHT + REP_ROW_GAP, isExpanded
 end
 
@@ -1098,7 +1092,6 @@ local function PopulateReputationRow(row, entry)
     -- Alternating background
     ns.UI.Factory:ApplyRowBackground(row, rowIndex)
 
-    -- ===== COLLAPSE BUTTON (conditional: only for rows with subfactions) =====
     local isExpanded = false
     local hasSubfactions = subfactions and #subfactions > 0
 
@@ -1128,7 +1121,6 @@ local function PopulateReputationRow(row, entry)
         if row.collapseBtn then row.collapseBtn:Hide() end
     end
 
-    -- ===== STANDING DISPLAY =====
     local standingWord = ""
     local standingNumber = ""
     local standingColorCode = ""
@@ -1217,7 +1209,6 @@ local function PopulateReputationRow(row, entry)
         row.nameText:Show()
     end
 
-    -- ===== CHARACTER BADGE =====
     if characterInfo then
         if not row.badgeText then
             row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
@@ -1250,7 +1241,6 @@ local function PopulateReputationRow(row, entry)
 
     ApplyReputationRowProgressChrome(row, reputation, rowWidth)
 
-    -- ===== TOOLTIPS =====
     row:SetScript("OnEnter", function(self)
         local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
         if not tooltipService then return end
@@ -1386,7 +1376,6 @@ function WarbandNexus:DrawReputationList(container, width)
     local repChainTail = nil
     local COLLAPSE_H_REP = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
     
-    -- ===== TITLE CARD (Always shown) =====
     
     -- Check if C_Reputation API is available (for modern WoW)
     if not C_Reputation or not C_Reputation.GetNumFactions then
@@ -1459,7 +1448,6 @@ function WarbandNexus:DrawReputationList(container, width)
         WarbandNexus:RedrawReputationResultsOnly(true)
     end
     
-    -- ===== FILTERED VIEW: Show highest reputation from any character =====
     
     local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
     
@@ -1572,7 +1560,7 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
     
-    -- Count total factions (TOP-LEVEL only — excludes children/subfactions)
+    -- Count total factions (TOP-LEVEL only â€” excludes children/subfactions)
     local totalAccountWide = 0
     for hi = 1, #accountWideHeaders do
         local h = accountWideHeaders[hi]
@@ -2139,7 +2127,7 @@ function WarbandNexus:DrawReputationTab(parent)
             return mf and mf:IsShown() and mf.currentTab == "reputations"
         end
         
-        -- Loading started - only refresh if Reputations tab is active (not parent:IsVisible — shared scroll child)
+        -- Loading started - only refresh if Reputations tab is active (not parent:IsVisible â€” shared scroll child)
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_LOADING_STARTED, function()
             -- Phase 2.4: Invalidate search cache
             cachedFilteredResults = {}
@@ -2223,7 +2211,7 @@ function WarbandNexus:DrawReputationTab(parent)
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(parent, "reputation")
 
-    -- Fast path: cache still loading — skip expensive scroll-child purge + full header rebuild every tick.
+    -- Fast path: cache still loading â€” skip expensive scroll-child purge + full header rebuild every tick.
     if ns.ReputationLoadingState and ns.ReputationLoadingState.isLoading then
         local mfEarly = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         local metricsEarly = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mfEarly)
@@ -2289,7 +2277,6 @@ function WarbandNexus:DrawReputationTab(parent)
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
     
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout =====
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -2351,7 +2338,6 @@ function WarbandNexus:DrawReputationTab(parent)
         return scrollTopY + cardHeight
     end
 
-    -- ===== SEARCH BOX (in fixedHeader - non-scrolling) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
     

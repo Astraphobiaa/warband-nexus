@@ -1,10 +1,10 @@
---[[
+﻿--[[
     Warband Nexus - Currency Tab
     Display all currencies across characters with Blizzard API headers
     
     Hierarchy is built by CurrencyCacheService v2.0 via collapse/expand detection.
     DB stores a tree: root headers -> sub-headers -> currencies.
-    UI renders the tree directly — no hardcoded expansion/season name patterns.
+    UI renders the tree directly â€” no hardcoded expansion/season name patterns.
     Merged per-currency rows use WarbandNexus:GetCurrenciesForUI() (same snapshot as Gear / PvE).
 ]]
 
@@ -102,7 +102,7 @@ local BASE_INDENT = GetLayout().BASE_INDENT or 15
 local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
 local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
---- List row geometry: anchor chain (name ↔ badge ↔ amount) so columns never overlap (WN-UI-layout).
+--- List row geometry: anchor chain (name â†” badge â†” amount) so columns never overlap (WN-UI-layout).
 local CURRENCY_LIST_ROW = {
     TEXT_LEFT = 43,
     COL_GAP = 6,
@@ -165,7 +165,7 @@ end
 ---@param hideMax boolean Unused (kept for API compatibility)
 local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, rowWidth, hideMax)
     row:SetSize(rowWidth, ROW_HEIGHT)
-    -- Set alternating background colors (module-level ROW_COLOR_* — avoid GetLayout() per row)
+    -- Set alternating background colors (module-level ROW_COLOR_* â€” avoid GetLayout() per row)
     local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
     
     if not row.bg then
@@ -280,7 +280,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         row.badgeText:Show()
     end
     
-    -- Amount: Gear-style season/cap line when live DB+API data exists (Dawncrests, Coffer Key Shards, …)
+    -- Amount: Gear-style season/cap line when live DB+API data exists (Dawncrests, Coffer Key Shards, â€¦)
     local amountLine
     local usedSeasonProgressLine = false
     local curKey = currency.viewCharKey
@@ -441,7 +441,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                     end
                     
                     if currData.isAccountWide or currData.isAccountTransferable then
-                        -- Warband Transferable section — row shows CURRENT character's amount
+                        -- Warband Transferable section â€” row shows CURRENT character's amount
                         -- Hide Empty (showZero=false): only show if current char has > 0
                         -- Show Empty (showZero=true): always show (currency exists in header structure)
                         if showZero or currentCharAmount > 0 then
@@ -452,7 +452,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                             })
                         end
                     else
-                        -- Character-Specific section — row shows CURRENT character's amount
+                        -- Character-Specific section â€” row shows CURRENT character's amount
                         local displayChar = currentCharKey
                         
                         -- Ensure current character exists in charLookup
@@ -606,7 +606,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- Clean up old non-virtual children (headers, notice frames) from previous render.
     -- VLM handles its own _isVirtualRow frames; we only need to recycle stale headers.
     -- Nested currency rows live under collapsible section bodies (not direct children of container);
-    -- release them to the pool before reparenting wrappers — matches ReputationUI / PopulateContent.
+    -- release them to the pool before reparenting wrappers â€” matches ReputationUI / PopulateContent.
     local recycleBin = ns.UI_RecycleBin
     local oldChildren = {container:GetChildren()}
     for i = 1, #oldChildren do
@@ -722,7 +722,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         globalHeaders = self.db.global.currencyData.headers
     end
     
-    -- Search-only: currency rows here only carry name (no category); pre-filter IDs once instead of chars × currencies × string find.
+    -- Search-only: currency rows here only carry name (no category); pre-filter IDs once instead of chars Ã— currencies Ã— string find.
     local currencyIDsForCharScan = nil
     if currencySearchText and currencySearchText ~= ""
         and not (issecretvalue and issecretvalue(currencySearchText)) then
@@ -813,8 +813,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     -- Blizzard currency header tree: same stacking contract as ReputationUI category headers
-    -- (wrap width = contentW − BASE_INDENT, horizontal chain offset = BASE_INDENT per level).
-    -- ===== SHOW ALL MODE (ONLY) =====
+    -- (wrap width = contentW âˆ’ BASE_INDENT, horizontal chain offset = BASE_INDENT per level).
     local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
     local Factory = ns.UI.Factory
     local COLLAPSE_H_CUR = SECTION_COLLAPSE_HEADER_HEIGHT
@@ -1208,7 +1207,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
     end
     
-    -- ===== API LIMITATION NOTICE =====
     local noticeFrame = CreateNoticeFrame(
         parent,
         (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_TITLE"]) or "Currency Transfer Limitation",
@@ -1233,7 +1231,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     return finalHeight
 end
 
---- Redraw Currency scroll results only. Skips PopulateContent — matches Items/Storage partial redraw.
+--- Redraw Currency scroll results only. Skips PopulateContent â€” matches Items/Storage partial redraw.
 local function ApplyCurrencyResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, _animate, _fromResultsH, _fromScrollChildH)
     if not mainFrame or not scrollChild or not resultsContainer then return end
     local targetResultsH = math.max(listHeight or 1, 1)
@@ -1375,7 +1373,6 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
 
-    -- ===== TITLE CARD (in fixedHeader - non-scrolling) — Characters-tab layout; reserve right for Show Empty =====
     local headerParent = fixedHeader or parent
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
@@ -1444,7 +1441,6 @@ function WarbandNexus:DrawCurrencyTab(parent)
         return 8 + cardHeight
     end
     
-    -- ===== LOADING STATE =====
     if ns.CurrencyLoadingState and ns.CurrencyLoadingState.isLoading then
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
