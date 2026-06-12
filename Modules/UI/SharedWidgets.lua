@@ -3996,10 +3996,15 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
     badge:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
-    
+
     return badge
 end
 
+-- Exports MUST live in this file: both functions are file-locals here. The structure
+-- split moved these export lines into SharedWidgets_Factory.lua, where the names
+-- resolved to nil globals — every tab using the badge/header layout errored on draw.
+ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
+ns.UI_CreateDBVersionBadge = CreateDBVersionBadge
 
 -- NOTE: CreateEditBox implementation moved to line 4816 (Factory pattern wrapper)
 -- This duplicate implementation was removed to avoid confusion

@@ -1150,7 +1150,9 @@ function WarbandNexus:DrawCharacterList(parent)
         and ns.CharacterService:FindProbableStaleCharacterCopies(self) or {}
     if #staleCopies > 0 and not self.db.profile.ui.dismissStaleCharacterCopiesBanner then
         local bannerH = 52
-        local banner = CreateCard(parent, contentSide, bannerH, true)
+        -- CreateCard(parent, height): the old 4-arg call passed contentSide (~12px)
+        -- as the height, squashing the stale-copies banner to a sliver.
+        local banner = CreateCard(parent, bannerH)
         banner:ClearAllPoints()
         banner:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
         banner:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -contentSide, -yOffset)

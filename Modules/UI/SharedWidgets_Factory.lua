@@ -430,9 +430,9 @@ function ns.UI.Factory:CreateCollectionsDetailRightColumn(parent, opts)
         tryCountRow = tryCountRow,
     }
 end
--- Export DB version badge
-ns.UI_CreateDBVersionBadge = CreateDBVersionBadge
-ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
+-- (UI_CreateDBVersionBadge / UI_CreateCardHeaderLayout are exported from
+-- SharedWidgets.lua, where their local definitions live — assigning them here
+-- resolved to nil globals and broke five tabs.)
 
 -- FACTORY METHODS (Standardized Frame Creation)
 
