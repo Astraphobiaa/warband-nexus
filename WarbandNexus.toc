@@ -89,6 +89,8 @@ Modules\VaultButton_TrackerUI.lua
 Modules\VaultButton_SavedInstances.lua
 Modules\VaultButton_SavedInstancesUI.lua
 Modules\VaultButton.lua
+Modules\PlansManager_Vault.lua
+Modules\PlansManager_Quests.lua
 Modules\PlansManager.lua
 Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB.lua
