@@ -15,7 +15,6 @@ local issecretvalue = issecretvalue
 local wipe = table.wipe
 local debugprofilestop = debugprofilestop
 
---- Yielded storage scan: max CPU per frame (debugprofilestop; GetTime() does not advance within a frame).
 local GEAR_STORAGE_PUMP_BUDGET_MS = 12
 local GEAR_STORAGE_PUMP_MAX_RESUMES = 48
 local GEAR_STORAGE_EVAL_ITEMS_PER_YIELD = 14
@@ -204,9 +203,6 @@ local PERSISTED_UPGRADE_INFO_LOGIC_VER = 16
 -- Session-only: offline-view canonical key -> currency array from GetGearUpgradeCurrenciesFromDB (amounts follow Currency UI snapshot).
 local gearUpgradeCurrencyOfflineCache = {}
 
---- Clears session caches used by Gear offline currency strip and upgrade reconstruction.
---- Keys are per canonical character; wiping on WN_CURRENCY_UPDATED / WN_CHARACTER_UPDATED avoids
---- stale amounts and keeps persisted upgrade inference aligned after scans (lastScan validation still applies).
 local function InvalidateGearUpgradeCurrencyCaches()
     wipe(gearUpgradeCurrencyOfflineCache)
     wipe(persistedUpgradeInfoSessionCache)
@@ -232,10 +228,6 @@ local function CacheGearCraftedProbeResult(link, isCrafted)
     end
 end
 
---- Definitive crafted check from the item LINK (session-cached). Crafted items carry a
---- crafting quality; C_TradeSkillUI.GetItemCraftedQualityByItemInfo returns it (else nil).
---- The tooltip-line scan alone missed crafted gear whenever the Upgrade Level line did
---- not parse — those slots then showed dropped-track Hero/Myth upgrade suggestions.
 local function GearLinkIsCrafted(link)
     if not link or link == "" then return nil end
     if issecretvalue and issecretvalue(link) then return nil end
@@ -283,7 +275,6 @@ local SPEC_MAIN_STAT = {
 
 local CLASS_FILE_TO_ID = Constants.CLASS_FILE_TO_CLASS_ID
 
---- Blizzard primaryStat / GetSpecPrimaryStat: 1=Str, 2=Agi, 4=Int (Stamina=3 is never a spec primary).
 local function PrimaryStatEnumToMainStatCode(enum)
     if enum == nil or type(enum) ~= "number" then return nil end
     if enum == 1 then return "STR" end
@@ -295,7 +286,6 @@ local function PrimaryStatEnumToMainStatCode(enum)
     return nil
 end
 
---- Prefer static SPEC_MAIN_STAT, then client API for unknown / new Midnight spec IDs.
 local function ResolveMainStatFromSpecID(specID)
     if not specID or type(specID) ~= "number" then return nil end
     if SPEC_MAIN_STAT[specID] then
@@ -403,9 +393,6 @@ function WarbandNexus:GetCurrentCharacterMainStat()
     return PrimaryStatEnumToMainStatCode(r6) or PrimaryStatEnumToMainStatCode(r7)
 end
 
---- Expected primary stat for the *selected* character in Gear storage scan.
---- Uses SPEC_MAIN_STAT: live specialization when the selected row is the logged-in player (accurate respec),
---- otherwise saved charData.specID (with index→global ID resolution) or first spec for the class.
 local function ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLoggedInPlayer)
     if selectedIsLoggedInPlayer and GetSpecialization and GetSpecializationInfo then
         local specIndex = GetSpecialization()
@@ -428,7 +415,6 @@ local function ResolveExpectedPrimaryStatFromCharacter(charData, selectedIsLogge
     return nil, "none"
 end
 
---- Resolve item stat table (prefer C_Item API; fallback to legacy GetItemStats).
 local function GetItemStatTableForLink(itemLink)
     if not itemLink then return nil end
     if C_Item and C_Item.GetItemStats then
@@ -467,7 +453,6 @@ local function TableHasPrimaryStats(statTable)
     return hasStr, hasAgi, hasInt
 end
 
---- Tooltip line mentions a localized primary stat (not Requires/Use meta).
 local function TooltipLineMentionsPrimaryStat(lineText, statLabel)
     if not lineText or statLabel == "" then return false end
     if issecretvalue and issecretvalue(lineText) then return false end
@@ -478,8 +463,6 @@ local function TooltipLineMentionsPrimaryStat(lineText, statLabel)
     return true
 end
 
---- Fallback when C_Item.GetItemStats / GetItemStats has no primary keys (cold SV links).
---- Wiki: https://warcraft.wiki.gg/wiki/API_C_TooltipInfo.GetHyperlink
 local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
     if not C_TooltipInfo then return false, false, false end
     local cacheKey = itemLink
@@ -542,7 +525,6 @@ local function ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
     return hasStr, hasAgi, hasInt
 end
 
---- C_Item.GetItemStats first; tooltip probe when stat table is missing or has no primary keys.
 local function ResolveItemPrimaryStatFlags(itemLink, itemID)
     local statTable = GetItemStatTableForLink(itemLink)
     if statTable then
@@ -554,8 +536,6 @@ local function ResolveItemPrimaryStatFlags(itemLink, itemID)
     return ProbeItemPrimaryStatsFromTooltip(itemLink, itemID)
 end
 
---- Match item primary stats to expectedMainStat for storage-upgrade filtering.
---- Wiki: API_C_Item.GetItemStats, API_C_TooltipInfo.GetHyperlink (see WN-VERSION-wiki-browser.mdc).
 local function MatchGetItemStatsPrimariesToExpected(itemLink, expectedMainStat, slotID, selectedIsLoggedInPlayer, itemID)
     if selectedIsLoggedInPlayer == nil then
         selectedIsLoggedInPlayer = true
@@ -638,28 +618,18 @@ local function IsWeaponCompatible(charData, slotID, itemClassID, itemSubclassID,
     return allowedByClass[itemSubclassID] == true
 end
 
---- Enum.ItemBind / LE_ITEM_BIND: "Bind to Warband" (TWW+). Not the same as legacy BNET/BOA.
----@type number
 local ITEM_BIND_WARBAND = (type(LE_ITEM_BIND_WARBAND) == "number" and LE_ITEM_BIND_WARBAND)
     or (Enum and Enum.ItemBind and type(Enum.ItemBind.Warband) == "number" and Enum.ItemBind.Warband)
     or 8
 
---- 9 = ToBnetAccountUntilEquipped — "Warbound until equipped".
----@type number
 local ITEM_BIND_BNET_UNTIL_EQUIPPED = (Enum and Enum.ItemBind and type(Enum.ItemBind.ToBnetAccountUntilEquipped) == "number" and Enum.ItemBind.ToBnetAccountUntilEquipped) or 9
 
---- 7 = ToWoWAccount (legacy bind-to-account); still transferable within account/warband scope for recommendations.
----@type number
 local ITEM_BIND_TO_WOW_ACCOUNT = (Enum and Enum.ItemBind and type(Enum.ItemBind.ToWoWAccount) == "number" and Enum.ItemBind.ToWoWAccount) or 7
 
----@type number
 local ITEM_BIND_ON_USE = (Enum and Enum.ItemBind and type(Enum.ItemBind.OnUse) == "number" and Enum.ItemBind.OnUse)
     or (type(LE_ITEM_BIND_ON_USE) == "number" and LE_ITEM_BIND_ON_USE)
     or 3
 
---- Read bindType (14th return) without relying on a long pcall multi-assign (pcall failure can mis-align locals).
----@param itemInfo number|string|nil itemID, link, or name
----@return number|nil bindType Enum.ItemBind numeric, or nil if not cached / error
 local function GetRawItemBindTypeFromGetItemInfo(itemInfo)
     if not itemInfo or not C_Item or not C_Item.GetItemInfo then return nil end
     local ok, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14 = pcall(C_Item.GetItemInfo, itemInfo)
@@ -668,8 +638,6 @@ local function GetRawItemBindTypeFromGetItemInfo(itemInfo)
     return r14
 end
 
----@param item table|nil
----@return number|nil
 local function GetRawItemBindType(item)
     if not item then return nil end
     local linkOrID = item.itemLink or item.link or item.itemID
@@ -687,9 +655,6 @@ local function GetRawItemBindType(item)
     return bind
 end
 
---- C_Item.GetItemInfo: 5th return is itemMinLevel (required character level).
----@param itemInfo number|string|nil
----@return number|nil
 local function GetItemMinLevelFromItemInfo(itemInfo)
     if not itemInfo or not C_Item or not C_Item.GetItemInfo then return nil end
     local ok, _, _, _, minLvl = pcall(C_Item.GetItemInfo, itemInfo)
@@ -699,10 +664,6 @@ local function GetItemMinLevelFromItemInfo(itemInfo)
     return minLvl
 end
 
---- Map numeric Enum.ItemBind to storage-upgrade category (nil = not transferable template).
---- BoE = bind-on-equip only (not Bind on Use). Warbound-until-equipped is its own UI label.
----@param bindType number|nil
----@return string|nil "boe"|"warbound"|"warbound_until_equipped"
 local function CategoryFromRawBind(bindType)
     if bindType == nil then return nil end
     if bindType == LE_ITEM_BIND_ON_EQUIP or bindType == 2 then
@@ -718,13 +679,6 @@ local function CategoryFromRawBind(bindType)
     return nil
 end
 
---- Tooltip-based override for warband binding. In TWW Midnight, GetItemInfo's 14th
---- return ("bindType") reports WuE items as 2 (OnEquip) — the Warbound-until-Equipped
---- aspect lives on a separate item flag surfaced only in the tooltip text. Without
---- this scan, every WuE item is mislabelled "BoE" in the recommendation list.
----@param itemLink string|nil
----@param itemID number|nil
----@return string|nil "warbound_until_equipped"|"warbound"|nil
 local function ScanTooltipForWarbandBind(itemLink, itemID)
     if not C_TooltipInfo then return nil end
     local tipData = nil
@@ -758,10 +712,6 @@ local function ScanTooltipForWarbandBind(itemLink, itemID)
     return nil
 end
 
---- Returns the TEMPLATE bind type of an item (what the item *is*), not whether it's currently bound.
---- BoE items show "boe" even if isBound=true in a character's bag (they were bound on pickup/equip).
---- Tooltip scan takes precedence: WuE items report bindType=2 (OnEquip) via GetItemInfo,
---- so we must read the tooltip text to distinguish "BoE" from "Warbound until Equipped".
 local function GetBindingType(item)
     if not item then return nil end
     local link = item.itemLink or item.link
@@ -770,7 +720,6 @@ local function GetBindingType(item)
     return CategoryFromRawBind(GetRawItemBindType(item))
 end
 
---- Transmog/cosmetic gear has valid equip slots + ilvl but is not an upgrade target here.
 local function IsCosmeticGearCandidate(itemID, itemLink)
     if not itemID or not C_Item or not C_Item.IsCosmeticItem then return false end
     local ok, isCosmetic = pcall(function()
@@ -782,13 +731,8 @@ local function IsCosmeticGearCandidate(itemID, itemLink)
     return ok and isCosmetic == true
 end
 
---- Bump when storage recommendation bind / owner-key rules change (invalidates strict findings cache).
 local GEAR_STORAGE_FINDINGS_LOGIC_VER = 10
 
---- Count slot buckets and total candidate rows in a findings table (debug / cache gate).
----@param findings table|nil
----@return number slots
----@return number candidates
 local function GearStorageFindingsCount(findings)
     if not findings or type(findings) ~= "table" then return 0, 0 end
     local slots, cand = 0, 0
@@ -801,7 +745,6 @@ local function GearStorageFindingsCount(findings)
     return slots, cand
 end
 
---- Cross-char: self_bag/self_bank or transferable BoE / warbound only.
 local function IsAllowedStorageRecommendationBindLabel(sourceType)
     if sourceType == "self_bag" or sourceType == "self_bank" then
         return true
@@ -812,9 +755,6 @@ local function IsAllowedStorageRecommendationBindLabel(sourceType)
     return false
 end
 
---- True when Gear tab selection is the logged-in session character (live bag APIs apply).
----@param charKey string|nil
----@return boolean
 local function IsViewingLivePlayerGear(charKey)
     if not charKey then return false end
     local U = ns.Utilities
@@ -844,13 +784,6 @@ local function IsViewingLivePlayerGear(charKey)
     return false
 end
 
---- Selected character's own bags or personal bank (Soulbound, BoE, Warbound — anything they can equip).
----@param sourceCharKey string|nil
----@param selectedCharKey string
----@param storageType string|nil "bag"|"bank"
----@param getCanonicalKey function
----@param forceOwn boolean|nil when true (selected char bag/bank scan), accept any bind on own storage
----@return boolean
 local function IsSelectedCharacterOwnStorage(sourceCharKey, selectedCharKey, storageType, getCanonicalKey, forceOwn)
     if storageType ~= "bag" and storageType ~= "bank" then return false end
     if forceOwn == true then return true end
@@ -861,9 +794,6 @@ local function IsSelectedCharacterOwnStorage(sourceCharKey, selectedCharKey, sto
     return false
 end
 
----@param storageType string|nil
----@return string label
----@return string sourceType
 local function OwnStorageSourceLabels(storageType)
     if storageType == "bank" then
         return "Your Bank", "self_bank"
@@ -885,10 +815,6 @@ local WEAPON_ENCHANT_EQUIP_LOCS = {
     INVTYPE_2HWEAPON = true,
 }
 
----Midnight primary-enchant expectation by slot + equip location.
----@param slotID number
----@param equipLoc string|nil
----@return boolean
 local function IsPrimaryEnchantExpected(slotID, equipLoc)
     local enchantableSlots = Constants and Constants.GEAR_ENCHANTABLE_SLOTS
     if not (enchantableSlots and enchantableSlots[slotID]) then
@@ -900,24 +826,11 @@ local function IsPrimaryEnchantExpected(slotID, equipLoc)
     return true
 end
 
---- UnitSex: 1 unknown, 2 male, 3 female. DressUpModel:SetCustomRace (when used) expects 0 = male, 1 = female.
----@param unitSex number|nil
----@return number 0|1
 local function UnitSexToDressGender0Or1(unitSex)
     if unitSex == 3 then return 1 end
     return 0
 end
 
----Capture a model snapshot for offline rendering.
----Player displayIDs are runtime handles into the active character's appearance bundle —
----they cannot be cached and replayed for an offline alt (replay → white mannequin, the
----bundle is gone after logout). Wowpedia: UIOBJECT_PlayerModel / API_C_PlayerInfo.GetDisplayID.
----
----Reliable replay path: capture race + sex + a serialised transmog list (per-slot
----ItemTransmogInfo). Offline render uses Actor:SetCustomRace + Actor:SetItemTransmogInfoList,
----which reproduces race body + equipped transmog (face/hair/skin customisations are not
----available outside the barber shop API, so those fall back to race defaults — accepted).
----@return table
 local function BuildCharacterModelSnapshot()
     local uSex = UnitSex and UnitSex("player") or nil
     local snap = {
@@ -976,9 +889,6 @@ local TRACK_NAME_TO_CURRENCY_ID = GT.TRACK_NAME_TO_CURRENCY_ID
 local UPGRADE_CURRENCY_ID_SET_EARLY = GT.UPGRADE_CURRENCY_ID_SET_EARLY
 local CURRENCY_ID_TO_TRACK = GT.CURRENCY_ID_TO_TRACK
 
---- Map API / tooltip track labels to English TRACK_ILVLS keys (localized names, "Veteran Dawncrest", etc.).
----@param raw string|nil
----@return string|nil
 local function NormalizeUpgradeTrackName(raw)
     if not raw or raw == "" then return nil end
     if issecretvalue and issecretvalue(raw) then return nil end
@@ -1001,11 +911,6 @@ local function NormalizeUpgradeTrackName(raw)
     end
     return nil
 end
---- Tier index within a known track (never jumps to a higher track at overlap ilvls).
----@param trackName string
----@param itemLevel number
----@return number|nil currTier
----@return number|nil maxTier
 local function InferTierWithinTrack(trackName, itemLevel)
     local tiers = TRACK_ILVLS[trackName]
     if not tiers then return nil, nil end
@@ -1025,13 +930,6 @@ local function InferTierWithinTrack(trackName, itemLevel)
     return best, #tiers
 end
 
---- Prefer scan/API tier when it matches equipped ilvl on this track; otherwise infer from ilvl floor.
----@param trackName string
----@param itemLevel number
----@param apiCurr number|nil
----@param apiMax number|nil
----@return number|nil currUpgrade
----@return number|nil maxUpgrade
 local function ReconcileUpgradeTierForSlot(trackName, itemLevel, apiCurr, apiMax)
     local tiers = TRACK_ILVLS[trackName]
     if not tiers then
@@ -1069,12 +967,6 @@ local function ReconcileUpgradeTierForSlot(trackName, itemLevel, apiCurr, apiMax
     return inferCur, inferMax
 end
 
---- Infer upgrade track and level from item level only (no API). Returns nil if not in Midnight upgrade range.
---- Overlap ilvls (233, 237, …): prefer the track where this ilvl is the highest tier reached (e.g. 276 → Hero 6/6, not Myth 2/6).
----@param itemLevel number
----@return string|nil trackName
----@return number|nil currUpgrade 1-6
----@return number|nil maxUpgrade 6
 local function InferUpgradeFromIlvl(itemLevel)
     local ilvl = tonumber(itemLevel)
     if not ilvl or ilvl < 220 or ilvl > 289 then return nil, nil, nil end
@@ -1111,35 +1003,22 @@ local function InferUpgradeFromIlvl(itemLevel)
     return nil, nil, nil
 end
 
----@param trackName string
----@param tier number
----@return number|nil
 local function GetTierIlvlForTrack(trackName, tier)
     local tiers = TRACK_ILVLS[trackName]
     if not tiers or not tier or tier < 1 or tier > #tiers then return nil end
     return tiers[math.floor(tier)]
 end
 
---- Get the ilvl for a given track and tier.
----@param trackName string
----@param tier number 1-6
----@return number|nil ilvl
 local function GetIlvlForTier(trackName, tier)
     local tiers = TRACK_ILVLS[trackName]
     if not tiers or tier < 1 or tier > #tiers then return nil end
     return tiers[tier]
 end
---- Dawncrest type for a persisted next-step cost row (Hero=3345, Myth=3347, ...).
----@param currencyID number
----@return string|nil trackName
 local function TrackNameFromUpgradeCurrencyID(currencyID)
     if not currencyID then return nil end
     return CURRENCY_ID_TO_TRACK[currencyID]
 end
 
---- Normalize one ItemUpgradeCurrencyCost row (cost reflects discount when API applies it).
----@param entry table|nil
----@return table|nil { currencyID, amount, isDiscounted }
 local function NormalizeUpgradeCurrencyCostEntry(entry)
     if not entry or not entry.currencyID then return nil end
     local amt = entry.cost or entry.amount
@@ -1153,8 +1032,6 @@ local function NormalizeUpgradeCurrencyCostEntry(entry)
     }
 end
 
----@param slot table
----@return string|nil trackName
 local function ResolveTrackFromPersistedCosts(slot)
     local costs = slot and slot.nextUpgradeCosts
     if not costs then return nil end
@@ -1170,11 +1047,6 @@ local function ResolveTrackFromPersistedCosts(slot)
     return nil
 end
 
---- Parse API customUpgradeString or tooltip-style label (e.g. "Hero 3/6").
----@param raw string|nil
----@return string|nil trackName
----@return number|nil currUpgrade
----@return number|nil maxUpgrade
 local function ParseUpgradeLabelString(raw)
     if not raw or raw == "" then return nil, nil, nil end
     if issecretvalue and issecretvalue(raw) then return nil, nil, nil end
@@ -1192,11 +1064,6 @@ local function ParseUpgradeLabelString(raw)
     return nil, nil, nil
 end
 
---- Track from scan label fields only (never item display name).
----@param slot table
----@return string|nil trackName
----@return number|nil currUpgrade
----@return number|nil maxUpgrade
 local function ResolveTrackFromSlotLabels(slot)
     if not slot then return nil, nil, nil end
     local track, cur, max = ParseUpgradeLabelString(slot.customUpgradeString)
@@ -1208,14 +1075,6 @@ local function ResolveTrackFromSlotLabels(slot)
     return nil, nil, nil
 end
 
---- Next-step costs: prefer persisted C_ItemUpgrade scan; fallback flat S1 defaults.
----@param slot table persisted gear slot row
----@param trackName string
----@param hasNext boolean
----@return number currencyID
----@return number crestCost
----@return number moneyCost copper
----@return boolean isDiscounted
 local function ResolveNextUpgradeCosts(slot, trackName, hasNext)
     local currencyID = 0
     local crestCost = hasNext and (ns.UPGRADE_CREST_PER_LEVEL or 20) or 0
@@ -1257,12 +1116,6 @@ local function ResolveNextUpgradeCosts(slot, trackName, hasNext)
     return currencyID, crestCost, moneyCost, isDiscounted
 end
 
---- Track + tier from scan/tooltip label first; reconcile tier within that track only.
---- API currencyID must not override track (unreliable); ilvl inference is last resort.
----@param slot table
----@return string|nil trackName
----@return number|nil currUpgrade
----@return number|nil maxUpgrade
 local function ResolveSlotUpgradeTrackAndTier(slot)
     if not slot then return nil, nil, nil end
     local ilvl = tonumber(slot.itemLevel) or 0
@@ -1314,11 +1167,6 @@ local CRAFTED_CREST_TIERS = {
 }
 ns.CRAFTED_CREST_TIERS = CRAFTED_CREST_TIERS
 
---- Midnight crafted gear shows Myth track in UI but caps below dropped 6/6 (285 vs 289).
----@param slot table|nil persisted slot row
----@param trackName string|nil
----@param itemLevel number
----@return boolean
 local function InferSlotIsCraftedGear(slot, trackName, itemLevel)
     if slot and slot.isCrafted then return true end
     if trackName == "Crafted" then return true end
@@ -1335,8 +1183,6 @@ local function GetDB()
     return WarbandNexus.db.global.gearData
 end
 
---- Same storage key as db.global.characters / GearUI GetSelectedCharKey (guid when available).
----@return string|nil
 local function ResolveGearStorageKey()
     if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
         local k = ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
@@ -1447,9 +1293,6 @@ local function MergeGearDataBucket(current, legacy)
     return target
 end
 
---- Move pre-guid scans (Name-Realm) into the canonical bucket once.
----@param db table gearData root
----@param storageKey string
 local function MigrateLegacyGearDataKey(db, storageKey)
     if not db or not storageKey then return end
     local U = ns.Utilities
@@ -1462,12 +1305,6 @@ end
 
 -- ITEM LEVEL RESOLUTION
 
---- Get the effective (bonus-ID-aware) item level from an item link.
---- Uses dual-API approach: compares GetDetailedItemLevelInfo (bonus-ID inflated)
---- vs GetItemInfo (may be base). Takes the lower when they disagree significantly
---- (e.g. Heart of Azeroth link returning 371 vs real ilvl 74).
----@param itemLink string Item hyperlink
----@return number ilvl (0 if unknown)
 local function GetEffectiveIlvl(itemLink)
     if not itemLink then return 0 end
     local detailedIlvl = 0
@@ -1498,9 +1335,6 @@ local function GetEffectiveIlvl(itemLink)
     return infoIlvl
 end
 
---- Get item quality tier integer for an item link.
----@param itemLink string
----@return number quality (0 = Poor, 2 = Uncommon, 3 = Rare, 4 = Epic, ...)
 local function GetItemQuality(itemLink)
     if not itemLink then return 0 end
     local quality = 0
@@ -1527,9 +1361,6 @@ function WarbandNexus:InvalidatePersistedUpgradeInfoCacheForChar(charKey)
     persistedUpgradeInfoSessionCache[canon] = nil
 end
 
---- Get the equip location string for an item link ("INVTYPE_HEAD" etc.)
----@param itemLink string
----@return string equipLoc (empty string if unknown/non-equip)
 local function GetEquipLoc(itemLink)
     if not itemLink then return "" end
     local loc = ""
@@ -1545,11 +1376,6 @@ end
 
 -- TOOLTIP UPGRADE SCAN  (Fallback when C_ItemUpgrade API is unavailable/empty)
 
---- Parse upgrade track info from the item tooltip of an equipped slot.
---- Reads "Upgrade Level: TrackName X/Y" line from C_TooltipInfo.GetInventoryItem.
---- Returns { trackName, currUpgrade, maxUpgrade } or nil if not found.
----@param slotID number Equipment slot ID (1-17)
----@return table|nil { trackName, currUpgrade, maxUpgrade }
 local function ScanUpgradeFromTooltip(slotID)
     if not C_TooltipInfo or not C_TooltipInfo.GetInventoryItem then return nil end
     local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotID)
@@ -1595,9 +1421,6 @@ end
 
 -- UPGRADE DATA PERSISTENCE  (Captures C_ItemUpgrade state during gear scan)
 
----@param levelInfos table|nil
----@param upgradeLevel number
----@return table|nil
 local function FindUpgradeLevelInfo(levelInfos, upgradeLevel)
     if not levelInfos or not upgradeLevel then return nil end
     for i = 1, #levelInfos do
@@ -1609,10 +1432,6 @@ local function FindUpgradeLevelInfo(levelInfos, upgradeLevel)
     return levelInfos[upgradeLevel]
 end
 
---- Read C_ItemUpgrade data for a single equipped slot and write it into the
---- slot entry table so the info survives across sessions / characters.
----@param slotEntry table  The slot record being built (mutated in place)
----@param slotID number    Equipment slot ID (1-17)
 local function ScanSlotUpgradeData(slotEntry, slotID)
     if not C_ItemUpgrade or not ItemLocation then return end
 
@@ -1825,9 +1644,6 @@ end
 
 -- GEAR SCANNING  (Current character only — requires live API)
 
---- Merge one equipped slot into working tables (live inventory). Mutates slots / watermarks / changedSlotIDs.
----@param slotID number
----@param baselineGearData table|nil Snapshot at scan start (reuse-fast-path + change detection).
 local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, watermarks, changedSlotIDs)
     local itemLink = GetInventoryItemLink("player", slotID)
     if itemLink and (issecretvalue and issecretvalue(itemLink)) then
@@ -2007,8 +1823,6 @@ local function ApplyEquippedGearSlotScan(slotID, baselineGearData, slots, waterm
     end
 end
 
---- Persist scanned gear tables and optionally notify listeners.
----@param silent boolean|nil When true, skip GEAR_UPDATED (cold prefetch / background prime).
 local function FinalizeEquippedGearPersist(charKey, slots, watermarks, baselineGearData, triggerSlotID, changedSlotIDs, silent)
     local preservedModelView = baselineGearData and baselineGearData.modelView
     local db = GetDB()
@@ -2262,10 +2076,6 @@ end
 
 -- UPGRADE ANALYSIS  (No API — ilvl-based inference from DB only, works offline)
 
---- Align one upgrade row with persisted slot ilvl/track (paperdoll icon and upgrade text share this).
----@param up table|nil
----@param slot table|nil persisted gearData.slots[id]
----@return table|nil
 local function SyncUpgradeEntryFromPersistedSlot(up, slot)
     if not up or not slot or up.isCrafted or up.notUpgradeable then return up end
     local ilvl = tonumber(slot.itemLevel) or 0
@@ -2476,11 +2286,6 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
     return upgrades
 end
 
---- Same logic as GearUI: tier-by-tier affordable count and whether next step needs crests (20) or gold-only (0).
----@param upInfo table from GetPersistedUpgradeInfo
----@param currencyAmounts table map currencyID -> amount (0 = gold in gold units)
----@return number totalAffordable
----@return number effectiveCrestNeedForNextStep 0 if next step is gold-only or maxed, else 20
 local function GetAffordableCountAndNextCrestNeed(upInfo, currencyAmounts)
     if not upInfo then return 0, 0 end
     if not upInfo.canUpgrade then
@@ -2650,11 +2455,6 @@ end
 
 -- STORAGE UPGRADE FINDER  (Cross-character — reads persisted item data)
 
---- Resolve equipped ilvl for one slot (persisted gearData + live inventory when viewing self).
----@param charKey string
----@param slotID number
----@param equippedMap table|nil optional cache from BuildEquippedIlvlMap
----@return number
 local function ResolveEquippedIlvlForComparison(charKey, slotID, equippedMap)
     -- Logged-in player: live inventory wins over stale db.global.gearData (unequip-to-bag must clear slot).
     if IsViewingLivePlayerGear(charKey) and GetInventoryItemLink then
@@ -2684,9 +2484,6 @@ local function ResolveEquippedIlvlForComparison(charKey, slotID, equippedMap)
     return 0
 end
 
---- Build a map: slotID -> currently equipped ilvl for the given character.
----@param charKey string
----@return table { [slotID] = ilvl }
 local function BuildEquippedIlvlMap(charKey)
     local map = {}
     local slotList = GEAR_SLOTS
@@ -2705,14 +2502,8 @@ local function BuildEquippedIlvlMap(charKey)
     return map
 end
 
---- Empty weapon/trinket slots must not compare as ilvl 0 (surfaces legacy bank junk).
 local GEAR_STORAGE_EMPTY_SLOT_FLOOR_MARGIN = 40
 
----@param charKey string
----@param slotID number
----@param equippedMap table|nil
----@param charData table|nil
----@return number floorIlvl minimum candidate ilvl to count as an upgrade
 local function BuildGearStorageComparisonFloor(charKey, slotID, equippedMap, charData)
     local equipped = ResolveEquippedIlvlForComparison(charKey, slotID, equippedMap)
     if equipped > 0 then return equipped end
@@ -2740,9 +2531,6 @@ local function BuildGearStorageComparisonFloor(charKey, slotID, equippedMap, cha
     return 0
 end
 
---- Dedupe key: prefer container coordinates so cold live scan does not block persisted retry.
----@param item table
----@return string
 local function GearItemEvalSeenKey(item)
     if not item then return "nil" end
     local bagID = item.actualBagID or item.bagID
@@ -2784,10 +2572,6 @@ local function BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
     return table.concat(parts, ";")
 end
 
---- Try to resolve the effective ilvl of an item from bag storage.
---- Prefers link-based ilvl so the UI row matches the tooltip (same item link).
----@param item table Hydrated item from ItemsCacheService
----@return number ilvl (0 if unknown)
 local function ResolveStorageItemIlvl(item)
     if not item or not item.itemID then return 0 end
 
@@ -2845,9 +2629,6 @@ local function ResolveStorageItemIlvl(item)
     return 0
 end
 
---- Warm item cache then resolve ilvl (storage scan).
----@param item table
----@return number
 local function ResolveStorageItemIlvlWarm(item)
     if not item then return 0 end
     local ilvl = ResolveStorageItemIlvl(item)
@@ -2859,12 +2640,6 @@ local function ResolveStorageItemIlvlWarm(item)
     return ilvl or 0
 end
 
---- Determine the binding/availability label for a storage item.
----@param item table Hydrated item
----@param sourceCharKey string The character that owns this item
----@param selectedCharKey string The character we're gearing
----@return string label  e.g. "Warband Bank", "Shaman Foo (Bag)", "Your Bag"
----@return string type   "warband" | "self_bag" | "self_bank" | "char_bag" | "char_bank" | "boe" | "warbound" | "warbound_until_equipped"
 local function ResolveSourceLabel(item, sourceCharKey, selectedCharKey, storageType)
     local allCharsDB = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
     local charData = allCharsDB and allCharsDB[sourceCharKey]
@@ -3136,9 +2911,6 @@ function WarbandNexus:TryCoalesceGearStorageFullFind(selectedCharKey)
     return c.findings
 end
 
---- Compact fingerprint of `gearStorageFindingsCache` for PopulateContent dedupe.
---- When async scan fills findings without bumping `ns._gearStorageInvGen`, this still
---- changes so same-tab repaints are not misclassified as gearSigEcho while stale UI remains.
 -- Reused by GetGearStorageFindingsDedupeToken (hot path via GetGearPopulateSignature); not re-entrant.
 local _gearStorageDedupeTokenBuf = {}
 
@@ -3164,16 +2936,11 @@ end
 local LIVE_INVENTORY_BAGS = ns.INVENTORY_BAGS or { 0, 1, 2, 3, 4, 5 }
 local LIVE_BANK_BAGS = ns.PERSONAL_BANK_BAGS or { -1, 6, 7, 8, 9, 10, 11 }
 
----@param bagID number
----@return boolean
 local function IsGearLiveBagIgnored(bagID)
     local prof = WarbandNexus.db and WarbandNexus.db.profile
     return prof and prof.ignoredInventoryBags and prof.ignoredInventoryBags[bagID] == true
 end
 
---- Read logged-in player containers from live APIs (itemStorage can lag BAG_UPDATE throttle).
----@param out table[]
----@param bagID number
 local function AppendLiveContainerBagItems(out, bagID)
     if not out or not bagID or IsGearLiveBagIgnored(bagID) then return end
     if not C_Container or not C_Container.GetContainerItemInfo then return end
@@ -3226,8 +2993,6 @@ local function AppendLiveContainerBagItems(out, bagID)
     end
 end
 
----@return table bagItems
----@return table bankItems
 local function CollectLivePlayerContainerItemsForGearScan()
     local bagItems = {}
     local bankItems = {}
@@ -3528,7 +3293,6 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local addedCount = 0
     local rejectCounts = { stat = 0, lvlRace = 0, boeSoul = 0, bindLabel = 0, bind = 0 }
 
-    --- Class file for storage row coloring (nil = neutral: warband / unknown).
     local function ResolveSourceClassFile(ownerKey)
         if not ownerKey or not allChars then return nil end
         local d = allChars[ownerKey]
@@ -3543,8 +3307,6 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         return nil
     end
 
-    --- Level + race/class (only when the selected tab character is the logged-in player — API is player-scoped).
-    ---@param ownStorage boolean|nil when true, skip stale db.level gate (own bag items are equippable)
     local function SelectedCharacterMeetsItemRequirements(itemLink, itemID, ownStorage)
         if ownStorage and selectedIsLoggedInPlayer then
             return true
@@ -3605,7 +3367,6 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
         addedCount = addedCount + 1
     end
 
-    ---@return boolean anyAdded
     local function EvaluateItem(item, sourceCharKey, storageType, evalOpts)
         evalOpts = evalOpts or {}
         if not item or not item.itemID then return false end
@@ -4282,7 +4043,6 @@ for i = 1, #UPGRADE_CURRENCY_IDS do
     UPGRADE_CURRENCY_ID_SET[UPGRADE_CURRENCY_IDS[i]] = true
 end
 
---- Match CurrencyCacheService: progress-style currencies from API (no hardcoded ID list).
 local function IsGearSeasonSplitCurrency(currencyID, info)
     if not info then return false end
     if info.isHeader then return false end
@@ -4294,7 +4054,6 @@ local function IsGearSeasonSplitCurrency(currencyID, info)
     return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
 end
 
---- Effective maxQuantity for Gear panel fallback (weekly cap when season-split, else API caps).
 local function DisplayMaxQuantityFromCurrencyInfo(currencyID, info)
     if not info then return nil end
     local maxQ = info.maxQuantity or 0
