@@ -1,12 +1,6 @@
 --[[
-    Warband Nexus - Search Results Renderer (View Helper)
-    
-    Standardized result rendering and container management
-    - Safely clears containers while protecting emptyStateContainer
-    - Manages empty state visibility and rendering
-    - Provides consistent API for all UI tabs
-    
-    Architecture: View Helper (NOT a Service - UI manipulation only)
+    Warband Nexus - Search Results Renderer
+    Clears result containers and toggles empty-state rows for tab search UIs.
 ]]
 
 local ADDON_NAME, ns = ...
