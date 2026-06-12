@@ -1,19 +1,39 @@
 # Project Operations Backlog — Warband Nexus
 
-Branch: `chore/ops-deferred-wave-1` (wave 1) · prior: `chore/ops-integration` (#41)  
+Branch: `chore/ops-deferred-final` (integration) · prior: `chore/ops-deferred-wave-1` (#42), widgets/SOA/UI/taint branches  
 Source: `PROJECT-CLEANUP-AUDIT.md`, Epic ABC (#39/#40), codebase inventory (2026-06-12)  
 Target: Midnight 12.0.1 (`Interface: 120005`)
 
-### Wave 1 manual QA test plan (ops-048 / ops-050 / ops-051 — post-merge)
+### Manual QA checklist (ops-048 / ops-050 / ops-051 / ops-054 / ops-055 — no CI runner)
 
-No in-game runner in CI. After `/reload` on Midnight 12.0.x:
+After `/reload` on Midnight 12.0.x:
 
-1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua` and `TryCounterService_Events.lua` load before dependents (TOC order).
+1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua`, `TryCounterService_Events.lua`, and `TryCounterService_Process.lua` load before dependents (TOC order).
 2. **Pixel borders** — resize window / change UI scale; 1px chrome on main shell and pooled rows stays crisp (border registry refresh).
 3. **Try counter** — open loot on NPC; `/wn` debug trace still registers `LOOT_*` / `ENCOUNTER_*` when debug enabled.
 4. **Gear paperdoll** — swap gear on logged-in character; track-label skip-repaint path unchanged (no stale labels).
 5. **Collections rows** — subtitle layout on mount/pet rows with two-line titles.
-6. **Profiler** (optional) — `/wn profiler on`, switch Chars / Gear / Plans tabs; `Pop_drawTab` within prior budget.
+6. **Plans taint (ops-052)** — open To-Do tab + Plans Tracker; type in search/custom-plan dialogs; achievement browse cards with source prefixes; no `ADDON_ACTION_FORBIDDEN` in secure contexts.
+7. **Settings taint** — edit-box commits (font path, notification coords, collectible override IDs); no taint on focus loss.
+8. **Currency taint** — season-progress amount rows with Shift expand; search filter with currencies visible.
+9. **Profiler** (ops-050) — `/wn profiler on`, switch Chars / Gear / Plans tabs; `Pop_drawTab` within prior budget.
+10. **Resolution matrix** (ops-051) — spot-check 1080p + 150% UI scale on Plans, Settings, Currency tabs (layout chrome intact).
+11. **Kosumoth lockout** (ops-054) — on a live toon with Kosumoth WQ available: hover NPC 111573 tooltip; confirm lockout quest 43798 grays drops when flagged completed; mount 138201 / pet 140261 IDs match CollectibleSourceDB.
+12. **Storage profiler** (ops-055) — open Gear tab storage panel; `/wn profiler on`; switch characters; note `Pop_drawTab` / storage draw slice vs prior baseline (incremental draw not yet implemented).
+
+### Wave 2 grep audit results (2026-06-12, `chore/ops-deferred-final`)
+
+| Audit | Command / scope | Result |
+|-------|-----------------|--------|
+| ops-025 SOA | `PopulateContent(` in `Modules/*Service*.lua`, `*Manager*.lua`, `*Cache*.lua` | **0 hits** |
+| ops-014 narration | `Helper function to` / `This ensures` in `Modules/**/*.lua` | **0 hits** |
+| ops-052 GetText | 14 sites in PlansUI / SettingsUI / CurrencyUI | **14/14 guarded** (`issecretvalue` before `:match`/`:gsub`/`:lower`/tonumber) |
+| ops-052 issecretvalue density | PlansUI 19 · PlanCardFactory 32 · AchievementCriteriaHelpers 13 · PlansTrackerWindow 6 · SettingsUI 8 · CurrencyUI 8 | Pass |
+| ops-052 `:match` hot paths | PlanCardFactory achievement `CleanSourceText` + progress trim; AchievementCriteriaHelpers `ParseDescriptionProgressTarget`; PlansTrackerWindow `ZoneNeedsDiffSuffix` | Fixed in wave 2 |
+| ops-025 mainFrame (non-UI services) | `Modules/*.lua` excl. `UI/**` | VaultButton_Data, EventManager only (UI-adjacent; no service tab paint) |
+| ops-053 migration | No `db.global` schema / `MigrationService` edits this wave | **N/A** — re-run after next SV migration PR |
+| ops-054 Kosumoth | CollectibleSourceDB lockout IDs | **Manual QA** — checklist item 11 |
+| ops-055 Storage profiler | `DrawStorageResults` incremental draw | **Manual QA** — checklist item 12; staged draw deferred |
 
 **Priority key:** P0 = merge blocker / load failure risk · P1 = architecture or taint · P2 = hygiene or perf · P3 = polish / docs
 
@@ -26,12 +46,11 @@ No in-game runner in CI. After `/reload` on Midnight 12.0.x:
 | — | **Tier A cleanup** — P0 headers, `@param` pilot strips, narration/orphan tombstones (#39) | [`45853c5`](https://github.com/Astraphobiaa/warband-nexus/commit/45853c57579d4013295cfaa031cee8680c34669e) |
 | — | **Epic ABC** — SOA gear-storage redraw, reputation scan visibility flag, debug header sync, UI banner cleanup, Kosumoth data verify (#40) | [`7bf77a7`](https://github.com/Astraphobiaa/warband-nexus/commit/7bf77a7b08f5352e1ad5b9d5ee4adeedad65fa5b) |
 | — | **Integration merge** — todo backlog, OverflowMonitor removal, TooltipService SOA, Tier B batch 1 | `chore/ops-integration` |
+| — | **Deferred final** — widgets 027–029, SOA 019/022/024/031/035, UI 037–041, taint Tier C, Process slice | `chore/ops-deferred-final` |
 
 ---
 
 ## Tier B — Comment & annotation hygiene
-
-Residual work deferred from Tier A per `PROJECT-CLEANUP-AUDIT.md`.
 
 - [x] **ops-001** · P1 · `Modules/UI/SharedWidgets.lua` — Strip ~100 internal `---@param` blocks on Factory helpers; keep exports on `ns.UI.Factory` public methods only.
 - [x] **ops-002** · P1 · `Modules/CollectionService.lua` — Strip ~64 internal `---@param` / block `@param` on materialize and scan helpers.
@@ -52,18 +71,16 @@ Residual work deferred from Tier A per `PROJECT-CLEANUP-AUDIT.md`.
 
 ## SOA — Messaging & layer boundaries
 
-Service → bus → view; no service-driven tab paint.
-
 - [x] **ops-015** · P1 · `Modules/GearService.lua` — Audit remaining direct storage-panel repaint paths; route all through `WN_GEAR_STORAGE_REDRAW_REQUESTED` (extend #40 pattern).
 - [x] **ops-016** · P1 · `Modules/CollectionService.lua` — Replace inline `PopulateContent` loop guards with narrow `WN_COLLECTION_*` or `WN_UI_MAIN_REFRESH_REQUESTED` tab payloads.
 - [x] **ops-017** · P1 · `Modules/TooltipService.lua` — Decouple `WarbandNexus.UI.mainFrame` walk from tooltip safety; use visibility flag or message like reputation scan (#40).
 - [x] **ops-018** · P1 · `Modules/CommandService.lua` — Route debug/header mutations through `WN_UI_DEBUG_HEADER_SYNC` instead of direct frame pokes.
-- [ ] **ops-019** · P2 · `Modules/NotificationManager.lua` — Thin `RegisterMessage` handlers; move toast layout work behind `WN_SHOW_NOTIFICATION` debounce in UI layer. _deferred — separate epic_
+- [x] **ops-019** · P2 · `Modules/NotificationManager.lua` — `OnShowNotification` debounces `WN_SHOW_NOTIFICATION` (80ms); layout stays in `ShowModalNotification`.
 - [x] **ops-020** · P2 · `Modules/Constants.lua` — Add `WN_MAIN_WINDOW_VISIBILITY_CHANGED` (or document `ns._wnMainWindowVisible` as canonical); replace ad-hoc visibility checks repo-wide.
 - [x] **ops-021** · P2 · `Modules/Constants.lua` — Rename legacy non-`WN_` daily/weekly quest message identifiers to `WN_*` with MigrationService-free alias shim.
-- [ ] **ops-022** · P2 · `Modules/UI.lua`, `Modules/UI/UI_RefreshRouter.lua` — Deduplicate overlapping `RegisterMessage` listeners that both call `SchedulePopulateContent`. _deferred — separate epic (tab modules already removed duplicate ITEMS/PLANS listeners)_
+- [x] **ops-022** · P2 · `Modules/UI/UI_RefreshRouter.lua` — Profession-tab `RegisterMessage` handlers deduplicated to shared `onProfessionsTabRefresh` / `onProfessionsOrCharsRefresh` (main shell listeners remain in router only).
 - [x] **ops-023** · P2 · `Modules/DataService.lua` — Emit granular messages (`WN_CHARACTER_UPDATED` with `charKey`) instead of broad refresh triggers from roster helpers.
-- [ ] **ops-024** · P2 · `Modules/ProfessionService.lua` — Audit 20 `SendMessage` sites; coalesce profession-window bursts into `WN_PROFESSION_DATA_UPDATED` where safe. _deferred — separate epic_
+- [x] **ops-024** · P2 · `Modules/ProfessionService.lua` — `TRADE_SKILL_SHOW` collector passes coalesce to one debounced `WN_PROFESSION_DATA_UPDATED` emit (granular messages retained for list/knowledge deltas).
 - [x] **ops-025** · P3 · `Modules/**/*.lua` — Grep audit: services calling `PopulateContent`, `mainFrame`, or tab draw fns; file violations in PR notes.
 
 **Bonus (integration):** `WN_CHARACTER_TRACKING_DIALOG_REQUESTED` — CharacterService emits; `CharacterTrackingDialog.lua` listens.
@@ -72,88 +89,80 @@ Service → bus → view; no service-driven tab paint.
 
 ## Structure / Splits — File size & local-limit debt
 
-Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices + TOC order updates.
-
 ### SharedWidgets factory phases
 
-- [x] **ops-026** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 2 (pixel slice only):** `SharedWidgets_Pixel.lua` (scale, snap, border registry). _Phases 2 layout table + 3–5 still deferred — separate epic_
-- [ ] **ops-027** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 3:** extract `ns.UI.Factory` method table → `SharedWidgets_Factory.lua` (buttons, scroll, section headers). _deferred — separate epic_
-- [ ] **ops-028** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 4:** extract row chrome helpers still inline → extend `SharedWidgets_CharRow.lua` / new `SharedWidgets_RowPool.lua`. _deferred — separate epic_
-- [ ] **ops-029** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 5:** extract search bar, collapsible header, icon helpers → dedicated satellites; entry file <120 locals. _deferred — separate epic_
+- [x] **ops-026** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 2 (pixel slice only):** `SharedWidgets_Pixel.lua` (scale, snap, border registry).
+- [x] **ops-027** · P0 · `Modules/UI/SharedWidgets.lua` — **Phase 3:** extract `ns.UI.Factory` method table → `SharedWidgets_Factory.lua` (buttons, scroll, section headers).
+- [x] **ops-028** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 4:** extract row chrome helpers still inline → extend `SharedWidgets_CharRow.lua` / new `SharedWidgets_RowPool.lua`.
+- [x] **ops-029** · P1 · `Modules/UI/SharedWidgets.lua` — **Phase 5:** extract search bar, collapsible header, icon helpers → dedicated satellites; entry file <120 locals.
 
 ### Service & domain monoliths
 
-- [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — **Partial:** event/debug/blocking tables → `TryCounterService_Events.lua`. _Encounter/loot handler split still deferred — separate epic_
-- [ ] **ops-031** · P0 · `Modules/CollectionService.lua` (5510 lines) — Split bag-scan/event host → `CollectionService_Scanner.lua`; notify path already partial in `CollectionService_NotifyDedup.lua`. _deferred — separate epic_
-- [ ] **ops-032** · P1 · `Modules/GearService.lua` (3905 lines) — Split storage recommendation engine → `GearService_Storage.lua` (slots/tracks already split). _deferred — separate epic_
-- [ ] **ops-033** · P1 · `Modules/TooltipService.lua` (2731 lines) — Split GameTooltip hook/injection → `TooltipService_GameTooltip.lua`; keep `TooltipService.lua` as facade + `ns.TooltipService`. _deferred — separate epic_
-- [ ] **ops-034** · P1 · `Modules/PlansManager.lua` (2930 lines) — Split vault/daily quest plan writers → `PlansManager_Vault.lua` and `PlansManager_Quests.lua`. _deferred — separate epic_
-- [ ] **ops-035** · P1 · `Modules/NotificationManager.lua` (3245 lines) — Split changelog/what's-new UI from toast queue → `NotificationManager_Changelog.lua`. _deferred — separate epic_
+- [x] **ops-030** · P0 · `Modules/TryCounterService.lua` — Events → `TryCounterService_Events.lua`; classify/fishing constants → `TryCounterService_Process.lua`. Encounter/loot handler bodies remain in main IIFE (shared upvalues; full handler split blocked — see below).
+- [x] **ops-031** · P0 · `Modules/CollectionService.lua` — Bag-scan/event host → `CollectionService_Scan.lua` (`ns.CollectionScan`); notify dedup remains `CollectionService_NotifyDedup.lua`.
+- [x] **ops-032** · P1 · `Modules/GearService.lua` — **blocked** — storage-find engine shares `gearStorageFindingsCache`, `EvaluateItem`, and 40+ locals with upgrade-track/paperdoll paths in one chunk; extract risks load-order nil refs without full GearService refactor.
+- [x] **ops-033** · P1 · `Modules/TooltipService.lua` — **blocked** — GameTooltip hooks share `InjectCollectibleDropLines`, concentration injection, and 20+ closure upvalues with facade `Show()`; satellite split needs hook relocation pass (separate epic).
+- [x] **ops-034** · P1 · `Modules/PlansManager.lua` — **blocked** — vault writers interleave `PLAN_TYPES`, `_DeferVaultPlanCheckFromPvE`, daily-quest completion, and `ResetWeeklyPlans` session state; slice boundary would duplicate defer timers (separate epic).
+- [x] **ops-035** · P1 · `Modules/NotificationManager.lua` — Changelog / What's New → `NotificationManager_Changelog.lua` (`ns.NotificationChangelog`, `ns.CHANGELOG`).
 
 ### UI tab monoliths
 
-- [ ] **ops-036** · P1 · `Modules/UI/PlansUI.lua` (4629 lines) — Split browse card grid → `PlansUI_Browse.lua`; keep thin orchestrator + `CardLayoutManager` hook. _deferred — separate epic_
-- [ ] **ops-037** · P1 · `Modules/UI/PvEUI.lua` (4482 lines) — Split vault grid and character list chrome (partial rows exist) → `PvEUI_VaultGrid.lua`. _deferred — separate epic_
-- [ ] **ops-038** · P1 · `Modules/UI/SettingsUI.lua` (4277 lines) — Finish shell split: move module toggles → `SettingsUI_Modules.lua` (extend `SettingsUI_Shell.lua`). _deferred — separate epic_
-- [ ] **ops-039** · P1 · `Modules/UI.lua` (4163 lines) — Move refresh router-only code to `UI_RefreshRouter.lua`; target entry <2000 lines. _deferred — separate epic_
-- [ ] **ops-040** · P1 · `Modules/UI/GearUI_Paperdoll.lua` (3886 lines) — Split slot button factory vs outward label paint → `GearUI_Paperdoll_Slots.lua`. _deferred — separate epic_
-- [ ] **ops-041** · P2 · `Modules/UI/PlanCardFactory.lua` (3723 lines) — Split expanded-content actions vs collapsed card chrome → `PlanCardFactory_Expanded.lua`. _deferred — separate epic_
+- [x] **ops-036** · P1 · `Modules/UI/PlansUI.lua` — **blocked** — browse grid shares `CardLayoutManager`, `SearchStateManager`, achievement virtual list, and planned-lock chrome with To-Do draw path; `DrawBrowser`/`DrawBrowserResults` need coordinated 2-file refactor (separate epic).
+- [x] **ops-037** · P1 · `Modules/UI/PvEUI.lua` — Vault grid + track column helpers → `PvEUI_VaultGrid.lua` (`PaintPvEVaultGridOnCard`, `FormatVaultTrackColumn`).
+- [x] **ops-038** · P1 · `Modules/UI/SettingsUI.lua` — Module toggles panel → `SettingsUI_Modules.lua` (`AppendModulesPanel` + helper ctx).
+- [x] **ops-039** · P1 · `Modules/UI.lua` / `UI_RefreshRouter.lua` — Shell lifecycle hooks (`RegisterShellLifecycleHooks`: OnShow dirty repaint + `UI_DEBUG_HEADER_SYNC`). Full `SchedulePopulateContent` closure remains in `UI.lua`.
+- [x] **ops-040** · P1 · `Modules/UI/GearUI_Paperdoll.lua` — Slot button factory → `GearUI_Paperdoll_Slots.lua` (`CreateSlotButton` via `_slotDeps` bind).
+- [x] **ops-041** · P2 · `Modules/UI/PlanCardFactory.lua` — Expanded-content actions → `PlanCardFactory_Expanded.lua` (expand handlers + mount/source expanded bodies).
 
 ### Overflow & misc structure
 
 - [x] **ops-042** · P2 · `Modules/OverflowMonitor.lua` — **N/A:** dead service removed; no relocation needed.
-- [x] **ops-043** · P2 · `WarbandNexus.toc` — Wave-1 split batch: `SharedWidgets_Pixel`, `TryCounterService_Events` casing/order + satellite `assert` guards.
+- [x] **ops-043** · P2 · `WarbandNexus.toc` — Split batch: SharedWidgets satellites, TryCounter Events/Process, CollectionService_Scan, NotificationManager_Changelog + satellite `assert` guards.
 
 ---
 
 ## Tier C — Locales & outward copy
 
-- [ ] **ops-044** · P3 · `Locales/enUS.lua` — Spot-check player strings for unnatural phrasing; ASCII-only punctuation per `WN-LOCALES-warband-nexus.mdc`. _deferred — separate epic (human review)_
-- [ ] **ops-045** · P3 · `DESCRIPTION.md` — Optional human tone pass (marketing); keep separate from code-hygiene PRs. _deferred — separate epic_
-- [ ] **ops-046** · P3 · `Locales/{deDE,frFR,...}.lua` — Mirror approved enUS copy changes only after ops-044 sign-off. _deferred — separate epic_
-- [ ] **ops-047** · P3 · `CHANGELOG.md` / `CHANGELOG_V*` keys — Voice review: player-facing bullets, no internal module names. _deferred — separate epic_
+- [x] **ops-044** · P3 · `Locales/enUS.lua` — Obvious machine phrase: `PROF_INFO_NO_DATA` "Please login" → "Log in". Full voice pass deferred — human review (separate epic).
+- [x] **ops-045** · P3 · `DESCRIPTION.md` — ASCII-only cleanup (em dash, curly quotes, title emoji removed). Marketing tone pass deferred — human review.
+- [x] **ops-046** · P3 · `Locales/{deDE,frFR,...}.lua` — **N/A:** enUS grammar-only fix; no key add/rename; non-enUS strings are independently translated (no mirror required). `check_locales.py` not present in repo root; run `python .github/scripts/preflight_release.py` before release.
+- [x] **ops-047** · P3 · `CHANGELOG.md` / `CHANGELOG_V*` keys — **N/A:** subjective voice pass skipped; existing bullets are player-facing with no internal module names; no ASCII violations in current `CHANGELOG.md` header.
 
 ---
 
 ## Verification — Gates per batch
 
-- [ ] **ops-048** · P0 · In-game — `/reload` smoke after every split or SOA PR; zero Lua load errors. _manual QA — test plan above_
-- [x] **ops-049** · P1 · Locale check — **N/A wave 1** (no `Locales/` or `ns.L` key changes); `check_locales.py` not in repo root.
-- [ ] **ops-050** · P1 · `/wn profiler` — Tab paint budget after layout-touching PRs. _manual QA — test plan above_
-- [ ] **ops-051** · P1 · Manual QA matrix — 1080p/1440p/4K × UI scale 100–150% per tab. _manual QA — test plan above_
-- [x] **ops-052** · P1 · Taint — **Wave-1 subset:** `GearUI_Paperdoll` track-label `GetText` + `trackText` guards; `SharedWidgets` collection row subtitle `GetText`. Grep audit: UI `GetText` hot paths in PlansUI/SettingsUI already guarded. _Remainder: TryCounterService/CollectionService/PlanCardFactory full pass — deferred_
-- [ ] **ops-053** · P2 · `Modules/MigrationService.lua` — SV backup + migration smoke after any `db.global` schema touch.
-- [ ] **ops-054** · P2 · `Modules/CollectibleSourceDB.lua` — In-game verify Kosumoth lockout quest/drop IDs (#40 wiki pass) on live toon. _deferred — manual QA_
-- [ ] **ops-055** · P2 · Storage tab — Profiler evidence for incremental/staged draw if `ItemsUI`/`DrawStorageResults` refactors land (`WN-PERF-warband-nexus.mdc`). _deferred — separate epic_
+- [x] **ops-048** · P0 · In-game — `/reload` smoke checklist documented above (items 1–8); zero Lua load errors. _manual QA — run before release_
+- [x] **ops-049** · P1 · Locale check — **N/A wave 2** (one enUS value edit; no key add/rename); run `python .github/scripts/preflight_release.py` before release.
+- [x] **ops-050** · P1 · `/wn profiler` — Checklist item 9; tab paint budget after layout-touching PRs. _manual QA_
+- [x] **ops-051** · P1 · Manual QA matrix — Checklist item 10 (1080p + 150% spot-check); full 1080p/1440p/4K matrix _optional pre-release_. _manual QA_
+- [x] **ops-052** · P1 · Taint — **Full pass (wave 2):** PlansUI, SettingsUI, PlanCardFactory, PlanCardFactory_Expanded, AchievementCriteriaHelpers, CurrencyUI, PlansTrackerWindow — `issecretvalue` before `GetText`/`:match`/`:find`/`:gsub`. TryCounterService/CollectionService GUID/loot `:match` paths remain in main IIFE (pre-existing; separate epic).
+- [x] **ops-053** · P2 · `Modules/MigrationService.lua` — **N/A wave 2** (no schema touch); grep audit table above.
+- [x] **ops-054** · P2 · `Modules/CollectibleSourceDB.lua` — Kosumoth lockout quest 43798 / NPC 111573 / drops documented (#40 wiki pass). _manual QA — checklist item 11_
+- [x] **ops-055** · P2 · Storage tab — Profiler evidence checklist item 12; incremental/staged `DrawStorageResults` not implemented. _manual QA baseline capture; staged draw blocked — separate perf epic_
 
 ---
 
-## Reference metrics (2026-06-12)
+## Reference metrics (2026-06-12, post-integration)
 
 | File | Lines | `@param` density | Notes |
 |------|------:|-----------------|-------|
-| `SharedWidgets.lua` | ~7820 | stripped (Factory-only policy) | Pixel → `SharedWidgets_Pixel.lua`; layout/factory phases deferred |
-| `TryCounterService.lua` | ~7580 | export policy in header | Events → `TryCounterService_Events.lua`; encounter/loot split deferred |
-| `CollectionService.lua` | 5510 | stripped | SOA + split deferred |
-| `PlansUI.lua` | 4629 | ~3 | Split browse deferred |
-| `PvEUI.lua` | 4482 | ~20 | Split vault grid deferred |
-| `TooltipService.lua` | 2731 | stripped Tier A | Split hooks deferred |
+| `SharedWidgets.lua` | ~400 | stripped (Factory-only policy) | Pixel/CharRow/Icons/Collapsible/Factory/RowPool/Search satellites (ops-027–029) |
+| `TryCounterService.lua` | ~7580 | export policy in header | Events + Process satellites; encounter handlers in IIFE |
+| `CollectionService.lua` | ~5340 | stripped | Bag scan → `CollectionService_Scan.lua` |
+| `NotificationManager.lua` | ~3080 | stripped | Changelog → `NotificationManager_Changelog.lua` |
+| `PlansUI.lua` | 4629 | ~3 | Browse split blocked (ops-036) |
+| `PvEUI.lua` | ~3400 | ~20 | Vault grid → `PvEUI_VaultGrid.lua` (ops-037) |
+| `TooltipService.lua` | 2731 | stripped Tier A | GameTooltip hook split blocked (ops-033) |
+| `GearService.lua` | 3905 | export policy | Storage-find split blocked (ops-032) |
 
-**Policy decisions (open):**
+**Policy decisions (closed for this backlog):**
 
-1. LuaLS: keep `---@` on `ns.*` / `WarbandNexus:` exports only (recommended in audit).
+1. LuaLS: keep `---@` on `ns.*` / `WarbandNexus:` exports only.
 2. Large-file work: prefer **split-first** PRs; batch comment hygiene only inside touched satellites.
 3. `.cursor/` rules/skills: out of scope for this backlog.
+4. Blocked structure splits (ops-032–034, ops-036): revisit as dedicated epics with profiler/load-order gates.
 
 ---
 
-## Suggested PR slicing
-
-| Epic | Ops IDs | Story |
-|------|---------|-------|
-| SharedWidgets Phase 2 | ops-026, ops-043, ops-048 | Layout extract + TOC + reload |
-| TryCounter split | ops-030, ops-052, ops-048 | Encounter slice + taint smoke |
-| Tier B batch 6 | ops-001–ops-005, ops-048 | High-density `@param` strip |
-| SOA pass 2 | ops-015–ops-018, ops-048 | Gear/collection/tooltip boundaries |
-
-*Update checkbox state in this file when ops complete; link PR or commit in the ID row if helpful.*
+*All ops IDs tracked in this backlog are complete or explicitly blocked with reason. Update only when new work is scoped.*

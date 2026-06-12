@@ -280,8 +280,14 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         end
     end)
     
-    -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
-    local function onProfessionsKnowledgeOrConcentrationUpdated()
+    -- Profession tab: deduplicated listeners (ops-022); chars tab still updates on concentration/knowledge/equipment
+    local function onProfessionsTabRefresh()
+        if HiddenOrMissing() then return end
+        if f.currentTab == "professions" then
+            SchedulePopulateContent(true)
+        end
+    end
+    local function onProfessionsOrCharsRefresh()
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
             SchedulePopulateContent(true)
@@ -289,42 +295,13 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             SchedulePopulateContent()
         end
     end
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, onProfessionsKnowledgeOrConcentrationUpdated)
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, onProfessionsKnowledgeOrConcentrationUpdated)
-    
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, function()
-        if not HiddenOrMissing() and f.currentTab == "professions" then
-            SchedulePopulateContent(true)
-        end
-    end)
-
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CRAFTING_ORDERS_UPDATED, function()
-        if not HiddenOrMissing() and f.currentTab == "professions" then
-            SchedulePopulateContent(true)
-        end
-    end)
-
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_DATA_UPDATED, function()
-        if not HiddenOrMissing() and f.currentTab == "professions" then
-            SchedulePopulateContent(true)
-        end
-    end)
-
-    -- Profession equipment (slots 20/21/22): refresh when chars or professions tab visible so equipped gear updates in real time
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_COOLDOWNS_UPDATED, function()
-        if not HiddenOrMissing() and f.currentTab == "professions" then
-            SchedulePopulateContent(true)
-        end
-    end)
-
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_EQUIPMENT_UPDATED, function()
-        if HiddenOrMissing() then return end
-        if f.currentTab == "professions" then
-            SchedulePopulateContent(true)
-        elseif f.currentTab == "chars" then
-            SchedulePopulateContent()
-        end
-    end)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, onProfessionsOrCharsRefresh)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, onProfessionsOrCharsRefresh)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_EQUIPMENT_UPDATED, onProfessionsOrCharsRefresh)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, onProfessionsTabRefresh)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CRAFTING_ORDERS_UPDATED, onProfessionsTabRefresh)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_DATA_UPDATED, onProfessionsTabRefresh)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_COOLDOWNS_UPDATED, onProfessionsTabRefresh)
     
     -- BAGS_UPDATED also feeds the gear-tab recommendation scan (cross-character bag items
     -- are candidates) so newly looted BoEs surface without a manual reopen.
@@ -574,4 +551,41 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             SchedulePopulateContent()
         end
     end)
+end
+
+--- Shell OnShow dirty-repaint + debug header sync (ops-039 slice).
+function ns.UI_RefreshRouter.RegisterShellLifecycleHooks(ctx)
+    if not ctx or not ctx.addon or not ctx.frame or not ctx.state or not ctx.schedulePopulate then
+        return
+    end
+    local WarbandNexus = ctx.addon
+    local f = ctx.frame
+    local st = ctx.state
+    local SchedulePopulateContent = ctx.schedulePopulate
+
+    f:HookScript("OnShow", function(self)
+        ns._wnMainWindowVisible = true
+        if not st.dirtyWhileHidden then return end
+        st.lastEventPopulateTime = 0
+        C_Timer.After(0.2, function()
+            if not self:IsShown() then return end
+            if st.dirtyWhileHidden then
+                SchedulePopulateContent(true)
+            end
+        end)
+    end)
+
+    if ctx.syncDebugHeader then
+        local shellEv = ns.Constants and ns.Constants.EVENTS
+        if WarbandNexus.RegisterMessage and shellEv and shellEv.UI_DEBUG_HEADER_SYNC then
+            if not ns._uiDebugHeaderSyncListener then
+                ns._uiDebugHeaderSyncListener = {}
+                WarbandNexus.RegisterMessage(ns._uiDebugHeaderSyncListener, shellEv.UI_DEBUG_HEADER_SYNC, function()
+                    if f.SyncMainHeaderDebugReloadLayout then
+                        f:SyncMainHeaderDebugReloadLayout()
+                    end
+                end)
+            end
+        end
+    end
 end

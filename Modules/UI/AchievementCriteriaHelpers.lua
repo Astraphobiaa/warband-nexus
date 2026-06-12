@@ -201,7 +201,7 @@ end
 
 local function ParseDescriptionProgressTarget(achievementID)
     local achDesc = GetAchievementDescription(achievementID)
-    if not achDesc or achDesc == "" then
+    if not achDesc or achDesc == "" or (issecretvalue and issecretvalue(achDesc)) then
         return nil
     end
     local target = achDesc:match("Harvest%s+(%d+)")

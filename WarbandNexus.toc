@@ -64,6 +64,7 @@ Modules\DatabaseOptimizer.lua
 Modules\DatabaseCleanup.lua
 Modules\CollectionService_Materialize.lua
 Modules\CollectionService_NotifyDedup.lua
+Modules\CollectionService_Scan.lua
 Modules\CollectionService.lua
 Modules\ReputationScanner.lua
 Modules\ReputationProcessor.lua
@@ -93,6 +94,7 @@ Modules\AchievementFrameIntegration.lua
 Modules\CollectibleSourceDB.lua
 Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
+Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
@@ -121,10 +123,16 @@ Modules\UI\AchievementCriteriaHelpers.lua
 Modules\UI\SharedWidgets_Pixel.lua
 Modules\UI\SharedWidgets_CharRow.lua
 Modules\UI\SharedWidgets.lua
+Modules\UI\SharedWidgets_Icons.lua
+Modules\UI\SharedWidgets_Collapsible.lua
+Modules\UI\SharedWidgets_Factory.lua
+Modules\UI\SharedWidgets_RowPool.lua
+Modules\UI\SharedWidgets_Search.lua
 Modules\UI\SharedWidgets_EmptyState.lua
 Modules\UI\SharedWidgets_CharacterFilter.lua
 Modules\UI\LayoutCoordinator.lua
 Modules\UI\NotificationToastFactory.lua
+Modules\NotificationManager_Changelog.lua
 Modules\NotificationManager.lua
 Modules\UI\AchievementBrowseVirtualList.lua
 Modules\UI\FramePoolFactory.lua
@@ -135,6 +143,7 @@ Modules\UI\ExpandableRowFactory.lua
 Modules\UI\SearchResultsRenderer.lua
 Modules\UI\VirtualListModule.lua
 Modules\UI\TooltipFactory.lua
+Modules\UI\PlanCardFactory_Expanded.lua
 Modules\UI\PlanCardFactory.lua
 Modules\UI\ReminderSetAlertDialog_Helpers.lua
 Modules\UI\ReminderSetAlertDialog_ZonePanel.lua
@@ -143,6 +152,7 @@ Modules\UI\ReminderSetAlertDialog_QuestCatalog.lua
 Modules\UI\ReminderSetAlertDialog.lua
 Modules\UI\SettingsUI_Shell.lua
 Modules\UI\SettingsUI_Keybind.lua
+Modules\UI\SettingsUI_Modules.lua
 Modules\UI\SettingsUI.lua
 Modules\UI\CharacterTrackingDialog.lua
 Modules\UI\CharactersUI.lua
@@ -150,6 +160,7 @@ Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
 Modules\UI\ItemsUI.lua
 Modules\UI\PvECharacterListRowChrome.lua
+Modules\UI\PvEUI_VaultGrid.lua
 Modules\UI\PvEUI.lua
 Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
@@ -170,6 +181,7 @@ Modules\UI\ProfessionsUI.lua
 Modules\UI\ProfessionsUI_DrawTab.lua
 Modules\UI\GearUI_Chrome.lua
 Modules\UI\GearUI_Paperdoll.lua
+Modules\UI\GearUI_Paperdoll_Slots.lua
 Modules\UI\GearUI_LayoutGrid.lua
 Modules\UI\GearUI.lua
 Modules\UI\GearUI_Layout.lua

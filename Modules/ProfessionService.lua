@@ -1947,27 +1947,32 @@ function WarbandNexus:OnTradeSkillShow()
         pcall(CollectEquipmentByDetection)
     end
 
+    local professionWindowBurstGen = 0
+    local function EmitProfessionWindowDataUpdated()
+        if not WarbandNexus or not WarbandNexus.SendMessage then return end
+        local charKey = ResolveTrackedCharactersTableKey()
+        if not charKey then return end
+        professionWindowBurstGen = professionWindowBurstGen + 1
+        local myGen = professionWindowBurstGen
+        C_Timer.After(0.12, function()
+            if myGen ~= professionWindowBurstGen then return end
+            if WarbandNexus and WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
+            end
+        end)
+    end
+
     -- First pass: 0.6s delay so IsTradeSkillReady / GetProfessionChildSkillLineID are ready
     C_Timer.After(0.6, function()
         RunAllCollectors()
-        if WarbandNexus and WarbandNexus.SendMessage then
-            local charKey = ResolveTrackedCharactersTableKey()
-            if charKey then
-                WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
-            end
-        end
+        EmitProfessionWindowDataUpdated()
     end)
 
     -- Retry pass: 1.2s so UI/list is fully populated (Concentration, Knowledge, etc. then refresh)
     C_Timer.After(1.2, function()
         if not WarbandNexus then return end
         RunAllCollectors()
-        if WarbandNexus.SendMessage then
-            local charKey = ResolveTrackedCharactersTableKey()
-            if charKey then
-                WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
-            end
-        end
+        EmitProfessionWindowDataUpdated()
     end)
 
     -- Notify companion window

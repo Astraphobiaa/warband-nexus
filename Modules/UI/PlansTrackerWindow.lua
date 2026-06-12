@@ -36,6 +36,14 @@ local CreateButton = ns.UI_CreateButton
 local issecretvalue = issecretvalue
 local format = string.format
 
+--- True when zone text is safe to search and does not already include the difficulty label.
+local function ZoneNeedsDiffSuffix(zoneText, diff)
+    if not zoneText or not diff then return false end
+    if issecretvalue and issecretvalue(zoneText) then return false end
+    if issecretvalue and issecretvalue(diff) then return false end
+    return not zoneText:find("(" .. diff .. ")", 1, true)
+end
+
 -- Scrollbar lane: column + gap (aligned with main window SCROLL_INSET_RIGHT).
 local TRACK_SB_COL_W = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
 local TRACK_SCROLL_RIGHT_RESERVE = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
@@ -369,7 +377,7 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
             local zoneSuffix = ""
             if plan.type == "mount" and plan.mountID and WarbandNexus and WarbandNexus.GetDropDifficulty then
                 local diff = WarbandNexus:GetDropDifficulty("mount", plan.mountID)
-                if diff and not first.zone:find("(" .. diff .. ")", 1, true) then
+                if ZoneNeedsDiffSuffix(first.zone, diff) then
                     zoneSuffix = " " .. body .. "(" .. diff .. ")|r"
                 end
             end
@@ -413,7 +421,7 @@ local function BuildPlanCriteriaItems(plan)
         local zoneSuffix = ""
         if plan.type == "mount" and plan.mountID and WarbandNexus and WarbandNexus.GetDropDifficulty then
             local diff = WarbandNexus:GetDropDifficulty("mount", plan.mountID)
-            if diff and not first.zone:find("(" .. diff .. ")", 1, true) then
+            if ZoneNeedsDiffSuffix(first.zone, diff) then
                 zoneSuffix = " (" .. diff .. ")"
             end
         end
@@ -455,7 +463,7 @@ function ns.UI_BuildPlanCriteriaItemsAll(plan)
             local zoneSuffix = ""
             if plan.type == "mount" and plan.mountID and WarbandNexus and WarbandNexus.GetDropDifficulty then
                 local diff = WarbandNexus:GetDropDifficulty("mount", plan.mountID)
-                if diff and not src.zone:find("(" .. diff .. ")", 1, true) then
+                if ZoneNeedsDiffSuffix(src.zone, diff) then
                     zoneSuffix = " (" .. diff .. ")"
                 end
             end
