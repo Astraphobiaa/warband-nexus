@@ -1,15 +1,7 @@
 --[[
     Warband Nexus - PvE Cache Service
-    Persistent cache for PvE data: Mythic+, Great Vault, Lockouts, Weekly Rewards
-    
-    Architecture:
-    - Event-driven updates (MYTHIC_PLUS_CURRENT_AFFIX_UPDATE, WEEKLY_REWARDS_UPDATE, etc.)
-    - DB-backed persistence (no session-only data)
-    - Throttled updates (2s for rare changes)
-    - Single source of truth for PvE data
-    
-    Events fired:
-    - WN_PVE_UPDATED: PvE data changed (UI should refresh)
+    DB-backed cache for Mythic+, Great Vault, lockouts, and weekly rewards.
+    Emits WN_PVE_UPDATED after writes.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -637,10 +629,7 @@ local function GetGildedStashCounts()
     return current, weeklyMax
 end
 
--- NO LOCAL CACHE - DIRECT DB ACCESS ONLY
--- Architecture: API > DB > UI (same as Reputation and Currency)
--- All data operations go directly to self.db.global.pveCache
--- No local variables, no RAM cache, no sync issues!
+-- Persisted in db.global.pveCache (no separate RAM mirror).
 
 -- Throttle timers
 local lastUpdateTime = 0
