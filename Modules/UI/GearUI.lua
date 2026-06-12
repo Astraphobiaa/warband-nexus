@@ -3374,13 +3374,35 @@ ns.GearUI_BuildGearTabItemTooltipContext = BuildGearTabItemTooltipContext
 local GearUIVeilListeners = ns._gearUIVeilMsgListeners or {}
 ns._gearUIVeilMsgListeners = GearUIVeilListeners
 local GearEvents = ns.Constants and ns.Constants.EVENTS
-if WarbandNexus and WarbandNexus.RegisterMessage and GearEvents and GearEvents.GEAR_TAB_VEIL_DISMISS then
-    WarbandNexus.RegisterMessage(GearUIVeilListeners, GearEvents.GEAR_TAB_VEIL_DISMISS, function(_, payload)
-        local snapGen = payload and payload.snapGen
-        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        if mf and snapGen then
-            TryDismissGearContentVeil(mf, snapGen)
-        end
-    end)
+if WarbandNexus and WarbandNexus.RegisterMessage and GearEvents then
+    if GearEvents.GEAR_TAB_VEIL_DISMISS then
+        WarbandNexus.RegisterMessage(GearUIVeilListeners, GearEvents.GEAR_TAB_VEIL_DISMISS, function(_, payload)
+            local snapGen = payload and payload.snapGen
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mf and payload and payload.clearDeferChain then
+                mf._gearDeferChainActive = false
+            end
+            if mf and snapGen then
+                TryDismissGearContentVeil(mf, snapGen)
+            end
+        end)
+    end
+    if GearEvents.GEAR_STORAGE_REDRAW_REQUESTED then
+        WarbandNexus.RegisterMessage(GearUIVeilListeners, GearEvents.GEAR_STORAGE_REDRAW_REQUESTED, function(_, payload)
+            local canon = payload and payload.canonKey
+            if not canon or canon == "" then
+                local mfCanon = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                canon = mfCanon and mfCanon._gearPopulateCanonKey
+            end
+            local gen = payload and payload.paintGen
+            local trust = payload and payload.trustEquipSig == true
+            if not canon or not WarbandNexus.RedrawGearStorageRecommendationsOnly then return end
+            if gen ~= (ns._gearTabDrawGen or 0) then return end
+            if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
+            ns._gearStorageAllowEquipSigInvBypass = true
+            WarbandNexus:RedrawGearStorageRecommendationsOnly(canon, gen, trust)
+            ns._gearStorageAllowEquipSigInvBypass = false
+        end)
+    end
 end
 

@@ -101,6 +101,11 @@ local Constants = {
         BAGS_UPDATED = "WN_BAGS_UPDATED",
         GEAR_UPDATED = "WN_GEAR_UPDATED",
         GEAR_TAB_VEIL_DISMISS = "WN_GEAR_TAB_VEIL_DISMISS",
+        --- Gear tab storage recommendations panel redraw (listener in GearUI.lua).
+        --- Payload: { canonKey, paintGen, trustEquipSig? }
+        GEAR_STORAGE_REDRAW_REQUESTED = "WN_GEAR_STORAGE_REDRAW_REQUESTED",
+        --- Debug header Reload button layout sync after /wn debug toggles (listener in UI.lua).
+        UI_DEBUG_HEADER_SYNC = "WN_UI_DEBUG_HEADER_SYNC",
         MONEY_UPDATED = "WN_MONEY_UPDATED",
         PVE_UPDATED = "WN_PVE_UPDATED",
         CURRENCY_UPDATED = "WN_CURRENCY_UPDATED",

@@ -25,6 +25,18 @@ local DebugPrint = (ns.CreateDebugPrinter and ns.CreateDebugPrinter("|cff00BFFF[
     or ns.DebugPrint
     or function() end
 
+local function RequestGearStorageRedraw(canonKey, paintGen, trustEquipSig)
+    if not canonKey or canonKey == "" then return end
+    local ev = Constants and Constants.EVENTS and Constants.EVENTS.GEAR_STORAGE_REDRAW_REQUESTED
+    if ev and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage(ev, {
+            canonKey = canonKey,
+            paintGen = paintGen,
+            trustEquipSig = trustEquipSig == true,
+        })
+    end
+end
+
 --- Session-only traces (not persisted; default OFF): `SetGearStorageTrace` = yielded/cache pipeline;
 --- `SetGearStoragePanelDebug` = verbose stash UI + Find outcome (Profiler trace only, not chat).
 --- Not persisted; default OFF.
@@ -163,12 +175,10 @@ end
 function WarbandNexus:OnGearStorageYieldedScanComplete(canonKey, paintGen, afterFn)
     local action = self:ProcessDeferredGearStorageUpdates(canonKey)
     local function runTail()
-        if action == "equip_redraw" and self.RedrawGearStorageRecommendationsOnly then
+        if action == "equip_redraw" then
             if paintGen == (ns._gearTabDrawGen or 0)
                 and WarbandNexus.IsStillOnTab and WarbandNexus:IsStillOnTab("gear") then
-                ns._gearStorageAllowEquipSigInvBypass = true
-                self:RedrawGearStorageRecommendationsOnly(canonKey, paintGen, false)
-                ns._gearStorageAllowEquipSigInvBypass = false
+                RequestGearStorageRedraw(canonKey, paintGen, false)
             end
         end
         if type(afterFn) == "function" then
@@ -3112,12 +3122,9 @@ function WarbandNexus:DiagnoseGearStorageRecToChat(charKey, probeItemID)
         end
     end
 
-    local mf = self.UI and self.UI.mainFrame
-    if mf and mf.currentTab == "gear" and self.RedrawGearStorageRecommendationsOnly then
-        ns._gearStorageAllowEquipSigInvBypass = true
-        local ok = self:RedrawGearStorageRecommendationsOnly(selCanon, ns._gearTabDrawGen or 0, true)
-        ns._gearStorageAllowEquipSigInvBypass = false
-        self:Print("  UI redraw: " .. tostring(ok == true))
+    if WarbandNexus.IsStillOnTab and WarbandNexus:IsStillOnTab("gear") then
+        RequestGearStorageRedraw(selCanon, ns._gearTabDrawGen or 0, true)
+        self:Print("  UI redraw requested (gear tab visible).")
     else
         self:Print("  Open Gear tab after /wn gearstash to refresh the recommendations panel.")
     end
@@ -3932,10 +3939,6 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
         -- Stale scan must not leave UI.lua PopulateContent blocked on gear tab.
         ns._gearStorageDeferAwaiting = false
         ns._gearStorageDeferAwaitCanon = nil
-        local mfAb = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        if mfAb then
-            mfAb._gearDeferChainActive = false
-        end
         -- RedrawGearStorageRecommendationsOnly can set this and never clear it if the coroutine aborts mid-scan.
         if yieldCanon and ns._gearStorageRecFindPending then
             ns._gearStorageRecFindPending[yieldCanon] = nil
@@ -3943,18 +3946,18 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
         -- Stale scan: repaint storage panel only (full PopulateContent caused a visible "double refresh"
         -- after char switch + instant populate).
         local snapGen = paintGen
+        local snapCanon = yieldCanon
         C_Timer.After(0, function()
             if snapGen ~= (ns._gearTabDrawGen or 0) then return end
             if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
-            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-            local canon = (mf and mf._gearPopulateCanonKey) or yieldCanon
-            if canon and WarbandNexus.RedrawGearStorageRecommendationsOnly then
-                ns._gearStorageAllowEquipSigInvBypass = true
-                WarbandNexus:RedrawGearStorageRecommendationsOnly(canon, snapGen, true)
-                ns._gearStorageAllowEquipSigInvBypass = false
+            if snapCanon then
+                RequestGearStorageRedraw(snapCanon, snapGen, true)
             end
             if Constants and Constants.EVENTS and Constants.EVENTS.GEAR_TAB_VEIL_DISMISS then
-                WarbandNexus:SendMessage(Constants.EVENTS.GEAR_TAB_VEIL_DISMISS, { snapGen = snapGen })
+                WarbandNexus:SendMessage(Constants.EVENTS.GEAR_TAB_VEIL_DISMISS, {
+                    snapGen = snapGen,
+                    clearDeferChain = true,
+                })
             end
         end)
     end
