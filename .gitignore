@@ -68,6 +68,8 @@ WarbandNexus/
 !CHANGELOG.md
 !DESCRIPTION.md
 !PROJECT-CLEANUP-AUDIT.md
+!docs/
+!docs/PROJECT-OPS-TODOS.md
 
 !Modules/
 !Modules/**
