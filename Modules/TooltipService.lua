@@ -1,18 +1,7 @@
 --[[
     Warband Nexus - Tooltip Service Module
-    Central tooltip management system
-    
-    Architecture:
-    - Single reusable tooltip frame (lazy init) — used only when showing data for Warband Nexus UI anchors
-    - Event-driven show/hide
-    - Multiple tooltip types (custom, item, currency, hybrid)
-    - Auto-hide on combat/world transitions
-    - World/item tooltips: extend Blizzard GameTooltip with AddLine-style data only; do not replace default item text
-      or compete with ShoppingTooltip1/2.
-    
-    API:
-    WarbandNexus.Tooltip:Show(frame, data)
-    WarbandNexus.Tooltip:Hide()
+    Lazy singleton tooltip; extends GameTooltip for item/world anchors only.
+    WarbandNexus.Tooltip:Show(frame, data) / :Hide()
 
     WN_NONUI_UI: Lazy tooltip singleton and internal helper frames (`CreateFrame`) are intentionally outside SharedWidgets Factory.
 ]]
