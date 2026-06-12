@@ -1617,7 +1617,12 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     if type(rawText) ~= "string" or (issecretvalue and issecretvalue(rawText)) then
         rawText = ""
     elseif WarbandNexus.CleanSourceText then
-        rawText = WarbandNexus:CleanSourceText(rawText)
+        local cleaned = WarbandNexus:CleanSourceText(rawText)
+        if type(cleaned) == "string" and not (issecretvalue and issecretvalue(cleaned)) then
+            rawText = cleaned
+        else
+            rawText = ""
+        end
     end
     
     local description, progressText = rawText:match("^(.-)%s*(Progress:%s*.+)$")
@@ -1946,8 +1951,11 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
             local row = achSummary.criteria[ci]
             if row.hasName and row.name then
                 local progressText = formatRowSuffix and formatRowSuffix(row, achSummary) or ""
-                if progressText ~= "" then
-                    progressText = " |cffffffff" .. progressText:match("^%s*(.*)") .. "|r"
+                if progressText ~= "" and not (issecretvalue and issecretvalue(progressText)) then
+                    local trimmed = progressText:match("^%s*(.*)")
+                    if trimmed and not (issecretvalue and issecretvalue(trimmed)) then
+                        progressText = " |cffffffff" .. trimmed .. "|r"
+                    end
                 end
                 local linkedAchievementID = row.linkedAchievementID
                 local textColor

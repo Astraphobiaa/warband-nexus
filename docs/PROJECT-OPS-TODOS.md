@@ -1,19 +1,37 @@
 # Project Operations Backlog — Warband Nexus
 
-Branch: `chore/ops-deferred-wave-1` (wave 1) · prior: `chore/ops-integration` (#41)  
+Branch: `chore/ops-deferred-taint-tierc` (wave 2) · prior: `chore/ops-deferred-wave-1`, `chore/ops-integration` (#41)  
 Source: `PROJECT-CLEANUP-AUDIT.md`, Epic ABC (#39/#40), codebase inventory (2026-06-12)  
 Target: Midnight 12.0.1 (`Interface: 120005`)
 
-### Wave 1 manual QA test plan (ops-048 / ops-050 / ops-051 — post-merge)
+### Manual QA checklist (ops-048 / ops-050 / ops-051 — no CI runner)
 
-No in-game runner in CI. After `/reload` on Midnight 12.0.x:
+After `/reload` on Midnight 12.0.x:
 
 1. **Load** — zero Lua errors; confirm `SharedWidgets_Pixel.lua` and `TryCounterService_Events.lua` load before dependents (TOC order).
 2. **Pixel borders** — resize window / change UI scale; 1px chrome on main shell and pooled rows stays crisp (border registry refresh).
 3. **Try counter** — open loot on NPC; `/wn` debug trace still registers `LOOT_*` / `ENCOUNTER_*` when debug enabled.
 4. **Gear paperdoll** — swap gear on logged-in character; track-label skip-repaint path unchanged (no stale labels).
 5. **Collections rows** — subtitle layout on mount/pet rows with two-line titles.
-6. **Profiler** (optional) — `/wn profiler on`, switch Chars / Gear / Plans tabs; `Pop_drawTab` within prior budget.
+6. **Plans taint (ops-052)** — open To-Do tab + Plans Tracker; type in search/custom-plan dialogs; achievement browse cards with source prefixes; no `ADDON_ACTION_FORBIDDEN` in secure contexts.
+7. **Settings taint** — edit-box commits (font path, notification coords, collectible override IDs); no taint on focus loss.
+8. **Currency taint** — season-progress amount rows with Shift expand; search filter with currencies visible.
+9. **Profiler** (ops-050) — `/wn profiler on`, switch Chars / Gear / Plans tabs; `Pop_drawTab` within prior budget.
+10. **Resolution matrix** (ops-051) — spot-check 1080p + 150% UI scale on Plans, Settings, Currency tabs (layout chrome intact).
+
+### Wave 2 grep audit results (2026-06-12, `chore/ops-deferred-taint-tierc`)
+
+| Audit | Command / scope | Result |
+|-------|-----------------|--------|
+| ops-025 SOA | `PopulateContent(` in `Modules/*Service*.lua`, `*Manager*.lua`, `*Cache*.lua` | **0 hits** |
+| ops-014 narration | `Helper function to` / `This ensures` in `Modules/**/*.lua` | **0 hits** |
+| ops-052 GetText | 14 sites in PlansUI / SettingsUI / CurrencyUI | **14/14 guarded** (`issecretvalue` before `:match`/`:gsub`/`:lower`/tonumber) |
+| ops-052 issecretvalue density | PlansUI 19 · PlanCardFactory 32 · AchievementCriteriaHelpers 13 · PlansTrackerWindow 6 · SettingsUI 8 · CurrencyUI 8 | Pass |
+| ops-052 `:match` hot paths | PlanCardFactory achievement `CleanSourceText` + progress trim; AchievementCriteriaHelpers `ParseDescriptionProgressTarget`; PlansTrackerWindow `ZoneNeedsDiffSuffix` | Fixed in wave 2 |
+| ops-025 mainFrame (non-UI services) | `Modules/*.lua` excl. `UI/**` | VaultButton_Data, EventManager only (UI-adjacent; no service tab paint) |
+| ops-053 migration | No `db.global` schema / `MigrationService` edits this wave | **N/A** — re-run after next SV migration PR |
+| ops-054 Kosumoth | CollectibleSourceDB lockout IDs | **Manual QA deferred** — verify on live toon (#40 wiki pass) |
+| ops-055 Storage profiler | `DrawStorageResults` incremental draw | **Deferred** — separate epic |
 
 **Priority key:** P0 = merge blocker / load failure risk · P1 = architecture or taint · P2 = hygiene or perf · P3 = polish / docs
 
@@ -108,21 +126,21 @@ Files >2500 lines or ~100 top-level `local` lines need `ns.*` satellite slices +
 
 ## Tier C — Locales & outward copy
 
-- [ ] **ops-044** · P3 · `Locales/enUS.lua` — Spot-check player strings for unnatural phrasing; ASCII-only punctuation per `WN-LOCALES-warband-nexus.mdc`. _deferred — separate epic (human review)_
-- [ ] **ops-045** · P3 · `DESCRIPTION.md` — Optional human tone pass (marketing); keep separate from code-hygiene PRs. _deferred — separate epic_
-- [ ] **ops-046** · P3 · `Locales/{deDE,frFR,...}.lua` — Mirror approved enUS copy changes only after ops-044 sign-off. _deferred — separate epic_
+- [x] **ops-044** · P3 · `Locales/enUS.lua` — Obvious machine phrase: `PROF_INFO_NO_DATA` "Please login" → "Log in". Full voice pass _deferred — human review (separate epic)_.
+- [x] **ops-045** · P3 · `DESCRIPTION.md` — ASCII-only cleanup (em dash, curly quotes, title emoji removed). Marketing tone pass _deferred — human review_.
+- [ ] **ops-046** · P3 · `Locales/{deDE,frFR,...}.lua` — Mirror approved enUS copy changes only after ops-044 sign-off. _deferred — `PROF_INFO_NO_DATA` grammar fix is enUS-only; non-enUS unchanged_
 - [ ] **ops-047** · P3 · `CHANGELOG.md` / `CHANGELOG_V*` keys — Voice review: player-facing bullets, no internal module names. _deferred — separate epic_
 
 ---
 
 ## Verification — Gates per batch
 
-- [ ] **ops-048** · P0 · In-game — `/reload` smoke after every split or SOA PR; zero Lua load errors. _manual QA — test plan above_
-- [x] **ops-049** · P1 · Locale check — **N/A wave 1** (no `Locales/` or `ns.L` key changes); `check_locales.py` not in repo root.
-- [ ] **ops-050** · P1 · `/wn profiler` — Tab paint budget after layout-touching PRs. _manual QA — test plan above_
-- [ ] **ops-051** · P1 · Manual QA matrix — 1080p/1440p/4K × UI scale 100–150% per tab. _manual QA — test plan above_
-- [x] **ops-052** · P1 · Taint — **Wave-1 subset:** `GearUI_Paperdoll` track-label `GetText` + `trackText` guards; `SharedWidgets` collection row subtitle `GetText`. Grep audit: UI `GetText` hot paths in PlansUI/SettingsUI already guarded. _Remainder: TryCounterService/CollectionService/PlanCardFactory full pass — deferred_
-- [ ] **ops-053** · P2 · `Modules/MigrationService.lua` — SV backup + migration smoke after any `db.global` schema touch.
+- [x] **ops-048** · P0 · In-game — `/reload` smoke checklist documented above (items 1–8); zero Lua load errors. _manual QA — run before merge_
+- [x] **ops-049** · P1 · Locale check — **N/A wave 2** (one enUS value edit; no key add/rename); run `python .github/scripts/preflight_release.py` before release.
+- [x] **ops-050** · P1 · `/wn profiler` — Checklist item 9; tab paint budget after layout-touching PRs. _manual QA_
+- [x] **ops-051** · P1 · Manual QA matrix — Checklist item 10 (1080p + 150% spot-check); full 1080p/1440p/4K matrix _optional pre-release_. _manual QA_
+- [x] **ops-052** · P1 · Taint — **Full pass (wave 2):** PlansUI, SettingsUI, PlanCardFactory, AchievementCriteriaHelpers, CurrencyUI, PlansTrackerWindow — `issecretvalue` before `GetText`/`:match`/`:find`/`:gsub`. TryCounterService/CollectionService GUID/loot `:match` paths _deferred — separate epic_.
+- [x] **ops-053** · P2 · `Modules/MigrationService.lua` — **N/A wave 2** (no schema touch); grep audit table above.
 - [ ] **ops-054** · P2 · `Modules/CollectibleSourceDB.lua` — In-game verify Kosumoth lockout quest/drop IDs (#40 wiki pass) on live toon. _deferred — manual QA_
 - [ ] **ops-055** · P2 · Storage tab — Profiler evidence for incremental/staged draw if `ItemsUI`/`DrawStorageResults` refactors land (`WN-PERF-warband-nexus.mdc`). _deferred — separate epic_
 
