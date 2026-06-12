@@ -96,6 +96,7 @@ Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
 Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
+Modules\TryCounterService_Handlers.lua
 Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
 Modules\DailyQuestManager.lua
@@ -115,6 +116,7 @@ Modules\ReminderService.lua
 Modules\GearService_Slots.lua
 Modules\GearService_UpgradeTracks.lua
 Modules\GearService.lua
+Modules\GearService_StorageFind.lua
 
 # UI Modules (FormatHelpers before SharedWidgets — ns.UI_Format* / money helpers)
 Modules\UI\FormatHelpers.lua
