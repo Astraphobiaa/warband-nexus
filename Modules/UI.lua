@@ -1,6 +1,6 @@
 ﻿--[[
     Warband Nexus - UI Module
-    Modern, clean UI design
+    Main window shell, tab routing, and debounced WN_* refresh listeners.
 ]]
 
 local ADDON_NAME, ns = ...
