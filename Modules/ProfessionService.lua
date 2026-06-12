@@ -1,22 +1,8 @@
 --[[
     Warband Nexus - Profession Service
-    Lightweight service for profession-related data collection and persistence.
+    Collects concentration/knowledge on TRADE_SKILL_SHOW (APIs require profession window); persists to db.global.characters.
 
-    WoW RETAIL API LIMITATION (no way around it):
-    - Concentration, knowledge are ONLY available while the profession window is open (C_TradeSkillUI context).
-    - GetProfessionInfoBySkillLineID(skillLineID) can return skill level without the window
-      ONLY after the user has opened that profession at least once per session (data "validation").
-    - There is no API to fetch full profession data in the background; OpenTradeSkill() requires
-      a hardware event and opens the UI. So we MUST collect on TRADE_SKILL_SHOW and persist.
-
-    Responsibilities:
-    - On TRADE_SKILL_SHOW: collect concentration, knowledge, expansion skill levels; persist to db.global.characters[charKey].
-    - Provide APIs for UI/tooltip (GetAllConcentrationData, GetKnowledgeData, etc.).
-    - Install recipe selection hook for companion window (deferred until ProfessionsFrame exists).
-
-    Data flow:
-    TRADE_SKILL_SHOW → RunAllCollectors (0.6s + 1.2s retry) → db.global → SendMessage(WN_*_UPDATED)
-    UI reads from same db.global.characters; expansion filter in UI filters skill/concentration/knowledge display.
+    Data flow: TRADE_SKILL_SHOW → RunAllCollectors → SendMessage(WN_*_UPDATED)
 ]]
 
 local ADDON_NAME, ns = ...
