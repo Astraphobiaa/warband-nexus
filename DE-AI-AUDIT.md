@@ -24,11 +24,9 @@ Started: 2026-06-12
 
 Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver essays, or claims not backed by code.
 
-**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`, `SearchBoxComponent.lua`, `SharedWidgets.lua`, `VaultScanner.lua`, `InitializationService.lua`, `ProfessionService.lua`, `GearService.lua`
+**Fixed (chore/de-ai-fixes P0 headers):** `CollectionRules.lua`, `Constants.lua`, `EventManager.lua`, `PvECacheService.lua`, `APIWrapper.lua`, `MinimapButton.lua`, `ItemsCacheService.lua`, `ReputationCacheService.lua`, `TooltipService.lua`, `DatabaseOptimizer.lua`, `ErrorHandler.lua`, `TransmogManager.lua`, `SearchResultsRenderer.lua`, `SearchStateManager.lua`, `CurrencyCacheService.lua`, `ChatMessageService.lua`, `DebugService.lua`, `ReputationScanner.lua`, `ReputationProcessor.lua`, `GoldManagementPopup.lua`, `SearchBoxComponent.lua`, `SharedWidgets.lua`, `VaultScanner.lua`, `InitializationService.lua`, `ProfessionService.lua`, `GearService.lua`, `WindowFactory.lua`, `FormatHelpers.lua`, `CollectionService.lua`, `TryCounterService.lua`
 
-**Remaining (sample):**
-
-- `Modules/UI/WindowFactory.lua`, `FormatHelpers.lua`, `CollectionService.lua` — `Provides:` bullet headers
+**Remaining (sample):** large UI tabs with `Features:` essays (`PvEUI.lua`, `UI.lua`, `PlansUI.lua`)
 
 ### B — `@param` / block JavaDoc on obvious functions (P0)
 
@@ -38,11 +36,12 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 
 **Fixed in pass 2 (batch 2026-06-12):** `DataService.lua` (Phase 2 `@return` blocks + roster helpers), `Utilities.lua` (redundant LuaLS on Safe*/formatters), `NotificationManager.lua` (55 local `---@param`), `GearService.lua` (header + storage/primary-stat cluster)
 
+**Fixed in batch 4 (2026-06-12):** `TryCounterService.lua` (112-line header → 10 lines; ~50 local-helper `---@` strips), `GearService.lua` (241 local-helper annotation lines), `GearUI_Paperdoll.lua` (paint-helper `---@` strip), `FormatHelpers.lua` (header + internal `@param`)
+
 **High density (grep `@param` count):**
 
-- `TryCounterService.lua`, `GearUI_Paperdoll.lua` (100+ each)
 - `ItemsCacheService.lua`, `TooltipService.lua`, `CurrencyCacheService.lua`
-- `GearService.lua` (remainder after cluster strip)
+- `TryCounterService.lua`, `GearService.lua` — `WarbandNexus:` export annotations retained by policy
 
 ### C — `---@` LuaLS annotations (P1)
 
@@ -54,11 +53,15 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 
 ### E — Narration comments (P2)
 
-`-- This ensures...`, `-- Helper function to...`, `-- Note: This function...` in UI hot paths (`PlanCardFactory.lua`, `PvEUI.lua`, `UI.lua`). Keep only non-obvious business logic.
+`-- This ensures...`, `-- Helper function to...`, `-- Note: This function...` in UI hot paths (`PvEUI.lua`, `UI.lua`). Keep only non-obvious business logic.
+
+**Fixed in batch 4:** `SettingsUI.lua` (Phase 4.x tags, Helper/click-catcher narration)
 
 ### F — Dead / compat stubs (P1)
 
-`kept for backward compatibility but does nothing` — verify callers, then delete (`PlanCardFactory.lua`, `DataService.lua`).
+`kept for backward compatibility but does nothing` — verify callers, then delete.
+
+**Batch 4:** removed `PlanCardFactory:SetupExpandHandler` (zero callers). **Kept** `DataService:UpdateCurrencyData` (called from `DataService` + `DatabaseOptimizer`).
 
 ### G — Locale / marketing copy (P3)
 
@@ -96,18 +99,18 @@ Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 - [x] `Utilities.lua` redundant LuaLS on obvious exports
 - [x] `NotificationManager.lua` local `---@param` strip
 - [x] `GearService.lua` header + first internal `@param` cluster
-- [ ] Scripted strip of `--[[ ... @param ... ]]` in files with >20 occurrences (`TryCounterService.lua`)
+- [x] `TryCounterService.lua` local-helper `---@param` strip + header trim (batch 4)
 - [ ] Remove `Helper function to` one-liners in `PvEUI.lua`, `ReputationUI.lua`
 
 ### Phase 3 — UI layer
 
 - [x] `PlanCardFactory.lua` — removed "This ensures" narration (partial)
-- [ ] `SettingsUI.lua` — narration comments where logic is opaque
+- [x] `SettingsUI.lua` — narration comments (batch 4)
 - Do **not** mass-delete `WN_FACTORY` / `WN_NONUI_UI` tags (agent markers, useful)
 
 ### Phase 4 — Dead code & compat
 
-- Grep `backward compatibility`; delete no-op stubs after caller check
+- [x] Grep `backward compatibility`; delete no-op stubs after caller check (`PlanCardFactory` done; `DataService:UpdateCurrencyData` retained)
 - `EventManager.lua` orphaned handler comment at EOF — verify and remove
 
 ### Phase 5 — Locales & docs
