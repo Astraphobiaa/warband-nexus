@@ -1,32 +1,7 @@
 --[[
-    Warband Nexus - Reputation Cache Service (v4.0.0 - Parse-First Architecture)
-    
-    ARCHITECTURE: Message Parse + API Query + AceDB
-    
-    Primary detection via CHAT_MSG_COMBAT_FACTION_CHANGE message parsing.
-    Blizzard global format strings → locale-safe Lua patterns.
-    Snapshot-Diff updates in-memory state only (PerformSnapshotDiff); chat is never
-    inferred from bulk snapshot comparison (avoids unrelated factions when grinding one).
-    
-    Data Flow:
-    1) Initialize → 2s timer → BuildSnapshot (silent, builds nameToID map)
-       + Rebuilt after each PerformFullScan (picks up new factions)
-    2) CHAT_MSG_COMBAT_FACTION_CHANGE fires → parse factionName + gainAmount
-    3) Look up factionID from nameToID map → query API for standing data
-    4) Fire WN_REPUTATION_GAINED with full display data
-    5) Update snapshot → prevents duplicate detection
-    6) ChatMessageService prints directly (no DB lookup needed)
-    7) UPDATE_FACTION → background FullScan (DB + UI sync only)
-    8) MAJOR_FACTION_RENOWN_LEVEL_CHANGED → direct handler (renown level-ups)
-    
-    Events (4 total):
-    - CHAT_MSG_COMBAT_FACTION_CHANGE: Primary gain detection (parsed)
-    - CHAT_MSG_LOOT: Companion XP item → seed pending (delve companion rep without chat line)
-    - UPDATE_FACTION: Background DB sync (FullScan only, no chat)
-    - MAJOR_FACTION_RENOWN_LEVEL_CHANGED: Renown level-up (direct handler)
-    
-    Architecture: Event → Parse/API → Chat + Snapshot Update
-                  UPDATE_FACTION → FullScan → DB → UI
+    Warband Nexus - Reputation Cache Service
+    Parse-first rep gains (CHAT_MSG_COMBAT_FACTION_CHANGE) with AceDB snapshots.
+    Emits WN_REPUTATION_GAINED and WN_REPUTATION_UPDATED after writes.
 
     WN_NONUI_UI: `repEventFrame` (AceEvent host) uses a hidden `CreateFrame` root; reputations UI is ReputationUI.lua.
 ]]
