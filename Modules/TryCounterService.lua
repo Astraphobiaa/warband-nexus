@@ -120,78 +120,18 @@ local tryCounterReady = false
 local tryCounterInitializing = false
 local tryCounterEventsRegistered = false
 local tryCounterFrame = CreateFrame("Frame")
-local DEBUG_TRACE_EVENTS = {
-    LOOT_READY = true,
-    LOOT_OPENED = true,
-    LOOT_CLOSED = true,
-    CHAT_MSG_CURRENCY = true,
-    CHAT_MSG_MONEY = true,
-    ITEM_LOCK_CHANGED = true,
-    UNIT_SPELLCAST_SENT = true,
-    UNIT_SPELLCAST_CHANNEL_START = true,
-    UNIT_SPELLCAST_INTERRUPTED = true,
-    ENCOUNTER_START = true,
-    ENCOUNTER_END = true,
-    BOSS_KILL = true,
-}
+local DEBUG_TRACE_EVENTS = TC.DEBUG_TRACE_EVENTS or {}
 
 -- MUST be declared before tryCounterFrame:SetScript("OnEvent") — otherwise the closure resolves globals (nil).
 local DEBUG_TRACE_DEDUP_LOOT_MS = 0.22
 local lastDebugTraceLootTime = { LOOT_READY = 0 }
 
-local TRYCOUNTER_EVENTS = {
-    "LOOT_READY",
-    "LOOT_OPENED",
-    "LOOT_CLOSED",
-    "CHAT_MSG_LOOT",
-    "CHAT_MSG_CURRENCY",
-    "CHAT_MSG_MONEY",
-    -- Encounter lifecycle:
-    --   ENCOUNTER_START fires at pull (values typically non-secret; best window to capture IDs).
-    --   ENCOUNTER_END fires on kill/wipe (12.0: encounterID/Name/difficultyID may be secret).
-    --   BOSS_KILL complements ENCOUNTER_END for world bosses and some legacy content.
-    "ENCOUNTER_START",
-    "ENCOUNTER_END",
-    "BOSS_KILL",
-    "PLAYER_ENTERING_WORLD",
-    "UNIT_SPELLCAST_SENT",
-    "UNIT_SPELLCAST_CHANNEL_START",
-    "UNIT_SPELLCAST_INTERRUPTED",
-    "UNIT_SPELLCAST_FAILED_QUIET",
-    "ITEM_LOCK_CHANGED",
-    "PLAYER_INTERACTION_MANAGER_FRAME_SHOW",
-    "PLAYER_INTERACTION_MANAGER_FRAME_HIDE",
-    "PLAYER_TARGET_CHANGED",
-    "QUEST_LOG_UPDATE",
-    "PLAYER_REGEN_ENABLED",
-    "CRITERIA_UPDATE",
-    -- Definitive drop-acquired signals (Rarity/ATT priority #1). NEW_MOUNT_ADDED fires once per
-    -- mount learn including post-cinematic chest grants where no creature LOOT_OPENED ever ties
-    -- to the kill. Consuming the drop's mark here makes "obtained after N attempts" reliable for
-    -- Sylvanas SoD chest, LK Frozen Throne, etc., even if all other paths missed.
-    "NEW_MOUNT_ADDED",
-    "NEW_PET_ADDED",
-}
+-- Encounter lifecycle: ENCOUNTER_START (pull), ENCOUNTER_END (12.0 secret args), BOSS_KILL fallback.
+-- NEW_MOUNT_ADDED / NEW_PET_ADDED: definitive learn signals when loot frames never tie to the kill.
+local TRYCOUNTER_EVENTS = TC.TRYCOUNTER_EVENTS or {}
+assert(#TRYCOUNTER_EVENTS > 0, "TryCounterService: TryCounterService_Events must load first")
 
--- PlayerInteractionType values that should block ProcessNPCLoot.
--- When any of these UI panels are open, LOOT_OPENED events are either:
---   a) Not from NPC loot (bank/vendor interactions)
---   b) From profession UI (tradeskill window opens loot frames for some crafts)
--- Blocks loot processing when non-NPC UI interactions are open.
--- Values from Enum.PlayerInteractionType (warcraft.wiki.gg/wiki/Enum.PlayerInteractionType)
-local BLOCKING_INTERACTION_TYPES = {
-    [1] = true,   -- TradePartner
-    [5] = true,   -- Merchant
-    [8] = true,   -- Banker
-    [10] = true,  -- GuildBanker
-    [17] = true,  -- MailInfo
-    [21] = true,  -- Auctioneer
-    [26] = true,  -- VoidStorageBanker
-    [27] = true,  -- BlackMarketAuctioneer
-    [31] = true,  -- GarrTradeskill (Garrison profession window)
-    [40] = true,  -- ScrappingMachine
-    [44] = true,  -- ItemInteraction (enchanting/crafting UI)
-}
+local BLOCKING_INTERACTION_TYPES = TC.BLOCKING_INTERACTION_TYPES or {}
 
 function Fns.RegisterTryCounterEvents()
     if tryCounterEventsRegistered then
