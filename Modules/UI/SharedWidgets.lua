@@ -26,85 +26,11 @@ end
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
--- PIXEL PERFECT HELPERS
-
--- Cached pixel scale (calculated once per UI load, reused everywhere)
--- Cache for pixel scale (automatically invalidated on scale changes)
-local mult = nil
-
--- Calculate exact pixel size for 1px borders.
--- Uses GetPhysicalScreenSize (reliable since BfA 8.0) and GetEffectiveScale
--- to produce the size of one physical pixel in UIParent coordinate space.
--- NOTE: Defined before event handler to avoid forward-reference errors
-local function GetPixelScale(frame)
-    local physH = 1080
-    if GetPhysicalScreenSize then
-        local _, h = GetPhysicalScreenSize()
-        if h and h > 0 then physH = h end
-    else
-        local resolution = GetCVar("gxWindowedResolution") or "1920x1080"
-        local _, h = string.match(resolution, "(%d+)x(%d+)")
-        h = tonumber(h)
-        if h and h > 0 then physH = h end
-    end
-
-    local scaleTarget = frame or UIParent
-    local effectiveScale = scaleTarget and scaleTarget.GetEffectiveScale and scaleTarget:GetEffectiveScale() or 1
-    if not effectiveScale or effectiveScale <= 0 then effectiveScale = 1 end
-
-    -- Fast path: cache only UIParent scale (most common callsite)
-    if not frame or frame == UIParent then
-        if mult then return mult end
-        mult = 768.0 / (physH * effectiveScale)
-        return mult
-    end
-
-    -- Frame-specific pixel scale (for custom-scaled frames)
-    return 768.0 / (physH * effectiveScale)
-end
-
--- Reset pixel scale cache (manual invalidation if needed)
-local function ResetPixelScale()
-    mult = nil
-end
-
--- Snap a coordinate value to the nearest physical pixel
--- This prevents sub-pixel positioning that causes blur/jitter
-local function PixelSnap(value)
-    if not value then return 0 end
-    local pixelScale = GetPixelScale()
-    -- Formula: Round to nearest pixel boundary
-    return math.floor(value / pixelScale + 0.5) * pixelScale
-end
-
--- Event frame to handle UI scale and display changes
-local scaleHandler = CreateFrame("Frame")
-scaleHandler:RegisterEvent("UI_SCALE_CHANGED")
-scaleHandler:RegisterEvent("DISPLAY_SIZE_CHANGED")
-scaleHandler:SetScript("OnEvent", function(self, event)
-    mult = nil  -- Invalidate pixel scale cache
-    -- Defer border refresh to next frame to allow scale to settle
-    C_Timer.After(0, function()
-        if ns.UI_UpdateBorderColor and ns.BORDER_REGISTRY then
-            for i = 1, #ns.BORDER_REGISTRY do
-                local frame = ns.BORDER_REGISTRY[i]
-                if frame and frame.BorderTop and not frame._wnMainShellBackdrop and not frame._wnBorderlessSurface then
-                    local pixelScale = GetPixelScale(frame)
-                    frame.BorderTop:SetHeight(pixelScale)
-                    frame.BorderBottom:SetHeight(pixelScale)
-                    frame.BorderLeft:ClearAllPoints()
-                    frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-                    frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-                    frame.BorderLeft:SetWidth(pixelScale)
-                    frame.BorderRight:ClearAllPoints()
-                    frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-                    frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-                    frame.BorderRight:SetWidth(pixelScale)
-                end
-            end
-        end
-    end)
-end)
+-- Pixel helpers: Modules/UI/SharedWidgets_Pixel.lua (ns.GetPixelScale / PixelSnap / ResetPixelScale)
+local GetPixelScale = ns.GetPixelScale
+local PixelSnap = ns.PixelSnap
+local ResetPixelScale = ns.ResetPixelScale
+assert(GetPixelScale and PixelSnap, "SharedWidgets: SharedWidgets_Pixel must load first")
 
 -- COLOR CONSTANTS
 
@@ -6086,10 +6012,6 @@ function ns.UI_OpenTryCountFromContext(_anchorFrame, collectibleType, collectibl
     ns.UI_ShowTryCountPopup(collectibleType, collectibleID, displayName)
 end
 
--- Export PixelScale functions (used by FontManager for resolution normalization)
-ns.GetPixelScale = GetPixelScale
-ns.PixelSnap = PixelSnap
-ns.ResetPixelScale = ResetPixelScale
 ns.SafeColorArray = SafeColorArray
 
 -- SETTINGS UI HELPERS
@@ -8020,7 +7942,10 @@ local function LayoutCollectionListRowText(row, pad, gap, slotGap)
     local rowH = row:GetHeight() or (UI_SPACING.ROW_HEIGHT or 32)
     local iconH = iconHost:GetHeight() or 25
     local textX = CollectionRowTextLeftX(row, pad, gap, slotGap)
-    local hasSub = row.subtitle and row.subtitle:IsShown() and (row.subtitle:GetText() or "") ~= ""
+    local subText = row.subtitle and row.subtitle:GetText()
+    local hasSub = row.subtitle and row.subtitle:IsShown()
+        and subText and not (issecretvalue and issecretvalue(subText))
+        and subText ~= ""
     row.label:ClearAllPoints()
     if hasSub and row.subtitle then
         row.subtitle:ClearAllPoints()
