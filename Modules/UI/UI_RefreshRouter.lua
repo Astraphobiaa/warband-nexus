@@ -575,3 +575,40 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         end
     end)
 end
+
+--- Shell OnShow dirty-repaint + debug header sync (ops-039 slice).
+function ns.UI_RefreshRouter.RegisterShellLifecycleHooks(ctx)
+    if not ctx or not ctx.addon or not ctx.frame or not ctx.state or not ctx.schedulePopulate then
+        return
+    end
+    local WarbandNexus = ctx.addon
+    local f = ctx.frame
+    local st = ctx.state
+    local SchedulePopulateContent = ctx.schedulePopulate
+
+    f:HookScript("OnShow", function(self)
+        ns._wnMainWindowVisible = true
+        if not st.dirtyWhileHidden then return end
+        st.lastEventPopulateTime = 0
+        C_Timer.After(0.2, function()
+            if not self:IsShown() then return end
+            if st.dirtyWhileHidden then
+                SchedulePopulateContent(true)
+            end
+        end)
+    end)
+
+    if ctx.syncDebugHeader then
+        local shellEv = ns.Constants and ns.Constants.EVENTS
+        if WarbandNexus.RegisterMessage and shellEv and shellEv.UI_DEBUG_HEADER_SYNC then
+            if not ns._uiDebugHeaderSyncListener then
+                ns._uiDebugHeaderSyncListener = {}
+                WarbandNexus.RegisterMessage(ns._uiDebugHeaderSyncListener, shellEv.UI_DEBUG_HEADER_SYNC, function()
+                    if f.SyncMainHeaderDebugReloadLayout then
+                        f:SyncMainHeaderDebugReloadLayout()
+                    end
+                end)
+            end
+        end
+    end
+end
