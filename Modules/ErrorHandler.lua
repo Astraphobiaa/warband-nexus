@@ -1,13 +1,6 @@
 --[[
     Warband Nexus - Error Handler Module
-    Production-ready error handling and logging
-    
-    Features:
-    - Safe function execution (pcall wrappers)
-    - Error logging with stack traces
-    - User-friendly error messages
-    - Error statistics
-    - Debug mode with verbose logging
+    pcall wrappers, error log ring buffer, and debug-mode verbose logging.
 ]]
 
 local ADDON_NAME, ns = ...
