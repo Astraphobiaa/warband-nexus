@@ -540,7 +540,6 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     nameText:SetMaxLines(2)
     nameText:EnableMouse(false)
     card.nameText = nameText
-    card.planNameText = nameText  -- Store reference for overflow checking
     
     -- Wowhead + optional chat link (top-right of name row; name truncates to their left)
     local Factory = ns.UI and ns.UI.Factory
