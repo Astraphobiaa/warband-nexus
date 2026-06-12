@@ -2401,7 +2401,6 @@ end
 
 local SOURCE_KEYWORDS  -- lazy-init (locale must be loaded first)
 
--- Helper function to check if text contains any source keyword
 local function HasSourceKeyword(text)
     if not text then return false end
     if not SOURCE_KEYWORDS then
@@ -2923,7 +2922,6 @@ function WarbandNexus:ParseMultipleSources(sourceText)
         local questKey = BATTLE_PET_SOURCE_2 or "Quest"
         local npcKey = (L and L["PARSE_NPC"]) or "NPC"
         
-        -- Helper function to extract value between a keyword and the next keyword/newline/end
         local function extractField(text, keyword)
             local pattern = keyword .. ":%s*([^\n]+)"
             local value = text:match(pattern)

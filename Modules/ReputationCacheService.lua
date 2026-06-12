@@ -311,7 +311,6 @@ end
 
 ---Hydrate compact SV data into full normalized format by combining with API metadata.
 ---Priority: stored compact metadata > live API metadata > fallback defaults.
----This ensures the UI never shows "Faction #XXXX" placeholders.
 ---@param factionID number
 ---@param compact table Compact data from SV (includes _name, _type, _isAccountWide)
 ---@param isAccountWide boolean Whether this is from the accountWide bucket
@@ -447,7 +446,7 @@ end
 
 ---Migrate old data structure (if needed).
 ---NOTE: Does NOT update db.version here — that happens after PerformFullScan
----completes successfully. This ensures a version mismatch triggers a re-scan.
+---completes successfully.
 local function MigrateDB()
     local db = GetDB()
     if not db then return end
@@ -484,7 +483,6 @@ local function MigrateDB()
     
     -- DO NOT update db.version here.
     -- Version is updated in UpdateAll() after a successful scan.
-    -- This ensures Initialize() detects the mismatch and triggers a re-scan.
 end
 
 ---Initialize cache (validates DB structure, does NOT clear data)

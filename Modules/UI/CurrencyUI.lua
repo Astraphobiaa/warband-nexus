@@ -153,7 +153,6 @@ end
 
 -- EVENT-DRIVEN UI REFRESH
 -- Event registration is now handled in DrawCurrencyTab (REPUTATION STYLE)
--- This ensures events are registered only once per parent and matches ReputationUI pattern
 
 -- CURRENCY ROW RENDERING (EXACT StorageUI style)
 
@@ -503,7 +502,6 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
             end
         end
         
-        -- Helper function to count currencies recursively
         local function CountCurrenciesRecursive(hdr)
             local count = 0
             local hc = hdr.currencies or {}

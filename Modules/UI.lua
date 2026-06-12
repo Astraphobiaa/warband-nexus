@@ -4162,7 +4162,6 @@ function WarbandNexus:RefreshUI()
     end
     
     -- Always execute the refresh immediately (no throttle on user actions)
-    -- This ensures rows are always drawn when headers are toggled or tabs are switched
     self.isRefreshing = true
     
     -- Use pcall to ensure isRefreshing flag is always reset even if there's an error
@@ -4431,8 +4430,6 @@ do
 
     -- Start polling after PLAYER_LOGIN.
     -- Ticker runs for up to MAX_POLL_LIFETIME seconds, then auto-cancels.
-    -- This ensures the overlay detects both initial-login ops AND
-    -- post-confirmation ops (user clicks "Tracked" after the dialog).
     -- Intentionally raw: PLAYER_LOGIN latch for overlay polling ticker (WN_FACTORY inventory).
     local eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("PLAYER_LOGIN")

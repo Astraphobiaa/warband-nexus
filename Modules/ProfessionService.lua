@@ -3037,8 +3037,6 @@ end
 
 --[[
     Start a 1-minute repeating ticker that fires WN_CONCENTRATION_UPDATED.
-    This ensures any visible UI (tooltips, companion window) recalculates
-    the estimated concentration and recharge time without stale data.
     
     The ticker is lightweight: no API calls, just fires the message event
     so consumers re-read from DB and recalculate with GetEstimatedConcentration().
