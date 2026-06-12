@@ -1,7 +1,17 @@
 # De-AI Audit — Warband Nexus
 
 Branch: `chore/de-ai-fixes`  
-Started: 2026-06-12
+Started: 2026-06-12  
+**Tier A status: COMPLETE — merge-ready** (2026-06-12)
+
+## Tier A finish line
+
+Tier A (P0 headers, narration cleanup, orphan tombstones, pilot `@param` strips in named hot files) is **done** on `chore/de-ai-fixes`. Safe to merge for comment-only de-AI; no TOC or behavior changes in this tier.
+
+**Deferred explicitly (do not batch without a new plan):**
+
+- **Tier B** — residual `@param` / `---@` LuaLS on internal helpers (`TryCounterService`, `GearService` exports retained by policy); section banners in `CharactersUI.lua`, `SettingsUI.lua`, `CurrencyUI.lua` headers
+- **Tier C** — locale/marketing tone (`Locales/enUS.lua`, `DESCRIPTION.md`); `.cursor/` corpus (out of scope)
 
 ## Scope
 
@@ -39,6 +49,8 @@ Tutorial-style blocks: `Features:`, `Architecture:`, `Key Features:`, semver ess
 **Fixed in batch 4 (2026-06-12):** `TryCounterService.lua` (112-line header → 10 lines; ~50 local-helper `---@` strips), `GearService.lua` (241 local-helper annotation lines), `GearUI_Paperdoll.lua` (paint-helper `---@` strip), `FormatHelpers.lua` (header + internal `@param`)
 
 **Fixed in batch 5 (2026-06-12):** `ItemsCacheService.lua`, `TooltipService.lua`, `CurrencyCacheService.lua` (internal `---@param` / block `@param` strips); `PvEUI.lua`, `UI.lua` (header trim); `PvEUI.lua`, `ReputationUI.lua` (narration); `PvEUI.lua`, `PlansUI.lua` (section banners); `CollectionRules.lua` (UnobtainableFilters essay trim; `C_Item.GetItemInfo` verified)
+
+**Fixed in Tier A closure (2026-06-12):** `UI.lua`, `ReputationCacheService.lua`, `CurrencyUI.lua`, `PlansTrackerWindow.lua`, `PlansManager.lua`, `ProfessionService.lua` (`Helper function to` / `This ensures` narration); `EventManager.lua` orphan tombstones
 
 **High density (grep `@param` count):**
 
@@ -114,7 +126,7 @@ Rules/skills are meta-documentation for Cursor agents, not shipped addon code.
 ### Phase 4 — Dead code & compat
 
 - [x] Grep `backward compatibility`; delete no-op stubs after caller check (`PlanCardFactory` done; `DataService:UpdateCurrencyData` retained)
-- `EventManager.lua` orphaned handler comment at EOF — verify and remove
+- [x] `EventManager.lua` orphaned `REMOVED:` handler tombstones removed (Tier A closure)
 
 ### Phase 5 — Locales & docs
 

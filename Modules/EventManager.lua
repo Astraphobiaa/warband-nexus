@@ -193,10 +193,6 @@ function WarbandNexus:OnMoneyChanged()
     end
 end
 
--- REMOVED: WarbandNexus:CHALLENGE_MODE_COMPLETED / MYTHIC_PLUS_NEW_WEEKLY_RECORD
--- These were orphaned methods never registered as AceEvent handlers.
--- PvECacheService owns the actual event registration and processing.
-
 --[[
     Called when keystone changes (picked up, upgraded, depleted)
     Delegates to DataService for business logic
@@ -277,9 +273,6 @@ function WarbandNexus:OnKeystoneChanged()
         end
     end)
 end
-
--- REMOVED: WarbandNexus:OnPvEDataChangedThrottled
--- Orphaned method — no call sites. PvECacheService handles PvE event throttling directly.
 
 -- INITIALIZATION
 
