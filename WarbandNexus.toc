@@ -64,6 +64,7 @@ Modules\DatabaseOptimizer.lua
 Modules\DatabaseCleanup.lua
 Modules\CollectionService_Materialize.lua
 Modules\CollectionService_NotifyDedup.lua
+Modules\CollectionService_Scan.lua
 Modules\CollectionService.lua
 Modules\ReputationScanner.lua
 Modules\ReputationProcessor.lua
