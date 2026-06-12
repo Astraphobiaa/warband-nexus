@@ -1,24 +1,6 @@
 --[[
     Warband Nexus - Chat Message Service
-    Handles chat notifications for reputation gains, currency gains, and other game events
-    
-    Architecture:
-    - Event-driven: Listens to internal addon events (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED)
-    - DB-first: Reputation events carry full display data from PROCESSED DB (after FullScan).
-    - Currency events carry {currencyID, gainAmount, gainSource?}; display data from DB / live API.
-    - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
-    - Per-panel routing: ns.ChatOutput only (no raw DEFAULT_CHAT_FRAME:AddMessage) so
-      Chattynator’s DEFAULT hook sees Interface/AddOns/WarbandNexus/ on the stack.
-    
-    Color Scheme:
-    - [WN-Currency] prefix: WN brand purple (#9370DB)
-    - [WN-Reputation] prefix: WN brand purple (#9370DB)
-    - Currency name: quality-colored hyperlink via C_CurrencyInfo.GetCurrencyLink, fallback to ITEM_QUALITY_COLORS
-    - Faction name: white (#ffffff)
-    - Gain amount: green (#00ff00) — the "action" stands out
-    - Current total: white (#ffffff)
-    - Max / separator: gray (#888888)
-    - Standing name: dynamic color from standing data (yellow fallback)
+    Routes WN_REPUTATION_GAINED and WN_CURRENCY_GAINED to ns.ChatOutput via a FIFO queue.
 ]]
 
 local ADDON_NAME, ns = ...
