@@ -83,8 +83,10 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local CreateIcon = ns.UI_CreateIcon
         local bcRaw = COLORS.border or { 0.22, 0.22, 0.28 }
         local borderCol = { bcRaw[1], bcRaw[2], bcRaw[3], bcRaw[4] or 0.65 }
-        local labelMuted = { 0.78, 0.78, 0.82 }
-        local labelBody = { 0.94, 0.94, 0.96 }
+        local labelMuted = COLORS.textMuted or { 0.78, 0.78, 0.82 }
+        local labelBody = COLORS.textBright or { 0.94, 0.94, 0.96 }
+        local controlChrome = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
+            or COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
 
         local f = CreateFrame("Frame", "WarbandNexus_ReminderDialog", UIParent, "BackdropTemplate")
         f:SetSize(dialogW, dialogH)
@@ -105,7 +107,16 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
 
         if ApplyVisuals then
-            ApplyVisuals(f, {0.04, 0.04, 0.06, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
+            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop())
+                or COLORS.bg or { 0.04, 0.04, 0.06, 0.98 }
+            local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.75 or 0.9
+            ApplyVisuals(f, shell, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], ba })
+        end
+
+        if ns.UI_RegisterScaledFrame then
+            ns.UI_RegisterScaledFrame(f)
+        elseif ns.UI_ApplyAddonUIScale then
+            ns.UI_ApplyAddonUIScale(f)
         end
 
         local rdShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
@@ -116,6 +127,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         header:SetPoint("TOPLEFT", rdInset, -rdInset)
         header:SetPoint("TOPRIGHT", -rdInset, -rdInset)
         header:SetFrameLevel(f:GetFrameLevel() + 6)
+        f._reminderHeaderShell = header
         if ApplyVisuals then
             ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.55})
         end
@@ -124,7 +136,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         closeBtn:SetSize(28, 28)
         closeBtn:SetPoint("RIGHT", header, "RIGHT", -afterEl, 0)
         if ApplyVisuals then
-            ApplyVisuals(closeBtn, {0.06, 0.06, 0.09, 0.96}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45})
+            local closeBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or controlChrome
+            ApplyVisuals(closeBtn, closeBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
         end
         local closeIcon = closeBtn:CreateTexture(nil, "OVERLAY")
         closeIcon:SetSize(16, 16)
@@ -135,7 +148,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         if not closeAtlasOk then
             closeIcon:SetTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
         end
-        closeIcon:SetVertexColor(0.92, 0.35, 0.35)
+        local closeR, closeG, closeB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 0.92, 0.35, 0.35
+        closeIcon:SetVertexColor(closeR, closeG, closeB)
         closeBtn:SetScript("OnClick", function()
             f:Hide()
         end)
@@ -308,9 +322,10 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
                 local sel = (keys[bi] == tabKey)
                 if b and b.labelFs then
                     if ApplyVisuals then
+                        local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or controlChrome
                         ApplyVisuals(b,
                             sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 }
-                                or { 0.12, 0.12, 0.15, 1 },
+                                or idle,
                             { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], sel and 0.95 or 0.35 })
                     end
                 end
@@ -345,7 +360,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             fs:SetPoint("RIGHT", rightParent, "RIGHT", 0, 0)
             fs:SetJustifyH("LEFT")
             fs:SetText(textStr)
-            fs:SetTextColor(labelBody[1], labelBody[2], labelBody[3])
+            ns.UI_SetTextColorRole(fs, "Bright")
         end
 
         local function WireLabelToggle(label, cb)
@@ -440,13 +455,19 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
 
         local cardPad = RD.cardPad
-        local bgCardCol = COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
+        f._themeCards = f._themeCards or {}
 
         local function StyleCard(card)
+            if card then
+                f._themeCards[#f._themeCards + 1] = card
+            end
             if ApplyVisuals then
+                local c = ns.UI_COLORS or COLORS
+                local bg = c.bgCard or controlChrome
+                local bc = c.border or borderCol
                 ApplyVisuals(card,
-                    { bgCardCol[1], bgCardCol[2], bgCardCol[3], bgCardCol[4] or 1 },
-                    { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
+                    { bg[1], bg[2], bg[3], bg[4] or 1 },
+                    { bc[1], bc[2], bc[3], bc[4] or borderCol[4] })
             end
         end
 
@@ -564,7 +585,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
         daysEditBg:SetPoint("LEFT", f.daysBeforeCheck, "RIGHT", 6, 0)
         if ApplyVisuals then
-            ApplyVisuals(daysEditBg, { 0.08, 0.08, 0.10, 1 }, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
+            ApplyVisuals(daysEditBg, controlChrome, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
         end
         daysEditBg:EnableMouse(true)
 
@@ -573,6 +594,10 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             daysBeforeEdit = CreateFrame("EditBox", nil, daysEditBg, "BackdropTemplate")
             daysBeforeEdit:SetFontObject(GameFontHighlightSmall)
             daysBeforeEdit:SetTextInsets(4, 4, 1, 1)
+            if FontManager and FontManager.ApplyFontToEditBox then
+                FontManager:ApplyFontToEditBox(daysBeforeEdit, "small")
+                FontManager:RegisterManagedEditBox(daysBeforeEdit, "small")
+            end
         end
         daysBeforeEdit:SetPoint("LEFT", daysEditBg, "LEFT", 4, 0)
         daysBeforeEdit:SetPoint("RIGHT", daysEditBg, "RIGHT", -4, 0)
@@ -811,11 +836,12 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         saveBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -btnGap * 0.5, 12)
         local saveTxt = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
         saveTxt:SetPoint("CENTER")
-        saveTxt:SetText("|cffffffff" .. ((L and L["SAVE"]) or "Save") .. "|r")
+        saveTxt:SetText((L and L["SAVE"]) or "Save")
+        if ns.UI_SetTextColorRole then ns.UI_SetTextColorRole(saveTxt, "Bright") end
         if ApplyVisuals then
-            ApplyVisuals(saveBtn,
-                { COLORS.accent[1] * 0.35, COLORS.accent[2] * 0.35, COLORS.accent[3] * 0.35, 1 },
-                { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.95 })
+            local bg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { COLORS.accent[1] * 0.35, COLORS.accent[2] * 0.35, COLORS.accent[3] * 0.35, 1 }
+            local br = ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor() or COLORS.accent
+            ApplyVisuals(saveBtn, bg, br)
         end
         f.saveBtn = saveBtn
 
@@ -825,9 +851,15 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         removeBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", btnGap * 0.5, 12)
         local removeTxt = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")
         removeTxt:SetPoint("CENTER")
-        removeTxt:SetText("|cffffffff" .. ((L and L["REMOVE_ALERT"]) or "Remove Alert") .. "|r")
+        removeTxt:SetText((L and L["REMOVE_ALERT"]) or "Remove Alert")
+        if ns.UI_SetTextColorRole then ns.UI_SetTextColorRole(removeTxt, "Bright") end
         if ApplyVisuals then
-            ApplyVisuals(removeBtn, { 0.34, 0.1, 0.1, 1 }, { 0.82, 0.22, 0.22, 1 })
+            if ns.UI_GetSemanticNegativeCard then
+                local negBg, negBorder = ns.UI_GetSemanticNegativeCard(false)
+                ApplyVisuals(removeBtn, negBg, negBorder)
+            else
+                ApplyVisuals(removeBtn, { 0.34, 0.1, 0.1, 1 }, { 0.82, 0.22, 0.22, 1 })
+            end
         end
         f.removeBtn = removeBtn
 
@@ -885,6 +917,49 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
 
         f:SelectAlertTab("schedule")
+
+        function f:ApplyThemeChrome()
+            local c = ns.UI_COLORS or COLORS
+            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or c.bg
+            local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.75 or 0.9
+            if ApplyVisuals and shell and c.accent then
+                ApplyVisuals(self, shell, { c.accent[1], c.accent[2], c.accent[3], ba })
+            end
+            if self._reminderHeaderShell and ApplyVisuals and c.accentDark then
+                ApplyVisuals(self._reminderHeaderShell,
+                    { c.accentDark[1], c.accentDark[2], c.accentDark[3], 1 },
+                    { c.accent[1], c.accent[2], c.accent[3], 0.55 })
+            end
+            local cards = self._themeCards
+            if cards and ApplyVisuals then
+                local bg = c.bgCard or controlChrome
+                local bc = c.border or borderCol
+                for ci = 1, #cards do
+                    local card = cards[ci]
+                    if card then
+                        ApplyVisuals(card,
+                            { bg[1], bg[2], bg[3], bg[4] or 1 },
+                            { bc[1], bc[2], bc[3], bc[4] or borderCol[4] })
+                    end
+                end
+            end
+            if self.saveBtn and ApplyVisuals and c.accent then
+                ApplyVisuals(self.saveBtn,
+                    { c.accent[1] * 0.35, c.accent[2] * 0.35, c.accent[3] * 0.35, 1 },
+                    { c.accent[1], c.accent[2], c.accent[3], 0.95 })
+            end
+            if self.removeBtn and ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+                local negBg, negBorder = ns.UI_GetSemanticNegativeCard(false)
+                ApplyVisuals(self.removeBtn, negBg, negBorder)
+            end
+            if self.SelectAlertTab then
+                self:SelectAlertTab(self._activeAlertTab or "schedule")
+            end
+            if ns.UI_RefreshRoleTextColors then
+                ns.UI_RefreshRoleTextColors()
+            end
+        end
+
         reminderDialog = f
     end
 
@@ -927,7 +1002,8 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         f.planTitleFs:SetPoint("RIGHT", f.planRow, "RIGHT", -4, 0)
     end
     f.planTitleFs:SetJustifyH("LEFT")
-    f.planTitleFs:SetText("|cffffffff" .. displayName .. "|r")
+    f.planTitleFs:SetText(displayName)
+    if ns.UI_SetTextColorRole then ns.UI_SetTextColorRole(f.planTitleFs, "Bright") end
 
     f._currentPlanID = planID
     f._manualMapIDs = {}
@@ -1207,5 +1283,12 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             if f.LayoutQuestCatalogSplit then f:LayoutQuestCatalogSplit() end
             if f.LayoutDialogHeights then f:LayoutDialogHeights() end
         end)
+    end
+end
+
+function ns.ReminderSetAlertDialog.RefreshTheme()
+    local f = reminderDialog
+    if f and f:IsShown() and f.ApplyThemeChrome then
+        f:ApplyThemeChrome()
     end
 end

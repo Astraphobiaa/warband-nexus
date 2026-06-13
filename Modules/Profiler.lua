@@ -33,12 +33,13 @@
     
     Slash commands:
         /wn profiler          - Show performance summary
-        /wn profiler on       - Enable profiling (persisted across /reload)
+        /wn profiler on       - Enable profiling (persisted across /reload); use /wn profiler live for chat START/STOP
+        /wn profiler verbose on|off - Phase splits in trace buffer + profiler chat detail
         /wn profiler off      - Disable profiling
         /wn profiler reset    - Clear all recorded data
         /wn profiler frames   - Toggle frame spike detection
         /wn profiler spikes   - Show recent frame spikes
-        /wn profiler live     - Toggle live output (print each Start/Stop)
+        /wn profiler live     - Toggle live chat output (START/STOP/spikes; requires verbose too)
         /wn profiler dev      - Toggle profiler dev mode (dev HUD + dock/position persistence)
         /wn profiler window   - Toggle dev summary window (requires dev mode)
         /wn profiler trace    - Toggle unified trace log window (perf WN_TRACE_EVT + /wn debug lines; measuring optional)
@@ -151,6 +152,7 @@ function Profiler:SavePersistToProfile()
     p.gearOnlyRecording = self.gearOnlyRecording and true or false
     p.eventTrace = self.eventTrace and true or false
     p.eventTraceMinMs = tonumber(self.eventTraceMinMs) or 12
+    p.traceVerbose = self.traceVerbose == true
     if p.tabPerfMonitor == nil then
         p.tabPerfMonitor = false
     end
@@ -230,6 +232,7 @@ function Profiler:ApplyPersistedSettings(profile)
     self.gearOnlyRecording = p.gearOnlyRecording == true
     self.eventTrace = p.eventTrace == true
     self.eventTraceMinMs = tonumber(p.eventTraceMinMs) or 12
+    self.traceVerbose = p.traceVerbose == true
     if self.frameTracking then
         self._suppressFrameTrackingPrint = true
         self:SetFrameTracking(true)
@@ -286,13 +289,59 @@ local PREFIX = C_ACCENT .. "[WN Profiler]" .. C_R .. " "
 
 local TRACE_LOG_MAX = 2000
 local TRACE_EDIT_BODY_HEIGHT = 12000
+Profiler.TRACE_ANOMALY_MS = 16.67
+Profiler.TRACE_SETTLE_FLAG_MS = 24
+Profiler.TRACE_DRAW_TAB_MIN_MS = 5
+
+--- Live START/STOP/spike chat requires both /wn profiler live and verbose (or Settings Debug Verbose).
+---@return boolean
+function Profiler:ShouldEmitProfilerChat()
+    return self.liveOutput == true and self:IsTraceVerbose()
+end
+
+--- Measuring on — profiler perf rows go to trace buffer (not chat unless ShouldEmitProfilerChat).
+---@return boolean
+function Profiler:IsMeasuringTraceSinkActive()
+    return self.enabled == true
+end
+
+--- Route a profiler timing line to the trace ring (anomaly vs verbose tier).
+---@param plainLine string
+---@param elapsedMs number|nil When set and >= TRACE_ANOMALY_MS, use anomaly tier.
+function Profiler:_EmitPerfTraceLine(plainLine, elapsedMs)
+    if not plainLine or not self:IsMeasuringTraceSinkActive() then return end
+    local ms = tonumber(elapsedMs)
+    if ms and ms >= self.TRACE_ANOMALY_MS then
+        self:AppendTraceAnomaly(plainLine)
+    elseif self:IsTraceVerbose() then
+        self:AppendTraceVerbose(plainLine)
+    end
+end
+
+--- Phase splits, profiler START/STOP chat, GearOpen step lines.
+---@return boolean
+function Profiler:IsTraceVerbose()
+    if not IsProfilerDebugAllowed() then return false end
+    local profile = ns.db and ns.db.profile
+    if profile and profile.debugMode and profile.debugVerbose then return true end
+    local pp = profile and profile.profilerPersist
+    if pp and (pp.traceVerbose == true or pp.gearOpenVerbose == true or pp.verbose == true) then
+        return true
+    end
+    return self.traceVerbose == true or self.gearOpenVerbose == true or self.verbose == true
+end
 
 --- Ring buffer append for the trace EditBox (plain text, no |c stripping).
 ---@param plainLine string
-function Profiler:_RingTraceAppend(plainLine)
+---@param dedupe boolean|nil When true, skip if identical to the previous line.
+function Profiler:_RingTraceAppend(plainLine, dedupe)
     if not plainLine then return end
     if not self._traceLines then
         self._traceLines = {}
+    end
+    if dedupe then
+        local prev = self._traceLines[#self._traceLines]
+        if prev == plainLine then return end
     end
     tinsert(self._traceLines, plainLine)
     while #self._traceLines > TRACE_LOG_MAX do
@@ -303,10 +352,102 @@ function Profiler:_RingTraceAppend(plainLine)
     end
 end
 
+--- Always-on trace row: errors, spikes, coalesce/skip/stale detections.
+---@param plainLine string
+function Profiler:AppendTraceAnomaly(plainLine)
+    if not IsProfilerDebugAllowed() or not plainLine then return end
+    self:_RingTraceAppend(plainLine, true)
+end
+
+--- Detailed perf / cache lines (debug verbose or /wn profiler verbose on).
+---@param plainLine string
+function Profiler:AppendTraceVerbose(plainLine)
+    if not plainLine or not self:IsTraceVerbose() then return end
+    self:_RingTraceAppend(plainLine)
+end
+
+--- Structured one-line perf summary (tab switch, gear open). Emitted when tabperf is on or ms >= anomaly threshold.
+---@param category string e.g. Perf, GearOpen
+---@param ms number|nil Primary timing (ms)
+---@param hint string Short actionable detail
+---@param opts table|nil { force=boolean, dedupe=boolean }
+function Profiler:EmitPerfSummary(category, ms, hint, opts)
+    if not IsProfilerDebugAllowed() then return end
+    opts = opts or {}
+    ms = tonumber(ms) or 0
+    local tabPerf = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled() or false
+    if not opts.force and not tabPerf and ms < self.TRACE_ANOMALY_MS then return end
+    local line = string.format("[%s] %.2fms %s", tostring(category or "Perf"), ms, tostring(hint or ""))
+    self:_RingTraceAppend(line, opts.dedupe == true)
+end
+
+--- Main tab switch: one deferred line (pool + populate + settle). settleMs nil until follow-up frames complete.
+---@param data table { fromTab, toTab, poolMs, populateMs, wallStart, gen }
+function Profiler:ScheduleTabSwitchPerfTrace(data)
+    if not IsProfilerDebugAllowed() or not data then return end
+    if not (ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()) then return end
+    local wallStart = data.wallStart
+    local gen = data.gen
+    local fromTab = data.fromTab
+    local toTab = data.toTab
+    local poolMs = tonumber(data.poolMs) or 0
+    local populateMs = tonumber(data.populateMs) or 0
+    local bodyMs = poolMs + populateMs
+    if not wallStart or not C_Timer or not C_Timer.After then
+        self:EmitPerfSummary("Perf", bodyMs,
+            string.format("tab %s→%s | pool=%.2f populate=%.2f", tostring(fromTab), tostring(toTab), poolMs, populateMs),
+            { force = true, dedupe = true })
+        return
+    end
+    C_Timer.After(0, function()
+        local addon = ns.WarbandNexus or _G.WarbandNexus
+        local mf = addon and addon.mainFrame
+        if gen and mf and mf._tabSwitchGen ~= gen then
+            Profiler:AppendTraceAnomaly(string.format(
+                "[Trace] tab switch stale gen=%s (expected populate %s→%s)",
+                tostring(gen), tostring(fromTab), tostring(toTab)))
+            return
+        end
+        if mf and toTab and mf.currentTab ~= toTab then return end
+        local settleMs = (GetTime() - wallStart) * 1000
+        local deferredMs = settleMs - bodyMs
+        local flag = ""
+        if deferredMs >= Profiler.TRACE_SETTLE_FLAG_MS then
+            flag = " | SLOW_DEFER"
+        elseif settleMs >= Profiler.TRACE_ANOMALY_MS then
+            flag = " | SLOW"
+        end
+        local hint = string.format(
+            "tab %s→%s | pool=%.2f populate=%.2f settle=%.2f (+%.2f deferred)%s",
+            tostring(fromTab), tostring(toTab), poolMs, populateMs, settleMs, deferredMs, flag)
+        Profiler:EmitPerfSummary("Perf", settleMs, hint, { force = true, dedupe = true })
+    end)
+end
+
+--- Gear tab open: one summary unless trace verbose (phase lines stay in GearUI).
+---@param gen number|string
+---@param kind string|nil
+---@param totalMs number
+---@param split boolean|nil
+function Profiler:EmitGearOpenSummary(gen, kind, totalMs, split)
+    if not IsProfilerDebugAllowed() then return end
+    totalMs = tonumber(totalMs) or 0
+    local tabPerf = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled() or false
+    if not tabPerf and totalMs < self.TRACE_ANOMALY_MS then return end
+    local splitTag = split and " split" or ""
+    local hint = string.format("gen=%s %s%s", tostring(gen), tostring(kind or "open"), splitTag)
+    self:EmitPerfSummary("GearOpen", totalMs, hint, { force = tabPerf, dedupe = true })
+end
+
 --- Addon debug / Gear char-flow lines (do not require profiling measuring ON).
 ---@param plainLine string
-function Profiler:AppendUserTraceLine(plainLine)
+---@param tier string|nil "verbose" gates on IsTraceVerbose; default passes through (caller already gated).
+function Profiler:AppendUserTraceLine(plainLine, tier)
     if not IsProfilerDebugAllowed() then return end
+    if tier == "verbose" then
+        self:AppendTraceVerbose(plainLine)
+        return
+    end
     self:_RingTraceAppend(plainLine)
 end
 
@@ -342,7 +483,8 @@ function Profiler:_SyncTraceEditBoxText()
             text = table.concat(lines, "\n")
         else
             text = "(No trace lines yet. Open with |cff00ccff/wn profiler trace|r — "
-                .. "|cff00ccff/wn debug|r lines go here (not chat). With |cff00ccff/wn profiler on|r, WN_TRACE_EVT / slice timings append too.)"
+                .. "anomalies + |cff00ccff/wn profiler tabperf on|r summaries. "
+                .. "Phase splits: |cff00ccff/wn profiler verbose on|r or Settings Debug Verbose.)"
         end
         eb:SetText(text)
         local sw = scroll:GetWidth()
@@ -407,7 +549,7 @@ function Profiler:EnsureTraceWindow()
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("TOP", 0, -30)
-    hint:SetText("|cff808080Debug verbose → trace buffer (/wn profiler trace). Tab ms: /wn profiler tabperf on. Select all, Ctrl+C.|r")
+    hint:SetText("|cff808080Anomalies + tabperf summaries. Verbose: /wn debug verbose on or /wn profiler verbose on. Tab ms: /wn profiler tabperf on.|r")
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", -4, -4)
@@ -659,7 +801,10 @@ function Profiler:Start(label)
     if not self.enabled then return end
     if self.gearOnlyRecording and not self:IsGearFocusedSliceLabel(label) then return end
     self.activeTimers[label] = debugprofilestop()
-    if self.liveOutput then
+    if self:IsMeasuringTraceSinkActive() and self:IsTraceVerbose() then
+        self:AppendTraceVerbose("START " .. tostring(label))
+    end
+    if self:ShouldEmitProfilerChat() then
         print(PREFIX .. C_DIM .. "START " .. C_LABEL .. label .. C_R)
     end
 end
@@ -677,8 +822,9 @@ function Profiler:Stop(label)
     
     local elapsed = debugprofilestop() - startTime
     self:_Record(label, elapsed)
-    
-    if self.liveOutput then
+
+    self:_EmitPerfTraceLine(string.format("STOP %s %.2fms", tostring(label), elapsed), elapsed)
+    if self:ShouldEmitProfilerChat() then
         local color = elapsed > 16.67 and C_BAD or elapsed > 5 and C_WARN or C_GOOD
         print(PREFIX .. C_DIM .. "STOP  " .. C_LABEL .. label .. C_R
             .. "  " .. color .. string.format("%.2fms", elapsed) .. C_R)
@@ -721,7 +867,10 @@ function Profiler:StartAsync(label)
         frameCount = 0,
         startFrame = GetTime(),
     }
-    if self.liveOutput then
+    if self:IsMeasuringTraceSinkActive() and self:IsTraceVerbose() then
+        self:AppendTraceVerbose("ASYNC START " .. tostring(label))
+    end
+    if self:ShouldEmitProfilerChat() then
         print(PREFIX .. C_DIM .. "ASYNC START " .. C_LABEL .. label .. C_R)
     end
 end
@@ -750,7 +899,11 @@ function Profiler:StopAsync(label)
         e.lastWallSec = wallSeconds
     end
     
-    if self.liveOutput then
+    local plainStop = string.format(
+        "ASYNC STOP %s CPU=%.2fms Wall=%.1fs",
+        tostring(label), elapsed, wallSeconds)
+    self:_EmitPerfTraceLine(plainStop, elapsed)
+    if self:ShouldEmitProfilerChat() then
         local color = elapsed > 50 and C_BAD or elapsed > 20 and C_WARN or C_GOOD
         print(PREFIX .. C_DIM .. "ASYNC STOP  " .. C_LABEL .. label .. C_R
             .. "  CPU: " .. color .. string.format("%.2fms", elapsed) .. C_R
@@ -812,8 +965,12 @@ function Profiler:TraceEventHandler(eventName, startTime, ...)
     if elapsed < minMs then return end
     local payload = self:FormatEventPayload(...)
     local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(eventName), elapsed, payload)
-    self:_AppendPerfTraceLine(line)
-    if self.liveOutput then
+    if elapsed >= self.TRACE_ANOMALY_MS then
+        self:_AppendPerfTraceLine(line)
+    elseif self:IsTraceVerbose() then
+        self:_AppendPerfTraceLine(line)
+    end
+    if self:ShouldEmitProfilerChat() then
         print(PREFIX .. C_WARN .. line .. C_R)
     end
     self:_Record(self:SliceLabel(self.CAT.MSG, "evt_" .. tostring(eventName)), elapsed)
@@ -829,8 +986,12 @@ function Profiler:TraceInternalHandler(label, startTime, extraDetail)
     local minMs = tonumber(self.eventTraceMinMs) or 12
     if elapsed < minMs then return end
     local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(label), elapsed, tostring(extraDetail or ""))
-    self:_AppendPerfTraceLine(line)
-    if self.liveOutput then
+    if elapsed >= self.TRACE_ANOMALY_MS then
+        self:_AppendPerfTraceLine(line)
+    elseif self:IsTraceVerbose() then
+        self:_AppendPerfTraceLine(line)
+    end
+    if self:ShouldEmitProfilerChat() then
         print(PREFIX .. C_WARN .. line .. C_R)
     end
     self:_Record(self:SliceLabel(self.CAT.MSG, "evt_" .. tostring(label)), elapsed)
@@ -922,9 +1083,13 @@ function Profiler:SetFrameTracking(enable)
                     self._spikeCount = (self._spikeCount or 0) + 1
                 end
                 
-                if self.liveOutput then
+                local spikePlain = string.format("FRAME SPIKE %.1fms %s", frameMs, spike.date)
+                if self:IsMeasuringTraceSinkActive() then
+                    self:AppendTraceAnomaly(spikePlain)
+                end
+                if self:ShouldEmitProfilerChat() then
                     local color = frameMs > 100 and C_BAD or C_WARN
-                    print(PREFIX .. color .. "FRAME SPIKE " 
+                    print(PREFIX .. color .. "FRAME SPIKE "
                         .. string.format("%.1fms", frameMs)
                         .. C_R .. "  " .. C_DIM .. spike.date .. C_R)
                 end
@@ -1137,9 +1302,9 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
     
     if subCmd == "on" or subCmd == "enable" then
         self.enabled = true
-        self.liveOutput = true
+        self.liveOutput = false
         self:SetFrameTracking(true)
-        print(PREFIX .. C_GOOD .. "Profiling ENABLED" .. C_R .. " (live output + frame spikes; state saved for /reload)")
+        print(PREFIX .. C_GOOD .. "Profiling ENABLED" .. C_R .. " (slice stats + trace anomalies; chat START/STOP: |cff00ccff/wn profiler live|r + verbose; saved for /reload)")
         self:SavePersistToProfile()
         
     elseif subCmd == "off" or subCmd == "disable" then
@@ -1171,7 +1336,8 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
             print(PREFIX .. C_GOOD .. "Profiling auto-enabled." .. C_R)
         end
         local stateStr = self.liveOutput and (C_GOOD .. "ON") or (C_DIM .. "OFF")
-        print(PREFIX .. "Live output: " .. stateStr .. C_R)
+        print(PREFIX .. "Live output: " .. stateStr .. C_R
+            .. C_DIM .. "  (chat START/STOP/spikes need verbose: |cff00ccff/wn profiler verbose on|r or Settings Debug Verbose)" .. C_R)
         self:SavePersistToProfile()
         
     elseif subCmd == "threshold" then
@@ -1288,6 +1454,23 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
             .. "  |cff00ccff/wn profiler events on 8|r sets threshold to 8ms" .. C_R)
         self:SavePersistToProfile()
 
+    elseif subCmd == "verbose" or subCmd == "traceverbose" then
+        local root = GetProfilePersistRoot()
+        if not root then return end
+        local a = (arg3 and tostring(arg3):lower()) or ""
+        if a == "on" or a == "1" or a == "true" then
+            root.traceVerbose = true
+        elseif a == "off" or a == "0" or a == "false" then
+            root.traceVerbose = false
+        else
+            root.traceVerbose = not (root.traceVerbose == true)
+        end
+        self.traceVerbose = root.traceVerbose == true
+        self:SavePersistToProfile()
+        local stV = root.traceVerbose and (C_GOOD .. "ON") or (C_DIM .. "OFF")
+        print(PREFIX .. "Trace verbose (phase splits, profiler START/STOP chat): " .. stV .. C_R
+            .. C_DIM .. "  Also: Settings Debug Verbose." .. C_R)
+
     elseif subCmd == "tabperf" or subCmd == "tabperfmonitor" then
         local root = GetProfilePersistRoot()
         if not root then return end
@@ -1314,14 +1497,15 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
         print("  " .. C_LABEL .. "/wn profiler reset" .. C_R .. "     Clear all data")
         print("  " .. C_LABEL .. "/wn profiler frames" .. C_R .. "    Toggle frame spike detection")
         print("  " .. C_LABEL .. "/wn profiler spikes" .. C_R .. "    Show recent frame spikes")
-        print("  " .. C_LABEL .. "/wn profiler live" .. C_R .. "      Toggle live Start/Stop output")
+        print("  " .. C_LABEL .. "/wn profiler live" .. C_R .. "      Chat Start/Stop (requires verbose too)")
         print("  " .. C_LABEL .. "/wn profiler threshold <ms>" .. C_R .. "  Set spike threshold")
         print("  " .. C_LABEL .. "/wn profiler status" .. C_R .. "    Show profiler state")
         print("  " .. C_LABEL .. "/wn profiler dev" .. C_R .. "       Toggle dev mode (HUD + layout save)")
         print("  " .. C_LABEL .. "/wn profiler window" .. C_R .. "  Toggle dev summary window")
         print("  " .. C_LABEL .. "/wn profiler trace" .. C_R .. "   Toggle unified trace window (debug lines; perf lines when measuring ON)")
         print("  " .. C_LABEL .. "/wn profiler dock" .. C_R .. "    Toggle dock-left for dev window")
-        print("  " .. C_LABEL .. "/wn profiler tabperf" .. C_R .. " on|off  Main-tab switch ms ([WN Perf] lines; trace only)")
+        print("  " .. C_LABEL .. "/wn profiler tabperf" .. C_R .. " on|off  Main-tab switch summaries (trace buffer)")
+        print("  " .. C_LABEL .. "/wn profiler verbose" .. C_R .. " on|off  Phase splits + profiler START/STOP chat")
         print("  " .. C_LABEL .. "/wn profiler gearonly" .. C_R .. " on|off  Record only Gear-focused slices (reduces noise)")
         print("  " .. C_LABEL .. "/wn profiler events" .. C_R .. " on|off [minMs]  Log slow Blizzard handlers (WN_TRACE_EVT)")
         print(" ")

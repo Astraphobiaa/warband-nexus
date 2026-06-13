@@ -107,7 +107,9 @@ local function EnsureGearContentVeil(scrollChild, mf, gen)
         host = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
         host._wnKeepOnTabSwitch = true
         host:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-        host:SetBackdropColor(0.05, 0.05, 0.07, 0.94)
+        local veilBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
+            or COLORS.surfaceViewport or COLORS.bg or { 0.05, 0.05, 0.07, 0.94 }
+        host:SetBackdropColor(veilBg[1], veilBg[2], veilBg[3], (veilBg[4] or 1) * 0.94)
         host:SetFrameStrata("HIGH")
         host:SetFrameLevel(500)
         host:EnableMouse(true)
@@ -1223,22 +1225,24 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
     local hdr = GearFact:CreateContainer(parent, contentW, hdrH, false)
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
+    local hdrChrome = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("headerChrome"))
+        or COLORS.surfaceHeaderChrome or COLORS.bgLight or { 0.09, 0.09, 0.11, 0.97 }
     local hdrBg = hdr:CreateTexture(nil, "BACKGROUND")
     hdrBg:SetAllPoints()
-    hdrBg:SetColorTexture(accent[1] * 0.10, accent[2] * 0.10, accent[3] * 0.10, 0.92)
+    hdrBg:SetColorTexture(hdrChrome[1], hdrChrome[2], hdrChrome[3], hdrChrome[4] or 0.92)
     local rule = hdr:CreateTexture(nil, "ARTWORK")
     rule:SetHeight(1)
     rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 0)
     rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
-    rule:SetColorTexture(accent[1] * 0.28, accent[2] * 0.28, accent[3] * 0.28, 0.55)
-    local hdrColor = { 0.78, 0.80, 0.86 }
+    local ruleA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.35 or 0.55
+    rule:SetColorTexture(accent[1] * 0.28, accent[2] * 0.28, accent[3] * 0.28, ruleA)
     local colInset = 2
     local function colFs(text, leftX, width, justify)
         local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")
         AnchorGearStorageRecColText(fs, hdr, leftX + colInset, math.max(8, width - colInset * 2), justify or "LEFT")
         fs:SetWordWrap(false)
         fs:SetText(text)
-        fs:SetTextColor(hdrColor[1], hdrColor[2], hdrColor[3])
+        ns.UI_SetTextColorRole(fs, "Muted")
         return fs
     end
     colFs(GetLocalizedText("GEAR_STORAGE_TABLE_HDR_SLOT", "Slot"), lay.xSlot, lay.slotW, "LEFT")
@@ -1266,10 +1270,12 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     if ns.UI.Factory and ns.UI.Factory.ApplyRowBackground then
         ns.UI.Factory:ApplyRowBackground(line, index)
     end
-    -- Factory even/odd colors are identical in UI_SPACING; use visible zebra on this dark panel.
+    -- Factory even/odd colors are identical in UI_SPACING; use visible zebra on this panel.
     if line.bg then
-        local a = (index % 2 == 0) and 0.07 or 0.04
-        line.bg:SetColorTexture(0.10, 0.12, 0.16, a)
+        local tier = (index % 2 == 0) and "rowEven" or "rowOdd"
+        local rowC = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor(tier))
+            or COLORS.surfaceRowEven or { 0.10, 0.12, 0.16, 0.96 }
+        line.bg:SetColorTexture(rowC[1], rowC[2], rowC[3], rowC[4] or 0.96)
     end
     if line.qtyText then line.qtyText:Hide() end
     if line.nameText then line.nameText:Hide() end
@@ -1302,14 +1308,17 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
     if upgradeSummary then
         upgradeSummary:Show()
         upgradeSummary:SetWordWrap(false)
+        local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffb8bcc6"
+        local greenHex = (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff55dd77"
+        local greenBrightHex = (ns.UI_GetSemanticGreenBrightHex and ns.UI_GetSemanticGreenBrightHex()) or "|cffc8ffd0"
         local parts = {}
-        parts[1] = "|cffb8bcc6"
+        parts[1] = mutedHex
         parts[2] = tostring(cur)
-        parts[3] = "|r |cff66ee88>|r |cffc8ffd0"
+        parts[3] = "|r " .. greenHex .. ">|r " .. greenBrightHex
         parts[4] = tostring(tgt)
         parts[5] = "|r"
         if delta > 0 then
-            parts[6] = string.format(" |cff55dd77(+%d)|r", delta)
+            parts[6] = string.format(" %s(+%d)|r", greenHex, delta)
         end
         upgradeSummary:SetText(table.concat(parts))
     end
@@ -1352,7 +1361,7 @@ local function PaintGearStorageRecommendationRow(line, index, rowH, contentW, ro
         if sourceText.SetMaxLines then sourceText:SetMaxLines(2) end
         local srcDisplay = FormatStorageSourceDisplay(rowData.source or "", rowData.sourceClassFile, viewerClassFile)
         sourceText:SetText(srcDisplay ~= "" and srcDisplay or (rowData.source or ""))
-        sourceText:SetTextColor(0.72, 0.76, 0.84)
+        ns.UI_SetTextColorRole(sourceText, "Muted")
     end
 
     ApplyGearStorageRecRowAnchors(line, lay)
@@ -1887,12 +1896,24 @@ end
 --- Minimal slot snapshot from live inventory (equip events before DB read catches up).
 ---@return table|nil
 
---- Paperdoll slot refresh during first-paint quiet / yielded storage scan causes socket/enchant flicker.
+--- Post-DrawGearTab quiet coalesces populate storms; equip-sig / item-metadata narrow paths bypass (audit P2).
 ---@return boolean
-local function ShouldDeferGearPaperdollSlotRefresh()
-    if ns._gearStorageYieldCo then return true end
+local function IsGearTabPopulateQuiet()
+    if ns._gearStorageAllowEquipSigInvBypass then return false end
     local untilT = ns._gearTabPopulateQuietUntil
-    if untilT and GetTime() < untilT then return true end
+    return untilT ~= nil and GetTime() < untilT
+end
+
+function WarbandNexus:IsGearTabPopulateQuiet()
+    return IsGearTabPopulateQuiet()
+end
+
+--- Paperdoll slot refresh during first-paint quiet / yielded storage scan causes socket/enchant flicker.
+---@param bypassQuiet boolean|nil When true, allow slot refresh during populate quiet (not yield/defer chain).
+---@return boolean
+local function ShouldDeferGearPaperdollSlotRefresh(bypassQuiet)
+    if ns._gearStorageYieldCo then return true end
+    if not bypassQuiet and IsGearTabPopulateQuiet() then return true end
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if mf and mf._gearDeferChainActive then return true end
     return false
@@ -1930,8 +1951,14 @@ function WarbandNexus:TryRefreshGearEquipSlotsOnly(payload)
     local card = mf._gearPaperdollCard
     if not card or not card._gearSlotInspectList or #card._gearSlotInspectList == 0 then return false end
     if not card.GetParent or not card:GetParent() then return false end
-    if not (payload and payload.forcePaperdoll) and ShouldDeferGearPaperdollSlotRefresh() then
-        return false
+    if not (payload and payload.forcePaperdoll) then
+        local bypassQuiet = payload and payload.bypassPopulateQuiet
+        if not bypassQuiet and ns._gearStorageAllowEquipSigInvBypass then
+            bypassQuiet = true
+        end
+        if ShouldDeferGearPaperdollSlotRefresh(bypassQuiet) then
+            return false
+        end
     end
 
     local canon = mf._gearPopulateCanonKey
@@ -2138,7 +2165,10 @@ end
 --- One-shot refresh of all gear-tab paperdoll slot icons (after item cache resolves).
 function WarbandNexus:TryRefreshAllGearEquipSlotIcons()
     if self.TryRefreshGearEquipSlotsOnly then
-        self:TryRefreshGearEquipSlotsOnly({ slotIDs = GEAR_PAPERDOLL_REFRESH_SLOT_IDS })
+        self:TryRefreshGearEquipSlotsOnly({
+            slotIDs = GEAR_PAPERDOLL_REFRESH_SLOT_IDS,
+            bypassPopulateQuiet = true,
+        })
     end
 end
 
@@ -2202,8 +2232,94 @@ local gearCharDropdownBg   = nil
 local gearCharSelectorBtn  = nil
 local gearHideFilterBtn    = nil
 local gearCharDropdownEntryPool = {}
+local gearAccentChrome = {}
 
-local GEAR_CHAR_SEP = "|cff888888 | |r"
+local function GearControlBorderAlpha()
+    return (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.55 or 0.75
+end
+
+local function GearMenuBorderAlpha()
+    return (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.55 or 0.8
+end
+
+local function ApplyGearControlChromeIdle(btn)
+    if not btn then return end
+    local C = COLORS or ns.UI_COLORS or {}
+    local a = C.accent or { 0.5, 0.3, 0.8 }
+    local bg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
+        or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+    if ApplyVisuals then
+        ApplyVisuals(btn, bg, { a[1], a[2], a[3], GearControlBorderAlpha() })
+    elseif btn.SetBackdropColor then
+        btn:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
+        if btn.SetBackdropBorderColor then
+            btn:SetBackdropBorderColor(a[1] * 0.6, a[2] * 0.6, a[3] * 0.6, GearMenuBorderAlpha())
+        end
+    end
+end
+
+local function WireGearControlChromeHover(btn)
+    if not btn then return end
+    btn:SetScript("OnEnter", function(self)
+        local C = COLORS or ns.UI_COLORS or {}
+        local a = C.accent or { 0.5, 0.3, 0.8 }
+        local hover = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop())
+            or COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
+        if ApplyVisuals then
+            ApplyVisuals(self, hover, { a[1], a[2], a[3], 1 })
+        elseif self.SetBackdropBorderColor then
+            self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
+        end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        ApplyGearControlChromeIdle(self)
+    end)
+end
+
+local function RegisterGearAccentChrome(btn)
+    if btn then
+        gearAccentChrome[#gearAccentChrome + 1] = btn
+    end
+end
+
+local function ApplyGearDropdownMenuChrome(menu)
+    if not menu then return end
+    local C = COLORS or ns.UI_COLORS or {}
+    local a = C.accent or { 0.5, 0.3, 0.8 }
+    local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop())
+        or COLORS.bg or COLORS.bgCard
+    if ApplyVisuals then
+        ApplyVisuals(menu, shell, { a[1], a[2], a[3], GearMenuBorderAlpha() })
+    elseif menu.SetBackdropColor then
+        menu:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 0.98)
+        if menu.SetBackdropBorderColor then
+            menu:SetBackdropBorderColor(a[1] * 0.5, a[2] * 0.5, a[3] * 0.5, GearMenuBorderAlpha())
+        end
+    end
+end
+
+local function RefreshGearHideFilterMenuRows()
+    local btn = gearHideFilterBtn
+    local menu = btn and btn._menu
+    if not menu or not menu:IsShown() then return end
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local cur = GetLowLevelHideThreshold(profile)
+    local children = { menu:GetChildren() }
+    for i = 1, #children do
+        local row = children[i]
+        if row and row.SetBackdropColor and row._wnHideThreshold then
+            local bgColor = (ns.UI_GetDropdownRowBackdrop and ns.UI_GetDropdownRowBackdrop(row._wnHideThreshold == cur))
+                or COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
+            row:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
+        end
+    end
+end
+
+local function GearDimMarkup(text)
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888") .. text .. "|r"
+end
+
+local GEAR_CHAR_SEP = GearDimMarkup(" | ")
 
 --- Max pixel width of colored character names (for aligned name column).
 local function MeasureGearCharNameColumnWidth(chars, measureFs)
@@ -2321,9 +2437,11 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
         local hi = btn:CreateTexture(nil, "HIGHLIGHT")
         hi:SetAllPoints()
-        hi:SetColorTexture(1, 1, 1, 0.08)
+        local hiA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.06 or 0.08
+        hi:SetColorTexture(1, 1, 1, hiA)
 
         btn.isPersistentRowElement = true
+        RegisterGearAccentChrome(btn)
         gearCharSelectorBtn = btn
     end
 
@@ -2335,8 +2453,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     btn:SetWidth(GEAR_CHAR_SELECTOR_WIDTH)
     -- Vertically centered like Characters/Storage/PvE header sort controls (RIGHT, -20, 0).
     btn:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
-    btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
-    btn:SetBackdropBorderColor(accent[1]*0.6, accent[2]*0.6, accent[3]*0.6, 0.8)
+    ApplyGearControlChromeIdle(btn)
 
     local function SetLabelToChar(charKey)
         local db    = WarbandNexus.db and WarbandNexus.db.global
@@ -2352,7 +2469,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             local realm = cData.realm and cData.realm ~= "" and cData.realm or nil
             if realm and rm then
                 local realmShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(realm)) or realm
-                rm:SetText("|cffffffff" .. realmShown .. "|r")
+                rm:SetText(realmShown)
+                ns.UI_SetTextColorRole(rm, "Muted")
             elseif rm then
                 rm:SetText("")
             end
@@ -2411,8 +2529,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 edgeSize = 1,
                 insets   = { left = 0, right = 0, top = 0, bottom = 0 },
             })
-            menu:SetBackdropColor(0.06, 0.06, 0.10, 0.98)
-            menu:SetBackdropBorderColor(accent[1]*0.5, accent[2]*0.5, accent[3]*0.5, 0.9)
+            ApplyGearDropdownMenuChrome(menu)
             gearCharDropdownMenu = menu
         end
         if not bg then
@@ -2433,6 +2550,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         local btnW = math.max(1, math.floor(self:GetWidth() + 0.5))
         menu:SetWidth(btnW)
         menu:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
+        ApplyGearDropdownMenuChrome(menu)
 
         local scroll, scrollChild = GearFact:ApplyDropdownScrollLayout(menu, rowCount, ENTRY_H)
         menu._charScroll = scroll
@@ -2456,7 +2574,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
                 EnsureGearEntryColumnLabels(entryBtn)
                 local entryHi = entryBtn:CreateTexture(nil, "HIGHLIGHT")
                 entryHi:SetAllPoints()
-                entryHi:SetColorTexture(1, 1, 1, 0.1)
+                local entryHiA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.08 or 0.1
+                entryHi:SetColorTexture(1, 1, 1, entryHiA)
                 gearCharDropdownEntryPool[i] = entryBtn
             end
             EnsureGearEntryColumnLabels(entryBtn)
@@ -2486,7 +2605,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             ns.UI_SetTextColorRole(entryBtn._nameLabel, "Bright")
             if r ~= "" then
                 local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(r)) or r
-                entryBtn._realmLabel:SetText("|cffffffff" .. rShown .. "|r")
+                entryBtn._realmLabel:SetText(rShown)
             else
                 entryBtn._realmLabel:SetText("")
             end
@@ -2494,7 +2613,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             if cKey == selKey then
                 entryBtn._realmLabel:SetTextColor(accent[1] + 0.2, accent[2] + 0.2, accent[3] + 0.2)
             else
-                ns.UI_SetTextColorRole(entryBtn._realmLabel, "Bright")
+                ns.UI_SetTextColorRole(entryBtn._realmLabel, "Muted")
             end
 
             entryBtn:SetScript("OnClick", function()
@@ -2542,14 +2661,7 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         C_Timer.After(0, RelayoutColumnsAfterSize)
     end)
 
-    btn:SetScript("OnEnter", function(self)
-        local a = (ns.UI_COLORS or {}).accent or {0.5, 0.3, 0.8}
-        self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
-    end)
-    btn:SetScript("OnLeave", function(self)
-        local a = (ns.UI_COLORS or {}).accent or {0.5, 0.3, 0.8}
-        self:SetBackdropBorderColor(a[1]*0.6, a[2]*0.6, a[3]*0.6, 0.8)
-    end)
+    WireGearControlChromeHover(btn)
 
     btn._refreshGearCharColumns = function()
         local cl = GetTrackedCharacters()
@@ -2577,16 +2689,13 @@ local function CreateGearHeaderHideButton(parent)
         txt:SetJustifyH("CENTER")
         ns.UI_SetTextColorRole(txt, "Bright")
         btn._text = txt
+        RegisterGearAccentChrome(btn)
         gearHideFilterBtn = btn
     end
 
     btn:SetParent(parent)
     btn:ClearAllPoints()
-    btn:SetBackdropColor(0.08, 0.08, 0.11, 0.9)
-    do
-        local a = (COLORS and COLORS.accent) or { 0.5, 0.3, 0.8 }
-        btn:SetBackdropBorderColor(a[1] * 0.6, a[2] * 0.6, a[3] * 0.6, 0.8)
-    end
+    ApplyGearControlChromeIdle(btn)
 
     btn._text:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"))
 
@@ -2613,9 +2722,7 @@ local function CreateGearHeaderHideButton(parent)
                 edgeSize = 1,
                 insets = { left = 0, right = 0, top = 0, bottom = 0 },
             })
-            menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
-            local accent = (COLORS and COLORS.accent) or ((ns.UI_COLORS or {}).accent) or { 0.40, 0.20, 0.58 }
-            menu:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.75)
+            ApplyGearDropdownMenuChrome(menu)
             btn._menu = menu
         end
         local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
@@ -2639,7 +2746,10 @@ local function CreateGearHeaderHideButton(parent)
             row:SetHeight(rowH - 2)
             row:RegisterForClicks("LeftButtonUp")
             row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-            row:SetBackdropColor((opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.16 or 0.10, (opt.value == cur) and 0.20 or 0.10, 1)
+            row._wnHideThreshold = opt.value
+            local bgColor = (ns.UI_GetDropdownRowBackdrop and ns.UI_GetDropdownRowBackdrop(opt.value == cur))
+                or COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
+            row:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
             local cb = ns.UI_CreateThemedCheckbox and ns.UI_CreateThemedCheckbox(row, opt.value == cur)
             if not cb then return menu end
             cb:SetSize(16, 16)
@@ -2690,8 +2800,15 @@ local function CreateGearHeaderHideButton(parent)
         catcher:Show()
     end)
     btn:SetScript("OnEnter", function(self)
-        local a = (COLORS and COLORS.accent) or { 0.5, 0.3, 0.8 }
-        self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
+        local C = COLORS or ns.UI_COLORS or {}
+        local a = C.accent or { 0.5, 0.3, 0.8 }
+        local hover = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop())
+            or COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
+        if ApplyVisuals then
+            ApplyVisuals(self, hover, { a[1], a[2], a[3], 1 })
+        elseif self.SetBackdropBorderColor then
+            self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
+        end
         if not GameTooltip then return end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
@@ -2702,8 +2819,7 @@ local function CreateGearHeaderHideButton(parent)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(self)
-        local a = (COLORS and COLORS.accent) or { 0.5, 0.3, 0.8 }
-        self:SetBackdropBorderColor(a[1] * 0.6, a[2] * 0.6, a[3] * 0.6, 0.8)
+        ApplyGearControlChromeIdle(self)
         if GameTooltip then GameTooltip:Hide() end
     end)
 
@@ -2815,22 +2931,134 @@ end
 
 -- MAIN DRAW FUNCTION
 
---- Phase timings for first-open / roster freezes: WN Trace visible or /wn profiler tabperf on.
-local function ShouldLogGearOpenPhases()
+local _gearOpenTraceCtx = nil
+
+--- Phase-by-phase GearOpen lines: debug verbose or /wn profiler verbose.
+local function IsGearOpenPerfVerbose()
     local P = ns.Profiler
-    if P and P.IsUserTraceWindowShown and P:IsUserTraceWindowShown() then return true end
-    if ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled() then return true end
+    if P and P.IsTraceVerbose and P:IsTraceVerbose() then return true end
     return false
+end
+
+--- Block-level GearOpen timings (DrawPaperDollCard, etc.) — verbose only.
+local function IsGearOpenBlockTimingEnabled()
+    return IsGearOpenPerfVerbose()
 end
 
 local function AppendGearOpenTrace(msg)
     local P = ns.Profiler
-    if P and P.AppendUserTraceLine then
-        P:AppendUserTraceLine(msg)
+    if P and P.AppendTraceVerbose then
+        P:AppendTraceVerbose(msg)
     end
 end
 
+local function BeginGearOpenTrace(gen, canon)
+    if not (ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()) then return end
+    _gearOpenTraceCtx = {
+        gen = gen,
+        canon = canon,
+        t0 = debugprofilestop(),
+        last = nil,
+        split = false,
+    }
+    if IsGearOpenPerfVerbose() then
+        AppendGearOpenTrace(string.format(
+            "[GearOpen] begin gen=%s canon=%s",
+            tostring(gen),
+            tostring(canon)))
+    end
+end
+
+local function GearOpenTracePhase(phase, splitFlag)
+    local ctx = _gearOpenTraceCtx
+    if not ctx or not IsGearOpenPerfVerbose() then return end
+    if splitFlag ~= nil then
+        ctx.split = (splitFlag == true)
+    end
+    local now = debugprofilestop()
+    local last = ctx.last or ctx.t0
+    AppendGearOpenTrace(string.format(
+        "[GearOpen] gen=%s | %s +%.2fms (body.cum %.2fms) split=%s",
+        tostring(ctx.gen),
+        phase,
+        now - last,
+        now - ctx.t0,
+        tostring(ctx.split)))
+    ctx.last = now
+end
+
+local function GearOpenTraceBlock(label, ms)
+    local ctx = _gearOpenTraceCtx
+    if not ctx or not IsGearOpenPerfVerbose() then return end
+    AppendGearOpenTrace(string.format(
+        "[GearOpen] gen=%s %s %.2fms",
+        tostring(ctx.gen),
+        label,
+        ms))
+end
+
+local function FinishGearOpenTrace(kind, forceSplit)
+    local ctx = _gearOpenTraceCtx
+    if not ctx then return end
+    local total = debugprofilestop() - ctx.t0
+    local split = (forceSplit == true or ctx.split)
+    local P = ns.Profiler
+    if P and P.EmitGearOpenSummary then
+        P:EmitGearOpenSummary(ctx.gen, kind or "open", total, split)
+    elseif IsGearOpenPerfVerbose() then
+        local splitTag = split and " split" or ""
+        AppendGearOpenTrace(string.format(
+            "[GearOpen] gen=%s TOTAL %s wall %.2fms%s",
+            tostring(ctx.gen),
+            kind or "DrawGearTab",
+            total,
+            splitTag))
+    end
+    _gearOpenTraceCtx = nil
+end
+
+--- Bump paint generation when leaving Gear (AbortTabOperations); cancels split/defer timers.
+local function AbortGearTabPaintWork()
+    ns._gearTabDrawGen = (ns._gearTabDrawGen or 0) + 1
+    _gearOpenTraceCtx = nil
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf then
+        mf._gearDeferChainActive = false
+        mf._gearPendingStorageScan = nil
+        mf._gearStorageTryStartScheduledFor = nil
+        mf._gearSplitPaperDollScheduledFor = nil
+        mf._gearDeferScrollScheduledFor = nil
+        if mf._gearStorageScanningMinPaintTimer and mf._gearStorageScanningMinPaintTimer.Cancel then
+            mf._gearStorageScanningMinPaintTimer:Cancel()
+        end
+        mf._gearStorageScanningMinPaintTimer = nil
+        mf._gearStorageScanningShownAt = nil
+        if mf._gearVeilMinDismissTimer and mf._gearVeilMinDismissTimer.Cancel then
+            mf._gearVeilMinDismissTimer:Cancel()
+        end
+        mf._gearVeilMinDismissTimer = nil
+    end
+    ns._gearStorageDeferAwaiting = false
+    ns._gearStorageDeferAwaitCanon = nil
+    if ns._gearStorageYieldCo then
+        ns._gearStorageYieldCo = nil
+        ns._gearStorageYieldFindCanon = nil
+    end
+end
+
+function WarbandNexus:AbortGearTabWork()
+    AbortGearTabPaintWork()
+end
+
+function ns.GearUI_IsPaintGenerationCurrent(gen)
+    return gen ~= nil and gen == (ns._gearTabDrawGen or 0)
+end
+
 function WarbandNexus:DrawGearTab(parent)
+    if parent and ns.UI_ParkScrollChildSharedHosts then
+        ns.UI_ParkScrollChildSharedHosts(parent, "gear")
+    end
+
     -- Lazy-load FontManager if needed
     if not FontManager then
         FontManager = ns.FontManager
@@ -2907,8 +3135,8 @@ function WarbandNexus:DrawGearTab(parent)
         mfGear._wnGearTraceLastCanon = canonicalKey
         if prevView and prevView ~= canonicalKey then
             local P = ns.Profiler
-            if P and P.AppendUserTraceLine then
-                P:AppendUserTraceLine(string.format(
+            if P and P.AppendTraceVerbose then
+                P:AppendTraceVerbose(string.format(
                     "[GearChar] roster view %s -> %s | drawGen=%s",
                     tostring(prevView),
                     tostring(canonicalKey),
@@ -2917,14 +3145,8 @@ function WarbandNexus:DrawGearTab(parent)
         end
     end
 
-    local gearOpenLog = ShouldLogGearOpenPhases()
-    local gearOpenAllT0 = gearOpenLog and debugprofilestop() or nil
-    if gearOpenLog then
-        AppendGearOpenTrace(string.format(
-            "[WN Perf][GearOpen] begin gen=%s canon=%s",
-            tostring(gearPaintGen),
-            tostring(canonicalKey)))
-    end
+    local gearOpenLog = IsGearOpenBlockTimingEnabled()
+    BeginGearOpenTrace(gearPaintGen, canonicalKey)
 
     local Pgear = ns.Profiler
     local profSlicesOn = Pgear and Pgear.enabled and Pgear.StartSlice and Pgear.StopSlice
@@ -3020,27 +3242,11 @@ function WarbandNexus:DrawGearTab(parent)
 
     --- Scroll-body paint (data + paperdoll). When splitPaperDollToNextTick, DB reads run now, card draw next tick.
     local function paintGearScrollBody(splitPaperDollToNextTick)
+    if ns.UI_ParkScrollChildSharedHosts then
+        ns.UI_ParkScrollChildSharedHosts(parent, "gear")
+    end
     local yOffset = -TOP_MARGIN
-    if gearOpenAllT0 then
-        AppendGearOpenTrace(string.format(
-            "[WN Perf][GearOpen] gen=%s enter scroll paint wall=%.2fms",
-            tostring(gearPaintGen),
-            debugprofilestop() - gearOpenAllT0))
-    end
-    local goT0 = gearOpenLog and debugprofilestop() or nil
-    local goMark = goT0
-    local function gearOpenStamp(phase)
-        if not goT0 then return end
-        local now = debugprofilestop()
-        AppendGearOpenTrace(string.format(
-            "[WN Perf][GearOpen] gen=%s | %s +%.2fms (body.cum %.2fms) split=%s",
-            tostring(gearPaintGen),
-            phase,
-            now - goMark,
-            now - goT0,
-            tostring(splitPaperDollToNextTick == true)))
-        goMark = now
-    end
+    GearOpenTracePhase("enter scroll paint", splitPaperDollToNextTick)
     if mfGear and not splitPaperDollToNextTick then
         mfGear._gearDeferChainActive = false
     end
@@ -3070,13 +3276,13 @@ function WarbandNexus:DrawGearTab(parent)
         end
     end
 
-    gearOpenStamp("after_getEquipped+scanIfNeeded")
+    GearOpenTracePhase("after_getEquipped+scanIfNeeded", splitPaperDollToNextTick)
 
     pGearSliceStart("Gear_data_upgradeInfo")
     local upgradeInfo = (self.GetPersistedUpgradeInfo and self:GetPersistedUpgradeInfo(canonicalKey)) or {}
     pGearSliceStop("Gear_data_upgradeInfo")
 
-    gearOpenStamp("after_upgradeInfo")
+    GearOpenTracePhase("after_upgradeInfo", splitPaperDollToNextTick)
 
     -- Fetch currencies once; reuse for both affordability map and display panel
     pGearSliceStart("Gear_data_currencies")
@@ -3085,7 +3291,7 @@ function WarbandNexus:DrawGearTab(parent)
     EnrichUpgradeInfoWithAffordability(upgradeInfo, currencyAmounts)
     pGearSliceStop("Gear_data_currencies")
 
-    gearOpenStamp("after_currencies")
+    GearOpenTracePhase("after_currencies", splitPaperDollToNextTick)
 
     -- Storage scan (optional): skipped when recommendations panel is disabled.
     pGearSliceStart("Gear_data_storageGate")
@@ -3145,9 +3351,11 @@ function WarbandNexus:DrawGearTab(parent)
     end
     pGearSliceStop("Gear_dataSync")
 
-    gearOpenStamp("after_dataSync+storageGate")
+    GearOpenTracePhase("after_dataSync+storageGate", splitPaperDollToNextTick)
 
     local function finishPaperDollAndSig()
+        if not ns.GearUI_IsPaintGenerationCurrent(gearPaintGen) then return nil end
+        if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return nil end
         local tBlock = gearOpenLog and debugprofilestop() or nil
         pGearSliceStart("Gear_paperDollDraw")
         local tCard = gearOpenLog and debugprofilestop() or nil
@@ -3156,10 +3364,7 @@ function WarbandNexus:DrawGearTab(parent)
             canonicalKey == currentKey, currencies, storageFindings, storageScanPending
         )
         if gearOpenLog and tCard then
-            AppendGearOpenTrace(string.format(
-                "[WN Perf][GearOpen] gen=%s DrawPaperDollCard %.2fms",
-                tostring(gearPaintGen),
-                debugprofilestop() - tCard))
+            GearOpenTraceBlock("DrawPaperDollCard", debugprofilestop() - tCard)
         end
         pGearSliceStop("Gear_paperDollDraw")
         local outH = math.abs(yOffset) + TOP_MARGIN
@@ -3172,10 +3377,7 @@ function WarbandNexus:DrawGearTab(parent)
             mfOut._gearPopulateContentSig = WarbandNexus:GetGearPopulateSignature()
         end
         if gearOpenLog and tSig then
-            AppendGearOpenTrace(string.format(
-                "[WN Perf][GearOpen] gen=%s populateSig %.2fms",
-                tostring(gearPaintGen),
-                debugprofilestop() - tSig))
+            GearOpenTraceBlock("populateSig", debugprofilestop() - tSig)
         end
         pGearSliceStop("Gear_populateSig")
         if mfOut and ns.GearUI_RelayoutGearTabViewportFill then
@@ -3190,18 +3392,20 @@ function WarbandNexus:DrawGearTab(parent)
             end
         end
         if gearOpenLog and tBlock then
-            AppendGearOpenTrace(string.format(
-                "[WN Perf][GearOpen] gen=%s finishPaperDollAndSig %.2fms",
-                tostring(gearPaintGen),
-                debugprofilestop() - tBlock))
+            GearOpenTraceBlock("finishPaperDollAndSig", debugprofilestop() - tBlock)
         end
         return outH
     end
 
     if splitPaperDollToNextTick and mfGear then
+        if mfGear._gearSplitPaperDollScheduledFor == gearPaintGen then
+            return GearResultsViewportHeight(mfGear)
+        end
+        mfGear._gearSplitPaperDollScheduledFor = gearPaintGen
         mfGear._gearDeferChainActive = true
         C_Timer.After(0, function()
-            if gearPaintGen ~= ns._gearTabDrawGen then
+            mfGear._gearSplitPaperDollScheduledFor = nil
+            if not ns.GearUI_IsPaintGenerationCurrent(gearPaintGen) then
                 mfGear._gearDeferChainActive = false
                 TryDismissGearContentVeil(mfGear, gearPaintGen)
                 return
@@ -3222,23 +3426,13 @@ function WarbandNexus:DrawGearTab(parent)
                     sc:SetHeight(math.max(outH + pad, viewportH))
                 end
             end
-            if gearOpenAllT0 then
-                AppendGearOpenTrace(string.format(
-                    "[WN Perf][GearOpen] gen=%s TOTAL splitPaperDoll wall %.2fms",
-                    tostring(gearPaintGen),
-                    debugprofilestop() - gearOpenAllT0))
-            end
+            FinishGearOpenTrace("splitPaperDoll", true)
         end)
         return GearResultsViewportHeight(mfGear)
     end
 
     local outSync = finishPaperDollAndSig()
-    if gearOpenAllT0 then
-        AppendGearOpenTrace(string.format(
-            "[WN Perf][GearOpen] gen=%s TOTAL DrawGearTab wall %.2fms",
-            tostring(gearPaintGen),
-            debugprofilestop() - gearOpenAllT0))
-    end
+    FinishGearOpenTrace("DrawGearTab", false)
     return outSync
   end
 
@@ -3248,8 +3442,13 @@ function WarbandNexus:DrawGearTab(parent)
     end
 
     if deferScrollPaint and mfGear then
+        if mfGear._gearDeferScrollScheduledFor == gearPaintGen then
+            return math.max(GearResultsViewportHeight(mfGear), 480)
+        end
+        mfGear._gearDeferScrollScheduledFor = gearPaintGen
         C_Timer.After(0, function()
-            if gearPaintGen ~= ns._gearTabDrawGen then
+            mfGear._gearDeferScrollScheduledFor = nil
+            if not ns.GearUI_IsPaintGenerationCurrent(gearPaintGen) then
                 mfGear._gearDeferChainActive = false
                 TryDismissGearContentVeil(mfGear, gearPaintGen)
                 return
@@ -3260,12 +3459,6 @@ function WarbandNexus:DrawGearTab(parent)
                 return
             end
             paintGearScrollBody(true)
-            if gearOpenAllT0 then
-                AppendGearOpenTrace(string.format(
-                    "[WN Perf][GearOpen] gen=%s TOTAL deferScrollPaint wall %.2fms",
-                    tostring(gearPaintGen),
-                    debugprofilestop() - gearOpenAllT0))
-            end
         end)
         local scroll = mfGear.scroll
         local viewportH = scroll and scroll:GetHeight() or 0
@@ -3276,11 +3469,8 @@ function WarbandNexus:DrawGearTab(parent)
                 viewportH = fhBot - sb
             end
         end
-        if gearOpenAllT0 then
-            AppendGearOpenTrace(string.format(
-                "[WN Perf][GearOpen] gen=%s deferScrollPaint first return wall %.2fms (body paints next tick)",
-                tostring(gearPaintGen),
-                debugprofilestop() - gearOpenAllT0))
+        if IsGearOpenPerfVerbose() and _gearOpenTraceCtx then
+            GearOpenTraceBlock("deferScrollPaint first return", debugprofilestop() - _gearOpenTraceCtx.t0)
         end
         return math.max(viewportH, 480)
     end
@@ -3298,6 +3488,7 @@ end
 -- Runtime hooks for GearUI_Paperdoll.lua (loads before this file)
 ns.GearUI_TryStartPendingGearStorageScan = TryStartPendingGearStorageScan
 ns.GearUI_TryDismissGearContentVeil = TryDismissGearContentVeil
+ns.GearUI_AbortTabPaintWork = AbortGearTabPaintWork
 ns.GearUI_PaintGearStorageRowsBatched = PaintGearStorageRowsBatched
 ns.GearUI_STORAGE_REC_TABLE_HDR = GEAR_STORAGE_REC_TABLE_HDR
 ns.GearUI_GetCraftedIlvlRange = GetCraftedIlvlRange
@@ -3314,8 +3505,61 @@ ns.GearUI_IsPrimaryEnchantExpected = IsPrimaryEnchantExpected
 ns.GearUI_GetItemIconSafe = GetItemIconSafe
 ns.GearUI_BuildGearTabItemTooltipContext = BuildGearTabItemTooltipContext
 
+local function RefreshGearThemeChrome()
+    for i = 1, #gearAccentChrome do
+        ApplyGearControlChromeIdle(gearAccentChrome[i])
+    end
+    if gearCharDropdownMenu then
+        ApplyGearDropdownMenuChrome(gearCharDropdownMenu)
+    end
+    if gearHideFilterBtn and gearHideFilterBtn._menu then
+        ApplyGearDropdownMenuChrome(gearHideFilterBtn._menu)
+        RefreshGearHideFilterMenuRows()
+    end
+    local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and mf._gearContentVeil and mf._gearContentVeil.SetBackdropColor then
+        local veilBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
+            or COLORS.surfaceViewport or COLORS.bg or { 0.05, 0.05, 0.07, 0.94 }
+        mf._gearContentVeil:SetBackdropColor(veilBg[1], veilBg[2], veilBg[3], (veilBg[4] or 1) * 0.94)
+    end
+    if ns.GearUI_Chrome and ns.GearUI_Chrome.RefreshTheme then
+        ns.GearUI_Chrome.RefreshTheme()
+    end
+    if ns.GearUI_Paperdoll and ns.GearUI_Paperdoll.RefreshTheme then
+        ns.GearUI_Paperdoll.RefreshTheme()
+    end
+end
+
+ns.GearUI = ns.GearUI or {}
+ns.GearUI.RefreshTheme = RefreshGearThemeChrome
+
+do
+    if ns.UI_RefreshColors and not ns._wnGearUIThemeHooked then
+        ns._wnGearUIThemeHooked = true
+        local prevRefresh = ns.UI_RefreshColors
+        ns.UI_RefreshColors = function(...)
+            prevRefresh(...)
+            RefreshGearThemeChrome()
+        end
+    end
+end
+
 local GearUIVeilListeners = ns._gearUIVeilMsgListeners or {}
 ns._gearUIVeilMsgListeners = GearUIVeilListeners
+
+do
+    if WarbandNexus and WarbandNexus.AbortTabOperations and not ns._wnGearAbortTabHooked then
+        ns._wnGearAbortTabHooked = true
+        local prevAbortTabOperations = WarbandNexus.AbortTabOperations
+        function WarbandNexus:AbortTabOperations(tabKey)
+            if tabKey == "gear" then
+                AbortGearTabPaintWork()
+            end
+            return prevAbortTabOperations(self, tabKey)
+        end
+    end
+end
+
 local GearEvents = ns.Constants and ns.Constants.EVENTS
 if WarbandNexus and WarbandNexus.RegisterMessage and GearEvents then
     if GearEvents.GEAR_TAB_VEIL_DISMISS then

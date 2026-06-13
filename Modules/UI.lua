@@ -34,62 +34,31 @@ local function ProfileFlagOn(v)
     return v == true or v == 1
 end
 
---- Main-tab perf timings: debugMode + profilerPersist.tabPerfMonitor, or trace window visible.
+--- Main-tab perf timings: debugMode + profilerPersist.tabPerfMonitor (not trace-window alone).
 local function IsTabPerfMonitorEnabled()
     local p = WarbandNexus.db and WarbandNexus.db.profile
     if not p or not ProfileFlagOn(p.debugMode) then return false end
     local pp = p.profilerPersist
-    if pp and ProfileFlagOn(pp.tabPerfMonitor) then return true end
-    local P = ns.Profiler
-    return P and P.IsUserTraceWindowShown and P:IsUserTraceWindowShown() or false
+    return pp and ProfileFlagOn(pp.tabPerfMonitor) or false
 end
 
 ns.IsTabPerfMonitorEnabled = IsTabPerfMonitorEnabled
 
---- Log partial tab refresh (Items Bank sub-tabs, To-Do categories, Collections sub-tabs) — bypasses PopulateContent.
+--- Log partial tab refresh
 function ns.EmitPartialTabRefreshPerf(mainTab, fromKey, toKey, bodyMs, wallStart)
     if not IsTabPerfMonitorEnabled() then return end
     if not mainTab or not toKey then return end
     bodyMs = bodyMs or 0
-    local msg = format(
-        "[WN Perf] %s sub-tab %s → %s | body=%.2fms",
-        tostring(mainTab),
-        tostring(fromKey or "?"),
-        tostring(toKey),
-        bodyMs
-    )
     local P = ns.Profiler
-    if P and P.AppendUserTraceLine then
-        P:AppendUserTraceLine(msg)
-    elseif DebugPrint then
-        DebugPrint(msg)
-    end
-    if wallStart and C_Timer and C_Timer.After then
-        local settleFrom = fromKey
-        local settleTo = toKey
-        C_Timer.After(0, function()
-            C_Timer.After(0, function()
-                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
-                if not mf or mf.currentTab ~= mainTab then return end
-                local settleMs = (GetTime() - wallStart) * 1000
-                local deferredMs = settleMs - bodyMs
-                if deferredMs < 1.5 then return end
-                local settleMsg = format(
-                    "[WN Perf] %s sub-tab %s → %s | settle≈%.2fms (+%.2fms deferred)",
-                    tostring(mainTab),
-                    tostring(settleFrom or "?"),
-                    tostring(settleTo),
-                    settleMs,
-                    deferredMs
-                )
-                if P and P.AppendUserTraceLine then
-                    P:AppendUserTraceLine(settleMsg)
-                elseif DebugPrint then
-                    DebugPrint(settleMsg)
-                end
-            end)
-        end)
-    end
+    if not P or not P.ScheduleTabSwitchPerfTrace then return end
+    P:ScheduleTabSwitchPerfTrace({
+        fromTab = tostring(mainTab) .. ":" .. tostring(fromKey or "?"),
+        toTab = tostring(mainTab) .. ":" .. tostring(toKey),
+        poolMs = 0,
+        populateMs = bodyMs,
+        wallStart = wallStart or GetTime(),
+        gen = nil,
+    })
 end
 
 -- Lazy-load FontManager (prevent race conditions)
@@ -148,6 +117,117 @@ function ns.UI_SetMainChromeIcon(tex, iconKey, vertexColor)
     if not tex or not iconKey or not ns.UI_SetWnIconTexture then return false end
     return ns.UI_SetWnIconTexture(tex, iconKey, { vertexColor = vertexColor or { 1, 1, 1, 1 } })
 end
+
+--- Re-apply muted/desaturated header utility icons after theme refresh.
+function ns.UI_RefreshHeaderUtilityIcons(mainFrame)
+    if not mainFrame then return end
+    local apply = ns.UI_ApplyHeaderUtilityIconStyle
+    if not apply then return end
+    if mainFrame.reloadDebugBtn and mainFrame.reloadDebugBtn._wnUtilityIcon then
+        apply(mainFrame.reloadDebugBtn._wnUtilityIcon, false)
+    end
+    if mainFrame.patreonBtn and mainFrame.patreonBtn._wnUtilityIcon then
+        apply(mainFrame.patreonBtn._wnUtilityIcon, false)
+    end
+    if mainFrame.discordBtn and mainFrame.discordBtn._wnUtilityIcon then
+        apply(mainFrame.discordBtn._wnUtilityIcon, false)
+    end
+    if mainFrame.statusIcon then
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+            apply(mainFrame.statusIcon, false)
+        else
+            mainFrame.statusIcon:SetDesaturated(false)
+            mainFrame.statusIcon:SetVertexColor(0.35, 1, 0.45, 1)
+        end
+    end
+end
+
+--- Re-paint main shell chrome from live `ns.UI_COLORS` (theme / light mode / accent refresh).
+local function RefreshMainShellChrome(mainFrame)
+    if not mainFrame then return end
+    local C = ns.UI_COLORS
+    if not C then return end
+    local accent = C.accent or { 0.4, 0.2, 0.58, 1 }
+    local shellBg = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor()) or C.bg
+    if ns.UI_ApplyMainWindowShellFill then
+        ns.UI_ApplyMainWindowShellFill(mainFrame, shellBg)
+    end
+    local headerBg = (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
+        or C.surfaceHeaderChrome or C.bgLight
+    local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
+        or { accent[1], accent[2], accent[3], 0.8 }
+    if mainFrame.header and ApplyVisuals then
+        ApplyVisuals(mainFrame.header, headerBg, headerBorder)
+    end
+    local railBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop()) or shellBg
+    if mainFrame.navRail and ns.UI_ApplyBorderlessSurface then
+        local railOpts = { bgType = "bg" }
+        ns.UI_ApplyBorderlessSurface(mainFrame.navRail, railBg, railOpts)
+    end
+    local divColor = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
+        or headerBorder
+    if mainFrame._wnNavRailDivider then
+        mainFrame._wnNavRailDivider:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+    end
+    if mainFrame._wnNavRailFooterSep then
+        mainFrame._wnNavRailFooterSep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+    end
+    if mainFrame._wnNavRailSettingsAboutSep then
+        mainFrame._wnNavRailSettingsAboutSep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+    end
+    if mainFrame.tabButtons then
+        for _, btn in pairs(mainFrame.tabButtons) do
+            local sep = btn and btn._wnRailSepAbove
+            if sep and sep.SetColorTexture then
+                sep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+            end
+        end
+    end
+    if mainFrame.content and mainFrame.content.SetBackdropColor then
+        mainFrame.content:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+    end
+    if mainFrame.viewportBorder and mainFrame.viewportBorder.SetBackdropColor then
+        mainFrame.viewportBorder:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+    end
+    if mainFrame.footerTop then
+        local footDiv = (ns.UI_GetFooterDividerColor and ns.UI_GetFooterDividerColor()) or divColor
+        mainFrame.footerTop:SetColorTexture(footDiv[1], footDiv[2], footDiv[3], footDiv[4] or 0.28)
+    end
+    if mainFrame.footerLeftText then
+        ns.UI_SetTextColorRole(mainFrame.footerLeftText, "Dim", 0.92)
+    end
+    if mainFrame.footerVersionText then
+        ns.UI_SetTextColorRole(mainFrame.footerVersionText, "Muted", 0.95)
+    end
+    if mainFrame.trackingChip and ApplyVisuals then
+        local chipBg, chipBorder
+        if ns.UI_GetTrackingChipBackdrop then
+            chipBg, chipBorder = ns.UI_GetTrackingChipBackdrop()
+        else
+            chipBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or C.bgCard
+            chipBorder = divColor
+        end
+        ApplyVisuals(mainFrame.trackingChip, chipBg, chipBorder)
+    end
+    local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()
+    local utilBorder = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or headerBorder
+    if closeIdle and ns.UI_ApplyVisuals then
+        if mainFrame.closeBtn then
+            ns.UI_ApplyVisuals(mainFrame.closeBtn, closeIdle, utilBorder)
+        end
+        if mainFrame.reloadDebugBtn then
+            local hover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or closeIdle
+            ns.UI_ApplyVisuals(mainFrame.reloadDebugBtn, hover, utilBorder)
+        end
+        if mainFrame.patreonBtn then
+            ns.UI_ApplyVisuals(mainFrame.patreonBtn, closeIdle, utilBorder)
+        end
+        if mainFrame.discordBtn then
+            ns.UI_ApplyVisuals(mainFrame.discordBtn, closeIdle, utilBorder)
+        end
+    end
+end
+ns.UI_RefreshMainShellChrome = RefreshMainShellChrome
 
 --- Golden-ratio rail width + strip/button sync (text rail below header).
 local function ApplyMainNavGoldenShellLayout(f)
@@ -437,6 +517,41 @@ local postCombatUITimer = nil
 local function FlushPostCombatUI()
     if mainFrame and mainFrame:IsShown() and WarbandNexus.RefreshUI then
         WarbandNexus:RefreshUI()
+    end
+end
+
+-- Coalesce event-driven PopulateContent with staged main-tab switch paint (see RunDebouncedPopulateTimerBody).
+local SHELL_TAB_SWITCH_POPULATE_QUIET = 0.45
+
+local function ShouldSkipRedundantShellPopulate(mf, forceRepaint)
+    if forceRepaint or not mf then return false end
+    local sh = mf._shellRefreshState
+    if sh and sh.dirtyWhileHidden then return false end
+    -- Tab switch paint while sync was still running may be partial — allow follow-up event populate.
+    if mf._wnLoadingCompleteAtTabSwitch ~= true then return false end
+    if not mf._wnLastMainTabSwitchAt or not mf._wnLastMainTabSwitchKey then return false end
+    if mf._wnLastMainTabSwitchKey ~= mf.currentTab then return false end
+    if mf._wnTabSwitchPopulateDoneGen ~= mf._tabSwitchGen then return false end
+    if (GetTime() - mf._wnLastMainTabSwitchAt) >= SHELL_TAB_SWITCH_POPULATE_QUIET then return false end
+    return true
+end
+
+local function ShouldSkipSyncCompletePopulate(mf)
+    if not mf or not mf:IsShown() then return true end
+    -- Loading was still in flight at tab switch: first paint may be partial — allow sync transition refresh.
+    if mf._wnLoadingCompleteAtTabSwitch ~= true then return false end
+    if mf._wnTabSwitchPopulateDoneGen ~= mf._tabSwitchGen then return false end
+    if not mf._wnLastMainTabSwitchAt or mf._wnLastMainTabSwitchKey ~= mf.currentTab then return false end
+    if (GetTime() - mf._wnLastMainTabSwitchAt) >= SHELL_TAB_SWITCH_POPULATE_QUIET then return false end
+    return true
+end
+
+local function MarkShellPopulateCompleted(mf)
+    if not mf then return end
+    mf._wnTabSwitchPopulateDoneGen = mf._tabSwitchGen
+    local sh = mf._shellRefreshState
+    if sh then
+        sh.lastEventPopulateTime = GetTime()
     end
 end
 
@@ -905,6 +1020,192 @@ recycleBin:SetSize(1, 1)
 recycleBin:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -9999, 9999)
 ns.UI_RecycleBin = recycleBin
 
+--- Park tab-persistent scroll chrome when leaving a main tab.
+--- `_wnKeepOnTabSwitch` skips same-tab PopulateContent teardown only; cross-tab switches must Hide().
+local function DetachKeptScrollChildOnMainTabSwitch(child)
+    if not child or not child.Hide then return end
+    child:Hide()
+    if recycleBin then
+        child:SetParent(recycleBin)
+    end
+end
+
+--- Fast tab-switch detach can race deferred Items/PvE timers that re-parent keep frames; purge any leak.
+local function PurgeScrollChildLeaksAfterFastDetach(scrollChild)
+    if not scrollChild then return end
+    local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
+    for i = 1, nc do
+        local child = _uiChildEnumScratch[i]
+        if child.isPersistentRowElement then
+            child:Hide()
+        else
+            if child._wnProfColumnHeaderStrip then
+                child._wnKeepOnTabSwitch = nil
+            end
+            DetachKeptScrollChildOnMainTabSwitch(child)
+        end
+    end
+end
+
+--- Main tabs that own `scrollChild.resultsContainer` (Bank/Items, Currency, Reputation).
+local SCROLL_RESULTS_HOST_TABS = {
+    items = true,
+    currency = true,
+    reputations = true,
+}
+
+local function ParkScrollChildSharedHostFrame(frame, clearKeepFlag)
+    if not frame or not frame.Hide then return end
+    if clearKeepFlag then
+        frame._wnKeepOnTabSwitch = nil
+    end
+    DetachKeptScrollChildOnMainTabSwitch(frame)
+end
+
+--- Hide + recycleBin shared scroll hosts that do not belong on `activeTab` (Gear/Bank overlap fix).
+function ns.UI_ParkScrollChildSharedHosts(scrollChild, activeTab)
+    if not scrollChild or not activeTab then return end
+
+    if not SCROLL_RESULTS_HOST_TABS[activeTab] then
+        if WarbandNexus.AbortStorageChunkedPaint then
+            WarbandNexus:AbortStorageChunkedPaint()
+        end
+        ParkScrollChildSharedHostFrame(scrollChild.resultsContainer, false)
+    end
+
+    if activeTab ~= "currency" and activeTab ~= "reputations" then
+        ParkScrollChildSharedHostFrame(scrollChild._wnResultsAnnexSheet, false)
+    end
+
+    if activeTab ~= "gear" then
+        ParkScrollChildSharedHostFrame(scrollChild._gearLoadingHost, false)
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+            WarbandNexus.UI.mainFrame._gearContentVeil = nil
+        end
+        if ns._gearPlayerModel then ns._gearPlayerModel:Hide() end
+        if ns._gearPortraitPanel then ns._gearPortraitPanel:Hide() end
+        if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
+        if ns._gearModelBorder then ns._gearModelBorder:Hide() end
+        if ns._gearIlvlFrame then ns._gearIlvlFrame:Hide() end
+        if ns._gearNameWrapper then ns._gearNameWrapper:Hide() end
+    end
+
+    if activeTab ~= "pve" then
+        ParkScrollChildSharedHostFrame(scrollChild._pveColHeaderRow, true)
+        local shells = scrollChild._pveSectionShells
+        if shells then
+            for i = 1, #shells do
+                local sh = shells[i]
+                if sh then
+                    ParkScrollChildSharedHostFrame(sh.header, false)
+                    ParkScrollChildSharedHostFrame(sh.body, false)
+                end
+            end
+        end
+    end
+
+    if activeTab ~= "professions" then
+        if ns.UI_HideProfessionColumnHeaderStrip then
+            ns.UI_HideProfessionColumnHeaderStrip(scrollChild)
+        elseif scrollChild._wnProfColHeaderRow then
+            scrollChild._wnProfColHeaderRow._wnKeepOnTabSwitch = nil
+            ParkScrollChildSharedHostFrame(scrollChild._wnProfColHeaderRow, false)
+        end
+    end
+end
+
+-- Async pool drain after main-tab fast detach (spreads ReleasePooledRowsInSubtree off the switch hitch).
+local _recycleBinDrainGen = 0
+local RECYCLE_BIN_DRAIN_MS_BUDGET = 6
+local RECYCLE_BIN_DRAIN_MAX_SUBTREES = 2
+
+local function ScheduleRecycleBinPoolDrain(pendingCount)
+    if not pendingCount or pendingCount < 1 then return end
+    _recycleBinDrainGen = _recycleBinDrainGen + 1
+    local drainGen = _recycleBinDrainGen
+    local remaining = pendingCount
+
+    local function drainSlice()
+        if drainGen ~= _recycleBinDrainGen or remaining <= 0 or not recycleBin then return end
+        local t0 = debugprofilestop()
+        local nc = PackVariadicInto(_uiChildEnumScratch, recycleBin:GetChildren())
+        local drained = 0
+        for i = 1, nc do
+            local child = _uiChildEnumScratch[i]
+            if child and not child._wnPoolDrained then
+                if ReleasePooledRowsInSubtree then
+                    ReleasePooledRowsInSubtree(child)
+                end
+                child._wnPoolDrained = true
+                drained = drained + 1
+                remaining = remaining - 1
+                if drained >= RECYCLE_BIN_DRAIN_MAX_SUBTREES or remaining <= 0 then
+                    break
+                end
+                if debugprofilestop() - t0 >= RECYCLE_BIN_DRAIN_MS_BUDGET then
+                    break
+                end
+            end
+        end
+        if remaining <= 0 or drainGen ~= _recycleBinDrainGen then return end
+        local more = false
+        local nc2 = PackVariadicInto(_uiChildEnumScratch, recycleBin:GetChildren())
+        for i = 1, nc2 do
+            local child = _uiChildEnumScratch[i]
+            if child and not child._wnPoolDrained then
+                more = true
+                break
+            end
+        end
+        if more and C_Timer and C_Timer.After then
+            C_Timer.After(0, drainSlice)
+        end
+    end
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, drainSlice)
+    else
+        drainSlice()
+    end
+end
+
+local function CancelShellGearAsyncTimers(st)
+    if not st then return end
+    if st.gearItemInfoCoalesceTimer and st.gearItemInfoCoalesceTimer.Cancel then
+        st.gearItemInfoCoalesceTimer:Cancel()
+    end
+    st.gearItemInfoCoalesceTimer = nil
+    st.gearItemInfoCoalesceGen = (st.gearItemInfoCoalesceGen or 0) + 1
+    if st.gearStorageRecRefreshTimer and st.gearStorageRecRefreshTimer.Cancel then
+        st.gearStorageRecRefreshTimer:Cancel()
+    end
+    st.gearStorageRecRefreshTimer = nil
+    st.gearStorageRecRefreshEquipOnly = false
+end
+
+--- Invalidate staged/chunk paint for a tab we are leaving (paint-gen bumps; no GearUI edits).
+local function CancelLeavingTabStagedPaint(tabKey, mf)
+    if not tabKey or not mf then return end
+    if WarbandNexus.AbortTabOperations then
+        WarbandNexus:AbortTabOperations(tabKey)
+    end
+    if tabKey == "gear" then
+        ns._gearTabDrawGen = (ns._gearTabDrawGen or 0) + 1
+        ns._gearTabPopulateQuietUntil = nil
+        mf._gearDeferChainActive = nil
+        mf._wnGearSplitPaperDollNext = nil
+        ns._gearStorageDeferAwaiting = nil
+        ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+        CancelShellGearAsyncTimers(mf._shellRefreshState)
+    elseif tabKey == "plans" then
+        ns._plansBrowsePaintGen = (ns._plansBrowsePaintGen or 0) + 1
+        ns._plansAchPopulateGen = (ns._plansAchPopulateGen or 0) + 1
+        ns._plansCategoryBodyGen = (ns._plansCategoryBodyGen or 0) + 1
+    end
+end
+
+ns.UI_CancelLeavingTabStagedPaint = CancelLeavingTabStagedPaint
+
 --- Items / Warband aggregate: sync scrollChild width from scroll viewport before reading content width.
 ns.UI_EnsureMainScrollLayout = function()
     if mainFrame and not (ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(mainFrame)) then
@@ -920,11 +1221,11 @@ ns.UI_SetItemsSubTab = function(val)
     end
     local previousSub = currentItemsSubTab
     -- Bank > Warband aggregate uses `storageExpandAllActive` + GetStorageTreeExpandState (not expandedGroups).
-    if val ~= "warband" and WarbandNexus then
+    if val ~= "warband" and val ~= "guild" and WarbandNexus then
         WarbandNexus.storageExpandAllActive = false
     end
-    -- Entering Warband from another Bank sub-tab: reset expand-all + session tree (default collapsed).
-    if val == "warband" and WarbandNexus and previousSub ~= "warband" then
+    -- Entering Warband or Guild Bank from another Bank sub-tab: reset expand-all + session tree.
+    if WarbandNexus and previousSub ~= val and (val == "warband" or val == "guild") then
         WarbandNexus.storageExpandAllActive = false
         if WarbandNexus.ResetStorageTreeExpandState then
             WarbandNexus:ResetStorageTreeExpandState()
@@ -1121,7 +1422,7 @@ local function ScheduleDeferredShowMainPopulate(f, targetTab)
         if not f or not f:IsShown() or f.currentTab ~= targetTab then return end
         C_Timer.After(0, function()
             if not f or not f:IsShown() or f.currentTab ~= targetTab then return end
-            WarbandNexus:PopulateContent()
+            WarbandNexus:PopulateContent(true)
             f.isMainTabSwitch = false
         end)
     end)
@@ -1284,7 +1585,8 @@ local function UpdateTabVisibility(f)
     local railPad = shell.NAV_RAIL_PAD or 6
     local sepH = shell.NAV_RAIL_TAB_SEP_HEIGHT or 1
     local sepA = shell.NAV_RAIL_TAB_SEP_ALPHA or 0.4
-    local ac = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.4, 1 }
+    local sepColor = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
+        or (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.4, 1, sepA }
 
     local prevBtn = nil
     local railHost = (f._wnMainNavLayout == "rail") and (f.navRailStrip or f.navRail)
@@ -1306,7 +1608,7 @@ local function UpdateTabVisibility(f)
                             sep = railHost:CreateTexture(nil, "ARTWORK")
                             btn._wnRailSepAbove = sep
                         end
-                        sep:SetColorTexture(ac[1], ac[2], ac[3], sepA)
+                        sep:SetColorTexture(sepColor[1], sepColor[2], sepColor[3], sepColor[4] or 1)
                         sep:SetHeight(sepH)
                         sep:ClearAllPoints()
                         sep:SetPoint("LEFT", railHost, "LEFT", railPad, 0)
@@ -1348,23 +1650,20 @@ local function UpdateTabButtonStates(f)
         else
             local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
             local railFlat = btn._wnRailTextMode
-            local railBorderA = shell.NAV_RAIL_BORDER_ALPHA or 0.18
-            local railActiveA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.28
+            local railActiveA = (ns.UI_GetNavRailActiveBgAlpha and ns.UI_GetNavRailActiveBgAlpha())
+                or shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.28
             if key == f.currentTab then
                 btn.active = true
                 if btn.label and (btn._wnRailTextMode or not btn._wnRailCompact) then
                     ns.UI_SetTextColorRole(btn.label, "Bright")
-                    local font, size = btn.label:GetFont()
-                    if font and size then
-                        btn.label:SetFont(font, size, "OUTLINE")
-                    elseif fm then
-                        fm:ApplyFont(btn.label, "body")
-                        font, size = btn.label:GetFont()
-                        if font and size then btn.label:SetFont(font, size, "OUTLINE") end
+                    if ns.UI_SetNavLabelFontStyle then
+                        ns.UI_SetNavLabelFontStyle(btn.label, true)
                     end
                 end
                 if btn.activeBar then btn.activeBar:SetAlpha(1) end
-                if btn.tabIcon then btn.tabIcon:SetVertexColor(1, 1, 1, 1) end
+                if btn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                    ns.UI_ApplyNavTabIconStyle(btn.tabIcon, true, { packaged = btn.tabIcon._wnNavPackagedIcon, rail = btn._wnRailTextMode })
+                end
                 if UpdateBorderColor and not railFlat then
                     UpdateBorderColor(btn, { accentColor[1], accentColor[2], accentColor[3], 1 })
                 elseif railFlat and ns.UI_HideFrameBorderQuartet then
@@ -1372,8 +1671,14 @@ local function UpdateTabButtonStates(f)
                 end
                 if btn.SetBackdropColor then
                     if railFlat then
-                        local railA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.52
-                        btn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+                        local activeBg = ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop()
+                        if activeBg then
+                            btn:SetBackdropColor(activeBg[1], activeBg[2], activeBg[3], activeBg[4] or 0.98)
+                        else
+                            local railA = (ns.UI_GetNavRailActiveBgAlpha and ns.UI_GetNavRailActiveBgAlpha())
+                                or shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.38
+                            btn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+                        end
                     else
                         btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
                     end
@@ -1389,20 +1694,13 @@ local function UpdateTabButtonStates(f)
                     else
                         ns.UI_SetTextColorRole(btn.label, "Muted")
                     end
-                    local font, size = btn.label:GetFont()
-                    if font and size then
-                        btn.label:SetFont(font, size, "")
-                    elseif fm then
-                        fm:ApplyFont(btn.label, "body")
+                    if ns.UI_SetNavLabelFontStyle then
+                        ns.UI_SetNavLabelFontStyle(btn.label, false)
                     end
                 end
                 if btn.activeBar then btn.activeBar:SetAlpha(0) end
-                if btn.tabIcon then
-                    if railFlat then
-                        btn.tabIcon:SetVertexColor(0.88, 0.88, 0.92, 1)
-                    else
-                        btn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92)
-                    end
+                if btn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                    ns.UI_ApplyNavTabIconStyle(btn.tabIcon, false, { packaged = btn.tabIcon._wnNavPackagedIcon, rail = btn._wnRailTextMode })
                 end
                 if UpdateBorderColor and not railFlat then
                     UpdateBorderColor(btn, { accentColor[1], accentColor[2], accentColor[3], 0.6 })
@@ -1411,9 +1709,11 @@ local function UpdateTabButtonStates(f)
                 end
                 if btn.SetBackdropColor then
                     if railFlat then
-                        btn:SetBackdropColor(0.08, 0.08, 0.10, 0.4)
+                        local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.4 }
+                        btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 0.4)
                     else
-                        btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                        local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
+                        btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
                     end
                 end
                 if ns.UI_ApplyRailTabActiveVisuals then
@@ -1432,23 +1732,26 @@ local function UpdateTabButtonStates(f)
             settingsBtn.active = true
             if settingsBtn.label and (settingsBtn._wnRailTextMode or not settingsBtn._wnRailCompact) then
                 ns.UI_SetTextColorRole(settingsBtn.label, "Bright")
-                local font, size = settingsBtn.label:GetFont()
-                if font and size then
-                    settingsBtn.label:SetFont(font, size, "OUTLINE")
-                elseif fm then
-                    fm:ApplyFont(settingsBtn.label, "body")
-                    font, size = settingsBtn.label:GetFont()
-                    if font and size then settingsBtn.label:SetFont(font, size, "OUTLINE") end
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(settingsBtn.label, true)
                 end
             end
             if settingsBtn.activeBar then settingsBtn.activeBar:SetAlpha(1) end
-            if settingsBtn.tabIcon then settingsBtn.tabIcon:SetVertexColor(1, 1, 1, 1) end
+            if settingsBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                ns.UI_ApplyNavTabIconStyle(settingsBtn.tabIcon, true, { packaged = settingsBtn.tabIcon._wnNavPackagedIcon, rail = settingsBtn._wnRailTextMode })
+            end
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(settingsBtn)
             end
             if settingsBtn.SetBackdropColor then
-                local railA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.52
-                settingsBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+                local activeBg = ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop()
+                if activeBg then
+                    settingsBtn:SetBackdropColor(activeBg[1], activeBg[2], activeBg[3], activeBg[4] or 0.98)
+                else
+                    local railA = (ns.UI_GetNavRailActiveBgAlpha and ns.UI_GetNavRailActiveBgAlpha())
+                        or shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.38
+                    settingsBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+                end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
                 ns.UI_ApplyRailTabActiveVisuals(settingsBtn, true, accentColor)
@@ -1461,29 +1764,24 @@ local function UpdateTabButtonStates(f)
                 else
                     ns.UI_SetTextColorRole(settingsBtn.label, "Muted")
                 end
-                local font, size = settingsBtn.label:GetFont()
-                if font and size then
-                    settingsBtn.label:SetFont(font, size, "")
-                elseif fm then
-                    fm:ApplyFont(settingsBtn.label, "body")
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(settingsBtn.label, false)
                 end
             end
             if settingsBtn.activeBar then settingsBtn.activeBar:SetAlpha(0) end
-            if settingsBtn.tabIcon then
-                if railFlat then
-                    settingsBtn.tabIcon:SetVertexColor(0.88, 0.88, 0.92, 1)
-                else
-                    settingsBtn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92)
-                end
+            if settingsBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                ns.UI_ApplyNavTabIconStyle(settingsBtn.tabIcon, false, { packaged = settingsBtn.tabIcon._wnNavPackagedIcon, rail = settingsBtn._wnRailTextMode })
             end
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(settingsBtn)
             end
             if settingsBtn.SetBackdropColor then
                 if railFlat then
-                    settingsBtn:SetBackdropColor(0.08, 0.08, 0.10, 0.4)
+                    local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.4 }
+                    settingsBtn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 0.4)
                 else
-                    settingsBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                    local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
+                    settingsBtn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
                 end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
@@ -1501,23 +1799,26 @@ local function UpdateTabButtonStates(f)
             aboutBtn.active = true
             if aboutBtn.label and (aboutBtn._wnRailTextMode or not aboutBtn._wnRailCompact) then
                 ns.UI_SetTextColorRole(aboutBtn.label, "Bright")
-                local font, size = aboutBtn.label:GetFont()
-                if font and size then
-                    aboutBtn.label:SetFont(font, size, "OUTLINE")
-                elseif fm then
-                    fm:ApplyFont(aboutBtn.label, "body")
-                    font, size = aboutBtn.label:GetFont()
-                    if font and size then aboutBtn.label:SetFont(font, size, "OUTLINE") end
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(aboutBtn.label, true)
                 end
             end
             if aboutBtn.activeBar then aboutBtn.activeBar:SetAlpha(1) end
-            if aboutBtn.tabIcon then aboutBtn.tabIcon:SetVertexColor(1, 1, 1, 1) end
+            if aboutBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                ns.UI_ApplyNavTabIconStyle(aboutBtn.tabIcon, true, { packaged = aboutBtn.tabIcon._wnNavPackagedIcon, rail = aboutBtn._wnRailTextMode })
+            end
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(aboutBtn)
             end
             if aboutBtn.SetBackdropColor then
-                local railA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.52
-                aboutBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+                local activeBg = ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop()
+                if activeBg then
+                    aboutBtn:SetBackdropColor(activeBg[1], activeBg[2], activeBg[3], activeBg[4] or 0.98)
+                else
+                    local railA = (ns.UI_GetNavRailActiveBgAlpha and ns.UI_GetNavRailActiveBgAlpha())
+                        or shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.38
+                    aboutBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
+                end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
                 ns.UI_ApplyRailTabActiveVisuals(aboutBtn, true, accentColor)
@@ -1530,29 +1831,24 @@ local function UpdateTabButtonStates(f)
                 else
                     ns.UI_SetTextColorRole(aboutBtn.label, "Muted")
                 end
-                local font, size = aboutBtn.label:GetFont()
-                if font and size then
-                    aboutBtn.label:SetFont(font, size, "")
-                elseif fm then
-                    fm:ApplyFont(aboutBtn.label, "body")
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(aboutBtn.label, false)
                 end
             end
             if aboutBtn.activeBar then aboutBtn.activeBar:SetAlpha(0) end
-            if aboutBtn.tabIcon then
-                if railFlat then
-                    aboutBtn.tabIcon:SetVertexColor(0.88, 0.88, 0.92, 1)
-                else
-                    aboutBtn.tabIcon:SetVertexColor(0.72, 0.74, 0.78, 0.92)
-                end
+            if aboutBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                ns.UI_ApplyNavTabIconStyle(aboutBtn.tabIcon, false, { packaged = aboutBtn.tabIcon._wnNavPackagedIcon, rail = aboutBtn._wnRailTextMode })
             end
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(aboutBtn)
             end
             if aboutBtn.SetBackdropColor then
                 if railFlat then
-                    aboutBtn:SetBackdropColor(0.08, 0.08, 0.10, 0.4)
+                    local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.4 }
+                    aboutBtn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 0.4)
                 else
-                    aboutBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                    local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
+                    aboutBtn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
                 end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
@@ -1665,10 +1961,12 @@ function WarbandNexus:CreateMainWindow()
         f:SetClipsChildren(true)
     end
     
-    -- Apply user-configured UI scale (scales entire addon window + children)
-    local uiScale = (WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.uiScale) or 1.0
-    uiScale = math.max(0.6, math.min(1.5, uiScale))
-    f:SetScale(uiScale)
+    -- Apply user-configured UI scale (main shell + registered external windows)
+    if ns.UI_RegisterScaledFrame then
+        ns.UI_RegisterScaledFrame(f)
+    elseif ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(f)
+    end
     
     -- Restore saved position, or center on first use
     if not RestoreWindowPosition(f) then
@@ -1802,10 +2100,13 @@ function WarbandNexus:CreateMainWindow()
         SaveWindowGeometry(f)
     end)
     
-    -- Apply header visuals (accent dark background, accent border)
+    -- Apply header visuals (dark: accentDark bar — original; light: surface chrome)
     if ApplyVisuals then
-        local COLORS = ns.UI_COLORS
-        ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        local headerBg = (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
+            or { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }
+        local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
+            or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+        ApplyVisuals(header, headerBg, headerBorder)
     end
 
     -- Addon `Media` branding (see `ns.UI_ApplyMainWindowTitleIcon`). `SetFrameLevel` exists on Frame only, not Texture;
@@ -1833,7 +2134,8 @@ function WarbandNexus:CreateMainWindow()
     
     -- Apply custom visuals
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+        ns.UI_ApplyVisuals(closeBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
     
     local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
@@ -1846,15 +2148,17 @@ function WarbandNexus:CreateMainWindow()
 
     closeBtn:SetScript("OnEnter", function(self)
         closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+        if ns.UI_ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+            local bg, border = ns.UI_GetSemanticNegativeCard(true)
+            ns.UI_ApplyVisuals(closeBtn, bg, border)
         end
     end)
     
     closeBtn:SetScript("OnLeave", function(self)
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+            local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+            ns.UI_ApplyVisuals(closeBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
     end)
     f.closeBtn = closeBtn
@@ -1864,7 +2168,8 @@ function WarbandNexus:CreateMainWindow()
     reloadDebugBtn:SetSize(28, 28)
     reloadDebugBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(reloadDebugBtn, {0.12, 0.14, 0.18, 0.92}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75})
+        local chromeHover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.14, 0.18, 0.92 }
+        ns.UI_ApplyVisuals(reloadDebugBtn, chromeHover, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
     end
     local reloadIcon = reloadDebugBtn:CreateTexture(nil, "ARTWORK")
     reloadIcon:SetSize(16, 16)
@@ -1887,11 +2192,19 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     reloadIcon:SetVertexColor(0.75, 0.92, 1)
+    reloadDebugBtn._wnUtilityIcon = reloadIcon
+    if ns.UI_ApplyHeaderUtilityIconStyle then
+        ns.UI_ApplyHeaderUtilityIconStyle(reloadIcon, false)
+    end
     reloadDebugBtn:SetScript("OnClick", function()
         ReloadUI()
     end)
     reloadDebugBtn:SetScript("OnEnter", function(self)
-        reloadIcon:SetVertexColor(1, 1, 1)
+        if ns.UI_ApplyHeaderUtilityIconStyle then
+            ns.UI_ApplyHeaderUtilityIconStyle(reloadIcon, true)
+        else
+            reloadIcon:SetVertexColor(1, 1, 1)
+        end
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self, {0.18, 0.22, 0.28, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
         end
@@ -1901,9 +2214,14 @@ function WarbandNexus:CreateMainWindow()
         GameTooltip:Show()
     end)
     reloadDebugBtn:SetScript("OnLeave", function(self)
-        reloadIcon:SetVertexColor(0.75, 0.92, 1)
+        if ns.UI_ApplyHeaderUtilityIconStyle then
+            ns.UI_ApplyHeaderUtilityIconStyle(reloadIcon, false)
+        else
+            reloadIcon:SetVertexColor(0.75, 0.92, 1)
+        end
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, {0.12, 0.14, 0.18, 0.92}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75})
+            local chromeHover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.14, 0.18, 0.92 }
+            ns.UI_ApplyVisuals(self, chromeHover, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
         end
         GameTooltip:Hide()
     end)
@@ -1917,13 +2235,18 @@ function WarbandNexus:CreateMainWindow()
     patreonBtn:SetSize(30, 30)
     patreonBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(patreonBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+        ns.UI_ApplyVisuals(patreonBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
     local patreonIcon = patreonBtn:CreateTexture(nil, "ARTWORK")
     patreonIcon:SetAllPoints()
     patreonIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\donateicon.png")
     patreonIcon:SetTexCoord(0, 1, 0, 1)
     patreonIcon:SetVertexColor(1, 1, 1, 1)
+    patreonBtn._wnUtilityIcon = patreonIcon
+    if ns.UI_ApplyHeaderUtilityIconStyle then
+        ns.UI_ApplyHeaderUtilityIconStyle(patreonIcon, false)
+    end
     patreonCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
     patreonCopyFrame:SetSize(440, 28)
     patreonCopyFrame:SetPoint("TOPRIGHT", patreonBtn, "BOTTOMRIGHT", 0, -4)
@@ -1935,7 +2258,8 @@ function WarbandNexus:CreateMainWindow()
         edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    patreonCopyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+    local patreonCopyBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.08, 0.08, 0.10, 0.95 }
+    patreonCopyFrame:SetBackdropColor(patreonCopyBg[1], patreonCopyBg[2], patreonCopyBg[3], patreonCopyBg[4] or 0.95)
     patreonCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
     patreonCopyFrame:Hide()
     patreonCopyBox = CreateFrame("EditBox", nil, patreonCopyFrame)
@@ -1944,10 +2268,8 @@ function WarbandNexus:CreateMainWindow()
     patreonCopyBox:SetAutoFocus(false)
     patreonCopyBox:SetFontObject(ChatFontNormal)
     if ns.FontManager then
-        local p = ns.FontManager:GetFontFace()
-        local s = ns.FontManager:GetFontSize("body")
-        local f = ns.FontManager:GetAAFlags()
-        pcall(patreonCopyBox.SetFont, patreonCopyBox, p, s, f)
+        ns.FontManager:RegisterManagedEditBox(patreonCopyBox)
+        ns.FontManager:ApplyFontToEditBox(patreonCopyBox)
     end
     patreonCopyBox:SetText(PATREON_URL)
     patreonCopyBox:SetCursorPosition(0)
@@ -1959,14 +2281,22 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     patreonBtn:SetScript("OnEnter", function()
-        patreonIcon:SetAlpha(0.75)
+        if ns.UI_ApplyHeaderUtilityIconStyle then
+            ns.UI_ApplyHeaderUtilityIconStyle(patreonIcon, true)
+        else
+            patreonIcon:SetAlpha(0.75)
+        end
         GameTooltip:SetOwner(patreonBtn, "ANCHOR_BOTTOM")
         GameTooltip:SetText((ns.L and ns.L["PATREON_TOOLTIP"]) or "Warband Nexus on Patreon", 1, 1, 1)
         GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
     patreonBtn:SetScript("OnLeave", function()
-        patreonIcon:SetAlpha(1.0)
+        if ns.UI_ApplyHeaderUtilityIconStyle then
+            ns.UI_ApplyHeaderUtilityIconStyle(patreonIcon, false)
+        else
+            patreonIcon:SetAlpha(1.0)
+        end
         GameTooltip:Hide()
     end)
     patreonBtn:SetScript("OnClick", function()
@@ -1985,16 +2315,22 @@ function WarbandNexus:CreateMainWindow()
     f.patreonBtn = patreonBtn
 
     local discordBtn = CreateFrame("Button", nil, header)
+    f.discordBtn = discordBtn
     discordBtn:SetSize(30, 30)
     discordBtn:SetPoint("RIGHT", patreonBtn, "LEFT", -6, 0)
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(discordBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+        ns.UI_ApplyVisuals(discordBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
     local discordIcon = discordBtn:CreateTexture(nil, "ARTWORK")
     discordIcon:SetAllPoints()
     discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
     discordIcon:SetTexCoord(0, 1, 0, 1)
     discordIcon:SetVertexColor(1, 1, 1, 1)
+    discordBtn._wnUtilityIcon = discordIcon
+    if ns.UI_ApplyHeaderUtilityIconStyle then
+        ns.UI_ApplyHeaderUtilityIconStyle(discordIcon, false)
+    end
     discordCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
     discordCopyFrame:SetSize(240, 28)
     discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
@@ -2006,7 +2342,8 @@ function WarbandNexus:CreateMainWindow()
         edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    discordCopyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+    local discordCopyBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.08, 0.08, 0.10, 0.95 }
+    discordCopyFrame:SetBackdropColor(discordCopyBg[1], discordCopyBg[2], discordCopyBg[3], discordCopyBg[4] or 0.95)
     discordCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
     discordCopyFrame:Hide()
     discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
@@ -2015,10 +2352,8 @@ function WarbandNexus:CreateMainWindow()
     discordCopyBox:SetAutoFocus(false)
     discordCopyBox:SetFontObject(ChatFontNormal) -- required initial FontObject
     if ns.FontManager then
-        local p = ns.FontManager:GetFontFace()
-        local s = ns.FontManager:GetFontSize("body")
-        local f = ns.FontManager:GetAAFlags()
-        pcall(discordCopyBox.SetFont, discordCopyBox, p, s, f)
+        ns.FontManager:RegisterManagedEditBox(discordCopyBox)
+        ns.FontManager:ApplyFontToEditBox(discordCopyBox)
     end
     discordCopyBox:SetText(DISCORD_URL)
     discordCopyBox:SetCursorPosition(0)
@@ -2030,14 +2365,22 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     discordBtn:SetScript("OnEnter", function(self)
-        discordIcon:SetAlpha(0.75)
+        if ns.UI_ApplyHeaderUtilityIconStyle then
+            ns.UI_ApplyHeaderUtilityIconStyle(discordIcon, true)
+        else
+            discordIcon:SetAlpha(0.75)
+        end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText((ns.L and ns.L["DISCORD_TOOLTIP"]) or "Warband Nexus Discord", 1, 1, 1)
         GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
     discordBtn:SetScript("OnLeave", function()
-        discordIcon:SetAlpha(1.0)
+        if ns.UI_ApplyHeaderUtilityIconStyle then
+            ns.UI_ApplyHeaderUtilityIconStyle(discordIcon, false)
+        else
+            discordIcon:SetAlpha(1.0)
+        end
         GameTooltip:Hide()
     end)
     discordBtn:SetScript("OnClick", function()
@@ -2055,21 +2398,18 @@ function WarbandNexus:CreateMainWindow()
     end)
 
     -- Tracking status: compact chip (accent rail + icon + single-line label), immediately left of Discord
-    -- Match header accentDark family — avoid flat black (0.06…) which clashes with the title bar
     local trackingChip = CreateFrame("Frame", nil, header, "BackdropTemplate")
     trackingChip:SetHeight(30)
     trackingChip:SetPoint("RIGHT", discordBtn, "LEFT", -8, 0)
-    local COL_TRACK = ns.UI_COLORS
-    local baseDark = (COL_TRACK and COL_TRACK.accentDark) or {0.28, 0.14, 0.41}
-    local chipLift = 0.06
-    local chipBg = {
-        math.min(1, baseDark[1] + chipLift),
-        math.min(1, baseDark[2] + chipLift),
-        math.min(1, baseDark[3] + chipLift),
-        0.88,
-    }
-    if ApplyVisuals and COL_TRACK then
-        ApplyVisuals(trackingChip, chipBg, {COL_TRACK.accent[1], COL_TRACK.accent[2], COL_TRACK.accent[3], 0.24})
+    if ApplyVisuals then
+        local chipBg, chipBorder
+        if ns.UI_GetTrackingChipBackdrop then
+            chipBg, chipBorder = ns.UI_GetTrackingChipBackdrop()
+        else
+            chipBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 0.92 }
+            chipBorder = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.24 }
+        end
+        ApplyVisuals(trackingChip, chipBg, chipBorder)
     end
 
     local trackingAccent = trackingChip:CreateTexture(nil, "ARTWORK", nil, 1)
@@ -2092,12 +2432,11 @@ function WarbandNexus:CreateMainWindow()
     iconBack:SetSize(20, 20)
     iconBack:SetPoint("LEFT", trackingAccent, "RIGHT", 6, 0)
     iconBack:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-    iconBack:SetBackdropColor(
-        math.min(1, baseDark[1] + chipLift * 0.35),
-        math.min(1, baseDark[2] + chipLift * 0.35),
-        math.min(1, baseDark[3] + chipLift * 0.35),
-        0.5
-    )
+    do
+        local iconBackBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
+            or { 0.12, 0.12, 0.15, 0.5 }
+        iconBack:SetBackdropColor(iconBackBg[1], iconBackBg[2], iconBackBg[3], (iconBackBg[4] or 1) * 0.55)
+    end
 
     local trackingIcon = iconBack:CreateTexture(nil, "ARTWORK")
     trackingIcon:SetSize(14, 14)
@@ -2107,6 +2446,9 @@ function WarbandNexus:CreateMainWindow()
         trackingIcon:SetTexture("Interface\\Icons\\Ability_Hunter_BeastTaming")
     end
     trackingIcon:SetVertexColor(0.35, 1, 0.45)
+    if ns.UI_ApplyHeaderUtilityIconStyle and ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        ns.UI_ApplyHeaderUtilityIconStyle(trackingIcon, false)
+    end
     f.statusIcon = trackingIcon
 
     local statusText = FontManager:CreateFontString(trackingStatusBtn, FontManager:GetFontRole("mainShellTrackingStatus"), "OVERLAY")
@@ -2176,19 +2518,20 @@ function WarbandNexus:CreateMainWindow()
         navRail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -headerNavGap)
         navRail:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, CONTENT_BOTTOM_OFFSET)
         do
-            local C = ns.UI_COLORS
-            local railBg = C and C.bg or { 0.04, 0.04, 0.05, 0.98 }
+            local railBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop())
+                or (ns.UI_COLORS and ns.UI_COLORS.surfaceViewport)
+                or { 0.13, 0.13, 0.155, 0.98 }
             if ns.UI_ApplyBorderlessSurface then
-                ns.UI_ApplyBorderlessSurface(navRail, { railBg[1], railBg[2], railBg[3], railBg[4] or 0.98 })
+                local railOpts = { bgType = "bg" }
+                ns.UI_ApplyBorderlessSurface(navRail, { railBg[1], railBg[2], railBg[3], railBg[4] or 0.98 }, railOpts)
             elseif ApplyVisuals then
-                ApplyVisuals(navRail, { railBg[1], railBg[2], railBg[3], railBg[4] or 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.12 })
+                ApplyVisuals(navRail, { railBg[1], railBg[2], railBg[3], railBg[4] or 0.98 }, { COLORS.borderLight[1], COLORS.borderLight[2], COLORS.borderLight[3], 0.12 })
                 if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(navRail) end
             end
         end
         local railDivider = navRail:CreateTexture(nil, "OVERLAY")
-        local ac = COLORS.accent or { 0.6, 0.4, 1 }
-        local divA = MAIN_SHELL_LAYOUT.NAV_RAIL_DIVIDER_ALPHA or 0.55
-        railDivider:SetColorTexture(ac[1], ac[2], ac[3], divA)
+        local div = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
+        railDivider:SetColorTexture(div[1], div[2], div[3], div[4] or 1)
         railDivider:SetWidth(1)
         railDivider:SetPoint("TOPRIGHT", navRail, "TOPRIGHT", 0, -4)
         railDivider:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 4)
@@ -2216,8 +2559,8 @@ function WarbandNexus:CreateMainWindow()
         railFooterSep:SetHeight(sepH)
         railFooterSep:SetPoint("TOPLEFT", navRailFooter, "TOPLEFT", railPad, 0)
         railFooterSep:SetPoint("TOPRIGHT", navRailFooter, "TOPRIGHT", -railPad, 0)
-        local acSep = COLORS.accent or { 0.6, 0.4, 1 }
-        railFooterSep:SetColorTexture(acSep[1], acSep[2], acSep[3], MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_SEP_ALPHA or 0.4)
+        local sepDiv = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
+        railFooterSep:SetColorTexture(sepDiv[1], sepDiv[2], sepDiv[3], sepDiv[4] or 1)
         f._wnNavRailFooterSep = railFooterSep
 
         navRailScroll = CreateFrame("ScrollFrame", nil, navRail)
@@ -2378,6 +2721,10 @@ function WarbandNexus:CreateMainWindow()
         end
 
         f.currentTab = targetTab
+        do
+            local LT = ns.LoadingTracker
+            f._wnLoadingCompleteAtTabSwitch = (LT and LT.IsComplete and LT:IsComplete()) and true or false
+        end
         f._wnMainTabInputGraceUntil = GetTime() + 0.2
         UpdateTabButtonStates(f)
         if targetTab ~= "settings" then
@@ -2395,9 +2742,8 @@ function WarbandNexus:CreateMainWindow()
             WarbandNexus:ClearCollectionMetadataCache()
         end
 
-        if WarbandNexus.AbortTabOperations then
-            WarbandNexus:AbortTabOperations(previousTab)
-        end
+        _recycleBinDrainGen = _recycleBinDrainGen + 1
+        CancelLeavingTabStagedPaint(previousTab, f)
 
         f.isMainTabSwitch = true
         ClearAllSearchBoxes()
@@ -2424,6 +2770,7 @@ function WarbandNexus:CreateMainWindow()
                 return
             end
             local function runPoolReleaseOnly()
+                local pendingDrain = 0
                 local scrollChild = f.scrollChild
                 if scrollChild then
                     if ns.UI_HideEphemeralScrollRegions then
@@ -2432,21 +2779,77 @@ function WarbandNexus:CreateMainWindow()
                     local nc = PackVariadicInto(_uiChildEnumScratch, scrollChild:GetChildren())
                     for i = 1, nc do
                         local child = _uiChildEnumScratch[i]
-                        if ReleasePooledRowsInSubtree then
-                            ReleasePooledRowsInSubtree(child)
-                        end
                         if child.isPersistentRowElement then
                             child:Hide()
-                        elseif child._wnProfColumnHeaderStrip or not child._wnKeepOnTabSwitch then
-                            if child._wnProfColumnHeaderStrip then
-                                child._wnKeepOnTabSwitch = nil
-                            end
+                        elseif child._wnKeepOnTabSwitch then
+                            DetachKeptScrollChildOnMainTabSwitch(child)
+                        elseif child._wnProfColumnHeaderStrip then
+                            child._wnKeepOnTabSwitch = nil
                             child:Hide()
                             child:SetParent(recycleBin)
+                            child._wnPoolDrained = nil
+                            pendingDrain = pendingDrain + 1
+                        else
+                            child:Hide()
+                            child:SetParent(recycleBin)
+                            child._wnPoolDrained = nil
+                            pendingDrain = pendingDrain + 1
                         end
+                    end
+                    if pendingDrain > 0 then
+                        ScheduleRecycleBinPoolDrain(pendingDrain)
+                    end
+                    if ns.UI_ParkScrollChildSharedHosts then
+                        ns.UI_ParkScrollChildSharedHosts(scrollChild, targetTab)
                     end
                     f._contentPreCleared = true
                 end
+                return pendingDrain
+            end
+
+            local function finalizeTabSwitchPopulate()
+                if tabSwitchGen ~= f._tabSwitchGen then
+                    local pStale = f._wnPerfMainTabSwitch
+                    if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                        local Pst = ns.Profiler
+                        if IsTabPerfMonitorEnabled() and Pst and Pst.AppendTraceAnomaly then
+                            Pst:AppendTraceAnomaly(format(
+                                "[Trace] tab switch stale gen=%s (superseded before populate)",
+                                tostring(tabSwitchGen)))
+                        end
+                        f._wnPerfMainTabSwitch = nil
+                        f._wnPerfTabSwitchPendingLog = nil
+                        debugprofilestop()
+                    end
+                    return false
+                end
+                if f.currentTab ~= targetTab then
+                    local pStale = f._wnPerfMainTabSwitch
+                    if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
+                        local Pst = ns.Profiler
+                        if IsTabPerfMonitorEnabled() and Pst and Pst.AppendTraceAnomaly then
+                            Pst:AppendTraceAnomaly(format(
+                                "[Trace] tab switch aborted gen=%s (left %s before populate)",
+                                tostring(tabSwitchGen), tostring(targetTab)))
+                        end
+                        f._wnPerfMainTabSwitch = nil
+                        f._wnPerfTabSwitchPendingLog = nil
+                        debugprofilestop()
+                    end
+                    return false
+                end
+                local pBeforePop = f._wnPerfMainTabSwitch
+                if pBeforePop and pBeforePop.gen == tabSwitchGen and pBeforePop.msClickToPoolEnd then
+                    if IsTabPerfMonitorEnabled() then
+                        f._wnPerfTabSwitchPendingLog = tabSwitchGen
+                    else
+                        f._wnPerfMainTabSwitch = nil
+                        debugprofilestop()
+                    end
+                end
+                WarbandNexus:PopulateContent(true)
+                f.isMainTabSwitch = false
+                return true
             end
 
             local function schedulePopulateAfterPoolPerf()
@@ -2461,35 +2864,7 @@ function WarbandNexus:CreateMainWindow()
                     end
                 end
                 C_Timer.After(0, function()
-                    if tabSwitchGen ~= f._tabSwitchGen then
-                        local pStale = f._wnPerfMainTabSwitch
-                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
-                            f._wnPerfMainTabSwitch = nil
-                            f._wnPerfTabSwitchPendingLog = nil
-                            debugprofilestop()
-                        end
-                        return
-                    end
-                    if f.currentTab ~= targetTab then
-                        local pStale = f._wnPerfMainTabSwitch
-                        if pStale and pStale.gen == tabSwitchGen and pStale.msClickToPoolEnd then
-                            f._wnPerfMainTabSwitch = nil
-                            f._wnPerfTabSwitchPendingLog = nil
-                            debugprofilestop()
-                        end
-                        return
-                    end
-                    local pBeforePop = f._wnPerfMainTabSwitch
-                    if pBeforePop and pBeforePop.gen == tabSwitchGen and pBeforePop.msClickToPoolEnd then
-                        if IsTabPerfMonitorEnabled() then
-                            f._wnPerfTabSwitchPendingLog = tabSwitchGen
-                        else
-                            f._wnPerfMainTabSwitch = nil
-                            debugprofilestop()
-                        end
-                    end
-                    WarbandNexus:PopulateContent()
-                    f.isMainTabSwitch = false
+                    finalizeTabSwitchPopulate()
                 end)
             end
 
@@ -2498,48 +2873,7 @@ function WarbandNexus:CreateMainWindow()
                 schedulePopulateAfterPoolPerf()
             end
 
-            if previousTab == "gear" and targetTab ~= "gear" then
-                C_Timer.After(0, function()
-                    if tabSwitchGen ~= f._tabSwitchGen or f.currentTab ~= targetTab then
-                        local pStale = f._wnPerfMainTabSwitch
-                        if pStale and pStale.gen == tabSwitchGen then
-                            f._wnPerfMainTabSwitch = nil
-                            debugprofilestop()
-                        end
-                        return
-                    end
-                    local P = ns.Profiler
-                    if P and P.enabled and P.StartSlice and P.StopSlice then
-                        P:StartSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
-                    end
-                    runPoolReleaseOnly()
-                    if P and P.enabled and P.StartSlice and P.StopSlice then
-                        P:StopSlice(P.CAT.UI, "Pop_tabPoolLeaveGear_deferred")
-                    end
-                    schedulePopulateAfterPoolPerf()
-                end)
-            elseif previousTab == "chars" and targetTab == "gear" then
-                C_Timer.After(0, function()
-                    if tabSwitchGen ~= f._tabSwitchGen or f.currentTab ~= targetTab then
-                        local pStale = f._wnPerfMainTabSwitch
-                        if pStale and pStale.gen == tabSwitchGen then
-                            f._wnPerfMainTabSwitch = nil
-                            debugprofilestop()
-                        end
-                        return
-                    end
-                    local P = ns.Profiler
-                    if P and P.enabled and P.StartSlice and P.StopSlice then
-                        P:StartSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
-                    end
-                    runPoolReleaseAndSchedulePopulate()
-                    if P and P.enabled and P.StartSlice and P.StopSlice then
-                        P:StopSlice(P.CAT.UI, "Pop_tabPool_charsToGear_deferred")
-                    end
-                end)
-            else
-                runPoolReleaseAndSchedulePopulate()
-            end
+            runPoolReleaseAndSchedulePopulate()
         end)
     end
     f.ActivateMainTab = ActivateMainTab
@@ -2565,17 +2899,22 @@ function WarbandNexus:CreateMainWindow()
         -- Background (rail: flat; top: standard chrome)
         if railLayout then
             if ns.UI_ApplyBorderlessSurface then
-                ns.UI_ApplyBorderlessSurface(btn, { 0.08, 0.08, 0.10, 0.45 })
+                local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+                ns.UI_ApplyBorderlessSurface(btn, idle)
             elseif ApplyVisuals then
-                ApplyVisuals(btn, { 0.08, 0.08, 0.10, 0.45 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.1 })
+                local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+                ApplyVisuals(btn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.1 })
                 if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(btn) end
             end
         elseif ApplyVisuals then
-            ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+            local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
+            ApplyVisuals(btn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
         end
         
         -- Apply highlight effect (safe check for Factory)
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        if ns.UI_ApplyNavButtonHighlight then
+            ns.UI_ApplyNavButtonHighlight(btn)
+        elseif ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
             ns.UI.Factory:ApplyHighlight(btn)
         end
         
@@ -2616,8 +2955,14 @@ function WarbandNexus:CreateMainWindow()
                 tabIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
         end
+        tabIcon._wnNavPackagedIcon = usedPackagedIcon or nil
+        tabIcon._wnNavRailIcon = railLayout or nil
+        if ns.UI_ApplyNavTabIconStyle then
+            ns.UI_ApplyNavTabIconStyle(tabIcon, false, { packaged = usedPackagedIcon, rail = railLayout })
+        end
 
         local label = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabLabel"), "OVERLAY")
+        label._wnNavLabel = true
         local countReserve = shellIco.TAB_COUNT_RESERVE or 28
         if railLayout then
             label:SetPoint("LEFT", tabIcon, "RIGHT", iconGap, 0)
@@ -2726,12 +3071,26 @@ function WarbandNexus:CreateMainWindow()
         WireMainNavTabButtonUX(settingsBtn, settingsTooltip, (ns.L and ns.L["SETTINGS_TAB_SUBTITLE"]) or nil)
         f.tabButtons.settings = settingsBtn
 
+        local settingsAboutSep = f.navRailFooter:CreateTexture(nil, "ARTWORK")
+        settingsAboutSep:SetHeight(sepH)
+        settingsAboutSep:SetPoint("LEFT", f.navRailFooter, "LEFT", RAIL_PAD, 0)
+        settingsAboutSep:SetPoint("RIGHT", f.navRailFooter, "RIGHT", -RAIL_PAD, 0)
+        local gapAbove = math.floor(footerBtnGap * 0.5)
+        local gapBelow = footerBtnGap - gapAbove
+        settingsAboutSep:SetPoint("TOP", settingsBtn, "BOTTOM", 0, -gapAbove)
+        do
+            local sepCol = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
+                or (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.4, 1, 1 }
+            settingsAboutSep:SetColorTexture(sepCol[1], sepCol[2], sepCol[3], sepCol[4] or 1)
+        end
+        f._wnNavRailSettingsAboutSep = settingsAboutSep
+
         local aboutLabel = TAB_LABELS.about
         local aboutTooltip = (ns.L and ns.L["SETTINGS_PANEL_ABOUT_DESC"]) or "Credits, contributors, and a guide to every tab."
         local aboutBtn = CreateTabButton(f.navRailFooter, aboutLabel, "about")
         aboutBtn:ClearAllPoints()
-        aboutBtn:SetPoint("TOPLEFT", settingsBtn, "BOTTOMLEFT", 0, -footerBtnGap)
-        aboutBtn:SetPoint("TOPRIGHT", settingsBtn, "BOTTOMRIGHT", 0, 0)
+        aboutBtn:SetPoint("TOPLEFT", settingsAboutSep, "BOTTOMLEFT", 0, -gapBelow)
+        aboutBtn:SetPoint("TOPRIGHT", settingsAboutSep, "BOTTOMRIGHT", 0, 0)
         aboutBtn:SetHeight(RAIL_TAB_H)
         f.navAboutBtn = aboutBtn
         f.tabButtons.about = aboutBtn
@@ -2781,7 +3140,8 @@ function WarbandNexus:CreateMainWindow()
                     btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
                     btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
                 else
-                    btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                    local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
+                    btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
                     btn:SetBackdropBorderColor(accentColor[1] * 0.8, accentColor[2] * 0.8, accentColor[3] * 0.8, 1)
                 end
             end
@@ -2998,6 +3358,8 @@ function WarbandNexus:CreateMainWindow()
     local shellRefresh = {
         pendingPopulateTimer = nil,
         pendingPopulateSkipCooldown = false,
+        pendingPopulateTab = nil,
+        bypassQuietForSync = false,
         populateDebounceGen = 0,
         lastEventPopulateTime = 0,
         gearItemInfoCoalesceGen = 0,
@@ -3014,7 +3376,7 @@ function WarbandNexus:CreateMainWindow()
     -- firing for the same loot event. Does NOT affect direct PopulateContent calls (tab switch, resize).
     -- Profession events (concentration, knowledge, recipe) use skipCooldown so updates always show.
     -- GET_ITEM_INFO_RECEIVED / metadata warm-up can storm while the client resolves many links; throttle gear repaints.
-    local MAIN_TAB_DEBOUNCED_QUIET = 0.45  -- Same-tab debounced populate after main-tab switch (see _wnLastMainTabSwitch*)
+    local MAIN_TAB_DEBOUNCED_QUIET = SHELL_TAB_SWITCH_POPULATE_QUIET
     local GEAR_ASYNC_ITEM_REPAINT_INTERVAL = 0.55
     local gearAsyncItemRepaintNext = 0
     -- Blizzard can fire GET_ITEM_INFO_RECEIVED many times per frame burst; never sync-redraw per event.
@@ -3106,6 +3468,11 @@ function WarbandNexus:CreateMainWindow()
         shellRefresh.pendingPopulateTimer = nil
         if myGen ~= shellRefresh.populateDebounceGen then return end
         if not f or not f:IsShown() then return end
+        local scheduledTab = shellRefresh.pendingPopulateTab
+        shellRefresh.pendingPopulateTab = nil
+        if scheduledTab and f.currentTab ~= scheduledTab then
+            return
+        end
         if ns.UI_IsMainFrameResizeSession and ns.UI_IsMainFrameResizeSession(f) then
             f._wnDeferredPopulateAfterResize = true
             return
@@ -3114,6 +3481,8 @@ function WarbandNexus:CreateMainWindow()
         -- which dropped GET_ITEM_INFO_RECEIVED / ITEM_METADATA repaints for the entire storage defer window.
         local useSkip = shellRefresh.pendingPopulateSkipCooldown
         shellRefresh.pendingPopulateSkipCooldown = false
+        local bypassQuiet = shellRefresh.bypassQuietForSync == true
+        shellRefresh.bypassQuietForSync = false
         if f.currentTab == "gear" and IsGearTabPopulateQuiet() and not useSkip then
             return
         end
@@ -3136,8 +3505,16 @@ function WarbandNexus:CreateMainWindow()
                 return
             end
         end
-        if f._wnLastMainTabSwitchAt and f._wnLastMainTabSwitchKey == f.currentTab
+        if not bypassQuiet and f._wnLastMainTabSwitchAt and f._wnLastMainTabSwitchKey == f.currentTab
             and (GetTime() - f._wnLastMainTabSwitchAt) < MAIN_TAB_DEBOUNCED_QUIET then
+            local remain = MAIN_TAB_DEBOUNCED_QUIET - (GetTime() - f._wnLastMainTabSwitchAt) + 0.02
+            shellRefresh.pendingPopulateTab = f.currentTab
+            if useSkip then
+                shellRefresh.pendingPopulateSkipCooldown = true
+            end
+            shellRefresh.pendingPopulateTimer = C_Timer.NewTimer(remain, function()
+                RunDebouncedPopulateTimerBody(myGen)
+            end)
             return
         end
         local now = GetTime()
@@ -3146,6 +3523,7 @@ function WarbandNexus:CreateMainWindow()
             -- the last event of a burst. A newer SchedulePopulateContent bumps the gen and
             -- obsoletes this timer, so coalescing behavior is unchanged.
             local remain = POPULATE_COOLDOWN - (now - shellRefresh.lastEventPopulateTime) + 0.02
+            shellRefresh.pendingPopulateTab = f.currentTab
             shellRefresh.pendingPopulateTimer = C_Timer.NewTimer(remain, function()
                 RunDebouncedPopulateTimerBody(myGen)
             end)
@@ -3155,15 +3533,19 @@ function WarbandNexus:CreateMainWindow()
         local P = ns.Profiler
         local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "EventPopulate_debounced")
         if mlab then P:Start(mlab) end
-        WarbandNexus:PopulateContent()
+        WarbandNexus:PopulateContent(bypassQuiet == true)
         if mlab then P:Stop(mlab) end
     end
 
-    local function SchedulePopulateContent(skipCooldown)
+    local function SchedulePopulateContent(skipCooldown, opts)
         if not f or not f:IsShown() then return end
         if skipCooldown then
             shellRefresh.pendingPopulateSkipCooldown = true
         end
+        if opts and opts.bypassQuietForSync then
+            shellRefresh.bypassQuietForSync = true
+        end
+        shellRefresh.pendingPopulateTab = f.currentTab
         if shellRefresh.pendingPopulateTimer and shellRefresh.pendingPopulateTimer.Cancel then
             shellRefresh.pendingPopulateTimer:Cancel()
             shellRefresh.pendingPopulateTimer = nil
@@ -3193,11 +3575,10 @@ function WarbandNexus:CreateMainWindow()
         end
         shellRefresh.pendingPopulateTimer = nil
         shellRefresh.pendingPopulateSkipCooldown = false
+        shellRefresh.pendingPopulateTab = nil
+        shellRefresh.bypassQuietForSync = false
         shellRefresh.lastEventPopulateTime = GetTime()
-        if shellRefresh.gearStorageRecRefreshTimer and shellRefresh.gearStorageRecRefreshTimer.Cancel then
-            shellRefresh.gearStorageRecRefreshTimer:Cancel()
-        end
-        shellRefresh.gearStorageRecRefreshTimer = nil
+        CancelShellGearAsyncTimers(shellRefresh)
         if gearTabInvNarrowTimer and gearTabInvNarrowTimer.Cancel then
             gearTabInvNarrowTimer:Cancel()
         end
@@ -3213,10 +3594,9 @@ function WarbandNexus:CreateMainWindow()
         end
         shellRefresh.pendingPopulateTimer = nil
         shellRefresh.pendingPopulateSkipCooldown = false
-        if shellRefresh.gearStorageRecRefreshTimer and shellRefresh.gearStorageRecRefreshTimer.Cancel then
-            shellRefresh.gearStorageRecRefreshTimer:Cancel()
-        end
-        shellRefresh.gearStorageRecRefreshTimer = nil
+        shellRefresh.pendingPopulateTab = nil
+        shellRefresh.bypassQuietForSync = false
+        CancelShellGearAsyncTimers(shellRefresh)
         if gearTabInvNarrowTimer and gearTabInvNarrowTimer.Cancel then
             gearTabInvNarrowTimer:Cancel()
         end
@@ -3301,10 +3681,13 @@ function WarbandNexus:CreateMainWindow()
         footerTop:SetPoint("TOPLEFT", footerBar, "TOPLEFT", 0, 0)
         footerTop:SetPoint("TOPRIGHT", footerBar, "TOPRIGHT", 0, 0)
         if COLORS then
-            footerTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.28)
+            local footDiv = (ns.UI_GetFooterDividerColor and ns.UI_GetFooterDividerColor())
+                or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.28 }
+            footerTop:SetColorTexture(footDiv[1], footDiv[2], footDiv[3], footDiv[4] or 0.28)
         else
             footerTop:SetColorTexture(0.45, 0.25, 0.75, 0.35)
         end
+        f.footerTop = footerTop
 
         local metaVer = nil
         if C_AddOns and C_AddOns.GetAddOnMetadata then
@@ -3359,11 +3742,11 @@ function WarbandNexus:CreateMainWindow()
         end
         shellRefresh.pendingPopulateTimer = nil
         shellRefresh.pendingPopulateSkipCooldown = false
+        shellRefresh.pendingPopulateTab = nil
+        shellRefresh.bypassQuietForSync = false
         shellRefresh.populateDebounceGen = shellRefresh.populateDebounceGen + 1
-        if shellRefresh.gearStorageRecRefreshTimer and shellRefresh.gearStorageRecRefreshTimer.Cancel then
-            shellRefresh.gearStorageRecRefreshTimer:Cancel()
-        end
-        shellRefresh.gearStorageRecRefreshTimer = nil
+        CancelShellGearAsyncTimers(shellRefresh)
+        _recycleBinDrainGen = _recycleBinDrainGen + 1
         StopCustomDrag(self)
         SaveWindowGeometry(self)
         if ns.HideGearCharacterDropdown then
@@ -3406,7 +3789,8 @@ function WarbandNexus:CreateMainWindow()
 end
 
 -- POPULATE CONTENT
-local function PopulateContentBody(self)
+---@param forceRepaint boolean|nil When true, bypass same-tab/tab-switch-gen coalesce (tab switch, explicit UI gestures).
+local function PopulateContentBody(self, forceRepaint)
     if not mainFrame then return end
 
     local _wnProf = ns.Profiler
@@ -3461,6 +3845,25 @@ local function PopulateContentBody(self)
 
     local pendingPerfGen = IsTabPerfMonitorEnabled() and mainFrame._wnPerfTabSwitchPendingLog or nil
 
+    if ShouldSkipRedundantShellPopulate(mainFrame, forceRepaint == true) then
+        _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_coalesceSkip")
+        local Pco = ns.Profiler
+        if Pco and Pco.AppendTraceAnomaly then
+            Pco:AppendTraceAnomaly(format(
+                "[Trace] populate coalesced tab=%s gen=%s (%.2fs since switch)",
+                tostring(mainFrame.currentTab),
+                tostring(mainFrame._tabSwitchGen),
+                (GetTime() - (mainFrame._wnLastMainTabSwitchAt or GetTime()))))
+        end
+        if pendingPerfGen then
+            debugprofilestop()
+            mainFrame._wnPerfMainTabSwitch = nil
+            mainFrame._wnPerfTabSwitchPendingLog = nil
+        end
+        _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_coalesceSkip")
+        return
+    end
+
     local prevPopTab = mainFrame._prevPopulatedTab
     local isTabSwitch = (prevPopTab ~= mainFrame.currentTab)
     if mainFrame.currentTab ~= "professions" and WarbandNexus.HideProfessionColumnPicker then
@@ -3495,6 +3898,10 @@ local function PopulateContentBody(self)
             self:UpdateStatus()
             scrollChild:SetWidth(ComputeScrollChildWidth(mainFrame))
             _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_gearSigSkip")
+            local Pgs = ns.Profiler
+            if Pgs and Pgs.AppendTraceAnomaly then
+                Pgs:AppendTraceAnomaly("[Trace] gear populate unchanged (sig skip)")
+            end
             if pendingPerfGen then
                 debugprofilestop()
                 mainFrame._wnPerfMainTabSwitch = nil
@@ -3507,18 +3914,7 @@ local function PopulateContentBody(self)
 
     mainFrame._prevPopulatedTab = mainFrame.currentTab
 
-    -- Gear prefix timing: anchor after gear sig gate so we do not attribute Pop_clearVLM / Pop_gearSigCompute
-    -- to "before DrawGearTab". Uses debugprofilestop deltas only (no debugprofilestart — avoids resetting the
-    -- global profile clock while Profiler slices run). Same-tab roster changes typically hit full teardown here;
-    -- tab-switch path often sets _contentPreCleared and skips subtree release (lighter first paint).
-    local gearPopulatePrefixT0
-    do
-        local P = ns.Profiler
-        if mainFrame.currentTab == "gear" and P and P.AppendUserTraceLine
-            and ((P.IsUserTraceWindowShown and P:IsUserTraceWindowShown()) or IsTabPerfMonitorEnabled()) then
-            gearPopulatePrefixT0 = debugprofilestop()
-        end
-    end
+    -- GearUI FinishGearOpenTrace emits one summary line (verbose phases gated in GearUI).
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_teardownUI")
     mainFrame._pveMinScrollWidth = nil
@@ -3567,7 +3963,9 @@ local function PopulateContentBody(self)
     local wasPreCleared = isTabSwitch and mainFrame._contentPreCleared
     mainFrame._contentPreCleared = nil
 
-    if not wasPreCleared then
+    if wasPreCleared then
+        PurgeScrollChildLeaksAfterFastDetach(scrollChild)
+    elseif not wasPreCleared then
         -- Release nested pooled rows (single DFS per top-level child), then detach tab chrome to recycleBin.
         -- Avoid ReleaseAllPooledChildren(scrollChild): it Hide+ClearAllPoints every direct child (PvE section
         -- shells are huge) and dominated tab-switch hitches.
@@ -3595,6 +3993,8 @@ local function PopulateContentBody(self)
             end
             if child.isPersistentRowElement then
                 child:Hide()
+            elseif isTabSwitch and child._wnKeepOnTabSwitch then
+                DetachKeptScrollChildOnMainTabSwitch(child)
             elseif child._wnProfColumnHeaderStrip or not child._wnKeepOnTabSwitch then
                 if child._wnProfColumnHeaderStrip then
                     child._wnKeepOnTabSwitch = nil
@@ -3606,28 +4006,10 @@ local function PopulateContentBody(self)
     end
     _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_teardownUI")
 
-    -- Hide persistent gear frames when leaving their tab
-    if mainFrame.currentTab ~= "gear" then
-        if scrollChild._gearLoadingHost then scrollChild._gearLoadingHost:Hide() end
-        mainFrame._gearContentVeil = nil
-        if ns._gearPlayerModel then ns._gearPlayerModel:Hide() end
-        if ns._gearPortraitPanel then ns._gearPortraitPanel:Hide() end
-        if ns._gearNoPreviewFrame then ns._gearNoPreviewFrame:Hide() end
-        if ns._gearModelBorder then ns._gearModelBorder:Hide() end
-        if ns._gearIlvlFrame then ns._gearIlvlFrame:Hide() end
-        if ns._gearNameWrapper then ns._gearNameWrapper:Hide() end
+    if ns.UI_ParkScrollChildSharedHosts then
+        ns.UI_ParkScrollChildSharedHosts(scrollChild, mainFrame.currentTab)
     end
 
-    -- Profession column header strip is scrollChild-local; never keep visible on PvE/other tabs.
-    if mainFrame.currentTab ~= "professions" then
-        if ns.UI_HideProfessionColumnHeaderStrip then
-            ns.UI_HideProfessionColumnHeaderStrip(scrollChild)
-        elseif scrollChild._wnProfColHeaderRow then
-            scrollChild._wnProfColHeaderRow._wnKeepOnTabSwitch = nil
-            scrollChild._wnProfColHeaderRow:Hide()
-        end
-    end
-    
     -- Update status
     self:UpdateStatus()
     
@@ -3690,21 +4072,15 @@ local function PopulateContentBody(self)
         if isTabSwitch then
             mainFrame._wnGearSplitPaperDollNext = true
         end
-        local P = ns.Profiler
-        if gearPopulatePrefixT0 and P and P.AppendUserTraceLine then
-            P:AppendUserTraceLine(string.format(
-                "[WN Perf][GearOpen] PopulateContent teardown+hooks before DrawGearTab %.2fms (after gearSig gate; excl. Pop_clearVLM)",
-                debugprofilestop() - gearPopulatePrefixT0))
-        end
-        local tPop = (P and ((P.IsUserTraceWindowShown and P:IsUserTraceWindowShown())
-            or (ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()))) and debugprofilestop() or nil
         height = self:DrawGearTab(scrollChild)
-        if tPop and P and P.AppendUserTraceLine then
-            P:AppendUserTraceLine(string.format(
-                "[WN Perf][GearOpen] PopulateContent DrawGearTab call %.2fms (excludes pool/release before Pop_drawTab)",
-                debugprofilestop() - tPop))
-        end
     elseif tab == "collections" then
+        local cui = ns.CollectionsUI
+        if cui and cui.CollectionsSubTabTrace then
+            cui.CollectionsSubTabTrace("PopulateContent_DrawCollectionsTab", {
+                forceRepaint = forceRepaint and true or false,
+                isTabSwitch = isTabSwitch and true or false,
+            })
+        end
         height = self:DrawCollectionsTab(scrollChild)
     elseif tab == "plans" then
         height = self:DrawPlansTab(scrollChild)
@@ -3725,16 +4101,17 @@ local function PopulateContentBody(self)
     end
     _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_drawTab/" .. tostring(tab))
     height = tonumber(height) or 0
-    -- GetTime() has limited resolution: sub-ms DrawTab often logs as 0.0ms (noise). Only trace meaningful wall time.
-    local TRACE_DRAW_TAB_MIN_MS = 3
-    if drawPerfT0 then
+    -- DrawTab wall time: verbose detail only (main tab switch uses ScheduleTabSwitchPerfTrace).
+    if drawPerfT0 and not pendingPerfGen then
         local ms = (GetTime() - drawPerfT0) * 1000
-        if ms >= TRACE_DRAW_TAB_MIN_MS then
-            local P = ns.Profiler
-            if P and P.AppendUserTraceLine then
-                P:AppendUserTraceLine(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
-            elseif DebugPrint then
-                DebugPrint(format("[WN Perf] DrawTab %s %.1fms", tab, ms))
+        local Pdraw = ns.Profiler
+        local minMs = (Pdraw and Pdraw.TRACE_DRAW_TAB_MIN_MS) or 5
+        local anomalyMs = (Pdraw and Pdraw.TRACE_ANOMALY_MS) or 16.67
+        if ms >= minMs and Pdraw then
+            if Pdraw.IsTraceVerbose and Pdraw:IsTraceVerbose() then
+                Pdraw:AppendTraceVerbose(format("[Perf] DrawTab %s %.1fms", tab, ms))
+            elseif ms >= anomalyMs and Pdraw.EmitPerfSummary then
+                Pdraw:EmitPerfSummary("Perf", ms, format("DrawTab %s", tostring(tab)), { force = false })
             end
         end
     end
@@ -3852,56 +4229,23 @@ local function PopulateContentBody(self)
     self:UpdateTabCountBadges()
     _wnProfSliceStop(ns.Profiler.CAT.UI, "Pop_postLayout")
 
-    -- Dev-only: one-line main tab switch timing after deferred PopulateContent (see tab OnClick).
+    -- Dev-only: one-line main tab switch timing (~2 frames after populate for settle).
     if pendingPerfGen and IsTabPerfMonitorEnabled() then
         local perf = mainFrame._wnPerfMainTabSwitch
         local ok = perf and perf.gen == pendingPerfGen and perf.msClickToPoolEnd and perf.gen == mainFrame._tabSwitchGen
             and mainFrame.currentTab == perf.toTab
         if ok then
             local msPopulate = debugprofilestop()
-            local sumMs = perf.msClickToPoolEnd + msPopulate
-            local msg = format(
-                "[WN Perf] main tab %s → %s | click→pool=%.2fms pool→populate=%.2fms sum=%.2fms",
-                tostring(perf.fromTab),
-                tostring(perf.toTab),
-                perf.msClickToPoolEnd,
-                msPopulate,
-                sumMs
-            )
             local P = ns.Profiler
-            if P and P.AppendUserTraceLine then
-                P:AppendUserTraceLine(msg)
-            elseif DebugPrint then
-                DebugPrint(msg)
-            end
-            -- PopulateContent returns before deferred paint (Gear split paperdoll, Prof/PvE chunk rows, staged pool chain).
-            -- Log wall time ~2 frames later so hitch matches what you feel in-game.
-            local wallStart = perf.wallStart
-            local settleGen = perf.gen
-            local fromTab = perf.fromTab
-            local toTab = perf.toTab
-            if wallStart and C_Timer and C_Timer.After then
-                C_Timer.After(0, function()
-                    C_Timer.After(0, function()
-                        local mf = WarbandNexus.mainFrame
-                        if not mf or mf._tabSwitchGen ~= settleGen or mf.currentTab ~= toTab then return end
-                        local settleMs = (GetTime() - wallStart) * 1000
-                        local deferredMs = settleMs - sumMs
-                        if deferredMs < 1.5 then return end
-                        local settleMsg = format(
-                            "[WN Perf] main tab %s → %s | settle≈%.2fms (+%.2fms after populate — gear/chunk/staged paint)",
-                            tostring(fromTab),
-                            tostring(toTab),
-                            settleMs,
-                            deferredMs
-                        )
-                        if P and P.AppendUserTraceLine then
-                            P:AppendUserTraceLine(settleMsg)
-                        elseif DebugPrint then
-                            DebugPrint(settleMsg)
-                        end
-                    end)
-                end)
+            if P and P.ScheduleTabSwitchPerfTrace then
+                P:ScheduleTabSwitchPerfTrace({
+                    fromTab = perf.fromTab,
+                    toTab = perf.toTab,
+                    poolMs = perf.msClickToPoolEnd,
+                    populateMs = msPopulate,
+                    wallStart = perf.wallStart,
+                    gen = perf.gen,
+                })
             end
         else
             debugprofilestop()
@@ -3914,28 +4258,32 @@ local function PopulateContentBody(self)
         mainFrame._wnPerfTabSwitchPendingLog = nil
     end
 
+    MarkShellPopulateCompleted(mainFrame)
+
     -- Dev-only: unusually long PopulateContent (true infinite loops cannot be broken from Lua; this flags pathological hangs).
-    if IsDebugModeEnabled and IsDebugModeEnabled() and DebugPrint and populateWallStart then
+    if IsDebugModeEnabled and IsDebugModeEnabled() and populateWallStart then
         local wallMs = (GetTime() - populateWallStart) * 1000
         if wallMs > 400 then
-            DebugPrint(format(
-                "[WN UI] PopulateContent slow: %.0fms tab=%s (/wn profiler on | trace: Pop_* + DrawTab with /wn profiler tabperf on)",
-                wallMs,
-                tostring(mainFrame.currentTab)
-            ))
+            local Pslow = ns.Profiler
+            if Pslow and Pslow.AppendTraceAnomaly then
+                Pslow:AppendTraceAnomaly(format(
+                    "[Trace] PopulateContent slow %.0fms tab=%s",
+                    wallMs,
+                    tostring(mainFrame.currentTab)))
+            end
         end
     end
 end
 
-function WarbandNexus:PopulateContent()
+function WarbandNexus:PopulateContent(forceRepaint)
     local P = ns.Profiler
     if P and P.enabled then
         local lab = P.SliceLabel and P:SliceLabel(P.CAT.UI, "PopulateContent")
         if lab then
-            return P:Wrap(lab, PopulateContentBody, self)
+            return P:Wrap(lab, PopulateContentBody, self, forceRepaint)
         end
     end
-    return PopulateContentBody(self)
+    return PopulateContentBody(self, forceRepaint)
 end
 
 -- TAB COUNT BADGES
@@ -4010,7 +4358,12 @@ function WarbandNexus:DrawTrackingRequiredBanner(parent)
     title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
     title:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -2)
     title:SetJustifyH("LEFT")
-    title:SetTextColor(1, 0.55, 0.45)
+    if ns.UI_GetSemanticOrangeColor then
+        local wr, wg, wb = ns.UI_GetSemanticOrangeColor()
+        title:SetTextColor(wr, wg, wb)
+    else
+        title:SetTextColor(1, 0.55, 0.45)
+    end
     title:SetText((ns.L and ns.L["TRACKING_TAB_LOCKED_TITLE"]) or "Character is not tracked")
 
     local desc = GetFontManager():CreateFontString(card, GetFontManager():GetFontRole("trackingRequiredBannerBody"), "OVERLAY")
@@ -4077,9 +4430,13 @@ function WarbandNexus:UpdateStatus()
             end)
             badge:SetScript("OnEnter", function(b)
                 GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
-                GameTooltip:SetText(tooltipText or "", 1, 1, 1)
+                local tr, tg, tb = 1, 1, 1
+                if ns.UI_GetTooltipTitleColor then tr, tg, tb = ns.UI_GetTooltipTitleColor() end
+                GameTooltip:SetText(tooltipText or "", tr, tg, tb)
                 if tooltipHint then
-                    GameTooltip:AddLine(tooltipHint, 0.7, 0.7, 0.7, true)
+                    local hr, hg, hb = 0.7, 0.7, 0.7
+                    if ns.UI_GetTooltipDescColor then hr, hg, hb = ns.UI_GetTooltipDescColor() end
+                    GameTooltip:AddLine(tooltipHint, hr, hg, hb, true)
                 end
                 GameTooltip:Show()
             end)
@@ -4087,38 +4444,86 @@ function WarbandNexus:UpdateStatus()
         end
     end
 
+    local function StatusAccentRGB(kind)
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+            if kind == "positive" then
+                return ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor() or 0.14, 0.52, 0.24
+            end
+            return ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor() or 0.78, 0.18, 0.18
+        end
+        if kind == "positive" then
+            return 0.18, 0.88, 0.48
+        end
+        return 0.95, 0.42, 0.22
+    end
+
+    local function StatusTextRGB(kind)
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+            if kind == "bank" or kind == "tracked" then
+                return ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor() or 0.14, 0.52, 0.24
+            end
+            return ns.UI_GetSemanticOrangeColor and ns.UI_GetSemanticOrangeColor() or 0.72, 0.38, 0.06
+        end
+        if kind == "bank" then
+            return 0.75, 0.95, 0.82
+        elseif kind == "tracked" then
+            return 0.82, 0.98, 0.88
+        end
+        return 1, 0.72, 0.58
+    end
+
+    local function StatusIconRGB(kind)
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+            if kind == "positive" then
+                return ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor() or 0.14, 0.52, 0.24
+            end
+            return ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor() or 0.78, 0.18, 0.18
+        end
+        if kind == "positive" then
+            return 0.45, 1, 0.55
+        end
+        return 1, 0.55, 0.42
+    end
+
     if mainFrame.statusText then
         if isOpen then
             mainFrame.statusText:SetText(BadgeOneLine((ns.L and ns.L["TRACKING_BADGE_BANK"]) or "Bank is Active"))
-            mainFrame.statusText:SetTextColor(0.75, 0.95, 0.82)
+            local r, g, b = StatusTextRGB("bank")
+            mainFrame.statusText:SetTextColor(r, g, b)
         elseif isTracked then
             mainFrame.statusText:SetText(BadgeOneLine((ns.L and ns.L["TRACKING_BADGE_TRACKING"]) or "Tracking"))
-            mainFrame.statusText:SetTextColor(0.82, 0.98, 0.88)
+            local r, g, b = StatusTextRGB("tracked")
+            mainFrame.statusText:SetTextColor(r, g, b)
         else
             mainFrame.statusText:SetText(BadgeOneLine((ns.L and ns.L["TRACKING_BADGE_UNTRACKED"]) or "Not Tracking"))
-            mainFrame.statusText:SetTextColor(1, 0.72, 0.58)
+            local r, g, b = StatusTextRGB("untracked")
+            mainFrame.statusText:SetTextColor(r, g, b)
         end
     end
 
     if accent then
         if isOpen or isTracked then
-            accent:SetColorTexture(0.18, 0.88, 0.48, 1)
+            local r, g, b = StatusAccentRGB("positive")
+            accent:SetColorTexture(r, g, b, 1)
         else
-            accent:SetColorTexture(0.95, 0.42, 0.22, 1)
+            local r, g, b = StatusAccentRGB("negative")
+            accent:SetColorTexture(r, g, b, 1)
         end
     end
 
     if isOpen then
         if icon then
             pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
-            icon:SetVertexColor(0.45, 1, 0.55)
+            local r, g, b = StatusIconRGB("positive")
+            icon:SetVertexColor(r, g, b)
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["BANK_IS_ACTIVE"]) or "Bank is Active", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
     elseif isTracked then
         if icon then
             pcall(icon.SetAtlas, icon, "common-icon-checkmark", false)
-            icon:SetVertexColor(0.45, 1, 0.55)
+            local r, g, b = StatusIconRGB("positive")
+            icon:SetVertexColor(r, g, b)
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_ACTIVE_DESC"]) or "Data collection and updates are active.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to change tracking.")
@@ -4128,7 +4533,8 @@ function WarbandNexus:UpdateStatus()
             if not ok then
                 icon:SetTexture("Interface\\Icons\\Spell_Shadow_Teleport")
             end
-            icon:SetVertexColor(1, 0.55, 0.42)
+            local r, g, b = StatusIconRGB("negative")
+            icon:SetVertexColor(r, g, b)
             icon:Show()
         end
         SetClickAndTooltip((ns.L and ns.L["TRACKING_NOT_ENABLED_TOOLTIP"]) or "Character tracking is disabled.", (ns.L and ns.L["TRACKING_BADGE_CLICK_HINT"]) or "Click to enable tracking.")
@@ -4214,12 +4620,23 @@ end
 ---@param newScale number Scale value (0.6 - 1.5)
 function WarbandNexus:ApplyUIScale(newScale)
     if not mainFrame then return end
-    newScale = math.max(0.6, math.min(1.5, newScale or 1.0))
+    if ns.UI_GetAddonUIScale then
+        newScale = ns.UI_GetAddonUIScale()
+    else
+        newScale = math.max(0.6, math.min(1.5, newScale or 1.0))
+    end
+    if WarbandNexus.db and WarbandNexus.db.profile then
+        WarbandNexus.db.profile.uiScale = newScale
+    end
 
     -- Persist geometry before SetScale so width/height/anchor offsets snapshot pre-change layout.
     SaveWindowGeometry(mainFrame)
 
-    mainFrame:SetScale(newScale)
+    if ns.UI_ApplyAddonUIScaleToAll then
+        ns.UI_ApplyAddonUIScaleToAll()
+    else
+        mainFrame:SetScale(newScale)
+    end
 
     -- Re-clamp to screen after scale change (frame may have shifted off-screen)
     NormalizeFramePosition(mainFrame)
@@ -4312,6 +4729,8 @@ do
     local loadingOverlay
     local pollTicker
     local completedShown = false
+    local wasSyncComplete = false
+    local syncCompletePopulateFired = false
     local pollStartTime = 0
     local MAX_POLL_LIFETIME = 180 -- 3 minutes: covers late-confirm edge cases
     local wipe = table.wipe
@@ -4341,7 +4760,8 @@ do
             edgeSize = 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
-        bar:SetBackdropColor(0.06, 0.06, 0.09, 1)
+        local loadBarBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.06, 0.06, 0.09, 1 }
+        bar:SetBackdropColor(loadBarBg[1], loadBarBg[2], loadBarBg[3], loadBarBg[4] or 1)
         bar:SetBackdropBorderColor(0.2, 0.8, 0.3, 1)
         bar:Hide()
 
@@ -4377,7 +4797,11 @@ do
         loadText:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
         loadText:SetPoint("RIGHT", bar, "RIGHT", -55, 0)
         loadText:SetJustifyH("LEFT")
-        loadText:SetTextColor(0.3, 0.9, 0.4, 1)
+        if ns.UI_SetTextColorRole then
+            ns.UI_SetTextColorRole(loadText, "Bright")
+        else
+            loadText:SetTextColor(0.3, 0.9, 0.4, 1)
+        end
         loadText:SetWordWrap(false)
         bar.loadingText = loadText
 
@@ -4388,7 +4812,11 @@ do
             progText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         end
         progText:SetPoint("RIGHT", -8, 0)
-        progText:SetTextColor(0.3, 0.9, 0.4, 1)
+        if ns.UI_SetTextColorRole then
+            ns.UI_SetTextColorRole(progText, "Bright")
+        else
+            progText:SetTextColor(0.3, 0.9, 0.4, 1)
+        end
         bar.progressText = progText
 
         loadingOverlay = bar
@@ -4406,8 +4834,38 @@ do
         end
 
         local done, total = LT:GetProgress()
+        local isComplete = LT:IsComplete()
 
-        if LT:IsComplete() then
+        if not isComplete then
+            wasSyncComplete = false
+            syncCompletePopulateFired = false
+        elseif not wasSyncComplete and total > 0 and not syncCompletePopulateFired then
+            local mf = mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+            if mf and mf:IsShown() then
+                if ShouldSkipSyncCompletePopulate(mf) then
+                    syncCompletePopulateFired = true
+                else
+                    local shellSt = mf._shellRefreshState
+                    if shellSt then
+                        shellSt.bypassQuietForSync = true
+                    end
+                    local LC = ns.UI_LayoutCoordinator
+                    local sh = LC and LC._shell
+                    if sh and sh.schedulePopulateContent then
+                        sh.schedulePopulateContent(true)
+                        syncCompletePopulateFired = true
+                    elseif WarbandNexus.PopulateContent then
+                        WarbandNexus:PopulateContent(true)
+                        syncCompletePopulateFired = true
+                    end
+                end
+            end
+            wasSyncComplete = true
+        elseif isComplete then
+            wasSyncComplete = true
+        end
+
+        if isComplete then
             if bar:IsShown() and not completedShown then
                 completedShown = true
                 bar.loadingText:SetText((ns.L and ns.L["SYNCING_COMPLETE"]) or "Syncing complete!")

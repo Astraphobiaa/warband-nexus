@@ -134,7 +134,8 @@ function M.ApplyCategoryNavStates(parent, activeId)
     local freshColors = ns.UI_COLORS or COLORS
     local accentColor = freshColors.accent or COLORS.accent
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
-    local railActiveA = shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.52
+    local railActiveA = (ns.UI_GetNavRailActiveBgAlpha and ns.UI_GetNavRailActiveBgAlpha())
+        or shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.38
     local fm = FontManager
 
     for i = 1, #parent._wnSettingsNavButtons do
@@ -146,22 +147,24 @@ function M.ApplyCategoryNavStates(parent, activeId)
                 btn.active = true
                 if btn.label then
                     ns.UI_SetTextColorRole(btn.label, "Bright")
-                    local font, size = btn.label:GetFont()
-                    if font and size then
-                        btn.label:SetFont(font, size, "OUTLINE")
-                    elseif fm then
-                        fm:ApplyFont(btn.label, "body")
-                        font, size = btn.label:GetFont()
-                        if font and size then btn.label:SetFont(font, size, "OUTLINE") end
+                    if ns.UI_SetNavLabelFontStyle then
+                        ns.UI_SetNavLabelFontStyle(btn.label, true)
                     end
                 end
                 if btn.activeBar then btn.activeBar:SetAlpha(1) end
-                if btn.tabIcon then btn.tabIcon:SetVertexColor(1, 1, 1, 1) end
+                if btn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                    ns.UI_ApplyNavTabIconStyle(btn.tabIcon, true, { packaged = btn.tabIcon._wnNavPackagedIcon, rail = true })
+                end
                 if btn._wnRailTextMode and ns.UI_HideFrameBorderQuartet then
                     ns.UI_HideFrameBorderQuartet(btn)
                 end
                 if btn.SetBackdropColor then
-                    btn:SetBackdropColor(accentColor[1] * railActiveA, accentColor[2] * railActiveA, accentColor[3] * railActiveA, 0.98)
+                    local activeBg = ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop()
+                    if activeBg then
+                        btn:SetBackdropColor(activeBg[1], activeBg[2], activeBg[3], activeBg[4] or 0.98)
+                    else
+                        btn:SetBackdropColor(accentColor[1] * railActiveA, accentColor[2] * railActiveA, accentColor[3] * railActiveA, 0.98)
+                    end
                 end
                 if ns.UI_ApplyRailTabActiveVisuals then
                     ns.UI_ApplyRailTabActiveVisuals(btn, true, accentColor)
@@ -170,22 +173,22 @@ function M.ApplyCategoryNavStates(parent, activeId)
                 btn.active = false
                 if btn.label then
                     ns.UI_SetTextColorRole(btn.label, "Bright")
-                    local font, size = btn.label:GetFont()
-                    if font and size then
-                        btn.label:SetFont(font, size, "")
+                    if ns.UI_SetNavLabelFontStyle then
+                        ns.UI_SetNavLabelFontStyle(btn.label, false)
                     elseif fm then
                         fm:ApplyFont(btn.label, "body")
                     end
                 end
                 if btn.activeBar then btn.activeBar:SetAlpha(0) end
-                if btn.tabIcon then
-                    btn.tabIcon:SetVertexColor(0.88, 0.88, 0.92, 1)
+                if btn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                    ns.UI_ApplyNavTabIconStyle(btn.tabIcon, false, { packaged = btn.tabIcon._wnNavPackagedIcon, rail = true })
                 end
                 if btn._wnRailTextMode and ns.UI_HideFrameBorderQuartet then
                     ns.UI_HideFrameBorderQuartet(btn)
                 end
                 if btn.SetBackdropColor then
-                    btn:SetBackdropColor(0.08, 0.08, 0.10, 0.4)
+                    local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.4 }
+                    btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 0.4)
                 end
                 if ns.UI_ApplyRailTabActiveVisuals then
                     ns.UI_ApplyRailTabActiveVisuals(btn, false, accentColor)
@@ -208,13 +211,17 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
     local ac = COLORS.accent or { 0.6, 0.4, 1 }
 
     if ns.UI_ApplyBorderlessSurface then
-        ns.UI_ApplyBorderlessSurface(btn, { 0.08, 0.08, 0.10, 0.45 })
+        local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+        ns.UI_ApplyBorderlessSurface(btn, idle)
     elseif ApplyVisuals then
-        ApplyVisuals(btn, { 0.08, 0.08, 0.10, 0.45 }, { ac[1], ac[2], ac[3], 0.12 })
+        local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+        ApplyVisuals(btn, idle, { ac[1], ac[2], ac[3], 0.12 })
         if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(btn) end
     end
 
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+    if ns.UI_ApplyNavButtonHighlight then
+        ns.UI_ApplyNavButtonHighlight(btn)
+    elseif ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(btn)
     end
 
@@ -247,8 +254,14 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
             tabIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
     end
+    tabIcon._wnNavPackagedIcon = usedWnIcon or nil
+    tabIcon._wnNavRailIcon = true
+    if ns.UI_ApplyNavTabIconStyle then
+        ns.UI_ApplyNavTabIconStyle(tabIcon, false, { packaged = usedWnIcon, rail = true })
+    end
 
     local fs = FontManager:CreateFontString(btn, FontManager:GetFontRole("mainNavTabLabel"), "OVERLAY")
+    fs._wnNavLabel = true
     fs:SetPoint("LEFT", tabIcon, "RIGHT", iconGap, 0)
     fs:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
     fs:SetJustifyH("LEFT")
@@ -294,7 +307,8 @@ function M.BuildCategoryNav(parent, width, activeId, onSelect)
                 sep = parent:CreateTexture(nil, "ARTWORK")
                 btn._wnRailSepAbove = sep
             end
-            sep:SetColorTexture(ac[1], ac[2], ac[3], sepA)
+            local div = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or ac
+            sep:SetColorTexture(div[1], div[2], div[3], div[4] or 1)
             sep:SetHeight(sepH)
             sep:ClearAllPoints()
             sep:SetPoint("LEFT", parent, "LEFT", pad, 0)
@@ -353,4 +367,18 @@ function M.BuildCategoryNav(parent, width, activeId, onSelect)
     end
     parent:SetHeight(math.max(totalH, rowH + pad * 2))
     return parent:GetHeight() or totalH
+end
+
+--- Re-apply settings nav chrome after theme/accent refresh (no full settings rebuild).
+function M.RefreshThemeChrome()
+    local mf = _G.WarbandNexusFrame
+    local navCol = mf and mf._wnSettingsNavCol
+    if not navCol then return end
+    local navBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop())
+        or (ns.UI_COLORS and (ns.UI_COLORS.surfaceViewport or ns.UI_COLORS.bg))
+    if navBg and ns.UI_ApplyBorderlessSurface then
+        local railOpts = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and { surfaceTier = "surfaceViewport" } or { bgType = "bg" }
+        ns.UI_ApplyBorderlessSurface(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, railOpts)
+    end
+    M.ApplyCategoryNavStates(navCol, M.GetActivePanel())
 end

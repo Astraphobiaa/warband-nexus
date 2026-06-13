@@ -824,6 +824,11 @@ L["COLOR_CYAN"] = "Tema ciano"
 L["COLOR_CYAN_DESC"] = "Tema ciano brillante"
 L["USE_CLASS_COLOR_ACCENT"] = "Usa il colore classe come accento"
 L["USE_CLASS_COLOR_ACCENT_TOOLTIP"] = "Usa il colore classe del personaggio attuale per accenti, bordi e schede. Se non disponibile, usa il colore tema salvato."
+L["THEME_MODE"] = "Chiaro / Scuro"
+L["THEME_MODE_TOOLTIP"] = "Scegli una palette UI scura o chiara per pannelli, elenchi e testo. Si consiglia /reload affinche ogni pannello adotti i nuovi colori."
+L["THEME_MODE_DARK"] = "Scuro"
+L["THEME_MODE_LIGHT"] = "Chiaro"
+L["THEME_MODE_RELOAD_HINT"] = "Aspetto del tema modificato - /reload per applicarlo ovunque."
 
 -- Settings - Font
 L["FONT_FAMILY"] = "Famiglia carattere"

@@ -5,12 +5,39 @@
 ]]
 
 local _, ns = ...
+local FontManager = ns.FontManager
 local UI_SPACING = ns.UI_SPACING or {}
 local UI_LAYOUT = ns.UI_LAYOUT or UI_SPACING
 -- CHARACTER LIST SORT DROPDOWN (Reusable Icon Button)
 
 local activeSortDropdownMenu = nil
 local activePickMenu = nil
+
+local function ChromeBackdrop()
+    return ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.12, 0.12, 0.15, 1 }
+end
+
+local function ChromeHoverBackdrop()
+    return ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.15, 0.15, 0.15, 0.8 }
+end
+
+local function MenuShellBackdrop()
+    local c = ns.UI_COLORS
+    local row = c and (c.surfaceRowOdd or c.bg) or { 0.08, 0.08, 0.10, 0.98 }
+    return { row[1], row[2], row[3], row[4] or 0.98 }
+end
+
+local function MenuShellBorder()
+    local c = ns.UI_COLORS and ns.UI_COLORS.accent or { 0.5, 0.5, 0.5 }
+    return { c[1] * 0.6, c[2] * 0.6, c[3] * 0.6, 0.8 }
+end
+
+local function MutedIconVertex()
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        return 0.42, 0.42, 0.46, 1
+    end
+    return 0.58, 0.62, 0.72, 1
+end
 
 local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged)
     -- Symmetric Filter button: fixed size, icon + text centered as a group
@@ -19,21 +46,17 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
 
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+        ns.UI_ApplyVisuals(btn, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
     end
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(14, 14)
     icon:SetPoint("RIGHT", btn, "CENTER", -23, 0)  -- icon left of center; text centered
     icon:SetAtlas("uitools-icon-filter")
-    icon:SetVertexColor(0.8, 0.8, 0.8)
+    local miR, miG, miB, miA = MutedIconVertex()
+    icon:SetVertexColor(miR, miG, miB, miA)
 
-    local text = btn:CreateFontString(nil, "OVERLAY")
-    if ns.FontManager then
-        ns.FontManager:ApplyFont(text, "body")
-    else
-        text:SetFontObject("GameFontNormal")
-    end
+    local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
     text:SetPoint("CENTER", btn, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetText((ns.L and ns.L["FILTER_LABEL"]) or "Filter")
@@ -44,17 +67,18 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         icon:SetVertexColor(1, 1, 1)
         ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
+            ns.UI_ApplyVisuals(self, ChromeHoverBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
         end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText((ns.L and ns.L["SORT_BY_LABEL"]) or "Sort By:")
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(self)
-        icon:SetVertexColor(0.8, 0.8, 0.8)
+        local mr, mg, mb, ma = MutedIconVertex()
+        icon:SetVertexColor(mr, mg, mb, ma)
         ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+            ns.UI_ApplyVisuals(self, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
         end
         GameTooltip:Hide()
     end)
@@ -81,7 +105,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         local maxLabelW = 0
         do
             local measure = self:CreateFontString(nil, "OVERLAY")
-            if ns.FontManager then ns.FontManager:ApplyFont(measure, "body") else measure:SetFontObject("GameFontNormal") end
+            if ns.FontManager then FontManager:ApplyFont(measure, "body") end
             for j = 1, itemCount do
                 local label = sortOptions[j].label or ""
                 measure:SetText(label)
@@ -99,7 +123,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         menu:SetClampedToScreen(true)
         menu:SetWidth(menuWidth)
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(menu, {0.08, 0.08, 0.10, 0.98}, {ns.UI_COLORS.accent[1] * 0.6, ns.UI_COLORS.accent[2] * 0.6, ns.UI_COLORS.accent[3] * 0.6, 0.8})
+            ns.UI_ApplyVisuals(menu, MenuShellBackdrop(), MenuShellBorder())
         end
         activeSortDropdownMenu = menu
 
@@ -140,12 +164,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
                 textX = 8 + 16 + 6  -- left of radio + radio width + gap
             end
 
-            local optionText = optionBtn:CreateFontString(nil, "OVERLAY")
-            if ns.FontManager then
-                ns.FontManager:ApplyFont(optionText, "body")
-            else
-                optionText:SetFontObject("GameFontNormal")
-            end
+            local optionText = FontManager:CreateFontString(optionBtn, "body", "OVERLAY")
             if radio then
                 optionText:SetPoint("LEFT", radio, "RIGHT", 6, 0)
             else
@@ -262,14 +281,14 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     local btnWidth = 96
     local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+        ns.UI_ApplyVisuals(btn, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
     end
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(14, 14)
     icon:SetAtlas("uitools-icon-filter")
-    icon:SetVertexColor(0.8, 0.8, 0.8)
-    local text = btn:CreateFontString(nil, "OVERLAY")
-    if ns.FontManager then ns.FontManager:ApplyFont(text, "body") else text:SetFontObject("GameFontNormal") end
+    local miR, miG, miB, miA = MutedIconVertex()
+    icon:SetVertexColor(miR, miG, miB, miA)
+    local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
     text:SetPoint("CENTER", btn, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
     text:SetText((ns.L and ns.L["FILTER_LABEL"]) or "Filter")
@@ -283,7 +302,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     local function measureMaxLabelWidth(labels)
         local maxW = 0
         local measure = btn:CreateFontString(nil, "OVERLAY")
-        if ns.FontManager then ns.FontManager:ApplyFont(measure, "body") else measure:SetFontObject("GameFontNormal") end
+        if ns.FontManager then FontManager:ApplyFont(measure, "body") end
         for i = 1, #labels do
             measure:SetText(labels[i] or "")
             local w = measure:GetStringWidth()
@@ -309,7 +328,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         sub:SetPoint("TOPLEFT", anchorMenu, "TOPRIGHT", 4, anchorYOffset or 0)
         sub:SetClampedToScreen(true)
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(sub, {0.08, 0.08, 0.10, 0.98}, {ns.UI_COLORS.accent[1] * 0.55, ns.UI_COLORS.accent[2] * 0.55, ns.UI_COLORS.accent[3] * 0.55, 0.85})
+            ns.UI_ApplyVisuals(sub, MenuShellBackdrop(), {ns.UI_COLORS.accent[1] * 0.55, ns.UI_COLORS.accent[2] * 0.55, ns.UI_COLORS.accent[3] * 0.55, 0.85})
         end
         btn._wnAdvSub = sub
         local bw = mw - sideMargin * 2
@@ -319,8 +338,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             optionBtn:SetPoint("TOPLEFT", sideMargin, -(i - 1) * itemHeight - 4)
             local isSel = row.selected == true
             local radio = (ns.UI_CreateThemedRadioButton and ns.UI_CreateThemedRadioButton(optionBtn, isSel)) or nil
-            local optionText = optionBtn:CreateFontString(nil, "OVERLAY")
-            if ns.FontManager then ns.FontManager:ApplyFont(optionText, "body") else optionText:SetFontObject("GameFontNormal") end
+            local optionText = FontManager:CreateFontString(optionBtn, "body", "OVERLAY")
             if radio then
                 radio:SetPoint("LEFT", 8, 0)
                 if radio.innerDot then radio.innerDot:SetShown(isSel) end
@@ -351,17 +369,18 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         icon:SetVertexColor(1, 1, 1)
         ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
+            ns.UI_ApplyVisuals(self, ChromeHoverBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
         end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText((ns.L and ns.L["FILTER_MENU_TOOLTIP"]) or "Sort and filter which sections are visible.", 1, 1, 1)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(self)
-        icon:SetVertexColor(0.8, 0.8, 0.8)
+        local mr, mg, mb, ma = MutedIconVertex()
+        icon:SetVertexColor(mr, mg, mb, ma)
         ns.UI_SetTextColorRole(text, "Bright")
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+            ns.UI_ApplyVisuals(self, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
         end
         GameTooltip:Hide()
     end)
@@ -392,7 +411,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         root:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
         root:SetClampedToScreen(true)
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(root, {0.08, 0.08, 0.10, 0.98}, {ns.UI_COLORS.accent[1] * 0.6, ns.UI_COLORS.accent[2] * 0.6, ns.UI_COLORS.accent[3] * 0.6, 0.8})
+            ns.UI_ApplyVisuals(root, MenuShellBackdrop(), MenuShellBorder())
         end
         activeSortDropdownMenu = root
         btn._wnAdvRoot = root
@@ -403,8 +422,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
             rowBtn:SetPoint("TOPLEFT", sideMargin, -(index - 1) * itemHeight - 4)
             if ns.UI_ApplyVisuals then ns.UI_ApplyVisuals(rowBtn, {0.08, 0.08, 0.10, 0}, {0, 0, 0, 0}) end
             if ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(rowBtn) end
-            local fs = rowBtn:CreateFontString(nil, "OVERLAY")
-            if ns.FontManager then ns.FontManager:ApplyFont(fs, "body") else fs:SetFontObject("GameFontNormal") end
+            local fs = FontManager:CreateFontString(rowBtn, "body", "OVERLAY")
             fs:SetPoint("LEFT", 10, 0)
             fs:SetJustifyH("LEFT")
             ns.UI_SetTextColorRole(fs, "Bright")
@@ -511,7 +529,7 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
     local mw = math.max(220, 40 + sideMargin * 2 + (function()
         local maxW = 0
         local measure = anchorFrame:CreateFontString(nil, "OVERLAY")
-        if ns.FontManager then ns.FontManager:ApplyFont(measure, "body") else measure:SetFontObject("GameFontNormal") end
+        if ns.FontManager then FontManager:ApplyFont(measure, "body") end
         for j = 1, #labels do
             measure:SetText(labels[j])
             local w = measure:GetStringWidth()
@@ -535,7 +553,7 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
     menu:SetPoint("TOPLEFT", anchorFrame, "BOTTOMRIGHT", 4, -2)
     menu:SetClampedToScreen(true)
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(menu, {0.08, 0.08, 0.10, 0.98}, {ns.UI_COLORS.accent[1] * 0.55, ns.UI_COLORS.accent[2] * 0.55, ns.UI_COLORS.accent[3] * 0.55, 0.85})
+        ns.UI_ApplyVisuals(menu, MenuShellBackdrop(), {ns.UI_COLORS.accent[1] * 0.55, ns.UI_COLORS.accent[2] * 0.55, ns.UI_COLORS.accent[3] * 0.55, 0.85})
     end
     local bw = mw - sideMargin * 2
     local y = 4
@@ -545,13 +563,12 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
             local bar = CreateFrame("Frame", nil, menu)
             bar:SetSize(bw, itemHeight - 6)
             bar:SetPoint("TOPLEFT", sideMargin, -y)
-            local fs = bar:CreateFontString(nil, "OVERLAY")
-            if ns.FontManager then ns.FontManager:ApplyFont(fs, "tabSubtitle") else fs:SetFontObject("GameFontNormalSmall") end
+            local fs = FontManager:CreateFontString(bar, FontManager:GetFontRole("tabSubtitle"), "OVERLAY")
             fs:SetPoint("LEFT", 0, 0)
             fs:SetWidth(bw)
             fs:SetJustifyH("LEFT")
             fs:SetText(r.label or "")
-            fs:SetTextColor(0.58, 0.62, 0.72)
+            ns.UI_SetTextColorRole(fs, "Muted")
             y = y + (itemHeight - 6)
         else
             local optionBtn = ns.UI.Factory:CreateButton(menu, bw, itemHeight, true)
@@ -560,8 +577,7 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
             if not r.noRadio then
                 radio = (ns.UI_CreateThemedRadioButton and ns.UI_CreateThemedRadioButton(optionBtn, r.selected)) or nil
             end
-            local optionText = optionBtn:CreateFontString(nil, "OVERLAY")
-            if ns.FontManager then ns.FontManager:ApplyFont(optionText, "body") else optionText:SetFontObject("GameFontNormal") end
+            local optionText = FontManager:CreateFontString(optionBtn, "body", "OVERLAY")
             if radio then
                 radio:SetPoint("LEFT", 8, 0)
                 if radio.innerDot then radio.innerDot:SetShown(r.selected) end

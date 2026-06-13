@@ -1910,6 +1910,17 @@ function WarbandNexus:OnGearEquipmentChanged(slotID)
     end)
 end
 
+---Cancel debounced gear scan and persist equipped gear on PLAYER_LOGOUT.
+function WarbandNexus:FlushGearCacheOnLogout()
+    if gearScanTimer then
+        gearScanTimer:Cancel()
+        gearScanTimer = nil
+    end
+    if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
+        self:ScanEquippedGear()
+    end
+end
+
 --- Get stored equipped gear for a tracked character.
 --- Caller must pass canonical key (Utilities:GetCanonicalCharacterKey / GetCharacterKey).
 ---@param charKey string Canonical character key ("Name-Realm", normalized)

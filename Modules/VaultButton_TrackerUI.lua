@@ -89,10 +89,11 @@ function M.BuildOptionsFrame()
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(f)
     elseif ApplyVisuals then
-        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+        ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
     else
         f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-        f:SetBackdropColor(0.02, 0.02, 0.03, 0.98)
+        local shell = GetShellBackdrop()
+        f:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 0.98)
     end
     f:Hide()
 
@@ -126,8 +127,9 @@ function M.BuildOptionsFrame()
 
     local close = VF:CreateButton(chrome, 28, 28, true)
     close:SetPoint("RIGHT", -8, 0)
+    local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
     if ApplyVisuals then
-        ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
+        ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
     end
     local closeIcon = close:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(16, 16)
@@ -141,7 +143,7 @@ function M.BuildOptionsFrame()
     end)
     close:SetScript("OnLeave", function()
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8}) end
+        if ApplyVisuals then ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
     end)
 
     CreateMenuCheckbox(f, "Show Realm Names", -52,

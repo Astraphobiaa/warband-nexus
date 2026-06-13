@@ -447,6 +447,15 @@ function WarbandNexus:OnPlanCollectionUpdated(event, ...)
     end)
 end
 
+---Run pending plan completion check on PLAYER_LOGOUT.
+function WarbandNexus:FlushPlansOnLogout()
+    if self.planCheckTimer then
+        self.planCheckTimer:Cancel()
+        self.planCheckTimer = nil
+        self:CheckPlansForCompletion()
+    end
+end
+
 
 --[[
     Rebuild list of plans that still need completion checks (not completed, not notified).

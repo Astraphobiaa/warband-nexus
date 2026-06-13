@@ -605,14 +605,16 @@ local function SummaryFieldsToColoredLines(fields)
     local lines = {}
     if not fields then return lines end
     local P = ns.PLAN_UI_COLORS or {}
-    local labCol = P.progressLabel or "|cffffcc00"
-    local body = P.incomplete or "|cffffffff"
+    local labCol = P.label or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+    local metricCol = P.metric or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
+    local body = P.incomplete or (ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor("body")) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
     for i = 1, #fields do
         local field = fields[i]
         if field and field.value and field.value ~= "" then
             local lab = NormalizeUiLabel(field.labelKey, field.fallback)
             local prefix = field.iconMarkup and (field.iconMarkup .. " ") or ""
-            lines[#lines + 1] = prefix .. labCol .. lab .. "|r " .. body .. field.value .. "|r"
+            local labelHex = (field.labelKey == "DESCRIPTION_LABEL") and metricCol or labCol
+            lines[#lines + 1] = prefix .. labelHex .. lab .. "|r " .. body .. field.value .. "|r"
         end
     end
     return lines

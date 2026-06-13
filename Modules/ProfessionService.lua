@@ -1918,6 +1918,19 @@ end
 
 -- EVENT HANDLERS
 
+local function RunAllProfessionCollectors()
+    if not WarbandNexus then return end
+    pcall(CollectConcentrationData)
+    pcall(CollectKnowledgeData)
+    pcall(CollectAllExpansionProfessions, true)
+    pcall(CollectRecipeSummaryData)
+    pcall(CollectMidnightKnowledgeProgressData)
+    pcall(CollectCooldownData)
+    pcall(CollectCraftingOrdersData)
+    pcall(CollectEquipmentDataForCurrentProfession)
+    pcall(CollectEquipmentByDetection)
+end
+
 --[[
     Called on TRADE_SKILL_SHOW (profession window opened).
     - Installs recipe hook (once)
@@ -1932,20 +1945,6 @@ function WarbandNexus:OnTradeSkillShow()
     
     -- Install hooks (once, deferred until frame exists)
     InstallRecipeHook()
-
-    -- Run all collectors; C_TradeSkillUI can be not ready immediately after TRADE_SKILL_SHOW
-    local function RunAllCollectors()
-        if not WarbandNexus then return end
-        pcall(CollectConcentrationData)
-        pcall(CollectKnowledgeData)
-        pcall(CollectAllExpansionProfessions, true)
-        pcall(CollectRecipeSummaryData)
-        pcall(CollectMidnightKnowledgeProgressData)
-        pcall(CollectCooldownData)
-        pcall(CollectCraftingOrdersData)
-        pcall(CollectEquipmentDataForCurrentProfession)
-        pcall(CollectEquipmentByDetection)
-    end
 
     local professionWindowBurstGen = 0
     local function EmitProfessionWindowDataUpdated()
@@ -1964,14 +1963,14 @@ function WarbandNexus:OnTradeSkillShow()
 
     -- First pass: 0.6s delay so IsTradeSkillReady / GetProfessionChildSkillLineID are ready
     C_Timer.After(0.6, function()
-        RunAllCollectors()
+        RunAllProfessionCollectors()
         EmitProfessionWindowDataUpdated()
     end)
 
     -- Retry pass: 1.2s so UI/list is fully populated (Concentration, Knowledge, etc. then refresh)
     C_Timer.After(1.2, function()
         if not WarbandNexus then return end
-        RunAllCollectors()
+        RunAllProfessionCollectors()
         EmitProfessionWindowDataUpdated()
     end)
 
@@ -3028,6 +3027,35 @@ function WarbandNexus:OnKnowledgeChanged()
             DebugPrint("[Knowledge] Real-time refresh triggered by spec change")
         end
     end)
+end
+
+---Flush debounced profession writes on PLAYER_LOGOUT (sync; no new C_Timer).
+function WarbandNexus:FlushProfessionOnLogout()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    if not IsCurrentCharacterTracked() then return end
+
+    local windowOpen = false
+    if C_TradeSkillUI and C_TradeSkillUI.IsTradeSkillReady then
+        local ok, ready = pcall(C_TradeSkillUI.IsTradeSkillReady)
+        windowOpen = ok and ready == true
+    end
+
+    local listPending = tradeSkillListUpdatePending
+    local knowledgePending = knowledgeRefreshPending
+    if not windowOpen and not listPending and not knowledgePending then return end
+
+    tradeSkillListUpdatePending = false
+    knowledgeRefreshPending = false
+
+    if windowOpen then
+        RunAllProfessionCollectors()
+    end
+
+    if knowledgePending then
+        pcall(function()
+            WarbandNexus:CollectKnowledgeOnLogin()
+        end)
+    end
 end
 
 --[[

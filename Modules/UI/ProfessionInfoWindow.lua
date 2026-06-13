@@ -24,6 +24,24 @@ end
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateButton = ns.UI_CreateButton
+local function RoleColor(role)
+    local c = COLORS["text" .. role] or COLORS.textNormal or { 0.85, 0.85, 0.85 }
+    return { c[1], c[2], c[3] }
+end
+local function SemanticGreen()
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        return { 0.22, 0.55, 0.32 }
+    end
+    return { 0.3, 0.9, 0.3 }
+end
+local function SemanticYellow()
+    local g = COLORS.gold or { 1, 0.82, 0 }
+    return { g[1], g[2], g[3] }
+end
+local function ChromeBorder(alpha)
+    alpha = alpha or 0.6
+    return { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], alpha }
+end
 local function GetFactory()
     return ns.UI and ns.UI.Factory
 end
@@ -57,24 +75,29 @@ local TREE_INDENT = 16                                    -- indentation per tre
 local TREE_CONNECTOR_WIDTH = 2                            -- width of tree branch lines
 local PROGRESS_BAR_HEIGHT = 12
 
--- Colors
-local LABEL_COLOR = { 0.7, 0.7, 0.7 }
-local VALUE_COLOR = { 1, 1, 1 }
-local GREEN = { 0.3, 0.9, 0.3 }
-local YELLOW = { 1, 0.82, 0 }
-local DIM = { 0.45, 0.45, 0.45 }
-local NODE_ALLOCATED = { 0.6, 0.85, 1 }
-local NODE_UNALLOCATED = { 0.4, 0.4, 0.4 }
-local NODE_MAXED_BG = { 0.12, 0.25, 0.12, 0.9 }
-local NODE_PARTIAL_BG = { 0.10, 0.18, 0.28, 0.9 }
-local NODE_EMPTY_BG = { 0.08, 0.08, 0.10, 0.7 }
-local NODE_MAXED_BORDER = { 0.3, 0.9, 0.3, 0.6 }
-local NODE_PARTIAL_BORDER = { 0.4, 0.7, 1, 0.5 }
-local NODE_EMPTY_BORDER = { 0.25, 0.25, 0.3, 0.4 }
+-- Semantic accents (resolved at call time via helpers above)
+
+local function NodeSurface(kind)
+    if kind == "maxed" then
+        local bg, border = ns.UI_GetSemanticPositiveCard and ns.UI_GetSemanticPositiveCard(false)
+        if bg then
+            return { bg[1], bg[2], bg[3], 0.9 }, { border[1], border[2], border[3], 0.6 }
+        end
+        local g = SemanticGreen()
+        return { g[1] * 0.4, g[2] * 0.4, g[3] * 0.4, 0.9 }, { g[1], g[2], g[3], 0.6 }
+    end
+    if kind == "partial" then
+        local surf = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("rowEven"))
+            or COLORS.surfaceRowEven or COLORS.bgLight
+        return { surf[1], surf[2], surf[3], 0.9 }, ChromeBorder(0.5)
+    end
+    local surf = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("rowOdd"))
+        or COLORS.surfaceRowOdd or COLORS.bg
+    local br = COLORS.border or { 0.25, 0.25, 0.3 }
+    return { surf[1], surf[2], surf[3], 0.7 }, { br[1], br[2], br[3], 0.4 }
+end
 
 local format = string.format
-
--- Singleton frame
 local infoFrame = nil
 
 -- POSITION / SIZE (db.global.professionInfo)
@@ -136,21 +159,24 @@ end
 -- HELPERS
 
 local function ColorText(text, color)
-    if not color then return "|cffffffff" .. tostring(text) .. "|r" end
+    if not color then
+    local hex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        return hex .. tostring(text) .. "|r"
+    end
     return format("|cff%02x%02x%02x%s|r", color[1]*255, color[2]*255, color[3]*255, tostring(text))
 end
 
 local function ValueMax(current, maximum, color)
-    if not current or not maximum or maximum <= 0 then return ColorText("--", LABEL_COLOR) end
-    color = color or VALUE_COLOR
+    if not current or not maximum or maximum <= 0 then return ColorText("--", RoleColor("Muted")) end
+    color = color or RoleColor("Bright")
     return ColorText(current, color) .. " / " .. ColorText(maximum, color)
 end
 
 local function ProgressColor(current, maximum)
-    if not current or not maximum or maximum <= 0 then return VALUE_COLOR end
-    if current >= maximum then return GREEN end
-    if current > 0 then return YELLOW end
-    return VALUE_COLOR
+    if not current or not maximum or maximum <= 0 then return RoleColor("Bright") end
+    if current >= maximum then return SemanticGreen() end
+    if current > 0 then return SemanticYellow() end
+    return RoleColor("Bright")
 end
 
 local function AccentHex()
@@ -204,7 +230,7 @@ local function AddSectionHeader(scrollChild, yOffset, text)
     local line = scrollChild:CreateTexture(nil, "ARTWORK")
     line:SetPoint("TOPLEFT", PADDING, -yOffset)
     line:SetSize(CONTENT_WIDTH, 1)
-    line:SetColorTexture(1, 1, 1, 0.1)
+    line:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35)
     yOffset = yOffset + 4
     return yOffset
 end
@@ -216,14 +242,14 @@ local function AddLine(scrollChild, yOffset, label, value, indent)
     lbl:SetWidth(LABEL_WIDTH - indent)
     lbl:SetJustifyH("LEFT")
     lbl:SetWordWrap(false)
-    lbl:SetText(ColorText(label, LABEL_COLOR))
+    lbl:SetText(ColorText(label, RoleColor("Muted")))
 
     local val = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
     val:SetPoint("TOPLEFT", PADDING + LABEL_WIDTH + 5, -yOffset)
     val:SetPoint("RIGHT", scrollChild, "RIGHT", -PADDING, 0)
     val:SetJustifyH("LEFT")
     val:SetWordWrap(false)
-    val:SetText(value or ColorText("--", LABEL_COLOR))
+    val:SetText(value or ColorText("--", RoleColor("Muted")))
 
     return yOffset + LINE_HEIGHT
 end
@@ -246,7 +272,7 @@ local function AddEmptyMessage(scrollChild, yOffset, message)
     msg:SetWidth(CONTENT_WIDTH)
     msg:SetJustifyH("CENTER")
     msg:SetWordWrap(true)
-    msg:SetText(ColorText(message, YELLOW))
+    msg:SetText(ColorText(message, SemanticYellow()))
     return yOffset + LINE_HEIGHT * 3
 end
 
@@ -262,7 +288,9 @@ local function AddProgressBar(scrollChild, yOffset, current, maximum, barColor, 
     local bg = scrollChild:CreateTexture(nil, "BACKGROUND")
     bg:SetPoint("TOPLEFT", barX, -yOffset)
     bg:SetSize(barWidth, PROGRESS_BAR_HEIGHT)
-    bg:SetColorTexture(0.06, 0.06, 0.08, 1)
+    local barBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("rowOdd"))
+        or COLORS.surfaceRowOdd or COLORS.bg
+    bg:SetColorTexture(barBg[1], barBg[2], barBg[3], barBg[4] or 1)
 
     -- Fill
     if maximum and maximum > 0 and current and current > 0 then
@@ -285,13 +313,13 @@ local function AddProgressBar(scrollChild, yOffset, current, maximum, barColor, 
         local line = scrollChild:CreateTexture(nil, "OVERLAY")
         line:SetPoint(edge[1], bg, edge[1], edge[5], edge[6])
         line:SetSize(edge[3], edge[4])
-        line:SetColorTexture(1, 1, 1, 0.1)
+        line:SetColorTexture(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35)
     end
 
     -- Text overlay
     local txt = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
     txt:SetPoint("CENTER", bg, "CENTER", 0, 0)
-    txt:SetText(ColorText(tostring(current or 0) .. " / " .. tostring(maximum or 0), VALUE_COLOR))
+    txt:SetText(ColorText(tostring(current or 0) .. " / " .. tostring(maximum or 0), RoleColor("Bright")))
 
     return yOffset + PROGRESS_BAR_HEIGHT + 4
 end
@@ -308,7 +336,9 @@ local function AddTabHeader(scrollChild, yOffset, tabName, isUnlocked, spentRank
     if isUnlocked then
         bg:SetColorTexture(COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 0.7)
     else
-        bg:SetColorTexture(0.08, 0.08, 0.10, 0.7)
+        local locked = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("rowOdd"))
+            or COLORS.surfaceRowOdd or COLORS.bg
+        bg:SetColorTexture(locked[1], locked[2], locked[3], 0.7)
     end
 
     -- Tab name
@@ -317,20 +347,22 @@ local function AddTabHeader(scrollChild, yOffset, tabName, isUnlocked, spentRank
     name:SetWidth(barWidth * 0.5)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
-    name:SetText(ColorText(tabName, isUnlocked and VALUE_COLOR or DIM))
+    name:SetText(ColorText(tabName, isUnlocked and RoleColor("Bright") or RoleColor("Dim")))
 
     -- Status badge
     local badge = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
     badge:SetPoint("RIGHT", bg, "RIGHT", -8, 0)
     badge:SetJustifyH("RIGHT")
     if isUnlocked then
-        local summaryStr = ColorText(allocatedNodes .. "/" .. totalNodes, NODE_ALLOCATED)
-            .. ColorText(" nodes  ", DIM)
-            .. ColorText(spentRanks .. "/" .. totalRanks, NODE_ALLOCATED)
-            .. ColorText(" pts", DIM)
+        local alloc = RoleColor("Bright")
+        local dim = RoleColor("Dim")
+        local summaryStr = ColorText(allocatedNodes .. "/" .. totalNodes, alloc)
+            .. ColorText(" nodes  ", dim)
+            .. ColorText(spentRanks .. "/" .. totalRanks, alloc)
+            .. ColorText(" pts", dim)
         badge:SetText(summaryStr)
     else
-        badge:SetText(ColorText((ns.L and ns.L["PROF_INFO_LOCKED"]) or "Locked", DIM))
+        badge:SetText(ColorText((ns.L and ns.L["PROF_INFO_LOCKED"]) or "Locked", RoleColor("Dim")))
     end
 
     -- Bottom border
@@ -467,13 +499,15 @@ local function AddTreeNodeRow(scrollChild, yOffset, node, depth, isLastInGroup, 
     local bg = scrollChild:CreateTexture(nil, "BACKGROUND")
     bg:SetPoint("TOPLEFT", indent, -yOffset)
     bg:SetSize(rowWidth, TREE_NODE_HEIGHT)
+    local nodeBg, nodeBorder
     if isMaxed then
-        bg:SetColorTexture(NODE_MAXED_BG[1], NODE_MAXED_BG[2], NODE_MAXED_BG[3], NODE_MAXED_BG[4])
+        nodeBg, nodeBorder = NodeSurface("maxed")
     elseif isAllocated then
-        bg:SetColorTexture(NODE_PARTIAL_BG[1], NODE_PARTIAL_BG[2], NODE_PARTIAL_BG[3], NODE_PARTIAL_BG[4])
+        nodeBg, nodeBorder = NodeSurface("partial")
     else
-        bg:SetColorTexture(NODE_EMPTY_BG[1], NODE_EMPTY_BG[2], NODE_EMPTY_BG[3], NODE_EMPTY_BG[4])
+        nodeBg, nodeBorder = NodeSurface("empty")
     end
+    bg:SetColorTexture(nodeBg[1], nodeBg[2], nodeBg[3], nodeBg[4])
 
     -- Tree branch connector (for depth > 0)
     if depth > 0 then
@@ -497,11 +531,14 @@ local function AddTreeNodeRow(scrollChild, yOffset, node, depth, isLastInGroup, 
     indicator:SetSize(3, TREE_NODE_HEIGHT - 4)
     indicator:SetPoint("LEFT", bg, "LEFT", 2, 0)
     if isMaxed then
-        indicator:SetColorTexture(GREEN[1], GREEN[2], GREEN[3], 0.9)
+        local g = SemanticGreen()
+        indicator:SetColorTexture(g[1], g[2], g[3], 0.9)
     elseif isAllocated then
-        indicator:SetColorTexture(NODE_ALLOCATED[1], NODE_ALLOCATED[2], NODE_ALLOCATED[3], 0.9)
+        local ac = COLORS.accent
+        indicator:SetColorTexture(ac[1], ac[2], ac[3], 0.9)
     else
-        indicator:SetColorTexture(NODE_UNALLOCATED[1], NODE_UNALLOCATED[2], NODE_UNALLOCATED[3], 0.5)
+        local dim = RoleColor("Dim")
+        indicator:SetColorTexture(dim[1], dim[2], dim[3], 0.5)
     end
 
     -- Node name
@@ -510,18 +547,18 @@ local function AddTreeNodeRow(scrollChild, yOffset, node, depth, isLastInGroup, 
     nameText:SetWidth(rowWidth - 55)
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
-    local nameColor = isMaxed and VALUE_COLOR or (isAllocated and NODE_ALLOCATED or DIM)
+    local nameColor = isMaxed and RoleColor("Bright") or (isAllocated and RoleColor("Bright") or RoleColor("Dim"))
     nameText:SetText(ColorText(node.name or "?", nameColor))
 
     -- Rank badge
     local rankText = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
     rankText:SetPoint("RIGHT", bg, "RIGHT", -6, 0)
     rankText:SetJustifyH("RIGHT")
-    local rankColor = isMaxed and GREEN or (isAllocated and YELLOW or DIM)
+    local rankColor = isMaxed and SemanticGreen() or (isAllocated and SemanticYellow() or RoleColor("Dim"))
     rankText:SetText(ColorText(currentRank .. "/" .. maxRanks, rankColor))
 
     -- Subtle border
-    local borderColor = isMaxed and NODE_MAXED_BORDER or (isAllocated and NODE_PARTIAL_BORDER or NODE_EMPTY_BORDER)
+    local borderColor = nodeBorder
     local treeRowEdges = {
         { "TOPLEFT", rowWidth, 1 },
         { "BOTTOMLEFT", rowWidth, 1 },
@@ -713,7 +750,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                 if current < concMax and WarbandNexus.GetConcentrationTimeToFull then
                     local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concData)
                     if tsOk and ts and ts ~= "" and ts ~= "Full" then
-                        yOffset = AddLine(scrollChild, yOffset, (ns.L and ns.L["RECHARGE"]) or "Recharge", ColorText(ts, YELLOW), 10)
+                        yOffset = AddLine(scrollChild, yOffset, (ns.L and ns.L["RECHARGE"]) or "Recharge", ColorText(ts, SemanticYellow()), 10)
                     end
                 end
             end
@@ -738,7 +775,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                 yOffset = AddProgressBar(scrollChild, yOffset, current, maxPts, barColor, 10)
 
                 if unspent > 0 then
-                    yOffset = AddLine(scrollChild, yOffset, (ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent", ColorText(unspent, YELLOW), 10)
+                    yOffset = AddLine(scrollChild, yOffset, (ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent", ColorText(unspent, SemanticYellow()), 10)
                 end
 
                 -- Specialization Tabs: only tab-level summary (spent/total pts), no inner node list
@@ -789,7 +826,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
             local item = eqData[slotKey]
             if item then
                 local iconStr = item.icon and format("|T%s:0|t ", tostring(item.icon)) or ""
-                yOffset = AddLine(scrollChild, yOffset, slotLabels[slotKey], iconStr .. ColorText(item.name or "Unknown", VALUE_COLOR))
+                yOffset = AddLine(scrollChild, yOffset, slotLabels[slotKey], iconStr .. ColorText(item.name or "Unknown", RoleColor("Bright")))
             end
         end
     end
@@ -828,8 +865,8 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                     for ri = 1, #sorted do
                         local recipe = sorted[ri]
                         local iconStr = recipe.icon and format("|T%s:14:14:0:0|t ", tostring(recipe.icon)) or ""
-                        local nameColor = recipe.learned and VALUE_COLOR or DIM
-                        local statusStr = recipe.learned and "" or ("  " .. ColorText("(" .. ((ns.L and ns.L["PROF_INFO_UNLEARNED"]) or "Unlearned") .. ")", DIM))
+                        local nameColor = recipe.learned and RoleColor("Bright") or RoleColor("Dim")
+                        local statusStr = recipe.learned and "" or ("  " .. ColorText("(" .. ((ns.L and ns.L["PROF_INFO_UNLEARNED"]) or "Unlearned") .. ")", RoleColor("Dim")))
                         yOffset = AddFullWidthLine(scrollChild, yOffset, iconStr .. ColorText(recipe.name or "?", nameColor) .. statusStr, 10)
                     end
                 end
@@ -892,12 +929,12 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                         local hours = math.floor(remaining / 3600)
                         local minutes = math.floor((remaining % 3600) / 60)
                         if hours > 0 then
-                            statusText = ColorText(format("%dh %dm", hours, minutes), YELLOW)
+                            statusText = ColorText(format("%dh %dm", hours, minutes), SemanticYellow())
                         else
-                            statusText = ColorText(format("%dm", math.max(1, minutes)), YELLOW)
+                            statusText = ColorText(format("%dm", math.max(1, minutes)), SemanticYellow())
                         end
                     else
-                        statusText = ColorText((ns.L and ns.L["PROF_INFO_READY"]) or "Ready", GREEN)
+                        statusText = ColorText((ns.L and ns.L["PROF_INFO_READY"]) or "Ready", SemanticGreen())
                     end
                     yOffset = AddLine(scrollChild, yOffset, iconStr .. (cd.recipeName or "Unknown"), statusText)
                 end
@@ -918,7 +955,7 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
         elseif elapsed < 86400 then timeStr = format("%dh ago", math.floor(elapsed / 3600))
         else timeStr = format("%dd ago", math.floor(elapsed / 86400))
         end
-        yOffset = AddLine(scrollChild, yOffset, (ns.L and ns.L["PROF_INFO_LAST_UPDATE"]) or "Last Updated", ColorText(timeStr, LABEL_COLOR))
+        yOffset = AddLine(scrollChild, yOffset, (ns.L and ns.L["PROF_INFO_LAST_UPDATE"]) or "Last Updated", ColorText(timeStr, RoleColor("Muted")))
     end
 
     scrollChild:SetHeight(yOffset + PADDING)
@@ -952,6 +989,12 @@ local function CreateInfoFrame()
     frame:SetClampedToScreen(true)
     RestoreProfInfoPosition(frame)
 
+    if ns.UI_RegisterScaledFrame then
+        ns.UI_RegisterScaledFrame(frame)
+    elseif ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(frame)
+    end
+
     -- WindowManager: standardized strata/level + ESC + combat hide
     if ns.WindowManager then
         ns.WindowManager:ApplyStrata(frame, ns.WindowManager.PRIORITY.FLOATING)
@@ -975,7 +1018,11 @@ local function CreateInfoFrame()
     header:SetPoint("TOPLEFT", PROF_CHROME_INSET, -PROF_CHROME_INSET)
     header:SetFrameLevel(frame:GetFrameLevel() + 10)
     if ApplyVisuals then
-        ApplyVisuals(header, {0.06, 0.06, 0.08, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
+        if ns.UI_ApplyFloatingWindowHeaderChrome then
+            ns.UI_ApplyFloatingWindowHeaderChrome(header)
+        else
+            ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, ChromeBorder(0.6))
+        end
     end
 
     -- Combat-safe, scale-correct drag handler
@@ -1006,7 +1053,8 @@ local function CreateInfoFrame()
     ns.UI_SetTextColorRole(frame.titleText, "Bright")
 
     -- Close button
-    local closeBtn = CreateButton(header, 24, 24, {0.12, 0.12, 0.14, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}, false)
+    local closeBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or COLORS.bgCard
+    local closeBtn = CreateButton(header, 24, 24, closeBg, ChromeBorder(0.6), false)
     closeBtn:SetPoint("RIGHT", -8, 0)
     local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(14, 14)
@@ -1152,4 +1200,30 @@ if WarbandNexus and WarbandNexus.RegisterMessage then
     WarbandNexus.RegisterMessage(ProfessionInfoEvents, E.PROFESSION_DATA_UPDATED, function(_, charKey)
         RefreshVisibleProfessionInfo(charKey)
     end)
+    WarbandNexus.RegisterMessage(ProfessionInfoEvents, E.FONT_CHANGED, function()
+        if ns.ProfessionInfoWindow and ns.ProfessionInfoWindow.RefreshTheme then
+            ns.ProfessionInfoWindow.RefreshTheme()
+        end
+    end)
+end
+
+ns.ProfessionInfoWindow = ns.ProfessionInfoWindow or {}
+function ns.ProfessionInfoWindow.RefreshTheme()
+    local frame = infoFrame
+    if not frame or not frame:IsShown() then return end
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    end
+    local header = frame._profInfoHeaderShell
+    if header then
+        if ns.UI_ApplyFloatingWindowHeaderChrome then
+            ns.UI_ApplyFloatingWindowHeaderChrome(header)
+        elseif ApplyVisuals then
+            ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, ChromeBorder(0.6))
+        end
+    end
+    if frame.titleText then
+        ns.UI_SetTextColorRole(frame.titleText, "Bright")
+    end
+    RefreshVisibleProfessionInfo(nil)
 end

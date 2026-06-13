@@ -2512,6 +2512,15 @@ function WarbandNexus:GetWarbandReputationSummary()
     return summary
 end
 
+---Cancel pending reputation UI refresh timers on PLAYER_LOGOUT (DB already persisted).
+function WarbandNexus:FlushReputationCacheOnLogout()
+    if ReputationCache.uiRefreshTimer then
+        ReputationCache.uiRefreshTimer:Cancel()
+        ReputationCache.uiRefreshTimer = nil
+    end
+    ReputationCache.pendingUIRefresh = false
+end
+
 -- EXPORT
 
 ns.ReputationCache = ReputationCache

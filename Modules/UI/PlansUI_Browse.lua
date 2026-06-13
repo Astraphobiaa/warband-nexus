@@ -28,6 +28,7 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
 local ReflowPlansCardLayout
 local TeardownPlansAchievementBrowse
+local DetachOwnedPlansInnerScroll
 local ProfileBool
 local PlansContentPadH
 local GetLayout
@@ -70,6 +71,7 @@ end
 function Browse.Install(addon, deps)
     ReflowPlansCardLayout = deps.ReflowPlansCardLayout
     TeardownPlansAchievementBrowse = deps.TeardownPlansAchievementBrowse
+    DetachOwnedPlansInnerScroll = deps.DetachOwnedPlansInnerScroll
     ProfileBool = deps.ProfileBool
     PlansContentPadH = deps.PlansContentPadH
     GetLayout = deps.GetLayout
@@ -214,7 +216,15 @@ end
 
 -- ACHIEVEMENTS BROWSE (To-Do ▸ Achievements) — Collections-parity virtual list + collapsible headers (AchievementBrowseVirtualList).
 
-local COLLECTED_COLOR_PLANS_ACH = "|cff33e533"
+local function GetCompletedBorderColor()
+    return (ns.UI_GetSemanticCompletedBorder and ns.UI_GetSemanticCompletedBorder())
+        or { 0.30, 0.90, 0.30, 0.8 }
+end
+
+local function GetCollectedNameColor()
+    return (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex())
+        or (ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.completed) or "|cff33e533"
+end
 local DEFAULT_ICON_PLANS_ACHIEVEMENT = "Interface\\Icons\\Achievement_General"
 
 function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, searchText)
@@ -490,7 +500,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             title = title .. " |cffffcc00(" .. ((ns.L and ns.L["PLANNED"]) or "Planned") .. ")|r"
         end
         local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""
-        local nameColor = ach.isCollected and COLLECTED_COLOR_PLANS_ACH or "|cffffffff"
+        local nameColor = ach.isCollected and GetCollectedNameColor() or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
         local labelText = nameColor .. title .. "|r" .. pointsStr
 
         local function IsTracked(id)
@@ -618,6 +628,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         searchText = searchText,
         drawGen = popGen,
         plansCategoryGen = catBodyGen,
+        chromeHostFrame = rootFrame,
         onListReady = function()
             if searchActive and mainScrollAch and mainScrollAch.SetVerticalScroll then
                 mainScrollAch:SetVerticalScroll(0)
@@ -868,7 +879,8 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         and self:ShouldShowTryCountInUI(category, item.id) and self.GetTryCount then
         local count = self:GetTryCount(category, item.id) or 0
         local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-        trySuffix = "|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r"
+        trySuffix = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r "
+            .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. tostring(count) .. "|r"
     end
 
     local summaryLines = ns.UI_BuildBrowseTodoSummaryLines and ns.UI_BuildBrowseTodoSummaryLines(item, category, sources, { maxLines = 2 }) or {}
@@ -950,7 +962,7 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
     if ApplyVisuals then
         local borderColor
         if item.isCollected or item.isPlanned then
-            borderColor = { 0.30, 0.90, 0.30, 0.8 }
+            borderColor = GetCompletedBorderColor()
         else
             borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
         end
@@ -1004,7 +1016,7 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
                 }
                 self:AddPlan(planData)
                 if ApplyVisuals then
-                    ApplyVisuals(row, COLORS.bgCard, { 0.30, 0.90, 0.30, 0.8 })
+                    ApplyVisuals(row, COLORS.bgCard, GetCompletedBorderColor())
                 end
                 btn:Hide()
                 local plannedBtn = PCF.CreateAddButton(row.headerFrame, {
@@ -1246,7 +1258,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         local helpDesc = FontManager:CreateFontString(helpCard, "small", "OVERLAY")
         helpDesc:SetPoint("TOP", helpText, "BOTTOM", 0, -8)
-        helpDesc:SetText("|cffffffff" .. ((ns.L and ns.L["RECIPE_BROWSER_DESC"]) or "Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.") .. "|r")
+        helpDesc:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. ((ns.L and ns.L["RECIPE_BROWSER_DESC"]) or "Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.") .. "|r")
         helpDesc:SetJustifyH("CENTER")
         helpDesc:SetWidth(width - 40)
         

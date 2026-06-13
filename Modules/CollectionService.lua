@@ -532,6 +532,15 @@ function WarbandNexus:SaveCollectionStore()
     DebugPrint("|cff00ff00[WN CollectionService]|r Saved collectionStore to DB")
 end
 
+---Cancel deferred collectionStore save and persist immediately on PLAYER_LOGOUT.
+function WarbandNexus:FlushCollectionStoreOnLogout()
+    if deferredStoreSaveTimer then
+        deferredStoreSaveTimer:Cancel()
+        deferredStoreSaveTimer = nil
+    end
+    self:SaveCollectionStore()
+end
+
 ---Save collection cache to DB (legacy — syncs collectionCache for backward compat; also saves collectionStore)
 ---Called after scan completion to avoid re-scanning on reload
 function WarbandNexus:SaveCollectionCache()
@@ -2004,7 +2013,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
                             if link and link ~= "" then itemLink = link end
                         end
                         if not itemLink then
-                            itemLink = "|cffffffff[" .. (name or "Mount") .. "]|r"
+                            itemLink = (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. "[" .. (name or "Mount") .. "]|r"
                         end
                         local L = ns.L
                         local fmt = (L and L["TRYCOUNTER_WHAT_A_GRIND"])

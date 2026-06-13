@@ -82,6 +82,25 @@ local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 
 local COLORS = ns.UI_COLORS
 
+local function ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function SemanticColorHex(color)
+    if not color then return ThemeTextHex("Bright") end
+    return format("|cff%02x%02x%02x", (color[1] or 1) * 255, (color[2] or 1) * 255, (color[3] or 1) * 255)
+end
+
+local function FormatParenBadge(innerColoredText)
+    local muted = ThemeTextHex("Muted")
+    return muted .. "(|r" .. innerColoredText .. muted .. ")|r"
+end
+
 -- Performance: Local function references
 local format = string.format
 local floor = math.floor
@@ -99,8 +118,6 @@ local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local BASE_INDENT = GetLayout().BASE_INDENT or 15
-local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 --- List row geometry: anchor chain (name â†” badge â†” amount) so columns never overlap (WN-UI-layout).
 local CURRENCY_LIST_ROW = {
@@ -123,10 +140,10 @@ local CURRENCY_LIST_ROW = {
 local function FormatCurrencyAmount(quantity, maxQuantity)
     if maxQuantity > 0 then
         local isCapped = quantity >= maxQuantity
-        local color = isCapped and "|cffff5959" or "|cff80ff80"
+        local color = isCapped and SemanticColorHex(COLORS.red) or SemanticColorHex(COLORS.green)
         return format("%s%s / %s|r", color, FormatNumber(quantity), FormatNumber(maxQuantity))
     else
-        return format("|cffffffff%s|r", FormatNumber(quantity))
+        return format("%s%s|r", ThemeTextHex("Bright"), FormatNumber(quantity))
     end
 end
 
@@ -165,15 +182,9 @@ end
 ---@param hideMax boolean Unused (kept for API compatibility)
 local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, rowWidth, hideMax)
     row:SetSize(rowWidth, ROW_HEIGHT)
-    -- Set alternating background colors (module-level ROW_COLOR_* â€” avoid GetLayout() per row)
-    local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
-    
-    if not row.bg then
-        row.bg = row:CreateTexture(nil, "BACKGROUND")
-        row.bg:SetAllPoints()
+    if ns.UI.Factory and ns.UI.Factory.ApplyRowBackground then
+        ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     end
-    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
-    row.bgColor = bgColor
 
     if row.keyBadge then
         row.keyBadge:Hide()
@@ -266,7 +277,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     if hasQuantity then
         ns.UI_SetTextColorRole(row.nameText, "Bright")
     else
-        row.nameText:SetTextColor(1, 1, 1, zeroAlpha)
+        ns.UI_SetTextColorRole(row.nameText, "Dim", zeroAlpha)
     end
     
     -- Character badge (Character-Specific section)
@@ -275,7 +286,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         if hasQuantity then
             ns.UI_SetTextColorRole(row.badgeText, "Bright")
         else
-            row.badgeText:SetTextColor(1, 1, 1, zeroAlpha)
+            ns.UI_SetTextColorRole(row.badgeText, "Dim", zeroAlpha)
         end
         row.badgeText:Show()
     end
@@ -312,7 +323,7 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     if usedSeasonProgressLine or hasQuantity then
         ns.UI_SetTextColorRole(row.amountText, "Bright")
     else
-        row.amountText:SetTextColor(1, 1, 1, zeroAlpha)
+        ns.UI_SetTextColorRole(row.amountText, "Dim", zeroAlpha)
     end
 
     -- Hover effect (use new tooltip system)
@@ -585,6 +596,19 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     return result
 end
 
+--- Leaf currency count for SearchStateManager (matches rendered header tree, not chars x currencies pre-scan).
+local function CountAggregatedCurrencyLeaves(headers)
+    if not headers then return 0 end
+    local n = 0
+    for i = 1, #headers do
+        local h = headers[i]
+        local currencies = h.currencies or {}
+        n = n + #currencies
+        n = n + CountAggregatedCurrencyLeaves(h.children)
+    end
+    return n
+end
+
 -- MAIN DRAW FUNCTION
 
 function WarbandNexus:DrawCurrencyList(container, width)
@@ -714,83 +738,16 @@ function WarbandNexus:DrawCurrencyList(container, width)
         self.db.profile.currencyExpanded[key] = isExpanded
     end
     
-    -- Merged currency snapshot (CurrencyCacheService; shared with Gear / PvE).
-    local globalCurrencies = self:GetCurrenciesForUI()
     -- Get headers from Direct DB (tree built by CurrencyCacheService v2.0)
     local globalHeaders = {}
     if self.db.global.currencyData and self.db.global.currencyData.headers then
         globalHeaders = self.db.global.currencyData.headers
     end
     
-    -- Search-only: currency rows here only carry name (no category); pre-filter IDs once instead of chars Ã— currencies Ã— string find.
-    local currencyIDsForCharScan = nil
-    if currencySearchText and currencySearchText ~= ""
-        and not (issecretvalue and issecretvalue(currencySearchText)) then
-        local stLower = SafeLower(currencySearchText)
-        currencyIDsForCharScan = {}
-        for currencyID, currData in pairs(globalCurrencies) do
-            local cname = currData and currData.name
-            if cname and not (issecretvalue and issecretvalue(cname)) then
-                if cname:lower():find(stLower, 1, true) then
-                    currencyIDsForCharScan[currencyID] = true
-                end
-            end
-        end
-    end
-    
-    -- Collect characters with currencies (drive empty-state + search count; main grid uses AggregateCurrencies + headers).
-    local charactersWithCurrencies = {}
-    local hasAnyData = false
-    
-    for ci = 1, #characters do
-        local char = characters[ci]
-        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
-            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
-            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
-        if not charKey then
-            -- Skip if canonical key unavailable (should not happen when Utilities loaded)
-        else
-            local isOnline = isCharKeyCurrentSession(charKey)
-            local matchingCurrencies = {}
-            for currencyID, currData in pairs(globalCurrencies) do
-                if currencyIDsForCharScan and not currencyIDsForCharScan[currencyID] then
-                    -- Already failed name search (matches AggregateCurrencies header path).
-                else
-                    local quantity = GetCurrencyCharQuantityFromSnapshot(currData, charKey)
-                    local currency = {
-                        name = currData.name,
-                        quantity = quantity,
-                        maxQuantity = currData.maxQuantity or 0,
-                        iconFileID = currData.icon,
-                    }
-                    local passesZeroFilter = showZero or (quantity > 0)
-                    if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
-                        table.insert(matchingCurrencies, { id = currencyID, data = currency })
-                    end
-                end
-            end
-            if #matchingCurrencies > 0 then
-                hasAnyData = true
-                table.insert(charactersWithCurrencies, {
-                    char = char,
-                    key = charKey,
-                    currencies = matchingCurrencies,
-                    currencyHeaders = globalHeaders,
-                    isOnline = isOnline,
-                    sortPriority = isOnline and 0 or 1,
-                })
-            end
-        end
-    end
-    
-    -- Sort (online first)
-    table.sort(charactersWithCurrencies, function(a, b)
-        if a.sortPriority ~= b.sortPriority then
-            return a.sortPriority < b.sortPriority
-        end
-        return (a.char.name or "") < (b.char.name or "")
-    end)
-    
+    -- Single aggregate pass drives empty-state + tree (avoids redundant chars x currencies pre-scan).
+    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
+    local hasAnyData = #aggregated.warbandTransferable > 0 or #aggregated.characterSpecific > 0
+
     if not hasAnyData then
         -- Check if this is a search result or general "no data" state
         if currencySearchText and currencySearchText ~= "" then
@@ -1023,8 +980,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
         RenderTree(headerDataList, bodyFrame, contentW, nil, rootCtx)
     end
 
-    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
-
     -- Section 1: Warband Transferable
     if #aggregated.warbandTransferable > 0 then
         local sectionKey = "currency-warband"
@@ -1166,7 +1121,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
                     bestCharacter.name or "",
                     bestRealm)
-                displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
+                displayData.characterName = FormatParenBadge(charName)
                 displayData.quantity = curr.quantity
                 displayData.viewCharKey = curr.bestCharacterKey
                 return displayData
@@ -1217,12 +1172,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
     )
     ChainTopFrame(noticeFrame, SECTION_SPACING * 2)
     
-    -- Update SearchStateManager with result count (track total rendered currencies)
-    local totalCurrencies = 0
-    for cwi = 1, #charactersWithCurrencies do
-        local charData = charactersWithCurrencies[cwi]
-        totalCurrencies = totalCurrencies + #(charData.currencies or {})
-    end
+    -- Update SearchStateManager with result count (leaf rows in rendered header tree).
+    local totalCurrencies = CountAggregatedCurrencyLeaves(aggregated.warbandTransferable)
+        + CountAggregatedCurrencyLeaves(aggregated.characterSpecific)
     SearchStateManager:UpdateResults("currency", totalCurrencies)
 
     SyncScrollMetrics()
@@ -1382,7 +1334,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local subtitle = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters"
     local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
-    subtitle = subtitle .. "  |cff666666\194\183|r  |cff888888" .. shiftHintText .. "|r"
+    subtitle = subtitle .. "  " .. ThemeTextHex("Dim") .. "\194\183|r  " .. ThemeTextHex("Muted") .. shiftHintText .. "|r"
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local currencyToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 118 }))
         or 118

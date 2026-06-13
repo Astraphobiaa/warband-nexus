@@ -192,10 +192,11 @@ function M.BuildTableFrame()
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(f)
     elseif ApplyVisuals then
-        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+        ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
     else
         f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-        f:SetBackdropColor(0.02, 0.02, 0.03, 0.98)
+        local shell = GetShellBackdrop()
+        f:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 0.98)
     end
     f:Hide()
 
@@ -233,10 +234,11 @@ function M.BuildTableFrame()
     S.title = title
 
     -- Close button (atlas style, matches main window)
+    local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
     local closeBtn = VF:CreateButton(chrome, 28, 28, true)
     closeBtn:SetPoint("RIGHT", -8, 0)
     if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
+        ApplyVisuals(closeBtn, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
     end
     local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(16, 16)
@@ -250,7 +252,7 @@ function M.BuildTableFrame()
     end)
     closeBtn:SetScript("OnLeave", function()
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8}) end
+        if ApplyVisuals then ApplyVisuals(closeBtn, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
     end)
 
     -- Settings (gear) button — opens options frame
@@ -265,11 +267,16 @@ function M.BuildTableFrame()
     local hRow = VF:CreateContainer(f, tableW - FRAME_PAD * 2, HEADER_H, false)
     hRow:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, headerY)
     if ApplyVisuals then
-        ApplyVisuals(hRow, {0.08, 0.08, 0.10, 1}, {COLORS.border and COLORS.border[1] or 0.20, COLORS.border and COLORS.border[2] or 0.20, COLORS.border and COLORS.border[3] or 0.25, 0.6})
+        local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+            or COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bg
+        local br = COLORS.border or accent
+        ApplyVisuals(hRow, hdr, { br[1], br[2], br[3], 0.6 })
     else
         local hBg = hRow:CreateTexture(nil, "BACKGROUND")
         hBg:SetAllPoints()
-        hBg:SetColorTexture(0.08, 0.08, 0.10, 1)
+        local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+            or COLORS.surfaceHeaderChrome or { 0.08, 0.08, 0.10, 1 }
+        hBg:SetColorTexture(hdr[1], hdr[2], hdr[3], hdr[4] or 1)
     end
 
     -- Header cells
@@ -311,7 +318,7 @@ function M.BuildTableFrame()
             fs:SetSize(w, HEADER_H)
             fs:SetJustifyH("CENTER")
             fs:SetJustifyV("MIDDLE")
-            fs:SetTextColor(0.8, 0.8, 1.0)
+            ns.UI_SetTextColorRole(fs, "Bright")
             fs:SetText(text)
         end
     end
@@ -348,7 +355,7 @@ function M.BuildTableFrame()
     sep:SetHeight(1)
     sep:SetPoint("TOPLEFT",  f, "TOPLEFT",  FRAME_PAD,  headerY - HEADER_H)
     sep:SetPoint("TOPRIGHT", f, "TOPRIGHT", -FRAME_PAD, headerY - HEADER_H)
-    sep:SetColorTexture(0.4, 0.3, 0.6, 0.6)
+    sep:SetColorTexture(accent[1], accent[2], accent[3], 0.55)
     S.separator = sep
 
     -- Scroll (factory-styled scrollbar; matches Saved Instances / main UI)
@@ -419,21 +426,26 @@ local RefreshTable = function()
     local vaultColumnDividerXs = BuildVaultTableColumnDividerXs(catDefs, columns)
     local colors = GetThemeColors()
     local accent = colors.accent or {0.40, 0.20, 0.58}
+    local borderC = colors.border or accent
+    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffd4af37"
+    local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
 
     for i, e in ipairs(list) do
         local row = VF:CreateContainer(content, tableW - FRAME_PAD * 2, ROW_H, false)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i-1)*ROW_H)
         row:EnableMouse(true)
 
-        -- Background
-        local bg = row:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        if e.isCurrent then
-            bg:SetColorTexture(accent[1] * 0.22, accent[2] * 0.22, accent[3] * 0.22, 1.0)
-        elseif i % 2 == 0 then
-            bg:SetColorTexture(0.08, 0.08, 0.11, 0.95)
+        if VF and VF.ApplyRowBackground then
+            VF:ApplyRowBackground(row, i)
         else
-            bg:SetColorTexture(0.05, 0.05, 0.08, 0.95)
+            local bg = row:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            local stripe = (i % 2 == 0) and (COLORS.surfaceRowEven or { 0.08, 0.08, 0.11, 0.95 })
+                or (COLORS.surfaceRowOdd or { 0.05, 0.05, 0.08, 0.95 })
+            bg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.95)
+        end
+        if VF and VF.ApplyOnlineCharacterHighlight then
+            VF:ApplyOnlineCharacterHighlight(row, e.isCurrent)
         end
 
         -- Hover highlight
@@ -458,7 +470,7 @@ local RefreshTable = function()
             rowSep:SetHeight(1)
             rowSep:SetPoint("TOPLEFT",  row, "TOPLEFT",  3, 0)
             rowSep:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
-            rowSep:SetColorTexture(0.2, 0.18, 0.28, 0.5)
+            rowSep:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.5)
         end
 
         -- Name
@@ -478,7 +490,7 @@ local RefreshTable = function()
         ilvlFS:SetJustifyH("CENTER")
         ilvlFS:SetJustifyV("MIDDLE")
         ilvlFS:SetText(e.itemLevel > 0
-            and ("|cffd4af37" .. string.format("%.0f", e.itemLevel) .. "|r")
+            and (goldHex .. string.format("%.0f", e.itemLevel) .. "|r")
             or  DASH)
         x = x + COL_ILVL
 
@@ -534,10 +546,10 @@ local RefreshTable = function()
             if not stash then
                 stashFS:SetText(DASH)
             elseif stash.unknown then
-                stashFS:SetText("|cffaaaaaa?/|r|cffd4af37" .. (stash.max or 4) .. "|r")
+                stashFS:SetText(mutedHex .. "?/|r" .. goldHex .. (stash.max or 4) .. "|r")
             else
                 local color = (stash.current or 0) >= (stash.max or 4) and "|cff44ff44" or "|cffd4af37"
-                stashFS:SetText(color .. (stash.current or 0) .. "|r|cffaaaaaa/|r|cffd4af37" .. (stash.max or 4) .. "|r")
+                stashFS:SetText(color .. (stash.current or 0) .. "|r" .. mutedHex .. "/|r" .. goldHex .. (stash.max or 4) .. "|r")
             end
             x = x + COL_STASH
         end
@@ -555,10 +567,10 @@ local RefreshTable = function()
             else
                 local sm = vc.seasonMax or 0
                 if sm > 0 then
-                    local capColor = vc.isCapped and "|cffdd3333" or "|cffd4af37"
-                    voidcoreFS:SetText(capColor .. vc.progress .. "|r|cffaaaaaa/|r|cffd4af37" .. sm .. "|r")
+                    local capColor = vc.isCapped and "|cffdd3333" or goldHex
+                    voidcoreFS:SetText(capColor .. vc.progress .. "|r" .. mutedHex .. "/|r" .. goldHex .. sm .. "|r")
                 else
-                    voidcoreFS:SetText("|cffd4af37" .. vc.quantity .. "|r")
+                    voidcoreFS:SetText(goldHex .. vc.quantity .. "|r")
                 end
             end
             x = x + COL_VOIDCORE
@@ -572,7 +584,7 @@ local RefreshTable = function()
             manafluxFS:SetJustifyH("CENTER")
             manafluxFS:SetJustifyV("MIDDLE")
             local mf = e.manaflux
-            manafluxFS:SetText(mf and ("|cffd4af37" .. (mf.quantity or 0) .. "|r") or DASH)
+            manafluxFS:SetText(mf and (goldHex .. (mf.quantity or 0) .. "|r") or DASH)
             x = x + COL_MANAFLUX
         end
 

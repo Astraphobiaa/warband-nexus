@@ -17,6 +17,53 @@ local Factory = ns.UI.Factory
 
 local issecretvalue = issecretvalue
 
+local function ControlChromeBg()
+    if ns.UI_GetControlChromeBackdrop then
+        return ns.UI_GetControlChromeBackdrop()
+    end
+    return COLORS and COLORS.bgCard or { 0.12, 0.12, 0.15, 1 }
+end
+
+local function ControlChromeHoverBg()
+    if ns.UI_GetControlChromeHoverBackdrop then
+        return ns.UI_GetControlChromeHoverBackdrop()
+    end
+    return COLORS and COLORS.surfaceRowEven or { 0.18, 0.18, 0.22, 1 }
+end
+
+local function HeaderRowBg()
+    local c = COLORS
+    return c and (c.surfaceHeaderChrome or c.bgCard) or { 0.08, 0.08, 0.10, 1 }
+end
+
+local function SemanticGoldRGB()
+    if ns.UI_GetSemanticGoldColor then
+        return ns.UI_GetSemanticGoldColor()
+    end
+    return 1, 0.9, 0.2, 1
+end
+
+local function SemanticGreenRGB()
+    if ns.UI_GetSemanticGreenColor then
+        return ns.UI_GetSemanticGreenColor()
+    end
+    return 0.35, 0.9, 0.45, 1
+end
+
+local function SemanticOrangeRGB()
+    if ns.UI_GetSemanticOrangeColor then
+        return ns.UI_GetSemanticOrangeColor()
+    end
+    return 1, 0.65, 0.25, 1
+end
+
+local function SemanticRedRGB()
+    if ns.UI_GetSemanticRedColor then
+        return ns.UI_GetSemanticRedColor()
+    end
+    return 1, 0.15, 0.15, 1
+end
+
 local ROW_INDENT = 10
 local SCROLL_BAR_W = 24
 local PADDING = 12
@@ -151,6 +198,8 @@ local function GetClassColorForEntry(entry, charKey)
         local c = RAID_CLASS_COLORS[classFile]
         return c.r, c.g, c.b, 1
     end
+    local c = COLORS and COLORS.textNormal
+    if c then return c[1], c[2], c[3], c[4] or 1 end
     return 0.85, 0.85, 0.9, 1
 end
 
@@ -225,9 +274,9 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local function setTabVisuals(btn, selected)
         if not ApplyVisuals then return end
         if selected then
-            ApplyVisuals(btn, {0.14, 0.12, 0.08, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
+            ApplyVisuals(btn, ControlChromeHoverBg(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
         else
-            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.5})
+            ApplyVisuals(btn, ControlChromeBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.5 })
         end
     end
 
@@ -282,7 +331,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local logHeaderRow = ns.UI.Factory:CreateContainer(logPanel, CONTENT_W, headerHeight)
     logHeaderRow:SetPoint("TOPLEFT", 0, 0)
     if ApplyVisuals then
-        ApplyVisuals(logHeaderRow, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
+        ApplyVisuals(logHeaderRow, HeaderRowBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
     end
 
     local logX = ROW_INDENT
@@ -343,7 +392,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local resetBtn = ns.UI.Factory:CreateButton(logFooter, 100, 28)
     resetBtn:SetPoint("LEFT", 0, 0)
     if ApplyVisuals then
-        ApplyVisuals(resetBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        ApplyVisuals(resetBtn, ControlChromeBg(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
     end
     if ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(resetBtn)
@@ -380,7 +429,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             local timeText = FontManager:CreateFontString(row, "body", "OVERLAY")
             timeText:SetPoint("LEFT", lx, 0)
             timeText:SetText(FormatTime(entry.timestamp))
-            timeText:SetTextColor(1, 0.9, 0.2, 1)
+            local tR, tG, tB, tA = SemanticGoldRGB()
+            timeText:SetTextColor(tR, tG, tB, tA)
             lx = lx + LOG_COL_TIME + LOG_COL_GAP
 
             local charText = FontManager:CreateFontString(row, "body", "OVERLAY")
@@ -396,10 +446,12 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             typeText:SetPoint("LEFT", lx, 0)
             if entry.type == "deposit" then
                 typeText:SetText((ns.L and ns.L["MONEY_LOGS_DEPOSIT"]) or "Deposit")
-                typeText:SetTextColor(0.35, 0.9, 0.45, 1)
+                local gR, gG, gB, gA = SemanticGreenRGB()
+                typeText:SetTextColor(gR, gG, gB, gA)
             else
                 typeText:SetText((ns.L and ns.L["MONEY_LOGS_WITHDRAW"]) or "Withdraw")
-                typeText:SetTextColor(1, 0.65, 0.25, 1)
+                local oR, oG, oB, oA = SemanticOrangeRGB()
+                typeText:SetTextColor(oR, oG, oB, oA)
             end
             lx = lx + LOG_COL_TYPE + LOG_COL_GAP
 
@@ -438,7 +490,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local contribHeaderRow = ns.UI.Factory:CreateContainer(contribPanel, SUM_TOTAL_W, headerHeight)
     contribHeaderRow:SetPoint("TOPLEFT", 0, 0)
     if ApplyVisuals then
-        ApplyVisuals(contribHeaderRow, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
+        ApplyVisuals(contribHeaderRow, HeaderRowBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8 })
     end
 
     -- Headers: Character (left) | Deposit | Withdraw | Net (centered over their columns)
@@ -518,7 +570,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
             -- Deposit G/S/C
             local dG, dS, dC = FormatMoneyParts(s.deposit)
-            local depColor = { 0.35, 0.9, 0.45, 1 }
+            local dr, dg, db, da = SemanticGreenRGB()
+            local depColor = { dr, dg, db, da }
             local x = ROW_INDENT + SUM_COL_CHAR + SUM_COL_GAP
             local depParts = { dG, dS, dC }
             local depWidths = { SUM_COL_G, SUM_COL_S, SUM_COL_C }
@@ -535,7 +588,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
             -- Withdraw G/S/C
             local wG, wS, wC = FormatMoneyParts(s.withdraw)
-            local withColor = { 1, 0.65, 0.25, 1 }
+            local wr, wg, wb, wa = SemanticOrangeRGB()
+            local withColor = { wr, wg, wb, wa }
             local withParts = { wG, wS, wC }
             local withWidths = { SUM_COL_G, SUM_COL_S, SUM_COL_C }
             for j = 1, 3 do
@@ -552,7 +606,13 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             -- Net G/S/C: green if positive, red if negative (plain text so SetTextColor applies)
             local netVal = s.net or 0
             -- Full green / full red, no in-between shades
-            local netColor = (netVal >= 0) and { 0.15, 1, 0.15, 1 } or { 1, 0.15, 0.15, 1 }
+            local nr, ng, nb, na
+            if netVal >= 0 then
+                nr, ng, nb, na = SemanticGreenRGB()
+            else
+                nr, ng, nb, na = SemanticRedRGB()
+            end
+            local netColor = { nr, ng, nb, na }
             local nG, nS, nC = FormatMoneyPartsSigned(netVal, true)
             local netParts = { nG, nS, nC }
             local netWidths = { SUM_COL_G, SUM_COL_S, SUM_COL_C }
@@ -624,6 +684,14 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     switchTab(dialog._moneyLogTab or "all")
     dialog:Show()
+end
+
+ns.CharacterBankMoneyLogPopup = ns.CharacterBankMoneyLogPopup or {}
+function ns.CharacterBankMoneyLogPopup.RefreshTheme()
+    local d = _G.WarbandNexus_CharacterBankMoneyLogPopup
+    if d and d:IsShown() and ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(d)
+    end
 end
 
 -- (Popup opens through WarbandNexus:ShowCharacterBankMoneyLogPopup — see ItemsUI.)

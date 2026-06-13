@@ -29,6 +29,17 @@ local FontManager = ns.FontManager  -- Centralized font management
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
 
+local function PveBrightHex()
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function PveMplusScoreColor500()
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        return PveBrightHex()
+    end
+    return "|cffffffff"
+end
+
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -67,17 +78,20 @@ local PVE_COL_SPACING = 4                        -- uniform baseline spacing for
 local PVE_KEY_TO_VAULT_GAP = 6                   -- currency block ↔ vault block
 local PVE_VAULT_CLUSTER_GAP = 6                  -- Raid | Dungeon | World internal spacing
 local PVE_COL_RIGHT_MARGIN = 6
-local PVE_DAWNCREST_COL_W = 112                  -- qty/max (R:rem)
-local PVE_COFFER_COL_W = 132
-local PVE_KEY_COL_W = 88
-local PVE_VAULT_COL_W = 72                       -- three 12px slot glyphs
-local PVE_VAULT_COL_ILVL_W = 106                -- completed slot iLvl text (e.g. 662)
-local PVE_VAULT_COL_PROGRESS_W = 108            -- glyphs + (3/8); Shift shows remaining only
-local PVE_VAULT_COL_REWARD_PROGRESS_W = 144     -- iLvl + progress suffix
-local PVE_BOUNTIFUL_COL_W = 58                   -- enough for "Bounty" label under icon
-local PVE_STATUS_COL_W    = 128                  -- enough for "N Slots Ready" values
-local PVE_VOIDCORE_COL_W = 72
-local PVE_MANAFLUX_COL_W = 72
+local PVE_COL_WIDTH_PAD = 6
+local PVE_COL_WIDTH_MIN = 28
+--- Floor widths (adaptive pass may grow per content).
+local PVE_DAWNCREST_COL_W = 48
+local PVE_COFFER_COL_W = 52
+local PVE_KEY_COL_W = 36
+local PVE_VAULT_COL_W = 54
+local PVE_VAULT_COL_ILVL_W = 68
+local PVE_VAULT_COL_PROGRESS_W = 72
+local PVE_VAULT_COL_REWARD_PROGRESS_W = 88
+local PVE_BOUNTIFUL_COL_W = 28
+local PVE_STATUS_COL_W = 64
+local PVE_VOIDCORE_COL_W = 40
+local PVE_MANAFLUX_COL_W = 40
 local PVE_VOIDCORE_ID = 3418
 local PVE_MANAFLUX_ID = 3378
 
@@ -95,6 +109,50 @@ local function GetLocalizedText(key, fallback)
         return value
     end
     return fallback
+end
+
+local PVE_COMPACT_CREST_BY_ID = {
+    [3383] = { text = GetLocalizedText("PVE_CREST_ADV", "Adventurer"), hex = "9d9d9d" },
+    [3341] = { text = GetLocalizedText("PVE_CREST_VET", "Veteran"), hex = "1eff00" },
+    [3343] = { text = GetLocalizedText("PVE_CREST_CHAMP", "Champion"), hex = "0070dd" },
+    [3345] = { text = GetLocalizedText("PVE_CREST_HERO", "Hero"), hex = "a335ee" },
+    [3347] = { text = GetLocalizedText("PVE_CREST_MYTH", "Myth"), hex = "ff8000" },
+}
+
+local function PvE_BuildCompactHeaderLabel(col)
+    if not col then return "", "ffffff" end
+    local rawLabel = col.headerLabel or col.tooltipTitle or ""
+    if not rawLabel or rawLabel == "" then return "", "ffffff" end
+    if issecretvalue and issecretvalue(rawLabel) then return "", "ffffff" end
+
+    local key = col.key or ""
+    if key == "coffer_shards" then
+        return GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), "ffffff"
+    elseif key == "restored_key" then
+        return GetLocalizedText("PVE_COMPACT_RESTORED", "Restored"), "ffffff"
+    elseif key == "voidcore" then
+        return GetLocalizedText("PVE_COMPACT_VOIDCORE", "Voidcore"), "ffffff"
+    elseif key == "manaflux" then
+        return GetLocalizedText("PVE_COMPACT_MANAFLUX", "Manaflux"), "ffffff"
+    elseif key == "slot1" then
+        return GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), "ffffff"
+    elseif key == "slot2" then
+        return GetLocalizedText("VAULT_DUNGEON", "Dungeon"), "ffffff"
+    elseif key == "slot3" then
+        return GetLocalizedText("VAULT_SLOT_WORLD", "World"), "ffffff"
+    elseif key == "bountiful" then
+        return GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"), "ffffff"
+    elseif key == "vault_status" then
+        return GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), "ffffff"
+    elseif key:match("^crest_") then
+        local crestID = tonumber(key:match("^crest_(%d+)$"))
+        if crestID and PVE_COMPACT_CREST_BY_ID[crestID] then
+            local entry = PVE_COMPACT_CREST_BY_ID[crestID]
+            return entry.text, entry.hex
+        end
+        return GetLocalizedText("PVE_CREST_GENERIC", "Crest"), "ffffff"
+    end
+    return "", "ffffff"
 end
 
 local function GetLowLevelHideThreshold(profile)
@@ -185,7 +243,16 @@ local _pveDrawPool = {
     measureFs = nil,
     headerLabels = {},
     inline = {}, -- [charKey] = { [colKey] = { fs = FontString, hit = Frame? } }
+    charRows = {}, -- [charKey] = { header, detail, expandIcon }
+    colHeaderRow = nil,
+    colHeaderHits = {}, -- [colKey] = hitFrame
+    columnLayout = { sig = nil, widths = {} },
+    columnDefsColSig = nil,
+    columnDefs = nil,
+    vaultTrackColW = nil,
+    sectionShells = {}, -- [expandKey] = { header, body }
 }
+local _pveVaultStatusScratch = {}
 
 local function PvE_EnsureDrawPoolHolder()
     local h = _pveDrawPool.holder
@@ -232,6 +299,22 @@ local function PvESyncPvEPools(rosterSig, colSig, currentKeySet, visibleColKeys)
             end
         end
         pool.rosterSig = rosterSig
+        local charRows = pool.charRows
+        if charRows then
+            for ck, row in pairs(charRows) do
+                if not currentKeySet[ck] then
+                    if row.header then
+                        row.header:Hide()
+                        row.header:SetParent(holder)
+                    end
+                    if row.detail then
+                        row.detail:Hide()
+                        row.detail:SetParent(holder)
+                    end
+                    charRows[ck] = nil
+                end
+            end
+        end
     end
     if pool.colSig ~= colSig then
         for colKey, fs in pairs(pool.headerLabels) do
@@ -261,6 +344,9 @@ local function PvESyncPvEPools(rosterSig, colSig, currentKeySet, visibleColKeys)
             end
         end
         pool.colSig = colSig
+        if pool.columnLayout then
+            pool.columnLayout.sig = nil
+        end
     end
 end
 
@@ -291,7 +377,7 @@ local function PvEAcquireColHeaderLabel(colHeaderRow, colKey, hitFrame, compactL
     local pool = _pveDrawPool
     local fs = pool.headerLabels[colKey]
     if not fs then
-        fs = FontManager:CreateFontString(colHeaderRow, "bodySmall", "OVERLAY")
+        fs = FontManager:CreateFontString(colHeaderRow, "small", "OVERLAY")
         pool.headerLabels[colKey] = fs
         fs._pvePooledHeaderLabel = true
     else
@@ -302,10 +388,448 @@ local function PvEAcquireColHeaderLabel(colHeaderRow, colKey, hitFrame, compactL
     fs:SetWidth(math.max(24, colWidth - 4))
     fs:SetJustifyH("CENTER")
     fs:SetWordWrap(false)
-    fs:SetText("|cff" .. (compactHex or "ffffff") .. compactLabel .. "|r")
-    fs:SetShadowOffset(1, -1)
-    fs:SetShadowColor(0, 0, 0, 0.9)
+    local hex = compactHex or "ffffff"
+    if hex == "ffffff" and ns.UI_GetTextRoleHex then
+        local roleHex = ns.UI_GetTextRoleHex("Bright")
+        hex = roleHex and roleHex:match("cff(%x%x%x%x%x%x)") or hex
+    end
+    fs:SetText("|cff" .. hex .. compactLabel .. "|r")
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        fs:SetShadowOffset(0, 0)
+    else
+        fs:SetShadowOffset(1, -1)
+        fs:SetShadowColor(0, 0, 0, 0.9)
+    end
     return fs
+end
+
+local function PvE_StripMarkupForMeasure(text)
+    if not text or text == "" then return "" end
+    local s = tostring(text)
+    s = s:gsub("|T.-|t", "@@@")
+    s = s:gsub("|A.-|a", "@@@")
+    s = s:gsub("|c%x%x%x%x%x%x%x", "")
+    s = s:gsub("|r", "")
+    return s
+end
+
+local function PvE_MeasurePlainWidth(fs, text)
+    if not fs then return 0 end
+    fs:SetText(PvE_StripMarkupForMeasure(text))
+    return fs:GetStringWidth() or 0
+end
+
+local function PvE_GetVaultStatusCached(addon, charKey)
+    if not addon or not charKey or not addon.GetVaultStatusForChar then return nil end
+    local hit = _pveVaultStatusScratch[charKey]
+    if hit ~= nil then
+        if hit == false then return nil end
+        return hit
+    end
+    local vs = addon:GetVaultStatusForChar(charKey)
+    _pveVaultStatusScratch[charKey] = vs or false
+    return vs
+end
+
+--- Grow each column width to fit header label + widest cell value across the roster.
+local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
+    if not columns or #columns == 0 or not ctx or not ctx.characters or #ctx.characters == 0 then return end
+    local bodyFs = PvE_GetDrawPoolMeasureFS()
+    local headerFs = _pveDrawPool.headerMeasureFs
+    if not headerFs then
+        headerFs = FontManager:CreateFontString(PvE_EnsureDrawPoolHolder(), "small", "OVERLAY")
+        headerFs:Hide()
+        _pveDrawPool.headerMeasureFs = headerFs
+    end
+    local addon = ctx.addon
+    local getKey = ctx.getCharKey
+    local formatSeasonShift = ctx.formatSeasonShift
+    local compactShift = ctx.compactShift ~= false
+    local buildCompactHeader = ctx.buildCompactHeader
+    local formatNum = ctx.formatNumber or FormatNumber
+    local emDash = ctx.emDash or "\226\128\148"
+    local iconSz = ctx.colIconSize or 24
+    local crests = ctx.crests or {}
+    local crestByKey = {}
+    for i = 1, #crests do
+        crestByKey["crest_" .. tostring(crests[i].id)] = crests[i].id
+    end
+
+    local function measureSeasonCell(cd)
+        if not cd or not formatSeasonShift then return 0 end
+        local wNormal = PvE_MeasurePlainWidth(bodyFs, formatSeasonShift(cd, false, compactShift))
+        local wShift = PvE_MeasurePlainWidth(bodyFs, formatSeasonShift(cd, true, compactShift))
+        return math.max(wNormal, wShift)
+    end
+
+    local function measureCell(col, charKey)
+        local key = col.key
+        if not addon or not charKey then return 0 end
+        if crestByKey[key] then
+            local cd = addon.GetCurrencyData and addon:GetCurrencyData(crestByKey[key], charKey)
+            if formatSeasonShift and cd then
+                return measureSeasonCell(cd)
+            end
+            local q = cd and cd.quantity or 0
+            return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
+        end
+        if key == "coffer_shards" and ctx.shardsId then
+            local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.shardsId, charKey)
+            if formatSeasonShift and cd then
+                return measureSeasonCell(cd)
+            end
+            local q = cd and cd.quantity or 0
+            return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
+        end
+        if key == "restored_key" and ctx.keyId then
+            local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.keyId, charKey)
+            local q = cd and cd.quantity or 0
+            return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
+        end
+        if key == "voidcore" and ctx.voidcoreId then
+            local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.voidcoreId, charKey)
+            local q = tonumber(cd and cd.quantity) or 0
+            return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
+        end
+        if key == "manaflux" and ctx.manafluxId then
+            local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.manafluxId, charKey)
+            local q = tonumber(cd and cd.quantity) or 0
+            return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
+        end
+        if key == "slot1" or key == "slot2" or key == "slot3" then
+            local pve = addon.GetPvEData and addon:GetPvEData(charKey) or {}
+            local acts = pve.vaultActivities or {}
+            local claim = false
+            local vs = PvE_GetVaultStatusCached(addon, charKey)
+            claim = vs and vs.isReady == true
+            local formatVault = ctx.formatVaultTrack
+            if formatVault then
+                local list, typeName, total
+                if key == "slot1" then
+                    list, typeName, total = acts.raids, "Raid", acts.raids and #acts.raids or 3
+                elseif key == "slot2" then
+                    list, typeName, total = acts.mythicPlus, "M+", acts.mythicPlus and #acts.mythicPlus or 3
+                else
+                    list, typeName, total = acts.world, "World", acts.world and #acts.world or 3
+                end
+                return PvE_MeasurePlainWidth(bodyFs, formatVault(list, total, typeName, claim, iconSz))
+            end
+        end
+        if key == "bountiful" then
+            return iconSz
+        end
+        if key == "vault_status" then
+            local vs = PvE_GetVaultStatusCached(ctx.addon, charKey)
+            if not vs then
+                return PvE_MeasurePlainWidth(bodyFs, emDash)
+            end
+            if vs.isReady then
+                return PvE_MeasurePlainWidth(bodyFs, GetLocalizedText("VAULT_READY_TO_CLAIM", "Ready to Claim"))
+            end
+            if (vs.readySlots or 0) > 0 then
+                local fmt = GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots")
+                return PvE_MeasurePlainWidth(bodyFs, fmt:format(tonumber(vs.readySlots) or 0))
+            end
+            return PvE_MeasurePlainWidth(bodyFs, GetLocalizedText("VAULT_PENDING", "Pending..."))
+        end
+        return 0
+    end
+
+    for ci = 1, #columns do
+        local col = columns[ci]
+        local maxW = PVE_COL_WIDTH_MIN
+        if buildCompactHeader then
+            local compactLabel = buildCompactHeader(col)
+            if compactLabel and compactLabel ~= "" then
+                maxW = math.max(maxW, PvE_MeasurePlainWidth(headerFs, compactLabel))
+            end
+        elseif col.headerLabel and col.headerLabel ~= "" then
+            maxW = math.max(maxW, PvE_MeasurePlainWidth(headerFs, col.headerLabel))
+        end
+        if col.icon or col.iconAtlas then
+            maxW = math.max(maxW, iconSz)
+        end
+        for chi = 1, #ctx.characters do
+            local ck = getKey and getKey(ctx.characters[chi])
+            if ck then
+                maxW = math.max(maxW, measureCell(col, ck))
+            end
+        end
+        col.width = math.max(PVE_COL_WIDTH_MIN, math.ceil(maxW) + PVE_COL_WIDTH_PAD)
+    end
+end
+
+local function PvE_BuildColumnLayoutSig(rosterSig, colSig, nameWidth, vbProfile)
+    local vb = vbProfile or {}
+    return table.concat({
+        rosterSig or "",
+        colSig or "",
+        tostring(nameWidth or 0),
+        vb.showRewardProgress and "1" or "0",
+        vb.showRewardItemLevel and "1" or "0",
+    }, "\2")
+end
+
+local function PvE_ApplyCachedColumnWidths(columns, layoutCache)
+    if not columns or not layoutCache or not layoutCache.widths then return false end
+    local widths = layoutCache.widths
+    for ci = 1, #columns do
+        local col = columns[ci]
+        local w = widths[col.key]
+        if w then
+            col.width = w
+        end
+    end
+    return true
+end
+
+local function PvE_SaveColumnLayoutCache(layoutCache, sig, columns)
+    if not layoutCache or not columns then return end
+    layoutCache.sig = sig
+    local widths = layoutCache.widths
+    for k in pairs(widths) do widths[k] = nil end
+    for ci = 1, #columns do
+        widths[columns[ci].key] = columns[ci].width
+    end
+end
+
+local COL_HEADER_HEIGHT_PVE = 48
+
+local function PveBuildToolbarDrawSig(profile)
+    if not profile then return "" end
+    local sortKey = (profile.pveSort and profile.pveSort.key) or "default"
+    local sortAsc = (profile.pveSort and profile.pveSort.ascending) and "1" or "0"
+    local sec = (profile.pveSectionFilter and profile.pveSectionFilter.sectionKey) or "all"
+    local ll = GetLowLevelHideThreshold(profile)
+    return table.concat({ sortKey, sortAsc, sec, tostring(ll) }, "\1")
+end
+
+local function PveOrderColumnKeysBySequence(keys, seq)
+    if not keys or #keys == 0 then return keys end
+    if not seq or #seq == 0 then return keys end
+    local keySet = {}
+    for i = 1, #keys do keySet[keys[i]] = true end
+    local ordered = {}
+    for si = 1, #seq do
+        local sk = seq[si]
+        if keySet[sk] then
+            ordered[#ordered + 1] = sk
+            keySet[sk] = nil
+        end
+    end
+    for i = 1, #keys do
+        local k = keys[i]
+        if keySet[k] then
+            ordered[#ordered + 1] = k
+            keySet[k] = nil
+        end
+    end
+    return ordered
+end
+
+--- One-time merge: legacy profile.pveVisibleColumns.{bountiful,voidcore,manaflux} -> vaultButton.columns
+local function MigrateLegacyPvEColumnsToVault(profile)
+    if not profile or not profile.pveVisibleColumns then return end
+    local ex = profile.pveVisibleColumns
+    if ex._vaultColumnMergeDone then return end
+    profile.vaultButton = profile.vaultButton or {}
+    local vb = profile.vaultButton
+    vb.columns = vb.columns or {}
+    local c = vb.columns
+    if ex.bountiful ~= nil then c.bounty = ex.bountiful ~= false end
+    if ex.voidcore ~= nil then c.voidcore = ex.voidcore ~= false end
+    if ex.manaflux ~= nil then
+        c.manaflux = ex.manaflux == true
+        vb.showManaflux = c.manaflux
+    end
+    ex._vaultColumnMergeDone = true
+end
+
+--- Defaults mirror Modules/VaultButton.lua GetSettings().columns
+local function EnsureVaultButtonColumnsForPvE(profile)
+    if not profile then return {} end
+    profile.vaultButton = profile.vaultButton or {}
+    local vb = profile.vaultButton
+    vb.columns = vb.columns or {}
+    local c = vb.columns
+    if c.raids == nil then c.raids = true end
+    if c.mythicPlus == nil then c.mythicPlus = true end
+    if c.world == nil then c.world = true end
+    if c.bounty == nil then c.bounty = true end
+    if c.voidcore == nil then c.voidcore = true end
+    if c.manaflux == nil then c.manaflux = vb.showManaflux == true end
+    if c.status == nil then c.status = true end  -- Vault status (Ready/Slots/Pending) on PvE tab
+    vb.showManaflux = c.manaflux == true
+    MigrateLegacyPvEColumnsToVault(profile)
+    return c
+end
+
+--- PvE-only inline columns (crests / coffer / restored key). Vault tracks share vaultButton.columns.
+local function EnsurePvEExtraVisibleColumns(profile)
+    if not profile then return {} end
+    profile.pveVisibleColumns = profile.pveVisibleColumns or {}
+    local ex = profile.pveVisibleColumns
+    MigrateLegacyPvEColumnsToVault(profile)
+    if ex.coffer_shards == nil then ex.coffer_shards = true end
+    if ex.restored_key == nil then ex.restored_key = true end
+    return ex
+end
+
+local function PveBuildFastRosterSig(addon, profile)
+    if not addon or not addon.GetAllCharacters then return "0" end
+    local allCharacters = addon:GetAllCharacters()
+    local minLevel = GetLowLevelHideThreshold(profile)
+    local parts = {}
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
+        local lvl = tonumber(char.level) or 0
+        if char.isTracked ~= false and (minLevel == 0 or lvl >= minLevel) then
+            local rk = (ns.PvEUI and ns.PvEUI.GetCanonicalKeyForChar and ns.PvEUI.GetCanonicalKeyForChar(char))
+                or (char._key or char.guid)
+            if rk then parts[#parts + 1] = rk end
+        end
+    end
+    table.sort(parts)
+    return tostring(#parts) .. "\0" .. table.concat(parts, "\1")
+end
+
+local function PveBuildSectionExpandSig(profile)
+    if not profile or not profile.ui then return "" end
+    local parts = {
+        (profile.ui.pveFavoritesExpanded == true) and "1" or "0",
+        (profile.ui.pveCharactersExpanded == true) and "1" or "0",
+    }
+    local cg = profile.characterGroupExpanded
+    if cg then
+        local gparts = {}
+        for k, v in pairs(cg) do
+            if v == true then gparts[#gparts + 1] = tostring(k) end
+        end
+        table.sort(gparts)
+        parts[#parts + 1] = table.concat(gparts, ",")
+    end
+    return table.concat(parts, "\1")
+end
+
+local function PveBuildFullDrawSig(addon, profile, rosterSig, colSig)
+    local vb = profile and profile.vaultButton or {}
+    return table.concat({
+        PveBuildToolbarDrawSig(profile),
+        colSig or "",
+        rosterSig or "",
+        PveBuildSectionExpandSig(profile),
+        (vb.showRewardProgress and "1" or "0"),
+        (vb.showRewardItemLevel and "1" or "0"),
+    }, "\2")
+end
+
+local function PveCopyColumnDefs(columns)
+    if not columns then return nil end
+    local copy = {}
+    for i = 1, #columns do
+        local c = columns[i]
+        copy[i] = {
+            key = c.key,
+            label = c.label,
+            width = c.width,
+            icon = c.icon,
+            iconAtlas = c.iconAtlas,
+            crestCurrencyId = c.crestCurrencyId,
+            tooltipTitle = c.tooltipTitle,
+            headerLabel = c.headerLabel,
+            headerIconIsAtlas = c.headerIconIsAtlas,
+        }
+    end
+    return copy
+end
+
+local function PveEstimateScrollBodyHeight(charCount, sectionCount)
+    local rows = tonumber(charCount) or 0
+    local secs = tonumber(sectionCount) or 3
+    local rowH = 46
+    local secH = 40
+    return COL_HEADER_HEIGHT_PVE + PVE_COLUMN_HEADER_PAD + secs * secH + rows * (rowH + 2) + 96
+end
+
+local function PveTeardownKeptBodyArtifacts(parent)
+    local pool = _pveDrawPool
+    local rb = ns.UI_RecycleBin
+    if pool.colHeaderRow then
+        pool.colHeaderRow._wnKeepOnTabSwitch = nil
+        pool.colHeaderRow:Hide()
+        if rb and pool.colHeaderRow.SetParent then
+            pool.colHeaderRow:SetParent(rb)
+        end
+    end
+    local shells = pool.sectionShells
+    if shells then
+        for _, sh in pairs(shells) do
+            if sh.header then
+                sh.header._wnKeepOnTabSwitch = nil
+                sh.header:Hide()
+                if rb and sh.header.SetParent then sh.header:SetParent(rb) end
+            end
+            if sh.body then
+                sh.body._wnKeepOnTabSwitch = nil
+                sh.body:Hide()
+                if rb and sh.body.SetParent then sh.body:SetParent(rb) end
+            end
+        end
+        for k in pairs(shells) do shells[k] = nil end
+    end
+    if parent then
+        parent._pveBodyReady = nil
+    end
+end
+
+--- Reposition cached PvE fixedHeader chrome (WN-PERF tab revisit).
+local function RepositionPveFixedHeader(mf, hdrCache, headerParent, chrome, headerYOffset, contentSide, scrollChild)
+    local titleCard = hdrCache.titleCard
+    titleCard:SetParent(headerParent)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:ClearAllPoints()
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    end
+    titleCard:Show()
+    if hdrCache.sortBtn then hdrCache.sortBtn:Show() end
+    if hdrCache.hideBtn then hdrCache.hideBtn:Show() end
+    if hdrCache.columnsBtn then hdrCache.columnsBtn:Show() end
+    if hdrCache.resetTimer then hdrCache.resetTimer:Show() end
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(scrollChild)
+    end
+    if ns.UI_AdvanceTabChromeYOffset then
+        return ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    end
+    return headerYOffset + (GetLayout().afterHeader or 72)
+end
+
+function ns.PvEUI.InvalidateBodyCache(parent)
+    PveTeardownKeptBodyArtifacts(parent)
+    if parent then
+        parent._pveDrawSig = nil
+        parent._pveLastBodyEstimate = nil
+    end
+end
+
+local PvEUI_DrawPvEProgressBody
+
+local function PvEAcquireCharRowFrames(rowHost, charKey)
+    local pool = _pveDrawPool
+    pool.charRows = pool.charRows or {}
+    local row = pool.charRows[charKey]
+    if row and row.header and row.detail then
+        row.header:SetParent(rowHost)
+        row.detail:SetParent(rowHost)
+        row.header:Show()
+        return row.header, row.detail, row.expandIcon, true
+    end
+    row = {}
+    pool.charRows[charKey] = row
+    return nil, nil, nil, false
 end
 
 local function PvEAcquireInlineCell(charHeader, charKey, colKey)
@@ -378,54 +902,6 @@ local function ResolvePveDelveCurrencyColumns(addon)
     end
 end
 
---- One-time merge: legacy profile.pveVisibleColumns.{bountiful,voidcore,manaflux} -> vaultButton.columns
-local function MigrateLegacyPvEColumnsToVault(profile)
-    if not profile or not profile.pveVisibleColumns then return end
-    local ex = profile.pveVisibleColumns
-    if ex._vaultColumnMergeDone then return end
-    profile.vaultButton = profile.vaultButton or {}
-    local vb = profile.vaultButton
-    vb.columns = vb.columns or {}
-    local c = vb.columns
-    if ex.bountiful ~= nil then c.bounty = ex.bountiful ~= false end
-    if ex.voidcore ~= nil then c.voidcore = ex.voidcore ~= false end
-    if ex.manaflux ~= nil then
-        c.manaflux = ex.manaflux == true
-        vb.showManaflux = c.manaflux
-    end
-    ex._vaultColumnMergeDone = true
-end
-
---- Defaults mirror Modules/VaultButton.lua GetSettings().columns
-local function EnsureVaultButtonColumnsForPvE(profile)
-    if not profile then return {} end
-    profile.vaultButton = profile.vaultButton or {}
-    local vb = profile.vaultButton
-    vb.columns = vb.columns or {}
-    local c = vb.columns
-    if c.raids == nil then c.raids = true end
-    if c.mythicPlus == nil then c.mythicPlus = true end
-    if c.world == nil then c.world = true end
-    if c.bounty == nil then c.bounty = true end
-    if c.voidcore == nil then c.voidcore = true end
-    if c.manaflux == nil then c.manaflux = vb.showManaflux == true end
-    if c.status == nil then c.status = true end  -- Vault status (Ready/Slots/Pending) on PvE tab
-    vb.showManaflux = c.manaflux == true
-    MigrateLegacyPvEColumnsToVault(profile)
-    return c
-end
-
---- PvE-only inline columns (crests / coffer / restored key). Vault tracks share vaultButton.columns.
-local function EnsurePvEExtraVisibleColumns(profile)
-    if not profile then return {} end
-    profile.pveVisibleColumns = profile.pveVisibleColumns or {}
-    local ex = profile.pveVisibleColumns
-    MigrateLegacyPvEColumnsToVault(profile)
-    if ex.coffer_shards == nil then ex.coffer_shards = true end
-    if ex.restored_key == nil then ex.restored_key = true end
-    return ex
-end
-
 local function GetPvEDefaultColumnKeyOrder(profile)
     local order = {}
     local crestDefs = GetPvEDawnCrestColumnDefinitions()
@@ -496,13 +972,44 @@ local function BuildPvEColumnKeySequence(profile)
     local vc = EnsureVaultButtonColumnsForPvE(profile)
     local ex = EnsurePvEExtraVisibleColumns(profile)
     local order = EnsurePvEColumnOrder(profile)
-    for oi = 1, #order do
-        local key = order[oi]
+    for i = 1, #order do
+        local key = order[i]
         if IsPvEInlineColumnKeyVisible(key, profile, vc, ex) then
             seq[#seq + 1] = key
         end
     end
     return seq
+end
+
+ns.PvEUI.BuildPvEColumnKeySequence = BuildPvEColumnKeySequence
+ns.PvEUI.IsPvEInlineColumnKeyVisible = IsPvEInlineColumnKeyVisible
+
+local function PveBuildStructureColSig(profile)
+    if not profile then return "" end
+    local PUI = ns.PvEUI
+    local ensureEx = PUI and PUI.EnsurePvEExtraVisibleColumns
+    local ensureVc = PUI and PUI.EnsureVaultButtonColumnsForPvE
+    local buildSeq = PUI and PUI.BuildPvEColumnKeySequence
+    if not ensureEx or not ensureVc or not buildSeq then return "" end
+    local ex = ensureEx(profile)
+    local vc = ensureVc(profile)
+    local keys = {}
+    local crests = GetPvEDawnCrestColumnDefinitions()
+    for i = 1, #crests do
+        local ck = "crest_" .. tostring(crests[i].id)
+        if ex[ck] ~= false then keys[#keys + 1] = ck end
+    end
+    if ex.coffer_shards ~= false then keys[#keys + 1] = "coffer_shards" end
+    if ex.restored_key ~= false then keys[#keys + 1] = "restored_key" end
+    if vc.voidcore ~= false then keys[#keys + 1] = "voidcore" end
+    if vc.manaflux == true then keys[#keys + 1] = "manaflux" end
+    if vc.raids ~= false then keys[#keys + 1] = "slot1" end
+    if vc.mythicPlus ~= false then keys[#keys + 1] = "slot2" end
+    if vc.world ~= false then keys[#keys + 1] = "slot3" end
+    if vc.bounty ~= false then keys[#keys + 1] = "bountiful" end
+    if vc.status ~= false then keys[#keys + 1] = "vault_status" end
+    keys = PveOrderColumnKeysBySequence(keys, buildSeq(profile))
+    return table.concat(keys, "\1")
 end
 
 local function PvE_GetGapAfterColumnKey(leftKey, visibleKeySet)
@@ -566,19 +1073,20 @@ function ns.ComputePvEMinScrollWidth(self)
     end
     local maxNameRealmWidth = 0
     local FM = ns.FontManager
-    if FM and #characters > 0 then
+    local measureNameW = ns.PvE_MeasureStackedNameColumnWidth
+    if FM and #characters > 0 and measureNameW then
         local tempMeasure = FM:CreateFontString(UIParent, "body", "OVERLAY")
         tempMeasure:Hide()
         for i = 1, #characters do
             local c = characters[i]
             local realmStr = ns.Utilities and ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
-            tempMeasure:SetText((c.name or "Unknown") .. "  -  " .. realmStr)
-            local w = tempMeasure:GetStringWidth()
-            if w and w > maxNameRealmWidth then maxNameRealmWidth = w end
+            local w = measureNameW(tempMeasure, c.name or "Unknown", realmStr)
+            if w > maxNameRealmWidth then maxNameRealmWidth = w end
         end
         tempMeasure:SetParent(nil)
     end
-    local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
+    local nameWidth = (ns.PvE_ResolveNameColumnWidth and ns.PvE_ResolveNameColumnWidth(maxNameRealmWidth))
+        or math.max(100, math.ceil(maxNameRealmWidth) + 4)
     local prefixW = (ns.PvE_ComputeCharacterRowPrefixToGoldPx and ns.PvE_ComputeCharacterRowPrefixToGoldPx(nameWidth)) or 400
     local tabSide = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN
     if not profile then return 2 * tabSide + prefixW + PVE_COL_RIGHT_MARGIN end
@@ -777,7 +1285,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             elseif totalScore >= 1000 then
                 scoreColor = "|cff1eff00"
             elseif totalScore >= 500 then
-                scoreColor = "|cffffffff"
+                scoreColor = PveMplusScoreColor500()
             else
                 scoreColor = "|cff9d9d9d"
             end
@@ -904,7 +1412,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                         elseif score >= 125 then
                             dScoreColor = "|cff1eff00"
                         elseif score >= 62 then
-                            dScoreColor = "|cffffffff"
+                            dScoreColor = PveMplusScoreColor500()
                         else
                             dScoreColor = "|cff9d9d9d"
                         end
@@ -937,7 +1445,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                                 })
                                 local scoreLabel = GetLocalizedText("VAULT_SCORE", "Score:")
                                 table.insert(tooltipLines, {
-                                    text = string.format("%s |cffffffff%s|r", scoreLabel, FormatNumber(dungeon.score or 0)),
+                                    text = string.format("%s %s%s|r", scoreLabel, PveBrightHex(), FormatNumber(dungeon.score or 0)),
                                     color = {0.9, 0.9, 0.9}
                                 })
                             else
@@ -991,7 +1499,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             local keystoneTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             keystoneTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + topColumnWidth / 2, -col1Y)
             local keystoneLabel = GetLocalizedText("KEYSTONE", "Keystone")
-            keystoneTitle:SetText("|cffffffff" .. keystoneLabel .. "|r")
+            keystoneTitle:SetText(PveBrightHex() .. keystoneLabel .. "|r")
             keystoneTitle:SetJustifyH("CENTER")
             
             local keystoneData = pveData and pveData.keystone
@@ -1051,7 +1559,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             local affixesTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             affixesTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col2X + topColumnWidth / 2, -col2Y)
             local affixesLabel = GetLocalizedText("AFFIXES", "Affixes")
-            affixesTitle:SetText("|cffffffff" .. affixesLabel .. "|r")
+            affixesTitle:SetText(PveBrightHex() .. affixesLabel .. "|r")
             affixesTitle:SetJustifyH("CENTER")
             
             local allPveData = self:GetPvEData()
@@ -1172,7 +1680,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 elseif ns.UI_FormatSeasonProgressCurrencyLine then
                     amountText:SetText(ns.UI_FormatSeasonProgressCurrencyLine(currencyEntry))
                 else
-                    local amtColor = "|cffffffff"
+                    local amtColor = PveBrightHex()
                     if maxQuantity > 0 then
                         local pct = (quantity / maxQuantity) * 100
                         if pct >= 100 then amtColor = "|cffff4444"
@@ -1285,15 +1793,45 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 end
             end
             
-            local paintedH = select(1, self:PaintPvEVaultGridOnCard(vaultCard, {
+            vaultCard:SetHeight(baseCardHeight)
+            vaultCard:SetWidth(baseCardWidth)
+            cardHeight = baseCardHeight
+
+            local detailGen = ns.PvEUI._detailPaintGen or 0
+            charDetailContent._pveDetailGen = detailGen
+            local populateKey = charExpandKey
+            local vaultPaintOpt = {
                 baseCardWidth = baseCardWidth,
                 baseCardHeight = baseCardHeight,
                 vaultByType = vaultByType,
                 pve = pve,
                 vaultActivitiesData = vaultActivitiesData,
                 isCurrentChar = isCurrentChar,
-            }))
-            cardHeight = paintedH
+            }
+            local function finishDeferredVaultGrid()
+                if not charDetailContent or charDetailContent._wnPopulateKey ~= populateKey then return end
+                if charDetailContent._pveDetailGen ~= detailGen then return end
+                local paintedH = select(1, self:PaintPvEVaultGridOnCard(vaultCard, vaultPaintOpt))
+                cardHeight = paintedH or baseCardHeight
+                local vaultPaintedH = cardHeight
+                local mH = mplusCard:GetHeight() or baseCardHeight
+                local sH = summaryCard:GetHeight() or baseCardHeight
+                local vH = vaultCard:GetHeight() or vaultPaintedH
+                local unifiedRowH = math.max(160, mH, sH, vH)
+                mplusCard:SetHeight(unifiedRowH)
+                summaryCard:SetHeight(unifiedRowH)
+                vaultCard:SetHeight(unifiedRowH)
+                cardContainer:SetHeight(unifiedRowH)
+                charDetailContent._wnSectionFullH = unifiedRowH
+                if charDetailContent._pveOnLayoutChanged then
+                    charDetailContent._pveOnLayoutChanged(unifiedRowH)
+                end
+            end
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, finishDeferredVaultGrid)
+            else
+                finishDeferredVaultGrid()
+            end
         else
             -- No vault data: Still set card dimensions so it's visible
             vaultCard:SetHeight(baseCardHeight)
@@ -1307,7 +1845,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
         
         vaultCard:Show()
 
-            -- Single row height: all three cards share the same bottom edge (vault/M+ often tallest).
+            -- Placeholder unified height until deferred vault grid finishes (if any).
             local vaultPaintedH = cardHeight or baseCardHeight
             local mH = mplusCard:GetHeight() or baseCardHeight
             local sH = summaryCard:GetHeight() or baseCardHeight
@@ -1493,6 +2031,10 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     sectionContent:SetHeight(0.1)
     sectionContent._wnSectionFullH = 0
     sectionContent._pveRunningH = 0
+    header._wnKeepOnTabSwitch = true
+    sectionContent._wnKeepOnTabSwitch = true
+    _pveDrawPool.sectionShells = _pveDrawPool.sectionShells or {}
+    _pveDrawPool.sectionShells[expandKey] = { header = header, body = sectionContent }
 
     if isExpanded then
         sectionContent:Show()
@@ -1513,9 +2055,11 @@ ns.PvEUI.EnsurePvEColumnOrder = EnsurePvEColumnOrder
 --- Cancel in-flight chunked PvE row paint (tab switch).
 function ns.PvEUI.AbortChunkedPaint()
     ns.PvEUI._paintDrawGen = (ns.PvEUI._paintDrawGen or 0) + 1
+    ns.PvEUI._detailPaintGen = (ns.PvEUI._detailPaintGen or 0) + 1
 end
 ns.PvEUI.PAINT_CHUNK_SIZE = 2
-ns.PvEUI.PAINT_CHUNK_MIN = 4
+ns.PvEUI.PAINT_CHUNK_MIN = 1
+ns.PvEUI.PVE_VIRTUAL_ROW_MIN = 6
 
 -- Packed chunk locals for PvE draw body (Lua 5.1 max 60 upvalues per function).
 if not ns.PvEDrawLibs then
@@ -1582,6 +2126,11 @@ if not ns.PvEDrawLibs then
         PvE_GetDrawPoolMeasureFS = PvE_GetDrawPoolMeasureFS,
         PvEAcquireColHeaderLabel = PvEAcquireColHeaderLabel,
         PvEAcquireInlineCell = PvEAcquireInlineCell,
+        PvEAcquireCharRowFrames = PvEAcquireCharRowFrames,
+        PvE_GetVaultStatusCached = PvE_GetVaultStatusCached,
+        PvE_BuildColumnLayoutSig = PvE_BuildColumnLayoutSig,
+        PvE_ApplyCachedColumnWidths = PvE_ApplyCachedColumnWidths,
+        PvE_SaveColumnLayoutCache = PvE_SaveColumnLayoutCache,
         UI_SyncGridColumnDividers = ns.UI_SyncGridColumnDividers,
         BuildPvEInlineColumnDividerXs = BuildPvEInlineColumnDividerXs,
         GetPvECachedCurrencyDisplay = GetPvECachedCurrencyDisplay,
@@ -1612,26 +2161,39 @@ local function PvEStackBodyWidth(scrollPaintW, contentSide)
     return math.max(1, (tonumber(scrollPaintW) or 1) - 2 * side)
 end
 
-local function PvEUI_DrawPvEProgressBody(self, parent, L)
-    if ns.PvEUI and ns.PvEUI.AbortChunkedPaint then
-        ns.PvEUI.AbortChunkedPaint()
+local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
+    opts = opts or {}
+    if not L or not L.EnsureVaultButtonColumnsForPvE or not L.EnsurePvEExtraVisibleColumns then
+        return parent and (parent:GetHeight() or 1) or 0
     end
-    parent._pvePaintedCoreH = nil
-    parent._pveChunkPaintPending = nil
+    local bodyOnly = opts.bodyOnly == true
     local mf = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
+    local chrome, metrics, fixedHeader, headerParent, headerYOffset, contentSide, stackWidth, scrollTopY
 
-    local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
-    local metrics = (chrome and chrome.metrics) or (ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf))
-    local fixedHeader = mf and mf.fixedHeader
-    local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
-    local headerYOffset = (chrome and chrome.yOffset) or 0
-    local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or L.SIDE_MARGIN
-    local stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
-        or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
-        or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
-    parent._wnPveContentSide = contentSide
-    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    if not bodyOnly then
+        for k in pairs(_pveVaultStatusScratch) do _pveVaultStatusScratch[k] = nil end
+        parent._pveChunkPaintPending = nil
+
+        chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
+        metrics = (chrome and chrome.metrics) or (ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf))
+        fixedHeader = mf and mf.fixedHeader
+        headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
+        headerYOffset = (chrome and chrome.yOffset) or 0
+        contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or L.SIDE_MARGIN
+        stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
+            or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
+            or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
+        parent._wnPveContentSide = contentSide
+        scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    else
+        contentSide = parent._wnPveContentSide or L.SIDE_MARGIN
+        scrollTopY = opts.scrollTopY or (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+        stackWidth = parent._wnPveStackWidth
+            or (metrics and metrics.bodyWidth)
+            or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
+    end
     
+    if not bodyOnly then
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
         local dataSource = "PvECache"
@@ -1713,7 +2275,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             end)
         end
     end
-    
+    end -- not bodyOnly (badge / needsRefresh prelude)
+
+    local profile = self.db and self.db.profile
+    local sortBtn
+    local titleCard
+
+    if not bodyOnly then
     local r, g, b = L.COLORS.accent[1], L.COLORS.accent[2], L.COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local titleTextContent = "|cff" .. hexColor .. (GetLocalizedText("PVE_TITLE", "PvE Progress")) .. "|r"
@@ -1723,7 +2291,23 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local pveToolbarReserve = (L.ns.UI_ComputeTitleToolbarReserve and L.ns.UI_ComputeTitleToolbarReserve({
         168, tm.filterW or 96, 84,
     })) or (640 + hdrGapPve)
-    local titleCard = select(1, L.ns.UI_CreateStandardTabTitleCard(headerParent, {
+
+    local hdrCache = mf and mf._pveFixedHeaderCache
+    local headerDone = false
+    if hdrCache and hdrCache.titleCard then
+        headerYOffset = RepositionPveFixedHeader(mf, hdrCache, headerParent, chrome, headerYOffset, contentSide, parent)
+        if ns.UI_CommitTabFixedHeader then
+            ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+        elseif fixedHeader then
+            fixedHeader:SetHeight(headerYOffset)
+        end
+        titleCard = hdrCache.titleCard
+        sortBtn = hdrCache.sortBtn
+        headerDone = true
+    end
+
+    if not headerDone then
+    titleCard = select(1, L.ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "pve",
         titleText = titleTextContent,
         subtitleText = subtitleTextContent,
@@ -1774,7 +2358,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     if L.ns.UI_CreateCharacterTabAdvancedFilterButton and L.ns.CharacterService and L.ns.CharacterService.EnsureCustomCharacterSectionsProfile then
         L.ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
         if not self.db.profile.pveSectionFilter then self.db.profile.pveSectionFilter = { sectionKey = "all" } end
-        local sortBtn = L.ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
+        sortBtn = L.ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
             sortOptions = sortOptions,
             dbSortTable = self.db.profile.pveSort,
             dbSectionFilter = self.db.profile.pveSectionFilter,
@@ -1796,7 +2380,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             sortAnchor = sortBtn
         end
     elseif L.ns.UI_CreateCharacterSortDropdown then
-        local sortBtn = L.ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
+        sortBtn = L.ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
             L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
         end)
         local hdrGap = tm.gap or 8
@@ -1808,7 +2392,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         sortAnchor = sortBtn
     end
 
-    local profile = self.db and self.db.profile
     if profile then
         if not profile.ui then profile.ui = {} end
         if profile.ui.pveFavoritesExpanded == nil then
@@ -1838,7 +2421,21 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
 
-    -- All Midnight Dawncrest tiers — IDs from Constants.MIDNIGHT_S1 (same as Gear / Currency cache)
+    if mf then
+        mf._pveFixedHeaderCache = {
+            titleCard = titleCard,
+            sortBtn = sortBtn,
+            resetTimer = resetTimer and resetTimer.container,
+            columnsBtn = WarbandNexus._wnPvEColumnPickerAnchorBtn,
+        }
+    end
+    end -- not headerDone
+    end -- not bodyOnly
+
+    if bodyOnly then
+        profile = profile or (self.db and self.db.profile)
+    end
+
     local PVE_DAWNCRESTS = L.GetPvEDawnCrestColumnDefinitions()
     local PVE_RESTORED_KEY_FALLBACK_ID = 3089
     L.ResolvePveDelveCurrencyColumns(self)
@@ -1846,23 +2443,39 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local PVE_RESTORED_KEY_ID = L._pveDelveCurrencyCache.keyID
     local PVE_SHARDS_ICON = L._pveDelveCurrencyCache.shardsIcon or "Interface\\Icons\\INV_Misc_Gem_Variety_01"
     local PVE_RESTORED_KEY_ICON = L._pveDelveCurrencyCache.keyIcon or "Interface\\Icons\\INV_Misc_Key_13"
-
-    -- Fallback for Restored Coffer Key when dynamic lookup doesn't resolve.
     if not PVE_RESTORED_KEY_ID then
         PVE_RESTORED_KEY_ID = PVE_RESTORED_KEY_FALLBACK_ID
     end
 
     profile = profile or (self.db and self.db.profile)
-    local vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
-    local pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
-    local vbProfile = profile and profile.vaultButton or {}
-    local vaultTrackColW = (L.ns.ResolveVaultTrackerColumnWidth
+    local vaultCols, pveExtraCols, vbProfile, vaultTrackColW, PVE_COLUMNS
+    local skipColumnBuild = bodyOnly and opts.columnDefs ~= nil
+    if skipColumnBuild then
+        PVE_COLUMNS = PveCopyColumnDefs(opts.columnDefs)
+        vaultTrackColW = _pveDrawPool.vaultTrackColW or PVE_VAULT_COL_W
+        vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
+        pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
+        vbProfile = profile and profile.vaultButton or {}
+    else
+    local structureColSig = PveBuildStructureColSig(profile)
+    local poolDefs = _pveDrawPool
+    if poolDefs.columnDefsColSig == structureColSig and poolDefs.columnDefs then
+        PVE_COLUMNS = PveCopyColumnDefs(poolDefs.columnDefs)
+        vaultTrackColW = poolDefs.vaultTrackColW or PVE_VAULT_COL_W
+        vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
+        pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
+        vbProfile = profile and profile.vaultButton or {}
+    else
+    vaultCols = L.EnsureVaultButtonColumnsForPvE(profile)
+    pveExtraCols = L.EnsurePvEExtraVisibleColumns(profile)
+    vbProfile = profile and profile.vaultButton or {}
+    vaultTrackColW = (L.ns.ResolveVaultTrackerColumnWidth
         and L.ns.ResolveVaultTrackerColumnWidth(vbProfile.showRewardProgress == true, vbProfile.showRewardItemLevel == true))
         or ((vbProfile.showRewardProgress and vbProfile.showRewardItemLevel) and PVE_VAULT_COL_REWARD_PROGRESS_W)
         or (vbProfile.showRewardProgress and PVE_VAULT_COL_PROGRESS_W)
         or (vbProfile.showRewardItemLevel and PVE_VAULT_COL_ILVL_W)
         or PVE_VAULT_COL_W
-    local PVE_COLUMNS = {}
+    PVE_COLUMNS = {}
     for i = 1, #PVE_DAWNCRESTS do
         local crestEntry = PVE_DAWNCRESTS[i]
         local ck = "crest_" .. tostring(crestEntry.id)
@@ -1995,6 +2608,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     if colOrderApi and colOrderApi.SortColumnsByKeySequence then
         colOrderApi.SortColumnsByKeySequence(PVE_COLUMNS, pveColumnSeq)
     end
+        poolDefs.columnDefsColSig = structureColSig
+        poolDefs.columnDefs = PveCopyColumnDefs(PVE_COLUMNS)
+        poolDefs.vaultTrackColW = vaultTrackColW
+    end
+    end
 
     local COL_SPACING = L.PVE_COL_SPACING
     local COL_RIGHT_MARGIN = L.PVE_COL_RIGHT_MARGIN
@@ -2020,6 +2638,66 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         if key == "slot1" or key == "slot2" then return L.PVE_VAULT_CLUSTER_GAP end
         if key == "slot3" then return L.PVE_KEY_TO_VAULT_GAP end
         return L.PVE_COL_SPACING
+    end
+
+    local rosterSigFast = PveBuildFastRosterSig(self, profile)
+    local drawSig = opts.drawSig or PveBuildFullDrawSig(self, profile, rosterSigFast, colSig)
+    local rosterCount = tonumber(rosterSigFast:match("^(%d+)")) or 0
+
+    if not bodyOnly then
+        if not L.ns.Utilities:IsModuleEnabled("pve") then
+            L.WarbandNexus._pveVaultTooltipCharsSnapshot = {}
+            local CreateDisabledCard = L.ns.UI_CreateDisabledModuleCard
+            local cardHeight = CreateDisabledCard(parent, scrollTopY, GetLocalizedText("PVE_TITLE", "PvE Progress"))
+            return scrollTopY + cardHeight
+        end
+
+        local chr = _pveDrawPool.colHeaderRow
+        if parent._pveBodyReady and parent._pveDrawSig == drawSig and chr and chr:GetParent() == parent then
+            local gridW = parent._pveMinScrollWidth or parent:GetWidth() or 600
+            parent:SetWidth(gridW)
+            if mf then mf._pveMinScrollWidth = gridW end
+            local coreH = parent._pvePaintedCoreH or parent._pveLastBodyEstimate
+                or PveEstimateScrollBodyHeight(rosterCount, 4)
+            if mf and ns.UI_SyncMainTabScrollChrome then
+                ns.UI_SyncMainTabScrollChrome(mf, parent, coreH)
+            end
+            if L.ns.PvE_ColumnPickerTryRefreshAfterDraw then
+                L.ns.PvE_ColumnPickerTryRefreshAfterDraw(self)
+            end
+            return coreH
+        end
+
+        if parent._pveDrawSig ~= drawSig then
+            if ns.PvEUI and ns.PvEUI.AbortChunkedPaint then
+                ns.PvEUI.AbortChunkedPaint()
+            end
+            PveTeardownKeptBodyArtifacts(parent)
+        end
+        parent._pvePaintedCoreH = nil
+
+        local estH = PveEstimateScrollBodyHeight(rosterCount, 4)
+        parent._pveLastBodyEstimate = estH
+        parent._pveDrawSig = drawSig
+
+        local PvEUIState = ns.PvEUI
+        PvEUIState._bodyPaintGen = (PvEUIState._bodyPaintGen or 0) + 1
+        PvEUIState._bodyPaintCtx = {
+            bodyOnly = true,
+            drawSig = drawSig,
+            scrollTopY = scrollTopY,
+            columnDefs = PveCopyColumnDefs(PVE_COLUMNS),
+            addon = self,
+            parent = parent,
+        }
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                ns.PvEUI.RunDeferredBodyPaint()
+            end)
+        else
+            ns.PvEUI.RunDeferredBodyPaint()
+        end
+        return estH
     end
 
     local yOffset = scrollTopY
@@ -2313,7 +2991,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local tempMeasure = L.PvE_GetDrawPoolMeasureFS()
     tempMeasure:Hide()
     local maxNameRealmWidth = 0
-    if rosterChanged then
+    local measureNameW = ns.PvE_MeasureStackedNameColumnWidth
+    if rosterChanged and measureNameW then
         for i = 1, #characters do
             local c = characters[i]
             local k = GetRowCanonicalPvEKey(c)
@@ -2326,8 +3005,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 if realmStr ~= "" and L.issecretvalue and L.issecretvalue(realmStr) then
                     realmStr = ""
                 end
-                tempMeasure:SetText(nameStr .. "  -  " .. realmStr)
-                local w = tempMeasure:GetStringWidth() or 0
+                local w = measureNameW(tempMeasure, nameStr, realmStr)
                 L._pveDrawPool.nameWidths[k] = w
                 if w > maxNameRealmWidth then maxNameRealmWidth = w end
             end
@@ -2341,11 +3019,39 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             end
         end
     end
-    local nameWidth = math.max(200, math.ceil(maxNameRealmWidth) + 8)
+    local nameWidth = (ns.PvE_ResolveNameColumnWidth and ns.PvE_ResolveNameColumnWidth(maxNameRealmWidth))
+        or math.max(100, math.ceil(maxNameRealmWidth) + 4)
+
+    if #characters > 0 then
+        local vbProfile = profile and profile.vaultButton or {}
+        local layoutSig = L.PvE_BuildColumnLayoutSig(rosterSig, colSig, nameWidth, vbProfile)
+        local layoutCache = L._pveDrawPool.columnLayout
+        local layoutHit = layoutCache.sig == layoutSig and L.PvE_ApplyCachedColumnWidths(PVE_COLUMNS, layoutCache)
+        if not layoutHit then
+            PvE_ApplyAdaptiveColumnWidths(PVE_COLUMNS, {
+                characters = characters,
+                addon = self,
+                getCharKey = GetRowCanonicalPvEKey,
+                crests = PVE_DAWNCRESTS,
+                shardsId = PVE_SHARDS_ID,
+                keyId = PVE_RESTORED_KEY_ID,
+                voidcoreId = L.PVE_VOIDCORE_ID,
+                manafluxId = L.PVE_MANAFLUX_ID,
+                formatSeasonShift = ns.UI_FormatSeasonProgressShiftAware,
+                compactShift = true,
+                buildCompactHeader = function(col)
+                    return PvE_BuildCompactHeaderLabel(col)
+                end,
+                formatVaultTrack = PvE_FormatVaultTrackColumn,
+                formatNumber = FormatNumber,
+                emDash = "\226\128\148",
+                colIconSize = COL_ICON_SIZE,
+            })
+            L.PvE_SaveColumnLayoutCache(layoutCache, layoutSig, PVE_COLUMNS)
+        end
+    end
 
     -- Wide enough for left cluster + name + level/ilvl + inline columns → horizontal scrollbar when needed
-    local scrollFrame = parent:GetParent()
-    local viewportW = (scrollFrame and scrollFrame:GetWidth()) or 800
     local inlineTotal = 0
     for pci = 1, #PVE_COLUMNS do
         inlineTotal = inlineTotal + PVE_COLUMNS[pci].width
@@ -2357,7 +3063,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     local gridInlineStartX = (L.PvE_ComputeInlineColumnsStartPx and L.PvE_ComputeInlineColumnsStartPx(nameWidth)) or 400
     local pveColumnDividerXs = (L.BuildPvEInlineColumnDividerXs and L.BuildPvEInlineColumnDividerXs(gridInlineStartX, PVE_COLUMNS, GapBetweenColumns)) or {}
     local minScrollW = 2 * contentSide + gridInlineStartX + inlineTotal
-    local colHeaderInnerW = math.max(viewportW, minScrollW)
+    local colHeaderInnerW = minScrollW
     local pveGridW = colHeaderInnerW
     local pveStackW = PvEStackBodyWidth(pveGridW, contentSide)
     parent:SetWidth(pveGridW)
@@ -2375,55 +3081,36 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
     end
 
     PvEParkAllColHeaderLabels()
-    local colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, pveStackW, COL_HEADER_HEIGHT)
-    if not colHeaderRow then
-        colHeaderRow = CreateFrame("Frame", nil, parent)
-        colHeaderRow:SetSize(pveStackW, COL_HEADER_HEIGHT)
+    local colHeaderRow = L._pveDrawPool.colHeaderRow
+    if colHeaderRow then
+        colHeaderRow:SetParent(parent)
+        colHeaderRow:Show()
+    else
+        colHeaderRow = L.ns.UI.Factory:CreateContainer(parent, pveStackW, COL_HEADER_HEIGHT)
+        if not colHeaderRow then
+            colHeaderRow = CreateFrame("Frame", nil, parent)
+            colHeaderRow:SetSize(pveStackW, COL_HEADER_HEIGHT)
+        end
+        L._pveDrawPool.colHeaderRow = colHeaderRow
     end
+    colHeaderRow._wnKeepOnTabSwitch = true
     colHeaderRow:SetHeight(COL_HEADER_HEIGHT)
     colHeaderRow:ClearAllPoints()
     colHeaderRow:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
     if colHeaderRow.SetWidth then
         colHeaderRow:SetWidth(math.max(1, pveStackW))
     end
-
-    local PVE_COMPACT_HEADER_BY_KEY = {
-        coffer_shards = { text = L.GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), hex = "ffffff" },
-        restored_key = { text = L.GetLocalizedText("PVE_COMPACT_RESTORED", "Restored"), hex = "ffffff" },
-        voidcore = { text = L.GetLocalizedText("PVE_COMPACT_VOIDCORE", "Voidcore"), hex = "ffffff" },
-        manaflux = { text = L.GetLocalizedText("PVE_COMPACT_MANAFLUX", "Manaflux"), hex = "ffffff" },
-        slot1 = { text = L.GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), hex = "ffffff" },
-        slot2 = { text = L.GetLocalizedText("VAULT_DUNGEON", "Dungeon"), hex = "ffffff" },
-        slot3 = { text = L.GetLocalizedText("VAULT_SLOT_WORLD", "World"), hex = "ffffff" },
-        bountiful = { text = L.GetLocalizedText("PVE_HEADER_MAP_SHORT", "Bounty"), hex = "ffffff" },
-        vault_status = { text = L.GetLocalizedText("PVE_HEADER_STATUS_SHORT", "Status"), hex = "ffffff", icon = "Interface\\RaidFrame\\ReadyCheck-Ready" },
-    }
-    local PVE_COMPACT_CREST_BY_ID = {
-        [3383] = { text = L.GetLocalizedText("PVE_CREST_ADV", "Adventurer"), hex = "9d9d9d" },
-        [3341] = { text = L.GetLocalizedText("PVE_CREST_VET", "Veteran"), hex = "1eff00" },
-        [3343] = { text = L.GetLocalizedText("PVE_CREST_CHAMP", "Champion"), hex = "0070dd" },
-        [3345] = { text = L.GetLocalizedText("PVE_CREST_HERO", "Hero"), hex = "a335ee" },
-        [3347] = { text = L.GetLocalizedText("PVE_CREST_MYTH", "Myth"), hex = "ff8000" },
-    }
+    if ns.UI_ResolveSurfaceTierColor then
+        if not colHeaderRow.bg then
+            colHeaderRow.bg = colHeaderRow:CreateTexture(nil, "BACKGROUND")
+            colHeaderRow.bg:SetAllPoints()
+        end
+        local hdrBg = ns.UI_ResolveSurfaceTierColor("headerChrome")
+        colHeaderRow.bg:SetColorTexture(hdrBg[1], hdrBg[2], hdrBg[3], hdrBg[4] or 1)
+    end
 
     local function BuildCompactHeaderLabel(col)
-        local rawLabel = col and (col.headerLabel or col.tooltipTitle) or ""
-        if not rawLabel or rawLabel == "" then return "", "ffffff" end
-        if L.issecretvalue and L.issecretvalue(rawLabel) then return "", "ffffff" end
-
-        local key = col and col.key or ""
-        if PVE_COMPACT_HEADER_BY_KEY[key] then
-            local entry = PVE_COMPACT_HEADER_BY_KEY[key]
-            return entry.text, entry.hex
-        elseif key:match("^crest_") then
-            local crestID = tonumber(key:match("^crest_(%d+)$"))
-            if crestID and PVE_COMPACT_CREST_BY_ID[crestID] then
-                local entry = PVE_COMPACT_CREST_BY_ID[crestID]
-                return entry.text, entry.hex
-            end
-            return L.GetLocalizedText("PVE_CREST_GENERIC", "Crest"), "ffffff"
-        end
-        return "", "ffffff"
+        return PvE_BuildCompactHeaderLabel(col)
     end
 
     local colX = gridInlineStartX
@@ -2432,15 +3119,27 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
         if col.icon or col.iconAtlas then
             local hitW, hitH = COL_ICON_SIZE + 4, COL_ICON_SIZE + 4
-            local PUFHdr = L.ns.UI and L.ns.UI.Factory
-            local hitFrame = PUFHdr and PUFHdr:CreateContainer(colHeaderRow, hitW, hitH, false)
-            if not hitFrame then
-                hitFrame = CreateFrame("Frame", nil, colHeaderRow)
-                hitFrame:SetSize(hitW, hitH)
+            local hitFrame = L._pveDrawPool.colHeaderHits[col.key]
+            if hitFrame then
+                hitFrame:SetParent(colHeaderRow)
+                hitFrame:Show()
+            else
+                local PUFHdr = L.ns.UI and L.ns.UI.Factory
+                hitFrame = PUFHdr and PUFHdr:CreateContainer(colHeaderRow, hitW, hitH, false)
+                if not hitFrame then
+                    hitFrame = CreateFrame("Frame", nil, colHeaderRow)
+                    hitFrame:SetSize(hitW, hitH)
+                end
+                L._pveDrawPool.colHeaderHits[col.key] = hitFrame
             end
+            hitFrame:SetSize(hitW, hitH)
             hitFrame:SetPoint("LEFT", colHeaderRow, "LEFT", colX + (col.width - hitW) * 0.5, 6)
 
-            local iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
+            local iconTex = hitFrame._pveIconTex
+            if not iconTex then
+                iconTex = hitFrame:CreateTexture(nil, "ARTWORK")
+                hitFrame._pveIconTex = iconTex
+            end
             iconTex:SetSize(COL_ICON_SIZE, COL_ICON_SIZE)
             iconTex:SetPoint("CENTER")
             if col.iconAtlas and iconTex.SetAtlas then
@@ -2840,25 +3539,39 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         accVisual.sectionHeaderHeight = 46
         accVisual.deferOnToggleUntilComplete = true
 
-        local charHeader, expandIconTex = L.CreateCollapsibleHeader(
-            rowHost,
-            "",
-            charExpandKey,
-            charExpanded,
-            function(isExpanded)
-                if isExpanded then
-                    if charDetailContent then
-                        charDetailContent:Show()
-                        charDetailContent:SetHeight(math.max(0.1, charDetailContent._wnSectionFullH or 0.1))
+        local charHeader, charDetailContent, expandIconTex, rowReused = L.PvEAcquireCharRowFrames(rowHost, charKey)
+        if not rowReused then
+            charHeader, expandIconTex = L.CreateCollapsibleHeader(
+                rowHost,
+                "",
+                charExpandKey,
+                charExpanded,
+                function(isExpanded)
+                    if isExpanded then
+                        if charDetailContent then
+                            charDetailContent:Show()
+                            charDetailContent:SetHeight(math.max(0.1, charDetailContent._wnSectionFullH or 0.1))
+                        end
+                    elseif charDetailContent then
+                        charDetailContent:Hide()
+                        charDetailContent:SetHeight(0.1)
                     end
-                elseif charDetailContent then
-                    charDetailContent:Hide()
-                    charDetailContent:SetHeight(0.1)
-                end
-            end,
-            nil, nil, nil, true,
-            accVisual
-        )
+                end,
+                nil, nil, nil, true,
+                accVisual
+            )
+            charDetailContent = L.ns.UI.Factory:CreateContainer(rowHost)
+            charDetailContent:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+            charDetailContent:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
+            if charDetailContent.SetClipsChildren then
+                charDetailContent:SetClipsChildren(true)
+            end
+            L._pveDrawPool.charRows[charKey] = {
+                header = charHeader,
+                detail = charDetailContent,
+                expandIcon = expandIconTex,
+            }
+        end
         if prevDet == nil then
             charHeader:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 0, 0)
             charHeader:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", 0, 0)
@@ -2898,9 +3611,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
             -- Claimable loot: GetVaultStatusForChar (live API for current char; cache + reset for alts).
             local vaultLootClaimable = false
-            if L.WarbandNexus.GetVaultStatusForChar then
-                local vs = L.WarbandNexus:GetVaultStatusForChar(charKey)
-                vaultLootClaimable = vs and vs.isReady == true
+            local vsCached = L.PvE_GetVaultStatusCached and L.PvE_GetVaultStatusCached(L.WarbandNexus, charKey)
+            if vsCached then
+                vaultLootClaimable = vsCached.isReady == true
             else
                 vaultLootClaimable = pve.hasUnclaimedRewards == true
             end
@@ -3018,14 +3731,15 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             local inlineX = gridInlineStartX
             local colValuesByKey = {}
 
-            -- |cff888888 parity with FormatHelpers CC_MUTED / Utilities (placeholder & EM dash)
-            local MUTED_RGB = 136 / 255
-            local DIM_COLOR = { MUTED_RGB, MUTED_RGB, MUTED_RGB }
-            local NORMAL_COLOR = {1, 1, 1}
+            local mutedC = COLORS.textMuted or { 0.53, 0.53, 0.53, 1 }
+            local brightC = COLORS.textBright or { 1, 1, 1, 1 }
+            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+            local DIM_COLOR = { mutedC[1], mutedC[2], mutedC[3] }
+            local NORMAL_COLOR = { brightC[1], brightC[2], brightC[3] }
             local CAP_OPEN_COLOR = {0.5, 1, 0.5}
             local CAPPED_COLOR = {1, 0.35, 0.35}
             local EM_DASH = "\226\128\148"
-            local EM_DASH_RICH = "|cff888888" .. EM_DASH .. "|r"
+            local EM_DASH_RICH = dimHex .. EM_DASH .. "|r"
 
             local function GetCapStateColor(currencyID, currencyName, qty, maxQty, totalEarned, seasonMax)
                 if L.ns.Utilities and L.ns.Utilities.IsCofferKeyShardCurrency and L.ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
@@ -3144,7 +3858,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                             color = {0.65, 0.65, 0.65},
                         })
                     else
-                        table.insert(lines, { text = L.GetLocalizedText("PVE_VAULT_SLOT_EMPTY_FORMAT", "Slot %d: \226\128\148"):format(i), color = { MUTED_RGB, MUTED_RGB, MUTED_RGB } })
+                        table.insert(lines, { text = L.GetLocalizedText("PVE_VAULT_SLOT_EMPTY_FORMAT", "Slot %d: \226\128\148"):format(i), color = DIM_COLOR })
                     end
                 end
                 return lines
@@ -3204,7 +3918,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
                 local col = capped and "|cffff5959" or "|cff80ff80"
                 voidcoreTxt = col .. L.FormatNumber(vqty) .. "|r"
             elseif vqty > 0 then
-                voidcoreTxt = "|cffffffff" .. L.FormatNumber(vqty) .. "|r"
+                voidcoreTxt = PveBrightHex() .. L.FormatNumber(vqty) .. "|r"
             else
                 voidcoreTxt = EM_DASH_RICH
             end
@@ -3223,7 +3937,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
             --   Pending only -> "Pending..." (gold)
             --   No progress -> em-dash dimmed
             do
-                local vs = L.WarbandNexus.GetVaultStatusForChar and L.WarbandNexus:GetVaultStatusForChar(charKey)
+                local vs = L.PvE_GetVaultStatusCached and L.PvE_GetVaultStatusCached(L.WarbandNexus, charKey)
                 local statusTxt
                 if not vs then
                     statusTxt = EM_DASH_RICH
@@ -3344,16 +4058,6 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         
         charHeader:SetAlpha(1)
 
-        -- Parent must be rowHost (section body or scroll child for pinned rows), not the root scroll
-        -- child alone: detail was a sibling of section bodies, so reserved _pveRunningH / layoutTail did not
-        -- match painted geometry and following section headers overlapped expanded rows (Characters tab
-        -- keeps row bodies under AcquireSectionContentFrame / section content).
-        charDetailContent = L.ns.UI.Factory:CreateContainer(rowHost)
-        charDetailContent:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
-        charDetailContent:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
-        if charDetailContent.SetClipsChildren then
-            charDetailContent:SetClipsChildren(true)
-        end
         charDetailContent._pveOnLayoutChanged = accVisual.onUpdate
         charDetailContent._pveLayoutHost = rowHost
 
@@ -3402,7 +4106,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
         local pveChunkSize = PvEUIState.PAINT_CHUNK_SIZE or 2
         local pvePaintCursor = 1
 
-        if #paintOrder <= (PvEUIState.PAINT_CHUNK_MIN or 4) then
+        if #paintOrder <= 1 then
             paintPvERows(1, #paintOrder)
             finalizePveCharPaint()
             estimatedBodyH = totalLHBox.v + 12
@@ -3442,10 +4146,33 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L)
 
     local coreH = chunkPaintScheduled and estimatedBodyH or (totalLHBox.v + 12)
     parent._pvePaintedCoreH = coreH
+    parent._pveBodyReady = true
+    parent._pveDrawSig = drawSig
+    parent._pveLastBodyEstimate = coreH
     if not chunkPaintScheduled and mf and ns.UI_SyncMainTabScrollChrome then
         ns.UI_SyncMainTabScrollChrome(mf, parent, coreH)
     end
+    if L.ns.PvE_ColumnPickerTryRefreshAfterDraw then
+        L.ns.PvE_ColumnPickerTryRefreshAfterDraw(self)
+    end
     return coreH
+end
+
+function ns.PvEUI.RunDeferredBodyPaint()
+    local PvEUIState = ns.PvEUI
+    local ctx = PvEUIState._bodyPaintCtx
+    if not ctx then return end
+    PvEUIState._bodyPaintCtx = nil
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "pve" then return end
+    if InCombatLockdown and InCombatLockdown() then
+        PvEUIState._bodyPaintCtx = ctx
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, ns.PvEUI.RunDeferredBodyPaint)
+        end
+        return
+    end
+    PvEUI_DrawPvEProgressBody(ctx.addon, ctx.parent, ns.PvEDrawLibs, ctx)
 end
 
 --- Header chest icon: all tracked characters' vault column summaries (Raid / M+ / World), width-aware row cap.
@@ -3546,7 +4273,7 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
         local hdrWorld = GetLocalizedText("VAULT_WORLD", "World")
 
         local FontManager = ns.FontManager
-        local measure = FontManager and FontManager:CreateFontString(UIParent, "medium", "OVERLAY")
+        local measure = FontManager and FontManager:CreateFontString(UIParent, "body", "OVERLAY")
         local maxN, maxRm, maxVR, maxVM, maxVW = 52, 52, 40, 40, 40
         if measure and #rows > 0 then
             measure:Hide()

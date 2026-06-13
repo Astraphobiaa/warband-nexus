@@ -99,11 +99,13 @@ function M.EnsureCollectionProgressBar(rightCol)
     local barWrapper = CreateFrame("Frame", nil, pr, "BackdropTemplate")
     barWrapper:SetAllPoints(pr)
     if ApplyVisuals then
-        ApplyVisuals(barWrapper, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
+        local barBg, barEdge = M.CollectionsProgressBarColors()
+        ApplyVisuals(barWrapper, barBg, barEdge)
     end
     local innerW = math.max(1, barWidth - (BAR_INSET * 2))
     local innerH = math.max(1, barHeight - (BAR_INSET * 2))
-    local statusBar = ns.UI_CreateStatusBar and ns.UI_CreateStatusBar(barWrapper, innerW, innerH, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5}, true)
+    local barTrackBg, barEdge = M.CollectionsProgressBarColors()
+    local statusBar = ns.UI_CreateStatusBar and ns.UI_CreateStatusBar(barWrapper, innerW, innerH, barTrackBg, barEdge, true)
     if statusBar then
         statusBar:ClearAllPoints()
         statusBar:SetPoint("TOPLEFT", barWrapper, "TOPLEFT", BAR_INSET, -BAR_INSET)
@@ -114,7 +116,15 @@ function M.EnsureCollectionProgressBar(rightCol)
         if barTexture then barTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85) end
     end
     M.state.collectionProgressBar = statusBar
-    local progressFs = FontManager:CreateFontString(pr, "body", "OVERLAY")
+    local progressFs
+    if FontManager.CreateBarOverlayFontString then
+        progressFs = FontManager:CreateBarOverlayFontString(pr, "OVERLAY")
+    else
+        progressFs = FontManager:CreateFontString(pr, "body", "OVERLAY")
+        if FontManager.ApplyBarOverlayFont then
+            FontManager:ApplyBarOverlayFont(progressFs)
+        end
+    end
     if progressFs then
         if statusBar then
             progressFs:SetParent(statusBar)
@@ -133,6 +143,7 @@ function M.EnsureCollectionProgressBar(rightCol)
 end
 
 function M.DrawMountsContent(contentFrame)
+    M.CollectionsSubTabTrace("DrawMountsContent_enter", { busy = M.state._drawMountsContentBusy and true or false })
     if M.state._drawMountsContentBusy then
         -- Self-heal: a leaked busy flag (abort path that missed its release) would
         -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
@@ -173,8 +184,11 @@ function M.DrawMountsContent(contentFrame)
     -- Layout: LEFT = list, gap, scrollbar, gap, RIGHT = 3D viewer (equal SCROLLBAR_SIDE_GAP each side of scrollbar).
     local listContentWidth, listWidth, viewerWidth, scrollBarColumnWidth = M.ComputeCollectionsListDetailWidths(cw)
 
-    M.HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = M.ApplyCollectionsContentHeader(contentFrame, "mounts", ch)
+    M.HideAllCollectionsResultFrames()
+    if M.state.mountListContainer then
+        M.ReanchorCollectionsBrowseListHost(M.state.mountListContainer, contentFrame, headerBlockH, innerCh, listContentWidth)
+    end
 
     -- LEFT CONTAINER: List only (scroll frame fills it; scrollbar in a separate column)
     if not M.state.mountListContainer then
@@ -342,6 +356,32 @@ function M.DrawMountsContent(contentFrame)
 
     -- Loading only when a scan is in progress or we have not yet completed initial fetch (no cache).
     -- Cache is set even when list is empty so we don't show loading forever for 0 mounts.
+    M.EnsureCollectionsBrowseCacheForSubTab("mounts")
+    local listW = listContentWidth - (CONTAINER_INSET * 2)
+    local sch = M.state.mountListScrollChild
+    local filtersOk = M.CollectionsSubTabBrowseFiltersUnchanged("mounts")
+    if sch and M.state._mountFlatList and filtersOk then
+        M.CollectionsSubTabTrace("DrawMountsContent_path", { path = "fast_visible_only" })
+        if M.state.viewerContainer then M.state.viewerContainer:Show() end
+        if not M.state.selectedMountID then
+            if M.state.mountDetailEmptyOverlay then M.state.mountDetailEmptyOverlay:Show() end
+            if M.state.modelViewer then M.state.modelViewer:Hide() end
+        else
+            if M.state.mountDetailEmptyOverlay then M.state.mountDetailEmptyOverlay:Hide() end
+            if M.state.modelViewer then M.state.modelViewer:Show() end
+        end
+        if M.state.mountListContainer then M.state.mountListContainer:Show() end
+        if M.state.mountListScrollBarContainer then M.state.mountListScrollBarContainer:Show() end
+        if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
+            Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
+        end
+        if M.state._mountListRefreshVisible then
+            M.state._mountListRefreshVisible()
+        end
+        M.state._drawMountsContentBusy = nil
+        return
+    end
+
     local loadingState = ns.CollectionLoadingState
     local isLoading = loadingState and loadingState.isLoading
     local allMounts = M.state._cachedMountsData
@@ -351,6 +391,7 @@ function M.DrawMountsContent(contentFrame)
     end
 
     if isLoading then
+        M.CollectionsSubTabTrace("DrawMountsContent_path", { path = "loading", dataReady = dataReady })
         M.SetCollectionProgress(nil, nil)
         if not M.state.loadingPanel then
             M.state.loadingPanel = M.GetOrCreateLoadingPanel(contentFrame)
@@ -404,6 +445,7 @@ function M.DrawMountsContent(contentFrame)
                         if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
                         if not sch or not sch:GetParent() or not contentFrame:IsVisible() then return end
                         M.state._lastGroupedMountData = grouped
+                        M.RecordCollectionsSubTabBrowseSnapshot("mounts")
                         C_Timer.After(0, function()
                             if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
@@ -422,8 +464,6 @@ function M.DrawMountsContent(contentFrame)
         if M.state.loadingPanel then
             M.state.loadingPanel:Hide()
         end
-        if M.state.mountListContainer then M.state.mountListContainer:Show() end
-        if M.state.mountListScrollBarContainer then M.state.mountListScrollBarContainer:Show() end
         if M.state.viewerContainer then M.state.viewerContainer:Show() end
         if not M.state.selectedMountID then
             if M.state.mountDetailEmptyOverlay then M.state.mountDetailEmptyOverlay:Show() end
@@ -439,18 +479,30 @@ function M.DrawMountsContent(contentFrame)
         local collected = (apiCounts and apiCounts.mounts and apiCounts.mounts.collected) or 0
         local total = (apiCounts and apiCounts.mounts and apiCounts.mounts.total) or 0
         M.SetCollectionProgress(collected, total)
-        local searchUnchanged = (M.state._mountLastSearchText == (M.state.searchText or ""))
-            and (M.state._mountLastShowCollected == M.state.showCollected)
-            and (M.state._mountLastShowUncollected == M.state.showUncollected)
-        -- Tab switch back: list already populated and search/filter unchanged, only refresh visible range (no repopulate).
-        if sch and M.state._mountFlatList and M.state._lastGroupedMountData and searchUnchanged then
-            if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
-                Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
-            end
-            if M.state._mountListRefreshVisible then
-                M.state._mountListRefreshVisible()
-            end
+        local filtersOk = M.CollectionsSubTabBrowseFiltersUnchanged("mounts")
+        local cacheDiag = M.CollectionsSubTabBrowseCacheDiag("mounts")
+        -- Tab switch back: grouped cache still valid — populate without chunked rebuild.
+        if sch and M.state._lastGroupedMountData and filtersOk then
+            M.CollectionsSubTabTrace("DrawMountsContent_path", { path = "populate_only", drawGen = drawGen })
+            if M.state.mountListContainer then M.state.mountListContainer:Show() end
+            if M.state.mountListScrollBarContainer then M.state.mountListScrollBarContainer:Show() end
+            if M.state.viewerContainer then M.state.viewerContainer:Show() end
+            M.RecordCollectionsSubTabBrowseSnapshot("mounts")
+            M.PopulateMountList(sch, listW, M.state._lastGroupedMountData, M.state.collapsedHeadersMounts, M.state.selectedMountID, onSelectMount, contentFrame, DrawMountsContent, drawGen, function()
+                if Factory.UpdateScrollBarVisibility and M.state.mountListScrollFrame then
+                    Factory:UpdateScrollBarVisibility(M.state.mountListScrollFrame)
+                end
+                M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+            end)
+            return
         else
+            M.CollectionsSubTabTrace("DrawMountsContent_path", {
+                path = "full_repopulate",
+                drawGen = drawGen,
+                hasFlat = cacheDiag.hasFlat,
+                hasGrouped = cacheDiag.hasGrouped,
+                filtersOk = filtersOk,
+            })
             -- First time or list not built: chunked build then populate.
             -- Busy is held across this chain; every abort must release it (gen-token guarded).
             C_Timer.After(0, function()
@@ -468,9 +520,7 @@ function M.DrawMountsContent(contentFrame)
                         if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
                         if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
                         M.state._lastGroupedMountData = grouped
-                        M.state._mountLastSearchText = M.state.searchText or ""
-                        M.state._mountLastShowCollected = M.state.showCollected
-                        M.state._mountLastShowUncollected = M.state.showUncollected
+                        M.RecordCollectionsSubTabBrowseSnapshot("mounts")
                         C_Timer.After(0, function()
                             if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Mounts", drawGen) return end
@@ -492,6 +542,7 @@ end
 
 -- DrawPetsContent: same layout as mounts, uses pet API and list.
 function M.DrawPetsContent(contentFrame)
+    M.CollectionsSubTabTrace("DrawPetsContent_enter", { busy = M.state._drawPetsContentBusy and true or false })
     if M.state._drawPetsContentBusy then
         -- Self-heal: a leaked busy flag (abort path that missed its release) would
         -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
@@ -531,8 +582,11 @@ function M.DrawPetsContent(contentFrame)
 
     local listContentWidth, listWidth, viewerWidth, scrollBarColumnWidth = M.ComputeCollectionsListDetailWidths(cw)
 
-    M.HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = M.ApplyCollectionsContentHeader(contentFrame, "pets", ch)
+    M.HideAllCollectionsResultFrames()
+    if M.state.petListContainer then
+        M.ReanchorCollectionsBrowseListHost(M.state.petListContainer, contentFrame, headerBlockH, innerCh, listContentWidth)
+    end
 
     -- LEFT CONTAINER: Pet list
     if not M.state.petListContainer then
@@ -695,21 +749,42 @@ function M.DrawPetsContent(contentFrame)
         end
     end
 
-    -- Never call GetAllPetsData() in the tab-click frame: defer to next frame to avoid 1s freeze.
+    -- Pets: avoid sync GetAllPetsData on click (can hitch); cache from WarmCollectionsBrowseCaches or loading branch.
+    local listW = listContentWidth - (CONTAINER_INSET * 2)
+    local schEarly = M.state.petListScrollChild
+    local filtersOkEarly = M.CollectionsSubTabBrowseFiltersUnchanged("pets")
+    if schEarly and M.state._petFlatList and filtersOkEarly then
+        M.CollectionsSubTabTrace("DrawPetsContent_path", { path = "fast_visible_only" })
+        if M.state.viewerContainer then M.state.viewerContainer:Show() end
+        if not M.state.selectedPetID then
+            if M.state.petDetailEmptyOverlay then M.state.petDetailEmptyOverlay:Show() end
+            if M.state.modelViewer then M.state.modelViewer:Hide() end
+        else
+            if M.state.petDetailEmptyOverlay then M.state.petDetailEmptyOverlay:Hide() end
+            if M.state.modelViewer then M.state.modelViewer:Show() end
+        end
+        if M.state.petListContainer then M.state.petListContainer:Show() end
+        if M.state.petListScrollBarContainer then M.state.petListScrollBarContainer:Show() end
+        if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
+            Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
+        end
+        if M.state._petListRefreshVisible then
+            M.state._petListRefreshVisible()
+        end
+        M.state._drawPetsContentBusy = nil
+        return
+    end
+
     local loadingState = ns.CollectionLoadingState
     local isLoading = loadingState and loadingState.isLoading
-    local allPets
-    if M.state._cachedPetsData and #M.state._cachedPetsData > 0 then
-        allPets = M.state._cachedPetsData
-    else
-        allPets = nil
-    end
-    local dataReady = allPets and #allPets > 0
+    local allPets = M.state._cachedPetsData
+    local dataReady = (allPets ~= nil)
     if not isLoading and not dataReady then
         isLoading = true
     end
 
     if isLoading then
+        M.CollectionsSubTabTrace("DrawPetsContent_path", { path = "loading", dataReady = dataReady and true or false })
         M.SetCollectionProgress(nil, nil)
         if not M.state.loadingPanel then
             M.state.loadingPanel = M.GetOrCreateLoadingPanel(contentFrame)
@@ -762,6 +837,7 @@ function M.DrawPetsContent(contentFrame)
                         if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
                         if not sch or not sch:GetParent() or not contentFrame:IsVisible() then return end
                         M.state._lastGroupedPetData = grouped
+                        M.RecordCollectionsSubTabBrowseSnapshot("pets")
                         C_Timer.After(0, function()
                             if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then return end
@@ -780,8 +856,6 @@ function M.DrawPetsContent(contentFrame)
         if M.state.loadingPanel then
             M.state.loadingPanel:Hide()
         end
-        if M.state.petListContainer then M.state.petListContainer:Show() end
-        if M.state.petListScrollBarContainer then M.state.petListScrollBarContainer:Show() end
         if M.state.viewerContainer then M.state.viewerContainer:Show() end
         if not M.state.selectedPetID then
             if M.state.petDetailEmptyOverlay then M.state.petDetailEmptyOverlay:Show() end
@@ -797,18 +871,29 @@ function M.DrawPetsContent(contentFrame)
         local collected = (apiCounts and apiCounts.pets and apiCounts.pets.uniqueSpecies) or 0
         local total = (apiCounts and apiCounts.pets and apiCounts.pets.totalSpecies) or 0
         M.SetCollectionProgress(collected, total)
-        local searchUnchanged = (M.state._petLastSearchText == (M.state.searchText or ""))
-            and (M.state._petLastShowCollected == M.state.showCollected)
-            and (M.state._petLastShowUncollected == M.state.showUncollected)
-        -- Tab switch back: list already populated and search/filter unchanged, only refresh visible range (no repopulate).
-        if sch and M.state._petFlatList and M.state._lastGroupedPetData and searchUnchanged then
-            if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
-                Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
-            end
-            if M.state._petListRefreshVisible then
-                M.state._petListRefreshVisible()
-            end
+        local filtersOk = M.CollectionsSubTabBrowseFiltersUnchanged("pets")
+        local cacheDiag = M.CollectionsSubTabBrowseCacheDiag("pets")
+        if sch and M.state._lastGroupedPetData and filtersOk then
+            M.CollectionsSubTabTrace("DrawPetsContent_path", { path = "populate_only", drawGen = drawGen })
+            if M.state.petListContainer then M.state.petListContainer:Show() end
+            if M.state.petListScrollBarContainer then M.state.petListScrollBarContainer:Show() end
+            if M.state.viewerContainer then M.state.viewerContainer:Show() end
+            M.RecordCollectionsSubTabBrowseSnapshot("pets")
+            M.PopulatePetList(sch, listW, M.state._lastGroupedPetData, M.state.collapsedHeadersPets, M.state.selectedPetID, onSelectPet, contentFrame, DrawPetsContent, drawGen, function()
+                if Factory.UpdateScrollBarVisibility and M.state.petListScrollFrame then
+                    Factory:UpdateScrollBarVisibility(M.state.petListScrollFrame)
+                end
+                M.ReleaseCollectionsDrawBusy("Pets", drawGen)
+            end)
+            return
         else
+            M.CollectionsSubTabTrace("DrawPetsContent_path", {
+                path = "full_repopulate",
+                drawGen = drawGen,
+                hasFlat = cacheDiag.hasFlat,
+                hasGrouped = cacheDiag.hasGrouped,
+                filtersOk = filtersOk,
+            })
             -- First time or list not built: chunked build then populate.
             -- Busy is held across this chain; every abort must release it (gen-token guarded).
             C_Timer.After(0, function()
@@ -826,9 +911,7 @@ function M.DrawPetsContent(contentFrame)
                         if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
                         if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
                         M.state._lastGroupedPetData = grouped
-                        M.state._petLastSearchText = M.state.searchText or ""
-                        M.state._petLastShowCollected = M.state.showCollected
-                        M.state._petLastShowUncollected = M.state.showUncollected
+                        M.RecordCollectionsSubTabBrowseSnapshot("pets")
                         C_Timer.After(0, function()
                             if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
                             if not sch:GetParent() or not contentFrame:IsVisible() then M.ReleaseCollectionsDrawBusy("Pets", drawGen) return end
@@ -850,6 +933,7 @@ end
 
 -- DrawToysContent: list left (grouped by source), toy detail panel right (icon, name, source, description). No 3D viewer.
 function M.DrawToysContent(contentFrame)
+    M.CollectionsSubTabTrace("DrawToysContent_enter", { busy = M.state._drawToysContentBusy and true or false })
     if M.state._drawToysContentBusy then
         -- Self-heal: a leaked busy flag (abort path that missed its release) would
         -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
@@ -889,8 +973,11 @@ function M.DrawToysContent(contentFrame)
 
     local listContentWidth, listWidth, detailWidth, scrollBarColumnWidth = M.ComputeCollectionsListDetailWidths(cw)
 
-    M.HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = M.ApplyCollectionsContentHeader(contentFrame, "toys", ch)
+    M.HideAllCollectionsResultFrames()
+    if M.state.toyListContainer then
+        M.ReanchorCollectionsBrowseListHost(M.state.toyListContainer, contentFrame, headerBlockH, innerCh, listContentWidth)
+    end
 
     -- LEFT: Toy list container + scroll
     if not M.state.toyListContainer then
@@ -1009,8 +1096,11 @@ function M.DrawToysContent(contentFrame)
         headerRow:SetHeight(toyHdrH)
         local iconBorder = Factory:CreateContainer(headerRow, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
-        if ApplyVisuals then
-            ApplyVisuals(iconBorder, {0.12, 0.12, 0.14, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.7})
+        if M.ApplyCollectionsIconBorder then
+            M.ApplyCollectionsIconBorder(iconBorder, 0.7)
+        elseif ApplyVisuals then
+            local bg, edge = M.CollectionsIconBorderColors(0.7)
+            ApplyVisuals(iconBorder, bg, edge)
         end
         local iconTex = iconBorder:CreateTexture(nil, "OVERLAY")
         iconTex:SetAllPoints()
@@ -1020,9 +1110,12 @@ function M.DrawToysContent(contentFrame)
         M.state._toyDetailIconBorder = iconBorder
 
         local DETAIL_HEADER_GAP = 10
-        local goldR = (COLORS.gold and COLORS.gold[1]) or 1
-        local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
-        local goldB = (COLORS.gold and COLORS.gold[3]) or 0
+        local goldR, goldG, goldB = 1, 0.82, 0
+        if ns.UI_GetSemanticGoldColor then
+            goldR, goldG, goldB = ns.UI_GetSemanticGoldColor()
+        elseif COLORS.gold then
+            goldR, goldG, goldB = COLORS.gold[1], COLORS.gold[2], COLORS.gold[3]
+        end
         local nameFs = FontManager:CreateFontString(headerRow, "header", "OVERLAY")
         nameFs:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
         nameFs:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
@@ -1071,10 +1164,10 @@ function M.DrawToysContent(contentFrame)
         sourceLabel:SetText("")
         M.state._toyDetailSourceLabel = sourceLabel
 
-        local toyObtainedLine = FontManager:CreateFontString(scrollChild, "small", "OVERLAY")
+        local toyObtainedLine = M.CreateCollectionsSmallLabel(scrollChild)
         toyObtainedLine:SetJustifyH("LEFT")
         toyObtainedLine:SetWordWrap(true)
-        ns.UI_SetTextColorRole(toyObtainedLine, "Bright")
+        ns.UI_SetTextColorRole(toyObtainedLine, "Dim")
         toyObtainedLine:Hide()
         M.state._toyDetailObtainedLine = toyObtainedLine
     else
@@ -1165,8 +1258,11 @@ function M.DrawToysContent(contentFrame)
             local sourceTitle = (ns.L and ns.L["SOURCE"]) or "Source"
             if sourceTitle == "SOURCE" then sourceTitle = "Source" end
             local gold = COLORS.gold or { 1, 0.82, 0 }
-            local goldHex = ns.UI_RGBToHex(gold[1], gold[2], gold[3])
-            srcLabel:SetText(goldHex .. sourceTitle .. ":|r |cffffffff" .. srcText .. "|r")
+            local goldHex = M.CollectionsGoldHex and M.CollectionsGoldHex()
+                or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
+                or ns.UI_RGBToHex(gold[1], gold[2], gold[3])
+            local brightHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
+            srcLabel:SetText(goldHex .. sourceTitle .. ":|r " .. brightHex .. srcText .. "|r")
         end
         if M.state._toyDetailObtainedLine and M.state._toyDetailSourceLabel then
             local ol = M.state._toyDetailObtainedLine
@@ -1237,7 +1333,33 @@ function M.DrawToysContent(contentFrame)
         UpdateToyDetailPanel(itemID, name or "", icon or M.DEFAULT_ICON_TOY, isCollected, sourceTypeName)
     end
 
-    -- Toys: list from C_ToyBox source type API; no flat cache required
+    -- Toys: list from C_ToyBox source type API; warm cache when available.
+    M.EnsureCollectionsBrowseCacheForSubTab("toys")
+    local listWEarly = listContentWidth - (CONTAINER_INSET * 2)
+    local schEarly = M.state.toyListScrollChild
+    local filtersOkEarly = M.CollectionsSubTabBrowseFiltersUnchanged("toys")
+    if schEarly and M.state._toyFlatList and filtersOkEarly then
+        M.CollectionsSubTabTrace("DrawToysContent_path", { path = "fast_visible_only" })
+        if M.state.toyDetailContainer then M.state.toyDetailContainer:Show() end
+        if not M.state.selectedToyID then
+            if M.state.toyDetailEmptyOverlay then M.state.toyDetailEmptyOverlay:Show() end
+            if M.state._toyDetailScroll then M.state._toyDetailScroll:Hide() end
+        else
+            if M.state.toyDetailEmptyOverlay then M.state.toyDetailEmptyOverlay:Hide() end
+            if M.state._toyDetailScroll then M.state._toyDetailScroll:Show() end
+        end
+        if M.state.toyListContainer then M.state.toyListContainer:Show() end
+        if M.state.toyListScrollBarContainer then M.state.toyListScrollBarContainer:Show() end
+        if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
+            Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
+        end
+        if M.state._toyListRefreshVisible then
+            M.state._toyListRefreshVisible()
+        end
+        M.state._drawToysContentBusy = nil
+        return
+    end
+
     local dataReady = true
     local loadingState = ns.CollectionLoadingState
     local isLoading = loadingState and loadingState.isLoading
@@ -1246,6 +1368,7 @@ function M.DrawToysContent(contentFrame)
     end
 
     if isLoading and not dataReady then
+        M.CollectionsSubTabTrace("DrawToysContent_path", { path = "loading" })
         M.SetCollectionProgress(nil, nil)
         if not M.state.loadingPanel then
             M.state.loadingPanel = M.GetOrCreateLoadingPanel(contentFrame)
@@ -1287,13 +1410,12 @@ function M.DrawToysContent(contentFrame)
                     if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
                         Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
                     end
+                    M.ReleaseCollectionsDrawBusy("Toys", drawGen)
                 end)
             end
         end)
     else
         if M.state.loadingPanel then M.state.loadingPanel:Hide() end
-        if M.state.toyListContainer then M.state.toyListContainer:Show() end
-        if M.state.toyListScrollBarContainer then M.state.toyListScrollBarContainer:Show() end
         if M.state.toyDetailContainer then M.state.toyDetailContainer:Show() end
         if not M.state.selectedToyID then
             if M.state.toyDetailEmptyOverlay then M.state.toyDetailEmptyOverlay:Show() end
@@ -1309,31 +1431,13 @@ function M.DrawToysContent(contentFrame)
         local collected = (apiCounts and apiCounts.toys and apiCounts.toys.collected) or 0
         local total = (apiCounts and apiCounts.toys and apiCounts.toys.total) or 0
         M.SetCollectionProgress(collected, total)
-        local searchUnchanged = (M.state._toyLastSearchText == (M.state.searchText or ""))
-            and (M.state._toyLastShowCollected == M.state.showCollected)
-            and (M.state._toyLastShowUncollected == M.state.showUncollected)
-        if sch and M.state._toyFlatList and M.state._lastGroupedToyData and searchUnchanged then
-            if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
-                Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
-            end
-            if M.state._toyListRefreshVisible then
-                M.state._toyListRefreshVisible()
-            end
-        else
-            if M.state._toysDrawGen ~= drawGen or M.state.currentSubTab ~= "toys" then
-                M.state._drawToysContentBusy = nil
-                return
-            end
-            if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then
-                M.state._drawToysContentBusy = nil
-                return
-            end
-            local grouped = M.GetFilteredToysGrouped(M.state.searchText or "", M.state.showCollected, M.state.showUncollected)
-            M.state._toyLastSearchText = M.state.searchText or ""
-            M.state._toyLastShowCollected = M.state.showCollected
-            M.state._toyLastShowUncollected = M.state.showUncollected
-            M.state._lastGroupedToyData = grouped
-            M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
+        local filtersOk = M.CollectionsSubTabBrowseFiltersUnchanged("toys")
+        if sch and M.state._lastGroupedToyData and filtersOk then
+            M.CollectionsSubTabTrace("DrawToysContent_path", { path = "populate_only", drawGen = drawGen })
+            if M.state.toyListContainer then M.state.toyListContainer:Show() end
+            if M.state.toyListScrollBarContainer then M.state.toyListScrollBarContainer:Show() end
+            M.RecordCollectionsSubTabBrowseSnapshot("toys")
+            M.PopulateToyList(sch, listW, M.state._lastGroupedToyData, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
                 if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
                     Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
                 end
@@ -1341,12 +1445,32 @@ function M.DrawToysContent(contentFrame)
             end)
             return
         end
+        M.CollectionsSubTabTrace("DrawToysContent_path", { path = "full_repopulate", drawGen = drawGen })
+        if M.state._toysDrawGen ~= drawGen or M.state.currentSubTab ~= "toys" then
+            M.state._drawToysContentBusy = nil
+            return
+        end
+        if not sch or not sch:GetParent() or not contentFrame or not contentFrame:IsVisible() then
+            M.state._drawToysContentBusy = nil
+            return
+        end
+        local grouped = M.GetFilteredToysGrouped(M.state.searchText or "", M.state.showCollected, M.state.showUncollected)
+        M.RecordCollectionsSubTabBrowseSnapshot("toys")
+        M.state._lastGroupedToyData = grouped
+        M.PopulateToyList(sch, listW, grouped, M.state.collapsedHeadersToys, M.state.selectedToyID, onSelectToy, contentFrame, DrawToysContent, drawGen, function()
+            if Factory.UpdateScrollBarVisibility and M.state.toyListScrollFrame then
+                Factory:UpdateScrollBarVisibility(M.state.toyListScrollFrame)
+            end
+            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
+        end)
+        return
     end
     M.state._drawToysContentBusy = nil
 end
 
 -- DrawAchievementsContent: list left, achievement detail panel right (parent/children, criteria).
 function M.DrawAchievementsContent(contentFrame)
+    M.CollectionsSubTabTrace("DrawAchievementsContent_enter", { busy = M.state._drawAchievementsContentBusy and true or false })
     if M.state._drawAchievementsContentBusy then
         -- Self-heal: a leaked busy flag (abort path that missed its release) would
         -- otherwise spin this retry forever; after ~1s force-clear and draw anyway.
@@ -1383,8 +1507,11 @@ function M.DrawAchievementsContent(contentFrame)
 
     local listContentWidth, listWidth, detailWidth, scrollBarColumnWidth = M.ComputeCollectionsListDetailWidths(cw)
 
-    M.HideAllCollectionsResultFrames()
     local headerBlockH, innerCh = M.ApplyCollectionsContentHeader(contentFrame, "achievements", ch)
+    M.HideAllCollectionsResultFrames()
+    if M.state.achievementListContainer then
+        M.ReanchorCollectionsBrowseListHost(M.state.achievementListContainer, contentFrame, headerBlockH, innerCh, listContentWidth)
+    end
 
     -- Achievements: list container | scrollbar column | detail (same pattern as Mounts/Pets/Toys)
     local achListContainer = M.state.achievementListContainer
@@ -1532,6 +1659,7 @@ function M.DrawAchievementsContent(contentFrame)
     local isLoading = (loadingState and loadingState.isLoading) or (collLoading and collLoading.isLoading and collLoading.currentCategory == "achievement")
 
     if isLoading then
+        M.CollectionsSubTabTrace("DrawAchievementsContent_path", { path = "loading" })
         M.SetCollectionProgress(nil, nil)
         if not M.state.loadingPanel then
             M.state.loadingPanel = M.GetOrCreateLoadingPanel(contentFrame)
@@ -1547,9 +1675,6 @@ function M.DrawAchievementsContent(contentFrame)
         if M.state.achievementDetailContainer then M.state.achievementDetailContainer:Hide() end
     else
         if M.state.loadingPanel then M.state.loadingPanel:Hide() end
-        if M.state.achievementListContainer then M.state.achievementListContainer:Show() end
-        if M.state.achievementListScrollBarContainer then M.state.achievementListScrollBarContainer:Show() end
-        if M.state.achievementDetailContainer then M.state.achievementDetailContainer:Show() end
 
         local allAchsForProgress = WarbandNexus.GetAllAchievementsData and WarbandNexus:GetAllAchievementsData() or {}
         local achTotal = allAchsForProgress._wnAchTotal or #allAchsForProgress
@@ -1572,11 +1697,33 @@ function M.DrawAchievementsContent(contentFrame)
         local showCSnap = M.state.showCollected
         local showUSnap = M.state.showUncollected
         local selAchID = M.state.selectedAchievementID
+        local sch = M.state.achievementListScrollChild
+        local filtersOk = M.CollectionsSubTabBrowseFiltersUnchanged("achievements")
 
         if M.state.currentSubTab ~= "achievements" or M.state._achPopulateGen ~= popGen then
             M.state._drawAchievementsContentBusy = nil
             return
         end
+
+        -- Tab switch back: list already populated and filters unchanged — refresh visible rows only (Mounts/Pets/Toys parity).
+        if sch and M.state._achFlatList and M.state._lastAchievementCategoryData and filtersOk then
+            M.CollectionsSubTabTrace("DrawAchievementsContent_path", { path = "fast_visible_only" })
+            if M.state.achievementListContainer then M.state.achievementListContainer:Show() end
+            if M.state.achievementListScrollBarContainer then M.state.achievementListScrollBarContainer:Show() end
+            if M.state.achievementDetailContainer then M.state.achievementDetailContainer:Show() end
+            if Factory.UpdateScrollBarVisibility and M.state.achievementListScrollFrame then
+                Factory:UpdateScrollBarVisibility(M.state.achievementListScrollFrame)
+            end
+            if M.state._achListRefreshVisible then
+                M.state._achListRefreshVisible()
+            end
+            M.state._drawAchievementsContentBusy = nil
+            return
+        end
+
+        if M.state.achievementDetailContainer then M.state.achievementDetailContainer:Show() end
+
+        M.CollectionsSubTabTrace("DrawAchievementsContent_path", { path = "full_repopulate", popGen = popGen })
         local categoryData, rootCategories = M.BuildGroupedAchievementData(searchSnap, showCSnap, showUSnap)
         M.state._lastAchievementCategoryData = categoryData
         M.state._lastAchievementRootCategories = rootCategories
@@ -1596,6 +1743,7 @@ function M.DrawAchievementsContent(contentFrame)
                     M.ReleaseCollectionsDrawBusy("Achievements", popGen)
                     return
                 end
+                M.RecordCollectionsSubTabBrowseSnapshot("achievements")
                 if selAchID then
                     local allAchs = WarbandNexus:GetAllAchievementsData()
                     for i = 1, #allAchs do

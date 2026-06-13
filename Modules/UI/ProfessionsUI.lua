@@ -33,8 +33,8 @@ local E = ns.Constants.EVENTS
 --- Incremental professions tab paint (WN-PERF heavy tab first paint; Collections RunChunked parity).
 ns.ProfessionsUI = ns.ProfessionsUI or {}
 local ProfUI = ns.ProfessionsUI
-ProfUI.CHUNK_SIZE = 4
-ProfUI.CHUNK_MIN_CHARS = 5
+ProfUI.CHUNK_SIZE = 3
+ProfUI.CHUNK_MIN_CHARS = 0
 
 local Utilities = ns.Utilities
 local function SafeLower(s)
@@ -64,6 +64,46 @@ local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateIcon = ns.UI_CreateIcon
 local FormatNumber = ns.UI_FormatNumber
 local GetAccentHexColor = ns.UI_GetAccentHexColor
+local function ChromeBackdrop()
+    return (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
+        or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+end
+local function ChromeBorder(alpha)
+    alpha = alpha or 0.6
+    return { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], alpha }
+end
+local function MenuShellBackdrop()
+    local row = COLORS.surfaceRowOdd or COLORS.bg
+    return { row[1], row[2], row[3], row[4] or 0.98 }
+end
+local function MenuShellBorder()
+    local br = COLORS.accent
+    return { br[1] * 0.6, br[2] * 0.6, br[3] * 0.6, 0.8 }
+end
+--- Full `|cffrrggbb` prefix from theme text roles (do not prepend another `|cff`).
+local function TextRoleMarkup(role)
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex(role)) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
+end
+local function ProgressRgb(kind)
+    if kind == "complete" then
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+            return 0.22, 0.55, 0.32
+        end
+        return 0.3, 0.9, 0.3
+    end
+    if kind == "partial" then
+        local g = COLORS.gold
+        return g[1], g[2], g[3]
+    end
+    local c = COLORS.textBright
+    return c[1], c[2], c[3]
+end
+local function MutedIconVertex()
+    if ns.UI_GetNavTabIconMutedVertex then
+        return ns.UI_GetNavTabIconMutedVertex()
+    end
+    return 0.58, 0.62, 0.72, 1
+end
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 local SyncGridColumnDividers = ns.UI_SyncGridColumnDividers
@@ -483,16 +523,19 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
         checkTex:SetPoint("LEFT", 4, 0)
         if isVisible then
             checkTex:SetAtlas("common-icon-checkmark")
-            checkTex:SetVertexColor(0.3, 0.9, 0.3)
+            local gr, gg, gb = ProgressRgb("complete")
+            checkTex:SetVertexColor(gr, gg, gb, 1)
         else
             checkTex:SetAtlas("common-icon-redx")
-            checkTex:SetVertexColor(0.5, 0.5, 0.5)
+            local mr, mg, mb, ma = MutedIconVertex()
+            checkTex:SetVertexColor(mr, mg, mb, ma)
         end
 
         local lbl = FontManager:CreateFontString(checkRow, "small", "OVERLAY")
         lbl:SetPoint("LEFT", checkTex, "RIGHT", 6, 0)
-        lbl:SetText(isVisible and ("|cffffffff" .. tc.label .. "|r") or ("|cff888888" .. tc.label .. "|r"))
+        lbl:SetText(tc.label or "")
         lbl:SetJustifyH("LEFT")
+        ns.UI_SetTextColorRole(lbl, isVisible and "Bright" or "Dim")
 
         local capturedKey = tc.key
         checkRow:SetScript("OnClick", function()
@@ -562,10 +605,10 @@ function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
         if not menu then
             menu = CreateFrame("Frame", "WarbandNexusProfColumnPickerMenu", UIParent, "BackdropTemplate")
             menu:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-            menu:SetBackdropColor(0.08, 0.08, 0.1, 1)
+            local shell = MenuShellBackdrop()
+            menu:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 1)
         elseif ApplyVisuals then
-            ApplyVisuals(menu, { 0.08, 0.08, 0.1, 1 },
-                { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
+            ApplyVisuals(menu, MenuShellBackdrop(), MenuShellBorder())
         end
         menu:SetFrameStrata("FULLSCREEN_DIALOG")
         menu:SetFrameLevel(120)
@@ -782,15 +825,12 @@ local function StripProfHeaderDisplayText(text)
         :gsub("%s+$", "")
 end
 
-local PROF_HDR_COLOR = { 0.72, 0.72, 0.75 }
-local PROF_HDR_COLOR_HILITE = { 1, 1, 1 }
-
 local function ApplyProfColumnHeaderLabel(lbl, displayText, highlighted)
     if not lbl then return end
     if lbl.SetWordWrap then lbl:SetWordWrap(false) end
     if lbl.SetMaxLines then lbl:SetMaxLines(1) end
-    local c = highlighted and PROF_HDR_COLOR_HILITE or PROF_HDR_COLOR
-    lbl:SetTextColor(c[1], c[2], c[3])
+    local c = highlighted and COLORS.textBright or COLORS.textMuted
+    lbl:SetTextColor(c[1], c[2], c[3], c[4] or 1)
     lbl:SetText(displayText or "")
 end
 
@@ -900,10 +940,9 @@ local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     end
 end
 
-local PROF_COMPACT_HEADER_HEX = "aaaaaa"
-
 local function BuildProfCompactHeaderLabel(col, displayText)
-    if type(displayText) ~= "string" or displayText == "" then return "", PROF_COMPACT_HEADER_HEX end
+    local mutedMarkup = TextRoleMarkup("Muted")
+    if type(displayText) ~= "string" or displayText == "" then return "", mutedHex end
     local shortByCol = {
         profName = (ns.L and ns.L["GROUP_PROFESSION"]) or "Profession",
         equipment = (ns.L and ns.L["EQUIPMENT"]) or "Equip",
@@ -923,12 +962,12 @@ local function BuildProfCompactHeaderLabel(col, displayText)
         cooldowns = (ns.L and ns.L["COOLDOWNS"]) or "CD",
     }
     if col and shortByCol[col] then
-        return shortByCol[col], PROF_COMPACT_HEADER_HEX
+        return shortByCol[col], mutedMarkup
     end
     if #displayText > 10 then
-        return displayText:sub(1, 9) .. ".", PROF_COMPACT_HEADER_HEX
+        return displayText:sub(1, 9) .. ".", mutedMarkup
     end
-    return displayText, PROF_COMPACT_HEADER_HEX
+    return displayText, mutedMarkup
 end
 
 local profColHeaderLabels = {}
@@ -970,7 +1009,7 @@ local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compact
     if not colHeaderBar or not hitFrame or not compactLabel or compactLabel == "" then return nil end
     local fs = profColHeaderLabels[colKey]
     if not fs then
-        fs = FontManager:CreateFontString(colHeaderBar, "bodySmall", "OVERLAY")
+        fs = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
         profColHeaderLabels[colKey] = fs
     else
         fs:SetParent(colHeaderBar)
@@ -980,9 +1019,14 @@ local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compact
     fs:SetWidth(math.max(24, colWidth - 4))
     fs:SetJustifyH("CENTER")
     fs:SetWordWrap(false)
-    fs:SetText("|cff" .. (compactHex or PROF_COMPACT_HEADER_HEX) .. compactLabel .. "|r")
-    fs:SetShadowOffset(1, -1)
-    fs:SetShadowColor(0, 0, 0, 0.9)
+    fs:SetText((compactHex or TextRoleMarkup("Muted")) .. compactLabel .. "|r")
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        fs:SetShadowOffset(0, 0)
+        fs:SetShadowColor(0, 0, 0, 0)
+    else
+        fs:SetShadowOffset(1, -1)
+        fs:SetShadowColor(0, 0, 0, 0.9)
+    end
     return fs
 end
 
@@ -1087,6 +1131,123 @@ local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef,
             arrow:Hide()
         end
     end)
+end
+
+local PROF_TEXT_SORT_ARROW_SIZE = 11
+
+--- Pooled text sort header (Character column); avoids per-draw Button/FontString allocation.
+local function PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hdef, sortState, displayText, accentR, accentG, accentB, FactHdr)
+    if not colHeaderBar or not hdef or w <= 0 then return end
+    local isSorted = sortState and sortState.col == col
+    local hitBtn = profColHeaderHits[col]
+    if not hitBtn then
+        hitBtn = FactHdr and FactHdr:CreateButton(colHeaderBar, w, COLUMN_HEADER_HEIGHT, true)
+        if not hitBtn then
+            hitBtn = CreateFrame("Button", nil, colHeaderBar)
+            hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
+        end
+        profColHeaderHits[col] = hitBtn
+        local arrow = hitBtn:CreateTexture(nil, "OVERLAY")
+        arrow:SetSize(PROF_TEXT_SORT_ARROW_SIZE, PROF_TEXT_SORT_ARROW_SIZE)
+        arrow:SetPoint("RIGHT", hitBtn, "RIGHT", -1, 0)
+        hitBtn._wnSortArrow = arrow
+        local lbl = FontManager:CreateFontString(hitBtn, PROF_COLUMN_HEADER_FONT, "OVERLAY")
+        lbl:SetJustifyH(hdef.align or "CENTER")
+        if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
+        hitBtn._wnHeaderLabel = lbl
+    else
+        hitBtn:SetParent(colHeaderBar)
+        hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
+        hitBtn:Show()
+    end
+    if (hdef.align or "CENTER") == "CENTER" then
+        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+    else
+        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+    end
+    hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 1)
+
+    local arrow = hitBtn._wnSortArrow
+    if isSorted then
+        if sortState.dir == "asc" then
+            arrow:SetAtlas("hud-MainMenuBar-arrowup")
+        else
+            arrow:SetAtlas("hud-MainMenuBar-arrowdown")
+        end
+        arrow:SetVertexColor(accentR, accentG, accentB, 1)
+        arrow:Show()
+    else
+        arrow:Hide()
+    end
+
+    local lbl = hitBtn._wnHeaderLabel
+    ApplyProfColumnHeaderLabel(lbl, displayText, false)
+    local function SetHeaderLabelArrowInset(showArrow)
+        lbl:ClearAllPoints()
+        lbl:SetPoint("LEFT", hitBtn, "LEFT", 2, 0)
+        local rightPad = showArrow and -(PROF_TEXT_SORT_ARROW_SIZE + 4) or -2
+        lbl:SetPoint("RIGHT", hitBtn, "RIGHT", rightPad, 0)
+    end
+    SetHeaderLabelArrowInset(isSorted)
+
+    local capturedCol = col
+    hitBtn:SetScript("OnClick", function()
+        ToggleColumnSort(capturedCol)
+    end)
+    hitBtn:SetScript("OnEnter", function()
+        ApplyProfColumnHeaderLabel(lbl, displayText, true)
+        SetHeaderLabelArrowInset(true)
+        if ShowTooltip and displayText ~= "" then
+            ShowTooltip(hitBtn, { type = "custom", title = displayText, lines = {} })
+        end
+        if not isSorted then
+            arrow:SetAtlas("hud-MainMenuBar-arrowup")
+            arrow:SetVertexColor(1, 1, 1, 0.4)
+            arrow:Show()
+        end
+    end)
+    hitBtn:SetScript("OnLeave", function()
+        ApplyProfColumnHeaderLabel(lbl, displayText, false)
+        SetHeaderLabelArrowInset(isSorted)
+        if HideTooltip then HideTooltip() end
+        if not isSorted then
+            arrow:Hide()
+        end
+    end)
+end
+
+--- Pooled static text header (non-icon, non-sortable columns).
+local function PaintProfessionTextStaticColumnHeader(colHeaderBar, col, w, hdef, displayText, FactHdr)
+    if not colHeaderBar or not hdef or w <= 0 then return end
+    local clipKey = col .. "_clip"
+    local clip = profColHeaderHits[clipKey]
+    if not clip then
+        clip = FactHdr and FactHdr:CreateContainer(colHeaderBar, w, COLUMN_HEADER_HEIGHT, false)
+        if not clip then
+            clip = CreateFrame("Frame", nil, colHeaderBar)
+            clip:SetSize(w, COLUMN_HEADER_HEIGHT)
+        end
+        clip:SetClipsChildren(true)
+        profColHeaderHits[clipKey] = clip
+        local lbl = FontManager:CreateFontString(clip, PROF_COLUMN_HEADER_FONT, "OVERLAY")
+        lbl:SetJustifyH(hdef.align or "CENTER")
+        if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
+        clip._wnHeaderLabel = lbl
+    else
+        clip:SetParent(colHeaderBar)
+        clip:SetSize(w, COLUMN_HEADER_HEIGHT)
+        clip:Show()
+    end
+    if (hdef.align or "CENTER") == "CENTER" then
+        clip:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+    else
+        clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", ColOffset(col), 0)
+    end
+    local lbl = clip._wnHeaderLabel
+    ApplyProfColumnHeaderLabel(lbl, displayText, false)
+    lbl:SetPoint("TOPLEFT", clip, "TOPLEFT", 1, 0)
+    lbl:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", -1, 0)
+    BindProfColumnHeaderTooltip(clip, displayText)
 end
 
 -- Column header definitions â€” alignment matches each column's data alignment
@@ -1201,7 +1362,8 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
         -- Background
         bar.bg = bar:CreateTexture(nil, "BACKGROUND")
         bar.bg:SetAllPoints()
-        bar.bg:SetColorTexture(0.08, 0.08, 0.1, 0.9)
+        local barBg = COLORS.surfaceRowOdd or COLORS.bg
+        bar.bg:SetColorTexture(barBg[1], barBg[2], barBg[3], barBg[4] or 0.9)
         bar.bg:SetSnapToPixelGrid(false)
         bar.bg:SetTexelSnappingBias(0)
 
@@ -1235,7 +1397,13 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
         bar.bRight = Border("TOPRIGHT", "BOTTOMRIGHT", BAR_BORDER, nil)
 
         -- Value text
-        bar.valueText = FontManager:CreateFontString(bar, "small", "OVERLAY")
+        bar.valueText = FontManager:CreateBarOverlayFontString(bar, "OVERLAY")
+        if not bar.valueText then
+            bar.valueText = FontManager:CreateFontString(bar, "small", "OVERLAY")
+            if ns.UI_ApplyFontStyleForRole then
+                ns.UI_ApplyFontStyleForRole(bar.valueText, "small", { barOverlay = true })
+            end
+        end
         bar.valueText:SetPoint("CENTER", 0, 0)
         bar.valueText:SetJustifyH("CENTER")
 
@@ -1250,7 +1418,7 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
     if not maximum or maximum <= 0 then
         bar.fill:SetWidth(0.001)
         bar.fill:Hide()
-        bar.valueText:SetText("|cffffffff--|r")
+        bar.valueText:SetText(TextRoleMarkup("Bright") .. "--|r")
         bar:Show()
         return bar
     end
@@ -1263,14 +1431,17 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
     bar.fill:Show()
 
     if current >= maximum then
-        bar.fill:SetVertexColor(0.2, 0.8, 0.2, 1)
+        local gr, gg, gb = ProgressRgb("complete")
+        bar.fill:SetVertexColor(gr, gg, gb, 1)
     elseif progress >= 0.5 then
-        bar.fill:SetVertexColor(1, 0.82, 0, 1)
+        local yr, yg, yb = ProgressRgb("partial")
+        bar.fill:SetVertexColor(yr, yg, yb, 1)
     else
         bar.fill:SetVertexColor(0.9, 0.45, 0.2, 1)
     end
 
-    bar.valueText:SetText(format("|cffffffff%d / %d|r", current, maximum))
+    local br, bg, bb = ProgressRgb("neutral")
+    bar.valueText:SetText(format("|cff%02x%02x%02x%d / %d|r", br * 255, bg * 255, bb * 255, current, maximum))
     bar:Show()
     return bar
 end
@@ -1282,6 +1453,8 @@ local function InvalidateProfessionsTradeSessionCaches()
     wipe(profSessionRecipeMapByCharKey)
 end
 
+local profCharRefreshTimer = nil
+
 local function RegisterProfessionEvents(parent)
     if parent.professionUpdateHandler then return end
     parent.professionUpdateHandler = true
@@ -1289,10 +1462,24 @@ local function RegisterProfessionEvents(parent)
 
     local function Refresh()
         wipe(profSessionRecipeMapByCharKey)
-        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        if mf and mf:IsShown() and mf.currentTab == "professions" then
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+        if profCharRefreshTimer and profCharRefreshTimer.Cancel then
+            profCharRefreshTimer:Cancel()
+            profCharRefreshTimer = nil
         end
+        if not (C_Timer and C_Timer.After) then
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mf and mf:IsShown() and mf.currentTab == "professions" then
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+            end
+            return
+        end
+        profCharRefreshTimer = C_Timer.After(0.12, function()
+            profCharRefreshTimer = nil
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mf and mf:IsShown() and mf.currentTab == "professions" then
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
+            end
+        end)
     end
 
     -- CONCENTRATION_UPDATED, KNOWLEDGE_UPDATED, RECIPE_DATA_UPDATED: REMOVED â€”
@@ -1565,38 +1752,50 @@ local function GetCurrentExpansionSkill(char, profName)
 end
 
 local function FormatValueMax(current, maximum, color)
-    if not current or not maximum or maximum <= 0 then return "|cffffffff--|r" end
-    return format("|cff%02x%02x%02x%d|r |cffffffff/|r |cff%02x%02x%02x%d|r",
+    if not current or not maximum or maximum <= 0 then return TextRoleMarkup("Bright") .. "--|r" end
+    return format("|cff%02x%02x%02x%d|r %s/|r |cff%02x%02x%02x%d|r",
         color[1]*255, color[2]*255, color[3]*255, current,
+        TextRoleMarkup("Bright"),
         color[1]*255, color[2]*255, color[3]*255, maximum)
 end
 
 local function FormatSkill(curSkill, maxSkill)
-    if not curSkill or not maxSkill or maxSkill <= 0 then return "|cffffffff--|r" end
-    local color
-    if curSkill >= maxSkill then color = {0.3, 0.9, 0.3}
-    elseif curSkill > 0 then color = {1, 0.82, 0}
-    else color = {1, 1, 1} end
-    return FormatValueMax(curSkill, maxSkill, color)
+    if not curSkill or not maxSkill or maxSkill <= 0 then return TextRoleMarkup("Bright") .. "--|r" end
+    local r, g, b
+    if curSkill >= maxSkill then
+        r, g, b = ProgressRgb("complete")
+    elseif curSkill > 0 then
+        r, g, b = ProgressRgb("partial")
+    else
+        r, g, b = ProgressRgb("neutral")
+    end
+    return FormatValueMax(curSkill, maxSkill, { r, g, b })
 end
 
 ---Format knowledge as "Current / Max". Current = spent + unspent; Max = maxPoints from spec tree.
 local function FormatKnowledge(kd)
-    if not kd then return "|cffffffff--|r" end
+    if not kd then return TextRoleMarkup("Bright") .. "--|r" end
     local spent = kd.spentPoints or 0
     local maxPts = kd.maxPoints or 0
     local unspent = kd.unspentPoints or 0
     local current = spent + unspent
-    if current <= 0 and (not maxPts or maxPts <= 0) then return "|cffffffff--|r" end
+    if current <= 0 and (not maxPts or maxPts <= 0) then return TextRoleMarkup("Bright") .. "--|r" end
     local displayMax = (maxPts and maxPts > 0) and maxPts or nil
-    local color
-    if unspent > 0 then color = {1, 0.82, 0}
-    elseif displayMax and current >= displayMax then color = {0.3, 0.9, 0.3}
-    else color = {1, 1, 1} end
+    local r, g, b
+    if unspent > 0 then
+        r, g, b = ProgressRgb("partial")
+    elseif displayMax and current >= displayMax then
+        r, g, b = ProgressRgb("complete")
+    else
+        r, g, b = ProgressRgb("neutral")
+    end
+    local color = { r, g, b }
     if displayMax then
         return FormatValueMax(current, displayMax, color)
     end
-    return format("|cff%02x%02x%02x%d|r |cffffffff/|r |cff888888--|r", color[1]*255, color[2]*255, color[3]*255, current)
+    return format("|cff%02x%02x%02x%d|r %s/|r %s--|r",
+        color[1]*255, color[2]*255, color[3]*255, current,
+        TextRoleMarkup("Bright"), TextRoleMarkup("Dim"))
 end
 
 --- True when char.professions[1|2] has a learned primary profession (matches DrawProfessionLine / DataService).
@@ -1691,11 +1890,11 @@ local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
     if enabled then
         btn:Enable()
         btn:SetAlpha(1)
-        if btn.label then btn.label:SetTextColor(1, 1, 1) end
+        if btn.label then ns.UI_SetTextColorRole(btn.label, "Bright") end
     else
         btn:Disable()
         btn:SetAlpha(0.45)
-        if btn.label then btn.label:SetTextColor(0.55, 0.55, 0.58) end
+        if btn.label then ns.UI_SetTextColorRole(btn.label, "Dim") end
     end
     local tipTitle = tooltipTitle or ((ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open recipe list")
     btn:SetScript("OnEnter", function(self)
@@ -1705,13 +1904,14 @@ local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
 end
 
 local function FormatProgressPair(entry)
-    if not entry then return "|cffffffff--|r" end
+    if not entry then return TextRoleMarkup("Bright") .. "--|r" end
     local current = tonumber(entry.current or 0) or 0
     local total = tonumber(entry.total or 0) or 0
-    if total <= 0 then return "|cffffffff--|r" end
+    if total <= 0 then return TextRoleMarkup("Bright") .. "--|r" end
     if current > total then current = total end
-    local color = (current >= total) and "ff4de64d" or "ffffffff"
-    return format("|c%s%d / %d|r", color, current, total)
+    local kind = (current >= total) and "complete" or "neutral"
+    local r, g, b = ProgressRgb(kind)
+    return format("|cff%02x%02x%02x%d / %d|r", r * 255, g * 255, b * 255, current, total)
 end
 
 -- COLUMN SORT: FLAT LIST BUILDER & COMPARATOR
@@ -2175,7 +2375,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     row.realmText:ClearAllPoints()
     row.realmText:SetWidth(nameW)
     ns.UI_SetTextColorRole(row.realmText, "Muted")
-    row.realmText:SetText("|cffb0b0b8" .. FormatRealmName(char.realm or "") .. "|r")
+    row.realmText:SetText(FormatRealmName(char.realm or ""))
 
     -- Vertically center name + realm block with icon column (icons use y=0 on row LEFT).
     local nameRealmGap = 1
@@ -2209,7 +2409,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
             btn:SetSize(ColWidth("open"), 18)
         end
         if ApplyVisuals then
-            ApplyVisuals(btn, {0.15, 0.15, 0.18, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
+            ApplyVisuals(btn, ChromeBackdrop(), ChromeBorder(0.5))
         end
         btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
         btn.label:SetPoint("CENTER", 0, 0)
@@ -2665,7 +2865,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
             ibtn:SetSize(ColWidth("info"), 18)
         end
         if ApplyVisuals then
-            ApplyVisuals(ibtn, {0.12, 0.12, 0.15, 0.8}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+            ApplyVisuals(ibtn, ChromeBackdrop(), ChromeBorder(0.4))
         end
         local iicon = ibtn:CreateTexture(nil, "ARTWORK")
         iicon:SetSize(14, 14)
@@ -2689,8 +2889,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         row[p.."Icon"]:Show()
 
         -- Name (secondary profession line slightly muted for hierarchy)
-        local nameHex = (lineIndex == 2) and "d4d4dc" or "ffffff"
-        row[p.."Name"]:SetText("|cff" .. nameHex .. profName .. "|r")
+        local nameRole = (lineIndex == 2) and "Muted" or "Bright"
+        row[p.."Name"]:SetText(TextRoleMarkup(nameRole) .. profName .. "|r")
 
         -- Skill: use expansion-specific data from professionExpansions.
         -- Fall back to base prof.skill when expansion rows are missing (alts not scanned this expansion).
@@ -2700,7 +2900,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         elseif prof.skill and prof.maxSkill and (prof.maxSkill or 0) > 0 then
             row[p.."Skill"]:SetText(FormatSkill(prof.skill, prof.maxSkill))
         else
-            row[p.."Skill"]:SetText("|cffffffff--|r")
+            row[p.."Skill"]:SetText(TextRoleMarkup("Bright") .. "--|r")
         end
 
         -- Concentration: keyed by skillLineID (expansion-specific).
@@ -2722,11 +2922,13 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
                 end
             end
             if concCurrent >= concMax then
-                rechargeStr = "|cff4de64d" .. ((ns.L and ns.L["FULL"]) or "Full") .. "|r"
+                local gr, gg, gb = ProgressRgb("complete")
+                rechargeStr = format("|cff%02x%02x%02x%s|r", gr * 255, gg * 255, gb * 255,
+                    ((ns.L and ns.L["FULL"]) or "Full"))
             elseif WarbandNexus.GetConcentrationTimeToFull then
                 local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concData)
                 if tsOk and ts and ts ~= "" and ts ~= "Full" then
-                    rechargeStr = "|cffffffff" .. ts .. "|r"
+                    rechargeStr = TextRoleMarkup("Bright") .. ts .. "|r"
                 end
             end
         end
@@ -2843,7 +3045,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         if isMidnightRecipeData and recipeData.knownCount ~= nil and recipeData.totalCount and recipeData.totalCount > 0 then
             recipesText:SetText(FormatProgressPair({ current = recipeData.knownCount, total = recipeData.totalCount }))
         else
-            recipesText:SetText("|cffffffff--|r")
+            recipesText:SetText(TextRoleMarkup("Bright") .. "--|r")
         end
 
         firstCraftText:SetText(FormatProgressPair(firstCraftProgress))
@@ -2859,9 +3061,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         if charKey and moxieCurrencyID and WarbandNexus.GetCurrencyData then
             local moxieData = WarbandNexus:GetCurrencyData(moxieCurrencyID, charKey)
             local qty = (moxieData and (moxieData.quantity or moxieData.value)) or 0
-            moxieText:SetText(qty > 0 and format("|cffffffff%d|r", qty) or "|cffffffff--|r")
+            moxieText:SetText(qty > 0 and format("%s%d|r", TextRoleMarkup("Bright"), qty) or TextRoleMarkup("Bright") .. "--|r")
         else
-            moxieText:SetText("|cffffffff--|r")
+            moxieText:SetText(TextRoleMarkup("Bright") .. "--|r")
         end
 
         -- COOLDOWNS: count of ready / total recipes with cooldowns for this profession's skillLineID.
@@ -2880,10 +3082,17 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
             end
         end
         if cdTotal > 0 then
-            local clr = cdReady == cdTotal and "|cff00ff00" or (cdReady > 0 and "|cffffff00" or "|cffff4444")
-            cooldownsText:SetText(format("%s%d / %d|r", clr, cdReady, cdTotal))
+            local cr, cg, cb
+            if cdReady == cdTotal then
+                cr, cg, cb = ProgressRgb("complete")
+            elseif cdReady > 0 then
+                cr, cg, cb = ProgressRgb("partial")
+            else
+                cr, cg, cb = 1, 0.27, 0.27
+            end
+            cooldownsText:SetText(format("|cff%02x%02x%02x%d / %d|r", cr * 255, cg * 255, cb * 255, cdReady, cdTotal))
         else
-            cooldownsText:SetText("|cffffffff--|r")
+            cooldownsText:SetText(TextRoleMarkup("Bright") .. "--|r")
         end
 
         -- Cooldown tooltip: show individual recipe cooldowns when hovering.
@@ -3057,18 +3266,23 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
                 end
             else
                 local eqHint = (ns.L and ns.L["PROF_EQUIPMENT_HINT"]) or "Open profession (K) on this character to scan equipment."
-                lines[#lines+1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", right = eqData and "--" or "|cff888888" .. eqHint .. "|r", leftColor = {0.7,0.7,0.7}, rightColor = {0.5,0.5,0.5} }
+                lines[#lines+1] = {
+                    left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment",
+                    right = eqData and "--" or TextRoleMarkup("Dim") .. eqHint .. "|r",
+                    leftColor = { COLORS.textMuted[1], COLORS.textMuted[2], COLORS.textMuted[3] },
+                    rightColor = { COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3] },
+                }
             end
             if #lines > 0 and ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = rowProfName, lines = lines }) end
         end)
         row[p.."Icon"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
     else
         -- Empty slot: dim placeholders; consistent gray "No Profession" + question-mark icon (symmetry with filled rows).
-        local emptyCell = "|cff6a6a75--|r"
+        local emptyCell = TextRoleMarkup("Dim") .. "--|r"
         row[p.."Icon"]:Show()
         SetProfessionLineIconTexture(row[p.."Icon"].icon, nil, true)
         local emptyLabel = (ns.L and ns.L["NO_PROFESSION"]) or "No Profession"
-        row[p.."Name"]:SetText("|cffaaaaaa" .. emptyLabel .. "|r")
+        row[p.."Name"]:SetText(TextRoleMarkup("Dim") .. emptyLabel .. "|r")
         if skillVisible then row[p.."Skill"]:SetText(emptyCell) end
         if rechargeVisible then row[p.."Recharge"]:SetText(emptyCell) end
         if knowVisible then row[p.."Know"]:SetText(emptyCell) end
@@ -3127,7 +3341,10 @@ end
 do
     local c = {}
     ProfUI._drawChunk = c
-    c.AnyProfessionsSectionExpanded = AnyProfessionsSectionExpanded
+    c.ChromeBackdrop = ChromeBackdrop
+    c.ChromeBorder = ChromeBorder
+    c.TextRoleMarkup = TextRoleMarkup
+    c.TextRoleHex = TextRoleMarkup
     c.ApplyProfColumnHeaderLabel = ApplyProfColumnHeaderLabel
     c.ApplyProfessionColumnDividers = ApplyProfessionColumnDividers
     c.ApplyVisuals = ApplyVisuals
@@ -3148,6 +3365,7 @@ do
     c.EnsureProfessionColumnHeaderStrip = EnsureProfessionColumnHeaderStrip
     c.EnsureProfessionRowGradientScrollHook = EnsureProfessionRowGradientScrollHook
     c.EnsureProfessionsSectionExpandDefaults = EnsureProfessionsSectionExpandDefaults
+    c.AnyProfessionsSectionExpanded = AnyProfessionsSectionExpanded
     c.FontManager = FontManager
     c.FormatNumber = FormatNumber
     c.GetAccentHexColor = GetAccentHexColor
@@ -3162,6 +3380,8 @@ do
     c.PROF_COLUMN_HEADER_FONT = PROF_COLUMN_HEADER_FONT
     c.PROF_HEADER_ICON_BY_COL = PROF_HEADER_ICON_BY_COL
     c.PaintProfessionCompactColumnHeader = PaintProfessionCompactColumnHeader
+    c.PaintProfessionTextSortableColumnHeader = PaintProfessionTextSortableColumnHeader
+    c.PaintProfessionTextStaticColumnHeader = PaintProfessionTextStaticColumnHeader
     c.profColHeaderHits = profColHeaderHits
     c.profColHeaderLabels = profColHeaderLabels
     c.ProfColumnPickerHide = ProfColumnPickerHide
@@ -3193,6 +3413,18 @@ function ProfUI.AbortChunkedRowPaint()
     ProfUI._drawGen = (ProfUI._drawGen or 0) + 1
 end
 
+--- Per-draw equipment name-resolve cache (module-local; DrawTab must call via this helper).
+function ProfUI.ResetEquipResolveCache()
+    if not profEquipResolveCache then
+        profEquipResolveCache = {}
+    else
+        wipe(profEquipResolveCache)
+    end
+    if ProfUI._drawChunk then
+        ProfUI._drawChunk.profEquipResolveCache = profEquipResolveCache
+    end
+end
+
 --- Paint profession character rows across frames; generation token cancels on tab leave.
 ---@param addon table WarbandNexus
 ---@param parent Frame scrollChild
@@ -3204,19 +3436,18 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
         if ctx.onComplete then ctx.onComplete() end
         return
     end
-    local chunkSize = ProfUI.CHUNK_SIZE or 4
+    local chunkSize = ProfUI.CHUNK_SIZE or 3
     local rowIndex = ctx.rowIndex or 0
     local rowStride = ROW_HEIGHT + ((GetLayout().betweenRows) or 0)
     local idx = 1
 
-    local function relayoutTouched(fromIdx, toIdx)
+    local function finalizeSectionHeights()
         local touched = {}
-        for qi = fromIdx, toIdx do
-            local job = queue[qi]
-            local sc = job and job.sectionContent
+        for qi = 1, #queue do
+            local sc = queue[qi] and queue[qi].sectionContent
             if sc and not touched[sc] then
                 touched[sc] = true
-                local h = math.max(0.1, sc._wnProfRunningYOffset or 0.1)
+                local h = math.max(0.1, sc._wnProfRunningYOffset or sc._wnSectionFullH or 0.1)
                 sc._wnSectionFullH = h
                 if sc._wnProfSectionPaintExpanded ~= false then
                     sc:SetHeight(h)
@@ -3236,7 +3467,7 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
         if not parent or not parent.GetParent then return end
 
         local fromIdx = idx
-        local limit = ctx.syncAll and #queue or math.min(idx + chunkSize - 1, #queue)
+        local limit = math.min(idx + chunkSize - 1, #queue)
         for qi = fromIdx, limit do
             local job = queue[qi]
             local sectionContent = job.sectionContent
@@ -3260,28 +3491,32 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
             end
         end
         idx = limit + 1
-        relayoutTouched(fromIdx, limit)
-        if parent._wnProfRelayoutSectionStack then
-            parent._wnProfRelayoutSectionStack()
-        end
 
         if idx > #queue then
+            finalizeSectionHeights()
+            if parent._wnProfRelayoutSectionStack then
+                parent._wnProfRelayoutSectionStack()
+            end
             if ctx.onComplete then ctx.onComplete() end
             return
         end
+
+        if mf and ns.UI_SyncMainTabScrollChrome and parent._wnProfEstimatedScrollBody then
+            ns.UI_SyncMainTabScrollChrome(mf, parent, parent._wnProfEstimatedScrollBody)
+        end
         C_Timer.After(0, pump)
     end
 
-    if ctx.syncAll then
-        pump()
-    else
-        C_Timer.After(0, pump)
-    end
+    C_Timer.After(0, pump)
 end
 
 --- Tab switch (AbortTabOperations): clear session profession caches so GUID/API-heavy maps are not retained across tabs.
 function WarbandNexus:AbortProfessionsTabWork()
     ProfUI.AbortChunkedRowPaint()
+    if profCharRefreshTimer and profCharRefreshTimer.Cancel then
+        profCharRefreshTimer:Cancel()
+        profCharRefreshTimer = nil
+    end
     InvalidateProfessionsTradeSessionCaches()
 end
 

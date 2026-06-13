@@ -62,7 +62,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
         badgeFS = VBFontString(badge, "small")
     end
     badgeFS:SetPoint("CENTER")
-    badgeFS:SetText("|cffffffff" .. diffInfo.short .. "|r")
+    badgeFS:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. diffInfo.short .. "|r")
 
     -- Instance name
     if FontManager and FontManager.CreateFontString then
@@ -108,7 +108,8 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     ns.UI_SetTextColorRole(progressFS, "Normal")
     progressFS:SetWidth(SAVED_GROUP_PROGRESS_W)
     progressFS:SetPoint("RIGHT", chev, "LEFT", -10, 0)
-    local progColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
+    local progColor = (total > 0 and cleared >= total) and "|cff44ff44"
+        or ((ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffd4af37")
     progressFS:SetText(string.format("%s%2d/%-2d|r", progColor, cleared, total))
 
     if FontManager and FontManager.CreateFontString then
@@ -241,7 +242,9 @@ function M.BuildInstanceCard(parent, group, cardSize)
     card:SetSize(cardSize, cardSize)
     card:EnableMouse(true)
     if ApplyVisuals then
-        ApplyVisuals(card, {0.04, 0.04, 0.06, 0.96}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.65})
+        local cardBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+            or { 0.04, 0.04, 0.06, 0.96 }
+        ApplyVisuals(card, cardBg, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.65})
     end
 
     local stripe = card:CreateTexture(nil, "ARTWORK")
@@ -260,6 +263,7 @@ function M.BuildInstanceCard(parent, group, cardSize)
     titleFS:SetWordWrap(true)
     titleFS:SetMaxLines(2)
     titleFS:SetText(group.instanceName or "?")
+    ns.UI_SetTextColorRole(titleFS, "Bright")
 
     local art = card:CreateTexture(nil, "BORDER")
     art:SetPoint("TOPLEFT", 12, -40)
@@ -282,7 +286,8 @@ function M.BuildInstanceCard(parent, group, cardSize)
 
     local progFS = VBFontString(card, "small")
     progFS:SetPoint("BOTTOM", diffFS, "TOP", 0, 2)
-    local pColor = (total > 0 and cleared >= total) and "|cff44ff44" or "|cffd4af37"
+    local pColor = (total > 0 and cleared >= total) and "|cff44ff44"
+        or ((ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffd4af37")
     progFS:SetText(string.format("%s%d/%d|r", pColor, cleared, total))
 
     card:SetScript("OnEnter", function(self)

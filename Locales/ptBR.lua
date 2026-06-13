@@ -824,6 +824,11 @@ L["COLOR_CYAN"] = "Ciano"
 L["COLOR_CYAN_DESC"] = "Tema ciano brilhante"
 L["USE_CLASS_COLOR_ACCENT"] = "Usar cor da classe como destaque"
 L["USE_CLASS_COLOR_ACCENT_TOOLTIP"] = "Usa a cor da classe do personagem atual para destaques, bordas e abas. Se nao for possivel, usa a cor do tema salvo."
+L["THEME_MODE"] = "Claro / Escuro"
+L["THEME_MODE_TOOLTIP"] = "Escolha uma paleta de interface escura ou clara para paineis, listas e texto. Recomenda-se /reload para que todos os paineis adotem as novas cores."
+L["THEME_MODE_DARK"] = "Escuro"
+L["THEME_MODE_LIGHT"] = "Claro"
+L["THEME_MODE_RELOAD_HINT"] = "Aparencia do tema alterada - /reload para aplicar em todo o addon."
 
 -- Settings - Font
 L["FONT_FAMILY"] = "Família de fontes"

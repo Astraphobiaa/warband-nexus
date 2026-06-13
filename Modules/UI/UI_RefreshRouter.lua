@@ -26,7 +26,8 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     local UpdateTabButtonStates = ctx.updateTabButtonStates
     local GEAR_STORAGE_REC_REFRESH_DEBOUNCE = ctx.gearStorageRecRefreshDebounce or 0.06
 
-    -- Data-change handlers below early-out while the shell is hidden. Record that an
+    -- Tab-leave paint cancel (gear draw gen, plans browse pump, pve/items chunk gens): UI.lua
+    -- ActivateMainTab calls ns.UI_CancelLeavingTabStagedPaint before staged detach/populate.
     -- update arrived so the master OnShow hook (UI.lua CreateMainWindow) can repaint
     -- once on reopen; without this, events during combat-hide or a manual close leave
     -- stale tab content until the user switches tabs.
@@ -339,7 +340,12 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCIES_UPDATED, refreshCurrency)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_GAINED, refreshCurrency)
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_CACHE_READY, refreshCurrency)
+    -- CurrencyUI.lua registers DrawCurrencyTab on CACHE_READY when active; avoid double PopulateContent here.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CURRENCY_CACHE_READY, function()
+        if HiddenOrMissing() then return end
+        if f.currentTab == "currency" then return end
+        refreshCurrency()
+    end)
 
     -- Collections: obtained/scan results + achievement tracking flips need to redraw cards.
     -- Plans tab also reads obtained state for try-counter rows; Statistics tab shows collection counts.
@@ -407,7 +413,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             local P = ns.Profiler
             local mlab = P and P.enabled and P.SliceLabel and P:SliceLabel(P.CAT.MSG, "UI_MAIN_REFRESH_instant")
             if mlab then P:Start(mlab) end
-            WarbandNexus:PopulateContent()
+            WarbandNexus:PopulateContent(true)
             if mlab then P:Stop(mlab) end
             return
         end
@@ -469,6 +475,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             if f.currentTab ~= "gear" then return end
             st.gearItemInfoCoalesceGen = st.gearItemInfoCoalesceGen + 1
             local myGen = st.gearItemInfoCoalesceGen
+            local snapGearDrawGen = ns._gearTabDrawGen or 0
             if st.gearItemInfoCoalesceTimer and st.gearItemInfoCoalesceTimer.Cancel then
                 st.gearItemInfoCoalesceTimer:Cancel()
                 st.gearItemInfoCoalesceTimer = nil
@@ -476,6 +483,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             local function runGearItemInfoBatch()
                 st.gearItemInfoCoalesceTimer = nil
                 if myGen ~= st.gearItemInfoCoalesceGen then return end
+                if snapGearDrawGen ~= (ns._gearTabDrawGen or 0) then return end
                 if HiddenOrMissing() or f.currentTab ~= "gear" then return end
                 local recOn = WarbandNexus.IsGearStorageRecommendationsEnabled
                     and WarbandNexus:IsGearStorageRecommendationsEnabled()
@@ -547,6 +555,9 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end)
 
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.FONT_CHANGED, function()
+        if ns.UI_RefreshExternalFloatingWindows then
+            ns.UI_RefreshExternalFloatingWindows()
+        end
         if not HiddenOrMissing() then
             SchedulePopulateContent()
         end

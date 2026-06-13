@@ -32,9 +32,7 @@ local InvalidateStatsCache
     Called during addon startup to register for data update events
 ]]
 function WarbandNexus:InitializeStatisticsUI()
-    -- Register for collection update events
-    -- NOTE: Uses StatisticsUIEvents as 'self' key to avoid overwriting other modules' handlers.
-    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_UPDATED, function()
+    local function refreshStatsIfVisible()
         InvalidateStatsCache()
 
         if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
@@ -42,9 +40,17 @@ function WarbandNexus:InitializeStatisticsUI()
                 self:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "stats", skipCooldown = true })
             end
         end
+    end
+
+    -- Register for collection and character wealth update events
+    -- NOTE: Uses StatisticsUIEvents as 'self' key to avoid overwriting other modules' handlers.
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_UPDATED, refreshStatsIfVisible)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.MONEY_UPDATED, refreshStatsIfVisible)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.CHARACTER_UPDATED, function(_, payload)
+        if payload and payload.dataType == "gold" then
+            refreshStatsIfVisible()
+        end
     end)
-    
-    -- CHARACTER_UPDATED refresh is centralized in UI.lua for stats tab.
     
     -- Event listeners initialized (verbose logging removed)
 end
@@ -57,6 +63,97 @@ local CreateIcon = ns.UI_CreateIcon
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local COLORS = ns.UI_COLORS
+
+local function ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function SemanticGoldHex()
+    if ns.UI_GetSemanticGoldHex then
+        return ns.UI_GetSemanticGoldHex()
+    end
+    return "|cffffcc00"
+end
+
+local function SemanticGoldRGB()
+    if ns.UI_GetSemanticGoldColor then
+        return ns.UI_GetSemanticGoldColor()
+    end
+    return 1, 0.82, 0
+end
+
+local function SemanticGreenRGB()
+    if ns.UI_GetSemanticGreenColor then
+        return ns.UI_GetSemanticGreenColor()
+    end
+    return 0.3, 0.9, 0.3, 1
+end
+
+local function AccentHex()
+    if ns.UI_GetAccentHexColor then
+        return "|cff" .. ns.UI_GetAccentHexColor()
+    end
+    local a = COLORS and COLORS.accent
+    if a then
+        return string.format("|cff%02x%02x%02x", a[1] * 255, a[2] * 255, a[3] * 255)
+    end
+    return "|cff0099ff"
+end
+
+local function SemanticInfoHex()
+    if ns.UI_GetSemanticInfoHex then
+        return ns.UI_GetSemanticInfoHex()
+    end
+    return AccentHex()
+end
+
+local function SemanticPetHex()
+    if ns.UI_GetSemanticPetHex then
+        return ns.UI_GetSemanticPetHex()
+    end
+    return "|cffff69b4"
+end
+
+local function SemanticToyHex()
+    if ns.UI_GetSemanticToyHex then
+        return ns.UI_GetSemanticToyHex()
+    end
+    return "|cffff66ff"
+end
+
+local function PaintStatisticsClassRow(parent, rowCenterY, rowH, classFile, charName, nameRightInset)
+    local barH = rowH - 4
+    local colorBar = (ns.UI_CreateClassColorStripe and ns.UI_CreateClassColorStripe(parent, parent, 15, rowCenterY, 3, barH, classFile))
+    if not colorBar then
+        colorBar = parent:CreateTexture(nil, "ARTWORK")
+        colorBar:SetSize(3, barH)
+        colorBar:SetPoint("LEFT", parent, "TOPLEFT", 15, rowCenterY)
+        local cr, cg, cb = 0.8, 0.8, 0.8
+        if ns.UI_GetClassColorForSurface and classFile then
+            cr, cg, cb = ns.UI_GetClassColorForSurface(classFile)
+        end
+        colorBar:SetColorTexture(cr, cg, cb, 1)
+    end
+    local nameText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    nameText:SetPoint("LEFT", colorBar, "RIGHT", 8, 0)
+    nameText:SetPoint("RIGHT", parent, "RIGHT", nameRightInset or -120, 0)
+    nameText:SetWordWrap(false)
+    nameText:SetJustifyH("LEFT")
+    if ns.UI_FormatClassColoredName then
+        nameText:SetText(ns.UI_FormatClassColoredName(charName, classFile))
+    else
+        nameText:SetText(charName or "")
+    end
+    if FontManager and FontManager.ApplyFont then
+        FontManager:ApplyFont(nameText, "body")
+    end
+    return nameText, colorBar
+end
 
 -- Import shared UI layout constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
@@ -78,11 +175,14 @@ local format = string.format
 -- don't re-run thousands of synchronous WoW API calls.
 local STATS_CACHE_TTL = 60  -- seconds before cache is considered stale (invalidated on WN_COLLECTION_UPDATED)
 local _statsCache = nil     -- { mounts={}, pets={}, toys={}, achievements={}, timestamp=number }
+local BANK_STATS_CACHE_TTL = 3  -- short TTL: tab pool revisits skip slot tally rescans
+local _bankStatsCache = nil
 
 -- Invalidate cache so next DrawStatistics recomputes from API
 -- (forward-declared above InitializeStatisticsUI so event callbacks can reference it)
 InvalidateStatsCache = function()
     _statsCache = nil
+    _bankStatsCache = nil
 end
 
 -- Compute and cache collection statistics (single source: CollectionService GetCollectionCountsFromAPI)
@@ -111,6 +211,34 @@ local function GetCachedCollectionStats()
     return _statsCache
 end
 
+local function GetCachedBankStatistics(addon)
+    local now = GetTime()
+    if _bankStatsCache and (now - _bankStatsCache.timestamp) < BANK_STATS_CACHE_TTL then
+        return _bankStatsCache.stats
+    end
+    local stats = addon:GetBankStatistics()
+    _bankStatsCache = { timestamp = now, stats = stats }
+    return stats
+end
+
+--- Reposition cached Statistics fixedHeader title (Items/Collections parity — WN-PERF tab revisit).
+local function RepositionStatisticsFixedHeader(hdrCache, headerParent, chrome, headerYOffset, SIDE)
+    local titleCard = hdrCache.titleCard
+    titleCard:SetParent(headerParent)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:ClearAllPoints()
+        titleCard:SetPoint("TOPLEFT", SIDE, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -SIDE, -headerYOffset)
+    end
+    titleCard:Show()
+    if ns.UI_AdvanceTabChromeYOffset then
+        return ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    end
+    return headerYOffset + (GetLayout().afterHeader or 72)
+end
+
 -- DRAW STATISTICS (Modern Design)
 
 function WarbandNexus:DrawStatistics(parent)
@@ -132,8 +260,8 @@ function WarbandNexus:DrawStatistics(parent)
     HideEmptyStateCard(parent, "statistics")
 
     -- Check for data availability
-    local characters = self.db and self.db.global and self.db.global.characters
-    if not characters or not next(characters) then
+    local allCharacters = self:GetAllCharacters() or {}
+    if #allCharacters == 0 then
         if parent._wnResultsAnnexSheet then parent._wnResultsAnnexSheet:Hide() end
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
         local _, height = CreateEmptyStateCard(parent, "statistics", headerYOffset)
@@ -142,6 +270,20 @@ function WarbandNexus:DrawStatistics(parent)
 
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+
+    local hdrCache = mf and mf._statsFixedHeaderCache
+    local headerDone = false
+    if hdrCache and hdrCache.titleCard then
+        headerYOffset = RepositionStatisticsFixedHeader(hdrCache, headerParent, chrome, headerYOffset, SIDE)
+        if ns.UI_CommitTabFixedHeader then
+            ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+        elseif fixedHeader then
+            fixedHeader:SetHeight(headerYOffset)
+        end
+        headerDone = true
+    end
+
+    if not headerDone then
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "statistics",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ACCOUNT_STATISTICS"]) or "Account Statistics") .. "|r",
@@ -164,12 +306,22 @@ function WarbandNexus:DrawStatistics(parent)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
 
+    if mf then
+        mf._statsFixedHeaderCache = { titleCard = titleCard }
+    end
+    end
+
     local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
     local sectionGap = (metrics and metrics.sectionGap) or CARD_GAP_M or 10
     local ApplyPanelCardChrome = ns.UI_ApplyStandardCardElevatedChrome
 
+    -- Tab pool revisit: allow deferred heavy body on every PopulateContent pass (not only first visit).
+    if parent._preparedByPopulate then
+        parent._wnStatsHeavyPaintDone = false
+    end
+
     -- Get statistics
-    local stats = self:GetBankStatistics()
+    local stats = GetCachedBankStatistics(self)
     
     -- Use cached collection stats to avoid expensive API iteration on every redraw
     -- (mount/pet scanning is 1000+ API calls; cache is invalidated on real data changes)
@@ -204,21 +356,71 @@ function WarbandNexus:DrawStatistics(parent)
         secondRowY = nil
     end
     
+    local accountWideLabel = (ns.L and ns.L["ACCOUNT_WIDE"]) or "Account-wide"
+    local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
+    local collLayoutSig = (useTwoRows and "2" or "3") .. ":" .. math.floor(cardW + 0.5)
+    local collBundle = parent._wnStatsCollectionBundle
+    local achCard, mountCard, petCard, toyCard
+
+    if collBundle and collBundle.layoutSig == collLayoutSig and collBundle.achCard then
+        achCard = collBundle.achCard
+        mountCard = collBundle.mountCard
+        petCard = collBundle.petCard
+        toyCard = collBundle.toyCard
+        achCard:SetParent(parent)
+        achCard:ClearAllPoints()
+        achCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+        achCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
+        achCard:Show()
+        if collBundle.achValue then
+            collBundle.achValue:SetText(SemanticGoldHex() .. FormatNumber(achievementPoints) .. "|r")
+        end
+        mountCard:SetParent(parent)
+        mountCard:ClearAllPoints()
+        mountCard:SetWidth(cardW)
+        mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
+        mountCard:Show()
+        if collBundle.mountValue then
+            collBundle.mountValue:SetText(SemanticInfoHex() .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. " (" .. (numTotalMounts > 0 and math.floor(numCollectedMounts / numTotalMounts * 100) or 0) .. "%)|r")
+        end
+        petCard:SetParent(parent)
+        petCard:ClearAllPoints()
+        petCard:SetWidth(cardW)
+        petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
+        petCard:Show()
+        if collBundle.bpValue then
+            collBundle.bpValue:SetText(SemanticPetHex() .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
+        end
+        if collBundle.upValue then
+            collBundle.upValue:SetText(SemanticPetHex() .. FormatNumber(numUniqueSpecies) .. "/" .. FormatNumber(numTotalSpecies) .. "|r")
+        end
+        toyCard:SetParent(parent)
+        toyCard:ClearAllPoints()
+        if useTwoRows then
+            toyCard:SetPoint("TOPLEFT", leftMargin, -(yOffset + secondRowY))
+            toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(yOffset + secondRowY))
+        else
+            toyCard:SetWidth(cardW)
+            toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -yOffset)
+        end
+        toyCard:Show()
+        if collBundle.toyValue then
+            collBundle.toyValue:SetText(SemanticToyHex() .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. " (" .. (numTotalToys > 0 and math.floor(numCollectedToys / numTotalToys * 100) or 0) .. "%)|r")
+        end
+    else
     -- Achievement Card (Account-wide since TWW) - Full width
-    local achCard = CreateCard(parent, 90)
+    achCard = CreateCard(parent, 90)
     achCard:SetPoint("TOPLEFT", SIDE, -yOffset)
     achCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
     if ApplyPanelCardChrome then ApplyPanelCardChrome(achCard) end
     
-    -- Use factory pattern for standardized card header layout
-    local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
     local achLayout = CreateCardHeaderLayout(
         achCard,
         "Interface\\Icons\\Achievement_General_StayClassy",
         36,
         false,
         (ns.L and ns.L["ACHIEVEMENT_POINTS"]) or "ACHIEVEMENT POINTS",
-        "|cffffcc00" .. FormatNumber(achievementPoints) .. "|r",
+        SemanticGoldHex() .. FormatNumber(achievementPoints) .. "|r",
         "subtitle",
         "header"
     )
@@ -226,8 +428,6 @@ function WarbandNexus:DrawStatistics(parent)
     if achLayout.label then
         ns.UI_SetTextColorRole(achLayout.label, "Bright")
     end
-    
-    local accountWideLabel = (ns.L and ns.L["ACCOUNT_WIDE"]) or "Account-wide"
     
     local achNote = FontManager:CreateFontString(achCard, "small", "OVERLAY")
     achNote:SetPoint("BOTTOMRIGHT", -10, 10)
@@ -239,7 +439,7 @@ function WarbandNexus:DrawStatistics(parent)
     yOffset = yOffset + 90 + sectionGap
 
     -- Mount Card (collection row)
-    local mountCard = CreateCard(parent, 90)
+    mountCard = CreateCard(parent, 90)
     mountCard:SetWidth(cardW)
     mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
     
@@ -250,7 +450,7 @@ function WarbandNexus:DrawStatistics(parent)
         36,
         false,
         (ns.L and ns.L["MOUNTS_COLLECTED"]) or "MOUNTS COLLECTED",
-        "|cff0099ff" .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. " (" .. (numTotalMounts > 0 and math.floor(numCollectedMounts / numTotalMounts * 100) or 0) .. "%)|r",
+        SemanticInfoHex() .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. " (" .. (numTotalMounts > 0 and math.floor(numCollectedMounts / numTotalMounts * 100) or 0) .. "%)|r",
         "subtitle",
         "header"
     )
@@ -268,7 +468,7 @@ function WarbandNexus:DrawStatistics(parent)
     mountCard:Show()
 
     -- Pet Card (collection row)
-    local petCard = CreateCard(parent, 90)
+    petCard = CreateCard(parent, 90)
     petCard:SetWidth(cardW)
     petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
@@ -289,7 +489,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local bpValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
     bpValue:SetPoint("TOPLEFT", petIcon, "RIGHT", 10, -2)
-    bpValue:SetText("|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
+    bpValue:SetText(SemanticPetHex() .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
     bpValue:SetJustifyH("LEFT")
     
     -- Right column: Unique Pets â€” start after Battle Pets *value* (not only the label), or counts merge visually.
@@ -302,7 +502,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local upValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
     upValue:SetPoint("TOPLEFT", upLabel, "BOTTOMLEFT", 0, -4)
-    upValue:SetText("|cffff69b4" .. FormatNumber(numUniqueSpecies) .. "/" .. FormatNumber(numTotalSpecies) .. "|r")
+    upValue:SetText(SemanticPetHex() .. FormatNumber(numUniqueSpecies) .. "/" .. FormatNumber(numTotalSpecies) .. "|r")
     upValue:SetJustifyH("LEFT")
     
     local petNote = FontManager:CreateFontString(petCard, "small", "OVERLAY")
@@ -314,7 +514,7 @@ function WarbandNexus:DrawStatistics(parent)
     petCard:Show()
 
     -- Toys Card: second row when narrow, same row when wide
-    local toyCard = CreateCard(parent, 90)
+    toyCard = CreateCard(parent, 90)
     if useTwoRows then
         toyCard:SetPoint("TOPLEFT", leftMargin, -(yOffset + secondRowY))
         toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(yOffset + secondRowY))
@@ -330,7 +530,7 @@ function WarbandNexus:DrawStatistics(parent)
         36,
         false,
         (ns.L and ns.L["CATEGORY_TOYS"]) or "TOYS",
-        "|cffff66ff" .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. " (" .. (numTotalToys > 0 and math.floor(numCollectedToys / numTotalToys * 100) or 0) .. "%)|r",
+        SemanticToyHex() .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. " (" .. (numTotalToys > 0 and math.floor(numCollectedToys / numTotalToys * 100) or 0) .. "%)|r",
         "subtitle",
         "header"
     )
@@ -347,8 +547,25 @@ function WarbandNexus:DrawStatistics(parent)
     if ApplyPanelCardChrome then ApplyPanelCardChrome(toyCard) end
     toyCard:Show()
 
+    parent._wnStatsCollectionBundle = {
+        layoutSig = collLayoutSig,
+        achCard = achCard,
+        achValue = achLayout and achLayout.value,
+        mountCard = mountCard,
+        mountValue = mountLayout and mountLayout.value,
+        petCard = petCard,
+        bpValue = bpValue,
+        upValue = upValue,
+        toyCard = toyCard,
+        toyValue = toyLayout and toyLayout.value,
+    }
+    end -- collection bundle create
+
     yOffset = yOffset + (useTwoRows and (90 + 90 + sectionGap) or 90) + sectionGap
-    
+
+    local PaintHeavyStatisticsBody
+    PaintHeavyStatisticsBody = function(startYOffset)
+    local yOffset = startYOffset
     local GW_VISIBLE_ROWS = 5
     local GW_ROW_HEIGHT = 22
     local GW_ROW_SPACING = 1
@@ -358,8 +575,10 @@ function WarbandNexus:DrawStatistics(parent)
     
     local goldChars = {}
     local totalCharCopper = 0
-    for charKey, charData in pairs(characters) do
+    for i = 1, #allCharacters do
+        local charData = allCharacters[i]
         if charData.isTracked then
+            local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(charData)
             local copper = ns.Utilities:GetCharTotalCopper(charData)
             goldChars[#goldChars + 1] = {
                 name = GetStatCharDisplayName(charData, charKey),
@@ -420,40 +639,23 @@ function WarbandNexus:DrawStatistics(parent)
             local rowTop = -gwRowY
             local rowCenterY = rowTop - (GW_ROW_HEIGHT / 2)
             
-            if i % 2 == 0 then
-                local rowBg = goldCard:CreateTexture(nil, "BACKGROUND", nil, 1)
-                rowBg:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 10, rowTop)
-                rowBg:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -10, rowTop)
-                rowBg:SetHeight(GW_ROW_HEIGHT)
-                local stripe = COLORS.surfaceRowEven or { 0.112, 0.112, 0.138, 0.96 }
-                rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.96)
-            end
+            local rowBg = goldCard:CreateTexture(nil, "BACKGROUND", nil, 1)
+            rowBg:SetPoint("TOPLEFT", goldCard, "TOPLEFT", 10, rowTop)
+            rowBg:SetPoint("TOPRIGHT", goldCard, "TOPRIGHT", -10, rowTop)
+            rowBg:SetHeight(GW_ROW_HEIGHT)
+            local stripe = (i % 2 == 0) and (COLORS.surfaceRowEven or COLORS.bgLight)
+                or (COLORS.surfaceRowOdd or COLORS.bg)
+            stripe = stripe or { 0.768, 0.760, 0.744, 0.98 }
+            rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.98)
             
-            local classR, classG, classB = 0.8, 0.8, 0.8
-            if charInfo.classFile then
-                local cr, cg, cb = GetClassColor(charInfo.classFile)
-                if cr then classR, classG, classB = cr, cg, cb end
-            end
-            
-            local colorBar = goldCard:CreateTexture(nil, "ARTWORK")
-            colorBar:SetSize(3, GW_ROW_HEIGHT - 4)
-            colorBar:SetPoint("LEFT", goldCard, "TOPLEFT", 15, rowCenterY)
-            colorBar:SetColorTexture(classR, classG, classB, 1)
-            
-            local nameText = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
-            nameText:SetPoint("LEFT", colorBar, "RIGHT", 8, 0)
-            nameText:SetPoint("RIGHT", goldCard, "RIGHT", -160, 0)
-            nameText:SetWordWrap(false)
-            local hexClass = format("%02x%02x%02x", classR * 255, classG * 255, classB * 255)
-            nameText:SetText("|cff" .. hexClass .. charInfo.name .. "|r")
-            nameText:SetJustifyH("LEFT")
+            PaintStatisticsClassRow(goldCard, rowCenterY, GW_ROW_HEIGHT, charInfo.classFile, charInfo.name, -160)
             
             local goldText = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
             goldText:SetPoint("RIGHT", goldCard, "TOPRIGHT", -15, rowCenterY)
             if charInfo.copper > 0 then
                 goldText:SetText(FormatMoney(charInfo.copper, 12))
             else
-                goldText:SetText("|cff555555â€”|r")
+                goldText:SetText(ThemeTextHex("Dim") .. "-|r")
             end
             goldText:SetJustifyH("RIGHT")
             
@@ -478,7 +680,7 @@ function WarbandNexus:DrawStatistics(parent)
             
             local wbName = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
             wbName:SetPoint("LEFT", wbIcon, "RIGHT", 6, 0)
-            wbName:SetText("|cff66c0ff" .. ((ns.L and ns.L["WARBAND_BANK"]) or "Warband Bank") .. "|r")
+            wbName:SetText(SemanticInfoHex() .. ((ns.L and ns.L["WARBAND_BANK"]) or "Warband Bank") .. "|r")
             wbName:SetJustifyH("LEFT")
             
             local wbGold = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
@@ -517,7 +719,7 @@ function WarbandNexus:DrawStatistics(parent)
                 local moreLabel = hiddenCount > 1
                     and ((ns.L and ns.L["MORE_CHARACTERS_PLURAL"]) or "more characters")
                     or ((ns.L and ns.L["MORE_CHARACTERS"]) or "more character")
-                moreText:SetText("|cff888888" .. hiddenCount .. " " .. moreLabel .. "|r")
+                moreText:SetText(ThemeTextHex("Muted") .. hiddenCount .. " " .. moreLabel .. "|r")
             end
         end
         
@@ -597,8 +799,10 @@ function WarbandNexus:DrawStatistics(parent)
     -- Collect ALL tracked characters, include those with 0 played time
     local playedChars = {}
     local totalPlayedSeconds = 0
-    for charKey, charData in pairs(characters) do
+    for i = 1, #allCharacters do
+        local charData = allCharacters[i]
         if charData.isTracked then
+            local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(charData)
             local played = charData.timePlayed or 0
             playedChars[#playedChars + 1] = {
                 name = GetStatCharDisplayName(charData, charKey),
@@ -654,7 +858,8 @@ function WarbandNexus:DrawStatistics(parent)
         ns.UI_SetTextColorRole(fmtBtnLabel, "Normal")
 
         fmtBtn:SetScript("OnEnter", function()
-            fmtBtnLabel:SetTextColor(0.6, 0.9, 1)
+            local ar, ag, ab = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+            fmtBtnLabel:SetTextColor(ar, ag, ab, 1)
         end)
         fmtBtn:SetScript("OnLeave", function()
             ns.UI_SetTextColorRole(fmtBtnLabel, "Normal")
@@ -668,7 +873,7 @@ function WarbandNexus:DrawStatistics(parent)
         local mpTotal = FontManager:CreateFontString(mpCard, "header", "OVERLAY")
         mpTotal:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, -24)
         local totalFormatted = steamMode and FormatPlayedSteam(totalPlayedSeconds) or ns.Utilities:FormatPlayedTime(totalPlayedSeconds)
-        mpTotal:SetText("|cff00ccff" .. totalFormatted .. "|r")
+        mpTotal:SetText(AccentHex() .. totalFormatted .. "|r")
         mpTotal:SetJustifyH("RIGHT")
         
         -- â”€â”€ Character rows â”€â”€
@@ -678,36 +883,17 @@ function WarbandNexus:DrawStatistics(parent)
             local rowTop = -rowYStart
             local rowCenterY = rowTop - (MP_ROW_HEIGHT / 2)
             
-            -- Alternating row background
-            if i % 2 == 0 then
-                local rowBg = mpCard:CreateTexture(nil, "BACKGROUND", nil, 1)
-                rowBg:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 10, rowTop)
-                rowBg:SetPoint("TOPRIGHT", mpCard, "TOPRIGHT", -10, rowTop)
-                rowBg:SetHeight(MP_ROW_HEIGHT)
-                local stripe = COLORS.surfaceRowEven or { 0.112, 0.112, 0.138, 0.96 }
-                rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.96)
-            end
+            -- Alternating row background (both stripes — odd rows were invisible on pale cards)
+            local rowBg = mpCard:CreateTexture(nil, "BACKGROUND", nil, 1)
+            rowBg:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 10, rowTop)
+            rowBg:SetPoint("TOPRIGHT", mpCard, "TOPRIGHT", -10, rowTop)
+            rowBg:SetHeight(MP_ROW_HEIGHT)
+            local stripe = (i % 2 == 0) and (COLORS.surfaceRowEven or COLORS.bgLight)
+                or (COLORS.surfaceRowOdd or COLORS.bg)
+            stripe = stripe or { 0.768, 0.760, 0.744, 0.98 }
+            rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.98)
             
-            -- Class color bar (3px wide vertical line)
-            local classR, classG, classB = 0.8, 0.8, 0.8
-            if charInfo.classFile then
-                local cr, cg, cb = GetClassColor(charInfo.classFile)
-                if cr then classR, classG, classB = cr, cg, cb end
-            end
-            
-            local colorBar = mpCard:CreateTexture(nil, "ARTWORK")
-            colorBar:SetSize(3, MP_ROW_HEIGHT - 4)
-            colorBar:SetPoint("LEFT", mpCard, "TOPLEFT", 15, rowCenterY)
-            colorBar:SetColorTexture(classR, classG, classB, 1)
-            
-            -- Character name (class-colored, width-limited to prevent overlap)
-            local nameText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
-            nameText:SetPoint("LEFT", colorBar, "RIGHT", 8, 0)
-            nameText:SetPoint("RIGHT", mpCard, "RIGHT", -120, 0)
-            nameText:SetWordWrap(false)
-            local hexClass = format("%02x%02x%02x", classR * 255, classG * 255, classB * 255)
-            nameText:SetText("|cff" .. hexClass .. charInfo.name .. "|r")
-            nameText:SetJustifyH("LEFT")
+            PaintStatisticsClassRow(mpCard, rowCenterY, MP_ROW_HEIGHT, charInfo.classFile, charInfo.name, -120)
             
             -- Played time (right-aligned, compact format for rows)
             local timeText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
@@ -716,7 +902,7 @@ function WarbandNexus:DrawStatistics(parent)
                 timeText:SetText(FormatPlayed(charInfo.timePlayed))
                 ns.UI_SetTextColorRole(timeText, "Normal")
             else
-                timeText:SetText("|cff555555â€”|r")
+                timeText:SetText(ThemeTextHex("Dim") .. "-|r")
             end
             timeText:SetJustifyH("RIGHT")
             
@@ -753,7 +939,7 @@ function WarbandNexus:DrawStatistics(parent)
                 local moreLabel = hiddenCount > 1
                     and ((ns.L and ns.L["MORE_CHARACTERS_PLURAL"]) or "more characters")
                     or ((ns.L and ns.L["MORE_CHARACTERS"]) or "more character")
-                moreText:SetText("|cff888888" .. hiddenCount .. " " .. moreLabel .. "|r")
+                moreText:SetText(ThemeTextHex("Muted") .. hiddenCount .. " " .. moreLabel .. "|r")
             end
         end
         
@@ -779,10 +965,8 @@ function WarbandNexus:DrawStatistics(parent)
     
     local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
     stTitle:SetPoint("TOPLEFT", 15, -12)
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local storageOverviewLabel = (ns.L and ns.L["STORAGE_OVERVIEW"]) or "Storage Overview"
-    stTitle:SetText("|cff" .. hexColor .. storageOverviewLabel .. "|r")
+    stTitle:SetText(AccentHex() .. storageOverviewLabel .. "|r")
     
     local function AddStat(statParent, label, value, x, y, color)
         local l = FontManager:CreateFontString(statParent, "small", "OVERLAY")
@@ -811,7 +995,8 @@ function WarbandNexus:DrawStatistics(parent)
     
     AddStat(storageCard, (ns.L and ns.L["WARBAND_SLOTS"]) or "WARBAND SLOTS", FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0), 15, -40)
     AddStat(storageCard, (ns.L and ns.L["PERSONAL_SLOTS"]) or "PERSONAL SLOTS", FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0), 15 + columnWidth * 1, -40)
-    AddStat(storageCard, (ns.L and ns.L["TOTAL_FREE"]) or "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
+    local gr, gg, gb = SemanticGreenRGB()
+    AddStat(storageCard, (ns.L and ns.L["TOTAL_FREE"]) or "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, { gr, gg, gb })
     AddStat(storageCard, (ns.L and ns.L["TOTAL_ITEMS"]) or "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
     
     storageCard:Show()
@@ -821,6 +1006,31 @@ function WarbandNexus:DrawStatistics(parent)
         ns.UI_AnnexResultsToScrollBottom(storageCard, parent, SIDE, 8)
     end
 
+    return yOffset
+    end -- PaintHeavyStatisticsBody
+
+    if parent._preparedByPopulate and not parent._wnStatsHeavyDeferScheduled then
+        parent._wnStatsHeavyDeferScheduled = true
+        local deferParent = parent
+        local deferMf = mf
+        local deferStartY = yOffset
+        C_Timer.After(0, function()
+            deferParent._wnStatsHeavyDeferScheduled = nil
+            if not deferMf or deferMf.currentTab ~= "stats" then return end
+            local endY = PaintHeavyStatisticsBody(deferStartY)
+            deferParent._wnStatsHeavyPaintDone = true
+            if ns.UI_SyncMainTabScrollChrome then
+                ns.UI_SyncMainTabScrollChrome(deferMf, deferParent, endY)
+            end
+        end)
+        if ns.UI_SyncMainTabScrollChrome then
+            ns.UI_SyncMainTabScrollChrome(mf, parent, yOffset)
+        end
+        return yOffset
+    end
+
+    yOffset = PaintHeavyStatisticsBody(yOffset)
+    parent._wnStatsHeavyPaintDone = true
     return yOffset
 end
 

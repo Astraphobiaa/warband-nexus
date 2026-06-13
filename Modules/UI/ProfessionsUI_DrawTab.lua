@@ -31,7 +31,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     -- Invalidate any in-flight chunked row paint from a prior draw (tab switch uses AbortTabOperations too).
     ProfUI.AbortChunkedRowPaint()
-    profEquipResolveCache = {}
+    ProfUI.ResetEquipResolveCache()
     SyncProfessionColumnOrder(WarbandNexus.db and WarbandNexus.db.profile)
 
     RegisterProfessionEvents(parent)
@@ -122,7 +122,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local expBadgeHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local expBadge = ns.UI.Factory:CreateButton(titleCard, expBadgeWidth, expBadgeHeight, false)
     if ApplyVisuals then
-        ApplyVisuals(expBadge, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        ApplyVisuals(expBadge, ChromeBackdrop(), ChromeBorder(0.6))
     end
     local expBadgeText = FontManager:CreateFontString(expBadge, "body", "OVERLAY")
     expBadgeText:SetPoint("CENTER", 0, 0)
@@ -142,7 +142,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local filterBtn = ns.UI.Factory:CreateButton(titleCard, filterBtnW, filterBtnH, false)
     if ApplyVisuals then
-        ApplyVisuals(filterBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        ApplyVisuals(filterBtn, ChromeBackdrop(), ChromeBorder(0.6))
     end
     local filterBtnText = FontManager:CreateFontString(filterBtn, "body", "OVERLAY")
     filterBtnText:SetPoint("CENTER", 0, 0)
@@ -294,6 +294,24 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local accentR = COLORS.accent[1] or 0.40
     local accentG = COLORS.accent[2] or 0.20
     local accentB = COLORS.accent[3] or 0.58
+
+    if not colHeaderBar._wnProfHdrBg then
+        colHeaderBar._wnProfHdrBg = colHeaderBar:CreateTexture(nil, "BACKGROUND")
+        colHeaderBar._wnProfHdrBg:SetAllPoints()
+    end
+    local hdrChrome = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("headerChrome"))
+        or COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bg
+    colHeaderBar._wnProfHdrBg:SetColorTexture(hdrChrome[1], hdrChrome[2], hdrChrome[3], hdrChrome[4] or 0.92)
+    if not colHeaderBar._wnProfHdrRule then
+        colHeaderBar._wnProfHdrRule = colHeaderBar:CreateTexture(nil, "ARTWORK")
+        colHeaderBar._wnProfHdrRule:SetHeight(1)
+        colHeaderBar._wnProfHdrRule:SetPoint("BOTTOMLEFT", colHeaderBar, "BOTTOMLEFT", 0, 0)
+        colHeaderBar._wnProfHdrRule:SetPoint("BOTTOMRIGHT", colHeaderBar, "BOTTOMRIGHT", 0, 0)
+    end
+    local ruleA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.35 or 0.55
+    colHeaderBar._wnProfHdrRule:SetColorTexture(accentR * 0.28, accentG * 0.28, accentB * 0.28, ruleA)
+    colHeaderBar._wnProfHdrRule:Show()
+
     if colHeaderBar._wnProfColHeaderLine then
         colHeaderBar._wnProfColHeaderLine:Hide()
     end
@@ -305,7 +323,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if hit and hit.Hide then hit:Hide() end
     end
 
-    local SORT_ARROW_SIZE = 11
     local sortState = GetColumnSortState()
     for hdi = 1, #HEADER_DEFS do
         local hdef = HEADER_DEFS[hdi]
@@ -325,101 +342,12 @@ function WarbandNexus:DrawProfessionsTab(parent)
                     colHeaderBar, col, w, PROF_HEADER_ICON_BY_COL[col], hdef, sortState, displayText,
                     accentR, accentG, accentB, FactHdr
                 )
+            elseif hdef.sortable then
+                PaintProfessionTextSortableColumnHeader(
+                    colHeaderBar, col, w, hdef, sortState, displayText, accentR, accentG, accentB, FactHdr
+                )
             else
-            local isSorted = sortState and sortState.col == col
-
-            if hdef.sortable then
-                local hitBtn
-                if FactHdr and FactHdr.CreateButton then
-                    hitBtn = FactHdr:CreateButton(colHeaderBar, w, COLUMN_HEADER_HEIGHT, true)
-                end
-                if not hitBtn then
-                    hitBtn = CreateFrame("Button", nil, colHeaderBar)
-                    hitBtn:SetSize(w, COLUMN_HEADER_HEIGHT)
-                end
-                if (hdef.align or "CENTER") == "CENTER" then
-                    hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
-                else
-                    hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
-                end
-                hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 1)
-
-                -- Keep the sort arrow inside this column so it cannot sit in the gap left of "Character" (reads as "Open I").
-                local arrow = hitBtn:CreateTexture(nil, "OVERLAY")
-                arrow:SetSize(SORT_ARROW_SIZE, SORT_ARROW_SIZE)
-                arrow:SetPoint("RIGHT", hitBtn, "RIGHT", -1, 0)
-                if isSorted then
-                    if sortState.dir == "asc" then
-                        arrow:SetAtlas("hud-MainMenuBar-arrowup")
-                    else
-                        arrow:SetAtlas("hud-MainMenuBar-arrowdown")
-                    end
-                    arrow:SetVertexColor(accentR, accentG, accentB, 1)
-                    arrow:Show()
-                else
-                    arrow:Hide()
-                end
-
-                local lbl = FontManager:CreateFontString(hitBtn, PROF_COLUMN_HEADER_FONT, "OVERLAY")
-                ApplyProfColumnHeaderLabel(lbl, displayText, false)
-                lbl:SetJustifyH(hdef.align or "CENTER")
-                if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
-                lbl:SetPoint("LEFT", hitBtn, "LEFT", 2, 0)
-                lbl:SetPoint("RIGHT", hitBtn, "RIGHT", -2, 0)
-
-                local function SetHeaderLabelArrowInset(showArrow)
-                    lbl:ClearAllPoints()
-                    lbl:SetPoint("LEFT", hitBtn, "LEFT", 2, 0)
-                    local rightPad = showArrow and -(SORT_ARROW_SIZE + 4) or -2
-                    lbl:SetPoint("RIGHT", hitBtn, "RIGHT", rightPad, 0)
-                end
-                SetHeaderLabelArrowInset(isSorted)
-
-                local capturedCol = col
-                hitBtn:SetScript("OnClick", function()
-                    ToggleColumnSort(capturedCol)
-                end)
-                hitBtn:SetScript("OnEnter", function()
-                    ApplyProfColumnHeaderLabel(lbl, displayText, true)
-                    SetHeaderLabelArrowInset(true)
-                    if ShowTooltip and displayText ~= "" then
-                        ShowTooltip(hitBtn, { type = "custom", title = displayText, lines = {} })
-                    end
-                    if not isSorted then
-                        arrow:SetAtlas("hud-MainMenuBar-arrowup")
-                        arrow:SetVertexColor(1, 1, 1, 0.4)
-                        arrow:Show()
-                    end
-                end)
-                hitBtn:SetScript("OnLeave", function()
-                    ApplyProfColumnHeaderLabel(lbl, displayText, false)
-                    SetHeaderLabelArrowInset(isSorted)
-                    if HideTooltip then HideTooltip() end
-                    if not isSorted then
-                        arrow:Hide()
-                    end
-                end)
-            else
-                -- Clip so header text cannot draw into the fav/class gap (often misread as "Open I" next to sort arrows).
-                local clip = FactHdr and FactHdr:CreateContainer(colHeaderBar, w, COLUMN_HEADER_HEIGHT, false)
-                if not clip then
-                    clip = CreateFrame("Frame", nil, colHeaderBar)
-                    clip:SetSize(w, COLUMN_HEADER_HEIGHT)
-                end
-                if (hdef.align or "CENTER") == "CENTER" then
-                    clip:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
-                else
-                    clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", ColOffset(col), 0)
-                end
-                clip:SetClipsChildren(true)
-                local lbl = FontManager:CreateFontString(clip, PROF_COLUMN_HEADER_FONT, "OVERLAY")
-                ApplyProfColumnHeaderLabel(lbl, displayText, false)
-                lbl:SetJustifyH(hdef.align or "CENTER")
-                if lbl.SetJustifyV then lbl:SetJustifyV("MIDDLE") end
-                lbl:SetPoint("TOPLEFT", clip, "TOPLEFT", 1, 0)
-                lbl:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", -1, 0)
-                BindProfColumnHeaderTooltip(clip, displayText)
-            end
+                PaintProfessionTextStaticColumnHeader(colHeaderBar, col, w, hdef, displayText, FactHdr)
             end
         end
     end
@@ -717,13 +645,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
         local profSectionCount
         if not isCustomRosterSection then
             -- Non-custom sections (Favorites / Characters / Untracked) keep the simple count badge.
-            local countHex = ((visualOpts and visualOpts.sectionPreset == "danger") and "|cff888888") or "|cffaaaaaa"
+            local countMarkup = ((visualOpts and visualOpts.sectionPreset == "danger") and TextRoleHex("Dim")) or TextRoleHex("Muted")
             if not header._wnProfSectionCount then
-                header._wnProfSectionCount = FontManager:CreateFontString(header, "header", "OVERLAY")
+                header._wnProfSectionCount = FontManager:CreateFontString(header, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
             end
             profSectionCount = header._wnProfSectionCount
             profSectionCount:SetJustifyH("RIGHT")
-            profSectionCount:SetText(countHex .. FormatNumber(#chars) .. "|r")
+            profSectionCount:SetText(countMarkup .. FormatNumber(#chars) .. "|r")
             profSectionCount:Show()
         elseif header._wnProfSectionCount then
             -- Hide legacy per-tab count so the unified helper's count is the only badge shown.
@@ -876,7 +804,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         hint:SetPoint("TOPLEFT", contentSide + 12, -hintY - 8)
         hint:SetWidth(stackWidth - 24)
         hint:SetJustifyH("LEFT")
-        hint:SetText("|cffaaaaaa" .. ((ns.L and ns.L["PROF_SECTIONS_COLLAPSED_HINT"])
+        hint:SetText(TextRoleHex("Muted") .. ((ns.L and ns.L["PROF_SECTIONS_COLLAPSED_HINT"])
             or "All profession sections are collapsed. Click Favorites, Characters, or a roster group header to expand and view profession details.") .. "|r")
         yOffset = hintY + 36
         parent._wnProfSectionStackTopY = yOffset
@@ -894,12 +822,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
         parent._wnProfQueuedRowCount = #chunkQueue
         parent._wnProfEstimatedScrollBody = EstimateProfessionsScrollBody()
         local drawGen = ProfUI._drawGen or 0
-        local useChunked = #chunkQueue >= (ProfUI.CHUNK_MIN_CHARS or 5)
         ProfUI.RunChunkedRowPaint(self, parent, chunkQueue, drawGen, {
             profStackW = profStackW,
             currentPlayerKey = currentPlayerKey,
             rowIndex = rowIndex,
-            syncAll = not useChunked,
             onComplete = function()
                 parent._wnProfChunkPending = nil
                 parent._wnProfEstimatedScrollBody = nil
@@ -908,7 +834,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
             end,
         })
     else
-        FinishProfessionsTabChrome()
+        FinishProfessionsTabChrome(parent)
     end
 
     local retH = yOffset + 10

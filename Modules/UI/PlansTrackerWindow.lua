@@ -19,6 +19,10 @@ local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25, 0.2, 0.35 } }
 local PLAN_COLORS = ns.PLAN_UI_COLORS or {}
 
+local function PCol(key, fb)
+    return ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor(key, fb) or (PLAN_COLORS[key] or fb)
+end
+
 -- Unique AceEvent handler identity for PlansTrackerWindow
 local PlansTrackerEvents = {}
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -112,12 +116,32 @@ local function GetCardColors()
     if not c or not c.accent then
         c = { accent = { 0.5, 0.4, 0.7 } }
     end
+    local bg = c.bgCard or c.bgLight or c.bg or { 0.118, 0.118, 0.145, 0.98 }
+    local hoverBg = c.surfaceRowEven or c.bgLight or bg
+    local borderAlpha = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.48 or 0.55
     return {
-        border = { c.accent[1] * 0.55, c.accent[2] * 0.55, c.accent[3] * 0.55, 0.55 },
-        bg = { 0.074, 0.076, 0.095, 0.98 },
+        border = { c.accent[1] * 0.55, c.accent[2] * 0.55, c.accent[3] * 0.55, borderAlpha },
+        bg = { bg[1], bg[2], bg[3], bg[4] or 0.98 },
         hoverBorder = { c.accent[1], c.accent[2], c.accent[3], 0.88 },
-        hoverBg = { 0.10, 0.102, 0.125, 1 },
+        hoverBg = { hoverBg[1], hoverBg[2], hoverBg[3], hoverBg[4] or 1 },
     }
+end
+
+local function GetChromeButtonBackdrop()
+    return (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.8 }
+end
+
+local function GetControlChromeBackdrop()
+    return (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.08, 0.08, 0.10, 1 }
+end
+
+local function GetIconWellBackdrop()
+    local c = ns.UI_COLORS or COLORS
+    local row = c and (c.surfaceRowOdd or c.bgLight or c.bg)
+    if row then
+        return { row[1], row[2], row[3], (row[4] or 1) * 0.95 }
+    end
+    return { 0.05, 0.05, 0.07, 0.95 }
 end
 
 --- Optional 2px accent rail on the left edge of tracker cards
@@ -177,7 +201,7 @@ local function GetAchievementRequirementsText(achievementID)
     local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievementID)
     if not summary or (summary.rawNumCriteria or 0) == 0 then
         local noReqs = (ns.L and ns.L["NO_REQUIREMENTS"]) or "No requirements (instant completion)"
-        return "|cffffffff" .. noReqs .. "|r"
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee" .. noReqs .. "|r"
     end
     local parts = {}
     local formatRowSuffix = ns.UI_FormatCriterionRowSuffix
@@ -186,7 +210,7 @@ local function GetAchievementRequirementsText(achievementID)
             local row = summary.criteria[i]
             if row.hasName and row.name then
                 local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                local color = row.completed and (PLAN_COLORS.completed or "|cff44ff44") or (PLAN_COLORS.incomplete or "|cffffffff")
+                local color = row.completed and (PLAN_COLORS.completed or "|cff44ff44") or PCol("incomplete")
                 local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
                 parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(row.name) .. "|r" .. progress
             end
@@ -255,13 +279,13 @@ end
 --- Formatted card subtitle with Quest/Drop/Source styling (matches My Plans; uses PLAN_UI_COLORS)
 local function GetPlanDescriptionFormatted(plan)
     local raw = GetPlanDescription(plan)
-    if not raw or raw == "" then return (PLAN_COLORS.descDim or "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
+    if not raw or raw == "" then return PCol("descDim", "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
     if issecretvalue and issecretvalue(raw) then
-        return (PLAN_COLORS.descDim or "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
+        return PCol("descDim", "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r"
     end
-    local srcLabel = PLAN_COLORS.sourceLabel or "|cff99ccff"
-    local body = PLAN_COLORS.body or "|cffffffff"
-    local dim = PLAN_COLORS.descDim or "|cff888888"
+    local srcLabel = PCol("label")
+    local body = PCol("body")
+    local dim = PCol("descDim", "|cff888888")
     local prefix = raw:match("^([^:]+:%s*)(.*)$")
     if prefix then
         local sourceType, sourceDetail = raw:match("^([^:]+:%s*)(.*)$")
@@ -329,9 +353,9 @@ local function BuildPlanInfoRows(parent, plan, topAnchor, leftX, rightInset, min
     local sources = ResolveTrackerPlanSources(plan)
     local L = ns.L
     local P = PLAN_COLORS or {}
-    local labCol = P.sourceLabel or "|cff99ccff"
-    local body = P.body or "|cffffffff"
-    local dim = P.descDim or "|cff888888"
+    local labCol = PCol("label")
+    local body = PCol("body")
+    local dim = PCol("descDim", "|cff888888")
 
     local rows = {}
     local szLg = (ns.UI_PLAN_SOURCE_ICON_LG) or math.floor(16 * 1.3 + 0.5)
@@ -397,8 +421,8 @@ local function BuildPlanCriteriaItems(plan)
     local first = sources and sources[1]
     if not first then return items end
     local L = ns.L
-    local labCol = (PLAN_COLORS.sourceLabel or "|cff99ccff")
-    local body = (PLAN_COLORS.body or "|cffffffff")
+    local labCol = PCol("label")
+    local body = PCol("body")
     local function row(iconMarkup, key, fallback, value)
         if not value or value == "" then return end
         local label = ns.UI_NormalizeColonLabelSpacing((L and L[key]) or fallback)
@@ -437,8 +461,8 @@ function ns.UI_BuildPlanCriteriaItemsAll(plan)
     local sources = ResolveTrackerPlanSources(plan)
     if not sources or #sources == 0 then return items end
     local L = ns.L
-    local labCol = (PLAN_COLORS.sourceLabel or "|cff99ccff")
-    local body = (PLAN_COLORS.body or "|cffffffff")
+    local labCol = PCol("label")
+    local body = PCol("body")
     local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
     local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
@@ -479,9 +503,9 @@ function ns.UI_BuildPlanTodoSummaryLine(plan, opts)
     opts = type(opts) == "table" and opts or {}
     local L = ns.L
     local P = PLAN_COLORS or {}
-    local labCol = P.sourceLabel or "|cff99ccff"
-    local body = P.body or "|cffffffff"
-    local dim = P.descDim or "|cff888888"
+    local labCol = PCol("label")
+    local body = PCol("body")
+    local dim = PCol("descDim", "|cff888888")
 
     if plan.type == "achievement" and plan.achievementID then
         local achLines = ns.UI_BuildAchievementTodoSummaryLines
@@ -563,7 +587,7 @@ function ns.UI_BuildPlanTodoSummaryLines(plan, opts)
     end
     if #items > maxLines and #lines > 0 then
         local L = ns.L
-        local dim = (PLAN_COLORS and PLAN_COLORS.descDim) or "|cff888888"
+        local dim = PCol("descDim", "|cff888888")
         local moreFmt = "+%d more"
         local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
         if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
@@ -579,8 +603,8 @@ function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
     local items = {}
     if not sources or #sources == 0 then return items end
     local L = ns.L
-    local labCol = (PLAN_COLORS.sourceLabel or "|cff99ccff")
-    local body = (PLAN_COLORS.body or "|cffffffff")
+    local labCol = PCol("label")
+    local body = PCol("body")
     local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
     local IconMk = ns.UI_PlanSourceIconMarkup
     local classMk14 = IconMk and IconMk("class", szMd) or format("|A:Class:%d:%d|a", szMd, szMd)
@@ -628,9 +652,9 @@ function ns.UI_BuildBrowseTodoSummaryLine(item, category, sources, opts)
     opts = type(opts) == "table" and opts or {}
     local L = ns.L
     local P = PLAN_COLORS or {}
-    local dim = P.descDim or "|cff888888"
-    local labCol = P.sourceLabel or "|cff99ccff"
-    local body = P.body or "|cffffffff"
+    local dim = PCol("descDim", "|cff888888")
+    local labCol = PCol("label")
+    local body = PCol("body")
 
     if category == "title" and item.sourceAchievement then
         local sourceLabel = ns.UI_NormalizeColonLabelSpacing((L and L["SOURCE_LABEL"]) or "Source:")
@@ -674,7 +698,7 @@ function ns.UI_BuildBrowseTodoSummaryLines(item, category, sources, opts)
     end
     if #criteriaItems > maxLines and #lines > 0 then
         local L = ns.L
-        local dim = (PLAN_COLORS and PLAN_COLORS.descDim) or "|cff888888"
+        local dim = PCol("descDim", "|cff888888")
         local moreFmt = "+%d more"
         local locMore = L and L["TODO_SUMMARY_MORE_SOURCES"]
         if type(locMore) == "string" and locMore ~= "" and locMore ~= "TODO_SUMMARY_MORE_SOURCES" and locMore:find("%%", 1, true) then
@@ -688,10 +712,38 @@ end
 local PlanCardFactory = ns.UI_PlanCardFactory
 local CreateCard = ns.UI_CreateCard
 
+--- Pick tooltip side from anchor frame screen position (avoids clipping off-screen edges).
+local function ResolvePlanTooltipAnchor(anchorFrame)
+    if not anchorFrame or not anchorFrame.GetLeft then return "ANCHOR_AUTO" end
+    local left = anchorFrame:GetLeft()
+    local right = anchorFrame:GetRight()
+    if not left or not right then return "ANCHOR_AUTO" end
+    local screenW = GetScreenWidth()
+    if right > screenW * 0.58 then return "ANCHOR_LEFT" end
+    if left < screenW * 0.42 then return "ANCHOR_RIGHT" end
+    return "ANCHOR_AUTO"
+end
+
 --- Full tooltip for plan card hover (uses addon's custom TooltipService)
 local function ShowPlanTooltip(anchor, plan, isExpanded)
     local TooltipService = ns.TooltipService
     if not TooltipService then return end
+
+    local lblR, lblG, lblB = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.6, 0.6, 0.6
+    local bodyR, bodyG, bodyB = (ns.UI_GetTooltipBodyColor and ns.UI_GetTooltipBodyColor()) or 0.8, 0.8, 0.8
+    local noteR, noteG, noteB = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+    local goldR, goldG, goldB = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.82, 0
+    local greenR, greenG, greenB = (ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor()) or 0.3, 1, 0.3
+    local brightR, brightG, brightB = (ns.UI_GetTextRoleRGB and ns.UI_GetTextRoleRGB("Bright")) or 1, 1, 1
+    local reqR, reqG, reqB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 1, 0.5, 0.5
+    local zoneR, zoneG, zoneB = greenR, greenG, greenB
+    local rewardLblR, rewardLblG, rewardLblB = greenR, greenG, greenB
+    local rewardValR, rewardValG, rewardValB = greenR, greenG, greenB
+    if not (ns.UI_IsLightMode and ns.UI_IsLightMode()) then
+        rewardLblR, rewardLblG, rewardLblB = 0.53, 1, 0.53
+        rewardValR, rewardValG, rewardValB = 0, 1, 0
+        zoneR, zoneG, zoneB = 0.5, 0.8, 0.5
+    end
 
     local displayName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     local planIcon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.icon
@@ -704,7 +756,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         local ok, _, _, points = pcall(GetAchievementInfo, plan.achievementID)
         if ok and points and points > 0 then
             local pointsLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["POINTS_LABEL"]) or "Points")
-            lines[#lines + 1] = { left = pointsLabel, right = tostring(points), leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.85, 0.45} }
+            lines[#lines + 1] = { left = pointsLabel, right = tostring(points), leftColor = { lblR, lblG, lblB }, rightColor = { goldR, goldG, goldB } }
         end
     end
 
@@ -715,7 +767,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         if achDesc and achDesc ~= "" then desc = achDesc end
     end
     if desc ~= "" and desc ~= "Custom plan" and desc ~= ((ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan") then
-        lines[#lines + 1] = { text = desc, color = {0.8, 0.8, 0.8}, wrap = true }
+        lines[#lines + 1] = { text = desc, color = { bodyR, bodyG, bodyB }, wrap = true }
         lines[#lines + 1] = { type = "spacer", height = 4 }
     end
 
@@ -728,7 +780,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         end
         if rewardDisplay and rewardDisplay ~= "" then
             local rewardLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:")
-            lines[#lines + 1] = { left = rewardLabel, right = rewardDisplay, leftColor = {0.53, 1, 0.53}, rightColor = {0, 1, 0} }
+            lines[#lines + 1] = { left = rewardLabel, right = rewardDisplay, leftColor = { rewardLblR, rewardLblG, rewardLblB }, rightColor = { rewardValR, rewardValG, rewardValB } }
         end
     end
 
@@ -737,23 +789,23 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         local src = plan.source
         if WarbandNexus.CleanSourceText then src = WarbandNexus:CleanSourceText(src) end
         local sourceLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:")
-        lines[#lines + 1] = { left = sourceLabel, right = src, leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.82, 0} }
+        lines[#lines + 1] = { left = sourceLabel, right = src, leftColor = { lblR, lblG, lblB }, rightColor = { goldR, goldG, goldB } }
     end
 
     -- Zone / Vendor
     if plan.zone and plan.zone ~= "" then
         local zoneLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["ZONE_LABEL"]) or "Zone:")
-        lines[#lines + 1] = { left = zoneLabel, right = plan.zone, leftColor = {0.6, 0.6, 0.6}, rightColor = {0.5, 0.8, 0.5} }
+        lines[#lines + 1] = { left = zoneLabel, right = plan.zone, leftColor = { lblR, lblG, lblB }, rightColor = { zoneR, zoneG, zoneB } }
     end
     if plan.vendor and plan.vendor ~= "" then
         local vendorLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:")
-        lines[#lines + 1] = { left = vendorLabel, right = plan.vendor, leftColor = {0.6, 0.6, 0.6}, rightColor = {0.5, 0.8, 0.5} }
+        lines[#lines + 1] = { left = vendorLabel, right = plan.vendor, leftColor = { lblR, lblG, lblB }, rightColor = { zoneR, zoneG, zoneB } }
     end
 
     -- Requirement
     if plan.requirement and plan.requirement ~= "" then
         local reqLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENT_LABEL"]) or "Requirement:")
-        lines[#lines + 1] = { left = reqLabel, right = plan.requirement, leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.5, 0.5} }
+        lines[#lines + 1] = { left = reqLabel, right = plan.requirement, leftColor = { lblR, lblG, lblB }, rightColor = { reqR, reqG, reqB } }
     end
 
     -- Achievement requirements (only when collapsed â€” expanded cards already show them)
@@ -768,7 +820,12 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
                     local row = summary.criteria[i]
                     if row.hasName and row.name then
                         local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                        local color = row.completed and (PLAN_COLORS.completedRgb or {0.27, 1, 0.27}) or (PLAN_COLORS.incompleteRgb or {1, 1, 1})
+                        local incRgb = PLAN_COLORS.incompleteRgb
+                        if not incRgb and ns.UI_GetTextRoleRGB then
+                            local ir, ig, ib = ns.UI_GetTextRoleRGB("Bright")
+                            incRgb = { ir, ig, ib }
+                        end
+                        local color = row.completed and (PLAN_COLORS.completedRgb or {0.27, 1, 0.27}) or (incRgb or {1, 1, 1})
                         local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
                         criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. row.name .. progress, color = color }
                     end
@@ -776,7 +833,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
             end
 
             local header = ns.UI_FormatAchievementProgressHeader and ns.UI_FormatAchievementProgressHeader(summary) or ""
-            lines[#lines + 1] = { text = header, color = {0.3, 1, 0.3} }
+            lines[#lines + 1] = { text = header, color = { greenR, greenG, greenB } }
 
             -- 3-column layout: group criteria into rows of 3
             local cols = 3
@@ -790,7 +847,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
                         rowParts[#rowParts + 1] = colorCode .. entry.text .. "|r"
                     end
                 end
-                lines[#lines + 1] = { text = table.concat(rowParts, "  "), color = {1, 1, 1}, wrap = false }
+                lines[#lines + 1] = { text = table.concat(rowParts, "  "), color = { brightR, brightG, brightB }, wrap = false }
             end
         end
     end
@@ -798,7 +855,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
     -- Notes
     if plan.notes and plan.notes ~= "" then
         lines[#lines + 1] = { type = "spacer", height = 4 }
-        lines[#lines + 1] = { text = plan.notes, color = {0.7, 0.7, 0.7}, wrap = true }
+        lines[#lines + 1] = { text = plan.notes, color = { noteR, noteG, noteB }, wrap = true }
     end
 
     TooltipService:Show(anchor, {
@@ -807,6 +864,7 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         iconIsAtlas = iconIsAtlas,
         title = FormatTextNumbers(displayName),
         lines = lines,
+        anchor = ResolvePlanTooltipAnchor(anchor),
     })
 end
 
@@ -960,7 +1018,7 @@ local function RefreshTrackerContentImmediate()
         empty:SetWordWrap(true)
         empty:SetJustifyH("CENTER")
         local noPlansText = (ns.L and ns.L["NO_PLANS_IN_CATEGORY"]) or "No plans in this category.\nAdd plans from the Plans tab."
-        empty:SetText("|cff666666" .. noPlansText .. "|r")
+        empty:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff666666") .. noPlansText .. "|r")
         trackerRowOrder[#trackerRowOrder + 1] = emptyFrame
     else
         for i = 1, #filtered do
@@ -988,7 +1046,10 @@ local function RefreshTrackerContentImmediate()
             if collectibleID and WarbandNexus.ShouldShowTryCountInUI and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
                 and WarbandNexus.GetTryCount then
                 local count = WarbandNexus:GetTryCount(plan.type, collectibleID) or 0
-                trySuffix = "|cffaaddff" .. ((ns.L and ns.L["TRIES"]) or "Tries") .. ":|r |cffffffff" .. tostring(count) .. "|r"
+                trySuffix = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff")
+                    .. ((ns.L and ns.L["TRIES"]) or "Tries") .. ":|r "
+                    .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+                    .. tostring(count) .. "|r"
             end
 
             local allSourceItems = ns.UI_BuildPlanCriteriaItemsAll and ns.UI_BuildPlanCriteriaItemsAll(plan) or BuildPlanCriteriaItems(plan)
@@ -1107,7 +1168,7 @@ local function RefreshTrackerContentImmediate()
             end
             AddTrackerCardAccent(row)
             if row.iconFrame and ApplyVisuals then
-                ApplyVisuals(row.iconFrame, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+                ApplyVisuals(row.iconFrame, GetIconWellBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
             end
 
             local rightOffset = 6
@@ -1178,7 +1239,8 @@ local function RefreshTrackerContentImmediate()
         local suffix = plansFormat:gsub("%%d%s*", "")
         local countLabel = frame.categoryBar and frame.categoryBar.countLabel
         if countLabel then
-            countLabel:SetText("|cff888888" .. #filtered .. "/" .. trackerEligibleTotal .. suffix .. "|r")
+            countLabel:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888")
+                .. #filtered .. "/" .. trackerEligibleTotal .. suffix .. "|r")
         end
     end
 
@@ -1235,7 +1297,9 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     dropdown:SetPoint("RIGHT", countLabel, "LEFT", -8, 0)
     dropdown:SetHeight(26)
     if ApplyVisuals then
-        ApplyVisuals(dropdown, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, 0.6 })
+        local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetCardColors().bg
+        local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.7
+        ApplyVisuals(dropdown, shell, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, ba })
     end
 
     -- Value text
@@ -1251,7 +1315,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     arrow:SetPoint("RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
     arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
     arrow:SetTexCoord(0, 1, 0, 1)
-    arrow:SetVertexColor(0.7, 0.7, 0.7)
+    arrow:SetVertexColor(COLORS.textMuted[1], COLORS.textMuted[2], COLORS.textMuted[3])
 
     local function UpdateLabel(key)
         local label = (ns.L and ns.L["CATEGORY_ALL"]) or "All"
@@ -1286,7 +1350,8 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
             menu:SetFrameLevel(300)
             menu:SetClampedToScreen(true)
             if ApplyVisuals then
-                ApplyVisuals(menu, { 0.08, 0.08, 0.10, 0.98 }, { COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8 })
+                local menuBg = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetControlChromeBackdrop()
+                ApplyVisuals(menu, menuBg, { COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8 })
             end
             menu:SetScript("OnHide", function()
                 local catcher = dropdown._clickCatcher
@@ -1335,9 +1400,9 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
             -- Highlight current selection
             if currentCategoryKey == cat.key then
-                btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-            else
                 ns.UI_SetTextColorRole(btnText, "Bright")
+            else
+                ns.UI_SetTextColorRole(btnText, "Normal")
             end
 
             -- Hover visual
@@ -1399,15 +1464,18 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
     -- Hover on dropdown button
     dropdown:SetScript("OnEnter", function()
-        arrow:SetVertexColor(1, 1, 1)
+        arrow:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
         if ApplyVisuals then
-            ApplyVisuals(dropdown, { 0.10, 0.10, 0.13, 1 }, { COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8 })
+            local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
+            ApplyVisuals(dropdown, hoverBg, { COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8 })
         end
     end)
     dropdown:SetScript("OnLeave", function()
-        arrow:SetVertexColor(0.7, 0.7, 0.7)
+        arrow:SetVertexColor(COLORS.textMuted[1], COLORS.textMuted[2], COLORS.textMuted[3])
         if ApplyVisuals then
-            ApplyVisuals(dropdown, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, 0.6 })
+            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetControlChromeBackdrop()
+            local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.6
+            ApplyVisuals(dropdown, shell, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, ba })
         end
     end)
 
@@ -1461,9 +1529,17 @@ function WarbandNexus:CreatePlansTrackerWindow()
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     elseif ApplyVisuals then
-        ApplyVisuals(frame, { 0.04, 0.04, 0.06, 0.97 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
+        local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetCardColors().bg
+        local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.7
+        ApplyVisuals(frame, shell, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], ba })
     end
     frame:SetAlpha(math.max(0.2, math.min(1.0, db and db.opacity or 1.0)))
+
+    if ns.UI_RegisterScaledFrame then
+        ns.UI_RegisterScaledFrame(frame)
+    elseif ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(frame)
+    end
 
     -- â”€â”€ Header (compact, draggable; Factory shell, width follows frame) â”€â”€
     local header = Factory:CreateContainer(frame, math.max(1, w), HEADER_HEIGHT, false)
@@ -1488,8 +1564,12 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end)
     end
     if ApplyVisuals then
-        ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
-            { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        if ns.UI_ApplyFloatingWindowHeaderChrome then
+            ns.UI_ApplyFloatingWindowHeaderChrome(header)
+        else
+            ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
+                { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        end
     end
     header:SetFrameLevel(frame:GetFrameLevel() + 10)
 
@@ -1518,26 +1598,30 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- Close button (Factory)
     local closeBtn = Factory:CreateButton(header, 22, 22, true)
     closeBtn:SetPoint("RIGHT", -PADDING, 0)
+    local chromeBorder = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
     if ApplyVisuals then
-        ApplyVisuals(closeBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local closeTex = closeBtn:CreateTexture(nil, "ARTWORK")
     closeTex:SetSize(12, 12)
     closeTex:SetPoint("CENTER")
     closeTex:SetAtlas("uitools-icon-close")
-    closeTex:SetVertexColor(0.9, 0.3, 0.3)
+    local closeR, closeG, closeB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 0.9, 0.3, 0.3
+    closeTex:SetVertexColor(closeR, closeG, closeB)
     closeBtn:SetFrameLevel(header:GetFrameLevel() + 5)
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
     closeBtn:SetScript("OnEnter", function()
-        closeTex:SetVertexColor(1, 0.15, 0.15)
-        if ApplyVisuals then
-            ApplyVisuals(closeBtn, { 0.3, 0.08, 0.08, 0.9 }, { 1, 0.1, 0.1, 0.9 })
+        local hr, hg, hb = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 1, 0.15, 0.15
+        closeTex:SetVertexColor(hr, hg, hb)
+        if ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+            local bg, border = ns.UI_GetSemanticNegativeCard(true)
+            ApplyVisuals(closeBtn, bg, border)
         end
     end)
     closeBtn:SetScript("OnLeave", function()
-        closeTex:SetVertexColor(0.9, 0.3, 0.3)
+        closeTex:SetVertexColor(closeR, closeG, closeB)
         if ApplyVisuals then
-            ApplyVisuals(closeBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+            ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
     end)
 
@@ -1546,7 +1630,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     collapseBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
     collapseBtn:SetFrameLevel(header:GetFrameLevel() + 5)
     if ApplyVisuals then
-        ApplyVisuals(collapseBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local collapseTex = collapseBtn:CreateTexture(nil, "ARTWORK")
     collapseTex:SetSize(14, 14)
@@ -1585,15 +1669,16 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ApplyCollapsedState(not isCollapsed)
     end)
     collapseBtn:SetScript("OnEnter", function()
-        collapseTex:SetVertexColor(1, 1, 1)
+        collapseTex:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
         if ApplyVisuals then
-            ApplyVisuals(collapseBtn, { 0.10, 0.10, 0.13, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
+            ApplyVisuals(collapseBtn, hoverBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
     end)
     collapseBtn:SetScript("OnLeave", function()
-        collapseTex:SetVertexColor(0.9, 0.9, 0.9)
+        collapseTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
         if ApplyVisuals then
-            ApplyVisuals(collapseBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+            ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
     end)
 
@@ -1602,14 +1687,14 @@ function WarbandNexus:CreatePlansTrackerWindow()
     gearBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -4, 0)
     gearBtn:SetFrameLevel(header:GetFrameLevel() + 5)
     if ApplyVisuals then
-        ApplyVisuals(gearBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local gearTex = gearBtn:CreateTexture(nil, "ARTWORK")
     gearTex:SetSize(14, 14)
     gearTex:SetPoint("CENTER")
     gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
     gearTex:SetTexCoord(0.06, 0.94, 0.06, 0.94)
-    gearTex:SetVertexColor(0.9, 0.9, 0.9)
+    gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
 
     local settingsPopup
     local function BuildSettingsPopup()
@@ -1623,7 +1708,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
         popup:SetFrameStrata(frame:GetFrameStrata())
         popup:SetFrameLevel(frame:GetFrameLevel() + 50)
         if ApplyVisuals then
-            ApplyVisuals(popup, { 0.06, 0.06, 0.08, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            local popupBg = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetControlChromeBackdrop()
+            ApplyVisuals(popup, popupBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
 
         local label = FontManager:CreateFontString(popup, "small", "OVERLAY")
@@ -1635,8 +1721,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
         local current = (GetDB() and GetDB().opacity) or 1.0
         local function FormatLabel(v)
-            label:SetText(format("|cffcccccc%s|r", opacityLabel))
-            valueText:SetText(format("|cffffffff%d%%|r", math.floor(v * 100 + 0.5)))
+            local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffcccccc"
+            local brightHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+            label:SetText(mutedHex .. opacityLabel .. "|r")
+            valueText:SetText(brightHex .. format("%d%%|r", math.floor(v * 100 + 0.5)))
         end
 
         local slider = Factory:CreateThemedSlider(popup, {
@@ -1664,17 +1752,29 @@ function WarbandNexus:CreatePlansTrackerWindow()
         if popup:IsShown() then popup:Hide() else popup:Show() end
     end)
     gearBtn:SetScript("OnEnter", function()
-        gearTex:SetVertexColor(1, 1, 1)
+        gearTex:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
         if ApplyVisuals then
-            ApplyVisuals(gearBtn, { 0.10, 0.10, 0.13, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
+            ApplyVisuals(gearBtn, hoverBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
     end)
     gearBtn:SetScript("OnLeave", function()
-        gearTex:SetVertexColor(0.9, 0.9, 0.9)
+        gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
         if ApplyVisuals then
-            ApplyVisuals(gearBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+            ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
     end)
+
+    frame._applyHeaderChromeIdle = function()
+        if ApplyVisuals then
+            ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
+            ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
+            ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
+        end
+        closeTex:SetVertexColor(closeR, closeG, closeB)
+        collapseTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+        gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+    end
 
     -- â”€â”€ Custom themed category dropdown â”€â”€
     local catBar, dropdown = CreateThemedCategoryDropdown(frame, function()
@@ -1916,4 +2016,30 @@ function WarbandNexus:TogglePlansTrackerWindow()
         return
     end
     self:ShowPlansTrackerWindow()
+end
+
+ns.PlansTrackerWindow = ns.PlansTrackerWindow or {}
+function ns.PlansTrackerWindow.RefreshTheme()
+    if ns.FontManager and ns.FontManager.RefreshThemeTypography then
+        ns.FontManager:RefreshThemeTypography()
+    end
+    local frame = GetTrackerFrame()
+    if not frame then return end
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    end
+    if frame._plansTrackerHeaderShell and ApplyVisuals and COLORS.accent then
+        if ns.UI_ApplyFloatingWindowHeaderChrome then
+            ns.UI_ApplyFloatingWindowHeaderChrome(frame._plansTrackerHeaderShell)
+        else
+            ApplyVisuals(frame._plansTrackerHeaderShell,
+                { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
+                { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        end
+    end
+    if frame._applyHeaderChromeIdle then
+        frame._applyHeaderChromeIdle()
+    end
+    if not frame:IsShown() then return end
+    RefreshTrackerContentImmediate()
 end

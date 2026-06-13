@@ -27,6 +27,46 @@ local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 }, accentDark = { 0.25
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
 local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(math.floor(tonumber(n) or 0)) end
+local function ChromeBackdrop()
+    return (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
+        or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+end
+local function ChromeBorder(alpha)
+    alpha = alpha or 0.6
+    return { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], alpha }
+end
+local function TextRoleHex(role)
+    if ns.UI_GetTextRoleHexRaw then
+        return ns.UI_GetTextRoleHexRaw(role)
+    end
+    if ns.UI_GetTextRoleRGB then
+        local r, g, b = ns.UI_GetTextRoleRGB(role)
+        return string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    end
+    return "ffffff"
+end
+
+local function SemanticGoldHexRaw()
+    if ns.UI_GetSemanticGoldHex then
+        return (ns.UI_GetSemanticGoldHex():gsub("|cff", ""))
+    end
+    return (ns.UI_IsLightMode and ns.UI_IsLightMode()) and "854e0a" or "ffcc00"
+end
+
+local function SemanticGreenHex()
+    if ns.UI_GetSemanticGreenHex then
+        return (ns.UI_GetSemanticGreenHex():gsub("|cff", ""))
+    end
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then return "385c38" end
+    return "44ff44"
+end
+
+local function SemanticYellowHex()
+    return SemanticGoldHexRaw()
+end
+local function GetAccentHexColor()
+    return (ns.UI_GetAccentHexColor and ns.UI_GetAccentHexColor()) or "9966cc"
+end
 local function GetFactory()
     return ns.UI and ns.UI.Factory
 end
@@ -376,9 +416,9 @@ local function RenderQualityColumns(parent, counts, numTiers)
         end
 
         if count > 0 then
-            countText:SetText("|cffffffff(" .. FormatNumber(count) .. ")|r")
+            countText:SetText("|cff" .. TextRoleHex("Bright") .. "(" .. FormatNumber(count) .. ")|r")
         else
-            countText:SetText("|cffffffff(-)|r")
+            countText:SetText("|cff" .. TextRoleHex("Dim") .. "(-)|r")
         end
     end
 end
@@ -410,7 +450,7 @@ local function RenderContent(scrollChild)
         local noData = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
         noData:SetPoint("TOPLEFT", PADDING, -PADDING)
         local emptyMsg = (ns.L and ns.L["RECIPE_COMPANION_EMPTY"]) or (ns.L and ns.L["SELECT_RECIPE"]) or "Select a recipe"
-        noData:SetText("|cffffffff" .. emptyMsg .. "|r")
+        noData:SetText("|cff" .. TextRoleHex("Muted") .. emptyMsg .. "|r")
         noData:Show()
         scrollChild:SetHeight(40)
         return
@@ -431,7 +471,8 @@ local function RenderContent(scrollChild)
 
             yOffset = Factory:CreateSectionHeader(
                 scrollChild, yOffset, craftersSectionCollapsed,
-                "|cff4488cc" .. ((ns.L and ns.L["CRAFTERS_SECTION"]) or "Crafters") .. "|r |cffffffff(" .. #crafters .. ")|r",
+                "|cff" .. GetAccentHexColor() .. ((ns.L and ns.L["CRAFTERS_SECTION"]) or "Crafters") .. "|r |cff"
+                    .. TextRoleHex("Bright") .. "(" .. #crafters .. ")|r",
                 nil, ToggleCrafters, REAGENT_HEADER_HEIGHT
             )
 
@@ -473,22 +514,23 @@ local function RenderContent(scrollChild)
                         local maxConc = crafter.concentration.max or 0
                         local concColor
                         if maxConc > 0 and estConc >= maxConc * 0.8 then
-                            concColor = "|cff44ff44"
+                            concColor = "|cff" .. SemanticGreenHex()
                         elseif maxConc > 0 and estConc >= maxConc * 0.3 then
-                            concColor = "|cffffcc00"
+                            concColor = "|cff" .. SemanticYellowHex()
                         else
-                            concColor = "|cffffffff"
+                            concColor = "|cff" .. TextRoleHex("Bright")
                         end
                         concText:SetText(concColor .. "(" .. estConc .. "/" .. maxConc .. ")|r")
                     else
-                        concText:SetText("|cffffffff(-)|r")
+                        concText:SetText("|cff" .. TextRoleHex("Dim") .. "(-)|r")
                     end
 
                     local skillText = FontManager:CreateFontString(crafterRow, "body", "OVERLAY")
                     skillText:SetPoint("RIGHT", concText, "LEFT", -8, 0)
                     skillText:SetJustifyH("RIGHT")
 
-                    local skillColor = crafter.skillLevel >= crafter.maxSkillLevel and "|cff44ff44" or "|cffffcc00"
+                    local skillColor = crafter.skillLevel >= crafter.maxSkillLevel
+                        and "|cff" .. SemanticGreenHex() or "|cff" .. SemanticYellowHex()
                     skillText:SetText(skillColor .. "(" .. crafter.skillLevel .. "/" .. crafter.maxSkillLevel .. ")|r")
 
                     -- Name: LEFT only + max width — do not anchor RIGHT to skillText (creates an anchor
@@ -529,7 +571,7 @@ local function RenderContent(scrollChild)
             -- ── Reagent section header (collapsible, with border) ──
             local primaryName = slot.reagents[1] and slot.reagents[1].name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
             local namePrefix = isSufficient and (CHECK_ICON .. " ") or ""
-            local nameColor = isSufficient and "|cff44ff44" or (totalHave > 0 and "|cffffcc00" or "|cffffffff")
+            local nameColor = isSufficient and "|cff" .. SemanticGreenHex() or (totalHave > 0 and "|cff" .. SemanticYellowHex() or "|cff" .. TextRoleHex("Bright"))
 
             local function ToggleCollapse()
                 collapsedSlots[si] = not collapsedSlots[si]
@@ -539,7 +581,7 @@ local function RenderContent(scrollChild)
             yOffset = Factory:CreateSectionHeader(
                 scrollChild, yOffset, isCollapsed,
                 namePrefix .. nameColor .. primaryName .. "|r",
-                "|cffffffffx" .. needed .. "|r",
+                "|cff" .. TextRoleHex("Bright") .. "x" .. needed .. "|r",
                 ToggleCollapse, REAGENT_HEADER_HEIGHT
             )
 
@@ -573,7 +615,7 @@ local function RenderContent(scrollChild)
                                 local bagRightText = FontManager:CreateFontString(bagRow, "body", "OVERLAY")
                                 bagRightText:SetPoint("RIGHT", bagRow, "RIGHT", -PADDING, 0)
                                 bagRightText:SetJustifyH("RIGHT")
-                                bagRightText:SetText("|cffffffff" .. bagTotal .. "|r")
+                                bagRightText:SetText("|cff" .. TextRoleHex("Bright") .. bagTotal .. "|r")
                             end
                         end
 
@@ -594,7 +636,7 @@ local function RenderContent(scrollChild)
                                 local bankRightText = FontManager:CreateFontString(bankRow, "body", "OVERLAY")
                                 bankRightText:SetPoint("RIGHT", bankRow, "RIGHT", -PADDING, 0)
                                 bankRightText:SetJustifyH("RIGHT")
-                                bankRightText:SetText("|cffffffff" .. bankTotal .. "|r")
+                                bankRightText:SetText("|cff" .. TextRoleHex("Bright") .. bankTotal .. "|r")
                             end
                         end
                     end
@@ -610,7 +652,8 @@ local function RenderContent(scrollChild)
                     local wbIconTex = CreateStorageIcon(wbRow, "warbands-icon", WARBAND_ICON_W, WARBAND_ICON_H)
                     local wbNameText = FontManager:CreateFontString(wbRow, "body", "OVERLAY")
                     wbNameText:SetPoint("LEFT", wbIconTex, "RIGHT", 4, 0)
-                    wbNameText:SetText("|cffddaa44" .. ((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank") .. "|r")
+                    wbNameText:SetText("|cff" .. (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex():gsub("|cff", "") or "ddaa44")
+                        .. ((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank") .. "|r")
 
                     if slot.hasQuality then
                         RenderQualityColumns(wbRow, slot.counts.warband, numTiers)
@@ -618,7 +661,7 @@ local function RenderContent(scrollChild)
                         local wbRightText = FontManager:CreateFontString(wbRow, "body", "OVERLAY")
                         wbRightText:SetPoint("RIGHT", wbRow, "RIGHT", -PADDING, 0)
                         wbRightText:SetJustifyH("RIGHT")
-                        wbRightText:SetText("|cffffffff" .. wbTotal .. "|r")
+                        wbRightText:SetText("|cff" .. TextRoleHex("Bright") .. wbTotal .. "|r")
                     end
                 end
 
@@ -629,7 +672,8 @@ local function RenderContent(scrollChild)
                 local totalRow
                 totalRow, yOffset = Factory:CreateDataRow(scrollChild, yOffset, rowCounter, ROW_HEIGHT)
 
-                local totalColor = isSufficient and "|cff44ff44" or (totalHave > 0 and "|cffffcc00" or "|cffffffff")
+                local totalColor = isSufficient and "|cff" .. SemanticGreenHex()
+                    or (totalHave > 0 and "|cff" .. SemanticYellowHex() or "|cff" .. TextRoleHex("Bright"))
                 local totalLabel = FontManager:CreateFontString(totalRow, "body", "OVERLAY")
                 totalLabel:SetPoint("LEFT", PADDING + 10, 0)
                 totalLabel:SetText(totalColor .. ((ns.L and ns.L["TOTAL_REAGENTS"]) or "Total Reagents") .. "|r")
@@ -698,10 +742,10 @@ local function FormatCompanionTitle(recipeID, recipeName)
     if recipeID and WarbandNexus and WarbandNexus.GetRecipeCraftCountFromMaterials then
         local n = WarbandNexus:GetRecipeCraftCountFromMaterials(recipeID)
         if n ~= nil and n >= 0 then
-            return "|cffffffff" .. name .. " (" .. n .. ")|r"
+            return "|cff" .. TextRoleHex("Bright") .. name .. " (" .. n .. ")|r"
         end
     end
-    return "|cffffffff" .. name .. "|r"
+    return "|cff" .. TextRoleHex("Bright") .. name .. "|r"
 end
 
 --[[
@@ -765,11 +809,12 @@ local function EnsureToggleTrackerButton()
     local btn = Factory:CreateButton(ProfessionsFrame, 130, 24, false)
     btn:SetPoint("BOTTOMLEFT", ProfessionsFrame, "BOTTOMLEFT", 285, 5)
     if ApplyVisuals then
-        ApplyVisuals(btn, { 0.05, 0.05, 0.07, 0.95 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        ApplyVisuals(btn, ChromeBackdrop(), ChromeBorder(0.6))
     end
     local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
     label:SetPoint("CENTER", 0, 0)
     label:SetText((ns.L and ns.L["TOGGLE_TRACKER"]) or "Toggle Tracker")
+    ns.UI_SetTextColorRole(label, "Bright")
     btn:SetScript("OnClick", function()
         if not WarbandNexus.db then return end
         WarbandNexus.db.profile.recipeCompanionEnabled = not (WarbandNexus.db.profile.recipeCompanionEnabled ~= false)
@@ -847,7 +892,7 @@ local function CreateCompanionWindow()
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     elseif ApplyVisuals then
-        ApplyVisuals(frame, { 0.04, 0.04, 0.06, 0.97 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
+        ApplyVisuals(frame, (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or ChromeBackdrop(), ChromeBorder(0.7))
     end
 
     local bandH = RCGetCompanionHeaderHeight()
@@ -859,6 +904,7 @@ local function CreateCompanionWindow()
     header:SetPoint("TOPLEFT", frame, "TOPLEFT", frameInset, -frameInset)
     header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -frameInset, -frameInset)
     header:EnableMouse(true)
+    frame._rcHeader = header
     if ns.WindowManager and ns.WindowManager.InstallDragHandler then
         ns.WindowManager:InstallDragHandler(header, frame, function()
             if SavePosition then SavePosition(frame) end
@@ -876,8 +922,11 @@ local function CreateCompanionWindow()
         end)
     end
     if ApplyVisuals then
-        ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
-            { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        if ns.UI_ApplyFloatingWindowHeaderChrome then
+            ns.UI_ApplyFloatingWindowHeaderChrome(header)
+        else
+            ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, ChromeBorder(0.6))
+        end
     end
 
     -- Header icon (profession/recipe icon)
@@ -888,13 +937,15 @@ local function CreateCompanionWindow()
     frame.headerIcon = hIcon
 
     -- Title
-    local titleText = FontManager:CreateFontString(header, "body", "OVERLAY")
+    local titleFontRole = (FontManager.GetFontRole and FontManager:GetFontRole("windowChromeTitle")) or "body"
+    local titleText = FontManager:CreateFontString(header, titleFontRole, "OVERLAY")
     titleText:SetPoint("LEFT", hIcon, "RIGHT", 6, 0)
     titleText:SetPoint("RIGHT", header, "RIGHT", -PADDING, 0)
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
     titleText:SetMaxLines(1)
-    titleText:SetText("|cffffffff" .. ((ns.L and ns.L["RECIPE_COMPANION_TITLE"]) or "Recipe Companion") .. "|r")
+    titleText:SetText((ns.L and ns.L["RECIPE_COMPANION_TITLE"]) or "Recipe Companion")
+    ns.UI_SetTextColorRole(titleText, "Bright")
     frame.titleText = titleText
 
     -- ── Content area ──
@@ -1040,6 +1091,12 @@ local function CreateCompanionWindow()
         SavePosition(frame)
     end)
 
+    if ns.UI_RegisterScaledFrame then
+        ns.UI_RegisterScaledFrame(frame)
+    elseif ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(frame)
+    end
+
     companionFrame = frame
     return frame
 end
@@ -1087,6 +1144,17 @@ function WarbandNexus:InitializeRecipeCompanion()
             RefreshCompanion()
         end
     end)
+
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, E.FONT_CHANGED, function()
+        if not ns.Utilities:IsModuleEnabled("professions") then return end
+        if companionFrame and companionFrame:IsShown() then
+            if ns.RecipeCompanionWindow and ns.RecipeCompanionWindow.RefreshTheme then
+                ns.RecipeCompanionWindow.RefreshTheme()
+            else
+                RefreshCompanion()
+            end
+        end
+    end)
 end
 
 -- EXPORT
@@ -1103,4 +1171,31 @@ ns.RecipeCompanionWindow = {
         end
     end,
     Refresh = RefreshCompanion,
+    RefreshTheme = function()
+        if ns.FontManager and ns.FontManager.RefreshThemeTypography then
+            ns.FontManager:RefreshThemeTypography()
+        end
+        local frame = companionFrame
+        if not frame then return end
+        if ns.UI_ApplyStandardCardElevatedChrome then
+            ns.UI_ApplyStandardCardElevatedChrome(frame)
+        end
+        local hdr = frame._rcHeader
+        if hdr then
+            if ns.UI_ApplyFloatingWindowHeaderChrome then
+                ns.UI_ApplyFloatingWindowHeaderChrome(hdr)
+            elseif ApplyVisuals then
+                ApplyVisuals(hdr, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, ChromeBorder(0.6))
+            end
+        end
+        if frame.titleText then
+            ns.UI_SetTextColorRole(frame.titleText, "Bright")
+        end
+        if toggleTrackerBtn and ApplyVisuals then
+            ApplyVisuals(toggleTrackerBtn, ChromeBackdrop(), ChromeBorder(0.6))
+        end
+        if frame:IsShown() then
+            RefreshCompanion()
+        end
+    end,
 }

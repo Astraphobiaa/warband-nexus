@@ -15,6 +15,12 @@ function Z.Install(ctx)
     local f = ctx.f
     local L = ctx.L
     local COLORS = ctx.COLORS
+    local function PickerBrightHex()
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    end
+    local function PickerMutedHex()
+        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+    end
     local Factory = ctx.Factory
     local FontManager = ctx.FontManager
     local ApplyVisuals = ctx.ApplyVisuals
@@ -196,7 +202,8 @@ function Z.Install(ctx)
                     eb = CreateFrame("Button", nil, expListHost, "BackdropTemplate")
                     eb:SetSize(expInnerW, expBtnH)
                     if ApplyVisuals then
-                        ApplyVisuals(eb, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
+                        local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
+                        ApplyVisuals(eb, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
                     end
                 end
                 if ei == 1 then
@@ -365,7 +372,8 @@ function Z.Install(ctx)
                 addB = CreateFrame("Button", nil, row, "BackdropTemplate")
                 addB:SetSize(ADD_BTN_W, 22)
                 if ApplyVisuals then
-                    ApplyVisuals(addB, { 0.14, 0.14, 0.17, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
+                    local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
+                    ApplyVisuals(addB, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
                 end
             end
             addB:SetPoint("RIGHT", row, "RIGHT", -6, 0)
@@ -430,8 +438,9 @@ function Z.Install(ctx)
                 local ob = self._catalogExpBtns[j]
                 if ob and ApplyVisuals then
                     local sel = (j == idx)
+                    local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
                     ApplyVisuals(ob,
-                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or { 0.12, 0.12, 0.15, 1 },
+                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or idle,
                         { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], sel and 0.95 or 0.35 })
                 end
             end
@@ -493,7 +502,7 @@ function Z.Install(ctx)
                             labelMax = math.max(36, math.floor((zw - tagColW - addBtnW - 34) / 6.2))
                         end
                         row.labelFs:SetText(string.format(
-                            "|cffffffff%s|r |cff888888— %d|r",
+                            PickerBrightHex() .. "%s|r " .. PickerMutedHex() .. "— %d|r",
                             TruncatePickerLabel(nm, labelMax),
                             entry.id
                         ))

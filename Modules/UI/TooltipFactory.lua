@@ -27,6 +27,16 @@ local function GetTooltipUISpacing()
     return { SIDE_MARGIN = 10, TOP_MARGIN = 8, AFTER_ELEMENT = 8 }
 end
 
+local function GetTooltipPaddingH()
+    local spacing = GetTooltipUISpacing()
+    return spacing.SIDE_MARGIN or 12
+end
+
+local function GetTooltipPaddingV()
+    local spacing = GetTooltipUISpacing()
+    return spacing.TOP_MARGIN or spacing.SIDE_MARGIN or 12
+end
+
 -- TOOLTIP FACTORY
 
 ns.UI = ns.UI or {}
@@ -34,6 +44,42 @@ ns.UI.TooltipFactory = {}
 
 -- Cache colors (updated on theme change)
 local COLORS = nil
+
+local function SemanticGoldRGB()
+    if ns.UI_GetSemanticGoldColor then
+        return ns.UI_GetSemanticGoldColor()
+    end
+    return 1, 0.82, 0, 1
+end
+
+local function TextRoleRGB(role)
+    if ns.UI_GetTextRoleRGB then
+        return ns.UI_GetTextRoleRGB(role)
+    end
+    local c = ns.UI_COLORS
+    if c and c["text" .. role] then
+        local t = c["text" .. role]
+        return t[1], t[2], t[3], t[4] or 1
+    end
+    if role == "Muted" then return 0.7, 0.7, 0.72, 1 end
+    if role == "Dim" then return 0.55, 0.55, 0.55, 1 end
+    return 0.85, 0.85, 0.85, 1
+end
+
+local function BootstrapTooltipColors()
+    if ns.UI_COLORS then
+        return ns.UI_COLORS
+    end
+    local bg, border = { 0.08, 0.08, 0.10, 1 }, { 0.20, 0.20, 0.25, 1 }
+    if ns.UI_GetTooltipShellBackdrop then
+        bg, border = ns.UI_GetTooltipShellBackdrop()
+    end
+    return {
+        bgCard = bg,
+        border = border,
+        accent = { 0.45, 0.35, 0.72, 1 },
+    }
+end
 
 -- Layout constants
 local ICON_SIZE = 32
@@ -67,11 +113,7 @@ local VAULT_TRACK_GAP_COL = 10
 ]]
 function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- Get current theme colors
-    COLORS = ns.UI_COLORS or {
-        bgCard = {0.08, 0.08, 0.10, 1},
-        border = {0.20, 0.20, 0.25, 1},
-        accent = {0.45, 0.35, 0.72},
-    }
+    COLORS = BootstrapTooltipColors()
     
     -- Create frame
     local frame = CreateFrame("Frame", "WarbandNexusTooltip", UIParent, "BackdropTemplate")
@@ -84,14 +126,19 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     else
+        local bg, border = { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98 },
+            { COLORS.border[1], COLORS.border[2], COLORS.border[3], 1 }
+        if ns.UI_GetTooltipShellBackdrop then
+            bg, border = ns.UI_GetTooltipShellBackdrop()
+        end
         frame:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
             insets = { left = 0, right = 0, top = 0, bottom = 0 }
         })
-        frame:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98)
-        frame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+        frame:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 0.98)
+        frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
     end
     
     -- Icon (top-left, created once, reused)
@@ -167,9 +214,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     local MAX_WIDTH = 450
     frame.currentHeight = 10
     frame.fixedWidth = 350
-    local spacing = GetTooltipUISpacing()
-    frame.paddingH = spacing.SIDE_MARGIN + 2
-    frame.paddingV = spacing.SIDE_MARGIN
+    frame.paddingH = GetTooltipPaddingH()
+    frame.paddingV = GetTooltipPaddingV()
     frame.hasIcon = false
     
     -- API: Clear all content
@@ -298,9 +344,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         -- Reset sizing (MAX_WIDTH as initial, LayoutLines will compute actual)
         self.currentHeight = 10
         self.fixedWidth = MAX_WIDTH
-        local spacing = GetTooltipUISpacing()
-        self.paddingH = spacing.SIDE_MARGIN + 2
-        self.paddingV = spacing.SIDE_MARGIN
+        self.paddingH = GetTooltipPaddingH()
+        self.paddingV = GetTooltipPaddingV()
         self:SetSize(self.fixedWidth, 10)
         self._deferLayout = false
         self._layoutDirty = false
@@ -339,7 +384,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.SetTitle = function(self, text, r, g, b)
         local titleLine = self:GetOrCreateTitleLine()
         titleLine:SetText(text or "")
-        titleLine:SetTextColor(r or 1, g or 0.82, b or 0)
+        if r or g or b then
+            titleLine:SetTextColor(r or 1, g or 0.82, b or 0)
+        else
+            local tr, tg, tb = SemanticGoldRGB()
+            titleLine:SetTextColor(tr, tg, tb, 1)
+        end
         titleLine:Show()
     end
 
@@ -347,7 +397,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.AddTitleAffix = function(self, text, r, g, b, wrap)
         local line = self:GetOrCreateLine()
         line:SetText(text or "")
-        line:SetTextColor(r or 1, g or 1, b or 1)
+        if r or g or b then
+            line:SetTextColor(r, g, b, 1)
+        else
+            local lr, lg, lb = TextRoleRGB("Bright")
+            line:SetTextColor(lr, lg, lb, 1)
+        end
         local contentWidth = (self.fixedWidth or MAX_WIDTH) - (self.paddingH * 2)
         line:SetWidth(contentWidth)
         if wrap then
@@ -367,15 +422,25 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- Character row under title: name (left) + ilvl (right), header band only.
     frame.AddTitleAffixPair = function(self, leftText, rightText, lr, lg, lb, rr, rg, rb)
         if not self.titleAffixPairLeft then
-            self.titleAffixPairLeft = FontManager:CreateFontString(self, "large", "OVERLAY")
-            self.titleAffixPairRight = FontManager:CreateFontString(self, "medium", "OVERLAY")
+            self.titleAffixPairLeft = FontManager:CreateFontString(self, "title", "OVERLAY")
+            self.titleAffixPairRight = FontManager:CreateFontString(self, "body", "OVERLAY")
             self.titleAffixPairLeft:SetJustifyH("LEFT")
             self.titleAffixPairRight:SetJustifyH("RIGHT")
         end
         self.titleAffixPairLeft:SetText(leftText or "")
-        self.titleAffixPairLeft:SetTextColor(lr or 1, lg or 1, lb or 1)
+        if lr ~= nil or lg ~= nil or lb ~= nil then
+            self.titleAffixPairLeft:SetTextColor(lr or 1, lg or 1, lb or 1)
+        else
+            local tlR, tlG, tlB = TextRoleRGB("Bright")
+            self.titleAffixPairLeft:SetTextColor(tlR, tlG, tlB, 1)
+        end
         self.titleAffixPairRight:SetText(rightText or "")
-        self.titleAffixPairRight:SetTextColor(rr or 1, rg or 1, rb or 1)
+        if rr ~= nil or rg ~= nil or rb ~= nil then
+            self.titleAffixPairRight:SetTextColor(rr or 1, rg or 1, rb or 1)
+        else
+            local trR, trG, trB = SemanticGoldRGB()
+            self.titleAffixPairRight:SetTextColor(trR, trG, trB, 1)
+        end
         self.titleAffixPairLeft:Show()
         self.titleAffixPairRight:Show()
         self.hasTitleAffixPair = true
@@ -387,7 +452,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         if not text or text == "" then return end
         local descLine = self:GetOrCreateDescLine()
         descLine:SetText(text)
-        descLine:SetTextColor(r or 0.8, g or 0.8, b or 0.8)
+        if r or g or b then
+            descLine:SetTextColor(r, g, b, 1)
+        else
+            local dr, dg, db = TextRoleRGB("Normal")
+            descLine:SetTextColor(dr, dg, db, 1)
+        end
         descLine:SetWordWrap(true)
         descLine:SetNonSpaceWrap(true)
         descLine:SetMaxLines(0)
@@ -398,7 +468,16 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.AddLine = function(self, text, r, g, b, wrap)
         local line = self:GetOrCreateLine()
         line:SetText(text)
-        line:SetTextColor(r or 1, g or 1, b or 1)
+        if type(r) == "table" and g == nil and b == nil then
+            line:SetTextColor(r[1] or 1, r[2] or 1, r[3] or 1, r[4] or 1)
+        elseif type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            line:SetTextColor(r, g, b, 1)
+        elseif r ~= nil or g ~= nil or b ~= nil then
+            line:SetTextColor(tonumber(r) or 1, tonumber(g) or 1, tonumber(b) or 1, 1)
+        else
+            local lr, lg, lb = TextRoleRGB("Bright")
+            line:SetTextColor(lr, lg, lb, 1)
+        end
         
         local contentWidth = (self.fixedWidth or MAX_WIDTH) - (self.paddingH * 2)
         line:SetWidth(contentWidth)
@@ -426,10 +505,20 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local dLine = self:GetOrCreateDoubleLine()
         
         dLine.left:SetText(leftText)
-        dLine.left:SetTextColor(lr or 1, lg or 1, lb or 1)
+        if lr or lg or lb then
+            dLine.left:SetTextColor(lr, lg, lb, 1)
+        else
+            local lR, lG, lB = TextRoleRGB("Bright")
+            dLine.left:SetTextColor(lR, lG, lB, 1)
+        end
         
         dLine.right:SetText(rightText)
-        dLine.right:SetTextColor(rr or 1, rg or 1, rb or 1)
+        if rr or rg or rb then
+            dLine.right:SetTextColor(rr, rg, rb, 1)
+        else
+            local rR, rG, rB = TextRoleRGB("Bright")
+            dLine.right:SetTextColor(rR, rG, rB, 1)
+        end
         dLine.right:SetJustifyH("RIGHT")
         
         dLine.left:Show()
@@ -448,7 +537,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.AddCenteredLine = function(self, text, r, g, b)
         local line = self:GetOrCreateLine()
         line:SetText(text or "")
-        line:SetTextColor(r or 1, g or 1, b or 1)
+        if r or g or b then
+            line:SetTextColor(r, g, b, 1)
+        else
+            local cr, cg, cb = TextRoleRGB("Bright")
+            line:SetTextColor(cr, cg, cb, 1)
+        end
         line:SetJustifyH("CENTER")
         line:Show()
         table.insert(self.lines, line)
@@ -464,7 +558,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             line = FontManager:CreateFontString(self, "small", "OVERLAY")
         end
         line:SetText(text or "")
-        line:SetTextColor(r or 0.62, g or 0.64, b or 0.72)
+        if r or g or b then
+            line:SetTextColor(r, g, b, 1)
+        else
+            local mr, mg, mb = TextRoleRGB("Muted")
+            line:SetTextColor(mr, mg, mb, 1)
+        end
         line:SetJustifyH("CENTER")
         line:Show()
         table.insert(self.lines, line)
@@ -506,7 +605,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- INTERNAL: Get or create title line (larger font)
     frame.GetOrCreateTitleLine = function(self)
         if not self.titleLine then
-            self.titleLine = FontManager:CreateFontString(self, "large", "OVERLAY")
+            self.titleLine = FontManager:CreateFontString(self, "title", "OVERLAY")
             self.titleLine:SetJustifyH("LEFT")
         end
         return self.titleLine
@@ -526,7 +625,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         if #self.linePool > 0 then
             return table.remove(self.linePool)
         end
-        local line = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        local line = FontManager:CreateFontString(self, "body", "OVERLAY")
         line:SetJustifyH("LEFT")
         return line
     end
@@ -537,9 +636,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             return table.remove(self.doubleLinePool)
         end
         local dLine = {}
-        dLine.left = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        dLine.left = FontManager:CreateFontString(self, "body", "OVERLAY")
         dLine.left:SetJustifyH("LEFT")
-        dLine.right = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        dLine.right = FontManager:CreateFontString(self, "body", "OVERLAY")
         dLine.right:SetJustifyH("RIGHT")
         return dLine
     end
@@ -550,19 +649,19 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             return table.remove(self.vaultGridLinePool)
         end
         local row = {}
-        row.nameFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.nameFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.nameFs:SetJustifyH("LEFT")
         row.nameFs:SetWordWrap(false)
-        row.realmFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.realmFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.realmFs:SetJustifyH("LEFT")
         row.realmFs:SetWordWrap(false)
-        row.raidFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.raidFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.raidFs:SetJustifyH("CENTER")
         row.raidFs:SetWordWrap(false)
-        row.mplusFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.mplusFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.mplusFs:SetJustifyH("CENTER")
         row.mplusFs:SetWordWrap(false)
-        row.worldFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.worldFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.worldFs:SetJustifyH("CENTER")
         row.worldFs:SetWordWrap(false)
         return row
@@ -588,12 +687,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         row.widthWorld = (widths and widths[5]) or 48
         row.isHeader = opts.isHeader == true
         if opts.isHeader then
-            local hr, hg, hb = 1, 0.82, 0.35
-            row.nameFs:SetTextColor(hr, hg, hb)
-            row.realmFs:SetTextColor(hr, hg, hb)
-            row.raidFs:SetTextColor(hr, hg, hb)
-            row.mplusFs:SetTextColor(hr, hg, hb)
-            row.worldFs:SetTextColor(hr, hg, hb)
+            local hr, hg, hb = SemanticGoldRGB()
+            row.nameFs:SetTextColor(hr, hg, hb, 1)
+            row.realmFs:SetTextColor(hr, hg, hb, 1)
+            row.raidFs:SetTextColor(hr, hg, hb, 1)
+            row.mplusFs:SetTextColor(hr, hg, hb, 1)
+            row.worldFs:SetTextColor(hr, hg, hb, 1)
         else
             ns.UI_SetTextColorRole(row.nameFs, "Bright")
             ns.UI_SetTextColorRole(row.realmFs, "Bright")
@@ -620,13 +719,13 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             return table.remove(self.vaultTrackLinePool)
         end
         local row = {}
-        row.raidFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.raidFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.raidFs:SetJustifyH("CENTER")
         row.raidFs:SetWordWrap(false)
-        row.mplusFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.mplusFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.mplusFs:SetJustifyH("CENTER")
         row.mplusFs:SetWordWrap(false)
-        row.worldFs = FontManager:CreateFontString(self, "medium", "OVERLAY")
+        row.worldFs = FontManager:CreateFontString(self, "body", "OVERLAY")
         row.worldFs:SetJustifyH("CENTER")
         row.worldFs:SetWordWrap(false)
         return row
@@ -641,10 +740,10 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         row.colW = tonumber(colW) or VAULT_GRID_TRACK_MIN_W
         row.isHeader = opts.isHeader == true
         if opts.isHeader then
-            local hr, hg, hb = 1, 0.82, 0.35
-            row.raidFs:SetTextColor(hr, hg, hb)
-            row.mplusFs:SetTextColor(hr, hg, hb)
-            row.worldFs:SetTextColor(hr, hg, hb)
+            local hr, hg, hb = SemanticGoldRGB()
+            row.raidFs:SetTextColor(hr, hg, hb, 1)
+            row.mplusFs:SetTextColor(hr, hg, hb, 1)
+            row.worldFs:SetTextColor(hr, hg, hb, 1)
         else
             ns.UI_SetTextColorRole(row.raidFs, "Bright")
             ns.UI_SetTextColorRole(row.mplusFs, "Bright")
@@ -661,9 +760,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- INTERNAL: Layout - header (icon + title + desc) then body lines
     frame.LayoutLines = function(self)
         local spacing = GetTooltipUISpacing()
-        local padding = self.paddingH or (spacing.SIDE_MARGIN + 2)
-        local paddingV = self.paddingV or spacing.SIDE_MARGIN
-        local lineSpacing = 2
+        local padding = self.paddingH or GetTooltipPaddingH()
+        local paddingV = self.paddingV or GetTooltipPaddingV()
+        local lineSpacing = 3
         
         -- â”€â”€ Phase 1: Measure natural content width â”€â”€
         local maxContentW = 0
@@ -850,12 +949,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         
         if showSeparator then
-            bodyStartY = headerBottom - 3
+            bodyStartY = headerBottom - 4
             self.separator:ClearAllPoints()
             self.separator:SetPoint("TOPLEFT", self, "TOPLEFT", padding, bodyStartY)
             self.separator:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, bodyStartY)
             self.separator:Show()
-            bodyStartY = bodyStartY - 1 - 4  -- separator height + gap to first body line
+            bodyStartY = bodyStartY - 1 - 6  -- separator height + gap to first body line
         else
             self.separator:Hide()
         end
@@ -996,26 +1095,118 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     end
     
     -- API: Update theme colors
+    local function ReapplyTooltipTypography(tipFrame)
+        if not tipFrame or not FontManager then return end
+        local function applyFs(fs)
+            if not fs or not fs.SetFont then return end
+            if fs._fontOverlay then
+                FontManager:ApplyBarOverlayFont(fs)
+            elseif fs._wnNavLabel and ns.UI_SetNavLabelFontStyle then
+                local parent = fs.GetParent and fs:GetParent()
+                ns.UI_SetNavLabelFontStyle(fs, parent and parent.active == true)
+            else
+                local cat = fs._fontCategory or "body"
+                FontManager:ApplyFont(fs, cat)
+                if FontManager.ApplyReadableEdge then
+                    FontManager:ApplyReadableEdge(fs, cat)
+                end
+            end
+        end
+        local function applyVaultRow(row)
+            if not row then return end
+            applyFs(row.nameFs)
+            applyFs(row.realmFs)
+            applyFs(row.raidFs)
+            applyFs(row.mplusFs)
+            applyFs(row.worldFs)
+        end
+        local function applyTrackRow(row)
+            if not row then return end
+            applyFs(row.raidFs)
+            applyFs(row.mplusFs)
+            applyFs(row.worldFs)
+        end
+        applyFs(tipFrame.titleLine)
+        applyFs(tipFrame.descLine)
+        if tipFrame.titleAffixPairLeft then applyFs(tipFrame.titleAffixPairLeft) end
+        if tipFrame.titleAffixPairRight then applyFs(tipFrame.titleAffixPairRight) end
+        if tipFrame.titleAffixLines then
+            for i = 1, #tipFrame.titleAffixLines do
+                applyFs(tipFrame.titleAffixLines[i])
+            end
+        end
+        if tipFrame.lines then
+            for i = 1, #tipFrame.lines do
+                applyFs(tipFrame.lines[i])
+            end
+        end
+        if tipFrame.linePool then
+            for i = 1, #tipFrame.linePool do
+                applyFs(tipFrame.linePool[i])
+            end
+        end
+        if tipFrame.doubleLines then
+            for i = 1, #tipFrame.doubleLines do
+                local d = tipFrame.doubleLines[i]
+                if d then applyFs(d.left) applyFs(d.right) end
+            end
+        end
+        if tipFrame.doubleLinePool then
+            for i = 1, #tipFrame.doubleLinePool do
+                local d = tipFrame.doubleLinePool[i]
+                if d then applyFs(d.left) applyFs(d.right) end
+            end
+        end
+        if tipFrame.vaultGridRows then
+            for i = 1, #tipFrame.vaultGridRows do
+                applyVaultRow(tipFrame.vaultGridRows[i])
+            end
+        end
+        if tipFrame.vaultGridLinePool then
+            for i = 1, #tipFrame.vaultGridLinePool do
+                applyVaultRow(tipFrame.vaultGridLinePool[i])
+            end
+        end
+        if tipFrame.vaultTrackRows then
+            for i = 1, #tipFrame.vaultTrackRows do
+                applyTrackRow(tipFrame.vaultTrackRows[i])
+            end
+        end
+        if tipFrame.vaultTrackLinePool then
+            for i = 1, #tipFrame.vaultTrackLinePool do
+                applyTrackRow(tipFrame.vaultTrackLinePool[i])
+            end
+        end
+    end
+
     frame.UpdateTheme = function(self)
-        COLORS = ns.UI_COLORS or {
-            bgCard = {0.08, 0.08, 0.10, 1},
-            border = {0.20, 0.20, 0.25, 1},
-            accent = {0.45, 0.35, 0.72},
-        }
+        COLORS = BootstrapTooltipColors()
 
         if ns.UI_ApplyStandardCardElevatedChrome then
             ns.UI_ApplyStandardCardElevatedChrome(self)
         else
+            local bg, border = { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98 },
+                { COLORS.border[1], COLORS.border[2], COLORS.border[3], 1 }
+            if ns.UI_GetTooltipShellBackdrop then
+                bg, border = ns.UI_GetTooltipShellBackdrop()
+            end
             self:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8x8",
                 edgeFile = "Interface\\Buttons\\WHITE8x8",
                 edgeSize = 1,
                 insets = { left = 0, right = 0, top = 0, bottom = 0 }
             })
-            self:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98)
-            self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+            self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 0.98)
+            self:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
         end
         TintTooltipAccentLines(self)
+        ReapplyTooltipTypography(self)
+        if self:IsShown() and self.LayoutLines then
+            self:LayoutLines()
+        end
+        if ns.TooltipService and ns.TooltipService.RepositionIfVisible then
+            ns.TooltipService:RepositionIfVisible(true)
+        end
     end
     
     return frame

@@ -15,7 +15,33 @@ local PVE_COL_GAP = 8
 local PVE_FAV_COL_W = 33
 local PVE_CLASS_COL_W = 33
 local PVE_NAME_COL_MIN_W = 100
+local PVE_NAME_WIDTH_PAD = 4
 local PVE_LEVEL_AFTER_NAME_GAP = 2
+
+--- Name + realm stack in one column: width = max line width (not "name - realm" on one line).
+function ns.PvE_MeasureStackedNameColumnWidth(measureFs, nameStr, realmStr)
+    if not measureFs then return 0 end
+    if issecretvalue and nameStr and issecretvalue(nameStr) then
+        nameStr = "Unknown"
+    end
+    if issecretvalue and realmStr and issecretvalue(realmStr) then
+        realmStr = ""
+    end
+    measureFs:SetText(nameStr or "Unknown")
+    local nameW = measureFs:GetStringWidth() or 0
+    local realmW = 0
+    if realmStr and realmStr ~= "" then
+        measureFs:SetText(realmStr)
+        realmW = measureFs:GetStringWidth() or 0
+    end
+    return math.max(nameW, realmW)
+end
+
+function ns.PvE_ResolveNameColumnWidth(maxMeasuredW)
+    return math.max(PVE_NAME_COL_MIN_W, math.ceil(tonumber(maxMeasuredW) or 0) + PVE_NAME_WIDTH_PAD)
+end
+
+ns.PVE_NAME_COL_MIN_W = PVE_NAME_COL_MIN_W
 
 --- Expand chevron column (CreateCollapsibleHeader) before Professions identity strip.
 local function PvE_GetChevronPrefixPx()
@@ -26,7 +52,11 @@ local function PvE_GetChevronPrefixPx()
 end
 
 --- Shared identity layout: Professions fav/class/name rhythm + chevron + PvE level/iLvl.
+local _pveIdentityLayoutByNameW = {}
 local function PvE_BuildIdentityLayout(nameW)
+    local nwKey = math.max(PVE_NAME_COL_MIN_W, tonumber(nameW) or PVE_NAME_COL_MIN_W)
+    local cached = _pveIdentityLayoutByNameW[nwKey]
+    if cached then return cached end
     local crc = ns.UI_CHAR_ROW_COLUMNS or {}
     local nw = math.max(PVE_NAME_COL_MIN_W, crc.name and crc.name.width or 100, tonumber(nameW) or 100)
     local levelW = crc.level and crc.level.width or 82
@@ -38,7 +68,7 @@ local function PvE_BuildIdentityLayout(nameW)
     local levelLeft = nameLeft + nw + PVE_LEVEL_AFTER_NAME_GAP
     local ilvlLeft = levelLeft + levelTot
 
-    return {
+    local layout = {
         favCenterX = base + PVE_FAV_COL_W * 0.5,
         classCenterX = base + PVE_FAV_COL_W + PVE_COL_GAP + PVE_CLASS_COL_W * 0.5,
         nameLeft = nameLeft,
@@ -51,6 +81,8 @@ local function PvE_BuildIdentityLayout(nameW)
         inlineStart = ilvlLeft + ilvlW + PVE_ILVL_TO_INLINE_GAP,
         identityGradientEnd = nameLeft + nw,
     }
+    _pveIdentityLayoutByNameW[nwKey] = layout
+    return layout
 end
 
 --- Pixels from row inner left (0) to the first inline PvE column.
@@ -172,7 +204,8 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     if issecretvalue and issecretvalue(displayRealm) then
         displayRealm = ""
     end
-    realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
+    local realmHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffb0b0b8"
+    realmText:SetText(realmHex .. displayRealm .. "|r")
 
     local rowH = charHeader:GetHeight() or 46
     local nameRealmGap = 1
@@ -236,10 +269,12 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     itemLevelText:ClearAllPoints()
     itemLevelText:SetPoint("LEFT", charHeader, "LEFT", layout.ilvlLeft, 0)
     local itemLevel = char.itemLevel or 0
+    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
+    local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "|cff666666"
     if itemLevel > 0 then
-        itemLevelText:SetText(string.format("|cffffd700%s %d|r", (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
+        itemLevelText:SetText(string.format("%s%s %d|r", goldHex, (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
     else
-        itemLevelText:SetText("|cff666666--|r")
+        itemLevelText:SetText(dimHex .. "--|r")
     end
     itemLevelText:Show()
 

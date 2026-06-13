@@ -14,6 +14,15 @@ function ZP.Install(ctx)
     local f = ctx.f
     local L = ctx.L
     local COLORS = ctx.COLORS
+    local function PickerBrightHex()
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    end
+    local function PickerMutedHex()
+        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+    end
+    local function PickerLabelHex()
+        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff9eb0ca"
+    end
     local Factory = ctx.Factory
     local FontManager = ctx.FontManager
     local ApplyVisuals = ctx.ApplyVisuals
@@ -123,7 +132,8 @@ function ZP.Install(ctx)
             mapGetIdBtn = CreateFrame("Button", nil, mapIdRow, "BackdropTemplate")
             mapGetIdBtn:SetSize(72, 26)
             if ApplyVisuals then
-                ApplyVisuals(mapGetIdBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
+                local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
+                ApplyVisuals(mapGetIdBtn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
             end
         end
         mapGetIdBtn:SetPoint("LEFT", mapIdRow, "LEFT", 0, 0)
@@ -141,7 +151,8 @@ function ZP.Install(ctx)
         mapEditBg:SetPoint("RIGHT", mapIdRow, "RIGHT", 0, 0)
         mapEditBg:SetHeight(26)
         if ApplyVisuals then
-            ApplyVisuals(mapEditBg, { 0.08, 0.08, 0.10, 1 }, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
+            local chrome = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or COLORS.bgCard
+            ApplyVisuals(mapEditBg, chrome, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
         end
         mapEditBg:EnableMouse(true)
 
@@ -162,6 +173,10 @@ function ZP.Install(ctx)
             mapEdit:SetBackdropBorderColor(borderCol[1], borderCol[2], borderCol[3], 0.8)
             mapEdit:SetFontObject(GameFontHighlightSmall)
             mapEdit:SetTextInsets(6, 6, 1, 1)
+            if FontManager and FontManager.ApplyFontToEditBox then
+                FontManager:ApplyFontToEditBox(mapEdit, "small")
+                FontManager:RegisterManagedEditBox(mapEdit, "small")
+            end
         end
         mapEdit:SetPoint("LEFT", mapEditBg, "LEFT", 6, 0)
         mapEdit:SetPoint("RIGHT", mapEditBg, "RIGHT", -6, 0)
@@ -317,7 +332,7 @@ function ZP.Install(ctx)
                         end
                         local nm = SafeUIMapDisplayName(id)
                         row.labelFs:SetText(string.format(
-                            "|cffffffff%s|r |cff888888— %d|r",
+                            PickerBrightHex() .. "%s|r " .. PickerMutedHex() .. "— %d|r",
                             nm or unk,
                             id
                         ))
@@ -397,7 +412,7 @@ function ZP.Install(ctx)
             local Lz = ns.L
             if nm then
                 local prefix = (Lz and Lz["REMINDER_ZONE_NAME_LABEL"]) or "Zone"
-                self.mapIdZonePreview:SetText("|cff9eb0ca" .. prefix .. ":|r |cffffffff" .. nm .. "|r |cff888888— "
+                self.mapIdZonePreview:SetText(PickerLabelHex() .. prefix .. ":|r " .. PickerBrightHex() .. nm .. "|r " .. PickerMutedHex() .. "— "
                     .. tostring(n) .. "|r")
             else
                 self.mapIdZonePreview:SetText("|cff888888" .. ((Lz and Lz["REMINDER_ZONE_NAME_UNKNOWN"]) or "Unknown map ID") .. "|r")

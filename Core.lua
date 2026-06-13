@@ -131,6 +131,7 @@ local defaults = {
             frameTracking = false,
             devMode = false,
             tabPerfMonitor = false, -- /wn profiler tabperf on — main-tab switch ms lines (not debugVerbose)
+            traceVerbose = false,   -- /wn profiler verbose on — phase splits (GearOpen, profiler START/STOP)
             devWindowVisible = false,
             point = "CENTER",
             relPoint = "CENTER",
@@ -225,8 +226,7 @@ local defaults = {
         },
         -- When true, UI accent (and derived tab/border tones) follows the logged-in character's class color; falls back to themeColors.accent if class is unavailable.
         useClassColorAccent = false,
-        lightMode = false,  -- Accessibility: light background + dark text palette
-        highContrast = false,  -- Accessibility: max-contrast variant of the active mode
+        themeMode = "dark",  -- "dark" | "light" — surface/text palette (Settings > Theme)
         showItemCount = true,
         showTooltipItemCount = true,
         recipeCompanionEnabled = true,
@@ -736,7 +736,7 @@ function WarbandNexus:OnInitialize()
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
 
-    -- Register PLAYER_LOGOUT event for SessionCache compression
+    -- Register PLAYER_LOGOUT for pending-cache flush before AceDB save
     self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
     
     -- Register TIME_PLAYED_MSG for played time tracking
@@ -906,6 +906,12 @@ function WarbandNexus:OnEnable()
             reloadBtn:SetScript("OnClick", function()
                 ReloadUI()
             end)
+
+            if ns.UI_RegisterScaledFrame then
+                ns.UI_RegisterScaledFrame(dialog)
+            elseif ns.UI_ApplyAddonUIScale then
+                ns.UI_ApplyAddonUIScale(dialog)
+            end
 
             dialog:Show()
         end)
@@ -1103,10 +1109,21 @@ end
 ---@param charKey string Character key (Name-Realm)
 ---@param isTracked boolean true = tracked (full API), false = untracked (read-only)
 --[[
-    Handle PLAYER_LOGOUT event
-    Compress and save SessionCache to SavedVariables
+    Handle PLAYER_LOGOUT: flush pending service writes, then profiler/NPC cache saves.
 ]]
 function WarbandNexus:OnPlayerLogout()
+    if self.FlushCurrencyCacheOnLogout then self:FlushCurrencyCacheOnLogout() end
+    if self.FlushItemsCacheOnLogout then self:FlushItemsCacheOnLogout() end
+    if self.FlushReputationCacheOnLogout then self:FlushReputationCacheOnLogout() end
+    if self.FlushCollectionStoreOnLogout then self:FlushCollectionStoreOnLogout() end
+    if self.FlushGearCacheOnLogout then self:FlushGearCacheOnLogout() end
+    if self.FlushGuildBankOnLogout then self:FlushGuildBankOnLogout() end
+    if self.FlushPlansOnLogout then self:FlushPlansOnLogout() end
+    if self.FlushDataServiceOnLogout then self:FlushDataServiceOnLogout() end
+    if self.FlushProfessionOnLogout then self:FlushProfessionOnLogout() end
+    if self.FlushPvECacheOnLogout then self:FlushPvECacheOnLogout() end
+    if self.FlushCharacterBankMoneyLogOnLogout then self:FlushCharacterBankMoneyLogOnLogout() end
+
     self:ResetStorageTreeExpandState()
     if ns.Profiler and ns.Profiler.SavePersistToProfile then
         ns.Profiler:SavePersistToProfile()
@@ -1114,6 +1131,17 @@ function WarbandNexus:OnPlayerLogout()
     -- Save runtime-discovered NPC names to cache for next session
     if self._saveNpcNameCache then
         self._saveNpcNameCache()
+    end
+end
+
+---Cancel guild-bank rescan debounce and flush partial in-flight scan state.
+function WarbandNexus:FlushGuildBankOnLogout()
+    if self._guildBankRescanTimer then
+        self:CancelTimer(self._guildBankRescanTimer)
+        self._guildBankRescanTimer = nil
+    end
+    if self.FlushGuildBankScanOnLogout then
+        self:FlushGuildBankScanOnLogout()
     end
 end
 
@@ -1289,13 +1317,18 @@ end
 
 -- Guild Bank Closed Handler
 function WarbandNexus:OnGuildBankClosed()
-    self.guildBankIsOpen = false
-    if self.InvalidateGuildBankScan then
-        self:InvalidateGuildBankScan()
-    end
+    local hadPendingRescan = self._guildBankRescanTimer ~= nil
     if self._guildBankRescanTimer then
         self:CancelTimer(self._guildBankRescanTimer)
         self._guildBankRescanTimer = nil
+    end
+    -- Flush debounced rescan while guild bank APIs may still be valid this frame.
+    if hadPendingRescan and self.ThrottledGuildBankScan then
+        self:ThrottledGuildBankScan()
+    end
+    self.guildBankIsOpen = false
+    if self.InvalidateGuildBankScan then
+        self:InvalidateGuildBankScan()
     end
 end
 
@@ -1322,21 +1355,12 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         local charData = charKey and self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
         
         if charData then
-            local storedGuildName = charData.guildName
-            
-            if not IsInGuild() then
-                if storedGuildName then
-                    charData.guildName = nil
-                    self:Print("|cffffcc00" .. ((ns.L and ns.L["GUILD_LEFT"]) or "You are no longer in a guild. Guild Bank tab disabled.") .. "|r")
-                end
-            else
-                local rawGuild = GetGuildInfo("player")
-                if rawGuild and issecretvalue and issecretvalue(rawGuild) then
-                    -- Midnight: cannot compare or format guild name safely — skip this login
-                elseif rawGuild then
-                    local currentGuildName = rawGuild
-                    if currentGuildName ~= storedGuildName then
-                        charData.guildName = currentGuildName
+            if self.SyncPlayerGuildMembership then
+                local storedGuildName, currentGuildName, ambiguous = self:SyncPlayerGuildMembership()
+                if not ambiguous then
+                    if not currentGuildName and storedGuildName then
+                        self:Print("|cffffcc00" .. ((ns.L and ns.L["GUILD_LEFT"]) or "You are no longer in a guild. Guild Bank tab disabled.") .. "|r")
+                    elseif currentGuildName and currentGuildName ~= storedGuildName then
                         self:Print("|cff00ff00" .. string.format((ns.L and ns.L["GUILD_JOINED_FORMAT"]) or "Guild updated: %s", currentGuildName) .. "|r")
                     end
                 end

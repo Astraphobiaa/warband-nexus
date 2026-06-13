@@ -919,6 +919,25 @@ function WarbandNexus:ProcessPendingBagUpdates()
     end
 end
 
+---Flush pending bag scans on PLAYER_LOGOUT (bypass throttle; no messages).
+function WarbandNexus:FlushItemsCacheOnLogout()
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    self:ProcessPendingBagUpdates()
+    local bagIDs = {}
+    for bagID, _ in pairs(pendingUpdates) do
+        bagIDs[#bagIDs + 1] = bagID
+    end
+    for i = 1, #bagIDs do
+        local bagID = bagIDs[i]
+        pendingUpdates[bagID] = nil
+        lastUpdateTime[bagID] = 0
+        ThrottledBagUpdate(bagID)
+    end
+    wipe(pendingUpdates)
+end
+
 -- EVENT HANDLERS (Will be registered by EventManager)
 
 ---Handle BAG_UPDATE event (from RegisterBucketEvent)

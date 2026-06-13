@@ -111,6 +111,13 @@ local function FormatTextNumbers(text)
 end
 
 -- MONEY FORMATTING
+local function GetMoneyGoldHex()
+    if ns.UI_GetSemanticGoldHex then
+        return ns.UI_GetSemanticGoldHex()
+    end
+    return "|cffffd700"
+end
+
 local function FormatMoney(copper, iconSize, showZero)
     -- Validate and sanitize inputs
     copper = tonumber(copper) or 0
@@ -138,7 +145,7 @@ local function FormatMoney(copper, iconSize, showZero)
             goldStr, k = gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
             if k == 0 then break end
         end
-        insert(parts, format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", goldStr, iconSize, iconSize))
+        insert(parts, format("%s%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", GetMoneyGoldHex(), goldStr, iconSize, iconSize))
     end
     
     -- Silver (silver/gray) - Only pad if gold exists
@@ -161,18 +168,49 @@ end
 
 local CC_CAP_OPEN = "|cff6ee7a0"
 local CC_CAPPED   = "|cffff6b6b"
-local CC_WHITE    = "|cffffffff"
+local CC_WHITE    = "|cffeeeeee"  -- dark bootstrap; SeasonBrightHex uses UI_GetTextRoleHex at runtime
 local CC_AMOUNT   = "|cfff0f4ff"
 local CC_CAP_VAL  = "|cffb4bcc8"
 local CC_MUTED    = "|cff7a8494"
 local CC_SEP      = "|cff5c6570"
+
+local function SeasonCapOpenHex()
+    if ns.UI_GetSemanticGreenBrightHex then return ns.UI_GetSemanticGreenBrightHex() end
+    return CC_CAP_OPEN
+end
+local function SeasonCappedHex()
+    if ns.UI_RGBToHex and ns.UI_GetSemanticRedColor then
+        return ns.UI_RGBToHex(ns.UI_GetSemanticRedColor())
+    end
+    return CC_CAPPED
+end
+local function SeasonBrightHex()
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Bright") end
+    return CC_WHITE
+end
+local function SeasonAmountHex()
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Normal") end
+    return CC_AMOUNT
+end
+local function SeasonCapValHex()
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Muted") end
+    return CC_CAP_VAL
+end
+local function SeasonMutedHex()
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Dim") end
+    return CC_MUTED
+end
+local function SeasonSepHex()
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Dim") end
+    return CC_SEP
+end
 local EM_DASH_U   = "\226\128\148"
 local function FormatSeasonProgressCurrencyLine(cd)
     if ns.Utilities and ns.Utilities.FormatCurrencySeasonProgressLine then
         return ns.Utilities.FormatCurrencySeasonProgressLine(cd)
     end
     if not cd then
-        return CC_MUTED .. "0|r"
+        return SeasonMutedHex() .. "0|r"
     end
     local qty = tonumber(cd.quantity) or 0
     local maxQ = tonumber(cd.maxQuantity) or 0
@@ -181,18 +219,18 @@ local function FormatSeasonProgressCurrencyLine(cd)
     local cap = (sm > 0) and sm or ((maxQ > 0) and maxQ or 0)
     if cap > 0 then
         local progress = teNum or qty
-        local progressColor = (progress >= cap) and CC_CAPPED or CC_CAP_OPEN
+        local progressColor = (progress >= cap) and SeasonCappedHex() or SeasonCapOpenHex()
         if teNum ~= nil and teNum ~= qty then
-            return CC_WHITE .. FormatNumber(qty) .. "|r " .. CC_MUTED .. "\194\183|r " ..
+            return SeasonBrightHex() .. FormatNumber(qty) .. "|r " .. SeasonMutedHex() .. "\194\183|r " ..
                 progressColor .. FormatNumber(teNum) .. "|r" ..
-                CC_MUTED .. " / " .. FormatNumber(cap) .. "|r"
+                SeasonMutedHex() .. " / " .. FormatNumber(cap) .. "|r"
         end
-        return CC_AMOUNT .. FormatNumber(qty) .. "|r " .. CC_SEP .. "/|r " .. CC_CAP_VAL .. FormatNumber(cap) .. "|r"
+        return SeasonAmountHex() .. FormatNumber(qty) .. "|r " .. SeasonSepHex() .. "/|r " .. SeasonCapValHex() .. FormatNumber(cap) .. "|r"
     end
     if qty > 0 then
-        return CC_AMOUNT .. FormatNumber(qty) .. "|r"
+        return SeasonAmountHex() .. FormatNumber(qty) .. "|r"
     end
-    return CC_MUTED .. EM_DASH_U .. "|r"
+    return SeasonMutedHex() .. EM_DASH_U .. "|r"
 end
 
 -- SHIFT-AWARE SEASON PROGRESS BINDING
@@ -210,31 +248,31 @@ local function ResolveSeasonCapState(cd)
     return qty, progress, cap, capped
 end
 local function FormatSeasonProgressShiftAware(cd, expanded, compactRemainingOnly)
-    if not cd then return CC_MUTED .. "0|r" end
+    if not cd then return SeasonMutedHex() .. "0|r" end
     local qty, progress, cap, capped = ResolveSeasonCapState(cd)
-    local color = (cap > 0) and (capped and CC_CAPPED or CC_CAP_OPEN) or CC_AMOUNT
+    local color = (cap > 0) and (capped and SeasonCappedHex() or SeasonCapOpenHex()) or SeasonAmountHex()
     if not expanded then
         if cap > 0 or qty > 0 then
-            return CC_AMOUNT .. FormatNumber(qty) .. "|r"
+            return SeasonAmountHex() .. FormatNumber(qty) .. "|r"
         end
-        return CC_MUTED .. EM_DASH_U .. "|r"
+        return SeasonMutedHex() .. EM_DASH_U .. "|r"
     end
     if compactRemainingOnly and cap > 0 then
         local rem = math.max(cap - progress, 0)
         if rem > 0 then
             return color .. FormatNumber(rem) .. "|r"
         end
-        return capped and CC_CAPPED or (CC_AMOUNT .. FormatNumber(qty) .. "|r")
+        return color .. FormatNumber(qty) .. "|r"
     end
     if cap > 0 then
         local progressTxt = (progress ~= qty)
-            and (CC_SEP .. " \194\183|r " .. color .. FormatNumber(progress) .. "|r ")
+            and (SeasonSepHex() .. " \194\183|r " .. color .. FormatNumber(progress) .. "|r ")
             or ""
-        return CC_AMOUNT .. FormatNumber(qty) .. "|r " ..
-            progressTxt .. CC_SEP .. "/|r " .. CC_CAP_VAL .. FormatNumber(cap) .. "|r"
+        return SeasonAmountHex() .. FormatNumber(qty) .. "|r " ..
+            progressTxt .. SeasonSepHex() .. "/|r " .. SeasonCapValHex() .. FormatNumber(cap) .. "|r"
     end
-    if qty > 0 then return CC_AMOUNT .. FormatNumber(qty) .. "|r" end
-    return CC_MUTED .. EM_DASH_U .. "|r"
+    if qty > 0 then return SeasonAmountHex() .. FormatNumber(qty) .. "|r" end
+    return SeasonMutedHex() .. EM_DASH_U .. "|r"
 end
 local function ResolveSeasonBinding(entry)
     if type(entry) == "table" and entry.cd ~= nil then
@@ -288,6 +326,17 @@ end
 
 -- NAMESPACE EXPORTS
 
+function ns.UI_RefreshSeasonProgressBindings()
+    if not _seasonAmountWatcher then return end
+    local expanded = IsShiftKeyDown() and true or false
+    for fs, entry in pairs(_seasonAmountBindings) do
+        if fs and fs.SetText and fs.IsObjectType then
+            local cd, compact = ResolveSeasonBinding(entry)
+            fs:SetText(FormatSeasonProgressShiftAware(cd, expanded, compact))
+        end
+    end
+end
+
 -- Create FormatHelpers service object
 local FormatHelpers = {
     FormatGold = FormatGold,
@@ -305,6 +354,7 @@ ns.UI_FormatTextNumbers = FormatTextNumbers
 ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
+ns.UI_FormatSeasonProgressShiftAware = FormatSeasonProgressShiftAware
 ns.UI_BindSeasonProgressAmount = BindSeasonProgressAmount
 ns.UI_UnbindSeasonProgressAmount = UnbindSeasonProgressAmount
 ns.UI_NormalizeColonLabelSpacing = NormalizeColonLabelSpacing

@@ -131,14 +131,30 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     end
     container.searchFrame = container
     
-    local accentColor = COLORS.accent
-    ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    if ns.UI_ApplySearchBoxChrome then
+        ns.UI_ApplySearchBoxChrome(container)
+    else
+        local searchBg, searchBorder = ns.UI_GetSearchBoxChromeColors and ns.UI_GetSearchBoxChromeColors()
+        if not searchBg then
+            searchBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+                or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+            local b = ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor() or COLORS.border
+            searchBorder = { b[1], b[2], b[3], 0.55 }
+        end
+        ApplyVisuals(container, searchBg, searchBorder)
+    end
     
     local searchIcon = container:CreateTexture(nil, "ARTWORK")
     searchIcon:SetSize(16, 16)
-    searchIcon:SetPoint("LEFT", 10, 0)
+    searchIcon:SetPoint("LEFT", 16, 0)
     searchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
-    searchIcon:SetAlpha(0.5)
+    local iconR, iconG, iconB, iconA = ns.UI_GetNavTabIconMutedVertex and ns.UI_GetNavTabIconMutedVertex() or 0.72, 0.74, 0.78, 0.5
+    local ac = COLORS.accent
+    if ac and ac[1] then
+        iconR, iconG, iconB = ac[1], ac[2], ac[3]
+        iconA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.82 or 0.70
+    end
+    searchIcon:SetVertexColor(iconR, iconG, iconB, iconA)
     searchIcon:SetSnapToPixelGrid(false)
     searchIcon:SetTexelSnappingBias(0)
     
@@ -147,7 +163,13 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     searchBox:SetPoint("RIGHT", -10, 0)
     searchBox:SetHeight(20)
     
-    FontManager:SafeSetFont(searchBox, FontManager:GetFontRole("searchEditBoxBody"))
+    local searchRole = FontManager:GetFontRole("searchEditBoxBody")
+    FontManager:RegisterManagedEditBox(searchBox, searchRole)
+    FontManager:ApplyFontToEditBox(searchBox, searchRole)
+    if ns.UI_GetTextRoleRGB then
+        local tr, tg, tb, ta = ns.UI_GetTextRoleRGB("Bright")
+        searchBox:SetTextColor(tr, tg, tb, ta)
+    end
     
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(50)
@@ -159,7 +181,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     local placeholderText = FontManager:CreateFontString(searchBox, FontManager:GetFontRole("searchPlaceholder"), "ARTWORK")
     placeholderText:SetPoint("LEFT", 0, 0)
     placeholderText:SetText(placeholder or "Search...")
-    ns.UI_SetTextColorRole(placeholderText, "Bright", 0.4)
+    ns.UI_SetTextColorRole(placeholderText, "Muted")
     
     if initialText and initialText ~= "" then
         placeholderText:Hide()

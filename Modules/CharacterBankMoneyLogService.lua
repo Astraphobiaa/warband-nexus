@@ -421,3 +421,10 @@ function WarbandNexus:InitializeCharacterBankMoneyLogService()
     WarbandNexus.RegisterEvent(MoneyLogEvents, "ACCOUNT_MONEY", ScheduleMoneyProcessing)
 end
 
+---Flush debounced bank money log processing on PLAYER_LOGOUT.
+function WarbandNexus:FlushCharacterBankMoneyLogOnLogout()
+    if WarbandNexus._moneyLogProcessPending then
+        WarbandNexus._moneyLogProcessPending = false
+        ProcessMoneyChange()
+    end
+end

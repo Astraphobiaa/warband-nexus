@@ -26,6 +26,63 @@ local function UIFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
 end
 
+local function IsLightTheme()
+    return ns.UI_IsLightMode and ns.UI_IsLightMode()
+end
+
+--- Section preset chrome: gold/danger used dark-only fills; light mode uses surface ladder.
+local function ResolveSectionPresetChrome(preset)
+    local accent = COLORS.accent
+    local br, bg, bb, ba = accent[1], accent[2], accent[3], 0.5
+    local sr, sg, sb, sa = accent[1], accent[2], accent[3], 0.9
+    local headerBg
+
+    if preset == "gold" then
+        local g = COLORS.gold or { 1, 0.82, 0.2, 1 }
+        br, bg, bb = g[1], g[2], g[3]
+        sr, sg, sb = g[1], g[2], g[3]
+        if IsLightTheme() then
+            local surf = COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bgCard
+            headerBg = { surf[1], surf[2], surf[3], surf[4] or 0.99 }
+            ba = 0.42
+            sa = 0.88
+        else
+            local surf = COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bgCard or COLORS.bg
+            headerBg = { surf[1], surf[2], surf[3], surf[4] or 0.97 }
+        end
+    elseif preset == "danger" then
+        br, bg, bb = 0.8, 0.25, 0.25
+        sr, sg, sb = 0.8, 0.25, 0.25
+        if IsLightTheme() then
+            local surf = COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bgCard
+            headerBg = { surf[1], surf[2], surf[3], surf[4] or 0.99 }
+            ba = 0.38
+            sa = 0.82
+        else
+            local surf = COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bgCard or COLORS.bg
+            headerBg = { surf[1], surf[2], surf[3], surf[4] or 0.97 }
+        end
+    elseif preset == "accent" then
+        if ns.UI_GetSubTabActiveBackdropRGBA then
+            local ar, ag, ab, aa = ns.UI_GetSubTabActiveBackdropRGBA(accent)
+            headerBg = { ar, ag, ab, aa or 0.98 }
+        else
+            local surf = COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bg
+            headerBg = { surf[1], surf[2], surf[3], surf[4] or 0.99 }
+        end
+        ba = IsLightTheme() and 0.82 or 0.65
+        sa = IsLightTheme() and 0.98 or 0.92
+    else
+        local surf = COLORS.surfaceElevated or COLORS.bgLight or COLORS.bg
+        if IsLightTheme() then
+            surf = COLORS.surfaceHeaderChrome or surf
+        end
+        headerBg = { surf[1], surf[2], surf[3], IsLightTheme() and (surf[4] or 0.99) or 0.96 }
+    end
+
+    return headerBg, br, bg, bb, ba, sr, sg, sb, sa
+end
+
 local function ResolveSurfaceTierColor(tier)
     if ns.UI_ResolveSurfaceTierColor then
         return ns.UI_ResolveSurfaceTierColor(tier)
@@ -150,17 +207,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         header:RegisterForClicks("LeftButtonUp")
     end
 
-    local accentColor = COLORS.accent
-    local br, bg, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.5
-    local sr, sg, sb, sa = accentColor[1], accentColor[2], accentColor[3], 0.9
     local preset = visualOpts and visualOpts.sectionPreset
-    if preset == "gold" then
-        br, bg, bb = 1, 0.82, 0.2
-        sr, sg, sb = 1, 0.82, 0.2
-    elseif preset == "danger" then
-        br, bg, bb = 0.8, 0.25, 0.25
-        sr, sg, sb = 0.8, 0.25, 0.25
-    end
+    local headerBg, br, bg, bb, ba, sr, sg, sb, sa = ResolveSectionPresetChrome(preset)
     local ly = UI_LAYOUT or UI_SPACING
     local stripeW = (ly and ly.SECTION_HEADER_STRIPE_WIDTH) or 3
     local stripeVInset = (ly and ly.SECTION_HEADER_STRIPE_V_INSET) or 4
@@ -169,18 +217,16 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local titleAfterIcon = (ly and ly.SECTION_HEADER_TITLE_AFTER_ICON) or 12
 
     if not suppressSectionChrome then
-        if preset == "gold" or preset == "danger" then
-            ApplyVisuals(header, {0.06, 0.06, 0.08, 0.95}, {br, bg, bb, ba})
-        else
-            local surf = COLORS.surfaceElevated or COLORS.bgLight
-            ApplyVisuals(header, {surf[1], surf[2], surf[3], 0.96}, {br, bg, bb, ba})
-        end
+        ApplyVisuals(header, headerBg, { br, bg, bb, ba })
 
         local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
         stripe:SetSize(stripeW, math.max(4, sectionH - stripeVInset - stripeVInset))
         stripe:SetPoint("LEFT", 4, 0)
         stripe:SetColorTexture(sr, sg, sb, sa)
         header._wnSectionStripe = stripe
+        if ns.UI_RegisterAccentStripe then
+            ns.UI_RegisterAccentStripe(stripe)
+        end
         if header._wnHairlinebottom and header._wnHairlinebottom.Hide then
             header._wnHairlinebottom:Hide()
         end

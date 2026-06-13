@@ -99,7 +99,7 @@ function M.RefreshMenuVaultSummary(menuFrame)
                     showRewardItemLevel = settings.showRewardItemLevel,
                     vaultLootClaimable = isReady,
                 })
-                fs:SetText("|cffffffff" .. label .. ":|r " .. right)
+                fs:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. label .. ":|r " .. right)
             end
             lineIndex = lineIndex + 1
         end
@@ -117,7 +117,7 @@ function M.RefreshMenuVaultSummary(menuFrame)
             else
                 statusText = "|cff888888-|r"
             end
-            statusFS:SetText("|cffffffff" .. EAL("EA_TOOLTIP_SECTION_VAULT", "Great Vault") .. ":|r " .. statusText)
+            statusFS:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. EAL("EA_TOOLTIP_SECTION_VAULT", "Great Vault") .. ":|r " .. statusText)
         end
         lineIndex = lineIndex + 1
     end
@@ -125,7 +125,7 @@ function M.RefreshMenuVaultSummary(menuFrame)
     if ShowEasyAccessDisplay("menuKeystone") then
         local fs = rows[lineIndex]
         if fs then
-            fs:SetText("|cffffffff" .. EAL("EA_TOOLTIP_KEYSTONE_LABEL", "Keystone") .. ":|r "
+            fs:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. EAL("EA_TOOLTIP_KEYSTONE_LABEL", "Keystone") .. ":|r "
                 .. FormatKeystoneTooltipRight(charKey, charRow))
         end
         lineIndex = lineIndex + 1
@@ -134,7 +134,7 @@ function M.RefreshMenuVaultSummary(menuFrame)
     if ShowEasyAccessDisplay("menuMythicScore") then
         local fs = rows[lineIndex]
         if fs then
-            fs:SetText("|cffffffff" .. EAL("EA_TOOLTIP_MYTHIC_SCORE_LABEL", "M+ Rating") .. ":|r "
+            fs:SetText((ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. EAL("EA_TOOLTIP_MYTHIC_SCORE_LABEL", "M+ Rating") .. ":|r "
                 .. FormatMythicScoreTooltipRight(charKey))
         end
         lineIndex = lineIndex + 1
@@ -275,6 +275,11 @@ function M.BuildMenu()
 
     local f = CreateFrame("Frame", "WarbandNexusVaultMenu", UIParent, "BackdropTemplate")
     AddEscCloseFrame("WarbandNexusVaultMenu")
+    if ns.UI_RegisterScaledFrame then
+        ns.UI_RegisterScaledFrame(f)
+    elseif ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(f)
+    end
     f:SetSize(W, H)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(220)
@@ -283,7 +288,7 @@ function M.BuildMenu()
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(f)
     elseif ApplyVisuals then
-        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+        ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
     end
     f:Hide()
     f.leftClickAction = GetSettings().leftClickAction
@@ -340,7 +345,7 @@ function M.BuildMenu()
         summaryPanel:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -(headerH + 4))
         summaryPanel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -(headerH + 4))
         if ApplyVisuals then
-            ApplyVisuals(summaryPanel, {0.06, 0.06, 0.08, 0.95}, {accent[1], accent[2], accent[3], 0.35})
+            ApplyVisuals(summaryPanel, { (COLORS.bgCard or COLORS.bgLight or COLORS.bg)[1], (COLORS.bgCard or COLORS.bgLight or COLORS.bg)[2], (COLORS.bgCard or COLORS.bgLight or COLORS.bg)[3], 0.95 }, {accent[1], accent[2], accent[3], 0.35})
         end
         f.eaSummaryPanel = summaryPanel
         local summaryTitle = VBFontString(summaryPanel, "body")
@@ -692,6 +697,26 @@ function WarbandNexus:RefreshVaultButtonSettings()
     RebuildTableFrame()
     RefreshButtonSettings()
     UpdateBadge()
+end
+
+function WarbandNexus:RefreshVaultEasyAccessTheme()
+    if M.ApplyTheme then
+        M.ApplyTheme()
+    end
+    local refreshChrome = ns.UI_ApplyStandardCardElevatedChrome
+    if not refreshChrome then return end
+    if S.tableFrame and S.tableFrame:IsShown() then
+        refreshChrome(S.tableFrame)
+    end
+    if S.optionsFrame and S.optionsFrame:IsShown() then
+        refreshChrome(S.optionsFrame)
+    end
+    if S.menuFrame and S.menuFrame:IsShown() then
+        refreshChrome(S.menuFrame)
+    end
+    if S.savedFrame and S.savedFrame:IsShown() then
+        refreshChrome(S.savedFrame)
+    end
 end
 
 function WarbandNexus:SetVaultButtonEnabled(enabled)

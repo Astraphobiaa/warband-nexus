@@ -12,6 +12,20 @@ local ColumnOrder = ns.ColumnOrder
 local ApplyVisuals = ns.UI_ApplyVisuals
 local HideTooltip = ns.UI_HideTooltip
 
+local function ControlChromeBackdrop()
+    if ns.UI_GetControlChromeBackdrop then
+        return ns.UI_GetControlChromeBackdrop()
+    end
+    return COLORS.bgCard or COLORS.bgLight or COLORS.bg or { 0.08, 0.08, 0.10, 1 }
+end
+
+local function ControlChromeHoverBackdrop()
+    if ns.UI_GetControlChromeHoverBackdrop then
+        return ns.UI_GetControlChromeHoverBackdrop()
+    end
+    return COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg or { 0.10, 0.10, 0.12, 1 }
+end
+
 local function GetLocalizedText(key, fallback)
     local L = ns.L
     local value = L and L[key]
@@ -133,7 +147,7 @@ local function PvE_GetOrCreateColumnPickerMenu()
     m:SetFrameLevel(PVE_COLUMN_PICKER_MENU_LEVEL)
     m:EnableMouse(true)
     if ApplyVisuals then
-        ApplyVisuals(m, { 0.02, 0.02, 0.03, 0.98 }, { accent[1], accent[2], accent[3], 1 })
+        ApplyVisuals(m, ControlChromeBackdrop(), { accent[1], accent[2], accent[3], 1 })
     end
     m:Hide()
     WarbandNexus._wnPvEColumnPickerMenu = m
@@ -229,6 +243,12 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         if vaultColTouched and WarbandNexus.RefreshVaultButtonSettings then
             WarbandNexus:RefreshVaultButtonSettings()
         end
+        if ns.PvEUI and ns.PvEUI.InvalidateBodyCache then
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mf and mf.scrollChild then
+                ns.PvEUI.InvalidateBodyCache(mf.scrollChild)
+            end
+        end
         PvE_ColumnPickerHideTooltipLayers()
         if addon and addon.SendMessage then
             addon:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
@@ -314,7 +334,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
 
     local resetOrderBtn = Factory:CreateButton(scrollChild, btnWidth - 28, ROW - 2, false)
     if resetOrderBtn and ApplyVisuals then
-        ApplyVisuals(resetOrderBtn, { 0.08, 0.08, 0.10, 1 }, { accent[1], accent[2], accent[3], 0.5 })
+        ApplyVisuals(resetOrderBtn, ControlChromeHoverBackdrop(), { accent[1], accent[2], accent[3], 0.5 })
     end
     if resetOrderBtn then
         resetOrderBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
@@ -335,7 +355,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
 
     local resetBtn = Factory:CreateButton(scrollChild, btnWidth - 28, ROW - 2, false)
     if resetBtn and ApplyVisuals then
-        ApplyVisuals(resetBtn, { 0.08, 0.08, 0.10, 1 }, { accent[1], accent[2], accent[3], 0.5 })
+        ApplyVisuals(resetBtn, ControlChromeHoverBackdrop(), { accent[1], accent[2], accent[3], 0.5 })
     end
     if resetBtn then
         resetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
@@ -382,7 +402,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
 
     local hideBtn = Factory:CreateButton(titleCard, 84, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32, false)
     if ApplyVisuals then
-        ApplyVisuals(hideBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        ApplyVisuals(hideBtn, ControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
     end
     local hideBtnText = FontManager:CreateFontString(hideBtn, "body", "OVERLAY")
     hideBtnText:SetPoint("CENTER", 0, 0)
@@ -422,7 +442,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
                 menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
                 menu:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75)
             elseif ApplyVisuals then
-                ApplyVisuals(menu, { 0.08, 0.08, 0.10, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
+                ApplyVisuals(menu, ControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
             else
                 if not menu.SetBackdrop and BackdropTemplateMixin then
                     Mixin(menu, BackdropTemplateMixin)
@@ -462,10 +482,12 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
             row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * rowH)
             row:SetHeight(rowH - 2)
             row:RegisterForClicks("LeftButtonUp")
-            local selBg = ((opt.value == cur) and 0.16) or 0.10
+            local selBg = ControlChromeHoverBackdrop()
+            if (opt.value == cur) then
+                selBg = { selBg[1] * 1.08, selBg[2] * 1.08, selBg[3] * 1.08, selBg[4] or 1 }
+            end
             if ApplyVisuals then
-                ApplyVisuals(row, { selBg, selBg, (opt.value == cur) and 0.20 or 0.10, 1 },
-                    { COLORS.accent[1] * 0.45, COLORS.accent[2] * 0.45, COLORS.accent[3] * 0.45, 0.45 })
+                ApplyVisuals(row, selBg, { COLORS.accent[1] * 0.45, COLORS.accent[2] * 0.45, COLORS.accent[3] * 0.45, 0.45 })
             else
                 if not row.SetBackdrop and BackdropTemplateMixin then
                     Mixin(row, BackdropTemplateMixin)
@@ -539,7 +561,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
 
     local columnsBtn = Factory:CreateButton(titleCard, 86, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32, false)
     if ApplyVisuals then
-        ApplyVisuals(columnsBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        ApplyVisuals(columnsBtn, ControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
     end
     local columnsBtnText = FontManager:CreateFontString(columnsBtn, "body", "OVERLAY")
     columnsBtnText:SetPoint("CENTER", 0, 0)

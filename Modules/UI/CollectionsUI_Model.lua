@@ -505,6 +505,10 @@ function M.CreateModelViewer(parent, width, height)
     if modelViewport.SetClipsChildren then
         modelViewport:SetClipsChildren(true)
     end
+    if ns.UI_ApplyBorderlessSurface then
+        local vpBg = M.ResolveCollectionsSurface("viewport")
+        ns.UI_ApplyBorderlessSurface(modelViewport, vpBg)
+    end
     panel.modelViewport = modelViewport
 
     -- Widget type Model / PlayerModel — see Widget API; mouse off on model, hits on interactionLayer (ScriptRegion).
@@ -833,8 +837,11 @@ function M.CreateModelViewer(parent, width, height)
     -- Detail icon with border (Factory CreateContainer + accent override)
     local iconBorder = Factory:CreateContainer(textOverlay, collectionsDetailIcon, collectionsDetailIcon, true)
     iconBorder:SetPoint("TOPLEFT", textOverlay, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
-    if ApplyVisuals then
-        ApplyVisuals(iconBorder, {0.12, 0.12, 0.14, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.7})
+    if M.ApplyCollectionsIconBorder then
+        M.ApplyCollectionsIconBorder(iconBorder, 0.7)
+    elseif ApplyVisuals then
+        local bg, edge = M.CollectionsIconBorderColors(0.7)
+        ApplyVisuals(iconBorder, bg, edge)
     end
     if iconBorder.EnableMouse then iconBorder:EnableMouse(false) end
     panel.detailIconBorder = iconBorder
@@ -843,10 +850,15 @@ function M.CreateModelViewer(parent, width, height)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     panel.detailIconTexture = iconTex
 
-    local goldR = (COLORS.gold and COLORS.gold[1]) or 1
-    local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
-    local goldB = (COLORS.gold and COLORS.gold[3]) or 0
-    local whiteR, whiteG, whiteB = 1, 1, 1
+    local goldR, goldG, goldB = 1, 0.82, 0
+    if ns.UI_GetSemanticGoldColor then
+        goldR, goldG, goldB = ns.UI_GetSemanticGoldColor()
+    elseif COLORS.gold then
+        goldR, goldG, goldB = COLORS.gold[1], COLORS.gold[2], COLORS.gold[3]
+    end
+    local brightR = (COLORS.textBright and COLORS.textBright[1]) or 1
+    local brightG = (COLORS.textBright and COLORS.textBright[2]) or 1
+    local brightB = (COLORS.textBright and COLORS.textBright[3]) or 1
 
     -- Top right: Factory column — Wowhead + Add/Added; try row only as wide as the Add column (aligned).
     local addCol = Factory.CreateCollectionsDetailRightColumn and Factory:CreateCollectionsDetailRightColumn(textOverlay, { withTryRow = true })
@@ -866,13 +878,7 @@ function M.CreateModelViewer(parent, width, height)
     panel._wowheadBtn = addCol and addCol.wowheadBtn
     panel._tryCountRow = addCol and addCol.tryCountRow
 
-    local nameText = FontManager:CreateFontString(textOverlay, "header", "OVERLAY")
-    do
-        local fp, fsz, flg = nameText:GetFont()
-        if type(fsz) == "number" and fp and flg then
-            pcall(nameText.SetFont, nameText, fp, fsz + 2, flg)
-        end
-    end
+    local nameText = FontManager:CreateFontString(textOverlay, "title", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
     if addContainer then
         nameText:SetPoint("TOPRIGHT", addContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
@@ -881,7 +887,7 @@ function M.CreateModelViewer(parent, width, height)
     end
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(true)
-    nameText:SetTextColor(whiteR, whiteG, whiteB)
+    nameText:SetTextColor(brightR, brightG, brightB)
     panel.nameText = nameText
 
     local headerRowBottom = Factory:CreateContainer(textOverlay, math.max(1, width), 1, false)
@@ -923,13 +929,13 @@ function M.CreateModelViewer(parent, width, height)
     descText:SetWordWrap(false)
     descText:SetNonSpaceWrap(false)
     if descText.SetMaxLines then descText:SetMaxLines(1) end
-    descText:SetTextColor(whiteR, whiteG, whiteB)
+    descText:SetTextColor(brightR, brightG, brightB)
     panel.descText = descText
 
-    local obtainedAtLine = FontManager:CreateFontString(textOverlay, "small", "OVERLAY")
+    local obtainedAtLine = M.CreateCollectionsSmallLabel(textOverlay)
     obtainedAtLine:SetJustifyH("LEFT")
     obtainedAtLine:SetWordWrap(true)
-    ns.UI_SetTextColorRole(obtainedAtLine, "Bright")
+    ns.UI_SetTextColorRole(obtainedAtLine, "Dim")
     obtainedAtLine:Hide()
     panel.obtainedAtLine = obtainedAtLine
 
@@ -1140,7 +1146,7 @@ function M.CreateModelViewer(parent, width, height)
         if not mountID then
             local placeholder = (ns.L and ns.L["SELECT_MOUNT_FROM_LIST"]) or "Select a mount from the list"
             if placeholder == "" or placeholder == "SELECT_MOUNT_FROM_LIST" then placeholder = "Select a mount from the list" end
-            nameText:SetText("|cffffffff" .. placeholder .. "|r")
+            nameText:SetText(M.CollectionsBrightHex() .. placeholder .. "|r")
             if panel.detailIconTexture then
                 panel.detailIconTexture:SetTexture(DEFAULT_ICON_MOUNT)
                 panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1186,7 +1192,9 @@ function M.CreateModelViewer(parent, width, height)
         end
         collectedBadge:Hide()
         local gold = COLORS.gold or { 1, 0.82, 0 }
-        local goldHex = ns.UI_RGBToHex(gold[1], gold[2], gold[3])
+        local goldHex = M.CollectionsGoldHex and M.CollectionsGoldHex()
+            or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
+            or ns.UI_RGBToHex(gold[1], gold[2], gold[3])
         nameText:SetText(goldHex .. (name or "") .. "|r" .. (SD.FormatMountPetToyListTrySuffix and SD.FormatMountPetToyListTrySuffix("mount", mountID) or ""))
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then
@@ -1207,7 +1215,7 @@ function M.CreateModelViewer(parent, width, height)
         if rawSource == "" or rawSource == "Unknown" then
             rawSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
         end
-        local whiteHex = "|cffffffff"
+        local whiteHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
         -- Currency icon on Cost/Amount rows (purchases)
         local L = ns.L
         local costKey = (L and L["PARSE_COST"]) or "Cost"
@@ -1252,7 +1260,7 @@ function M.CreateModelViewer(parent, width, height)
                 lineFs:SetJustifyH("LEFT")
                 lineFs:SetWordWrap(true)
                 lineFs:SetNonSpaceWrap(false)
-                lineFs:SetTextColor(whiteR, whiteG, whiteB)
+                lineFs:SetTextColor(brightR, brightG, brightB)
                 panel.sourceLines[i] = lineFs
             end
             lineFs:ClearAllPoints()
@@ -1335,7 +1343,7 @@ function M.CreateModelViewer(parent, width, height)
         if not speciesID then
             local placeholder = (ns.L and ns.L["SELECT_PET_FROM_LIST"]) or "Select a pet from the list"
             if placeholder == "" or placeholder == "SELECT_PET_FROM_LIST" then placeholder = "Select a pet from the list" end
-            nameText:SetText("|cffffffff" .. placeholder .. "|r")
+            nameText:SetText(M.CollectionsBrightHex() .. placeholder .. "|r")
             if panel.detailIconTexture then
                 panel.detailIconTexture:SetTexture(DEFAULT_ICON_PET)
                 panel.detailIconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1381,7 +1389,9 @@ function M.CreateModelViewer(parent, width, height)
         end
         collectedBadge:Hide()
         local gold = COLORS.gold or { 1, 0.82, 0 }
-        local goldHex = ns.UI_RGBToHex(gold[1], gold[2], gold[3])
+        local goldHex = M.CollectionsGoldHex and M.CollectionsGoldHex()
+            or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
+            or ns.UI_RGBToHex(gold[1], gold[2], gold[3])
         nameText:SetText(goldHex .. (name or "") .. "|r" .. (SD.FormatMountPetToyListTrySuffix and SD.FormatMountPetToyListTrySuffix("pet", speciesID) or ""))
         local description, source = descriptionFromCache, sourceTextRaw
         if (not source or source == "") or (not description or description == "") then
@@ -1402,7 +1412,7 @@ function M.CreateModelViewer(parent, width, height)
         if rawSource == "" or rawSource == "Unknown" then
             rawSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
         end
-        local whiteHex = "|cffffffff"
+        local whiteHex = M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
         local L = ns.L
         local costKey = (L and L["PARSE_COST"]) or "Cost"
         local amountKey = (L and L["PARSE_AMOUNT"]) or "Amount"
@@ -1445,7 +1455,7 @@ function M.CreateModelViewer(parent, width, height)
                 lineFs:SetJustifyH("LEFT")
                 lineFs:SetWordWrap(true)
                 lineFs:SetNonSpaceWrap(false)
-                lineFs:SetTextColor(whiteR, whiteG, whiteB)
+                lineFs:SetTextColor(brightR, brightG, brightB)
                 panel.sourceLines[i] = lineFs
             end
             lineFs:ClearAllPoints()
@@ -1518,7 +1528,8 @@ end
 function M.CreateDescriptionPanel(parent, width, height)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     panel:SetSize(width, height)
-    ApplyVisuals(panel, {0.08, 0.08, 0.10, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    local bg = M.ResolveCollectionsSurface("card")
+    ApplyVisuals(panel, { bg[1], bg[2], bg[3], (bg[4] or 1) * 0.95 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     function panel:SetMountInfo() end
     return panel
 end
@@ -1654,12 +1665,21 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
     local SERIES_ICON_GAP = 6
     local SERIES_ROW_GAP = 2
 
-    local goldR = (COLORS.gold and COLORS.gold[1]) or 1
-    local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
-    local goldB = (COLORS.gold and COLORS.gold[3]) or 0
-    local bodyR, bodyG, bodyB = 1, 1, 1
-    local mutedR, mutedG, mutedB = 1, 1, 1
-    local completeR, completeG, completeB = 0.35, 0.88, 0.45
+    local goldR, goldG, goldB = 1, 0.82, 0
+    if ns.UI_GetSemanticGoldColor then
+        goldR, goldG, goldB = ns.UI_GetSemanticGoldColor()
+    elseif COLORS.gold then
+        goldR, goldG, goldB = COLORS.gold[1], COLORS.gold[2], COLORS.gold[3]
+    end
+    local bodyR = (COLORS.textBright and COLORS.textBright[1]) or 1
+    local bodyG = (COLORS.textBright and COLORS.textBright[2]) or 1
+    local bodyB = (COLORS.textBright and COLORS.textBright[3]) or 1
+    local mutedR = (COLORS.textMuted and COLORS.textMuted[1]) or 0.7
+    local mutedG = (COLORS.textMuted and COLORS.textMuted[2]) or 0.7
+    local mutedB = (COLORS.textMuted and COLORS.textMuted[3]) or 0.72
+    local completeR = (COLORS.green and COLORS.green[1]) or 0.35
+    local completeG = (COLORS.green and COLORS.green[2]) or 0.88
+    local completeB = (COLORS.green and COLORS.green[3]) or 0.45
 
     local function addSection(title, fn)
         local titleFs = FontManager:CreateFontString(content, "body", "OVERLAY")
@@ -1698,7 +1718,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
             end
         end
         if ApplyVisuals then
-            local bg = COLORS.bgCard or COLORS.bgLight or { 0.09, 0.09, 0.11, 0.92 }
+            local bg = M.ResolveCollectionsSurface("card")
             local edgeA = (seriesBorderColor and seriesBorderColor[4]) or 0.75
             local edge = isCurrent and { goldR, goldG, goldB, edgeA }
                 or (seriesBorderColor and { seriesBorderColor[1], seriesBorderColor[2], seriesBorderColor[3], edgeA })
@@ -1776,17 +1796,23 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
         local iconBorder = Factory:CreateContainer(headerRow, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
         local detailIconBorder = Factory.GetCollectionsDetailIconBorderColor and Factory:GetCollectionsDetailIconBorderColor()
-        if ApplyVisuals then
-            ApplyVisuals(iconBorder, {0.12, 0.12, 0.14, 0.95}, detailIconBorder or {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.75})
+        if M.ApplyCollectionsIconBorder then
+            M.ApplyCollectionsIconBorder(iconBorder, detailIconBorder and detailIconBorder[4] or 0.75)
+        elseif ApplyVisuals then
+            local bg, edge = M.CollectionsIconBorderColors(detailIconBorder and detailIconBorder[4] or 0.75)
+            ApplyVisuals(iconBorder, bg, edge)
         end
         local headerIcon = iconBorder:CreateTexture(nil, "OVERLAY")
         headerIcon:SetAllPoints()
         headerIcon:SetTexture(achievement.icon or "Interface\\Icons\\Achievement_General")
         headerIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         local DETAIL_HEADER_GAP = 10
-        local goldR = (COLORS.gold and COLORS.gold[1]) or 1
-        local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
-        local goldB = (COLORS.gold and COLORS.gold[3]) or 0
+        local goldR, goldG, goldB = 1, 0.82, 0
+        if ns.UI_GetSemanticGoldColor then
+            goldR, goldG, goldB = ns.UI_GetSemanticGoldColor()
+        elseif COLORS.gold then
+            goldR, goldG, goldB = COLORS.gold[1], COLORS.gold[2], COLORS.gold[3]
+        end
         -- Top right: same Factory column as mount/pet/toy (Wowhead rightmost, try row at action width; slot widened for Add+Track)
         local achActionW = ACH_ROW_ADD_WIDTH + ACH_ACTION_GAP + ACH_TRACK_WIDTH
         local achAddCol = Factory:CreateCollectionsDetailRightColumn(headerRow, {
@@ -1903,13 +1929,13 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
             local obtTs = WarbandNexus:GetCollectionsAcquiredAt("achievement", achievement.id)
             local obtStr = obtTs and M.FormatCollectionsAcquiredDetail(obtTs) or nil
             if obtStr then
-                local obtFs = FontManager:CreateFontString(content, "small", "OVERLAY")
+                local obtFs = M.CreateCollectionsSmallLabel(content)
                 obtFs:SetPoint("TOP", lastAnchor, "BOTTOM", 0, lastY)
                 obtFs:SetPoint("LEFT", content, "LEFT", CONTENT_COLUMN_LEFT, 0)
                 obtFs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)
                 obtFs:SetJustifyH("LEFT")
                 obtFs:SetWordWrap(true)
-                ns.UI_SetTextColorRole(obtFs, "Bright")
+                ns.UI_SetTextColorRole(obtFs, "Dim")
                 obtFs:SetText(obtStr)
                 addDetailElement(obtFs)
                 lastAnchor = obtFs
@@ -2075,6 +2101,8 @@ function M.CreateSubTabBar(parent, onTabSelect)
     local spacing = SUBTAB_BTN_SPACING
 
     local accentColor = COLORS.accent
+    local subTabIdleBg = M.CollectionsSubTabInactiveBg()
+    local subTabHoverBg = M.CollectionsSubTabHoverBg()
     for i = 1, #SUB_TABS do
         local tabInfo = SUB_TABS[i]
         local btnWidth = btnWidths[i]
@@ -2083,7 +2111,7 @@ function M.CreateSubTabBar(parent, onTabSelect)
         btn._tabKey = tabInfo.key
 
         if ApplyVisuals then
-            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+            ApplyVisuals(btn, subTabIdleBg, { accentColor[1], accentColor[2], accentColor[3], 0.6 })
         end
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
             ns.UI.Factory:ApplyHighlight(btn)
@@ -2110,7 +2138,7 @@ function M.CreateSubTabBar(parent, onTabSelect)
         btnText:SetText(tabInfo.label)
         btnText:SetJustifyH("LEFT")
         btnText:SetWordWrap(false)
-        btnText:SetTextColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+        ns.UI_SetTextColorRole(btnText, "Normal")
         btn._text = btnText
 
         btn:SetScript("OnClick", function()
@@ -2129,11 +2157,17 @@ function M.CreateSubTabBar(parent, onTabSelect)
         else
             btn:SetScript("OnEnter", function(self)
                 if self._active then return end
-                if self.SetBackdropColor then self:SetBackdropColor(0.10, 0.10, 0.12, 0.95) end
+                if self.SetBackdropColor then
+                    local hover = subTabHoverBg
+                    self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 0.95)
+                end
             end)
             btn:SetScript("OnLeave", function(self)
                 if self._active then return end
-                if self.SetBackdropColor then self:SetBackdropColor(0.12, 0.12, 0.15, 1) end
+                if self.SetBackdropColor then
+                    local idle = subTabIdleBg
+                    self:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
+                end
             end)
         end
 
@@ -2145,33 +2179,41 @@ function M.CreateSubTabBar(parent, onTabSelect)
 
     function bar:SetActiveTab(key)
         local acc = COLORS.accent
+        local activeBg = M.CollectionsSubTabActiveBg()
+        local idleBg = M.CollectionsSubTabInactiveBg()
         for k, btn in pairs(buttons) do
             if k == key then
                 btn._active = true
                 if btn.activeBar then btn.activeBar:SetAlpha(1) end
                 if ApplyVisuals then
-                    ApplyVisuals(btn, {acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1}, {acc[1], acc[2], acc[3], 1})
+                    ApplyVisuals(btn, activeBg, { acc[1], acc[2], acc[3], 1 })
                 end
                 if btn._text then
                     ns.UI_SetTextColorRole(btn._text, "Bright")
-                    local font, size = btn._text:GetFont()
-                    if font and size then btn._text:SetFont(font, size, "OUTLINE") end
+                    if ns.UI_SetNavLabelFontStyle then
+                        ns.UI_SetNavLabelFontStyle(btn._text, true)
+                    end
                 end
-                if UpdateBorderColor then UpdateBorderColor(btn, {acc[1], acc[2], acc[3], 1}) end
-                if btn.SetBackdropColor then btn:SetBackdropColor(acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1) end
+                if UpdateBorderColor then UpdateBorderColor(btn, { acc[1], acc[2], acc[3], 1 }) end
+                if btn.SetBackdropColor then
+                    btn:SetBackdropColor(activeBg[1], activeBg[2], activeBg[3], activeBg[4] or 1)
+                end
             else
                 btn._active = false
                 if btn.activeBar then btn.activeBar:SetAlpha(0) end
                 if ApplyVisuals then
-                    ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1})
+                    ApplyVisuals(btn, idleBg, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
                 end
                 if btn._text then
                     ns.UI_SetTextColorRole(btn._text, "Muted")
-                    local font, size = btn._text:GetFont()
-                    if font and size then btn._text:SetFont(font, size, "") end
+                    if ns.UI_SetNavLabelFontStyle then
+                        ns.UI_SetNavLabelFontStyle(btn._text, false)
+                    end
                 end
-                if UpdateBorderColor then UpdateBorderColor(btn, {acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1}) end
-                if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
+                if UpdateBorderColor then UpdateBorderColor(btn, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 }) end
+                if btn.SetBackdropColor then
+                    btn:SetBackdropColor(idleBg[1], idleBg[2], idleBg[3], idleBg[4] or 1)
+                end
             end
         end
     end
@@ -2323,7 +2365,7 @@ function M.BuildGroupedMountData(searchText, showCollected, showUncollected, opt
 end
 
 -- Chunked build: process mounts in small chunks per frame so no single frame freezes for ~1s.
-function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncollected, drawGen, contentFrame, onComplete)
+function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncollected, drawGen, contentFrame, onComplete, prewarmGen)
     if WarbandNexus.EnsureMountSourceIndexMap then WarbandNexus:EnsureMountSourceIndexMap() end
     local grouped = {}
     local nameIndex = {}
@@ -2356,7 +2398,11 @@ function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncoll
     local total = #allMounts
 
     local function processChunk()
-        if M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then return end
+        if prewarmGen then
+            if M.state._collectionsPrewarmGen ~= prewarmGen or not M.CollectionsPrewarmActive() then return end
+        elseif M.state._mountsDrawGen ~= drawGen or M.state.currentSubTab ~= "mounts" then
+            return
+        end
         if not contentFrame or not contentFrame:IsVisible() then return end
         local limit = math.min(startIdx + RUN_CHUNK_SIZE - 1, total)
         for i = startIdx, limit do
@@ -2402,7 +2448,7 @@ function M.RunChunkedMountBuild(allMounts, searchText, showCollected, showUncoll
 end
 
 -- Chunked build for pets (same idea as mounts).
-function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollected, drawGen, contentFrame, onComplete)
+function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollected, drawGen, contentFrame, onComplete, prewarmGen)
     local grouped = {}
     local nameIndex = {}
     local classifyCache = {}
@@ -2434,7 +2480,11 @@ function M.RunChunkedPetBuild(allPets, searchText, showCollected, showUncollecte
     local total = #allPets
 
     local function processChunk()
-        if M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then return end
+        if prewarmGen then
+            if M.state._collectionsPrewarmGen ~= prewarmGen or not M.CollectionsPrewarmActive() then return end
+        elseif M.state._petDrawGen ~= drawGen or M.state.currentSubTab ~= "pets" then
+            return
+        end
         if not contentFrame or not contentFrame:IsVisible() then return end
         local limit = math.min(startIdx + RUN_CHUNK_SIZE - 1, total)
         for i = startIdx, limit do
@@ -2722,9 +2772,10 @@ end
 
 local CONTENT_GAP = LAYOUT.CARD_GAP or 8
 
--- Per–sub-tab title block inside contentFrame (below search); reduces inner list/detail height.
-local COLLECTIONS_SUBTAB_HEADER_H = 44
-local COLLECTIONS_SUBTAB_HEADER_GAP = 8
+-- Per–sub-tab title block in fixedHeader chrome (below sub-tab bar; not affected by list redraws).
+local COLLECTIONS_FIXED_SUBHEADER_H = 50
+local COLLECTIONS_FIXED_SUBHEADER_GAP = 6
+M.COLLECTIONS_FIXED_SUBHEADER_H = COLLECTIONS_FIXED_SUBHEADER_H
 
 local CONTENT_HEADER_LOCALE_KEYS = {
     achievements = { title = "COLLECTIONS_CONTENT_TITLE_ACHIEVEMENTS", sub = "COLLECTIONS_CONTENT_SUB_ACHIEVEMENTS" },
@@ -2734,7 +2785,7 @@ local CONTENT_HEADER_LOCALE_KEYS = {
     recent = { title = "COLLECTIONS_CONTENT_TITLE_RECENT", sub = "COLLECTIONS_CONTENT_SUB_RECENT" },
 }
 
-function M.ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
+function M.GetCollectionsSubTabHeaderText(tabKey)
     local loc = ns.L
     local keys = CONTENT_HEADER_LOCALE_KEYS[tabKey]
     local titlePlain = (keys and loc and loc[keys.title])
@@ -2745,43 +2796,87 @@ function M.ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
         or (tabKey == "recent" and ((loc and loc["COLLECTIONS_SUBTAB_RECENT"]) or "Recent"))
         or tostring(tabKey or "")
     local subPlain = (keys and loc and loc[keys.sub]) or ""
+    return titlePlain, subPlain
+end
 
-    local hdr = M.state._collectionsContentSubHeader
-    if not hdr then
-        hdr = Factory:CreateContainer(contentFrame, 120, COLLECTIONS_SUBTAB_HEADER_H, false)
-        hdr._title = FontManager:CreateFontString(hdr, "header", "OVERLAY")
-        hdr._title:SetPoint("TOPLEFT", hdr, "TOPLEFT", 4, -4)
-        hdr._title:SetJustifyH("LEFT")
-        hdr._subtitle = FontManager:CreateFontString(hdr, "subtitle", "OVERLAY")
-        hdr._subtitle:SetPoint("TOPLEFT", hdr._title, "BOTTOMLEFT", 0, -2)
-        hdr._subtitle:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", -4, 0)
-        hdr._subtitle:SetJustifyH("LEFT")
-        hdr._subtitle:SetWordWrap(false)
-        hdr._subtitle:SetNonSpaceWrap(false)
-        hdr._subtitle:SetMaxLines(1)
-        ns.UI_SetTextColorRole(hdr._subtitle, "Bright")
-        M.state._collectionsContentSubHeader = hdr
+function M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
+    if not hdrCache or not hdrCache.contentSubHeader then return end
+    local row = hdrCache.contentSubHeader
+    local titlePlain, subPlain = M.GetCollectionsSubTabHeaderText(tabKey)
+    local tabChanged = (row._tabKey ~= tabKey)
+    row._tabKey = tabKey
+    if tabChanged or row._titlePlain ~= titlePlain then
+        row._titlePlain = titlePlain
+        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+        local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
+        row._title:SetText("|cff" .. hexColor .. titlePlain .. "|r")
     end
-    hdr:SetParent(contentFrame)
-    hdr:ClearAllPoints()
-    hdr:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
-    hdr:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", 0, 0)
-    hdr:SetHeight(COLLECTIONS_SUBTAB_HEADER_H)
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    hdr._title:SetText("|cff" .. hexColor .. titlePlain .. "|r")
-    hdr._subtitle:SetText(subPlain)
-    hdr._subtitle:SetShown(subPlain ~= "")
-    hdr:SetFrameLevel((contentFrame:GetFrameLevel() or 0) + 3)
-    hdr:Show()
+    if tabChanged or row._subPlain ~= subPlain then
+        row._subPlain = subPlain
+        row._subtitle:SetText(subPlain)
+        row._subtitle:SetShown(subPlain ~= "")
+    end
+    row:Show()
+    M.CollectionsSubTabTrace("ApplyContentSubHeader", {
+        tabKey = tabKey,
+        title = titlePlain,
+        created = false,
+        tabChanged = tabChanged,
+        chrome = "fixed",
+    })
+end
 
-    local headerBlockH = COLLECTIONS_SUBTAB_HEADER_H + COLLECTIONS_SUBTAB_HEADER_GAP
-    local innerCh = math.max(80, (chFull or 400) - headerBlockH)
-    return headerBlockH, innerCh
+--- Anchor sub-tab title row in fixedHeader (survives scroll-body HideAll / repopulate).
+function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, tabKey)
+    if not hdrCache or not headerParent then return headerYOffset end
+    local row = hdrCache.contentSubHeader
+    local createdHeader = false
+    if not row then
+        createdHeader = true
+        row = Factory:CreateContainer(headerParent, 120, COLLECTIONS_FIXED_SUBHEADER_H, false)
+        row._title = FontManager:CreateFontString(row, "header", "OVERLAY")
+        row._title:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -2)
+        row._title:SetJustifyH("LEFT")
+        row._subtitle = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
+        row._subtitle:SetPoint("TOPLEFT", row._title, "BOTTOMLEFT", 0, -1)
+        row._subtitle:SetPoint("TOPRIGHT", row, "TOPRIGHT", -4, 0)
+        row._subtitle:SetJustifyH("LEFT")
+        row._subtitle:SetWordWrap(false)
+        row._subtitle:SetNonSpaceWrap(false)
+        row._subtitle:SetMaxLines(1)
+        ns.UI_SetTextColorRole(row._subtitle, "Muted")
+        hdrCache.contentSubHeader = row
+    end
+    row:SetParent(headerParent)
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
+    row:SetPoint("TOPRIGHT", -sideMargin, -headerYOffset)
+    row:SetHeight(COLLECTIONS_FIXED_SUBHEADER_H)
+    local parentLevel = headerParent:GetFrameLevel() or 0
+    row:SetFrameLevel(parentLevel + 12)
+    M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
+    if createdHeader then
+        M.CollectionsSubTabTrace("ApplyContentSubHeader", {
+            tabKey = tabKey,
+            title = row._titlePlain,
+            created = true,
+            chrome = "fixed",
+        })
+    end
+    return headerYOffset + COLLECTIONS_FIXED_SUBHEADER_H + COLLECTIONS_FIXED_SUBHEADER_GAP
+end
+
+--- Legacy hook from Draw*Content: title lives in fixedHeader; body uses full content height.
+function M.ApplyCollectionsContentHeader(contentFrame, tabKey, chFull)
+    if M.state._fixedHeaderCache and tabKey then
+        M.UpdateCollectionsFixedSubHeaderText(M.state._fixedHeaderCache, tabKey)
+    end
+    return 0, math.max(80, chFull or 400)
 end
 
 -- Result container: only one sub-tab's content is visible. Hide all result-area frames before drawing current tab.
 function M.HideAllCollectionsResultFrames()
+    M.CollectionsSubTabTrace("HideAllResultFrames", { sub = M.state and M.state.currentSubTab })
     if M.state.loadingPanel then M.state.loadingPanel:Hide() end
     if M.state.mountListContainer then M.state.mountListContainer:Hide() end
     if M.state.mountListScrollBarContainer then M.state.mountListScrollBarContainer:Hide() end

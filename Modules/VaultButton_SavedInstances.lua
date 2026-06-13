@@ -16,6 +16,23 @@ local function VB__setfenv()
 end
 setfenv(1, VB__setfenv())
 -- Saved Instances (raid + dungeon lockouts)
+
+local function SiRoleLineColor(role, dr, dg, db)
+    if ns.UI_GetTextRoleRGB then
+        local r, g, b = ns.UI_GetTextRoleRGB(role)
+        return { r, g, b }
+    end
+    return { dr, dg, db }
+end
+
+local function SiGreenLineColor()
+    if ns.UI_GetSemanticGreenColor then
+        local r, g, b = ns.UI_GetSemanticGreenColor()
+        return { r, g, b }
+    end
+    return { 0.35, 0.9, 0.4 }
+end
+
 M.DIFF_INFO = {
     [17] = { short = "LFR",    name = "Looking For Raid", color = {0.55, 0.55, 0.55}, hex = "aaaaaa" },
     [14] = { short = "N",      name = "Normal",           color = {0.12, 0.78, 0.12}, hex = "1eff00" },
@@ -226,7 +243,7 @@ function M.BuildSavedInstancesFrame()
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(f)
     elseif ApplyVisuals then
-        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {accent[1], accent[2], accent[3], 1})
+        ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
     end
     f:Hide()
     f:SetScript("OnShow", function()
@@ -265,8 +282,9 @@ function M.BuildSavedInstancesFrame()
 
     local close = VF:CreateButton(chrome, 28, 28, true)
     close:SetPoint("RIGHT", -8, 0)
+    local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
     if ApplyVisuals then
-        ApplyVisuals(close, {0.15, 0.15, 0.15, 0.9}, {accent[1], accent[2], accent[3], 0.8})
+        ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
     end
     local closeIcon = close:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(16, 16)
@@ -274,8 +292,19 @@ function M.BuildSavedInstancesFrame()
     closeIcon:SetAtlas("uitools-icon-close")
     closeIcon:SetVertexColor(0.9, 0.3, 0.3)
     close:SetScript("OnClick", function() f:Hide() end)
-    close:SetScript("OnEnter", function() closeIcon:SetVertexColor(1, 0.2, 0.2) end)
-    close:SetScript("OnLeave", function() closeIcon:SetVertexColor(0.9, 0.3, 0.3) end)
+    close:SetScript("OnEnter", function()
+        closeIcon:SetVertexColor(1, 0.2, 0.2)
+        if ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+            local bg, br = ns.UI_GetSemanticNegativeCard(true)
+            ApplyVisuals(close, bg, br)
+        elseif ApplyVisuals then
+            ApplyVisuals(close, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+        end
+    end)
+    close:SetScript("OnLeave", function()
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        if ApplyVisuals then ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
+    end)
 
     -- Filter / search bar
     local lay = VBGetSavedInstancesLayout()
@@ -288,7 +317,9 @@ function M.BuildSavedInstancesFrame()
     filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY)
     filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.pad, filterY)
     if ApplyVisuals then
-        ApplyVisuals(filterRow, {0.06, 0.06, 0.08, 1}, {accent[1], accent[2], accent[3], 0.4})
+        local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+            or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+        ApplyVisuals(filterRow, hdr, { accent[1], accent[2], accent[3], 0.4 })
     end
 
     S.savedFilters = { lfr = true, normal = true, heroic = true, mythic = true }
@@ -424,12 +455,14 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
 
     local row = ns.UI.Factory:CreateContainer(parent, totalW, 26, false)
     row:EnableMouse(true)
+    local rowBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("rowOdd"))
+        or { 0.06, 0.06, 0.09, 0.95 }
     if ApplyVisuals then
-        ApplyVisuals(row, {0.06, 0.06, 0.09, 0.95}, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.28})
+        ApplyVisuals(row, rowBg, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.28})
     else
         local bg = row:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
-        bg:SetColorTexture(0.06, 0.06, 0.09, 0.95)
+        bg:SetColorTexture(rowBg[1], rowBg[2], rowBg[3], rowBg[4] or 0.95)
     end
 
     local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -469,14 +502,16 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
             local dotBorder = row:CreateTexture(nil, "ARTWORK", nil, 0)
             dotBorder:SetSize(size + 2, size + 2)
             dotBorder:SetPoint("LEFT", row, "LEFT", dotsX + (i - 1) * (size + gap) - 1, 0)
-            dotBorder:SetColorTexture(0.10, 0.10, 0.14, 1)
+            dotBorder:SetColorTexture(rowBg[1] * 0.65, rowBg[2] * 0.65, rowBg[3] * 0.65, 1)
             local dot = row:CreateTexture(nil, "ARTWORK", nil, 1)
             dot:SetSize(size, size)
             dot:SetPoint("LEFT", row, "LEFT", dotsX + (i - 1) * (size + gap), 0)
             if e.killed then
                 dot:SetColorTexture(diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 1)
             else
-                dot:SetColorTexture(0.14, 0.14, 0.18, 1)
+                local dimDot = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("rowEven"))
+                    or { 0.14, 0.14, 0.18, 1 }
+                dot:SetColorTexture(dimDot[1], dimDot[2], dimDot[3], dimDot[4] or 1)
             end
         end
     end
@@ -490,7 +525,8 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
     progFS:SetPoint("RIGHT", row, "RIGHT", -PAD - RESET_W - 8, 0)
     progFS:SetWidth(PROGRESS_W)
     progFS:SetJustifyH("CENTER")
-    local progColor = (t > 0 and k >= t) and "|cff44ff44" or "|cffd4af37"
+    local progColor = (t > 0 and k >= t) and "|cff44ff44"
+        or ((ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffd4af37")
     progFS:SetText(string.format("%s%2d/%-2d|r", progColor, k, t))
 
     -- Reset countdown
@@ -519,29 +555,29 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
         local lines = {}
         lines[#lines + 1] = {
             text = "|cff" .. diffInfo.hex .. (group.difficultyName or diffInfo.name) .. "|r",
-            color = {0.85, 0.85, 0.9},
+            color = SiRoleLineColor("Bright", 0.85, 0.85, 0.9),
         }
         if char.reset and char.reset > 0 then
             local resetTag = FormatSavedResetShort(char.reset)
             if resetTag ~= "" then
                 lines[#lines + 1] = {
                     text = EAL("EA_TOOLTIP_LOCKOUT_RESET", "Lockout resets in %s", resetTag),
-                    color = {0.65, 0.65, 0.7},
+                    color = SiRoleLineColor("Muted", 0.65, 0.65, 0.7),
                 }
             end
         end
         lines[#lines + 1] = {
             text = EAL("EA_TOOLTIP_LOCKOUT_PROGRESS", "%d/%d bosses defeated", k, t),
-            color = {0.9, 0.9, 0.92},
+            color = SiRoleLineColor("Normal", 0.9, 0.9, 0.92),
         }
         if roster and #roster > 0 then
             lines[#lines + 1] = { text = " " }
             for i, e in ipairs(roster) do
                 local bossName = e.name or EAL("EA_TOOLTIP_BOSS_FALLBACK", "Boss %d", i)
                 if e.killed then
-                    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_BOSS_KILLED", "Defeated: %s", bossName), color = {0.35, 0.9, 0.4} }
+                    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_BOSS_KILLED", "Defeated: %s", bossName), color = SiGreenLineColor() }
                 else
-                    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_BOSS_REMAINING", "Remaining: %s", bossName), color = {0.75, 0.75, 0.78} }
+                    lines[#lines + 1] = { text = EAL("EA_TOOLTIP_BOSS_REMAINING", "Remaining: %s", bossName), color = SiRoleLineColor("Dim", 0.75, 0.75, 0.78) }
                 end
             end
         end

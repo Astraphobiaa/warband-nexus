@@ -56,6 +56,10 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
 
     local r, g, b = cc.r, cc.g, cc.b
     local br, bgc, bb = 0.08, 0.08, 0.10
+    local rowOdd = ResolveSurfaceTierColor("rowOdd")
+    if rowOdd then
+        br, bgc, bb = rowOdd[1], rowOdd[2], rowOdd[3]
+    end
     if row.bg and row.bg.GetVertexColor then
         br, bgc, bb = row.bg:GetVertexColor()
     end
@@ -375,21 +379,25 @@ function ns.UI.Factory:ApplyOnlineCharacterHighlight(frame, isOnline)
     if not frame then return end
     local ac = COLORS and COLORS.accent or ns.UI_COLORS and ns.UI_COLORS.accent
     if isOnline and ac then
-        -- Background: very dark tint of accent (≈15% brightness so text stays readable)
-        local r, g, b = ac[1] * 0.55, ac[2] * 0.55, ac[3] * 0.55
         if not frame.bg then
             frame.bg = frame:CreateTexture(nil, "BACKGROUND")
             frame.bg:SetAllPoints()
         end
-        frame.bg:SetColorTexture(r * 0.4, g * 0.4, b * 0.4, 1)
-        -- Left accent bar: full accent brightness
+        local light = ns.UI_IsLightMode and ns.UI_IsLightMode()
+        if light and ns.UI_GetRowSelectionTint then
+            local tint = ns.UI_GetRowSelectionTint()
+            frame.bg:SetColorTexture(tint[1], tint[2], tint[3], tint[4] or 1)
+        else
+            local r, g, b = ac[1] * 0.55, ac[2] * 0.55, ac[3] * 0.55
+            frame.bg:SetColorTexture(r * 0.4, g * 0.4, b * 0.4, 1)
+        end
         if not frame.onlineAccent then
             frame.onlineAccent = frame:CreateTexture(nil, "BORDER")
             frame.onlineAccent:SetWidth(3)
             frame.onlineAccent:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
             frame.onlineAccent:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         end
-        frame.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
+        frame.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], light and 0.85 or 1)
         frame.onlineAccent:Show()
     else
         if frame.onlineAccent then frame.onlineAccent:Hide() end
@@ -463,10 +471,12 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
         rightLabel:SetPoint("RIGHT", header, "RIGHT", -sp.SIDE_MARGIN, 0)
         rightLabel:SetJustifyH("RIGHT")
         rightLabel:SetText(rightStr)
+        ns.UI_SetTextColorRole(rightLabel, "Muted")
         title:SetPoint("RIGHT", rightLabel, "LEFT", -6, 0)
     end
 
     title:SetText(titleStr)
+    ns.UI_SetTextColorRole(title, "Bright")
 
     -- Click handlers
     header:SetScript("OnClick", onToggle)
@@ -476,12 +486,17 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:SetScript("OnEnter", function()
         if header.SetBackdropColor and header._wnSectionHeaderBaseBg then
             local b = header._wnSectionHeaderBaseBg
-            header:SetBackdropColor(
-                math.min(1, b[1] * 1.12),
-                math.min(1, b[2] * 1.12),
-                math.min(1, b[3] * 1.12),
-                b[4] or 1
-            )
+            if ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetControlChromeHoverBackdrop then
+                local h = ns.UI_GetControlChromeHoverBackdrop()
+                header:SetBackdropColor(h[1], h[2], h[3], h[4] or 1)
+            else
+                header:SetBackdropColor(
+                    math.min(1, b[1] * 1.12),
+                    math.min(1, b[2] * 1.12),
+                    math.min(1, b[3] * 1.12),
+                    b[4] or 1
+                )
+            end
         end
     end)
     header:SetScript("OnLeave", function()
@@ -854,7 +869,7 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
     end
     if hasSub then
         if not row.subtitle then
-            row.subtitle = FontManager:CreateFontString(row, UIFontRole("small"), "OVERLAY")
+            row.subtitle = FontManager:CreateFontString(row, "small", "OVERLAY")
             row.subtitle:SetJustifyH("LEFT")
             row.subtitle:SetJustifyV("MIDDLE")
             row.subtitle:SetWordWrap(false)
@@ -885,8 +900,13 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
         row.selBg:SetAllPoints()
     end
     if isSelected then
-        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-        row.selBg:SetColorTexture(r, g, b, 0.25)
+        if ns.UI_GetRowSelectionTint then
+            local tint = ns.UI_GetRowSelectionTint()
+            row.selBg:SetColorTexture(tint[1], tint[2], tint[3], tint[4] or 1)
+        else
+            local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+            row.selBg:SetColorTexture(r, g, b, 0.25)
+        end
         row.selBg:Show()
     else
         row.selBg:Hide()

@@ -258,6 +258,7 @@ function MigrationService:RunMigrations(db)
     end
 
     self:MigrateThemeColors(db)
+    self:MigrateThemeMode(db)
     self:MigrateReputationMetadata(db)
     self:MigrateReputationToV2(db)
     self:MigrateGenderField(db)
@@ -267,12 +268,14 @@ function MigrationService:RunMigrations(db)
     self:MigrateRealmSuffixRepairFromCharKey(db)
     self:MigrateCharacterKeyNormalize(db)
     self:MigrateGlobalCharactersToGuidStorageKeys(db)
+    self:DeduplicateGlobalCharactersByGuid(db)
     self:MigrateRestedDataReset(db)
     self:MigrateRarityMountSyncReseed(db)
     self:MigrateReminderToastAnchors(db)
     self:MigrateNotificationToastLaneDefaults(db)
     self:MigrateCustomSectionChangelogLog(db)
     self:MigrateReminderQuestCatalog(db)
+    self:MigrateFontScalePreset(db)
     self:DropStaleLegacyGlobalCurrencies(db)
     return false
 end
@@ -293,6 +296,25 @@ function MigrationService:DropStaleLegacyGlobalCurrencies(db)
         end
     end
     db.global._legacyGlobalCurrenciesDropV1 = true
+end
+
+--- Resolve legacy font scalePreset into scaleCustom + useCustomScale=true (Settings slider is authoritative).
+function MigrationService:MigrateFontScalePreset(db)
+    if not db or not db.profile or db.profile.fontScalePresetMigratedV1 then return end
+    local fonts = db.profile.fonts
+    if fonts and not fonts.useCustomScale then
+        local preset = fonts.scalePreset or "normal"
+        local multipliers = {
+            tiny = 0.8,
+            small = 0.9,
+            normal = 1.0,
+            large = 1.2,
+            xlarge = 1.4,
+        }
+        fonts.scaleCustom = multipliers[preset] or 1.0
+        fonts.useCustomScale = true
+    end
+    db.profile.fontScalePresetMigratedV1 = true
 end
 
 --- Seed maintained world-quest catalog (static + version bump).
@@ -376,6 +398,25 @@ function MigrationService:MigrateThemeColors(db)
             db.profile.themeColors = ns.UI_CalculateThemeColors(accent[1], accent[2], accent[3])
         end
     end
+end
+
+--- Collapse legacy lightMode / highContrast booleans into profile.themeMode ("dark" | "light").
+function MigrationService:MigrateThemeMode(db)
+    if not db or not db.profile or db.profile.themeModeMigratedV1 then
+        return
+    end
+
+    local p = db.profile
+    if p.themeMode ~= "light" and p.themeMode ~= "dark" then
+        if p.lightMode == true then
+            p.themeMode = "light"
+        else
+            p.themeMode = "dark"
+        end
+    end
+    p.lightMode = nil
+    p.highContrast = nil
+    p.themeModeMigratedV1 = true
 end
 
 --[[

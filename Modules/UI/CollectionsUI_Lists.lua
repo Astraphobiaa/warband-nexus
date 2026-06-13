@@ -57,6 +57,7 @@ local SCROLLBAR_SIDE_GAP = M.SCROLLBAR_SIDE_GAP
 local COLLECTION_HEAVY_DELAY = M.COLLECTION_HEAVY_DELAY
 local RUN_CHUNK_SIZE = M.RUN_CHUNK_SIZE
 local COLLECTIONS_HEADER_CHUNK = M.COLLECTIONS_HEADER_CHUNK or 6
+local COLLECTIONS_HEADER_CHUNK_DEFERRED = M.COLLECTIONS_HEADER_CHUNK_DEFERRED or 99999
 local ROW_HEIGHT = M.ROW_HEIGHT
 local ROW_GAP = M.ROW_GAP
 local ROW_STRIDE = M.ROW_STRIDE
@@ -549,7 +550,12 @@ end
 
 -- Shared row pool for all three collection lists (Mounts, Pets, Achievements). Row structure from SharedWidgets.
 local CollectionRowPool = {}
-local COLLECTED_COLOR = "|cff33e533"
+local function CollectionsCollectedNameHex()
+    return M.CollectionsCollectedHex and M.CollectionsCollectedHex() or "|cff33e533"
+end
+local function CollectionsUncollectedNameHex()
+    return M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee"
+end
 local DEFAULT_ICON_MOUNT = "Interface\\Icons\\Ability_Mount_RidingHorse"
 local DEFAULT_ICON_PET = "Interface\\Icons\\INV_Box_PetCarrier_01"
 local DEFAULT_ICON_TOY = "Interface\\Icons\\INV_Misc_Toy_07"
@@ -640,13 +646,14 @@ function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText
         end
     end
     Factory:ApplyCollectionListRowContent(f, item.rowIndex, iconPath, labelText, isCollected, (selectedID == itemID), onClick, nil, nil, planSlotState)
+    M.ApplyCollectionsRowIconChrome(f)
     f:Show()
     return f
 end
 
 function M.AcquireMountRow(scrollChild, listWidth, item, selectedMountID, onSelectMount, redraw, cf)
     local mount = item.mount
-    local nameColor = mount.isCollected and COLLECTED_COLOR or "|cffffffff"
+    local nameColor = mount.isCollected and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local labelText = nameColor .. (mount.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("mount", mount.id)
     local rowParent = scrollChild
     if item._collSectionKey and M.state._mountSectionBodies and M.state._mountSectionBodies[item._collSectionKey] then
@@ -698,7 +705,7 @@ end
 
 function M.AcquirePetRow(scrollChild, listWidth, item, selectedPetID, onSelectPet, redraw, cf)
     local pet = item.pet
-    local nameColor = pet.isCollected and COLLECTED_COLOR or "|cffffffff"
+    local nameColor = pet.isCollected and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local labelText = nameColor .. (pet.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("pet", pet.id)
     local rowParent = scrollChild
     if item._collSectionKey and M.state._petSectionBodies and M.state._petSectionBodies[item._collSectionKey] then
@@ -750,7 +757,7 @@ end
 
 function M.AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectToy, redraw, cf)
     local toy = item.toy
-    local nameColor = (toy.isCollected or toy.collected) and COLLECTED_COLOR or "|cffffffff"
+    local nameColor = (toy.isCollected or toy.collected) and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local labelText = nameColor .. (toy.name or "") .. "|r" .. SD.FormatMountPetToyListTrySuffix("toy", toy.id)
     local rowParent = scrollChild
     if item._collSectionKey and M.state._toySectionBodies and M.state._toySectionBodies[item._collSectionKey] then
@@ -803,7 +810,7 @@ end
 
 function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchievementID, onSelectAchievement, redraw, cf)
     local ach = item.achievement
-    local nameColor = ach.isCollected and COLLECTED_COLOR or "|cffffffff"
+    local nameColor = ach.isCollected and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""
     local labelText = nameColor .. (ach.name or "") .. "|r" .. pointsStr
     local indent = item.indent or 0
@@ -975,6 +982,9 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
     end
     _populateMountListBusy = true
     collapsedHeaders = collapsedHeaders or {}
+    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("mounts"))
+    local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
+    M.CollectionsSubTabTrace("PopulateMountList_start", { deferChrome = deferListChrome, headersChunk = headerChunkSize })
     local cf = contentFrameForRefresh
     local redraw = redrawFn or function() end
 
@@ -1020,6 +1030,7 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
     if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
         M.state._mountFlatList = flatList
         M.state._mountVisibleRowFrames = {}
+        M.CollectionsEndListChromeDefer()
         _populateMountListBusy = false
         if onListReady then onListReady() end
         return
@@ -1064,10 +1075,20 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
         end
         M.UpdateMountListVisibleRange()
         M.ScheduleCollectionsVisibleSync("mounts", M.UpdateMountListVisibleRange)
+        M.CollectionsEndListChromeDefer()
+        M.CollectionsSubTabTrace("PopulateMountList_done", { flatRows = flatList and #flatList or 0 })
         if type(onListReady) == "function" then
             onListReady()
         end
         _populateMountListBusy = false
+    end
+
+    local function abortMountListPopulate()
+        M.CollectionsEndListChromeDefer()
+        _populateMountListBusy = false
+        if drawGen then
+            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+        end
     end
 
     local collHdrChainTail = nil
@@ -1083,18 +1104,16 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
 
     local function pumpMountHeaders()
         if drawGen and M.state._mountsDrawGen and M.state._mountsDrawGen ~= drawGen then
-            _populateMountListBusy = false
-            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+            abortMountListPopulate()
             return
         end
         if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "mounts" then
-            _populateMountListBusy = false
-            M.ReleaseCollectionsDrawBusy("Mounts", drawGen)
+            abortMountListPopulate()
             return
         end
 
         local built = 0
-        while flatIdx <= #flatList and built < COLLECTIONS_HEADER_CHUNK do
+        while flatIdx <= #flatList and built < headerChunkSize do
             while flatIdx <= #flatList and flatList[flatIdx].type ~= "header" do
                 flatIdx = flatIdx + 1
             end
@@ -1283,6 +1302,9 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
     end
     _populatePetListBusy = true
     collapsedHeaders = collapsedHeaders or {}
+    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("pets"))
+    local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
+    M.CollectionsSubTabTrace("PopulatePetList_start", { deferChrome = deferListChrome, headersChunk = headerChunkSize })
     local cf = contentFrameForRefresh
     local redraw = redrawFn or function() end
 
@@ -1322,6 +1344,7 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
     if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
         M.state._petFlatList = flatList
         M.state._petVisibleRowFrames = {}
+        M.CollectionsEndListChromeDefer()
         _populatePetListBusy = false
         if onListReady then onListReady() end
         return
@@ -1366,10 +1389,20 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
         end
         M.UpdatePetListVisibleRange()
         M.ScheduleCollectionsVisibleSync("pets", M.UpdatePetListVisibleRange)
+        M.CollectionsEndListChromeDefer()
+        M.CollectionsSubTabTrace("PopulatePetList_done", { flatRows = flatList and #flatList or 0 })
         if type(onListReady) == "function" then
             onListReady()
         end
         _populatePetListBusy = false
+    end
+
+    local function abortPetListPopulate()
+        M.CollectionsEndListChromeDefer()
+        _populatePetListBusy = false
+        if drawGen then
+            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
+        end
     end
 
     local collHdrChainTail = nil
@@ -1385,18 +1418,16 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
 
     local function pumpPetHeaders()
         if drawGen and M.state._petDrawGen and M.state._petDrawGen ~= drawGen then
-            _populatePetListBusy = false
-            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
+            abortPetListPopulate()
             return
         end
         if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "pets" then
-            _populatePetListBusy = false
-            M.ReleaseCollectionsDrawBusy("Pets", drawGen)
+            abortPetListPopulate()
             return
         end
 
         local built = 0
-        while flatIdx <= #flatList and built < COLLECTIONS_HEADER_CHUNK do
+        while flatIdx <= #flatList and built < headerChunkSize do
             while flatIdx <= #flatList and flatList[flatIdx].type ~= "header" do
                 flatIdx = flatIdx + 1
             end
@@ -1585,6 +1616,9 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
     end
     _populateToyListBusy = true
     collapsedHeaders = collapsedHeaders or {}
+    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("toys"))
+    local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
+    M.CollectionsSubTabTrace("PopulateToyList_start", { deferChrome = deferListChrome, headersChunk = headerChunkSize })
     local cf = contentFrameForRefresh
     local redraw = redrawFn or function() end
 
@@ -1624,6 +1658,7 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
     if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
         M.state._toyFlatList = flatList
         M.state._toyVisibleRowFrames = {}
+        M.CollectionsEndListChromeDefer()
         _populateToyListBusy = false
         if onListReady then onListReady() end
         return
@@ -1668,10 +1703,20 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
         end
         M.UpdateToyListVisibleRange()
         M.ScheduleCollectionsVisibleSync("toys", M.UpdateToyListVisibleRange)
+        M.CollectionsEndListChromeDefer()
+        M.CollectionsSubTabTrace("PopulateToyList_done", { flatRows = flatList and #flatList or 0 })
         if type(onListReady) == "function" then
             onListReady()
         end
         _populateToyListBusy = false
+    end
+
+    local function abortToyListPopulate()
+        M.CollectionsEndListChromeDefer()
+        _populateToyListBusy = false
+        if drawGen then
+            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
+        end
     end
 
     local collHdrChainTail = nil
@@ -1687,18 +1732,16 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
 
     local function pumpToyHeaders()
         if drawGen and M.state._toysDrawGen and M.state._toysDrawGen ~= drawGen then
-            _populateToyListBusy = false
-            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
+            abortToyListPopulate()
             return
         end
         if drawGen and M.state._collectionsSubTabGen and M.state.currentSubTab ~= "toys" then
-            _populateToyListBusy = false
-            M.ReleaseCollectionsDrawBusy("Toys", drawGen)
+            abortToyListPopulate()
             return
         end
 
         local built = 0
-        while flatIdx <= #flatList and built < COLLECTIONS_HEADER_CHUNK do
+        while flatIdx <= #flatList and built < headerChunkSize do
             while flatIdx <= #flatList and flatList[flatIdx].type ~= "header" do
                 flatIdx = flatIdx + 1
             end

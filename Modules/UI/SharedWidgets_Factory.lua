@@ -27,6 +27,68 @@ local function UIFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
 end
 
+ns.SCROLL_CHROME_REGISTRY = ns.SCROLL_CHROME_REGISTRY or {}
+local SCROLL_CHROME_REGISTRY = ns.SCROLL_CHROME_REGISTRY
+
+local function ResolveScrollChromeBackdrop()
+    if ns.UI_GetControlChromeHoverBackdrop then
+        local c = ns.UI_GetControlChromeHoverBackdrop()
+        return c[1], c[2], c[3], (c[4] or 1) * 0.92
+    end
+    return 0.08, 0.08, 0.10, 0.9
+end
+
+local function ApplyScrollChromeBackdrop(tex)
+    if not tex or not tex.SetColorTexture then return end
+    local r, g, b, a = ResolveScrollChromeBackdrop()
+    tex:SetColorTexture(r, g, b, a)
+end
+
+local function RegisterScrollChrome(host)
+    if host and not host._wnScrollChromeRegistered then
+        host._wnScrollChromeRegistered = true
+        table.insert(SCROLL_CHROME_REGISTRY, host)
+    end
+end
+
+local function RefreshScrollChromeHost(host)
+    if not host then return end
+    if host.CustomTrack then
+        ApplyScrollChromeBackdrop(host.CustomTrack)
+    end
+    if host.ScrollUpBtn and host.ScrollUpBtn.bg then
+        ApplyScrollChromeBackdrop(host.ScrollUpBtn.bg)
+    end
+    if host.ScrollDownBtn and host.ScrollDownBtn.bg then
+        ApplyScrollChromeBackdrop(host.ScrollDownBtn.bg)
+    end
+    if host.ScrollLeftBtn and host.ScrollLeftBtn.bg then
+        ApplyScrollChromeBackdrop(host.ScrollLeftBtn.bg)
+    end
+    if host.ScrollRightBtn and host.ScrollRightBtn.bg then
+        ApplyScrollChromeBackdrop(host.ScrollRightBtn.bg)
+    end
+end
+
+function ns.UI_RefreshScrollChrome()
+    for i = #SCROLL_CHROME_REGISTRY, 1, -1 do
+        local host = SCROLL_CHROME_REGISTRY[i]
+        if not host then
+            table.remove(SCROLL_CHROME_REGISTRY, i)
+        else
+            RefreshScrollChromeHost(host)
+        end
+    end
+end
+
+local function ResolveIconShellBackdrop()
+    if ns.UI_GetControlChromeBackdrop then
+        local c = ns.UI_GetControlChromeBackdrop()
+        return { c[1], c[2], c[3], (c[4] or 1) * 0.95 }
+    end
+    return { 0.12, 0.12, 0.14, 0.95 }
+end
+
 local function ResolveSurfaceTierColor(tier)
     if ns.UI_ResolveSurfaceTierColor then
         return ns.UI_ResolveSurfaceTierColor(tier)
@@ -82,24 +144,58 @@ end
 ]]
 function ns.UI.Factory:ApplyHighlight(frame, color, alpha)
     if not frame or not frame.SetHighlightTexture then return end
-    
-    -- Default: Soft blue glow
-    color = color or {0.4, 0.6, 0.9}
+
+    if not color then
+        if ns.UI_GetRowHoverHighlight then
+            color, alpha = ns.UI_GetRowHoverHighlight()
+        else
+            color = { 0.4, 0.6, 0.9 }
+            alpha = 0.15
+        end
+    end
     alpha = alpha or 0.15
-    
-    -- Set highlight texture (native WoW API)
+
     frame:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
-    
-    -- Configure highlight properties
+
     local hl = frame:GetHighlightTexture()
     if hl then
-        hl:SetBlendMode("ADD")  -- Glow effect over content
+        local light = ns.UI_IsLightMode and ns.UI_IsLightMode()
+        hl:SetBlendMode(light and "BLEND" or "ADD")
         hl:SetVertexColor(color[1], color[2], color[3], alpha)
-        hl:SetDrawLayer("HIGHLIGHT")  -- Top layer
-        hl:SetSnapToPixelGrid(true)  -- Prevent ghosting during scrolling
+        hl:SetDrawLayer("HIGHLIGHT")
+        hl:SetSnapToPixelGrid(true)
         hl:SetTexelSnappingBias(0)
     end
+
+    ns.HIGHLIGHT_REGISTRY = ns.HIGHLIGHT_REGISTRY or {}
+    if not frame._wnHighlightRegistered then
+        frame._wnHighlightRegistered = true
+        table.insert(ns.HIGHLIGHT_REGISTRY, frame)
+    end
+    frame._wnHighlightColor = color
+    frame._wnHighlightAlpha = alpha
+    frame._wnHighlightCustom = color ~= nil
 end
+
+local function RefreshRegisteredHighlights()
+    local reg = ns.HIGHLIGHT_REGISTRY
+    if not reg then return end
+    local Factory = ns.UI and ns.UI.Factory
+    if not Factory or not Factory.ApplyHighlight then return end
+    for i = #reg, 1, -1 do
+        local frame = reg[i]
+        if not frame or not frame.SetHighlightTexture then
+            table.remove(reg, i)
+        else
+        if frame._wnHighlightCustom then
+            Factory:ApplyHighlight(frame, frame._wnHighlightColor, frame._wnHighlightAlpha)
+        else
+            Factory:ApplyHighlight(frame)
+        end
+        end
+    end
+end
+ns.UI_RefreshRegisteredHighlights = RefreshRegisteredHighlights
 
 -- Legacy wrapper for UpdateBorderColor
 local function UpdateBorderColor(frame, borderColor)
@@ -206,7 +302,7 @@ function ns.UI.Factory:CreateTryCountClickable(parent, options)
         end
         local count = (WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(collectibleType, collectibleID)) or 0
         local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-        self.text:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
+        self.text:SetText((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r " .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. tostring(count) .. "|r")
         self:Show()
     end
 
@@ -329,7 +425,7 @@ function ns.UI.Factory:CreateCollectionsDetailIconShell(parent, size, opts)
     local shell = self:CreateContainer(parent, size, size, true)
     if shell and ApplyVisuals then
         local edge = opts.borderColor or self:GetCollectionsDetailIconBorderColor()
-        ApplyVisuals(shell, { 0.12, 0.12, 0.14, 0.95 }, edge)
+        ApplyVisuals(shell, ResolveIconShellBackdrop(), edge)
     end
     if shell and shell.EnableMouse then
         shell:EnableMouse(false)
@@ -479,8 +575,9 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         if not scrollBar.CustomTrack then
             scrollBar.CustomTrack = scrollBar:CreateTexture(nil, "BACKGROUND")
             scrollBar.CustomTrack:SetAllPoints(scrollBar)
-            scrollBar.CustomTrack:SetColorTexture(0.08, 0.08, 0.10, 0.9)  -- Dark background
+            ApplyScrollChromeBackdrop(scrollBar.CustomTrack)
         end
+        RegisterScrollChrome(scrollBar)
         
         -- Create pixel-perfect borders for track
         local pixelScale = GetPixelScale()
@@ -569,7 +666,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             -- Background
             local upBg = scrollBar.ScrollUpBtn:CreateTexture(nil, "BACKGROUND")
             upBg:SetAllPoints()
-            upBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+            ApplyScrollChromeBackdrop(upBg)
             scrollBar.ScrollUpBtn.bg = upBg
             
             -- Pixel-perfect borders (matching scroll bar)
@@ -643,7 +740,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             
             scrollBar.ScrollUpBtn:SetScript("OnLeave", function(self)
                 local currentColors = GetColors()
-                self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+                ApplyScrollChromeBackdrop(self.bg)
                 self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
             end)
         end
@@ -657,7 +754,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             -- Background
             local downBg = scrollBar.ScrollDownBtn:CreateTexture(nil, "BACKGROUND")
             downBg:SetAllPoints()
-            downBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+            ApplyScrollChromeBackdrop(downBg)
             scrollBar.ScrollDownBtn.bg = downBg
             
             -- Pixel-perfect borders (matching scroll bar)
@@ -732,7 +829,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             
             scrollBar.ScrollDownBtn:SetScript("OnLeave", function(self)
                 local currentColors = GetColors()
-                self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+                ApplyScrollChromeBackdrop(self.bg)
                 self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
             end)
         end
@@ -1106,7 +1203,8 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     -- Track background
     hBar.CustomTrack = hBar:CreateTexture(nil, "BACKGROUND")
     hBar.CustomTrack:SetAllPoints(hBar)
-    hBar.CustomTrack:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    ApplyScrollChromeBackdrop(hBar.CustomTrack)
+    RegisterScrollChrome(hBar)
 
     -- Pixel borders
     local pixelScale = GetPixelScale()
@@ -1156,7 +1254,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.ScrollLeftBtn:Hide()
     local leftBg = hBar.ScrollLeftBtn:CreateTexture(nil, "BACKGROUND")
     leftBg:SetAllPoints()
-    leftBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    ApplyScrollChromeBackdrop(leftBg)
     hBar.ScrollLeftBtn.bg = leftBg
     local leftBorderTop = hBar.ScrollLeftBtn:CreateTexture(nil, "BORDER")
     leftBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
@@ -1204,7 +1302,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     hBar.ScrollRightBtn:Hide()
     local rightBg = hBar.ScrollRightBtn:CreateTexture(nil, "BACKGROUND")
     rightBg:SetAllPoints()
-    rightBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    ApplyScrollChromeBackdrop(rightBg)
     hBar.ScrollRightBtn.bg = rightBg
     local rightBorderTop = hBar.ScrollRightBtn:CreateTexture(nil, "BORDER")
     rightBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
@@ -1254,7 +1352,7 @@ function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyl
     end
     local function ButtonHoverOff(self)
         local currentColors = GetColors()
-        self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+        ApplyScrollChromeBackdrop(self.bg)
         self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
     end
     hBar.ScrollLeftBtn:SetScript("OnEnter", ButtonHoverOn)
@@ -1390,7 +1488,8 @@ function ns.UI.Factory:CreateContainer(parent, width, height, withBorder, global
     
     -- ONLY apply border if explicitly requested
     if withBorder then
-        ApplyVisuals(container, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+        local shellBg = ResolveSurfaceTierColor("rowOdd")
+        ApplyVisuals(container, shellBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end
     
     return container
@@ -1429,9 +1528,18 @@ function ns.UI.Factory:CreateThemedSlider(parent, opts)
             tile = false, tileSize = 1, edgeSize = 2,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
-        slider:SetBackdropColor(0.1, 0.1, 0.12, 1)
+        local trackBg = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.1, 0.1, 0.12, 1 }
+        slider:SetBackdropColor(trackBg[1], trackBg[2], trackBg[3], trackBg[4] or 1)
         local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
         slider:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.6)
+        slider._wnMainShellBackdrop = true
+        slider._borderType = "accent"
+        slider._borderAlpha = 0.6
+        slider._bgType = "controlChromeHover"
+        if not slider._borderRegistered and ns.BORDER_REGISTRY then
+            slider._borderRegistered = true
+            table.insert(ns.BORDER_REGISTRY, slider)
+        end
     end
 
     local thumb = slider:CreateTexture(nil, "OVERLAY")
@@ -1466,10 +1574,8 @@ function ns.UI.Factory:CreateEditBox(parent)
     editBox:SetAutoFocus(false)
     editBox:SetFontObject(ChatFontNormal) -- required initial FontObject (WoW crashes without one)
     if ns.FontManager then
-        local path = ns.FontManager:GetFontFace()
-        local size = ns.FontManager:GetFontSize("body")
-        local flags = ns.FontManager:GetAAFlags()
-        pcall(editBox.SetFont, editBox, path, size, flags)
+        ns.FontManager:RegisterManagedEditBox(editBox)
+        ns.FontManager:ApplyFontToEditBox(editBox)
     end
     editBox:SetMaxLetters(256)
     editBox:SetTextInsets(5, 5, 0, 0)
@@ -1506,21 +1612,25 @@ function ns.UI.Factory:ApplyOnlineCharacterHighlight(frame, isOnline)
     if not frame then return end
     local ac = COLORS and COLORS.accent or ns.UI_COLORS and ns.UI_COLORS.accent
     if isOnline and ac then
-        -- Background: very dark tint of accent (≈15% brightness so text stays readable)
-        local r, g, b = ac[1] * 0.55, ac[2] * 0.55, ac[3] * 0.55
         if not frame.bg then
             frame.bg = frame:CreateTexture(nil, "BACKGROUND")
             frame.bg:SetAllPoints()
         end
-        frame.bg:SetColorTexture(r * 0.4, g * 0.4, b * 0.4, 1)
-        -- Left accent bar: full accent brightness
+        local light = ns.UI_IsLightMode and ns.UI_IsLightMode()
+        if light and ns.UI_GetRowSelectionTint then
+            local tint = ns.UI_GetRowSelectionTint()
+            frame.bg:SetColorTexture(tint[1], tint[2], tint[3], tint[4] or 1)
+        else
+            local r, g, b = ac[1] * 0.55, ac[2] * 0.55, ac[3] * 0.55
+            frame.bg:SetColorTexture(r * 0.4, g * 0.4, b * 0.4, 1)
+        end
         if not frame.onlineAccent then
             frame.onlineAccent = frame:CreateTexture(nil, "BORDER")
             frame.onlineAccent:SetWidth(3)
             frame.onlineAccent:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
             frame.onlineAccent:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         end
-        frame.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], 1)
+        frame.onlineAccent:SetColorTexture(ac[1], ac[2], ac[3], light and 0.85 or 1)
         frame.onlineAccent:Show()
     else
         if frame.onlineAccent then frame.onlineAccent:Hide() end
@@ -1567,9 +1677,16 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:SetFrameLevel((parent:GetFrameLevel() or 0) + 10)
     header:Show()
 
-    local surf = COLORS.surfaceElevated or COLORS.bgLight
-    -- Opaque background (1.0) so row text does not show through behind header
-    ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    local surf = COLORS.surfaceHeaderChrome or COLORS.surfaceElevated or COLORS.bgLight
+  -- Opaque background (1.0) so row text does not show through behind header
+    local sbr, sbg, sbb, sba = 0.45, 0.45, 0.5, 0.45
+    if ns.UI_GetSectionHeaderBorderRGBA then
+        sbr, sbg, sbb, sba = ns.UI_GetSectionHeaderBorderRGBA()
+    else
+        sbr, sbg, sbb = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+        sba = 0.45
+    end
+    ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, { sbr, sbg, sbb, sba })
     header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
 
     if ns.UI_ApplySectionChromeUnderlay then
@@ -1594,10 +1711,12 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
         rightLabel:SetPoint("RIGHT", header, "RIGHT", -sp.SIDE_MARGIN, 0)
         rightLabel:SetJustifyH("RIGHT")
         rightLabel:SetText(rightStr)
+        ns.UI_SetTextColorRole(rightLabel, "Muted")
         title:SetPoint("RIGHT", rightLabel, "LEFT", -6, 0)
     end
 
     title:SetText(titleStr)
+    ns.UI_SetTextColorRole(title, "Bright")
 
     -- Click handlers
     header:SetScript("OnClick", onToggle)
@@ -1720,10 +1839,10 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
 
     local iconBorder = self:CreateContainer(row, iconSize, iconSize, true)
     if iconBorder then
-        local bg = { 0.12, 0.12, 0.14, 0.95 }
+        local shellBg = ResolveIconShellBackdrop()
         local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
         if ApplyVisuals then
-            ApplyVisuals(iconBorder, bg, { bc[1], bc[2], bc[3], 0.72 })
+            ApplyVisuals(iconBorder, shellBg, { bc[1], bc[2], bc[3], 0.72 })
         end
         iconBorder:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
         row._iconBorder = iconBorder
@@ -1985,7 +2104,7 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
     end
     if hasSub then
         if not row.subtitle then
-            row.subtitle = FontManager:CreateFontString(row, UIFontRole("small"), "OVERLAY")
+            row.subtitle = FontManager:CreateFontString(row, "small", "OVERLAY")
             row.subtitle:SetJustifyH("LEFT")
             row.subtitle:SetJustifyV("MIDDLE")
             row.subtitle:SetWordWrap(false)
@@ -2016,8 +2135,13 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
         row.selBg:SetAllPoints()
     end
     if isSelected then
-        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-        row.selBg:SetColorTexture(r, g, b, 0.25)
+        if ns.UI_GetRowSelectionTint then
+            local tint = ns.UI_GetRowSelectionTint()
+            row.selBg:SetColorTexture(tint[1], tint[2], tint[3], tint[4] or 1)
+        else
+            local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+            row.selBg:SetColorTexture(r, g, b, 0.25)
+        end
         row.selBg:Show()
     else
         row.selBg:Hide()
@@ -2046,7 +2170,16 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
             tile = true, tileSize = 16, edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 },
         })
-        f:SetBackdropColor(0.06, 0.06, 0.08, 0.97)
+        local shellBg = ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop() or { 0.06, 0.06, 0.08, 0.97 }
+        f:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.97)
+        f._wnMainShellBackdrop = true
+        f._borderType = "accent"
+        f._borderAlpha = 0.8
+        f._bgType = "externalShell"
+        if not f._borderRegistered and ns.BORDER_REGISTRY then
+            f._borderRegistered = true
+            table.insert(ns.BORDER_REGISTRY, f)
+        end
         local COLORS = ns.UI_COLORS or { accent = {0.5, 0.4, 0.7} }
         f:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
         f:EnableMouse(true)
@@ -2058,7 +2191,8 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
         local title = FontManager and FontManager:CreateFontString(f, "small", "OVERLAY") or f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         title:SetPoint("TOPLEFT", 10, -8)
         title:SetText(
-            "|cffffcc00" .. ((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead") .. "|r  |cff888888"
+            ns.UI_GetSemanticGoldHex() .. ((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead") .. "|r  "
+            .. (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888")
             .. ((ns.L and ns.L["CTRL_C_LABEL"]) or "Ctrl+C") .. "|r"
         )
         f._title = title
@@ -2079,10 +2213,8 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
         editBox:SetAutoFocus(false)
         editBox:SetMaxLetters(512)
         if FontManager then
-            local path = FontManager:GetFontFace()
-            local size = FontManager:GetFontSize("body")
-            local flags = FontManager:GetAAFlags()
-            pcall(editBox.SetFont, editBox, path, size, flags)
+            FontManager:RegisterManagedEditBox(editBox)
+            FontManager:ApplyFontToEditBox(editBox)
         end
         editBox:SetScript("OnEscapePressed", function() f:Hide() end)
         editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)

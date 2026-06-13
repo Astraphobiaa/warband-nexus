@@ -89,6 +89,29 @@ local function NM_GetElevatedBackdropFillRGBA()
     return 0.03, 0.03, 0.05, 0.98
 end
 
+local function NM_ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function NM_TextShadow(strength)
+    if ns.UI_GetTextShadowRGBA then
+        return ns.UI_GetTextShadowRGBA(strength)
+    end
+    local s = strength or 1
+    return 0, 0, 0, 0.9 * s
+end
+
+local function NM_ApplyTextShadow(fs, strength)
+    if not fs or not fs.SetShadowColor then return end
+    local sr, sg, sb, sa = NM_TextShadow(strength)
+    fs:SetShadowColor(sr, sg, sb, sa)
+end
+
 -- Toast entrance VFX: sun-like pulse + horizontal sweep (custom textures only).
 local NM_SUN_WASH_PEAK = 0.58
 local NM_SUN_CORE_PEAK = 1
@@ -1006,6 +1029,9 @@ function WarbandNexus:ShowModalNotification(config)
         compactPopup._baseX = baseX
         compactPopup._baseY = baseY
         compactPopup._alertHeight = COMPACT_HEIGHT
+        if ns.UI_ApplyAddonUIScale then
+            ns.UI_ApplyAddonUIScale(compactPopup)
+        end
         
         -- Layer 0: effects (glow lines) behind the black frame
         local effectsFrameCompact = CreateFrame("Frame", nil, compactPopup)
@@ -1115,26 +1141,26 @@ function WarbandNexus:ShowModalNotification(config)
             progressLine:SetMaxLines(2)
             progressLine:SetText(accentHex .. (critTitleSafe or "") .. "|r")
             progressLine:SetShadowOffset(1, -1)
-            progressLine:SetShadowColor(0, 0, 0, 0.9)
+            NM_ApplyTextShadow(progressLine, 0.9)
             nameLine = FontManager:CreateFontString(contentFrameCompact, "body", "OVERLAY")
             nameLine:SetJustifyH("LEFT")
             nameLine:SetWordWrap(true)
             nameLine:SetMaxLines(3)
-            nameLine:SetText("|cffffffff" .. (nameStr or "") .. "|r")
+            nameLine:SetText(NM_ThemeTextHex("Bright") .. (nameStr or "") .. "|r")
             nameLine:SetShadowOffset(1, -1)
-            nameLine:SetShadowColor(0, 0, 0, 0.6)
+            NM_ApplyTextShadow(nameLine, 0.6)
         else
             progressLine = FontManager:CreateFontString(contentFrameCompact, "body", "OVERLAY")
             progressLine:SetJustifyH("LEFT")
             progressLine:SetWordWrap(false)
-            progressLine:SetText("|cffb0b0b0" .. progressStr .. "|r")
+            progressLine:SetText(NM_ThemeTextHex("Muted") .. progressStr .. "|r")
             progressLine:SetShadowOffset(1, -1)
-            progressLine:SetShadowColor(0, 0, 0, 0.6)
+            NM_ApplyTextShadow(progressLine, 0.6)
             nameLine = FontManager:CreateFontString(contentFrameCompact, "title", "OVERLAY")
             nameLine:SetJustifyH("LEFT")
             nameLine:SetText(accentHex .. (nameStr or "") .. "|r")
             nameLine:SetShadowOffset(1, -1)
-            nameLine:SetShadowColor(0, 0, 0, 0.9)
+            NM_ApplyTextShadow(nameLine, 0.9)
         end
         contentFrameCompact:SetSize(contentFrameCompactW, COMPACT_HEIGHT)
         compactPopup:SetSize(popupWidthCompact, COMPACT_HEIGHT)
@@ -1152,9 +1178,9 @@ function WarbandNexus:ShowModalNotification(config)
                 detailLine:SetJustifyH("LEFT")
                 detailLine:SetWordWrap(true)
                 detailLine:SetMaxLines(2)
-                detailLine:SetText("|cffc8c8c8" .. detailStr .. "|r")
+                detailLine:SetText(NM_ThemeTextHex("Dim") .. detailStr .. "|r")
                 detailLine:SetShadowOffset(1, -1)
-                detailLine:SetShadowColor(0, 0, 0, 0.55)
+                NM_ApplyTextShadow(detailLine, 0.55)
             end
 
             local gapMid = 4
@@ -1280,6 +1306,9 @@ function WarbandNexus:ShowModalNotification(config)
         or CreateFrame("Frame", nil, UIParent)
     popup:SetSize(popupWidthFull, ALERT_HEIGHT)
     popup:SetMouseClickEnabled(true)
+    if ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(popup)
+    end
     
     -- Layer 0: glow / edge effects (behind backdrop)
     local effectsFrame = CreateFrame("Frame", nil, popup)
@@ -1469,10 +1498,10 @@ function WarbandNexus:ShowModalNotification(config)
         category:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         category:SetWidth(textAreaWidth)
         category:SetJustifyH("CENTER")
-        category:SetText("|cffaaaaaa" .. categoryText .. "|r")
+        category:SetText(NM_ThemeTextHex("Muted") .. categoryText .. "|r")
         category:SetWordWrap(false)
         category:SetShadowOffset(1, -1)
-        category:SetShadowColor(0, 0, 0, 0.8)
+        NM_ApplyTextShadow(category, 0.8)
         startY = startY - smallFontHeight - lineSpacing
     end
     
@@ -1486,7 +1515,7 @@ function WarbandNexus:ShowModalNotification(config)
         title:SetWordWrap(true)
         title:SetMaxLines(2)
         title:SetShadowOffset(1, -1)
-        title:SetShadowColor(0, 0, 0, 0.9)
+        NM_ApplyTextShadow(title, 0.9)
         
         -- Compute brightened accent color for title
         local tr = math.floor(math.min(255, titleColor[1] * 255 * 1.4))
@@ -1505,11 +1534,11 @@ function WarbandNexus:ShowModalNotification(config)
         subtitle:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         subtitle:SetWidth(textAreaWidth)
         subtitle:SetJustifyH("CENTER")
-        subtitle:SetText("|cffffffff" .. messageText .. "|r")
+        subtitle:SetText(NM_ThemeTextHex("Bright") .. messageText .. "|r")
         subtitle:SetWordWrap(true)
         subtitle:SetMaxLines(2)
         subtitle:SetShadowOffset(1, -1)
-        subtitle:SetShadowColor(0, 0, 0, 0.6)
+        NM_ApplyTextShadow(subtitle, 0.6)
     end
     
     -- Legacy subtitle support
@@ -1519,11 +1548,11 @@ function WarbandNexus:ShowModalNotification(config)
         legacySub:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         legacySub:SetWidth(textAreaWidth)
         legacySub:SetJustifyH("CENTER")
-        legacySub:SetText("|cffffffff" .. subtitleText .. "|r")
+        legacySub:SetText(NM_ThemeTextHex("Bright") .. subtitleText .. "|r")
         legacySub:SetWordWrap(true)
         legacySub:SetMaxLines(2)
         legacySub:SetShadowOffset(1, -1)
-        legacySub:SetShadowColor(0, 0, 0, 0.6)
+        NM_ApplyTextShadow(legacySub, 0.6)
     end
     
     -- Left-click: open achievement UI + dismiss | Right-click: dismiss only

@@ -84,7 +84,10 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     -- Dark background
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(0.05, 0.05, 0.07, 0.9)
+    local slotBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
+        or COLORS.surfaceViewport or { 0.05, 0.05, 0.07, 0.9 }
+    bg:SetColorTexture(slotBg[1], slotBg[2], slotBg[3], slotBg[4] or 0.9)
+    btn._gearSlotBg = bg
 
     -- Item / empty slot texture
     local rimInset = GearGetFrameContentInset()
@@ -93,24 +96,12 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
     btn.iconTex = tex
 
-    -- ilvl label (bottom-right overlay); font must be set before any SetText (WoW requirement)
-    local ilvlLabel = btn:CreateFontString(nil, "OVERLAY")
-    ilvlLabel:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
-    ilvlLabel:SetFontObject(SystemFont_Tiny)  -- ensure font set before Populate() ever calls SetText
-    if FontManager and FontManager.CreateFontString then
-        local fs = FontManager:CreateFontString(btn, GFR("gearSlotIlvl"), "OVERLAY")
-        if fs and fs.SetFontObject then
-            fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
-            fs:SetJustifyH("RIGHT")
-            if fs.SetDrawLayer then fs:SetDrawLayer("OVERLAY", 7) end
-            btn.ilvlLabel = fs
-            ilvlLabel:SetAlpha(0)
-        else
-            btn.ilvlLabel = ilvlLabel
-        end
-    else
-        btn.ilvlLabel = ilvlLabel
-        if ilvlLabel.SetDrawLayer then ilvlLabel:SetDrawLayer("OVERLAY", 7) end
+    -- ilvl label (bottom-right overlay); FontManager applies font before Populate() SetText
+    btn.ilvlLabel = FontManager:CreateFontString(btn, GFR("gearSlotIlvl"), "OVERLAY")
+    if btn.ilvlLabel then
+        btn.ilvlLabel:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -rimInset, rimInset)
+        btn.ilvlLabel:SetJustifyH("RIGHT")
+        if btn.ilvlLabel.SetDrawLayer then btn.ilvlLabel:SetDrawLayer("OVERLAY", 7) end
     end
 
     -- Populate with item or empty slot art
@@ -149,8 +140,12 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
             if btn.ilvlLabel and data.itemLink and data.itemLevel and data.itemLevel > 0 then
                 btn.ilvlLabel:SetText(tostring(math.floor(tonumber(data.itemLevel) or 0)))
                 ns.UI_SetTextColorRole(btn.ilvlLabel, "Bright")
-                btn.ilvlLabel:SetShadowOffset(1, -1)
-                btn.ilvlLabel:SetShadowColor(0, 0, 0, 1)
+                if ns.UI_ApplyOverlayLabelShadow then
+                    ns.UI_ApplyOverlayLabelShadow(btn.ilvlLabel)
+                else
+                    btn.ilvlLabel:SetShadowOffset(1, -1)
+                    btn.ilvlLabel:SetShadowColor(0, 0, 0, 1)
+                end
                 btn.ilvlLabel:Show()
             elseif btn.ilvlLabel then
                 btn.ilvlLabel:Hide()
@@ -160,7 +155,9 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
             tex:SetTexture(EMPTY_SLOT_TEXTURE[slotID] or SLOT_FALLBACK_TEXTURE)
             tex:SetTexCoord(0, 1, 0, 1)
             local accent = COLORS and COLORS.accent or { 0.5, 0.3, 0.8 }
-            borderFrame:SetBackdropBorderColor(accent[1] * 0.4, accent[2] * 0.4, accent[3] * 0.4, 0.5)
+            local border = COLORS and COLORS.border or accent
+            local emptyBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.45 or 0.5
+            borderFrame:SetBackdropBorderColor(border[1] * 0.55, border[2] * 0.55, border[3] * 0.55, emptyBorderA)
             if btn.ilvlLabel then btn.ilvlLabel:Hide() end
             GearSlotClearPaperdollOverlays(btn)
         end
@@ -422,7 +419,8 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     -- Highlight
     local hi = btn:CreateTexture(nil, "HIGHLIGHT")
     hi:SetAllPoints()
-    hi:SetColorTexture(1, 1, 1, 0.12)
+    local hiA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.08 or 0.12
+    hi:SetColorTexture(1, 1, 1, hiA)
 
     -- Slot name (Head, Trinket 1, Main Hand etc.) — above the Veteran/Champion text
     local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
@@ -435,8 +433,9 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     end
     local slotNameLabel
     if slotName ~= "" then
-        slotNameLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, GFR("gearSlotName"), "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        slotNameLabel:SetText("|cffffffff" .. slotName .. "|r")
+        slotNameLabel = FontManager:CreateFontString(parent, GFR("gearSlotName"), "OVERLAY")
+        local slotHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        slotNameLabel:SetText(slotHex .. slotName .. "|r")
         slotNameLabel:SetNonSpaceWrap(false)
         if slotNameLabel.SetWordWrap then slotNameLabel:SetWordWrap(false) end
     end
@@ -447,7 +446,7 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
     local currentTextOffset = TEXT_OFFSET_FROM_SLOT_CENTER
 
     if trackText and side ~= "top" then
-        trackLabel = FontManager and FontManager.CreateFontString and FontManager:CreateFontString(parent, GFR("gearTrackLabel"), "OVERLAY") or parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        trackLabel = FontManager:CreateFontString(parent, GFR("gearTrackLabel"), "OVERLAY")
         btn._gearTrackLabel = trackLabel
         trackLabel:SetText(trackText)
         trackLabel:SetNonSpaceWrap(false)

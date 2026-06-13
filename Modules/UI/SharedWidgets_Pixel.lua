@@ -73,4 +73,65 @@ ns.GetPixelScale = GetPixelScale
 ns.PixelSnap = PixelSnap
 ns.ResetPixelScale = ResetPixelScale
 
+-- ADDON UI SCALE (profile.uiScale — separate from WoW UI Scale / font slider)
+
+local UISCALE_MIN = 0.6
+local UISCALE_MAX = 1.5
+local SCALE_REGISTRY = {}
+
+local function ClampAddonUIScale(scale)
+    scale = tonumber(scale) or 1.0
+    return math.max(UISCALE_MIN, math.min(UISCALE_MAX, scale))
+end
+
+function ns.UI_GetAddonUIScale()
+    local db = ns.db and ns.db.profile
+    return ClampAddonUIScale(db and db.uiScale)
+end
+
+function ns.UI_ApplyAddonUIScale(frame)
+    if not frame or not frame.SetScale then return end
+    frame:SetScale(ns.UI_GetAddonUIScale())
+end
+
+function ns.UI_RegisterScaledFrame(frame)
+    if not frame then return end
+    for i = 1, #SCALE_REGISTRY do
+        if SCALE_REGISTRY[i] == frame then
+            ns.UI_ApplyAddonUIScale(frame)
+            return
+        end
+    end
+    table.insert(SCALE_REGISTRY, frame)
+    ns.UI_ApplyAddonUIScale(frame)
+end
+
+function ns.UI_UnregisterScaledFrame(frame)
+    if not frame then return end
+    for i = #SCALE_REGISTRY, 1, -1 do
+        if SCALE_REGISTRY[i] == frame then
+            table.remove(SCALE_REGISTRY, i)
+            return
+        end
+    end
+end
+
+--- Re-apply profile.uiScale to main shell and every registered external window.
+function ns.UI_ApplyAddonUIScaleToAll()
+    local scale = ns.UI_GetAddonUIScale()
+    for i = #SCALE_REGISTRY, 1, -1 do
+        local f = SCALE_REGISTRY[i]
+        if not f or not f.SetScale then
+            table.remove(SCALE_REGISTRY, i)
+        else
+            f:SetScale(scale)
+        end
+    end
+    local mf = ns.WarbandNexus and ns.WarbandNexus.UI and ns.WarbandNexus.UI.mainFrame
+    if mf and mf.SetScale then
+        mf:SetScale(scale)
+    end
+end
+
 assert(ns.GetPixelScale and ns.PixelSnap, "SharedWidgets_Pixel: pixel exports missing")
+assert(ns.UI_GetAddonUIScale and ns.UI_ApplyAddonUIScaleToAll, "SharedWidgets_Pixel: UIScale exports missing")

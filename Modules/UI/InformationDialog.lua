@@ -8,6 +8,50 @@ local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local UI_SPACING = ns.UI_SPACING
 
+local function ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function SemanticGoldHex()
+    if ns.UI_GetSemanticGoldHex then
+        return ns.UI_GetSemanticGoldHex()
+    end
+    return "|cffffd700"
+end
+
+local function SemanticGoldRGB()
+    if ns.UI_GetSemanticGoldColor then
+        return ns.UI_GetSemanticGoldColor()
+    end
+    return 1, 0.84, 0, 1
+end
+
+local function SemanticGreenRGB()
+    if ns.UI_GetSemanticGreenColor then
+        return ns.UI_GetSemanticGreenColor()
+    end
+    return 0.2, 0.8, 0.2, 1
+end
+
+local function AccentRGB()
+    local c = ns.UI_COLORS and ns.UI_COLORS.accent
+    if c then return c[1], c[2], c[3] end
+    return 0.4, 0.2, 0.58
+end
+
+local function GetDialogShellBg()
+    if ns.UI_GetExternalShellBackdrop then
+        return ns.UI_GetExternalShellBackdrop()
+    end
+    local c = ns.UI_COLORS
+    return c and c.bg or { 0.06, 0.06, 0.08, 0.98 }
+end
+
 --- Paint credits, contributors, and tab guide copy into a bordered card.
 ---@param parent Frame scroll host or card parent
 ---@param innerWidth number usable text width
@@ -34,6 +78,8 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
         fs:SetWordWrap(true)
         if color then
             fs:SetTextColor(color[1], color[2], color[3])
+        else
+            ns.UI_SetTextColorRole(fs, "Normal")
         end
         fs:SetText(text)
         yOffset = yOffset + fs:GetStringHeight() + (spacing or 12)
@@ -43,15 +89,17 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
 
     AddText((ns.L and ns.L["WELCOME_TITLE"]) or "Welcome to Warband Nexus!", "header", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 12, true)
 
-    AddText((ns.L and ns.L["INFO_CREDITS_SECTION_TITLE"]) or "Credits & thanks", "title", { 1, 0.84, 0 }, 10, true)
-    AddText((ns.L and ns.L["INFO_CREDITS_LORE_SUBTITLE"]) or "Special Thanks", "title", { 0.4, 0.8, 1 }, 6, true)
+    local sgR, sgG, sgB = SemanticGoldRGB()
+    AddText((ns.L and ns.L["INFO_CREDITS_SECTION_TITLE"]) or "Credits & thanks", "title", { sgR, sgG, sgB }, 10, true)
+    local ar, ag, ab = AccentRGB()
+    AddText((ns.L and ns.L["INFO_CREDITS_LORE_SUBTITLE"]) or "Special Thanks", "title", { ar * 0.85 + 0.15, ag * 0.85 + 0.15, math.min(1, ab * 0.85 + 0.2) }, 6, true)
     AddText("Egzolinas the Loremaster!", "body", { 0.96, 0.55, 0.73 }, 14, true)
 
-    AddText((ns.L and ns.L["CONTRIBUTORS_TITLE"]) or "Contributors", "title", { 0.4, 0.8, 1 }, 6, true)
+    AddText((ns.L and ns.L["CONTRIBUTORS_TITLE"]) or "Contributors", "title", { ar, ag, ab }, 6, true)
 
     local CLASS_COLORS = ns.Constants and ns.Constants.CLASS_COLORS
     local colorEnd = "|r"
-    local blizzGold = "|cffffd100"
+    local blizzGold = SemanticGoldHex()
 
     if CLASS_COLORS then
         local contribClassLine = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
@@ -87,42 +135,43 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
 
     AddText((ns.L and ns.L["INFO_FEATURES_SECTION_TITLE"]) or "Features overview", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 14, true)
     AddText((ns.L and ns.L["ADDON_OVERVIEW_TITLE"]) or "AddOn Overview", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 6)
-    AddText((ns.L and ns.L["ADDON_OVERVIEW_DESC"]) or "Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", { 0.9, 0.9, 0.9 }, 18)
+    AddText((ns.L and ns.L["ADDON_OVERVIEW_DESC"]) or "Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", nil, 18)
 
     AddText((ns.L and ns.L["INFO_TAB_CHARACTERS"]) or "Characters", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["CHARACTERS_DESC"]) or "View all characters with gold, level, iLvl, faction, race, class, professions, keystone, and last played info. Track or untrack characters, mark favorites.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["CHARACTERS_DESC"]) or "View all characters with gold, level, iLvl, faction, race, class, professions, keystone, and last played info. Track or untrack characters, mark favorites.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_STORAGE"]) or "Storage", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["STORAGE_DESC"]) or "Aggregated inventory view from all characters — bags, personal bank, and warband bank combined in one place.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["STORAGE_DESC"]) or "Aggregated inventory view from all characters — bags, personal bank, and warband bank combined in one place.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_ITEMS"]) or "Items", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["ITEMS_DESC"]) or "Search and browse items across all bags, banks, and warband bank. Auto-scans when you open a bank. Shows which characters own each item via tooltip.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["ITEMS_DESC"]) or "Search and browse items across all bags, banks, and warband bank. Auto-scans when you open a bank. Shows which characters own each item via tooltip.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_GEAR"]) or "Gear", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["GEAR_DESC"]) or "Equipped gear, upgrade options, storage recommendations, and cross-character upgrade candidates.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["GEAR_DESC"]) or "Equipped gear, upgrade options, storage recommendations, and cross-character upgrade candidates.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_CURRENCY"]) or "Currency", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion. Compare amounts across characters with hover tooltips. Hide empty currencies with one click.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion. Compare amounts across characters with hover tooltips. Hide empty currencies with one click.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_REPUTATIONS"]) or "Reputations", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["REPUTATIONS_DESC"]) or "Compare reputation progress across all characters. Shows Account-Wide vs Character-Specific factions with hover tooltips for per-character breakdown.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["REPUTATIONS_DESC"]) or "Compare reputation progress across all characters. Shows Account-Wide vs Character-Specific factions with hover tooltips for per-character breakdown.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_PVE"]) or "PvE", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault progress with next-tier indicators, Mythic+ scores and keys, keystone affixes, dungeon history, and upgrade currency across all characters.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault progress with next-tier indicators, Mythic+ scores and keys, keystone affixes, dungeon history, and upgrade currency across all characters.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_PROFESSIONS"]) or "Professions", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "See every tracked character's crafting professions in one sortable grid: skill level, equipped tools, concentration and recharge, knowledge points, recipe coverage, and weekly knowledge progress. Data updates when you open each character's profession panel (default K). While a profession window stays open, Recipe Companion shows how many of each reagent you carry in bags.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "See every tracked character's crafting professions in one sortable grid: skill level, equipped tools, concentration and recharge, knowledge points, recipe coverage, and weekly knowledge progress. Data updates when you open each character's profession panel (default K). While a profession window stays open, Recipe Companion shows how many of each reagent you carry in bags.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_COLLECTIONS"]) or "Collections", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, transmog, and other collectibles. Track collection progress and find missing items.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, transmog, and other collectibles. Track collection progress and find missing items.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "To-Do", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, achievements, and transmogs. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", { 0.9, 0.9, 0.9 }, 10)
+    AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, achievements, and transmogs. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics.", "body", { 0.9, 0.9, 0.9 }, 25)
+    AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics.", "body", nil, 25)
 
-    AddText((ns.L and ns.L["THANK_YOU_MSG"]) or "Thank you for using Warband Nexus!", "title", { 0.2, 0.8, 0.2 }, 8, true)
+    local tgr, tgg, tgb = SemanticGreenRGB()
+    AddText((ns.L and ns.L["THANK_YOU_MSG"]) or "Thank you for using Warband Nexus!", "title", { tgr, tgg, tgb }, 8, true)
 
     local lastText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
     lastText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
@@ -144,7 +193,8 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
         end
         okBtn:SetPoint("CENTER", contentCard, "TOP", 0, -yOffset - 16)
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(okBtn, { 0.08, 0.08, 0.10, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            local okBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1 }
+            ns.UI_ApplyVisuals(okBtn, okBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
         local okBtnText = FontManager:CreateFontString(okBtn, "body", "OVERLAY")
         okBtnText:SetPoint("CENTER")
@@ -225,7 +275,8 @@ function WarbandNexus:ShowInfoDialog()
     self.infoDialog = dialog
 
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(dialog, { 0.02, 0.02, 0.03, 0.98 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
+        local shell = GetDialogShellBg()
+        ns.UI_ApplyVisuals(dialog, shell, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
     end
 
     local infoMainShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
@@ -244,7 +295,8 @@ function WarbandNexus:ShowInfoDialog()
     header:SetFrameLevel(dialog:GetFrameLevel() + 10)
 
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+        local headerBg = COLORS.bgCard or COLORS.surfaceHeaderChrome or COLORS.bg
+        ns.UI_ApplyVisuals(header, { headerBg[1], headerBg[2], headerBg[3], headerBg[4] or 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
 
     local logo = header:CreateTexture(nil, "ARTWORK")
@@ -266,7 +318,8 @@ function WarbandNexus:ShowInfoDialog()
     end
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -UI_SPACING.AFTER_ELEMENT, 0)
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(closeBtn, { COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.95 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.95 }
+        ns.UI_ApplyVisuals(closeBtn, closeBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
     end
     local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(18, 18)

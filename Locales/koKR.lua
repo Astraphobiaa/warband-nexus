@@ -824,6 +824,11 @@ L["COLOR_CYAN"] = "청록색 테마"
 L["COLOR_CYAN_DESC"] = "밝은 청록색 테마"
 L["USE_CLASS_COLOR_ACCENT"] = "직업 색상을 강조색으로 사용"
 L["USE_CLASS_COLOR_ACCENT_TOOLTIP"] = "현재 캐릭터의 직업 색상을 강조, 테두리, 탭에 사용합니다. 확인할 수 없으면 저장된 테마 색상을 사용합니다."
+L["THEME_MODE"] = "라이트 / 다크"
+L["THEME_MODE_TOOLTIP"] = "패널, 목록, 텍스트에 사용할 어두운 또는 밝은 UI 팔레트를 선택합니다. 모든 패널에 색이 반영되도록 /reload를 권장합니다."
+L["THEME_MODE_DARK"] = "다크"
+L["THEME_MODE_LIGHT"] = "라이트"
+L["THEME_MODE_RELOAD_HINT"] = "테마 모양이 변경되었습니다 - /reload로 전체에 적용하세요."
 
 -- Settings - Font
 L["FONT_FAMILY"] = "글꼴 패밀리"

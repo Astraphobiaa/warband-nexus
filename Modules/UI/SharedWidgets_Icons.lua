@@ -161,6 +161,41 @@ end
     @param noBorder boolean - If true, skip border (default false)
     @return frame - Icon frame with .texture accessible
 ]]
+local FILE_ICON_TEXCOORD = { 0.07, 0.93, 0.07, 0.93 }
+
+function ns.UI_ApplyFileIconTexCoord(tex)
+    if tex then
+        tex:SetTexCoord(FILE_ICON_TEXCOORD[1], FILE_ICON_TEXCOORD[2], FILE_ICON_TEXCOORD[3], FILE_ICON_TEXCOORD[4])
+    end
+end
+
+local function ApplyIconTexture(tex, texture, isAtlas)
+    if not tex or not texture then return end
+    if isAtlas then
+        local success = pcall(tex.SetAtlas, tex, texture, false)
+        if not success then
+            success = pcall(tex.SetAtlas, tex, texture, true)
+        end
+        if not success then
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                local texName = texture
+                if texName ~= nil and not (issecretvalue and issecretvalue(texName)) then
+                    DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texName) .. "' failed, using fallback")
+                end
+            end
+            tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            ns.UI_ApplyFileIconTexCoord(tex)
+        end
+        return
+    end
+    if type(texture) == "string" then
+        tex:SetTexture(texture)
+    else
+        tex:SetTexture(texture)
+    end
+    ns.UI_ApplyFileIconTexCoord(tex)
+end
+
 local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
     if not parent then return nil end
     
@@ -176,13 +211,26 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
     
     -- Apply pixel-perfect border (unless noBorder is true)
     if not noBorder then
-        ApplyVisuals(frame, {0.05, 0.05, 0.07, 0.95}, borderColor)
+        local iconBg = { 0.05, 0.05, 0.07, 0.95 }
+        local iconBorder = borderColor
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+            if ns.UI_GetIconWellBackdrop then
+                local bg = ns.UI_GetIconWellBackdrop()
+                iconBg = { bg[1], bg[2], bg[3], bg[4] or 1 }
+            end
+            if ns.UI_GetIconWellBorder then
+                iconBorder = ns.UI_GetIconWellBorder()
+            end
+        end
+        ApplyVisuals(frame, iconBg, iconBorder)
     end
     
-    -- Icon texture (inset by 2*pixelScale if border, otherwise fill frame)
+    -- Icon texture (square fit inside frame; atlas keeps native UV)
     local tex = frame:CreateTexture(nil, "ARTWORK")
     if noBorder then
-        tex:SetAllPoints()
+        local inset = math.max(1, (GetPixelScale and GetPixelScale() or 1) * 2)
+        tex:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
+        tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
     else
         -- Inset by 2 physical pixels to prevent texture bleeding into border
         local inset = GetPixelScale() * 2
@@ -190,39 +238,12 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
         tex:SetPoint("BOTTOMRIGHT", -inset, inset)
     end
     
-    -- Set texture or atlas
-    if texture then
-        if isAtlas then
-            -- Use atlas (modern WoW UI system)
-            local success = pcall(function()
-                tex:SetAtlas(texture, false)  -- false = don't use atlas size
-            end)
-            if not success then
-                -- Atlas failed, fallback to question mark texture
-                if IsDebugModeEnabled and IsDebugModeEnabled() then
-                    local texName = texture
-                    if texName ~= nil and not (issecretvalue and issecretvalue(texName)) then
-                        DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texName) .. "' failed, using fallback")
-                    end
-                end
-                tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-                tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            end
-        else
-            -- Use texture path or fileID
-            if type(texture) == "string" then
-                tex:SetTexture(texture)
-            else
-                tex:SetTexture(texture)  -- FileID (number)
-            end
-            -- Zoom effect (trim ugly edges) - only for textures, not atlas
-            tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
-    end
+    ApplyIconTexture(tex, texture, isAtlas)
     
     -- Anti-flicker optimization
     tex:SetSnapToPixelGrid(false)
     tex:SetTexelSnappingBias(0)
+    tex:SetVertexColor(1, 1, 1, 1)
     
     -- Store texture reference
     frame.texture = tex
@@ -365,9 +386,15 @@ end
 ]]
 local function CreateButton(parent, width, height, bgColor, borderColor, noBorder)
     if not parent then return nil end
-    
-    bgColor = bgColor or {0.05, 0.05, 0.07, 0.95}
-    borderColor = borderColor or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+
+    if not bgColor then
+        if ns.UI_GetControlChromeBackdrop then
+            bgColor = ns.UI_GetControlChromeBackdrop()
+        else
+            bgColor = { 0.05, 0.05, 0.07, 0.95 }
+        end
+    end
+    borderColor = borderColor or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
     noBorder = noBorder or false
     
     -- Button frame

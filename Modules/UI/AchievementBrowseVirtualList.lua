@@ -32,7 +32,23 @@ local COLLAPSE_HEADER_HEIGHT_ACH = LAYOUT.SECTION_COLLAPSE_HEADER_HEIGHT or 36
 local BASE_INDENT = LAYOUT.BASE_INDENT or 15
 local SECTION_SPACING = LAYOUT.SECTION_SPACING or LAYOUT.betweenSections or 8
 local MINI_SPACING = LAYOUT.MINI_SPACING or LAYOUT.miniSpacing or 4
-local ACHIEVEMENT_HEADER_CHUNK = 4
+local ACHIEVEMENT_HEADER_CHUNK = (ns.CollectionsUI and ns.CollectionsUI.COLLECTIONS_HEADER_CHUNK) or 4
+local ACHIEVEMENT_HEADER_CHUNK_DEFERRED = (ns.CollectionsUI and ns.CollectionsUI.COLLECTIONS_HEADER_CHUNK_DEFERRED) or 99999
+
+local function BeginAchievementBrowseDeferredChrome(opts)
+    local cui = ns.CollectionsUI
+    if cui and cui.CollectionsBeginListChromeDefer and cui.CollectionsListChromeFramesForSubTab then
+        return cui.CollectionsBeginListChromeDefer(cui.CollectionsListChromeFramesForSubTab("achievements", opts and opts.chromeHostFrame))
+    end
+    return false
+end
+
+local function EndAchievementBrowseDeferredChrome()
+    local cui = ns.CollectionsUI
+    if cui and cui.CollectionsEndListChromeDefer then
+        cui.CollectionsEndListChromeDefer()
+    end
+end
 
 --- Measure root section wraps on the achievement list scroll child (respects collapsed nested bodies).
 local function SyncAchievementBrowseScrollChildHeight(state)
@@ -76,6 +92,7 @@ local _populateAchievementBrowseQueued = nil
 function ns.UI_AchievementBrowse_ResetPopulateBusy()
     _populateAchievementBrowseBusy = false
     _populateAchievementBrowseQueued = nil
+    EndAchievementBrowseDeferredChrome()
 end
 
 --- Drop session caches when achievement APIs become ready (login) or collection scan finishes.
@@ -332,6 +349,9 @@ function ns.UI_AchievementBrowse_Populate(opts)
         return
     end
 
+    local deferListChrome = BeginAchievementBrowseDeferredChrome(opts)
+    local headerChunkSize = deferListChrome and ACHIEVEMENT_HEADER_CHUNK_DEFERRED or ACHIEVEMENT_HEADER_CHUNK
+
     scrollChild:SetWidth(listWidth)
 
     local visible = state._achVisibleRowFrames
@@ -371,6 +391,16 @@ function ns.UI_AchievementBrowse_Populate(opts)
         end
     end
     local flatList = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
+    do
+        local cui = ns.CollectionsUI
+        if cui and cui.CollectionsSubTabTrace then
+            cui.CollectionsSubTabTrace("PopulateAchievementList_start", {
+                deferChrome = deferListChrome,
+                headersChunk = headerChunkSize,
+                flatItems = #flatList,
+            })
+        end
+    end
 
     if ns.UI_HideEmptyStateCard then
         ns.UI_HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
@@ -381,6 +411,7 @@ function ns.UI_AchievementBrowse_Populate(opts)
             state._achFlatList = flatList
             state._achFlatListTotalHeight = math.max(200, (scrollChild:GetParent() and scrollChild:GetParent():GetHeight()) or 200)
             scrollChild:SetHeight(state._achFlatListTotalHeight)
+            EndAchievementBrowseDeferredChrome()
             _populateAchievementBrowseBusy = false
             InvokeAchievementBrowseListReady(opts)
             DrainAchievementBrowsePopulateQueue()
@@ -590,7 +621,8 @@ function ns.UI_AchievementBrowse_Populate(opts)
         state._plansCategoryGen = opts.plansCategoryGen
     end
 
-    -- Bind flat list before header pump so expanded sections can paint rows per chunk.
+    -- Bind flat list before header pump (virtual rows paint once in finishAchievementBrowsePopulate;
+    -- same as Mounts/Pets/Toys Populate*List — no mid-pump visible-range refresh).
     state._achFlatList = flatList
     state._achListWidth = listWidth
     state._achListSelectedID = selectedAchievementID
@@ -608,8 +640,22 @@ function ns.UI_AchievementBrowse_Populate(opts)
         if type(scheduleVisibleSync) == "function" then
             scheduleVisibleSync(refreshVisibleInternal)
         end
+        EndAchievementBrowseDeferredChrome()
+        do
+            local cui = ns.CollectionsUI
+            if cui and cui.CollectionsSubTabTrace then
+                cui.CollectionsSubTabTrace("PopulateAchievementList_done", { flatItems = state._achFlatList and #state._achFlatList or 0 })
+            end
+        end
         InvokeAchievementBrowseListReady(opts)
         _populateAchievementBrowseBusy = false
+        DrainAchievementBrowsePopulateQueue()
+    end
+
+    local function abortAchievementBrowsePopulate()
+        EndAchievementBrowseDeferredChrome()
+        _populateAchievementBrowseBusy = false
+        InvokeAchievementBrowseListReady(opts)
         DrainAchievementBrowsePopulateQueue()
     end
 
@@ -625,32 +671,24 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     local function pumpAchievementHeaders()
         if state._achPopulateGen == -1 or state._plansCategoryGen == -1 then
-            _populateAchievementBrowseBusy = false
-            InvokeAchievementBrowseListReady(opts)
-            DrainAchievementBrowsePopulateQueue()
+            abortAchievementBrowsePopulate()
             return
         end
         if drawGen and state._achPopulateGen and state._achPopulateGen ~= drawGen then
-            _populateAchievementBrowseBusy = false
-            InvokeAchievementBrowseListReady(opts)
-            DrainAchievementBrowsePopulateQueue()
+            abortAchievementBrowsePopulate()
             return
         end
         if drawGen and state._collectionsSubTabGen and opts.collectionsSubTabGen and state._collectionsSubTabGen ~= opts.collectionsSubTabGen then
-            _populateAchievementBrowseBusy = false
-            InvokeAchievementBrowseListReady(opts)
-            DrainAchievementBrowsePopulateQueue()
+            abortAchievementBrowsePopulate()
             return
         end
         if drawGen and opts.plansCategoryGen and state._plansCategoryGen and state._plansCategoryGen ~= opts.plansCategoryGen then
-            _populateAchievementBrowseBusy = false
-            InvokeAchievementBrowseListReady(opts)
-            DrainAchievementBrowsePopulateQueue()
+            abortAchievementBrowsePopulate()
             return
         end
 
         local built = 0
-        while flatHeaderIdx <= #flatList and built < ACHIEVEMENT_HEADER_CHUNK do
+        while flatHeaderIdx <= #flatList and built < headerChunkSize do
             while flatHeaderIdx <= #flatList and flatList[flatHeaderIdx].type ~= "header" do
                 flatHeaderIdx = flatHeaderIdx + 1
             end
@@ -721,8 +759,12 @@ function ns.UI_AchievementBrowse_Populate(opts)
                     refreshVisibleInternal()
                 end,
             }))
-            header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-            header:SetWidth(wrapW)
+            if ns.UI_AnchorSectionHeaderInWrap then
+                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, wrapW)
+            else
+                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
+                header:SetWidth(wrapW)
+            end
             header:SetHeight(it.height)
 
             sectionBody = Factory:CreateContainer(sectionWrap, wrapW, 0.1, false)
@@ -743,10 +785,6 @@ function ns.UI_AchievementBrowse_Populate(opts)
             achHeaderKeys[#achHeaderKeys + 1] = key
             achSiblingTailByParent[parentToken] = sectionWrap
             built = built + 1
-        end
-
-        if built > 0 then
-            refreshVisibleInternal()
         end
 
         if hasRemainingAchievementHeaders() then

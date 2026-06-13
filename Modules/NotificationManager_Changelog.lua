@@ -110,7 +110,12 @@ local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData,
             line:SetNonSpaceWrap(false)
             line:SetText(change)
             if change:match(":$") then
-                line:SetTextColor(1, 0.84, 0)
+                local sgR, sgG, sgB = ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()
+                if sgR then
+                    line:SetTextColor(sgR, sgG, sgB, 1)
+                else
+                    line:SetTextColor(1, 0.84, 0, 1)
+                end
             else
                 ns.UI_SetTextColorRole(line, "Bright")
             end
@@ -150,10 +155,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     backdrop:EnableMouse(true)
     backdrop:SetScript("OnMouseDown", function() end) -- Block clicks
     
-    -- Semi-transparent black overlay
+    -- Semi-transparent overlay (theme-aware scrim)
     local bg = backdrop:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.7)
+    local dim = ns.UI_GetOverlayDimColor and ns.UI_GetOverlayDimColor() or { 0, 0, 0, 0.7 }
+    bg:SetColorTexture(dim[1], dim[2], dim[3], dim[4] or 1)
+    backdrop._wnDimTexture = bg
     
     -- Popup frame (increased size for better content visibility)
     local popup = CreateFrame("Frame", nil, backdrop, "BackdropTemplate")
@@ -170,8 +177,17 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
             edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 },
         })
-        popup:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        popup:SetBackdropColor((ns.UI_COLORS and ns.UI_COLORS.bgCard and ns.UI_COLORS.bgCard[1]) or 0.08,
+            (ns.UI_COLORS and ns.UI_COLORS.bgCard and ns.UI_COLORS.bgCard[2]) or 0.08,
+            (ns.UI_COLORS and ns.UI_COLORS.bgCard and ns.UI_COLORS.bgCard[3]) or 0.10, 1)
         popup:SetBackdropBorderColor(ar, ag, ab, 1)
+    end
+    backdrop._wnPopup = popup
+
+    if ns.UI_RegisterScaledFrame then
+        ns.UI_RegisterScaledFrame(popup)
+    elseif ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(popup)
     end
     
     -- Logo/Icon
@@ -208,7 +224,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         local whatsNewLabel = FontManager:CreateFontString(popup, "title", "OVERLAY")
         whatsNewLabel:SetPoint("TOP", separator, "BOTTOM", 0, -15)
         local whatsNewText = (ns.L and ns.L["WHATS_NEW"]) or "What's New"
-        whatsNewLabel:SetText("|cffffd700" .. whatsNewText .. "|r")
+        whatsNewLabel:SetText((ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex() or "|cffffd700") .. whatsNewText .. "|r")
     end
     
     local POPUP_INNER_W = 600
@@ -281,7 +297,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
         closeBtn = ns.UI.Factory:CreateButton(popup, 120, 35, false)
         if ApplyVisuals then
-            ApplyVisuals(closeBtn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+            local idle = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+            ApplyVisuals(closeBtn, idle or { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
         end
     end
     if not closeBtn then
@@ -298,15 +315,13 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     end
     closeBtn:SetPoint("BOTTOM", 0, changelogCloseBottom)
     
-    local closeBtnText
-    if FontManager and FontManager.CreateFontString then
-        closeBtnText = FontManager:CreateFontString(closeBtn, "body", "OVERLAY")
-    else
-        closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    end
+    local closeBtnText = FontManager and FontManager.CreateFontString
+        and FontManager:CreateFontString(closeBtn, "body", "OVERLAY")
+        or closeBtn:CreateFontString(nil, "OVERLAY")
     closeBtnText:SetPoint("CENTER")
     local gotItText = (ns.L and ns.L["GOT_IT"]) or "Got it!"
     closeBtnText:SetText(gotItText)
+    ns.UI_SetTextColorRole(closeBtnText, "Bright")
     
     closeBtn:SetScript("OnClick", function()
         if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications then
@@ -323,7 +338,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     
     closeBtn:SetScript("OnEnter", function(btn)
         if ApplyVisuals then
-            ApplyVisuals(btn, { ar * 0.7, ag * 0.7, ab * 0.7, 1 }, { ar, ag, ab, 1 })
+            local hover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()
+            if hover then
+                ApplyVisuals(btn, hover, { ar, ag, ab, 1 })
+            else
+                ApplyVisuals(btn, { ar * 0.7, ag * 0.7, ab * 0.7, 1 }, { ar, ag, ab, 1 })
+            end
         elseif btn.SetBackdropColor then
             btn:SetBackdropColor(ar * 0.7, ag * 0.7, ab * 0.7, 1)
         end
@@ -331,7 +351,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
 
     closeBtn:SetScript("OnLeave", function(btn)
         if ApplyVisuals then
-            ApplyVisuals(btn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+            local idle = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+            if idle then
+                ApplyVisuals(btn, idle, { ar, ag, ab, 1 })
+            else
+                ApplyVisuals(btn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+            end
         elseif btn.SetBackdropColor then
             btn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
         end
@@ -345,6 +370,20 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     end)
     if not InCombatLockdown() then backdrop:SetPropagateKeyboardInput(false) end
 end
+
+function WarbandNexus:RefreshWhatsNewTheme()
+    local backdrop = _G.WarbandNexusUpdateBackdrop
+    if not backdrop or not backdrop:IsShown() then return end
+    if backdrop._wnDimTexture then
+        local dim = ns.UI_GetOverlayDimColor and ns.UI_GetOverlayDimColor() or { 0, 0, 0, 0.7 }
+        backdrop._wnDimTexture:SetColorTexture(dim[1], dim[2], dim[3], dim[4] or 1)
+    end
+    local popup = backdrop._wnPopup
+    if popup and ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(popup)
+    end
+end
+
 Chg.CURRENT_VERSION = CURRENT_VERSION
 Chg.CHANGELOG = CHANGELOG
 Chg.VersionToChangelogKey = VersionToChangelogKey

@@ -616,9 +616,19 @@ end
 
 local CC_CAP_OPEN = "|cff80ff80"
 local CC_CAPPED   = "|cffff5959"
-local CC_WHITE    = "|cffffffff"
 local CC_MUTED    = "|cff888888"
 local EM_DASH_CUR = "\226\128\148"
+
+local function SeasonWhiteHex()
+    if ns.UI_GetBrightHex then return ns.UI_GetBrightHex() end
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Bright") end
+    return "|cffeeeeee"
+end
+
+local function SeasonMutedHex()
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Muted") end
+    return CC_MUTED
+end
 
 --- Coffer Key Shards: localized name match (currency ID changes between patches).
 ---@param currencyID number|nil unused (kept for call-site compatibility)
@@ -643,7 +653,7 @@ end
 function Utilities.FormatCurrencySeasonProgressLine(cd)
     local fmtNum = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
     if not cd then
-        return CC_MUTED .. "0|r"
+        return SeasonMutedHex() .. "0|r"
     end
     local qty = tonumber(cd.quantity) or 0
     local maxQ = tonumber(cd.maxQuantity) or 0
@@ -657,13 +667,13 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
             if teNum ~= nil then
                 numColor = (teNum >= maxQ) and CC_CAPPED or CC_CAP_OPEN
             else
-                numColor = CC_WHITE
+                numColor = SeasonWhiteHex()
             end
             return numColor .. fmtNum(teNum or 0) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(maxQ)
-                .. "|r " .. CC_MUTED .. "(" .. CC_WHITE .. fmtNum(qty) .. CC_MUTED .. ")|r"
+                .. "|r " .. CC_MUTED .. "(" .. SeasonWhiteHex() .. fmtNum(qty) .. CC_MUTED .. ")|r"
         end
         if qty > 0 then
-            return CC_WHITE .. fmtNum(qty) .. "|r"
+            return SeasonWhiteHex() .. fmtNum(qty) .. "|r"
         end
         return CC_MUTED .. EM_DASH_CUR .. "|r"
     end
@@ -674,7 +684,7 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
         if teNum ~= nil and teNum ~= qty then
             local capped = teNum >= sm
             local progressColor = capped and CC_CAPPED or CC_CAP_OPEN
-            return CC_WHITE .. fmtNum(qty) .. "|r " .. CC_MUTED .. "\194\183|r " ..
+            return SeasonWhiteHex() .. fmtNum(qty) .. "|r " .. CC_MUTED .. "\194\183|r " ..
                 progressColor .. fmtNum(teNum) .. "|r" ..
                 CC_MUTED .. " / " .. fmtNum(sm) .. "|r"
         end
@@ -682,7 +692,7 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
         if teNum ~= nil then
             numColor = (teNum >= sm) and CC_CAPPED or CC_CAP_OPEN
         else
-            numColor = CC_WHITE
+            numColor = SeasonWhiteHex()
         end
         return numColor .. fmtNum(qty) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(sm) .. "|r"
     end
@@ -692,7 +702,7 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
         return numColor .. fmtNum(qty) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(maxQ) .. "|r"
     end
     if qty > 0 then
-        return CC_WHITE .. fmtNum(qty) .. "|r"
+        return SeasonWhiteHex() .. fmtNum(qty) .. "|r"
     end
     return CC_MUTED .. EM_DASH_CUR .. "|r"
 end

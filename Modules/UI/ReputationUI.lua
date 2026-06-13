@@ -56,6 +56,40 @@ local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local COLORS = ns.UI_COLORS
 
+local function ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function SemanticGoldHex()
+    if ns.UI_GetSemanticGoldHex then
+        return ns.UI_GetSemanticGoldHex()
+    end
+    return "|cffffcc00"
+end
+
+local function SemanticColorHex(color)
+    if not color then return ThemeTextHex("Bright") end
+    return format("|cff%02x%02x%02x", (color[1] or 1) * 255, (color[2] or 1) * 255, (color[3] or 1) * 255)
+end
+
+local function SemanticGoldRGB()
+    if ns.UI_GetSemanticGoldColor then
+        return ns.UI_GetSemanticGoldColor()
+    end
+    local g = COLORS.gold or { 1, 0.82, 0, 1 }
+    return g[1], g[2], g[3], g[4] or 1
+end
+
+local function FormatParenBadge(innerColoredText)
+    local muted = ThemeTextHex("Muted")
+    return muted .. "(|r" .. innerColoredText .. muted .. ")|r"
+end
+
 -- Import pooling functions (performance: reuse frames instead of creating new ones)
 local AcquireReputationRow = ns.UI_AcquireReputationRow
 local ReleaseReputationRow = ns.UI_ReleaseReputationRow
@@ -69,6 +103,8 @@ local floor = math.floor
 
 local pairs = pairs
 local next = next
+local table_wipe = table.wipe
+local tinsert = table.insert
 
 -- Import shared UI constants
 local function GetLayout() return ns.UI_LAYOUT or {} end
@@ -83,8 +119,6 @@ local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 44
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 44
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
-local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 -- REPUTATION FORMATTING & HELPERS
 
@@ -129,7 +163,7 @@ end
 ---@return string Formatted text
 local function FormatReputationProgress(current, max)
     if current == 1 and max == 1 then
-        return "|cffffffff" .. ((ns.L and ns.L["REP_MAX"]) or "Max.") .. "|r"
+        return ThemeTextHex("Bright") .. ((ns.L and ns.L["REP_MAX"]) or "Max.") .. "|r"
     elseif max > 0 then
         return format("%s / %s", FormatNumber(current), FormatNumber(max))
     else
@@ -221,7 +255,12 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     pb.bg:SetPoint("RIGHT", -10, 0)
     pb.bg:Show()
 
-    local bgColor = COLORS.bgCard or { COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.8 }
+    local bgColor = COLORS.bg
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        bgColor = COLORS.surfaceRowOdd or COLORS.bg or bgColor
+    else
+        bgColor = COLORS.bg or { 0.042, 0.042, 0.055, 0.95 }
+    end
     pb.bgTexture:ClearAllPoints()
     pb.bgTexture:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", borderInset, -borderInset)
     pb.bgTexture:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", -borderInset, borderInset)
@@ -259,8 +298,9 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
         pb.fill:SetColorTexture(goldColor[1], goldColor[2], goldColor[3], goldColor[4] or 1)
     end
 
-    local accentColor = COLORS.accent or {0.4, 0.6, 1}
-    local br, bgc, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.6
+    local borderColor = COLORS.borderLight or COLORS.border or COLORS.accent
+    local br, bgc, bb = borderColor[1], borderColor[2], borderColor[3]
+    local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.88 or 0.58
 
     pb.borderTop:ClearAllPoints()
     pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
@@ -376,7 +416,13 @@ local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
 
     if progressBg then
         if not row.progressText then
-            row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
+            row.progressText = FontManager:CreateBarOverlayFontString(progressBg, "OVERLAY")
+            if not row.progressText then
+                row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
+                if ns.UI_ApplyFontStyleForRole then
+                    ns.UI_ApplyFontStyleForRole(row.progressText, "small", { barOverlay = true })
+                end
+            end
             row.progressText:SetJustifyH("CENTER")
             row.progressText:SetJustifyV("MIDDLE")
         end
@@ -415,7 +461,93 @@ end
 
 -- Phase 2.4: Cache for filtered search results
 local cachedSearchText = nil
-local cachedFilteredResults = {} -- [headerName][searchText] = filteredFactionList
+local cachedFilteredResults = {} -- [headerName|scope|searchText] = filteredFactionList
+
+-- Aggregate snapshot cache (header groups + AW/CB split); invalidated on WN_REPUTATION_*.
+local charLookupScratch = {}
+local repAggregateCache = {
+    key = nil,
+    aggregatedHeaders = nil,
+    accountWideHeaders = nil,
+    characterBasedHeaders = nil,
+}
+
+local function InvalidateRepDrawCaches()
+    repAggregateCache.key = nil
+    repAggregateCache.aggregatedHeaders = nil
+    repAggregateCache.accountWideHeaders = nil
+    repAggregateCache.characterBasedHeaders = nil
+    if table_wipe then
+        table_wipe(cachedFilteredResults)
+    else
+        for k in pairs(cachedFilteredResults) do
+            cachedFilteredResults[k] = nil
+        end
+    end
+    cachedSearchText = nil
+end
+
+---@param characters table
+---@return string
+local function GetReputationAggregateCacheKey(characters)
+    local db = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.reputationData
+    local parts = {
+        tostring(db and db.lastScan or 0),
+        tostring(db and db.version or 0),
+        tostring(#characters),
+    }
+    for ci = 1, #characters do
+        local char = characters[ci]
+        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
+            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
+        parts[#parts + 1] = charKey or ""
+    end
+    local cacheHeaders = WarbandNexus.GetReputationHeaders and WarbandNexus:GetReputationHeaders() or {}
+    parts[#parts + 1] = tostring(#cacheHeaders)
+    return table.concat(parts, "\031")
+end
+
+---@param aggregatedHeaders table
+---@return table accountWideHeaders, table characterBasedHeaders
+local function SplitAggregatedHeaders(aggregatedHeaders)
+    local accountWideHeaders = {}
+    local characterBasedHeaders = {}
+    local seenInAccountWide = {}
+
+    for ahi = 1, #aggregatedHeaders do
+        local headerData = aggregatedHeaders[ahi]
+        local awFactions = {}
+        local cbFactions = {}
+
+        local hdrFacs = headerData.factions
+        for fi = 1, #hdrFacs do
+            local faction = hdrFacs[fi]
+            local isAW = faction.isAccountWide or (faction.data and faction.data.isAccountWide)
+            if isAW == nil and faction.factionID and C_Reputation and C_Reputation.IsAccountWideReputation then
+                isAW = C_Reputation.IsAccountWideReputation(faction.factionID) or false
+            end
+            if isAW == nil then isAW = false end
+
+            local fid = faction.factionID or faction.data and faction.data.factionID
+            if isAW then
+                tinsert(awFactions, faction)
+                if fid then seenInAccountWide[fid] = true end
+            elseif not (fid and seenInAccountWide[fid]) then
+                tinsert(cbFactions, faction)
+            end
+        end
+
+        if #awFactions > 0 then
+            tinsert(accountWideHeaders, { name = headerData.name, factions = awFactions })
+        end
+        if #cbFactions > 0 then
+            tinsert(characterBasedHeaders, { name = headerData.name, factions = cbFactions })
+        end
+    end
+
+    return accountWideHeaders, characterBasedHeaders
+end
 
 ---Compare two reputation values to determine which is higher
 ---@param rep1 table First reputation data
@@ -480,13 +612,29 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     end
     
     -- Build character lookup table (SavedVariables row key = guid or Name-Realm; matches currency/cache writes).
-    local charLookup = {}
+    local charLookup = charLookupScratch
+    if table_wipe then
+        table_wipe(charLookup)
+    else
+        for k in pairs(charLookup) do
+            charLookup[k] = nil
+        end
+    end
+    local U = ns.Utilities
     for ci = 1, #characters do
         local char = characters[ci]
         local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
-            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
-            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
-        if charKey then charLookup[charKey] = char end
+            or (U and U.ResolveCharacterRowKey and U:ResolveCharacterRowKey(char))
+            or (U and U.GetCharacterKey and U:GetCharacterKey(char.name, char.realm))
+        if charKey then
+            charLookup[charKey] = char
+            if U and U.GetCanonicalCharacterKey then
+                local canon = U:GetCanonicalCharacterKey(charKey)
+                if canon and canon ~= charKey then
+                    charLookup[canon] = char
+                end
+            end
+        end
     end
     
     local function BuildReputationObject(cachedData)
@@ -571,6 +719,9 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 -- CHARACTER-SPECIFIC: Collect data for this character
                 local charKey = cachedData._characterKey or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 local char = charLookup[charKey]
+                if not char and U and U.GetCanonicalCharacterKey then
+                    char = charLookup[U:GetCanonicalCharacterKey(charKey) or ""]
+                end
                 
                 if char then
                     local reputation = BuildReputationObject(cachedData)
@@ -789,6 +940,28 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     return result
 end
 
+---@param characters table
+---@param factionMetadata table
+---@return table aggregatedHeaders, table accountWideHeaders, table characterBasedHeaders
+local function GetReputationAggregateSnapshot(characters, factionMetadata)
+    local cacheKey = GetReputationAggregateCacheKey(characters)
+    if repAggregateCache.key == cacheKey and repAggregateCache.aggregatedHeaders then
+        return repAggregateCache.aggregatedHeaders,
+            repAggregateCache.accountWideHeaders,
+            repAggregateCache.characterBasedHeaders
+    end
+
+    local aggregatedHeaders = AggregateReputations(characters, factionMetadata)
+    local accountWideHeaders, characterBasedHeaders = SplitAggregatedHeaders(aggregatedHeaders)
+
+    repAggregateCache.key = cacheKey
+    repAggregateCache.aggregatedHeaders = aggregatedHeaders
+    repAggregateCache.accountWideHeaders = accountWideHeaders
+    repAggregateCache.characterBasedHeaders = characterBasedHeaders
+
+    return aggregatedHeaders, accountWideHeaders, characterBasedHeaders
+end
+
 ---Truncate text if it's too long
 ---@param text string Text to truncate
 ---@param maxLength number Maximum length before truncation
@@ -864,17 +1037,17 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- PRIORITY 1: Friendship rank name (e.g., "Mastermind", "Good Friend")
     if reputation.friendship and reputation.friendship.reactionText then
         standingWord = reputation.friendship.reactionText
-        standingColorCode = "|cffffcc00"
+        standingColorCode = SemanticGoldHex()
     -- PRIORITY 2: Renown level (e.g., "Renown 25")
     elseif reputation.renown and reputation.renown.level and reputation.renown.level > 0 then
         standingWord = (ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown"
         standingNumber = tostring(reputation.renown.level)
-        standingColorCode = "|cffffcc00"
+        standingColorCode = SemanticGoldHex()
     -- PRIORITY 3: Friendship level (e.g., "Level 5")
     elseif reputation.friendship and reputation.friendship.level and reputation.friendship.level > 0 then
         standingWord = LEVEL or "Level"
         standingNumber = tostring(reputation.friendship.level)
-        standingColorCode = "|cffffcc00"
+        standingColorCode = SemanticGoldHex()
     -- PRIORITY 4: Classic standing (e.g., "Exalted", "Revered")
     elseif reputation.standing and reputation.standing.name then
         standingWord = reputation.standing.name
@@ -882,12 +1055,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         if c then
             standingColorCode = format("|cff%02x%02x%02x", (c.r or 1) * 255, (c.g or 1) * 255, (c.b or 1) * 255)
         else
-            standingColorCode = "|cffffffff"
+            standingColorCode = ThemeTextHex("Bright")
         end
     -- FALLBACK: Unknown
     else
         standingWord = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-        standingColorCode = "|cffff0000"
+        standingColorCode = SemanticColorHex(COLORS.red)
     end
     
     local repChevronW = (UI_SPACING and UI_SPACING.COLLAPSE_EXPAND_BUTTON_SIZE) or 22
@@ -915,7 +1088,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
         row.separator:ClearAllPoints()
         row.separator:SetPoint("LEFT", row.standingText, "RIGHT", 10, 0)
-        row.separator:SetText("|cff666666-|r")
+        row.separator:SetText(ThemeTextHex("Dim") .. "-|r")
         row.separator:Show()
         
         -- Faction Name (after separator)
@@ -966,17 +1139,18 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
         
         if characterInfo.isAccountWide then
-            row.badgeText:SetText("|cff666666(|r|cff00ff00" .. ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") .. "|r|cff666666)|r")
+            local label = ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide")
+            row.badgeText:SetText(FormatParenBadge(SemanticColorHex(COLORS.green) .. label .. "|r"))
         elseif characterInfo.name then
             local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
             local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
-            local badgeString = "|cff666666(|r|cff" .. classHex .. characterInfo.name
+            local inner = "|cff" .. classHex .. characterInfo.name
             if characterInfo.realm and characterInfo.realm ~= "" then
                 local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(characterInfo.realm) or characterInfo.realm
-                badgeString = badgeString .. " - " .. displayRealm
+                inner = inner .. " - " .. displayRealm
             end
-            badgeString = badgeString .. "|r|cff666666)|r"
-            row.badgeText:SetText(badgeString)
+            inner = inner .. "|r"
+            row.badgeText:SetText(FormatParenBadge(inner))
         end
         row.badgeText:Show()
     end
@@ -1013,7 +1187,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
             if #allCharData >= 1 then
                 table.insert(lines, {type = "spacer", height = 8})
-                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})
+                local gr, gg, gb = SemanticGoldRGB()
+                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {gr, gg, gb}})
                 
                 for aci = 1, #allCharData do
                     local charData = allCharData[aci]
@@ -1130,26 +1305,26 @@ local function PopulateReputationRow(row, entry)
 
     if reputation.friendship and reputation.friendship.reactionText then
         standingWord = reputation.friendship.reactionText
-        standingColorCode = "|cffffcc00"
+        standingColorCode = SemanticGoldHex()
     elseif reputation.renown and reputation.renown.level and reputation.renown.level > 0 then
         standingWord = (ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown"
         standingNumber = tostring(reputation.renown.level)
-        standingColorCode = "|cffffcc00"
+        standingColorCode = SemanticGoldHex()
     elseif reputation.friendship and reputation.friendship.level and reputation.friendship.level > 0 then
         standingWord = LEVEL or "Level"
         standingNumber = tostring(reputation.friendship.level)
-        standingColorCode = "|cffffcc00"
+        standingColorCode = SemanticGoldHex()
     elseif reputation.standing and reputation.standing.name then
         standingWord = reputation.standing.name
         local c = reputation.standing.color
         if c then
             standingColorCode = format("|cff%02x%02x%02x", (c.r or 1) * 255, (c.g or 1) * 255, (c.b or 1) * 255)
         else
-            standingColorCode = "|cffffffff"
+            standingColorCode = ThemeTextHex("Bright")
         end
     else
         standingWord = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-        standingColorCode = "|cffff0000"
+        standingColorCode = SemanticColorHex(COLORS.red)
     end
 
     if standingWord ~= "" then
@@ -1172,7 +1347,7 @@ local function PopulateReputationRow(row, entry)
         end
         row.separator:ClearAllPoints()
         row.separator:SetPoint("LEFT", row.standingText, "RIGHT", 10, 0)
-        row.separator:SetText("|cff666666-|r")
+        row.separator:SetText(ThemeTextHex("Dim") .. "-|r")
         row.separator:Show()
 
         if not row.nameText then
@@ -1222,17 +1397,18 @@ local function PopulateReputationRow(row, entry)
         row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
 
         if characterInfo.isAccountWide then
-            row.badgeText:SetText("|cff666666(|r|cff00ff00" .. ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") .. "|r|cff666666)|r")
+            local label = ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide")
+            row.badgeText:SetText(FormatParenBadge(SemanticColorHex(COLORS.green) .. label .. "|r"))
         elseif characterInfo.name then
             local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
             local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
-            local badgeString = "|cff666666(|r|cff" .. classHex .. characterInfo.name
+            local inner = "|cff" .. classHex .. characterInfo.name
             if characterInfo.realm and characterInfo.realm ~= "" then
                 local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(characterInfo.realm) or characterInfo.realm
-                badgeString = badgeString .. " - " .. displayRealm
+                inner = inner .. " - " .. displayRealm
             end
-            badgeString = badgeString .. "|r|cff666666)|r"
-            row.badgeText:SetText(badgeString)
+            inner = inner .. "|r"
+            row.badgeText:SetText(FormatParenBadge(inner))
         end
         row.badgeText:Show()
     else
@@ -1269,7 +1445,8 @@ local function PopulateReputationRow(row, entry)
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
             if #allCharData >= 1 then
                 table.insert(lines, {type = "spacer", height = 8})
-                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})
+                local gr, gg, gb = SemanticGoldRGB()
+                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {gr, gg, gb}})
 
                 for aci = 1, #allCharData do
                     local charData = allCharData[aci]
@@ -1419,9 +1596,6 @@ function WarbandNexus:DrawReputationList(container, width)
     -- Expanded state
     local expanded = self.db.profile.reputationExpanded or {}
     
-    -- Get current online character
-    local currentCharKey = ns.Utilities:GetCharacterKey()
-    
     -- Helper functions for expand/collapse
     local function IsExpanded(key, default)
         if self.db.profile.reputationExpandOverride == "all_collapsed" then
@@ -1449,7 +1623,8 @@ function WarbandNexus:DrawReputationList(container, width)
     end
     
     
-    local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
+    local aggregatedHeaders, accountWideHeaders, characterBasedHeaders =
+        GetReputationAggregateSnapshot(characters, factionMetadata)
     
     if not aggregatedHeaders or #aggregatedHeaders == 0 then
         -- Show reputation-specific empty state
@@ -1513,54 +1688,8 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
     
-    -- Separate account-wide and character-based reputations (single source of truth: entry flag)
-    local accountWideHeaders = {}
-    local characterBasedHeaders = {}
-    local seenInAccountWide = {}  -- [factionID] = true; ensure no faction appears in both sections
-    
-    for ahi = 1, #aggregatedHeaders do
-        local headerData = aggregatedHeaders[ahi]
-        local awFactions = {}
-        local cbFactions = {}
-        
-        local hdrFacs = headerData.factions
-        for fi = 1, #hdrFacs do
-            local faction = hdrFacs[fi]
-            -- Use aggregated entry flag first; API fallback only when stored flag is nil (edge case)
-            local isAW = faction.isAccountWide or (faction.data and faction.data.isAccountWide)
-            if isAW == nil and faction.factionID and C_Reputation and C_Reputation.IsAccountWideReputation then
-                isAW = C_Reputation.IsAccountWideReputation(faction.factionID) or false
-            end
-            if isAW == nil then isAW = false end
-            
-            local fid = faction.factionID or faction.data and faction.data.factionID
-            if isAW then
-                table.insert(awFactions, faction)
-                if fid then seenInAccountWide[fid] = true end
-            else
-                -- Stability: do not add to character-based if already in account-wide (should not happen)
-                if not (fid and seenInAccountWide[fid]) then
-                    table.insert(cbFactions, faction)
-                end
-            end
-        end
-        
-        if #awFactions > 0 then
-            table.insert(accountWideHeaders, {
-                name = headerData.name,
-                factions = awFactions
-            })
-        end
-        
-        if #cbFactions > 0 then
-            table.insert(characterBasedHeaders, {
-                name = headerData.name,
-                factions = cbFactions
-            })
-        end
-    end
-    
-    -- Count total factions (TOP-LEVEL only â€” excludes children/subfactions)
+    -- Account-wide vs character-based sections (pre-split in aggregate snapshot cache)
+    -- Count total factions (TOP-LEVEL only — excludes children/subfactions)
     local totalAccountWide = 0
     for hi = 1, #accountWideHeaders do
         local h = accountWideHeaders[hi]
@@ -1676,23 +1805,28 @@ function WarbandNexus:DrawReputationList(container, width)
     end
 
     local function BuildFilteredList(headerData, scopeTag)
+        local rawSearch = reputationSearchText or ""
+        local isSecret = rawSearch and issecretvalue and issecretvalue(rawSearch)
+        local searchTextKey = isSecret and "" or rawSearch
+        local isSearching = not isSecret and rawSearch ~= ""
+
         local factionList = {}
         local bff = headerData.factions or {}
         for fi = 1, #bff do
             local faction = bff[fi]
             if faction and faction.data and not faction.data.parentFactionID then
-                table.insert(factionList, {
+                tinsert(factionList, {
                     faction = faction,
                     subfactions = faction.subfactions,
-                    originalIndex = faction.factionID
+                    originalIndex = faction.factionID,
                 })
             end
         end
 
-        local rawSearch = reputationSearchText or ""
-        local isSecret = rawSearch and issecretvalue and issecretvalue(rawSearch)
-        local searchTextKey = isSecret and "" or rawSearch
-        local isSearching = not isSecret and rawSearch ~= ""
+        if not isSearching then
+            return factionList, factionList, false
+        end
+
         local cacheKey = (headerData.name or "") .. "|" .. scopeTag .. "|" .. searchTextKey
         local cached = cachedFilteredResults[cacheKey]
         if cached and cached.searchText == searchTextKey then
@@ -2064,6 +2198,35 @@ end
 
 -- REPUTATION TAB WRAPPER (Fixes focus issue)
 
+--- Reposition cached Reputation fixedHeader chrome (Collections/Items parity — WN-PERF tab revisit).
+local function RepositionReputationFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, searchH)
+    local titleCard = hdrCache.titleCard
+    titleCard:SetParent(headerParent)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:ClearAllPoints()
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    end
+    titleCard:Show()
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    else
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+    end
+    local searchBox = hdrCache.searchBox
+    if searchBox then
+        searchBox:SetParent(headerParent)
+        searchBox:ClearAllPoints()
+        searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        searchBox:Show()
+        headerYOffset = headerYOffset + searchH + GetLayout().afterElement
+    end
+    return headerYOffset
+end
+
 local function ApplyReputationResultsHeight(mainFrame, scrollChild, resultsContainer, listHeight, _animate, _fromResultsH, _fromScrollChildH)
     if not mainFrame or not scrollChild or not resultsContainer then return end
     local targetResultsH = math.max(listHeight or 1, 1)
@@ -2112,6 +2275,22 @@ function WarbandNexus:RedrawReputationResultsOnly(animateHeight)
     end
 end
 
+---Data-only refresh: reuse chrome when resultsContainer exists (CurrencyUI parity).
+---@param parent Frame scrollChild
+---@param animateResults boolean|nil
+local function RefreshReputationTabData(parent, animateResults)
+    if not parent then return end
+    InvalidateRepDrawCaches()
+    if parent.resultsContainer then
+        if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
+            SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
+        end
+        WarbandNexus:RedrawReputationResultsOnly(animateResults == true)
+    else
+        WarbandNexus:DrawReputationTab(parent)
+    end
+end
+
 function WarbandNexus:DrawReputationTab(parent)
     if not parent then
         self:Print("|cffff0000ERROR: No parent container provided to DrawReputationTab|r")
@@ -2129,10 +2308,7 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- Loading started - only refresh if Reputations tab is active (not parent:IsVisible â€” shared scroll child)
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_LOADING_STARTED, function()
-            -- Phase 2.4: Invalidate search cache
-            cachedFilteredResults = {}
-            cachedSearchText = nil
-            
+            InvalidateRepDrawCaches()
             if parent and IsReputationTabActive() then
                 self:DrawReputationTab(parent)
             end
@@ -2140,9 +2316,7 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- v2.0.0: Cache cleared - loading UI only when tab active
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_CACHE_CLEARED, function()
-            -- Phase 2.4: Invalidate search cache
-            cachedFilteredResults = {}
-            cachedSearchText = nil
+            InvalidateRepDrawCaches()
             if IsReputationTabActive() then
                 if parent._loadingPanel then
                     parent._loadingPanel:ShowLoading(
@@ -2163,29 +2337,21 @@ function WarbandNexus:DrawReputationTab(parent)
             end
         end)
         
-        -- v2.0.0: Cache ready (hide loading, show content) - full redraw only when tab active
+        -- v2.0.0: Cache ready (hide loading, show content) - results-only when chrome exists
         WarbandNexus.RegisterMessage(ReputationUIEvents, E.REPUTATION_CACHE_READY, function()
-            -- Phase 2.4: Invalidate search cache
-            cachedFilteredResults = {}
-            cachedSearchText = nil
-            
             if parent._loadingPanel then
                 parent._loadingPanel:HideLoading()
             end
             
             if parent and IsReputationTabActive() then
-                self:DrawReputationTab(parent)
+                RefreshReputationTabData(parent, false)
             end
         end)
         
         -- Real-time update event (single faction changed)
         WarbandNexus.RegisterMessage(ReputationUIEvents, Constants.EVENTS.REPUTATION_UPDATED, function(event, factionID)
-            -- Phase 2.4: Invalidate search cache
-            cachedFilteredResults = {}
-            cachedSearchText = nil
-            
             if parent and IsReputationTabActive() then
-                self:DrawReputationTab(parent)
+                RefreshReputationTabData(parent, false)
             end
         end)
     end
@@ -2233,14 +2399,19 @@ function WarbandNexus:DrawReputationTab(parent)
         return 120
     end
 
-    -- Clear all old frames (including FontStrings)
+    -- Clear stale scroll body on full redraw; PopulateContent already released pooled rows.
+    if not parent._preparedByPopulate then
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
         -- Keep only persistent UI elements (badge, title card, loading panel)
         if child ~= parent.dbVersionBadge 
            and child ~= parent.emptyStateContainer 
            and child ~= parent._loadingPanel
-           and child ~= (WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame._wnReputationTitleCard) then
+           and child ~= (WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame._wnReputationTitleCard)
+           and child ~= (WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame._wnReputationFixedHeaderCache
+               and WarbandNexus.UI.mainFrame._wnReputationFixedHeaderCache.titleCard)
+           and child ~= (WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame._wnReputationFixedHeaderCache
+               and WarbandNexus.UI.mainFrame._wnReputationFixedHeaderCache.searchBox) then
             pcall(function()
                 child:Hide()
                 child:ClearAllPoints()
@@ -2257,6 +2428,7 @@ function WarbandNexus:DrawReputationTab(parent)
                 region:ClearAllPoints()
             end)
         end
+    end
     end
     
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
@@ -2282,10 +2454,20 @@ function WarbandNexus:DrawReputationTab(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local repRightReserve = (tm.edgeInset or 0)
-    local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
+    local hdrCache = mf and mf._wnReputationFixedHeaderCache
     local titleCard
-    if mfRef and mfRef._wnReputationTitleCard then
-        titleCard = mfRef._wnReputationTitleCard
+    local headerChromeDone = false
+
+    if hdrCache and hdrCache.titleCard and hdrCache.searchBox then
+        titleCard = hdrCache.titleCard
+        headerYOffset = RepositionReputationFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, searchH)
+        headerChromeDone = true
+    end
+
+    if not headerChromeDone then
+    if mf and mf._wnReputationTitleCard then
+        titleCard = mf._wnReputationTitleCard
         titleCard:SetParent(headerParent)
         titleCard:ClearAllPoints()
         if chrome and ns.UI_AnchorTabTitleCard then
@@ -2308,8 +2490,8 @@ function WarbandNexus:DrawReputationTab(parent)
             titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
             titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
         end
-        if mfRef then
-            mfRef._wnReputationTitleCard = titleCard
+        if mf then
+            mf._wnReputationTitleCard = titleCard
         end
     end
     
@@ -2327,17 +2509,6 @@ function WarbandNexus:DrawReputationTab(parent)
         headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
     end
 
-    -- If module is disabled, show disabled state card in scroll area
-    if not moduleEnabled then
-        if ns.UI_HideTitleCardExpandCollapseControls then
-            ns.UI_HideTitleCardExpandCollapseControls(parent)
-        end
-        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
-        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
-        return scrollTopY + cardHeight
-    end
-
     local CreateSearchBox = ns.UI_CreateSearchBox
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
@@ -2350,9 +2521,30 @@ function WarbandNexus:DrawReputationTab(parent)
     
     searchBox:SetPoint("TOPLEFT", contentSide, -headerYOffset)
     searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    
-    local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
     headerYOffset = headerYOffset + searchH + GetLayout().afterElement
+
+    if not hdrCache then
+        hdrCache = {}
+        if mf then mf._wnReputationFixedHeaderCache = hdrCache end
+    end
+    hdrCache.titleCard = titleCard
+    hdrCache.searchBox = searchBox
+    end -- not headerChromeDone
+
+    if headerChromeDone and ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(parent)
+    end
+
+    -- If module is disabled, show disabled state card in scroll area
+    if not moduleEnabled then
+        if ns.UI_HideTitleCardExpandCollapseControls then
+            ns.UI_HideTitleCardExpandCollapseControls(parent)
+        end
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
+        return scrollTopY + cardHeight
+    end
 
     -- Set fixedHeader height so scroll area starts below it
     if ns.UI_CommitTabFixedHeader then
@@ -2375,6 +2567,27 @@ function WarbandNexus:DrawReputationTab(parent)
     container:SetHeight(1)
     container:Show()
     
+    local REP_LIST_DEFER_PLACEHOLDER_H = 120
+    if parent._preparedByPopulate and not parent._wnRepListDeferScheduled then
+        parent._wnRepListDeferScheduled = true
+        local deferGen = mf and mf._tabSwitchGen or 0
+        local deferSelf = self
+        local deferParent = parent
+        local deferContainer = container
+        local deferBodyW = bodyWidth
+        local deferScrollTopY = scrollTopY
+        C_Timer.After(0, function()
+            deferParent._wnRepListDeferScheduled = nil
+            if not mf or mf.currentTab ~= "reputations" or mf._tabSwitchGen ~= deferGen then return end
+            local listHeight = deferSelf:DrawReputationList(deferContainer, deferBodyW)
+            ApplyReputationResultsHeight(mf, deferParent, deferContainer, listHeight, false)
+            if ns.UI_SyncMainTabScrollChrome then
+                ns.UI_SyncMainTabScrollChrome(mf, deferParent, deferScrollTopY + listHeight)
+            end
+        end)
+        return deferScrollTopY + REP_LIST_DEFER_PLACEHOLDER_H
+    end
+
     local listHeight = self:DrawReputationList(container, bodyWidth)
     ApplyReputationResultsHeight(WarbandNexus.UI and WarbandNexus.UI.mainFrame, parent, container, listHeight, false)
     

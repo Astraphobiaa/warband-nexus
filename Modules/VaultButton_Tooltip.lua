@@ -83,7 +83,7 @@ function M.FormatProgressFraction(progress, maxVal, isCapped)
     progress = tonumber(progress) or 0
     maxVal = tonumber(maxVal) or 0
     if maxVal <= 0 then
-        return "|cffffffff" .. tostring(progress) .. "|r"
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. tostring(progress) .. "|r"
     end
     local capColor = (isCapped or progress >= maxVal) and "|cffdd3333" or "|cffd4af37"
     return capColor .. progress .. "|r|cffaaaaaa/|r|cffd4af37" .. maxVal .. "|r"
@@ -101,7 +101,7 @@ function M.FormatEasyAccessCharacterTitle(charRow, entry)
     if issecretvalue and issecretvalue(realmDisp) then
         return "|cff" .. classHex .. name .. "|r"
     end
-    return "|cff" .. classHex .. name .. "|r|cffffffff - " .. realmDisp .. "|r"
+    return "|cff" .. classHex .. name .. "|r" .. (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted") or "|cff888888") .. " - " .. realmDisp .. "|r"
 end
 
 local NormalizeColonLabel = ns.UI_NormalizeColonLabelSpacing

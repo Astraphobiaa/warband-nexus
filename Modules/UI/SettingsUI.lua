@@ -136,8 +136,7 @@ local function AppendSettingsPanelIntro(parent, panelId, width, yOffset, sideIns
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(true)
     fs:SetText(desc)
-    local dim = COLORS.textDim or { 0.55, 0.55, 0.55, 1 }
-    fs:SetTextColor(dim[1], dim[2], dim[3], dim[4] or 1)
+    ns.UI_SetTextColorRole(fs, "Dim")
     local sh = (fs.GetStringHeight and fs:GetStringHeight()) or 36
     return yOffset - math.max(18, sh) - SETTINGS_PANEL_INTRO_GAP
 end
@@ -540,14 +539,68 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
     return yCursor + ROW_GAP - gridTailPad, widgets
 end
 
+-- Declared before CreateButtonGrid: Lua locals are not visible before their definition line.
+local function SettingsControlChrome()
+    return ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.08, 0.08, 0.10, 1 }
+end
+
+local function SettingsControlChromeHover()
+    return ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.12, 0.14, 1 }
+end
+
+local function ColorNearMatch(rgbA, rgbB, eps)
+    eps = eps or 0.035
+    if not rgbA or not rgbB then return false end
+    return math.abs(rgbA[1] - rgbB[1]) <= eps
+        and math.abs(rgbA[2] - rgbB[2]) <= eps
+        and math.abs(rgbA[3] - rgbB[3]) <= eps
+end
+
+local function GetCurrentThemeAccentRgb()
+    local db = WarbandNexus.db and WarbandNexus.db.profile
+    local ac = (db and db.themeColors and db.themeColors.accent) or COLORS.accent
+    return ac[1], ac[2], ac[3]
+end
+
+local function IsThemePresetSelected(presetColor)
+    local r, g, b = GetCurrentThemeAccentRgb()
+    return ColorNearMatch({ r, g, b }, presetColor)
+end
+
+local function ApplyThemePresetButtonChrome(entry, isSelected)
+    if not entry or not entry.button or not ApplyVisuals then return end
+    local btnColor = entry.color
+    local bg
+    if isSelected then
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+            local ta = (ns.UI_COLORS or COLORS).tabActive
+            if ta then
+                bg = { ta[1], ta[2], ta[3], ta[4] or 0.98 }
+            else
+                bg = SettingsControlChromeHover()
+            end
+        else
+            bg = (ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop()) or SettingsControlChromeHover()
+        end
+    else
+        bg = SettingsControlChrome()
+    end
+    local borderA = isSelected and 1.0 or 0.8
+    ApplyVisuals(entry.button, bg, { btnColor[1], btnColor[2], btnColor[3], borderA })
+    if entry.text then
+        entry.text:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
+    end
+end
+
 ---Create button grid (RESPONSIVE - auto-adjusts columns)
 ---@param parent Frame Parent container
 ---@param buttons table Array of {label, tooltip, func, color (optional {r,g,b})}
 ---@param yOffset number Starting Y offset
 ---@param explicitWidth number Optional explicit width
 ---@param minButtonWidth number Optional minimum button width (default: MIN_ITEM_WIDTH)
+---@param presetRegistry table|nil Optional registry for theme preset grid ({ button, text, color })
 ---@return number New Y offset after grid
-local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButtonWidth)
+local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButtonWidth, presetRegistry)
     -- Calculate dynamic columns
     local containerWidth = explicitWidth or parent:GetWidth() or 640
     local minWidth = minButtonWidth or MIN_ITEM_WIDTH  -- Use custom min width if provided
@@ -571,9 +624,11 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         
         -- Use button's own color if provided, otherwise use theme accent
         local btnColor = btnData.color or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}
-        
-        if ApplyVisuals then
-            ApplyVisuals(button, {0.08, 0.08, 0.10, 1}, {btnColor[1], btnColor[2], btnColor[3], 0.8})
+        local isPreset = presetRegistry ~= nil
+        local isSelected = isPreset and IsThemePresetSelected(btnColor)
+
+        if not isPreset and ApplyVisuals then
+            ApplyVisuals(button, SettingsControlChrome(), { btnColor[1], btnColor[2], btnColor[3], 0.8 })
         end
         
         -- Button text
@@ -581,6 +636,11 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         buttonText:SetPoint("CENTER")
         buttonText:SetText(btnData.label)
         buttonText:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
+
+        if isPreset then
+            ApplyThemePresetButtonChrome({ button = button, text = buttonText, color = btnColor }, isSelected)
+            presetRegistry[#presetRegistry + 1] = { button = button, text = buttonText, color = btnColor }
+        end
         
         -- OnClick
         button:SetScript("OnClick", function()
@@ -592,7 +652,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         -- Hover effects
         button:SetScript("OnEnter", function(self)
             if ApplyVisuals then
-                ApplyVisuals(button, {0.12, 0.12, 0.14, 1}, {btnColor[1], btnColor[2], btnColor[3], 1})
+                ApplyVisuals(button, SettingsControlChromeHover(), {btnColor[1], btnColor[2], btnColor[3], 1})
             end
             ns.UI_SetTextColorRole(buttonText, "Bright")
             
@@ -602,8 +662,10 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         end)
         
         button:SetScript("OnLeave", function(self)
-            if ApplyVisuals then
-                ApplyVisuals(button, {0.08, 0.08, 0.10, 1}, {btnColor[1], btnColor[2], btnColor[3], 0.8})
+            if isPreset then
+                ApplyThemePresetButtonChrome({ button = button, text = buttonText, color = btnColor }, IsThemePresetSelected(btnColor))
+            elseif ApplyVisuals then
+                ApplyVisuals(button, SettingsControlChrome(), { btnColor[1], btnColor[2], btnColor[3], 0.8 })
             end
             buttonText:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
             GameTooltip:Hide()
@@ -647,7 +709,9 @@ local function ApplySettingsAccentChromeIdle(btn)
     if not btn or not ApplyVisuals then return end
     local C = ns.UI_COLORS or COLORS
     local a = C.accent or COLORS.accent
-    ApplyVisuals(btn, { 0.08, 0.08, 0.10, 1 }, { a[1], a[2], a[3], 0.75 })
+    local bg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.08, 0.08, 0.10, 1 }
+    local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.55 or 0.75
+    ApplyVisuals(btn, bg, { a[1], a[2], a[3], borderA })
 end
 
 local function WireSettingsAccentButtonHover(btn)
@@ -656,7 +720,8 @@ local function WireSettingsAccentButtonHover(btn)
         if not ApplyVisuals then return end
         local C = ns.UI_COLORS or COLORS
         local a = C.accent or COLORS.accent
-        ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { a[1], a[2], a[3], 1 })
+        local hover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.12, 0.14, 1 }
+        ApplyVisuals(self, hover, { a[1], a[2], a[3], 1 })
     end)
     btn:SetScript("OnLeave", function(self)
         ApplySettingsAccentChromeIdle(self)
@@ -676,6 +741,28 @@ local function RefreshSettingsAccentChrome()
             ApplySettingsAccentChromeIdle(f)
         end
     end
+end
+
+local function SettingsDropdownMenuBg()
+    return ns.UI_GetDropdownMenuBackdrop and ns.UI_GetDropdownMenuBackdrop() or SettingsControlChrome()
+end
+
+local function SettingsNestedCardBg()
+    if ns.UI_GetNestedCardBackdrop then
+        return ns.UI_GetNestedCardBackdrop()
+    end
+    local c = ns.UI_COLORS or COLORS
+    local card = c.bgCard or c.bg
+    return { card[1], card[2], card[3], (card[4] or 1) * 0.92 }
+end
+
+local function SettingsDialogShellBg()
+    return ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop() or SettingsDropdownMenuBg()
+end
+
+local function AccentInlineHex()
+    local ac = (ns.UI_COLORS or COLORS).accent
+    return string.format("|cff%02x%02x%02x", ac[1] * 255, ac[2] * 255, ac[3] * 255)
 end
 
 ---Create dropdown widget
@@ -849,7 +936,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
                 menu:SetFrameLevel(300)
                 menu:SetClampedToScreen(true)
                 if ApplyVisuals then
-                    ApplyVisuals(menu, {0.06, 0.06, 0.08, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+                    local menuBg = SettingsDropdownMenuBg()
+                    ApplyVisuals(menu, menuBg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
                 end
             end
             dropdown._dropdownMenu = menu
@@ -904,7 +992,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
             btn:SetPoint("TOPLEFT", 0, -yPos)
             
             local isCurrent = (currentValue == data.value)
-            local bgColor = isCurrent and {0.12, 0.12, 0.16, 1} or {0.07, 0.07, 0.09, 1}
+            local bgColor = ns.UI_GetDropdownRowBackdrop and ns.UI_GetDropdownRowBackdrop(isCurrent)
+                or (isCurrent and { 0.12, 0.12, 0.16, 1 } or { 0.07, 0.07, 0.09, 1 })
             local borderColor = isCurrent and {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8} or {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4}
             
             if ApplyVisuals then
@@ -926,7 +1015,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
             
             -- Hover
             btn:SetScript("OnEnter", function(self)
-                if self.SetBackdropColor then self:SetBackdropColor(0.15, 0.15, 0.18, 1) end
+                local hover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.15, 0.15, 0.18, 1 }
+                if self.SetBackdropColor then self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 1) end
                 if ns.UI_UpdateBorderColor then ns.UI_UpdateBorderColor(self, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9}) end
             end)
             btn:SetScript("OnLeave", function(self)
@@ -1027,6 +1117,37 @@ local function CreateDropdownWidget(parent, option, yOffset)
     return yOffset - rowCore - gap, dropdown, label
 end
 
+--- Two dropdowns on one row (stacked labels) when wide enough; otherwise vertical stack.
+local function CreateSettingsDropdownPair(parent, leftOpt, rightOpt, yOffset, innerWidth)
+    local gap = GRID_SPACING
+    local minPairW = 520
+    leftOpt.stackBelowLabel = true
+    rightOpt.stackBelowLabel = true
+    if innerWidth < minPairW then
+        local cy = yOffset
+        cy = select(1, CreateDropdownWidget(parent, leftOpt, cy))
+        cy = select(1, CreateDropdownWidget(parent, rightOpt, cy))
+        return cy
+    end
+    local colW = math.floor((innerWidth - gap) / 2)
+    local leftCol = ns.UI.Factory and ns.UI.Factory:CreateContainer(parent, colW, 1, false)
+    local rightCol = ns.UI.Factory and ns.UI.Factory:CreateContainer(parent, colW, 1, false)
+    if not leftCol or not rightCol then
+        local cy = yOffset
+        cy = select(1, CreateDropdownWidget(parent, leftOpt, cy))
+        cy = select(1, CreateDropdownWidget(parent, rightOpt, cy))
+        return cy
+    end
+    leftCol:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
+    rightCol:SetPoint("TOPLEFT", parent, "TOPLEFT", colW + gap, yOffset)
+    local cyL = select(1, CreateDropdownWidget(leftCol, leftOpt, 0))
+    local cyR = select(1, CreateDropdownWidget(rightCol, rightOpt, 0))
+    local rowH = math.max(math.abs(cyL), math.abs(cyR))
+    leftCol:SetHeight(rowH)
+    rightCol:SetHeight(rowH)
+    return yOffset - rowH - GetHeaderToolbarGap()
+end
+
 ---Create styled input (EditBox) widget
 ---@param parent Frame Parent container
 ---@param option table {name, desc, width, get, set, numeric}
@@ -1110,7 +1231,7 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     local function UpdateLabel()
         local currentValue = option.get and option.get() or (option.min or 0)
         local displayValue = (option.valueFormat and option.valueFormat(currentValue)) or string.format("%.1f", currentValue)
-        label:SetText(string.format("%s: |cff00ccff%s|r", optionName, displayValue))
+        label:SetText(string.format("%s: %s%s|r", optionName, AccentInlineHex(), displayValue))
     end
     
     UpdateLabel()
@@ -1152,6 +1273,29 @@ end
 -- Track subtitle elements for theme refresh
 local subtitleElements = {}
 local sliderElements = {}
+local themePresetButtons = {}
+local themeWarningText = nil
+local themeAaHintText = nil
+
+local function FormatFontScaleWarningText()
+    local warnHex = (ns.UI_GetSemanticWarningHex and ns.UI_GetSemanticWarningHex()) or "|cffff8800"
+    return warnHex .. ((ns.L and ns.L["FONT_SCALE_WARNING"]) or "Warning: Higher font scale may cause text overflow in some UI elements.") .. "|r"
+end
+
+local function RefreshPresetThemeButtons()
+    for i = 1, #themePresetButtons do
+        local entry = themePresetButtons[i]
+        if entry and entry.button and entry.button:IsShown() then
+            ApplyThemePresetButtonChrome(entry, IsThemePresetSelected(entry.color))
+        end
+    end
+end
+
+local function RefreshThemeWarningText()
+    if themeWarningText and themeWarningText:IsShown() then
+        themeWarningText:SetText(FormatFontScaleWarningText())
+    end
+end
 
 ---Subsection title row: thin accent bar + title (FontManager). Updates with RefreshSubtitles unless opts.muted / subtitleBright.
 local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOffset, opts)
@@ -1169,11 +1313,13 @@ local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOf
     accentBar:SetSize(barW, rowH - 8)
     accentBar:SetPoint("LEFT", 6, 0)
     local ac = COLORS.accent
+    local barA = 0.92
     if opts.muted and not opts.subtitleBright then
-        accentBar:SetColorTexture(ac[1], ac[2], ac[3], 0.35)
-    else
-        accentBar:SetColorTexture(ac[1], ac[2], ac[3], 0.92)
+        barA = 0.35
+    elseif ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        barA = opts.subtitleBright and 0.62 or 0.48
     end
+    accentBar:SetColorTexture(ac[1], ac[2], ac[3], barA)
     local titleFs = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
     titleFs:SetPoint("LEFT", accentBar, "RIGHT", 10, 0)
     titleFs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
@@ -1181,10 +1327,10 @@ local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOf
     titleFs:SetWordWrap(false)
     titleFs:SetMaxLines(1)
     titleFs:SetText(titleText)
-    if opts.subtitleBright and COLORS.textBright then
-        titleFs:SetTextColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
-    elseif opts.muted and COLORS.textDim then
-        titleFs:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
+    if opts.subtitleBright then
+        ns.UI_SetTextColorRole(titleFs, "Bright")
+    elseif opts.muted then
+        ns.UI_SetTextColorRole(titleFs, "Dim")
     else
         titleFs:SetTextColor(ac[1], ac[2], ac[3])
         table.insert(subtitleElements, titleFs)
@@ -1246,6 +1392,8 @@ local function RefreshSubtitles()
             end
         end
     end
+    RefreshPresetThemeButtons()
+    RefreshThemeWarningText()
 end
 
 ---@param parent Frame
@@ -1264,6 +1412,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     wipe(subtitleElements)
     wipe(sliderElements)
     wipe(settingsAccentChrome)
+    wipe(themePresetButtons)
+    themeWarningText = nil
+    themeAaHintText = nil
     
     local sideInset = layoutOpts.sideInset or 0
     -- Ensure we have a valid width (body already inset when sideInset > 0)
@@ -1511,8 +1662,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         settingsKeybindButton = keybindBtn
         keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", hdrGap, 0)
     if ApplyVisuals then
-        ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        ApplySettingsAccentChromeIdle(keybindBtn)
     end
+    WireSettingsAccentButtonHover(keybindBtn)
+    RegisterSettingsAccentChrome(keybindBtn)
 
     local keybindBtnText = FontManager:CreateFontString(keybindBtn, "body", "OVERLAY")
     keybindBtnText:SetPoint("CENTER")
@@ -1545,9 +1698,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         end
         keybindBtnText:SetText(SettingsKeybind.GetToggleBindingDisplayText())
         ns.UI_SetTextColorRole(keybindBtnText, "Bright")
-        if ApplyVisuals then
-            ApplyVisuals(keybindBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-        end
+        ApplySettingsAccentChromeIdle(keybindBtn)
     end
 
     local function StartListening()
@@ -1566,7 +1717,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         keybindBtnText:SetText((ns.L and ns.L["KEYBINDING_PRESS_KEY"]) or "Press a key...")
         keybindBtnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         if ApplyVisuals then
-            ApplyVisuals(keybindBtn, {0.12, 0.08, 0.18, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+            local listenBg = ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop() or SettingsControlChromeHover()
+            ApplyVisuals(keybindBtn, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
         end
     end
     settingsKeybindStopListening = StopListening
@@ -1660,8 +1812,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         -- Clear binding button
         local clearBtn = ns.UI.Factory:CreateButton(inner, SETTINGS_BTN_H, SETTINGS_BTN_H, false)
         clearBtn:SetPoint("LEFT", keybindBtn, "RIGHT", hdrGap, 0)
-        if ApplyVisuals then
-            ApplyVisuals(clearBtn, {0.15, 0.08, 0.08, 1}, {0.6, 0.2, 0.2, 0.8})
+        if ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+            local negBg, negBorder = ns.UI_GetSemanticNegativeCard(false)
+            ApplyVisuals(clearBtn, negBg, negBorder)
         end
 
         local clearIcon = clearBtn:CreateTexture(nil, "ARTWORK")
@@ -2452,7 +2605,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             if ApplyVisuals then
                 local C = ns.UI_COLORS or COLORS
                 local a = C.accent or COLORS.accent
-                ApplyVisuals(self, { 0.12, 0.12, 0.14, 1 }, { a[1], a[2], a[3], 1 })
+                ApplyVisuals(self, SettingsControlChromeHover(), { a[1], a[2], a[3], 1 })
             end
             Settings_ShowWrappedTooltip(self, (ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
                 or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.")
@@ -2517,12 +2670,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                         dep.widget:Enable()
                         dep.widget:SetAlpha(1.0)
                         if dep.label then dep.label:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]) end
-                        if dep.valueLabel then dep.valueLabel:SetTextColor(1, 1, 1, 1) end
+                        if dep.valueLabel then ns.UI_SetTextColorRole(dep.valueLabel, "Bright") end
                     else
                         dep.widget:Disable()
                         dep.widget:SetAlpha(0.35)
-                        if dep.label then dep.label:SetTextColor(0.4, 0.4, 0.4, 0.6) end
-                        if dep.valueLabel then dep.valueLabel:SetTextColor(0.4, 0.4, 0.4, 0.6) end
+                        if dep.label then ns.UI_SetTextColorRole(dep.label, "Dim", 0.6) end
+                        if dep.valueLabel then ns.UI_SetTextColorRole(dep.valueLabel, "Dim", 0.6) end
                     end
                 elseif dep.type == "button" then
                     if isEnabled then
@@ -2692,7 +2845,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         if not dlg then return end
         dlg:SetFrameStrata("DIALOG")
         dlg:SetFrameLevel(2100)
-        if ApplyVisuals then ApplyVisuals(dlg, {0.06, 0.06, 0.08, 0.97}, {0.35, 0.35, 0.4, 0.88}) end
+        if ApplyVisuals then ApplyVisuals(dlg, SettingsDialogShellBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.88 }) end
         WarbandNexus._notifCoordDialog = dlg
 
         local cy = -14
@@ -2715,7 +2868,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             for ap, btn in pairs(anchorBtns) do
                 local sel = (dlg.selectedAnchor == ap)
                 if sel then
-                    if ApplyVisuals then ApplyVisuals(btn, {0.12, 0.25, 0.45, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.95}) end
+                    local listenBg = ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop() or SettingsControlChromeHover()
+                    if ApplyVisuals then ApplyVisuals(btn, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.95 }) end
                 else
                     ApplySettingsAccentChromeIdle(btn)
                 end
@@ -2938,7 +3092,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         holder:EnableMouse(true)
         holder:RegisterForDrag("LeftButton")
         holder:SetClampedToScreen(true)
-        if ApplyVisuals then ApplyVisuals(holder, {0.12, 0.45, 0.2, 0.88}, {0.35, 0.75, 0.4, 0.9}) end
+        if ApplyVisuals and ns.UI_GetSemanticPositiveCard then
+            local posBg, posBorder = ns.UI_GetSemanticPositiveCard(false)
+            ApplyVisuals(holder, posBg, posBorder)
+        end
         local ghostText = FontManager:CreateFontString(holder, "body", "OVERLAY")
         ghostText:SetPoint("CENTER")
         local labelKey = (lane == "achievement" and "NOTIF_GHOST_LABEL_ACHIEVEMENT")
@@ -2999,12 +3156,18 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         holder:EnableMouse(true)
         holder:RegisterForDrag("LeftButton")
         holder:SetClampedToScreen(true)
-        if ApplyVisuals then ApplyVisuals(holder, {0.06, 0.06, 0.08, 0.95}, {0.4, 0.4, 0.45, 0.85}) end
+        if ApplyVisuals then
+            local shellBg = SettingsDialogShellBg()
+            ApplyVisuals(holder, shellBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.85 })
+        end
 
         local topPane = ns.UI.Factory:CreateContainer(holder, 400, 88, true)
         if topPane then
             topPane:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
-            if ApplyVisuals then ApplyVisuals(topPane, {0.1, 0.6, 0.1, 0.75}, {0, 1, 0, 1}) end
+            if ApplyVisuals and ns.UI_GetSemanticPositiveCard then
+                local posBg, posBorder = ns.UI_GetSemanticPositiveCard(false)
+                ApplyVisuals(topPane, posBg, posBorder)
+            end
             local ghostText = FontManager:CreateFontString(topPane, "body", "OVERLAY")
             ghostText:SetPoint("CENTER")
             ghostText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_MAIN"]) or "Achievement / notification")
@@ -3013,7 +3176,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local botPane = ns.UI.Factory:CreateContainer(holder, 400, 88, true)
         if botPane then
             botPane:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(88 + 10))
-            if ApplyVisuals then ApplyVisuals(botPane, {0.1, 0.35, 0.55, 0.75}, {0.2, 0.6, 1, 1}) end
+            if ApplyVisuals then
+                local listenBg = ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop() or SettingsControlChromeHover()
+                ApplyVisuals(botPane, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85 })
+            end
             local ghostCriteriaText = FontManager:CreateFontString(botPane, "body", "OVERLAY")
             ghostCriteriaText:SetPoint("CENTER")
             ghostCriteriaText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_CRITERIA"]) or "Criteria / To-Do lane")
@@ -3203,9 +3369,16 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     for i = 1, #lanePosButtons do
         table.insert(notifExternalDependents, { type = "button", widget = lanePosButtons[i] })
     end
-    table.insert(notifExternalDependents, { type = "label", widget = notifPerLaneLabel, color = {0.82, 0.82, 0.82} })
+    local function roleRgb(role, dr, dg, db)
+        if ns.UI_GetTextRoleRGB then
+            local r, g, b = ns.UI_GetTextRoleRGB(role)
+            return { r, g, b }
+        end
+        return { dr, dg, db }
+    end
+    table.insert(notifExternalDependents, { type = "label", widget = notifPerLaneLabel, color = roleRgb("Muted", 0.82, 0.82, 0.82) })
     table.insert(notifExternalDependents, { type = "button", widget = unifiedLayoutCheck })
-    table.insert(notifExternalDependents, { type = "label", widget = unifiedLayoutLabel, color = {1, 1, 1} })
+    table.insert(notifExternalDependents, { type = "label", widget = unifiedLayoutLabel, color = roleRgb("Bright", 1, 1, 1) })
     table.insert(notifExternalDependents, { type = "label", widget = useAlertFrameLabel, color = {1, 1, 1} })
     table.insert(notifExternalDependents, { type = "button", widget = useAlertFrameCheck })
     
@@ -3217,7 +3390,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             if dep.type == "slider" then
                 dep.widget:Disable()
                 dep.widget:SetAlpha(0.35)
-                if dep.label then dep.label:SetTextColor(0.4, 0.4, 0.4, 0.6) end
+                if dep.label then ns.UI_SetTextColorRole(dep.label, "Dim", 0.6) end
             elseif dep.type == "button" then
                 dep.widget:Disable()
                 dep.widget:SetAlpha(0.35)
@@ -3248,8 +3421,41 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     themeStackY = StackSettingsSubPanel(themeSection.content, themeContentW, 0, function(inner, iw)
         local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_THEME_APPEARANCE"]) or "Appearance",
+            iw, cy, { skipGapBefore = true, subtitleBright = true })
+        cy = cy - GetHeaderToolbarGap()
+
+        cy = CreateDropdownWidget(inner, {
+            name = (ns.L and ns.L["THEME_MODE"]) or "Light / Dark",
+            desc = (ns.L and ns.L["THEME_MODE_TOOLTIP"]) or "Choose a dark or light UI palette for panels, lists, and text.",
+            stackBelowLabel = true,
+            valueOrder = { "dark", "light" },
+            values = {
+                dark = (ns.L and ns.L["THEME_MODE_DARK"]) or "Dark",
+                light = (ns.L and ns.L["THEME_MODE_LIGHT"]) or "Light",
+            },
+            get = function()
+                local mode = WarbandNexus.db.profile.themeMode
+                if mode == "light" then return "light" end
+                return "dark"
+            end,
+            set = function(_, value)
+                if value ~= "light" then value = "dark" end
+                WarbandNexus.db.profile.themeMode = value
+                if WarbandNexus.RefreshTheme then
+                    WarbandNexus:RefreshTheme()
+                elseif ns.UI_RefreshColors then
+                    ns.UI_RefreshColors()
+                end
+                RefreshSubtitles()
+            end,
+        }, cy)
+
+        cy = cy - GetHeaderToolbarGap()
+
+        cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_COLORS"]) or "Colors & Accent",
-            iw, cy, { skipGapBefore = true })
+            iw, cy, { subtitleBright = true })
         cy = cy - GetHeaderToolbarGap()
 
         local pickerH = math.max(SETTINGS_BTN_H + 6, 38)
@@ -3258,8 +3464,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     colorPickerBtn:Enable()
     
     if ApplyVisuals then
-        ApplyVisuals(colorPickerBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        ApplySettingsAccentChromeIdle(colorPickerBtn)
     end
+    WireSettingsAccentButtonHover(colorPickerBtn)
+    RegisterSettingsAccentChrome(colorPickerBtn)
     
     -- Button text
     local btnText = FontManager:CreateFontString(colorPickerBtn, "body", "OVERLAY")
@@ -3365,7 +3573,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         -- Hover effects
         colorPickerBtn:SetScript("OnEnter", function(self)
             if ApplyVisuals then
-                ApplyVisuals(colorPickerBtn, {0.12, 0.12, 0.14, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+                ApplyVisuals(colorPickerBtn, SettingsControlChromeHover(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
             end
             ns.UI_SetTextColorRole(btnText, "Bright")
 
@@ -3373,9 +3581,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         end)
 
         colorPickerBtn:SetScript("OnLeave", function(self)
-            if ApplyVisuals then
-                ApplyVisuals(colorPickerBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-            end
+            ApplySettingsAccentChromeIdle(colorPickerBtn)
             btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             GameTooltip:Hide()
         end)
@@ -3455,14 +3661,14 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         },
         }
 
-        cy = CreateButtonGrid(inner, themeButtons, cy, iw, 120)
+        cy = CreateButtonGrid(inner, themeButtons, cy, iw, 120, themePresetButtons)
         cy = cy - GetHeaderToolbarGap()
 
         local classAccentCb = CreateThemedCheckbox(inner)
         classAccentCb:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, cy)
         local classAccentTip = (ns.L and ns.L["USE_CLASS_COLOR_ACCENT_TOOLTIP"]) or "Use your current character's class color for accents, borders, and tabs. Falls back to your saved theme color when the class cannot be resolved."
         local classAccentLbl = FontManager:CreateFontString(inner, "body", "OVERLAY")
-        classAccentLbl:SetPoint("TOPLEFT", classAccentCb, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
+        classAccentLbl:SetPoint("TOPLEFT", classAccentCb, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 0)
         classAccentLbl:SetWidth(math.max(120, iw - SETTINGS_CHECKBOX_GRID_INDENT - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT))
         classAccentLbl:SetJustifyH("LEFT")
         classAccentLbl:SetWordWrap(true)
@@ -3491,88 +3697,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local classRowH = math.max(ns.UI_TOGGLE_SIZE or 22, classAccentLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
         cy = cy - classRowH - GetHeaderToolbarGap()
 
-        -- Accessibility: light background mode (requested by low-vision users —
-        -- dark themes with grey text are unreadable for some; see CurseForge feedback).
-        local lightModeCb = CreateThemedCheckbox(inner)
-        lightModeCb:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, cy)
-        local lightModeTip = (ns.L and ns.L["LIGHT_MODE_TOOLTIP"]) or "Switch the addon to a light background with dark text (accessibility). A /reload is recommended so every panel picks up the new palette."
-        local lightModeLbl = FontManager:CreateFontString(inner, "body", "OVERLAY")
-        lightModeLbl:SetPoint("TOPLEFT", lightModeCb, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
-        lightModeLbl:SetWidth(math.max(120, iw - SETTINGS_CHECKBOX_GRID_INDENT - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT))
-        lightModeLbl:SetJustifyH("LEFT")
-        lightModeLbl:SetWordWrap(true)
-        lightModeLbl:SetText((ns.L and ns.L["LIGHT_MODE"]) or "Light mode (light background, dark text)")
-        ns.UI_SetTextColorRole(lightModeLbl, "Bright")
-        lightModeCb:SetChecked(WarbandNexus.db.profile.lightMode)
-        if lightModeCb.checkTexture then
-            lightModeCb.checkTexture:SetShown(WarbandNexus.db.profile.lightMode)
-        end
-        lightModeCb:SetScript("OnClick", function(self)
-            local v = self:GetChecked() and true or false
-            WarbandNexus.db.profile.lightMode = v
-            if self.checkTexture then self.checkTexture:SetShown(v) end
-            if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-            RefreshSubtitles()
-            -- Most text/surfaces sample the palette at creation time; offer the reload.
-            if WarbandNexus.Print then
-                WarbandNexus:Print((ns.L and ns.L["LIGHT_MODE_RELOAD_HINT"]) or "Theme mode changed — /reload to apply it everywhere.")
-            end
-        end)
-        lightModeCb:SetScript("OnEnter", function(self)
-            Settings_ShowWrappedTooltip(self, lightModeTip)
-        end)
-        lightModeCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        lightModeLbl:SetScript("OnEnter", function(self)
-            Settings_ShowWrappedTooltip(self, lightModeTip)
-        end)
-        lightModeLbl:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-        local lightRowH = math.max(ns.UI_TOGGLE_SIZE or 22, lightModeLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
-        cy = cy - lightRowH - GetHeaderToolbarGap()
-
-        -- Accessibility: high-contrast variant of whichever mode is active.
-        local hcCb = CreateThemedCheckbox(inner)
-        hcCb:SetPoint("TOPLEFT", SETTINGS_CHECKBOX_GRID_INDENT, cy)
-        local hcTip = (ns.L and ns.L["HIGH_CONTRAST_TOOLTIP"]) or "Maximum-contrast text and surfaces (pure black/white text, strong borders) on top of the current dark or light mode. A /reload is recommended."
-        local hcLbl = FontManager:CreateFontString(inner, "body", "OVERLAY")
-        hcLbl:SetPoint("TOPLEFT", hcCb, "TOPRIGHT", UI_SPACING.AFTER_ELEMENT, 1)
-        hcLbl:SetWidth(math.max(120, iw - SETTINGS_CHECKBOX_GRID_INDENT - (ns.UI_TOGGLE_SIZE or 16) - UI_SPACING.AFTER_ELEMENT))
-        hcLbl:SetJustifyH("LEFT")
-        hcLbl:SetWordWrap(true)
-        hcLbl:SetText((ns.L and ns.L["HIGH_CONTRAST"]) or "High contrast")
-        ns.UI_SetTextColorRole(hcLbl, "Bright")
-        hcCb:SetChecked(WarbandNexus.db.profile.highContrast)
-        if hcCb.checkTexture then
-            hcCb.checkTexture:SetShown(WarbandNexus.db.profile.highContrast)
-        end
-        hcCb:SetScript("OnClick", function(self)
-            local v = self:GetChecked() and true or false
-            WarbandNexus.db.profile.highContrast = v
-            if self.checkTexture then self.checkTexture:SetShown(v) end
-            if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-            RefreshSubtitles()
-            if WarbandNexus.Print then
-                WarbandNexus:Print((ns.L and ns.L["LIGHT_MODE_RELOAD_HINT"]) or "Theme mode changed — /reload to apply it everywhere.")
-            end
-        end)
-        hcCb:SetScript("OnEnter", function(self)
-            Settings_ShowWrappedTooltip(self, hcTip)
-        end)
-        hcCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        hcLbl:SetScript("OnEnter", function(self)
-            Settings_ShowWrappedTooltip(self, hcTip)
-        end)
-        hcLbl:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-        local hcRowH = math.max(ns.UI_TOGGLE_SIZE or 22, hcLbl:GetStringHeight(), SETTINGS_BTN_H - 6)
-        cy = cy - hcRowH - GetHeaderToolbarGap()
-
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & Readability",
-            iw, cy, {})
+            iw, cy, { subtitleBright = true })
         cy = cy - GetHeaderToolbarGap()
 
-        cy = CreateDropdownWidget(inner, {
+        local fontFamilyOpt = {
         name = (ns.L and ns.L["FONT_FAMILY"]) or "Font Family",
         desc = (ns.L and ns.L["FONT_FAMILY_TOOLTIP"]) or "Choose the font used throughout the addon UI",
         values = function()
@@ -3596,9 +3726,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             if ns.FontManager and ns.FontManager.RefreshAllFonts then
                 ns.FontManager:RefreshAllFonts()
             end
-            -- Defer RefreshUI after font warm-up completes (0.3s accounts for warm-up + GPU rasterization)
             C_Timer.After(0.3, function()
-                -- Rebuild settings window if open (after font fully applied)
                 C_Timer.After(0.1, function()
                     if settingsFrame and settingsFrame:IsShown() then
                         if ns.WindowManager then
@@ -3613,15 +3741,15 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 end)
             end)
         end,
-        }, cy)
+        }
 
-        cy = CreateDropdownWidget(inner, {
-            name = (ns.L and ns.L["ANTI_ALIASING"]) or "Anti-Aliasing",
-            desc = (ns.L and ns.L["ANTI_ALIASING_DESC"]) or "Font edge rendering style (affects readability)",
+        local fontOutlineOpt = {
+            name = (ns.L and ns.L["ANTI_ALIASING"]) or "Font Outline",
+            desc = (ns.L and ns.L["ANTI_ALIASING_DESC"]) or "Adds a thin border around text so labels stay readable on light backgrounds and colored text.",
             values = {
-                none = "None (Smooth)",
-                OUTLINE = "Outline (Default)",
-                THICKOUTLINE = "Thick Outline (Bold)",
+                none = (ns.L and ns.L["AA_NONE"]) or "Off (smooth)",
+                OUTLINE = (ns.L and ns.L["AA_OUTLINE"]) or "Outline (default)",
+                THICKOUTLINE = (ns.L and ns.L["AA_THICKOUTLINE"]) or "Thick outline",
             },
             get = function() return WarbandNexus.db.profile.fonts.antiAliasing end,
             set = function(_, value)
@@ -3630,13 +3758,27 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                     ns.FontManager:RefreshAllFonts()
                 end
             end,
-        }, cy)
+        }
+
+        cy = CreateSettingsDropdownPair(inner, fontFamilyOpt, fontOutlineOpt, cy, iw)
+
+        local aaHint = FontManager:CreateFontString(inner, "small", "OVERLAY")
+        aaHint:SetWidth(iw)
+        aaHint:SetJustifyH("LEFT")
+        aaHint:SetWordWrap(true)
+        aaHint:SetPoint("TOPLEFT", 0, cy)
+        aaHint:SetText((ns.L and ns.L["ANTI_ALIASING_HINT"]) or "Outline helps gold and class-colored text on pale panels. Off keeps smooth edges on dark mode.")
+        ns.UI_SetTextColorRole(aaHint, "Muted")
+        themeAaHintText = aaHint
+        local aaHintH = math.max(14, aaHint:GetStringHeight())
+        cy = cy - aaHintH - GetHeaderToolbarGap()
 
         warningText = FontManager:CreateFontString(inner, "small", "OVERLAY")
         warningText:SetWidth(iw)
         warningText:SetJustifyH("LEFT")
         warningText:SetWordWrap(true)
-        warningText:SetText("|cffff8800" .. ((ns.L and ns.L["FONT_SCALE_WARNING"]) or "Warning: Higher font scale may cause text overflow in some UI elements.") .. "|r")
+        themeWarningText = warningText
+        warningText:SetText(FormatFontScaleWarningText())
         warningText:Hide()
 
         cy = CreateSliderWidget(inner, {
@@ -3818,7 +3960,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     -- Detail card (subtle background panel for selected item info)
     local detailCard = ns.UI.Factory:CreateContainer(trackSection.content, trackContentWidth, 80, true)
     if detailCard and ApplyVisuals then
-        ApplyVisuals(detailCard, {0.10, 0.10, 0.13, 0.7}, {0.25, 0.25, 0.30, 0.5})
+        ApplyVisuals(detailCard, SettingsNestedCardBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.5 })
     end
     
     -- Detail card children (created once, updated on selection)
@@ -4084,8 +4226,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         itemIDBox:SetMaxLetters(20)
         itemIDBox:SetNumeric(false)
         if ApplyVisuals then
-            ApplyVisuals(itemIDBox, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+            ApplySettingsAccentChromeIdle(itemIDBox)
         end
+        WireSettingsAccentButtonHover(itemIDBox)
+        RegisterSettingsAccentChrome(itemIDBox)
         itemIDBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         itemIDBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     end
@@ -4104,7 +4248,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     lookupBtn:SetPoint("LEFT", itemIDBox, "RIGHT", inlineGap, 0)
     local lookupBtnColor = { 0.20, 0.50, 0.70 }
     if ApplyVisuals then
-        ApplyVisuals(lookupBtn, {0.08, 0.08, 0.10, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
+        ApplyVisuals(lookupBtn, SettingsControlChrome(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
     end
     local lookupBtnText = FontManager:CreateFontString(lookupBtn, "body", "OVERLAY")
     lookupBtnText:SetPoint("CENTER")
@@ -4133,14 +4277,14 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end)
     lookupBtn:SetScript("OnEnter", function(self)
         if ApplyVisuals then
-            ApplyVisuals(lookupBtn, {0.12, 0.12, 0.14, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 1})
+            ApplyVisuals(lookupBtn, SettingsControlChromeHover(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 1})
         end
         ns.UI_SetTextColorRole(lookupBtnText, "Bright")
         Settings_ShowWrappedTooltip(self, (ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.")
     end)
     lookupBtn:SetScript("OnLeave", function()
         if ApplyVisuals then
-            ApplyVisuals(lookupBtn, {0.08, 0.08, 0.10, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
+            ApplyVisuals(lookupBtn, SettingsControlChrome(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
         end
         lookupBtnText:SetTextColor(lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3])
         GameTooltip:Hide()
@@ -4417,17 +4561,18 @@ function WarbandNexus:DrawSettingsTab(parent)
     navCol:SetPoint("TOPLEFT", bodyRow, "TOPLEFT", 0, 0)
     navCol:SetPoint("BOTTOMLEFT", bodyRow, "BOTTOMLEFT", 0, 0)
 
-    local navBg = COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
+    local navBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop())
+        or COLORS.surfaceViewport or COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
     if ns.UI_ApplyBorderlessSurface then
-        ns.UI_ApplyBorderlessSurface(navCol, { navBg[1], navBg[2], navBg[3], 0.92 })
+        ns.UI_ApplyBorderlessSurface(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { surfaceTier = "surfaceViewport" })
     elseif ApplyVisuals then
         ApplyVisuals(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35 })
         if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(navCol) end
     end
     local navDivider = navCol:CreateTexture(nil, "ARTWORK")
-    local divA = shell.NAV_RAIL_DIVIDER_ALPHA or 0.55
-    local acNav = COLORS.accent or { 0.6, 0.4, 1 }
-    navDivider:SetColorTexture(acNav[1], acNav[2], acNav[3], divA)
+    local divNav = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
+        or { COLORS.borderLight[1], COLORS.borderLight[2], COLORS.borderLight[3], 0.35 }
+    navDivider:SetColorTexture(divNav[1], divNav[2], divNav[3], divNav[4] or 1)
     navDivider:SetWidth(1)
     navDivider:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
     navDivider:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
@@ -4455,6 +4600,10 @@ function WarbandNexus:DrawSettingsTab(parent)
     bodyRow:SetHeight(rowH)
     host:SetHeight(rowH)
     navCol:SetHeight(rowH)
+
+    if mf then
+        mf._wnSettingsNavCol = navCol
+    end
 
     parent:SetHeight(math.abs(startY) + rowH + ((ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12))
     return parent:GetHeight() or 1

@@ -824,6 +824,11 @@ L["COLOR_CYAN"] = "青色主题"
 L["COLOR_CYAN_DESC"] = "明亮青主题"
 L["USE_CLASS_COLOR_ACCENT"] = "将职业颜色用作强调色"
 L["USE_CLASS_COLOR_ACCENT_TOOLTIP"] = "将当前角色的职业颜色用于强调色、边框和选项卡。当无法识别职业时，将回退至已保存的主题颜色。"
+L["THEME_MODE"] = "浅色 / 深色"
+L["THEME_MODE_TOOLTIP"] = "为面板、列表和文字选择深色或浅色界面配色。建议 /reload 以便所有面板应用新颜色。"
+L["THEME_MODE_DARK"] = "深色"
+L["THEME_MODE_LIGHT"] = "浅色"
+L["THEME_MODE_RELOAD_HINT"] = "主题外观已更改 - 请 /reload 以全局应用。"
 
 -- Settings - Font
 L["FONT_FAMILY"] = "字体"

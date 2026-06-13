@@ -824,6 +824,11 @@ L["COLOR_CYAN"] = "Cyan-Design"
 L["COLOR_CYAN_DESC"] = "Helles Cyan-Design"
 L["USE_CLASS_COLOR_ACCENT"] = "Klassenfarbe als Akzent verwenden"
 L["USE_CLASS_COLOR_ACCENT_TOOLTIP"] = "Verwendet die Klassenfarbe deines aktuellen Charakters für Akzente, Rahmen und Registerkarten. Wenn die Klasse nicht ermittelt werden kann, wird deine gespeicherte Themenfarbe verwendet."
+L["THEME_MODE"] = "Hell / Dunkel"
+L["THEME_MODE_TOOLTIP"] = "Waehle eine dunkle oder helle UI-Palette fuer Panels, Listen und Text. Ein /reload wird empfohlen, damit alle Fenster die neuen Farben uebernehmen."
+L["THEME_MODE_DARK"] = "Dunkel"
+L["THEME_MODE_LIGHT"] = "Hell"
+L["THEME_MODE_RELOAD_HINT"] = "Erscheinungsbild geaendert - /reload, um es ueberall anzuwenden."
 
 -- Settings - Font
 L["FONT_FAMILY"] = "Schriftfamilie"

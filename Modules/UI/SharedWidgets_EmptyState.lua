@@ -17,11 +17,19 @@ local function UIFontRole(roleKey)
     return roleKey
 end
 
+local function ResolveEmptyStateHex(role, fallback)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    return fallback
+end
+
 local function ApplyStandardCardElevatedChrome(frame)
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     end
 end
+
 -- DRAW EMPTY STATE (Shared by Items and Storage tabs)
 
 local function DrawEmptyState(addon, parent, startY, isSearch, searchText, tabContext)
@@ -56,7 +64,7 @@ local function DrawSectionEmptyState(parent, message, yOffset, height, width)
     local emptyText = parent:CreateFontString(nil, "OVERLAY")
     FontManager:ApplyFont(emptyText, "body")
     emptyText:SetPoint("TOP", parent, "TOP", 0, -yOffset)
-    emptyText:SetText("|cff999999" .. message .. "|r")
+    emptyText:SetText(ResolveEmptyStateHex("Dim", "|cff999999") .. message .. "|r")
     emptyText:SetWidth(width or 300)
     emptyText:SetJustifyH("CENTER")
     
@@ -346,10 +354,10 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
             card._emptyIcon:SetAtlas(atlasForIcon)
         end
         if card._emptyTitle then
-            card._emptyTitle:SetText("|cff888888" .. ResolveEmptyTitle() .. "|r")
+            card._emptyTitle:SetText(ResolveEmptyStateHex("Dim", "|cff888888") .. ResolveEmptyTitle() .. "|r")
         end
         if card._emptyDesc and descText then
-            card._emptyDesc:SetText("|cff666666" .. descText .. "|r")
+            card._emptyDesc:SetText(ResolveEmptyStateHex("Muted", "|cff666666") .. descText .. "|r")
         end
         card:Show()
         return card, cardHeight + bottomPad
@@ -393,7 +401,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     -- Title
     local title = FontManager:CreateFontString(contentContainer, UIFontRole("emptyCardTitle"), "OVERLAY")
     title:SetPoint("TOP", iconContainer, "BOTTOM", 0, -20)
-    title:SetText("|cff888888" .. ResolveEmptyTitle() .. "|r")
+    title:SetText(ResolveEmptyStateHex("Dim", "|cff888888") .. ResolveEmptyTitle() .. "|r")
     card._emptyTitle = title
 
     -- Description
@@ -404,7 +412,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset, opts)
     if not descText then
         descText = ResolveEmptyDesc()
     end
-    desc:SetText("|cff666666" .. (descText or "") .. "|r")
+    desc:SetText(ResolveEmptyStateHex("Muted", "|cff666666") .. (descText or "") .. "|r")
     card._emptyDesc = desc
 
     card:Show()

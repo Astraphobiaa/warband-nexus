@@ -88,13 +88,11 @@ M.EA_CAT_TIP = {
 --- to GameFontNormal[Small] otherwise. Call sites use one of: "body" | "small" | "title" | "subtitle" | "header".
 function M.VBFontString(parent, role, drawLayer)
     local FM = ns.FontManager
+    role = role or "body"
     if FM and FM.CreateFontString then
-        return FM:CreateFontString(parent, role or "body", drawLayer or "OVERLAY")
+        return FM:CreateFontString(parent, role, drawLayer or "OVERLAY")
     end
-    local fallback = (role == "small") and "GameFontNormalSmall"
-        or (role == "title" or role == "header") and "GameFontHighlight"
-        or "GameFontNormal"
-    return parent:CreateFontString(nil, drawLayer or "OVERLAY", fallback)
+    return parent:CreateFontString(nil, drawLayer or "OVERLAY")
 end
 
 --- Matches `MAIN_SHELL` in Modules/UI/SharedWidgets.lua (`ns.UI_LAYOUT` is nil until that file loads; safe at runtime when frames build).
@@ -189,6 +187,14 @@ function M.GetThemeColors()
         bgCard = {0.04, 0.04, 0.05, 0.98},
         textDim = {0.55, 0.55, 0.55, 1},
     }
+end
+
+function M.GetShellBackdrop()
+    if ns.UI_GetExternalShellBackdrop then
+        return ns.UI_GetExternalShellBackdrop()
+    end
+    local c = M.GetThemeColors()
+    return c.bg or { 0.042, 0.042, 0.055, 0.98 }
 end
 
 -- Launcher registry (Easy Access menu, Settings left-click, minimap shortcut menu)

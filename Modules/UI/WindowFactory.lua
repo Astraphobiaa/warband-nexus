@@ -17,6 +17,44 @@ local CreateIcon = ns.UI_CreateIcon
 local CreateButton = ns.UI_CreateButton
 local Factory = ns.UI and ns.UI.Factory
 
+local function ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return "|cffeeeeee"
+end
+
+local function SemanticGoldHex()
+    if ns.UI_GetSemanticGoldHex then
+        return ns.UI_GetSemanticGoldHex()
+    end
+    return "|cffffd700"
+end
+
+local function ControlChromeBg()
+    if ns.UI_GetControlChromeBackdrop then
+        return ns.UI_GetControlChromeBackdrop()
+    end
+    return COLORS and COLORS.bgCard or { 0.12, 0.12, 0.15, 1 }
+end
+
+local function ControlChromeHoverBg()
+    if ns.UI_GetControlChromeHoverBackdrop then
+        return ns.UI_GetControlChromeHoverBackdrop()
+    end
+    return COLORS and COLORS.surfaceRowEven or { 0.18, 0.18, 0.22, 1 }
+end
+
+local function SemanticGreenHex()
+    if ns.UI_GetSemanticGreenColor then
+        local r, g, b = ns.UI_GetSemanticGreenColor()
+        return string.format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
+    end
+    return "|cff44ff44"
+end
+
 -- RUNTIME DEPENDENCY VALIDATION
 
 -- Defer validation to first use (allows SharedWidgets to complete loading)
@@ -140,10 +178,11 @@ local function CreateExternalWindow(config)
     -- Title
     local titleText = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
-    titleText:SetText("|cffffffff" .. config.title .. "|r")
+    titleText:SetText(ThemeTextHex("Bright") .. config.title .. "|r")
     
     -- Close button (SharedWidgets CreateButton + atlas icon)
-    local closeBtn = CreateButton(header, 28, 28, {0.15, 0.15, 0.15, 0.9}, {
+    local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+    local closeBtn = CreateButton(header, 28, 28, closeBg, {
         COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8,
     }, false)
     if not closeBtn then AbortIncompleteExternalWindow() return nil end
@@ -159,13 +198,19 @@ local function CreateExternalWindow(config)
     -- Hover effects
     closeBtn:SetScript("OnEnter", function()
         closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ApplyVisuals then ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
+        if ApplyVisuals then
+            local negBg, negBorder = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(true)
+            if negBg and negBorder then
+                ApplyVisuals(closeBtn, negBg, negBorder)
+            end
+        end
     end)
     
     closeBtn:SetScript("OnLeave", function()
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         if ApplyVisuals then
-            ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+            local idle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or closeBg
+            ApplyVisuals(closeBtn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
     end)
     
@@ -183,6 +228,9 @@ local function CreateExternalWindow(config)
             config.onClose()
         end
         dialog:Hide()
+        if ns.UI_UnregisterScaledFrame then
+            ns.UI_UnregisterScaledFrame(dialog)
+        end
         if bin then dialog:SetParent(bin) else dialog:SetParent(nil) end
         _G[globalName] = nil
     end
@@ -226,6 +274,12 @@ local function CreateExternalWindow(config)
     dialog.Close = CloseDialog
 
     -- WindowManager: register popup + ESC handler + combat hide
+    if ns.UI_RegisterScaledFrame then
+        ns.UI_RegisterScaledFrame(dialog)
+    elseif ns.UI_ApplyAddonUIScale then
+        ns.UI_ApplyAddonUIScale(dialog)
+    end
+
     if ns.WindowManager then
         ns.WindowManager:Register(dialog, ns.WindowManager.PRIORITY.POPUP, CloseDialog)
         ns.WindowManager:InstallESCHandler(dialog)
@@ -300,7 +354,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         if ApplyStandardCardElevatedChrome then
             ApplyStandardCardElevatedChrome(popup)
         elseif ApplyVisuals then
-            ApplyVisuals(popup, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
+            ApplyVisuals(popup, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
         end
         
         -- ESC handled by WindowManager (no UISpecialFrames to avoid taint)
@@ -385,17 +439,20 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._trackLabel = FontManager:CreateFontString(popup._trackBtn, FontManager:GetFontRole("collectionAchievementPopupButton"), "OVERLAY")
         popup._trackLabel:SetPoint("CENTER")
         popup._trackBtn:SetScript("OnEnter", function()
-            if popup._trackLabel then popup._trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
+            if popup._trackLabel then
+                local ar, ag, ab = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+                popup._trackLabel:SetTextColor(ar, ag, ab, 1)
+            end
         end)
         popup._trackBtn:SetScript("OnLeave", function()
             if popup._trackLabel and popup._currentID and ns.WarbandNexus then
                 local L = ns.L
                 local tracked = ns.WarbandNexus:IsAchievementTracked(popup._currentID)
-                popup._trackLabel:SetText(tracked and ("|cff44ff44" .. (L and L["TRACKED"] or "Tracked") .. "|r") or ("|cffffcc00" .. (L and L["TRACK"] or "Track") .. "|r"))
+                popup._trackLabel:SetText(tracked and (SemanticGreenHex() .. (L and L["TRACKED"] or "Tracked") .. "|r") or (SemanticGoldHex() .. (L and L["TRACK"] or "Track") .. "|r"))
             end
         end)
         
-        popup._addBtn = CreateButton(popup, BTN_WIDTH, BTN_HEIGHT, {0.12, 0.12, 0.15, 1}, {
+        popup._addBtn = CreateButton(popup, BTN_WIDTH, BTN_HEIGHT, ControlChromeBg(), {
             COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6,
         }, false)
         if not popup._addBtn then return end
@@ -403,10 +460,10 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._addLabel = FontManager:CreateFontString(popup._addBtn, FontManager:GetFontRole("collectionAchievementPopupButton"), "OVERLAY")
         popup._addLabel:SetPoint("CENTER")
         popup._addBtn:SetScript("OnEnter", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.18, 0.18, 0.22, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end
+            if ApplyVisuals then ApplyVisuals(self, ControlChromeHoverBg(), {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end
         end)
         popup._addBtn:SetScript("OnLeave", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}) end
+            if ApplyVisuals then ApplyVisuals(self, ControlChromeBg(), {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}) end
         end)
         
         achievementPopup = popup
@@ -422,7 +479,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     local statusIcon = completed
         and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14:0:0|t"
         or  "|TInterface\\RaidFrame\\ReadyCheck-NotReady:14:14:0:0|t"
-    local nameColor = completed and "|cff44ff44" or "|cffffffff"
+    local nameColor = completed and SemanticGreenHex() or ThemeTextHex("Bright")
     local plannedTag = ""
     local WarbandNexus = ns.WarbandNexus
     if WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievementID) then
@@ -434,7 +491,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     -- Points line
     if points and points > 0 then
         local ptsFormat = L["ACHIEVEMENT_POINTS_FORMAT"] or "%d pts"
-        popup._points:SetText("|cffffd700" .. string.format(ptsFormat, points) .. "|r")
+        popup._points:SetText(SemanticGoldHex() .. string.format(ptsFormat, points) .. "|r")
         popup._points:Show()
     else
         popup._points:SetText("")
@@ -457,7 +514,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     popup._desc:SetPoint("TOPLEFT", PADDING, -contentTop)
     
     if description and description ~= "" then
-        popup._desc:SetText("|cffdddddd" .. description .. "|r")
+        popup._desc:SetText(ThemeTextHex("Normal") .. description .. "|r")
         popup._desc:Show()
     else
         popup._desc:SetText("")
@@ -466,7 +523,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     
     -- Reward below description
     if rewardText and rewardText ~= "" then
-        popup._reward:SetText("|cffffcc00" .. (L["REWARD_LABEL"] or "Reward:") .. "|r |cffffffff" .. rewardText .. "|r")
+        popup._reward:SetText(SemanticGoldHex() .. (L["REWARD_LABEL"] or "Reward:") .. "|r " .. ThemeTextHex("Bright") .. rewardText .. "|r")
         popup._reward:Show()
     else
         popup._reward:SetText("")
@@ -475,7 +532,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     
     -- Track button
     if completed then
-        popup._trackLabel:SetText("|cff888888" .. (L["TRACK"] or "Track") .. "|r")
+        popup._trackLabel:SetText(ThemeTextHex("Dim") .. (L["TRACK"] or "Track") .. "|r")
         popup._trackBtn:SetScript("OnClick", nil)
         popup._trackBtn:SetAlpha(0.4)
         popup._trackBtn:SetScript("OnEnter", nil)
@@ -491,9 +548,9 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         end
         local function UpdateTrackLabel()
             if IsTracked() then
-                popup._trackLabel:SetText("|cff44ff44" .. (L["TRACKED"] or "Tracked") .. "|r")
+                popup._trackLabel:SetText(SemanticGreenHex() .. (L["TRACKED"] or "Tracked") .. "|r")
             else
-                popup._trackLabel:SetText("|cffffcc00" .. (L["TRACK"] or "Track") .. "|r")
+                popup._trackLabel:SetText(SemanticGoldHex() .. (L["TRACK"] or "Track") .. "|r")
             end
         end
         UpdateTrackLabel()
@@ -504,7 +561,10 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
             UpdateTrackLabel()
         end)
         popup._trackBtn:SetScript("OnEnter", function()
-            if popup._trackLabel then popup._trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
+            if popup._trackLabel then
+                local ar, ag, ab = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+                popup._trackLabel:SetTextColor(ar, ag, ab, 1)
+            end
         end)
         popup._trackBtn:SetScript("OnLeave", function()
             UpdateTrackLabel()
@@ -514,7 +574,7 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     -- Add button
     local WarbandNexus = ns.WarbandNexus
     if completed then
-        popup._addLabel:SetText("|cff888888" .. (L["ADD_BUTTON"] or "To-Do") .. "|r")
+        popup._addLabel:SetText(ThemeTextHex("Dim") .. (L["ADD_BUTTON"] or "To-Do") .. "|r")
         popup._addBtn:SetScript("OnClick", nil)
         popup._addBtn:SetAlpha(0.4)
         popup._addBtn:SetScript("OnEnter", nil)
@@ -523,10 +583,10 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._addBtn:SetAlpha(1)
         local isPlanned = WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievementID)
         if isPlanned then
-            popup._addLabel:SetText("|cff44ff44" .. (L["ADDED"] or "Added") .. "|r")
+            popup._addLabel:SetText(SemanticGreenHex() .. (L["ADDED"] or "Added") .. "|r")
             popup._addBtn:SetScript("OnClick", nil)
         else
-            popup._addLabel:SetText("|cffffcc00" .. (L["ADD_BUTTON"] or "To-Do") .. "|r")
+            popup._addLabel:SetText(SemanticGoldHex() .. (L["ADD_BUTTON"] or "To-Do") .. "|r")
             popup._addBtn:SetScript("OnClick", function()
                 if WarbandNexus and WarbandNexus.AddPlan then
                     local planRewardText

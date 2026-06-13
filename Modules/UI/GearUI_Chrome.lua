@@ -31,7 +31,8 @@ function Chrome.ApplySubpanel(frame, accent)
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     elseif ns.UI_ApplyVisuals then
         local ac = ResolveAccent(accent)
-        local bg = COLORS.bgCard or COLORS.bg or { 0.10, 0.10, 0.12, 0.98 }
+        local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+            or COLORS.bgCard or COLORS.bg or { 0.10, 0.10, 0.12, 0.98 }
         ns.UI_ApplyVisuals(frame, bg, { ac[1], ac[2], ac[3], 0.55 })
     end
     if not frame._wnGearTopHighlight then
@@ -53,7 +54,8 @@ end
 function Chrome.ApplyPaperdollViewport(frame, accent)
     if not frame or not frame.SetBackdrop then return end
     local ac = ResolveAccent(accent)
-    local bg = COLORS.bgDeep or COLORS.bgCard or COLORS.bg or { 0.035, 0.035, 0.048, 0.98 }
+    local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
+        or COLORS.surfaceViewport or COLORS.bgCard or COLORS.bg or { 0.035, 0.035, 0.048, 0.98 }
     frame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -63,7 +65,8 @@ function Chrome.ApplyPaperdollViewport(frame, accent)
         insets = { left = 2, right = 2, top = 2, bottom = 2 },
     })
     frame:SetBackdropColor(bg[1], bg[2], bg[3], 0.94)
-    frame:SetBackdropBorderColor(ac[1] * 0.35, ac[2] * 0.35, ac[3] * 0.35, 0.55)
+    local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.55
+    frame:SetBackdropBorderColor(ac[1] * 0.35, ac[2] * 0.35, ac[3] * 0.35, borderA)
 end
 
 --- Left accent bar + title (replaces centered section titles).
@@ -108,8 +111,17 @@ function Chrome.CreateSectionHeader(parent, titleText, accent, opts)
         fs:SetPoint("RIGHT", host, "RIGHT", -pad, 0)
         fs:SetJustifyH("LEFT")
         local tc = opts.titleColor
-        if tc then
+        local light = ns.UI_IsLightMode and ns.UI_IsLightMode()
+        if light then
+            ns.UI_SetTextColorRole(fs, opts.titleRole or "Bright")
+            if FontManager and FontManager.ApplyFont then
+                FontManager:ApplyFont(fs, GFR(opts.fontRole or "gearSectionTitle"))
+            end
+        elseif tc then
             fs:SetTextColor(tc[1], tc[2], tc[3])
+            if FontManager and FontManager.ApplyFont then
+                FontManager:ApplyFont(fs, GFR(opts.fontRole or "gearSectionTitle"), { accentFill = true })
+            end
         else
             ns.UI_SetTextColorRole(fs, "Bright")
         end
@@ -178,7 +190,8 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
         if name ~= "" then
             nameFs:SetText("|cff" .. classHex .. name .. "|r")
         else
-            nameFs:SetText("|cff888888" .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
+            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "888888"
+            nameFs:SetText("|cff" .. dimHex .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
         end
     end
 
@@ -208,7 +221,9 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
                 tileSize = 8,
                 edgeSize = 1,
             })
-            pill:SetBackdropColor(ac[1] * 0.18, ac[2] * 0.18, ac[3] * 0.18, 0.95)
+            local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+                or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+            pill:SetBackdropColor(pillBg[1], pillBg[2], pillBg[3], (pillBg[4] or 1) * 0.85)
             pill:SetBackdropBorderColor(ac[1] * 0.55, ac[2] * 0.55, ac[3] * 0.55, 0.75)
         end
         local ilvlFs = FontManager and FontManager.CreateFontString
@@ -218,7 +233,9 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
             ilvlFs:SetJustifyH("CENTER")
             local ilvlStr = format("%.2f", avgIlvl)
             local ilvlLabel = (ns.L and ns.L["ILVL_SHORT_LABEL"]) or "iLvl"
-            ilvlFs:SetText("|cffffffff" .. ilvlStr .. " |cffaaaaaa" .. ilvlLabel .. "|r")
+            local brightHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "ffffff"
+            local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "aaaaaa"
+            ilvlFs:SetText("|cff" .. brightHex .. ilvlStr .. "|r |cff" .. mutedHex .. ilvlLabel .. "|r")
         end
         host._wnIlvlPill = pill
     end
@@ -246,12 +263,24 @@ function Chrome.PaintStorageTableHeaderShell(parent, contentW, accent, paintFn)
     local L = ns.GEAR_LAYOUT or {}
     local hdrH = ns.GearUI_STORAGE_REC_TABLE_HDR or L.STORAGE_TABLE_HDR_H or 22
     local ac = ResolveAccent(accent)
+    local hdrChrome = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("headerChrome"))
+        or COLORS.surfaceHeaderChrome or COLORS.bgLight or { 0.09, 0.09, 0.11, 0.97 }
     local bg = parent:CreateTexture(nil, "BACKGROUND")
     bg:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     bg:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
     bg:SetHeight(hdrH)
-    bg:SetColorTexture(ac[1] * 0.12, ac[2] * 0.12, ac[3] * 0.12, 0.85)
+    bg:SetColorTexture(hdrChrome[1], hdrChrome[2], hdrChrome[3], hdrChrome[4] or 0.85)
     if type(paintFn) == "function" then
         paintFn(parent, contentW)
+    end
+end
+
+--- Re-apply paperdoll viewport chrome on persistent hosts (theme / light-mode refresh).
+function Chrome.RefreshTheme()
+    local mf = ns.WarbandNexus and ns.WarbandNexus.UI and ns.WarbandNexus.UI.mainFrame
+    local card = mf and mf._gearPaperdollCard
+    local layout = card and card._wnGearViewportLayout
+    if layout and layout.paperChrome and Chrome.ApplyPaperdollViewport then
+        Chrome.ApplyPaperdollViewport(layout.paperChrome, COLORS.accent)
     end
 end

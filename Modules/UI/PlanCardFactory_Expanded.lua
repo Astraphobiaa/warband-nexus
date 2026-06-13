@@ -17,6 +17,14 @@ local FormatTextNumbers = ns.UI_FormatTextNumbers
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 local format = string.format
 
+local function PCol(key, fb)
+    return ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor(key, fb) or fb
+end
+
+local function PMetricLabel()
+    return PCol("metric")
+end
+
 local PLAN_CARD_BODY_RIGHT_INSET = 30
 
 local function BuildAchievementProgressLabelText(achievementID)
@@ -27,8 +35,8 @@ local function BuildAchievementProgressLabelText(achievementID)
     local P2 = ns.PLAN_UI_COLORS or {}
     local done = (summary.displayMode == "quantity_bar" and summary.totalReqQuantity > 0 and summary.totalQuantity >= summary.totalReqQuantity)
         or (summary.completedCount >= summary.rawNumCriteria)
-    local progressColor = done and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
-    local label = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r "
+    local progressColor = done and (P2.progressFull or "|cff00ff00") or PCol("incomplete")
+    local label = PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r "
     if summary.displayMode == "quantity_bar" and summary.hasProgressBased then
         local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
         return label .. progressColor .. format(progressFmt, summary.totalQuantity, summary.totalReqQuantity) .. "|r"
@@ -203,7 +211,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                 cardFrame.expandedContent:Hide()
             end
             if cardFrame.requirementsHeader then
-                cardFrame.requirementsHeader:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
+                cardFrame.requirementsHeader:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
             end
             
             -- Recalculate progress when collapsed to show same format as expanded
@@ -212,10 +220,10 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                 if progressText then
                     cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                 else
-                    cardFrame.progressLabel:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
+                    cardFrame.progressLabel:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
                 end
             elseif cardFrame.progressLabel then
-                cardFrame.progressLabel:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
+                cardFrame.progressLabel:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
             end
             
             factory:ReflowAchievementCard(cardFrame)
@@ -240,7 +248,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
             
             -- Update requirements header text
             if cardFrame.requirementsHeader then
-                cardFrame.requirementsHeader:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
+                cardFrame.requirementsHeader:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
             end
             
             -- Update expand button icon
@@ -298,7 +306,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 if progressText ~= "" and not (issecretvalue and issecretvalue(progressText)) then
                     local trimmed = progressText:match("^%s*(.*)")
                     if trimmed and not (issecretvalue and issecretvalue(trimmed)) then
-                        progressText = " |cffffffff" .. trimmed .. "|r"
+                        progressText = " " .. PCol("body") .. trimmed .. "|r"
                     end
                 end
                 local linkedAchievementID = row.linkedAchievementID
@@ -307,7 +315,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                     textColor = row.completed and "|cff44ddff" or "|cff44bbff"
                 else
                     local P3 = ns.PLAN_UI_COLORS or {}
-                    textColor = row.completed and (P3.completed or "|cff44ff44") or (P3.incomplete or "|cffffffff")
+                    textColor = row.completed and (P3.completed or "|cff44ff44") or (P3.incomplete or PCol("incomplete"))
                 end
                 local formattedCriteriaName = FormatTextNumbers(row.name)
                 local plannedSuffix = ""
@@ -419,7 +427,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     expandedContent:SetHeight(math.max(ecPadding, math.abs(criteriaY) + ecPadding))
     expandedContent:Show()
     if card.requirementsHeader then
-        card.requirementsHeader:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
+        card.requirementsHeader:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
         card.requirementsHeader:Show()
     end
 
@@ -520,7 +528,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
             -- Create label
             local descLabel = FontManager:CreateFontString(cardFrame, "body", "OVERLAY")
             descLabel:SetPoint("TOPLEFT", 10, descY)
-            descLabel:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
+            descLabel:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
             cardFrame.descriptionLabel = descLabel
             
             local labelWidth = descLabel:GetStringWidth()
@@ -775,7 +783,7 @@ function PlanCardFactory:ExpandCardContent(card, planType)
     local expandedHeight = card.originalHeight + contentHeight + 8
     card:SetHeight(expandedHeight)
     expandedContent:Show()
-    card.expandHeader:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["DETAILS_LABEL"]) or "Details:") .. "|r")
+    card.expandHeader:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["DETAILS_LABEL"]) or "Details:") .. "|r")
     
     -- Update layout
     if CardLayoutManager and card._layoutManager then
@@ -805,7 +813,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local vendorText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     vendorText:SetPoint("TOPLEFT", 0, yOffset)
                     vendorText:SetPoint("RIGHT", 0, 0)
-                    vendorText:SetText("|cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r |cffffffff" .. source.vendor .. "|r")
+                    vendorText:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r " .. PCol("body") .. source.vendor .. "|r")
                     vendorText:SetJustifyH("LEFT")
                     vendorText:SetWordWrap(true)
                     vendorText:SetNonSpaceWrap(false)
@@ -831,7 +839,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local dropText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     dropText:SetPoint("TOPLEFT", 0, yOffset)
                     dropText:SetPoint("RIGHT", 0, 0)
-                    dropText:SetText(PlanSourceIconMarkup("loot") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
+                    dropText:SetText(PlanSourceIconMarkup("loot") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
                     dropText:SetJustifyH("LEFT")
                     dropText:SetWordWrap(true)
                     dropText:SetNonSpaceWrap(false)
@@ -842,7 +850,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local questText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     questText:SetPoint("TOPLEFT", 0, yOffset)
                     questText:SetPoint("RIGHT", 0, 0)
-                    questText:SetText(PlanSourceIconMarkup("quest") .. " " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
+                    questText:SetText(PlanSourceIconMarkup("quest") .. " " .. PCol("label") .. questLabel .. "|r" .. PCol("body") .. source.quest .. "|r")
                     questText:SetJustifyH("LEFT")
                     questText:SetWordWrap(true)
                     questText:SetNonSpaceWrap(false)
@@ -862,7 +870,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                             if dSafe and zSafe then
                                 if not z:find("(" .. diff .. ")", 1, true) then
                                     local P = ns.PLAN_UI_COLORS or {}
-                                    local bodyColor = P.body or "|cffffffff"
+                                    local bodyColor = PCol("body")
                                     zoneDiffLabel = " " .. bodyColor .. "(" .. diff .. ")|r"
                                 end
                             end
@@ -871,7 +879,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local locationText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     locationText:SetPoint("TOPLEFT", 0, yOffset)
                     locationText:SetPoint("RIGHT", 0, 0)
-                    locationText:SetText(PlanSourceIconMarkup("location") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
+                    locationText:SetText(PlanSourceIconMarkup("location") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r " .. PCol("body") .. source.zone .. "|r" .. zoneDiffLabel)
                     locationText:SetJustifyH("LEFT")
                     locationText:SetWordWrap(true)
                     locationText:SetNonSpaceWrap(false)
@@ -922,7 +930,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         local costLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                         costLabel:SetPoint("TOPLEFT", 0, yOffset)
                         costLabel:SetPoint("RIGHT", 0, 0)
-                        costLabel:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["COST_LABEL"]) or "Cost:") .. "|r |cffffffff" .. costText .. "|r")
+                        costLabel:SetText(PlanSourceIconMarkup("class") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["COST_LABEL"]) or "Cost:") .. "|r " .. PCol("body") .. costText .. "|r")
                         costLabel:SetJustifyH("LEFT")
                         costLabel:SetWordWrap(true)
                         costLabel:SetNonSpaceWrap(false)
@@ -932,7 +940,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                 
                 -- Faction (if available)
                 if source.faction then
-                    local factionText = PlanSourceIconMarkup("class") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["FACTION_LABEL"]) or "Faction:") .. "|r |cffffffff" .. source.faction .. "|r"
+                    local factionText = PlanSourceIconMarkup("class") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["FACTION_LABEL"]) or "Faction:") .. "|r " .. PCol("body") .. source.faction .. "|r"
                     if source.renown then
                         local repType = source.isFriendship and ((ns.L and ns.L["FRIENDSHIP_LABEL"]) or "Friendship") or ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown")
                         factionText = factionText .. " |cffffcc00(" .. repType .. " " .. source.renown .. ")|r"
@@ -966,7 +974,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
             local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
             sourceText:SetPoint("TOPLEFT", 0, yOffset)
             sourceText:SetPoint("RIGHT", 0, 0)
-            sourceText:SetText("|cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. cleanSource .. "|r")
+            sourceText:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r " .. PCol("body") .. cleanSource .. "|r")
             sourceText:SetJustifyH("LEFT")
             sourceText:SetWordWrap(true)
             -- Ensure text is rendered before measuring height (use GetStringHeight after SetText)
@@ -987,7 +995,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
         local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
         sourceText:SetPoint("TOPLEFT", 0, yOffset)
         sourceText:SetPoint("RIGHT", 0, 0)
-        sourceText:SetText("|cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. cleanSource .. "|r")
+        sourceText:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r " .. PCol("body") .. cleanSource .. "|r")
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
         -- Use timer to ensure text is rendered before measuring height

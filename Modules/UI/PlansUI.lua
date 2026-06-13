@@ -51,6 +51,39 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 
 -- Import shared UI components
 local COLORS = ns.UI_COLORS
+
+local function PlanGreenHex()
+    local P = ns.PLAN_UI_COLORS
+    return (P and P.completed) or (ns.UI_GetSemanticGreenHex and ns.UI_GetSemanticGreenHex()) or "|cff44ff44"
+end
+
+local function PlanGoldHex()
+    local P = ns.PLAN_UI_COLORS
+    return (P and P.progressLabel) or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
+end
+
+local function PlanBrightHex()
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function PlanTryCountSuffix(count)
+    local triesLabel = (ns.L and ns.L["TRIES_LABEL"]) or "Tries"
+    local labelHex = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex()) or "|cffaaddff"
+    return labelHex .. triesLabel .. ":|r " .. PlanBrightHex() .. tostring(count) .. "|r"
+end
+
+local function PlanGreenRgb()
+    local P = ns.PLAN_UI_COLORS
+    if P and P.completedRgb then
+        return P.completedRgb[1], P.completedRgb[2], P.completedRgb[3]
+    end
+    return (ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor()) or 0.27, 1, 0.27
+end
+
+local function ControlChromeBackdrop()
+    return (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or COLORS.bgCard
+end
+
 local CreateCard = ns.UI_CreateCard
 local CreateSearchBox = ns.UI_CreateSearchBox
 local CreateThemedButton = ns.UI_CreateThemedButton
@@ -142,7 +175,8 @@ local function EnsurePlansAchievementExpandCache(achievementID)
     end
 
     if achDesc and not (issecretvalue and issecretvalue(achDesc)) and achDesc ~= "" then
-        entry.information = "|cff99ccff" .. achDesc .. "|r"
+        local bodyHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        entry.information = bodyHex .. achDesc .. "|r"
     end
 
     local ptsNum = nil
@@ -327,20 +361,24 @@ local function ApplyPlansCategoryBarActive(categoryBar, activeKey)
         if btn.activeBar then btn.activeBar:SetAlpha(isActive and 1 or 0) end
         if ApplyVisuals then
             if isActive then
-                ApplyVisuals(btn, { acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1 }, { acc[1], acc[2], acc[3], 1 })
+                local act = COLORS.tabActive or { acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1 }
+                ApplyVisuals(btn, act, { acc[1], acc[2], acc[3], 1 })
             else
-                ApplyVisuals(btn, { 0.12, 0.12, 0.15, 1 }, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
+                local idleBg = (ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop()) or COLORS.bgCard
+                ApplyVisuals(btn, idleBg, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
             end
         end
         if btn._text then
             if isActive then
                 ns.UI_SetTextColorRole(btn._text, "Bright")
-                local font, size = btn._text:GetFont()
-                if font and size then btn._text:SetFont(font, size, "OUTLINE") end
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(btn._text, true)
+                end
             else
                 ns.UI_SetTextColorRole(btn._text, "Muted")
-                local font, size = btn._text:GetFont()
-                if font and size then btn._text:SetFont(font, size, "") end
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(btn._text, false)
+                end
             end
         end
     end
@@ -606,6 +644,7 @@ assert(Browse and Browse.Install, "load PlansUI_Browse.lua before PlansUI.lua")
 Browse.Install(WarbandNexus, {
     ReflowPlansCardLayout = ReflowPlansCardLayout,
     TeardownPlansAchievementBrowse = TeardownPlansAchievementBrowse,
+    DetachOwnedPlansInnerScroll = DetachOwnedPlansInnerScroll,
     ProfileBool = ProfileBool,
     PlansContentPadH = PlansContentPadH,
     GetLayout = GetLayout,
@@ -617,6 +656,46 @@ Browse.Install(WarbandNexus, {
 -- Source parser: PlansUI_SourceParser.lua
 
 -- MAIN DRAW FUNCTION
+
+--- Reposition cached Plans fixedHeader chrome (Collections/Items parity — WN-PERF tab revisit).
+local function RepositionPlansFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, subtitleTextContent)
+    local titleCard = hdrCache.titleCard
+    titleCard:SetParent(headerParent)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:ClearAllPoints()
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    end
+    titleCard:Show()
+    if hdrCache.subtitleText and subtitleTextContent then
+        hdrCache.subtitleText:SetText(subtitleTextContent)
+    end
+    if ns.UI_AdvanceTabChromeYOffset then
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    else
+        headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)
+    end
+    local categoryBar = hdrCache.categoryBar
+    if categoryBar then
+        categoryBar:SetParent(headerParent)
+        categoryBar:ClearAllPoints()
+        categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+        categoryBar:Show()
+        ApplyPlansCategoryBarActive(categoryBar, currentCategory)
+        local blockGap = (ns.UI_LAYOUT and ns.UI_LAYOUT.TAB_CHROME_BLOCK_GAP) or (GetLayout().afterElement) or 8
+        headerYOffset = headerYOffset + (categoryBar:GetHeight() or 40) + blockGap
+    end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if ns.UI_CommitTabFixedHeader then
+        ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+    elseif mf and mf.fixedHeader then
+        mf.fixedHeader:SetHeight(headerYOffset)
+    end
+    return headerYOffset
+end
 
 function WarbandNexus:DrawPlansTab(parent)
     -- Hide empty state container (will be shown again if needed)
@@ -654,10 +733,9 @@ function WarbandNexus:DrawPlansTab(parent)
     end
     
     local activePlanCount = self:GetActiveNonDailyIncompleteCount()
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local titleHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
-    local titleTextContent = "|cff" .. hexColor .. collectionPlansLabel .. "|r"
+    local titleTextContent = titleHex .. collectionPlansLabel .. "|r"
     local plansSubtitle = (ns.L and ns.L["PLANS_SUBTITLE_TEXT"]) or "Track your weekly goals & collections"
     local activePlanText = activePlanCount ~= 1
         and format((ns.L and ns.L["ACTIVE_PLANS_FORMAT"]) or "%d active plans", activePlanCount)
@@ -667,12 +745,24 @@ function WarbandNexus:DrawPlansTab(parent)
     local plansToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
         100, 100, 100, 80, 120, 115,
     })) or 600
-    local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
+
+    local hdrCache = mf and mf._plansFixedHeaderCache
+    local headerChromeDone = false
+    if hdrCache and hdrCache.titleCard and hdrCache.categoryBar then
+        headerYOffset = RepositionPlansFixedHeader(hdrCache, headerParent, chrome, headerYOffset, contentSide, subtitleTextContent)
+        if mf._plansApplyPlannedBrowseLockVisuals then
+            mf._plansApplyPlannedBrowseLockVisuals()
+        end
+        headerChromeDone = true
+    end
+
+    if not headerChromeDone then
+    local titleCard, _, _, _, plansSubtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "plans",
         titleText = titleTextContent,
         subtitleText = subtitleTextContent,
         textRightInset = plansToolbarReserve,
-    }))
+    })
     if chrome and ns.UI_AnchorTabTitleCard then
         ns.UI_AnchorTabTitleCard(titleCard, chrome)
     else
@@ -795,7 +885,7 @@ function WarbandNexus:DrawPlansTab(parent)
             checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -hdrToolbarGap, 0)
         end
         checkboxLabel:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed")
-        checkboxLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        ns.UI_SetTextColorRole(checkboxLabel, "Normal")
         
         -- Override OnClick to add filtering (with safety check)
         local originalOnClick = nil
@@ -866,7 +956,7 @@ function WarbandNexus:DrawPlansTab(parent)
                 plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -hdrToolbarGap, 0)
             end
             plannedLabel:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned")
-            plannedLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+            ns.UI_SetTextColorRole(plannedLabel, "Normal")
 
             local function ApplyPlannedBrowseLockVisuals()
                 local dim = IsPlansPlannedBrowseLocked() and 0.42 or 1
@@ -961,76 +1051,6 @@ function WarbandNexus:DrawPlansTab(parent)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
     
-    -- One-time event registration (following CurrencyUI pattern)
-    if not self._plansEventRegistered then
-        local Constants = ns.Constants
-        
-        -- WN_PLANS_UPDATED: handled by UI.lua SchedulePopulateContent (debounced).
-        -- Registering here caused double rebuild (immediate redraw + debounced PopulateContent).
-
-        if Constants.EVENTS.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED then
-            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED, function(_, payload)
-                local cat = payload and payload.category
-                if cat and ns.RequestPlansBrowseCollectionEnsure then
-                    ns.RequestPlansBrowseCollectionEnsure(cat)
-                end
-            end)
-        end
-        
-        -- Collection scan progress: milestone refresh only (full tab rebuild every 500ms caused profiler spam).
-        if Constants and Constants.EVENTS then
-            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(_, data)
-                if not self:IsStillOnTab("plans") then return end
-                local scanCategory = data and data.category
-                if currentCategory == "active" or currentCategory == "daily_tasks" then
-                    if scanCategory and scanCategory ~= currentCategory then return end
-                elseif scanCategory and scanCategory ~= currentCategory and scanCategory ~= "all" and scanCategory ~= "build" then
-                    return
-                end
-                local collLoading = ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading
-                local catLoading = scanCategory and ns.PlansLoadingState and ns.PlansLoadingState[scanCategory]
-                    and ns.PlansLoadingState[scanCategory].isLoading
-                if not collLoading and not catLoading then return end
-                local progress = tonumber(data and data.progress) or 0
-                local scanKey = scanCategory or "all"
-                local milestone = progress >= 100 and 100 or (math.floor(progress / 25) * 25)
-                if milestone <= (ns._plansBrowseScanUIMilestone[scanKey] or -1) then return end
-                ns._plansBrowseScanUIMilestone[scanKey] = milestone
-                local now = GetTime()
-                if (now - lastUIRefresh) < 1.5 then return end
-                lastUIRefresh = now
-                C_Timer.After(0.05, function()
-                    if self:IsStillOnTab("plans") then
-                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans" })
-                    end
-                end)
-            end)
-
-            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
-                local cat = data and data.category
-                if cat and ns._plansBrowseCollectionEnsurePending then
-                    ns._plansBrowseCollectionEnsurePending[cat] = nil
-                end
-                if cat and ns._plansBrowseScanUIMilestone then
-                    ns._plansBrowseScanUIMilestone[cat] = nil
-                end
-                ns._plansBrowseScanUIMilestone.all = nil
-                ns._plansBrowseScanUIMilestone.build = nil
-                if not cat or cat == "achievement" or cat == "all" then
-                    if ns.UI_InvalidateAchievementCategoryCaches then
-                        ns.UI_InvalidateAchievementCategoryCaches()
-                    elseif ns.UI_InvalidatePlansAchievementCategoryTree then
-                        ns.UI_InvalidatePlansAchievementCategoryTree()
-                    end
-                end
-            end)
-
-            -- Final populate refresh: UI.lua SchedulePopulateContent (skipCooldown on complete).
-        end
-        
-        self._plansEventRegistered = true
-    end
-    
     local categoryBar = ns.UI.Factory:CreateContainer(headerParent, nil, nil, false)
     categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
     categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
@@ -1082,9 +1102,11 @@ function WarbandNexus:DrawPlansTab(parent)
 
         if ApplyVisuals then
             if isActive then
-                ApplyVisuals(btn, {acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1}, {acc[1], acc[2], acc[3], 1})
+                local act = COLORS.tabActive or { acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1 }
+                ApplyVisuals(btn, act, { acc[1], acc[2], acc[3], 1 })
             else
-                ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1})
+                local idleBg = (ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop()) or COLORS.bgCard
+                ApplyVisuals(btn, idleBg, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
             end
         end
 
@@ -1133,6 +1155,7 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         
         local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        label._wnNavLabel = true
         label:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
         label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
         label:SetText(cat.name)
@@ -1142,12 +1165,14 @@ function WarbandNexus:DrawPlansTab(parent)
         categoryButtons[cat.key] = btn
         if isActive then
             ns.UI_SetTextColorRole(label, "Bright")
-            local font, size = label:GetFont()
-            if font and size then label:SetFont(font, size, "OUTLINE") end
+            if ns.UI_SetNavLabelFontStyle then
+                ns.UI_SetNavLabelFontStyle(label, true)
+            end
         else
             ns.UI_SetTextColorRole(label, "Muted")
-            local font, size = label:GetFont()
-            if font and size then label:SetFont(font, size, "") end
+            if ns.UI_SetNavLabelFontStyle then
+                ns.UI_SetNavLabelFontStyle(label, false)
+            end
         end
 
         btn:SetScript("OnClick", function()
@@ -1196,19 +1221,107 @@ function WarbandNexus:DrawPlansTab(parent)
     end
 
     if mf then
+        mf._plansFixedHeaderCache = {
+            titleCard = titleCard,
+            subtitleText = plansSubtitleText,
+            categoryBar = categoryBar,
+        }
+    end
+    end -- not headerChromeDone
+
+    if not moduleEnabled then
+        if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) elseif fixedHeader then fixedHeader:SetHeight(headerYOffset) end
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, scrollTopY, (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List")
+        return scrollTopY + cardHeight
+    end
+
+    -- One-time event registration (following CurrencyUI pattern)
+    if not self._plansEventRegistered then
+        local Constants = ns.Constants
+
+        if Constants.EVENTS.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED then
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.PLANS_BROWSE_COLLECTION_ENSURE_REQUESTED, function(_, payload)
+                local cat = payload and payload.category
+                if cat and ns.RequestPlansBrowseCollectionEnsure then
+                    ns.RequestPlansBrowseCollectionEnsure(cat)
+                end
+            end)
+        end
+
+        if Constants and Constants.EVENTS then
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(_, data)
+                if not self:IsStillOnTab("plans") then return end
+                local scanCategory = data and data.category
+                if currentCategory == "active" or currentCategory == "daily_tasks" then
+                    if scanCategory and scanCategory ~= currentCategory then return end
+                elseif scanCategory and scanCategory ~= currentCategory and scanCategory ~= "all" and scanCategory ~= "build" then
+                    return
+                end
+                local collLoading = ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading
+                local catLoading = scanCategory and ns.PlansLoadingState and ns.PlansLoadingState[scanCategory]
+                    and ns.PlansLoadingState[scanCategory].isLoading
+                if not collLoading and not catLoading then return end
+                local progress = tonumber(data and data.progress) or 0
+                local scanKey = scanCategory or "all"
+                local milestone = progress >= 100 and 100 or (math.floor(progress / 25) * 25)
+                if milestone <= (ns._plansBrowseScanUIMilestone[scanKey] or -1) then return end
+                ns._plansBrowseScanUIMilestone[scanKey] = milestone
+                local now = GetTime()
+                if (now - lastUIRefresh) < 1.5 then return end
+                lastUIRefresh = now
+                C_Timer.After(0.05, function()
+                    if self:IsStillOnTab("plans") then
+                        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans" })
+                    end
+                end)
+            end)
+
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
+                local cat = data and data.category
+                if cat and ns._plansBrowseCollectionEnsurePending then
+                    ns._plansBrowseCollectionEnsurePending[cat] = nil
+                end
+                if cat and ns._plansBrowseScanUIMilestone then
+                    ns._plansBrowseScanUIMilestone[cat] = nil
+                end
+                ns._plansBrowseScanUIMilestone.all = nil
+                ns._plansBrowseScanUIMilestone.build = nil
+                if not cat or cat == "achievement" or cat == "all" then
+                    if ns.UI_InvalidateAchievementCategoryCaches then
+                        ns.UI_InvalidateAchievementCategoryCaches()
+                    elseif ns.UI_InvalidatePlansAchievementCategoryTree then
+                        ns.UI_InvalidatePlansAchievementCategoryTree()
+                    end
+                end
+            end)
+        end
+
+        self._plansEventRegistered = true
+    end
+
+    if mf then
         mf._plansScrollBodyStartY = scrollTopY
         mf._plansContentWidth = width
     end
 
-    local yOffset = scrollTopY
-
-    if currentCategory == "active" then
+    local function PaintPlansScrollBody()
+        local bodyY = scrollTopY
+        if currentCategory == "active" then
         local searchBar = ns.UI.Factory:CreateContainer(parent, nil, 32, false)
         local padH = PlansContentPadH()
-        searchBar:SetPoint("TOPLEFT", padH, -yOffset)
-        searchBar:SetPoint("TOPRIGHT", -padH, -yOffset)
-        if ApplyVisuals then
-            ApplyVisuals(searchBar, COLORS.bgLight, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
+        searchBar:SetPoint("TOPLEFT", padH, -bodyY)
+        searchBar:SetPoint("TOPRIGHT", -padH, -bodyY)
+        if ns.UI_ApplySearchBoxChrome then
+            ns.UI_ApplySearchBoxChrome(searchBar)
+        elseif ApplyVisuals then
+            local searchBg, searchBorder = ns.UI_GetSearchBoxChromeColors and ns.UI_GetSearchBoxChromeColors()
+            if searchBg then
+                ApplyVisuals(searchBar, searchBg, searchBorder)
+            else
+                local b = ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor() or COLORS.border
+                ApplyVisuals(searchBar, COLORS.bgLight, { b[1], b[2], b[3], 0.55 })
+            end
         end
 
         local searchIcon = searchBar:CreateTexture(nil, "OVERLAY")
@@ -1221,20 +1334,12 @@ function WarbandNexus:DrawPlansTab(parent)
         searchInput:SetSize(1, 26)
         searchInput:SetPoint("LEFT", searchIcon, "RIGHT", 6, 0)
         searchInput:SetPoint("RIGHT", searchBar, "RIGHT", -8, 0)
-        if FontManager then
-            local p = FontManager:GetFontFace()
-            local s = FontManager:GetFontSize("body")
-            local f = FontManager:GetAAFlags()
-            pcall(searchInput.SetFont, searchInput, p, s, f)
-        end
         ns.UI_SetTextColorRole(searchInput, "Bright")
         searchInput:SetAutoFocus(false)
         searchInput:SetMaxLetters(50)
         local searchPlaceholder = (ns.L and ns.L["SEARCH_PLANS"]) or "Search plans..."
-        searchInput.Instructions = searchInput:CreateFontString(nil, "ARTWORK")
-        if FontManager then
-            FontManager:ApplyFont(searchInput.Instructions, "body")
-        end
+        searchInput.Instructions = FontManager:CreateFontString(
+            searchInput, FontManager:GetFontRole("searchPlaceholder"), "ARTWORK")
         searchInput.Instructions:SetPoint("LEFT", 0, 0)
         searchInput.Instructions:SetPoint("RIGHT", 0, 0)
         searchInput.Instructions:SetJustifyH("LEFT")
@@ -1253,7 +1358,7 @@ function WarbandNexus:DrawPlansTab(parent)
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
         end)
         searchInput:SetScript("OnTextChanged", function(self, userInput)
-            if not userInput then return end  -- Ignore programmatic SetText calls
+            if not userInput then return end
             local text = self:GetText()
             if issecretvalue and issecretvalue(text) then
                 ns._plansActiveSearch = nil
@@ -1291,16 +1396,36 @@ function WarbandNexus:DrawPlansTab(parent)
         searchBar:Show()
 
         local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
-        yOffset = yOffset + searchH + GetLayout().afterElement
+        bodyY = bodyY + searchH + GetLayout().afterElement
+        end
+
+        if currentCategory == "active" or currentCategory == "daily_tasks" then
+            bodyY = self:DrawActivePlans(parent, bodyY, width, currentCategory)
+        else
+            bodyY = self:DrawBrowser(parent, bodyY, width, currentCategory)
+        end
+        return bodyY + 20
     end
 
-    if currentCategory == "active" or currentCategory == "daily_tasks" then
-        yOffset = self:DrawActivePlans(parent, yOffset, width, currentCategory)
-    else
-        yOffset = self:DrawBrowser(parent, yOffset, width, currentCategory)
+    if parent._preparedByPopulate and not parent._plansBodyDeferScheduled then
+        parent._plansBodyDeferScheduled = true
+        local deferGen = mf and mf._tabSwitchGen or 0
+        local deferParent = parent
+        C_Timer.After(0, function()
+            deferParent._plansBodyDeferScheduled = nil
+            if not mf or mf.currentTab ~= "plans" or mf._tabSwitchGen ~= deferGen then return end
+            local endY = PaintPlansScrollBody()
+            if ns.UI_SyncMainTabScrollChrome then
+                ns.UI_SyncMainTabScrollChrome(mf, deferParent, endY)
+            end
+        end)
+        if ns.UI_SyncMainTabScrollChrome then
+            ns.UI_SyncMainTabScrollChrome(mf, parent, scrollTopY + 80)
+        end
+        return scrollTopY + 80
     end
-    
-    return yOffset + 20
+
+    return PaintPlansScrollBody()
 end
 
 -- ACTIVE PLANS DISPLAY
@@ -1394,7 +1519,8 @@ local function AttachQuestRowTooltip(frame, quest)
             }
         end
         if quest.isComplete then
-            lines[#lines + 1] = { text = "|cff44ff44" .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete") .. "|r", color = {0.27, 1, 0.27} }
+            local gr, gg, gb = PlanGreenRgb()
+            lines[#lines + 1] = { text = PlanGreenHex() .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete") .. "|r", color = { gr, gg, gb } }
         elseif quest.isLocked then
             lines[#lines + 1] = { text = "|cffff9933" .. ((ns.L and ns.L["LOCKED_WORLD_QUESTS"]) or "Locked — complete World Quests to unlock") .. "|r", color = {1, 0.6, 0.2} }
         end
@@ -1487,7 +1613,12 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
         resetTimeText = FontManager:CreateFontString(resetBar, "body", "OVERLAY")
         resetTimeText:SetPoint("RIGHT", -12, 0)
-        resetTimeText:SetTextColor(0.3, 0.9, 0.3)
+        if ns.UI_GetSemanticGreenColor then
+            local gr, gg, gb = ns.UI_GetSemanticGreenColor()
+            resetTimeText:SetTextColor(gr, gg, gb)
+        else
+            resetTimeText:SetTextColor(0.3, 0.9, 0.3)
+        end
         resetBar._resetTimeText = resetTimeText
     end
     resetBar:SetHeight(resetBarH)
@@ -1685,7 +1816,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
         local totalFs = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
         totalFs:SetPoint("RIGHT", removeBtn, "LEFT", -6, 0)
-        local totalColor = (totalAll > 0 and completedAll == totalAll) and "|cff44ff44" or "|cffffcc00"
+        local totalColor = (totalAll > 0 and completedAll == totalAll) and PlanGreenHex() or PlanGoldHex()
         totalFs:SetText(totalColor .. completedAll .. "/" .. totalAll .. "|r")
 
         if charHdrTitleFs then
@@ -1717,7 +1848,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 if t > 0 then
                     local catFs = FontManager:CreateFontString(statsStrip, "small", "OVERLAY")
                     catFs:SetPoint("LEFT", statsStrip, "LEFT", catX, 0)
-                    local cColor = (c == t) and "|cff44ff44" or format("|cff%02x%02x%02x", catColor[1] * 255, catColor[2] * 255, catColor[3] * 255)
+                    local cColor = (c == t) and PlanGreenHex() or format("|cff%02x%02x%02x", catColor[1] * 255, catColor[2] * 255, catColor[3] * 255)
                     catFs:SetText(cColor .. catName .. " " .. c .. "/" .. t .. "|r")
                     catX = catX + catFs:GetStringWidth() + 12
                 end
@@ -1813,7 +1944,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
                 local countHdrFs = FontManager:CreateFontString(catHeader, "body", "OVERLAY")
                 countHdrFs:SetPoint("RIGHT", -14, 0)
-                local countColorHdr = (completed == total and total > 0) and "|cff44ff44" or "|cffffffff"
+                local countColorHdr = (completed == total and total > 0) and PlanGreenHex() or PlanBrightHex()
                 countHdrFs:SetText(countColorHdr .. completed .. "/" .. total .. "|r")
 
                 if catHdrTitleFs then
@@ -1881,13 +2012,13 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                         titleFs:SetJustifyH("LEFT")
                         titleFs:SetWordWrap(false)
                         if quest.isComplete then
-                            titleFs:SetText("|cff44ff44" .. (quest.title or "") .. "|r")
+                            titleFs:SetText(PlanGreenHex() .. (quest.title or "") .. "|r")
                         elseif quest.isLocked then
                             titleFs:SetText("|cffff9933" .. (quest.title or "") .. "|r")
                         elseif isSub then
                             titleFs:SetText("|cffaaaaaa" .. (quest.title or "") .. "|r")
                         else
-                            titleFs:SetText("|cffffffff" .. (quest.title or "") .. "|r")
+                            titleFs:SetText(PlanBrightHex() .. (quest.title or "") .. "|r")
                         end
 
                         if hasObjectives then
@@ -1907,7 +2038,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 end
 
                                 local objText = obj.text or format((ns.L and ns.L["OBJECTIVE_INDEX_FORMAT"]) or "Objective %d", oi)
-                                local objColor = obj.finished and "|cff44ff44" or "|cffaaaaaa"
+                                local objColor = obj.finished and PlanGreenHex() or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted") or "|cffaaaaaa")
                                 local objFs = FontManager:CreateFontString(row, "small", "OVERLAY")
                                 objFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20, objY + 2)
                                 objFs:SetWidth(width * 0.45)
@@ -1918,7 +2049,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 local progFs = FontManager:CreateFontString(row, "small", "OVERLAY")
                                 progFs:SetPoint("TOPLEFT", leftIndent + iconSize + 20 + width * 0.46, objY + 2)
                                 progFs:SetJustifyH("LEFT")
-                                local progColor = obj.finished and "|cff44ff44" or "|cffffcc00"
+                                local progColor = obj.finished and PlanGreenHex() or PlanGoldHex()
                                 progFs:SetText(format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
                             end
 
@@ -1934,12 +2065,12 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                             zoneFs:SetWidth(width * 0.25)
                             zoneFs:SetJustifyH("LEFT")
                             zoneFs:SetWordWrap(false)
-                            zoneFs:SetText("|cffffffff" .. (quest.zone or "") .. "|r")
+                            zoneFs:SetText(PlanBrightHex() .. (quest.zone or "") .. "|r")
 
                             if quest.timeLeft and quest.timeLeft > 0 then
                                 local timeFs = FontManager:CreateFontString(row, "body", "OVERLAY")
                                 timeFs:SetPoint("RIGHT", -14, 0)
-                                timeFs:SetText("|cffffffff" .. FormatTimeLeft(quest.timeLeft) .. "|r")
+                                timeFs:SetText(PlanBrightHex() .. FormatTimeLeft(quest.timeLeft) .. "|r")
                             end
                         end
 
@@ -2171,7 +2302,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             -- Apply accent border (My Plans cards)
             if ApplyVisuals then
-                local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+                local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
+                    or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
                 ApplyVisuals(card, COLORS.bgCard, borderColor)
             end
             
@@ -2200,7 +2332,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card._layoutInfo.yPos = yPos
             
             if ApplyVisuals then
-                local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+                local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
+                    or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
                 ApplyVisuals(card, COLORS.bgCard, borderColor)
             end
             
@@ -2240,7 +2373,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 and WarbandNexus.GetTryCount then
                 local count = WarbandNexus:GetTryCount(plan.type, collectibleID) or 0
                 local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-                trySuffix = "|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r"
+                trySuffix = PlanTryCountSuffix(count)
             end
 
             local allSourceItems = ns.UI_BuildPlanCriteriaItemsAll and ns.UI_BuildPlanCriteriaItemsAll(plan)
@@ -2565,6 +2698,9 @@ function WarbandNexus:ShowCustomPlanDialog()
     charText:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
     if classColors then
         charText:SetTextColor(classColors.r, classColors.g, classColors.b)
+    elseif ns.UI_GetSemanticGoldColor then
+        local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+        charText:SetTextColor(gr, gg, gb)
     else
         charText:SetTextColor(1, 0.8, 0)
     end
@@ -2573,7 +2709,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Title label
     local titleLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     titleLabel:SetPoint("TOPLEFT", 12, -75)
-    titleLabel:SetText("|cff" .. format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["TITLE_LABEL"]) or "Title:") .. "|r")
+    local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+    titleLabel:SetText(mutedHex .. ((ns.L and ns.L["TITLE_LABEL"]) or "Title:") .. "|r")
     
     -- Title input container (using Factory pattern)
     local titleInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)
@@ -2610,7 +2747,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Description label
     local descLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     descLabel:SetPoint("TOPLEFT", 12, -145)
-    descLabel:SetText("|cff" .. format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
+    descLabel:SetText(mutedHex .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
     
     -- Description input container (scrollable, single line) (using Factory pattern)
     local descInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)  -- Reduced height for single line
@@ -2696,7 +2833,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Reset Cycle selection
     local resetLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     resetLabel:SetPoint("TOPLEFT", 12, -215)
-    resetLabel:SetText("|cff" .. format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["RESET_CYCLE_LABEL"]) or "Reset Cycle:") .. "|r")
+    resetLabel:SetText(mutedHex .. ((ns.L and ns.L["RESET_CYCLE_LABEL"]) or "Reset Cycle:") .. "|r")
     
     local PlanDlgF = ns.UI and ns.UI.Factory
     
@@ -2767,6 +2904,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Minus button (paired with Factory +plusBtn where SharedWidgets Factory is live)
     local minusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
     if minusBtn then minusBtn._wnPlanDlgDurStepper = true end
+    local chromeBg = ControlChromeBackdrop()
     if not minusBtn then
         minusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
         minusBtn:SetBackdrop({
@@ -2775,10 +2913,10 @@ function WarbandNexus:ShowCustomPlanDialog()
             edgeSize = 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
-        minusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
+        minusBtn:SetBackdropColor(chromeBg[1], chromeBg[2], chromeBg[3], chromeBg[4] or 1)
         minusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
     elseif ApplyVisuals then
-        ApplyVisuals(minusBtn, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+        ApplyVisuals(minusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end
     minusBtn:SetPoint("TOPLEFT", 160, -2)
     local minusText = FontManager:CreateFontString(minusBtn, "title", "OVERLAY")
@@ -2803,10 +2941,10 @@ function WarbandNexus:ShowCustomPlanDialog()
             edgeSize = 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
-        plusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
+        plusBtn:SetBackdropColor(chromeBg[1], chromeBg[2], chromeBg[3], chromeBg[4] or 1)
         plusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
     elseif ApplyVisuals then
-        ApplyVisuals(plusBtn, { 0.12, 0.12, 0.14, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+        ApplyVisuals(plusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end
     plusBtn:SetPoint("TOPLEFT", countDisplay, "TOPRIGHT", 12, 0)
     local plusText = FontManager:CreateFontString(plusBtn, "title", "OVERLAY")
@@ -3069,7 +3207,7 @@ function WarbandNexus:CompleteCustomPlan(planId)
             if plan.completed then return true end -- Already completed
             
             plan.completed = true
-            self:Print(format((ns.L and ns.L["CUSTOM_PLAN_COMPLETED"]) or "Custom plan '%s' |cff00ff00completed|r", FormatTextNumbers(plan.name)))
+            self:Print(format((ns.L and ns.L["CUSTOM_PLAN_COMPLETED"]) or "Custom plan '%s' %scompleted|r", FormatTextNumbers(plan.name), PlanGreenHex()))
 
             -- Track completion time for recurring reset
             if plan.resetCycle and plan.resetCycle.enabled then
@@ -3237,9 +3375,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         end
 
         if progress then
-            local progressHeader = FontManager:CreateFontString(contentFrame, "header", "OVERLAY", "accent")
+            local progressHeader = FontManager:CreateFontString(contentFrame, "header", "OVERLAY")
             progressHeader:SetPoint("TOP", 0, -78)
-            progressHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+            ns.UI_SetTextColorRole(progressHeader, "Bright")
             progressHeader:SetText((ns.L and ns.L["CURRENT_PROGRESS"]) or "Current Progress")
 
             -- Card row: three equal columns; width from dialog shell (content not always laid out yet).
@@ -3335,7 +3473,12 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     milestoneText:SetJustifyH("CENTER")
                     if milestoneText.SetJustifyV then milestoneText:SetJustifyV("MIDDLE") end
                     if isComplete then
-                        milestoneText:SetTextColor(0.35, 1, 0.4)
+                        if ns.UI_GetSemanticGreenColor then
+                            local gr, gg, gb = ns.UI_GetSemanticGreenColor()
+                            milestoneText:SetTextColor(gr, gg, gb)
+                        else
+                            milestoneText:SetTextColor(0.35, 1, 0.4)
+                        end
                     else
                         ns.UI_SetTextColorRole(milestoneText, "Muted")
                     end
@@ -3554,9 +3697,9 @@ function WarbandNexus:ShowDailyPlanDialog()
     }
     
     local questTypeY = -68
-    local sectionLabel = FontManager:CreateFontString(contentFrame, "subtitle", "OVERLAY", "accent")
+    local sectionLabel = FontManager:CreateFontString(contentFrame, "subtitle", "OVERLAY")
     sectionLabel:SetPoint("TOPLEFT", 16, questTypeY)
-    sectionLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    ns.UI_SetTextColorRole(sectionLabel, "Bright")
     sectionLabel:SetText((ns.L and ns.L["QUEST_TYPES"]) or "Track Categories:")
     
     local CATEGORIES = ns.QUEST_CATEGORIES or {}
@@ -3585,6 +3728,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         
         local label = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         label:SetPoint("LEFT", colorBar, "RIGHT", 6, 5)
+        ns.UI_SetTextColorRole(label, "Bright")
         label:SetText(catName)
         
         local desc = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
@@ -3649,9 +3793,9 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     wipIconFrame2:SetPoint("CENTER", wipCard, "CENTER", 0, 40)  -- Move icon slightly up from center
     local wipIcon = wipIconFrame2.texture
     
-    local wipTitle = FontManager:CreateFontString(wipCard, "header", "OVERLAY", "accent")
+    local wipTitle = FontManager:CreateFontString(wipCard, "header", "OVERLAY")
     wipTitle:SetPoint("TOP", wipIcon, "BOTTOM", 0, -20)
-    wipTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    ns.UI_SetTextColorRole(wipTitle, "Bright")
     wipTitle:SetText((ns.L and ns.L["WORK_IN_PROGRESS"]) or "Work in Progress")
     
     local wipDesc = FontManager:CreateFontString(wipCard, "body", "OVERLAY")

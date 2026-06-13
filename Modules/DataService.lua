@@ -20,6 +20,9 @@ end
 -- Prevents overwriting other modules' handlers for the same message.
 local DataServiceEvents = {}
 
+-- Zone debounce (flushable on PLAYER_LOGOUT)
+local zoneUpdateTimer = nil
+
 -- Roster helpers: DataService_RosterHelpers.lua (ns.DataServiceRoster)
 local Roster = ns.DataServiceRoster
 local _allCharsRosterCache = Roster and Roster.cache or { sig = nil, list = nil }
@@ -302,9 +305,20 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         charData.itemLevel = newItemLevel
         
     elseif dataType == "guild" then
-        local gn = IsInGuild() and GetGuildInfo("player") or nil
-        if gn and issecretvalue and issecretvalue(gn) then gn = nil end
-        charData.guildName = gn
+        local newGn, ambiguous = nil, false
+        if self.GetSafePlayerGuildName then
+            newGn, ambiguous = self:GetSafePlayerGuildName()
+        elseif IsInGuild() then
+            local gn = GetGuildInfo("player")
+            if gn and not (issecretvalue and issecretvalue(gn)) then
+                newGn = gn
+            else
+                ambiguous = true
+            end
+        end
+        if not ambiguous then
+            charData.guildName = newGn
+        end
 
     elseif dataType == "zone" then
         charData.zoneName = GetZoneText()
@@ -371,18 +385,21 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     -- Character save on login is handled by Core.lua raw frame handler (SaveCharacter)
     -- and Core.lua OnEnable (SaveMinimalCharacterData for untracked characters).
 
-    -- Guild membership/name changed (join/leave/switch)
-    self:RegisterEvent("PLAYER_GUILD_UPDATE", function(event)
-        self:UpdateCharacterCache("guild")
+    -- Guild membership/name changed (join/leave/switch) — PLAYER_GUILD_UPDATE: unitTarget (wiki)
+    self:RegisterEvent("PLAYER_GUILD_UPDATE", function(event, unit)
+        if unit and unit ~= "player" then return end
+        if WarbandNexus.SyncPlayerGuildMembership then
+            WarbandNexus:SyncPlayerGuildMembership()
+        else
+            self:UpdateCharacterCache("guild")
+        end
     end)
     
     -- Zone changes (debounced 2s — ZONE_CHANGED fires frequently during flight paths)
-    local zoneUpdatePending = false
     local function DebouncedZoneUpdate()
-        if zoneUpdatePending then return end
-        zoneUpdatePending = true
-        C_Timer.After(2, function()
-            zoneUpdatePending = false
+        if zoneUpdateTimer then return end
+        zoneUpdateTimer = C_Timer.After(2, function()
+            zoneUpdateTimer = nil
             self:UpdateCharacterCache("zone")
         end)
     end
@@ -1046,6 +1063,20 @@ function WarbandNexus:UpdateCharacterGold()
         return true
     end
     return false
+end
+
+---Flush pending zone debounce and lightweight gold snapshot on PLAYER_LOGOUT.
+function WarbandNexus:FlushDataServiceOnLogout()
+    if zoneUpdateTimer then
+        zoneUpdateTimer:Cancel()
+        zoneUpdateTimer = nil
+        if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
+            self:UpdateCharacterCache("zone")
+        end
+    end
+    if self.UpdateCharacterGold then
+        self:UpdateCharacterGold()
+    end
 end
 
 --- Get all characters (tracked and untracked), sorted by level then name.

@@ -7,6 +7,7 @@
 local _, ns = ...
 ns.PvEUI = ns.PvEUI or {}
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager
 
 local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
 local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
@@ -31,6 +32,69 @@ local function BindForwardScrollWheel(frame)
     frame:SetScript("OnMouseWheel", function(self, delta)
         fwd(self, delta)
     end)
+end
+
+local function VaultRGB3(r, g, b)
+    return { r, g, b }
+end
+
+local function VaultSpacerColor()
+    local r, g, b = 0.3, 0.3, 0.3
+    if ns.UI_GetTextRoleRGB then
+        r, g, b = ns.UI_GetTextRoleRGB("Dim")
+    end
+    return VaultRGB3(r, g, b)
+end
+
+local function VaultMutedLineColor()
+    local r, g, b = 0.4, 0.4, 0.4
+    if ns.UI_GetTextRoleRGB then
+        r, g, b = ns.UI_GetTextRoleRGB("Muted")
+    end
+    return VaultRGB3(r, g, b)
+end
+
+local function VaultDimLineColor()
+    local r, g, b = 0.5, 0.5, 0.5
+    if ns.UI_GetTextRoleRGB then
+        r, g, b = ns.UI_GetTextRoleRGB("Dim")
+    end
+    return VaultRGB3(r, g, b)
+end
+
+local function VaultCompleteLineColor()
+    if ns.UI_GetSemanticGreenColor then
+        local r, g, b = ns.UI_GetSemanticGreenColor()
+        return VaultRGB3(r, g, b)
+    end
+    return VaultRGB3(0.5, 1, 0.5)
+end
+
+local function VaultInfoLineColor()
+    local c = ns.UI_COLORS and ns.UI_COLORS.accent
+    if c then
+        return VaultRGB3(c[1] * 0.55 + 0.35, c[2] * 0.55 + 0.55, c[3] * 0.55 + 0.85)
+    end
+    return VaultRGB3(0.63, 0.82, 1)
+end
+
+local function VaultBrightHex()
+    if ns.UI_GetBrightHex then return ns.UI_GetBrightHex() end
+    if ns.UI_GetTextRoleHex then return ns.UI_GetTextRoleHex("Bright") end
+    return "|cffeeeeee"
+end
+
+local function VaultBrightColor()
+    if ns.UI_GetTextRoleRGB then
+        local r, g, b = ns.UI_GetTextRoleRGB("Bright")
+        return VaultRGB3(r, g, b)
+    end
+    return VaultRGB3(1, 1, 1)
+end
+
+local function VaultGoldHex()
+    if ns.UI_GetSemanticGoldHex then return ns.UI_GetSemanticGoldHex() end
+    return "|cffffd700"
 end
 
 
@@ -331,7 +395,7 @@ local function BuildRaidEncounterLines(lines, encounters)
     for i = 1, #sorted do
         local enc = sorted[i]
         if (enc.instanceID or 0) ~= (lastInstanceID or 0) then
-            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+            table.insert(lines, { text = " ", color = VaultSpacerColor() })
             local instName = enc.instanceName or ""
             table.insert(lines, {
                 text = string.format("|cffffffcc" .. encounterListLabel .. "|r", instName),
@@ -349,7 +413,7 @@ local function BuildRaidEncounterLines(lines, encounters)
             else
                 table.insert(lines, {
                     text = string.format("  |cff666666- %s|r", enc.name),
-                    color = {0.4, 0.4, 0.4}
+                    color = VaultMutedLineColor()
                 })
             end
         end
@@ -414,7 +478,7 @@ local function BuildRaidBossLinesFromLockouts(lines, raidLockouts)
             end
             table.sort(bossList, function(a, b) return (a.order or 0) < (b.order or 0) end)
             if #bossList > 0 then
-                table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                table.insert(lines, { text = " ", color = VaultSpacerColor() })
                 table.insert(lines, {
                     text = string.format("|cffffffcc" .. encounterListLabel .. "|r", instName),
                     color = {1, 1, 0.8}
@@ -429,7 +493,7 @@ local function BuildRaidBossLinesFromLockouts(lines, raidLockouts)
                     else
                         table.insert(lines, {
                             text = string.format("  |cff666666- %s|r", boss.name),
-                            color = {0.4, 0.4, 0.4}
+                            color = VaultMutedLineColor()
                         })
                     end
                 end
@@ -453,7 +517,7 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
     local heroicLabel = GetLocalizedText("DIFFICULTY_HEROIC", "Heroic")
     local topRunsLabel = GetLocalizedText("VAULT_TOP_RUNS_FORMAT", "Top %d Runs This Week")
     
-    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+    table.insert(lines, { text = " ", color = VaultSpacerColor() })
     table.insert(lines, {
         text = string.format("|cffffffcc" .. topRunsLabel .. "|r", threshold),
         color = {1, 1, 0.8}
@@ -486,11 +550,11 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
         local lvl = run.level or 0
         local runText
         if lvl > 0 then
-            runText = string.format("  |cffffffff+%d %s|r", lvl, dungeonName)
+            runText = string.format("  %s+%d %s|r", VaultBrightHex(), lvl, dungeonName)
         else
-            runText = string.format("  |cffffffff%s 0 %s|r", mythicLabel, dungeonName)
+            runText = string.format("  %s%s 0 %s|r", VaultBrightHex(), mythicLabel, dungeonName)
         end
-        table.insert(lines, { text = runText, color = {1, 1, 1} })
+        table.insert(lines, { text = runText, color = VaultBrightColor() })
         shown = shown + 1
     end
     
@@ -501,16 +565,16 @@ local function BuildDungeonRunLines(lines, runHistory, dungeonRunCounts, thresho
         local numHeroic = dungeonRunCounts.heroic or 0
         while numMythic > 0 and remaining > 0 do
             table.insert(lines, {
-                text = string.format("  |cffffffff%s 0|r", mythicLabel),
-                color = {1, 1, 1}
+                text = string.format("  %s%s 0|r", VaultBrightHex(), mythicLabel),
+                color = VaultBrightColor()
             })
             numMythic = numMythic - 1
             remaining = remaining - 1
         end
         while numHeroic > 0 and remaining > 0 do
             table.insert(lines, {
-                text = string.format("  |cffffffff%s|r", heroicLabel),
-                color = {1, 1, 1}
+                text = string.format("  %s%s|r", VaultBrightHex(), heroicLabel),
+                color = VaultBrightColor()
             })
             numHeroic = numHeroic - 1
             remaining = remaining - 1
@@ -531,7 +595,7 @@ local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
     local topRunsLabel = GetLocalizedText("VAULT_TOP_RUNS_FORMAT", "Top %d Runs This Week")
     local delveTierFmt = GetLocalizedText("VAULT_DELVE_TIER_FORMAT", "Tier %d (%d)")
     
-    table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+    table.insert(lines, { text = " ", color = VaultSpacerColor() })
     table.insert(lines, {
         text = string.format("|cffffffcc" .. topRunsLabel .. "|r", threshold),
         color = {1, 1, 0.8}
@@ -544,8 +608,8 @@ local function BuildWorldProgressLines(lines, worldTierProgress, threshold)
         if numRuns <= 0 then break end
         desiredRuns = desiredRuns - numRuns
         table.insert(lines, {
-            text = string.format("  |cffffffff" .. delveTierFmt .. "|r", tierProg.difficulty or 0, numRuns),
-            color = {1, 1, 1}
+            text = string.format("  %s" .. delveTierFmt .. "|r", VaultBrightHex(), tierProg.difficulty or 0, numRuns),
+            color = VaultBrightColor()
         })
     end
 end
@@ -559,6 +623,17 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
     local pve = opt.pve
     local vaultActivitiesData = opt.vaultActivitiesData
     local isCurrentChar = opt.isCurrentChar
+    -- Recycle prior slot rows when repainting the same card (deferred expand path).
+    if vaultCard then
+        local bin = ns.UI_RecycleBin
+        local children = { vaultCard:GetChildren() }
+        for ci = 1, #children do
+            local ch = children[ci]
+            ch:Hide()
+            ch:ClearAllPoints()
+            if bin then ch:SetParent(bin) else ch:SetParent(nil) end
+        end
+    end
     -- WVT: enable slot clicks + tooltips for every card (Great Vault is global); expanded row uses current char only.
     local vaultSlotInteract = (opt.enableVaultSlotInteraction == true) or isCurrentChar
     -- Weekly Vault Tracker: plain container + no extra chrome; tighter rows/slots optional.
@@ -573,6 +648,22 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
     if slotTierYOffset == nil then slotTierYOffset = 7 end
     -- Weekly Vault Tracker: fewer nested borders — flat rows, soft separators, subtle hover (no per-slot ApplyVisuals).
     local compactSlotStyle = (opt.compactSlotStyle == true)
+
+    local ResolveSurface = ns.UI_ResolveSurfaceTierColor
+    local function surfaceTier(tier, fallback)
+        if ResolveSurface then
+            return ResolveSurface(tier)
+        end
+        return fallback
+    end
+    local rowOdd = surfaceTier("rowOdd", { 0.05, 0.05, 0.07, 0.95 })
+    local rowEven = surfaceTier("rowEven", { 0.09, 0.09, 0.11, 0.72 })
+    local slotIdle = surfaceTier("card", { 0.06, 0.06, 0.09, 0.95 })
+    local slotCompact = surfaceTier("rowEven", { 0.10, 0.10, 0.12, 0.82 })
+    local labelBrightHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffe8e8e8"
+    local labelMutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffbbbbbb"
+    local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "|cff666666"
+    local borderC = (ns.UI_COLORS and ns.UI_COLORS.border) or { 0.20, 0.20, 0.24, 0.6 }
 
     local VAULT_LEFT_PAD  = 4
     local VAULT_RIGHT_PAD = 4
@@ -607,8 +698,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
 
     -- Re-apply border after dimension change (skip when painting onto a plain container — WVT outer card already framed)
     if ApplyVisuals and applyVaultCardChrome then
+        local cardBg = surfaceTier("card", { 0.05, 0.05, 0.07, 0.95 })
         local accentColor = COLORS.accent
-        ApplyVisuals(vaultCard, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+        ApplyVisuals(vaultCard, cardBg, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     end
 
     -- Default thresholds for each activity type (when no data exists)
@@ -650,9 +742,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
             rowFrame.bg:SetAllPoints()
         end
         if compactSlotStyle then
-            rowFrame.bg:SetColorTexture(0.09, 0.09, 0.11, 0.72)
+            rowFrame.bg:SetColorTexture(rowEven[1], rowEven[2], rowEven[3], rowEven[4] or 0.72)
         else
-            rowFrame.bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+            rowFrame.bg:SetColorTexture(rowOdd[1], rowOdd[2], rowOdd[3], rowOdd[4] or 0.95)
         end
 
         -- Track icon + label (left column, vertically centered)
@@ -681,7 +773,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
         label:SetWidth(VAULT_LABEL_W - (trackIconSize + 5))
         label:SetJustifyH("LEFT")
         label:SetWordWrap(false)
-        label:SetText(string.format(compactSlotStyle and "|cffbbbbbb%s|r" or "|cffe8e8e8%s|r", typeDisplayName))
+        label:SetText(string.format("%s%s|r", compactSlotStyle and labelMutedHex or labelBrightHex, typeDisplayName))
 
         -- Row separator line (except for first row)
         if rowIndex > 1 then
@@ -690,9 +782,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
             sep:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", leftPad, 0)
             sep:SetPoint("TOPRIGHT", rowFrame, "TOPRIGHT", -rightPad, 0)
             if compactSlotStyle then
-                sep:SetColorTexture(0.22, 0.22, 0.28, 0.38)
+                sep:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.38)
             else
-                sep:SetColorTexture(0.20, 0.20, 0.24, 0.6)
+                sep:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.6)
             end
         end
 
@@ -745,9 +837,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 slotFrame.bg:SetAllPoints()
             end
             if compactSlotStyle then
-                slotFrame.bg:SetColorTexture(0.10, 0.10, 0.12, 0.82)
+                slotFrame.bg:SetColorTexture(slotCompact[1], slotCompact[2], slotCompact[3], slotCompact[4] or 0.82)
             else
-                slotFrame.bg:SetColorTexture(0.06, 0.06, 0.09, 0.95)
+                slotFrame.bg:SetColorTexture(slotIdle[1], slotIdle[2], slotIdle[3], slotIdle[4] or 0.95)
             end
 
             -- Left-side state stripe (slimmer in compact tracker layout)
@@ -844,12 +936,12 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                             table.insert(lines, {
                                 text = string.format("|cff00ff00%s|r",
                                     GetLocalizedText("VAULT_REWARD", "Current Reward")),
-                                color = {0.5, 1, 0.5}
+                                color = VaultCompleteLineColor()
                             })
                             table.insert(lines, {
-                                text = string.format("|cffffd700iLvl %d|r  |cffffffff- (%s)|r",
-                                    rewardIlvl, displayText),
-                                color = {1, 1, 1}
+                                text = string.format("%siLvl %d|r  %s- (%s)|r", VaultGoldHex(),
+                                    rewardIlvl, VaultBrightHex(), displayText),
+                                color = VaultBrightColor()
                             })
                         end
 
@@ -858,19 +950,19 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         if not isAtMaxSlot then
                             local nextTierName = GetNextTierName(activity, dataKey)
                             if nextTierName then
-                                table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                                table.insert(lines, { text = " ", color = VaultSpacerColor() })
                                 local improveLabel = GetLocalizedText("VAULT_IMPROVE_TO", "Improve to")
                                 if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
                                     table.insert(lines, {
                                         text = string.format("|cffa0d0ff%s iLvl %d:|r",
                                             improveLabel, activity.nextLevelIlvl),
-                                        color = {0.63, 0.82, 1}
+                                        color = VaultInfoLineColor()
                                     })
                                 end
                                 local completeOnLabel = GetLocalizedText("VAULT_COMPLETE_ON", "Complete this activity on %s")
                                 table.insert(lines, {
                                     text = string.format("|cff888888" .. completeOnLabel .. "|r", nextTierName),
-                                    color = {0.5, 0.5, 0.5}
+                                    color = VaultDimLineColor()
                                 })
                             end
                         end
@@ -898,7 +990,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         end
 
                         if vaultSlotInteract then
-                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            table.insert(lines, { text = " ", color = VaultSpacerColor() })
                             table.insert(lines, { text = "|cff00ccff" .. (GetLocalizedText("VAULT_CLICK_TO_OPEN", "Click to open Great Vault")) .. "|r", color = {0, 0.8, 1} })
                         end
                         local slotTitleFormat = GetLocalizedText("VAULT_SLOT_FORMAT", "%s Slot %d")
@@ -933,7 +1025,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 progressText:SetWidth(VAULT_SLOT_W - 12)
                 progressText:SetJustifyH("CENTER")
                 progressText:SetWordWrap(false)
-                progressText:SetText(string.format("|cffffcc00%s|r|cff666666/|r|cff888888%s|r",
+                progressText:SetText(string.format("|cffffcc00%s|r" .. dimHex .. "/|r" .. labelMutedHex .. "%s|r",
                     FormatNumber(progress), FormatNumber(threshold)))
 
                 -- Add tooltip for incomplete slots
@@ -959,7 +1051,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         local unlockLabel = GetLocalizedText("VAULT_UNLOCK_REWARD", "Unlock Reward")
                         table.insert(lines, {
                             text = string.format("|cff00ff00%s|r", unlockLabel),
-                            color = {0.5, 1, 0.5}
+                            color = VaultCompleteLineColor()
                         })
 
                         -- "Complete N more X to unlock"
@@ -967,32 +1059,32 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         if remaining > 0 then
                             local completeMoreLabel = GetLocalizedText("VAULT_COMPLETE_MORE_FORMAT", "Complete %d more %s this week to unlock.")
                             table.insert(lines, {
-                                text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
+                                text = string.format("%s" .. completeMoreLabel .. "|r", VaultBrightHex(),
                                     remaining, activityHint),
-                                color = {1, 1, 1}
+                                color = VaultBrightColor()
                             })
                         end
 
                         -- M+ specific: "The item level will be based on the lowest of your top N runs (currently X)"
                         if dataKey == "M+" then
                             local currentTierText = GetVaultActivityDisplayText(activity, dataKey)
-                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            table.insert(lines, { text = " ", color = VaultSpacerColor() })
                             local basedOnLabel = GetLocalizedText("VAULT_BASED_ON_FORMAT", "The item level of this reward will be based on the lowest of your top %d runs this week (currently %s).")
                             table.insert(lines, {
                                 text = string.format("|cff888888" .. basedOnLabel .. "|r",
                                     threshold, currentTierText),
-                                color = {0.5, 0.5, 0.5}
+                                color = VaultDimLineColor()
                             })
                         end
 
                         -- Raid specific: "The item level will be based on the difficulty of your boss kills"
                         if dataKey == "Raid" then
                             local currentDiffText = GetVaultActivityDisplayText(activity, dataKey)
-                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            table.insert(lines, { text = " ", color = VaultSpacerColor() })
                             local raidBasedLabel = GetLocalizedText("VAULT_RAID_BASED_FORMAT", "Reward based on highest difficulty defeated (currently %s).")
                             table.insert(lines, {
                                 text = string.format("|cff888888" .. raidBasedLabel .. "|r", currentDiffText),
-                                color = {0.5, 0.5, 0.5}
+                                color = VaultDimLineColor()
                             })
                         end
 
@@ -1019,7 +1111,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         end
 
                         if vaultSlotInteract then
-                            table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                            table.insert(lines, { text = " ", color = VaultSpacerColor() })
                             table.insert(lines, { text = "|cff00ccff" .. (GetLocalizedText("VAULT_CLICK_TO_OPEN", "Click to open Great Vault")) .. "|r", color = {0, 0.8, 1} })
                         end
                         local slotTitleFormat = GetLocalizedText("VAULT_SLOT_FORMAT", "%s Slot %d")
@@ -1042,9 +1134,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 -- State: no data — dim stripe / neutral cell
                 if compactSlotStyle then
                     slotFrame.stripe:SetColorTexture(0.16, 0.16, 0.20, 0.42)
-                    slotFrame.bg:SetColorTexture(0.10, 0.10, 0.12, 0.78)
+                    slotFrame.bg:SetColorTexture(slotCompact[1], slotCompact[2], slotCompact[3], (slotCompact[4] or 0.82) * 0.92)
                 else
-                    slotFrame.stripe:SetColorTexture(0.22, 0.22, 0.28, 0.60)
+                    slotFrame.stripe:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.60)
                 end
 
                 local emptyText = FontManager:CreateFontString(slotFrame, slotFontKey, "OVERLAY")
@@ -1053,7 +1145,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 emptyText:SetJustifyH("CENTER")
                 emptyText:SetWordWrap(false)
                 if threshold > 0 then
-                    emptyText:SetText(string.format("|cff555555%s|r|cff444444/|r|cff555555%s|r", FormatNumber(0), FormatNumber(threshold)))
+                    emptyText:SetText(string.format(dimHex .. "%s|r" .. dimHex .. "/|r" .. dimHex .. "%s|r", FormatNumber(0), FormatNumber(threshold)))
 
                     -- Add tooltip for empty slots
                     if ShowTooltip then
@@ -1075,17 +1167,17 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                             local unlockLabel = GetLocalizedText("VAULT_UNLOCK_REWARD", "Unlock Reward")
                             table.insert(lines, {
                                 text = string.format("|cff00ff00%s|r", unlockLabel),
-                                color = {0.5, 1, 0.5}
+                                color = VaultCompleteLineColor()
                             })
                             local completeMoreLabel = GetLocalizedText("VAULT_COMPLETE_MORE_FORMAT", "Complete %d more %s this week to unlock.")
                             table.insert(lines, {
-                                text = string.format("|cffffffff" .. completeMoreLabel .. "|r",
+                                text = string.format("%s" .. completeMoreLabel .. "|r", VaultBrightHex(),
                                     threshold, activityHint),
-                                color = {1, 1, 1}
+                                color = VaultBrightColor()
                             })
 
                             if vaultSlotInteract then
-                                table.insert(lines, { text = " ", color = {0.3, 0.3, 0.3} })
+                                table.insert(lines, { text = " ", color = VaultSpacerColor() })
                                 table.insert(lines, { text = "|cff00ccff" .. (GetLocalizedText("VAULT_CLICK_TO_OPEN", "Click to open Great Vault")) .. "|r", color = {0, 0.8, 1} })
                             end
                             local slotTitleFormat = GetLocalizedText("VAULT_SLOT_FORMAT", "%s Slot %d")
@@ -1105,7 +1197,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                         BindForwardScrollWheel(slotFrame)
                     end
                 else
-                    emptyText:SetText("|cff666666-|r")
+                    emptyText:SetText(dimHex .. "-|r")
                 end
             end
         end

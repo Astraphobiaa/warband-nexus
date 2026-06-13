@@ -122,6 +122,12 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.ClearCollectionsDrawBusyFlags()
     end
 
+    local hdrCacheEarly = M.state._fixedHeaderCache
+    M.CollectionsSubTabTrace("DrawCollectionsTab_enter", {
+        sub = M.state.currentSubTab,
+        fixedHeaderReuse = (hdrCacheEarly and hdrCacheEarly.titleCard) and true or false,
+    })
+
     local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
     local metrics = ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mf)
@@ -137,6 +143,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
     local hdrCache = M.state._fixedHeaderCache
 
     if hdrCache and hdrCache.titleCard then
+        M.CollectionsSubTabTrace("DrawCollectionsTab_fixedHeader_reuse", { sub = M.state.currentSubTab })
         hdrCache.titleCard:SetParent(headerParent)
         if chrome and ns.UI_AnchorTabTitleCard then
             ns.UI_AnchorTabTitleCard(hdrCache.titleCard, chrome)
@@ -187,6 +194,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
         headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
+        if M.LayoutCollectionsFixedSubHeader then
+            headerYOffset = M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, M.state.currentSubTab)
+        end
+
         hdrCache.searchRow:SetParent(headerParent)
         hdrCache.searchRow:ClearAllPoints()
         hdrCache.searchRow:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
@@ -205,6 +216,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
 
         headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     else
+        M.CollectionsSubTabTrace("DrawCollectionsTab_fixedHeader_create", { sub = M.state.currentSubTab })
         hdrCache = {}
         M.state._fixedHeaderCache = hdrCache
 
@@ -248,6 +260,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 return
             end
             local fromSub = M.state.currentSubTab
+            M.CollectionsSubTabTrace("SubTabBar_click", { from = fromSub, to = tabKey })
             M.state.currentSubTab = tabKey
             ns._sessionCollectionsSubTab = tabKey
             if fromSub and ns.UI_CancelSearchRefresh then
@@ -263,9 +276,12 @@ function WarbandNexus:DrawCollectionsTab(parent)
                     M.state.searchBox.Instructions:Show()
                 end
             end
-            M.HideAllCollectionsResultFrames()
             if M.ResetCollectionsListScrollPositions then
                 M.ResetCollectionsListScrollPositions()
+            end
+            local hc = M.state._fixedHeaderCache
+            if hc and M.UpdateCollectionsFixedSubHeaderText then
+                M.UpdateCollectionsFixedSubHeaderText(hc, tabKey)
             end
             local perfOn = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled()
             local wallStart = perfOn and GetTime() or nil
@@ -283,6 +299,10 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.state.subTabBar = subTabBar
 
         headerYOffset = headerYOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
+
+        if M.LayoutCollectionsFixedSubHeader then
+            headerYOffset = M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, headerYOffset, M.state.currentSubTab)
+        end
 
         local rowWsr = math.max(200, headerParent:GetWidth() or ((headerParent.GetParent and headerParent:GetParent() and headerParent:GetParent():GetWidth()) or 660))
         local searchRow = Factory:CreateContainer(headerParent, rowWsr, SEARCH_ROW_HEIGHT, false)
@@ -467,12 +487,14 @@ function WarbandNexus:DrawCollectionsTab(parent)
         contentFrame:SetSize(contentWidth, contentHeight)
         contentFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", sideMargin, -yOffset)
         contentFrame:Show()
+        contentFrame._wnKeepOnTabSwitch = true
         M.state.contentFrame = contentFrame
     else
         contentFrame = Factory:CreateContainer(parent, contentWidth, contentHeight, false)
         contentFrame:SetSize(contentWidth, contentHeight)
         contentFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", sideMargin, -yOffset)
         contentFrame:Show()
+        contentFrame._wnKeepOnTabSwitch = true
         M.state.contentFrame = contentFrame
         M.state.viewerContainer = nil
         M.state.mountListContainer = nil
@@ -509,6 +531,15 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.state._recentEmptyFs = nil
     end
 
+    if M.ScheduleCollectionsSubTabPrewarm and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+            if mf and mf:IsShown() and mf.currentTab == "collections" then
+                M.ScheduleCollectionsSubTabPrewarm()
+            end
+        end)
+    end
+
     -- Draw current sub-tab content
     if M.state.currentSubTab == "recent" then
         M.state.recentViewportCap = contentHeight
@@ -538,6 +569,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.state._listeners = CUIListeners
 
         local function InvalidateAllCollectionCaches()
+            M.state._collectionsPrewarmGen = (M.state._collectionsPrewarmGen or 0) + 1
             M.state._cachedMountsData = nil
             M.state._cachedPetsData = nil
             M.state._cachedToysData = nil
@@ -548,6 +580,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
             M.state._lastGroupedToyData = nil
             M.state._toyFlatList = nil
             M.state._achGroupedCache = nil
+            M.state._lastAchievementCategoryData = nil
+            M.state._achFlatList = nil
         end
 
         local function InvalidateCollectionCachesForType(collectionType)
@@ -565,6 +599,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.state._toyFlatList = nil
             elseif collectionType == "achievement" then
                 M.state._achGroupedCache = nil
+                M.state._lastAchievementCategoryData = nil
+                M.state._achFlatList = nil
             else
                 InvalidateAllCollectionCaches()
             end

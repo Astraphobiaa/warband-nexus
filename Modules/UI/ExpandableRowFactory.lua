@@ -21,6 +21,21 @@ local CreateIcon = ns.UI_CreateIcon
 local CreateButton = ns.UI_CreateButton
 local FontManager = ns.FontManager
 
+local function BrightMarkup(text)
+    local hex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    return hex .. (text or "") .. "|r"
+end
+
+local function GoldMarkup(text)
+    local hex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffd700"
+    return hex .. (text or "") .. "|r"
+end
+
+local function NormalMarkup(text)
+    local hex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Normal")) or "|cffcccccc"
+    return hex .. (text or "") .. "|r"
+end
+
 -- Dependencies will be loaded lazily on first use (deferred loading)
 
 -- EXPANDABLE ROW FACTORY
@@ -64,8 +79,12 @@ local function CreateDetailsFrame(row, parentFrame, options)
         infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
         infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
         infoText:SetJustifyH("LEFT")
-        local P = ns.PLAN_UI_COLORS or {}
-        infoText:SetText((P.infoLabel or "|cff88ff88") .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r " .. data.information)
+        local labelCol = (ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor("metric"))
+            or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
+            or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted"))
+            or "|cffaaaaaa"
+        local bodyCol = P.body or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        infoText:SetText(labelCol .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r " .. bodyCol .. data.information .. "|r")
         infoText:SetWordWrap(true)
         infoText:SetNonSpaceWrap(false)
         infoText:SetSpacing(2)
@@ -116,7 +135,7 @@ local function CreateDetailsFrame(row, parentFrame, options)
             sectionFs:SetPoint("TOPLEFT", leftMargin, yOffset)
             sectionFs:SetPoint("TOPRIGHT", -rightMargin, yOffset)
             sectionFs:SetJustifyH("LEFT")
-            sectionFs:SetText((Psec.progressLabel or "|cffffcc00") .. data.criteriaSectionLabel .. "|r")
+            sectionFs:SetText((Psec.label or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa") .. data.criteriaSectionLabel .. "|r")
             local secW = (row and row:GetWidth()) or (parentFrame and parentFrame:GetWidth()) or 380
             sectionFs:SetWidth(math.max(60, secW - leftMargin - rightMargin))
             local secH = sectionFs:GetStringHeight()
@@ -130,7 +149,10 @@ local function CreateDetailsFrame(row, parentFrame, options)
         if data.criteriaShowHeader ~= false then
             local P = ns.PLAN_UI_COLORS or {}
             local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
-            local headerText = (P.progressLabel or "|cffffcc00") .. reqLabel .. "|r"
+            local reqMetric = (ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor("metric"))
+                or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
+                or "|cffffcc00"
+            local headerText = reqMetric .. reqLabel .. "|r"
             if progressLine then
                 headerText = headerText .. " " .. progressLine
             end
@@ -214,7 +236,7 @@ local function CreateDetailsFrame(row, parentFrame, options)
                             colLabel:SetWordWrap(false)
                             colLabel:SetMaxLines(1)
                             local displayText = type(criteriaText) == "string" and criteriaText or tostring(criteriaText)
-                            colLabel:SetText("|cffeeeeee" .. displayText .. "|r")
+                            colLabel:SetText(NormalMarkup(displayText))
                         end
                     end
                     
@@ -444,7 +466,7 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     titleText:SetWordWrap(false)
     titleText:SetMaxLines(1)
     titleText:SetNonSpaceWrap(false)
-    titleText:SetText("|cffffffff" .. (data.title or (ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r")
+    titleText:SetText(BrightMarkup(data.title or (ns.L and ns.L["UNKNOWN"]) or "Unknown"))
     row.titleText = titleText
 
     if hasPoints then
@@ -459,7 +481,7 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
         if ptsStr then
             pointsText:SetText(ptsStr)
         else
-            pointsText:SetText("|cffffd700" .. tostring(tonumber(pts) or 0) .. " " .. ((ns.L and ns.L["POINTS_LABEL"]) or "Points") .. "|r")
+            pointsText:SetText(GoldMarkup(tostring(tonumber(pts) or 0) .. " " .. ((ns.L and ns.L["POINTS_LABEL"]) or "Points")))
         end
         row.pointsSubText = pointsText
     end
@@ -716,7 +738,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         scoreText:SetJustifyH("LEFT")
         scoreText:SetJustifyV("TOP")
         scoreText:SetWordWrap(false)
-        scoreText:SetText("|cffffd700" .. data.score .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts") .. "|r")
+        scoreText:SetText(GoldMarkup(tostring(data.score) .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts")))
         row.scoreText = scoreText
     end
 
@@ -746,7 +768,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     titleText:SetWordWrap(true)
     titleText:SetMaxLines(2)
     titleText:SetNonSpaceWrap(false)
-    titleText:SetText("|cffffffff" .. (data.title or (ns.L["UNKNOWN"] or "Unknown")) .. "|r")
+    titleText:SetText(BrightMarkup(data.title or (ns.L["UNKNOWN"] or "Unknown")))
     row.titleText = titleText
 
     -- Score-below layout: render points under the title, sharing the title's left margin.
@@ -755,7 +777,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         scoreText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
         scoreText:SetJustifyH("LEFT")
         scoreText:SetWordWrap(false)
-        scoreText:SetText("|cffffd700" .. data.score .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts") .. "|r")
+        scoreText:SetText(GoldMarkup(tostring(data.score) .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts")))
         row.scoreText = scoreText
     end
 

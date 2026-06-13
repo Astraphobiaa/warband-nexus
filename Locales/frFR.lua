@@ -824,6 +824,11 @@ L["COLOR_CYAN"] = "Cyan Theme"
 L["COLOR_CYAN_DESC"] = "Thème cyan brillant"
 L["USE_CLASS_COLOR_ACCENT"] = "Utiliser la couleur de classe comme accent"
 L["USE_CLASS_COLOR_ACCENT_TOOLTIP"] = "Utilise la couleur de classe de votre personnage actuel pour les accents, bordures et onglets. Sinon, votre couleur de theme enregistree est utilisee."
+L["THEME_MODE"] = "Clair / Sombre"
+L["THEME_MODE_TOOLTIP"] = "Choisissez une palette d'interface sombre ou claire pour les panneaux, listes et textes. Un /reload est recommande pour que tous les panneaux prennent les nouvelles couleurs."
+L["THEME_MODE_DARK"] = "Sombre"
+L["THEME_MODE_LIGHT"] = "Clair"
+L["THEME_MODE_RELOAD_HINT"] = "Apparence du theme modifiee - /reload pour l'appliquer partout."
 
 -- Settings - Font
 L["FONT_FAMILY"] = "Famille de police"

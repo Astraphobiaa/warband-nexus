@@ -24,6 +24,31 @@ local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 
 local format = string.format
 
+local function PCol(key, fb)
+    return ns.UI_GetPlanUIColor and ns.UI_GetPlanUIColor(key, fb) or fb
+end
+
+local function PMetricLabel()
+    return PCol("metric")
+end
+
+local function SetSemanticGreenText(fs)
+    if not fs then return end
+    if ns.UI_GetSemanticGreenColor then
+        local r, g, b = ns.UI_GetSemanticGreenColor()
+        fs:SetTextColor(r, g, b)
+    else
+        fs:SetTextColor(0.2, 1, 0.2)
+    end
+end
+
+local function TooltipTitleRGB()
+    if ns.UI_GetTooltipTitleColor then
+        return ns.UI_GetTooltipTitleColor()
+    end
+    return 1, 1, 1
+end
+
 --- Progress line for achievement plan cards (delegates to AchievementCriteriaHelpers display mode).
 local function BuildAchievementProgressLabelText(achievementID)
     local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(achievementID)
@@ -33,8 +58,8 @@ local function BuildAchievementProgressLabelText(achievementID)
     local P2 = ns.PLAN_UI_COLORS or {}
     local done = (summary.displayMode == "quantity_bar" and summary.totalReqQuantity > 0 and summary.totalQuantity >= summary.totalReqQuantity)
         or (summary.completedCount >= summary.rawNumCriteria)
-    local progressColor = done and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
-    local label = (P2.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r "
+    local progressColor = done and (P2.progressFull or PCol("progressFull", "|cff00ff00")) or PCol("incomplete")
+    local label = PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r "
     if summary.displayMode == "quantity_bar" and summary.hasProgressBased then
         local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
         return label .. progressColor .. format(progressFmt, summary.totalQuantity, summary.totalReqQuantity) .. "|r"
@@ -463,7 +488,8 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     -- Apply visuals (accent border for My Plans cards)
     local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 } }
     if ApplyVisuals then
-        local borderColor = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+        local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
+            or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
         ApplyVisuals(card, COLORS.bgCard, borderColor)
     end
     
@@ -477,6 +503,11 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     iconBorder:EnableMouse(false)
     card.iconBorder = iconBorder
+    if ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
+        local ib = ns.UI_GetIconWellBackdrop()
+        local br = ns.UI_GetIconWellBorder()
+        ApplyVisuals(iconBorder, ib, br)
+    end
     
     -- Determine icon: resolve from WoW API first, then fallback chain
     local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -512,9 +543,10 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         iconIsAtlas = false
     end
     
-    local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
+    local iconFrameObj = CreateIcon(iconBorder, iconTexture, 46, iconIsAtlas, nil, true)
     if iconFrameObj then
-        iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        iconFrameObj:ClearAllPoints()
+        iconFrameObj:SetAllPoints(iconBorder)
         iconFrameObj:EnableMouse(false)
     end
 
@@ -527,13 +559,24 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local nameText = FontManager:CreateFontString(card, "title", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     local P = ns.PLAN_UI_COLORS or {}
-    local nameColor = (progress and progress.collected) and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
+    local nameColor = (progress and progress.collected) and (P.completed or "|cff44ff44") or (P.incomplete or PCol("incomplete"))
     
     -- Resolve localized name from API (falls back to stored plan.name)
     local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     local displayName = FormatTextNumbers(resolvedName)
     
     nameText:SetText(nameColor .. displayName .. "|r")
+    if ns.UI_SetTextColorRole then
+        if progress and progress.collected then
+            local cr, cg, cb = 0.2, 1, 0.2
+            if ns.UI_GetSemanticGreenColor then
+                cr, cg, cb = ns.UI_GetSemanticGreenColor()
+            end
+            nameText:SetTextColor(cr, cg, cb)
+        else
+            ns.UI_SetTextColorRole(nameText, "Bright")
+        end
+    end
     nameText:SetJustifyH("LEFT")
     -- Allow up to 2 lines so long titles wrap rather than clip in narrow cards.
     nameText:SetWordWrap(true)
@@ -682,10 +725,6 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
     local typeName = TYPE_NAMES[plan.type] or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     local COLORS = ns.UI_COLORS
     local typeColor = TYPE_COLORS[plan.type] or {0.6, 0.6, 0.6}
-    -- Use accent color for custom and weekly_vault
-    if plan.type == "custom" or plan.type == "weekly_vault" then
-        typeColor = COLORS and COLORS.accent or {1, 0.2, 0.2}
-    end
     local typeIconAtlas = TYPE_ICONS[plan.type]
     
     -- Create icon frame if available
@@ -745,8 +784,6 @@ end
     @return Frame - Points text frame
 ]]
 function PlanCardFactory:CreateAchievementPointsBadge(card, plan, nameText)
-    local typeColor = TYPE_COLORS.achievement
-
     local shieldFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
     shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
     card.pointsBadge = shieldFrame
@@ -770,9 +807,14 @@ function PlanCardFactory:CreateAchievementPointsBadge(card, plan, nameText)
     pointsText:SetWordWrap(false)
     pointsText:SetMaxLines(1)
     if plan.points then
-        pointsText:SetText(format("|cff%02x%02x%02x" .. ((ns.L and ns.L["POINTS_FORMAT"]) or "%d Points") .. "|r", 
-            typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
-            plan.points))
+        local pointsFmt = (ns.L and ns.L["POINTS_FORMAT"]) or "%d Points"
+        if ns.UI_GetSemanticGoldColor then
+            local mr, mg, mb = ns.UI_GetSemanticGoldColor()
+            pointsText:SetTextColor(mr, mg, mb)
+            pointsText:SetText(format(pointsFmt, plan.points))
+        else
+            pointsText:SetText(format("%s" .. pointsFmt .. "|r", PCol("metric"), plan.points))
+        end
     end
     pointsText:EnableMouse(false)
     
@@ -964,7 +1006,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 vendorText._isSourceElement = true
                 vendorText:SetPoint("TOPLEFT", 0, containerY)
                 vendorText:SetPoint("RIGHT", 0, 0)
-                vendorText:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r |cffffffff" .. source.vendor .. "|r")
+                vendorText:SetText(PlanSourceIconMarkup("class") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r " .. PCol("body") .. source.vendor .. "|r")
                 vendorText:SetJustifyH("LEFT")
                 vendorText:SetWordWrap(true)
                 vendorText:SetNonSpaceWrap(false)
@@ -997,7 +1039,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                         end
                     end
                 end
-                dropText:SetText(PlanSourceIconMarkup("loot") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
+                dropText:SetText(PlanSourceIconMarkup("loot") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
                 dropText:SetJustifyH("LEFT")
                 dropText:SetWordWrap(true)
                 dropText:SetNonSpaceWrap(false)
@@ -1015,7 +1057,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 questText._isSourceElement = true
                 questText:SetPoint("TOPLEFT", 0, containerY)
                 questText:SetPoint("RIGHT", 0, 0)
-                questText:SetText(PlanSourceIconMarkup("quest") .. " " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
+                questText:SetText(PlanSourceIconMarkup("quest") .. " " .. PCol("label") .. questLabel .. "|r" .. PCol("body") .. source.quest .. "|r")
                 questText:SetJustifyH("LEFT")
                 questText:SetWordWrap(true)
                 questText:SetNonSpaceWrap(false)
@@ -1041,7 +1083,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                         if dSafe and zSafe then
                             -- Don't duplicate: zone may already contain "(Mythic)" from API
                             if not z:find("(" .. diff .. ")", 1, true) then
-                                local bodyColor = (ns.PLAN_UI_COLORS or {}).body or "|cffffffff"
+                                local bodyColor = PCol("body")
                                 zoneDiffLabel = " " .. bodyColor .. "(" .. diff .. ")|r"
                             end
                         end
@@ -1051,7 +1093,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 locationText._isSourceElement = true
                 locationText:SetPoint("TOPLEFT", 0, containerY)
                 locationText:SetPoint("RIGHT", 0, 0)
-                locationText:SetText(PlanSourceIconMarkup("location") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
+                locationText:SetText(PlanSourceIconMarkup("location") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r " .. PCol("body") .. source.zone .. "|r" .. zoneDiffLabel)
                 locationText:SetJustifyH("LEFT")
                 locationText:SetWordWrap(true)
                 locationText:SetNonSpaceWrap(false)
@@ -1117,10 +1159,10 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         
         if sourceType and sourceDetail and sourceDetail ~= "" then
             -- Text already has source type prefix
-            sourceText:SetText(SourcePrefixIconFromLabel(sourceType) .. "|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+            sourceText:SetText(SourcePrefixIconFromLabel(sourceType) .. " " .. PCol("label") .. sourceType .. "|r" .. PCol("body") .. sourceDetail .. "|r")
         else
             -- No source type prefix, add "Source:" label
-            sourceText:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. rawText .. "|r")
+            sourceText:SetText(PlanSourceIconMarkup("class") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r " .. PCol("body") .. rawText .. "|r")
         end
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
@@ -1134,7 +1176,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         local placeholderText = FontManager:CreateFontString(card, "body", "OVERLAY")
         placeholderText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
         placeholderText:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
-        placeholderText:SetText(PlanSourceIconMarkup("class") .. " |cff99ccff" .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source") .. "|r")
+        placeholderText:SetText(PlanSourceIconMarkup("class") .. " " .. PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r " .. PCol("body") .. ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source") .. "|r")
         placeholderText:SetJustifyH("LEFT")
         placeholderText:SetWordWrap(true)
         placeholderText:SetMaxLines(6)
@@ -1205,8 +1247,8 @@ function PlanCardFactory:ReflowAchievementCard(card, opts)
     local deferLayout = opts and opts.deferLayout
     local L = ns.L
     local P = ns.PLAN_UI_COLORS or {}
-    local labCol = P.infoLabel or "|cff88ff88"
-    local bodyCol = P.body or "|cffffffff"
+    local labCol = PMetricLabel()
+    local bodyCol = PCol("body")
     local descLab = NormalizeColonLabelSpacing((L and L["DESCRIPTION_LABEL"]) or "Description:")
 
     -- Body text frames are anchored via LEFT/RIGHT to the card, so width auto-tracks card width.
@@ -1545,8 +1587,8 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         card.fullDescription = description
 
         local L = ns.L
-        local labCol = P.infoLabel or "|cff88ff88"
-        local bodyCol = P.body or "|cffffffff"
+        local labCol = PMetricLabel()
+        local bodyCol = PCol("body")
         local descLab = NormalizeColonLabelSpacing((L and L["DESCRIPTION_LABEL"]) or "Description:")
         local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
         anchorBodyTop(infoText, lastTextElement)
@@ -1576,10 +1618,10 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         if progressText then
             progressLabel:SetText(FormatTextNumbers(progressText))
         else
-            progressLabel:SetText((ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
+            progressLabel:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
         end
     else
-        progressLabel:SetText((ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.progressLabel or "|cffffcc00") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
+        progressLabel:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
     end
     
     lastTextElement = progressLabel
@@ -1593,7 +1635,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     if displayReward and displayReward ~= "" then
         local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
         anchorBodyTop(rewardText, lastTextElement)
-        rewardText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. displayReward .. "|r")
+        rewardText:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r " .. PCol("body") .. displayReward .. "|r")
         rewardText:SetJustifyH("LEFT")
         rewardText:SetWordWrap(true)
         rewardText:SetMaxLines(0)  -- Reward text shown in full.
@@ -1605,9 +1647,8 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     -- Requirements header
     local requirementsHeader = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
     anchorBodyTop(requirementsHeader, lastTextElement)
-    requirementsHeader:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
+    requirementsHeader:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
     requirementsHeader:SetJustifyH("LEFT")
-    ns.UI_SetTextColorRole(requirementsHeader, "Bright")
     card.requirementsHeader = requirementsHeader
     
     -- Create expandable content
@@ -1640,7 +1681,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             card.expandedContent:Hide()
         end
         if card.requirementsHeader then
-            card.requirementsHeader:SetText("|cffffcc00" .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
+            card.requirementsHeader:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
         end
         if card._expandButton then
             self:UpdateExpandButtonIcon(card, false)
@@ -1679,8 +1720,8 @@ function PlanCardFactory:CreateAchievementSimpleCard(card, plan, progress, nameT
 
     if description and description ~= "" then
         description = description:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-        local labCol = P.infoLabel or "|cff88ff88"
-        local bodyCol = P.body or "|cffffffff"
+        local labCol = PMetricLabel()
+        local bodyCol = PCol("body")
         local descLab = NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:")
         local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
         infoText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
@@ -1706,7 +1747,7 @@ function PlanCardFactory:CreateAchievementSimpleCard(card, plan, progress, nameT
             rewardText:SetPoint("TOPLEFT", PLAN_CARD_BODY_LEFT, line3Y)
         end
         rewardText:SetPoint("RIGHT", card, "RIGHT", -PLAN_CARD_BODY_RIGHT_INSET, 0)
-        rewardText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. displayReward .. "|r")
+        rewardText:SetText(PCol("label") .. NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r " .. PCol("body") .. displayReward .. "|r")
         rewardText:SetJustifyH("LEFT")
         rewardText:SetWordWrap(true)
         rewardText:SetMaxLines(2)
@@ -1951,7 +1992,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
         -- Restore expanded state if card was previously expanded
         if card._isDescriptionExpanded and card.descriptionText and card.fullDescription then
             -- Update description text to full version
-            card.descriptionText:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
+            card.descriptionText:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r " .. PCol("body") .. FormatTextNumbers(card.fullDescription) .. "|r")
             card.descriptionText:SetWordWrap(true)  -- Allow wrapping
             card.descriptionText:SetMaxLines(0)  -- No limit when expanded
             
@@ -2058,7 +2099,7 @@ function PlanCardFactory:CreateCustomDescription(card, plan, descY)
     -- Create label
     local descLabel = FontManager:CreateFontString(card, "body", "OVERLAY")
     descLabel:SetPoint("TOPLEFT", 10, descY)
-    descLabel:SetText("|cff88ff88" .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
+    descLabel:SetText(PMetricLabel() .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
     card.descriptionLabel = descLabel
     
     local labelWidth = descLabel:GetStringWidth()
@@ -2138,6 +2179,23 @@ local function BuildQuestCountThresholds(total)
 end
 
 --- Shared Great Vault / Daily Quest Tracker progress column (fill bar + checkpoint arrows).
+local function CategoryProgressRGB(r, g, b)
+    if not (ns.UI_IsLightMode and ns.UI_IsLightMode()) then
+        return r, g, b
+    end
+    local lum = 0.299 * r + 0.587 * g + 0.114 * b
+    if lum > 0.68 then
+        local scale = 0.56 / math.max(lum, 0.02)
+        r, g, b = r * scale, g * scale, b * scale
+    elseif lum < 0.34 then
+        local scale = 0.40 / math.max(lum, 0.02)
+        r = math.min(1, r * scale)
+        g = math.min(1, g * scale)
+        b = math.min(1, b * scale)
+    end
+    return r, g, b
+end
+
 local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
     local COLORS = ns.UI_COLORS
     local FontManager = ns.FontManager
@@ -2146,14 +2204,21 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
     local FormatTextNumbers = ns.UI_FormatTextNumbers
 
     opts = opts or {}
-    local titleColor = opts.titleColor or { 0.95, 0.95, 0.95 }
     local borderColor = opts.borderColor or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
     local fillColor = opts.fillColor or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
+    local barTrackBg = (ns.UI_GetProgressBarTrackBackdrop and ns.UI_GetProgressBarTrackBackdrop())
+        or COLORS.surfaceRowOdd or COLORS.bgLight or { 0.05, 0.05, 0.07, 0.3 }
 
     local title = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
     title:SetPoint("TOP", slotFrame, "TOP", 0, -8)
     title:SetText(slot.title or "")
-    title:SetTextColor(titleColor[1], titleColor[2], titleColor[3])
+    if opts.isEmpty then
+        ns.UI_SetTextColorRole(title, "Dim")
+    elseif opts.titleColor then
+        title:SetTextColor(opts.titleColor[1], opts.titleColor[2], opts.titleColor[3])
+    else
+        ns.UI_SetTextColorRole(title, "Bright")
+    end
 
     local barY = -32
     local barPadding = 18
@@ -2163,7 +2228,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
     local barBg = ns.UI.Factory:CreateContainer(slotFrame, barWidth, barHeight)
     barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
     if ApplyVisuals then
-        ApplyVisuals(barBg, { 0.05, 0.05, 0.07, 0.3 }, borderColor)
+        ApplyVisuals(barBg, { barTrackBg[1], barTrackBg[2], barTrackBg[3], barTrackBg[4] or 1 }, borderColor)
     end
 
     local maxVal = math.max(tonumber(slot.max) or 1, 1)
@@ -2194,7 +2259,8 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
             rl:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -6)
             rl:SetWidth(math.max(32, innerBarWidth / math.max(1, #thresholds) - 2))
             rl:SetJustifyH("CENTER")
-            rl:SetText("|cff44ff44" .. readyShort .. "|r")
+            local P = ns.PLAN_UI_COLORS or {}
+            rl:SetText((P.completed or "|cff44ff44") .. readyShort .. "|r")
         elseif opts.isEmpty then
             -- no markers
         elseif completed then
@@ -2231,7 +2297,7 @@ local function PaintVaultStyleProgressSlot(parent, slotFrame, slot, opts)
     if opts.showCenterProgress and not opts.isEmpty then
         local progText = FontManager:CreateFontString(barBg, "small", "OVERLAY")
         progText:SetPoint("CENTER", barBg, "CENTER", 0, 0)
-        progText:SetText("|cffffffff" .. current .. "/" .. maxVal .. "|r")
+        progText:SetText(PCol("body") .. current .. "/" .. maxVal .. "|r")
     end
 end
 
@@ -2254,19 +2320,23 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
+    if ns.UI_ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
+        ns.UI_ApplyVisuals(iconBorder, ns.UI_GetIconWellBackdrop(), ns.UI_GetIconWellBorder())
+    end
     
-    local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, false)
-    iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+    local iconFrameObj = CreateIcon(iconBorder, "greatVault-whole-normal", 46, true, nil, true)
+    iconFrameObj:ClearAllPoints()
+    iconFrameObj:SetAllPoints(iconBorder)
     iconFrameObj:Show()
     
     -- Title (accent color, title font - larger)
     local titleText = FontManager:CreateFontString(card, "title", "OVERLAY")
     titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     if plan.fullyCompleted then
-        titleText:SetTextColor(0.2, 1, 0.2)
+        SetSemanticGreenText(titleText)
         titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_COMPLETE"]) or "Great Vault - Complete")
     else
-        titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        ns.UI_SetTextColorRole(titleText, "Bright")
         titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_CARD"]) or "Great Vault")
     end
     titleText:SetJustifyH("LEFT")
@@ -2275,7 +2345,12 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     -- Character name + Realm (single line, below title)
     local charText = FontManager:CreateFontString(card, "body", "OVERLAY")
     charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
-    charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+    if ns.UI_GetClassColorForSurface and plan.characterClass then
+        local cr, cg, cb = ns.UI_GetClassColorForSurface(plan.characterClass)
+        charText:SetTextColor(cr, cg, cb)
+    else
+        charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+    end
     local characterDisplay = plan.characterName
     if plan.characterRealm and plan.characterRealm ~= "" then
         local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
@@ -2396,6 +2471,9 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
+    if ns.UI_ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
+        ns.UI_ApplyVisuals(iconBorder, ns.UI_GetIconWellBackdrop(), ns.UI_GetIconWellBorder())
+    end
     
     local FALLBACK_ATLAS = "questlog-questtypeicon-daily"
     local iconTexture = plan.iconAtlas or plan.icon
@@ -2418,9 +2496,10 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         iconIsAtlas = true
     end
     
-    local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
+    local iconFrameObj = CreateIcon(iconBorder, iconTexture, 46, iconIsAtlas, nil, true)
     if iconFrameObj then
-        iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        iconFrameObj:ClearAllPoints()
+        iconFrameObj:SetAllPoints(iconBorder)
         iconFrameObj:Show()
     end
     
@@ -2449,10 +2528,10 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     local titleText = FontManager:CreateFontString(card, "header", "OVERLAY")
     titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     if allComplete then
-        titleText:SetTextColor(0.2, 1, 0.2)
+        SetSemanticGreenText(titleText)
         titleText:SetText(((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
     else
-        titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        ns.UI_SetTextColorRole(titleText, "Bright")
         local displayContent = plan.contentName or "Midnight"
         if displayContent == "" then displayContent = "Midnight" end
         titleText:SetText(((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. displayContent)
@@ -2462,7 +2541,12 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     
     local charText = FontManager:CreateFontString(card, "body", "OVERLAY")
     charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
-    charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+    if ns.UI_GetClassColorForSurface and plan.characterClass then
+        local cr, cg, cb = ns.UI_GetClassColorForSurface(plan.characterClass)
+        charText:SetTextColor(cr, cg, cb)
+    else
+        charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+    end
     local charDisplay = plan.characterName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     if plan.characterRealm and plan.characterRealm ~= "" then
         local rShown = (ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(plan.characterRealm)) or plan.characterRealm
@@ -2564,14 +2648,13 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
             slotFrame:SetAlpha(0.45)
         end
         local c = slot.color or { 0.9, 0.9, 0.9 }
-        local borderColor = slot.isEmpty and { 0.35, 0.35, 0.35, 0.5 } or { c[1], c[2], c[3], 0.8 }
-        local fillColor = slot.isEmpty and { 0.4, 0.4, 0.4, 1 } or { c[1], c[2], c[3], 1 }
-        local titleColor = slot.isEmpty and { 0.5, 0.5, 0.5 } or { c[1], c[2], c[3] }
+        local pr, pg, pb = CategoryProgressRGB(c[1], c[2], c[3])
+        local borderColor = slot.isEmpty and { 0.35, 0.35, 0.35, 0.5 } or { pr, pg, pb, 0.85 }
+        local fillColor = slot.isEmpty and { 0.4, 0.4, 0.4, 1 } or { pr, pg, pb, 1 }
         PaintVaultStyleProgressSlot(card, slotFrame, slot.paint, {
             isEmpty = slot.isEmpty,
             borderColor = borderColor,
             fillColor = fillColor,
-            titleColor = titleColor,
         })
     end
 end
@@ -2682,7 +2765,12 @@ function PlanCardFactory.CreateAddButton(parent, options)
             local btnText = FontManager:CreateFontString(addBtn, "subtitle", "OVERLAY")
             btnText:SetPoint("CENTER")
             btnText:SetText("+")
-            btnText:SetTextColor(1, 0.95, 0.55, 1)
+            if ns.UI_GetSemanticGoldColor then
+                local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+                btnText:SetTextColor(gr, gg, gb, 1)
+            else
+                btnText:SetTextColor(1, 0.95, 0.55, 1)
+            end
             if btnText.EnableMouse then
                 btnText:EnableMouse(false)
             end
@@ -2696,7 +2784,8 @@ function PlanCardFactory.CreateAddButton(parent, options)
             local plannedTip = (ns.L and ns.L["PLANNED"]) or "On your To-Do list"
             addBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                GameTooltip:SetText(plannedTip, 1, 1, 1)
+                local tr, tg, tb = TooltipTitleRGB()
+                GameTooltip:SetText(plannedTip, tr, tg, tb)
                 GameTooltip:Show()
             end)
             addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2705,7 +2794,8 @@ function PlanCardFactory.CreateAddButton(parent, options)
             local todoTip = (ns.L and ns.L["TODO_SLOT_TOOLTIP_ADD"]) or "Add to your To-Do list."
             addBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                GameTooltip:SetText(todoTip, 1, 1, 1)
+                local tr, tg, tb = TooltipTitleRGB()
+                GameTooltip:SetText(todoTip, tr, tg, tb)
                 GameTooltip:Show()
             end)
             addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2718,16 +2808,16 @@ function PlanCardFactory.CreateAddButton(parent, options)
             btnText:SetPoint("CENTER")
         end
         btnText:SetText(label)
-        ns.UI_SetTextColorRole(btnText, "Bright")
+        ns.UI_SetTextColorRole(btnText, "Normal")
         if btnText.EnableMouse then
             btnText:EnableMouse(false)
         end
         addBtn.text = btnText
         addBtn:SetScript("OnEnter", function(self)
-            if self.text then self.text:SetTextColor(1, 1, 1, 1) end
+            if self.text and ns.UI_SetTextColorRole then ns.UI_SetTextColorRole(self.text, "Bright") end
         end)
         addBtn:SetScript("OnLeave", function(self)
-            if self.text then self.text:SetTextColor(0.92, 0.94, 0.98, 1) end
+            if self.text and ns.UI_SetTextColorRole then ns.UI_SetTextColorRole(self.text, "Normal") end
         end)
     end
     
@@ -2783,7 +2873,8 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
         local addedText = FontManager:CreateFontString(addedBtn, fontCategory, "OVERLAY")
         addedText:SetPoint("CENTER")
         addedText:SetText(label)
-        addedText:SetTextColor(0.38, 0.72, 0.48, 0.78)
+        local gr, gg, gb = (ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor()) or 0.38, 0.72, 0.48
+        addedText:SetTextColor(gr, gg, gb, 0.78)
         addedBtn._wnAddedText = addedText
         return addedBtn
     end
@@ -2793,7 +2884,8 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     addedFrame:SetPoint(anchorPoint, x, y)
     local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
     addedText:SetPoint("CENTER", addedFrame, "CENTER", 9, 0)
-    addedText:SetText("|cff44ff44" .. label .. "|r")
+    local P = ns.PLAN_UI_COLORS or {}
+    addedText:SetText((P.completed or "|cff44ff44") .. label .. "|r")
     local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)
     addedIcon:SetPoint("RIGHT", addedText, "LEFT", -2, 0)
     addedIcon:Show()
@@ -2846,8 +2938,8 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     end
     
     local P = ns.PLAN_UI_COLORS or {}
-    local srcLabel = P.sourceLabel or "|cff99ccff"
-    local body = P.body or "|cffffffff"
+    local srcLabel = PCol("label")
+    local body = PCol("body")
     -- Check if text already has a source type prefix (Vendor:, Drop:, Quest:, etc.)
     local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
     if sourceType and sourceDetail and sourceDetail ~= "" then

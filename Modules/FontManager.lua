@@ -42,7 +42,7 @@ FontManager.FONT_ROLE = {
     noticeTitle = "body",
     noticeBody = "small",
     statsBarText = "small",
-    --- Progress bar center labels (Reputation/Currency): no OUTLINE — fits narrow bars + |cff tokens.
+    --- Progress bar center labels (Reputation/Currency): same outline policy as small body text.
     metricBarOverlay = "small",
     emptyStateTitle = "title",
     emptyStateBody = "body",
@@ -219,6 +219,15 @@ local AA_OPTIONS = {
 
 -- PRIVATE HELPERS
 
+-- Preset multipliers (legacy profiles with useCustomScale = false)
+local SCALE_PRESET_MULTIPLIER = {
+    tiny = 0.8,
+    small = 0.9,
+    normal = 1.0,
+    large = 1.2,
+    xlarge = 1.4,
+}
+
 -- Get active scale multiplier from user settings
 -- Safe fallback if DB not initialized yet (prevents ghost window bug)
 local function GetScaleMultiplier()
@@ -233,7 +242,11 @@ local function GetScaleMultiplier()
         return 1.0 
     end
     
-    return db.scaleCustom or 1.0
+    if db.useCustomScale then
+        return db.scaleCustom or 1.0
+    end
+    local preset = db.scalePreset or "normal"
+    return SCALE_PRESET_MULTIPLIER[preset] or 1.0
 end
 
 --[[
@@ -360,6 +373,9 @@ end)
 -- Registry of all FontStrings created via FontManager
 local FONT_REGISTRY = {}
 
+-- EditBoxes styled via Factory / RegisterManagedEditBox (not FontStrings)
+local EDITBOX_REGISTRY = {}
+
 -- PUBLIC API
 
 --[[
@@ -415,20 +431,52 @@ function FontManager:GetFontSize(category)
 end
 
 --[[
-    Get anti-aliasing flags from user settings
-    CRITICAL: Safe fallback if DB not ready (prevents ghost window bug)
+    OUTLINE POLICY (single source — callers should not hardcode "OUTLINE"):
+
+    Light + dark:
+      - All standard FontStrings / EditBoxes: user `antiAliasing` (default OUTLINE) via SetFont flags.
+      - Nav labels, bar overlays, accent-filled titles: same policy (no light-mode shadow substitute).
+
+    @param category string|nil header|title|subtitle|body|small|metricBarOverlay
+    @param opts table|nil { accentFill, barOverlay, navLabel, navActive }
     @return string - Font flags ("", "OUTLINE", or "THICKOUTLINE")
 ]]
-function FontManager:GetAAFlags()
-    -- GUARD: Check if namespace and DB exist (race condition protection)
+function FontManager:GetAAFlags(category, opts)
     if not ns or not ns.db then
-        return "OUTLINE"  -- Safe default
+        return "OUTLINE"
     end
-    
     local db = ns.db.profile and ns.db.profile.fonts
-    if not db then return "OUTLINE" end
-    
-    return AA_OPTIONS[db.antiAliasing] or "OUTLINE"
+    if not db then
+        return "OUTLINE"
+    end
+    local flags = AA_OPTIONS[db.antiAliasing] or "OUTLINE"
+    -- Thick outline reads as muddy black blobs on light cream panels.
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() and flags == "THICKOUTLINE" then
+        flags = "OUTLINE"
+    end
+    return flags
+end
+
+--- Deprecated: shadows replaced by OUTLINE in light mode; always nil.
+function FontManager:GetLightShadowStrength(category, opts)
+    return nil
+end
+
+local function ClearReadableEdge(fs)
+    if not fs or not fs.SetShadowOffset then return end
+    fs:SetShadowOffset(0, 0)
+    if fs.SetShadowColor then
+        fs:SetShadowColor(0, 0, 0, 0)
+    end
+end
+
+--- Apply readable edge: outline via SetFont flags; no shadow stack.
+---@param fs FontString|EditBox
+---@param category string|nil
+---@param opts table|nil
+function FontManager:ApplyReadableEdge(fs, category, opts)
+    if not fs or not fs.SetShadowOffset then return end
+    ClearReadableEdge(fs)
 end
 
 -- Default profile font (bundled); WoW built-in font as last resort when SetFont fails or key unknown
@@ -489,14 +537,18 @@ end
     @param sizeCategory string - Font size category ("header", "title", "subtitle", "body", "small")
     @return boolean - Success/failure
 ]]
-function FontManager:SafeSetFont(fontString, sizeCategory)
+function FontManager:SafeSetFont(fontString, sizeCategory, opts)
     if not fontString or not fontString.SetFont then
         return false
     end
     
     local fontPath = FontManager:GetFontFace()
     local fontSize = FontManager:GetFontSize(sizeCategory or "body")
-    local flags = FontManager:GetAAFlags()
+    local flagOpts = type(opts) == "table" and opts or {}
+    if fontString._colorType == "accent" then
+        flagOpts.accentFill = true
+    end
+    local flags = FontManager:GetAAFlags(sizeCategory or "body", flagOpts)
     
     if type(fontPath) ~= "string" or fontPath == "" then
         fontPath = BUILTIN_FALLBACK_FONT_PATH
@@ -505,7 +557,7 @@ function FontManager:SafeSetFont(fontString, sizeCategory)
         fontSize = 12
     end
     if type(flags) ~= "string" then
-        flags = "OUTLINE"
+        flags = ""
     end
     
     local ok = false
@@ -526,8 +578,10 @@ function FontManager:SafeSetFont(fontString, sizeCategory)
                 fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, flags)
             end)
         end
+        FontManager:ApplyReadableEdge(fontString, sizeCategory or "body", flagOpts)
         return false
     end
+    FontManager:ApplyReadableEdge(fontString, sizeCategory or "body", flagOpts)
     return true
 end
 
@@ -540,6 +594,15 @@ end
     @param colorType string - Color type ("normal", "accent") for live theme updates (default "normal")
     @return FontString - Configured font string
 ]]
+-- Default text role per size category (registered via UI_SetTextColorRole for live refresh).
+local TEXT_ROLE_BY_CATEGORY = {
+    header = "Bright",
+    title = "Bright",
+    subtitle = "Normal",
+    body = "Normal",
+    small = "Muted",
+}
+
 function FontManager:CreateFontString(parent, category, layer, colorType)
     if not parent then
         return nil
@@ -551,12 +614,27 @@ function FontManager:CreateFontString(parent, category, layer, colorType)
     
     local fs = parent:CreateFontString(nil, layer)
     if fs then
-        self:ApplyFont(fs, category)
-        
-        -- Register for live updates (font AND color)
         fs._fontCategory = category
         fs._colorType = colorType
+        local applyOpts = nil
+        if colorType == "accent" then
+            applyOpts = { accentFill = true }
+        end
+        self:ApplyFont(fs, category, applyOpts)
         table.insert(FONT_REGISTRY, fs)
+
+        if colorType == "accent" then
+            if ns.UI_GetAccentTextRGBA then
+                local ar, ag, ab, aa = ns.UI_GetAccentTextRGBA()
+                fs:SetTextColor(ar, ag, ab, aa)
+            elseif ns.UI_COLORS and ns.UI_COLORS.accent then
+                local ac = ns.UI_COLORS.accent
+                fs:SetTextColor(ac[1], ac[2], ac[3], ac[4] or 1)
+            end
+        elseif colorType == "normal" and ns.UI_SetTextColorRole then
+            local role = TEXT_ROLE_BY_CATEGORY[category] or "Normal"
+            ns.UI_SetTextColorRole(fs, role)
+        end
     end
     
     return fs
@@ -568,28 +646,33 @@ end
     @param fontString FontString - Target font string
     @param category string - Font category
 ]]
----Bar overlay labels: same face/size as `small` but **no** outline (OUTLINE reads heavy inside 22–26px bars).
+---Bar overlay labels: same face/size as `small`, with standard outline.
 ---@param fontString FontString
 function FontManager:ApplyBarOverlayFont(fontString)
     if not fontString or not fontString.SetFont then return end
     local fontFace = self:GetFontFace()
     local fontSize = self:GetFontSize("small")
+    local flags = self:GetAAFlags("small", { barOverlay = true })
     if type(fontFace) ~= "string" or fontFace == "" then
         fontFace = BUILTIN_FALLBACK_FONT_PATH
     end
     if type(fontSize) ~= "number" or fontSize <= 0 then
         fontSize = 11
     end
+    if type(flags) ~= "string" then
+        flags = "OUTLINE"
+    end
     local existingText = fontString:GetText()
     local ok = false
     pcall(function()
-        ok = fontString:SetFont(fontFace, fontSize, "")
+        ok = fontString:SetFont(fontFace, fontSize, flags)
     end)
     if not ok then
         pcall(function()
-            fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, "")
+            fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, flags)
         end)
     end
+    ClearReadableEdge(fontString)
     if existingText and not (issecretvalue and issecretvalue(existingText)) and existingText ~= "" then
         fontString:SetText(existingText)
     end
@@ -610,7 +693,46 @@ function FontManager:CreateBarOverlayFontString(parent, layer)
     return fs
 end
 
-function FontManager:ApplyFont(fontString, category)
+---@param editBox EditBox
+---@param category string|nil header|title|subtitle|body|small
+function FontManager:ApplyFontToEditBox(editBox, category)
+    if not editBox or not editBox.SetFont then return end
+    category = category or editBox._fontCategory or "body"
+    editBox._fontCategory = category
+    local fontFace = self:GetFontFace()
+    local fontSize = self:GetFontSize(category)
+    local flags = self:GetAAFlags(category)
+    if type(fontFace) ~= "string" or fontFace == "" then
+        fontFace = BUILTIN_FALLBACK_FONT_PATH
+    end
+    if type(fontSize) ~= "number" or fontSize <= 0 then
+        fontSize = 12
+    end
+    if type(flags) ~= "string" then
+        flags = ""
+    end
+    pcall(editBox.SetFont, editBox, fontFace, fontSize, flags)
+    self:ApplyReadableEdge(editBox, category)
+end
+
+--- Track EditBoxes for live font refresh (Factory CreateEditBox, header copy boxes).
+---@param editBox EditBox
+---@param category string|nil
+function FontManager:RegisterManagedEditBox(editBox, category)
+    if not editBox or not editBox.SetFont then return end
+    editBox._wnManagedFont = true
+    if category then
+        editBox._fontCategory = category
+    elseif not editBox._fontCategory then
+        editBox._fontCategory = "body"
+    end
+    for i = 1, #EDITBOX_REGISTRY do
+        if EDITBOX_REGISTRY[i] == editBox then return end
+    end
+    table.insert(EDITBOX_REGISTRY, editBox)
+end
+
+function FontManager:ApplyFont(fontString, category, opts)
     if not fontString then
         return
     end
@@ -619,26 +741,41 @@ function FontManager:ApplyFont(fontString, category)
     if not fontString.SetFont or not fontString.GetText then
         return
     end
+
+    if fontString._wnNavLabel then
+        local parent = fontString.GetParent and fontString:GetParent()
+        local isActive = parent and parent.active == true
+        if ns.UI_SetNavLabelFontStyle then
+            ns.UI_SetNavLabelFontStyle(fontString, isActive)
+        end
+        return
+    end
+
+    if fontString._fontOverlay then
+        self:ApplyBarOverlayFont(fontString)
+        return
+    end
     
     if category == "smalltext" or category == "tiny" then
         category = "small"
     else
         category = category or "body"
     end
+
+    local flagOpts = type(opts) == "table" and opts or {}
+    if fontString._colorType == "accent" then
+        flagOpts.accentFill = true
+    end
     
     local fontFace = self:GetFontFace()
     local fontSize = self:GetFontSize(category)
-    local flags = self:GetAAFlags()
+    local flags = self:GetAAFlags(category, flagOpts)
     
     if type(fontFace) ~= "string" or fontFace == "" then
         fontFace = BUILTIN_FALLBACK_FONT_PATH
     end
     if type(fontSize) ~= "number" or fontSize <= 0 then
         fontSize = 12
-    end
-    
-    if type(flags) ~= "string" then
-        flags = "OUTLINE"
     end
     
     -- Save existing text before font change (for re-render)
@@ -674,9 +811,31 @@ function FontManager:ApplyFont(fontString, category)
         end
     end
     
+    self:ApplyReadableEdge(fontString, category, flagOpts)
+
     -- Force re-render by re-setting existing text (never pass secret values back into SetText)
     if existingText and not (issecretvalue and issecretvalue(existingText)) and existingText ~= "" then
         fontString:SetText(existingText)
+    end
+end
+
+local function RefreshAllManagedEditBoxes()
+    for i = #EDITBOX_REGISTRY, 1, -1 do
+        local eb = EDITBOX_REGISTRY[i]
+        if not eb or not eb.SetFont then
+            table.remove(EDITBOX_REGISTRY, i)
+        else
+            FontManager:ApplyFontToEditBox(eb)
+        end
+    end
+end
+
+local function RefreshMainNavLabelStyles()
+    if ns.UI_UpdateMainFrameTabButtonStates and ns.WarbandNexus and ns.WarbandNexus.UI then
+        local mf = ns.WarbandNexus.UI.mainFrame
+        if mf then
+            ns.UI_UpdateMainFrameTabButtonStates(mf)
+        end
     end
 end
 
@@ -698,6 +857,8 @@ local function ApplyToAllRegistered()
             updated = updated + 1
         end
     end
+    RefreshAllManagedEditBoxes()
+    RefreshMainNavLabelStyles()
 end
 
 --[[
@@ -760,10 +921,31 @@ function FontManager:RefreshAccentColors()
         if not fs or not fs.SetTextColor then
             table.remove(FONT_REGISTRY, i)
         elseif fs._colorType == "accent" then
-            -- Update accent-colored text
-            fs:SetTextColor(accentColor[1], accentColor[2], accentColor[3])
+            local r, g, b, a
+            if ns.UI_GetAccentTextRGBA then
+                r, g, b, a = ns.UI_GetAccentTextRGBA()
+            else
+                r, g, b = accentColor[1], accentColor[2], accentColor[3]
+                a = 1
+            end
+            fs:SetTextColor(r, g, b, a)
             updated = updated + 1
         end
+    end
+end
+
+--[[
+    Re-apply fonts (AA may change with light/dark) and palette-driven text colors.
+    Called from `ns.UI_RefreshColors` on theme / accent changes.
+]]
+function FontManager:RefreshThemeTypography()
+    if ns.UI_SyncThemeSurfaceColors then
+        ns.UI_SyncThemeSurfaceColors()
+    end
+    ApplyToAllRegistered()
+    self:RefreshAccentColors()
+    if ns.UI_RefreshRoleTextColors then
+        ns.UI_RefreshRoleTextColors()
     end
 end
 
@@ -794,6 +976,43 @@ ns.UI_FONT_ROLE = FontManager.FONT_ROLE
 --- Global helper for UI modules: semantic role → category string
 function ns.GetFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
+end
+
+--- Central font + AA policy for an existing FontString (theme refresh safe).
+--- opts: navActive | navInactive | barOverlay | accentFill
+---@param fs FontString
+---@param category string|nil
+---@param options table|nil
+function ns.UI_ApplyFontStyleForRole(fs, category, options)
+    if not fs or not FontManager then return end
+    options = type(options) == "table" and options or {}
+
+    if options.navActive or options.navInactive then
+        if ns.UI_SetNavLabelFontStyle then
+            ns.UI_SetNavLabelFontStyle(fs, options.navActive == true)
+        end
+        return
+    end
+
+    if options.barOverlay then
+        fs._fontOverlay = true
+        fs._fontCategory = "metricBarOverlay"
+        FontManager:ApplyBarOverlayFont(fs)
+        return
+    end
+
+    if options.accentFill then
+        fs._colorType = "accent"
+    end
+
+    category = category or fs._fontCategory or "body"
+    fs._fontCategory = category
+    FontManager:ApplyFont(fs, category, options)
+
+    if options.accentFill and ns.UI_COLORS and ns.UI_COLORS.accent and fs.SetTextColor then
+        local ac = ns.UI_COLORS.accent
+        fs:SetTextColor(ac[1], ac[2], ac[3], ac[4] or 1)
+    end
 end
 
 -- Notify UI when other addons register new fonts (LSM callback)

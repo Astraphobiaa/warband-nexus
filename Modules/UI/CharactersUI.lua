@@ -56,6 +56,39 @@ local FormatMoney = ns.UI_FormatMoney
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local BuildCollapsibleSectionOpts = ns.UI_BuildCollapsibleSectionOpts
 local ApplyVisuals = ns.UI_ApplyVisuals
+local FormatNumber = ns.UI_FormatNumber or function(n)
+    return tostring(math.floor(tonumber(n) or 0))
+end
+
+local function ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function SemanticGoldHex()
+    if ns.UI_GetSemanticGoldHex then
+        return ns.UI_GetSemanticGoldHex()
+    end
+    return "|cffffd700"
+end
+
+local function SemanticGoldRGB()
+    if ns.UI_GetSemanticGoldColor then
+        return ns.UI_GetSemanticGoldColor()
+    end
+    return 1, 0.82, 0
+end
+
+--- Section header count badge: role-colored count with standard FontManager outline.
+local function SetSectionHeaderCount(fs, count, role)
+    if not fs then return end
+    ns.UI_SetTextColorRole(fs, role or "Muted")
+    fs:SetText(FormatNumber(count or 0))
+end
 --- When `UI_CreateThemedButton` is missing, prefer Factory + ApplyVisuals; else legacy panel textures.
 local function CreateCharacterDeleteDialogButton(parent, label, width, destructive)
     local themed = ns.UI_CreateThemedButton
@@ -106,9 +139,8 @@ local function CreateCharacterDeleteDialogButton(parent, label, width, destructi
     btn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
     btn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-Button-Highlight")
     btn:SetPushedTexture("Interface\\Buttons\\UI-Panel-Button-Down")
-    local btnText = btn:CreateFontString(nil, "OVERLAY")
+    local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
     btnText:SetPoint("CENTER")
-    FontManager:SafeSetFont(btnText, "body")
     btnText:SetText(label)
     return btn
 end
@@ -122,7 +154,6 @@ local GetColumnOffset = ns.UI_GetColumnOffset
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateIcon = ns.UI_CreateIcon -- Factory for icons
-local FormatNumber = ns.UI_FormatNumber
 -- Pooling constants
 local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local ReleaseCharacterRow = ns.UI_ReleaseCharacterRow
@@ -564,11 +595,10 @@ local function BuildGuildText(char, isCurrentCharacter)
     end
 
     if guildName and not (issecretvalue and issecretvalue(guildName)) and guildName ~= "" then
-        -- Guild name: soft lavender so itâ€™s visible but not louder than name
-        return string.format("|cffffffff%s|r", guildName)
+        return ThemeTextHex("Bright") .. guildName .. "|r"
     end
 
-    return "|cff5c5c5câ€”|r"
+    return ThemeTextHex("Muted") .. "—|r"
 end
 
 ---Pending-mail badge next to character name. Inline |T paths are unreliable in modern clients; use a Texture.
@@ -610,6 +640,29 @@ local function RegisterCharacterEvents(parent)
     -- chars tab refresh via PopulateContent â†’ DrawCharacterList. Having both caused double rebuild.
     
     -- WN_CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
+end
+
+--- Reposition cached Characters fixedHeader chrome (Collections/Items _fixedHeaderCache parity — WN-PERF tab revisit).
+local function RepositionCharactersFixedHeader(mf, hdrCache, headerParent, chrome, headerYOffset, contentSide, scrollChild)
+    local titleCard = hdrCache.titleCard
+    titleCard:SetParent(headerParent)
+    if chrome and ns.UI_AnchorTabTitleCard then
+        ns.UI_AnchorTabTitleCard(titleCard, chrome)
+    else
+        titleCard:ClearAllPoints()
+        titleCard:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
+    end
+    titleCard:Show()
+    if hdrCache.sortBtn then hdrCache.sortBtn:Show() end
+    if titleCard._wnCharCustomSectionBtn then titleCard._wnCharCustomSectionBtn:Show() end
+    if ns.UI_HideTitleCardExpandCollapseControls then
+        ns.UI_HideTitleCardExpandCollapseControls(scrollChild)
+    end
+    if ns.UI_AdvanceTabChromeYOffset then
+        return ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+    end
+    return headerYOffset + (titleCard:GetHeight() or 64) + 8
 end
 
 function WarbandNexus:DrawCharacterList(parent)
@@ -655,7 +708,9 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Paths always reach PopulateContent today; still mirror Storage/Reputation so future callers stay safe.
     local mfForVirtual = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if mfForVirtual and ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
-        ns.VirtualListModule.ClearVirtualScroll(mfForVirtual)
+        if not parent._preparedByPopulate then
+            ns.VirtualListModule.ClearVirtualScroll(mfForVirtual)
+        end
     end
 
     -- Nested character rows: PopulateContent walks subtrees via UI_ReleaseCharacterRowsFromSubtree before recycle.
@@ -673,15 +728,29 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local characters = self:GetAllCharacters()
 
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local CHAR_TITLE_RIGHT_RESERVE = (ns.UI_ComputeCharactersTitleToolbarReserve and ns.UI_ComputeCharactersTitleToolbarReserve())
         or 256
     local subtitleLine = (ns.L and ns.L["CHARACTERS_SUBTITLE"])
         or "A scrollable list of your characters with gold, level, gear, and key stats in one place."
+
+    local hdrCache = mf and mf._charsFixedHeaderCache
+    local headerDone = false
+    local sortBtn
+
+    if hdrCache and hdrCache.titleCard then
+        headerYOffset = RepositionCharactersFixedHeader(mf, hdrCache, headerParent, chrome, headerYOffset, contentSide, parent)
+        if ns.UI_CommitTabFixedHeader then
+            ns.UI_CommitTabFixedHeader(mf, headerYOffset)
+        elseif fixedHeader then
+            fixedHeader:SetHeight(headerYOffset)
+        end
+        headerDone = true
+    end
+
+    if not headerDone then
     local titleCard, headerIcon, titleTextContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "characters",
-        titleText = "|cff" .. hexColor .. ((ns.L and ns.L["YOUR_CHARACTERS"]) or "Your Characters") .. "|r",
+        titleText = (ns.L and ns.L["YOUR_CHARACTERS"]) or "Your Characters",
         subtitleText = subtitleLine,
         textRightInset = CHAR_TITLE_RIGHT_RESERVE,
     })
@@ -715,7 +784,7 @@ function WarbandNexus:DrawCharacterList(parent)
         }
         if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
         if not self.db.profile.characterSectionFilter then self.db.profile.characterSectionFilter = { sectionKey = "all" } end
-        local sortBtn = ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
+        sortBtn = ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
             sortOptions = sortOptions,
             dbSortTable = self.db.profile.characterSort,
             dbSectionFilter = self.db.profile.characterSectionFilter,
@@ -807,7 +876,7 @@ function WarbandNexus:DrawCharacterList(parent)
             {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
         }
         if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
+        sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
         end)
         if ns.UI_AnchorTitleCardToolbarControl then
@@ -839,6 +908,14 @@ function WarbandNexus:DrawCharacterList(parent)
     elseif fixedHeader then
         fixedHeader:SetHeight(headerYOffset)
     end
+
+    if mf then
+        mf._charsFixedHeaderCache = {
+            titleCard = titleCard,
+            sortBtn = sortBtn,
+        }
+    end
+    end -- not headerDone
 
     local yOffset = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
     local titleBodyGap = (GetLayout().TAB_TITLE_TO_BODY_GAP) or (ns.UI_LAYOUT and ns.UI_LAYOUT.TAB_TITLE_TO_BODY_GAP) or 6
@@ -903,7 +980,9 @@ function WarbandNexus:DrawCharacterList(parent)
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
 
-    local goldDisplayText = isLoadingCharacterData and "|cff888888" .. ((ns.L and ns.L["LOADING"]) or "Loading...") .. "|r" or FormatMoney(currentCharGold, 14)
+    local goldDisplayText = isLoadingCharacterData
+        and (ThemeTextHex("Dim") .. ((ns.L and ns.L["LOADING"]) or "Loading...") .. "|r")
+        or FormatMoney(currentCharGold, 14)
     local charIconTex = GetCharacterSpecificIcon()
 
     -- PERSISTENT CARD TRIO: the gold summary repaints on every CHARACTER_UPDATED
@@ -1004,7 +1083,8 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Vertical divider (hidden when Total Gold + Token are stacked)
     local divider = totalGoldCard:CreateTexture(nil, "ARTWORK")
     divider:SetSize(1, 50)
-    divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4)
+    local divBorder = ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor() or COLORS.border
+    divider:SetColorTexture(divBorder[1], divBorder[2], divBorder[3], 0.45)
 
     -- Left block: Total Gold (icon + label + value)
     local tgIcon = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)
@@ -1119,7 +1199,7 @@ function WarbandNexus:DrawCharacterList(parent)
                 .. ")|r"
         )
     else
-        tkValueRef:SetText("|cff888888" .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
+        tkValueRef:SetText(ThemeTextHex("Dim") .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
         -- One-shot retry if price not ready yet (event-driven path is primary).
         if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
             C_Timer.After(1.25, function()
@@ -1156,25 +1236,32 @@ function WarbandNexus:DrawCharacterList(parent)
         banner:ClearAllPoints()
         banner:SetPoint("TOPLEFT", parent, "TOPLEFT", contentSide, -yOffset)
         banner:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -contentSide, -yOffset)
+        local goldC = COLORS.gold or { 1, 0.82, 0, 1 }
+        local bannerBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+            or COLORS.bgCard or COLORS.bgLight or COLORS.bg
         if ApplyVisuals then
-            ApplyVisuals(banner, { 0.12, 0.08, 0.05, 0.95 }, { 0.9, 0.55, 0.15, 0.85 })
+            ApplyVisuals(banner, bannerBg, { goldC[1], goldC[2], goldC[3], 0.82 })
         end
         local bannerTitle = FontManager:CreateFontString(banner, "header", "OVERLAY")
         bannerTitle:SetPoint("TOPLEFT", 12, -8)
         bannerTitle:SetPoint("RIGHT", banner, "RIGHT", -90, 0)
         bannerTitle:SetJustifyH("LEFT")
-        bannerTitle:SetText("|cffffaa44" .. ((ns.L and ns.L["STALE_CHARACTER_COPIES_TITLE"]) or "Duplicate character entries") .. "|r")
+        bannerTitle:SetText(SemanticGoldHex() .. ((ns.L and ns.L["STALE_CHARACTER_COPIES_TITLE"]) or "Duplicate character entries") .. "|r")
         local bannerBody = FontManager:CreateFontString(banner, "body", "OVERLAY")
         bannerBody:SetPoint("TOPLEFT", bannerTitle, "BOTTOMLEFT", 0, -2)
         bannerBody:SetPoint("RIGHT", banner, "RIGHT", -90, 0)
         bannerBody:SetJustifyH("LEFT")
         bannerBody:SetWordWrap(true)
         bannerBody:SetMaxLines(2)
+        ns.UI_SetTextColorRole(bannerBody, "Normal")
         bannerBody:SetText((ns.L and ns.L["STALE_CHARACTER_COPIES_DESC"]) or "Delete old copies or use the tracking icon.")
         local dismissBtn = ns.UI.Factory:CreateButton(banner, 72, 24, false)
         dismissBtn:SetPoint("RIGHT", banner, "RIGHT", -8, 0)
+        local dismissBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
+            or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+        local dismissBr = COLORS.accent or { 0.4, 0.2, 0.58 }
         if ApplyVisuals then
-            ApplyVisuals(dismissBtn, { 0.15, 0.15, 0.15, 0.9 }, COLORS and COLORS.accent or { 0.4, 0.2, 0.58 })
+            ApplyVisuals(dismissBtn, dismissBg, { dismissBr[1], dismissBr[2], dismissBr[3], 0.65 })
         end
         local dismissLabel = FontManager:CreateFontString(dismissBtn, "body", "OVERLAY")
         dismissLabel:SetPoint("CENTER")
@@ -1631,7 +1718,7 @@ function WarbandNexus:DrawCharacterList(parent)
         elseif emptyMessage and emptyMessage ~= "" then
             local emptyText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
             emptyText:SetPoint("TOP", contentFrame, "TOP", 0, -20)
-            emptyText:SetText("|cff999999" .. emptyMessage .. "|r")
+            emptyText:SetText(ThemeTextHex("Muted") .. emptyMessage .. "|r")
             emptyText:SetWidth(math.max(200, (sectionStackW or width or 400) - 40))
             emptyText:SetJustifyH("CENTER")
             sectionYOffset = sectionYOffset + 50
@@ -1702,9 +1789,10 @@ function WarbandNexus:DrawCharacterList(parent)
         AnchorSectionHeader(favHeader)
         if favIcon then favIcon:SetSize(24, 24) end
 
-        local favCount = FontManager:CreateFontString(favHeader, "header", "OVERLAY")
+        local favCount = FontManager:CreateFontString(favHeader, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
         favCount:SetPoint("RIGHT", favHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
-        favCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedFavorites) .. "|r")
+        favCount:SetJustifyH("RIGHT")
+        SetSectionHeaderCount(favCount, #trackedFavorites, "Normal")
 
         favoritesContent = AcquireSectionContentFrame(favHeader)
         local favoritesHeight = DrawCharactersIntoSection(
@@ -1850,9 +1938,10 @@ function WarbandNexus:DrawCharacterList(parent)
         AnchorSectionHeader(charHeader)
         if charIcon then charIcon:SetSize(24, 24) end
 
-        local charCount = FontManager:CreateFontString(charHeader, "header", "OVERLAY")
+        local charCount = FontManager:CreateFontString(charHeader, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
         charCount:SetPoint("RIGHT", charHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
-        charCount:SetText("|cffaaaaaa" .. FormatNumber(#trackedRegular) .. "|r")
+        charCount:SetJustifyH("RIGHT")
+        SetSectionHeaderCount(charCount, #trackedRegular, "Normal")
 
         charactersContent = AcquireSectionContentFrame(charHeader)
         local charactersHeight = DrawCharactersIntoSection(
@@ -1919,9 +2008,10 @@ function WarbandNexus:DrawCharacterList(parent)
         AnchorSectionHeader(untrackedHeader)
         if untrackedIcon then untrackedIcon:SetSize(24, 24) end
 
-        local untrackedCount = FontManager:CreateFontString(untrackedHeader, "header", "OVERLAY")
+        local untrackedCount = FontManager:CreateFontString(untrackedHeader, FontManager:GetFontRole("mainNavTabCount"), "OVERLAY")
         untrackedCount:SetPoint("RIGHT", untrackedHeader, "RIGHT", -SECTION_HEADER_TEXT_INSET, 0)
-        untrackedCount:SetText("|cff888888" .. FormatNumber(#untracked) .. "|r")
+        untrackedCount:SetJustifyH("RIGHT")
+        SetSectionHeaderCount(untrackedCount, #untracked, "Muted")
 
         untrackedContent = AcquireSectionContentFrame(untrackedHeader)
         local untrackedHeight = DrawCharactersIntoSection(
@@ -2122,10 +2212,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.realmText:SetWordWrap(false)
         row.realmText:SetNonSpaceWrap(false)  -- Prevent long word overflow
         row.realmText:SetMaxLines(1)  -- Single line only
-        ns.UI_SetTextColorRole(row.realmText, "Bright")
+        ns.UI_SetTextColorRole(row.realmText, "Normal")
     end
     local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    row.realmText:SetText("|cffb0b0b8" .. displayRealm .. "|r")
+    ns.UI_SetTextColorRole(row.realmText, "Normal")
+    row.realmText:SetText(displayRealm)
     
     -- COLUMN: Guild â€” width from max guild name; text centered; strictly between Name and Level
     local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
@@ -2215,9 +2306,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
     local itemLevel = char.itemLevel or 0
     if itemLevel > 0 then
-        row.itemLevelText:SetText(string.format("|cffffd700%s %d|r", (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
+        row.itemLevelText:SetText(string.format("%s%s %d|r", SemanticGoldHex(), (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
     else
-        row.itemLevelText:SetText("|cff666666--|r")
+        row.itemLevelText:SetText(ThemeTextHex("Muted") .. "--|r")
     end
     
     -- COLUMN 8: Gold (dynamic offset, chained from itemLevel column)
@@ -2337,7 +2428,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                         if maxSkill > 0 and curSkill >= maxSkill then
                             skillColor = {0.3, 0.9, 0.3}
                         elseif curSkill > 0 then
-                            skillColor = {1.0, 0.82, 0.0}
+                            local gr, gg, gb = SemanticGoldRGB()
+                            skillColor = { gr, gg, gb }
                         else
                             skillColor = {0.4, 0.4, 0.4}
                         end
@@ -2591,8 +2683,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if char.mythicKey and char.mythicKey.level and char.mythicKey.level > 0 then
         -- HAS KEY: +Level â€¢ Dungeon (colored, bright icon)
         local dungeonAbbrev = char.mythicKey.dungeonName:sub(1, 4):upper()
-        local keystoneText = string.format("|cffff8000+%d|r |cff999999â€¢|r |cffffd700%s|r", 
-            char.mythicKey.level, dungeonAbbrev)
+        local keystoneText = string.format("|cffff8000+%d|r %s•|r %s%s|r",
+            char.mythicKey.level, ThemeTextHex("Dim"), SemanticGoldHex(), dungeonAbbrev)
         
         row.keystoneText:SetText(keystoneText)
         
@@ -2602,7 +2694,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.keystoneIcon:SetAlpha(1.0)
     else
         -- NO KEY: +0 â€¢ None (dimmed, desaturated icon)
-        local keystoneText = "|cff888888+0|r |cff666666â€¢|r |cffaaaaaa" .. ((ns.L and ns.L["NONE_LABEL"]) or "None") .. "|r"
+        local keystoneText = ThemeTextHex("Muted") .. "+0|r " .. ThemeTextHex("Muted") .. "•|r "
+            .. ThemeTextHex("Normal") .. ((ns.L and ns.L["NONE_LABEL"]) or "None") .. "|r"
         
         row.keystoneText:SetText(keystoneText)
         
@@ -2778,7 +2871,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             lastSeenStr = string.format(daysFormat, math.floor(timeDiff / 86400))
         end
         row.lastSeenText:SetText(lastSeenStr)
-        ns.UI_SetTextColorRole(row.lastSeenText, "Bright")
+        ns.UI_SetTextColorRole(row.lastSeenText, "Normal")
         row.lastSeenText:Show()
     end
     

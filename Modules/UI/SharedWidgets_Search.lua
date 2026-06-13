@@ -23,8 +23,27 @@ local GetColors = function() return ns.UI_COLORS end
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
-local function UIFontRole(roleKey)
-    return FontManager:GetFontRole(roleKey)
+local function SearchBrightHex()
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function SearchMutedHex()
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+end
+
+local function RosterPickerChrome()
+    if ns.UI_GetSearchBoxChromeColors then
+        return ns.UI_GetSearchBoxChromeColors()
+    end
+    local bg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or ResolveSurfaceTierColor("rowOdd")
+    local b = ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor() or COLORS.border
+    return bg, { b[1], b[2], b[3], 0.5 }
+end
+
+local function RosterSectionBarChrome()
+    local c = COLORS
+    local bg = c.surfaceRowOdd or c.bgLight or c.bg or { 0.09, 0.09, 0.11, 0.9 }
+    return { bg[1], bg[2], bg[3], bg[4] or 0.9 }, { 0, 0, 0, 0 }
 end
 
 local function ResolveSurfaceTierColor(tier)
@@ -117,7 +136,7 @@ local function WnRosterRealmColored(char)
     if rShow == "" then
         return ""
     end
-    return "|cffffffff" .. rShow .. "|r"
+    return SearchBrightHex() .. rShow .. "|r"
 end
 
 --- Build members / non-member buckets for one custom header (same rules as legacy pick menu).
@@ -172,18 +191,30 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
         root:SetWidth(width)
     end
     root:SetHeight(80)
-    if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(root, { 0.06, 0.06, 0.08, 0.98 }, { (ns.UI_COLORS.accent[1] or 0.5) * 0.35, (ns.UI_COLORS.accent[2] or 0.35) * 0.35, (ns.UI_COLORS.accent[3] or 0.5) * 0.35, 0.5 })
+    if ApplyVisuals then
+        local pickerBg, pickerBorder = RosterPickerChrome()
+        ns.UI_ApplyVisuals(root, pickerBg, pickerBorder)
+        root._borderType = "accent"
+        root._bgType = "searchChrome"
+        root._borderAlpha = pickerBorder and pickerBorder[4]
     end
 
     local filterLabel = FontManager:CreateFontString(root, "small", "OVERLAY")
     filterLabel:SetPoint("TOPLEFT", root, "TOPLEFT", 8, -6)
     filterLabel:SetText((L and L["CUSTOM_HEADER_PICKER_FILTER_LABEL"]) or "Search")
-    ns.UI_SetTextColorRole(filterLabel, "Muted")
+    ns.UI_SetTextColorRole(filterLabel, "Normal")
 
     local filterBg = Factory:CreateContainer(root, 100, filterAreaH - 6, true)
     filterBg:SetPoint("TOPLEFT", filterLabel, "BOTTOMLEFT", 0, -4)
     filterBg:SetPoint("TOPRIGHT", root, "TOPRIGHT", -8, -16)
+    if ApplyVisuals then
+        if ns.UI_ApplySearchBoxChrome then
+            ns.UI_ApplySearchBoxChrome(filterBg)
+        else
+            local filterChromeBg, filterChromeBorder = RosterPickerChrome()
+            ApplyVisuals(filterBg, filterChromeBg, filterChromeBorder)
+        end
+    end
     local filterEb = Factory:CreateEditBox(filterBg)
     if filterEb.SetPoint then
         filterEb:SetPoint("TOPLEFT", filterBg, "TOPLEFT", 8, -6)
@@ -289,8 +320,7 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
 
         local function paintRosterRowColumns(row, char, leftPad, rightReserve)
             local nameL, nameW, lvX, realmX, _, contentRight = layoutRosterColumns(leftPad, rightReserve)
-            local nm = row:CreateFontString(nil, "OVERLAY")
-            if FontManager.ApplyFont then FontManager:ApplyFont(nm, "body") else nm:SetFontObject("GameFontNormal") end
+            local nm = FontManager:CreateFontString(row, "body", "OVERLAY")
             nm:SetPoint("LEFT", row, "LEFT", nameL, 0)
             nm:SetWidth(nameW)
             nm:SetJustifyH("LEFT")
@@ -298,15 +328,13 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
             if nm.SetWordWrap then nm:SetWordWrap(false) end
             nm:SetText(WnColoredCharacterName(char))
 
-            local lv = row:CreateFontString(nil, "OVERLAY")
-            if FontManager.ApplyFont then FontManager:ApplyFont(lv, "body") else lv:SetFontObject("GameFontNormal") end
+            local lv = FontManager:CreateFontString(row, "body", "OVERLAY")
             lv:SetPoint("LEFT", row, "LEFT", lvX, 0)
             lv:SetWidth(LVL_COL_W)
             lv:SetJustifyH("CENTER")
-            lv:SetText("|cffffffff" .. WnRosterLevelStr(char) .. "|r")
+            lv:SetText(SearchBrightHex() .. WnRosterLevelStr(char) .. "|r")
 
-            local rf = row:CreateFontString(nil, "OVERLAY")
-            if FontManager.ApplyFont then FontManager:ApplyFont(rf, "body") else rf:SetFontObject("GameFontNormal") end
+            local rf = FontManager:CreateFontString(row, "body", "OVERLAY")
             rf:SetPoint("LEFT", row, "LEFT", realmX, 0)
             rf:SetWidth(math.max(48, contentRight - realmX))
             rf:SetJustifyH("LEFT")
@@ -325,7 +353,7 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
             fs:SetPoint("LEFT", padL, 0)
             fs:SetPoint("RIGHT", wrap, "RIGHT", -10, 0)
             fs:SetJustifyH("LEFT")
-            ns.UI_SetTextColorRole(fs, "Dim")
+            ns.UI_SetTextColorRole(fs, "Muted")
             fs:SetText(text)
             y = y + h + 4
         end
@@ -340,19 +368,19 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
             c1:SetPoint("LEFT", hf, "LEFT", nameL, 0)
             c1:SetWidth(nameW)
             c1:SetJustifyH("LEFT")
-            ns.UI_SetTextColorRole(c1, "Dim")
+            ns.UI_SetTextColorRole(c1, "Normal")
             c1:SetText((L and L["CUSTOM_HEADER_COL_CHARACTER"]) or "Character")
             local c2 = FontManager:CreateFontString(hf, "small", "OVERLAY")
             c2:SetPoint("LEFT", hf, "LEFT", lvX, 0)
             c2:SetWidth(LVL_COL_W)
             c2:SetJustifyH("CENTER")
-            ns.UI_SetTextColorRole(c2, "Bright")
+            ns.UI_SetTextColorRole(c2, "Normal")
             c2:SetText((L and L["CUSTOM_HEADER_COL_LEVEL"]) or "Level")
             local c3 = FontManager:CreateFontString(hf, "small", "OVERLAY")
             c3:SetPoint("LEFT", hf, "LEFT", realmX, 0)
             c3:SetWidth(math.max(48, contentRight - realmX))
             c3:SetJustifyH("LEFT")
-            ns.UI_SetTextColorRole(c3, "Bright")
+            ns.UI_SetTextColorRole(c3, "Normal")
             c3:SetText((L and L["CUSTOM_HEADER_COL_REALM"]) or "Realm")
             y = y + hdrH + 4
         end
@@ -362,14 +390,15 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
             bar:SetSize(bw, SECTION_BAR_H)
             bar:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
             if ns.UI_ApplyVisuals then
-                ns.UI_ApplyVisuals(bar, { 0.10, 0.10, 0.12, 0.82 }, { 0, 0, 0, 0 })
+                local barBg, barBorder = RosterSectionBarChrome()
+                ns.UI_ApplyVisuals(bar, barBg, barBorder)
             end
             local fs = FontManager:CreateFontString(bar, "tabSubtitle", "OVERLAY")
             fs:SetPoint("LEFT", 10, 0)
             fs:SetPoint("RIGHT", bar, "RIGHT", -10, 0)
             fs:SetJustifyH("LEFT")
             fs:SetText(txt)
-            fs:SetTextColor(0.72, 0.76, 0.84)
+            ns.UI_SetTextColorRole(fs, "Bright")
             y = y + SECTION_BAR_H + SECTION_AFTER
         end
 

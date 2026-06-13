@@ -20,6 +20,7 @@ local tonumber = tonumber
 local tooltipFrame = nil
 local isVisible = false
 local currentAnchor = nil
+local currentAnchorPref = "ANCHOR_AUTO"
 local isInitialized = false
 
 -- Event names (single source: Constants.EVENTS)
@@ -27,6 +28,27 @@ local TOOLTIP_SHOW = E.TOOLTIP_SHOW
 local TOOLTIP_HIDE = E.TOOLTIP_HIDE
 
 local TooltipService = {}
+
+local function RemapTooltipLineRGB(r, g, b)
+    if ns.UI_RemapGameTooltipLineColor then
+        return ns.UI_RemapGameTooltipLineColor(r, g, b)
+    end
+    return r or 1, g or 1, b or 1
+end
+
+local function TooltipBodyRGB()
+    if ns.UI_GetTooltipBodyColor then
+        return ns.UI_GetTooltipBodyColor()
+    end
+    return 0.85, 0.85, 0.85
+end
+
+local function TooltipBrightRGB()
+    if ns.UI_GetTextRoleRGB then
+        return ns.UI_GetTextRoleRGB("Bright")
+    end
+    return 1, 1, 1
+end
 
 function TooltipService:Initialize()
     if isInitialized then return end
@@ -117,9 +139,10 @@ function TooltipService:Show(anchorFrame, data)
     end
     
     currentAnchor = anchorFrame
+    currentAnchorPref = data.anchor or "ANCHOR_AUTO"
     
     -- Position then show (single visible frame at final anchor).
-    self:PositionTooltip(frame, anchorFrame, data.anchor or "ANCHOR_AUTO")
+    self:PositionTooltip(frame, anchorFrame, currentAnchorPref)
     frame:Show()
     isVisible = true
     
@@ -139,6 +162,7 @@ function TooltipService:Hide()
     frame:Hide()
     
     currentAnchor = nil
+    currentAnchorPref = "ANCHOR_AUTO"
     isVisible = false
     
     -- Fire event
@@ -403,11 +427,23 @@ local function ApplyGearTabPrimaryStatLineHighlight(line, ctx)
     line.leftText = StripTooltipTextForStatMatch(line.leftText or "")
     line.rightText = StripTooltipTextForStatMatch(line.rightText or "")
     if lineKind == want then
-        line.leftColor = { r = 1, g = 1, b = 1 }
-        line.rightColor = { r = 1, g = 1, b = 1 }
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetTextRoleRGB then
+            local br, bg, bb = ns.UI_GetTextRoleRGB("Bright")
+            line.leftColor = { r = br, g = bg, b = bb }
+            line.rightColor = { r = br, g = bg, b = bb }
+        else
+            line.leftColor = { r = 1, g = 1, b = 1 }
+            line.rightColor = { r = 1, g = 1, b = 1 }
+        end
     else
-        line.leftColor = { r = 0.65, g = 0.65, b = 0.65 }
-        line.rightColor = { r = 0.65, g = 0.65, b = 0.65 }
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetTextRoleRGB then
+            local dr, dg, db = ns.UI_GetTextRoleRGB("Dim")
+            line.leftColor = { r = dr, g = dg, b = db }
+            line.rightColor = { r = dr, g = dg, b = db }
+        else
+            line.leftColor = { r = 0.65, g = 0.65, b = 0.65 }
+            line.rightColor = { r = 0.65, g = 0.65, b = 0.65 }
+        end
     end
 end
 
@@ -591,26 +627,40 @@ function TooltipService:RenderCustomTooltip(frame, data)
     
     -- 2) Title (always at top)
     if data.title then
-        local tr, tg, tb = 1, 0.82, 0
+        local tr, tg, tb, ta = 1, 0.82, 0, 1
         if data.titleColor then
             tr, tg, tb = data.titleColor[1], data.titleColor[2], data.titleColor[3]
+        elseif ns.UI_GetTooltipTitleColor then
+            tr, tg, tb, ta = ns.UI_GetTooltipTitleColor()
         end
         frame:SetTitle(data.title, tr, tg, tb)
     end
     
     -- 3) Description (below title, optional)
     if data.description then
-        local dr, dg, db = 0.8, 0.8, 0.8
+        local dr, dg, db = TooltipBodyRGB()
         if data.descriptionColor then
             dr, dg, db = data.descriptionColor[1], data.descriptionColor[2], data.descriptionColor[3]
+        elseif ns.UI_GetTooltipBodyColor then
+            dr, dg, db = ns.UI_GetTooltipBodyColor()
         end
         frame:SetDescription(data.description, dr, dg, db)
     end
 
     if data.titleAffixPair and frame.AddTitleAffixPair then
         local ap = data.titleAffixPair
-        local lc = ap.leftColor or { 1, 1, 1 }
-        local rc = ap.rightColor or { 0.83, 0.69, 0.22 }
+        local lc = ap.leftColor
+        if not lc then
+            local lr, lg, lb = TooltipBrightRGB()
+            lc = { lr, lg, lb }
+        end
+        local rc = ap.rightColor
+        if not rc and ns.UI_GetSemanticGoldColor then
+            local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+            rc = { gr, gg, gb }
+        elseif not rc then
+            rc = { 0.83, 0.69, 0.22 }
+        end
         frame:AddTitleAffixPair(ap.left, ap.right, lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
     end
     
@@ -622,14 +672,30 @@ function TooltipService:RenderCustomTooltip(frame, data)
             elseif line.type == "divider" and frame.AddBodyDivider then
                 frame:AddBodyDivider()
             elseif line.type == "section_label" and frame.AddSectionLabel then
-                local c = line.color or { 0.62, 0.64, 0.72 }
+                local c = line.color
+                if not c then
+                    local mr, mg, mb = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.7, 0.7, 0.72
+                    c = { mr, mg, mb }
+                end
                 frame:AddSectionLabel(line.text, c[1], c[2], c[3])
             elseif line.type == "centered" and frame.AddCenteredLine then
-                local c = line.color or { 1, 1, 1 }
+                local c = line.color
+                if not c then
+                    local cr, cg, cb = TooltipBrightRGB()
+                    c = { cr, cg, cb }
+                end
                 frame:AddCenteredLine(line.text, c[1], c[2], c[3])
             elseif line.left and line.right then
-                local leftColor = line.leftColor or {1, 1, 1}
-                local rightColor = line.rightColor or {1, 1, 1}
+                local leftColor = line.leftColor
+                if not leftColor then
+                    local lr, lg, lb = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.7, 0.7, 0.72
+                    leftColor = { lr, lg, lb }
+                end
+                local rightColor = line.rightColor
+                if not rightColor then
+                    local rr, rg, rb = (ns.UI_GetTextRoleRGB and ns.UI_GetTextRoleRGB("Bright")) or 1, 1, 1
+                    rightColor = { rr, rg, rb }
+                end
                 frame:AddDoubleLine(
                     line.left, line.right,
                     leftColor[1], leftColor[2], leftColor[3],
@@ -655,10 +721,18 @@ function TooltipService:RenderCustomTooltip(frame, data)
                     { isHeader = line.isHeader == true }
                 )
             elseif line.left then
-                local leftColor = line.leftColor or {1, 1, 1}
+                local leftColor = line.leftColor
+                if not leftColor then
+                    local lr, lg, lb = (ns.UI_GetTooltipLabelColor and ns.UI_GetTooltipLabelColor()) or 0.7, 0.7, 0.72
+                    leftColor = { lr, lg, lb }
+                end
                 frame:AddLine(line.left, leftColor[1], leftColor[2], leftColor[3], line.wrap or false)
             elseif line.text then
-                local color = line.color or {1, 1, 1}
+                local color = line.color
+                if not color then
+                    local cr, cg, cb = TooltipBodyRGB()
+                    color = { cr, cg, cb }
+                end
                 frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
             end
         end
@@ -744,6 +818,7 @@ function TooltipService:RenderItemTooltip(frame, data)
             end
         end
         
+        titleR, titleG, titleB = RemapTooltipLineRGB(titleR, titleG, titleB)
         frame:SetTitle(titleText, titleR, titleG, titleB)
         
         if data.underTitleLines then
@@ -788,6 +863,8 @@ function TooltipService:RenderItemTooltip(frame, data)
                         rg = line.rightColor.g or 1
                         rb = line.rightColor.b or 1
                     end
+                    lr, lg, lb = RemapTooltipLineRGB(lr, lg, lb)
+                    rr, rg, rb = RemapTooltipLineRGB(rr, rg, rb)
                     frame:AddDoubleLine(leftText or "", rightText, lr, lg, lb, rr, rg, rb)
                 else
                     -- Single line
@@ -797,6 +874,7 @@ function TooltipService:RenderItemTooltip(frame, data)
                         lg = line.leftColor.g or 1
                         lb = line.leftColor.b or 1
                     end
+                    lr, lg, lb = RemapTooltipLineRGB(lr, lg, lb)
                     frame:AddLine(leftText, lr, lg, lb, line.wrapText or false)
                 end
             end
@@ -826,9 +904,11 @@ function TooltipService:RenderItemTooltip(frame, data)
             end
         end
         if itemName then
-            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading details...", 0.7, 0.7, 0.7)
+            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading details...", dr, dg, db)
         else
-            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", 0.7, 0.7, 0.7)
+            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", dr, dg, db)
         end
     end
     
@@ -839,15 +919,32 @@ function TooltipService:RenderItemTooltip(frame, data)
             if line.type == "spacer" then
                 frame:AddSpacer(line.height or 8)
             elseif line.left and line.right then
-                local leftColor = line.leftColor or {1, 1, 1}
-                local rightColor = line.rightColor or {1, 1, 1}
+                local leftColor, rightColor
+                if line.leftColor then
+                    leftColor = { line.leftColor[1], line.leftColor[2], line.leftColor[3] }
+                else
+                    local lr, lg, lb = TooltipBrightRGB()
+                    leftColor = { lr, lg, lb }
+                end
+                if line.rightColor then
+                    rightColor = { line.rightColor[1], line.rightColor[2], line.rightColor[3] }
+                else
+                    local rr, rg, rb = TooltipBrightRGB()
+                    rightColor = { rr, rg, rb }
+                end
                 frame:AddDoubleLine(
                     line.left, line.right,
                     leftColor[1], leftColor[2], leftColor[3],
                     rightColor[1], rightColor[2], rightColor[3]
                 )
             elseif line.text then
-                local color = line.color or {0.6, 0.4, 0.8}
+                local color = line.color
+                if not color and ns.UI_GetSemanticInfoColor then
+                    local cr, cg, cb = ns.UI_GetSemanticInfoColor()
+                    color = { cr, cg, cb }
+                elseif not color then
+                    color = { 0.6, 0.4, 0.8 }
+                end
                 frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
             end
         end
@@ -888,8 +985,21 @@ function TooltipService:GetItemTooltipStatLines(itemLink, itemID)
         if left ~= "" or right ~= "" then
             local lc = line.leftColor
             local rc = line.rightColor
-            local leftColor = lc and { lc.r or 1, lc.g or 1, lc.b or 1 } or { 0.85, 0.85, 0.85 }
-            local rightColor = rc and { rc.r or 1, rc.g or 1, rc.b or 1 } or { 0.75, 0.75, 0.75 }
+            local leftColor, rightColor
+            if lc then
+                local lr, lg, lb = RemapTooltipLineRGB(lc.r or 1, lc.g or 1, lc.b or 1)
+                leftColor = { lr, lg, lb }
+            else
+                local lr, lg, lb = TooltipBodyRGB()
+                leftColor = { lr, lg, lb }
+            end
+            if rc then
+                local rr, rg, rb = RemapTooltipLineRGB(rc.r or 1, rc.g or 1, rc.b or 1)
+                rightColor = { rr, rg, rb }
+            else
+                local rr, rg, rb = TooltipBodyRGB()
+                rightColor = { rr, rg, rb }
+            end
             out[#out + 1] = { left = left, right = right, leftColor = leftColor, rightColor = rightColor }
         end
     end
@@ -1064,7 +1174,12 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
             end
         end
     end
-    out[1] = { left = slotLabel, right = "", leftColor = {0.7, 0.7, 0.9}, rightColor = {0.75, 0.75, 0.75} }
+    local slotLabelColor
+    do
+        local sr, sg, sb = (ns.UI_GetSemanticInfoColor and ns.UI_GetSemanticInfoColor()) or 0.7, 0.7, 0.9
+        slotLabelColor = { sr, sg, sb }
+    end
+    out[1] = { left = slotLabel, right = "", leftColor = slotLabelColor, rightColor = slotLabelColor }
 
     if not tooltipData or not tooltipData.lines then return out end
 
@@ -1092,11 +1207,26 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
                 if isItemLevel or isStat or isEquipEffect then
                     local lc = line.leftColor
                     local rc = line.rightColor
+                    local leftColor, rightColor
+                    if lc then
+                        local lr, lg, lb = RemapTooltipLineRGB(lc.r or 1, lc.g or 1, lc.b or 1)
+                        leftColor = { lr, lg, lb }
+                    else
+                        local lr, lg, lb = TooltipBodyRGB()
+                        leftColor = { lr, lg, lb }
+                    end
+                    if rc then
+                        local rr, rg, rb = RemapTooltipLineRGB(rc.r or 1, rc.g or 1, rc.b or 1)
+                        rightColor = { rr, rg, rb }
+                    else
+                        local rr, rg, rb = TooltipBodyRGB()
+                        rightColor = { rr, rg, rb }
+                    end
                     out[#out + 1] = {
                         left = left,
                         right = right,
-                        leftColor = lc and { lc.r or 1, lc.g or 1, lc.b or 1 } or { 0.85, 0.85, 0.85 },
-                        rightColor = rc and { rc.r or 1, rc.g or 1, rc.b or 1 } or { 0.75, 0.75, 0.75 },
+                        leftColor = leftColor,
+                        rightColor = rightColor,
                     }
                 end
             end
@@ -1120,11 +1250,19 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
     frame:SetIcon(info.iconFileID or nil)
     
     -- 2) Title
-    frame:SetTitle(info.name, 1, 0.82, 0)
+    local tr, tg, tb = 1, 0.82, 0
+    if ns.UI_GetTooltipTitleColor then
+        tr, tg, tb = ns.UI_GetTooltipTitleColor()
+    end
+    frame:SetTitle(info.name, tr, tg, tb)
     
     -- 3) Description
     if info.description and info.description ~= "" then
-        frame:SetDescription(info.description, 1, 1, 1)
+        local dr, dg, db = TooltipBodyRGB()
+        if ns.UI_GetTooltipBodyColor then
+            dr, dg, db = ns.UI_GetTooltipBodyColor()
+        end
+        frame:SetDescription(info.description, dr, dg, db)
     end
 
     -- Progress details (Current / Max / Season / Remaining) for key currencies.
@@ -1213,9 +1351,10 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                 end
                 local teForWeek = (teNum ~= nil) and teNum or 0
                 local remWeek = math.max(wCap - teForWeek, 0)
-                frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), 1, 1, 1, false)
+                local br, bg, bb = TooltipBrightRGB()
+                frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), br, bg, bb)
                 if wCap > 0 then
-                    frame:AddLine(string.format("%s: %s / %s", weeklyLabel, fmtNumber(teForWeek), fmtNumber(wCap)), 1, 1, 1, false)
+                    frame:AddLine(string.format("%s: %s / %s", weeklyLabel, fmtNumber(teForWeek), fmtNumber(wCap)), br, bg, bb, false)
                     if remWeek > 0 then
                         frame:AddLine(string.format("%s %s", fmtNumber(remWeek), remainingSuffix), 0.5, 1, 0.5, false)
                     else
@@ -1225,8 +1364,9 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             elseif hasSeasonProgress then
                 local teForSeason = (teNum ~= nil) and teNum or 0
                 local remSeason = math.max((seasonMax or 0) - teForSeason, 0)
-                frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), 1, 1, 1, false)
-                frame:AddLine(string.format("%s: %s / %s", seasonLabel, fmtNumber(teForSeason), fmtNumber(seasonMax or 0)), 1, 1, 1, false)
+                local br, bg, bb = TooltipBrightRGB()
+                frame:AddLine(string.format("%s %s", currentLabel, fmtNumber(qty)), br, bg, bb)
+                frame:AddLine(string.format("%s: %s / %s", seasonLabel, fmtNumber(teForSeason), fmtNumber(seasonMax or 0)), br, bg, bb, false)
                 if remSeason > 0 then
                     frame:AddLine(string.format("%s %s", fmtNumber(remSeason), remainingSuffix), 0.5, 1, 0.5, false)
                 else
@@ -1236,7 +1376,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                 -- No season cap: single Current / max line + remaining (weekly-style cap only)
                 local cap = maxQty
                 local rem = math.max((cap or 0) - (qty or 0), 0)
-                frame:AddLine(string.format("%s / %s", fmtNumber(qty), fmtNumber(cap or 0)), 1, 1, 1, false)
+                local br, bg, bb = TooltipBrightRGB()
+                frame:AddLine(string.format("%s / %s", fmtNumber(qty), fmtNumber(cap or 0)), br, bg, bb, false)
                 if rem > 0 then
                     frame:AddLine(string.format("%s %s", fmtNumber(rem), remainingSuffix), 0.5, 1, 0.5, false)
                 else
@@ -1274,9 +1415,9 @@ function TooltipService:RenderHybridTooltip(frame, data)
     -- Then add custom lines (already handled in item/currency methods)
 end
 
--- Tooltip offset constants
+-- Tooltip offset constants (aligned with UI_SPACING.SIDE_MARGIN where possible)
 local TOOLTIP_GAP = 8
-local TOOLTIP_SCREEN_MARGIN = 4
+local TOOLTIP_SCREEN_MARGIN = 8
 
 local function RectsOverlap(aLeft, aRight, aTop, aBottom, bLeft, bRight, bTop, bBottom, pad)
     pad = pad or 0
@@ -1490,21 +1631,47 @@ function TooltipService:ClampToScreen(frame, screenW, screenH)
     
     if not left or not right or not top or not bottom then return end
     
+    local margin = TOOLTIP_SCREEN_MARGIN
+    local frameH = top - bottom
+    local maxH = screenH - margin * 2
+
+    -- Tall tooltips: pin top to screen margin so body stays reachable (no scroll host yet).
+    if frameH > maxH and maxH > 0 then
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", math.max(margin, left), screenH - margin)
+        left = frame:GetLeft()
+        right = frame:GetRight()
+        top = frame:GetTop()
+        bottom = frame:GetBottom()
+        if not left or not right or not top or not bottom then return end
+    end
+
     local dx, dy = 0, 0
-    local margin = 4
-    
     if right > screenW - margin then dx = (screenW - margin) - right end
     if left < margin then dx = margin - left end
     if top > screenH - margin then dy = (screenH - margin) - top end
     if bottom < margin then dy = margin - bottom end
     
     if dx ~= 0 or dy ~= 0 then
-        local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
-        if point and relativeTo then
-            frame:ClearAllPoints()
-            frame:SetPoint(point, relativeTo, relativePoint, (x or 0) + dx, (y or 0) + dy)
+        local okPoint, point, relativeTo, relativePoint, x, y = pcall(frame.GetPoint, frame, 1)
+        if okPoint and point and relativeTo then
+            local okSet = pcall(function()
+                frame:ClearAllPoints()
+                frame:SetPoint(point, relativeTo, relativePoint, (x or 0) + dx, (y or 0) + dy)
+            end)
+            if not okSet then return end
         end
     end
+end
+
+--- Re-run placement after theme/layout refresh while tooltip is visible.
+function TooltipService:RepositionIfVisible(skipLayout)
+    local frame = GetTooltipFrame()
+    if not frame or not isVisible or not currentAnchor then return end
+    if not skipLayout and frame.LayoutLines then
+        frame:LayoutLines()
+    end
+    self:PositionTooltip(frame, currentAnchor, currentAnchorPref)
 end
 
 function TooltipService:RegisterSafetyEvents()

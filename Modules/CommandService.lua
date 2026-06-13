@@ -789,7 +789,7 @@ function CommandService:HandleDebugToggle(addon)
     
     if addon.db.profile.debugMode then
         addon:Print("|cff00ff00" .. ((ns.L and ns.L["DEBUG_ENABLED"]) or "Debug mode ENABLED.") .. "|r")
-        addon:Print("|cff888888[WN]|r Cache/scan logs need Debug Verbose (Settings) or |cff00ccff/wn debug verbose on|r. Tab timings: |cff00ccff/wn profiler tabperf on|r.")
+        addon:Print("|cff888888[WN]|r Cache/scan logs need Debug Verbose (Settings) or |cff00ccff/wn debug verbose on|r. Tab timings: |cff00ccff/wn profiler tabperf on|r. Phase splits: |cff00ccff/wn profiler verbose on|r.")
     else
         addon.db.profile.debugVerbose = false
         local pp = addon.db.profile.profilerPersist

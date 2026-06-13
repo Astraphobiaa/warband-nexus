@@ -15,27 +15,42 @@ ns.TooltipGameTooltip = GT
 
 local TooltipService
 
+--- Midnight / nameplate aura SetOwner: owner or parent chain may be invalid mid-anchor.
+local function IsUsableUIRegion(frame)
+    if not frame or type(frame.IsObjectType) ~= "function" then return false end
+    local ok, isRegion = pcall(frame.IsObjectType, frame, "Region")
+    return ok and isRegion == true
+end
 
 function GT.IsWarbandNexusOwner(owner)
+    if not IsUsableUIRegion(owner) then return false end
     local isWNFrame = ns.IsWarbandNexusUIFrame
     if type(isWNFrame) == "function" then
-        return isWNFrame(owner)
+        local ok, result = pcall(isWNFrame, owner)
+        return ok and result == true
     end
-    if not owner then return false end
-    local n = (type(owner.GetName) == "function") and owner:GetName() or nil
+    if type(owner.GetName) ~= "function" then return false end
+    local okName, n = pcall(owner.GetName, owner)
+    if not okName then return false end
     return n and type(n) == "string" and not (issecretvalue and issecretvalue(n))
         and n:find("WarbandNexus", 1, true) or false
 end
 
 function GT.OwnerHasScreenBounds(owner)
-    if not owner or type(owner.GetLeft) ~= "function" then return false end
-    local l, r, t, b = owner:GetLeft(), owner:GetRight(), owner:GetTop(), owner:GetBottom()
+    if not IsUsableUIRegion(owner) or type(owner.GetLeft) ~= "function" then return false end
+    local ok, l, r, t, b = pcall(function()
+        return owner:GetLeft(), owner:GetRight(), owner:GetTop(), owner:GetBottom()
+    end)
+    if not ok then return false end
     return l ~= nil and r ~= nil and t ~= nil and b ~= nil
 end
 
 function GT.AdjustGameTooltipForOwner(tooltip, owner, anchor)
-    if not tooltip or not owner then return false end
-    if tooltip.GetOwner and tooltip:GetOwner() ~= owner then return false end
+    if not IsUsableUIRegion(tooltip) or not IsUsableUIRegion(owner) then return false end
+    if tooltip.GetOwner then
+        local okOwner, currentOwner = pcall(tooltip.GetOwner, tooltip)
+        if not okOwner or currentOwner ~= owner then return false end
+    end
     if not GT.OwnerHasScreenBounds(owner) then return false end
     local sw, sh = GetScreenWidth(), GetScreenHeight()
     TooltipService:ApplyBestTooltipPlacement(tooltip, owner, anchor or "ANCHOR_AUTO", sw, sh)
@@ -1359,7 +1374,8 @@ local function AppendConcentrationData(tooltip)
             if isFull then
                 valueStr = "|cff44ff44" .. entry.max .. " / " .. entry.max .. "|r  |cff44ff44" .. ((ns.L and ns.L["TOOLTIP_FULL"]) or "(Full)") .. "|r"
             else
-                valueStr = "|cffffffff~" .. estimated .. " / " .. entry.max .. "|r  |cffffffff(" .. timeStr .. ")|r"
+                valueStr = (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. "~" .. estimated .. " / " .. entry.max .. "|r  "
+                    .. (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted") or "|cff888888") .. "(" .. timeStr .. ")|r"
             end
 
             tooltip:AddDoubleLine(
@@ -1432,11 +1448,13 @@ function GT.InstallGameTooltipOwnerHook(service, SafeDefer)
             if tooltip ~= GameTooltip then return end
             if not owner then return end
             if anchor == "ANCHOR_CURSOR" then return end
-            if not GT.IsWarbandNexusOwner(owner) then return end
+            local okCheck, isWN = pcall(GT.IsWarbandNexusOwner, owner)
+            if not okCheck or not isWN then return end
             local anch = anchor or "ANCHOR_AUTO"
-            if GT.AdjustGameTooltipForOwner(tooltip, owner, anch) then return end
+            local okAdjust, adjusted = pcall(GT.AdjustGameTooltipForOwner, tooltip, owner, anch)
+            if okAdjust and adjusted then return end
             SafeDefer(function()
-                GT.AdjustGameTooltipForOwner(GameTooltip, owner, anch)
+                pcall(GT.AdjustGameTooltipForOwner, GameTooltip, owner, anch)
             end)
         end)
     end

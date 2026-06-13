@@ -145,9 +145,10 @@ function WarbandNexus:InitializeMinimapButton()
             warbandCopper = ns.Utilities:GetWarbandBankTotalCopper(addon) or 0
         end
         
-        tooltip:AddDoubleLine("|cffffffff" .. charsGoldLbl .. "|r",  "|cffffff00" .. FormatGold(totalCopper) .. "|r")
-        tooltip:AddDoubleLine("|cffffffff" .. warbandGoldLbl .. ":|r", "|cffffff00" .. FormatGold(warbandCopper) .. "|r")
-        tooltip:AddDoubleLine("|cffffffff" .. totalGoldLbl .. "|r",  "|cff00ff00" .. FormatGold(totalCopper + warbandCopper) .. "|r")
+        local brightHex = (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        tooltip:AddDoubleLine(brightHex .. charsGoldLbl .. "|r",  "|cffffff00" .. FormatGold(totalCopper) .. "|r")
+        tooltip:AddDoubleLine(brightHex .. warbandGoldLbl .. ":|r", "|cffffff00" .. FormatGold(warbandCopper) .. "|r")
+        tooltip:AddDoubleLine(brightHex .. totalGoldLbl .. "|r",  "|cff00ff00" .. FormatGold(totalCopper + warbandCopper) .. "|r")
 
         tooltip:AddLine(" ")
         tooltip:AddLine("|cff00ff00" .. MinimapLeftClickTooltipLine() .. "|r", 0.7, 0.7, 0.7)

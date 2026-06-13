@@ -414,6 +414,27 @@ local function BuildPvESignature(pveCache, charKey)
     local pvpN = acts and acts.pvp and #acts.pvp or 0
     local worldN = acts and acts.world and #acts.world or 0
     local postResetSig = acts and acts.isPostReset and "1" or "0"
+    local vaultILvlSig = "0"
+    if acts then
+        local ilvlParts = {}
+        local ilvlCats = {"raids", "mythicPlus", "pvp", "world"}
+        for ci = 1, #ilvlCats do
+            local list = acts[ilvlCats[ci]]
+            if list then
+                for i = 1, #list do
+                    local a = list[i]
+                    if a then
+                        ilvlParts[#ilvlParts + 1] = tostring(a.rewardItemLevel or 0)
+                        ilvlParts[#ilvlParts + 1] = tostring(a.nextLevelIlvl or 0)
+                        ilvlParts[#ilvlParts + 1] = tostring(a.maxIlvl or 0)
+                    end
+                end
+            end
+        end
+        if #ilvlParts > 0 then
+            vaultILvlSig = table.concat(ilvlParts, ",")
+        end
+    end
 
     local runSig = BuildRunsSignature(mp and mp.runHistory and mp.runHistory[charKey])
     local affSig = BuildAffixSignature(pveCache)
@@ -445,6 +466,7 @@ local function BuildPvESignature(pveCache, charKey)
         claimedAtSig,
         tostring(raidN), tostring(mPlusN), tostring(pvpN), tostring(worldN),
         postResetSig,
+        vaultILvlSig,
         tostring(lockN), tostring(wbN),
         delveSig,
         affSig,
@@ -618,6 +640,7 @@ end
 -- Throttle timers
 local lastUpdateTime = 0
 local pendingUpdate = false
+local pvePendingUpdateTimer = nil
 local keystoneRetryPending = {}
 local keystoneRetryCount = {}
 local keystoneZeroSeenAt = {}
@@ -1652,6 +1675,28 @@ end
 
 -- UPDATE ORCHESTRATION
 
+---True when completed vault rows exist but reward iLvl is still zero (API warmup).
+local function VaultActivitiesMissingILvl(bucket)
+    if not bucket or bucket.isPostReset then
+        return false
+    end
+    local vaultCategories = {"raids", "mythicPlus", "world"}
+    for ci = 1, #vaultCategories do
+        local activities = bucket[vaultCategories[ci]]
+        if activities then
+            for ai = 1, #activities do
+                local a = activities[ai]
+                if a and a.progress and a.threshold and a.progress >= a.threshold then
+                    if not a.rewardItemLevel or a.rewardItemLevel == 0 then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
     DebugPrint("|cff9370DB[PvECache]|r [PvE Action] UpdatePvEData triggered")
@@ -1673,6 +1718,16 @@ function WarbandNexus:UpdatePvEData()
     local currentTime = GetTime()
     if currentTime - lastUpdateTime < UPDATE_THROTTLE then
         pendingUpdate = true
+        if not pvePendingUpdateTimer then
+            local delay = UPDATE_THROTTLE - (currentTime - lastUpdateTime)
+            if delay < 0.01 then delay = 0.01 end
+            pvePendingUpdateTimer = C_Timer.After(delay, function()
+                pvePendingUpdateTimer = nil
+                if WarbandNexus and WarbandNexus.ProcessPendingPvEUpdate then
+                    WarbandNexus:ProcessPendingPvEUpdate()
+                end
+            end)
+        end
         return
     end
     
@@ -1711,6 +1766,8 @@ function WarbandNexus:UpdatePvEData()
         and self.db.global.pveCache.greatVault.activities[charKey]
     if not GreatVaultActivityHasRows(vaultActivities) then
         self:UpdateGreatVaultActivities(charKey)
+    elseif VaultActivitiesMissingILvl(vaultActivities) then
+        self:ProcessGreatVaultActivities(charKey)
     end
     
     -- Update timestamp (data already in DB)
@@ -1727,8 +1784,21 @@ end
 ---Schedule throttled update (called by pending update timer)
 function WarbandNexus:ProcessPendingPvEUpdate()
     if pendingUpdate then
+        pendingUpdate = false
         self:UpdatePvEData()
     end
+end
+
+---Persist PvE cache on PLAYER_LOGOUT without API refresh.
+function WarbandNexus:FlushPvECacheOnLogout()
+    if pvePendingUpdateTimer then
+        pvePendingUpdateTimer:Cancel()
+        pvePendingUpdateTimer = nil
+    end
+    pendingUpdate = false
+    if not self.db or not self.db.global then return end
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
+    self:SavePvECache()
 end
 
 -- PUBLIC API (FOR UI AND DATASERVICE)
@@ -2315,17 +2385,27 @@ function WarbandNexus:RegisterPvECacheEvents()
     C_Timer.After(5, function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
         local charKey = CanonicalizePvEKey(ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus) or ns.Utilities:GetCharacterKey())
-        if charKey then
-            local vaultActivities = WarbandNexus.db
-                and WarbandNexus.db.global
-                and WarbandNexus.db.global.pveCache
-                and WarbandNexus.db.global.pveCache.greatVault
-                and WarbandNexus.db.global.pveCache.greatVault.activities
-                and WarbandNexus.db.global.pveCache.greatVault.activities[charKey]
-            if not GreatVaultActivityHasRows(vaultActivities) then
-                WarbandNexus:ProcessGreatVaultActivities(charKey)
-                WarbandNexus:SavePvECache()
-            end
+        if not charKey then return end
+        local pveCache = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache
+        local beforeSig = BuildPvESignature(pveCache, charKey)
+        local vaultActivities = pveCache
+            and pveCache.greatVault
+            and pveCache.greatVault.activities
+            and pveCache.greatVault.activities[charKey]
+        if not GreatVaultActivityHasRows(vaultActivities) then
+            WarbandNexus:ProcessGreatVaultActivities(charKey)
+        end
+        local afterSig = BuildPvESignature(pveCache, charKey)
+        if beforeSig ~= afterSig and WarbandNexus.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.PVE_UPDATED then
+            WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED)
+        end
+    end)
+
+    -- Deferred vault iLvl / keystone backfill after API warmup (no PvE tab required).
+    C_Timer.After(3, function()
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+        if WarbandNexus.UpdatePvEData then
+            WarbandNexus:UpdatePvEData()
         end
     end)
     
@@ -2665,24 +2745,7 @@ function WarbandNexus:OnChallengeModeCompleted()
     self:UpdatePvEData()
 end
 
--- PLAYER_LOGOUT: persist PvE cache (no API refresh)
--- Do NOT call UpdatePvEData() here. During logout/teardown, Mythic+ and Weekly
--- Rewards APIs often return empty/zero; a full refresh overwrites pveCache with
--- bogus data for the logging-out character (missing vault, Overall Score 0).
-
-local logoutFrame = CreateFrame("Frame")
-logoutFrame:RegisterEvent("PLAYER_LOGOUT")
-logoutFrame:SetScript("OnEvent", function()
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return end
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
-    
-    pendingUpdate = false
-    
-    -- Final save (ensures all direct DB writes are persisted)
-    WarbandNexus:SavePvECache()
-end)
-
--- LOAD MESSAGE
+-- PLAYER_LOGOUT flush is coordinated from Core.lua:OnPlayerLogout (FlushPvECacheOnLogout).
 
 -- Module loaded (silent)
 -- Module loaded - verbose logging hidden (debug mode only)

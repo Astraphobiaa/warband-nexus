@@ -14,6 +14,12 @@ function Q.Install(ctx)
     local f = ctx.f
     local L = ctx.L
     local COLORS = ctx.COLORS
+    local function PickerBrightHex()
+        return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+    end
+    local function PickerMutedHex()
+        return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
+    end
     local Factory = ctx.Factory
     local FontManager = ctx.FontManager
     local ApplyVisuals = ctx.ApplyVisuals
@@ -139,8 +145,9 @@ function Q.Install(ctx)
             for bi = 1, #sections do
                 local sel = (bi == idx)
                 if btns[bi] and ApplyVisuals then
+                    local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
                     ApplyVisuals(btns[bi],
-                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or { 0.12, 0.12, 0.15, 1 },
+                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or idle,
                         { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], sel and 0.95 or 0.35 })
                 end
             end
@@ -446,7 +453,8 @@ function Q.Install(ctx)
                         sb = CreateFrame("Button", nil, typeListHost, "BackdropTemplate")
                         sb:SetSize(typeInnerW, questSecBtnH)
                         if ApplyVisuals then
-                            ApplyVisuals(sb, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
+                            local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
+                            ApplyVisuals(sb, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
                         end
                     end
                     if secIdx == 1 then
@@ -714,8 +722,9 @@ function Q.Install(ctx)
                 local ob = self._catalogQuestBtns and self._catalogQuestBtns[j]
                 if ob and ApplyVisuals then
                     local sel = (j == secIdx)
+                    local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
                     ApplyVisuals(ob,
-                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or { 0.12, 0.12, 0.15, 1 },
+                        sel and { COLORS.accent[1] * 0.42, COLORS.accent[2] * 0.42, COLORS.accent[3] * 0.42, 1 } or idle,
                         { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], sel and 0.95 or 0.35 })
                 end
             end
@@ -817,7 +826,7 @@ function Q.Install(ctx)
                             labelMax = math.max(24, math.floor((zw - tagColW - pickColW - 34) / 6.2))
                         end
                         local title = entry.title or entry.label or unk
-                        row.labelFs:SetText("|cffffffff" .. TruncatePickerLabel(title, labelMax) .. "|r")
+                        row.labelFs:SetText(PickerBrightHex() .. TruncatePickerLabel(title, labelMax) .. "|r")
                         f:SyncThemedCheck(row.check, f.IsWorldEventSelected and f:IsWorldEventSelected(entry.eventKey) == true)
                         row:SetHeight(dataRowH)
                         estH = estH + dataRowH + 2
@@ -840,7 +849,7 @@ function Q.Install(ctx)
                         end
                         local title = entry.title or (RQC and RQC.ResolveQuestTitle and RQC.ResolveQuestTitle(entry.questID)) or unk
                         row.labelFs:SetText(string.format(
-                            "|cffffffff%s|r |cff888888— %d|r",
+                            PickerBrightHex() .. "%s|r " .. PickerMutedHex() .. "— %d|r",
                             TruncatePickerLabel(title, labelMax),
                             entry.questID
                         ))

@@ -1814,8 +1814,12 @@ local function PaintGearViewportIdentity(viewportHost, charData, accent)
     nameRealmFs:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
     nameRealmFs:SetHeight(18)
     nameRealmFs:SetJustifyH("CENTER")
-    nameRealmFs:SetShadowOffset(1, -1)
-    nameRealmFs:SetShadowColor(0, 0, 0, 1)
+    if ns.UI_ApplyOverlayLabelShadow then
+        ns.UI_ApplyOverlayLabelShadow(nameRealmFs)
+    else
+        nameRealmFs:SetShadowOffset(1, -1)
+        nameRealmFs:SetShadowColor(0, 0, 0, 1)
+    end
     if name ~= "" and realm ~= "" then
         nameRealmFs:SetText("|cff" .. classHex .. name .. "|r |cff888888-|r |cffb8bac4" .. realm .. "|r")
     elseif name ~= "" then
@@ -1830,9 +1834,14 @@ local function PaintGearViewportIdentity(viewportHost, charData, accent)
         ilvlFs:SetPoint("LEFT", bar, "LEFT", 0, 0)
         ilvlFs:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
         ilvlFs:SetJustifyH("CENTER")
-        ilvlFs:SetTextColor(1, 0.9, 0)
-        ilvlFs:SetShadowOffset(1, -1)
-        ilvlFs:SetShadowColor(0, 0, 0, 1)
+        local gr, gg, gb = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.9, 0
+        ilvlFs:SetTextColor(gr, gg, gb, 1)
+        if ns.UI_ApplyOverlayLabelShadow then
+            ns.UI_ApplyOverlayLabelShadow(ilvlFs)
+        else
+            ilvlFs:SetShadowOffset(1, -1)
+            ilvlFs:SetShadowColor(0, 0, 0, 1)
+        end
         ilvlFs:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
     end
     return bar
@@ -2018,8 +2027,12 @@ local function ApplyGearOfflineCenterChrome(centerRef, classFile)
         label:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 10, 7)
         label:SetJustifyH("LEFT")
         ns.UI_SetTextColorRole(label, "Bright", 0.95)
-        label:SetShadowOffset(1, -1)
-        label:SetShadowColor(0, 0, 0, 0.9)
+        if ns.UI_ApplyOverlayLabelShadow then
+            ns.UI_ApplyOverlayLabelShadow(label)
+        else
+            label:SetShadowOffset(1, -1)
+            label:SetShadowColor(0, 0, 0, 0.9)
+        end
         chrome._label = label
         ns._gearOfflineCenterChrome = chrome
     end
@@ -2544,8 +2557,12 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             name:SetPoint("TOP", icon, "BOTTOM", 0, -10)
             name:SetWidth(modelW - 16)
             name:SetJustifyH("CENTER")
-            name:SetShadowOffset(1, -1)
-            name:SetShadowColor(0, 0, 0, 0.95)
+            if ns.UI_ApplyOverlayLabelShadow then
+                ns.UI_ApplyOverlayLabelShadow(name)
+            else
+                name:SetShadowOffset(1, -1)
+                name:SetShadowColor(0, 0, 0, 0.95)
+            end
             portrait._name = name
 
             -- "Lv N · Race" meta line.
@@ -2554,8 +2571,12 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             meta:SetWidth(modelW - 16)
             meta:SetJustifyH("CENTER")
             ns.UI_SetTextColorRole(meta, "Normal")
-            meta:SetShadowOffset(1, -1)
-            meta:SetShadowColor(0, 0, 0, 0.85)
+            if ns.UI_ApplyOverlayLabelShadow then
+                ns.UI_ApplyOverlayLabelShadow(meta)
+            else
+                meta:SetShadowOffset(1, -1)
+                meta:SetShadowColor(0, 0, 0, 0.85)
+            end
             portrait._meta = meta
 
             -- Item level pill: small framed bg with bold ilvl text.
@@ -2568,13 +2589,23 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
                 edgeSize = 1,
                 insets = { left = 0, right = 0, top = 0, bottom = 0 },
             })
-            pill:SetBackdropColor(0, 0, 0, 0.55)
+            local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+                or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+            pill:SetBackdropColor(pillBg[1], pillBg[2], pillBg[3], (pillBg[4] or 1) * 0.85)
+            local pillBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.55
+            local ac = COLORS.accent or { 0.5, 0.3, 0.8 }
+            pill:SetBackdropBorderColor(ac[1] * 0.5, ac[2] * 0.5, ac[3] * 0.5, pillBorderA)
             portrait._pill = pill
             local pillLabel = FontManager:CreateFontString(pill, GFR("gearPortraitMeta"), "OVERLAY")
             pillLabel:SetPoint("CENTER", pill, "CENTER", 0, 0)
-            pillLabel:SetTextColor(1, 0.82, 0.0, 1)
-            pillLabel:SetShadowOffset(1, -1)
-            pillLabel:SetShadowColor(0, 0, 0, 0.9)
+            local gr, gg, gb = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.82, 0
+            pillLabel:SetTextColor(gr, gg, gb, 1)
+            if ns.UI_ApplyOverlayLabelShadow then
+                ns.UI_ApplyOverlayLabelShadow(pillLabel)
+            else
+                pillLabel:SetShadowOffset(1, -1)
+                pillLabel:SetShadowColor(0, 0, 0, 0.9)
+            end
             portrait._pillLabel = pillLabel
         end
 
@@ -2682,7 +2713,8 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     modelBorder:ClearAllPoints()
     modelBorder:SetPoint("TOPLEFT",     centerRef, "TOPLEFT",      -1,  1)
     modelBorder:SetPoint("BOTTOMRIGHT", centerRef, "BOTTOMRIGHT",   1, -1)
-    modelBorder:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.65)
+    local modelBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.45 or 0.65
+    modelBorder:SetBackdropBorderColor(accent[1], accent[2], accent[3], modelBorderA)
     modelBorder:SetFrameLevel(centerRef:GetFrameLevel() + 6)
     modelBorder:Show()
 
@@ -2694,8 +2726,12 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         local ilvlOverlay = FontManager:CreateFontString(ilvlFrame, GFR("gearIlvlBadge"), "OVERLAY")
         ilvlOverlay:SetPoint("CENTER", 0, 0)
         ilvlOverlay:SetJustifyH("CENTER")
-        ilvlOverlay:SetShadowOffset(1, -1)
-        ilvlOverlay:SetShadowColor(0, 0, 0, 1)
+        if ns.UI_ApplyOverlayLabelShadow then
+            ns.UI_ApplyOverlayLabelShadow(ilvlOverlay)
+        else
+            ilvlOverlay:SetShadowOffset(1, -1)
+            ilvlOverlay:SetShadowColor(0, 0, 0, 1)
+        end
         ilvlFrame._label = ilvlOverlay
         ilvlFrame.isPersistentRowElement = true
         ns._gearIlvlFrame = ilvlFrame
@@ -2707,8 +2743,12 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         nameWrapper = GearFact:CreateContainer(card, 200, 20, false)
         local nameLabel = FontManager:CreateFontString(nameWrapper, GFR("gearCharacterName"), "OVERLAY")
         nameLabel:SetJustifyH("CENTER")
-        nameLabel:SetShadowOffset(1, -1)
-        nameLabel:SetShadowColor(0, 0, 0, 1)
+        if ns.UI_ApplyOverlayLabelShadow then
+            ns.UI_ApplyOverlayLabelShadow(nameLabel)
+        else
+            nameLabel:SetShadowOffset(1, -1)
+            nameLabel:SetShadowColor(0, 0, 0, 1)
+        end
         nameWrapper._label = nameLabel
         nameWrapper.isPersistentRowElement = true
         ns._gearNameWrapper = nameWrapper
@@ -3121,6 +3161,12 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
     -- Staged paint: one idle tick per stage (mid+center -> storage rows -> slot inspect) to avoid stacking FRAME SPIKEs.
     local gearDeferGen = ns._gearTabDrawGen
+    local function IsGearDeferGenCurrent(gen)
+        if ns.GearUI_IsPaintGenerationCurrent then
+            return ns.GearUI_IsPaintGenerationCurrent(gen)
+        end
+        return gen ~= nil and gen == (ns._gearTabDrawGen or 0)
+    end
     local mfDefer = WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if mfDefer then
         mfDefer._gearDeferChainActive = true
@@ -3136,7 +3182,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         local scanDelay = (ns.GEAR_STORAGE_SCAN_START_DELAY_SEC) or 0.035
         C_Timer.After(scanDelay, function()
             mfDefer._gearStorageTryStartScheduledFor = nil
-            if genNow ~= (ns._gearTabDrawGen or 0) then return end
+            if not IsGearDeferGenCurrent(genNow) then return end
             if not WarbandNexus.IsStillOnTab or not WarbandNexus:IsStillOnTab("gear") then return end
             ns.GearUI_TryStartPendingGearStorageScan(mfDefer, genNow)
         end)
@@ -3171,7 +3217,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         end
     end
     C_Timer.After(0, function()
-        if gearDeferGen ~= ns._gearTabDrawGen then
+        if not IsGearDeferGenCurrent(gearDeferGen) then
             finishGearDeferChain()
             return
         end
@@ -3204,7 +3250,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                 local inspectIdx = 1
                 local SLOTS_PER_FRAME = 4
                 local function runSlotInspectBatch()
-                    if gearDeferGen ~= (ns._gearTabDrawGen or 0) then
+                    if not IsGearDeferGenCurrent(gearDeferGen) then
                         finishGearDeferChain()
                         return
                     end
@@ -3246,7 +3292,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
         if centerFn then
             C_Timer.After(0, function()
-                if gearDeferGen ~= ns._gearTabDrawGen then
+                if not IsGearDeferGenCurrent(gearDeferGen) then
                     finishGearDeferChain()
                     return
                 end
@@ -3684,3 +3730,72 @@ ns.GearUI_GearSlotApplyDeferredEnchantGemInspect = GearSlotApplyDeferredEnchantG
 ns.GearUI_GearSlotPaperdollVisualEquals = GearSlotPaperdollVisualEquals
 ns.GearUI_BuildLiveEquippedSlotSnapshot = BuildLiveEquippedSlotSnapshot
 ns.GearUI_GearSlotHasInspectableItemLink = GearSlotHasInspectableItemLink
+
+function ns.GearUI_Paperdoll.RefreshTheme()
+    local C = COLORS or ns.UI_COLORS or {}
+    local accent = C.accent or { 0.5, 0.3, 0.8 }
+    local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.45 or 0.65
+
+    if ns._gearModelBorder and ns._gearModelBorder.SetBackdropBorderColor then
+        ns._gearModelBorder:SetBackdropBorderColor(accent[1], accent[2], accent[3], borderA)
+    end
+
+    if ns._gearPortraitPanel then
+        ApplyGearModelViewportFill(ns._gearPortraitPanel)
+    end
+    if ns._gearNoPreviewFrame then
+        ApplyGearModelViewportFill(ns._gearNoPreviewFrame)
+        local portrait = ns._gearNoPreviewFrame
+        if portrait._pill and portrait._pill.SetBackdropColor then
+            local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+                or C.bgCard or C.bgLight or C.bg
+            portrait._pill:SetBackdropColor(pillBg[1], pillBg[2], pillBg[3], (pillBg[4] or 1) * 0.85)
+            local pillBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.55
+            portrait._pill:SetBackdropBorderColor(accent[1] * 0.5, accent[2] * 0.5, accent[3] * 0.5, pillBorderA)
+        end
+        if portrait._pillLabel then
+            local gr, gg, gb = (ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()) or 1, 0.82, 0
+            portrait._pillLabel:SetTextColor(gr, gg, gb, 1)
+            if ns.UI_ApplyOverlayLabelShadow then ns.UI_ApplyOverlayLabelShadow(portrait._pillLabel) end
+        end
+        if portrait._name and ns.UI_ApplyOverlayLabelShadow then
+            ns.UI_ApplyOverlayLabelShadow(portrait._name)
+        end
+        if portrait._meta and ns.UI_ApplyOverlayLabelShadow then
+            ns.UI_ApplyOverlayLabelShadow(portrait._meta)
+        end
+    end
+
+    local overlayLabels = {}
+    if ns._gearIlvlFrame and ns._gearIlvlFrame._label then
+        overlayLabels[#overlayLabels + 1] = ns._gearIlvlFrame._label
+    end
+    if ns._gearNameWrapper and ns._gearNameWrapper._label then
+        overlayLabels[#overlayLabels + 1] = ns._gearNameWrapper._label
+    end
+    if ns._gearOfflineCenterChrome and ns._gearOfflineCenterChrome._label then
+        overlayLabels[#overlayLabels + 1] = ns._gearOfflineCenterChrome._label
+    end
+    for i = 1, #overlayLabels do
+        if ns.UI_ApplyOverlayLabelShadow then
+            ns.UI_ApplyOverlayLabelShadow(overlayLabels[i])
+        end
+    end
+
+    local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    local card = mf and mf._gearPaperdollCard
+    local inspectList = card and card._gearSlotInspectList
+    if inspectList then
+        local slotBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
+            or C.surfaceViewport or { 0.05, 0.05, 0.07, 0.9 }
+        for j = 1, #inspectList do
+            local btn = inspectList[j]
+            if btn and btn._gearSlotBg then
+                btn._gearSlotBg:SetColorTexture(slotBg[1], slotBg[2], slotBg[3], slotBg[4] or 0.9)
+            end
+            if btn and btn.ilvlLabel and ns.UI_ApplyOverlayLabelShadow then
+                ns.UI_ApplyOverlayLabelShadow(btn.ilvlLabel)
+            end
+        end
+    end
+end

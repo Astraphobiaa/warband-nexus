@@ -1366,6 +1366,52 @@ DrainCurrencyQueue = function()
     end
 end
 
+---Drain currency queue on PLAYER_LOGOUT (no frame budget; skip UI messages).
+local function DrainCurrencyQueueOnLogout()
+    if CurrencyCache._broadScanTimer then
+        CurrencyCache._broadScanTimer:Cancel()
+        CurrencyCache._broadScanTimer = nil
+    end
+    if CurrencyCache._currencyDrainKickTimer then
+        CurrencyCache._currencyDrainKickTimer:Cancel()
+        CurrencyCache._currencyDrainKickTimer = nil
+    end
+    CurrencyCache.drainResumePending = false
+
+    local needsBroadScan = false
+    while CurrencyCache.isDraining do
+        CurrencyCache.isDraining = false
+    end
+    CurrencyCache.isDraining = true
+
+    while #CurrencyCache.updateQueue > 0 do
+        local entry = table.remove(CurrencyCache.updateQueue, 1)
+        if entry == 0 then
+            needsBroadScan = true
+        elseif type(entry) == "table" and entry.currencyID then
+            UpdateSingleCurrency(entry.currencyID, entry)
+        elseif type(entry) == "number" and entry > 0 then
+            UpdateSingleCurrency(entry)
+        end
+    end
+
+    if needsBroadScan and CurrencyCache.PerformFullScan
+        and ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+        CurrencyCache:PerformFullScan()
+    end
+
+    CurrencyCache._drainBcCount = 0
+    CurrencyCache._drainBcSingleId = nil
+    CurrencyCache.isDraining = false
+end
+
+function WarbandNexus:FlushCurrencyCacheOnLogout()
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    DrainCurrencyQueueOnLogout()
+end
+
 ---Handle CURRENCY_DISPLAY_UPDATE event (FIFO queue + synchronous drain)
 ---Event payload (Retail): currencyType, quantity, quantityChange, quantityGainSource, destroyReason
 ---When multiple currencies drop in one moment, GetCurrencyInfo can lag; pass quantity/quantityChange through.

@@ -17,7 +17,21 @@ local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateCard = ns.UI_CreateCard
 
--- Local references
+local function ThemeTextHex(role)
+    if ns.UI_GetTextRoleHex then
+        return ns.UI_GetTextRoleHex(role)
+    end
+    if role == "Dim" then return "|cff888888" end
+    if role == "Muted" then return "|cffaaaaaa" end
+    return (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+end
+
+local function TooltipTextRGB(role)
+    if ns.UI_GetTextRoleRGB then
+        return ns.UI_GetTextRoleRGB(role)
+    end
+    return 1, 1, 1, 1
+end
 local L = ns.L
 
 local MODE_LABELS = {
@@ -119,8 +133,9 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     -- Tooltip for per-char checkbox
     local perCharTooltip = L["GOLD_MANAGEMENT_CHAR_ONLY_DESC"] or "Use separate gold management settings for this character only. Other characters will use the shared profile settings."
     perCharCB:SetScript("OnEnter", function(self)
+        local tr, tg, tb = TooltipTextRGB("Bright")
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(perCharTooltip, 1, 1, 1, 1)
+        GameTooltip:SetText(perCharTooltip, tr, tg, tb, 1)
         GameTooltip:Show()
     end)
     perCharCB:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -174,7 +189,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local modeLabel = FontManager:CreateFontString(contentFrame, "subtitle", "OVERLAY")
     modeLabel:SetPoint("TOPLEFT", PADDING, -yOffset)
     modeLabel:SetText(L["GOLD_MANAGEMENT_MODE"] or "Management Mode")
-    modeLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    ns.UI_SetTextColorRole(modeLabel, "Bright")
     
     yOffset = yOffset + 28  -- Increased spacing between title and options
     
@@ -216,8 +231,9 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
                 local radio = self.radioButton
                 UpdateBorderColor(radio, radio.hoverBorderColor)
             end
+            local tr, tg, tb = TooltipTextRGB("Bright")
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(description, 1, 1, 1, 1)
+            GameTooltip:SetText(description, tr, tg, tb, 1)
             GameTooltip:Show()
         end)
         
@@ -260,29 +276,29 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local targetLabel = FontManager:CreateFontString(contentFrame, "subtitle", "OVERLAY")
     targetLabel:SetPoint("TOPLEFT", PADDING, -yOffset)
     targetLabel:SetText(L["GOLD_MANAGEMENT_TARGET"] or "Target Gold Amount")
-    targetLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    ns.UI_SetTextColorRole(targetLabel, "Bright")
     
     yOffset = yOffset + 28  -- Increased spacing between title and input
     
     -- Input box for gold amount
-    local inputBox = CreateFrame("EditBox", nil, contentFrame)
+    local inputBox = (Factory and Factory.CreateEditBox and Factory:CreateEditBox(contentFrame))
+        or CreateFrame("EditBox", nil, contentFrame)
     inputBox:SetSize(140, 32)
-    inputBox:SetPoint("TOPLEFT", PADDING, -yOffset)  -- Flush left with padding
+    inputBox:SetPoint("TOPLEFT", PADDING, -yOffset)
     inputBox:SetAutoFocus(false)
     inputBox:SetMaxLetters(15)
     inputBox:SetNumeric(false)
-    
-    -- Apply custom visuals
-    if ApplyVisuals then
-        ApplyVisuals(inputBox, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-    end
-    
-    inputBox:SetFontObject(GameFontHighlight) -- required initial FontObject
-    if ns.FontManager then
-        local p = ns.FontManager:GetFontFace()
-        local s = ns.FontManager:GetFontSize("body")
-        local f = ns.FontManager:GetAAFlags()
-        pcall(inputBox.SetFont, inputBox, p, s, f)
+    if not Factory or not Factory.CreateEditBox then
+        if ApplyVisuals then
+            local chrome = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+                or { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1 }
+            ApplyVisuals(inputBox, chrome, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        end
+        inputBox:SetFontObject(GameFontHighlight)
+        if FontManager and FontManager.ApplyFontToEditBox then
+            FontManager:ApplyFontToEditBox(inputBox, "body")
+            FontManager:RegisterManagedEditBox(inputBox, "body")
+        end
     end
     inputBox:SetTextInsets(8, 8, 0, 0)
     ns.UI_SetTextColorRole(inputBox, "Bright")
@@ -310,8 +326,9 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     -- Tooltip for target input
     local targetTooltip = L["GOLD_MANAGEMENT_HELPER"] or "Enter the amount of gold you want to keep on this character. The addon will notify you when you need to move gold."
     inputBox:SetScript("OnEnter", function(self)
+        local tr, tg, tb = TooltipTextRGB("Bright")
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(targetTooltip, 1, 1, 1, 1)
+        GameTooltip:SetText(targetTooltip, tr, tg, tb, 1)
         GameTooltip:Show()
     end)
     inputBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -374,8 +391,6 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     local summaryY = summaryPad
     local halfWidth = math.floor((contentWidth - PADDING * 2 - summaryPad * 3) / 2)
     
-    local hexColor = string.format("%02x%02x%02x", COLORS.accent[1] * 255, COLORS.accent[2] * 255, COLORS.accent[3] * 255)
-    
     -- Profile column (left)
     local profileTitle = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
     profileTitle:SetPoint("TOPLEFT", summaryPad, -summaryY)
@@ -406,6 +421,11 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     charInfo:SetJustifyH("LEFT")
     
     local function UpdateSummaryCard()
+        local ac = ns.UI_COLORS and ns.UI_COLORS.accent or COLORS.accent
+        local hexColor = string.format("%02x%02x%02x", ac[1] * 255, ac[2] * 255, ac[3] * 255)
+        local brightHex = ThemeTextHex("Bright")
+        local dimHex = ThemeTextHex("Dim")
+
         local profSettings = self.db.profile.goldManagement or profileDefaults
         local charSettings = self.db.char.goldManagement
         local usingChar = charSettings and charSettings.perCharacter
@@ -421,7 +441,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         local profMode = MODE_SHORT[profSettings.mode or "both"]
         local profModeStr = profMode and profMode() or "Both"
         local profGold = FormatGoldDisplay(profSettings.targetAmount or 0)
-        profileInfo:SetText("|cffffffff" .. profModeStr .. "  " .. profGold .. "|r")
+        profileInfo:SetText(brightHex .. profModeStr .. "  " .. profGold .. "|r")
         
         -- Character column
         if charSettings and charSettings.perCharacter then
@@ -431,11 +451,11 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
             local charMode = MODE_SHORT[charSettings.mode or "both"]
             local charModeStr = charMode and charMode() or "Both"
             local charGold = FormatGoldDisplay(charSettings.targetAmount or 0)
-            charInfo:SetText("|cffffffff" .. charModeStr .. "  " .. charGold .. "|r")
+            charInfo:SetText(brightHex .. charModeStr .. "  " .. charGold .. "|r")
         else
             charTitle:SetText(crossMark .. "|cff" .. hexColor .. charName .. "|r")
             local usingProfileLabel = (L and L["GOLD_MGMT_USING_PROFILE"]) or "Using profile"
-            charInfo:SetText("|cff888888" .. usingProfileLabel .. "|r")
+            charInfo:SetText(dimHex .. usingProfileLabel .. "|r")
         end
     end
     
@@ -476,7 +496,33 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         UpdateSummaryCard()
     end)
     
+    dialog._wnGoldThemeRefresh = function()
+        local ac = COLORS.accent
+        ns.UI_SetTextColorRole(modeLabel, "Bright")
+        ns.UI_SetTextColorRole(targetLabel, "Bright")
+        if inputBox and ApplyVisuals then
+            local chrome = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+                or { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1 }
+            ApplyVisuals(inputBox, chrome, { ac[1], ac[2], ac[3], 0.6 })
+        end
+        if sep then
+            sep:SetColorTexture(ac[1], ac[2], ac[3], 0.3)
+        end
+        if updateSummary then updateSummary() end
+    end
+
     dialog:Show()
 end
 
--- (Popup opens through WarbandNexus:ShowGoldManagementPopup â€” see ItemsUI.)
+ns.GoldManagementPopup = ns.GoldManagementPopup or {}
+function ns.GoldManagementPopup.RefreshTheme()
+    local d = _G.WarbandNexus_GoldManagementPopup
+    if d and d:IsShown() and ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(d)
+    end
+    if d and d._wnGoldThemeRefresh then
+        d._wnGoldThemeRefresh()
+    end
+end
+
+-- (Popup opens through WarbandNexus:ShowGoldManagementPopup — see ItemsUI.)

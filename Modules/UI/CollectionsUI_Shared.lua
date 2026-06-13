@@ -190,8 +190,146 @@ function M.RequestCollectionFillFromUI()
 end
 -- Process this many mounts/pets per frame to avoid 1s freeze (spread over multiple frames).
 local RUN_CHUNK_SIZE = 40
---- Collapsible category headers per frame (Achievements / Toys browse trees).
+--- Collapsible category headers per frame (Mounts/Pets/Toys/Achievements); full pass while list chrome is deferred.
 local COLLECTIONS_HEADER_CHUNK = 4
+local COLLECTIONS_HEADER_CHUNK_DEFERRED = 99999
+
+local _collectionsListChromeDeferFrames = {}
+
+--- List + scrollbar frames for a Collections browse sub-tab (detail/viewer column stays visible during populate).
+function M.CollectionsListChromeFramesForSubTab(subTabKey, extraFrame)
+    local out = {}
+    local function add(f)
+        if f then out[#out + 1] = f end
+    end
+    if subTabKey == "mounts" then
+        add(M.state.mountListContainer)
+        add(M.state.mountListScrollBarContainer)
+    elseif subTabKey == "pets" then
+        add(M.state.petListContainer)
+        add(M.state.petListScrollBarContainer)
+    elseif subTabKey == "toys" then
+        add(M.state.toyListContainer)
+        add(M.state.toyListScrollBarContainer)
+    elseif subTabKey == "achievements" then
+        add(M.state.achievementListContainer)
+        add(M.state.achievementListScrollBarContainer)
+    end
+    add(extraFrame)
+    return out
+end
+
+function M.CollectionsBeginListChromeDefer(frames)
+    wipe(_collectionsListChromeDeferFrames)
+    if type(frames) ~= "table" then
+        return false
+    end
+    for i = 1, #frames do
+        local f = frames[i]
+        if f then
+            _collectionsListChromeDeferFrames[#_collectionsListChromeDeferFrames + 1] = f
+            f:Hide()
+        end
+    end
+    return #_collectionsListChromeDeferFrames > 0
+end
+
+function M.CollectionsEndListChromeDefer()
+    for i = 1, #_collectionsListChromeDeferFrames do
+        _collectionsListChromeDeferFrames[i]:Show()
+    end
+    wipe(_collectionsListChromeDeferFrames)
+end
+
+--- Snapshot key prefix per browse sub-tab: `_mountLastSearchText`, `_achLastSearchText`, etc.
+function M.CollectionsBrowseSnapshotPrefix(subTabKey)
+    if subTabKey == "mounts" then return "mount" end
+    if subTabKey == "pets" then return "pet" end
+    if subTabKey == "toys" then return "toy" end
+    if subTabKey == "achievements" then return "ach" end
+    return nil
+end
+
+--- True when search + Owned/Missing filters match last populate (nil last-* = never snapshotted, treated as match).
+function M.CollectionsSubTabBrowseFiltersUnchanged(subTabKey)
+    local prefix = M.CollectionsBrowseSnapshotPrefix(subTabKey)
+    local st = M.state
+    if not prefix or not st then return false end
+    local curSearch = st.searchText or ""
+    local lastSearch = st["_" .. prefix .. "LastSearchText"]
+    if lastSearch == nil then lastSearch = "" end
+    if lastSearch ~= curSearch then return false end
+    local function showOn(val)
+        return val ~= false
+    end
+    local lastC = st["_" .. prefix .. "LastShowCollected"]
+    if lastC ~= nil and showOn(lastC) ~= showOn(st.showCollected) then return false end
+    local lastU = st["_" .. prefix .. "LastShowUncollected"]
+    if lastU ~= nil and showOn(lastU) ~= showOn(st.showUncollected) then return false end
+    return true
+end
+
+function M.RecordCollectionsSubTabBrowseSnapshot(subTabKey)
+    local prefix = M.CollectionsBrowseSnapshotPrefix(subTabKey)
+    local st = M.state
+    if not prefix or not st then return end
+    st["_" .. prefix .. "LastSearchText"] = st.searchText or ""
+    st["_" .. prefix .. "LastShowCollected"] = st.showCollected
+    st["_" .. prefix .. "LastShowUncollected"] = st.showUncollected
+end
+
+function M.CollectionsSubTabBrowseCacheDiag(subTabKey)
+    local prefix = M.CollectionsBrowseSnapshotPrefix(subTabKey)
+    local st = M.state
+    if not prefix or not st then return {} end
+    local flatKey = (subTabKey == "achievements") and "_achFlatList" or ("_" .. prefix .. "FlatList")
+    local groupedKey = (subTabKey == "mounts") and "_lastGroupedMountData"
+        or (subTabKey == "pets") and "_lastGroupedPetData"
+        or (subTabKey == "toys") and "_lastGroupedToyData"
+        or (subTabKey == "achievements") and "_lastAchievementCategoryData"
+    return {
+        hasFlat = st[flatKey] ~= nil,
+        hasGrouped = groupedKey and st[groupedKey] ~= nil,
+        filtersOk = M.CollectionsSubTabBrowseFiltersUnchanged(subTabKey),
+        lastSearch = st["_" .. prefix .. "LastSearchText"],
+        curSearch = st.searchText or "",
+    }
+end
+
+--- Sub-tab draw/populate trace (Profiler trace buffer). Enable: Settings Debug + Debug Verbose, or `/wn profiler tabperf on`.
+function M.CollectionsSubTabTrace(stage, detail)
+    local on = (ns.IsUserDebugTraceActive and ns.IsUserDebugTraceActive())
+        or (ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled())
+    if not on then return end
+    local parts = { "|cff9370DB[WN Collections SubTab]|r", tostring(stage or "?") }
+    local st = M.state
+    if st then
+        if st._collectionsSubTabGen then
+            parts[#parts + 1] = "gen=" .. tostring(st._collectionsSubTabGen)
+        end
+        if st.currentSubTab then
+            parts[#parts + 1] = "sub=" .. tostring(st.currentSubTab)
+        end
+    end
+    if detail ~= nil then
+        if type(detail) == "table" then
+            local kv = {}
+            for k, v in pairs(detail) do
+                kv[#kv + 1] = tostring(k) .. "=" .. tostring(v)
+            end
+            table.sort(kv)
+            for i = 1, #kv do
+                parts[#parts + 1] = kv[i]
+            end
+        else
+            parts[#parts + 1] = tostring(detail)
+        end
+    end
+    local P = ns.Profiler
+    if P and P.AppendUserTraceLine then
+        P:AppendUserTraceLine(table.concat(parts, " "))
+    end
+end
 -- Same row/header dimensions for all three sub-tabs (Mounts, Pets, Achievements); matches SharedWidgets/UI_SPACING
 local ROW_HEIGHT = math.floor(32 * 1.05 * 1.25 + 0.5)
 local ROW_GAP = (ns.UI_DataRowGap and ns.UI_DataRowGap()) or (ns.UI_LAYOUT and ns.UI_LAYOUT.dataRowGap) or 4
@@ -201,12 +339,119 @@ local COLLAPSE_HEADER_HEIGHT_COLL = (ns.UI_LAYOUT and ns.UI_LAYOUT.SECTION_COLLA
 -- List | scrollbar | detail split — single ratio for Mounts, Pets, Toys, Achievements (WN-UI-layout symmetry).
 local COLLECTION_LIST_DETAIL_SPLIT = 0.50
 
+--- Theme-aware surface rgba (profile themeMode + live COLORS).
+---@param tier string|nil viewport|card|elevated|rowEven|rowOdd|section
+---@return table rgba
+function M.ResolveCollectionsSurface(tier)
+    if ns.UI_ResolveSurfaceTierColor then
+        return ns.UI_ResolveSurfaceTierColor(tier or "card")
+    end
+    local c = COLORS
+    if tier == "viewport" then
+        return c.surfaceViewport or c.bg
+    elseif tier == "rowEven" then
+        return c.surfaceRowEven or c.bgLight or c.bg
+    elseif tier == "rowOdd" then
+        return c.surfaceRowOdd or c.bgLight or c.bg
+    elseif tier == "section" or tier == "headerChrome" then
+        return c.surfaceHeaderChrome or c.bgLight or c.bg
+    end
+    return c.bgCard or c.bgLight or c.bg
+end
+
+--- Icon shell fill + edge for list/detail icons (light-mode safe).
+---@param edgeAlpha number|nil
+---@return table bg, table edge
+function M.CollectionsIconBorderColors(edgeAlpha)
+    edgeAlpha = edgeAlpha or 0.72
+    local bg = M.ResolveCollectionsSurface("rowOdd")
+    local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
+    return { bg[1], bg[2], bg[3], bg[4] or 0.96 }, { bc[1], bc[2], bc[3], edgeAlpha }
+end
+
+function M.ApplyCollectionsIconBorder(frame, edgeAlpha)
+    if not frame or not ApplyVisuals then return end
+    local bg, edge = M.CollectionsIconBorderColors(edgeAlpha)
+    ApplyVisuals(frame, bg, edge)
+end
+
+function M.ApplyCollectionsRowIconChrome(row)
+    if row and row._iconBorder then
+        M.ApplyCollectionsIconBorder(row._iconBorder, RECENT_ROW_ICON_BORDER_ALPHA)
+    end
+end
+
+function M.CollectionsSearchChromeColors()
+    if ns.UI_GetSearchBoxChromeColors then
+        return ns.UI_GetSearchBoxChromeColors()
+    end
+    local bg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+        or M.ResolveCollectionsSurface("elevated")
+    local b = ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor() or COLORS.border
+    return bg, { b[1], b[2], b[3], 0.55 }
+end
+
+function M.CollectionsProgressBarColors()
+    local bg = M.ResolveCollectionsSurface("rowOdd")
+    local acc = COLORS.accent
+    return bg, { acc[1], acc[2], acc[3], 0.55 }
+end
+
+function M.CollectionsBrightHex()
+    return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
+end
+
+function M.CollectionsGoldHex()
+    return (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
+end
+
+function M.CollectionsCollectedHex()
+    local g = COLORS.green or { 0.30, 0.90, 0.30, 1 }
+    return format("|cff%02x%02x%02x", g[1] * 255, g[2] * 255, g[3] * 255)
+end
+
+--- Small metadata line (try count, acquired time): bar overlay font with standard outline.
+---@return FontString|nil
+function M.CreateCollectionsSmallLabel(parent)
+    if not parent or not FontManager then return nil end
+    local fs
+    if FontManager.CreateBarOverlayFontString then
+        fs = FontManager:CreateBarOverlayFontString(parent, "OVERLAY")
+    else
+        fs = FontManager:CreateFontString(parent, "small", "OVERLAY")
+        if FontManager.ApplyBarOverlayFont then
+            FontManager:ApplyBarOverlayFont(fs)
+        end
+    end
+    return fs
+end
+
+function M.CollectionsSubTabInactiveBg()
+    return ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop()
+        or M.ResolveCollectionsSurface("rowOdd")
+end
+
+function M.CollectionsSubTabActiveBg()
+    local t = COLORS.tabActive or COLORS.accent
+    return { t[1], t[2], t[3], t[4] or 1 }
+end
+
+function M.CollectionsSubTabHoverBg()
+    return ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()
+        or M.ResolveCollectionsSurface("rowEven")
+end
+
 -- Detail container border: SharedWidgets 4-texture border system (accent)
 function M.ApplyDetailAccentVisuals(frame)
     if ns.UI_ApplyDetailContainerVisuals then
         ns.UI_ApplyDetailContainerVisuals(frame)
-    elseif frame and ApplyVisuals then
-        ApplyVisuals(frame, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    elseif frame and ApplyVisuals and COLORS then
+        local bg = M.ResolveCollectionsSurface("card")
+        ApplyVisuals(
+            frame,
+            { bg[1], bg[2], bg[3], (bg[4] or 1) * 0.95 },
+            { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
+        )
     end
 end
 
@@ -302,7 +547,10 @@ function M.CreateDetailEmptyOverlay(parent, typeKey)
     overlay:SetPoint("TOPLEFT", parent, "TOPLEFT", BORDER_INSET, -BORDER_INSET)
     overlay:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -BORDER_INSET, BORDER_INSET)
     overlay:EnableMouse(false)
-    if ApplyVisuals then ApplyVisuals(overlay, {0.08, 0.08, 0.10, 0.98}, {0, 0, 0, 0}) end
+    if ApplyVisuals then
+        local bg = M.ResolveCollectionsSurface("card")
+        ApplyVisuals(overlay, { bg[1], bg[2], bg[3], bg[4] or 0.98 }, { 0, 0, 0, 0 })
+    end
     local fmt = (ns.L and ns.L["SELECT_TO_SEE_DETAILS"]) or "Select a %s to see details."
     if fmt == "SELECT_TO_SEE_DETAILS" then fmt = "Select a %s to see details." end
     local typeName = (typeKey == "mount" and ((ns.L and ns.L["TYPE_MOUNT"]) or "mount"))
@@ -319,7 +567,7 @@ function M.CreateDetailEmptyOverlay(parent, typeKey)
     fs:SetPoint("CENTER", overlay, "CENTER", 0, 0)
     fs:SetJustifyH("CENTER")
     fs:SetJustifyV("MIDDLE")
-    fs:SetText("|cffffffff" .. text .. "|r")
+    fs:SetText(M.CollectionsBrightHex() .. text .. "|r")
     fs:SetWordWrap(true)
     overlay.text = fs
     overlay:Hide()
@@ -378,6 +626,152 @@ M.state = M.state or {
     recentViewportCap = nil,
     _recentEmptyFs = nil,
 }
+
+function M.WarmCollectionsBrowseCaches()
+    local WN = WarbandNexus
+    if not M.state._cachedMountsData and WN.GetAllMountsData then
+        M.state._cachedMountsData = WN:GetAllMountsData() or {}
+    end
+    if not M.state._cachedToysData and WN.GetAllToysData then
+        M.state._cachedToysData = WN:GetAllToysData() or {}
+    end
+    -- Pets: defer to PrewarmCollectionsSubTabData (GetAllPetsData can hitch one frame).
+end
+
+function M.EnsureCollectionsBrowseCacheForSubTab(subTabKey)
+    local WN = WarbandNexus
+    if subTabKey == "mounts" and not M.state._cachedMountsData and WN.GetAllMountsData then
+        M.state._cachedMountsData = WN:GetAllMountsData() or {}
+    elseif subTabKey == "pets" and not M.state._cachedPetsData and WN.GetAllPetsData then
+        M.state._cachedPetsData = WN:GetAllPetsData() or {}
+    elseif subTabKey == "toys" and not M.state._cachedToysData and WN.GetAllToysData then
+        M.state._cachedToysData = WN:GetAllToysData() or {}
+    end
+end
+
+function M.CollectionsPrewarmActive()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    return mf and mf:IsShown() and mf.currentTab == "collections"
+end
+
+function M.ReanchorCollectionsBrowseListHost(container, contentFrame, headerBlockH, innerCh, listContentWidth)
+    if not container or not contentFrame then return end
+    container:ClearAllPoints()
+    container:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -(headerBlockH or 0))
+    if innerCh and listContentWidth then
+        container:SetSize(listContentWidth, innerCh)
+    end
+end
+
+local COLLECTIONS_PREWARM_SUBS = { "achievements", "mounts", "pets", "toys" }
+
+function M.PrewarmCollectionsSubTabData(subTabKey, prewarmGen, onDone)
+    local st = M.state
+    local cf = st.contentFrame
+    local search, showC, showU = "", true, true
+    local function finish()
+        if type(onDone) == "function" then onDone() end
+    end
+    if prewarmGen ~= st._collectionsPrewarmGen or not M.CollectionsPrewarmActive() then
+        finish()
+        return
+    end
+    M.CollectionsSubTabTrace("Prewarm_sub_start", { sub = subTabKey, gen = prewarmGen })
+    if subTabKey == "achievements" then
+        if not st._lastAchievementCategoryData and M.BuildGroupedAchievementData then
+            local categoryData, rootCategories = M.BuildGroupedAchievementData(search, showC, showU)
+            st._lastAchievementCategoryData = categoryData
+            st._lastAchievementRootCategories = rootCategories
+        end
+        M.RecordCollectionsSubTabBrowseSnapshot("achievements")
+        M.CollectionsSubTabTrace("Prewarm_sub_done", { sub = subTabKey, gen = prewarmGen })
+        finish()
+    elseif subTabKey == "mounts" then
+        if st._lastGroupedMountData then
+            M.CollectionsSubTabTrace("Prewarm_sub_skip", { sub = subTabKey, reason = "grouped_cached" })
+            finish()
+            return
+        end
+        M.EnsureCollectionsBrowseCacheForSubTab("mounts")
+        local allMounts = st._cachedMountsData or {}
+        M.RunChunkedMountBuild(allMounts, search, showC, showU, 0, cf, function(grouped)
+            if prewarmGen ~= st._collectionsPrewarmGen or not M.CollectionsPrewarmActive() then finish() return end
+            st._lastGroupedMountData = grouped
+            M.RecordCollectionsSubTabBrowseSnapshot("mounts")
+            M.CollectionsSubTabTrace("Prewarm_sub_done", { sub = subTabKey, gen = prewarmGen })
+            finish()
+        end, prewarmGen)
+    elseif subTabKey == "pets" then
+        if st._lastGroupedPetData then
+            M.CollectionsSubTabTrace("Prewarm_sub_skip", { sub = subTabKey, reason = "grouped_cached" })
+            finish()
+            return
+        end
+        local function runPetPrewarmBuild()
+            local allPets = st._cachedPetsData or {}
+            M.RunChunkedPetBuild(allPets, search, showC, showU, 0, cf, function(grouped)
+                if prewarmGen ~= st._collectionsPrewarmGen or not M.CollectionsPrewarmActive() then finish() return end
+                st._lastGroupedPetData = grouped
+                M.RecordCollectionsSubTabBrowseSnapshot("pets")
+                M.CollectionsSubTabTrace("Prewarm_sub_done", { sub = subTabKey, gen = prewarmGen })
+                finish()
+            end, prewarmGen)
+        end
+        if not st._cachedPetsData and WarbandNexus.GetAllPetsData then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if prewarmGen ~= st._collectionsPrewarmGen or not M.CollectionsPrewarmActive() then finish() return end
+                    if not st._cachedPetsData then
+                        st._cachedPetsData = WarbandNexus:GetAllPetsData() or {}
+                    end
+                    runPetPrewarmBuild()
+                end)
+            else
+                finish()
+            end
+            return
+        end
+        runPetPrewarmBuild()
+    elseif subTabKey == "toys" then
+        if not st._lastGroupedToyData and M.GetFilteredToysGrouped then
+            st._lastGroupedToyData = M.GetFilteredToysGrouped(search, showC, showU)
+        end
+        M.RecordCollectionsSubTabBrowseSnapshot("toys")
+        M.CollectionsSubTabTrace("Prewarm_sub_done", { sub = subTabKey, gen = prewarmGen })
+        finish()
+    else
+        finish()
+    end
+end
+
+--- Staged grouped-data prewarm (C_Timer.After chain; WN-PERF — not coroutine/yield).
+function M.ScheduleCollectionsSubTabPrewarm()
+    M.state._collectionsPrewarmGen = (M.state._collectionsPrewarmGen or 0) + 1
+    local prewarmGen = M.state._collectionsPrewarmGen
+    M.CollectionsSubTabTrace("Prewarm_schedule", { gen = prewarmGen })
+    if not (C_Timer and C_Timer.After) then
+        M.WarmCollectionsBrowseCaches()
+        return
+    end
+    M.WarmCollectionsBrowseCaches()
+    local idx = 0
+    local function step()
+        if prewarmGen ~= M.state._collectionsPrewarmGen or not M.CollectionsPrewarmActive() then
+            M.CollectionsSubTabTrace("Prewarm_abort", { gen = prewarmGen, at = idx })
+            return
+        end
+        idx = idx + 1
+        local subKey = COLLECTIONS_PREWARM_SUBS[idx]
+        if not subKey then
+            M.CollectionsSubTabTrace("Prewarm_done", { gen = prewarmGen })
+            return
+        end
+        M.PrewarmCollectionsSubTabData(subKey, prewarmGen, function()
+            C_Timer.After(0, step)
+        end)
+    end
+    C_Timer.After(0, step)
+end
 
 --- Per login/reload: nil → default Recent. After user picks a sub-tab, restored while the UI session lasts.
 function M.ApplySessionCollectionsSubTab()
@@ -445,6 +839,7 @@ function M.ClearCollectionsDrawBusyFlags()
     M.state._drawPetsContentBusy = nil
     M.state._drawToysContentBusy = nil
     M.state._drawAchievementsContentBusy = nil
+    M.CollectionsEndListChromeDefer()
     if ns.UI_AchievementBrowse_ResetPopulateBusy then
         ns.UI_AchievementBrowse_ResetPopulateBusy()
     end
@@ -473,6 +868,7 @@ local function DrawActiveCollectionsSubTab(contentFrame)
         return
     end
     local sub = M.state.currentSubTab
+    M.CollectionsSubTabTrace("DrawActiveSubTab", { target = sub })
     if sub == "recent" then
         M.DrawRecentContent(contentFrame)
     elseif sub == "mounts" then
@@ -489,6 +885,7 @@ end
 --- Coalesce rapid Collections sub-tab clicks into one redraw (avoids empty body after aborted chunk pumps).
 function M.ScheduleCollectionsSubTabRedraw(fromSub, toSub, perfWallStart)
     M.state._collectionsSubTabGen = (M.state._collectionsSubTabGen or 0) + 1
+    M.CollectionsSubTabTrace("ScheduleSubTabRedraw", { from = fromSub, to = toSub })
     if WarbandNexus.AbortCollectionsChunkedBuilds then
         WarbandNexus:AbortCollectionsChunkedBuilds()
     else
@@ -506,11 +903,16 @@ function M.ScheduleCollectionsSubTabRedraw(fromSub, toSub, perfWallStart)
         return
     end
     if M.state._collectionsSubTabRedrawScheduled then
+        M.CollectionsSubTabTrace("ScheduleSubTabRedraw_coalesce_skip", { from = fromSub, to = toSub })
         return
     end
     M.state._collectionsSubTabRedrawScheduled = true
     C_Timer.After(0, function()
         M.state._collectionsSubTabRedrawScheduled = nil
+        M.CollectionsSubTabTrace("SubTabRedraw_timer_fire", {
+            from = M.state._collectionsSubTabRedrawFrom,
+            to = M.state._collectionsSubTabRedrawTo,
+        })
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         if mf and (not mf:IsShown() or mf.currentTab ~= "collections") then
             return
@@ -524,8 +926,13 @@ function M.ScheduleCollectionsSubTabRedraw(fromSub, toSub, perfWallStart)
             debugprofilestart()
         end
         DrawActiveCollectionsSubTab(contentFrame)
-        if perfOn and ns.EmitPartialTabRefreshPerf then
-            local bodyMs = debugprofilestop()
+        local bodyMs = perfOn and debugprofilestop() or nil
+        M.CollectionsSubTabTrace("SubTabRedraw_body_done", {
+            from = M.state._collectionsSubTabRedrawFrom,
+            to = M.state._collectionsSubTabRedrawTo,
+            bodyMs = bodyMs,
+        })
+        if perfOn and bodyMs and ns.EmitPartialTabRefreshPerf then
             ns.EmitPartialTabRefreshPerf(
                 "collections",
                 M.state._collectionsSubTabRedrawFrom,
@@ -623,6 +1030,7 @@ M.SCROLLBAR_SIDE_GAP = SCROLLBAR_SIDE_GAP
 M.COLLECTION_HEAVY_DELAY = COLLECTION_HEAVY_DELAY
 M.RUN_CHUNK_SIZE = RUN_CHUNK_SIZE
 M.COLLECTIONS_HEADER_CHUNK = COLLECTIONS_HEADER_CHUNK
+M.COLLECTIONS_HEADER_CHUNK_DEFERRED = COLLECTIONS_HEADER_CHUNK_DEFERRED
 M.ROW_HEIGHT = ROW_HEIGHT
 M.ROW_GAP = ROW_GAP
 M.ROW_STRIDE = ROW_STRIDE
