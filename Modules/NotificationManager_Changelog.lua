@@ -58,6 +58,56 @@ local CHANGELOG = {
     changes = BuildChangelog()
 }
 
+local function RefreshChangelogCache()
+    CHANGELOG.version = CURRENT_VERSION
+    CHANGELOG.date = (Constants and Constants.ADDON_RELEASE_DATE) or ""
+    CHANGELOG.changes = BuildChangelog()
+    ns.CHANGELOG = CHANGELOG
+    return CHANGELOG
+end
+
+local function ResolveChangelogData(incoming)
+    local fresh = RefreshChangelogCache()
+    if incoming and type(incoming) == "table" then
+        return {
+            version = incoming.version or fresh.version,
+            date = incoming.date or fresh.date,
+            changes = (incoming.changes and #incoming.changes > 0) and incoming.changes or fresh.changes,
+        }
+    end
+    return fresh
+end
+
+local function NM_DisposeWhatsNewBackdrop()
+    local existing = _G.WarbandNexusUpdateBackdrop
+    if not existing then
+        return
+    end
+    existing:Hide()
+    existing:EnableKeyboard(false)
+    existing:SetScript("OnKeyDown", nil)
+    local bin = ns.UI_RecycleBin
+    if bin then
+        existing:SetParent(bin)
+    else
+        existing:SetParent(nil)
+    end
+    _G.WarbandNexusUpdateBackdrop = nil
+end
+
+local function NM_ClearChangelogScrollChild(scrollChild)
+    if not scrollChild then
+        return
+    end
+    local children = { scrollChild:GetChildren() }
+    for i = 1, #children do
+        children[i]:Hide()
+        children[i]:SetParent(nil)
+    end
+    scrollChild._changelogPopulated = nil
+    scrollChild:SetHeight(8)
+end
+
 -- Export CHANGELOG to namespace for command access
 ns.CHANGELOG = CHANGELOG
 --- Aligns changelog backdrop padding with `MAIN_SHELL` / `UI_SPACING` (SharedWidgets loads before this file).
@@ -84,21 +134,27 @@ end
 
 ---Populate changelog content (deferred to first show so fonts/layout are ready)
 local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData, geometry)
-    if not scrollChild or not scrollFrame or not changelogData or not changelogData.changes or not geometry then return end
-    local CONTENT_WIDTH = geometry.CONTENT_WIDTH
+    if not scrollChild or not scrollFrame or not changelogData or not changelogData.changes or not geometry then
+        return
+    end
+    if not FontManager or not FontManager.CreateFontString then
+        return
+    end
     local TEXT_WIDTH = geometry.TEXT_WIDTH
     local TEXT_PAD = geometry.TEXT_PAD
     local LINE_SPACING = geometry.LINE_SPACING
     local SECTION_SPACING = geometry.SECTION_SPACING
     local PARAGRAPH_SPACING = geometry.PARAGRAPH_SPACING
-    -- Robust MIN_LINE_HEIGHT: safe fallback 14 when font not ready (first-time users)
-    local bodyFontSize = (FontManager and FontManager.GetFontSize and FontManager:GetFontSize("body")) or 12
+    local bodyFontSize = (FontManager.GetFontSize and FontManager:GetFontSize("body")) or 12
     local MIN_LINE_HEIGHT = (bodyFontSize and bodyFontSize > 0 and (bodyFontSize + 2)) or 14
+
+    NM_ClearChangelogScrollChild(scrollChild)
 
     local topPad = 12
     local bottomPad = 12
     local yOffset = topPad
-    for i, change in ipairs(changelogData.changes) do
+    for i = 1, #changelogData.changes do
+        local change = changelogData.changes[i]
         if change == "" then
             yOffset = yOffset + PARAGRAPH_SPACING
         else
@@ -110,14 +166,19 @@ local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData,
             line:SetNonSpaceWrap(false)
             line:SetText(change)
             if change:match(":$") then
-                local sgR, sgG, sgB = ns.UI_GetSemanticGoldColor and ns.UI_GetSemanticGoldColor()
-                if sgR then
-                    line:SetTextColor(sgR, sgG, sgB, 1)
+                local sgR, sgG, sgB, sgA
+                if ns.UI_GetSemanticGoldColor then
+                    sgR, sgG, sgB, sgA = ns.UI_GetSemanticGoldColor()
+                end
+                if type(sgR) == "number" and type(sgG) == "number" and type(sgB) == "number" then
+                    line:SetTextColor(sgR, sgG, sgB, (type(sgA) == "number" and sgA) or 1)
                 else
                     line:SetTextColor(1, 0.84, 0, 1)
                 end
-            else
+            elseif ns.UI_SetTextColorRole then
                 ns.UI_SetTextColorRole(line, "Bright")
+            else
+                line:SetTextColor(0.92, 0.92, 0.92, 1)
             end
             local lineH = line:GetStringHeight() or 0
             if lineH < MIN_LINE_HEIGHT then
@@ -131,41 +192,117 @@ local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData,
             end
         end
     end
-    scrollChild:SetHeight(yOffset + bottomPad)
+    scrollChild:SetHeight(math.max(8, yOffset + bottomPad))
+    scrollChild._changelogPopulated = true
     if ns.UI and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
         ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
     end
+    scrollFrame:SetVerticalScroll(0)
+end
+
+local function NM_TryPopulateChangelog(scrollChild, scrollFrame, changelogData, geometry)
+    if not scrollChild or scrollChild._changelogPopulated then
+        return false
+    end
+    if not scrollFrame or not changelogData or not changelogData.changes or #changelogData.changes == 0 then
+        return false
+    end
+    PopulateChangelogContent(scrollChild, scrollFrame, changelogData, geometry)
+    return scrollChild._changelogPopulated == true
+end
+
+local function NM_ScheduleChangelogPopulate(scrollChild, scrollFrame, changelogData, geometry)
+    local delays = { 0, 0.05, 0.2 }
+    for i = 1, #delays do
+        C_Timer.After(delays[i], function()
+            if scrollChild and scrollFrame and scrollFrame:IsShown() then
+                NM_TryPopulateChangelog(scrollChild, scrollFrame, changelogData, geometry)
+            end
+        end)
+    end
+end
+
+local function NM_CreateWhatsNewDismiss()
+    return function()
+        if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications then
+            WarbandNexus.db.profile.notifications.lastSeenVersion = CURRENT_VERSION
+        end
+        NM_DisposeWhatsNewBackdrop()
+        local hooks = ns.NotificationManagerHooks
+        if hooks and hooks.ProcessNotificationQueue then
+            hooks.ProcessNotificationQueue()
+        end
+    end
+end
+
+local function NM_CreateWhatsNewCloseIcon(parent, onDismiss, popupLevel, ar, ag, ab)
+    local btn
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
+        btn = ns.UI.Factory:CreateButton(parent, 28, 28, false)
+    else
+        btn = CreateFrame("Button", nil, parent)
+        btn:SetSize(28, 28)
+    end
+    btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -10)
+    btn:SetFrameLevel((popupLevel or parent:GetFrameLevel() or 0) + 50)
+    if ApplyVisuals then
+        local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+        ApplyVisuals(btn, closeBg, { ar, ag, ab, 0.6 })
+    end
+    local closeIcon = btn:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(18, 18)
+    closeIcon:SetPoint("CENTER")
+    if not (ns.UI_SetMainChromeIcon and ns.UI_SetMainChromeIcon(closeIcon, "close", { 0.9, 0.3, 0.3 })) then
+        if closeIcon.SetAtlas then
+            closeIcon:SetAtlas("uitools-icon-close")
+        end
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+    end
+    btn:SetScript("OnClick", onDismiss)
+    return btn
 end
 
 ---Show update notification popup
 function WarbandNexus:ShowUpdateNotification(changelogData)
+    changelogData = ResolveChangelogData(changelogData)
+    NM_DisposeWhatsNewBackdrop()
     local accent = GetThemeAccentColor()
     local ar, ag, ab = accent[1], accent[2], accent[3]
     local changelogSidePad = NM_WhatsNewPopupSidePad()
     local changelogCloseBottom = math.max(15, NM_GetShellContentInset() * 7 + 1)
     --- Distinct layout band: separator â†’ label â†’ scroll (must match scrollbar column inset).
     local changelogScrollTop = 185
-    local changelogScrollBottom = 60
-    
-    -- Create backdrop frame
-    local backdrop = CreateFrame("Frame", "WarbandNexusUpdateBackdrop", UIParent)
-    backdrop:SetFrameStrata("FULLSCREEN_DIALOG")
-    backdrop:SetFrameLevel(1000)
-    backdrop:SetAllPoints()
-    backdrop:EnableMouse(true)
-    backdrop:SetScript("OnMouseDown", function() end) -- Block clicks
-    
-    -- Semi-transparent overlay (theme-aware scrim)
-    local bg = backdrop:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
+    local changelogScrollBottom = 72
+    local dismiss = NM_CreateWhatsNewDismiss()
+
+    local host = CreateFrame("Frame", "WarbandNexusUpdateBackdrop", UIParent)
+    host:SetFrameStrata("DIALOG")
+    host:SetFrameLevel(200)
+    host:SetAllPoints()
+    host:EnableMouse(false)
+    host:EnableKeyboard(true)
+    host:SetPropagateKeyboardInput(false)
+
+    local scrim = CreateFrame("Frame", nil, host)
+    scrim:SetAllPoints()
+    scrim:SetFrameLevel(host:GetFrameLevel())
+    scrim:EnableMouse(true)
+    scrim:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" then
+            dismiss()
+        end
+    end)
     local dim = ns.UI_GetOverlayDimColor and ns.UI_GetOverlayDimColor() or { 0, 0, 0, 0.7 }
-    bg:SetColorTexture(dim[1], dim[2], dim[3], dim[4] or 1)
-    backdrop._wnDimTexture = bg
-    
-    -- Popup frame (increased size for better content visibility)
-    local popup = CreateFrame("Frame", nil, backdrop, "BackdropTemplate")
-    popup:SetSize(600, 550)  -- Increased from 450x400 to 600x550
+    local scrimBg = scrim:CreateTexture(nil, "BACKGROUND")
+    scrimBg:SetAllPoints()
+    scrimBg:SetColorTexture(dim[1], dim[2], dim[3], dim[4] or 1)
+    host._wnDimTexture = scrimBg
+
+    local popup = CreateFrame("Frame", nil, host, "BackdropTemplate")
+    popup:SetSize(600, 550)
     popup:SetPoint("CENTER", 0, 50)
+    popup:SetFrameLevel(host:GetFrameLevel() + 20)
+    popup:EnableMouse(true)
     if ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(popup)
     else
@@ -182,13 +319,15 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
             (ns.UI_COLORS and ns.UI_COLORS.bgCard and ns.UI_COLORS.bgCard[3]) or 0.10, 1)
         popup:SetBackdropBorderColor(ar, ag, ab, 1)
     end
-    backdrop._wnPopup = popup
+    host._wnPopup = popup
 
     if ns.UI_RegisterScaledFrame then
         ns.UI_RegisterScaledFrame(popup)
     elseif ns.UI_ApplyAddonUIScale then
         ns.UI_ApplyAddonUIScale(popup)
     end
+
+    NM_CreateWhatsNewCloseIcon(popup, dismiss, popup:GetFrameLevel(), ar, ag, ab)
     
     -- Logo/Icon
     local logo = popup:CreateTexture(nil, "ARTWORK")
@@ -247,11 +386,13 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     local scrollFrame, scrollChild
     if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and FontManager and FontManager.CreateFontString then
         scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
+        scrollFrame:SetFrameLevel(popup:GetFrameLevel() + 5)
         scrollFrame:SetPoint("TOPLEFT", changelogSidePad, -changelogScrollTop)
         scrollFrame:SetPoint("BOTTOMRIGHT", -changelogRightInset, changelogScrollBottom)
         if ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
             local chgSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
             local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, chgSbColW, changelogScrollTop, changelogScrollBottom)
+            scrollBarColumn:SetFrameLevel(popup:GetFrameLevel() + 6)
             ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end
         if ns.UI.Factory.CreateContainer then
@@ -262,13 +403,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         end
         scrollChild:SetWidth(CONTENT_WIDTH)
         scrollFrame:SetScrollChild(scrollChild)
-        -- Defer content layout to next frame so fonts/layout are ready (fixes first-time user layout)
-        C_Timer.After(0, function()
-            if scrollChild and scrollFrame and not scrollChild._changelogPopulated then
-                scrollChild._changelogPopulated = true
-                PopulateChangelogContent(scrollChild, scrollFrame, changelogData, geometry)
-            end
-        end)
+        NM_ScheduleChangelogPopulate(scrollChild, scrollFrame, changelogData, geometry)
     else
         -- Fallback: simple non-scrolling text block so popup never breaks
         scrollChild = CreateFrame("Frame", nil, popup)
@@ -313,6 +448,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         closeBtn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
         closeBtn:SetBackdropBorderColor(ar, ag, ab, 1)
     end
+    closeBtn:SetFrameLevel(popup:GetFrameLevel() + 40)
     closeBtn:SetPoint("BOTTOM", 0, changelogCloseBottom)
     
     local closeBtnText = FontManager and FontManager.CreateFontString
@@ -323,18 +459,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     closeBtnText:SetText(gotItText)
     ns.UI_SetTextColorRole(closeBtnText, "Bright")
     
-    closeBtn:SetScript("OnClick", function()
-        if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications then
-            WarbandNexus.db.profile.notifications.lastSeenVersion = CURRENT_VERSION
-        end
-        backdrop:Hide()
-        local bin = ns.UI_RecycleBin
-        if bin then backdrop:SetParent(bin) else backdrop:SetParent(nil) end
-        local hooks = ns.NotificationManagerHooks
-        if hooks and hooks.ProcessNotificationQueue then
-            hooks.ProcessNotificationQueue()
-        end
-    end)
+    closeBtn:SetScript("OnClick", dismiss)
     
     closeBtn:SetScript("OnEnter", function(btn)
         if ApplyVisuals then
@@ -362,13 +487,13 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         end
     end)
     
-    -- Escape key to close
-    backdrop:SetScript("OnKeyDown", function(self, key)
+    host:SetScript("OnKeyDown", function(_, key)
         if key == "ESCAPE" then
-            closeBtn:Click()
+            dismiss()
         end
     end)
-    if not InCombatLockdown() then backdrop:SetPropagateKeyboardInput(false) end
+
+    host:Show()
 end
 
 function WarbandNexus:RefreshWhatsNewTheme()
@@ -384,6 +509,7 @@ function WarbandNexus:RefreshWhatsNewTheme()
     end
 end
 
+Chg.RefreshChangelogCache = RefreshChangelogCache
 Chg.CURRENT_VERSION = CURRENT_VERSION
 Chg.CHANGELOG = CHANGELOG
 Chg.VersionToChangelogKey = VersionToChangelogKey
