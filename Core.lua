@@ -122,6 +122,8 @@ local defaults = {
         debugMode = false,         -- Debug logging (verbose)
         debugVerbose = false,      -- When true, show cache/scan/tooltip logs; when false, only critical debug
         debugTryCounterLoot = false,  -- Loot flow debug only (no rep/currency cache spam)
+        debugItemsBagPerf = false,    -- Bag update perf trace (dev: /wn bagdebug after /wn debug on)
+        debugItemsBagPerfSpikeMs = 16,
         
         -- Profiler (dev/perf): persisted so /reload keeps measurement + optional dev HUD.
         -- Defaults keep everything off for production installs.

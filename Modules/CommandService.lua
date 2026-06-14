@@ -31,9 +31,6 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
-    if IsDebugOn() then
-        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn debug|r, |cff00ccff/wn gearstash|r, |cff00ccff/wn tc test|r, |cff00ccff/wn charkeys|r, |cff00ccff/wn guidmigrate|r, |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn tc sync-stats|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
-    end
 end
 
 -- DEBUG: try count queries (/wn tc sync-stats, /wn trycount mount <id>)
@@ -134,16 +131,6 @@ function CommandService:HandleSlashCommand(addon, input)
         
     elseif cmd == "options" or cmd == "config" or cmd == "settings" then
         addon:OpenOptions()
-        return
-        
-    elseif cmd == "gearstash" or cmd == "stashrec" or cmd == "gearrec" then
-        local _, itemArg = addon:GetArgs(input, 2)
-        local probeID = itemArg and tonumber(itemArg) or nil
-        if addon.DiagnoseGearStorageRecToChat then
-            addon:DiagnoseGearStorageRecToChat(nil, probeID)
-        else
-            addon:Print("|cffff6600[WN]|r Gear stash diagnostic not loaded.")
-        end
         return
 
     elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
@@ -319,7 +306,7 @@ function CommandService:HandleSlashCommand(addon, input)
         return
 
     elseif cmd == "debug" then
-        local _, sub = addon:GetArgs(input, 2)
+        local _, sub, third = addon:GetArgs(input, 3)
         if sub and not (issecretvalue and issecretvalue(sub)) then
             sub = sub:lower()
             if sub == "verbose" then
@@ -327,6 +314,24 @@ function CommandService:HandleSlashCommand(addon, input)
                 return
             elseif sub == "off" then
                 CommandService:HandleDebugOff(addon)
+                return
+            elseif sub == "on" then
+                if not addon.db or not addon.db.profile then return end
+                if not addon.db.profile.debugMode then
+                    CommandService:HandleDebugToggle(addon)
+                end
+                return
+            elseif sub == "bags" or sub == "bag" or sub == "items" then
+                if not IsDebugOn() then
+                    addon:Print("|cffff6600[WN]|r Enable debug first: |cff00ccff/wn debug|r")
+                    return
+                end
+                local BP = ns.ItemsCacheBagPerf
+                if BP and BP.HandleCommand then
+                    BP.HandleCommand(addon, third, nil)
+                else
+                    addon:Print("|cffff6600[WN]|r ItemsCacheBagPerf not loaded.|r")
+                end
                 return
             end
         end
@@ -409,6 +414,26 @@ function CommandService:HandleSlashCommand(addon, input)
 
     elseif cmd == "uimap" then
         CommandService:HandleUiMapDebug(addon, input)
+        return
+
+    elseif cmd == "bagdebug" or cmd == "bagperf" then
+        local _, subCmd, arg3 = addon:GetArgs(input, 3)
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.HandleCommand then
+            BP.HandleCommand(addon, subCmd, arg3)
+        else
+            addon:Print("|cffff6600[WN]|r ItemsCacheBagPerf not loaded.|r")
+        end
+        return
+
+    elseif cmd == "gearstash" or cmd == "stashrec" or cmd == "gearrec" then
+        local _, itemArg = addon:GetArgs(input, 2)
+        local probeID = itemArg and tonumber(itemArg) or nil
+        if addon.DiagnoseGearStorageRecToChat then
+            addon:DiagnoseGearStorageRecToChat(nil, probeID)
+        else
+            addon:Print("|cffff6600[WN]|r Gear stash diagnostic not loaded.")
+        end
         return
 
     elseif cmd == "trycounterdebug" or cmd == "lootdebug" then
@@ -533,7 +558,6 @@ function CommandService:HandleSlashCommand(addon, input)
 
     else
         addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. tostring(cmd))
-        addon:Print("|cff888888Type |cff00ccff/wn help|r for commands.|r")
     end
 end
 
@@ -828,7 +852,7 @@ function CommandService:HandleDebugToggle(addon)
     
     if addon.db.profile.debugMode then
         addon:Print("|cff00ff00" .. ((ns.L and ns.L["DEBUG_ENABLED"]) or "Debug mode ENABLED.") .. "|r")
-        addon:Print("|cff888888[WN]|r Cache/scan logs need Debug Verbose (Settings) or |cff00ccff/wn debug verbose on|r. Tab timings: |cff00ccff/wn profiler tabperf on|r. Phase splits: |cff00ccff/wn profiler verbose on|r.")
+        addon:Print("|cff888888[WN]|r Cache/scan logs need Debug Verbose (Settings) or |cff00ccff/wn debug verbose on|r. Bag spikes: |cff00ccff/wn bagdebug on|r. Tab timings: |cff00ccff/wn profiler tabperf on|r. Phase splits: |cff00ccff/wn profiler verbose on|r.")
     else
         addon.db.profile.debugVerbose = false
         local pp = addon.db.profile.profilerPersist
@@ -873,6 +897,7 @@ function CommandService:HandleDebugOff(addon)
     local p = addon.db.profile
     p.debugMode = false
     p.debugVerbose = false
+    p.debugItemsBagPerf = false
     if p.profilerPersist then p.profilerPersist.tabPerfMonitor = false end
     addon:Print("|cffff8800" .. ((ns.L and ns.L["DEBUG_DISABLED"]) or "Debug mode DISABLED.") .. "|r")
     if ns.Profiler and ns.Profiler.SyncWithDebugMode then

@@ -1036,6 +1036,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+
+Corrige:
+- Sacs et butin : deplacer des objets, acheter/vendre chez un marchand et ramasser du butin ne provoquent plus de grosses chutes de FPS en recompressant tout le sac a chaque changement (regression v3.1.8).
+- Cache d'objets : erreur corrigee lorsque le minuteur de sauvegarde en arriere-plan s'executait.
+- Notifications : les toasts de monture et de collection ne plantent plus quand une table d'icones manquait.
+
+Mis a jour:
+- Cache des sacs : l'inventaire reste en memoire de session rapide pendant le jeu ; sauvegarde non compressee ~15 s apres le dernier changement de sac (aide si vous Alt+F4) ; compression complete uniquement a la deconnexion ou /reload.
+- Reordonner les emplacements dans un sac ne declenche plus un scan complet du stockage d'equipement si les quantites n'ont pas change.
+- Comptes d'objets dans les infobulles et scans de collection reutilisent les donnees de sac recentes pour eviter des parcours API supplementaires.
+- Le scan de sac des collections est ignore quand le module Collections est desactive et s'execute a la frame suivante quand il est actif.
+- Les rappels de quetes sur la carte ignorent le travail si vous n'avez pas de plans actifs.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
 Ajoute:

@@ -1288,12 +1288,34 @@ local function CheckWorldEventReminders()
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
+local function PlanListHasActiveMapQuestReminders(planList)
+    if not planList then return false end
+    for i = 1, #planList do
+        local plan = planList[i]
+        EnsureReminderField(plan)
+        if plan.reminder and plan.reminder.enabled and not plan.completed and PlanAllowsLocationReminder(plan) then
+            local wqEntry = FindTriggerEntry(plan.reminder, KIND.WORLD_QUEST_ACTIVE)
+            if wqEntry and wqEntry.enabled ~= false then return true end
+            local evEntry = FindTriggerEntry(plan.reminder, KIND.CONTENT_EVENT_ACTIVE)
+            if evEntry and evEntry.enabled ~= false then return true end
+        end
+    end
+    return false
+end
+
 local function CheckMapQuestReminders(rawMapID)
     if not rawMapID or rawMapID == 0 then return end
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
 
     local settings = GetReminderSettings()
     if settings and not settings.enabled then
+        lastMapQuestReminderStable = nil
+        return
+    end
+
+    local db = WarbandNexus.db.global
+    if not PlanListHasActiveMapQuestReminders(db.plans)
+        and not PlanListHasActiveMapQuestReminders(db.customPlans) then
         lastMapQuestReminderStable = nil
         return
     end

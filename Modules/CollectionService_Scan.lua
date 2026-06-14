@@ -26,6 +26,7 @@ end
 
 local Scan = ns.CollectionScan or {}
 ns.CollectionScan = Scan
+local debugprofilestop = debugprofilestop
 
 Scan.previousBagContents = Scan.previousBagContents or {}
 Scan.isInitialized = Scan.isInitialized or false
@@ -34,11 +35,112 @@ Scan.lastCollectibleScanTime = Scan.lastCollectibleScanTime or 0
 
 local COLLECTIBLE_SCAN_THROTTLE = 0.08
 
+local function IsCollectionsModuleEnabled()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    return db and db.modulesEnabled and db.modulesEnabled.collections ~= false
+end
+
 local function ScanBagsForNewCollectibles(specificBagIDs)
     local previousBagContents = Scan.previousBagContents
     local pendingRetryItems = Scan.pendingRetryItems
     local currentBagContents = {}
     local newCollectibles = {}
+    local itemsCacheSnaps = ns.ItemsCacheBagSnapshots
+    local snapNow = GetTime()
+
+    local function FillBagSlotsFromItemsCache(bagID)
+        local snap = itemsCacheSnaps and itemsCacheSnaps[bagID]
+        if not snap or not snap.slots or (snapNow - (snap.at or 0)) > 0.65 then
+            return false
+        end
+        for slotKey, itemID in pairs(snap.slots) do
+            currentBagContents[slotKey] = itemID
+        end
+        return true
+    end
+
+    local function ScanBagSlotsLive(bagID)
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        if not numSlots then return end
+        for slotID = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+            if itemInfo and itemInfo.itemID then
+                local itemID = itemInfo.itemID
+                local slotKey = bagID .. "_" .. slotID
+                currentBagContents[slotKey] = itemID
+                if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
+                    local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
+                    if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
+                        -- not a collectible
+                    elseif not preClassID then
+                        if not pendingRetryItems[slotKey] then
+                            pendingRetryItems[slotKey] = {
+                                itemID = itemID,
+                                hyperlink = itemInfo.hyperlink,
+                                retries = 0
+                            }
+                        end
+                    else
+                        local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
+                        if collectibleInfo then
+                            local repStr = "n/a"
+                            if WarbandNexus.IsRepeatableCollectible then
+                                repStr = tostring(WarbandNexus:IsRepeatableCollectible(collectibleInfo.type, collectibleInfo.id))
+                            end
+                            DebugPrintf(
+                                "|cff00ff00[WN BAG SCAN]|r slot=%s Source=Bag IsInCollectible=True Repeatable=%s WhatIs=%s id=%s name=%s",
+                                slotKey, repStr, collectibleInfo.type, tostring(collectibleInfo.id), collectibleInfo.name or "?")
+
+                            table.insert(newCollectibles, {
+                                type = collectibleInfo.type,
+                                itemID = itemID,
+                                collectibleID = collectibleInfo.id,
+                                itemLink = itemInfo.hyperlink,
+                                itemName = collectibleInfo.name,
+                                icon = collectibleInfo.icon
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local function DiffBagSlotsFromItemsCache(bagID)
+        local snap = itemsCacheSnaps and itemsCacheSnaps[bagID]
+        if not snap or not snap.slots or (snapNow - (snap.at or 0)) > 0.65 then
+            return false
+        end
+        for slotKey, itemID in pairs(snap.slots) do
+            if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
+                local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
+                if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
+                    -- not a collectible
+                elseif not preClassID then
+                    if not pendingRetryItems[slotKey] then
+                        pendingRetryItems[slotKey] = {
+                            itemID = itemID,
+                            hyperlink = nil,
+                            retries = 0
+                        }
+                    end
+                else
+                    local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, nil)
+                    if collectibleInfo then
+                        table.insert(newCollectibles, {
+                            type = collectibleInfo.type,
+                            itemID = itemID,
+                            collectibleID = collectibleInfo.id,
+                            itemLink = nil,
+                            itemName = collectibleInfo.name,
+                            icon = collectibleInfo.icon
+                        })
+                    end
+                end
+            end
+        end
+        return true
+    end
 
     if not Scan.isInitialized then
         for bagID = 0, 4 do
@@ -95,53 +197,10 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
 
     for bagID = 0, 4 do
         if scanAll or specificBagIDs[bagID] then
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            if numSlots then
-                for slotID = 1, numSlots do
-                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                    if itemInfo and itemInfo.itemID then
-                        local itemID = itemInfo.itemID
-                        local slotKey = bagID .. "_" .. slotID
-
-                        currentBagContents[slotKey] = itemID
-
-                        if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
-                            local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
-
-                            if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
-                                -- not a collectible
-                            elseif not preClassID then
-                                if not pendingRetryItems[slotKey] then
-                                    pendingRetryItems[slotKey] = {
-                                        itemID = itemID,
-                                        hyperlink = itemInfo.hyperlink,
-                                        retries = 0
-                                    }
-                                end
-                            else
-                                local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
-                                if collectibleInfo then
-                                    local repStr = "n/a"
-                                    if WarbandNexus.IsRepeatableCollectible then
-                                        repStr = tostring(WarbandNexus:IsRepeatableCollectible(collectibleInfo.type, collectibleInfo.id))
-                                    end
-                                    DebugPrintf(
-                                        "|cff00ff00[WN BAG SCAN]|r slot=%s Source=Bag IsInCollectible=True Repeatable=%s WhatIs=%s id=%s name=%s",
-                                        slotKey, repStr, collectibleInfo.type, tostring(collectibleInfo.id), collectibleInfo.name or "?")
-
-                                    table.insert(newCollectibles, {
-                                        type = collectibleInfo.type,
-                                        itemID = itemID,
-                                        collectibleID = collectibleInfo.id,
-                                        itemLink = itemInfo.hyperlink,
-                                        itemName = collectibleInfo.name,
-                                        icon = collectibleInfo.icon
-                                    })
-                                end
-                            end
-                        end
-                    end
-                end
+            if FillBagSlotsFromItemsCache(bagID) then
+                DiffBagSlotsFromItemsCache(bagID)
+            else
+                ScanBagSlotsLive(bagID)
             end
         end
     end
@@ -176,7 +235,15 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
     return #newCollectibles > 0 and newCollectibles or nil
 end
 
+---Measure-only bag collectible diff scan (no toasts / WN_COLLECTIBLE_OBTAINED). Used by /wn bagdebug stress.
+function Scan.MeasureBagsForCollectibles(specificBagIDs)
+    local t0 = debugprofilestop()
+    ScanBagsForNewCollectibles(specificBagIDs)
+    return debugprofilestop() - t0
+end
+
 function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
+    if not IsCollectionsModuleEnabled() then return end
     local now = GetTime()
     if (now - Scan.lastCollectibleScanTime) < COLLECTIBLE_SCAN_THROTTLE then
         return
@@ -268,6 +335,7 @@ function Scan.InstallBagScanListener()
     bagScanFrame:RegisterEvent("CHAT_MSG_LOOT")
 
     bagScanFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
+        if not IsCollectionsModuleEnabled() then return end
         if event == "PLAYER_ENTERING_WORLD" then
             if not baselineInitialized then
                 baselineInitialized = true
@@ -353,7 +421,11 @@ function Scan.InstallBagScanListener()
             wipe(changedBagIDs)
 
             if hasBags and WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
-                WarbandNexus:OnBagUpdateForCollectibles(bagsToScan)
+                C_Timer.After(0, function()
+                    if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
+                        WarbandNexus:OnBagUpdateForCollectibles(bagsToScan)
+                    end
+                end)
             end
         end)
     end)

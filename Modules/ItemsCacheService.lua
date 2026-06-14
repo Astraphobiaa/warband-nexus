@@ -1,6 +1,9 @@
 --[[
     Warband Nexus - Items Cache Service
     Hash-filtered bag/bank scans with per-character DB persistence.
+    Session RAM (decompressedItemCache) is authoritative during play.
+    Fast uncompressed AceDB write ~15s after last bag change (Alt+F4 safety);
+    LibDeflate compress on logout / PLAYER_LEAVING_WORLD (/reload) only.
     Emits WN_ITEMS_UPDATED after writes.
 ]]
 
@@ -17,6 +20,7 @@ local DebugVerbosePrint = ns.DebugVerbosePrint or function() end
 -- Get library references for compression
 local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
+local debugprofilestop = debugprofilestop
 
 -- CONSTANTS
 
@@ -53,11 +57,24 @@ end
 local ResolveItemStorageRow
 
 --- Bump when persisted bag/bank/warband data or item metadata changes so Gear storage scan cache invalidates.
+local gearStorageBumpTimer = nil
 local function BumpGearStorageScanGeneration()
+    if gearStorageBumpTimer then return end
+    gearStorageBumpTimer = C_Timer.NewTimer(0.25, function()
+        gearStorageBumpTimer = nil
+        ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+    end)
+end
+
+local function BumpGearStorageScanGenerationImmediate()
+    if gearStorageBumpTimer then
+        gearStorageBumpTimer:Cancel()
+        gearStorageBumpTimer = nil
+    end
     ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
 end
 
-local UPDATE_THROTTLE = Constants.THROTTLE.PERSONAL_FREQUENT
+local UPDATE_THROTTLE = Constants.THROTTLE.ITEMS_BAG_UPDATE or 0.5
 
 -- Bag ID ranges
 local INVENTORY_BAGS = ns.INVENTORY_BAGS or {0, 1, 2, 3, 4, 5} -- Includes reagent bag
@@ -116,7 +133,47 @@ local itemSummaryIndex = {
     warband = {},     -- [itemID] = N
     pending = {},     -- [charKey] = true (needs rebuild)
     warbandPending = false,
+    coldInitDone = false,
+    sessionGen = {},  -- [charKey] = { bags=N, bank=N } bumped on incremental writes
 }
+
+local SUMMARY_BUILD_BUDGET_MS = 4
+local COMPRESS_FLUSH_BUDGET_MS = 8
+local SESSION_ACTIVITY_PERSIST_SEC = 15  -- after last bag change; no LibDeflate (Alt+F4 window)
+local SESSION_IDLE_FLUSH_SEC = 45       -- safety backup if activity timer missed
+local COLLECTION_SNAPSHOT_TTL = 0.65
+-- Session RAM is authoritative during play; see PersistSessionDirtyFast + FlushPendingCompressWrites.
+local sessionDirtyBuckets = {}  -- [charKey .. "\0" .. dataType] = true
+local pendingCompressSaves = {}  -- [charKey .. "\0" .. dataType] = { charKey, dataType, items }
+local sessionIdleFlushTicker = nil
+local sessionActivityPersistTimer = nil
+local summaryDrainScheduled = false
+local deferredThrottleTimer = nil
+-- Forward declarations (StartSessionIdleFlushTicker closes over these before definitions below).
+local FlushPendingCompressWrites
+local PersistSessionDirtyFast
+local ScheduleSessionActivityPersist
+
+local function CompressSaveKey(charKey, dataType)
+    return tostring(charKey) .. "\0" .. tostring(dataType)
+end
+
+local function V2BucketCacheHit(cached, charKey, dataType, bucketLU)
+    if not cached then return false end
+    if sessionDirtyBuckets[CompressSaveKey(charKey, dataType)] then
+        if dataType == "bags" and cached.bags then return true end
+        if dataType == "bank" and cached.bank then return true end
+    end
+    if bucketLU > 0 then
+        if dataType == "bags" and cached.bags and cached.bagsLastUpdate == bucketLU then
+            return true
+        end
+        if dataType == "bank" and cached.bank and cached.bankLastUpdate == bucketLU then
+            return true
+        end
+    end
+    return false
+end
 
 -- Session-only item metadata cache (never persisted)
 -- C_Item.GetItemInfoInstant is fast but we still avoid redundant calls
@@ -191,6 +248,228 @@ local function DecompressItemData(compressed)
     end
     
     return data
+end
+
+--- v2 itemStorage bucket array without legacy merge; reuse session RAM when lastUpdate matches.
+--- (GetItemsData merges legacy rows — unsafe for read-modify-write; this path is v2-only.)
+local function AcquireV2BucketItemArray(charKey, dataType)
+    local storage = ResolveItemStorageRow(charKey)
+    local bucket = storage and storage[dataType]
+    local bucketLU = bucket and bucket.lastUpdate or 0
+
+    local cached = decompressedItemCache[charKey]
+    if V2BucketCacheHit(cached, charKey, dataType, bucketLU) then
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.NoteAcquire then BP.NoteAcquire(true) end
+        if dataType == "bags" then
+            return cached.bags, true
+        end
+        return cached.bank, true
+    end
+
+    local allItems
+    if bucket and bucket.compressed then
+        allItems = DecompressItemData(bucket.data) or {}
+    elseif bucket then
+        allItems = bucket.data or {}
+    else
+        allItems = {}
+    end
+
+    local BP = ns.ItemsCacheBagPerf
+    if BP and BP.NoteAcquire then BP.NoteAcquire(false) end
+
+    if not cached then
+        cached = { bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0 }
+        decompressedItemCache[charKey] = cached
+    end
+    if dataType == "bags" then
+        cached.bags = allItems
+        cached.bagsLastUpdate = bucketLU
+    else
+        cached.bank = allItems
+        cached.bankLastUpdate = bucketLU
+    end
+    return allItems, false
+end
+
+local function TouchDecompressedItemCache(charKey, dataType, items, lastUpdate)
+    if not charKey or not dataType or not items then return end
+    local ent = decompressedItemCache[charKey]
+    if not ent then
+        ent = { bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0 }
+        decompressedItemCache[charKey] = ent
+    end
+    local lu = lastUpdate or time()
+    if dataType == "bags" then
+        ent.bags = items
+        ent.bagsLastUpdate = lu
+    else
+        ent.bank = items
+        ent.bankLastUpdate = lu
+    end
+end
+
+---Rolling hash of lean bucket rows; skip LibDeflate when semantic content unchanged.
+local function ComputeBucketContentSig(items)
+    local h = 5381
+    for i = 1, #items do
+        local it = items[i]
+        if it and it.itemID then
+            h = (h * 33 + (it.itemID or 0)) % 2147483647
+            h = (h * 33 + (it.stackCount or 1)) % 2147483647
+            h = (h * 33 + (it.bagID or 0)) % 2147483647
+            h = (h * 33 + (it.slot or it.slotIndex or 0)) % 2147483647
+        end
+    end
+    return h
+end
+
+local function BumpSummarySessionGen(charKey, dataType)
+    local gen = itemSummaryIndex.sessionGen[charKey]
+    if not gen then
+        gen = { bags = 0, bank = 0 }
+        itemSummaryIndex.sessionGen[charKey] = gen
+    end
+    if dataType == "bags" then
+        gen.bags = (gen.bags or 0) + 1
+    else
+        gen.bank = (gen.bank or 0) + 1
+    end
+    return gen
+end
+
+local function SummaryIsCurrent(charKey)
+    if itemSummaryIndex.pending[charKey] then return false end
+    if not itemSummaryIndex.characters[charKey] then return false end
+    local gen = itemSummaryIndex.sessionGen[charKey]
+    if not gen then return false end
+    local cached = decompressedItemCache[charKey]
+    if not cached then return false end
+    return gen.bags == (cached.bagsSessionGen or 0) and gen.bank == (cached.bankSessionGen or 0)
+end
+
+---O(slots in bag) tooltip summary patch — avoids full bags+bank walk on every loot move.
+local function ApplyBagDeltaToSummary(charKey, dataType, oldBagItems, newBagItems)
+    local field = (dataType == "bags") and "bags" or "bank"
+    local summary = itemSummaryIndex.characters[charKey]
+    if not summary then
+        itemSummaryIndex.pending[charKey] = true
+        return false
+    end
+    for i = 1, #oldBagItems do
+        local item = oldBagItems[i]
+        if item and item.itemID then
+            local entry = summary[item.itemID]
+            if entry then
+                entry[field] = entry[field] - (item.stackCount or 1)
+                if entry.bags <= 0 and entry.bank <= 0 then
+                    summary[item.itemID] = nil
+                end
+            end
+        end
+    end
+    for i = 1, #newBagItems do
+        local item = newBagItems[i]
+        if item and item.itemID then
+            local entry = summary[item.itemID]
+            if not entry then
+                entry = { bags = 0, bank = 0 }
+                summary[item.itemID] = entry
+            end
+            entry[field] = entry[field] + (item.stackCount or 1)
+        end
+    end
+    itemSummaryIndex.pending[charKey] = nil
+    BumpSummarySessionGen(charKey, dataType)
+    local gen = itemSummaryIndex.sessionGen[charKey]
+    local cached = decompressedItemCache[charKey]
+    if cached and gen then
+        if dataType == "bags" then
+            cached.bagsSessionGen = gen.bags
+        else
+            cached.bankSessionGen = gen.bank
+        end
+    end
+    return true
+end
+
+---Multiset of itemID:stackCount for one bag scan (reorder-only detection).
+local function BagInventorySignature(items)
+    local sig = {}
+    for i = 1, #items do
+        local it = items[i]
+        if it and it.itemID then
+            local k = tostring(it.itemID) .. ":" .. tostring(it.stackCount or 1)
+            sig[k] = (sig[k] or 0) + 1
+        end
+    end
+    return sig
+end
+
+local function BagSignaturesEqual(a, b)
+    for k, v in pairs(a) do
+        if (b[k] or 0) ~= v then return false end
+    end
+    for k, v in pairs(b) do
+        if (a[k] or 0) ~= v then return false end
+    end
+    return true
+end
+
+---Share recent bag slot map with CollectionService_Scan (skip duplicate C_Container walks).
+local function PublishBagSnapshotForCollection(bagID, bagItems)
+    if bagID == nil or bagID < 0 or bagID > 4 then return end
+    local snaps = ns.ItemsCacheBagSnapshots
+    if not snaps then
+        snaps = {}
+        ns.ItemsCacheBagSnapshots = snaps
+    end
+    local entry = snaps[bagID]
+    local slotMap = entry and entry.slots
+    if not slotMap then
+        slotMap = {}
+    else
+        wipe(slotMap)
+    end
+    for i = 1, #bagItems do
+        local it = bagItems[i]
+        local slot = it and (it.slot or it.slotIndex)
+        if slot and it.itemID then
+            slotMap[bagID .. "_" .. slot] = it.itemID
+        end
+    end
+    if entry then
+        entry.at = GetTime()
+    else
+        snaps[bagID] = { slots = slotMap, at = GetTime() }
+    end
+end
+
+-- Perf stress phase capture (ItemsCacheService_PerfStress.lua; optional during /wn bagdebug stress)
+local StressHooks = {}
+ns.ItemsCacheStressHooks = StressHooks
+
+local function RecordStressPhase(name)
+    local rec = StressHooks._recording
+    if not rec then return end
+    local now = debugprofilestop()
+    if rec.t0 then
+        rec.phases[name] = (rec.phases[name] or 0) + (now - rec.t0)
+    end
+    rec.t0 = now
+end
+
+local function TouchDecompressedSessionGen(charKey, dataType)
+    local ent = decompressedItemCache[charKey]
+    if not ent then return end
+    local gen = itemSummaryIndex.sessionGen[charKey]
+    if not gen then return end
+    if dataType == "bags" then
+        ent.bagsSessionGen = gen.bags
+    else
+        ent.bankSessionGen = gen.bank
+    end
 end
 
 -- ON-DEMAND ITEM METADATA RESOLVER (Session RAM only)
@@ -600,7 +879,9 @@ function WarbandNexus:ClearItemMetadataCache()
     wipe(itemSummaryIndex.characters)
     wipe(itemSummaryIndex.warband)
     wipe(itemSummaryIndex.pending)
+    wipe(itemSummaryIndex.sessionGen)
     itemSummaryIndex.warbandPending = false
+    itemSummaryIndex.coldInitDone = false
 end
 
 -- HASH GENERATION (CHANGE DETECTION) + BAG SCANNING
@@ -643,12 +924,21 @@ local function HasBagChanged(bagID)
     
     if newHash ~= oldHash then
         bagHashCache[bagID] = newHash
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.NoteHashCheck then BP.NoteHashCheck(true) end
         return true
     end
     
     -- Hash unchanged: clear the cached slot data (not needed)
     cachedSlotData[bagID] = nil
+    local BP = ns.ItemsCacheBagPerf
+    if BP and BP.NoteHashCheck then BP.NoteHashCheck(false) end
     return false
+end
+
+local function ShouldCaptureSlotItemLevel()
+    return WarbandNexus.IsGearStorageRecommendationsEnabled
+        and WarbandNexus:IsGearStorageRecommendationsEnabled()
 end
 
 --- Snapshot ilvl at scan time so Gear storage recommendations do not depend on cold GetItemInfo.
@@ -722,7 +1012,8 @@ local function ScanBag(bagID)
                     local itemID = ResolveContainerSlotItemID(itemInfo, hl)
                     if itemID then
                         n = n + 1
-                        local snapIlvl = CaptureContainerSlotItemLevel(bagID, slot, itemID, hl)
+                        local snapIlvl = ShouldCaptureSlotItemLevel()
+                            and CaptureContainerSlotItemLevel(bagID, slot, itemID, hl) or 0
                         local isKs = hl:find("|Hkeystone:", 1, true) ~= nil
                         items[n] = {
                             actualBagID = bagID,
@@ -753,7 +1044,8 @@ local function ScanBag(bagID)
                     local itemID = ResolveContainerSlotItemID(itemInfo, hl)
                     if itemID then
                         n = n + 1
-                        local snapIlvl = CaptureContainerSlotItemLevel(bagID, slot, itemID, hl)
+                        local snapIlvl = ShouldCaptureSlotItemLevel()
+                            and CaptureContainerSlotItemLevel(bagID, slot, itemID, hl) or 0
                         local isKs = hl:find("|Hkeystone:", 1, true) ~= nil
                         items[n] = {
                             actualBagID = bagID,
@@ -777,6 +1069,40 @@ local function ScanBag(bagID)
     return items
 end
 
+---Replace one bag's rows in-place (keeps decompressedItemCache table reference).
+---Optional outOldBagItems: capture removed rows in the same pass (avoids a second full-array walk).
+local function ReplaceBagInItemArray(allItems, bagID, newBagItems, outOldBagItems)
+    local writeIdx = 0
+    local oldN = 0
+    for i = 1, #allItems do
+        local it = allItems[i]
+        if it and it.bagID == bagID then
+            if outOldBagItems then
+                oldN = oldN + 1
+                outOldBagItems[oldN] = it
+            end
+        elseif it then
+            writeIdx = writeIdx + 1
+            if writeIdx ~= i then
+                allItems[writeIdx] = it
+            end
+        end
+    end
+    if outOldBagItems then
+        for i = oldN + 1, #outOldBagItems do
+            outOldBagItems[i] = nil
+        end
+    end
+    for i = 1, #newBagItems do
+        writeIdx = writeIdx + 1
+        allItems[writeIdx] = newBagItems[i]
+    end
+    for i = writeIdx + 1, #allItems do
+        allItems[i] = nil
+    end
+    return allItems, writeIdx
+end
+
 ---Scan all inventory bags for current character
 ---INCREMENTAL UPDATE: Update only specific bag (single bag scan)
 function WarbandNexus:UpdateSingleBag(charKey, bagID)
@@ -789,62 +1115,67 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
         charKey = ResolveCurrentItemStorageKey()
     end
     
-    -- Determine if this is an inventory bag or bank bag
-    local isInventoryBag = false
-    local isBankBag = false
-    
-    for i = 1, #INVENTORY_BAGS do
-        local invBagID = INVENTORY_BAGS[i]
-        if bagID == invBagID then
-            isInventoryBag = true
-            break
-        end
-    end
-    
-    for i = 1, #BANK_BAGS do
-        local bankBagID = BANK_BAGS[i]
-        if bagID == bankBagID then
-            isBankBag = true
-            break
-        end
-    end
-    
-    if not isInventoryBag and not isBankBag then
+    local bagType = BAG_TYPE_LOOKUP[bagID]
+    if bagType ~= "inventory" and bagType ~= "bank" then
         return {}
     end
     
     -- Read-modify-write the canonical v2 bucket only (alias-aware, NO legacy merge).
-    -- GetItemsData appends rows from legacy characters.items/.bank and personalBanks
-    -- on every read; writing that merged view back baked long-deleted "phantom"
-    -- items into itemStorage on every incremental bag update.
-    local dataType = isInventoryBag and "bags" or "bank"
-    local storage = ResolveItemStorageRow(charKey)
-    local bucket = storage and storage[dataType]
-    local allItems
-    if bucket and bucket.compressed then
-        allItems = DecompressItemData(bucket.data) or {}
-    elseif bucket then
-        allItems = bucket.data or {}
-    else
-        allItems = {}
-    end
+    -- Reuse decompressedItemCache when fresh — v3.1.8 regressed to decompress every
+    -- BAG_UPDATE (LibSerialize+Deflate per loot tick); GetItemsData still merges legacy.
+    local dataType = (bagType == "inventory") and "bags" or "bank"
+    local BP = ns.ItemsCacheBagPerf
+    local perfCtx = BP and BP.BeginBagUpdate and BP.BeginBagUpdate(bagID, charKey, dataType)
+    if perfCtx and BP.SetActiveCtx then BP.SetActiveCtx(perfCtx) end
 
-    -- Remove old items from this specific bag
-    for i = #allItems, 1, -1 do
-        if allItems[i].bagID == bagID then
-            table.remove(allItems, i)
-        end
+    local allItems, cacheHit = AcquireV2BucketItemArray(charKey, dataType)
+    if perfCtx then
+        perfCtx.cacheHit = cacheHit
+        if BP.MarkPhase then BP.MarkPhase(perfCtx, "acquire") end
     end
-    
-    -- Scan only this bag
+    RecordStressPhase("acquire")
+
+    local oldBagItems = {}
     local newBagItems = ScanBag(bagID)
-    -- Add new items from this bag
-    for i = 1, #newBagItems do
-        allItems[#allItems + 1] = newBagItems[i]
+    if perfCtx and BP.MarkPhase then
+        BP.MarkPhase(perfCtx, "scan")
     end
+    RecordStressPhase("scan")
+
+    local _, slotCount = ReplaceBagInItemArray(allItems, bagID, newBagItems, oldBagItems)
+    if perfCtx and BP.MarkPhase then
+        BP.MarkPhase(perfCtx, "merge")
+    end
+    RecordStressPhase("merge")
+
+    if dataType == "bags" and bagID >= 0 and bagID <= 4 then
+        PublishBagSnapshotForCollection(bagID, newBagItems)
+    end
+    RecordStressPhase("snapshot")
+
+    if not ApplyBagDeltaToSummary(charKey, dataType, oldBagItems, newBagItems) then
+        itemSummaryIndex.pending[charKey] = true
+    end
+    if perfCtx and BP.MarkPhase then BP.MarkPhase(perfCtx, "summary") end
+    RecordStressPhase("summary")
+
+    local compositionChanged = not BagSignaturesEqual(
+        BagInventorySignature(oldBagItems),
+        BagInventorySignature(newBagItems)
+    )
     
-    -- Save to DB (compressed)
+    -- Session RAM only — fast uncompressed persist debounced; LibDeflate on logout/reload
     self:SaveItemsCompressed(charKey, dataType, allItems)
+    if compositionChanged then
+        BumpGearStorageScanGeneration()
+    end
+    if perfCtx and BP.MarkPhase then BP.MarkPhase(perfCtx, "save") end
+    RecordStressPhase("save")
+    if perfCtx then
+        perfCtx.slotCount = slotCount
+        if BP.FinishBagUpdate then BP.FinishBagUpdate(perfCtx) end
+        if BP.ClearActiveCtx then BP.ClearActiveCtx() end
+    end
     
     return allItems
 end
@@ -876,22 +1207,12 @@ function WarbandNexus:UpdateSingleWarbandBag(bagID)
     local warbandData = self:GetWarbandBankData()
     local allItems = warbandData.items or {}
     
-    -- Remove old items from this specific bag
-    for i = #allItems, 1, -1 do
-        if allItems[i].bagID == bagID then
-            table.remove(allItems, i)
-        end
-    end
-    
-    -- Scan only this bag
     local newBagItems = ScanBag(bagID)
     
-    -- Add new items with tabIndex
     for i = 1, #newBagItems do
-        local item = newBagItems[i]
-        item.tabIndex = tabIndex
-        allItems[#allItems + 1] = item
+        newBagItems[i].tabIndex = tabIndex
     end
+    ReplaceBagInItemArray(allItems, bagID, newBagItems)
     
     -- Save to DB (compressed, warband bank is account-wide)
     self:SaveWarbandBankCompressed(allItems)
@@ -922,6 +1243,7 @@ function WarbandNexus:ScanInventoryBags(charKey)
     end
     
     -- Save to DB (compressed)
+    itemSummaryIndex.pending[charKey] = true
     self:SaveItemsCompressed(charKey, "bags", allItems)
     
     -- Populate legacy metadata for ItemsUI header (usedSlots, totalSlots, lastScan).
@@ -960,6 +1282,7 @@ function WarbandNexus:ScanBankBags(charKey)
     end
     
     -- Save to DB (compressed)
+    itemSummaryIndex.pending[charKey] = true
     self:SaveItemsCompressed(charKey, "bank", allItems)
     
     return allItems
@@ -994,6 +1317,33 @@ end
 
 -- THROTTLED UPDATE SYSTEM
 
+---One deferred flush for all throttled bags (avoids N timers + N WN_ITEMS_UPDATED after rapid same-bag spam).
+local function ScheduleDeferredBagFlush(delaySec)
+    delaySec = delaySec or UPDATE_THROTTLE
+    if delaySec < 0.01 then delaySec = 0.01 end
+    if deferredThrottleTimer then return end
+    deferredThrottleTimer = C_Timer.After(delaySec, function()
+        deferredThrottleTimer = nil
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        local anyProcessed = false
+        local bagIDs = {}
+        for bagID, _ in pairs(pendingUpdates) do
+            bagIDs[#bagIDs + 1] = bagID
+        end
+        for i = 1, #bagIDs do
+            if ThrottledBagUpdate(bagIDs[i]) then
+                anyProcessed = true
+            end
+        end
+        if anyProcessed then
+            local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+            WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
+        end
+    end)
+end
+
 ---Throttled bag update (prevents BAG_UPDATE spam)
 ---Returns true if the update was processed (or scheduled), false if suppressed.
 local function ThrottledBagUpdate(bagID)
@@ -1006,23 +1356,10 @@ local function ThrottledBagUpdate(bagID)
     local lastUpdate = lastUpdateTime[bagID] or 0
     
     if currentTime - lastUpdate < UPDATE_THROTTLE then
-        -- Schedule pending update with timer
-        if not pendingUpdates[bagID] then
-            pendingUpdates[bagID] = true
-            
-            -- Schedule processing after throttle period
-            C_Timer.After(UPDATE_THROTTLE - (currentTime - lastUpdate), function()
-                if pendingUpdates[bagID] then
-                    pendingUpdates[bagID] = nil
-                    local processed = ThrottledBagUpdate(bagID)  -- Retry
-                    -- Send coalesced message for deferred retry (no caller to batch with)
-                    if processed then
-                        local retryKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
-                        WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = retryKey})
-                    end
-                end
-            end)
-        end
+        pendingUpdates[bagID] = true
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.NoteThrottled then BP.NoteThrottled(bagID, "defer") end
+        ScheduleDeferredBagFlush(UPDATE_THROTTLE - (currentTime - lastUpdate))
         return false
     end
     
@@ -1073,6 +1410,15 @@ function WarbandNexus:FlushItemsCacheOnLogout()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
+    if deferredThrottleTimer and deferredThrottleTimer.Cancel then
+        deferredThrottleTimer:Cancel()
+        deferredThrottleTimer = nil
+    end
+    if sessionActivityPersistTimer and sessionActivityPersistTimer.Cancel then
+        sessionActivityPersistTimer:Cancel()
+        sessionActivityPersistTimer = nil
+    end
+    BumpGearStorageScanGenerationImmediate()
     self:ProcessPendingBagUpdates()
     local bagIDs = {}
     for bagID, _ in pairs(pendingUpdates) do
@@ -1085,6 +1431,20 @@ function WarbandNexus:FlushItemsCacheOnLogout()
         ThrottledBagUpdate(bagID)
     end
     wipe(pendingUpdates)
+    FlushPendingCompressWrites(true)
+end
+
+---Flush session-dirty buckets on PLAYER_LEAVING_WORLD (/reload, zone exit, logout).
+function WarbandNexus:FlushItemsCacheOnLeavingWorld()
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    if sessionActivityPersistTimer and sessionActivityPersistTimer.Cancel then
+        sessionActivityPersistTimer:Cancel()
+        sessionActivityPersistTimer = nil
+    end
+    BumpGearStorageScanGenerationImmediate()
+    FlushPendingCompressWrites(true)
 end
 
 -- EVENT HANDLERS (Will be registered by EventManager)
@@ -1104,21 +1464,43 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     end
     
     -- Process each bag that was updated, track if any actually changed
-    local anyProcessed = false
+    local changedBags = {}
     for bagID in pairs(bagIDs) do
-        -- Smart filter: Check if bag contents actually changed
         if HasBagChanged(bagID) then
-            if ThrottledBagUpdate(bagID) then
-                anyProcessed = true
-            end
+            changedBags[#changedBags + 1] = bagID
         end
     end
-    
-    -- Send ONE coalesced message for all processed bags (instead of per-bag)
-    if anyProcessed then
-        local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
-        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = msgKey})
+    local changedCount = #changedBags
+    if changedCount == 0 then return end
+
+    local BP = ns.ItemsCacheBagPerf
+    if BP and BP.NoteBucketEvent then
+        BP.NoteBucketEvent(changedCount)
     end
+
+    local anyProcessed = false
+    local bagIdx = 1
+    local function processNextBag()
+        if bagIdx > changedCount then
+            if anyProcessed then
+                local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+                self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
+            end
+            return
+        end
+        local bagID = changedBags[bagIdx]
+        bagIdx = bagIdx + 1
+        if ThrottledBagUpdate(bagID) then
+            anyProcessed = true
+        end
+        if bagIdx <= changedCount then
+            C_Timer.After(0, processNextBag)
+        elseif anyProcessed then
+            local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+            self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
+        end
+    end
+    processNextBag()
 end
 
 ---Chunked bank-area scan: one bag (container) per frame to cap frame cost (inventory → bank → warband).
@@ -1169,6 +1551,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             return
         end
         if bankIdx > #BANK_BAGS then
+            itemSummaryIndex.pending[charKey] = true
             self:SaveItemsCompressed(charKey, "bank", allBank)
             C_Timer.After(0, runWarband)
             return
@@ -1188,6 +1571,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             return
         end
         if invIdx > #INVENTORY_BAGS then
+            itemSummaryIndex.pending[charKey] = true
             self:SaveItemsCompressed(charKey, "bags", allInv)
             if self.db and self.db.char then
                 if not self.db.char.bags then self.db.char.bags = {} end
@@ -1290,8 +1674,162 @@ end
 
 -- COMPRESSED STORAGE (SAVE/LOAD)
 
----Save items data (compressed)
-function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
+local function ClearSessionDirtyKey(saveKey)
+    sessionDirtyBuckets[saveKey] = nil
+    pendingCompressSaves[saveKey] = nil
+end
+
+---Fast path: write uncompressed bucket to AceDB (no LibDeflate). Survives Alt+F4 if WoW flushes SV.
+local function WriteSessionBucketUncompressed(charKey, dataType, items)
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    if not charKey or not dataType or not items then return end
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+        return
+    end
+    if not WarbandNexus.db.global.itemStorage then
+        WarbandNexus.db.global.itemStorage = {}
+    end
+    if not WarbandNexus.db.global.itemStorage[charKey] then
+        WarbandNexus.db.global.itemStorage[charKey] = {}
+    end
+    local newSig = ComputeBucketContentSig(items)
+    local existing = WarbandNexus.db.global.itemStorage[charKey][dataType]
+    if existing and existing.contentSig == newSig and existing.compressed == false then
+        return
+    end
+    local slotCount = #items
+    local stackTotal = 0
+    for si = 1, slotCount do
+        stackTotal = stackTotal + (items[si].stackCount or 1)
+    end
+    local now = time()
+    WarbandNexus.db.global.itemStorage[charKey][dataType] = {
+        compressed = false,
+        data = items,
+        lastUpdate = now,
+        slotCount = slotCount,
+        stackTotal = stackTotal,
+        contentSig = newSig,
+    }
+    TouchDecompressedItemCache(charKey, dataType, items, now)
+end
+
+PersistSessionDirtyFast = function()
+    if InCombatLockdown and InCombatLockdown() then
+        ScheduleSessionActivityPersist()
+        return
+    end
+    if next(sessionDirtyBuckets) == nil then return end
+    local queue = {}
+    for saveKey in pairs(sessionDirtyBuckets) do
+        local entry = pendingCompressSaves[saveKey]
+        if entry then
+            queue[#queue + 1] = { saveKey = saveKey, entry = entry }
+        end
+    end
+    if #queue == 0 then return end
+    local idx = 1
+    local persistT0 = debugprofilestop()
+    local persisted = 0
+    local function persistNext()
+        local budgetStart = debugprofilestop()
+        while idx <= #queue do
+            local row = queue[idx]
+            idx = idx + 1
+            local entry = row.entry
+            WriteSessionBucketUncompressed(entry.charKey, entry.dataType, entry.items)
+            persisted = persisted + 1
+            if idx <= #queue and (debugprofilestop() - budgetStart) >= COMPRESS_FLUSH_BUDGET_MS then
+                C_Timer.After(0, persistNext)
+                return
+            end
+        end
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.NoteFastPersist and persisted > 0 then
+            BP.NoteFastPersist(debugprofilestop() - persistT0, persisted)
+        end
+    end
+    persistNext()
+end
+
+ScheduleSessionActivityPersist = function()
+    if sessionActivityPersistTimer and sessionActivityPersistTimer.Cancel then
+        sessionActivityPersistTimer:Cancel()
+    end
+    sessionActivityPersistTimer = C_Timer.NewTimer(SESSION_ACTIVITY_PERSIST_SEC, function()
+        sessionActivityPersistTimer = nil
+        PersistSessionDirtyFast()
+    end)
+end
+
+local function StartSessionIdleFlushTicker()
+    if sessionIdleFlushTicker then return end
+    sessionIdleFlushTicker = C_Timer.NewTicker(SESSION_IDLE_FLUSH_SEC, function()
+        if InCombatLockdown and InCombatLockdown() then return end
+        if next(sessionDirtyBuckets) == nil then return end
+        PersistSessionDirtyFast()
+    end)
+end
+
+FlushPendingCompressWrites = function(syncAll)
+    local function finishEntry(saveKey, charKey, dataType, items)
+        if WarbandNexus.SaveItemsCompressedImmediate then
+            WarbandNexus:SaveItemsCompressedImmediate(charKey, dataType, items)
+        end
+        ClearSessionDirtyKey(saveKey)
+    end
+    if syncAll then
+        local t0 = debugprofilestop()
+        local count = 0
+        for saveKey, entry in pairs(pendingCompressSaves) do
+            finishEntry(saveKey, entry.charKey, entry.dataType, entry.items)
+            count = count + 1
+        end
+        wipe(sessionDirtyBuckets)
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.NoteCompressFlush and count > 0 then
+            BP.NoteCompressFlush(debugprofilestop() - t0, count, true)
+        end
+        return
+    end
+    local queue = {}
+    for saveKey, entry in pairs(pendingCompressSaves) do
+        queue[#queue + 1] = { saveKey = saveKey, entry = entry }
+    end
+    if #queue == 0 then return end
+    local idx = 1
+    local flushT0 = debugprofilestop()
+    local flushed = 0
+    local function flushNext()
+        local budgetStart = debugprofilestop()
+        while idx <= #queue do
+            local row = queue[idx]
+            idx = idx + 1
+            local entry = row.entry
+            finishEntry(row.saveKey, entry.charKey, entry.dataType, entry.items)
+            flushed = flushed + 1
+            if idx <= #queue and (debugprofilestop() - budgetStart) >= COMPRESS_FLUSH_BUDGET_MS then
+                C_Timer.After(0, flushNext)
+                return
+            end
+        end
+        local BP = ns.ItemsCacheBagPerf
+        if BP and BP.NoteCompressFlush and flushed > 0 then
+            BP.NoteCompressFlush(debugprofilestop() - flushT0, flushed, false)
+        end
+    end
+    flushNext()
+end
+
+---Stress/dev only — production hot path never schedules timed compress coalesce.
+local function ScheduleCompressCoalesce()
+    C_Timer.After(0, function()
+        FlushPendingCompressWrites(false)
+    end)
+end
+
+---Persist items to DB immediately (LibSerialize + Deflate). Internal — use SaveItemsCompressed during play; flush on logout/leaving-world/idle.
+function WarbandNexus:SaveItemsCompressedImmediate(charKey, dataType, items)
     -- GUARD: Only save if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -1307,26 +1845,42 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
     if not self.db.global.itemStorage[charKey] then
         self.db.global.itemStorage[charKey] = {}
     end
+
+    local newSig = ComputeBucketContentSig(items)
+    local saveKey = CompressSaveKey(charKey, dataType)
+    local existing = self.db.global.itemStorage[charKey][dataType]
+    if existing and existing.contentSig and existing.contentSig == newSig then
+        TouchDecompressedItemCache(charKey, dataType, items, existing.lastUpdate or time())
+        TouchDecompressedSessionGen(charKey, dataType)
+        ClearSessionDirtyKey(saveKey)
+        return
+    end
     
     -- Compress data
+    local BP = ns.ItemsCacheBagPerf
+    local perfCtx = BP and BP._activeCtx
     local compressed = CompressItemData(items)
+    if perfCtx and BP and BP.MarkPhase then
+        BP.MarkPhase(perfCtx, "compress")
+    end
     local slotCount = #items
     local stackTotal = 0
     for si = 1, slotCount do
         stackTotal = stackTotal + (items[si].stackCount or 1)
     end
+    local now = time()
     if not compressed then
         -- Fallback: store uncompressed
         self.db.global.itemStorage[charKey][dataType] = {
             compressed = false,
             data = items,
-            lastUpdate = time(),
+            lastUpdate = now,
             slotCount = slotCount,
             stackTotal = stackTotal,
+            contentSig = ComputeBucketContentSig(items),
         }
-        -- Invalidate caches even on uncompressed fallback
-        decompressedItemCache[charKey] = nil
-        itemSummaryIndex.pending[charKey] = true
+        TouchDecompressedItemCache(charKey, dataType, items, now)
+        TouchDecompressedSessionGen(charKey, dataType)
         BumpGearStorageScanGeneration()
         return
     end
@@ -1335,15 +1889,41 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
     self.db.global.itemStorage[charKey][dataType] = {
         compressed = true,
         data = compressed,
-        lastUpdate = time(),
+        lastUpdate = now,
         slotCount = slotCount,
         stackTotal = stackTotal,
+        contentSig = ComputeBucketContentSig(items),
     }
     
-    -- Invalidate decompressed cache + mark summary index pending for this character
-    decompressedItemCache[charKey] = nil
-    itemSummaryIndex.pending[charKey] = true
+    TouchDecompressedItemCache(charKey, dataType, items, now)
+    TouchDecompressedSessionGen(charKey, dataType)
+    -- Summary invalidation: callers set pending (full scan) or ApplyBagDeltaToSummary (incremental).
     BumpGearStorageScanGeneration()
+end
+
+---Mark session bucket dirty and sync RAM. Fast uncompressed persist ~15s after last change; LibDeflate on logout/reload.
+function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    if not charKey or not dataType or not items then return end
+
+    local saveKey = CompressSaveKey(charKey, dataType)
+    local bucket = ResolveItemStorageRow(charKey)
+    bucket = bucket and bucket[dataType]
+
+    sessionDirtyBuckets[saveKey] = true
+    pendingCompressSaves[saveKey] = {
+        charKey = charKey,
+        dataType = dataType,
+        items = items,
+    }
+    TouchDecompressedItemCache(charKey, dataType, items, (bucket and bucket.lastUpdate) or time())
+    ScheduleSessionActivityPersist()
+    local BP = ns.ItemsCacheBagPerf
+    if BP and BP.NoteSessionDirty then
+        BP.NoteSessionDirty(charKey, dataType)
+    end
 end
 
 ---Save warband bank data (compressed)
@@ -1362,16 +1942,17 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
     for si = 1, slotCount do
         stackTotal = stackTotal + (items[si].stackCount or 1)
     end
+    local now = time()
     if not compressed then
         -- Fallback: store uncompressed
         self.db.global.itemStorage.warbandBank = {
             compressed = false,
             data = items,
-            lastUpdate = time(),
+            lastUpdate = now,
             slotCount = slotCount,
             stackTotal = stackTotal,
         }
-        decompressedWarbandCache = nil
+        decompressedWarbandCache = { items = items, lastUpdate = now }
         itemSummaryIndex.warbandPending = true
         BumpGearStorageScanGeneration()
         return
@@ -1381,13 +1962,12 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
     self.db.global.itemStorage.warbandBank = {
         compressed = true,
         data = compressed,
-        lastUpdate = time(),
+        lastUpdate = now,
         slotCount = slotCount,
         stackTotal = stackTotal,
     }
     
-    -- Invalidate decompressed cache + mark warband summary pending
-    decompressedWarbandCache = nil
+    decompressedWarbandCache = { items = items, lastUpdate = now }
     itemSummaryIndex.warbandPending = true
     BumpGearStorageScanGeneration()
 end
@@ -1886,20 +2466,17 @@ end
 -- Summary rebuilt lazily: marked "pending" on item change, processed on next access.
 
 ---Build item count summary for a single character (bags + bank).
-local function BuildCharacterSummary(charKey)
-    local summary = {}  -- [itemID] = { bags=N, bank=N }
-    
-    -- Use the decompressed cache (GetItemsData populates it)
-    local itemsData = WarbandNexus:GetItemsData(charKey)
-    if not itemsData then
-        itemSummaryIndex.characters[charKey] = summary
+---v2 bucket only — AcquireV2BucketItemArray reuses session RAM; no GetItemsData legacy merge/hydrate.
+local function BuildCharacterSummary(charKey, force)
+    if not force and SummaryIsCurrent(charKey) then
         return
     end
-    
-    -- Count bags
-    if itemsData.bags then
-        for i = 1, #itemsData.bags do
-            local item = itemsData.bags[i]
+    local summary = {}  -- [itemID] = { bags=N, bank=N }
+
+    local bags = select(1, AcquireV2BucketItemArray(charKey, "bags"))
+    if bags then
+        for i = 1, #bags do
+            local item = bags[i]
             if item.itemID then
                 local entry = summary[item.itemID]
                 if not entry then
@@ -1910,11 +2487,11 @@ local function BuildCharacterSummary(charKey)
             end
         end
     end
-    
-    -- Count bank
-    if itemsData.bank then
-        for i = 1, #itemsData.bank do
-            local item = itemsData.bank[i]
+
+    local bank = select(1, AcquireV2BucketItemArray(charKey, "bank"))
+    if bank then
+        for i = 1, #bank do
+            local item = bank[i]
             if item.itemID then
                 local entry = summary[item.itemID]
                 if not entry then
@@ -1925,8 +2502,16 @@ local function BuildCharacterSummary(charKey)
             end
         end
     end
-    
+
     itemSummaryIndex.characters[charKey] = summary
+    itemSummaryIndex.pending[charKey] = nil
+    local gen = BumpSummarySessionGen(charKey, "bags")
+    BumpSummarySessionGen(charKey, "bank")
+    local cached = decompressedItemCache[charKey]
+    if cached and gen then
+        cached.bagsSessionGen = gen.bags
+        cached.bankSessionGen = gen.bank
+    end
 end
 
 ---Build item count summary for warband bank.
@@ -1947,18 +2532,72 @@ local function BuildWarbandSummary()
     itemSummaryIndex.warbandPending = false
 end
 
+---Tooltip hot path: rebuild only live character + warband summaries; defer roster backlog.
+local function ProcessPendingSummariesForTooltip()
+    local liveKey = ResolveCurrentItemStorageKey()
+    if liveKey and itemSummaryIndex.pending[liveKey] then
+        BuildCharacterSummary(liveKey)
+        itemSummaryIndex.pending[liveKey] = nil
+    end
+    if itemSummaryIndex.warbandPending then
+        BuildWarbandSummary()
+    end
+end
+
 ---Process any pending summary rebuilds (call before tooltip lookup).
 ---Lazy rebuild on demand, not on every bag event.
-local function ProcessPendingSummaries()
-    -- Process pending characters
+local function ProcessPendingSummariesBudgeted(budgetMs)
+    local t0 = debugprofilestop()
+    local budget = budgetMs or SUMMARY_BUILD_BUDGET_MS
+
+    local liveKey = ResolveCurrentItemStorageKey()
+    if liveKey and itemSummaryIndex.pending[liveKey] then
+        BuildCharacterSummary(liveKey)
+        itemSummaryIndex.pending[liveKey] = nil
+    end
+
+    if itemSummaryIndex.warbandPending then
+        BuildWarbandSummary()
+    end
+
     for charKey in pairs(itemSummaryIndex.pending) do
+        if debugprofilestop() - t0 >= budget then
+            break
+        end
         BuildCharacterSummary(charKey)
         itemSummaryIndex.pending[charKey] = nil
     end
-    
-    -- Process pending warband
-    if itemSummaryIndex.warbandPending then
-        BuildWarbandSummary()
+end
+
+local function SummaryDrainHasWork()
+    if itemSummaryIndex.warbandPending then return true end
+    return next(itemSummaryIndex.pending) ~= nil
+end
+
+local function ScheduleBackgroundSummaryDrain()
+    if summaryDrainScheduled or not SummaryDrainHasWork() then return end
+    summaryDrainScheduled = true
+    C_Timer.After(0, function()
+        summaryDrainScheduled = false
+        ProcessPendingSummariesBudgeted(SUMMARY_BUILD_BUDGET_MS)
+        if SummaryDrainHasWork() then
+            ScheduleBackgroundSummaryDrain()
+        end
+    end)
+end
+
+local function EnsureSummaryColdInit(self)
+    if itemSummaryIndex.coldInitDone then return end
+    itemSummaryIndex.coldInitDone = true
+    if self.db and self.db.global and self.db.global.characters then
+        for charKey in pairs(self.db.global.characters) do
+            if not itemSummaryIndex.characters[charKey] then
+                itemSummaryIndex.pending[charKey] = true
+            end
+        end
+    end
+    if not next(itemSummaryIndex.warband) then
+        itemSummaryIndex.warbandPending = true
     end
 end
 
@@ -1967,22 +2606,11 @@ end
 function WarbandNexus:GetDetailedItemCountsFast(itemID)
     if not itemID then return nil end
     
-    -- Ensure all characters have summaries (first-time lazy build)
-    -- Mark any character that doesn't have a summary yet as pending
-    if self.db and self.db.global and self.db.global.characters then
-        for charKey in pairs(self.db.global.characters) do
-            if not itemSummaryIndex.characters[charKey] and not itemSummaryIndex.pending[charKey] then
-                itemSummaryIndex.pending[charKey] = true
-            end
-        end
+    EnsureSummaryColdInit(self)
+    ProcessPendingSummariesForTooltip()
+    if SummaryDrainHasWork() then
+        ScheduleBackgroundSummaryDrain()
     end
-    -- Also ensure warband summary exists
-    if not next(itemSummaryIndex.warband) and not itemSummaryIndex.warbandPending then
-        itemSummaryIndex.warbandPending = true
-    end
-    
-    -- Process any pending rebuilds (lazy, batched)
-    ProcessPendingSummaries()
     
     -- O(1) lookup: warband bank
     local warbandCount = itemSummaryIndex.warband[itemID] or 0
@@ -2094,6 +2722,8 @@ function WarbandNexus:InitializeItemsCache()
     WarbandNexus:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
     WarbandNexus:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
     WarbandNexus:RegisterEvent("BAG_UPDATE_DELAYED", "OnInventoryBagsChanged")
+    WarbandNexus:RegisterEvent("PLAYER_LEAVING_WORLD", "FlushItemsCacheOnLeavingWorld")
+    StartSessionIdleFlushTicker()
     
     -- Set loading state (initial scan in progress)
     ns.ItemsLoadingState.isLoading = true
@@ -2117,6 +2747,17 @@ function WarbandNexus:InitializeItemsCache()
         local charKey = ResolveCurrentItemStorageKey()
         self:ScanInventoryBags(charKey)
 
+        -- Warm bank decompress + summary after inventory session mark (avoid login frame stack).
+        C_Timer.After(0.35, function()
+            if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
+            local ck = ResolveCurrentItemStorageKey()
+            if not ck then return end
+            AcquireV2BucketItemArray(ck, "bank")
+            if itemSummaryIndex.pending[ck] then
+                BuildCharacterSummary(ck)
+            end
+        end)
+
         ns.ItemsLoadingState.scanProgress = 100
         ns.ItemsLoadingState.loadingProgress = 100
         ns.ItemsLoadingState.isLoading = false
@@ -2125,6 +2766,126 @@ function WarbandNexus:InitializeItemsCache()
         -- Notify UI that initial scan is done (fixes stuck loading state)
         self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = CanonicalItemsMessageKey(charKey)})
     end)
+end
+
+-- DEBUG PERF STRESS HOOKS (ItemsCacheService_PerfStress.lua; requires /wn debug)
+
+function StressHooks.ResolveCharKey()
+    return ResolveCurrentItemStorageKey()
+end
+
+function StressHooks.AcquireV2(charKey, dataType)
+    local t0 = debugprofilestop()
+    local arr, hit = AcquireV2BucketItemArray(charKey, dataType)
+    return arr, hit, debugprofilestop() - t0
+end
+
+function StressHooks.ClearSessionDecompressedCache()
+    wipe(decompressedItemCache)
+end
+
+function StressHooks.ReplaceBagInArray(allItems, bagID, newBagItems)
+    local t0 = debugprofilestop()
+    local _, slotCount = ReplaceBagInItemArray(allItems, bagID, newBagItems)
+    return slotCount, debugprofilestop() - t0
+end
+
+function StressHooks.GenerateItemHash(bagID)
+    local t0 = debugprofilestop()
+    local hash = GenerateItemHash(bagID)
+    return hash, debugprofilestop() - t0
+end
+
+function StressHooks.HasBagChanged(bagID)
+    local t0 = debugprofilestop()
+    local changed = HasBagChanged(bagID)
+    return changed, debugprofilestop() - t0
+end
+
+function StressHooks.ScanBag(bagID)
+    local t0 = debugprofilestop()
+    local items = ScanBag(bagID)
+    return items, debugprofilestop() - t0
+end
+
+function StressHooks.BuildCharacterSummary(charKey, force)
+    local t0 = debugprofilestop()
+    BuildCharacterSummary(charKey, force)
+    return debugprofilestop() - t0
+end
+
+function StressHooks.BumpGearStorageScanGeneration()
+    BumpGearStorageScanGeneration()
+end
+
+function StressHooks.BumpGearStorageScanGenerationImmediate()
+    BumpGearStorageScanGenerationImmediate()
+end
+
+function StressHooks.GetGearStorageInvGen()
+    return ns._gearStorageInvGen or 0
+end
+
+function StressHooks.FlushPendingCompress(syncAll)
+    FlushPendingCompressWrites(syncAll == true)
+end
+
+function StressHooks.ScheduleCompressCoalesce()
+    ScheduleCompressCoalesce()
+end
+
+function StressHooks.HasPendingCompress()
+    return next(sessionDirtyBuckets) ~= nil
+end
+
+function StressHooks.HasSessionDirty()
+    return next(sessionDirtyBuckets) ~= nil
+end
+
+function StressHooks.SessionDirtyCount()
+    local n = 0
+    for _ in pairs(sessionDirtyBuckets) do
+        n = n + 1
+    end
+    return n
+end
+
+function StressHooks.InvalidateSummary(charKey)
+    if WarbandNexus.InvalidateItemSummary then
+        WarbandNexus:InvalidateItemSummary(charKey)
+    end
+end
+
+function StressHooks.WipeCharacterSummary(charKey)
+    if charKey then
+        itemSummaryIndex.characters[charKey] = nil
+        itemSummaryIndex.sessionGen[charKey] = nil
+    end
+end
+
+function StressHooks.BeginPhaseRecord()
+    StressHooks._recording = { phases = {}, t0 = debugprofilestop() }
+end
+
+function StressHooks.EndPhaseRecord()
+    local rec = StressHooks._recording
+    StressHooks._recording = nil
+    return rec and rec.phases
+end
+
+function StressHooks.FormatPhaseLine(phases)
+    if not phases then return nil end
+    local order = { "acquire", "scan", "merge", "snapshot", "summary", "save" }
+    local parts = {}
+    for i = 1, #order do
+        local k = order[i]
+        local ms = phases[k]
+        if ms and ms > 0.01 then
+            parts[#parts + 1] = string.format("%s=%.2f", k, ms)
+        end
+    end
+    if #parts == 0 then return nil end
+    return table.concat(parts, " ")
 end
 
 -- LOAD MESSAGE

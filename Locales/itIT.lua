@@ -1036,6 +1036,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+
+Corretto:
+- Borse e bottino: spostare oggetti, comprare/vendere dai mercanti e raccogliere bottino non causano piu grandi cali di FPS ricomprimendo l'intera borsa a ogni modifica (regressione v3.1.8).
+- Cache oggetti: corretto errore quando il timer di salvataggio in background era attivo.
+- Notifiche: i toast di cavalcatura e collezione non vanno piu in crash quando mancava una tabella icone.
+
+Aggiornato:
+- Cache borse: l'inventario resta in memoria di sessione veloce durante il gioco; salvataggio non compresso ~15 s dopo l'ultima modifica borsa (utile con Alt+F4); compressione completa solo a logout o /reload.
+- Riordinare gli slot in una borsa non avvia piu una scansione completa del deposito equipaggiamento se le quantita non sono cambiate.
+- Conteggi oggetti nei tooltip e scansioni collezione riusano dati borsa recenti evitando passaggi API container extra.
+- La scansione borse collezione viene saltata se il modulo Collezioni e disattivato ed esegue al frame successivo se attivo.
+- I promemoria missioni sulla mappa saltano il lavoro se non hai piani attivi.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
 Aggiunto:

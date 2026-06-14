@@ -424,23 +424,9 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     
     -- SKILL_LINES_CHANGED: owned by EventManager (OnSkillLinesChanged, throttled)
 
-    -- Invalidate tooltip item count cache when bags/bank change
-    -- Listen to internal messages (ItemsCacheService is the single owner of WoW events)
-    -- NOTE: Uses DataServiceEvents as 'self' key to avoid overwriting other modules' handlers.
-    WarbandNexus.RegisterMessage(DataServiceEvents, E.BAGS_UPDATED, function()
-        if WarbandNexus.InvalidateItemSummary then
-            local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
-                and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
-            WarbandNexus:InvalidateItemSummary(charKey)
-        end
-    end)
-    WarbandNexus.RegisterMessage(DataServiceEvents, E.ITEMS_UPDATED, function()
-        if WarbandNexus.InvalidateItemSummary then
-            local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
-                and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
-            WarbandNexus:InvalidateItemSummary(charKey)
-        end
-    end)
+    -- Item summary invalidation: owned by ItemsCacheService (SaveItemsCompressed sets
+    -- itemSummaryIndex.pending). WN_ITEMS_UPDATED / WN_BAGS_UPDATED listeners here were
+    -- redundant double-invalidates on every bag write.
 
     WarbandNexus.RegisterMessage(DataServiceEvents, E.CHARACTER_UPDATED, function()
         InvalidateGetAllCharactersCache()

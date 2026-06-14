@@ -1034,6 +1034,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+
+Fixed:
+- Bags and loot: moving items, vendor buy/sell, and loot pickup no longer cause large FPS drops from re-compressing your entire bag on every change (v3.1.8 regression).
+- Items cache: fixed error when the idle save timer ran in the background.
+- Notifications: mount and collection toasts no longer crash when an icon table was missing.
+
+Updated:
+- Bag cache: inventory stays in fast session memory while playing; uncompressed saves run ~15s after the last bag change (helps if you Alt+F4); full compression only on logout or /reload.
+- Reordering slots in a bag no longer triggers a full gear storage rescan when item counts did not change.
+- Tooltip item counts and collection scans reuse recent bag data to avoid extra container walks.
+- Collections bag scan is skipped when the Collections module is off and runs on the next frame when enabled.
+- Map quest reminders skip work when you have no active plans.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
 Added:

@@ -1036,6 +1036,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+
+Behoben:
+- Taschen und Beute: Items verschieben, Haendler-Kauf/Verkauf und Beuteaufheben verursachen keine grossen FPS-Einbrueche mehr durch Neukomprimierung der gesamten Tasche bei jeder Aenderung (Regression in v3.1.8).
+- Item-Cache: Fehler beim Hintergrund-Idle-Speicher-Timer behoben.
+- Benachrichtigungen: Reittier- und Sammlungs-Toasts stuerzen nicht mehr ab, wenn eine Icon-Tabelle fehlte.
+
+Aktualisiert:
+- Taschen-Cache: Inventar bleibt waehrend des Spiels im schnellen Sitzungsspeicher; unkomprimierte Speicherung ~15s nach der letzten Taschenaenderung (hilft bei Alt+F4); volle Komprimierung nur bei Logout oder /reload.
+- Nur Slot-Reihenfolge aendern loest keinen vollen Ausruestungs-Lager-Scan mehr aus, wenn sich Item-Anzahlen nicht geaendert haben.
+- Tooltip-Item-Zaehler und Sammlungs-Scans nutzen aktuelle Taschendaten erneut und vermeiden zusaetzliche Behaelter-API-Laeufe.
+- Sammlungs-Taschen-Scan wird uebersprungen, wenn das Sammlungs-Modul aus ist, und laeuft im naechsten Frame, wenn es aktiv ist.
+- Karten-Quest-Erinnerungen ueberspringen Arbeit, wenn du keine aktiven Plaene hast.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
 Hinzugefuegt:

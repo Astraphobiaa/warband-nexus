@@ -14,7 +14,7 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.1.8",
+    ADDON_VERSION = "3.1.9",
     -- Shown next to version in the What's New / changelog popup title
     ADDON_RELEASE_DATE = "2026-06-14",
 
@@ -75,7 +75,8 @@ local Constants = {
     
     -- Throttle timings (in seconds)
     THROTTLE = {
-        PERSONAL_FREQUENT = 2.0,  -- Bags (BAG_UPDATE spam prevention)
+        PERSONAL_FREQUENT = 2.0,  -- Legacy default; ItemsCache uses ITEMS_BAG_UPDATE
+        ITEMS_BAG_UPDATE = 0.5,     -- Per-bag incremental scan (cheap with session cache HIT)
         SHARED_MODERATE = 1.0,    -- Currency, Reputation (moderate changes)
         SHARED_RARE = 2.0,        -- PvE, Collections (rare changes)
         CURRENCY_UPDATE = 0.3,    -- Legacy currency throttle

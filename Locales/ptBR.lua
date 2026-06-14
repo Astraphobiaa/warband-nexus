@@ -1036,6 +1036,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+
+Corrigido:
+- Bolsas e saque: mover itens, comprar/vender com vendedores e pegar saque nao causam mais grandes quedas de FPS ao recomprimir a bolsa inteira a cada mudanca (regressao v3.1.8).
+- Cache de itens: corrigido erro quando o temporizador de salvamento em segundo plano era executado.
+- Notificacoes: toasts de montaria e colecao nao travam mais quando faltava uma tabela de icones.
+
+Atualizado:
+- Cache de bolsas: inventario permanece em memoria de sessao rapida durante o jogo; salvamento sem compressao ~15 s apos a ultima mudanca de bolsa (ajuda se voce usa Alt+F4); compressao completa so no logout ou /reload.
+- Reordenar slots em uma bolsa nao dispara mais varredura completa do armazenamento de equipamento se as quantidades nao mudaram.
+- Contagens de itens em tooltips e varreduras de colecao reutilizam dados recentes de bolsas evitando passagens API extras.
+- Varredura de bolsas da colecao e ignorada quando o modulo Colecoes esta desligado e roda no proximo frame quando ativo.
+- Lembretes de missoes no mapa ignoram trabalho quando voce nao tem planos ativos.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
 Adicionado:

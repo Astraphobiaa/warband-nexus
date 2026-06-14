@@ -1036,6 +1036,22 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+
+Corregido:
+- Bolsas y botin: mover objetos, comprar/vender con vendedores y recoger botin ya no provocan grandes caidas de FPS al recomprimir toda la bolsa en cada cambio (regresion v3.1.8).
+- Cache de objetos: corregido error cuando el temporizador de guardado en segundo plano se ejecutaba.
+- Notificaciones: los avisos de monturas y coleccion ya no fallan cuando faltaba una tabla de iconos.
+
+Actualizado:
+- Cache de bolsas: el inventario permanece en memoria de sesion rapida durante el juego; guardado sin comprimir ~15 s tras el ultimo cambio de bolsa (ayuda si usas Alt+F4); compresion completa solo al cerrar sesion o /reload.
+- Reordenar ranuras en una bolsa ya no dispara un escaneo completo del almacen de equipo si las cantidades no cambiaron.
+- Recuentos de objetos en tooltips y escaneos de coleccion reutilizan datos recientes de bolsas para evitar recorridos API extra.
+- El escaneo de bolsas de coleccion se omite cuando el modulo Colecciones esta desactivado y se ejecuta en el siguiente fotograma cuando esta activo.
+- Los recordatorios de misiones en el mapa omiten trabajo si no tienes planes activos.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
 Anadido:

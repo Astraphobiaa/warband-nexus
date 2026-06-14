@@ -463,15 +463,54 @@ ns.NotificationManagerHooks.ProcessNotificationQueue = ProcessNotificationQueue
 
 --[[============================================================================
     NOTIFICATION CONFIG FACTORY (DRY)
+    Standardized config builders for all notification types.
+    All share: playSound=true, glowAtlas=DEFAULT_GLOW, duration=DB setting.
 ============================================================================]]
+
+local DEFAULT_GLOW = "TopBottom:UI-Frame-DastardlyDuos-Line"
+local DEFAULT_NOTIFICATION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+
+-- Category fallback icons (when item-specific icon is missing)
+local CATEGORY_ICONS = {
+    mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+    pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+    toy = "Interface\\Icons\\INV_Misc_Toy_07",
+    illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+    achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+    title = "Interface\\Icons\\INV_Scroll_11",
+    plan = "Interface\\Icons\\INV_Misc_Note_06",
+    vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
+    reputation = "Interface\\Icons\\INV_Scroll_11",
+    quest = "Interface\\Icons\\INV_Misc_Map_01",
+    item = "Interface\\Icons\\INV_Misc_Bag_10",
+    reminder = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager",
+}
+
+-- Action text mapping (subtitle line)
+local ACTION_TEXT = {
+    mount = (ns.L and ns.L["COLLECTED_MOUNT_MSG"]) or "You have collected a mount",
+    pet = (ns.L and ns.L["COLLECTED_PET_MSG"]) or "You have collected a battle pet",
+    toy = (ns.L and ns.L["COLLECTED_TOY_MSG"]) or "You have collected a toy",
+    illusion = (ns.L and ns.L["COLLECTED_ILLUSION_MSG"]) or "You have collected an illusion",
+    achievement = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!",
+    criteria_progress = (ns.L and ns.L["CRITERIA_PROGRESS_MSG"]) or "Progress",
+    title = (ns.L and ns.L["EARNED_TITLE_MSG"]) or "You have earned a title",
+    plan = (ns.L and ns.L["COMPLETED_PLAN_MSG"]) or "You have completed a plan",
+    item = (ns.L and ns.L["COLLECTED_ITEM_MSG"]) or "You received a rare drop",
+    reminder = (ns.L and ns.L["REMINDER_PREFIX"]) or "Reminder",
+}
 
 ---Build a standardized notification config
 ---@return table config Ready to pass to ShowModalNotification
 function WarbandNexus:BuildNotificationConfig(notifType, name, icon, overrides)
-    local resolvedIcon = icon or CATEGORY_ICONS[notifType] or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local safeIcon = icon
+    if safeIcon and issecretvalue and issecretvalue(safeIcon) then safeIcon = nil end
+    local safeName = name
+    if safeName and issecretvalue and issecretvalue(safeName) then safeName = nil end
+    local resolvedIcon = safeIcon or CATEGORY_ICONS[notifType] or DEFAULT_NOTIFICATION_ICON
     local config = {
         icon = resolvedIcon,
-        itemName = name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
+        itemName = safeName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
         action = ACTION_TEXT[notifType] or "",
         playSound = true,
         glowAtlas = DEFAULT_GLOW,
