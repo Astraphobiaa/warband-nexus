@@ -1353,6 +1353,14 @@ local MIDNIGHT_CATCHUP_CURRENCY = {
     [3194] = true, [3193] = true, [3192] = true, [3191] = true, [3190] = true,
 }
 
+local catchUpCurrencyToSkillLine = {}
+for slID, source in pairs(MIDNIGHT_WEEKLY_SOURCES) do
+    local cid = source and source.catchUpCurrencyID
+    if cid and cid > 0 then
+        catchUpCurrencyToSkillLine[cid] = slID
+    end
+end
+
 --- True if the quest counts as "done" for UI: flagged complete, in-log complete, or ready to turn in.
 --- Matches DailyQuestManager so weekly profession rows update before the flag bit catches up.
 local function QuestProgressComplete(questID)
@@ -1643,14 +1651,14 @@ local function CollectRecipeSummaryData()
             .. " firstCraft(done/total)=" .. tostring(firstCraftDoneCount) .. "/" .. tostring(firstCraftTotalCount)
             .. " available=" .. tostring(firstCraftAvailableCount)
             .. " skillUp=" .. tostring(skillUpCount))
-    end
-    if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode and WarbandNexus.Print then
-        WarbandNexus:Print("[ProfDebug] " .. tostring(professionName)
-            .. " (slID " .. tostring(skillLineID) .. ")"
-            .. " raw=" .. tostring(rawRecipeCount)
-            .. ", midnight=" .. tostring(totalCount)
-            .. ", learned=" .. tostring(knownCount)
-            .. ", firstCraft=" .. tostring(firstCraftDoneCount) .. "/" .. tostring(firstCraftTotalCount))
+        if DebugVerbosePrint then
+            DebugVerbosePrint("[ProfDebug] " .. tostring(professionName)
+                .. " (slID " .. tostring(skillLineID) .. ")"
+                .. " raw=" .. tostring(rawRecipeCount)
+                .. ", midnight=" .. tostring(totalCount)
+                .. ", learned=" .. tostring(knownCount)
+                .. ", firstCraft=" .. tostring(firstCraftDoneCount) .. "/" .. tostring(firstCraftTotalCount))
+        end
     end
 
     if WarbandNexus.SendMessage then
@@ -1918,7 +1926,68 @@ end
 
 -- EVENT HANDLERS
 
+-- TRADE_SKILL_LIST_UPDATE can fire several times per craft; full GetAllRecipeIDs scans are expensive.
+local RECIPE_SUMMARY_SCAN_MIN_INTERVAL = 2.0
+local lastRecipeSummaryScanAt = 0
+local recipeSummaryScanPending = false
+local recipeSummaryScanScheduled = false
+local lastTradeSkillListSkillLineID = nil
+local tradeSkillListUpdateNeedsReschedule = false
+
+local function GetOpenTradeSkillChildSkillLineID()
+    if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionChildSkillLineID then return nil end
+    local slOk, slID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+    if slOk and slID and slID > 0 then
+        return slID
+    end
+    return nil
+end
+
+local function RunRecipeSummaryScanAndKnowledge()
+    recipeSummaryScanPending = false
+    recipeSummaryScanScheduled = false
+    lastRecipeSummaryScanAt = GetTime()
+    pcall(CollectRecipeSummaryData)
+    pcall(CollectMidnightKnowledgeProgressData)
+end
+
+local function ScheduleThrottledRecipeSummaryScan(forceImmediate)
+    recipeSummaryScanPending = true
+    if recipeSummaryScanScheduled then return end
+
+    local delay = 0.1
+    if not forceImmediate then
+        local elapsed = GetTime() - lastRecipeSummaryScanAt
+        if elapsed < RECIPE_SUMMARY_SCAN_MIN_INTERVAL then
+            delay = RECIPE_SUMMARY_SCAN_MIN_INTERVAL - elapsed
+        end
+    end
+
+    recipeSummaryScanScheduled = true
+    C_Timer.After(delay, function()
+        if not recipeSummaryScanPending then
+            recipeSummaryScanScheduled = false
+            return
+        end
+        if not WarbandNexus or not IsCurrentCharacterTracked() then
+            recipeSummaryScanPending = false
+            recipeSummaryScanScheduled = false
+            return
+        end
+        RunRecipeSummaryScanAndKnowledge()
+    end)
+end
+
+local function RunLightTradeSkillListCollectors()
+    pcall(CollectConcentrationData)
+    pcall(CollectAllExpansionProfessions, true)
+    ScheduleThrottledRecipeSummaryScan(false)
+end
+
 local function RunAllProfessionCollectors()
+    recipeSummaryScanPending = false
+    recipeSummaryScanScheduled = false
+    lastRecipeSummaryScanAt = GetTime()
     if not WarbandNexus then return end
     pcall(CollectConcentrationData)
     pcall(CollectKnowledgeData)
@@ -1987,6 +2056,8 @@ end
 function WarbandNexus:OnTradeSkillClose()
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
+
+    lastTradeSkillListSkillLineID = nil
     
     if self.SendMessage then
         self:SendMessage(E.PROFESSION_WINDOW_CLOSED)
@@ -2011,23 +2082,38 @@ function WarbandNexus:OnTradeSkillListUpdate()
         return
     end
     
-    if tradeSkillListUpdatePending then return end
+    if tradeSkillListUpdatePending then
+        tradeSkillListUpdateNeedsReschedule = true
+        return
+    end
     tradeSkillListUpdatePending = true
     
     C_Timer.After(0.5, function()
         tradeSkillListUpdatePending = false
         if not WarbandNexus or not IsCurrentCharacterTracked() then return end
-        -- Re-collect all tab-specific data when the expansion tab changes.
-        -- Each data type is keyed by skillLineID so switching tabs writes to the correct bucket.
-        pcall(CollectConcentrationData)
-        pcall(CollectKnowledgeData)
-        pcall(CollectAllExpansionProfessions, true)
-        pcall(CollectRecipeSummaryData)
-        pcall(CollectMidnightKnowledgeProgressData)
-        pcall(CollectCooldownData)
-        pcall(CollectCraftingOrdersData)
-        pcall(CollectEquipmentDataForCurrentProfession)
-        pcall(CollectEquipmentByDetection)
+
+        local skillLineID = GetOpenTradeSkillChildSkillLineID()
+        local expansionSwitched = lastTradeSkillListSkillLineID ~= nil
+            and skillLineID ~= nil
+            and skillLineID ~= lastTradeSkillListSkillLineID
+        if skillLineID then
+            lastTradeSkillListSkillLineID = skillLineID
+        end
+
+        if expansionSwitched then
+            -- Expansion tab switch: refresh every bucket keyed by skillLineID.
+            RunAllProfessionCollectors()
+        else
+            -- Post-craft bursts: avoid full recipe/cooldown/order rescans every list tick.
+            RunLightTradeSkillListCollectors()
+        end
+
+        if tradeSkillListUpdateNeedsReschedule then
+            tradeSkillListUpdateNeedsReschedule = false
+            if WarbandNexus.OnTradeSkillListUpdate then
+                WarbandNexus:OnTradeSkillListUpdate()
+            end
+        end
     end)
 end
 
@@ -2040,8 +2126,7 @@ function WarbandNexus:OnNewRecipeLearned()
     if not IsCurrentCharacterTracked() then return end
     C_Timer.After(0.3, function()
         if not WarbandNexus or not IsCurrentCharacterTracked() then return end
-        pcall(CollectRecipeSummaryData)
-        pcall(CollectMidnightKnowledgeProgressData)
+        ScheduleThrottledRecipeSummaryScan(false)
     end)
 end
 
@@ -2987,17 +3072,45 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
     end
 end
 
+local progressCurrencyRefreshPending = false
+local pendingProgressCurrencySkillLineID = nil
+
 function WarbandNexus:OnProfessionProgressCurrencyChanged(currencyID)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     if not currencyID or not MIDNIGHT_CATCHUP_CURRENCY[currencyID] then return end
-    local charKey = ResolveTrackedCharactersTableKey()
-    if not charKey then return end
-    local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
-    if not charData then return end
-    if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 and self.SendMessage then
-        self:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
+
+    local skillLineID = catchUpCurrencyToSkillLine[currencyID]
+    if skillLineID then
+        pendingProgressCurrencySkillLineID = skillLineID
     end
+    if progressCurrencyRefreshPending then return end
+    progressCurrencyRefreshPending = true
+
+    C_Timer.After(0.75, function()
+        progressCurrencyRefreshPending = false
+        if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+        local charKey = ResolveTrackedCharactersTableKey()
+        if not charKey then return end
+        local charData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+            and WarbandNexus.db.global.characters[charKey]
+        if not charData then return end
+
+        local refreshed = 0
+        local targetSkillLineID = pendingProgressCurrencySkillLineID
+        pendingProgressCurrencySkillLineID = nil
+        if targetSkillLineID then
+            if CollectMidnightKnowledgeProgressForSkillLine(charData, targetSkillLineID, nil, "Midnight") then
+                refreshed = 1
+            end
+        else
+            refreshed = RefreshAllMidnightKnowledgeProgressForCharacter(charData)
+        end
+
+        if refreshed > 0 and WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
+        end
+    end)
 end
 
 --[[
