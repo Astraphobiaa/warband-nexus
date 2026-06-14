@@ -47,6 +47,9 @@ PROJECT-CLEANUP-AUDIT.md
 
 # Archives / packager output (local only — never commit)
 # build/ is also excluded by the root /* deny rule below; kept explicit for pack scripts.
+*.zip
+*.rar
+*.7z
 build/
 WarbandNexus/
 
@@ -59,6 +62,11 @@ WarbandNexus/
 # ---------------------------------------------------------------------------
 /*
 !.gitignore
+!.pkgmeta
+!.github/
+!.github/**
+!.github/state/
+.github/scripts/__pycache__/
 
 !WarbandNexus.toc
 !Core.lua
