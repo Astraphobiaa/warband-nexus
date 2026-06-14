@@ -11,6 +11,7 @@ local COLORS = ns.UI_COLORS
 local ColumnOrder = ns.ColumnOrder
 local ApplyVisuals = ns.UI_ApplyVisuals
 local HideTooltip = ns.UI_HideTooltip
+local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 
 local function ControlChromeBackdrop()
     if ns.UI_GetControlChromeBackdrop then
@@ -151,6 +152,9 @@ local function PvE_GetOrCreateColumnPickerMenu()
     end
     m:Hide()
     WarbandNexus._wnPvEColumnPickerMenu = m
+    if Factory.EnsureDropdownEscClose then
+        Factory:EnsureDropdownEscClose(m)
+    end
     return m
 end
 
@@ -177,8 +181,8 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     local colOrder = EnsurePvEColumnOrder(profile)
     local toggleCount = #crestDefs + 8
     local contentH = HEADER_H + toggleCount * ROW + ROW + ROW + 10
-    local maxInner = (dl.insetTop or 4) + (dl.maxVisibleRows or 6) * ROW + (dl.insetBottom or 4)
-    local viewportInnerH = math.min(contentH, maxInner)
+    -- Fixed column list: show every toggle without a scroll cap (unlike generic dropdown menus).
+    local viewportInnerH = contentH
     local menuH = viewportInnerH + 2 * menuPad
 
     menu:SetSize(menuW, menuH)
@@ -218,7 +222,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
 
     local logicalRows = math.max(1, math.ceil(contentH / ROW))
     scrollFrame._wnDropdownRowCount = logicalRows
-    scrollFrame._wnDropdownMaxVisible = dl.maxVisibleRows or 6
+    scrollFrame._wnDropdownMaxVisible = logicalRows
     scrollFrame._wnDropdownViewportH = viewportInnerH
 
     if Factory.UpdateScrollBarVisibility then Factory:UpdateScrollBarVisibility(scrollFrame) end
@@ -382,6 +386,18 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         end)
         if Factory.ApplyHighlight then Factory:ApplyHighlight(resetBtn) end
     end
+
+    if scrollFrame and scrollChild and Factory.UpdateScrollBarVisibility then
+        local fh = scrollFrame:GetHeight()
+        if fh and fh > 0 then
+            local slack = (ns.UI_LAYOUT and ns.UI_LAYOUT.DROPDOWN_SCROLL_FIT_SLACK) or 8
+            local ch = scrollChild:GetHeight() or 0
+            if ch > fh and ch <= fh + slack then
+                scrollChild:SetHeight(fh)
+            end
+        end
+        Factory:UpdateScrollBarVisibility(scrollFrame)
+    end
 end
 
 PvE_ColumnPickerTryRefreshAfterDraw = function(addon)
@@ -404,6 +420,7 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     if ApplyVisuals then
         ApplyVisuals(hideBtn, ControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
     end
+    WarbandNexus._wnPvEHideFilterBtn = hideBtn
     local hideBtnText = FontManager:CreateFontString(hideBtn, "body", "OVERLAY")
     hideBtnText:SetPoint("CENTER", 0, 0)
     hideBtnText:SetJustifyH("CENTER")
@@ -459,6 +476,9 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
             menu:SetFrameStrata("FULLSCREEN_DIALOG")
             menu:SetFrameLevel(5200)
             hideBtn._menu = menu
+            if Factory.EnsureDropdownEscClose then
+                Factory:EnsureDropdownEscClose(menu)
+            end
         end
         local profile = addon and addon.db and addon.db.profile
         local cur = GetLowLevelHideThreshold(profile)

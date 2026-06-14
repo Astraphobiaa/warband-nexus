@@ -701,6 +701,21 @@ local function CloseOtherSettingsDropdownForClick(currentDropdown)
     end
 end
 
+---@return boolean closed
+function ns.UI_CloseSettingsOpenDropdown()
+    if not ns._wnSettingsOpenDropdownMenu or not ns._wnSettingsOpenDropdownMenu:IsShown() then
+        return false
+    end
+    ns._wnSettingsOpenDropdownMenu:Hide()
+    if ns._wnSettingsDropdownClickCatcher then
+        ns._wnSettingsDropdownClickCatcher:Hide()
+    end
+    ns._wnSettingsOpenDropdownMenu = nil
+    ns._wnSettingsOpenDropdownOwner = nil
+    ns._wnSettingsDropdownClickCatcher = nil
+    return true
+end
+
 -- Settings controls that use accent borders (dropdown triggers, chrome buttons, inputs).
 -- Declared before CreateDropdownWidget / CreateInputWidget: Lua locals are not visible before their line.
 local settingsAccentChrome = {}
@@ -1045,11 +1060,19 @@ local function CreateDropdownWidget(parent, option, yOffset)
         if not InCombatLockdown() then menu:SetPropagateKeyboardInput(false) end
         menu:SetScript("OnKeyDown", function(self, key)
             if key == "ESCAPE" then
-                if dropdown._clickCatcher then
-                    dropdown._clickCatcher:Hide()
+                if ns.UI_CloseSettingsOpenDropdown then
+                    ns.UI_CloseSettingsOpenDropdown()
+                else
+                    if dropdown._clickCatcher then
+                        dropdown._clickCatcher:Hide()
+                    end
+                    self:Hide()
                 end
-                self:Hide()
                 activeMenu = nil
+                ns._wnEscJustHandled = true
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(0, function() ns._wnEscJustHandled = nil end)
+                end
             end
         end)
         

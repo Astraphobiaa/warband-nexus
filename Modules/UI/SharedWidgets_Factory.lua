@@ -530,6 +530,33 @@ end
 -- SharedWidgets.lua, where their local definitions live — assigning them here
 -- resolved to nil globals and broke five tabs.)
 
+local function GetDropdownScrollFitSlack()
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    return layout.DROPDOWN_SCROLL_FIT_SLACK or 8
+end
+
+---@param scrollFrame ScrollFrame
+---@param contentHeight number
+---@param frameHeight number
+---@param slack number|nil
+---@return boolean needsScroll
+local function DropdownScrollFrameNeedsScroll(scrollFrame, contentHeight, frameHeight, slack)
+    slack = slack or GetDropdownScrollFitSlack()
+    if scrollFrame and scrollFrame._wnDropdownRowCount and scrollFrame._wnDropdownMaxVisible then
+        if scrollFrame._wnDropdownRowCount > scrollFrame._wnDropdownMaxVisible then
+            return true
+        end
+    end
+    if frameHeight and frameHeight >= 2 then
+        return (contentHeight or 0) > frameHeight + slack
+    end
+    local vh = scrollFrame and scrollFrame._wnDropdownViewportH
+    if vh then
+        return (contentHeight or 0) > vh + slack
+    end
+    return (contentHeight or 0) > (frameHeight or 0) + slack
+end
+
 -- FACTORY METHODS (Standardized Frame Creation)
 
 -- NOTE: CreateContainer implementation moved to line 4789 (Factory pattern wrapper)
@@ -865,17 +892,20 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         local bar = self.ScrollBar
         local scrollChild = self:GetScrollChild()
         if not scrollChild then return end
+        local slack = GetDropdownScrollFitSlack()
         local contentHeight = scrollChild:GetHeight() or 0
         local frameHeight = self:GetHeight() or 0
-        local needsScroll
-        if self._wnDropdownMaxVisible and self._wnDropdownRowCount then
-            -- Dropdown menus: row cap is authoritative (GetHeight can lag one frame on open).
-            needsScroll = self._wnDropdownRowCount > self._wnDropdownMaxVisible
-        elseif frameHeight < 2 and self._wnDropdownViewportH then
-            needsScroll = contentHeight > self._wnDropdownViewportH + 1
-        else
-            needsScroll = contentHeight > frameHeight + 1
+        local isDropdown = self._wnDropdownRowCount or self._wnDropdownViewportH
+        local needsScroll = DropdownScrollFrameNeedsScroll(self, contentHeight, frameHeight, slack)
+
+        if not needsScroll and isDropdown and scrollChild and frameHeight >= 2 then
+            if contentHeight > frameHeight and contentHeight <= frameHeight + slack then
+                scrollChild:SetHeight(frameHeight)
+                contentHeight = frameHeight
+            end
         end
+
+        self._wnDropdownNeedsScroll = isDropdown and needsScroll or nil
 
         local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self)
         local col = self._wnScrollBarColumn
@@ -896,6 +926,14 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
                 if self.SetVerticalScroll then
                     self:SetVerticalScroll(0)
                 end
+            end
+        end
+
+        if self.EnableMouseWheel then
+            if isDropdown then
+                self:EnableMouseWheel(needsScroll)
+            else
+                self:EnableMouseWheel(true)
             end
         end
 
@@ -926,6 +964,17 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     -- Smooth scroll: base step * speed multiplier from profile
     scrollFrame:EnableMouseWheel(true)
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local isDropdown = self._wnDropdownRowCount or self._wnDropdownViewportH
+        local maxScroll = self:GetVerticalScrollRange()
+        if isDropdown then
+            local slack = GetDropdownScrollFitSlack()
+            if self._wnDropdownNeedsScroll == false or maxScroll <= slack then
+                if self.SetVerticalScroll then
+                    self:SetVerticalScroll(0)
+                end
+                return
+            end
+        end
         local addon = _G.WarbandNexus or ns.WarbandNexus
         local base = (ns.UI_LAYOUT or {}).SCROLL_BASE_STEP or 28
         local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or (ns.UI_LAYOUT or {}).SCROLL_SPEED_DEFAULT or 1.0
@@ -967,6 +1016,7 @@ function ns.UI.Factory:GetDropdownLayout()
         insetTop = layout.DROPDOWN_INSET_TOP or sp.DROPDOWN_INSET_TOP or 4,
         insetBottom = layout.DROPDOWN_INSET_BOTTOM or sp.DROPDOWN_INSET_BOTTOM or 4,
         scrollGap = layout.DROPDOWN_SCROLL_GAP or sp.DROPDOWN_SCROLL_GAP or 2,
+        scrollFitSlack = layout.DROPDOWN_SCROLL_FIT_SLACK or sp.DROPDOWN_SCROLL_FIT_SLACK or 8,
         scrollBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or sp.SCROLLBAR_COLUMN_WIDTH or 26,
     }
 end
@@ -1090,6 +1140,7 @@ function ns.UI.Factory:ApplyDropdownScrollLayout(menu, rowCount, rowHeight, opts
         if C_Timer and C_Timer.After then
             C_Timer.After(0, syncBar)
         end
+        self:EnsureDropdownEscClose(menu)
     end
     return scroll, scrollChild, barColumn, menuOuterH, scrollContentH
 end
@@ -1164,6 +1215,94 @@ function ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
     end
 end
 
+-- DROPDOWN ESC: close flyouts before main / settings windows (WindowManager:CloseTopWindow).
+
+local dropdownEscCloseHooks = {}
+
+---Optional: register an extra close hook (return true when a menu was open and is now closed).
+function ns.UI_RegisterDropdownEscClose(closeFn)
+    if type(closeFn) ~= "function" then return end
+    dropdownEscCloseHooks[#dropdownEscCloseHooks + 1] = closeFn
+end
+
+---Install ESC-to-close on a dropdown menu host (combobox popover). Safe to call once per menu frame.
+function ns.UI.Factory:EnsureDropdownEscClose(menu)
+    if not menu or menu._wnDropdownEscInstalled then return end
+    menu._wnDropdownEscInstalled = true
+    if not InCombatLockdown() and menu.EnableKeyboard then
+        menu:EnableKeyboard(true)
+    end
+    if menu.SetPropagateKeyboardInput then
+        menu:SetPropagateKeyboardInput(false)
+    end
+    menu:SetScript("OnKeyDown", function(self, key)
+        if key ~= "ESCAPE" then return end
+        if ns.UI_CloseOpenDropdownMenus and ns.UI_CloseOpenDropdownMenus() then
+            ns._wnEscJustHandled = true
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function() ns._wnEscJustHandled = nil end)
+            end
+        elseif self.Hide then
+            self:Hide()
+        end
+    end)
+end
+
+---@return boolean closed Any open dropdown / flyout menu was dismissed.
+function ns.UI_CloseOpenDropdownMenus()
+    local closed = false
+
+    for i = 1, #dropdownEscCloseHooks do
+        local ok, did = pcall(dropdownEscCloseHooks[i])
+        if ok and did then
+            closed = true
+        end
+    end
+
+    if ns.UI_CloseSettingsOpenDropdown and ns.UI_CloseSettingsOpenDropdown() then
+        closed = true
+    end
+
+    local WN = ns.WarbandNexus
+    if WN then
+        if WN._wnPvEColumnPickerMenu and WN._wnPvEColumnPickerMenu:IsShown() and WN.HidePvEColumnPickerMenu then
+            WN:HidePvEColumnPickerMenu()
+            closed = true
+        end
+        local hideBtn = WN._wnPvEHideFilterBtn
+        if hideBtn then
+            if hideBtn._menu and hideBtn._menu:IsShown() then
+                hideBtn._menu:Hide()
+                closed = true
+            end
+            if hideBtn._catcher and hideBtn._catcher:IsShown() then
+                hideBtn._catcher:Hide()
+                closed = true
+            end
+        end
+        if WN.HideProfessionColumnPicker then
+            local profMenu = WN._wnProfColumnPickerMenu
+            if profMenu and profMenu:IsShown() then
+                WN:HideProfessionColumnPicker()
+                closed = true
+            end
+        end
+    end
+
+    if ns.HideGearToolbarDropdowns and ns.HideGearToolbarDropdowns() then
+        closed = true
+    end
+
+    if ns.UI_CloseCharacterTabFlyoutMenus and ns.UI_CloseCharacterTabFlyoutMenus() then
+        closed = true
+    end
+
+    if ns.PlansTracker_CloseOpenDropdown and ns.PlansTracker_CloseOpenDropdown() then
+        closed = true
+    end
+
+    return closed
+end
 
 ns.UI_ApplyDropdownScrollLayout = function(menu, rowCount, rowHeight, opts)
     local F = ns.UI and ns.UI.Factory

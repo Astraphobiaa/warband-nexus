@@ -621,6 +621,9 @@ function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
             if catcher then catcher:Hide() end
         end)
         WarbandNexus._wnProfColumnPickerMenu = menu
+        if FactDd and FactDd.EnsureDropdownEscClose then
+            FactDd:EnsureDropdownEscClose(menu)
+        end
     end
     if WarbandNexus.db and WarbandNexus.db.profile then
         EnsureProfessionVisibleColumns(WarbandNexus.db.profile)

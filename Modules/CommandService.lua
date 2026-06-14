@@ -30,12 +30,56 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
     addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
-    addon:Print("  |cff00ccff/wn gearstash|r — Gear stash recommendations diagnose + rescan (chat)")
-    addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
     if IsDebugOn() then
-        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn charkeys|r, |cff00ccff/wn guidmigrate|r, |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
+        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn debug|r, |cff00ccff/wn gearstash|r, |cff00ccff/wn tc test|r, |cff00ccff/wn charkeys|r, |cff00ccff/wn guidmigrate|r, |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn tc sync-stats|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
     end
+end
+
+-- DEBUG: try count queries (/wn tc sync-stats, /wn trycount mount <id>)
+
+---@param addon table WarbandNexus
+---@param input string Raw slash payload after /wn
+function CommandService:HandleTryCountDebugCommand(addon, input)
+    local _, subCmd, collectibleType, id = addon:GetArgs(input, 4)
+    local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
+    if subLower == "sync-stats" or subLower == "syncstats" then
+        if addon.ForceTryCounterStatisticsSync then
+            addon:ForceTryCounterStatisticsSync()
+        else
+            addon:Print("|cffff6600Try counter module not loaded.|r")
+        end
+        return
+    end
+    if not collectibleType or not id then
+        addon:Print("|cffff6600Usage:|r /wn trycount <type> <id>")
+        addon:Print("|cff888888Example:|r /wn trycount item 226683")
+        addon:Print("|cff888888Types:|r item, mount, pet, toy")
+        addon:Print("|cff888888Smoke test:|r /wn tc test  (no debug required)")
+        addon:Print("|cff888888Sync:|r /wn tc sync-stats  (re-read WoW Statistics for this character)")
+        return
+    end
+
+    id = tonumber(id)
+    if not id then
+        addon:Print("|cffff6600Invalid ID:|r Must be a number")
+        return
+    end
+
+    if issecretvalue and issecretvalue(collectibleType) then
+        addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
+        return
+    end
+    local validTypes = { item = true, mount = true, pet = true, toy = true }
+    local ctLower = collectibleType:lower()
+    if not validTypes[ctLower] then
+        addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
+        return
+    end
+
+    local count = addon:GetTryCount(ctLower, id)
+    addon:Print(string.format("|cff9370DB[Try Count]|r %s |cff00ccff%d|r = |cffffff00%d attempts|r",
+        ctLower, id, count))
 end
 
 -- MAIN SLASH COMMAND HANDLER
@@ -161,6 +205,25 @@ function CommandService:HandleSlashCommand(addon, input)
         else
             addon:Print("|cff00ccff/wn reminder syncwq|r — Scan Midnight maps and save all seen world quests to the maintained catalog.")
         end
+        return
+
+    elseif cmd == "tc" or cmd == "trycount" then
+        local _, subCmd = addon:GetArgs(input, 2)
+        local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
+        if subLower == "test" then
+            if addon.RunTryCounterSelfTest then
+                addon:RunTryCounterSelfTest()
+            else
+                addon:Print("|cffff6600[WN]|r Try Counter module not loaded.")
+            end
+            return
+        end
+        if not IsDebugOn() then
+            addon:Print("|cffff6600Usage:|r /wn tc test  — smoke test (always available)")
+            addon:Print("|cff888888Other /wn tc commands need |cff00ccff/wn debug|r first.")
+            return
+        end
+        CommandService:HandleTryCountDebugCommand(addon, input)
         return
 
     elseif cmd == "keys" or cmd == "keystones" then
@@ -460,47 +523,6 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "trycount" or cmd == "tc" then
-        local _, subCmd, collectibleType, id = addon:GetArgs(input, 4)
-        local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
-        if subLower == "sync-stats" or subLower == "syncstats" then
-            if addon.ForceTryCounterStatisticsSync then
-                addon:ForceTryCounterStatisticsSync()
-            else
-                addon:Print("|cffff6600Try counter module not loaded.|r")
-            end
-            return
-        end
-        if not collectibleType or not id then
-            addon:Print("|cffff6600Usage:|r /wn trycount <type> <id>")
-            addon:Print("|cff888888Example:|r /wn trycount item 226683")
-            addon:Print("|cff888888Types:|r item, mount, pet, toy")
-            addon:Print("|cff888888Sync:|r /wn tc sync-stats  (re-read WoW Statistics for this character)")
-            return
-        end
-        
-        id = tonumber(id)
-        if not id then
-            addon:Print("|cffff6600Invalid ID:|r Must be a number")
-            return
-        end
-        
-        if issecretvalue and issecretvalue(collectibleType) then
-            addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
-            return
-        end
-        local validTypes = { item = true, mount = true, pet = true, toy = true }
-        local ctLower = collectibleType:lower()
-        if not validTypes[ctLower] then
-            addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
-            return
-        end
-        
-        local count = addon:GetTryCount(ctLower, id)
-        addon:Print(string.format("|cff9370DB[Try Count]|r %s |cff00ccff%d|r = |cffffff00%d attempts|r", 
-            ctLower, id, count))
-        return
-    
     elseif cmd == "check" or cmd == "loot" or cmd == "drops" then
         if addon.CheckTargetDrops then
             addon:CheckTargetDrops()

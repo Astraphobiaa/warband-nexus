@@ -2623,6 +2623,208 @@ function Fns.ShouldSkipMissIncrementForDrop(drop)
     return Fns.IsDropObtainedThisKill(tcType, tryKey, drop)
 end
 
+---NEW_MOUNT_ADDED / NEW_PET_ADDED: definitive drop-acquired signal when no LOOT_OPENED ties to the kill
+---(achievement grants, post-cinematic chests). Consumes the reseed mark so obtained chat shows the right count.
+---@param tcType "mount"|"pet"
+---@param collectibleID number mountID or speciesID
+function Fns.HandleNewCollectibleAdded(tcType, collectibleID)
+    if not Fns.IsAutoTryCounterEnabled() then return end
+    if not collectibleID or type(collectibleID) ~= "number" or collectibleID <= 0 then return end
+    if not Fns.EnsureDB() then return end
+
+    local candidateKeys = { collectibleID }
+    if tcType == "mount" and resolvedIDsReverse then
+        local itemID = resolvedIDsReverse[collectibleID]
+        if type(itemID) == "number" and itemID > 0 and itemID ~= collectibleID then
+            candidateKeys[#candidateKeys + 1] = itemID
+        end
+    end
+
+    local linkLabel = "|cffa335ee[#" .. tostring(collectibleID) .. "]|r"
+    if tcType == "mount" and C_MountJournal and C_MountJournal.GetMountInfoByID then
+        local ok, name = pcall(C_MountJournal.GetMountInfoByID, collectibleID)
+        if ok and type(name) == "string" and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+            linkLabel = "|cffa335ee[" .. name .. "]|r"
+        end
+    elseif tcType == "pet" and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
+        local ok, name = pcall(C_PetJournal.GetPetInfoBySpeciesID, collectibleID)
+        if ok and type(name) == "string" and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+            linkLabel = "|cffa335ee[" .. name .. "]|r"
+        end
+    end
+
+    for i = 1, #candidateKeys do
+        local key = candidateKeys[i]
+        if Fns.IsDropAlreadyCounted(tcType, key) then
+            Fns.MarkDropObtainedThisKill(tcType, key, nil)
+            local preResetCount = WarbandNexus:GetTryCount(tcType, key) or 0
+            local adjusted = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, key)
+            local L = ns.L
+            local total = (adjusted or 0) + 1
+            local fmt
+            if total <= 1 then
+                fmt = (L and L["TRYCOUNTER_CHAT_OBTAINED_FIRST_LINK"]) or "You got %s on your first try!"
+                Fns.TryChat("|cff9370DB[WN-Counter]|r |cffffffff" .. format(fmt, linkLabel) .. "|r")
+            else
+                fmt = (L and L["TRYCOUNTER_CHAT_OBTAINED_AFTER_LINK"]) or "You got %s after %d attempts!"
+                Fns.TryChat("|cff9370DB[WN-Counter]|r |cffffffff" .. format(fmt, linkLabel, total) .. "|r")
+            end
+            return
+        end
+    end
+end
+
+function WarbandNexus:OnTryCounterNewMountAdded(mountID)
+    if issecretvalue and mountID and issecretvalue(mountID) then return end
+    Fns.HandleNewCollectibleAdded("mount", tonumber(mountID))
+end
+
+function WarbandNexus:OnTryCounterNewPetAdded(petGUID)
+    if not petGUID or type(petGUID) ~= "string" or petGUID == "" then return end
+    if issecretvalue and issecretvalue(petGUID) then return end
+    if not C_PetJournal or not C_PetJournal.GetPetInfoByPetID then return end
+    local ok, speciesID = pcall(C_PetJournal.GetPetInfoByPetID, petGUID)
+    if not ok or type(speciesID) ~= "number" or speciesID <= 0 then return end
+    if issecretvalue and issecretvalue(speciesID) then return end
+    Fns.HandleNewCollectibleAdded("pet", speciesID)
+end
+
+--- End-to-end smoke test (slash: /wn tc test). Safe nil/bogus probes; see WN-DEBUG-try-counter-test.mdc.
+local TC_SELF_TEST_FAKE_ITEM_ID = 987654321
+
+function WarbandNexus:RunTryCounterSelfTest()
+    local WN = self
+    local pass, fail = 0, 0
+
+    local function linePass(label)
+        pass = pass + 1
+        WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label)
+    end
+    local function lineFail(label, err)
+        fail = fail + 1
+        local tail = err and (": " .. tostring(err)) or ""
+        WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
+    end
+    local function probe(label, fn)
+        local ok, err = pcall(fn)
+        if ok then linePass(label) else lineFail(label, err) end
+    end
+    local function requireFn(name)
+        if type(WN[name]) == "function" then
+            linePass(name .. " registered")
+        else
+            lineFail(name .. " missing")
+        end
+    end
+
+    WN:Print("|cff9370DB[WN-TC-Test]|r Try Counter smoke test (e2e)...")
+
+    requireFn("OnTryCounterNewMountAdded")
+    requireFn("OnTryCounterNewPetAdded")
+    requireFn("OnTryCounterCollectibleObtained")
+    requireFn("GetTryCount")
+    requireFn("SetTryCount")
+    requireFn("IncrementTryCount")
+    requireFn("ResetTryCount")
+    requireFn("CheckTargetDrops")
+
+    local evList = (ns.TryCounter and ns.TryCounter.TRYCOUNTER_EVENTS) or {}
+    local hasMountEv, hasPetEv = false, false
+    for i = 1, #evList do
+        local ev = evList[i]
+        if ev == "NEW_MOUNT_ADDED" then hasMountEv = true end
+        if ev == "NEW_PET_ADDED" then hasPetEv = true end
+    end
+    if hasMountEv then linePass("NEW_MOUNT_ADDED in TRYCOUNTER_EVENTS") else lineFail("NEW_MOUNT_ADDED missing from event list") end
+    if hasPetEv then linePass("NEW_PET_ADDED in TRYCOUNTER_EVENTS") else lineFail("NEW_PET_ADDED missing from event list") end
+
+    local notif = WN.db and WN.db.profile and WN.db.profile.notifications
+    if notif and notif.autoTryCounter == true then
+        linePass("autoTryCounter enabled")
+    else
+        WN:Print("|cffffcc00[WN-TC-Test] WARN|r autoTryCounter off — live kills won't count (Settings > Notifications).")
+    end
+    if Fns.IsTryCounterModuleEnabled and Fns.IsTryCounterModuleEnabled() then
+        linePass("Try Counter module enabled")
+    else
+        WN:Print("|cffffcc00[WN-TC-Test] WARN|r Try Counter module disabled in Settings > Modules.")
+    end
+
+    probe("OnTryCounterNewMountAdded(nil)", function() WN:OnTryCounterNewMountAdded(nil) end)
+    probe("OnTryCounterNewMountAdded(0)", function() WN:OnTryCounterNewMountAdded(0) end)
+    probe("OnTryCounterNewMountAdded(-1)", function() WN:OnTryCounterNewMountAdded(-1) end)
+    probe("OnTryCounterNewMountAdded(unowned id)", function() WN:OnTryCounterNewMountAdded(99999999) end)
+    probe("OnTryCounterNewPetAdded(\"\")", function() WN:OnTryCounterNewPetAdded("") end)
+    probe("OnTryCounterNewPetAdded(nil)", function() WN:OnTryCounterNewPetAdded(nil) end)
+    probe("OnTryCounterNewPetAdded(bogus guid)", function() WN:OnTryCounterNewPetAdded("BattlePet-0-0-0-0") end)
+
+    probe("OnTryCounterCollectibleObtained(nil,nil)", function() WN:OnTryCounterCollectibleObtained(nil, nil) end)
+    probe("OnTryCounterCollectibleObtained(empty)", function() WN:OnTryCounterCollectibleObtained("WN_TEST", {}) end)
+    probe("OnTryCounterCollectibleObtained(invalid type)", function()
+        WN:OnTryCounterCollectibleObtained("WN_TEST", { type = "bogus", id = 1 })
+    end)
+    probe("OnTryCounterCollectibleObtained(unowned mount)", function()
+        WN:OnTryCounterCollectibleObtained("WN_TEST", { type = "mount", id = 99999999 })
+    end)
+
+    probe("GetTryCount(nil,nil)", function()
+        local n = WN:GetTryCount(nil, nil)
+        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
+    end)
+    probe("GetTryCount(bogus type)", function()
+        local n = WN:GetTryCount("bogus", 1)
+        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
+    end)
+    probe("GetTryCount(mount,nil)", function()
+        local n = WN:GetTryCount("mount", nil)
+        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
+    end)
+    probe("GetTryCount(mount,1)", function()
+        local n = WN:GetTryCount("mount", 1)
+        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
+    end)
+    probe("GetTryCount(pet,1)", function()
+        local n = WN:GetTryCount("pet", 1)
+        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
+    end)
+    probe("GetTryCount(toy,1)", function()
+        local n = WN:GetTryCount("toy", 1)
+        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
+    end)
+    probe("GetTryCount(item,fake)", function()
+        local n = WN:GetTryCount("item", TC_SELF_TEST_FAKE_ITEM_ID)
+        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
+    end)
+
+    probe("IncrementTryCount(mount,nil)", function()
+        local n = WN:IncrementTryCount("mount", nil)
+        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
+    end)
+    probe("SetTryCount/GetTryCount roundtrip", function()
+        local fakeID = TC_SELF_TEST_FAKE_ITEM_ID
+        local old = WN:GetTryCount("item", fakeID)
+        WN:SetTryCount("item", fakeID, 42)
+        local n = WN:GetTryCount("item", fakeID)
+        if n ~= 42 then error("expected 42, got " .. tostring(n)) end
+        WN:SetTryCount("item", fakeID, old or 0)
+    end)
+    probe("ResetTryCount(nil id)", function() WN:ResetTryCount("mount", nil) end)
+
+    probe("ShouldSuppressBagToast(nil)", function()
+        local suppressed = WN:ShouldSuppressBagCollectibleToastAsTryCounterDuplicate(nil, nil, nil)
+        if suppressed ~= false then error("expected false") end
+    end)
+    probe("CheckTargetDrops(no target)", function() WN:CheckTargetDrops() end)
+
+    if fail == 0 then
+        WN:Print(string.format(
+            "|cff00ff00[WN-TC-Test] OK|r %d checks passed. Handlers tolerate nil/bogus inputs without Lua errors.",
+            pass))
+    else
+        WN:Print(string.format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed.", pass, fail))
+    end
+end
+
 function Fns.SumStatisticTotalsFromIds(statIds)
     if not statIds or #statIds == 0 then return 0, false end
     local GetStat = GetStatistic

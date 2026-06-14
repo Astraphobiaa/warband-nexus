@@ -252,12 +252,21 @@ local function WnCloseFullAdvFilter(ownerBtn)
 end
 
 --- Close Filter flyouts and row pick menus (resize / scroll / tab rebuild).
+---@return boolean closed
 function ns.UI_CloseCharacterTabFlyoutMenus()
+    local closed = false
+    if activeSortDropdownMenu and activeSortDropdownMenu.IsShown and activeSortDropdownMenu:IsShown() then
+        closed = true
+    end
+    if activePickMenu and activePickMenu.IsShown and activePickMenu:IsShown() then
+        closed = true
+    end
     WnCloseFullAdvFilter(nil)
     if activePickMenu and activePickMenu.Hide then
         activePickMenu:Hide()
     end
     activePickMenu = nil
+    return closed
 end
 
 --- Characters / Professions title card: sort modes + section filter + optional delete custom header.

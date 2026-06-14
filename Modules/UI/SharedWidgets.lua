@@ -1438,6 +1438,8 @@ local UI_SPACING = {
     DROPDOWN_INSET_TOP = 4,
     DROPDOWN_INSET_BOTTOM = 4,
     DROPDOWN_SCROLL_GAP = 2,
+    --- Pixel slack before dropdown scroll frames treat content as overflowing (font/anchor rounding).
+    DROPDOWN_SCROLL_FIT_SLACK = 8,
 
     titleCardControlRightInset = 0,
     headerToolbarControlGap = 8,

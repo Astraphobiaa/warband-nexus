@@ -134,6 +134,10 @@ end
     @return boolean - true if a window was closed, false if nothing to close
 ]]
 function WindowManager:CloseTopWindow()
+    -- Dropdown flyouts (Columns, sort, char picker, settings comboboxes) close before any registered window.
+    if ns.UI_CloseOpenDropdownMenus and ns.UI_CloseOpenDropdownMenus() then
+        return true
+    end
     -- Pick the topmost visible window: highest priority, then highest FrameLevel,
     -- then latest registration index (typical "opened last" among equal strata).
     local best = nil

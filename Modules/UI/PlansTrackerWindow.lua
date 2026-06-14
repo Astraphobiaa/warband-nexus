@@ -2018,6 +2018,16 @@ function WarbandNexus:TogglePlansTrackerWindow()
     self:ShowPlansTrackerWindow()
 end
 
+---@return boolean closed
+function ns.PlansTracker_CloseOpenDropdown()
+    if activeDropdownMenu and activeDropdownMenu:IsShown() then
+        activeDropdownMenu:Hide()
+        activeDropdownMenu = nil
+        return true
+    end
+    return false
+end
+
 ns.PlansTrackerWindow = ns.PlansTrackerWindow or {}
 function ns.PlansTrackerWindow.RefreshTheme()
     if ns.FontManager and ns.FontManager.RefreshThemeTypography then

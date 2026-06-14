@@ -2407,10 +2407,33 @@ local function EnsureGearEntryColumnLabels(entryBtn)
     entryBtn._realmLabel = FontManager:CreateFontString(entryBtn, GFR("gearCharSelector"), "OVERLAY")
 end
 
---- Close Gear character picker when main addon frame hides (menu is parented to UIParent).
+--- Close Gear character picker and Hide-filter flyout when main addon frame hides (menus parent to UIParent).
+---@return boolean closed
+function ns.HideGearToolbarDropdowns()
+    local closed = false
+    if gearCharDropdownMenu and gearCharDropdownMenu:IsShown() then
+        gearCharDropdownMenu:Hide()
+        closed = true
+    end
+    if gearCharDropdownBg and gearCharDropdownBg:IsShown() then
+        gearCharDropdownBg:Hide()
+        closed = true
+    end
+    if gearHideFilterBtn then
+        if gearHideFilterBtn._menu and gearHideFilterBtn._menu:IsShown() then
+            gearHideFilterBtn._menu:Hide()
+            closed = true
+        end
+        if gearHideFilterBtn._catcher and gearHideFilterBtn._catcher:IsShown() then
+            gearHideFilterBtn._catcher:Hide()
+            closed = true
+        end
+    end
+    return closed
+end
+
 function ns.HideGearCharacterDropdown()
-    if gearCharDropdownMenu then gearCharDropdownMenu:Hide() end
-    if gearCharDropdownBg then gearCharDropdownBg:Hide() end
+    ns.HideGearToolbarDropdowns()
 end
 
 local function CreateCharacterSelector(parent, currentCharKey, yOffset)
