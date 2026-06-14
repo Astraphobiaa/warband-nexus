@@ -499,6 +499,8 @@ L["CURRENCY_CHARACTER_SPECIFIC"] = "Devises spécifiques au personnage"
 L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Limitation du transfert de devises"
 L["CURRENCY_TRANSFER_NOTICE_DESC"] = "L'API Blizzard ne prend pas en charge les transferts automatiques de devises. Veuillez utiliser la fenêtre de devises en jeu pour transférer manuellement les devises de bataillon."
 L["CURRENCY_UNKNOWN"] = "Devise inconnue"
+L["CURRENCY_TOOLTIP_PER_CHARACTER"] = "Par personnage"
+L["CURRENCY_TOOLTIP_MORE_CHARACTERS"] = "+%d personnages de plus"
 
 -- Plans (2)
 L["REMOVE_COMPLETED_TOOLTIP"] = "Retirer tous les plans complétés de votre liste Mes plans. Cette action est irréversible !"
@@ -1044,6 +1046,7 @@ Corrige:
 - Sacs et butin : deplacer des objets, acheter/vendre chez un marchand et ramasser du butin ne provoquent plus de grosses chutes de FPS en recompressant tout le sac a chaque changement (regression v3.1.8).
 - Cache d'objets : erreur corrigee lorsque le minuteur de sauvegarde en arriere-plan s'executait.
 - Notifications : les toasts de monture et de collection ne plantent plus quand une table d'icones manquait.
+- Monnaies: les montants ne suivent plus uniquement le personnage connecte; les lignes comparent correctement tous les personnages suivis.
 
 Mis a jour:
 - Cache des sacs : l'inventaire reste en memoire de session rapide pendant le jeu ; sauvegarde non compressee ~15 s apres le dernier changement de sac (aide si vous Alt+F4) ; compression complete uniquement a la deconnexion ou /reload.
@@ -1051,6 +1054,9 @@ Mis a jour:
 - Comptes d'objets dans les infobulles et scans de collection reutilisent les donnees de sac recentes pour eviter des parcours API supplementaires.
 - Le scan de sac des collections est ignore quand le module Collections est desactive et s'execute a la frame suivante quand il est actif.
 - Les rappels de quetes sur la carte ignorent le travail si vous n'avez pas de plans actifs.
+- Monnaies: les lignes transferables Warband affichent votre personnage avec actuel / total Warband; les specifiques au personnage affichent le total Warband avec le badge du plus haut.
+- Infobulles monnaies: montants par personnage au survol (10 par defaut, Shift pour plus, plafond 50 pour les grands rosters).
+- Reputation: les lignes affichent votre standing vs le meilleur Warband sur la barre; les infobulles listent la progression par personnage avec les memes limites Shift.
 
 CurseForge: Warband Nexus]=]
 

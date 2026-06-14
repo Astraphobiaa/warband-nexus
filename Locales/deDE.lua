@@ -499,6 +499,8 @@ L["CURRENCY_CHARACTER_SPECIFIC"] = "Charakterspezifische Währungen"
 L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Währungsübertragungsbeschränkung"
 L["CURRENCY_TRANSFER_NOTICE_DESC"] = "Die Blizzard-API unterstützt keine automatischen Währungsübertragungen. Bitte verwende das Währungsfenster im Spiel, um Kriegsmeute-Währungen manuell zu übertragen."
 L["CURRENCY_UNKNOWN"] = "Unbekannte Währung"
+L["CURRENCY_TOOLTIP_PER_CHARACTER"] = "Pro Charakter"
+L["CURRENCY_TOOLTIP_MORE_CHARACTERS"] = "+%d weitere Charaktere"
 
 -- Plans (2)
 L["REMOVE_COMPLETED_TOOLTIP"] = "Entferne alle abgeschlossenen Pläne aus deiner Meine-Pläne-Liste. Diese Aktion kann nicht rückgängig gemacht werden!"
@@ -1044,6 +1046,7 @@ Behoben:
 - Taschen und Beute: Items verschieben, Haendler-Kauf/Verkauf und Beuteaufheben verursachen keine grossen FPS-Einbrueche mehr durch Neukomprimierung der gesamten Tasche bei jeder Aenderung (Regression in v3.1.8).
 - Item-Cache: Fehler beim Hintergrund-Idle-Speicher-Timer behoben.
 - Benachrichtigungen: Reittier- und Sammlungs-Toasts stuerzen nicht mehr ab, wenn eine Icon-Tabelle fehlte.
+- Waehrungen: Betraege folgen nicht mehr nur dem eingeloggten Charakter; Zeilen vergleichen alle verfolgten Charaktere korrekt.
 
 Aktualisiert:
 - Taschen-Cache: Inventar bleibt waehrend des Spiels im schnellen Sitzungsspeicher; unkomprimierte Speicherung ~15s nach der letzten Taschenaenderung (hilft bei Alt+F4); volle Komprimierung nur bei Logout oder /reload.
@@ -1051,6 +1054,9 @@ Aktualisiert:
 - Tooltip-Item-Zaehler und Sammlungs-Scans nutzen aktuelle Taschendaten erneut und vermeiden zusaetzliche Behaelter-API-Laeufe.
 - Sammlungs-Taschen-Scan wird uebersprungen, wenn das Sammlungs-Modul aus ist, und laeuft im naechsten Frame, wenn es aktiv ist.
 - Karten-Quest-Erinnerungen ueberspringen Arbeit, wenn du keine aktiven Plaene hast.
+- Waehrungen: Warband-uebertragbare Zeilen zeigen deinen Charakter mit aktuell / Warband-Gesamt; charakterspezifische Zeilen zeigen Warband-Summe mit Badge des hoechsten Charakters.
+- Waehrungs-Tooltips: Betraege pro Charakter beim Hover (Top 10, Shift fuer mehr, max. 50 bei grossen Rostern).
+- Ruf: Zeilen zeigen deinen Charakter-Stand vs. Warband-Bestes in der Fortschrittsleiste; Tooltips listen Charakter-Fortschritt mit denselben Shift-Limits.
 
 CurseForge: Warband Nexus]=]
 

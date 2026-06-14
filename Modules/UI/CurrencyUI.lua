@@ -59,6 +59,90 @@ local function GetCurrencyCharQuantityFromSnapshot(currData, charKey)
     return 0
 end
 
+---Sum quantities across tracked roster keys and find the character with the highest amount.
+---Iterates the character list (not raw pairs on currData.chars) to avoid GUID + Name-Realm double-count.
+---@return number totalAmount
+---@return number bestAmount
+---@return string|nil bestCharKey
+---@return boolean anyCharHasIt
+local function SummarizeCurrencyAcrossTrackedChars(currData, characters, charLookup)
+    local totalAmount = 0
+    local bestAmount = 0
+    local bestCharKey = nil
+    local anyCharHasIt = false
+
+    for ci = 1, #characters do
+        local char = characters[ci]
+        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+        if charKey and charLookup[charKey] then
+            local amount = GetCurrencyCharQuantityFromSnapshot(currData, charKey)
+            if amount > 0 then
+                anyCharHasIt = true
+            end
+            totalAmount = totalAmount + amount
+            if amount > bestAmount then
+                bestAmount = amount
+                bestCharKey = charKey
+            end
+        end
+    end
+
+    if not bestCharKey then
+        for ci = 1, #characters do
+            local char = characters[ci]
+            local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+            if charKey and charLookup[charKey] then
+                bestCharKey = charKey
+                break
+            end
+        end
+    end
+
+    return totalAmount, bestAmount, bestCharKey, anyCharHasIt
+end
+
+---Logged-in character row key for warband split display (GUID / roster key aliases).
+local function ResolveSessionCharacterKey(charLookup, characters)
+    local sessionKey = ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey()
+    if sessionKey and charLookup[sessionKey] then
+        return sessionKey, charLookup[sessionKey]
+    end
+    local U = ns.Utilities
+    local storage = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
+    if storage and charLookup[storage] then
+        return storage, charLookup[storage]
+    end
+    if storage and U and U.GetCanonicalCharacterKey then
+        local canon = U:GetCanonicalCharacterKey(storage)
+        if canon and charLookup[canon] then
+            return canon, charLookup[canon]
+        end
+    end
+    for ci = 1, #characters do
+        local char = characters[ci]
+        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+        if charKey and charLookup[charKey] then
+            return charKey, charLookup[charKey]
+        end
+    end
+    return nil, nil
+end
+
+---Warband transferable row: session amount / warband total (session part may use cap colors).
+local function FormatWarbandAmountSplit(sessionAmount, totalQuantity, maxQuantity)
+    local bright = ThemeTextHex("Bright")
+    local muted = ThemeTextHex("Muted")
+    local session = sessionAmount or 0
+    local total = totalQuantity or 0
+    local suffix = muted .. " / " .. bright .. FormatNumber(total) .. "|r"
+    if maxQuantity and maxQuantity > 0 then
+        local isCapped = session >= maxQuantity
+        local color = isCapped and SemanticColorHex(COLORS.red) or SemanticColorHex(COLORS.green)
+        return color .. FormatNumber(session) .. "|r" .. suffix
+    end
+    return bright .. FormatNumber(session) .. "|r" .. suffix
+end
+
 -- HEADER HIERARCHY
 -- CurrencyCacheService v2.0 stores a proper tree in db.headers using the
 -- Blizzard API collapse/expand technique.  No client-side inference needed.
@@ -196,6 +280,9 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     end
 
     local hasQuantity = (currency.quantity or 0) > 0
+    if currency.warbandAmountSplit and (currency.totalQuantity or 0) > 0 then
+        hasQuantity = true
+    end
     
     -- Icon (support both iconFileID and icon fields)
     local iconID = currency.iconFileID or currency.icon
@@ -222,8 +309,13 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     local gap = L.COL_GAP
     local padR = L.AMOUNT_RIGHT_PAD
     local showBadge = currency.characterName and true or false
+    local showWarbandSplit = currency.warbandAmountSplit and true or false
 
-    local amountW = math.min(L.AMOUNT_MAX_W, math.max(L.AMOUNT_MIN_W, floor(rw * (showBadge and 0.26 or 0.24))))
+    local amountFrac = showBadge and 0.26 or 0.24
+    if showWarbandSplit then
+        amountFrac = showBadge and 0.34 or 0.30
+    end
+    local amountW = math.min(L.AMOUNT_MAX_W, math.max(L.AMOUNT_MIN_W, floor(rw * amountFrac)))
 
     if row.nameText.SetWordWrap then row.nameText:SetWordWrap(false) end
     if row.nameText.SetNonSpaceWrap then row.nameText:SetNonSpaceWrap(false) end
@@ -298,7 +390,25 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     if (not curKey) and ns.UI_GetSubsidiaryCharKey then
         curKey = ns.UI_GetSubsidiaryCharKey()
     end
-    if curKey and WarbandNexus.GetCurrencyData and ns.UI_BindSeasonProgressAmount then
+    if currency.warbandAmountSplit then
+        local totalQ = currency.totalQuantity or 0
+        if curKey and WarbandNexus.GetCurrencyData and ns.UI_BindSeasonProgressAmount then
+            local cd = WarbandNexus:GetCurrencyData(currencyID, curKey)
+            if cd then
+                ns.UI_BindSeasonProgressAmount(row.amountText, cd, { warbandTotal = totalQ })
+                usedSeasonProgressLine = true
+                local rawAmt = row.amountText:GetText()
+                amountLine = ""
+                if rawAmt and not (issecretvalue and issecretvalue(rawAmt)) then
+                    amountLine = rawAmt
+                end
+            end
+        end
+        if not amountLine then
+            amountLine = FormatWarbandAmountSplit(currency.quantity or 0, totalQ, currency.maxQuantity or 0)
+            row.amountText:SetText(amountLine)
+        end
+    elseif curKey and WarbandNexus.GetCurrencyData and ns.UI_BindSeasonProgressAmount then
         local cd = WarbandNexus:GetCurrencyData(currencyID, curKey)
         if cd then
             -- Shift-aware: default = current only (cap-colored); Shift = expanded current\194\183earned/cap.
@@ -423,62 +533,39 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                 end
                 
                 if matchesSearch then
-                    -- ALWAYS show CURRENT character's individual quantity as the primary row value.
-                    -- Tooltip shows per-character breakdown and total on hover.
-                    local currentCharKey = ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey()
-                    
-                    local currentCharAmount = GetCurrencyCharQuantityFromSnapshot(currData, currentCharKey)
-                    
-                    -- Check if ANY tracked character has this currency (for showZero filter)
-                    local anyCharHasIt = false
-                    if currData.chars then
-                        for _, amount in pairs(currData.chars) do
-                            if (type(amount) == "number" and amount > 0) or (type(amount) == "table" and (amount.quantity or 0) > 0) then
-                                anyCharHasIt = true
-                                break
-                            end
-                        end
-                    elseif currData.isAccountWide and (currData.value or 0) > 0 then
-                        anyCharHasIt = true
-                    end
-                    
+                    local totalAmount, bestAmount, bestCharKey, anyCharHasIt =
+                        SummarizeCurrencyAcrossTrackedChars(currData, characters, charLookup)
+
                     if currData.isAccountWide or currData.isAccountTransferable then
-                        -- Warband Transferable section â€” row shows CURRENT character's amount
-                        -- Hide Empty (showZero=false): only show if current char has > 0
-                        -- Show Empty (showZero=true): always show (currency exists in header structure)
-                        if showZero or currentCharAmount > 0 then
+                        local sessionKey, sessionChar = ResolveSessionCharacterKey(charLookup, characters)
+                        local sessionAmount = sessionKey
+                            and GetCurrencyCharQuantityFromSnapshot(currData, sessionKey) or 0
+                        local displayTotal = totalAmount
+                        if currData.isAccountWide then
+                            displayTotal = currData.value or totalAmount
+                        end
+
+                        if showZero or sessionAmount > 0 or displayTotal > 0 or anyCharHasIt then
                             table.insert(warbandHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
-                                quantity = currentCharAmount
+                                quantity = sessionAmount,
+                                sessionAmount = sessionAmount,
+                                totalQuantity = displayTotal,
+                                sessionCharacter = sessionChar,
+                                sessionCharacterKey = sessionKey,
                             })
                         end
                     else
-                        -- Character-Specific section â€” row shows CURRENT character's amount
-                        local displayChar = currentCharKey
-                        
-                        -- Ensure current character exists in charLookup
-                        if not charLookup[displayChar] then
-                            for ci = 1, #characters do
-                                local char = characters[ci]
-                                local ck = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
-                                if ck and charLookup[ck] then
-                                    displayChar = ck
-                                    currentCharAmount = GetCurrencyCharQuantityFromSnapshot(currData, ck)
-                                    break
-                                end
-                            end
-                        end
-                        
-                        -- Show if: showZero is true (show all), or current char has > 0
-                        if (showZero or currentCharAmount > 0) and charLookup[displayChar] then
+                        -- Character-Specific: total across roster; badge names who holds the highest stack.
+                        if (showZero or totalAmount > 0 or anyCharHasIt) and bestCharKey and charLookup[bestCharKey] then
                             table.insert(charHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
-                                quantity = currentCharAmount,  -- CURRENT character's amount
-                                bestAmount = currentCharAmount,
-                                bestCharacter = charLookup[displayChar],
-                                bestCharacterKey = displayChar
+                                quantity = totalAmount,
+                                bestAmount = bestAmount,
+                                bestCharacter = charLookup[bestCharKey],
+                                bestCharacterKey = bestCharKey,
                             })
                         end
                     end
@@ -1030,8 +1117,20 @@ function WarbandNexus:DrawCurrencyList(container, width)
             BuildCurrencyCategoryTree(sectionCtx, roots, "all-warband-", false, sectionBody, width, function(curr)
                 local displayData = {}
                 for k, v in pairs(curr.data or {}) do displayData[k] = v end
-                displayData.quantity = curr.quantity
-                displayData.viewCharKey = currentCharKey
+                local sessionChar = curr.sessionCharacter or {}
+                local classFile = sessionChar.classFile
+                local classColor = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] or { r = 1, g = 1, b = 1 }
+                local sessionRealm = ns.Utilities and ns.Utilities.FormatRealmName
+                    and ns.Utilities:FormatRealmName(sessionChar.realm) or (sessionChar.realm or "")
+                local charName = format("|c%s%s  -  %s|r",
+                    format("%02x%02x%02x%02x", 255, classColor.r * 255, classColor.g * 255, classColor.b * 255),
+                    sessionChar.name or "",
+                    sessionRealm)
+                displayData.characterName = FormatParenBadge(charName)
+                displayData.quantity = curr.sessionAmount or curr.quantity or 0
+                displayData.totalQuantity = curr.totalQuantity or 0
+                displayData.warbandAmountSplit = true
+                displayData.viewCharKey = curr.sessionCharacterKey or currentCharKey
                 return displayData
             end)
 

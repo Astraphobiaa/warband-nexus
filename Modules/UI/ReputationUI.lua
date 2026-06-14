@@ -171,6 +171,120 @@ local function FormatReputationProgress(current, max)
     end
 end
 
+---Compact standing label for per-character tooltip rows.
+local function FormatReputationStandingLabel(rep)
+    if not rep then return "?" end
+    if rep.renown and rep.renown.level and rep.renown.level > 0 then
+        local fmt = (ns.L and ns.L["REP_RENOWN_FORMAT"]) or "Renown %d"
+        return string.format(fmt, rep.renown.level)
+    end
+    if rep.hasParagon and rep.paragon then
+        return FormatReputationProgress(rep.paragon.current, rep.paragon.max)
+    end
+    if rep.friendship and rep.friendship.reactionText and rep.friendship.reactionText ~= "" then
+        return rep.friendship.reactionText
+    end
+    if rep.friendship and rep.friendship.standing then
+        return tostring(rep.friendship.standing)
+    end
+    if rep.standing and rep.standing.name and rep.standing.name ~= "" then
+        if (rep.maxValue or 1) > 1 then
+            return rep.standing.name .. " " .. FormatReputationProgress(rep.currentValue or 0, rep.maxValue or 1)
+        end
+        return rep.standing.name
+    end
+    return FormatReputationProgress(rep.currentValue or 0, rep.maxValue or 1)
+end
+
+local REP_TOOLTIP_CHARS_DEFAULT = 10
+local REP_TOOLTIP_CHARS_SHIFT_MAX = 50
+
+local function AppendReputationCharacterProgressLines(lines, allCharData)
+    if not allCharData or #allCharData == 0 then return end
+    local isShift = IsShiftKeyDown and IsShiftKeyDown() or false
+    local limit = isShift and REP_TOOLTIP_CHARS_SHIFT_MAX or REP_TOOLTIP_CHARS_DEFAULT
+    local rowCount = #allCharData
+    local hiddenCount = math.max(0, rowCount - limit)
+
+    table.insert(lines, { type = "spacer", height = 8 })
+    local gr, gg, gb = SemanticGoldRGB()
+    table.insert(lines, { text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = { gr, gg, gb } })
+
+    local shown = 0
+    for aci = 1, rowCount do
+        if shown >= limit then break end
+        local charData = allCharData[aci]
+        local charReputation = charData.reputation
+        local classFile = string.upper(charData.characterClass or "WARRIOR")
+        local classColor = RAID_CLASS_COLORS[classFile] or { r = 1, g = 1, b = 1 }
+        shown = shown + 1
+        table.insert(lines, {
+            left = (charData.characterName or "?") .. ":",
+            right = FormatReputationStandingLabel(charReputation),
+            leftColor = { classColor.r, classColor.g, classColor.b },
+            rightColor = { 1, 1, 1 },
+        })
+    end
+
+    if hiddenCount > 0 then
+        if not isShift then
+            table.insert(lines, { text = (ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", color = { 0.5, 0.5, 0.5 } })
+        else
+            local moreFmt = (ns.L and ns.L["CURRENCY_TOOLTIP_MORE_CHARACTERS"]) or "+%d more characters"
+            table.insert(lines, { text = string.format(moreFmt, hiddenCount), color = { 0.6, 0.6, 0.6 } })
+        end
+    end
+end
+
+---Logged-in character row key (GUID / roster aliases).
+local function ResolveSessionCharacterKey(charLookup, characters)
+    local sessionKey = ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey()
+    if sessionKey and charLookup[sessionKey] then
+        return sessionKey, charLookup[sessionKey]
+    end
+    local U = ns.Utilities
+    local storage = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
+    if storage and charLookup[storage] then
+        return storage, charLookup[storage]
+    end
+    if storage and U and U.GetCanonicalCharacterKey then
+        local canon = U:GetCanonicalCharacterKey(storage)
+        if canon and charLookup[canon] then
+            return canon, charLookup[canon]
+        end
+    end
+    for ci = 1, #characters do
+        local char = characters[ci]
+        local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
+        if charKey and charLookup[charKey] then
+            return charKey, charLookup[charKey]
+        end
+    end
+    return nil, nil
+end
+
+local function FindCharReputationInMap(charDataMap, charKey)
+    if not charDataMap or not charKey then return nil end
+    local entry = charDataMap[charKey]
+    if entry and entry.reputation then return entry.reputation end
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey then
+        local canon = U:GetCanonicalCharacterKey(charKey)
+        if canon and canon ~= charKey then
+            entry = charDataMap[canon]
+            if entry and entry.reputation then return entry.reputation end
+        end
+    end
+    for mapKey, mapEntry in pairs(charDataMap) do
+        if mapEntry and mapEntry.reputation and U and U.GetCanonicalCharacterKey then
+            local c1 = U:GetCanonicalCharacterKey(mapKey) or mapKey
+            local c2 = U:GetCanonicalCharacterKey(charKey) or charKey
+            if c1 == c2 then return mapEntry.reputation end
+        end
+    end
+    return nil
+end
+
 ---@param reputation table
 ---@return boolean baseMaxed
 local function ComputeBaseReputationMaxed(reputation)
@@ -198,6 +312,7 @@ end
 
 ---Progress bar, paragon icon, checkmark (inline pooled bar â€” pre-MetricBar style).
 ---@return Frame|nil progressBg
+---@param chromeOpts table|nil { showSplit, sessionRep, bestRep }
 local function ApplyReputationRowProgressChrome(row, reputation, rowWidth)
     local currentValue = reputation.currentValue or 0
     local maxValue = reputation.maxValue or 1
@@ -503,6 +618,8 @@ local function GetReputationAggregateCacheKey(characters)
     end
     local cacheHeaders = WarbandNexus.GetReputationHeaders and WarbandNexus:GetReputationHeaders() or {}
     parts[#parts + 1] = tostring(#cacheHeaders)
+    local sessionKey = ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey()
+    parts[#parts + 1] = "sk:" .. (sessionKey or "")
     return table.concat(parts, "\031")
 end
 
@@ -696,20 +813,21 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         if not (cachedData.isHeader and not cachedData.isHeaderWithRep) then
             
             if cachedData.isAccountWide then
-                -- ACCOUNT-WIDE: Create entry with no characters
-                -- NOTE: No search filter here â€” filtering happens in the UI rendering phase
-                -- to preserve parent-child relationships (child may match even if parent doesn't)
                 local reputation = BuildReputationObject(cachedData)
-                
+                local sessionKey, sessionChar = ResolveSessionCharacterKey(charLookup, characters)
+
                 factionMap[factionID] = {
                     data = reputation,
-                    characterKey = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide",
-                    characterName = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account",
-                    characterRealm = "",
-                    characterClass = "WARRIOR",
-                    characterLevel = 80,
+                    characterKey = sessionKey or ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide"),
+                    characterName = sessionChar and sessionChar.name or ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account"),
+                    characterRealm = sessionChar and (sessionChar.realm or "") or "",
+                    characterClass = sessionChar and (sessionChar.classFile or sessionChar.class) or "WARRIOR",
+                    characterLevel = sessionChar and sessionChar.level or 80,
                     isAccountWide = true,
-                    allCharData = {}
+                    allCharData = {},
+                    sessionReputation = reputation,
+                    bestReputation = reputation,
+                    repProgressSplit = sessionChar ~= nil,
                 }
             else
                 -- CHARACTER-SPECIFIC: Collect data for this character
@@ -738,6 +856,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     end
     
     -- PHASE 2: For each faction, find HIGHEST progress character and build allCharData
+    local sessionKey, sessionChar = ResolveSessionCharacterKey(charLookup, characters)
+
     for factionID, charDataMap in pairs(factionCharacterMap) do
         local bestCharKey = nil
         local bestReputation = nil
@@ -776,11 +896,9 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         
         -- Create factionMap entry with BEST character as primary
         if bestCharKey and bestReputation and bestChar then
-            -- Use the hydrated data's isAccountWide flag, NOT hardcoded false.
-            -- If the WoW API says this faction is account-wide, respect that even if
-            -- it was stored in the character bucket (old data before migration).
             local resolvedAW = (bestReputation and bestReputation.isAccountWide) or false
-            
+            local sessionReputation = FindCharReputationInMap(charDataMap, sessionKey) or bestReputation
+
             factionMap[factionID] = {
                 data = bestReputation,
                 characterKey = resolvedAW and ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") or bestCharKey,
@@ -790,6 +908,9 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 characterLevel = resolvedAW and 80 or bestChar.level,
                 isAccountWide = resolvedAW,
                 allCharData = resolvedAW and {} or allCharData,
+                sessionReputation = sessionReputation,
+                bestReputation = bestReputation,
+                repProgressSplit = not resolvedAW,
             }
         end
     end
@@ -904,7 +1025,10 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                     characterLevel = factionData.characterLevel,
                     isAccountWide = factionData.isAccountWide,
                     subfactions = factionData.subfactions,  -- NOW populated (built above!)
-                    allCharData = factionData.allCharData or {},  -- Pass allCharData!
+                    allCharData = factionData.allCharData or {},
+                    sessionReputation = factionData.sessionReputation,
+                    bestReputation = factionData.bestReputation or factionData.data,
+                    repProgressSplit = factionData.repProgressSplit,
                 })
             end
         end
@@ -1134,7 +1258,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         row.badgeText:ClearAllPoints()
         row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
         
-        if characterInfo.isAccountWide then
+        if characterInfo.isAccountWide and not characterInfo.repProgressSplit then
             local label = ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide")
             row.badgeText:SetText(FormatParenBadge(SemanticColorHex(COLORS.green) .. label .. "|r"))
         elseif characterInfo.name then
@@ -1181,42 +1305,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             
             -- Character progress (from aggregated data)
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
-            if #allCharData >= 1 then
-                table.insert(lines, {type = "spacer", height = 8})
-                local gr, gg, gb = SemanticGoldRGB()
-                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {gr, gg, gb}})
-                
-                for aci = 1, #allCharData do
-                    local charData = allCharData[aci]
-                    local charName = charData.characterName
-                    local charReputation = charData.reputation
-                    local classFile = string.upper(charData.characterClass or "WARRIOR")
-                    local classColor = RAID_CLASS_COLORS[classFile] or {r=1, g=1, b=1}
-                    
-                    local charProgressText
-                    if charReputation.renown and charReputation.renown.level then
-                        charProgressText = string.format((ns.L and ns.L["REP_RENOWN_FORMAT"]) or "Renown %d", charReputation.renown.level)
-                    elseif charReputation.friendship and charReputation.friendship.standing then
-                        charProgressText = string.format("%s (%s)", 
-                            charReputation.friendship.standing,
-                            FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
-                    elseif charReputation.hasParagon and charReputation.paragon then
-                        charProgressText = string.format((ns.L and ns.L["REP_PARAGON_FORMAT"]) or "Paragon (%s)", 
-                            FormatReputationProgress(charReputation.paragon.current, charReputation.paragon.max))
-                    else
-                        charProgressText = string.format("%s (%s)", 
-                            charReputation.standing.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 
-                            FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
-                    end
-                    
-                    table.insert(lines, {
-                        left = charName .. ":", 
-                        right = charProgressText,
-                        leftColor = {classColor.r, classColor.g, classColor.b},
-                        rightColor = {1, 1, 1}
-                    })
-                end
-            end
+            AppendReputationCharacterProgressLines(lines, allCharData)
             
             tooltipService(self, {
                 type = "custom",
@@ -1392,7 +1481,7 @@ local function PopulateReputationRow(row, entry)
         row.badgeText:ClearAllPoints()
         row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
 
-        if characterInfo.isAccountWide then
+        if characterInfo.isAccountWide and not characterInfo.repProgressSplit then
             local label = ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide")
             row.badgeText:SetText(FormatParenBadge(SemanticColorHex(COLORS.green) .. label .. "|r"))
         elseif characterInfo.name then
@@ -1439,42 +1528,7 @@ local function PopulateReputationRow(row, entry)
             end
 
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
-            if #allCharData >= 1 then
-                table.insert(lines, {type = "spacer", height = 8})
-                local gr, gg, gb = SemanticGoldRGB()
-                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {gr, gg, gb}})
-
-                for aci = 1, #allCharData do
-                    local charData = allCharData[aci]
-                    local charName = charData.characterName
-                    local charReputation = charData.reputation
-                    local classFile = string.upper(charData.characterClass or "WARRIOR")
-                    local classColor = RAID_CLASS_COLORS[classFile] or {r=1, g=1, b=1}
-
-                    local charProgressText
-                    if charReputation.renown and charReputation.renown.level then
-                        charProgressText = string.format((ns.L and ns.L["REP_RENOWN_FORMAT"]) or "Renown %d", charReputation.renown.level)
-                    elseif charReputation.friendship and charReputation.friendship.standing then
-                        charProgressText = string.format("%s (%s)",
-                            charReputation.friendship.standing,
-                            FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
-                    elseif charReputation.hasParagon and charReputation.paragon then
-                        charProgressText = string.format((ns.L and ns.L["REP_PARAGON_FORMAT"]) or "Paragon (%s)",
-                            FormatReputationProgress(charReputation.paragon.current, charReputation.paragon.max))
-                    else
-                        charProgressText = string.format("%s (%s)",
-                            charReputation.standing.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
-                            FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
-                    end
-
-                    table.insert(lines, {
-                        left = charName .. ":",
-                        right = charProgressText,
-                        leftColor = {classColor.r, classColor.g, classColor.b},
-                        rightColor = {1, 1, 1}
-                    })
-                end
-            end
+            AppendReputationCharacterProgressLines(lines, allCharData)
 
             tooltipService(self, {
                 type = "custom",
@@ -1912,7 +1966,10 @@ function WarbandNexus:DrawReputationList(container, width)
                 level = item.faction.characterLevel,
                 isAccountWide = item.faction.isAccountWide,
                 realm = item.faction.characterRealm,
-                allCharData = item.faction.allCharData or {}
+                allCharData = item.faction.allCharData or {},
+                sessionReputation = item.faction.sessionReputation,
+                bestReputation = item.faction.bestReputation or item.faction.data,
+                repProgressSplit = item.faction.repProgressSplit,
             }
             local collapseKey = "rep-subfactions-" .. tostring(item.faction.factionID or 0)
             local subExpanded = IsExpanded(collapseKey, false)
@@ -1966,7 +2023,10 @@ function WarbandNexus:DrawReputationList(container, width)
                                 level = subFaction.characterLevel,
                                 isAccountWide = subFaction.isAccountWide,
                                 realm = subFaction.characterRealm,
-                                allCharData = subFaction.allCharData or {}
+                                allCharData = subFaction.allCharData or {},
+                                sessionReputation = subFaction.sessionReputation,
+                                bestReputation = subFaction.bestReputation or subFaction.data,
+                                repProgressSplit = subFaction.repProgressSplit,
                             },
                             IsExpanded = IsExpanded,
                             ToggleExpand = ToggleExpand,

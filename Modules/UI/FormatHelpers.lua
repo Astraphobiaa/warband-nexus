@@ -281,6 +281,16 @@ local function ResolveSeasonBinding(entry)
     return entry, false
 end
 
+local function ApplySeasonProgressBindingText(fs, entry, expanded)
+    if not fs or not fs.SetText then return end
+    local cd, compact = ResolveSeasonBinding(entry)
+    local text = FormatSeasonProgressShiftAware(cd, expanded, compact)
+    if type(entry) == "table" and entry.warbandTotal ~= nil then
+        text = text .. SeasonMutedHex() .. " / " .. FormatNumber(entry.warbandTotal) .. "|r"
+    end
+    fs:SetText(text)
+end
+
 local _seasonAmountBindings = setmetatable({}, { __mode = "k" })
 local _seasonAmountWatcher
 local function EnsureSeasonAmountWatcher()
@@ -292,8 +302,7 @@ local function EnsureSeasonAmountWatcher()
         local expanded = IsShiftKeyDown() and true or false
         for fs, entry in pairs(_seasonAmountBindings) do
             if fs and fs.SetText and fs.IsObjectType then
-                local cd, compact = ResolveSeasonBinding(entry)
-                fs:SetText(FormatSeasonProgressShiftAware(cd, expanded, compact))
+                ApplySeasonProgressBindingText(fs, entry, expanded)
             end
         end
     end)
@@ -302,8 +311,12 @@ local function BindSeasonProgressAmount(fs, cd, opts)
     if not fs or not fs.SetText then return end
     EnsureSeasonAmountWatcher()
     local compact = opts and opts.compactShift == true
-    _seasonAmountBindings[fs] = { cd = cd, compactShift = compact }
-    fs:SetText(FormatSeasonProgressShiftAware(cd, IsShiftKeyDown() and true or false, compact))
+    local entry = { cd = cd, compactShift = compact }
+    if opts and opts.warbandTotal ~= nil then
+        entry.warbandTotal = opts.warbandTotal
+    end
+    _seasonAmountBindings[fs] = entry
+    ApplySeasonProgressBindingText(fs, entry, IsShiftKeyDown() and true or false)
 end
 local function UnbindSeasonProgressAmount(fs)
     if fs then _seasonAmountBindings[fs] = nil end
@@ -313,13 +326,18 @@ local function RefreshSeasonProgressAmount(fs, cd, opts)
     local compact = opts and opts.compactShift == true
     if cd ~= nil then
         _seasonAmountBindings[fs] = { cd = cd, compactShift = compact }
+        if opts and opts.warbandTotal ~= nil then
+            _seasonAmountBindings[fs].warbandTotal = opts.warbandTotal
+        end
     end
     local entry = _seasonAmountBindings[fs]
-    local data, compactShift = ResolveSeasonBinding(entry)
     if opts and opts.compactShift ~= nil then
-        compactShift = opts.compactShift == true
+        compact = opts.compactShift == true
     end
-    fs:SetText(FormatSeasonProgressShiftAware(data, IsShiftKeyDown() and true or false, compactShift))
+    if opts and opts.warbandTotal ~= nil and entry then
+        entry.warbandTotal = opts.warbandTotal
+    end
+    ApplySeasonProgressBindingText(fs, entry, IsShiftKeyDown() and true or false)
 end
 
 -- Achievement criteria helpers: Modules/UI/AchievementCriteriaHelpers.lua (loaded after this file in TOC)
@@ -331,8 +349,7 @@ function ns.UI_RefreshSeasonProgressBindings()
     local expanded = IsShiftKeyDown() and true or false
     for fs, entry in pairs(_seasonAmountBindings) do
         if fs and fs.SetText and fs.IsObjectType then
-            local cd, compact = ResolveSeasonBinding(entry)
-            fs:SetText(FormatSeasonProgressShiftAware(cd, expanded, compact))
+            ApplySeasonProgressBindingText(fs, entry, expanded)
         end
     end
 end

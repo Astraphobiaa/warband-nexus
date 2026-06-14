@@ -499,6 +499,8 @@ L["CURRENCY_CHARACTER_SPECIFIC"] = "Moedas específicas de caracteres"
 L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Limitação de transferência de moeda"
 L["CURRENCY_TRANSFER_NOTICE_DESC"] = "A API da Blizzard não suporta transferências automáticas de moeda. Use o quadro de moeda do jogo para transferir manualmente as moedas do Warband."
 L["CURRENCY_UNKNOWN"] = "Moeda desconhecida"
+L["CURRENCY_TOOLTIP_PER_CHARACTER"] = "Por personagem"
+L["CURRENCY_TOOLTIP_MORE_CHARACTERS"] = "+%d personagens a mais"
 
 -- Plans (2)
 L["REMOVE_COMPLETED_TOOLTIP"] = "Remova todos os planos concluídos da sua lista Meus Planos. Isso excluirá todos os planos personalizados concluídos e removerá montarias/animais de estimação/brinquedos concluídos de seus planos. Esta ação não pode ser desfeita!"
@@ -1044,6 +1046,7 @@ Corrigido:
 - Bolsas e saque: mover itens, comprar/vender com vendedores e pegar saque nao causam mais grandes quedas de FPS ao recomprimir a bolsa inteira a cada mudanca (regressao v3.1.8).
 - Cache de itens: corrigido erro quando o temporizador de salvamento em segundo plano era executado.
 - Notificacoes: toasts de montaria e colecao nao travam mais quando faltava uma tabela de icones.
+- Moedas: valores nao seguem mais apenas o personagem logado; as linhas comparam corretamente todos os personagens rastreados.
 
 Atualizado:
 - Cache de bolsas: inventario permanece em memoria de sessao rapida durante o jogo; salvamento sem compressao ~15 s apos a ultima mudanca de bolsa (ajuda se voce usa Alt+F4); compressao completa so no logout ou /reload.
@@ -1051,6 +1054,9 @@ Atualizado:
 - Contagens de itens em tooltips e varreduras de colecao reutilizam dados recentes de bolsas evitando passagens API extras.
 - Varredura de bolsas da colecao e ignorada quando o modulo Colecoes esta desligado e roda no proximo frame quando ativo.
 - Lembretes de missoes no mapa ignoram trabalho quando voce nao tem planos ativos.
+- Moedas: linhas transferiveis da Warband mostram seu personagem com atual / total da Warband; especificas do personagem mostram total da Warband com o emblema do maior valor.
+- Tooltips de moedas: valores por personagem ao passar o mouse (10 por padrao, Shift para mais, limite 50 em listas grandes).
+- Reputacao: linhas mostram sua posicao vs melhor da Warband na barra; tooltips listam progresso por personagem com os mesmos limites de Shift.
 
 CurseForge: Warband Nexus]=]
 

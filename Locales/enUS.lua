@@ -499,6 +499,8 @@ L["CURRENCY_CHARACTER_SPECIFIC"] = "Character-Specific Currencies"
 L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Currency Transfer Limitation"
 L["CURRENCY_TRANSFER_NOTICE_DESC"] = "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies."
 L["CURRENCY_UNKNOWN"] = "Unknown Currency"
+L["CURRENCY_TOOLTIP_PER_CHARACTER"] = "Per character"
+L["CURRENCY_TOOLTIP_MORE_CHARACTERS"] = "+%d more characters"
 
 -- Plans (2)
 L["REMOVE_COMPLETED_TOOLTIP"] = "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!"
@@ -1042,6 +1044,7 @@ Fixed:
 - Bags and loot: moving items, vendor buy/sell, and loot pickup no longer cause large FPS drops from re-compressing your entire bag on every change (v3.1.8 regression).
 - Items cache: fixed error when the idle save timer ran in the background.
 - Notifications: mount and collection toasts no longer crash when an icon table was missing.
+- Currency tab: amounts no longer follow only the logged-in character; rows compare tracked characters correctly.
 
 Updated:
 - Bag cache: inventory stays in fast session memory while playing; uncompressed saves run ~15s after the last bag change (helps if you Alt+F4); full compression only on logout or /reload.
@@ -1049,6 +1052,9 @@ Updated:
 - Tooltip item counts and collection scans reuse recent bag data to avoid extra container walks.
 - Collections bag scan is skipped when the Collections module is off and runs on the next frame when enabled.
 - Map quest reminders skip work when you have no active plans.
+- Currency tab: Warband Transferable rows show your character with current / warband total amounts; Character-Specific rows show warband total with the highest-holder badge.
+- Currency tooltips: per-character amounts on hover (top 10 by default, hold Shift for more, capped at 50 for large rosters).
+- Reputation tab: rows show your character standing vs warband-best on the progress bar; tooltips list per-character progress with the same Shift limits.
 
 CurseForge: Warband Nexus]=]
 

@@ -22,6 +22,11 @@ local isVisible = false
 local currentAnchor = nil
 local currentAnchorPref = "ANCHOR_AUTO"
 local isInitialized = false
+local activeTooltipData = nil
+local activeShiftKeyDown = nil
+
+local CURRENCY_TOOLTIP_CHARS_DEFAULT = 10
+local CURRENCY_TOOLTIP_CHARS_SHIFT_MAX = 50
 
 -- Event names (single source: Constants.EVENTS)
 local TOOLTIP_SHOW = E.TOOLTIP_SHOW
@@ -140,6 +145,8 @@ function TooltipService:Show(anchorFrame, data)
     
     currentAnchor = anchorFrame
     currentAnchorPref = data.anchor or "ANCHOR_AUTO"
+    activeTooltipData = data
+    activeShiftKeyDown = IsShiftKeyDown and IsShiftKeyDown() or false
     
     -- Position then show (single visible frame at final anchor).
     self:PositionTooltip(frame, anchorFrame, currentAnchorPref)
@@ -163,6 +170,8 @@ function TooltipService:Hide()
     
     currentAnchor = nil
     currentAnchorPref = "ANCHOR_AUTO"
+    activeTooltipData = nil
+    activeShiftKeyDown = nil
     isVisible = false
     
     -- Fire event
@@ -1235,6 +1244,166 @@ function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
     return out
 end
 
+---Read per-character quantity from merged snapshot (GUID and Name-Realm aliases).
+local function ReadCurrencyCharQuantityFromSnapshot(currData, charKey)
+    if not currData then return 0 end
+    if currData.isAccountWide then
+        return currData.value or 0
+    end
+    local ch = currData.chars
+    if not ch or not charKey or charKey == "" then return 0 end
+    local function read(k)
+        if not k then return nil end
+        local s = ch[k]
+        if s == nil then return nil end
+        if type(s) == "number" then return s end
+        if type(s) == "table" then return s.quantity or 0 end
+        return 0
+    end
+    local q = read(charKey)
+    if q ~= nil then return q end
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey then
+        local ck = U:GetCanonicalCharacterKey(charKey)
+        if ck and ck ~= charKey then
+            q = read(ck)
+            if q ~= nil then return q end
+        end
+    end
+    return 0
+end
+
+---Tracked characters with amount > 0, sorted highest first.
+---@return table|nil rows { name, realm, classFile, amount }
+---@return number summedTotal non-account-wide sum of row amounts
+---@return table|nil currData merged snapshot row
+local function BuildCurrencyPerCharacterRows(currencyID)
+    if not WarbandNexus or not WarbandNexus.GetCurrenciesForUI then return nil end
+    local merged = WarbandNexus:GetCurrenciesForUI()
+    local currData = merged[currencyID]
+    if not currData then return nil end
+
+    local characters = WarbandNexus.GetAllCharacters and WarbandNexus:GetAllCharacters()
+    if not characters or #characters == 0 then return nil end
+
+    local U = ns.Utilities
+    local rows = {}
+    local summedTotal = 0
+    local seenCanon = {}
+
+    for i = 1, #characters do
+        local char = characters[i]
+        if char and char.isTracked ~= false then
+            local charKey = (ns.UI_GetCharKey and ns.UI_GetCharKey(char))
+                or (U and U.ResolveCharacterRowKey and U:ResolveCharacterRowKey(char))
+            if charKey then
+                local canon = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(charKey)) or charKey
+                if canon and not seenCanon[canon] then
+                    seenCanon[canon] = true
+                    local amount = ReadCurrencyCharQuantityFromSnapshot(currData, charKey)
+                    if WarbandNexus.GetCurrencyData then
+                        local storage = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
+                        local curCanon = storage and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(storage)
+                        if curCanon and canon == curCanon then
+                            local cd = WarbandNexus:GetCurrencyData(currencyID, charKey)
+                            if cd and cd.quantity ~= nil then
+                                amount = cd.quantity
+                            end
+                        end
+                    end
+                    if amount > 0 then
+                        local realm = char.realm or ""
+                        if U and U.FormatRealmName then
+                            realm = U:FormatRealmName(realm)
+                        end
+                        rows[#rows + 1] = {
+                            name = char.name or "?",
+                            realm = realm,
+                            classFile = char.classFile or char.class,
+                            amount = amount,
+                        }
+                        summedTotal = summedTotal + amount
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(rows, function(a, b)
+        if a.amount ~= b.amount then return a.amount > b.amount end
+        if a.name ~= b.name then return (a.name or "") < (b.name or "") end
+        return (a.realm or "") < (b.realm or "")
+    end)
+
+    return rows, summedTotal, currData
+end
+
+function TooltipService:RenderCurrencyCharacterBreakdown(frame, currencyID)
+    if not frame or not currencyID then return end
+
+    local rows, summedTotal, currData = BuildCurrencyPerCharacterRows(currencyID)
+    if not rows or #rows == 0 then return end
+
+    local isShift = IsShiftKeyDown and IsShiftKeyDown() or false
+    local limit = isShift and CURRENCY_TOOLTIP_CHARS_SHIFT_MAX or CURRENCY_TOOLTIP_CHARS_DEFAULT
+    local rowCount = #rows
+    local hiddenCount = math.max(0, rowCount - limit)
+
+    local fmtNumber = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
+    local sectionLabel = (ns.L and ns.L["CURRENCY_TOOLTIP_PER_CHARACTER"]) or "Per character"
+    local lr, lg, lb = TooltipBodyRGB()
+    if ns.UI_GetTooltipLabelColor then
+        lr, lg, lb = ns.UI_GetTooltipLabelColor()
+    end
+
+    frame:AddSpacer(8)
+    frame:AddLine(sectionLabel, lr, lg, lb, false)
+
+    local shown = 0
+    for i = 1, rowCount do
+        if shown >= limit then break end
+        local row = rows[i]
+        shown = shown + 1
+        local cc = RAID_CLASS_COLORS and RAID_CLASS_COLORS[row.classFile] or { r = 1, g = 1, b = 1 }
+        local left = (row.name or "?") .. " - " .. (row.realm or "")
+        local right = fmtNumber(row.amount)
+        if frame.AddDoubleLine then
+            frame:AddDoubleLine(left, right, cc.r, cc.g, cc.b, 1, 1, 1)
+        else
+            frame:AddLine(left .. ": " .. right, cc.r, cc.g, cc.b)
+        end
+    end
+
+    if hiddenCount > 0 then
+        if not isShift then
+            frame:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
+        else
+            local moreFmt = (ns.L and ns.L["CURRENCY_TOOLTIP_MORE_CHARACTERS"]) or "+%d more characters"
+            frame:AddLine(string.format(moreFmt, hiddenCount), 0.6, 0.6, 0.6)
+        end
+    end
+
+    local totalVal = summedTotal
+    if currData and currData.isAccountWide then
+        totalVal = currData.value or 0
+        if (totalVal or 0) <= 0 and rows[1] then
+            totalVal = rows[1].amount
+        end
+    end
+
+    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+    local br, bg, bb = 1, 0.82, 0
+    if ns.UI_GetTooltipTitleColor then
+        br, bg, bb = ns.UI_GetTooltipTitleColor()
+    end
+    frame:AddSpacer(4)
+    if frame.AddDoubleLine then
+        frame:AddDoubleLine(totalLabel .. ":", fmtNumber(totalVal), br, bg, bb, br, bg, bb)
+    else
+        frame:AddLine(totalLabel .. ": " .. fmtNumber(totalVal), br, bg, bb)
+    end
+end
+
 --[[
     Render currency tooltip (Blizzard data + custom additions)
 ]]
@@ -1390,11 +1559,14 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             end
         end
     end
+
+    self:RenderCurrencyCharacterBreakdown(frame, currencyID)
     
     -- Add custom lines
     if data.additionalLines then
         frame:AddSpacer(8)
-        for _, line in ipairs(data.additionalLines) do
+        for i = 1, #data.additionalLines do
+            local line = data.additionalLines[i]
             if line.type == "spacer" then
                 frame:AddSpacer(line.height or 8)
             elseif line.text then
@@ -1683,8 +1855,20 @@ function TooltipService:RegisterSafetyEvents()
     -- PLAYER_LEAVING_WORLD: use dedicated frame (avoids AceEvent collision)
     local safetyFrame = CreateFrame("Frame")
     safetyFrame:RegisterEvent("PLAYER_LEAVING_WORLD")
-    safetyFrame:SetScript("OnEvent", function()
-        self:Hide()
+    safetyFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+    safetyFrame:SetScript("OnEvent", function(_, event, key, state)
+        if event == "PLAYER_LEAVING_WORLD" then
+            self:Hide()
+            return
+        end
+        if event ~= "MODIFIER_STATE_CHANGED" then return end
+        if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+        if not isVisible or not activeTooltipData or activeTooltipData.type ~= "currency" then return end
+        if not currentAnchor or not currentAnchor.IsShown or not currentAnchor:IsShown() then return end
+        local shiftDown = (state == 1)
+        if activeShiftKeyDown == shiftDown then return end
+        activeShiftKeyDown = shiftDown
+        self:Show(currentAnchor, activeTooltipData)
     end)
 
     local function SafeDefer(fn)

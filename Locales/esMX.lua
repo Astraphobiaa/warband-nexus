@@ -499,6 +499,8 @@ L["CURRENCY_CHARACTER_SPECIFIC"] = "Personaje-Specific Monedas"
 L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Moneda Transferir Limitation"
 L["CURRENCY_TRANSFER_NOTICE_DESC"] = "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Banda de guerra currencies."
 L["CURRENCY_UNKNOWN"] = "Desconocido Moneda"
+L["CURRENCY_TOOLTIP_PER_CHARACTER"] = "Por personaje"
+L["CURRENCY_TOOLTIP_MORE_CHARACTERS"] = "+%d personajes mas"
 
 -- Plans (2)
 L["REMOVE_COMPLETED_TOOLTIP"] = "Eliminar all completed plans from your My Planes list. This action cannot be undone!"
@@ -1044,6 +1046,7 @@ Corregido:
 - Bolsas y botin: mover objetos, comprar/vender con vendedores y recoger botin ya no provocan grandes caidas de FPS al recomprimir toda la bolsa en cada cambio (regresion v3.1.8).
 - Cache de objetos: corregido error cuando el temporizador de guardado en segundo plano se ejecutaba.
 - Notificaciones: los avisos de monturas y coleccion ya no fallan cuando faltaba una tabla de iconos.
+- Monedas: los importes ya no siguen solo al personaje conectado; las filas comparan correctamente todos los personajes rastreados.
 
 Actualizado:
 - Cache de bolsas: el inventario permanece en memoria de sesion rapida durante el juego; guardado sin comprimir ~15 s tras el ultimo cambio de bolsa (ayuda si usas Alt+F4); compresion completa solo al cerrar sesion o /reload.
@@ -1051,6 +1054,9 @@ Actualizado:
 - Recuentos de objetos en tooltips y escaneos de coleccion reutilizan datos recientes de bolsas para evitar recorridos API extra.
 - El escaneo de bolsas de coleccion se omite cuando el modulo Colecciones esta desactivado y se ejecuta en el siguiente fotograma cuando esta activo.
 - Los recordatorios de misiones en el mapa omiten trabajo si no tienes planes activos.
+- Monedas: filas transferibles de Warband muestran tu personaje con actual / total de Warband; las especificas del personaje muestran el total de Warband con la insignia del mayor valor.
+- Tooltips de monedas: importes por personaje al pasar el cursor (10 por defecto, Shift para mas, maximo 50 en listas grandes).
+- Reputacion: las filas muestran tu standing frente al mejor de Warband en la barra; los tooltips listan el progreso por personaje con los mismos limites de Shift.
 
 CurseForge: Warband Nexus]=]
 

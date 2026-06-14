@@ -12,6 +12,7 @@ Mirror the same bullets in `Locales/*/CHANGELOG_V*` for in-game What's New.
 - Bags and loot: moving items, vendor buy/sell, and loot pickup no longer cause large FPS drops from re-compressing your entire bag on every change (v3.1.8 regression).
 - Items cache: fixed error when the idle save timer ran in the background.
 - Notifications: mount and collection toasts no longer crash when an icon table was missing.
+- Currency tab: amounts no longer follow only the logged-in character; rows compare tracked characters correctly.
 
 ### Updated
 
@@ -20,6 +21,9 @@ Mirror the same bullets in `Locales/*/CHANGELOG_V*` for in-game What's New.
 - Tooltip item counts and collection scans reuse recent bag data to avoid extra container walks.
 - Collections bag scan is skipped when the Collections module is off and runs on the next frame when enabled.
 - Map quest reminders skip work when you have no active plans.
+- Currency tab: Warband Transferable rows show your character with current / warband total amounts; Character-Specific rows show warband total with the highest-holder badge.
+- Currency tooltips: per-character amounts on hover (top 10 by default, hold Shift for more, capped at 50 for large rosters).
+- Reputation tab: rows show your character standing vs warband-best on the progress bar; tooltips list per-character progress with the same Shift limits.
 
 ## v3.1.8 (2026-06-14)
 

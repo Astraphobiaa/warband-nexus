@@ -499,6 +499,8 @@ L["CURRENCY_CHARACTER_SPECIFIC"] = "Valute specifiche del personaggio"
 L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Limitazione trasferimento valute"
 L["CURRENCY_TRANSFER_NOTICE_DESC"] = "L'API Blizzard non supporta trasferimenti automatici di valute. Usa il pannello valute in-game per trasferire manualmente le valute Warband."
 L["CURRENCY_UNKNOWN"] = "Valuta sconosciuta"
+L["CURRENCY_TOOLTIP_PER_CHARACTER"] = "Per personaggio"
+L["CURRENCY_TOOLTIP_MORE_CHARACTERS"] = "+%d personaggi in piu"
 
 -- Plans (2)
 L["REMOVE_COMPLETED_TOOLTIP"] = "Rimuovi tutti i piani completati dalla lista I miei piani. Questa azione non può essere annullata!"
@@ -1044,6 +1046,7 @@ Corretto:
 - Borse e bottino: spostare oggetti, comprare/vendere dai mercanti e raccogliere bottino non causano piu grandi cali di FPS ricomprimendo l'intera borsa a ogni modifica (regressione v3.1.8).
 - Cache oggetti: corretto errore quando il timer di salvataggio in background era attivo.
 - Notifiche: i toast di cavalcatura e collezione non vanno piu in crash quando mancava una tabella icone.
+- Valute: gli importi non seguono piu solo il personaggio connesso; le righe confrontano correttamente tutti i personaggi tracciati.
 
 Aggiornato:
 - Cache borse: l'inventario resta in memoria di sessione veloce durante il gioco; salvataggio non compresso ~15 s dopo l'ultima modifica borsa (utile con Alt+F4); compressione completa solo a logout o /reload.
@@ -1051,6 +1054,9 @@ Aggiornato:
 - Conteggi oggetti nei tooltip e scansioni collezione riusano dati borsa recenti evitando passaggi API container extra.
 - La scansione borse collezione viene saltata se il modulo Collezioni e disattivato ed esegue al frame successivo se attivo.
 - I promemoria missioni sulla mappa saltano il lavoro se non hai piani attivi.
+- Valute: le righe Warband trasferibili mostrano il tuo personaggio con attuale / totale Warband; quelle specifiche del personaggio mostrano il totale Warband con il badge del massimo.
+- Tooltip valute: importi per personaggio al passaggio del mouse (10 predefiniti, Shift per altri, massimo 50 per roster grandi).
+- Reputazione: le righe mostrano il tuo standing vs il migliore Warband sulla barra; i tooltip elencano il progresso per personaggio con gli stessi limiti Shift.
 
 CurseForge: Warband Nexus]=]
 
