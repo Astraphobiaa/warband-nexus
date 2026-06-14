@@ -981,6 +981,7 @@ L["SETTINGS_PANEL_ADVANCED_DESC"] = "Journal de debug, actualisation du cache et
 L["SETTINGS_PANEL_ABOUT"] = "A propos"
 L["SETTINGS_PANEL_ABOUT_DESC"] = "Credits, contributeurs et guide de chaque onglet."
 L["SETTINGS_SECTION_NOTIF_MASTER"] = "Principal et rappels"
+L["SETTINGS_SECTION_NOTIF_ACHIEVEMENTS"] = "Popups de hauts faits"
 L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"] = "Collection"
 L["SETTINGS_SECTION_NOTIF_CHAT"] = "Messages de chat"
 L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Compteur d'essais"

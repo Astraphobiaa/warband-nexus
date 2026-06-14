@@ -287,6 +287,16 @@ local function SetCheckboxDisabled(checkbox, label, disabled)
     end
 end
 
+local function SetCheckboxRowHidden(checkbox, label, hidden)
+    if hidden then
+        checkbox:Hide()
+        label:Hide()
+    else
+        checkbox:Show()
+        label:Show()
+    end
+end
+
 ---Create grid-based checkbox layout (RESPONSIVE - auto-adjusts columns)
 ---Supports hierarchical parent-child dependencies via option.parentKey.
 ---When a parent checkbox is unchecked, all descendants are recursively
@@ -313,9 +323,12 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
     local usableWidth = math.max(120, containerWidth - rowIndent)
     local layoutMaxCols = gridOpts.maxColumns
     if layoutMaxCols then
-        layoutMaxCols = math.max(1, math.min(2, math.floor(tonumber(layoutMaxCols) or 1)))
+        layoutMaxCols = math.max(1, math.min(3, math.floor(tonumber(layoutMaxCols) or 1)))
     else
         layoutMaxCols = 2
+    end
+    if gridOpts.minColWidth and tonumber(gridOpts.minColWidth) then
+        MIN_COL_WIDTH = math.max(160, math.floor(tonumber(gridOpts.minColWidth)))
     end
     local numCols = math.floor((usableWidth + COL_SPACING) / (MIN_COL_WIDTH + COL_SPACING))
     numCols = math.max(1, math.min(layoutMaxCols, numCols))
@@ -392,6 +405,9 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
         if option.key then
             widgets[option.key] = { checkbox = checkbox, label = label }
             optionByKey[option.key] = option
+            if gridOpts.externalWidgets then
+                gridOpts.externalWidgets[option.key] = widgets[option.key]
+            end
         end
 
         -- Build dependency tree
@@ -420,14 +436,44 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
         rowMaxH = math.max(rowMaxH, math.max(ch, lh + 1))
     end
     
+    local externalWidgets = gridOpts.externalWidgets
+
+    local function ResolveCheckboxWidget(key)
+        if not key then return nil end
+        local w = widgets[key]
+        if w then return w end
+        if externalWidgets then
+            return externalWidgets[key]
+        end
+        return nil
+    end
+
     -- Check if a key has any ancestor that is unchecked (recursive)
     local function IsAnyAncestorUnchecked(key)
         local pKey = parentKeyMap[key]
-        if not pKey or not widgets[pKey] then return false end
-        if not widgets[pKey].checkbox:GetChecked() then return true end
+        if not pKey then return false end
+        local parentWidget = ResolveCheckboxWidget(pKey)
+        if not parentWidget then return false end
+        if not parentWidget.checkbox:GetChecked() then return true end
         return IsAnyAncestorUnchecked(pKey)
     end
     
+    local function ApplyHideChildrenWhenOff(parentKey, parentChecked)
+        local parentOption = optionByKey[parentKey]
+        if not parentOption or not parentOption.hideChildrenWhenOff then return end
+        local kids = childKeys[parentKey]
+        if not kids then return end
+        for ki = 1, #kids do
+            local w = widgets[kids[ki]]
+            if w then
+                SetCheckboxRowHidden(w.checkbox, w.label, not parentChecked)
+                if not parentChecked then
+                    SetCheckboxDisabled(w.checkbox, w.label, true)
+                end
+            end
+        end
+    end
+
     -- Recursively cascade enable/disable to all descendants of a key
     local function CascadeDescendants(key, forceDisable)
         local kids = childKeys[key]
@@ -500,7 +546,12 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
                 
                 -- Recursive cascade to all descendants
                 if option.key then
-                    SyncDescendantsCheckedState(option.key, isChecked)
+                    if not option.skipChildSync then
+                        SyncDescendantsCheckedState(option.key, isChecked)
+                    end
+                    if option.hideChildrenWhenOff then
+                        ApplyHideChildrenWhenOff(option.key, isChecked)
+                    end
                     CascadeDescendants(option.key, not isChecked)
                 end
                 
@@ -513,11 +564,10 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
     end
     
     -- Apply initial disabled state: walk the tree top-down
-    -- Process root options first, then cascade
+    -- Process root options first, then cascade within this grid
     for oi = 1, #options do
         local option = options[oi]
-        if option.key and not option.parentKey then
-            -- Root node: cascade if unchecked
+        if option.key and not option.parentKey and widgets[option.key] then
             if not widgets[option.key].checkbox:GetChecked() then
                 CascadeDescendants(option.key, true)
             else
@@ -525,8 +575,25 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth, gridO
             end
         end
     end
-    -- Also handle children whose parent is in the same grid but not a root
-    -- (already handled by recursive cascade from roots above)
+    -- Parents in another grid (e.g. notifications master toggle) still gate children here
+    for oi = 1, #options do
+        local option = options[oi]
+        if option.key and option.parentKey and widgets[option.key] then
+            if IsAnyAncestorUnchecked(option.key) then
+                SetCheckboxDisabled(widgets[option.key].checkbox, widgets[option.key].label, true)
+                CascadeDescendants(option.key, true)
+            end
+        end
+    end
+    for oi = 1, #options do
+        local option = options[oi]
+        if option.hideChildrenWhenOff and option.key and widgets[option.key] then
+            ApplyHideChildrenWhenOff(option.key, widgets[option.key].checkbox:GetChecked())
+            if widgets[option.key].checkbox:GetChecked() then
+                CascadeDescendants(option.key, false)
+            end
+        end
+    end
 
     local gridTailPad = gridOpts.gridTailPad or (UI_SPACING.AFTER_ELEMENT or 8)
     if #options == 0 then
@@ -2294,7 +2361,13 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local notifSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(notifSection, yOffset)
 
-    local notifGridOpts = { indentChildren = true, minColumns = 1, maxColumns = 1 }
+    local notifGridOpts = {
+        indentChildren = true,
+        minColumns = 2,
+        maxColumns = 3,
+        minColWidth = 220,
+        childIndent = 14,
+    }
 
     local notifMasterOptions = {
         {
@@ -2337,35 +2410,48 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             get = function() return WarbandNexus.db.profile.notifications.showUpdateNotes end,
             set = function(value) WarbandNexus.db.profile.notifications.showUpdateNotes = value end,
         },
+    }
+
+    local notifAchievementOptions = {
         {
-            key = "loginChat",
+            key = "hideBlizzAchievement",
             parentKey = "enabled",
-            label = (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT"]) or "Login message in chat",
-            tooltip = (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT_DESC"]) or "Print a short welcome line when notifications are on. Visible in custom chat (e.g. Chattynator); the What's New window is separate.",
-            get = function() return WarbandNexus.db.profile.notifications.showLoginChat ~= false end,
-            set = function(value) WarbandNexus.db.profile.notifications.showLoginChat = value end,
-        },
-        {
-            key = "hidePlayedTime",
-            parentKey = "enabled",
-            label = (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT"]) or "Hide Time Played in chat",
-            tooltip = (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"]) or "Remove Total time played / Time played this level from chat (system messages). Disable this if you want those lines or /played output.",
-            get = function() return WarbandNexus.db.profile.notifications.hidePlayedTimeInChat ~= false end,
+            skipChildSync = true,
+            hideChildrenWhenOff = true,
+            label = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT"]) or "Warband achievement popups",
+            tooltip = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"])
+                or "On: Warband Nexus shows achievement earned and criteria-step toasts. Off: Blizzard's default gold achievement alerts.",
+            get = function() return WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert end,
             set = function(value)
-                WarbandNexus.db.profile.notifications.hidePlayedTimeInChat = value
-                if WarbandNexus.UpdateChatFilter then
-                    WarbandNexus:UpdateChatFilter()
+                WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert = value
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
                 end
             end,
         },
         {
-            key = "hideBlizzAchievement",
-            parentKey = "enabled",
-            label = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT"]) or "Replace Achievement Popup",
-            tooltip = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"]) or "Replace Blizzard's default achievement popup with the Warband Nexus notification style",
-            get = function() return WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert end,
+            key = "lootAchievement",
+            parentKey = "hideBlizzAchievement",
+            label = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT"]) or "Earned achievement popup",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT_TOOLTIP"])
+                or "Large popup when the whole achievement is earned (Warband popups must be on).",
+            get = function() return WarbandNexus.db.profile.notifications.showAchievementNotifications end,
             set = function(value)
-                WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert = value
+                WarbandNexus.db.profile.notifications.showAchievementNotifications = value
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                end
+            end,
+        },
+        {
+            key = "showCriteriaProgress",
+            parentKey = "hideBlizzAchievement",
+            label = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS"]) or "Criteria progress popup",
+            tooltip = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS_TOOLTIP"])
+                or "Small toast each time one step completes (Traveler's Log, treasures, etc.). Off: Blizzard criteria bar.",
+            get = function() return WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications = value
                 if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
                     WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
                 end
@@ -2377,8 +2463,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         {
             key = "loot",
             parentKey = "enabled",
-            label = (ns.L and ns.L["LOOT_ALERTS"]) or "New Collectible Popup",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Master toggle for collectible popups. Disabling this hides all collectible notifications.",
+            label = (ns.L and ns.L["LOOT_ALERTS"]) or "Collectible popups",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Master switch for mount, pet, toy, and appearance drop popups.",
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
             set = function(value)
                 WarbandNexus.db.profile.notifications.showLootNotifications = value
@@ -2390,80 +2476,75 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         {
             key = "lootMount",
             parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_MOUNT"]) or "Mount Notifications",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_MOUNT_TOOLTIP"]) or "Show notifications when you collect a new mount.",
+            label = (ns.L and ns.L["LOOT_ALERTS_MOUNT"]) or "Mounts",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_MOUNT_TOOLTIP"]) or "Popup when you learn a new mount.",
             get = function() return WarbandNexus.db.profile.notifications.showMountNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showMountNotifications = value end,
         },
         {
             key = "lootPet",
             parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_PET"]) or "Pet Notifications",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_PET_TOOLTIP"]) or "Show notifications when you collect a new pet.",
+            label = (ns.L and ns.L["LOOT_ALERTS_PET"]) or "Pets",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_PET_TOOLTIP"]) or "Popup when you learn a new battle pet.",
             get = function() return WarbandNexus.db.profile.notifications.showPetNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showPetNotifications = value end,
         },
         {
             key = "lootToy",
             parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_TOY"]) or "Toy Notifications",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOY_TOOLTIP"]) or "Show notifications when you collect a new toy.",
+            label = (ns.L and ns.L["LOOT_ALERTS_TOY"]) or "Toys",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOY_TOOLTIP"]) or "Popup when you learn a new toy.",
             get = function() return WarbandNexus.db.profile.notifications.showToyNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showToyNotifications = value end,
         },
         {
             key = "lootTransmog",
             parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG"]) or "Appearance Notifications",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG_TOOLTIP"]) or "Show notifications when you collect a new armor or weapon appearance.",
+            label = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG"]) or "Appearances",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG_TOOLTIP"]) or "Popup when you unlock a new transmog appearance.",
             get = function() return WarbandNexus.db.profile.notifications.showTransmogNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showTransmogNotifications = value end,
         },
         {
             key = "lootIllusion",
             parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_ILLUSION"]) or "Illusion Notifications",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_ILLUSION_TOOLTIP"]) or "Show notifications when you collect a new weapon illusion.",
+            label = (ns.L and ns.L["LOOT_ALERTS_ILLUSION"]) or "Illusions",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_ILLUSION_TOOLTIP"]) or "Popup when you unlock a new weapon illusion.",
             get = function() return WarbandNexus.db.profile.notifications.showIllusionNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showIllusionNotifications = value end,
         },
         {
             key = "lootTitle",
             parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_TITLE"]) or "Title Notifications",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_TITLE_TOOLTIP"]) or "Show notifications when you earn a new title.",
+            label = (ns.L and ns.L["LOOT_ALERTS_TITLE"]) or "Titles",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TITLE_TOOLTIP"]) or "Popup when you earn a new title.",
             get = function() return WarbandNexus.db.profile.notifications.showTitleNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showTitleNotifications = value end,
-        },
-        {
-            key = "lootAchievement",
-            parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT"]) or "Achievement Notifications",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT_TOOLTIP"]) or "Show notifications when you earn a new achievement.",
-            get = function() return WarbandNexus.db.profile.notifications.showAchievementNotifications end,
-            set = function(value)
-                WarbandNexus.db.profile.notifications.showAchievementNotifications = value
-                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
-                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-                end
-            end,
-        },
-        {
-            key = "showCriteriaProgress",
-            parentKey = "loot",
-            label = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS"]) or "Criteria Progress Toast",
-            tooltip = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS_TOOLTIP"]) or "Show a small notification when an achievement criteria is completed (Progress X/Y and criteria name).",
-            get = function() return WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications end,
-            set = function(value)
-                WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications = value
-                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
-                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-                end
-            end,
         },
     }
 
     local notifChatOptions = {
+        {
+            key = "loginChat",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT"]) or "Login message in chat",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_LOGIN_CHAT_DESC"]) or "Short welcome line in chat on login (separate from the What's New window).",
+            get = function() return WarbandNexus.db.profile.notifications.showLoginChat ~= false end,
+            set = function(value) WarbandNexus.db.profile.notifications.showLoginChat = value end,
+        },
+        {
+            key = "hidePlayedTime",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT"]) or "Hide time played in chat",
+            tooltip = (ns.L and ns.L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"]) or "Filter Total time played and Time played this level system messages.",
+            get = function() return WarbandNexus.db.profile.notifications.hidePlayedTimeInChat ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.hidePlayedTimeInChat = value
+                if WarbandNexus.UpdateChatFilter then
+                    WarbandNexus:UpdateChatFilter()
+                end
+            end,
+        },
         {
             key = "reputation",
             parentKey = "enabled",
@@ -2495,16 +2576,17 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local notifTryOptions = {
         {
             key = "autoTryCounter",
-            parentKey = "loot",
-            label = (ns.L and ns.L["AUTO_TRY_COUNTER"]) or "Auto-Track Drop Attempts",
-            tooltip = (ns.L and ns.L["AUTO_TRY_COUNTER_TOOLTIP"]) or "Automatically count failed drop attempts when looting NPCs, rares, bosses, fishing, or containers. Shows total attempt count in the popup when the collectible finally drops.",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["AUTO_TRY_COUNTER"]) or "Track drop attempts",
+            tooltip = (ns.L and ns.L["AUTO_TRY_COUNTER_TOOLTIP"])
+                or "Count failed kills, opens, and casts toward mounts, pets, toys, and illusions. Shows attempt total on the drop popup.",
             get = function() return WarbandNexus.db.profile.notifications.autoTryCounter end,
             set = function(value) WarbandNexus.db.profile.notifications.autoTryCounter = value end,
         },
         {
             key = "syncTryCountDownToStatistics",
             parentKey = "autoTryCounter",
-            label = (ns.L and ns.L["SYNC_TRY_COUNT_DOWN_TO_STATISTICS"]) or "Align try count down to Statistics",
+            label = (ns.L and ns.L["SYNC_TRY_COUNT_DOWN_TO_STATISTICS"]) or "Match Statistics downward",
             tooltip = (ns.L and ns.L["SYNC_TRY_COUNT_DOWN_TO_STATISTICS_TOOLTIP"])
                 or "When enabled, stat-backed mounts can decrease to match WoW Statistics totals on login or /wn tc sync-stats. Default off (only raises counts).",
             get = function() return WarbandNexus.db.profile.notifications.syncTryCountDownToStatistics == true end,
@@ -2513,7 +2595,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         {
             key = "hideTryCounterChat",
             parentKey = "autoTryCounter",
-            label = (ns.L and ns.L["HIDE_TRY_COUNTER_CHAT"]) or "Hide Attempts on Chat",
+            label = (ns.L and ns.L["HIDE_TRY_COUNTER_CHAT"]) or "Hide try lines in chat",
             tooltip = (ns.L and ns.L["HIDE_TRY_COUNTER_CHAT_TOOLTIP"])
                 or "Suppress all try counter messages in chat ([WN-Counter], [WN-Drops], obtained/caught lines). Counting continues normally — only chat output is hidden.",
             get = function() return WarbandNexus.db.profile.notifications.hideTryCounterChat == true end,
@@ -2522,7 +2604,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         {
             key = "tryCounterInstanceEntryDropLines",
             parentKey = "autoTryCounter",
-            label = (ns.L and ns.L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"]) or "Instance entry: list drops in chat",
+            label = (ns.L and ns.L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES"]) or "List drops on instance enter",
             tooltip = (ns.L and ns.L["TRYCOUNTER_INSTANCE_ENTRY_DROP_LINES_TOOLTIP"])
                 or "Print [WN-Drops] lines on dungeon/raid entry with difficulty colors vs your current instance, or turn off for a one-line hint only.",
             get = function()
@@ -2535,7 +2617,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         {
             key = "screenFlash",
             parentKey = "autoTryCounter",
-            label = (ns.L and ns.L["SCREEN_FLASH_EFFECT"]) or "Flash on Rare Drop",
+            label = (ns.L and ns.L["SCREEN_FLASH_EFFECT"]) or "Screen flash on drop",
             tooltip = (ns.L and ns.L["SCREEN_FLASH_EFFECT_TOOLTIP"]) or "Play a screen flash animation when you finally obtain a collectible after multiple farming attempts",
             get = function() return WarbandNexus.db.profile.notifications.screenFlashEffect end,
             set = function(value) WarbandNexus.db.profile.notifications.screenFlashEffect = value end,
@@ -2543,7 +2625,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         {
             key = "tryCounterDropScreenshot",
             parentKey = "autoTryCounter",
-            label = (ns.L and ns.L["TRY_COUNTER_DROP_SCREENSHOT"]) or "Screenshot on tracked drop",
+            label = (ns.L and ns.L["TRY_COUNTER_DROP_SCREENSHOT"]) or "Screenshot on drop",
             tooltip = (ns.L and ns.L["TRY_COUNTER_DROP_SCREENSHOT_TOOLTIP"])
                 or "When a mount, pet, toy, or illusion you were try-tracking finally drops, take an automatic screenshot (~0.3s after the popup). Independent of the screen flash option.",
             get = function() return WarbandNexus.db.profile.notifications.tryCounterDropScreenshot ~= false end,
@@ -2553,7 +2635,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     local notifInnerW = effectiveWidth - 30
     local notifStackY = 0
-    local notifWidgets
+    local notifWidgets = {}
+    local notifGridOptsWithRegistry = {}
+    for k, v in pairs(notifGridOpts) do
+        notifGridOptsWithRegistry[k] = v
+    end
+    notifGridOptsWithRegistry.externalWidgets = notifWidgets
     local tcChatRouteDropdown, tcChatRouteLabel
     local addTcChatBtn
 
@@ -2568,27 +2655,33 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local cy = 0
         local w
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_MASTER"]) or "Master and reminders",
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_MASTER"]) or "General",
             iw, cy, { skipGapBefore = true })
-        cy, w = CreateCheckboxGrid(inner, notifMasterOptions, cy, iw, notifGridOpts)
-        notifWidgets = w
-
-        cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"]) or "Collectibles",
-            iw, cy, {})
-        cy, w = CreateCheckboxGrid(inner, notifCollectibleOptions, cy, iw, notifGridOpts)
+        cy, w = CreateCheckboxGrid(inner, notifMasterOptions, cy, iw, notifGridOptsWithRegistry)
         MergeCheckboxWidgets(notifWidgets, w)
 
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_CHAT"]) or "Chat messages",
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_ACHIEVEMENTS"]) or "Achievement popups",
             iw, cy, {})
-        cy, w = CreateCheckboxGrid(inner, notifChatOptions, cy, iw, notifGridOpts)
+        cy, w = CreateCheckboxGrid(inner, notifAchievementOptions, cy, iw, notifGridOptsWithRegistry)
+        MergeCheckboxWidgets(notifWidgets, w)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"]) or "Collectible popups",
+            iw, cy, {})
+        cy, w = CreateCheckboxGrid(inner, notifCollectibleOptions, cy, iw, notifGridOptsWithRegistry)
+        MergeCheckboxWidgets(notifWidgets, w)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_NOTIF_CHAT"]) or "Chat filters",
+            iw, cy, {})
+        cy, w = CreateCheckboxGrid(inner, notifChatOptions, cy, iw, notifGridOptsWithRegistry)
         MergeCheckboxWidgets(notifWidgets, w)
 
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"]) or "Try counter",
             iw, cy, {})
-        cy, w = CreateCheckboxGrid(inner, notifTryOptions, cy, iw, notifGridOpts)
+        cy, w = CreateCheckboxGrid(inner, notifTryOptions, cy, iw, notifGridOptsWithRegistry)
         MergeCheckboxWidgets(notifWidgets, w)
 
         cy = cy - GetHeaderToolbarGap()
@@ -2750,8 +2843,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         durationSlider = sliderElements[#sliderElements]
     end
     
-    -- ---- Notification position: custom anchor shared by main + progress lane (under Timing) ----
+    -- ---- Notification position ----
     notifGridYOffset = notifGridYOffset - GetHeaderToolbarGap()
+    notifGridYOffset, _ = AppendSettingsSubSectionHeader(notifSection.content,
+        (ns.L and ns.L["SETTINGS_SECTION_NOTIF_POSITION"]) or "Popup position",
+        notifInnerW, notifGridYOffset, { skipGapAfter = true })
+    notifGridYOffset = notifGridYOffset - math.floor(GetHeaderToolbarGap() * 0.5 + 0.5)
 
     local setPosBtn, resetBtn, testBtn
     local useAlertFrameCheck
@@ -3032,11 +3129,29 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         dlg:Show()
     end
 
+    unifiedLayoutCheck = CreateThemedCheckbox(notifSection.content)
+    unifiedLayoutCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
+    local unifiedLayoutLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
+    unifiedLayoutLabel:SetJustifyH("LEFT")
+    unifiedLayoutLabel:SetText((ns.L and ns.L["NOTIF_UNIFIED_TOAST_LAYOUT"]) or "One position for all popup types")
+    ns.UI_SetTextColorRole(unifiedLayoutLabel, "Bright")
+    unifiedLayoutLabel:SetPoint("LEFT", unifiedLayoutCheck, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
+    unifiedLayoutCheck:SetChecked(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false)
+    if unifiedLayoutCheck.checkTexture then unifiedLayoutCheck.checkTexture:SetShown(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false) end
+    unifiedLayoutCheck:SetScript("OnClick", function(self)
+        local v = self:GetChecked()
+        WarbandNexus.db.profile.notifications.unifiedToastLayout = v
+        if self.checkTexture then self.checkTexture:SetShown(v) end
+        closePositionGhosts()
+        if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
+    end)
+    notifGridYOffset = notifGridYOffset - math.max(22, ns.UI_TOGGLE_SIZE or 22) - GetHeaderToolbarGap()
+
     useAlertFrameCheck = CreateThemedCheckbox(notifSection.content)
     useAlertFrameCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
     local useAlertFrameLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     useAlertFrameLabel:SetJustifyH("LEFT")
-    useAlertFrameLabel:SetText((ns.L and ns.L["USE_ALERTFRAME_POSITION"]) or "Use AlertFrame position")
+    useAlertFrameLabel:SetText((ns.L and ns.L["USE_ALERTFRAME_POSITION"]) or "Match Blizzard AlertFrame position")
     ns.UI_SetTextColorRole(useAlertFrameLabel, "Bright")
     useAlertFrameLabel:SetPoint("LEFT", useAlertFrameCheck, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
     useAlertFrameCheck:SetChecked(WarbandNexus.db.profile.notifications.useAlertFramePosition)
@@ -3289,15 +3404,15 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     notifPerLaneLabel:SetJustifyH("LEFT")
     notifPerLaneLabel:SetWordWrap(true)
     notifPerLaneLabel:SetNonSpaceWrap(false)
-    notifPerLaneLabel:SetText((ns.L and ns.L["NOTIF_PER_LANE_HINT"]) or "Separate anchors: use each button, drag the preview, right-click for X/Y. Click the same button again to save.")
+    notifPerLaneLabel:SetText((ns.L and ns.L["NOTIF_PER_LANE_HINT"]) or "Separate position per popup type: click a lane, drag the preview, right-click for X/Y.")
     ns.UI_SetTextColorRole(notifPerLaneLabel, "Normal")
     notifGridYOffset = notifGridYOffset - math.max(SETTINGS_ANCHOR_DESC_MIN_HEIGHT, notifPerLaneLabel:GetStringHeight()) - GetHeaderToolbarGap()
 
     local laneBtnW = math.floor((notifInnerW - 3 * btnGap) / 4)
     local laneDefs = {
-        { id = "achievement", loc = "NOTIF_POS_BTN_ACH", fallback = "Achieve." },
+        { id = "achievement", loc = "NOTIF_POS_BTN_ACH", fallback = "Achievement" },
         { id = "criteria", loc = "NOTIF_POS_BTN_CRITERIA", fallback = "Criteria" },
-        { id = "tryCounter", loc = "NOTIF_POS_BTN_TRY", fallback = "Try" },
+        { id = "tryCounter", loc = "NOTIF_POS_BTN_TRY", fallback = "Try count" },
         { id = "reminder", loc = "NOTIF_POS_BTN_REMINDER", fallback = "Reminder" },
     }
     for li = 1, #laneDefs do
@@ -3320,24 +3435,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         lanePosButtons[#lanePosButtons + 1] = lb
     end
     notifGridYOffset = notifGridYOffset - SETTINGS_COMPACT_BTN_H - GetHeaderToolbarGap()
-
-    unifiedLayoutCheck = CreateThemedCheckbox(notifSection.content)
-    unifiedLayoutCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    local unifiedLayoutLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
-    unifiedLayoutLabel:SetJustifyH("LEFT")
-    unifiedLayoutLabel:SetText((ns.L and ns.L["NOTIF_UNIFIED_TOAST_LAYOUT"]) or "Single stack anchor (all toast types share one position)")
-    ns.UI_SetTextColorRole(unifiedLayoutLabel, "Bright")
-    unifiedLayoutLabel:SetPoint("LEFT", unifiedLayoutCheck, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
-    unifiedLayoutCheck:SetChecked(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false)
-    if unifiedLayoutCheck.checkTexture then unifiedLayoutCheck.checkTexture:SetShown(WarbandNexus.db.profile.notifications.unifiedToastLayout ~= false) end
-    unifiedLayoutCheck:SetScript("OnClick", function(self)
-        local v = self:GetChecked()
-        WarbandNexus.db.profile.notifications.unifiedToastLayout = v
-        if self.checkTexture then self.checkTexture:SetShown(v) end
-        closePositionGhosts()
-        if RefreshNotifAnchorControlsVisibility then RefreshNotifAnchorControlsVisibility() end
-    end)
-    notifGridYOffset = notifGridYOffset - math.max(22, ns.UI_TOGGLE_SIZE or 22) - GetHeaderToolbarGap()
 
     RefreshNotifAnchorControlsVisibility = function()
         local db = WarbandNexus.db.profile.notifications

@@ -981,6 +981,7 @@ L["SETTINGS_PANEL_ADVANCED_DESC"] = "Registro de depuracion, actualizacion de ca
 L["SETTINGS_PANEL_ABOUT"] = "Acerca de"
 L["SETTINGS_PANEL_ABOUT_DESC"] = "Creditos, colaboradores y guia de cada pestana."
 L["SETTINGS_SECTION_NOTIF_MASTER"] = "Principal y recordatorios"
+L["SETTINGS_SECTION_NOTIF_ACHIEVEMENTS"] = "Popups de logros"
 L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"] = "Coleccionables"
 L["SETTINGS_SECTION_NOTIF_CHAT"] = "Mensajes de chat"
 L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Contador de intentos"

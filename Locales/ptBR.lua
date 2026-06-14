@@ -981,6 +981,7 @@ L["SETTINGS_PANEL_ADVANCED_DESC"] = "Log de depuracao, atualizacao de cache e ra
 L["SETTINGS_PANEL_ABOUT"] = "Sobre"
 L["SETTINGS_PANEL_ABOUT_DESC"] = "Creditos, colaboradores e guia de cada aba."
 L["SETTINGS_SECTION_NOTIF_MASTER"] = "Principal e lembretes"
+L["SETTINGS_SECTION_NOTIF_ACHIEVEMENTS"] = "Popups de conquistas"
 L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"] = "Colecionaveis"
 L["SETTINGS_SECTION_NOTIF_CHAT"] = "Mensagens no chat"
 L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Contador de tentativas"

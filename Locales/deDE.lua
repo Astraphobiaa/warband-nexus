@@ -981,6 +981,7 @@ L["SETTINGS_PANEL_ADVANCED_DESC"] = "Debug-Protokollierung, Cache-Aktualisierung
 L["SETTINGS_PANEL_ABOUT"] = "Info"
 L["SETTINGS_PANEL_ABOUT_DESC"] = "Danksagungen, Mitwirkende und eine Uebersicht aller Tabs."
 L["SETTINGS_SECTION_NOTIF_MASTER"] = "Haupt- und Erinnerungen"
+L["SETTINGS_SECTION_NOTIF_ACHIEVEMENTS"] = "Erfolgs-Popups"
 L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"] = "Sammlerstuecke"
 L["SETTINGS_SECTION_NOTIF_CHAT"] = "Chat-Nachrichten"
 L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Versuchs-Zaehler"

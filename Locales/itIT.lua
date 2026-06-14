@@ -981,6 +981,7 @@ L["SETTINGS_PANEL_ADVANCED_DESC"] = "Log di debug, aggiornamento cache e traccia
 L["SETTINGS_PANEL_ABOUT"] = "Informazioni"
 L["SETTINGS_PANEL_ABOUT_DESC"] = "Crediti, collaboratori e guida a ogni scheda."
 L["SETTINGS_SECTION_NOTIF_MASTER"] = "Principale e promemoria"
+L["SETTINGS_SECTION_NOTIF_ACHIEVEMENTS"] = "Popup traguardi"
 L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"] = "Collezionabili"
 L["SETTINGS_SECTION_NOTIF_CHAT"] = "Messaggi chat"
 L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Contatore tentativi"

@@ -981,6 +981,7 @@ L["SETTINGS_PANEL_ADVANCED_DESC"] = "Otladka, obnovlenie kesha i otslezhivanie p
 L["SETTINGS_PANEL_ABOUT"] = "O programme"
 L["SETTINGS_PANEL_ABOUT_DESC"] = "Blagodarnosti, uchastniki i obzor vseh vkladok."
 L["SETTINGS_SECTION_NOTIF_MASTER"] = "Osnovnye i napominaniya"
+L["SETTINGS_SECTION_NOTIF_ACHIEVEMENTS"] = "Vsplyvayushchie okna dostizheniy"
 L["SETTINGS_SECTION_NOTIF_COLLECTIBLES"] = "Kollektsionnye"
 L["SETTINGS_SECTION_NOTIF_CHAT"] = "Soobshcheniya v chate"
 L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Schetchik popytok"
