@@ -142,9 +142,9 @@ function WarbandNexus:SetTryCounterModuleEnabled(enabled)
     self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
     self.db.profile.modulesEnabled.tryCounter = enabled
     
-    -- Try counter events are always registered (protected API, cannot re-register safely).
-    -- IsAutoTryCounterEnabled() guards all processing paths; disabling the module
-    -- makes every event handler exit early with zero processing cost.
+    -- Try counter events stay registered (protected API, cannot re-register safely).
+    -- IsTryCounterModuleEnabled() / IsAutoTryCounterEnabled() guard handler bodies;
+    -- spellcast handlers also bail when the module is off (no per-cast GetSpellInfo work).
     
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
     self:SendMessage(E.MODULE_TOGGLED, "tryCounter", enabled)

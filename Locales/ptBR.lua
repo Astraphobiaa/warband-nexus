@@ -1041,15 +1041,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
 
 Corrigido:
 - Bolsas e saque: mover itens, comprar/vender com vendedores e pegar saque nao causam mais grandes quedas de FPS ao recomprimir a bolsa inteira a cada mudanca (regressao v3.1.8).
 - Cache de itens: corrigido erro quando o temporizador de salvamento em segundo plano era executado.
 - Notificacoes: toasts de montaria e colecao nao travam mais quando faltava uma tabela de icones.
 - Moedas: valores nao seguem mais apenas o personagem logado; as linhas comparam corretamente todos os personagens rastreados.
+- Desempenho: voo draconico e outros feiticos frequentes nao repetem mais consultas API de feiticos a cada pressionamento (menos travamentos de FPS ao voar).
+- Try Counter: deteccao de feiticos nao roda mais quando o modulo Try Counter esta desativado.
+- Banco da guilda: personagens sem permissao de ver abas do banco da guilda nao limpam mais o scan compartilhado ao abrir a janela (outros alts da mesma guilda mantem os itens em cache).
+- Banco da guilda: Items > Guilda mostra scans em cache da conta mesmo quando seu personagem atual nao esta nessa guilda.
 
 Atualizado:
+- Modo claro: superficies de paineis mais quentes, contraste de linhas e botoes mais claro, icones de navegacao coloridos e tooltips mais legiveis (sombras suaves).
+- Modo claro: botao Vault, rastreador de acesso rapido e previa do modelo de Colecoes seguem o mesmo polimento de tema.
 - Cache de bolsas: inventario permanece em memoria de sessao rapida durante o jogo; salvamento sem compressao ~15 s apos a ultima mudanca de bolsa (ajuda se voce usa Alt+F4); compressao completa so no logout ou /reload.
 - Reordenar slots em uma bolsa nao dispara mais varredura completa do armazenamento de equipamento se as quantidades nao mudaram.
 - Contagens de itens em tooltips e varreduras de colecao reutilizam dados recentes de bolsas evitando passagens API extras.
@@ -1061,39 +1067,7 @@ Atualizado:
 
 CurseForge: Warband Nexus]=]
 
-L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
-Adicionado:
-- Modo claro de acessibilidade: escolha Claro ou Escuro em Configuracoes > Tema e aparencia > Claro / Escuro.
-
-Corrigido:
-- Tooltips: corrigidos erros de taint em valores secretos e cores de linha mais legiveis no modo claro.
-- Profissoes: concentracao, conhecimento e dados de receitas salvam de forma confiavel ao fechar a janela de profissao ou ao sair.
-- Dados salvos: a limpeza no login nao apaga mais o armazenamento do banco da banda de guerra nem o progresso de alts entre sessoes.
-- Personagens, Moedas, PvE, Reputacao e Estatisticas voltam a desenhar corretamente apos refactors internos da UI.
-
-Atualizado:
-- Polimento da UI para superficies no modo claro, destaque de linhas, icones e barras de rolagem.
-- Navegar colecoes: titulos de sub-abas fixos e atualizacao de listas mais rapida ao revisitar montarias, mascotes, brinquedos e conquistas.
-- Aba Armazenamento de itens: arvores grandes da banda de guerra construidas em etapas para reduzir picos ao trocar de aba.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
-
-Corrigido:
-- Equipamento: armazenamento recomendado nao fica mais preso em loop "Scanning storage..." nem pisca apos carregar info de itens.
-- PvE: moeda alt, cofre, brasao, bau e progresso try counter nao se perdem mais apos logout ou limpeza de chave de personagem.
-- Planos To-Do: "Mostrar planejados" funciona corretamente ao desmarcar na Lista To-Do e Progresso semanal (abas de navegacao inalteradas).
-- Busca: estado de caixas e filtros padronizado em Colecoes, Equipamento, Moedas e listas relacionadas.
-- Colecoes: area de rolagem e altura da lista corrigidas; redimensionar nao corta mais nem causa flicker na lista/preview.
-- Rolagem UI: listas virtuais e barras alinhadas em conquistas, Colecoes, Moedas, Reputacao e Profissoes.
-
-Atualizado:
-- Dados salvos: migracoes de cache e limpeza de BD mais seguras; linhas de progresso nao sao mais removidas por engano.
-- Navegacao de colecoes: listas de montarias/mascotes/brinquedos e painel de modelo atualizam melhor apos busca e filtros.
-
-CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 

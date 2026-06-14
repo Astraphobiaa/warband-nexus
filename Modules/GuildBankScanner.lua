@@ -26,29 +26,64 @@ local guildBankScanGeneration = 0
 local MAX_GUILDBANK_SLOTS_PER_TAB = 98
 local activeScanCtx = nil
 
--- Scan Guild Bank (frame-budgeted; returns true when a scan run is scheduled / validations pass)
+local function RecomputeGuildBankTotals(guildData)
+    if not guildData then
+        return 0, 0, 0
+    end
+    local totalItems, usedSlots = 0, 0
+    for _, tabData in pairs(guildData.tabs or {}) do
+        for _, itemData in pairs(tabData.items or {}) do
+            usedSlots = usedSlots + 1
+            totalItems = totalItems + (itemData.stackCount or 1)
+        end
+    end
+    local totalSlots = guildData.totalSlots or 0
+    if totalSlots < usedSlots then
+        totalSlots = usedSlots
+    end
+    return totalItems, usedSlots, totalSlots
+end
+
+--- How many purchased guild bank tabs the current character may view (GetGuildBankTabInfo isViewable).
+function WarbandNexus:CountViewableGuildBankTabs(numTabs)
+    numTabs = numTabs or GetNumGuildBankTabs() or 0
+    if numTabs <= 0 then
+        return 0
+    end
+    local count = 0
+    for tabIndex = 1, numTabs do
+        local _, _, isViewable = GetGuildBankTabInfo(tabIndex)
+        if isViewable then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+-- Scan Guild Bank (frame-budgeted).
+-- Returns success, and optional errCode ("no_viewable_tabs" when cache must be preserved).
 function WarbandNexus:ScanGuildBank()
     DebugVerbosePrint("|cff888888[Guild Bank Scanner]|r ScanGuildBank() called")
     
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Character not tracked")
-        return false
+        return false, "not_tracked"
     end
 
     if not self.guildBankIsOpen then
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Guild bank not open (guildBankIsOpen=false)")
-        return false
+        return false, "not_open"
     end
     
     if not IsInGuild() then
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Player not in a guild")
-        return false
+        return false, "not_in_guild"
     end
     
     local guildName = GetGuildInfo("player")
     if not guildName or (issecretvalue and issecretvalue(guildName)) then
         ns.DebugPrint("|cffff6600[Guild Bank Scanner]|r Could not get guild name")
-        return false
+        return false, "no_guild_name"
     end
     
     DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Starting scan for guild: " .. guildName)
@@ -73,13 +108,21 @@ function WarbandNexus:ScanGuildBank()
     local numTabs = GetNumGuildBankTabs()
     
     if not numTabs or numTabs == 0 then
-        return false
+        return false, "no_tabs"
+    end
+
+    local viewableTabCount = self:CountViewableGuildBankTabs(numTabs)
+    if viewableTabCount == 0 then
+        -- Character has no guild-bank tab view rights; never overwrite a scan from another alt.
+        DebugVerbosePrint("|cffff9900[Guild Bank Scanner]|r No viewable tabs for this character — preserving cache")
+        return false, "no_viewable_tabs"
     end
 
     guildBankScanGeneration = guildBankScanGeneration + 1
     local myGen = guildBankScanGeneration
     activeScanCtx = { myGen = myGen, guildData = guildData, tabIndex = 1, slotID = 0, tabItemsBuilding = nil }
 
+    local scannedViewableTabs = 0
     local totalItems = 0
     local totalSlots = 0
     local usedSlots = 0
@@ -90,20 +133,26 @@ function WarbandNexus:ScanGuildBank()
 
     local function finalizeSuccess()
         activeScanCtx = nil
+        if scannedViewableTabs <= 0 then
+            DebugVerbosePrint("|cffff9900[Guild Bank Scanner]|r Scan finished with no viewable tabs — cache unchanged")
+            return
+        end
         guildData.lastScan = time()
         do
             local scanBy = UnitName("player")
             guildData.scannedBy = (scanBy and not (issecretvalue and issecretvalue(scanBy))) and scanBy or nil
         end
-        guildData.totalItems = totalItems
-        guildData.totalSlots = totalSlots
-        guildData.usedSlots = usedSlots
+        guildData.totalSlots = math.max(guildData.totalSlots or 0, totalSlots)
+        local recomputedItems, recomputedUsed, recomputedSlots = RecomputeGuildBankTotals(guildData)
+        guildData.totalItems = recomputedItems
+        guildData.usedSlots = recomputedUsed
+        guildData.totalSlots = math.max(guildData.totalSlots or 0, recomputedSlots, totalSlots)
         local guildGold = GetGuildBankMoney()
         if guildGold then
             guildData.cachedGold = guildGold
             guildData.goldLastUpdated = time()
         end
-        DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
+        DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. recomputedItems .. " items in " .. recomputedUsed .. " slots")
         ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
         self:SendMessage(E.ITEMS_UPDATED)
     end
@@ -137,6 +186,7 @@ function WarbandNexus:ScanGuildBank()
                 if not isViewable then
                     tabIndex = tabIndex + 1
                 else
+                    scannedViewableTabs = scannedViewableTabs + 1
                     totalSlots = totalSlots + MAX_GUILDBANK_SLOTS_PER_TAB
                     if not guildData.tabs[tabIndex] then
                         guildData.tabs[tabIndex] = { name = name, icon = icon, items = {} }
@@ -197,7 +247,7 @@ function WarbandNexus:ScanGuildBank()
     end
 
     C_Timer.After(0, processChunk)
-    return true
+    return true, nil
 end
 
 ---Abort in-flight chunked guild bank scan (window closed or superseded).
@@ -252,6 +302,70 @@ function WarbandNexus:CollectGuildBankItemsFlat(guildName, guildData)
         return CmpItemName(a, b)
     end)
     return items
+end
+
+--- True when db.global.guildBank has at least one scanned guild (any character).
+function WarbandNexus:HasGuildBankCache()
+    local gb = self.db and self.db.global and self.db.global.guildBank
+    if not gb then
+        return false
+    end
+    for guildName, guildData in pairs(gb) do
+        if guildName and not (issecretvalue and issecretvalue(guildName)) and type(guildData) == "table" then
+            if (guildData.lastScan or 0) > 0 or (guildData.usedSlots or 0) > 0 then
+                return true
+            end
+            for _, tabData in pairs(guildData.tabs or {}) do
+                if tabData.items and next(tabData.items) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+--- Guild Bank sub-tab: live guild membership or any account-wide cached scan.
+function WarbandNexus:CanViewGuildBankTab()
+    if IsInGuild() then
+        return true
+    end
+    return self:HasGuildBankCache()
+end
+
+--- Roll up item/slot/gold stats across every cached guild (Items > Guild header).
+function WarbandNexus:GetGuildBankCacheAggregateStats()
+    local stats = {
+        itemCount = 0,
+        usedSlots = 0,
+        totalSlots = 0,
+        lastScan = 0,
+        cachedGold = nil,
+        goldLastUpdated = 0,
+    }
+    local entries = self:GetGuildBankSortedEntries()
+    for i = 1, #entries do
+        local gd = entries[i].data
+        if gd then
+            stats.usedSlots = stats.usedSlots + (gd.usedSlots or 0)
+            stats.totalSlots = stats.totalSlots + (gd.totalSlots or 0)
+            stats.lastScan = math.max(stats.lastScan, gd.lastScan or 0)
+            for _, tabData in pairs(gd.tabs or {}) do
+                for _, itemData in pairs(tabData.items or {}) do
+                    stats.itemCount = stats.itemCount + (itemData.stackCount or 1)
+                end
+            end
+            local goldUpdated = gd.goldLastUpdated or 0
+            if gd.cachedGold and goldUpdated >= stats.goldLastUpdated then
+                stats.cachedGold = gd.cachedGold
+                stats.goldLastUpdated = goldUpdated
+            end
+        end
+    end
+    if stats.totalSlots < stats.usedSlots then
+        stats.totalSlots = stats.usedSlots
+    end
+    return stats
 end
 
 --- Sorted { name, data } entries for every scanned guild (account-wide cache).
@@ -383,9 +497,16 @@ function WarbandNexus:CountCharactersInGuild(guildName, excludeCharKey)
         return 0
     end
     local count = 0
+    local want = Utilities and Utilities.SafeLower and Utilities:SafeLower(guildName) or guildName
     for charKey, charData in pairs(chars) do
-        if charKey ~= excludeCharKey and charData and charData.guildName == guildName then
-            count = count + 1
+        if charKey ~= excludeCharKey and charData and charData.guildName then
+            local rowGn = charData.guildName
+            if not (issecretvalue and issecretvalue(rowGn)) then
+                local cmp = Utilities and Utilities.SafeLower and Utilities:SafeLower(rowGn) or rowGn
+                if cmp == want then
+                    count = count + 1
+                end
+            end
         end
     end
     return count

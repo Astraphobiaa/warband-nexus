@@ -2394,8 +2394,21 @@ function WarbandNexus:GetBankStatistics()
     -- ===== GUILD BANK (legacy format - scanned when guild bank is opened) =====
     local guildName = GetGuildInfo("player")
     if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
+    local guildData = nil
     if guildName and self.db.global.guildBank and self.db.global.guildBank[guildName] then
-        local guildData = self.db.global.guildBank[guildName]
+        guildData = self.db.global.guildBank[guildName]
+    elseif self.GetGuildBankCacheAggregateStats then
+        local agg = self:GetGuildBankCacheAggregateStats()
+        if agg and (agg.lastScan or 0) > 0 then
+            stats.guild.totalSlots = agg.totalSlots or 0
+            stats.guild.usedSlots = agg.usedSlots or 0
+            stats.guild.freeSlots = stats.guild.totalSlots - stats.guild.usedSlots
+            stats.guild.lastScan = agg.lastScan or 0
+            stats.guild.itemCount = agg.itemCount or 0
+            return stats
+        end
+    end
+    if guildData then
         stats.guild.totalSlots = guildData.totalSlots or 0
         stats.guild.usedSlots = guildData.usedSlots or 0
         stats.guild.freeSlots = stats.guild.totalSlots - stats.guild.usedSlots

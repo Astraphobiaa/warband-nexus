@@ -157,6 +157,13 @@ local function ItemsGuildUsesStorageTree()
     return ns.Utilities and ns.Utilities:IsModuleEnabled("items")
 end
 
+local function CanViewGuildBankSubTab()
+    if IsInGuild() then
+        return true
+    end
+    return WarbandNexus and WarbandNexus.CanViewGuildBankTab and WarbandNexus:CanViewGuildBankTab()
+end
+
 local function ItemsUsesStorageTreeEmbed()
     return ItemsWarbandUsesStorageTree() or ItemsGuildUsesStorageTree()
 end
@@ -380,7 +387,7 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         btn:SetScript("OnClick", function()
             local fromSub = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab()
             if fromSub == tabInfo.key then return end
-            if tabInfo.key == "guild" and not IsInGuild() then
+            if tabInfo.key == "guild" and not CanViewGuildBankSubTab() then
                 WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
                 return
             end
@@ -424,7 +431,7 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         buttons[tabInfo.key] = btn
         xPos = xPos + btnWidth + ITEMS_BANK_SUBTAB_BTN_SPACING
 
-        if tabInfo.key == "guild" and not IsInGuild() then
+        if tabInfo.key == "guild" and not CanViewGuildBankSubTab() then
             btn:Disable()
             btn:SetAlpha(0.5)
         end
@@ -452,7 +459,7 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
     function bar:RefreshGuildLock()
         local gbtn = buttons.guild
         if not gbtn then return end
-        if IsInGuild() then
+        if CanViewGuildBankSubTab() then
             gbtn:Enable()
             gbtn:SetAlpha(1)
         else
@@ -557,6 +564,19 @@ local function ResolveItemsSubTabStatsMetrics(addon, currentItemsSubTab)
         return #items, wb.usedSlots or 0, wb.totalSlots or 0, wb.lastScan or 0,
             (ns.UI_GetItemsContextStatHex and ns.UI_GetItemsContextStatHex("warband")) or "a335ee"
     elseif currentItemsSubTab == "guild" then
+        if IsInGuild() then
+            local items = addon:GetGuildBankItems() or {}
+            local gb = bankStats.guild or {}
+            if #items > 0 or (gb.lastScan or 0) > 0 or (gb.usedSlots or 0) > 0 then
+                return #items, gb.usedSlots or 0, gb.totalSlots or 0, gb.lastScan or 0,
+                    (ns.UI_GetItemsContextStatHex and ns.UI_GetItemsContextStatHex("guild")) or "00ff00"
+            end
+        end
+        local agg = addon.GetGuildBankCacheAggregateStats and addon:GetGuildBankCacheAggregateStats()
+        if agg and (agg.lastScan > 0 or agg.usedSlots > 0 or agg.itemCount > 0) then
+            return agg.itemCount, agg.usedSlots, agg.totalSlots, agg.lastScan,
+                (ns.UI_GetItemsContextStatHex and ns.UI_GetItemsContextStatHex("guild")) or "00ff00"
+        end
         local items = addon:GetGuildBankItems() or {}
         local gb = bankStats.guild or {}
         return #items, gb.usedSlots or 0, gb.totalSlots or 0, gb.lastScan or 0,
@@ -2977,11 +2997,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
 
             if storageSearchActive and not categoriesWithMatches[guildCategoryKey] then
                 -- skip guild with no search hits
-            elseif guildItemSlots <= 0 and not storageSearchActive
+            elseif guildItemSlots <= 0 and (guildData.lastScan or 0) <= 0 and not storageSearchActive
                 and not expandAllActive
                 and not expanded.categories[guildCategoryKey]
                 and not StorageTreeHasExpandedPrefixCategory(expanded, guildCategoryKey .. "_") then
-                -- skip empty guild unless user left subtree expanded
+                -- skip empty guild unless user left subtree expanded or a prior scan exists
             else
                 if guildItemSlots <= 0 then
                     guildItemSlots = 1
@@ -3281,22 +3301,25 @@ local function ApplyItemsSubTabGoldDisplay(goldDisplay, currentItemsSubTab)
             goldDisplay:SetText(WarbandNexus:API_FormatMoney(warbandGold))
         end
     elseif currentItemsSubTab == "guild" then
+        local guildGold = nil
         if IsInGuild() then
             local guildName = GetGuildInfo("player")
             if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
-            local guildGold = nil
             if guildName and WarbandNexus.db.global.guildBank and WarbandNexus.db.global.guildBank[guildName] then
                 guildGold = WarbandNexus.db.global.guildBank[guildName].cachedGold
             end
-            if guildGold then
-                if FormatMoney then
-                    goldDisplay:SetText(FormatMoney(guildGold, 14))
-                else
-                    goldDisplay:SetText(WarbandNexus:API_FormatMoney(guildGold))
-                end
+        elseif WarbandNexus.GetGuildBankCacheAggregateStats then
+            local agg = WarbandNexus:GetGuildBankCacheAggregateStats()
+            guildGold = agg and agg.cachedGold
+        end
+        if guildGold then
+            if FormatMoney then
+                goldDisplay:SetText(FormatMoney(guildGold, 14))
             else
-                goldDisplay:SetText(ItemsDimMarkup(((ns.L and ns.L["NO_SCAN"]) or "Not scanned")))
+                goldDisplay:SetText(WarbandNexus:API_FormatMoney(guildGold))
             end
+        elseif CanViewGuildBankSubTab() then
+            goldDisplay:SetText(ItemsDimMarkup(((ns.L and ns.L["NO_SCAN"]) or "Not scanned")))
         else
             goldDisplay:SetText(ItemsDimMarkup(((ns.L and ns.L["NOT_IN_GUILD"]) or "Not in guild")))
         end
@@ -3679,26 +3702,25 @@ function WarbandNexus:DrawItemList(parent)
         end
     elseif currentItemsSubTab == "guild" then
         -- Guild Bank gold (ONLY use cached value from scan - no live API fallback)
+        local guildGold = nil
         if IsInGuild() then
             local guildName = GetGuildInfo("player")
             if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
-            local guildGold = nil
-            
-            -- Try to get cached gold from scan data for CURRENT guild only
             if guildName and WarbandNexus.db.global.guildBank and WarbandNexus.db.global.guildBank[guildName] then
                 guildGold = WarbandNexus.db.global.guildBank[guildName].cachedGold
             end
-            
-            if guildGold then
-                if FormatMoney then
-                    goldDisplay:SetText(FormatMoney(guildGold, 14))
-                else
-                    goldDisplay:SetText(WarbandNexus:API_FormatMoney(guildGold))
-                end
+        elseif WarbandNexus.GetGuildBankCacheAggregateStats then
+            local agg = WarbandNexus:GetGuildBankCacheAggregateStats()
+            guildGold = agg and agg.cachedGold
+        end
+        if guildGold then
+            if FormatMoney then
+                goldDisplay:SetText(FormatMoney(guildGold, 14))
             else
-                -- No cached gold for this guild - need to scan
-                goldDisplay:SetText(ItemsDimMarkup(((ns.L and ns.L["NO_SCAN"]) or "Not scanned")))
+                goldDisplay:SetText(WarbandNexus:API_FormatMoney(guildGold))
             end
+        elseif CanViewGuildBankSubTab() then
+            goldDisplay:SetText(ItemsDimMarkup(((ns.L and ns.L["NO_SCAN"]) or "Not scanned")))
         else
             goldDisplay:SetText(ItemsDimMarkup(((ns.L and ns.L["NOT_IN_GUILD"]) or "Not in guild")))
         end

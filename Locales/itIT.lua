@@ -1041,15 +1041,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
 
 Corretto:
 - Borse e bottino: spostare oggetti, comprare/vendere dai mercanti e raccogliere bottino non causano piu grandi cali di FPS ricomprimendo l'intera borsa a ogni modifica (regressione v3.1.8).
 - Cache oggetti: corretto errore quando il timer di salvataggio in background era attivo.
 - Notifiche: i toast di cavalcatura e collezione non vanno piu in crash quando mancava una tabella icone.
 - Valute: gli importi non seguono piu solo il personaggio connesso; le righe confrontano correttamente tutti i personaggi tracciati.
+- Prestazioni: volo draconico e altri incantesimi frequenti non ripetono piu le query API degli incantesimi a ogni pressione (meno scatti FPS in volo).
+- Try Counter: il rilevamento incantesimi non viene piu eseguito quando il modulo Try Counter e disattivato.
+- Banca di gilda: i personaggi senza permesso di visualizzare le schede della banca di gilda non cancellano piu la scansione condivisa aprendo la finestra (gli alt della stessa gilda mantengono gli oggetti in cache).
+- Banca di gilda: Items > Gilda mostra le scansioni in cache dell account anche se il personaggio attuale non e in quella gilda.
 
 Aggiornato:
+- Modalita chiara: superfici pannello piu calde, contrasto righe e pulsanti piu chiaro, icone navigazione a colori e tooltip piu leggibili (ombre morbide).
+- Modalita chiara: pulsante Vault, tracker accesso rapido e anteprima modello Collezioni seguono la stessa rifinitura del tema.
 - Cache borse: l'inventario resta in memoria di sessione veloce durante il gioco; salvataggio non compresso ~15 s dopo l'ultima modifica borsa (utile con Alt+F4); compressione completa solo a logout o /reload.
 - Riordinare gli slot in una borsa non avvia piu una scansione completa del deposito equipaggiamento se le quantita non sono cambiate.
 - Conteggi oggetti nei tooltip e scansioni collezione riusano dati borsa recenti evitando passaggi API container extra.
@@ -1061,39 +1067,7 @@ Aggiornato:
 
 CurseForge: Warband Nexus]=]
 
-L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
-Aggiunto:
-- Modalita chiara per accessibilita: scegli Chiaro o Scuro in Impostazioni > Tema e aspetto > Chiaro / Scuro.
-
-Corretto:
-- Tooltip: corretti errori di taint su valori segreti e colori delle righe piu leggibili in modalita chiara.
-- Professioni: concentrazione, conoscenza e dati ricette si salvano in modo affidabile chiudendo la finestra professione o uscendo.
-- Dati salvati: la pulizia al login non elimina piu lo storage del banco warband ne i progressi degli alt tra le sessioni.
-- Personaggi, Valute, PvE, Reputazioni e Statistiche si disegnano di nuovo correttamente dopo i refactor UI interni.
-
-Aggiornato:
-- Rifinitura UI per superfici in modalita chiara, evidenziazione righe, icone e barre di scorrimento.
-- Sfoglia collezioni: titoli sotto-scheda fissi e aggiornamento liste piu rapido rivisitando cavalcature, mascotte, giocattoli e achievement.
-- Scheda Deposito oggetti: alberi warband grandi costruiti a fasi per ridurre i picchi al cambio scheda.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
-
-Corretto:
-- Equipaggiamento: lo stash consigliato non resta piu in loop "Scanning storage..." ne lampeggia dopo il caricamento info oggetti.
-- PvE: valuta alt, vault, crest, forziere e progresso try counter non si perdono piu dopo logout o pulizia chiavi personaggio.
-- Piani To-Do: "Mostra pianificati" funziona correttamente quando deselezionato su Lista To-Do e Progresso settimanale (tab browse invariati).
-- Ricerca: stato checkbox e filtri standardizzato in Collezioni, Equipaggiamento, Valute e liste correlate.
-- Collezioni: area scroll e altezza lista corrette; il ridimensionamento non taglia piu ne fa flicker lista/anteprima.
-- Scroll UI: liste virtuali e barre allineate su achievement browse, Collezioni, Valute, Reputazione e Professioni.
-
-Aggiornato:
-- Dati salvati: migrazioni cache e pulizia DB piu sicure; righe di progresso non vengono piu eliminate per errore.
-- Browse collezioni: liste mount/pet/toy e pannello modello si aggiornano meglio dopo ricerca e filtri.
-
-CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 

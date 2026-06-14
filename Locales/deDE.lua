@@ -1041,15 +1041,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
 
 Behoben:
 - Taschen und Beute: Items verschieben, Haendler-Kauf/Verkauf und Beuteaufheben verursachen keine grossen FPS-Einbrueche mehr durch Neukomprimierung der gesamten Tasche bei jeder Aenderung (Regression in v3.1.8).
 - Item-Cache: Fehler beim Hintergrund-Idle-Speicher-Timer behoben.
 - Benachrichtigungen: Reittier- und Sammlungs-Toasts stuerzen nicht mehr ab, wenn eine Icon-Tabelle fehlte.
 - Waehrungen: Betraege folgen nicht mehr nur dem eingeloggten Charakter; Zeilen vergleichen alle verfolgten Charaktere korrekt.
+- Performance: Drachenreiten und andere haeufige Zauber loesen nicht mehr bei jedem Knopfdruck erneute Spell-API-Abfragen aus (weniger FPS-Ruckler beim Fliegen).
+- Try Counter: Zauber-Erkennung laeuft nicht mehr, wenn das Try-Counter-Modul deaktiviert ist.
+- Gildenbank: Charaktere ohne Sichtrecht auf Gildenbank-Tabs loeschen den gemeinsamen Scan nicht mehr beim Oeffnen des Gildenbank-Fensters (andere Alts derselben Gilde behalten ihre zwischengespeicherten Items).
+- Gildenbank: Items > Gilde zeigt kontoweite zwischengespeicherte Scans, auch wenn dein aktueller Charakter nicht in dieser Gilde ist.
 
 Aktualisiert:
+- Light mode: waermere Panel-Oberflaechen, klarerer Zeilen- und Button-Kontrast, farbige Navigations-Icons und lesbarere Tooltips (weiche Schatten).
+- Light mode: Vault-Button, Easy-Access-Tracker und Sammlungs-Modellvorschau folgen derselben Theme-Politur.
 - Taschen-Cache: Inventar bleibt waehrend des Spiels im schnellen Sitzungsspeicher; unkomprimierte Speicherung ~15s nach der letzten Taschenaenderung (hilft bei Alt+F4); volle Komprimierung nur bei Logout oder /reload.
 - Nur Slot-Reihenfolge aendern loest keinen vollen Ausruestungs-Lager-Scan mehr aus, wenn sich Item-Anzahlen nicht geaendert haben.
 - Tooltip-Item-Zaehler und Sammlungs-Scans nutzen aktuelle Taschendaten erneut und vermeiden zusaetzliche Behaelter-API-Laeufe.
@@ -1061,39 +1067,7 @@ Aktualisiert:
 
 CurseForge: Warband Nexus]=]
 
-L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
-Hinzugefuegt:
-- Hellmodus fuer Barrierefreiheit: Waehle Hell oder Dunkel unter Einstellungen > Theme & Erscheinungsbild > Hell / Dunkel.
-
-Behoben:
-- Tooltips: Geheime-Wert-Taint-Fehler behoben und lesbare Zeilenfarben im Hellmodus verbessert.
-- Berufe: Konzentration, Wissen und Rezeptdaten werden zuverlaessig gespeichert, wenn du das Berufefenster schliesst oder dich ausloggst.
-- Gespeicherte Daten: Login-Bereinigung loescht Warband-Bank-Speicher oder Twink-Fortschritt zwischen Sitzungen nicht mehr.
-- Charaktere, Waehrung, PvE, Ruf und Statistik laden wieder korrekt nach internen UI-Refactors.
-
-Aktualisiert:
-- UI-Politur fuer Hellmodus-Oberflaechen, Zeilenhervorhebungen, Icons und Scroll-Chrome.
-- Sammlungen-Browse: fixierte Unter-Tab-Titel und schnelleres Listen-Refresh bei erneutem Oeffnen von Reittieren, Begleitern, Spielzeugen und Erfolgen.
-- Gegenstaende-Lager-Tab baut grosse Warband-Baeume schrittweise auf, um Tab-Wechsel-Spitzen zu reduzieren.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
-
-Behoben:
-- Ausruestung: Empfohlene Lagerbestaende bleiben sichtbar statt in einer "Scanning storage..."-Schleife oder nach Item-Info-Flash zu verschwinden.
-- PvE: Alt-Waehrung, Tresor, Wappen, Truhe und Try-Counter-Fortschritt gehen nach Logout oder Charakter-Schluessel-Bereinigung nicht mehr verloren.
-- Plaene To-Do: "Geplant anzeigen" funktioniert beim Abwaehlen auf To-Do-Liste und Wochenfortschritt korrekt (Browse-Tabs unveraendert).
-- Suche: Checkbox- und Filterzustand in Sammlungen, Ausruestung, Waehrung und verwandten Listen vereinheitlicht.
-- Sammlungen: Scrollbereich und Listenhoehe korrigiert; Resize-Ziehen verursacht kein Abschneiden oder Flackern mehr.
-- UI-Scroll: Virtuelle Listen und Scroll-Leisten in Erfolg-Browse, Sammlungen, Waehrung, Ruf und Berufen ausgerichtet.
-
-Aktualisiert:
-- Gespeicherte Daten: Charakter-Cache-Migrationen und DB-Bereinigung laufen sicherer, Fortschrittszeilen werden nicht mehr faelschlich geloescht.
-- Sammlungs-Browse: Reittier-/Begleiter-/Spielzeug-Listen und Modell-Panel aktualisieren sich zuverlaessiger nach Suche und Filtern.
-
-CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 

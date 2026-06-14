@@ -1041,15 +1041,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
 
 Corregido:
 - Bolsas y botin: mover objetos, comprar/vender con vendedores y recoger botin ya no provocan grandes caidas de FPS al recomprimir toda la bolsa en cada cambio (regresion v3.1.8).
 - Cache de objetos: corregido error cuando el temporizador de guardado en segundo plano se ejecutaba.
 - Notificaciones: los avisos de monturas y coleccion ya no fallan cuando faltaba una tabla de iconos.
 - Monedas: los importes ya no siguen solo al personaje conectado; las filas comparan correctamente todos los personajes rastreados.
+- Rendimiento: el vuelo draconico y otros hechizos frecuentes ya no repiten consultas API de hechizos en cada pulsacion (menos tirones de FPS al volar).
+- Try Counter: la deteccion de hechizos ya no se ejecuta cuando el modulo Try Counter esta desactivado.
+- Banco de guilda: los personajes sin permiso de ver pestanas del banco ya no borran el escaneo compartido al abrir la ventana (otros alts de la misma guilda conservan sus objetos en cache).
+- Banco de guilda: Items > Guilda muestra escaneos en cache de la cuenta aunque tu personaje actual no este en esa guilda.
 
 Actualizado:
+- Modo claro: superficies de paneles mas calidas, mejor contraste de filas y botones, iconos de navegacion a color e informacion emergente mas legible (sombras suaves).
+- Modo claro: boton Vault, rastreador de acceso rapido y vista previa del modelo de Colecciones siguen el mismo pulido de tema.
 - Cache de bolsas: el inventario permanece en memoria de sesion rapida durante el juego; guardado sin comprimir ~15 s tras el ultimo cambio de bolsa (ayuda si usas Alt+F4); compresion completa solo al cerrar sesion o /reload.
 - Reordenar ranuras en una bolsa ya no dispara un escaneo completo del almacen de equipo si las cantidades no cambiaron.
 - Recuentos de objetos en tooltips y escaneos de coleccion reutilizan datos recientes de bolsas para evitar recorridos API extra.
@@ -1061,39 +1067,7 @@ Actualizado:
 
 CurseForge: Warband Nexus]=]
 
-L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
-Anadido:
-- Modo claro de accesibilidad: elige Claro u Oscuro en Ajustes > Tema y apariencia > Claro / Oscuro.
-
-Corregido:
-- Descripciones emergentes: corregidos errores de taint por valores secretos y colores de linea mas legibles en modo claro.
-- Profesiones: concentracion, conocimiento y datos de recetas se guardan de forma fiable al cerrar la ventana de profesion o al cerrar sesion.
-- Datos guardados: la limpieza al iniciar sesion ya no borra el almacen del banco de banda de guerra ni el progreso de alts entre sesiones.
-- Personajes, Monedas, JcE, Reputacion y Estadisticas vuelven a dibujarse correctamente tras refactors internos de la UI.
-
-Actualizado:
-- Pulido de la UI para superficies en modo claro, resaltado de filas, iconos y barras de desplazamiento.
-- Explorar colecciones: titulos de subpestanas fijos y actualizacion de listas mas rapida al revisitar monturas, mascotas, juguetes y logros.
-- Pestana Almacen de objetos: arboles grandes de banda de guerra construidos por etapas para reducir picos al cambiar de pestana.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
-
-Corregido:
-- Equipo: el almacen recomendado ya no se queda en bucle "Scanning storage..." ni parpadea al cargar info de objetos.
-- PvE: moneda alt, boveda, emblema, cofre y progreso de try counter ya no se pierden al cerrar sesion o limpiar claves de personaje.
-- Planes To-Do: "Mostrar planeados" funciona bien al desmarcar en Lista To-Do y Progreso semanal (pestanas de exploracion sin cambios).
-- Busqueda: estado de casillas y filtros unificado en Colecciones, Equipo, Monedas y listas relacionadas.
-- Colecciones: area de scroll y altura de lista corregidas; redimensionar ya no recorta ni parpadea lista/vista previa.
-- Scroll UI: listas virtuales y barras alineadas en logros, Colecciones, Monedas, Reputacion y Profesiones.
-
-Actualizado:
-- Datos guardados: migraciones de cache y limpieza de BD mas seguras; filas de progreso no se eliminan por error.
-- Exploracion de colecciones: listas de monturas/mascotas/juguetes y panel 3D se actualizan mejor tras buscar y filtrar.
-
-CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 

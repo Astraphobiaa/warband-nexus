@@ -1041,15 +1041,21 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-14)
+L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
 
 Corrige:
 - Sacs et butin : deplacer des objets, acheter/vendre chez un marchand et ramasser du butin ne provoquent plus de grosses chutes de FPS en recompressant tout le sac a chaque changement (regression v3.1.8).
 - Cache d'objets : erreur corrigee lorsque le minuteur de sauvegarde en arriere-plan s'executait.
 - Notifications : les toasts de monture et de collection ne plantent plus quand une table d'icones manquait.
 - Monnaies: les montants ne suivent plus uniquement le personnage connecte; les lignes comparent correctement tous les personnages suivis.
+- Performance : le vol draconique et les autres sorts frequents ne repetent plus les requetes API de sort a chaque pression (moins de saccades FPS en vol).
+- Try Counter : la detection des sorts ne s'execute plus quand le module Try Counter est desactive.
+- Banque de guilde : les personnages sans droit de vue sur les onglets de banque de guilde n'effacent plus le scan partage en ouvrant la fenetre (les autres alts de la meme guilde conservent leurs objets en cache).
+- Banque de guilde : Items > Guilde affiche les scans en cache du compte meme si votre personnage actuel n'est pas dans cette guilde.
 
 Mis a jour:
+- Mode clair : surfaces de panneaux plus chaudes, meilleur contraste des lignes et boutons, icones de navigation en couleur et infobulles plus lisibles (ombres douces).
+- Mode clair : bouton Vault, tracker d'acces rapide et apercu modele Collections suivent la meme finition de theme.
 - Cache des sacs : l'inventaire reste en memoire de session rapide pendant le jeu ; sauvegarde non compressee ~15 s apres le dernier changement de sac (aide si vous Alt+F4) ; compression complete uniquement a la deconnexion ou /reload.
 - Reordonner les emplacements dans un sac ne declenche plus un scan complet du stockage d'equipement si les quantites n'ont pas change.
 - Comptes d'objets dans les infobulles et scans de collection reutilisent les donnees de sac recentes pour eviter des parcours API supplementaires.
@@ -1061,39 +1067,7 @@ Mis a jour:
 
 CurseForge: Warband Nexus]=]
 
-L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
 
-Ajoute:
-- Mode clair pour l'accessibilite : choisissez Clair ou Sombre dans Parametres > Theme et apparence > Clair / Sombre.
-
-Corrige:
-- Infobulles : erreurs de taint sur valeurs secretes corrigees et couleurs de lignes plus lisibles en mode clair.
-- Metiers : concentration, savoir et donnees de recettes sont bien enregistres a la fermeture de la fenetre de metier ou a la deconnexion.
-- Donnees sauvegardees : le nettoyage a la connexion ne supprime plus le stockage de banque de bataillon ni la progression des alts entre les sessions.
-- Personnages, Monnaies, JcE, Reputations et Statistiques s'affichent a nouveau correctement apres les refactors UI internes.
-
-Mis a jour:
-- Finitions UI pour surfaces en mode clair, surlignage des lignes, icones et barres de defilement.
-- Parcours collections : titres de sous-onglets fixes et rafraichissement plus rapide en revisitant montures, familiers, jouets et hauts faits.
-- Onglet Stockage des objets : arbres de bataillon volumineux construits par etapes pour reduire les pics au changement d'onglet.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
-
-Corrige:
-- Equipement: le stock recommande ne reste plus bloque en boucle "Scanning storage..." ni ne clignote apres le chargement des objets.
-- PvE: monnaie alt, coffre-fort, blason, cache et progression try counter ne sont plus perdus apres deconnexion ou nettoyage de cle personnage.
-- Plans To-Do: "Afficher planifie" se comporte correctement lors de la decoche sur Liste To-Do et Progression hebdo (onglets parcours inchanges).
-- Recherche: etat des cases et filtres harmonise dans Collections, Equipement, Monnaies et listes associees.
-- Collections: zone de defilement et hauteur de liste corrigees; le redimensionnement ne provoque plus de clipping ni de scintillement.
-- Defilement UI: listes virtuelles et barres alignees sur succes, Collections, Monnaies, Reputation et Metiers.
-
-Mis a jour:
-- Donnees sauvegardees: migrations de cache et nettoyage BD plus sures; les lignes de progression ne sont plus supprimees par erreur.
-- Parcours collections: listes montures/familiers/jouets et panneau modele se rafraichissent mieux apres recherche et filtres.
-
-CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
 

@@ -1291,8 +1291,8 @@ function WarbandNexus:OnGuildBankOpened()
     if self.ScanGuildBank then
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.ScanGuildBank then
-                local success = WarbandNexus:ScanGuildBank()
-                if not success then
+                local success, errCode = WarbandNexus:ScanGuildBank()
+                if not success and errCode ~= "no_viewable_tabs" then
                     WarbandNexus:Print("|cffff6600[Guild Bank]|r Scan failed (not tracked or no guild access).|r")
                 end
             end

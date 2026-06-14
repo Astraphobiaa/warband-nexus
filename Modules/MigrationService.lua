@@ -1064,6 +1064,11 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
         winner.heroSpecID = loser.heroSpecID
         winner.heroSpecName = winner.heroSpecName or loser.heroSpecName
     end
+    if (not winner.guildName or winner.guildName == "")
+        and loser.guildName and loser.guildName ~= ""
+        and not (issecretvalue and issecretvalue(loser.guildName)) then
+        winner.guildName = loser.guildName
+    end
 end
 
 --- Collapse duplicate `db.global.characters` rows (same GUID and/or legacy Name-Realm alias).

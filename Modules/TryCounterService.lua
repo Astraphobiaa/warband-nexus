@@ -181,7 +181,8 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
     -- Early-session bootstrap: first fishing cast/loot can happen before scheduled init
     -- (InitializationService runs TryCounter at T+1.5s). Preserve context and force init on first loot events.
     if not tryCounterReady then
-        if addon and (event == "UNIT_SPELLCAST_SENT" or event == "UNIT_SPELLCAST_CHANNEL_START") then
+        if addon and Fns.IsTryCounterModuleEnabled()
+            and (event == "UNIT_SPELLCAST_SENT" or event == "UNIT_SPELLCAST_CHANNEL_START") then
             if event == "UNIT_SPELLCAST_SENT" then
                 addon:OnTryCounterSpellcastSent(event, ...)
             else
@@ -262,6 +263,8 @@ end)
 -- ops-030: fishing + classify constants -> TryCounterService_Process.lua (mutable bobber table)
 local FISHING_SPELLS = TC.FISHING_SPELLS or {}
 local FISHING_BOBBER_NPC_IDS = TC.FISHING_BOBBER_NPC_IDS or {}
+local probedNonFishingSpells = TC.probedNonFishingSpells or {}
+TC.probedNonFishingSpells = probedNonFishingSpells
 
 function Fns.IsFishingBobberNpcId(npcID)
     return npcID and FISHING_BOBBER_NPC_IDS[npcID] == true
@@ -4066,9 +4069,32 @@ function WarbandNexus:TryCounterBeginFishingContext(spellID)
     end)
 end
 
+--- One-shot GetSpellInfo probe for unknown player casts; caches confirmed non-fishing ids.
+local function ResolveTryCounterFishingSpell(spellID)
+    if not spellID then return false end
+    if FISHING_SPELLS[spellID] then return true end
+    if probedNonFishingSpells[spellID] then return false end
+    if not C_Spell or not C_Spell.GetSpellInfo then
+        return false
+    end
+    local ok, spellInfo = pcall(C_Spell.GetSpellInfo, spellID)
+    if not ok or not spellInfo then
+        probedNonFishingSpells[spellID] = true
+        return false
+    end
+    local iconID = spellInfo.iconID
+    if iconID and not (issecretvalue and issecretvalue(iconID)) and iconID == 136245 then
+        FISHING_SPELLS[spellID] = true
+        return true
+    end
+    probedNonFishingSpells[spellID] = true
+    return false
+end
+
 ---UNIT_SPELLCAST_SENT handler (detect fishing casts)
 function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, spellID)
     if unit ~= "player" then return end
+    if not Fns.IsTryCounterModuleEnabled() then return end
     -- Midnight 12.0: target/spellID can be secret values during instanced combat
     if issecretvalue and target and issecretvalue(target) then target = nil end
     if issecretvalue and spellID and issecretvalue(spellID) then
@@ -4081,27 +4107,18 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
         lastGatherCastName = target
         lastGatherCastTime = GetTime()
     end
-    
-    local isFishing = spellID and FISHING_SPELLS[spellID]
-    -- Midnight 12.0: dynamically detect unknown fishing spells via icon fallback.
-    -- C_Spell.GetSpellInfo can return secret iconID; pcall + issecretvalue guard.
-    if not isFishing and spellID and C_Spell and C_Spell.GetSpellInfo then
-        local ok, spellInfo = pcall(C_Spell.GetSpellInfo, spellID)
-        if ok and spellInfo then
-            local iconID = spellInfo.iconID
-            if iconID and not (issecretvalue and issecretvalue(iconID)) and iconID == 136245 then
-                isFishing = true
-                FISHING_SPELLS[spellID] = true
-            end
-        end
+
+    if spellID and PICKPOCKET_SPELLS[spellID] then
+        V.isPickpocketing = true
+        return
+    end
+    if spellID and PROFESSION_LOOT_SPELLS[spellID] then
+        V.isProfessionLooting = true
+        return
     end
 
-    if isFishing then
+    if ResolveTryCounterFishingSpell(spellID) then
         self:TryCounterBeginFishingContext(spellID)
-    elseif spellID and PICKPOCKET_SPELLS[spellID] then
-        V.isPickpocketing = true
-    elseif spellID and PROFESSION_LOOT_SPELLS[spellID] then
-        V.isProfessionLooting = true
     end
 end
 
@@ -4109,10 +4126,11 @@ end
 ---Args: unitTarget, castGUID, spellID
 function WarbandNexus:OnTryCounterSpellcastChannelStart(event, unit, castGUID, spellID)
     if unit ~= "player" then return end
-    
+    if not Fns.IsTryCounterModuleEnabled() then return end
+
     local isFishing = false
     local validSpellID = spellID
-    
+
     if issecretvalue and spellID and issecretvalue(spellID) then
         validSpellID = nil
         -- Secret value during instanced combat. We can't read spellID.
@@ -4125,21 +4143,9 @@ function WarbandNexus:OnTryCounterSpellcastChannelStart(event, unit, castGUID, s
         end
         if not isFishing then return end
     else
-        isFishing = spellID and FISHING_SPELLS[spellID]
+        isFishing = ResolveTryCounterFishingSpell(spellID)
     end
-    
-    -- Midnight 12.0: dynamically detect unknown fishing channel spells via icon fallback.
-    if not isFishing and validSpellID and C_Spell and C_Spell.GetSpellInfo then
-        local ok, spellInfo = pcall(C_Spell.GetSpellInfo, validSpellID)
-        if ok and spellInfo then
-            local iconID = spellInfo.iconID
-            if iconID and not (issecretvalue and issecretvalue(iconID)) and iconID == 136245 then
-                isFishing = true
-                FISHING_SPELLS[validSpellID] = true
-            end
-        end
-    end
-    
+
     if isFishing then
         self:TryCounterBeginFishingContext(validSpellID)
     end

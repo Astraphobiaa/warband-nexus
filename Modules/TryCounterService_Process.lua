@@ -42,6 +42,9 @@ TC.FISHING_BOBBER_NPC_IDS = {
     [216204] = true,
 }
 
+-- Session cache: spell IDs probed via GetSpellInfo and confirmed not fishing (avoids per-cast API on dragonriding etc.).
+TC.probedNonFishingSpells = {}
+
 TC.SKIP_CHAT_DEDUP_SEC = 15
 TC.FISHING_CAST_CONTEXT_TTL = 35
 
