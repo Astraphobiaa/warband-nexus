@@ -540,17 +540,14 @@ end
 local function IsCharLoggedInSession(char)
     local rowKey = GetCharKey(char)
     if not rowKey then return false end
-    local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not raw then return false end
     local storage = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     if storage and rowKey == storage then return true end
-    if rowKey == raw then return true end
     local resolved = ResolveSessionCharactersTableKey()
     if resolved and rowKey == resolved then return true end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-        local a = ns.Utilities:GetCanonicalCharacterKey(rowKey)
-        local b = ns.Utilities:GetCanonicalCharacterKey(raw)
-        if a and b and a == b then return true end
+        local canonRow = ns.Utilities:GetCanonicalCharacterKey(rowKey)
+        if storage and canonRow == storage then return true end
+        if resolved and canonRow == resolved then return true end
     end
     return false
 end
@@ -558,17 +555,14 @@ end
 --- True if a stored order key string refers to the logged-in session (manual sort / pin-to-top).
 local function OrderKeyIsSessionChar(orderKey)
     if not orderKey then return false end
-    local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    if not raw then return false end
     local storage = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     if storage and orderKey == storage then return true end
-    if orderKey == raw then return true end
     local resolved = ResolveSessionCharactersTableKey()
     if resolved and orderKey == resolved then return true end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-        local a = ns.Utilities:GetCanonicalCharacterKey(orderKey)
-        local b = ns.Utilities:GetCanonicalCharacterKey(raw)
-        if a and b and a == b then return true end
+        local canonOrder = ns.Utilities:GetCanonicalCharacterKey(orderKey)
+        if storage and canonOrder == storage then return true end
+        if resolved and canonOrder == resolved then return true end
     end
     return false
 end
@@ -715,7 +709,7 @@ function WarbandNexus:DrawCharacterList(parent)
 
     -- Nested character rows: PopulateContent walks subtrees via UI_ReleaseCharacterRowsFromSubtree before recycle.
     
-    local currentPlayerKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local currentPlayerKey = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     local sessionTableKey = ResolveSessionCharactersTableKey() or currentPlayerKey
     if self.db.global.characters and sessionTableKey and self.db.global.characters[sessionTableKey] then
         local now = GetTime()
@@ -1616,12 +1610,24 @@ function WarbandNexus:DrawCharacterList(parent)
                 for i = 1, n do
                     local char = list[i]
                     local charKey = GetCharKey(char)
+                    -- VirtualList incremental reuse keys only on charKey; bust sig when keystone/gold/ilvl change.
+                    local mk = char and char.mythicKey
+                    local mkSig = (mk and tonumber(mk.level) and tonumber(mk.level) > 0)
+                        and (tostring(mk.level) .. ":" .. tostring(mk.mapID or mk.dungeonID or ""))
+                        or "0"
+                    local rowSig = table.concat({
+                        listKey or "section",
+                        charKey or tostring(i),
+                        "mk" .. mkSig,
+                        "g" .. tostring(char and char.gold or 0),
+                        "il" .. tostring(char and char.itemLevel or 0),
+                    }, ":")
                     flatList[i] = {
                         type = "row",
                         yOffset = rowY,
                         height = stride,
                         xOffset = 0,
-                        rowReuseSig = (listKey or "section") .. ":" .. (charKey or tostring(i)),
+                        rowReuseSig = rowSig,
                         populateEntry = {
                             char = char,
                             index = i,
@@ -2766,12 +2772,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.trackingBtn:SetScript("OnClick", function(selfBtn)
             local CS = ns.CharacterService
             if not CS or not CS.ShowTrackingChangeConfirmation then return end
-            local ck = selfBtn.charKey
-            local cn = selfBtn.charName
             local addon = WarbandNexus
-            local rowData = addon and addon.db and addon.db.global and addon.db.global.characters and ck and addon.db.global.characters[ck]
+            local ck = selfBtn.charKey
+            local rowKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ck)
+                and ns.Utilities:GetCanonicalCharacterKey(ck) or ck
+            local rowData = addon and addon.db and addon.db.global and addon.db.global.characters
+                and rowKey and (addon.db.global.characters[rowKey] or (ck and addon.db.global.characters[ck]))
             local tracked = rowData and rowData.isTracked ~= false
-            CS:ShowTrackingChangeConfirmation(addon, ck, cn, not tracked)
+            CS:ShowTrackingChangeConfirmation(addon, rowKey or ck, selfBtn.charName, not tracked)
         end)
     end
     if ShowTooltip and row.trackingBtn.SetScript then
@@ -3010,7 +3018,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local deleteBtn = CreateCharacterDeleteDialogButton(btnContainer, deleteBtnLabel, 150, true)
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
                 deleteBtn:SetScript("OnClick", function()
-                    local success = WarbandNexus:DeleteCharacter(charKey)
+                    local delKey = (ns.UI_GetCharKey and char) and ns.UI_GetCharKey(char)
+                        or (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey and ns.Utilities:GetCanonicalCharacterKey(charKey))
+                        or charKey
+                    local success = WarbandNexus:DeleteCharacter(delKey)
                     if dialog.Close then
                         dialog:Close()
                     else
@@ -3131,7 +3142,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
         and ns.CharacterService:BuildFavoriteKeySet(self) or {}
     
     -- Don't update lastSeen when reordering (keep current timestamps)
-    local currentPlayerKey = ns.Utilities:GetCharacterKey()
+    local currentPlayerKey = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     
     -- Get or initialize custom order
     if not self.db.profile.characterOrder then

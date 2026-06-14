@@ -526,7 +526,6 @@ local function GetSelectedCharKey()
     if not U then return nil end
     local store = (ns.CharacterService and WarbandNexus and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
         or (U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus))
-        or (U.GetCharacterKey and U:GetCharacterKey())
     if store and U.GetCanonicalCharacterKey then
         return U:GetCanonicalCharacterKey(store) or store
     end
@@ -597,25 +596,31 @@ local function GetTrackedCharacters()
         end
     end
 
-    -- Manual order index from db.profile.characterOrder.{favorites, regular}.
+    -- Manual order index from db.profile.characterOrder.{favorites, regular, group_*}.
     local rankOf, nextRank = {}, 1
     local order = profile.characterOrder
+    local function orderCanon(k)
+        if not k then return nil end
+        local U = ns.Utilities
+        return (U and U.GetCanonicalCharacterKey) and U:GetCanonicalCharacterKey(k) or k
+    end
     if order then
-        local lists = { order.favorites or {}, order.regular or {} }
-        for li = 1, #lists do
-            local list = lists[li]
-            for i = 1, #list do
-                local k = list[i]
-                if rankOf[k] == nil then
-                    rankOf[k] = nextRank
-                    nextRank = nextRank + 1
+        for orderKey, list in pairs(order) do
+            if type(list) == "table" then
+                for i = 1, #list do
+                    local k = orderCanon(list[i])
+                    if k and rankOf[k] == nil then
+                        rankOf[k] = nextRank
+                        nextRank = nextRank + 1
+                    end
                 end
             end
         end
     end
 
     table.sort(chars, function(a, b)
-        local ra, rb = rankOf[a.key], rankOf[b.key]
+        local ra = rankOf[orderCanon(a.key)]
+        local rb = rankOf[orderCanon(b.key)]
         if ra and rb then return ra < rb end
         if ra and not rb then return true end
         if rb and not ra then return false end
@@ -3259,7 +3264,6 @@ function WarbandNexus:DrawGearTab(parent)
 
     local currentKey = (self.GetCurrentGearStorageKey and self:GetCurrentGearStorageKey())
         or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
-        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
 
     if canonicalKey == currentKey and self.ScanEquippedGear then
         local slotsTbl = gearData and gearData.slots

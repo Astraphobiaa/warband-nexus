@@ -2040,12 +2040,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 local ordered, charMap = {}, {}
                 for ci = 1, #characters do
                     local c = characters[ci]
-                    local ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(c.name, c.realm)
+                    local ck = (ns.UI_GetCharKey and ns.UI_GetCharKey(c))
                     if ck then charMap[ck] = c end
                 end
                 for coi = 1, #customOrder do
                     local ck = customOrder[coi]
-                    if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
+                    local canon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey)
+                        and ns.Utilities:GetCanonicalCharacterKey(ck) or ck
+                    if charMap[canon] then
+                        table.insert(ordered, charMap[canon])
+                        charMap[canon] = nil
+                    elseif charMap[ck] then
+                        table.insert(ordered, charMap[ck])
+                        charMap[ck] = nil
+                    end
                 end
                 local remaining = {}
                 for _, c in pairs(charMap) do table.insert(remaining, c) end

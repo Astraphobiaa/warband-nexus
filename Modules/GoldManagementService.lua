@@ -35,7 +35,7 @@ local function PerformGoldManagement()
         ck = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     end
     if not ck then
-        ck = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        ck = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     end
     local ch = ck and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[ck]
     if ch and ns.Utilities and ns.Utilities.GetCharTotalCopper then

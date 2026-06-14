@@ -295,11 +295,8 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
     local amountLine
     local usedSeasonProgressLine = false
     local curKey = currency.viewCharKey
-    if (not curKey) and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
-        curKey = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-    end
-    if (not curKey) and ns.Utilities and ns.Utilities.GetCharacterKey then
-        curKey = ns.Utilities:GetCharacterKey()
+    if (not curKey) and ns.UI_GetSubsidiaryCharKey then
+        curKey = ns.UI_GetSubsidiaryCharKey()
     end
     if curKey and WarbandNexus.GetCurrencyData and ns.UI_BindSeasonProgressAmount then
         local cd = WarbandNexus:GetCurrencyData(currencyID, curKey)
@@ -341,11 +338,8 @@ local function PopulateCurrencyRowFrame(row, currency, currencyID, rowIndex, row
         
         -- Use new tooltip system
         local tipKey = currency.viewCharKey
-        if (not tipKey) and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
-            tipKey = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-        end
-        if (not tipKey) and ns.Utilities and ns.Utilities.GetCharacterKey then
-            tipKey = ns.Utilities:GetCharacterKey()
+        if (not tipKey) and ns.UI_GetSubsidiaryCharKey then
+            tipKey = ns.UI_GetSubsidiaryCharKey()
         end
         ShowTooltip(self, {
             type = "currency",
@@ -402,8 +396,6 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     for ci = 1, #characters do
         local char = characters[ci]
         local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
-            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
-            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
         if charKey then charLookup[charKey] = char end
     end
     
@@ -433,8 +425,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                 if matchesSearch then
                     -- ALWAYS show CURRENT character's individual quantity as the primary row value.
                     -- Tooltip shows per-character breakdown and total on hover.
-                    local currentCharKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-                        or ns.Utilities:GetCharacterKey()
+                    local currentCharKey = ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey()
                     
                     local currentCharAmount = GetCurrencyCharQuantityFromSnapshot(currData, currentCharKey)
                     
@@ -471,8 +462,6 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                             for ci = 1, #characters do
                                 local char = characters[ci]
                                 local ck = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
-                                    or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
-                                    or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
                                 if ck and charLookup[ck] then
                                     displayChar = ck
                                     currentCharAmount = GetCurrencyCharQuantityFromSnapshot(currData, ck)
@@ -691,12 +680,14 @@ function WarbandNexus:DrawCurrencyList(container, width)
         sessionCharKeys[#sessionCharKeys + 1] = k
     end
     do
+        local subKey = ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey()
+        addSessionKey(subKey)
         local U = ns.Utilities
         addSessionKey(U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus))
-        local raw = U and U.GetCharacterKey and U:GetCharacterKey()
-        addSessionKey(raw)
-        if raw and U and U.GetCanonicalCharacterKey then
-            addSessionKey(U:GetCanonicalCharacterKey(raw))
+        local storage = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus)
+        addSessionKey(storage)
+        if storage and U and U.GetCanonicalCharacterKey then
+            addSessionKey(U:GetCanonicalCharacterKey(storage))
         end
     end
     local currentCharKey = sessionCharKeys[1]

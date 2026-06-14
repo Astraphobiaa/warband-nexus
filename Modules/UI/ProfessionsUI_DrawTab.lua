@@ -367,9 +367,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
         return yOffset + 100
     end
 
-    local currentPlayerKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus))
-        or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
-        or ns.Utilities:GetCharacterKey()
+    local currentPlayerKey = (ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey())
+        or (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil))
     local rowIndex = 0
     local SECTION_COLLAPSE_HEADER_HEIGHT = GetLayout().SECTION_COLLAPSE_HEADER_HEIGHT or 36
 

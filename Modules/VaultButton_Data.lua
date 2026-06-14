@@ -42,7 +42,6 @@ local CS = ns.CharacterService
         if k then return k end
     end
     local raw = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-        or (ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
         return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
@@ -244,9 +243,8 @@ function M.GetManafluxData(charKey)
     if not WarbandNexus or not WarbandNexus.GetCurrencyData then return nil end
     local ok, cd = pcall(WarbandNexus.GetCurrencyData, WarbandNexus, MANAFLUX_ID, charKey)
     if not ok or not cd then
-        local currencyData = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.currencyData
-        local stored = currencyData and currencyData.currencies and currencyData.currencies[charKey]
-            and currencyData.currencies[charKey][MANAFLUX_ID]
+        local all = WarbandNexus.GetAllCurrencyData and WarbandNexus:GetAllCurrencyData(charKey)
+        local stored = all and all[MANAFLUX_ID]
         if type(stored) == "table" then stored = stored.quantity end
         local quantity = tonumber(stored)
         if quantity == nil then return nil end
@@ -271,6 +269,18 @@ function M.GetKeystoneData(charKey, charRow)
     if not row then
         local chars = GetCharacters()
         row = chars and chars[charKey]
+        if not row and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            local canon = ns.Utilities:GetCanonicalCharacterKey(charKey)
+            row = canon and chars and chars[canon]
+        end
+        if not row and chars and CharKeysMatch then
+            for k, r in pairs(chars) do
+                if type(r) == "table" and CharKeysMatch(k, charKey) then
+                    row = r
+                    break
+                end
+            end
+        end
     end
     local mk = row and row.mythicKey
     if mk and (tonumber(mk.level) or 0) > 0 then

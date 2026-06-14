@@ -81,6 +81,14 @@ function WarbandNexus:CleanupDatabase()
             end
         end
     end
+
+    if self.db.global.subsidiaryOrphanRemapV1 and ns.MigrationService and ns.MigrationService.PruneLegacySubsidiaryDuplicates then
+        local pruned = ns.MigrationService:PruneLegacySubsidiaryDuplicates(self.db) or 0
+        if pruned > 0 then
+            cleaned.deprecatedStorage = cleaned.deprecatedStorage + pruned
+            DebugPrint("|cffff8000[WN Cleanup]|r Pruned " .. tostring(pruned) .. " empty legacy subsidiary shell(s)")
+        end
+    end
     
     -- Clean deprecated storage structures (only when v2 itemStorage holds the data)
     if self.db.global.personalBanks then

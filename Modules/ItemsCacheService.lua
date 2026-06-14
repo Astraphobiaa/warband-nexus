@@ -34,8 +34,8 @@ local function ResolveCurrentItemStorageKey()
     if not ck and ns.Utilities.GetCharacterStorageKey then
         ck = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     end
-    if not ck then
-        ck = ns.Utilities:GetCharacterKey()
+    if not ck and ns.Utilities.GetCharacterStorageKey then
+        ck = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     end
     return ck
 end
@@ -1431,7 +1431,7 @@ function ResolveItemStorageRow(charKey)
             end
         end
     end
-    if not storageHasPayload(storage) then
+    if not storageHasPayload(storage) and not (ns.Utilities and ns.Utilities.IsGuidOnlySubsidiaryReads and ns.Utilities:IsGuidOnlySubsidiaryReads(WarbandNexus and WarbandNexus.db)) then
         local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
         local U = ns.Utilities
         if charData and U and U.GetCharacterKey then
@@ -1616,8 +1616,8 @@ function WarbandNexus:GetItemsData(charKey)
                 end
             end
         end
-        -- GUID-indexed characters row but itemStorage still under legacy Name-Realm (pre-migration slot).
-        if not storageHasPayload(storage) then
+        -- Pre-migration only: itemStorage may still be under legacy Name-Realm.
+        if not storageHasPayload(storage) and not (ns.Utilities and ns.Utilities.IsGuidOnlySubsidiaryReads and ns.Utilities:IsGuidOnlySubsidiaryReads(self.db)) then
             local charData = self.db.global.characters and self.db.global.characters[charKey]
             local U = ns.Utilities
             if charData and U and U.GetCharacterKey then

@@ -235,7 +235,22 @@ function WarbandNexus:DeleteCharacter(characterKey)
     if not characterKey or not self.db.global.characters then
         return false
     end
-    
+
+    local resolvedKey = characterKey
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey then
+        resolvedKey = U:GetCanonicalCharacterKey(characterKey) or characterKey
+    end
+    if not self.db.global.characters[resolvedKey] then
+        for key in pairs(self.db.global.characters) do
+            if key == characterKey or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(key, characterKey)) then
+                resolvedKey = key
+                break
+            end
+        end
+    end
+    characterKey = resolvedKey
+
     -- Check if character exists
     if not self.db.global.characters[characterKey] then
         return false
@@ -469,15 +484,14 @@ function WarbandNexus:EnforceCharacterLimit(limit)
             CS:RemoveCharacterSubsidiaryKeys(self, charKey)
         end
         
-        -- Remove from character order lists
+        -- Remove from character order lists (all buckets including custom group_* keys)
         if self.db.profile.characterOrder then
-            if self.db.profile.characterOrder.regular then
-                local regOrderRm = self.db.profile.characterOrder.regular
-                for j = 1, #regOrderRm do
-                    local key = regOrderRm[j]
-                    if key == charKey then
-                        table.remove(self.db.profile.characterOrder.regular, j)
-                        break
+            for orderKey, ordList in pairs(self.db.profile.characterOrder) do
+                if type(ordList) == "table" then
+                    for j = #ordList, 1, -1 do
+                        if ordList[j] == charKey then
+                            table.remove(ordList, j)
+                        end
                     end
                 end
             end
@@ -545,11 +559,15 @@ function WarbandNexus:CleanupOrphanedData()
         end
     end
 
-    -- Clean reputations
+    -- Clean reputations (legacy v1 per-faction chars)
     for factionID, repData in pairs(self.db.global.reputations or {}) do
         if repData.chars then
             purgeOrphans(repData.chars)
         end
+    end
+
+    if self.db.global.reputationData and self.db.global.reputationData.characters then
+        purgeOrphans(self.db.global.reputationData.characters)
     end
 
     purgeOrphans(self.db.global.gearData)

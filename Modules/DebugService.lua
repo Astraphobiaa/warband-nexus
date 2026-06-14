@@ -167,9 +167,6 @@ function DebugService:PrintPvEData(addon)
     if not tableKey and ns.Utilities.GetCharacterStorageKey then
         tableKey = ns.Utilities:GetCharacterStorageKey(addon)
     end
-    if not tableKey then
-        tableKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    end
     if not tableKey then return end
     local name = UnitName("player")
     if name and issecretvalue and issecretvalue(name) then name = nil end

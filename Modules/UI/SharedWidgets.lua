@@ -4085,14 +4085,47 @@ function ns.UI_ApplyMainNavTabGlyph(tex, tabKey)
 end
 
 ns.UI_GetCharKey = function(char)
-    if char and char._key then return char._key end
-    if not ns.Utilities then return nil end
-    if char and ns.Utilities.ResolveCharacterRowKey then
+    if not char then return nil end
+    if not ns.Utilities then return char._key end
+    if ns.Utilities.ResolveCharacterRowKey then
         local rk = ns.Utilities:ResolveCharacterRowKey(char)
         if rk then return rk end
     end
-    if ns.Utilities.GetCharacterKey then
-        return ns.Utilities:GetCharacterKey(char and char.name or "Unknown", char and char.realm or "Unknown")
+    if char._key and ns.Utilities.GetCanonicalCharacterKey then
+        local ck = ns.Utilities:GetCanonicalCharacterKey(char._key)
+        if ck then return ck end
+    end
+    local g = char.guid
+    if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+        return g
+    end
+    if ns.Utilities.GetCharacterKey and char.name and char.realm then
+        return ns.Utilities:GetCharacterKey(char.name, char.realm)
+    end
+    return char._key
+end
+
+--- Canonical subsidiary storage key (currency/PvE/gear caches). Mirrors VaultButton_Data.GetCurrentCharKey.
+---@param optionalCharKey string|nil
+---@return string|nil
+function ns.UI_GetSubsidiaryCharKey(optionalCharKey)
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey and WarbandNexus then
+        local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, optionalCharKey)
+        if k then return k end
+    end
+    if optionalCharKey and optionalCharKey ~= "" then
+        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+            return ns.Utilities:GetCanonicalCharacterKey(optionalCharKey) or optionalCharKey
+        end
+        return optionalCharKey
+    end
+    if ns.Utilities and ns.Utilities.GetCharacterStorageKey and WarbandNexus then
+        local raw = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+        if raw and ns.Utilities.GetCanonicalCharacterKey then
+            return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
+        end
+        return raw
     end
     return nil
 end

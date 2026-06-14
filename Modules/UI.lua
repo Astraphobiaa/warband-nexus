@@ -4400,11 +4400,10 @@ function WarbandNexus:UpdateStatus()
     local badge = mainFrame.statusBadge
     local accent = mainFrame.trackingStatusAccent
     local chip = mainFrame.trackingChip
-    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
-    local trackingDialogKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+    local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
             and ns.CharacterService:ResolveCharactersTableKey(self))
         or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
-        or charKey
+    local trackingDialogKey = charKey
 
     local function BadgeOneLine(s)
         if not s or s == "" then return s end

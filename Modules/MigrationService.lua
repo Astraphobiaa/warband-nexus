@@ -319,6 +319,8 @@ function MigrationService:RunMigrations(db)
     self:MigrateCharacterKeyNormalize(db)
     self:MigrateGlobalCharactersToGuidStorageKeys(db)
     self:DeduplicateCharacterRoster(db)
+    self:MigrateSubsidiaryOrphanKeys(db)
+    self:MigrateSubsidiaryAliasBucketsV1(db)
     self:MigrateRestedDataReset(db)
     self:MigrateRarityMountSyncReseed(db)
     self:MigrateReminderToastAnchors(db)
@@ -327,7 +329,40 @@ function MigrationService:RunMigrations(db)
     self:MigrateReminderQuestCatalog(db)
     self:MigrateFontScalePreset(db)
     self:DropStaleLegacyGlobalCurrencies(db)
+    self:DropStaleLegacyGlobalReputations(db)
+    self:FinalizeGuidOnlySubsidiaryV1(db)
     return false
+end
+
+--- Enable GUID-only subsidiary reads after orphan + alias migrations complete.
+---@param db table AceDB root
+function MigrationService:FinalizeGuidOnlySubsidiaryV1(db)
+    if not db or not db.global or db.global.guidOnlySubsidiaryV1 then return end
+    if db.global.subsidiaryOrphanRemapV1 and db.global.subsidiaryAliasConsolidatedV1 then
+        db.global.guidOnlySubsidiaryV1 = true
+        if DebugPrint then
+            DebugPrint("|cff9370DB[WN Migration]|r guidOnlySubsidiaryV1: subsidiary I/O is GUID-canonical")
+        end
+    end
+end
+
+--- Force subsidiary orphan/alias remap (slash `/wn guidmigrate`). Does not wipe roster rows.
+---@param db table AceDB root
+---@return number renameCount Keys remapped in the last alias pass
+function MigrationService:RunGuidSubsidiaryRemap(db)
+    if not db or not db.global then return 0 end
+    db.global.subsidiaryOrphanRemapV1 = nil
+    db.global.subsidiaryAliasConsolidatedV1 = nil
+    db.global.guidOnlySubsidiaryV1 = nil
+    local orphanRenames = BuildSubsidiaryOrphanRenames(db)
+    local total = 0
+    for _ in pairs(orphanRenames) do total = total + 1 end
+    self:MigrateSubsidiaryOrphanKeys(db)
+    local aliasRenames = BuildSubsidiaryAliasRenames(db)
+    for _ in pairs(aliasRenames) do total = total + 1 end
+    self:MigrateSubsidiaryAliasBucketsV1(db)
+    self:FinalizeGuidOnlySubsidiaryV1(db)
+    return total
 end
 
 --- Remove unused db.global.currencies table when currencyData is populated (no readers remain).
@@ -946,12 +981,9 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
         db.profile.characterGroupAssignments = newAssign
     end
 
-    -- profile.characterOrder (favorites, regular, untracked arrays)
+    -- profile.characterOrder (favorites, regular, untracked, group_* custom sections)
     if db.profile and db.profile.characterOrder then
-        local orderKeys = { "favorites", "regular", "untracked" }
-        for oki = 1, #orderKeys do
-            local orderKey = orderKeys[oki]
-            local arr = db.profile.characterOrder[orderKey]
+        for orderKey, arr in pairs(db.profile.characterOrder) do
             if type(arr) == "table" then
                 for i = 1, #arr do
                     local key = arr[i]
@@ -1174,6 +1206,474 @@ function MigrationService:MigrateGlobalCharactersToGuidStorageKeys(db)
         .. tostring(renamedSlots))
 
     db.global.charactersGuidKeyedV1 = true
+end
+
+--- Merge currency quantity rows; prefer larger quantity when both buckets exist pre-rename.
+local function MergeCurrencyCharBucket(target, donor)
+    if type(donor) ~= "table" then return target end
+    if type(target) ~= "table" then return donor end
+    for currencyID, val in pairs(donor) do
+        local dQty = (type(val) == "number") and val or (type(val) == "table" and tonumber(val.quantity)) or nil
+        if dQty ~= nil then
+            local tVal = target[currencyID]
+            local tQty = (type(tVal) == "number") and tVal or (type(tVal) == "table" and tonumber(tVal.quantity)) or nil
+            if tQty == nil or dQty > tQty then
+                target[currencyID] = val
+            end
+        end
+    end
+    return target
+end
+
+--- Prefer the richer PvE per-character bucket (non-empty, newer lastUpdate).
+local function PreferRicherPvECharBucket(target, donor)
+    if type(donor) ~= "table" or not next(donor) then return target end
+    if type(target) ~= "table" or not next(target) then return donor end
+    local tLu = tonumber(target.lastUpdate) or 0
+    local dLu = tonumber(donor.lastUpdate) or 0
+    if dLu > tLu then return donor end
+    if dLu < tLu then return target end
+    return target
+end
+
+local function MergePvECharBucket(target, donor)
+    return PreferRicherPvECharBucket(target, donor)
+end
+
+local function ForEachPveCharKeyedTable(pveCache, fn)
+    if type(pveCache) ~= "table" or type(fn) ~= "function" then return end
+    local mp = pveCache.mythicPlus
+    if mp then
+        if mp.keystones then fn(mp.keystones) end
+        if mp.bestRuns then fn(mp.bestRuns) end
+        if mp.dungeonScores then fn(mp.dungeonScores) end
+        if mp.runHistory then fn(mp.runHistory) end
+    end
+    local gv = pveCache.greatVault
+    if gv then
+        if gv.activities then fn(gv.activities) end
+        if gv.rewards then fn(gv.rewards) end
+    end
+    local lo = pveCache.lockouts
+    if lo then
+        if lo.raids then fn(lo.raids) end
+        if lo.dungeons then fn(lo.dungeons) end
+        if lo.worldBosses then fn(lo.worldBosses) end
+    end
+    if pveCache.delves and pveCache.delves.characters then
+        fn(pveCache.delves.characters)
+    end
+end
+
+--- Build oldKey -> canonical subsidiary key renames from roster + orphan subsidiary indices.
+local function BuildSubsidiaryAliasRenames(db)
+    local renames = {}
+    local Utilities = ns.Utilities
+    local issecretvalue = issecretvalue
+    local chars = db.global.characters
+    if type(chars) ~= "table" then return renames end
+
+    local function noteRename(oldKey, newKey)
+        if not oldKey or not newKey or oldKey == "" or newKey == "" or oldKey == newKey then return end
+        if issecretvalue and (issecretvalue(oldKey) or issecretvalue(newKey)) then return end
+        renames[oldKey] = newKey
+    end
+
+    for charKey, charData in pairs(chars) do
+        if type(charData) == "table" then
+            local target = charKey
+            if Utilities and Utilities.ResolveCharacterRowKey then
+                target = Utilities:ResolveCharacterRowKey(charData) or charKey
+            end
+            if Utilities and Utilities.GetCanonicalCharacterKey then
+                target = Utilities:GetCanonicalCharacterKey(target) or target
+            end
+            noteRename(charKey, target)
+            if charData.name and charData.realm and Utilities and Utilities.GetCharacterKey then
+                local nk = Utilities:GetCharacterKey(charData.name, charData.realm)
+                noteRename(nk, target)
+            end
+        end
+    end
+
+    local function noteFromSubsidiaryKey(subKey)
+        if not subKey or subKey == "" then return end
+        if issecretvalue and issecretvalue(subKey) then return end
+        local canon = subKey
+        if Utilities and Utilities.GetCanonicalCharacterKey then
+            canon = Utilities:GetCanonicalCharacterKey(subKey) or subKey
+        end
+        noteRename(subKey, canon)
+    end
+
+    local cd = db.global.currencyData
+    if cd then
+        if cd.currencies then
+            for subKey in pairs(cd.currencies) do noteFromSubsidiaryKey(subKey) end
+        end
+        if cd.totalEarned then
+            for subKey in pairs(cd.totalEarned) do noteFromSubsidiaryKey(subKey) end
+        end
+    end
+
+    if db.global.pveProgress then
+        for subKey in pairs(db.global.pveProgress) do noteFromSubsidiaryKey(subKey) end
+    end
+
+    if db.global.pveCache then
+        ForEachPveCharKeyedTable(db.global.pveCache, function(tbl)
+            for subKey in pairs(tbl) do noteFromSubsidiaryKey(subKey) end
+        end)
+    end
+
+    return renames
+end
+
+--- Union donor into target before RemapCharKeyedBucket drops the loser on collision.
+local function MergeSubsidiaryBucketsBeforeRenames(db, renames)
+    if type(renames) ~= "table" or not next(renames) then return end
+
+    local cd = db.global.currencyData
+    if cd then
+        for oldKey, newKey in pairs(renames) do
+            if oldKey ~= newKey then
+                if cd.currencies and cd.currencies[oldKey] and cd.currencies[newKey] then
+                    cd.currencies[newKey] = MergeCurrencyCharBucket(cd.currencies[newKey], cd.currencies[oldKey])
+                end
+                if cd.totalEarned and cd.totalEarned[oldKey] and cd.totalEarned[newKey] then
+                    cd.totalEarned[newKey] = MergeCurrencyCharBucket(cd.totalEarned[newKey], cd.totalEarned[oldKey])
+                end
+            end
+        end
+    end
+
+    if db.global.pveCache then
+        ForEachPveCharKeyedTable(db.global.pveCache, function(tbl)
+            for oldKey, newKey in pairs(renames) do
+                if oldKey ~= newKey and tbl[oldKey] and tbl[newKey] then
+                    tbl[newKey] = MergePvECharBucket(tbl[newKey], tbl[oldKey])
+                end
+            end
+        end)
+    end
+end
+
+--- One-time: fold Name-Realm (and other alias) subsidiary buckets into canonical GUID/storage keys.
+--- Runs after roster GUID migration; merges data when both alias and target buckets exist.
+---@param db table AceDB root
+function MigrationService:MigrateSubsidiaryAliasBucketsV1(db)
+    if not db or not db.global then return end
+    if db.global.subsidiaryAliasConsolidatedV1 then return end
+    if not db.global.charactersGuidKeyedV1 then return end
+
+    local renames = BuildSubsidiaryAliasRenames(db)
+    local renameCount = 0
+    for _ in pairs(renames) do renameCount = renameCount + 1 end
+
+    if next(renames) then
+        MergeSubsidiaryBucketsBeforeRenames(db, renames)
+        self:ApplyCharacterKeyedStorageRenames(db, renames)
+    end
+
+    DebugPrint("|cff9370DB[WN Migration]|r subsidiaryAliasConsolidatedV1: remapped "
+        .. tostring(renameCount) .. " alias key(s)")
+
+    db.global.subsidiaryAliasConsolidatedV1 = true
+end
+
+--- True when `key` has a non-empty payload in any character-keyed subsidiary global.
+local function SubsidiaryBucketHasData(db, key)
+    if not db or not db.global or not key or key == "" then return false end
+    if issecretvalue and issecretvalue(key) then return false end
+
+    local function bucketNonempty(tbl)
+        if type(tbl) ~= "table" then return false end
+        local entry = tbl[key]
+        if entry == nil then return false end
+        if type(entry) ~= "table" then return true end
+        return next(entry) ~= nil
+    end
+
+    local g = db.global
+    local cd = g.currencyData
+    if cd then
+        if bucketNonempty(cd.currencies) or bucketNonempty(cd.totalEarned) then return true end
+    end
+    if bucketNonempty(g.gearData) or bucketNonempty(g.pveProgress)
+        or bucketNonempty(g.statisticSnapshots) or bucketNonempty(g.personalBanks)
+        or bucketNonempty(g.itemStorage) then
+        return true
+    end
+    local rd = g.reputationData
+    if rd and bucketNonempty(rd.characters) then return true end
+
+    local pc = g.pveCache
+    if type(pc) == "table" then
+        local mp = pc.mythicPlus
+        if mp and (bucketNonempty(mp.keystones) or bucketNonempty(mp.bestRuns)
+            or bucketNonempty(mp.dungeonScores) or bucketNonempty(mp.runHistory)) then
+            return true
+        end
+        local gv = pc.greatVault
+        if gv and (bucketNonempty(gv.activities) or bucketNonempty(gv.rewards)) then return true end
+        local lo = pc.lockouts
+        if lo and (bucketNonempty(lo.raids) or bucketNonempty(lo.dungeons) or bucketNonempty(lo.worldBosses)) then
+            return true
+        end
+        if pc.delves and pc.delves.characters and bucketNonempty(pc.delves.characters) then return true end
+    end
+    return false
+end
+
+--- Remove `legacyKey` from subsidiary tables when `canonKey` already holds data (post-remap SV bloat guard).
+local function PurgeLegacySubsidiaryKeyWhenCanonicalHasData(db, legacyKey, canonKey)
+    if not db or not db.global or not legacyKey or not canonKey or legacyKey == canonKey then return 0 end
+    if not SubsidiaryBucketHasData(db, canonKey) then return 0 end
+    if SubsidiaryBucketHasData(db, legacyKey) then return 0 end
+
+    local removed = 0
+    local g = db.global
+
+    local function nilKey(tbl)
+        if type(tbl) ~= "table" or tbl[legacyKey] == nil then return end
+        tbl[legacyKey] = nil
+        removed = removed + 1
+    end
+
+    local cd = g.currencyData
+    if cd then
+        nilKey(cd.currencies)
+        nilKey(cd.totalEarned)
+    end
+    nilKey(g.gearData)
+    nilKey(g.pveProgress)
+    nilKey(g.statisticSnapshots)
+    nilKey(g.personalBanks)
+    nilKey(g.itemStorage)
+    if g.reputationData then nilKey(g.reputationData.characters) end
+
+    local pc = g.pveCache
+    if type(pc) == "table" then
+        local mp = pc.mythicPlus
+        if mp then
+            nilKey(mp.keystones)
+            nilKey(mp.bestRuns)
+            nilKey(mp.dungeonScores)
+            nilKey(mp.runHistory)
+        end
+        local gv = pc.greatVault
+        if gv then
+            nilKey(gv.activities)
+            nilKey(gv.rewards)
+        end
+        local lo = pc.lockouts
+        if lo then
+            nilKey(lo.raids)
+            nilKey(lo.dungeons)
+            nilKey(lo.worldBosses)
+        end
+        if pc.delves and pc.delves.characters then nilKey(pc.delves.characters) end
+    end
+    return removed
+end
+
+--- After orphan remap: drop empty legacy subsidiary shells when canonical bucket has data.
+---@param db table AceDB root
+---@return number purged
+function MigrationService:PruneLegacySubsidiaryDuplicates(db)
+    if not db or not db.global or not db.global.characters then return 0 end
+    local Utilities = ns.Utilities
+    local purged = 0
+    for _, charData in pairs(db.global.characters) do
+        if type(charData) == "table" and charData.name and charData.realm and Utilities then
+            local canonKey = Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(charData)
+            if canonKey and Utilities.GetCanonicalCharacterKey then
+                canonKey = Utilities:GetCanonicalCharacterKey(canonKey) or canonKey
+            end
+            local legacyKey = Utilities.GetCharacterKey and Utilities:GetCharacterKey(charData.name, charData.realm)
+            if legacyKey and canonKey and legacyKey ~= canonKey then
+                purged = purged + PurgeLegacySubsidiaryKeyWhenCanonicalHasData(db, legacyKey, canonKey)
+            end
+        end
+    end
+    return purged
+end
+
+local function RosterOwnsSubsidiaryKeyForMigration(db, subsidiaryKey)
+    local addon = _G.WarbandNexus
+    local CS = ns.CharacterService
+    if CS and addon and addon.db == db and CS.CharacterOwnsSubsidiaryKey then
+        return CS:CharacterOwnsSubsidiaryKey(addon, subsidiaryKey)
+    end
+    local chars = db.global.characters
+    if type(chars) ~= "table" then return false end
+    return chars[subsidiaryKey] ~= nil
+end
+
+--- Match orphan subsidiary key to roster storage key (name/realm/guid/VaultCharKeysMatch).
+local function FindRosterTargetForOrphanKey(db, orphanKey)
+    local chars = db.global.characters
+    local Utilities = ns.Utilities
+    if type(chars) ~= "table" or not orphanKey or orphanKey == "" then return nil end
+    if issecretvalue and issecretvalue(orphanKey) then return nil end
+
+    if chars[orphanKey] and Utilities and Utilities.ResolveCharacterRowKey then
+        return Utilities:ResolveCharacterRowKey(chars[orphanKey]) or orphanKey
+    end
+
+    if Utilities and Utilities.GetCanonicalCharacterKey then
+        local canon = Utilities:GetCanonicalCharacterKey(orphanKey)
+        if canon and chars[canon] then
+            return Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(chars[canon]) or canon
+        end
+    end
+
+    for key, row in pairs(chars) do
+        if type(row) == "table" then
+            if key == orphanKey then
+                return Utilities and Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(row) or key
+            end
+            if ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(key, orphanKey) then
+                return Utilities and Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(row) or key
+            end
+            if row.guid and type(row.guid) == "string" and row.guid == orphanKey
+                and not (issecretvalue and issecretvalue(row.guid)) then
+                return Utilities and Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(row) or key
+            end
+            if row.name and row.realm and Utilities and Utilities.GetCharacterKey then
+                local nk = Utilities:GetCharacterKey(row.name, row.realm)
+                if nk == orphanKey or (ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(nk, orphanKey)) then
+                    return Utilities.ResolveCharacterRowKey and Utilities:ResolveCharacterRowKey(row) or key
+                end
+            end
+        end
+    end
+    return nil
+end
+
+--- Collect subsidiary keys from all char-keyed globals.
+local function CollectSubsidiaryKeys(db, into)
+    if type(into) ~= "table" then return end
+    local function note(k)
+        if k and k ~= "" and not (issecretvalue and issecretvalue(k)) then into[k] = true end
+    end
+    local g = db.global
+    local cd = g.currencyData
+    if cd then
+        if cd.currencies then for k in pairs(cd.currencies) do note(k) end end
+        if cd.totalEarned then for k in pairs(cd.totalEarned) do note(k) end end
+    end
+    if g.gearData then for k in pairs(g.gearData) do note(k) end end
+    if g.pveProgress then for k in pairs(g.pveProgress) do note(k) end end
+    if g.statisticSnapshots then for k in pairs(g.statisticSnapshots) do note(k) end end
+    if g.personalBanks then for k in pairs(g.personalBanks) do note(k) end end
+    if g.itemStorage then for k in pairs(g.itemStorage) do note(k) end end
+    if g.reputationData and g.reputationData.characters then
+        for k in pairs(g.reputationData.characters) do note(k) end
+    end
+    if g.pveCache then
+        ForEachPveCharKeyedTable(g.pveCache, function(tbl)
+            for k in pairs(tbl) do note(k) end
+        end)
+    end
+end
+
+--- Build orphan subsidiary renames (legacy Name-Realm buckets + unowned subsidiary keys).
+local function BuildSubsidiaryOrphanRenames(db)
+    local renames = {}
+    local Utilities = ns.Utilities
+    local chars = db.global.characters
+    if type(chars) ~= "table" then return renames end
+
+    local function noteRename(oldKey, newKey)
+        if not oldKey or not newKey or oldKey == "" or newKey == "" or oldKey == newKey then return end
+        if issecretvalue and (issecretvalue(oldKey) or issecretvalue(newKey)) then return end
+        renames[oldKey] = newKey
+    end
+
+    for charKey, charData in pairs(chars) do
+        if type(charData) == "table" then
+            local target = charKey
+            if Utilities and Utilities.ResolveCharacterRowKey then
+                target = Utilities:ResolveCharacterRowKey(charData) or charKey
+            end
+            if Utilities and Utilities.GetCanonicalCharacterKey then
+                target = Utilities:GetCanonicalCharacterKey(target) or target
+            end
+            noteRename(charKey, target)
+            local guid = charData.guid
+            if type(guid) == "string" and guid ~= "" and not (issecretvalue and issecretvalue(guid)) then
+                noteRename(guid, target)
+            end
+            if charData.name and charData.realm and Utilities and Utilities.GetCharacterKey then
+                local legacyKey = Utilities:GetCharacterKey(charData.name, charData.realm)
+                if legacyKey and legacyKey ~= target then
+                    if SubsidiaryBucketHasData(db, legacyKey) and not SubsidiaryBucketHasData(db, target) then
+                        noteRename(legacyKey, target)
+                    elseif SubsidiaryBucketHasData(db, legacyKey) then
+                        noteRename(legacyKey, target)
+                    end
+                end
+            end
+        end
+    end
+
+    local orphanKeys = {}
+    CollectSubsidiaryKeys(db, orphanKeys)
+    for subKey in pairs(orphanKeys) do
+        if not RosterOwnsSubsidiaryKeyForMigration(db, subKey) then
+            local target = FindRosterTargetForOrphanKey(db, subKey)
+            if target and target ~= subKey then
+                noteRename(subKey, target)
+            end
+        end
+    end
+
+    return renames
+end
+
+--- One-time: remap orphan legacy subsidiary buckets (Name-Realm-only data, unowned keys) onto canonical GUID/storage keys.
+--- Runs after roster dedup; idempotent via `subsidiaryOrphanRemapV1`.
+---@param db table AceDB root
+function MigrationService:MigrateSubsidiaryOrphanKeys(db)
+    if not db or not db.global then return end
+    if db.global.subsidiaryOrphanRemapV1 then return end
+
+    local renames = BuildSubsidiaryOrphanRenames(db)
+    local renameCount = 0
+    for _ in pairs(renames) do renameCount = renameCount + 1 end
+
+    if next(renames) then
+        MergeSubsidiaryBucketsBeforeRenames(db, renames)
+        self:ApplyCharacterKeyedStorageRenames(db, renames)
+    end
+
+    local purged = self:PruneLegacySubsidiaryDuplicates(db)
+
+    if DebugPrint then
+        DebugPrint("|cff9370DB[WN Migration]|r subsidiaryOrphanRemapV1: remapped "
+            .. tostring(renameCount) .. " orphan key(s); pruned " .. tostring(purged) .. " empty legacy shell(s)")
+    end
+
+    db.global.subsidiaryOrphanRemapV1 = true
+end
+
+--- Remove unused `db.global.reputations` when `reputationData.characters` is authoritative.
+function MigrationService:DropStaleLegacyGlobalReputations(db)
+    if not db or not db.global or db.global._legacyReputationsDropV1 then return end
+    local legacy = db.global.reputations
+    if type(legacy) ~= "table" then
+        db.global._legacyReputationsDropV1 = true
+        return
+    end
+    local rd = db.global.reputationData and db.global.reputationData.characters
+    if rd and next(rd) then
+        db.global.reputations = nil
+        if DebugPrint then
+            DebugPrint("|cff9370DB[Migration]|r Dropped stale db.global.reputations (reputationData authoritative)")
+        end
+    end
+    db.global._legacyReputationsDropV1 = true
 end
 
 return MigrationService

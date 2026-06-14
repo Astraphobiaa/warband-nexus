@@ -18,12 +18,15 @@ local IMMEDIATE_SUPPRESS_SEC = 1.5
 local MoneyLogEvents = {}
 
 local function GetCurrentCharKey()
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey and WarbandNexus then
+        local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
+        if k then return k end
+    end
     if not ns.Utilities then return nil end
     local raw
     if ns.Utilities.GetCharacterStorageKey then
         raw = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-    elseif ns.Utilities.GetCharacterKey then
-        raw = ns.Utilities:GetCharacterKey()
     end
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
@@ -299,6 +302,9 @@ function WarbandNexus:GetCharacterBankMoneyLogSummary()
         local e = logs[i]
         if e and e.character then
             local ck = e.character
+            if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+                ck = ns.Utilities:GetCanonicalCharacterKey(ck) or ck
+            end
             if not byChar[ck] then
                 byChar[ck] = { charKey = ck, classFile = e.classFile, deposit = 0, withdraw = 0 }
             end

@@ -2217,8 +2217,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         end
     end
     
-    local charKey = (L.ns.Utilities.GetCharacterStorageKey and L.ns.Utilities:GetCharacterStorageKey(L.WarbandNexus))
-        or L.ns.Utilities:GetCharacterKey()
+    local charKey = (L.ns.UI_GetSubsidiaryCharKey and L.ns.UI_GetSubsidiaryCharKey())
+        or (L.ns.CharacterService and L.ns.CharacterService.ResolveSubsidiaryCharacterKey and L.ns.CharacterService:ResolveSubsidiaryCharacterKey(L.WarbandNexus, nil))
     local pveData = self:GetPvEData(charKey)
     
     -- Check multiple data completeness signals, not just keystone
@@ -2728,12 +2728,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     end
     
     -- Canonical key must match PvECacheService writes and GetPvEData(charKey) lookups
-    local currentPlayerKey = (L.ns.CharacterService and L.ns.CharacterService.ResolveCharactersTableKey and L.ns.CharacterService:ResolveCharactersTableKey(L.WarbandNexus))
-        or (L.ns.Utilities.GetCharacterStorageKey and L.ns.Utilities:GetCharacterStorageKey(L.WarbandNexus))
-        or L.ns.Utilities:GetCharacterKey()
-    if L.ns.Utilities.GetCanonicalCharacterKey and currentPlayerKey then
-        currentPlayerKey = L.ns.Utilities:GetCanonicalCharacterKey(currentPlayerKey) or currentPlayerKey
-    end
+    local currentPlayerKey = (L.ns.UI_GetSubsidiaryCharKey and L.ns.UI_GetSubsidiaryCharKey())
+        or (L.ns.CharacterService and L.ns.CharacterService.ResolveSubsidiaryCharacterKey and L.ns.CharacterService:ResolveSubsidiaryCharacterKey(L.WarbandNexus, nil))
     
     -- Load sorting preferences from profile (persistent across sessions)
     if not parent.sortPrefsLoaded then
@@ -4194,10 +4190,8 @@ function WarbandNexus:ShowPvEVaultAllCharactersTooltip(anchorFrame)
     })
     table.insert(lines, { type = "spacer", height = 6 })
 
-    local currentKey = ns.Utilities:GetCharacterKey()
-    if ns.Utilities.GetCanonicalCharacterKey then
-        currentKey = ns.Utilities:GetCanonicalCharacterKey(currentKey) or currentKey
-    end
+    local currentKey = (ns.UI_GetSubsidiaryCharKey and ns.UI_GetSubsidiaryCharKey())
+        or (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil))
 
     local sh = GetScreenHeight() or 1080
     local sw = GetScreenWidth() or 1920

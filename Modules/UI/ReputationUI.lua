@@ -499,8 +499,6 @@ local function GetReputationAggregateCacheKey(characters)
     for ci = 1, #characters do
         local char = characters[ci]
         local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
-            or (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(char))
-            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(char.name, char.realm))
         parts[#parts + 1] = charKey or ""
     end
     local cacheHeaders = WarbandNexus.GetReputationHeaders and WarbandNexus:GetReputationHeaders() or {}
@@ -624,8 +622,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     for ci = 1, #characters do
         local char = characters[ci]
         local charKey = ns.UI_GetCharKey and ns.UI_GetCharKey(char)
-            or (U and U.ResolveCharacterRowKey and U:ResolveCharacterRowKey(char))
-            or (U and U.GetCharacterKey and U:GetCharacterKey(char.name, char.realm))
         if charKey then
             charLookup[charKey] = char
             if U and U.GetCanonicalCharacterKey then

@@ -53,7 +53,11 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         -- Characters tab: avoid skipCooldown here — ilvl/zone/gold batching fires this often and full
         -- PopulateContent every ~100ms feels like a constant refresh (virtual rows make it more noticeable).
         if tab == "chars" then
-            SchedulePopulateContent()
+            if payload and payload.dataType == "mythicKey" then
+                SchedulePopulateContent(true)
+            else
+                SchedulePopulateContent()
+            end
         elseif tab == "stats" then
             SchedulePopulateContent(true)
         elseif tab == "gear" then

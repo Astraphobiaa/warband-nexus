@@ -34,7 +34,7 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
     if IsDebugOn() then
-        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn charkeys|r, |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
+        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn charkeys|r, |cff00ccff/wn guidmigrate|r, |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
     end
 end
 
@@ -392,6 +392,15 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
+    elseif cmd == "guidmigrate" then
+        if ns.MigrationService and ns.MigrationService.RunGuidSubsidiaryRemap and addon.db then
+            local n = ns.MigrationService:RunGuidSubsidiaryRemap(addon.db)
+            addon:Print(string.format("|cff00ff00[WN]|r GUID subsidiary remap complete (%d key(s) considered).|r", n))
+        else
+            addon:Print("|cffff6600[WN]|r MigrationService unavailable.|r")
+        end
+        return
+
     elseif cmd == "cleanup" then
         if addon.CleanupStaleCharacters then
             local removed = addon:CleanupStaleCharacters(90)
@@ -418,7 +427,6 @@ function CommandService:HandleSlashCommand(addon, input)
         if subCmd == "enable" or subCmd == "on" then
             local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
                 or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
-                or ns.Utilities:GetCharacterKey()
             if ns.CharacterService and charKey then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, true)
                 addon:Print("|cff00ff00" .. ((ns.L and ns.L["TRACKING_ENABLED_MSG"]) or "Character tracking ENABLED!") .. "|r")
@@ -426,13 +434,14 @@ function CommandService:HandleSlashCommand(addon, input)
         elseif subCmd == "disable" or subCmd == "off" then
             local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
                 or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
-                or ns.Utilities:GetCharacterKey()
             if ns.CharacterService and charKey then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
                 addon:Print("|cffff8800" .. ((ns.L and ns.L["TRACKING_DISABLED_MSG"]) or "Character tracking DISABLED!") .. "|r")
             end
         elseif subCmd == "status" then
-            local charKey = ns.Utilities:GetCharacterKey()
+            local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and ns.CharacterService:ResolveSubsidiaryCharacterKey(addon, nil))
+                or (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
+                or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
             local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
             addon:Print("|cff00ccff" .. ((ns.L and ns.L["CHARACTER_LABEL"]) or "Character:") .. "|r " .. charKey)
             if isTracked then
@@ -780,7 +789,6 @@ function CommandService:DumpItemReport(addon, itemID)
     -- Selected character context
     local selKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
         or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
-        or (ns.Utilities and ns.Utilities:GetCharacterKey())
     local selData = selKey and db and db.characters and db.characters[selKey]
     if selData then
         p(string.format("Logged-in: name=%s class=%s specID=%s level=%s", tostring(selData.name), tostring(selData.classFile), tostring(selData.specID), tostring(selData.level)))

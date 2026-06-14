@@ -745,7 +745,6 @@ function WarbandNexus:DiagnoseGearStorageRecToChat(charKey, probeItemID)
         end
         charKey = (self.GetCurrentGearStorageKey and self:GetCurrentGearStorageKey())
             or (U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(self))
-            or (U and U.GetCharacterKey and U:GetCharacterKey())
     end
     if not charKey then
         self:Print("|cffff6600[WN gearstash]|r No character key (not logged in?).")
@@ -849,8 +848,8 @@ function WarbandNexus:IsGearTabCharacterLoggedInPlayer(charKey)
     local sel = canon(charKey)
     if sel == "" then return false end
     local cur = ResolveGearStorageKey()
-    if not cur and U and U.GetCharacterKey then
-        cur = U:GetCharacterKey()
+    if not cur and U and U.GetCharacterStorageKey then
+        cur = U:GetCharacterStorageKey(WarbandNexus)
     end
     if not cur then return false end
     return sel == canon(cur)
@@ -983,8 +982,8 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     end
 
     local currentKey = ResolveGearStorageKey()
-    if not currentKey and ns.Utilities and ns.Utilities.GetCharacterKey then
-        currentKey = ns.Utilities:GetCharacterKey()
+    if not currentKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        currentKey = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     end
     local selectedIsLoggedInPlayer = IsViewingLivePlayerGear(selectedCharKey)
 

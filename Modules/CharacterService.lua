@@ -191,8 +191,8 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                     if not cKey and ns.Utilities.GetCharacterStorageKey then
                         cKey = ns.Utilities:GetCharacterStorageKey(addonInstance)
                     end
-                    if not cKey then
-                        cKey = ns.Utilities:GetCharacterKey()
+                    if not cKey and ns.Utilities.GetCharacterStorageKey then
+                        cKey = ns.Utilities:GetCharacterStorageKey(addonInstance)
                     end
                     addonInstance:ScanInventoryBags(cKey)
                     if ns.ItemsLoadingState then
@@ -261,7 +261,8 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                 local addonInstance = _G.WarbandNexus or addon
                 if addonInstance and addonInstance.SendMessage then
                     local ev = E.CHARACTER_UPDATED
-                    addonInstance:SendMessage(ev, { charKey = charKey })
+                    local msgKey = persistKey or charKey
+                    addonInstance:SendMessage(ev, { charKey = msgKey })
                 end
             end
             if SafeInit then SafeInit(doStep8, "PostConfirm:UIRefresh") else doStep8() end
@@ -372,10 +373,9 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             C_Timer.After(0.5, function()
                 if addonInstance and addonInstance.SendMessage then
                     local ev = E.CHARACTER_UPDATED
-                    local rawK = ns.Utilities and ns.Utilities:GetCharacterKey()
-                    local msgKey = rawK
-                    if rawK and ns.Utilities.GetCanonicalCharacterKey then
-                        msgKey = ns.Utilities:GetCanonicalCharacterKey(rawK) or rawK
+                    local msgKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addonInstance)
+                    if msgKey and ns.Utilities.GetCanonicalCharacterKey then
+                        msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
                     end
                     addonInstance:SendMessage(ev, { charKey = msgKey })
                 end
@@ -471,8 +471,10 @@ function CharacterService:CharacterOwnsSubsidiaryKey(addon, subsidiaryKey)
                 local rowKey = U:ResolveCharacterRowKey(row)
                 if rowKey == subsidiaryKey or (canon and rowKey == canon) then return true end
             end
-            if ns.VaultCharKeysMatch and (ns.VaultCharKeysMatch(key, subsidiaryKey) or (canon and ns.VaultCharKeysMatch(key, canon))) then
-                return true
+            if not (U and U.IsGuidOnlySubsidiaryReads and U:IsGuidOnlySubsidiaryReads(addon.db)) then
+                if ns.VaultCharKeysMatch and (ns.VaultCharKeysMatch(key, subsidiaryKey) or (canon and ns.VaultCharKeysMatch(key, canon))) then
+                    return true
+                end
             end
         end
     end
@@ -553,6 +555,11 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
         end
     end
 
+    local rd = g.reputationData
+    if rd and rd.characters then
+        removed = removed + PurgeCharKeyedEntries(rd.characters, charKey)
+    end
+
     if removed > 0 and DebugPrint then
         DebugPrint(string.format("|cffff8000[WN Char]|r Subsidiary purge %s: %d bucket(s)", tostring(charKey), removed))
     end
@@ -583,7 +590,7 @@ function CharacterService:ResolveSubsidiaryCharacterKey(addon, optionalCharKey)
             return sk
         end
     end
-    return U and U.GetCharacterKey and U:GetCharacterKey() or nil
+    return addon and U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(addon) or nil
 end
 
 --- Table index for `db.global.characters` writes (tracking dialog, etc.): existing row, else GUID bucket for current player.
@@ -787,6 +794,11 @@ end
 function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
     if not addon.db or not addon.db.global then
         return false
+    end
+
+    local U = ns.Utilities
+    if U and U.GetCanonicalCharacterKey and characterKey then
+        characterKey = U:GetCanonicalCharacterKey(characterKey) or characterKey
     end
     
     -- Initialize if needed

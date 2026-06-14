@@ -268,7 +268,10 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
     end
 
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or nil
+    local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and WarbandNexus
+        and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil))
+        or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
+        or nil
     local headerHeight = 28
     local rowHeight = 26
     local rowSpacing = 2

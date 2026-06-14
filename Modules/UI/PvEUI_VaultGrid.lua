@@ -143,8 +143,8 @@ function ns.PvEUI.GetCanonicalKeyForChar(char)
         end
     end
     local raw = char._key
-    if (not raw or raw == "") and ns.Utilities and ns.Utilities.GetCharacterKey then
-        raw = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
+    if (not raw or raw == "") and ns.UI_GetCharKey then
+        raw = ns.UI_GetCharKey(char)
     end
     if not raw or raw == "" then return nil end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then

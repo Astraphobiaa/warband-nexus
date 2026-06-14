@@ -24,7 +24,7 @@ local function CurrentScannerCharacterKey()
         local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
         if k then return k end
     end
-    local raw = ns.Utilities:GetCharacterKey()
+    local raw = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
         return ns.Utilities:GetCanonicalCharacterKey(raw) or raw

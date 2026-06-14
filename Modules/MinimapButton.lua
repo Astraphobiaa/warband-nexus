@@ -69,7 +69,7 @@ function WarbandNexus:InitializeMinimapButton()
     local TOOLTIP_CHAR_LIMIT = 10
     local curRaw = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and addon
         and ns.CharacterService:ResolveSubsidiaryCharacterKey(addon, nil))
-        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+        or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
     local curCanon = curRaw
     if curRaw and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         curCanon = ns.Utilities:GetCanonicalCharacterKey(curRaw) or curRaw

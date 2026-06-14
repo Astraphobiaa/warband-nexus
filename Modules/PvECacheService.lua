@@ -79,7 +79,6 @@ local function GetSessionCanonicalPvEKey()
         if k then return CanonicalizePvEKey(k) end
     end
     local raw = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     return CanonicalizePvEKey(raw)
 end
 
@@ -130,6 +129,42 @@ local function PruneVaultRewardAliasKeys(rewards, charKey)
         if k ~= canonKey and CharKeysMatch(k, charKey) then
             rewards[k] = nil
         end
+    end
+end
+
+--- Drop GUID/Name-Realm duplicate rows across all pveCache per-character buckets.
+local function PrunePvECacheAliasKeys(pc, charKey)
+    if type(pc) ~= "table" or not charKey then return end
+    charKey = CanonicalizePvEKey(charKey)
+    if not charKey then return end
+    local function prune(tbl)
+        if type(tbl) ~= "table" then return end
+        for k in pairs(tbl) do
+            if k ~= charKey and CharKeysMatch(k, charKey) then
+                tbl[k] = nil
+            end
+        end
+    end
+    local mp = pc.mythicPlus
+    if mp then
+        prune(mp.keystones)
+        prune(mp.bestRuns)
+        prune(mp.dungeonScores)
+        prune(mp.runHistory)
+    end
+    local gv = pc.greatVault
+    if gv then
+        prune(gv.activities)
+        prune(gv.rewards)
+    end
+    local lo = pc.lockouts
+    if lo then
+        prune(lo.raids)
+        prune(lo.dungeons)
+        prune(lo.worldBosses)
+    end
+    if pc.delves and pc.delves.characters then
+        prune(pc.delves.characters)
     end
 end
 
@@ -191,8 +226,13 @@ local function MirrorKeystoneToCharacterRow(addon, pveCharKey, keystoneLevel, ma
     if not addon or not addon.db or not addon.db.global or not addon.db.global.characters then return false end
     local tableKey = pveCharKey
     if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-        local r = ns.CharacterService:ResolveCharactersTableKey(addon)
-        if r then tableKey = r end
+        local sessionTableKey = ns.CharacterService:ResolveCharactersTableKey(addon)
+        if sessionTableKey then
+            tableKey = sessionTableKey
+        elseif ns.Utilities and ns.Utilities.ResolveCharacterRowKey then
+            local rowKey = ns.Utilities:ResolveCharacterRowKey(addon, pveCharKey)
+            if rowKey then tableKey = rowKey end
+        end
     end
     local row = addon.db.global.characters[tableKey]
     if not row then return false end
@@ -649,6 +689,17 @@ local pvePendingUpdateTimer = nil
 local keystoneRetryPending = {}
 local keystoneRetryCount = {}
 local keystoneZeroSeenAt = {}
+local keystoneRefreshLastAt = {}
+local keystoneWarmupLastAt = {}
+local KEYSTONE_REFRESH_MIN_INTERVAL = 3.0
+local KEYSTONE_WARMUP_COOLDOWN = 5.0
+-- High-priority reasons bypass RequestKeystoneRefresh throttle (loot / maps / pedestal).
+local KEYSTONE_REFRESH_HIGH_PRIORITY = {
+    CHAT_MSG_LOOT = true,
+    OnKeystoneChanged = true,
+    CHALLENGE_MODE_MAPS_UPDATE = true,
+    vaultClaim = true,
+}
 -- Track last observed (level, mapID) per char so repeated identical API results
 -- (very common: UPDATE_INSTANCE_INFO + CHALLENGE_MODE_MAPS_UPDATE bursts during
 -- reload/zone all read the same values) become no-ops instead of re-running the
@@ -657,12 +708,42 @@ local keystoneLastSeen = {}
 
 local KEYSTONE_ZERO_CONFIRM_SECONDS = 2
 local KEYSTONE_RETRY_MAX = 3
+local KEYSTONE_RETRY_DELAYS = { 0.5, 1.2, 2.5 }
 
----Schedule one delayed keystone re-read for API warmup races.
----Capped at KEYSTONE_RETRY_MAX attempts per session per char so a character that
----genuinely owns no keystone (API returns nil rather than 0 in some warmup paths)
----doesn't trigger an infinite retry loop and chat-spam.
-local function ScheduleKeystoneRetry(charKey)
+---@param message string
+---@return boolean
+local function LootMessageIsMythicKeystone(message)
+    if not message or type(message) ~= "string" then return false end
+    if issecretvalue and issecretvalue(message) then return false end
+    -- Wiki: CHAT_MSG_LOOT arg1 is loot text with item hyperlink (may be secret in secure contexts).
+    if message:find("|Hkeystone:", 1, true) then return true end
+    local itemID = tonumber(message:match("|Hitem:(%d+):"))
+    if itemID and C_Item and C_Item.IsItemKeystoneByID then
+        local ok, isKs = pcall(C_Item.IsItemKeystoneByID, itemID)
+        if ok and isKs then return true end
+    end
+    local name = message:match("%[(.-)%]")
+    if name and not (issecretvalue and issecretvalue(name)) and name:find("Keystone", 1, true) then
+        return true
+    end
+    return false
+end
+
+---Self-loot only: CHAT_MSG_LOOT arg2 is author (wiki); guard secrets before string ops.
+---@param author string|nil
+---@return boolean
+local function ChatLootAuthorIsPlayer(author)
+    local playerName = UnitName("player")
+    if not playerName or (issecretvalue and issecretvalue(playerName)) then return false end
+    if not author or author == "" then return true end
+    if issecretvalue and issecretvalue(author) then return false end
+    local authorBase = author:match("^([^%-]+)") or author
+    return author == playerName or authorBase == playerName
+end
+
+---Schedule staggered keystone re-reads for API warmup races (0.5s / 1.2s / 2.5s).
+---Capped at KEYSTONE_RETRY_MAX attempts per session per char.
+local function ScheduleKeystoneRetry(charKey, reason)
     if not charKey or keystoneRetryPending[charKey] then
         return
     end
@@ -675,20 +756,66 @@ local function ScheduleKeystoneRetry(charKey)
     end
     keystoneRetryCount[charKey] = attempts + 1
     keystoneRetryPending[charKey] = true
-    C_Timer.After(1.2, function()
+    local delay = KEYSTONE_RETRY_DELAYS[attempts + 1] or KEYSTONE_RETRY_DELAYS[#KEYSTONE_RETRY_DELAYS]
+    C_Timer.After(delay, function()
         keystoneRetryPending[charKey] = nil
-        if not WarbandNexus or not WarbandNexus.UpdateCharacterKeystone then
-            return
-        end
-        WarbandNexus:UpdateCharacterKeystone(charKey)
-        if WarbandNexus.SavePvECache then
-            WarbandNexus:SavePvECache()
-        end
-        local events = ns.Constants and ns.Constants.EVENTS
-        if WarbandNexus.SendMessage and events and events.PVE_UPDATED then
-            WarbandNexus:SendMessage(events.PVE_UPDATED)
+        if WarbandNexus and WarbandNexus.RequestKeystoneRefresh then
+            WarbandNexus:RequestKeystoneRefresh(reason or "keystoneRetry", true)
         end
     end)
+end
+
+---Central keystone refresh: C_MythicPlus read, roster cache invalidation, WN_* fan-out.
+---@param reason string|nil diagnostic tag (debug only)
+---@param forceClearSeen boolean|nil when true, clears keystoneLastSeen and schedules API warmup retries
+---@return boolean didChange
+function WarbandNexus:RequestKeystoneRefresh(reason, forceClearSeen)
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return false
+    end
+    local charKey = GetSessionCanonicalPvEKey()
+    if not charKey then return false end
+
+    local now = GetTime()
+    local highPriority = reason and KEYSTONE_REFRESH_HIGH_PRIORITY[reason]
+    if not highPriority then
+        local last = keystoneRefreshLastAt[charKey] or 0
+        if (now - last) < KEYSTONE_REFRESH_MIN_INTERVAL then
+            return false
+        end
+    end
+    keystoneRefreshLastAt[charKey] = now
+
+    -- Clear dedupe only; keep retry counters so staggered warmup is not reset every call.
+    if forceClearSeen then
+        keystoneLastSeen[charKey] = nil
+    end
+
+    if C_MythicPlus and C_MythicPlus.RequestMapInfo then
+        pcall(C_MythicPlus.RequestMapInfo)
+    end
+
+    local didChange = self:UpdateCharacterKeystone(charKey)
+
+    if self.InvalidateGetAllCharactersCache then
+        self:InvalidateGetAllCharactersCache()
+    end
+    if self.SavePvECache then
+        self:SavePvECache()
+    end
+
+    if didChange then
+        if self.SendMessage and Constants and Constants.EVENTS then
+            if Constants.EVENTS.CHARACTER_UPDATED then
+                self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "mythicKey" })
+            end
+            if Constants.EVENTS.PVE_UPDATED then
+                self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+            end
+        end
+    end
+
+    return didChange
 end
 
 -- INITIALIZATION
@@ -820,28 +947,31 @@ function WarbandNexus:UpdateMythicPlusAffixes()
 end
 
 ---Update character's keystone data
+---@return boolean didChange
 function WarbandNexus:UpdateCharacterKeystone(charKey)
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
+        return false
     end
     
-    if not C_MythicPlus or not charKey or not self.db.global.pveCache then return end
+    if not C_MythicPlus or not charKey or not self.db.global.pveCache then return false end
     charKey = CanonicalizePvEKey(charKey)
     
     local keystoneInfo = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
+    if keystoneInfo and issecretvalue and issecretvalue(keystoneInfo) then keystoneInfo = nil end
+    if keystoneLevel and issecretvalue and issecretvalue(keystoneLevel) then keystoneLevel = nil end
     local ksStore = self.db.global.pveCache.mythicPlus and self.db.global.pveCache.mythicPlus.keystones
     local existing = ksStore and ksStore[charKey] or nil
 
-    -- Skip when API returned the SAME (level, mapID) as the previous call for this
-    -- character. Without this guard, every event in a reload/zone burst retraces
-    -- the entire keystone path (and re-emits the debug log) for unchanged values.
+    -- Dedupe only definitive API reads (level>0 or confirmed level==0). Do not cache nil|nil —
+    -- that blocks retries while C_MythicPlus is still warming up after loot/maps events.
     local seenKey = tostring(keystoneLevel) .. "|" .. tostring(keystoneInfo)
-    if keystoneLastSeen[charKey] == seenKey then
-        return
+    local levelNum = keystoneLevel and tonumber(keystoneLevel) or nil
+    local isDefinitiveRead = (levelNum and levelNum > 0 and keystoneInfo ~= nil) or levelNum == 0
+    if isDefinitiveRead and keystoneLastSeen[charKey] == seenKey then
+        return false
     end
-    keystoneLastSeen[charKey] = seenKey
 
     local didChange = false
     if keystoneInfo and keystoneLevel and keystoneLevel > 0 then
@@ -863,6 +993,7 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
         end
         keystoneZeroSeenAt[charKey] = nil
         keystoneRetryCount[charKey] = nil
+        keystoneLastSeen[charKey] = seenKey
         if MirrorKeystoneToCharacterRow(self, charKey, keystoneLevel, keystoneInfo) then
             didChange = true
         end
@@ -877,13 +1008,13 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
                     PvECacheUserDebug(
                         "keystone: API level 0 (first sight) — keep existing cache key=%s mapID=%s level=%s",
                         tostring(charKey), tostring(existing.mapID), tostring(existing.level))
-                    return
+                    return false
                 end
                 if (time() - firstSeen) < KEYSTONE_ZERO_CONFIRM_SECONDS then
                     PvECacheUserDebug(
                         "keystone: API level 0 (await confirm) — keep existing cache key=%s age=%ss",
                         tostring(charKey), tostring(time() - firstSeen))
-                    return
+                    return false
                 end
             end
 
@@ -892,29 +1023,34 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
             end
             didChange = existing ~= nil
             keystoneZeroSeenAt[charKey] = nil
+            keystoneLastSeen[charKey] = seenKey
             PvECacheUserDebug("keystone: API level 0 — cleared cache entry key=%s", tostring(charKey))
             if MirrorKeystoneToCharacterRow(self, charKey, nil, nil) then
                 didChange = true
             end
         else
             -- API warmup race: keep existing key and schedule one delayed re-read.
-            -- Only log/request when no retry is already in-flight; without this guard,
-            -- bursty events (zoning, login, refresh) repaint the same warning dozens
-            -- of times per second while the API is still warming up.
+            -- Cooldown + retry-pending guard: ITEM_PUSH / UpdatePvEData bursts must not
+            -- repaint the same chat line every frame while C_MythicPlus is still nil.
             if not keystoneRetryPending[charKey] then
-                if C_MythicPlus.RequestMapInfo then
-                    pcall(C_MythicPlus.RequestMapInfo)
+                local warmupNow = GetTime()
+                local warmupLast = keystoneWarmupLastAt[charKey] or 0
+                if (warmupNow - warmupLast) >= KEYSTONE_WARMUP_COOLDOWN then
+                    keystoneWarmupLastAt[charKey] = warmupNow
+                    if C_MythicPlus.RequestMapInfo then
+                        pcall(C_MythicPlus.RequestMapInfo)
+                    end
+                    ScheduleKeystoneRetry(charKey)
+                    if ShouldLogPvECacheDiag("keystone_warmup:" .. tostring(charKey), 30) then
+                        PvECacheUserDebug(
+                            "keystone: no write (API not ready: level=%s mapID=%s) key=%s — existing cache kept",
+                            tostring(keystoneLevel), tostring(keystoneInfo), tostring(charKey))
+                    end
                 end
-                ScheduleKeystoneRetry(charKey)
-                PvECacheUserDebug(
-                    "keystone: no write (API not ready: level=%s mapID=%s) key=%s — existing cache kept",
-                    tostring(keystoneLevel), tostring(keystoneInfo), tostring(charKey))
             end
         end
     end
-    if didChange and self.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.CHARACTER_UPDATED then
-        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "mythicKey" })
-    end
+    return didChange
 end
 
 ---Update character's best M+ runs
@@ -1772,6 +1908,8 @@ function WarbandNexus:UpdatePvEData()
     elseif VaultActivitiesMissingILvl(vaultActivities) then
         self:ProcessGreatVaultActivities(charKey)
     end
+
+    PrunePvECacheAliasKeys(self.db.global.pveCache, charKey)
     
     -- Update timestamp (data already in DB)
     self:SavePvECache()
@@ -2306,6 +2444,7 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     vaultClaimAllowUntil = GetTime() + 3
 
     keystoneLastSeen[charKey] = nil
+    keystoneRetryCount[charKey] = nil
     if C_MythicPlus then
         if C_MythicPlus.RequestMapInfo then
             pcall(C_MythicPlus.RequestMapInfo)
@@ -2319,8 +2458,11 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     end
 
     local beforeSig = BuildPvESignature(self.db.global.pveCache, charKey)
-    self:UpdateCharacterKeystone(charKey)
-    ScheduleKeystoneRetry(charKey)
+    if self.RequestKeystoneRefresh then
+        self:RequestKeystoneRefresh("vaultClaim", true)
+    else
+        self:UpdateCharacterKeystone(charKey)
+    end
     self:UpdateGreatVaultRewards(charKey, true)
     local stillPending = IsSessionPvECharacter(charKey) and ns.WeeklyVaultHasPendingRewards()
     if not stillPending then
@@ -2333,10 +2475,6 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     end
     self:SavePvECache()
     local afterSig = BuildPvESignature(self.db.global.pveCache, charKey)
-
-    if self.OnKeystoneChanged then
-        self:OnKeystoneChanged()
-    end
 
     if self.SendMessage and Constants and Constants.EVENTS then
         if Constants.EVENTS.PVE_UPDATED then
@@ -2454,6 +2592,9 @@ function WarbandNexus:RegisterPvECacheEvents()
             C_WeeklyRewards.OnUIInteract()
         end
         
+        if WarbandNexus.RequestKeystoneRefresh then
+            WarbandNexus:RequestKeystoneRefresh("CHALLENGE_MODE_COMPLETED", true)
+        end
         ThrottledPvEUpdate()
     end)
     
@@ -2466,8 +2607,8 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- This is the proper event for keystone detection (instead of bag scanning)
     self:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] CHALLENGE_MODE_MAPS_UPDATE triggered")
-        if WarbandNexus.OnKeystoneChanged then
-            WarbandNexus:OnKeystoneChanged()
+        if WarbandNexus.RequestKeystoneRefresh then
+            WarbandNexus:RequestKeystoneRefresh("CHALLENGE_MODE_MAPS_UPDATE", true)
         end
         ThrottledPvEUpdate()
     end)
@@ -2489,8 +2630,8 @@ function WarbandNexus:RegisterPvECacheEvents()
         ThrottledPvEUpdate()
         
         -- Also refresh keystone detection (new weekly key may be in bags)
-        if WarbandNexus.OnKeystoneChanged then
-            WarbandNexus:OnKeystoneChanged()
+        if WarbandNexus.RequestKeystoneRefresh then
+            WarbandNexus:RequestKeystoneRefresh("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", true)
         end
     end)
     
@@ -2528,6 +2669,20 @@ function WarbandNexus:RegisterPvECacheEvents()
             ThrottledPvEUpdate()
         end)
     end)
+
+    -- Keystone loot toast: CHAT_MSG_LOOT arg1 = message (wiki); guard issecretvalue before string ops.
+    self:RegisterEvent("CHAT_MSG_LOOT", function(_, message, author)
+        if not LootMessageIsMythicKeystone(message) then return end
+        if not ChatLootAuthorIsPlayer(author) then return end
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] CHAT_MSG_LOOT mythic keystone")
+        if WarbandNexus.RequestKeystoneRefresh then
+            WarbandNexus:RequestKeystoneRefresh("CHAT_MSG_LOOT", true)
+        end
+    end)
+
+    -- ITEM_PUSH intentionally not registered: fires on every bag item and caused keystone
+    -- refresh + debug spam while C_MythicPlus returned nil|nil. CHAT_MSG_LOOT +
+    -- CHALLENGE_MODE_MAPS_UPDATE cover keystone acquisition.
     
 end
 

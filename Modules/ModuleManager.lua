@@ -95,7 +95,7 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
         -- Trigger initial data collection when re-enabled
         local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and WarbandNexus
             and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil))
-            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+            or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
         C_Timer.After(1, function()
             if WarbandNexus and WarbandNexus.CollectPvEDataStaggered then
                 WarbandNexus:CollectPvEDataStaggered(charKey)

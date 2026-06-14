@@ -253,8 +253,7 @@ function InitializationService:InitializeCoreInfrastructure(addon)
                     addon.db.global.characters = {}
                 end
                 -- Persist under storage key (GUID when available) so stub matches migrated rows / saves.
-                local persistKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
-                    or ns.Utilities:GetCharacterKey()
+                local persistKey = ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon)
                 if not persistKey or persistKey == "" then return end
                 if not addon.db.global.characters[persistKey] then
                     addon.db.global.characters[persistKey] = {}

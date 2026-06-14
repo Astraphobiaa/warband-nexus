@@ -1268,7 +1268,11 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
     -- Progress details (Current / Max / Season / Remaining) for key currencies.
     do
         local explicitCharKey = data.charKey
-        local charKey = explicitCharKey or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+        local charKey = explicitCharKey
+            or (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and WarbandNexus
+                and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil))
+            or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
+            or nil
         local currencyData = nil
         if WarbandNexus and WarbandNexus.GetCurrencyData and charKey then
             currencyData = WarbandNexus:GetCurrencyData(currencyID, charKey)
@@ -1284,8 +1288,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             elseif explicitCharKey then
                 canonRow = explicitCharKey
             end
-            if ns.Utilities.GetCharacterKey then
-                canonCur = ns.Utilities:GetCharacterKey()
+            if ns.Utilities.GetCharacterStorageKey then
+                canonCur = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
             end
             if canonCur and ns.Utilities.GetCanonicalCharacterKey then
                 canonCur = ns.Utilities:GetCanonicalCharacterKey(canonCur) or canonCur

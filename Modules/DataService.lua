@@ -72,21 +72,22 @@ function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThi
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
     if not self.db or not self.db.global or not self.db.global.characters then return end
 
-    local rawKey = ns.Utilities:GetCharacterKey()
-    if not rawKey then return end
-
-    local tableKey = rawKey
-    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
-        if resolved then tableKey = resolved end
+    local tableKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not tableKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        tableKey = ns.Utilities:GetCharacterStorageKey(self)
     end
+    if not tableKey then return end
 
     local charData = self.db.global.characters[tableKey]
     if not charData then return end
 
     charData.timePlayed = played
 
-    local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
+    local msgKey = tableKey
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        msgKey = ns.Utilities:GetCanonicalCharacterKey(tableKey) or tableKey
+    end
     -- Fire event so UI refreshes
     self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
         charKey = msgKey,
@@ -227,14 +228,12 @@ end
 ---@param forceRefresh boolean|nil Deprecated (kept for compatibility)
 ---@return table Character data from db.global.characters
 function WarbandNexus:GetCharacterData(forceRefresh)
-    local rawKey = ns.Utilities:GetCharacterKey()
-    if not rawKey then return {} end
-    local tableKey = rawKey
-    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
-        if resolved then tableKey = resolved end
+    local tableKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not tableKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        tableKey = ns.Utilities:GetCharacterStorageKey(self)
     end
-    if not self.db.global.characters or not self.db.global.characters[tableKey] then
+    if not tableKey or not self.db.global.characters or not self.db.global.characters[tableKey] then
         return {}
     end
     return self.db.global.characters[tableKey]
@@ -244,14 +243,12 @@ end
 ---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
 ---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
 function WarbandNexus:UpdateCharacterCache(dataType)
-    local rawKey = ns.Utilities:GetCharacterKey()
-    if not rawKey then return end
-    local tableKey = rawKey
-    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
-        if resolved then tableKey = resolved end
+    local tableKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not tableKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        tableKey = ns.Utilities:GetCharacterStorageKey(self)
     end
-    if not self.db.global.characters or not self.db.global.characters[tableKey] then
+    if not tableKey or not self.db.global.characters or not self.db.global.characters[tableKey] then
         return
     end
     -- GUARD: Only tracked characters get full updates (gold, level, spec, etc.)
@@ -432,13 +429,15 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     -- NOTE: Uses DataServiceEvents as 'self' key to avoid overwriting other modules' handlers.
     WarbandNexus.RegisterMessage(DataServiceEvents, E.BAGS_UPDATED, function()
         if WarbandNexus.InvalidateItemSummary then
-            local charKey = ns.Utilities:GetCharacterKey()
+            local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
+                and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
             WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
     WarbandNexus.RegisterMessage(DataServiceEvents, E.ITEMS_UPDATED, function()
         if WarbandNexus.InvalidateItemSummary then
-            local charKey = ns.Utilities:GetCharacterKey()
+            local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
+                and ns.CharacterService:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
             WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
@@ -958,9 +957,6 @@ function WarbandNexus:UpdateProfessionData()
         if not key and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
             key = ns.Utilities:GetCharacterStorageKey(self)
         end
-        if not key and ns.Utilities and ns.Utilities.GetCharacterKey then
-            key = ns.Utilities:GetCharacterKey()
-        end
         if not key or not self.db.global.characters or not self.db.global.characters[key] then return end
 
         local newData = self:CollectProfessionData()
@@ -988,18 +984,17 @@ function WarbandNexus:UpdateProfessionData()
 end
 
 function WarbandNexus:UpdateMailStatus()
-    local rawKey = ns.Utilities:GetCharacterKey()
-    if not rawKey then return end
-    local tableKey = rawKey
-    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-        local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
-        if resolved then tableKey = resolved end
+    local tableKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not tableKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        tableKey = ns.Utilities:GetCharacterStorageKey(self)
     end
+    if not tableKey then return end
     if self.db.global.characters and self.db.global.characters[tableKey] then
         self.db.global.characters[tableKey].hasMail = HasNewMail() and true or false
-        local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
+        local msgKey = tableKey
         if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-            msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
+            msgKey = ns.Utilities:GetCanonicalCharacterKey(tableKey) or tableKey
         end
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = msgKey, dataType = "mail" })
     end
@@ -1243,7 +1238,8 @@ function WarbandNexus:UpdatePvELoadingState(state)
     
     -- Fire event for UI update (keystone + loading overlay; listeners use WN_PVE_UPDATED)
     if self.SendMessage then
-        local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
+            and ns.CharacterService:ResolveSubsidiaryCharacterKey(self, nil)
         self:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
     end
 end
@@ -1265,7 +1261,8 @@ function WarbandNexus:CollectPvEData()
     -- Phase 2: Route to PvECacheService (preferred)
     if self.UpdatePvEData and self.GetPvEData then
         self:UpdatePvEData()
-        local charKey = ns.Utilities:GetCharacterKey()
+        local charKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
+            and ns.CharacterService:ResolveSubsidiaryCharacterKey(self, nil)
         return self:GetPvEData(charKey)
     end
     
@@ -1965,21 +1962,25 @@ function WarbandNexus:ScanMythicKeystone()
     
     local mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
-    
-    if not mapID or not keystoneLevel or keystoneLevel == 0 then
+    if mapID and issecretvalue and issecretvalue(mapID) then mapID = nil end
+    if keystoneLevel and issecretvalue and issecretvalue(keystoneLevel) then keystoneLevel = nil end
+    local levelNum = keystoneLevel and tonumber(keystoneLevel) or nil
+    local mapNum = mapID and tonumber(mapID) or nil
+
+    if not mapNum or not levelNum or levelNum <= 0 then
         return nil -- No keystone owned
     end
     
-    local mapName = C_ChallengeMode and C_ChallengeMode.GetMapUIInfo(mapID)
+    local mapName = C_ChallengeMode and C_ChallengeMode.GetMapUIInfo(mapNum)
     if mapName and issecretvalue and issecretvalue(mapName) then
         mapName = nil
     end
 
     return {
-        level = keystoneLevel,
-        dungeonID = mapID,
+        level = levelNum,
+        dungeonID = mapNum,
         dungeonName = mapName or "Unknown Dungeon",
-        mapID = mapID,
+        mapID = mapNum,
         scanTime = time()
     }
 end
@@ -1993,9 +1994,6 @@ function WarbandNexus:GetInventoryItems()
         and ns.CharacterService:ResolveCharactersTableKey(self)
     if not charKey and ns.Utilities.GetCharacterStorageKey then
         charKey = ns.Utilities:GetCharacterStorageKey(self)
-    end
-    if not charKey then
-        charKey = ns.Utilities:GetCharacterKey()
     end
     
     -- Use ItemsCacheService (new unified storage)
@@ -2032,9 +2030,6 @@ function WarbandNexus:GetBankItems()
         and ns.CharacterService:ResolveCharactersTableKey(self)
     if not charKey and ns.Utilities.GetCharacterStorageKey then
         charKey = ns.Utilities:GetCharacterStorageKey(self)
-    end
-    if not charKey then
-        charKey = ns.Utilities:GetCharacterKey()
     end
     
     -- Use ItemsCacheService (new unified storage)
@@ -2211,7 +2206,6 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
         -- Name-Realm derivation parked a second bank blob the UI never read.
         local key = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(self))
             or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
-            or ns.Utilities:GetCharacterKey()
         if key and self.SaveItemsCompressed then
             local arr = tableToItemArrayForStorage(self.db.char.personalBank and self.db.char.personalBank.items)
             if arr then self:SaveItemsCompressed(key, "bank", arr) end
@@ -2349,10 +2343,7 @@ function WarbandNexus:GetBankStatistics()
         if not charKey and ns.Utilities.GetCharacterStorageKey then
             charKey = ns.Utilities:GetCharacterStorageKey(self)
         end
-        if not charKey then
-            charKey = ns.Utilities:GetCharacterKey()
-        end
-        local itemsData = self.GetItemsData and self:GetItemsData(charKey)
+        local itemsData = self.GetItemsData and charKey and self:GetItemsData(charKey)
         if itemsData then
             local bagSlots = itemsData.bags and #itemsData.bags or 0
             local bankSlots = itemsData.bank and #itemsData.bank or 0

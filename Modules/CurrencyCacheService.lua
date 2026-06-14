@@ -316,11 +316,31 @@ local function CurrencySubsidiaryKey(optionalCharKey)
     if CS and CS.ResolveSubsidiaryCharacterKey then
         return CS:ResolveSubsidiaryCharacterKey(WarbandNexus, optionalCharKey)
     end
-    local k = optionalCharKey or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    local k = optionalCharKey
+    if not k and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        k = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+    end
     if k and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         return ns.Utilities:GetCanonicalCharacterKey(k) or k
     end
     return k
+end
+
+--- Remove Name-Realm / legacy alias rows after a canonical write (one bucket per character).
+local function PruneCurrencyAliasBuckets(db, charKey)
+    if not db or not charKey or not ns.VaultCharKeysMatch then return end
+    charKey = CurrencySubsidiaryKey(charKey)
+    if not charKey then return end
+    local function prune(tbl)
+        if type(tbl) ~= "table" then return end
+        for k in pairs(tbl) do
+            if k ~= charKey and ns.VaultCharKeysMatch(k, charKey) then
+                tbl[k] = nil
+            end
+        end
+    end
+    if db.currencies then prune(db.currencies) end
+    if db.totalEarned then prune(db.totalEarned) end
 end
 
 -- Memoized alias-bucket resolution for cross-key SV lookups (GUID write key vs
@@ -335,6 +355,9 @@ local currencyAliasMissAt = {}   -- [charKey] = GetTime() of last full-scan miss
 local currencyLiveFetchAt = {}   -- [currencyID] = GetTime() of last live fetch
 
 local function ResolveCurrencyAliasBuckets(currencies, charKey)
+    if ns.Utilities and ns.Utilities.IsGuidOnlySubsidiaryReads and ns.Utilities:IsGuidOnlySubsidiaryReads() then
+        return nil
+    end
     local hit = currencyAliasBuckets[charKey]
     if hit then return hit end
     local missAt = currencyAliasMissAt[charKey]
@@ -380,6 +403,9 @@ local function LookupStoredTotalEarned(db, charKey, currencyID)
     local bucket = db.totalEarned[charKey]
     if bucket and bucket[currencyID] ~= nil then
         return bucket[currencyID]
+    end
+    if ns.Utilities and ns.Utilities.IsGuidOnlySubsidiaryReads and ns.Utilities:IsGuidOnlySubsidiaryReads() then
+        return nil
     end
     if ns.VaultCharKeysMatch then
         for k, row in pairs(db.totalEarned) do
@@ -781,6 +807,8 @@ local function UpdateSingleCurrency(currencyID, eventHint)
     if splitCur and te ~= nil and type(te) == "number" then
         db.totalEarned[charKey][currencyID] = te
     end
+
+    PruneCurrencyAliasBuckets(db, charKey)
 
     -- Update scan timestamp
     CurrencyCache.lastUpdate = time()
@@ -1228,6 +1256,8 @@ function CurrencyCache:UpdateAll(currencyDataArray)
         end
     end
 
+    PruneCurrencyAliasBuckets(db, currentCharKey)
+
     -- Do NOT emit WN_CURRENCY_GAINED from FullScan reconciliation diffs. That path compares
     -- last SV snapshot to fresh API; after character change / account sync, hundreds of
     -- currencies can differ at once and each looks like a "gain" — flooding chat.
@@ -1658,15 +1688,7 @@ local function RebuildMergedCurrenciesUIReadModel()
             if type(charData) == "table" and charData.isTracked == true then
                 local canonicalKey = (ns.Utilities and ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(charData))
                     or charKey
-                if ns.Utilities and ns.Utilities.GetCharacterKey and charData.name and charData.realm then
-                    local nk = ns.Utilities:GetCharacterKey(charData.name, charData.realm)
-                    if nk and ns.Utilities.GetCanonicalCharacterKey then
-                        canonicalKey = ns.Utilities:GetCanonicalCharacterKey(canonicalKey)
-                            or ns.Utilities:GetCanonicalCharacterKey(nk) or nk or charKey
-                    elseif ns.Utilities.GetCanonicalCharacterKey then
-                        canonicalKey = ns.Utilities:GetCanonicalCharacterKey(canonicalKey) or charKey
-                    end
-                elseif ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+                if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
                     canonicalKey = ns.Utilities:GetCanonicalCharacterKey(canonicalKey) or charKey
                 end
                 trackedCharacters[#trackedCharacters + 1] = {
@@ -1919,18 +1941,19 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
                         end
                     end
                     if guidMatch then
-                        if db.currencies[charKey] and db.currencies[charKey][currencyID] then
-                            local oldQty = db.currencies[charKey][currencyID]
+                        local storageKey = CurrencySubsidiaryKey(charKey)
+                        if db.currencies[storageKey] and db.currencies[storageKey][currencyID] then
+                            local oldQty = db.currencies[storageKey][currencyID]
                             local newQty = math.max(0, oldQty - quantity)
-                            db.currencies[charKey][currencyID] = newQty
+                            db.currencies[storageKey][currencyID] = newQty
                             
                             -- Mark this currency as recently transferred to protect against stale API overwrites
                             CurrencyCache.recentTransfers = CurrencyCache.recentTransfers or {}
-                            CurrencyCache.recentTransfers[charKey] = CurrencyCache.recentTransfers[charKey] or {}
-                            CurrencyCache.recentTransfers[charKey][currencyID] = GetTime()
+                            CurrencyCache.recentTransfers[storageKey] = CurrencyCache.recentTransfers[storageKey] or {}
+                            CurrencyCache.recentTransfers[storageKey][currencyID] = GetTime()
                             
                             if IsDebugModeEnabled and IsDebugModeEnabled() then
-                                ns.DebugPrint(string.format("[WN Hook] Deducted %d of currency %d from %s (%d -> %d)", quantity, currencyID, charKey, oldQty, newQty))
+                                ns.DebugPrint(string.format("[WN Hook] Deducted %d of currency %d from %s (%d -> %d)", quantity, currencyID, storageKey, oldQty, newQty))
                             end
                             
                             if WarbandNexus.SendMessage then
@@ -2153,20 +2176,22 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                         or (metadata and metadata.maxQuantity or 0)
                     newQuantity = NormalizeQuantity(newQuantity, normCapSync, useTotal)
                     
+                    local storageKey = CurrencySubsidiaryKey(charKey)
                     -- ONLY update if the quantity differs from what we have
-                    local oldQuantity = db.currencies[charKey] and db.currencies[charKey][currencyID] or 0
+                    local oldQuantity = db.currencies[storageKey] and db.currencies[storageKey][currencyID] or 0
                     if oldQuantity ~= newQuantity then
                         -- Protection against stale API data: if we recently locally deducted this currency,
                         -- ignore the API update if it is trying to revert the deduction (i.e. API value > local value)
-                        local recentlyTransferred = CurrencyCache.recentTransfers and CurrencyCache.recentTransfers[charKey] and CurrencyCache.recentTransfers[charKey][currencyID]
+                        local recentlyTransferred = CurrencyCache.recentTransfers and CurrencyCache.recentTransfers[storageKey] and CurrencyCache.recentTransfers[storageKey][currencyID]
                         local isStaleRevert = recentlyTransferred and (GetTime() - recentlyTransferred < 30) and (newQuantity > oldQuantity)
                         
                         if not isStaleRevert then
-                            if not db.currencies[charKey] then db.currencies[charKey] = {} end
-                            db.currencies[charKey][currencyID] = newQuantity
+                            if not db.currencies[storageKey] then db.currencies[storageKey] = {} end
+                            db.currencies[storageKey][currencyID] = newQuantity
+                            PruneCurrencyAliasBuckets(db, storageKey)
                             updatedAny = true
                             if ns.DebugVerbosePrint then
-                                ns.DebugVerbosePrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Updated %s for %s (%d -> %d)", tostring(currencyID), charKey, oldQuantity, newQuantity))
+                                ns.DebugVerbosePrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Updated %s for %s (%d -> %d)", tostring(currencyID), storageKey, oldQuantity, newQuantity))
                             end
                         else
                             if ns.DebugVerbosePrint then

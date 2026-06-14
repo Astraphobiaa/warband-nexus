@@ -1,60 +1,56 @@
-# GUID / Character Key Audit (Warband Nexus)
+# GUID character key audit (Warband Nexus)
 
-## A1 — Character-keyed storage inventory
+Policy: **subsidiary SavedVariables use GUID** (`Player-…` from `UnitGUID("player")` via `SafeGuid`). Name-Realm is display, plans, and migration only.
 
-### Remapped by `MigrationService:ApplyCharacterKeyedStorageRenames`
+Wiki: [API UnitGUID](https://warcraft.wiki.gg/wiki/API_UnitGUID) — returns the unit GUID; player tokens use the `Player-` prefix.
 
-| Storage path | Merge policy |
-|--------------|--------------|
-| `db.global.currencyData.currencies` | Move bucket; discard loser if survivor exists |
-| `db.global.currencyData.totalEarned` | Same |
-| `db.global.gearData` | `MergeGearDataBucket` |
-| `db.global.pveProgress` | Move bucket |
-| `db.global.pveCache.*` | Per-subtable move (`RemapPveCacheCharacterKeys`) |
-| `db.global.statisticSnapshots` | Move or discard |
-| `db.global.personalBanks` | Move or discard |
-| `db.global.itemStorage` | Move or discard |
-| `db.global.reputationData.characters` | Union factions; newer `lastScan` wins |
-| `db.global.characterBankMoneyLogs[].character` | Field remap via rename map |
-| `db.global.favoriteCharacters` | Array key replace + dedupe |
-| `db.profile.characterGroupAssignments` | Key replace |
-| `db.profile.characterOrder.*` | Array key replace |
+## Write path (required)
 
-### Not character-keyed / out of scope
+| Resolver | Use |
+|----------|-----|
+| `GetCharacterStorageKey(addon)` | Live session row + subsidiary writes |
+| `ResolveSubsidiaryCharacterKey(addon, key?)` | Currency, gear, PvE, items, reputation buckets |
+| `ResolveCharacterRowKey(charData)` | Offline row → storage key |
+| `GetCharactersTablePersistKey` | Tracking dialog / first row create |
 
-| Storage | Notes |
-|---------|-------|
-| `db.global.plans[]` | Uses `characterName` + `characterRealm`; not a table index |
-| `db.global.tryCounts` | Global by collectible id, not per character |
-| `db.char.*` | AceDB per-character profile scope (separate lifecycle) |
-| `db.global.warbandBank` | Account-wide |
+## Read path (required)
 
-### Read-side alias fallbacks (safety net, not persistence)
+| Resolver | Use |
+|----------|-----|
+| `ResolveCharactersTableKey(addon)` | `db.global.characters[*]` logged-in index |
+| `ResolveSubsidiaryCharacterKey` / `GetCanonicalCharacterKey` | Subsidiary cache lookup |
+| `UI_GetCharKey(char)` | UI roster rows (GUID before raw `_key`) |
 
-- `VaultCharKeysMatch` / `GetCanonicalCharacterKey`
-- `CurrencyCacheService.ResolveCurrencyAliasBuckets`
-- `ItemsCacheService.ResolveItemStorageRow` legacy lookup
-- `VaultButton_Data.LookupPveCacheSubtable`
+## Legacy bridges (gated)
 
-## A2 — `GetCharacterKey()` usage classification
+Removed or skipped when `db.global.guidOnlySubsidiaryV1`:
 
-| Category | Rule | Examples |
-|----------|------|----------|
-| **WRITE (fix)** | Must use `GetCharacterStorageKey` or `ResolveSubsidiaryCharacterKey` | `DataService`, `ItemsCacheService`, `PvECacheService`, `GearService`, `ReputationCacheService` |
-| **READ** | Use `ResolveCharactersTableKey` or `GetCanonicalCharacterKey` | `CharacterService:IsCharacterTracked`, UI roster via `UI_GetCharKey` |
-| **MSG** | Canonical key in `WN_*` payloads | `EventManager:OnMoneyChanged` |
-| **DISPLAY / PLANS** | `GetCharacterKey(name, realm)` OK for labels and plan name-realm matching | `PlansManager`, `DailyQuestManager` plan keys |
+- `ItemsCacheService` Name-Realm `itemStorage` alias read
+- `CurrencyCacheService` `ResolveCurrencyAliasBuckets` / `VaultCharKeysMatch` totalEarned scan
+- `GearService` `MigrateLegacyGearDataKey` on scan path
+- `CharacterService:CharacterOwnsSubsidiaryKey` `VaultCharKeysMatch`
 
-High-risk write paths were updated to `ResolveSubsidiaryCharacterKey` in this pass.
+Pre-flag: first login runs `MigrateSubsidiaryOrphanKeys` + `MigrateSubsidiaryAliasBucketsV1`, then sets `guidOnlySubsidiaryV1`.
 
-## Roster deduplication (single path)
+## Exceptions (Name-Realm retained)
 
-| Layer | API | When |
-|-------|-----|------|
-| Detection | `DataServiceRoster.CollectCharacterDuplicateRenames` | Merge-key grouping (GUID + Name-Realm cross-link) |
-| Apply | `DataServiceRoster.ApplyCharacterRosterDeduplication` | Merge rows, remap subsidiaries, delete losers |
-| Migration | `MigrationService:DeduplicateCharacterRoster` | After `MigrateGlobalCharactersToGuidStorageKeys` on `/reload` |
-| Cleanup | `DatabaseCleanup` → `DeduplicateCharacterRoster` | Hourly + `/wn cleanup` |
-| Login save | `RelocateLegacyCharacterSlot` | Legacy Name-Realm index → guid-shaped key only |
+- `GetCharacterKey()` / `GetCharacterKey(name, realm)` — display, diagnostics, migration
+- `plans[]`, `PlansManager`, `DailyQuestManager`, `PlansManager_Vault`
+- `MigrationService`, `DataService_RosterHelpers`
+- `DataService` save paths: `legacyKey` merge into GUID slot on login
+- `CharacterBankMoneyLogPopup` historic log entry keys
+- `GetCharacterStorageKey` fallback when GUID secret/unavailable
 
-Display reads use `BuildMergedCharacterRosterView` so UI stays correct until DB dedup runs.
+## Commands
+
+- `/wn guidmigrate` — force subsidiary orphan + alias remap
+- `/wn charkeys` (debug on) — key diagnostics
+- `/reload` — normal migration pipeline
+
+## In-game test (minimum)
+
+1. `/wn guidmigrate` then `/reload` on a character with pre-migration SV.
+2. Items tab: bags match pre-migration counts (GUID `itemStorage` bucket).
+3. Currency / Gear / PvE tabs: logged-in character data visible.
+4. `/wn charkeys`: `storageKey` and `subsidiaryKey` are GUID-shaped when guid known.
+5. Create plan for current character — still matches via Name-Realm plan fields.

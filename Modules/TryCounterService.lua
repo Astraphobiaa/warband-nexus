@@ -83,7 +83,7 @@ local function StatisticSnapshotStorageKey()
         local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
         if k then return k end
     end
-    local raw = Utilities and Utilities.GetCharacterKey and Utilities:GetCharacterKey()
+    local raw = Utilities and Utilities.GetCharacterStorageKey and Utilities:GetCharacterStorageKey(WarbandNexus)
     if not raw then return nil end
     if Utilities and Utilities.GetCanonicalCharacterKey then
         return Utilities:GetCanonicalCharacterKey(raw) or raw

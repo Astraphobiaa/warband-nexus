@@ -1082,7 +1082,7 @@ local function ResolveGearStorageKey()
         local k = U:GetCharacterStorageKey(WarbandNexus)
         if k and k ~= "" then return k end
     end
-    return U and U:GetCharacterKey()
+    return U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(WarbandNexus) or nil
 end
 
 --- Logged-in player's gearData bucket (canonical storage key).
@@ -1190,6 +1190,13 @@ local function MigrateLegacyGearDataKey(db, storageKey)
     if not legacy or legacy == "" or legacy == storageKey or not db[legacy] then return end
     db[storageKey] = MergeGearDataBucket(db[storageKey], db[legacy])
     db[legacy] = nil
+end
+
+local function MaybeMigrateLegacyGearDataKey(db, storageKey)
+    if ns.Utilities and ns.Utilities.IsGuidOnlySubsidiaryReads and ns.Utilities:IsGuidOnlySubsidiaryReads() then
+        return
+    end
+    MigrateLegacyGearDataKey(db, storageKey)
 end
 
 -- ITEM LEVEL RESOLUTION
@@ -1769,7 +1776,7 @@ function WarbandNexus:ScanEquippedGear(triggerSlotID, opts)
 
     local charKey = ResolveGearStorageKey()
     if not charKey then return end
-    MigrateLegacyGearDataKey(db, charKey)
+    MaybeMigrateLegacyGearDataKey(db, charKey)
 
     if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
 
@@ -1816,7 +1823,7 @@ function WarbandNexus:WarmGearUpgradeSnapshotForSession(coldPrefetchGen)
 
     local charKey = ResolveGearStorageKey()
     if not charKey then return end
-    MigrateLegacyGearDataKey(db, charKey)
+    MaybeMigrateLegacyGearDataKey(db, charKey)
 
     local baselineGearData = db[charKey]
     local baselineLastScan = baselineGearData and baselineGearData.lastScan
@@ -1937,10 +1944,10 @@ function WarbandNexus:GetEquippedGear(charKey)
     if U and U.GetCanonicalCharacterKey then
         charKey = U:GetCanonicalCharacterKey(charKey) or charKey
     end
-    MigrateLegacyGearDataKey(db, charKey)
+    MaybeMigrateLegacyGearDataKey(db, charKey)
     if db[charKey] then return db[charKey] end
-    -- Legacy: older builds wrote under Name-Realm while UI reads guid storage key.
-    if U and U.GetCharacterKey then
+    -- Pre-migration only: session Name-Realm bucket while UI passes GUID key.
+    if not (U and U.IsGuidOnlySubsidiaryReads and U:IsGuidOnlySubsidiaryReads()) and U and U.GetCharacterKey then
         local legacy = U:GetCharacterKey()
         if legacy and legacy ~= charKey and db[legacy] then
             local canonLegacy = (U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(legacy)) or legacy
@@ -2239,7 +2246,9 @@ end
 --- Uses same currency source as Gear tab (FromDB, normalized). Crest need = 20 or 0 (gold-only/maxed).
 function WarbandNexus:GearUpgradeDebugReport()
     if not (ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()) then return end
-    local currentKey = (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()) or nil
+    local currentKey = (self.GetCurrentGearStorageKey and self:GetCurrentGearStorageKey())
+        or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
+        or nil
     if not currentKey then
         self:Print("|cffff6600[WN GearUpgradeDebug]|r No current character.")
         return

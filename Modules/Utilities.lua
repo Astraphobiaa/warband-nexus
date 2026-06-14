@@ -9,25 +9,21 @@ local ADDON_NAME, ns = ...
 local Utilities = {}
 ns.Utilities = Utilities
 
--- CHARACTER IDENTIFICATION
+-- CHARACTER IDENTIFICATION (GUID-first subsidiary storage)
 --
--- Three resolvers exist on purpose; they are NOT interchangeable and must not be
--- merged — SavedVariables hold rows under every historical key form, and changing
--- derivation would orphan existing user data.
---
---   GetCharacterKey()                      Legacy "Name-Realm" derivation from the live
---                                          unit. Display/lookup fallback only.
---   GetCharacterStorageKey(addon)          GUID-preferred WRITE key (Midnight rename-safe).
---                                          Use when persisting new rows.
+--   GetCharacterKey(name, realm)           DISPLAY + legacy migration ONLY (Name-Realm).
+--                                          Never use for subsidiary cache WRITE/READ after login.
+--   GetCharacterStorageKey(addon)          Live-session WRITE key (GUID via SafeGuid; Name-Realm
+--                                          only when GUID secret/unavailable).
+--   GetSubsidiaryStorageKey(addon, key?)   Thin entry for subsidiary tables (delegates to
+--                                          CharacterService:ResolveSubsidiaryCharacterKey).
+--   ResolveCharacterRowKey(charData)       Offline row -> storage key (guid or name+realm).
+--   GetCanonicalCharacterKey(inbound)      Inbound selector/prefs -> storage key.
 --   CharacterService:
---     ResolveCharactersTableKey(addon)     READ-side resolver: searches db.global.characters
---                                          across all historical key forms, including a GUID
---                                          scan that finds renamed characters.
+--     ResolveCharactersTableKey(addon)     db.global.characters[*] index for logged-in player.
+--     ResolveSubsidiaryCharacterKey(addon)   currency/gear/PvE/itemStorage/reputation buckets.
 --
--- Standard lookup chain (see Core.lua login save / guild check):
---   ResolveCharactersTableKey -> GetCharacterStorageKey -> GetCharacterKey
--- Subsidiary caches (currency/gear/PvE/itemStorage): ResolveSubsidiaryCharacterKey.
--- Messages/UI legacy keys: GetCanonicalCharacterKey.
+-- Post-migration (`guidOnlySubsidiaryV1`): subsidiary READ paths skip Name-Realm alias bridges.
 
 --- Split a stored "Name-Realm" key using only the **first** hyphen.
 --- Realms may contain hyphens (e.g. Azjol-Nerub); player names do not use `-` in WoW.
@@ -43,13 +39,11 @@ function Utilities:SplitCharacterKey(charKey)
     return name:gsub("%s+", ""), realm:gsub("%s+", "")
 end
 
---- Get character key (Name-Realm format, normalized: no spaces).
---- Single source of truth for character identification in DB and services.
+--- Name-Realm key (normalized, no spaces). **Display and legacy migration only** — not subsidiary storage.
 --- When realm is omitted, prefers GetNormalizedRealmName() — same as DataService / SaveCurrentCharacterData.
---- Using only GetRealmName() here caused /reload to resolve a different key than SavedVariables on some realms.
 ---@param name string|nil Player name (defaults to current player)
 ---@param realm string|nil Realm name (defaults to current realm)
----@return string Character key in "Name-Realm" format (e.g. "Superluminal-TwistingNether")
+---@return string|nil Character key in "Name-Realm" format (e.g. "Superluminal-TwistingNether")
 function Utilities:GetCharacterKey(name, realm)
     name = name or UnitName("player")
     if not name or (issecretvalue and issecretvalue(name)) then return nil end
@@ -85,6 +79,37 @@ function Utilities:GetCharacterStorageKey(addonOrNil)
     local g = self:SafeGuid("player")
     if g then return g end
     return self:GetCharacterKey()
+end
+
+--- True when subsidiary caches should use canonical GUID keys only (no Name-Realm read bridges).
+--- Set by MigrationService after `subsidiaryOrphanRemapV1` + `subsidiaryAliasConsolidatedV1`.
+---@param dbOrNil table|nil AceDB root; defaults to WarbandNexus.db
+---@return boolean
+function Utilities:IsGuidOnlySubsidiaryReads(dbOrNil)
+    local db = dbOrNil
+    if not db and ns.WarbandNexus and ns.WarbandNexus.db then
+        db = ns.WarbandNexus.db
+    end
+    return db and db.global and db.global.guidOnlySubsidiaryV1 == true
+end
+
+--- Subsidiary cache I/O key: optional inbound row/key, else logged-in player.
+---@param addonOrNil any|nil WarbandNexus (AceAddon)
+---@param optionalRowOrKey table|string|nil Character row, roster key, or nil for session
+---@return string|nil
+function Utilities:GetSubsidiaryStorageKey(addonOrNil, optionalRowOrKey)
+    if optionalRowOrKey ~= nil and optionalRowOrKey ~= "" then
+        if type(optionalRowOrKey) == "table" then
+            return self:ResolveCharacterRowKey(optionalRowOrKey)
+        end
+        return self:GetCanonicalCharacterKey(optionalRowOrKey) or optionalRowOrKey
+    end
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey and addonOrNil then
+        local k = CS:ResolveSubsidiaryCharacterKey(addonOrNil, nil)
+        if k and k ~= "" then return k end
+    end
+    return self:GetCharacterStorageKey(addonOrNil)
 end
 
 --- Offline-safe storage key for an existing **character row** (`db.global.characters[*]` value).

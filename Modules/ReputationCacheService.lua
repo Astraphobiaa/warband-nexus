@@ -154,7 +154,7 @@ local function CurrentReputationSubsidiaryKey()
     if CS and CS.ResolveSubsidiaryCharacterKey then
         return CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
     end
-    local raw = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    local raw = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
         return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
@@ -2357,26 +2357,18 @@ function WarbandNexus:GetAllReputations()
     -- Map rep-cache character keys → class (single pass over roster; avoids O(n²) scan per charKey).
     local classByCharKey = {}
     local globChars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
-    if globChars and ns.Utilities and ns.Utilities.GetCharacterKey then
+    if globChars and ns.Utilities then
         for dbKey, char in pairs(globChars) do
             if type(char) == "table" then
                 local cls = string.upper(char.class or char.classFile or "WARRIOR")
                 classByCharKey[dbKey] = cls
-                if char.name and char.realm then
-                    local canon = ns.Utilities:GetCharacterKey(char.name, char.realm)
-                    if canon and canon ~= "" then
-                        classByCharKey[canon] = cls
-                    end
-                    if ns.Utilities.ResolveCharacterRowKey then
-                        local rk = ns.Utilities:ResolveCharacterRowKey(char)
-                        if rk and rk ~= "" then
-                            classByCharKey[rk] = cls
-                            if ns.Utilities.GetCanonicalCharacterKey then
-                                local cc = ns.Utilities:GetCanonicalCharacterKey(rk)
-                                if cc and cc ~= "" then
-                                    classByCharKey[cc] = cls
-                                end
-                            end
+                if ns.Utilities.ResolveCharacterRowKey then
+                    local rk = ns.Utilities:ResolveCharacterRowKey(char)
+                    if rk and rk ~= "" then
+                        classByCharKey[rk] = cls
+                        if ns.Utilities.GetCanonicalCharacterKey then
+                            local ck = ns.Utilities:GetCanonicalCharacterKey(rk)
+                            if ck and ck ~= "" then classByCharKey[ck] = cls end
                         end
                     end
                 end

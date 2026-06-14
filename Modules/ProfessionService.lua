@@ -27,7 +27,6 @@ end
 --- Canonical key for WN_* payloads after GUID migration (Name-Realm from APIs resolves to storage slot).
 local function CurrentSessionCanonicalCharacterKey()
     local raw = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus)
-        or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
         local canon = ns.Utilities:GetCanonicalCharacterKey(raw)
@@ -2699,7 +2698,20 @@ function WarbandNexus:GetKnowledgeData(charKey, profName)
     end
     if not charKey or not profName then return nil end
 
-    local charData = self.db.global.characters[charKey]
+    local characters = self.db.global.characters
+    local charData = characters[charKey]
+    if not charData and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local canon = ns.Utilities:GetCanonicalCharacterKey(charKey)
+        if canon then charData = characters[canon] end
+    end
+    if not charData and ns.VaultCharKeysMatch then
+        for k, row in pairs(characters) do
+            if type(row) == "table" and ns.VaultCharKeysMatch(k, charKey) then
+                charData = row
+                break
+            end
+        end
+    end
     if not charData or not charData.knowledgeData then return nil end
 
     -- Direct profName lookup (legacy data)

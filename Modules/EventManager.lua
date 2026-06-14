@@ -101,7 +101,7 @@ function WarbandNexus:OnSkillLinesChanged()
 
         -- CHARACTER_UPDATED always fires (basic character data, not profession-specific)
         local msgKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and ns.CharacterService:ResolveSubsidiaryCharacterKey(self, nil))
-            or (ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+            or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))
         if msgKey and ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
             msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
         end
@@ -121,7 +121,8 @@ function WarbandNexus:OnItemLevelChanged()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
         end
-        local key = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+        local key = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
+            and ns.CharacterService:ResolveSubsidiaryCharacterKey(self, nil)
         if not key then return end
         local tableKey = key
         if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
@@ -141,10 +142,8 @@ function WarbandNexus:OnItemLevelChanged()
             entry.lastSeen = time()
             
             -- Fire event for UI update (DB-First pattern)
-            local msgKey = key
-            if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-                msgKey = ns.Utilities:GetCanonicalCharacterKey(key) or key
-            end
+            local msgKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey)
+                and ns.CharacterService:ResolveSubsidiaryCharacterKey(self, nil) or key
             self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
                 charKey = msgKey,
                 dataType = "itemLevel"
@@ -194,82 +193,21 @@ function WarbandNexus:OnMoneyChanged()
 end
 
 --[[
-    Called when keystone changes (picked up, upgraded, depleted)
-    Delegates to DataService for business logic
+    Called when keystone changes (picked up, upgraded, depleted, slotted)
+    Delegates to PvECacheService (single source of truth for C_MythicPlus reads).
 ]]
 function WarbandNexus:OnKeystoneChanged()
     -- Throttle keystone checks to avoid spam
     if self.keystoneCheckPending then
         return
     end
-    
+
     self.keystoneCheckPending = true
     C_Timer.After(0.5, function()
         if not WarbandNexus then return end
         WarbandNexus.keystoneCheckPending = false
-
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return
-        end
-
-        local charKey = ns.Utilities:GetCharacterKey()
-        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-            charKey = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
-        end
-        -- SavedVariables may use a different string than canonical (ResolveCharactersTableKey)
-        local charTableKey = charKey
-        if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-            local resolved = ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
-            if resolved then charTableKey = resolved end
-        end
-        
-        -- Scan and update keystone data (lightweight check)
-        if WarbandNexus.ScanMythicKeystone then
-            local keystoneData = WarbandNexus:ScanMythicKeystone()
-            
-            if WarbandNexus.db and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charTableKey] then
-                local oldKeystone = WarbandNexus.db.global.characters[charTableKey].mythicKey
-                
-                -- Only update if keystone actually changed
-                local keystoneChanged = false
-                if not oldKeystone and keystoneData then
-                    keystoneChanged = true
-                elseif oldKeystone and keystoneData then
-                    local ol, nl = tonumber(oldKeystone.level), tonumber(keystoneData.level)
-                    local om, nm = tonumber(oldKeystone.mapID), tonumber(keystoneData.mapID)
-                    keystoneChanged = (ol ~= nl or om ~= nm)
-                    -- keystoneChanged already set above
-                elseif oldKeystone and not keystoneData then
-                    keystoneChanged = true
-                end
-                
-                if keystoneChanged then
-                    WarbandNexus.db.global.characters[charTableKey].mythicKey = keystoneData
-                    WarbandNexus.db.global.characters[charTableKey].lastSeen = time()
-                    
-                    -- Mirror into PvE cache so PvE tab matches Characters tab (same API snapshot)
-                    if WarbandNexus.db.global.pveCache and WarbandNexus.db.global.pveCache.mythicPlus then
-                        WarbandNexus.db.global.pveCache.mythicPlus.keystones = WarbandNexus.db.global.pveCache.mythicPlus.keystones or {}
-                        if keystoneData and keystoneData.level and keystoneData.level > 0 and keystoneData.mapID then
-                            WarbandNexus.db.global.pveCache.mythicPlus.keystones[charKey] = {
-                                mapID = keystoneData.mapID,
-                                level = keystoneData.level,
-                                lastUpdate = keystoneData.scanTime or time(),
-                            }
-                        elseif keystoneData == nil and WarbandNexus.db.global.pveCache.mythicPlus.keystones then
-                            WarbandNexus.db.global.pveCache.mythicPlus.keystones[charKey] = nil
-                        end
-                        if WarbandNexus.SavePvECache then
-                            WarbandNexus:SavePvECache()
-                        end
-                    end
-                    
-                    -- Same channel as CHALLENGE_MODE_COMPLETED / PvECache (UI.lua + PlansManager listen)
-                    WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED, charKey)
-                else
-                    -- Keystone unchanged (verbose logging removed)
-                end
-            end
+        if WarbandNexus.RequestKeystoneRefresh then
+            WarbandNexus:RequestKeystoneRefresh("OnKeystoneChanged", true)
         end
     end)
 end

@@ -444,7 +444,7 @@ end
 ---@return string? newGuildName
 ---@return boolean ambiguous True when guild name could not be read safely
 function WarbandNexus:SyncPlayerGuildMembership()
-    local rawKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    local rawKey = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
     if not rawKey then
         return nil, nil, true
     end
