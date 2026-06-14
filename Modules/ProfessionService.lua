@@ -3127,6 +3127,37 @@ end
     Uses stored discoveredSkillLines + C_Traits API chain (same as Blizzard's own code).
     Called from Core.lua on PLAYER_ENTERING_WORLD with a delay.
 ]]
+--- Skip expensive C_Traits scan on /reload when persisted knowledge already covers discovered skill lines.
+---@return boolean
+function WarbandNexus:ShouldSkipKnowledgeLoginWarmup()
+    if not self.db or not self.db.global then return false end
+    local charKey = ResolveTrackedCharactersTableKey()
+    if not charKey then return false end
+    local charData = self.db.global.characters and self.db.global.characters[charKey]
+    if not charData or not charData.discoveredSkillLines then return false end
+    local kd = charData.knowledgeData
+    if type(kd) ~= "table" then return false end
+
+    local now = time()
+    local maxAge = 7 * 24 * 3600
+    for _, skillLines in pairs(charData.discoveredSkillLines) do
+        if skillLines and #skillLines > 0 then
+            for sli = 1, #skillLines do
+                local sl = skillLines[sli]
+                local slID = sl and (sl.id or sl)
+                if slID then
+                    local entry = kd[slID]
+                    local lu = entry and tonumber(entry.lastUpdate)
+                    if not lu or (now - lu) > maxAge then
+                        return false
+                    end
+                end
+            end
+        end
+    end
+    return true
+end
+
 function WarbandNexus:CollectKnowledgeOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end

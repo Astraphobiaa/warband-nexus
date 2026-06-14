@@ -32,8 +32,9 @@
         BuildCollectionCache [async], BuildCollectionCache_quiet [async]
     
     Slash commands:
-        /wn profiler          - Show performance summary
-        /wn profiler on       - Enable profiling (persisted across /reload); use /wn profiler live for chat START/STOP
+        /wn profiler          - Enable full diagnostics (measuring, trace window, bag ms, events; persisted)
+        /wn profiler summary  - Show performance summary table
+        /wn profiler on       - Same as bare /wn profiler (full diagnostics suite)
         /wn profiler verbose on|off - Phase splits in trace buffer + profiler chat detail
         /wn profiler off      - Disable profiling
         /wn profiler reset    - Clear all recorded data
@@ -77,7 +78,13 @@ local Profiler = {
     _devWindow = nil,
     _devWindowScroll = nil,
     _suppressFrameTrackingPrint = false,
-    _traceLines = {},
+    _traceRows = {},
+    TRACE_LOG_MAX = 2000,
+    --- Ring of recent Stop/StopAsync completions for frame-spike attribution.
+    _recentCompletions = {},
+    _recentCompletionMax = 16,
+    SPIKE_ATTRIB_WINDOW_SEC = 2.5,
+    SPIKE_ACTIVITY_FALLBACK_SEC = 10,
     --- When true, Start/Stop/Wrap/_Record only labels focused on Gear diagnostics (see IsGearFocusedSliceLabel).
     gearOnlyRecording = false,
     --- Log slow Blizzard-facing handlers to WN_TRACE (requires measuring ON); see TraceEventHandler.
@@ -142,6 +149,214 @@ local function GetProfilePersistRoot()
     return db.profile.profilerPersist
 end
 
+local function ShortSliceName(label)
+    label = tostring(label or "")
+    local _, name = label:match("^([^/]+)/(.+)$")
+    return name or label
+end
+
+--- Guess trace "Where" bucket from a profiler label (frame spike attribution).
+---@param label string
+---@return string
+local function InferWhereFromLabel(label)
+    label = tostring(label or "")
+    local low = label:lower()
+    if low:find("collection", 1, true) or low:find("mount", 1, true) or low:find("petjournal", 1, true) then
+        return "Collections"
+    end
+    if low:find("knowledge", 1, true) or low:find("profession", 1, true) then
+        return "Professions"
+    end
+    if low:find("bag", 1, true) or low:find("items", 1, true) then
+        return "Items"
+    end
+    if low:find("currency", 1, true) then
+        return "Currency"
+    end
+    if low:find("reputation", 1, true) or low:find("faction", 1, true) then
+        return "Reputation"
+    end
+    if low:find("zone", 1, true) or low:find("reminder", 1, true) then
+        return "Zone"
+    end
+    if low:find("pve", 1, true) then
+        return "PvE"
+    end
+    if low:find("init", 1, true) then
+        return "Init"
+    end
+    if low:find("fullscan", 1, true) then
+        return "Cache"
+    end
+    return "Client"
+end
+
+---@param label string
+---@param ms number|nil
+---@param kind string|nil "slice"|"async"
+function Profiler:_NoteRecentCompletion(label, ms, kind)
+    if not label then return end
+    local buf = self._recentCompletions
+    if not buf then
+        buf = {}
+        self._recentCompletions = buf
+    end
+    buf[#buf + 1] = {
+        label = tostring(label),
+        ms = tonumber(ms),
+        kind = kind or "slice",
+        t = GetTime(),
+    }
+    local maxN = self._recentCompletionMax or 16
+    while #buf > maxN do
+        table.remove(buf, 1)
+    end
+end
+
+--- Last error for frame-spike attribution (ErrorHandler / LogError).
+---@param context string|nil
+---@param message string|nil
+function Profiler:NoteErrorHint(context, message)
+    if not context and not message then return end
+    self._lastErrorHint = {
+        context = tostring(context or "?"),
+        message = tostring(message or "?"),
+        t = GetTime(),
+    }
+end
+
+--- Last meaningful (non-Frame) trace row for frame-spike fallback attribution.
+---@param op string|nil
+---@param where string|nil
+---@param detail string|nil
+---@param ms number|nil
+function Profiler:NoteActivityHint(op, where, detail, ms)
+    op = tostring(op or "?")
+    if op == "Frame" or op == "Log" then return end
+    detail = tostring(detail or "")
+    if detail == "" then return end
+    if detail:find("outside WN", 1, true) or detail:find("no WN work", 1, true) then return end
+    if detail:find("^last Frame", 1, false) or detail:find("^last ", 1, false) then return end
+    self._lastActivity = {
+        op = op,
+        where = tostring(where or "Client"),
+        detail = detail,
+        ms = tonumber(ms),
+        t = GetTime(),
+    }
+end
+
+--- Stable Detail text for unattributed client frame spikes.
+---@return string
+function Profiler:_OutsideWnFrameDetail()
+    return "outside WN (client / GC / other addon)"
+end
+
+--- Show trace table (explicit user action only).
+function Profiler:ShowTraceWindow()
+    self:EnsureTraceWindow()
+    if not self._traceWindow then return end
+    self._traceWindow:Show()
+    self._traceUINeedsFullRebuild = true
+    self:_RebuildTraceTableUI()
+    local root = GetProfilePersistRoot()
+    if root then root.traceWindowVisible = true end
+end
+
+--- Hide trace table without disabling measuring.
+function Profiler:HideTraceWindow()
+    if self._traceWindow then self._traceWindow:Hide() end
+    local root = GetProfilePersistRoot()
+    if root then root.traceWindowVisible = false end
+end
+
+--- Build human-readable cause chain for a frame spike.
+---@return string detail, string where
+function Profiler:_BuildSpikeAttribution()
+    local now = GetTime()
+    local window = self.SPIKE_ATTRIB_WINDOW_SEC or 2.5
+    local candidates = {}
+
+    for label in pairs(self.activeTimers) do
+        candidates[#candidates + 1] = {
+            label = label,
+            ms = nil,
+            rank = 300,
+            suffix = " [sync]",
+        }
+    end
+    for label in pairs(self.asyncTimers) do
+        candidates[#candidates + 1] = {
+            label = label,
+            ms = nil,
+            rank = 200,
+            suffix = " [async]",
+        }
+    end
+
+    local buf = self._recentCompletions or {}
+    for i = 1, #buf do
+        local e = buf[i]
+        if e and e.label and (now - (e.t or 0)) <= window then
+            candidates[#candidates + 1] = {
+                label = e.label,
+                ms = e.ms,
+                rank = 100 + (e.ms or 0),
+                suffix = "",
+            }
+        end
+    end
+
+    if #candidates == 0 then
+        local err = self._lastErrorHint
+        if err and (now - (err.t or 0)) <= 5 then
+            local detail = string.format("error %s: %s", tostring(err.context or "?"), tostring(err.message or "?"))
+            if #detail > 96 then detail = detail:sub(1, 93) .. "..." end
+            return detail, InferWhereFromLabel(err.context)
+        end
+        local act = self._lastActivity
+        if act and act.op ~= "Frame" and (now - (act.t or 0)) <= (self.SPIKE_ACTIVITY_FALLBACK_SEC or 10) then
+            local hint = act.detail:match("^(%S+)") or act.op or "?"
+            local detail = string.format("near %s", hint)
+            if act.ms and act.ms > 0 then
+                detail = detail .. string.format(" %.0fms", act.ms)
+            end
+            if #detail > 96 then detail = detail:sub(1, 93) .. "..." end
+            return detail, act.where or InferWhereFromLabel(act.detail)
+        end
+        if self.enabled then
+            return self:_OutsideWnFrameDetail(), "Client"
+        end
+        return "profiler was off during hitch", "Client"
+    end
+
+    table.sort(candidates, function(a, b)
+        return (a.rank or 0) > (b.rank or 0)
+    end)
+
+    local parts = {}
+    local maxParts = 3
+    local primaryLabel = candidates[1].label
+    for i = 1, math.min(#candidates, maxParts) do
+        local c = candidates[i]
+        local short = ShortSliceName(c.label)
+        if c.ms and c.ms > 0 then
+            parts[#parts + 1] = string.format("%s %.0fms", short, c.ms)
+        else
+            parts[#parts + 1] = short .. (c.suffix or "")
+        end
+    end
+
+    return table.concat(parts, " + "), InferWhereFromLabel(primaryLabel)
+end
+
+local function SplitSliceLabel(label)
+    label = tostring(label or "")
+    local cat, name = label:match("^([^/]+)/(.+)$")
+    if cat and name then return cat, name end
+    return "Svc", label
+end
+
 function Profiler:SavePersistToProfile()
     local p = GetProfilePersistRoot()
     if not p then return end
@@ -153,6 +368,13 @@ function Profiler:SavePersistToProfile()
     p.eventTrace = self.eventTrace and true or false
     p.eventTraceMinMs = tonumber(self.eventTraceMinMs) or 12
     p.traceVerbose = self.traceVerbose == true
+    p.diagnosticsSuite = p.diagnosticsSuite == true
+    if self._traceFollowTail ~= nil then
+        p.traceFollowTail = self._traceFollowTail ~= false
+    end
+    if self._traceWindow then
+        p.traceWindowVisible = self._traceWindow:IsShown() and true or false
+    end
     if p.tabPerfMonitor == nil then
         p.tabPerfMonitor = false
     end
@@ -181,6 +403,14 @@ function Profiler:SuspendForDebugOff()
     self.enabled = false
     self.liveOutput = false
     self.eventTrace = false
+    local root = GetProfilePersistRoot()
+    if root then
+        root.diagnosticsSuite = false
+    end
+    local BP = ns.ItemsCacheBagPerf
+    if BP and BP.SetEnabled then
+        BP.SetEnabled(false)
+    end
     if self.frameTracking or self._frameHandler then
         self._suppressFrameTrackingPrint = true
         self:SetFrameTracking(false)
@@ -242,6 +472,18 @@ function Profiler:ApplyPersistedSettings(profile)
         self:SetFrameTracking(false)
         self._suppressFrameTrackingPrint = false
     end
+    if p.diagnosticsSuite == true then
+        local addon = ns.WarbandNexus
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                if IsProfilerDebugAllowed() then
+                    self:EnableDiagnosticsSuite(addon, true)
+                end
+            end)
+        else
+            self:EnableDiagnosticsSuite(addon, true)
+        end
+    end
 end
 
 --- Re-show dev HUD after OnEnable (frame objects do not survive /reload).
@@ -287,8 +529,7 @@ local C_R       = "|r"
 
 local PREFIX = C_ACCENT .. "[WN Profiler]" .. C_R .. " "
 
-local TRACE_LOG_MAX = 2000
-local TRACE_EDIT_BODY_HEIGHT = 12000
+local TRACE_LOG_MAX = Profiler.TRACE_LOG_MAX or 2000
 Profiler.TRACE_ANOMALY_MS = 16.67
 Profiler.TRACE_SETTLE_FLAG_MS = 24
 Profiler.TRACE_DRAW_TAB_MIN_MS = 5
@@ -331,24 +572,13 @@ function Profiler:IsTraceVerbose()
     return self.traceVerbose == true or self.gearOpenVerbose == true or self.verbose == true
 end
 
---- Ring buffer append for the trace EditBox (plain text, no |c stripping).
+--- Ring buffer append (plain line → structured trace row).
 ---@param plainLine string
----@param dedupe boolean|nil When true, skip if identical to the previous line.
+---@param dedupe boolean|nil When true, skip if identical to the previous row.
 function Profiler:_RingTraceAppend(plainLine, dedupe)
     if not plainLine then return end
-    if not self._traceLines then
-        self._traceLines = {}
-    end
-    if dedupe then
-        local prev = self._traceLines[#self._traceLines]
-        if prev == plainLine then return end
-    end
-    tinsert(self._traceLines, plainLine)
-    while #self._traceLines > TRACE_LOG_MAX do
-        tremove(self._traceLines, 1)
-    end
-    if self._traceWindow and self._traceWindow:IsShown() then
-        self:_ScheduleTraceEditSync()
+    if self.AppendTraceRowFromPlain then
+        self:AppendTraceRowFromPlain(plainLine, dedupe)
     end
 end
 
@@ -377,6 +607,11 @@ function Profiler:EmitPerfSummary(category, ms, hint, opts)
     ms = tonumber(ms) or 0
     local tabPerf = ns.IsTabPerfMonitorEnabled and ns.IsTabPerfMonitorEnabled() or false
     if not opts.force and not tabPerf and ms < self.TRACE_ANOMALY_MS then return end
+    if self.AppendTraceRow then
+        local kind = ms >= self.TRACE_ANOMALY_MS and "anomaly" or "perf"
+        self:AppendTraceRow(tostring(category or "Perf"), "Perf", tostring(hint or ""), ms, kind)
+        return
+    end
     local line = string.format("[%s] %.2fms %s", tostring(category or "Perf"), ms, tostring(hint or ""))
     self:_RingTraceAppend(line, opts.dedupe == true)
 end
@@ -457,187 +692,14 @@ function Profiler:_AppendPerfTraceLine(plainLine)
 end
 
 function Profiler:_ScheduleTraceEditSync()
-    if self._traceSyncPending then return end
-    self._traceSyncPending = true
-    C_Timer.After(0, function()
-        self._traceSyncPending = false
-        if self._traceWindow and self._traceWindow:IsShown() then
-            self:_SyncTraceEditBoxText()
-        end
-    end)
-end
-
-function Profiler:_SyncTraceEditBoxText()
-    if self._traceLayoutSyncing then return end
-    self._traceLayoutSyncing = true
-    local ok, err = pcall(function()
-        local eb = self._traceEdit
-        local scroll = self._traceScroll
-        if not eb or not scroll then return end
-        if not self._traceLines then
-            self._traceLines = {}
-        end
-        local lines = self._traceLines
-        local text
-        if #lines > 0 then
-            text = table.concat(lines, "\n")
-        else
-            text = "(No trace lines yet. Open with |cff00ccff/wn profiler trace|r — "
-                .. "anomalies + |cff00ccff/wn profiler tabperf on|r summaries. "
-                .. "Phase splits: |cff00ccff/wn profiler verbose on|r or Settings Debug Verbose.)"
-        end
-        eb:SetText(text)
-        local sw = scroll:GetWidth()
-        if sw < 60 then sw = 520 end
-        local tw = sw - 16
-        eb:SetWidth(tw)
-        eb:SetHeight(TRACE_EDIT_BODY_HEIGHT)
-        if scroll.UpdateScrollChildRect then
-            scroll:UpdateScrollChildRect()
-        end
-        if scroll.GetVerticalScrollRange and scroll.SetVerticalScroll then
-            local maxRange = scroll:GetVerticalScrollRange()
-            if maxRange and maxRange > 0 then
-                scroll:SetVerticalScroll(maxRange)
-            else
-                scroll:SetVerticalScroll(0)
-            end
-        end
-    end)
-    self._traceLayoutSyncing = false
-    if not ok then
-        print(PREFIX .. C_BAD .. "Trace UI sync failed: " .. tostring(err) .. C_R)
+    if self._ScheduleTraceTableSync then
+        self:_ScheduleTraceTableSync()
     end
 end
 
---- True when the unified trace log window is visible (used for Gear-tab phase timings without /wn profiler on).
+--- True when the unified trace table window is visible.
 function Profiler:IsUserTraceWindowShown()
     return self._traceWindow ~= nil and self._traceWindow.IsShown and self._traceWindow:IsShown() == true
-end
-
-function Profiler:EnsureTraceWindow()
-    if self._traceWindow then return end
-    local f = CreateFrame("Frame", "WarbandNexusProfilerTraceFrame", UIParent, "BackdropTemplate")
-    f:SetFrameStrata("TOOLTIP")
-    f:SetFrameLevel(8100)
-    f:SetClampedToScreen(true)
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(self)
-        self:StartMoving()
-    end)
-    f:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-    end)
-    f:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = false,
-        tileSize = 0,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    f:SetBackdropColor(0.05, 0.05, 0.08, 0.93)
-    f:SetBackdropBorderColor(0.45, 0.2, 0.65, 1)
-    f:SetSize(560, 400)
-    f:SetPoint("CENTER", UIParent, "CENTER", 320, -40)
-
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -10)
-    title:SetText("|cff9370DBWN Trace log|r")
-
-    local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hint:SetPoint("TOP", 0, -30)
-    hint:SetText("|cff808080Anomalies + tabperf summaries. Verbose: /wn debug verbose on or /wn profiler verbose on. Tab ms: /wn profiler tabperf on.|r")
-
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", -4, -4)
-    closeBtn:SetScript("OnClick", function()
-        f:Hide()
-    end)
-
-    local copyBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    copyBtn:SetSize(100, 22)
-    copyBtn:SetPoint("TOPRIGHT", closeBtn, "TOPLEFT", -90, -2)
-    copyBtn:SetText("Select all")
-    copyBtn:SetScript("OnClick", function()
-        local eb = Profiler._traceEdit
-        if not eb then return end
-        eb:SetFocus()
-        eb:HighlightText(0, eb:GetNumLetters())
-        print(PREFIX .. C_DIM .. "Trace text selected; use Ctrl+C to copy." .. C_R)
-    end)
-
-    local clearBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    clearBtn:SetSize(70, 22)
-    clearBtn:SetPoint("TOPRIGHT", copyBtn, "TOPLEFT", -6, 0)
-    clearBtn:SetText("Clear")
-    clearBtn:SetScript("OnClick", function()
-        wipe(Profiler._traceLines)
-        Profiler:_SyncTraceEditBoxText()
-    end)
-
-    local scrollLaneReserve = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
-        or ((ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26) + 2
-    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 14, -58)
-    scroll:SetPoint("BOTTOMRIGHT", -scrollLaneReserve, 12)
-
-    -- EditBox must be the ScrollFrame's scroll child (AceGUI MultiLineEditBox pattern).
-    -- A wrapper Frame as scroll child breaks text rendering on some Midnight builds.
-    local eb = CreateFrame("EditBox", "WarbandNexusProfilerTraceEdit", scroll)
-    eb:SetMultiLine(true)
-    eb:SetFontObject(ChatFontNormal)
-    ns.UI_SetTextColorRole(eb, "Bright")
-    eb:EnableMouse(true)
-    eb:SetAutoFocus(false)
-    eb:SetMaxLetters(0)
-    eb:SetCountInvisibleLetters(false)
-    eb:SetPoint("TOPLEFT", scroll, "TOPLEFT", 6, 0)
-    eb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", -6, 0)
-    eb:SetHeight(TRACE_EDIT_BODY_HEIGHT)
-    eb:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-    scroll:SetScrollChild(eb)
-
-    self._traceWindow = f
-    self._traceScroll = scroll
-    self._traceEdit = eb
-
-    f:SetScript("OnShow", function()
-        Profiler:_SyncTraceEditBoxText()
-        C_Timer.After(0, function()
-            if Profiler._traceWindow and Profiler._traceWindow:IsShown() then
-                Profiler:_SyncTraceEditBoxText()
-            end
-        end)
-    end)
-    -- New frames can start "shown" for IsShown(); first slash toggle must open, not hide.
-    f:Hide()
-end
-
-function Profiler:ToggleTraceWindow()
-    self:EnsureTraceWindow()
-    local w = self._traceWindow
-    if not w then return end
-    if w:IsShown() then
-        w:Hide()
-        print(PREFIX .. "Trace log window hidden." .. C_R)
-    else
-        w:Show()
-        self:_SyncTraceEditBoxText()
-        C_Timer.After(0, function()
-            if Profiler._traceWindow and Profiler._traceWindow:IsShown() then
-                Profiler:_SyncTraceEditBoxText()
-            end
-        end)
-        if not self.enabled then
-            print(PREFIX .. C_WARN .. "Profiling is OFF — only |cff00ccff/wn debug|r (and similar) lines appear until |cff00ccff/wn profiler on|r." .. C_R)
-        end
-        print(PREFIX .. C_GOOD .. "Trace log window shown." .. C_R)
-    end
 end
 
 --[[ Dev-only HUD: explicit CreateFrame (not SharedWidgets factory) — acceptable for
@@ -822,8 +884,15 @@ function Profiler:Stop(label)
     
     local elapsed = debugprofilestop() - startTime
     self:_Record(label, elapsed)
+    self:_NoteRecentCompletion(label, elapsed, "slice")
 
-    self:_EmitPerfTraceLine(string.format("STOP %s %.2fms", tostring(label), elapsed), elapsed)
+    if self.AppendTraceRow then
+        local cat, name = SplitSliceLabel(label)
+        local kind = elapsed >= self.TRACE_ANOMALY_MS and "anomaly" or "perf"
+        self:AppendTraceRow("Slice", cat, name, elapsed, kind)
+    else
+        self:_EmitPerfTraceLine(string.format("STOP %s %.2fms", tostring(label), elapsed), elapsed)
+    end
     if self:ShouldEmitProfilerChat() then
         local color = elapsed > 16.67 and C_BAD or elapsed > 5 and C_WARN or C_GOOD
         print(PREFIX .. C_DIM .. "STOP  " .. C_LABEL .. label .. C_R
@@ -898,11 +967,20 @@ function Profiler:StopAsync(label)
     if e then
         e.lastWallSec = wallSeconds
     end
-    
-    local plainStop = string.format(
-        "ASYNC STOP %s CPU=%.2fms Wall=%.1fs",
-        tostring(label), elapsed, wallSeconds)
-    self:_EmitPerfTraceLine(plainStop, elapsed)
+
+    self:_NoteRecentCompletion(label, elapsed, "async")
+
+    if self.AppendTraceRow then
+        local cat, name = SplitSliceLabel(label)
+        local kind = elapsed >= self.TRACE_ANOMALY_MS and "anomaly" or "perf"
+        local detail = string.format("wall=%.1fs", wallSeconds)
+        self:AppendTraceRow("Async", cat, name .. " " .. detail, elapsed, kind)
+    else
+        local plainStop = string.format(
+            "ASYNC STOP %s CPU=%.2fms Wall=%.1fs",
+            tostring(label), elapsed, wallSeconds)
+        self:_EmitPerfTraceLine(plainStop, elapsed)
+    end
     if self:ShouldEmitProfilerChat() then
         local color = elapsed > 50 and C_BAD or elapsed > 20 and C_WARN or C_GOOD
         print(PREFIX .. C_DIM .. "ASYNC STOP  " .. C_LABEL .. label .. C_R
@@ -964,12 +1042,12 @@ function Profiler:TraceEventHandler(eventName, startTime, ...)
     local minMs = tonumber(self.eventTraceMinMs) or 12
     if elapsed < minMs then return end
     local payload = self:FormatEventPayload(...)
-    local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(eventName), elapsed, payload)
-    if elapsed >= self.TRACE_ANOMALY_MS then
-        self:_AppendPerfTraceLine(line)
-    elseif self:IsTraceVerbose() then
-        self:_AppendPerfTraceLine(line)
+    if elapsed >= self.TRACE_ANOMALY_MS or self:IsTraceVerbose() then
+        if self.AppendTraceRow then
+            self:AppendTraceRow("Event", eventName, payload, elapsed, "event")
+        end
     end
+    local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(eventName), elapsed, payload)
     if self:ShouldEmitProfilerChat() then
         print(PREFIX .. C_WARN .. line .. C_R)
     end
@@ -985,12 +1063,12 @@ function Profiler:TraceInternalHandler(label, startTime, extraDetail)
     local elapsed = debugprofilestop() - startTime
     local minMs = tonumber(self.eventTraceMinMs) or 12
     if elapsed < minMs then return end
-    local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(label), elapsed, tostring(extraDetail or ""))
-    if elapsed >= self.TRACE_ANOMALY_MS then
-        self:_AppendPerfTraceLine(line)
-    elseif self:IsTraceVerbose() then
-        self:_AppendPerfTraceLine(line)
+    if elapsed >= self.TRACE_ANOMALY_MS or self:IsTraceVerbose() then
+        if self.AppendTraceRow then
+            self:AppendTraceRow("Handler", label, tostring(extraDetail or ""), elapsed, "event")
+        end
     end
+    local line = string.format("WN_TRACE_EVT %s %.2fms %s", tostring(label), elapsed, tostring(extraDetail or ""))
     if self:ShouldEmitProfilerChat() then
         print(PREFIX .. C_WARN .. line .. C_R)
     end
@@ -1085,7 +1163,12 @@ function Profiler:SetFrameTracking(enable)
                 
                 local spikePlain = string.format("FRAME SPIKE %.1fms %s", frameMs, spike.date)
                 if self:IsMeasuringTraceSinkActive() then
-                    self:AppendTraceAnomaly(spikePlain)
+                    if self.AppendTraceRow then
+                        local detail, where = self:_BuildSpikeAttribution()
+                        self:AppendTraceRow("Frame", where, detail, frameMs, "anomaly")
+                    else
+                        self:AppendTraceAnomaly(spikePlain)
+                    end
                 end
                 if self:ShouldEmitProfilerChat() then
                     local color = frameMs > 100 and C_BAD or C_WARN
@@ -1269,6 +1352,102 @@ function Profiler:_GetSpikeValues()
 end
 
 ---Reset all profiling data.
+--- True when /wn profiler diagnostics suite is active (bag ms, events, trace window).
+---@return boolean
+function Profiler:IsDiagnosticsSuiteActive()
+    local p = GetProfilePersistRoot()
+    return p and p.diagnosticsSuite == true
+end
+
+--- One-shot dev/support mode: measuring + trace + bag timings + slow events (persisted across /reload).
+---@param addon table|nil WarbandNexus
+---@param silent boolean|nil Skip chat banner (restore after /reload)
+---@return boolean
+function Profiler:EnableDiagnosticsSuite(addon, silent)
+    addon = addon or ns.WarbandNexus
+    if not addon or not addon.db or not addon.db.profile then return false end
+    if not IsProfilerDebugAllowed() and addon.db.profile then
+        addon.db.profile.debugMode = true
+    end
+    if not IsProfilerDebugAllowed() then return false end
+
+    local profile = addon.db.profile
+    profile.debugMode = true
+    profile.debugVerbose = false
+
+    self.enabled = true
+    self.liveOutput = false
+    self.traceVerbose = false
+    self.eventTrace = true
+    self.eventTraceMinMs = 8
+    self.gearOnlyRecording = false
+    self._suppressFrameTrackingPrint = true
+    self:SetFrameTracking(true)
+    self._suppressFrameTrackingPrint = false
+
+    local root = GetProfilePersistRoot()
+    if root then
+        root.traceVerbose = false
+        root.traceCacheLogs = false
+        root.tabPerfMonitor = true
+        root.diagnosticsSuite = true
+    end
+
+    local BP = ns.ItemsCacheBagPerf
+    if BP and BP.SetEnabled then
+        BP.SetEnabled(true)
+    end
+
+    self:EnsureTraceWindow()
+    if silent then
+        if self._traceWindow then self._traceWindow:Hide() end
+    else
+        self:ShowTraceWindow()
+    end
+
+    self:SavePersistToProfile()
+
+    if not silent then
+        print(PREFIX .. C_GOOD .. "Diagnostics ENABLED" .. C_R
+            .. " — trace table: Operation | Where | Detail | ms (>=8ms, bag, zone, errors).")
+        print(PREFIX .. C_DIM .. "Loot, fly, or vendor; open |cff00ccff/wn profiler trace|r."
+            .. "  |cff00ccff/wn profiler summary|r stats  |cff00ccff/wn profiler verbose on|r all slices"
+            .. "  |cff00ccff/wn profiler off|r disable." .. C_R)
+    end
+    return true
+end
+
+--- Turn off diagnostics suite (measuring, bag perf, event trace); leaves debug mode unchanged.
+---@param addon table|nil
+---@param silent boolean|nil
+function Profiler:DisableDiagnosticsSuite(addon, silent)
+    addon = addon or ns.WarbandNexus
+    local root = GetProfilePersistRoot()
+    if root then
+        root.diagnosticsSuite = false
+        root.tabPerfMonitor = false
+    end
+    self.enabled = false
+    self.liveOutput = false
+    self.eventTrace = false
+    self._suppressFrameTrackingPrint = true
+    self:SetFrameTracking(false)
+    self._suppressFrameTrackingPrint = false
+
+    local BP = ns.ItemsCacheBagPerf
+    if BP and BP.SetEnabled then
+        BP.SetEnabled(false)
+    end
+
+    self:HideTraceWindow()
+    self:SavePersistToProfile()
+
+    if not silent then
+        print(PREFIX .. C_DIM .. "Diagnostics DISABLED" .. C_R
+            .. C_DIM .. "  (|cff00ccff/wn debug off|r to silence all debug tiers)" .. C_R)
+    end
+end
+
 function Profiler:Reset()
     wipe(self.entries)
     wipe(self.activeTimers)
@@ -1276,11 +1455,10 @@ function Profiler:Reset()
     wipe(self.frameSpikes)
     self._spikeNextSlot = 1
     self._spikeCount = 0
-    if self._traceLines then
-        wipe(self._traceLines)
-    end
-    if self._traceEdit then
-        self._traceEdit:SetText("")
+    if self.ClearTraceRows then
+        self:ClearTraceRows()
+    elseif self._traceRows then
+        wipe(self._traceRows)
     end
     print(PREFIX .. C_GOOD .. "All profiling data cleared." .. C_R)
 end
@@ -1294,25 +1472,26 @@ end
 ---@param arg4 string|nil Optional 4th token (e.g. min ms for `profiler events on 8`)
 function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
     if not subCmd or subCmd == "" then
-        self:PrintSummary()
+        if self:IsDiagnosticsSuiteActive() then
+            self:ShowTraceWindow()
+            print(PREFIX .. C_GOOD .. "Diagnostics already ON" .. C_R .. " — trace window opened.")
+            self:PrintSummary()
+        else
+            self:EnableDiagnosticsSuite(addon, false)
+        end
         return
     end
     
     subCmd = subCmd:lower()
     
     if subCmd == "on" or subCmd == "enable" then
-        self.enabled = true
-        self.liveOutput = false
-        self:SetFrameTracking(true)
-        print(PREFIX .. C_GOOD .. "Profiling ENABLED" .. C_R .. " (slice stats + trace anomalies; chat START/STOP: |cff00ccff/wn profiler live|r + verbose; saved for /reload)")
-        self:SavePersistToProfile()
+        self:EnableDiagnosticsSuite(addon, false)
         
     elseif subCmd == "off" or subCmd == "disable" then
-        self.enabled = false
-        self.liveOutput = false
-        self:SetFrameTracking(false)
-        print(PREFIX .. C_DIM .. "Profiling DISABLED" .. C_R)
-        self:SavePersistToProfile()
+        self:DisableDiagnosticsSuite(addon, false)
+        
+    elseif subCmd == "summary" or subCmd == "stats" then
+        self:PrintSummary()
         
     elseif subCmd == "reset" or subCmd == "clear" then
         self:Reset()
@@ -1351,6 +1530,7 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
         end
         
     elseif subCmd == "status" then
+        print(PREFIX .. "Diagnostics suite: " .. (self:IsDiagnosticsSuiteActive() and (C_GOOD .. "ON") or (C_DIM .. "OFF")) .. C_R)
         print(PREFIX .. "Measuring: " .. (self.enabled and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
         print(PREFIX .. "Live output: " .. (self.liveOutput and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
         print(PREFIX .. "Frame tracking: " .. (self.frameTracking and (C_GOOD .. "YES") or (C_DIM .. "NO")) .. C_R)
@@ -1454,6 +1634,22 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
             .. "  |cff00ccff/wn profiler events on 8|r sets threshold to 8ms" .. C_R)
         self:SavePersistToProfile()
 
+    elseif subCmd == "cachelog" or subCmd == "cachelogs" then
+        local root = GetProfilePersistRoot()
+        if not root then return end
+        local a = (arg3 and tostring(arg3):lower()) or ""
+        if a == "on" or a == "1" or a == "true" then
+            root.traceCacheLogs = true
+        elseif a == "off" or a == "0" or a == "false" then
+            root.traceCacheLogs = false
+        else
+            root.traceCacheLogs = not (root.traceCacheLogs == true)
+        end
+        self:SavePersistToProfile()
+        local stC = root.traceCacheLogs and (C_GOOD .. "ON") or (C_DIM .. "OFF")
+        print(PREFIX .. "Cache debug lines in trace table: " .. stC .. C_R
+            .. C_DIM .. "  Off by default to reduce noise." .. C_R)
+
     elseif subCmd == "verbose" or subCmd == "traceverbose" then
         local root = GetProfilePersistRoot()
         if not root then return end
@@ -1491,9 +1687,10 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
         print(" ")
         print(C_HEADER .. "Warband Nexus Profiler - Commands" .. C_R)
         print(C_DIM .. string.rep("-", 50) .. C_R)
-        print("  " .. C_LABEL .. "/wn profiler" .. C_R .. "           Show performance summary")
-        print("  " .. C_LABEL .. "/wn profiler on" .. C_R .. "        Enable profiling (saved; survives /reload)")
-        print("  " .. C_LABEL .. "/wn profiler off" .. C_R .. "       Disable profiling")
+        print("  " .. C_LABEL .. "/wn profiler" .. C_R .. "           Enable full diagnostics (trace + bag ms + events)")
+        print("  " .. C_LABEL .. "/wn profiler on" .. C_R .. "        Same as bare /wn profiler")
+        print("  " .. C_LABEL .. "/wn profiler summary" .. C_R .. "    Performance summary table")
+        print("  " .. C_LABEL .. "/wn profiler off" .. C_R .. "       Disable diagnostics suite")
         print("  " .. C_LABEL .. "/wn profiler reset" .. C_R .. "     Clear all data")
         print("  " .. C_LABEL .. "/wn profiler frames" .. C_R .. "    Toggle frame spike detection")
         print("  " .. C_LABEL .. "/wn profiler spikes" .. C_R .. "    Show recent frame spikes")
@@ -1505,7 +1702,8 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
         print("  " .. C_LABEL .. "/wn profiler trace" .. C_R .. "   Toggle unified trace window (debug lines; perf lines when measuring ON)")
         print("  " .. C_LABEL .. "/wn profiler dock" .. C_R .. "    Toggle dock-left for dev window")
         print("  " .. C_LABEL .. "/wn profiler tabperf" .. C_R .. " on|off  Main-tab switch summaries (trace buffer)")
-        print("  " .. C_LABEL .. "/wn profiler verbose" .. C_R .. " on|off  Phase splits + profiler START/STOP chat")
+        print("  " .. C_LABEL .. "/wn profiler verbose" .. C_R .. " on|off  All profiler slices in trace (>=8ms by default)")
+        print("  " .. C_LABEL .. "/wn profiler cachelog" .. C_R .. " on|off  Cache/init debug lines in trace table")
         print("  " .. C_LABEL .. "/wn profiler gearonly" .. C_R .. " on|off  Record only Gear-focused slices (reduces noise)")
         print("  " .. C_LABEL .. "/wn profiler events" .. C_R .. " on|off [minMs]  Log slow Blizzard handlers (WN_TRACE_EVT)")
         print(" ")

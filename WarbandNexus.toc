@@ -42,6 +42,7 @@ Modules\Constants.lua
 Config.lua
 Modules\DebugPrint.lua
 Modules\Profiler.lua
+Modules\Profiler_TraceUI.lua
 Modules\LoadingTracker.lua
 Modules\APIWrapper.lua
 Modules\Utilities.lua

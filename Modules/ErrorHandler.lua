@@ -17,6 +17,10 @@ local errorStats = {
 
 local MAX_ERRORS = 50  -- Keep only last 50 errors
 
+local function IsProfilerDebugAllowed()
+    return ns.IsDebugModeEnabled and ns.IsDebugModeEnabled() or false
+end
+
 -- SAFE FUNCTION EXECUTION
 
 --[[
@@ -95,6 +99,20 @@ function WarbandNexus:LogError(message, context, stack)
         -- Limit log size
         if #errorLog > MAX_ERRORS then
             table.remove(errorLog, 1)
+        end
+    end
+
+    local P = ns.Profiler
+    if P then
+        if P.NoteErrorHint then
+            P:NoteErrorHint(context, message)
+        end
+        if P.AppendTraceRow and IsProfilerDebugAllowed() then
+            local shortMsg = message
+            if shortMsg and #shortMsg > 120 then
+                shortMsg = shortMsg:sub(1, 117) .. "..."
+            end
+            P:AppendTraceRow("Error", context or "?", shortMsg or "?", nil, "error")
         end
     end
 end

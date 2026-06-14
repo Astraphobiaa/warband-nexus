@@ -41,6 +41,17 @@ local issecretvalue = issecretvalue
 local ReminderEvents = {}
 --- AceEvent identity for WN_PLANS_UPDATED (do not use WarbandNexus object; avoids handler overwrite).
 local ReminderPlansMessageSink = {}
+local debugprofilestop = debugprofilestop
+
+--- Coalesce rapid ZONE_CHANGED* while flying (several events per subzone).
+local ZONE_REMINDER_DEBOUNCE_SEC = 0.35
+
+--- Cached plan-derived reminder geography (invalidated on WN_PLANS_UPDATED).
+local reminderLocationCache = {
+    digest = nil,
+    zoneUnion = nil,
+    hasMapQuestReminders = false,
+}
 
 local function ReminderToastThemeFields()
     local c = ns.Constants and ns.Constants.REMINDER_HORN_UI_COLOR
@@ -1303,6 +1314,45 @@ local function PlanListHasActiveMapQuestReminders(planList)
     return false
 end
 
+local function ReminderPlansDigest()
+    local db = WarbandNexus.db and WarbandNexus.db.global
+    if not db then return "" end
+    local n1 = db.plans and #db.plans or 0
+    local n2 = db.customPlans and #db.customPlans or 0
+    return n1 .. ":" .. n2
+end
+
+local function InvalidateReminderLocationCache()
+    reminderLocationCache.digest = nil
+    reminderLocationCache.zoneUnion = nil
+    reminderLocationCache.hasMapQuestReminders = false
+end
+
+local function EnsureReminderLocationCache()
+    local digest = ReminderPlansDigest()
+    if reminderLocationCache.digest == digest then return end
+    reminderLocationCache.digest = digest
+    reminderLocationCache.zoneUnion = BuildAllConfiguredZoneIdsUnion()
+    local db = WarbandNexus.db and WarbandNexus.db.global
+    reminderLocationCache.hasMapQuestReminders = false
+    if db then
+        if PlanListHasActiveMapQuestReminders(db.plans)
+            or PlanListHasActiveMapQuestReminders(db.customPlans) then
+            reminderLocationCache.hasMapQuestReminders = true
+        end
+    end
+end
+
+local function GetCachedConfiguredZoneUnion()
+    EnsureReminderLocationCache()
+    return reminderLocationCache.zoneUnion or {}
+end
+
+local function HasCachedMapQuestReminders()
+    EnsureReminderLocationCache()
+    return reminderLocationCache.hasMapQuestReminders == true
+end
+
 local function CheckMapQuestReminders(rawMapID)
     if not rawMapID or rawMapID == 0 then return end
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
@@ -1314,8 +1364,7 @@ local function CheckMapQuestReminders(rawMapID)
     end
 
     local db = WarbandNexus.db.global
-    if not PlanListHasActiveMapQuestReminders(db.plans)
-        and not PlanListHasActiveMapQuestReminders(db.customPlans) then
+    if not HasCachedMapQuestReminders() then
         lastMapQuestReminderStable = nil
         return
     end
@@ -1325,7 +1374,7 @@ local function CheckMapQuestReminders(rawMapID)
         return
     end
 
-    local configuredUnion = BuildAllConfiguredZoneIdsUnion()
+    local configuredUnion = GetCachedConfiguredZoneUnion()
     local stable = StableReminderZoneKey(rawMapID, configuredUnion)
     if not stable then return end
     if stable == lastMapQuestReminderStable then return end
@@ -1406,7 +1455,7 @@ local function CheckZoneReminders(rawMapID)
         return
     end
 
-    local configuredUnion = BuildAllConfiguredZoneIdsUnion()
+    local configuredUnion = GetCachedConfiguredZoneUnion()
     if not next(configuredUnion) then
         lastStableReminderZoneKey = nil
         return
@@ -1615,6 +1664,8 @@ ScheduleCalendarResetReminderTimer = function()
 end
 
 local function RunZoneOrInstanceChangedNow()
+    local P = ns.Profiler
+    local traceT0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
     local mapID = SafeGetRawPlayerUIMapID()
     if mapID then
         CheckZoneReminders(mapID)
@@ -1624,6 +1675,22 @@ local function RunZoneOrInstanceChangedNow()
         lastMapQuestReminderStable = nil
     end
     CheckInstanceReminders()
+    if traceT0 and P and P.AppendTraceRow then
+        local elapsed = debugprofilestop() - traceT0
+        P:AppendTraceRow(
+            "Zone",
+            "ReminderService",
+            "map=" .. tostring(mapID or "nil"),
+            elapsed,
+            elapsed >= (P.TRACE_ANOMALY_MS or 16.67) and "anomaly" or "event"
+        )
+    elseif traceT0 and P and P.TraceInternalHandler then
+        P:TraceInternalHandler(
+            "ReminderZonePass",
+            traceT0,
+            "map=" .. tostring(mapID or "nil")
+        )
+    end
 end
 
 --- Coalesce ZONE_CHANGED* bursts (several events fire per transition).
@@ -1636,7 +1703,7 @@ local function OnZoneOrInstanceChanged()
         RunZoneOrInstanceChangedNow()
         return
     end
-    zoneChangeTimer = C_Timer.NewTimer(0.12, function()
+    zoneChangeTimer = C_Timer.NewTimer(ZONE_REMINDER_DEBOUNCE_SEC, function()
         zoneChangeTimer = nil
         RunZoneOrInstanceChangedNow()
     end)
@@ -1710,6 +1777,7 @@ function WarbandNexus:InitializeReminderService()
 
         if WarbandNexus.RegisterMessage then
             WarbandNexus.RegisterMessage(ReminderPlansMessageSink, E.PLANS_UPDATED, function(_, payload)
+                InvalidateReminderLocationCache()
                 local a = payload and payload.action
                 if a == "reminder_changed" or a == "reminder_dismissed" then
                     RequestReminderScheduleCoalesced()

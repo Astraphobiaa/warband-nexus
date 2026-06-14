@@ -149,7 +149,9 @@ local sessionIdleFlushTicker = nil
 local sessionActivityPersistTimer = nil
 local summaryDrainScheduled = false
 local deferredThrottleTimer = nil
--- Forward declarations (StartSessionIdleFlushTicker closes over these before definitions below).
+-- Forward declarations (mutual recursion + timer callback before definitions below).
+local ThrottledBagUpdate
+local ScheduleDeferredBagFlush
 local FlushPendingCompressWrites
 local PersistSessionDirtyFast
 local ScheduleSessionActivityPersist
@@ -1318,7 +1320,7 @@ end
 -- THROTTLED UPDATE SYSTEM
 
 ---One deferred flush for all throttled bags (avoids N timers + N WN_ITEMS_UPDATED after rapid same-bag spam).
-local function ScheduleDeferredBagFlush(delaySec)
+ScheduleDeferredBagFlush = function(delaySec)
     delaySec = delaySec or UPDATE_THROTTLE
     if delaySec < 0.01 then delaySec = 0.01 end
     if deferredThrottleTimer then return end
@@ -1346,7 +1348,7 @@ end
 
 ---Throttled bag update (prevents BAG_UPDATE spam)
 ---Returns true if the update was processed (or scheduled), false if suppressed.
-local function ThrottledBagUpdate(bagID)
+ThrottledBagUpdate = function(bagID)
     -- Suppress during bank open deferred scans (OnBankOpened handles it)
     if bankScanInProgress then
         return false
@@ -1452,6 +1454,8 @@ end
 ---Handle BAG_UPDATE event (from RegisterBucketEvent)
 ---Batches all bag updates and sends ONE coalesced ITEMS_UPDATED message
 function WarbandNexus:OnBagUpdate(bagIDs)
+    local P = ns.Profiler
+    local traceT0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
     DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r [Items Event] BAG_UPDATE (bucket) triggered")
     -- GUARD: Only process bag updates if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -1473,6 +1477,25 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     local changedCount = #changedBags
     if changedCount == 0 then return end
 
+    local function traceBagUpdateDone(processed)
+        if traceT0 and P and P.AppendTraceRow then
+            local elapsed = debugprofilestop() - traceT0
+            P:AppendTraceRow(
+                "Bag",
+                "OnBagUpdate",
+                "bags=" .. tostring(changedCount) .. " ok=" .. (processed and "yes" or "no"),
+                elapsed,
+                elapsed >= (P.TRACE_ANOMALY_MS or 16.67) and "anomaly" or "bag"
+            )
+        elseif traceT0 and P and P.TraceInternalHandler then
+            P:TraceInternalHandler(
+                "ItemsOnBagUpdate",
+                traceT0,
+                "bags=" .. tostring(changedCount) .. " processed=" .. (processed and "yes" or "no")
+            )
+        end
+    end
+
     local BP = ns.ItemsCacheBagPerf
     if BP and BP.NoteBucketEvent then
         BP.NoteBucketEvent(changedCount)
@@ -1486,6 +1509,7 @@ function WarbandNexus:OnBagUpdate(bagIDs)
                 local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
                 self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
             end
+            traceBagUpdateDone(anyProcessed)
             return
         end
         local bagID = changedBags[bagIdx]
@@ -1498,6 +1522,9 @@ function WarbandNexus:OnBagUpdate(bagIDs)
         elseif anyProcessed then
             local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
             self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
+            traceBagUpdateDone(true)
+        else
+            traceBagUpdateDone(false)
         end
     end
     processNextBag()

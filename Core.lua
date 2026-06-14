@@ -1477,15 +1477,20 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             if LT then LT:Complete("pve") end
         end)
 
-        -- Core P2.5 (T+7s): Profession knowledge warmup (tracked only, non-blocking for core readiness)
+        -- Core P2.5 (T+7s): Profession knowledge warmup (tracked only; skip on /reload when SV is fresh)
         C_Timer.After(7, function()
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
-                local P = ns.Profiler
-                local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectKnowledge")
-                if P and P.enabled and lab then P:Start(lab) end
-                if self and self.CollectKnowledgeOnLogin then self:CollectKnowledgeOnLogin() end
-                if P and P.enabled and lab then P:Stop(lab) end
+                local skipKnowledge = isReloadingUi
+                    and self.ShouldSkipKnowledgeLoginWarmup
+                    and self:ShouldSkipKnowledgeLoginWarmup()
+                if not skipKnowledge then
+                    local P = ns.Profiler
+                    local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectKnowledge")
+                    if P and P.enabled and lab then P:Start(lab) end
+                    if self and self.CollectKnowledgeOnLogin then self:CollectKnowledgeOnLogin() end
+                    if P and P.enabled and lab then P:Stop(lab) end
+                end
             end
             if self then
                 self._coreStartupPhasesPending = false

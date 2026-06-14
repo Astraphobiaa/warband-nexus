@@ -51,7 +51,11 @@ end
 
 function BP.IsEnabled()
     local p = Profile()
-    return p and p.debugMode == true and p.debugItemsBagPerf == true
+    if p and p.debugMode == true and p.debugItemsBagPerf == true then
+        return true
+    end
+    local P = ns.Profiler
+    return P and P.IsDiagnosticsSuiteActive and P:IsDiagnosticsSuiteActive()
 end
 
 function BP.SpikeThresholdMs()
@@ -107,16 +111,7 @@ function BP.Reset()
     wipe(stats.lastLines)
 end
 
-function BP.NoteSessionDirty(charKey, dataType)
-    if not BP.IsEnabled() then return end
-    stats.sessionDirtyMarks = stats.sessionDirtyMarks + 1
-    EmitTrace(format(
-        "|cff9370DB[WN BagPerf]|r session_dirty %s/%s (DB flush deferred)",
-        tostring(dataType or "?"),
-        tostring(charKey and "ok" or "nil")
-    ))
-end
-
+-- Helpers must be defined before any BP.* that calls them (Lua 5.1: no forward visibility).
 local function PushLastLine(line)
     local lines = stats.lastLines
     lines[#lines + 1] = line
@@ -138,10 +133,14 @@ local function EmitChat(line)
     end
 end
 
+function BP.NoteSessionDirty(charKey, dataType)
+    if not BP.IsEnabled() then return end
+    stats.sessionDirtyMarks = stats.sessionDirtyMarks + 1
+end
+
 function BP.NoteBucketEvent(changedBagCount)
     if not BP.IsEnabled() then return end
     stats.bucketEvents = stats.bucketEvents + 1
-    EmitTrace(format("|cff9370DB[WN BagPerf]|r BAG_UPDATE bucket changedBags=%s", tostring(changedBagCount or 0)))
 end
 
 function BP.NoteHashCheck(changed)
@@ -159,7 +158,6 @@ function BP.NoteThrottled(bagID, kind)
     else
         stats.throttled = stats.throttled + 1
     end
-    EmitTrace(format("|cff9370DB[WN BagPerf]|r throttle bag=%s %s", tostring(bagID), kind or "?"))
 end
 
 function BP.NoteAcquire(cacheHit)
@@ -287,7 +285,19 @@ function BP.FinishBagUpdate(ctx, extra)
         cacheTag
     )
     PushLastLine(line)
-    EmitTrace(line)
+    local P = ns.Profiler
+    if P and P.AppendTraceRow then
+        P:AppendTraceRow(
+            "Bag",
+            "bag " .. tostring(ctx.bagID),
+            phaseStr,
+            total,
+            total >= spike and "anomaly" or "bag"
+        )
+    end
+    if P and P.enabled and P._Record and P.SliceLabel and P.CAT then
+        P:_Record(P:SliceLabel(P.CAT.SVC, "ItemsBagUpdate"), total)
+    end
     if total >= spike then
         stats.spikes = stats.spikes + 1
         EmitChat("|cffff8800[WN BagPerf SPIKE]|r " .. line:gsub("|cff9370DB%[WN BagPerf%]|r ", ""))
