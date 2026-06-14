@@ -67,7 +67,7 @@ local function PlanBrightHex()
 end
 
 local function PlanTryCountSuffix(count)
-    local triesLabel = (ns.L and ns.L["TRIES_LABEL"]) or "Tries"
+    local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
     local labelHex = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex()) or "|cffaaddff"
     return labelHex .. triesLabel .. ":|r " .. PlanBrightHex() .. tostring(count) .. "|r"
 end

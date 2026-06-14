@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - French
 ]]
 
@@ -808,6 +808,7 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "Notification"
 
 -- Settings - Theme & Appearance
 L["THEME_APPEARANCE"] = "Thème et apparence"
+L["SETTINGS_SECTION_THEME_APPEARANCE"] = "Apparence"
 L["SETTINGS_SECTION_THEME_COLORS"] = "Couleurs et accent"
 L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Polices et lisibilite"
 L["COLOR_PURPLE"] = "Purple Theme"
@@ -835,8 +836,12 @@ L["FONT_FAMILY"] = "Famille de police"
 L["FONT_FAMILY_TOOLTIP"] = "Choisir la police utilisée dans toute l'interface de l'addon"
 L["FONT_SCALE"] = "Échelle de police"
 L["FONT_SCALE_TOOLTIP"] = "Ajuster la taille de la police sur tous les éléments de l'interface."
-L["ANTI_ALIASING"] = "Anticrénelage"
-L["ANTI_ALIASING_DESC"] = "Style de rendu des bords de police (affecte la lisibilité)"
+L["ANTI_ALIASING"] = "Contour de police"
+L["ANTI_ALIASING_DESC"] = "Ajoute une bordure fine autour du texte pour une lisibilite accrue sur fonds clairs et texte colore."
+L["ANTI_ALIASING_HINT"] = "Le contour applique la bordure classique du texte WoW dans les deux themes. En mode clair, les couleurs sont ajustees pour que les couleurs de classe sombres et l'or ne deviennent pas des taches noires sur le contour."
+L["AA_NONE"] = "Desactive (lisse)"
+L["AA_OUTLINE"] = "Contour (defaut)"
+L["AA_THICKOUTLINE"] = "Contour epais"
 L["FONT_SCALE_WARNING"] = "Attention : Une échelle de police élevée peut causer un débordement de texte."
 L["RESOLUTION_NORMALIZATION"] = "Normalisation de résolution"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajuster les tailles de police selon la résolution et l'échelle de l'interface."
@@ -1030,6 +1035,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
+
+L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
+
+Ajoute:
+- Mode clair pour l'accessibilite : choisissez Clair ou Sombre dans Parametres > Theme et apparence > Clair / Sombre.
+
+Corrige:
+- Infobulles : erreurs de taint sur valeurs secretes corrigees et couleurs de lignes plus lisibles en mode clair.
+- Metiers : concentration, savoir et donnees de recettes sont bien enregistres a la fermeture de la fenetre de metier ou a la deconnexion.
+- Donnees sauvegardees : le nettoyage a la connexion ne supprime plus le stockage de banque de bataillon ni la progression des alts entre les sessions.
+- Personnages, Monnaies, JcE, Reputations et Statistiques s'affichent a nouveau correctement apres les refactors UI internes.
+
+Mis a jour:
+- Finitions UI pour surfaces en mode clair, surlignage des lignes, icones et barres de defilement.
+- Parcours collections : titres de sous-onglets fixes et rafraichissement plus rapide en revisitant montures, familiers, jouets et hauts faits.
+- Onglet Stockage des objets : arbres de bataillon volumineux construits par etapes pour reduire les pics au changement d'onglet.
+
+CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
 

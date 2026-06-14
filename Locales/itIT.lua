@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Italian
 ]]
 
@@ -808,6 +808,7 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "Notifica"
 
 -- Settings - Theme & Appearance
 L["THEME_APPEARANCE"] = "Tema e aspetto"
+L["SETTINGS_SECTION_THEME_APPEARANCE"] = "Aspetto"
 L["SETTINGS_SECTION_THEME_COLORS"] = "Colori e accento"
 L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Font e leggibilita"
 L["COLOR_PURPLE"] = "Tema viola"
@@ -835,8 +836,12 @@ L["FONT_FAMILY"] = "Famiglia carattere"
 L["FONT_FAMILY_TOOLTIP"] = "Scegli il carattere utilizzato in tutta l'interfaccia dell'addon"
 L["FONT_SCALE"] = "Scala carattere"
 L["FONT_SCALE_TOOLTIP"] = "Regola la dimensione del carattere su tutti gli elementi dell'interfaccia."
-L["ANTI_ALIASING"] = "Anti-aliasing"
-L["ANTI_ALIASING_DESC"] = "Stile di rendering dei bordi del carattere (influenza la leggibilità)"
+L["ANTI_ALIASING"] = "Contorno carattere"
+L["ANTI_ALIASING_DESC"] = "Aggiunge un bordo sottile attorno al testo per mantenere le etichette leggibili su sfondi chiari e testo colorato."
+L["ANTI_ALIASING_HINT"] = "Il contorno disegna il classico bordo del testo WoW in entrambi i temi. In modalita chiara, i colori dell'inchiostro vengono regolati automaticamente affinche colori di classe scuri e oro non diventino macchie nere sul contorno."
+L["AA_NONE"] = "Disattivato (morbido)"
+L["AA_OUTLINE"] = "Contorno (predefinito)"
+L["AA_THICKOUTLINE"] = "Contorno spesso"
 L["FONT_SCALE_WARNING"] = "Attenzione: una scala maggiore può causare overflow del testo in alcuni elementi."
 L["RESOLUTION_NORMALIZATION"] = "Normalizzazione risoluzione"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Regola le dimensioni del carattere in base a risoluzione e scala UI per dimensione fisica consistente su display diversi"
@@ -1030,6 +1035,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
+
+L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
+
+Aggiunto:
+- Modalita chiara per accessibilita: scegli Chiaro o Scuro in Impostazioni > Tema e aspetto > Chiaro / Scuro.
+
+Corretto:
+- Tooltip: corretti errori di taint su valori segreti e colori delle righe piu leggibili in modalita chiara.
+- Professioni: concentrazione, conoscenza e dati ricette si salvano in modo affidabile chiudendo la finestra professione o uscendo.
+- Dati salvati: la pulizia al login non elimina piu lo storage del banco warband ne i progressi degli alt tra le sessioni.
+- Personaggi, Valute, PvE, Reputazioni e Statistiche si disegnano di nuovo correttamente dopo i refactor UI interni.
+
+Aggiornato:
+- Rifinitura UI per superfici in modalita chiara, evidenziazione righe, icone e barre di scorrimento.
+- Sfoglia collezioni: titoli sotto-scheda fissi e aggiornamento liste piu rapido rivisitando cavalcature, mascotte, giocattoli e achievement.
+- Scheda Deposito oggetti: alberi warband grandi costruiti a fasi per ridurre i picchi al cambio scheda.
+
+CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
 

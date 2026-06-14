@@ -5,6 +5,25 @@ Mirror the same bullets in `Locales/*/CHANGELOG_V*` for in-game What's New.
 
 **Release ritual:** prepend a new `## vX.Y.Z (date)` section below; keep older sections for history.
 
+## v3.1.8 (2026-06-14)
+
+### Added
+
+- Light mode accessibility option: choose Light or Dark under Settings > Theme & Appearance > Light / Dark.
+
+### Fixed
+
+- Tooltips: corrected secret-value taint errors and improved readable line colors in Light mode.
+- Professions: concentration, knowledge, and recipe data save reliably when you close the profession window or log out.
+- Saved data: login cleanup no longer deletes Warband Bank storage or alt character progress between sessions.
+- Characters, Currency, PvE, Reputation, and Statistics tabs no longer fail to draw after internal UI refactors.
+
+### Updated
+
+- UI polish across tabs for Light mode surfaces, row highlights, icons, and scroll chrome.
+- Collections browse: pinned sub-tab headers and faster list refresh when revisiting mounts, pets, toys, and achievements.
+- Items Storage tab builds large Warband trees in stages to reduce tab-switch spikes.
+
 ## v3.1.7 (2026-06-06)
 
 ### Fixed

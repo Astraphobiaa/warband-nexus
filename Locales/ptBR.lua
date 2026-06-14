@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Portuguese (Brazil)
 ]]
 
@@ -808,6 +808,7 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "Notificacao"
 
 -- Settings - Theme & Appearance
 L["THEME_APPEARANCE"] = "Tema e aparência"
+L["SETTINGS_SECTION_THEME_APPEARANCE"] = "Aparencia"
 L["SETTINGS_SECTION_THEME_COLORS"] = "Cores e destaque"
 L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Fontes e legibilidade"
 L["COLOR_PURPLE"] = "Roxo"
@@ -835,8 +836,12 @@ L["FONT_FAMILY"] = "Família de fontes"
 L["FONT_FAMILY_TOOLTIP"] = "Escolha a fonte usada em toda a IU do complemento"
 L["FONT_SCALE"] = "Escala de fonte"
 L["FONT_SCALE_TOOLTIP"] = "Ajuste o tamanho da fonte em todos os elementos da IU"
-L["ANTI_ALIASING"] = "Anti-aliasing"
-L["ANTI_ALIASING_DESC"] = "Estilo de renderização da borda da fonte (afeta a legibilidade)"
+L["ANTI_ALIASING"] = "Contorno da fonte"
+L["ANTI_ALIASING_DESC"] = "Adiciona uma borda fina ao redor do texto para manter os rotulos legiveis em fundos claros e texto colorido."
+L["ANTI_ALIASING_HINT"] = "O contorno desenha a borda classica do texto do WoW em ambos os temas. No modo claro, as cores de tinta sao ajustadas automaticamente para que cores de classe escuras e ouro nao virem manchas pretas no contorno."
+L["AA_NONE"] = "Desligado (suave)"
+L["AA_OUTLINE"] = "Contorno (padrao)"
+L["AA_THICKOUTLINE"] = "Contorno grosso"
 L["FONT_SCALE_WARNING"] = "Aviso: uma escala de fonte mais alta pode causar excesso de texto em alguns elementos da interface do usuário."
 L["RESOLUTION_NORMALIZATION"] = "Escala automática para resolução"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajuste os tamanhos das fontes de acordo com a resolução do seu monitor (4K vs 1080p). WoW UI Scale ainda dimensiona o texto com o resto da interface; esta opção não cancela a escala da interface do usuário."
@@ -1030,6 +1035,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
+
+L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
+
+Adicionado:
+- Modo claro de acessibilidade: escolha Claro ou Escuro em Configuracoes > Tema e aparencia > Claro / Escuro.
+
+Corrigido:
+- Tooltips: corrigidos erros de taint em valores secretos e cores de linha mais legiveis no modo claro.
+- Profissoes: concentracao, conhecimento e dados de receitas salvam de forma confiavel ao fechar a janela de profissao ou ao sair.
+- Dados salvos: a limpeza no login nao apaga mais o armazenamento do banco da banda de guerra nem o progresso de alts entre sessoes.
+- Personagens, Moedas, PvE, Reputacao e Estatisticas voltam a desenhar corretamente apos refactors internos da UI.
+
+Atualizado:
+- Polimento da UI para superficies no modo claro, destaque de linhas, icones e barras de rolagem.
+- Navegar colecoes: titulos de sub-abas fixos e atualizacao de listas mais rapida ao revisitar montarias, mascotes, brinquedos e conquistas.
+- Aba Armazenamento de itens: arvores grandes da banda de guerra construidas em etapas para reduzir picos ao trocar de aba.
+
+CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
 

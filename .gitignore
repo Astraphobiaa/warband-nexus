@@ -45,10 +45,8 @@ Locales/.tmp/
 # Maintainer-only audit notes (local; not shipped with addon)
 PROJECT-CLEANUP-AUDIT.md
 
-# Archives / packager output
-*.zip
-*.rar
-*.7z
+# Archives / packager output (local only — never commit)
+# build/ is also excluded by the root /* deny rule below; kept explicit for pack scripts.
 build/
 WarbandNexus/
 

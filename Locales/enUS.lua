@@ -1034,6 +1034,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
+L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
+
+Added:
+- Light mode accessibility option: choose Light or Dark under Settings > Theme & Appearance > Light / Dark.
+
+Fixed:
+- Tooltips: corrected secret-value taint errors and improved readable line colors in Light mode.
+- Professions: concentration, knowledge, and recipe data save reliably when you close the profession window or log out.
+- Saved data: login cleanup no longer deletes Warband Bank storage or alt character progress between sessions.
+- Characters, Currency, PvE, Reputation, and Statistics tabs no longer fail to draw after internal UI refactors.
+
+Updated:
+- UI polish across tabs for Light mode surfaces, row highlights, icons, and scroll chrome.
+- Collections browse: pinned sub-tab headers and faster list refresh when revisiting mounts, pets, toys, and achievements.
+- Items Storage tab builds large Warband trees in stages to reduce tab-switch spikes.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
 
 Fixed:

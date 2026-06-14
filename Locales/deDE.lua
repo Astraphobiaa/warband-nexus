@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - German
 ]]
 
@@ -808,6 +808,7 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "Benachrichtigung"
 
 -- Settings - Theme & Appearance
 L["THEME_APPEARANCE"] = "Design & Erscheinungsbild"
+L["SETTINGS_SECTION_THEME_APPEARANCE"] = "Erscheinungsbild"
 L["SETTINGS_SECTION_THEME_COLORS"] = "Farben und Akzent"
 L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Schrift und Lesbarkeit"
 L["COLOR_PURPLE"] = "Lila-Design"
@@ -835,8 +836,12 @@ L["FONT_FAMILY"] = "Schriftfamilie"
 L["FONT_FAMILY_TOOLTIP"] = "Schriftart für die gesamte Addon-Oberfläche wählen"
 L["FONT_SCALE"] = "Schriftgröße"
 L["FONT_SCALE_TOOLTIP"] = "Schriftgröße über alle UI-Elemente anpassen."
-L["ANTI_ALIASING"] = "Kantenglättung"
-L["ANTI_ALIASING_DESC"] = "Schriftkanten-Rendering (beeinflusst Lesbarkeit)"
+L["ANTI_ALIASING"] = "Schriftumriss"
+L["ANTI_ALIASING_DESC"] = "Fuegt einen duennen Rand um Text hinzu, damit Beschriftungen auf hellen Hintergruenden und farbigem Text lesbar bleiben."
+L["ANTI_ALIASING_HINT"] = "Umriss zeichnet den klassischen WoW-Textkantenrand in beiden Themes. Im Hellmodus werden Tintenfarben automatisch angepasst, damit dunkle Klassenfarben und Gold nicht zu schwarzen Flecken am Umriss werden."
+L["AA_NONE"] = "Aus (weich)"
+L["AA_OUTLINE"] = "Umriss (Standard)"
+L["AA_THICKOUTLINE"] = "Dicker Umriss"
 L["FONT_SCALE_WARNING"] = "Warnung: Größere Schriftskalierung kann in manchen UI-Elementen zu Textüberlauf führen."
 L["RESOLUTION_NORMALIZATION"] = "Auflösungsnormalisierung"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Schriftgrößen basierend auf Bildschirmauflösung und UI-Skalierung anpassen für konsistente physische Größe auf verschiedenen Displays"
@@ -1030,6 +1035,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
+
+L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
+
+Hinzugefuegt:
+- Hellmodus fuer Barrierefreiheit: Waehle Hell oder Dunkel unter Einstellungen > Theme & Erscheinungsbild > Hell / Dunkel.
+
+Behoben:
+- Tooltips: Geheime-Wert-Taint-Fehler behoben und lesbare Zeilenfarben im Hellmodus verbessert.
+- Berufe: Konzentration, Wissen und Rezeptdaten werden zuverlaessig gespeichert, wenn du das Berufefenster schliesst oder dich ausloggst.
+- Gespeicherte Daten: Login-Bereinigung loescht Warband-Bank-Speicher oder Twink-Fortschritt zwischen Sitzungen nicht mehr.
+- Charaktere, Waehrung, PvE, Ruf und Statistik laden wieder korrekt nach internen UI-Refactors.
+
+Aktualisiert:
+- UI-Politur fuer Hellmodus-Oberflaechen, Zeilenhervorhebungen, Icons und Scroll-Chrome.
+- Sammlungen-Browse: fixierte Unter-Tab-Titel und schnelleres Listen-Refresh bei erneutem Oeffnen von Reittieren, Begleitern, Spielzeugen und Erfolgen.
+- Gegenstaende-Lager-Tab baut grosse Warband-Baeume schrittweise auf, um Tab-Wechsel-Spitzen zu reduzieren.
+
+CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
 

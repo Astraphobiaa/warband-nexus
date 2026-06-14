@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Spanish (Mexico)
 ]]
 
@@ -808,6 +808,7 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "Notificacion"
 
 -- Settings - Theme & Appearance
 L["THEME_APPEARANCE"] = "Tema & Aspecto"
+L["SETTINGS_SECTION_THEME_APPEARANCE"] = "Apariencia"
 L["SETTINGS_SECTION_THEME_COLORS"] = "Colores y acento"
 L["SETTINGS_SECTION_THEME_TYPOGRAPHY"] = "Fuentes y legibilidad"
 L["COLOR_PURPLE"] = "Purple Tema"
@@ -835,8 +836,12 @@ L["FONT_FAMILY"] = "Fuente Family"
 L["FONT_FAMILY_TOOLTIP"] = "Elegir the font used throughout the addon UI"
 L["FONT_SCALE"] = "Fuente Scale"
 L["FONT_SCALE_TOOLTIP"] = "Adjust font size across all UI elements."
-L["ANTI_ALIASING"] = "Antialiasing"
-L["ANTI_ALIASING_DESC"] = "Fuente edge rendering style (affects readability)"
+L["ANTI_ALIASING"] = "Contorno de fuente"
+L["ANTI_ALIASING_DESC"] = "Anade un borde fino alrededor del texto para que las etiquetas sigan siendo legibles en fondos claros y texto coloreado."
+L["ANTI_ALIASING_HINT"] = "El contorno dibuja el borde clasico del texto de WoW en ambos temas. En modo claro, los colores de tinta se ajustan automaticamente para que los colores de clase oscuros y el oro no se conviertan en manchas negras contra el contorno."
+L["AA_NONE"] = "Desactivado (suave)"
+L["AA_OUTLINE"] = "Contorno (predeterminado)"
+L["AA_THICKOUTLINE"] = "Contorno grueso"
 L["FONT_SCALE_WARNING"] = "Advertencia: Higher font scale may cause text overflow in some UI elements."
 L["RESOLUTION_NORMALIZATION"] = "Resolution Normalization"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Adjust font sizes based on screen resolution and UI scale for consistent physical size across different displays"
@@ -1030,6 +1035,24 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
+
+L["CHANGELOG_V318"] = [=[v3.1.8 (2026-06-14)
+
+Anadido:
+- Modo claro de accesibilidad: elige Claro u Oscuro en Ajustes > Tema y apariencia > Claro / Oscuro.
+
+Corregido:
+- Descripciones emergentes: corregidos errores de taint por valores secretos y colores de linea mas legibles en modo claro.
+- Profesiones: concentracion, conocimiento y datos de recetas se guardan de forma fiable al cerrar la ventana de profesion o al cerrar sesion.
+- Datos guardados: la limpieza al iniciar sesion ya no borra el almacen del banco de banda de guerra ni el progreso de alts entre sesiones.
+- Personajes, Monedas, JcE, Reputacion y Estadisticas vuelven a dibujarse correctamente tras refactors internos de la UI.
+
+Actualizado:
+- Pulido de la UI para superficies en modo claro, resaltado de filas, iconos y barras de desplazamiento.
+- Explorar colecciones: titulos de subpestanas fijos y actualizacion de listas mas rapida al revisitar monturas, mascotas, juguetes y logros.
+- Pestana Almacen de objetos: arboles grandes de banda de guerra construidos por etapas para reducir picos al cambiar de pestana.
+
+CurseForge: Warband Nexus]=]
 
 L["CHANGELOG_V317"] = [=[v3.1.7 (2026-06-06)
 
