@@ -876,7 +876,11 @@ local function TryApplyProfessionHeaderAtlas(iconTex, atlasName)
         for mi = 1, #modes do
             if pcall(iconTex.SetAtlas, iconTex, name, modes[mi]) and ProfessionHeaderIconIsDrawn(iconTex) then
                 iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
-                iconTex:SetVertexColor(1, 1, 1, 1)
+                if ns.UI_EnsureTextureFullColor then
+                    ns.UI_EnsureTextureFullColor(iconTex)
+                else
+                    iconTex:SetVertexColor(1, 1, 1, 1)
+                end
                 iconTex:Show()
                 return true
             end
@@ -891,7 +895,11 @@ local function ApplyProfessionHeaderFileIcon(iconTex, path)
     iconTex:SetTexture(nil)
     if not pcall(iconTex.SetTexture, iconTex, path) then return false end
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    iconTex:SetVertexColor(1, 1, 1, 1)
+    if ns.UI_EnsureTextureFullColor then
+        ns.UI_EnsureTextureFullColor(iconTex)
+    else
+        iconTex:SetVertexColor(1, 1, 1, 1)
+    end
     iconTex:Show()
     return ProfessionHeaderIconIsDrawn(iconTex)
 end
@@ -2342,7 +2350,13 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
         row.classIcon:SetSize(classSize, classSize)
         row.classIcon:ClearAllPoints()
         row.classIcon:SetPoint("CENTER", row, "LEFT", classCenterX, 0)
-        if char.classFile then row.classIcon:SetAtlas("classicon-" .. char.classFile); row.classIcon:Show()
+        if char.classFile then
+            if ns.UI_ApplyClassIconTexture then
+                ns.UI_ApplyClassIconTexture(row.classIcon, char.classFile)
+            else
+                row.classIcon:SetAtlas("classicon-" .. char.classFile)
+            end
+            row.classIcon:Show()
         else row.classIcon:Hide() end
     end
 
@@ -2680,6 +2694,11 @@ local function SetProfessionLineIconTexture(tex, prof, isEmptySlot)
         tex:SetTexture(PROF_ICON_FALLBACK)
     end
     tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if ns.UI_EnsureTextureFullColor then
+        ns.UI_EnsureTextureFullColor(tex)
+    else
+        tex:SetVertexColor(1, 1, 1, 1)
+    end
     tex:Show()
 end
 

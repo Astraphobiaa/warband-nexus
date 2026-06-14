@@ -648,6 +648,45 @@ local function GetClassIcon(classFile)
     return classIcons[classFile] or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
+--- Reset pooled/reused icon textures to full color (atlas + file icons).
+local function EnsureTextureFullColor(tex)
+    if not tex then return end
+    if tex.SetDesaturated then tex:SetDesaturated(false) end
+    if tex.SetAlpha then tex:SetAlpha(1) end
+    if tex.SetVertexColor then tex:SetVertexColor(1, 1, 1, 1) end
+end
+ns.UI_EnsureTextureFullColor = EnsureTextureFullColor
+
+--- Apply class icon (atlas with file fallback); safe for pooled textures.
+local function ApplyClassIconTexture(tex, classFile)
+    if not tex or not classFile or classFile == "" then return end
+    local cf = classFile
+    if type(cf) == "string" then
+        cf = string.upper(cf)
+    end
+    if tex.SetTexture then
+        tex:SetTexture(nil)
+    end
+    local atlasName = "classicon-" .. cf
+    local applied = false
+    if tex.SetAtlas then
+        applied = pcall(tex.SetAtlas, tex, atlasName)
+        if applied and tex.GetAtlas then
+            local a = tex:GetAtlas()
+            applied = a and a ~= ""
+        end
+    end
+    if not applied then
+        if tex.SetAtlas then
+            pcall(tex.SetAtlas, tex, nil)
+        end
+        tex:SetTexture(GetClassIcon(cf))
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    EnsureTextureFullColor(tex)
+end
+ns.UI_ApplyClassIconTexture = ApplyClassIconTexture
+
 --[[
     Create class icon on a frame
     @param parent frame - Parent frame
@@ -662,7 +701,7 @@ local function CreateClassIcon(parent, classFile, size, point, x, y)
     local icon = parent:CreateTexture(nil, "ARTWORK")
     icon:SetSize(size, size)
     icon:SetPoint(point, x, y)
-    icon:SetTexture(GetClassIcon(classFile))
+    ApplyClassIconTexture(icon, classFile)
     -- Anti-flicker optimization
     icon:SetSnapToPixelGrid(false)
     icon:SetTexelSnappingBias(0)

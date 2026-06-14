@@ -108,6 +108,8 @@ local currentRecipeID = nil
 local currentRecipeName = nil
 local currentReagentData = nil     -- Cached reagent data for current recipe
 local pendingRefresh = false
+local companionRefreshTimer = nil
+local COMPANION_REFRESH_DEBOUNCE = 0.12
 local bagUpdateRegistered = false
 local collapsedSlots = {}          -- { [slotIndex] = true } for collapsed reagent sections
 local craftersSectionCollapsed = false  -- Collapse state for "Crafters" section
@@ -752,9 +754,12 @@ end
     Refresh companion window content (debounced).
 ]]
 local function RefreshCompanion()
-    if pendingRefresh then return end
+    if companionRefreshTimer and companionRefreshTimer.Cancel then
+        companionRefreshTimer:Cancel()
+    end
     pendingRefresh = true
-    C_Timer.After(0, function()
+    companionRefreshTimer = C_Timer.After(COMPANION_REFRESH_DEBOUNCE, function()
+        companionRefreshTimer = nil
         pendingRefresh = false
         if not companionFrame or not companionFrame:IsShown() then return end
         if currentRecipeID then

@@ -2188,8 +2188,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     else
         contentSide = parent._wnPveContentSide or L.SIDE_MARGIN
         scrollTopY = opts.scrollTopY or (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
-        stackWidth = parent._wnPveStackWidth
-            or (metrics and metrics.bodyWidth)
+        local mfBody = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
+        metrics = mfBody and ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mfBody)
+        stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
+            or parent._wnPveStackWidth
+            or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mfBody, parent))
             or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
     end
     
@@ -2654,9 +2657,32 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
 
         local chr = _pveDrawPool.colHeaderRow
         if parent._pveBodyReady and parent._pveDrawSig == drawSig and chr and chr:GetParent() == parent then
-            local gridW = parent._pveMinScrollWidth or parent:GetWidth() or 600
+            local contentSideCached = parent._wnPveContentSide or L.SIDE_MARGIN
+            local mfCached = mf or (L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame)
+            local metricsCached = mfCached and ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mfCached)
+            local bodyW = (metricsCached and metricsCached.bodyWidth and metricsCached.bodyWidth > 0) and metricsCached.bodyWidth
+                or parent._wnPveStackWidth
+                or math.max(200, (parent:GetWidth() or 600) - contentSideCached * 2)
+            local minW = parent._pveMinScrollWidth or parent:GetWidth() or 600
+            local gridW = math.max(minW, bodyW + 2 * contentSideCached)
+            local stackW = math.max(PvEStackBodyWidth(gridW, contentSideCached), bodyW)
             parent:SetWidth(gridW)
+            parent._wnPveStackWidth = stackW
             if mf then mf._pveMinScrollWidth = gridW end
+            if chr.SetWidth then
+                chr:SetWidth(math.max(1, stackW))
+            end
+            local shells = _pveDrawPool.sectionShells
+            if shells then
+                for _, sh in pairs(shells) do
+                    if sh and sh.header and sh.header.SetWidth then
+                        sh.header:SetWidth(math.max(1, stackW))
+                    end
+                    if sh and sh.body and sh.body.SetWidth then
+                        sh.body:SetWidth(math.max(1, stackW))
+                    end
+                end
+            end
             local coreH = parent._pvePaintedCoreH or parent._pveLastBodyEstimate
                 or PveEstimateScrollBodyHeight(rosterCount, 4)
             if mf and ns.UI_SyncMainTabScrollChrome then
@@ -3059,9 +3085,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     local gridInlineStartX = (L.PvE_ComputeInlineColumnsStartPx and L.PvE_ComputeInlineColumnsStartPx(nameWidth)) or 400
     local pveColumnDividerXs = (L.BuildPvEInlineColumnDividerXs and L.BuildPvEInlineColumnDividerXs(gridInlineStartX, PVE_COLUMNS, GapBetweenColumns)) or {}
     local minScrollW = 2 * contentSide + gridInlineStartX + inlineTotal
-    local colHeaderInnerW = minScrollW
-    local pveGridW = colHeaderInnerW
-    local pveStackW = PvEStackBodyWidth(pveGridW, contentSide)
+    local viewportPaintW = (stackWidth and stackWidth > 0) and (stackWidth + 2 * contentSide) or minScrollW
+    local pveGridW = math.max(minScrollW, viewportPaintW)
+    local pveStackW = math.max(PvEStackBodyWidth(pveGridW, contentSide), stackWidth or 0)
     parent:SetWidth(pveGridW)
     parent._wnPveStackWidth = pveStackW
     if mf then
@@ -3096,13 +3122,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     if colHeaderRow.SetWidth then
         colHeaderRow:SetWidth(math.max(1, pveStackW))
     end
-    if ns.UI_ResolveSurfaceTierColor then
-        if not colHeaderRow.bg then
-            colHeaderRow.bg = colHeaderRow:CreateTexture(nil, "BACKGROUND")
-            colHeaderRow.bg:SetAllPoints()
-        end
-        local hdrBg = ns.UI_ResolveSurfaceTierColor("headerChrome")
-        colHeaderRow.bg:SetColorTexture(hdrBg[1], hdrBg[2], hdrBg[3], hdrBg[4] or 1)
+    if colHeaderRow.bg then
+        colHeaderRow.bg:Hide()
     end
 
     local function BuildCompactHeaderLabel(col)
@@ -3151,6 +3172,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             elseif col.icon then
                 iconTex:SetTexture(col.icon)
                 iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+            if ns.UI_EnsureTextureFullColor then
+                ns.UI_EnsureTextureFullColor(iconTex)
             end
 
             local compactLabel, compactHex = BuildCompactHeaderLabel(col)
@@ -4349,8 +4373,41 @@ end
 
 if ns.UI_LayoutCoordinator then
     local LC = ns.UI_LayoutCoordinator
-    local function PveTabViewportRelayout(_scrollChild, _contentWidth, mf)
+    local function PveTabViewportRelayout(scrollChild, contentWidth, mf)
         if not mf or mf.currentTab ~= "pve" then return false end
+        if scrollChild and contentWidth and contentWidth > 0 then
+            local contentSide = scrollChild._wnPveContentSide or SIDE_MARGIN
+            local bodyW = math.max(200, contentWidth - contentSide * 2)
+            local minW = scrollChild._pveMinScrollWidth or scrollChild:GetWidth() or 0
+            local gridW = math.max(minW, contentWidth)
+            local stackW = math.max(PvEStackBodyWidth(gridW, contentSide), bodyW)
+            scrollChild:SetWidth(gridW)
+            scrollChild._wnPveStackWidth = stackW
+            mf._pveMinScrollWidth = gridW
+            local chr = _pveDrawPool.colHeaderRow
+            if chr and chr.SetWidth then
+                chr:SetWidth(math.max(1, stackW))
+            end
+            local shells = _pveDrawPool.sectionShells
+            if shells then
+                for _, sh in pairs(shells) do
+                    if sh and sh.header and sh.header.SetWidth then
+                        sh.header:SetWidth(math.max(1, stackW))
+                    end
+                    if sh and sh.body and sh.body.SetWidth then
+                        sh.body:SetWidth(math.max(1, stackW))
+                    end
+                end
+            end
+            local rows = _pveDrawPool.charRows
+            if rows then
+                for _, row in pairs(rows) do
+                    if row and row.header and row.header.SetWidth then
+                        row.header:SetWidth(math.max(1, stackW))
+                    end
+                end
+            end
+        end
         if ns.UI_RefreshFixedHeaderChrome then
             ns.UI_RefreshFixedHeaderChrome(mf)
         end

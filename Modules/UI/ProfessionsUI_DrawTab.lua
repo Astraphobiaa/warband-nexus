@@ -295,13 +295,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local accentG = COLORS.accent[2] or 0.20
     local accentB = COLORS.accent[3] or 0.58
 
-    if not colHeaderBar._wnProfHdrBg then
-        colHeaderBar._wnProfHdrBg = colHeaderBar:CreateTexture(nil, "BACKGROUND")
-        colHeaderBar._wnProfHdrBg:SetAllPoints()
+    if colHeaderBar._wnProfHdrBg then
+        colHeaderBar._wnProfHdrBg:Hide()
     end
-    local hdrChrome = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("headerChrome"))
-        or COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bg
-    colHeaderBar._wnProfHdrBg:SetColorTexture(hdrChrome[1], hdrChrome[2], hdrChrome[3], hdrChrome[4] or 0.92)
+
     if not colHeaderBar._wnProfHdrRule then
         colHeaderBar._wnProfHdrRule = colHeaderBar:CreateTexture(nil, "ARTWORK")
         colHeaderBar._wnProfHdrRule:SetHeight(1)

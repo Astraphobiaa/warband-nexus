@@ -40,11 +40,11 @@ local function ResolveSurfaceTierColor(tier)
     return C.bg or { 0.065, 0.065, 0.082, 0.98 }
 end
 
---- Characters tab row: horizontal class tint (Gear model–style: class×0.5, no additive white).
---- @param gradientWidthPx number|nil  Width from row left edge (px). When set, gradient ends at identity text block; else ~17.5% row width fallback.
---- Call after ApplyRowBackground / ApplyOnlineCharacterHighlight so row.bg exists for blend target.
+--- Characters tab row: horizontal class tint behind row content (BACKGROUND — never over icons).
+--- @param gradientWidthPx number|nil Width of gradient strip from row left (px).
+--- @param gradientStartPx number|nil Optional left inset (default 0 = row edge).
 local ROW_CLASS_GRADIENT_WIDTH_FRAC = 0.175
-local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidthPx)
+local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidthPx, gradientStartPx)
     if not row then return end
     local cc = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
     if not cc then
@@ -66,30 +66,31 @@ local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidt
 
     local rw = row:GetWidth() or row._wnRowPaintWidth or 200
     local rh = row:GetHeight() or 46
+    local startX = (type(gradientStartPx) == "number" and gradientStartPx >= 0) and gradientStartPx or 0
     local w
     if type(gradientWidthPx) == "number" and gradientWidthPx > 1 then
-        w = math.max(8, math.min(rw, gradientWidthPx))
+        if startX > 0 then
+            w = math.max(8, math.min(rw - startX, gradientWidthPx))
+        else
+            w = math.max(8, math.min(rw, gradientWidthPx))
+        end
     else
-        w = math.max(6, rw * ROW_CLASS_GRADIENT_WIDTH_FRAC)
+        w = math.max(6, (rw - startX) * ROW_CLASS_GRADIENT_WIDTH_FRAC)
     end
 
     local tex = row._wnClassGradientTex
     if not tex then
-        -- ARTWORK stays visible on pooled Button rows during scroll (BORDER can drop out with highlight).
-        tex = row:CreateTexture(nil, "ARTWORK")
+        -- BACKGROUND sublevel 1: above row.bg (0), always under ARTWORK icons/text.
+        tex = row:CreateTexture(nil, "BACKGROUND", nil, 1)
         row._wnClassGradientTex = tex
+    elseif tex.SetDrawLayer then
+        tex:SetDrawLayer("BACKGROUND", 1)
     end
     tex:ClearAllPoints()
-    tex:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    tex:SetPoint("TOPLEFT", row, "TOPLEFT", startX, 0)
     tex:SetSize(w, rh)
     tex:SetTexture("Interface\\Buttons\\WHITE8x8")
     tex:SetVertexColor(1, 1, 1, 1)
-    if tex.SetDrawLayer then
-        tex:SetDrawLayer("ARTWORK", 0)
-    end
-    if row.GetFrameLevel and tex.SetFrameLevel then
-        tex:SetFrameLevel(row:GetFrameLevel() + 1)
-    end
 
     local ok = false
     if tex.SetGradient and CreateColor then

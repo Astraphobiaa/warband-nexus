@@ -286,18 +286,42 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end)
     
     -- Profession tab: deduplicated listeners (ops-022); chars tab still updates on concentration/knowledge/equipment
+    local professionStormTimer = nil
+    local professionStormNeedsChars = false
+    local PROFESSION_STORM_DEBOUNCE = 0.28
+
+    local function flushProfessionStormRefresh()
+        professionStormTimer = nil
+        if HiddenOrMissing() then return end
+        local needChars = professionStormNeedsChars
+        professionStormNeedsChars = false
+        if f.currentTab == "professions" then
+            SchedulePopulateContent(true)
+        elseif needChars and f.currentTab == "chars" then
+            SchedulePopulateContent()
+        end
+    end
+
+    local function scheduleProfessionStormRefresh(alsoChars)
+        if alsoChars then professionStormNeedsChars = true end
+        if professionStormTimer and professionStormTimer.Cancel then
+            professionStormTimer:Cancel()
+        end
+        professionStormTimer = C_Timer.After(PROFESSION_STORM_DEBOUNCE, flushProfessionStormRefresh)
+    end
+
     local function onProfessionsTabRefresh()
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
-            SchedulePopulateContent(true)
+            scheduleProfessionStormRefresh(false)
         end
     end
     local function onProfessionsOrCharsRefresh()
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
-            SchedulePopulateContent(true)
+            scheduleProfessionStormRefresh(false)
         elseif f.currentTab == "chars" then
-            SchedulePopulateContent()
+            scheduleProfessionStormRefresh(true)
         end
     end
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, onProfessionsOrCharsRefresh)

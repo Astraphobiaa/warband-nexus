@@ -164,7 +164,14 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
         classIcon:SetSize(PVE_CLASS_COL_W, PVE_CLASS_COL_W)
         classIcon:ClearAllPoints()
         classIcon:SetPoint("CENTER", charHeader, "LEFT", layout.classCenterX, 0)
-        classIcon:SetAtlas("classicon-" .. char.classFile)
+        if ns.UI_ApplyClassIconTexture then
+            ns.UI_ApplyClassIconTexture(classIcon, char.classFile)
+        elseif ns.UI_EnsureTextureFullColor then
+            classIcon:SetAtlas("classicon-" .. char.classFile)
+            ns.UI_EnsureTextureFullColor(classIcon)
+        else
+            classIcon:SetAtlas("classicon-" .. char.classFile)
+        end
         classIcon:Show()
     elseif classIcon then
         classIcon:Hide()
@@ -233,6 +240,11 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
             gradientEnd = rowW - 2
         end
         if ns.UI_ApplyCharacterRowClassGradientAccent then
+            local gradientEnd = layout.identityGradientEnd
+            local rowW = charHeader:GetWidth() or 800
+            if gradientEnd > rowW - 2 then
+                gradientEnd = rowW - 2
+            end
             ns.UI_ApplyCharacterRowClassGradientAccent(charHeader, char.classFile, gradientEnd)
         end
     end

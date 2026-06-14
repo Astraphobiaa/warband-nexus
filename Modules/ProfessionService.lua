@@ -183,6 +183,39 @@ local CONCENTRATION_HOOK_SKIP_SEC = 1.0
 local LIGHT_LIST_COLLECTOR_MIN_INTERVAL = 1.0
 local lastLightListCollectorAt = 0
 
+-- Coalesce profession-window open + early TRADE_SKILL_LIST_UPDATE bursts into one collector pass.
+local PROFESSION_WINDOW_SYNC_DEBOUNCE = 0.45
+local PROFESSION_WINDOW_OPEN_GRACE = 2.5
+local professionWindowSyncTimer = nil
+local professionWindowOpenAt = 0
+
+local function RunProfessionWindowSyncCollectors()
+    professionWindowSyncTimer = nil
+    if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+    RunAllProfessionCollectors()
+    if ProfessionWindowCollectorsNeedRetry() then
+        C_Timer.After(0.55, function()
+            if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+            if ProfessionWindowCollectorsNeedRetry() then
+                RunAllProfessionCollectors()
+            end
+        end)
+    end
+end
+
+local function ScheduleProfessionWindowSync()
+    professionWindowOpenAt = GetTime()
+    if professionWindowSyncTimer and professionWindowSyncTimer.Cancel then
+        professionWindowSyncTimer:Cancel()
+    end
+    professionWindowSyncTimer = C_Timer.After(PROFESSION_WINDOW_SYNC_DEBOUNCE, RunProfessionWindowSyncCollectors)
+end
+
+local function IsProfessionWindowOpenGrace()
+    return professionWindowOpenAt > 0
+        and (GetTime() - professionWindowOpenAt) < PROFESSION_WINDOW_OPEN_GRACE
+end
+
 local function NotifyCollectorUpdate(notifyKey, messageName, charKey)
     if not notifyKey or not messageName or not charKey then return end
     if collectorBurstDepth > 0 then
@@ -360,6 +393,7 @@ local function CollectConcentrationData()
     -- Later entries = from discoveredSkillLines; only set if not already set (avoid overwriting
     -- with wrong expansion or swapping between professions when opening different windows).
     local found = 0
+    local concentrationDirty = false
     for idx = 1, #skillLinesToTry do
         local entry = skillLinesToTry[idx]
         local slID = entry.id
@@ -385,9 +419,16 @@ local function CollectConcentrationData()
                 local isCurrentWindow = (idx == 1)
                 local alreadyHave = charData.concentration[slID] and charData.concentration[slID].currencyID
                 if isCurrentWindow or not alreadyHave then
+                    local newCurrent = currInfo.quantity or 0
+                    local newMax = currInfo.maxQuantity or 0
+                    local prev = charData.concentration[slID]
+                    if not prev or prev.current ~= newCurrent or prev.max ~= newMax
+                        or prev.currencyID ~= currencyID then
+                        concentrationDirty = true
+                    end
                     charData.concentration[slID] = {
-                        current        = currInfo.quantity or 0,
-                        max            = currInfo.maxQuantity or 0,
+                        current        = newCurrent,
+                        max            = newMax,
                         currencyID     = currencyID,
                         skillLineID    = slID,
                         professionName = professionName,
@@ -424,8 +465,9 @@ local function CollectConcentrationData()
 
     lastConcentrationCollectorAt = GetTime()
 
-    -- Fire event for consumers (tooltip, UI)
-    NotifyCollectorUpdate("concentration", E.CONCENTRATION_UPDATED, charKey)
+    if concentrationDirty then
+        NotifyCollectorUpdate("concentration", E.CONCENTRATION_UPDATED, charKey)
+    end
 end
 
 -- PROFESSION KNOWLEDGE DATA COLLECTION (C_ProfSpecs API)
@@ -759,7 +801,15 @@ local function CollectKnowledgeData()
     profName = profName or ("Profession_" .. skillLineID)
 
     local result = CollectKnowledgeForSkillLine(skillLineID, profName)
+    local knowledgeDirty = false
     if result then
+        local prev = charData.knowledgeData[skillLineID]
+        if not prev or prev.unspentPoints ~= (result.unspentPoints or 0)
+            or prev.spentPoints ~= (result.spentPoints or 0)
+            or prev.maxPoints ~= (result.maxPoints or 0)
+            or prev.hasUnspentPoints ~= (result.hasUnspentPoints or false) then
+            knowledgeDirty = true
+        end
         result.professionName = profName
         result.expansionName = expansionName
         charData.knowledgeData[skillLineID] = result
@@ -782,8 +832,9 @@ local function CollectKnowledgeData()
         end
     end
 
-    -- Fire event for consumers
-    NotifyCollectorUpdate("knowledge", E.KNOWLEDGE_UPDATED, charKey)
+    if knowledgeDirty then
+        NotifyCollectorUpdate("knowledge", E.KNOWLEDGE_UPDATED, charKey)
+    end
 end
 
 -- PROFESSION EQUIPMENT DATA COLLECTION
@@ -1698,6 +1749,13 @@ local function CollectRecipeSummaryData()
         end
     end
 
+    local prevRecipe = charData.recipes and charData.recipes[skillLineID]
+    local recipeDirty = not prevRecipe
+        or prevRecipe.totalCount ~= totalCount
+        or prevRecipe.knownCount ~= knownCount
+        or prevRecipe.firstCraftDoneCount ~= firstCraftDoneCount
+        or prevRecipe.skillUpCount ~= skillUpCount
+
     charData.recipes[skillLineID] = {
         skillLineID = skillLineID,
         professionName = professionName,
@@ -1750,7 +1808,9 @@ local function CollectRecipeSummaryData()
         end
     end
 
-    NotifyCollectorUpdate("recipe", E.RECIPE_DATA_UPDATED, charKey)
+    if recipeDirty then
+        NotifyCollectorUpdate("recipe", E.RECIPE_DATA_UPDATED, charKey)
+    end
 end
 
 -- COOLDOWN DATA COLLECTION
@@ -1986,27 +2046,31 @@ local function CollectCraftingOrdersData()
         if ok and count then guildCount = count end
     end
 
+    local prevOrders = charData.craftingOrders[skillLineID]
+    local ordersDirty = not prevOrders
+        or prevOrders.personalCount ~= personalCount
+        or prevOrders.guildCount ~= guildCount
+        or prevOrders.publicCount ~= publicCount
+
     charData.craftingOrders[skillLineID] = {
         personalCount = personalCount,
         guildCount    = guildCount,
         publicCount   = publicCount,
         lastUpdate    = time(),
     }
+
     local bucket = EnsureSkillLineBucket(charData, skillLineID, baseProfName, nil)
     if bucket then
-        bucket.orders = {
-            personalCount = personalCount,
-            guildCount = guildCount,
-            publicCount = publicCount,
-            lastUpdate = time(),
-        }
+        bucket.orders = charData.craftingOrders[skillLineID]
     end
 
     if IsDebugModeEnabled and IsDebugModeEnabled() then
         DebugPrint("[Orders] Collected for skillLineID=" .. tostring(skillLineID) .. " personal=" .. personalCount .. " guild=" .. guildCount)
     end
 
-    NotifyCollectorUpdate("orders", E.CRAFTING_ORDERS_UPDATED, charKey)
+    if ordersDirty then
+        NotifyCollectorUpdate("orders", E.CRAFTING_ORDERS_UPDATED, charKey)
+    end
 end
 
 -- EVENT HANDLERS
@@ -2104,19 +2168,8 @@ function WarbandNexus:OnTradeSkillShow()
     -- Install hooks (once, deferred until frame exists)
     InstallRecipeHook()
 
-    -- First pass: 0.6s delay so IsTradeSkillReady / GetProfessionChildSkillLineID are ready
-    C_Timer.After(0.6, function()
-        if not WarbandNexus then return end
-        RunAllProfessionCollectors()
-    end)
-
-    -- Retry pass: only when first pass left gaps (API not ready yet)
-    C_Timer.After(1.2, function()
-        if not WarbandNexus then return end
-        if ProfessionWindowCollectorsNeedRetry() then
-            RunAllProfessionCollectors()
-        end
-    end)
+    -- Trailing debounce: one collector pass after API settles (replaces fixed 0.6s + 1.2s double run).
+    ScheduleProfessionWindowSync()
 
     -- Notify companion window
     if self.SendMessage then
@@ -2176,6 +2229,9 @@ function WarbandNexus:OnTradeSkillListUpdate()
         if expansionSwitched then
             -- Expansion tab switch: refresh every bucket keyed by skillLineID.
             RunAllProfessionCollectors()
+        elseif IsProfessionWindowOpenGrace() then
+            -- Initial profession open: fold list-update ticks into the window sync debouncer.
+            ScheduleProfessionWindowSync()
         else
             -- Post-craft bursts: avoid full recipe/cooldown/order rescans every list tick.
             RunLightTradeSkillListCollectors()
