@@ -202,11 +202,11 @@ local SURFACE_VARIANTS = {
         tabHover = {0.925, 0.920, 0.912, 0.98},
         gold = {0.95, 0.78, 0.32, 1},
         green = {0.55, 0.88, 0.45, 1},
-        -- Stone cards: light ink + black OUTLINE (shell areas use the same roles).
-        textBright = {1, 1, 1, 1},
-        textNormal = {0.94, 0.94, 0.96, 1},
-        textMuted = {0.76, 0.76, 0.78, 1},
-        textDim = {0.62, 0.62, 0.64, 1},
+        -- Charcoal ink ladder (THEME-TOKENS.md); no outline on role ink — colored accents only.
+        textBright = {0.12, 0.12, 0.14, 1},
+        textNormal = {0.24, 0.24, 0.28, 1},
+        textMuted = {0.38, 0.38, 0.42, 1},
+        textDim = {0.50, 0.50, 0.54, 1},
     },
 }
 
@@ -228,30 +228,53 @@ local function IsLightModeEnabled()
 end
 ns.UI_IsLightMode = IsLightModeEnabled
 
---- True when light theme uses WoW OUTLINE / THICKOUTLINE font flags.
-local function IsLightOutlineActive()
+--- Achromatic theme ink (Bright–Dim roles): no WoW OUTLINE in light mode.
+---@param r number|nil
+---@param g number|nil
+---@param b number|nil
+---@return boolean
+local function IsInkNearBlack(r, g, b)
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+        return false
+    end
+    local lum = TextLuminance(r, g, b)
+    local maxC = math.max(r, g, b)
+    local minC = math.min(r, g, b)
+    local sat = (maxC > 0) and ((maxC - minC) / maxC) or 0
+    if sat >= 0.25 then
+        return false
+    end
+    return lum <= 0.52
+end
+ns.UI_IsInkNearBlack = IsInkNearBlack
+
+--- True when light theme applies WoW OUTLINE to a specific ink (colored / saturated only).
+---@param r number|nil
+---@param g number|nil
+---@param b number|nil
+---@return boolean
+local function IsLightOutlineActiveForInk(r, g, b)
     if not IsLightModeEnabled() then
         return false
     end
-    if not ns.FontManager or not ns.FontManager.GetAAFlags then
-        return true
-    end
-    local flags = ns.FontManager:GetAAFlags("body") or "OUTLINE"
-    return flags ~= ""
+    return not IsInkNearBlack(r, g, b)
 end
-ns.UI_IsLightOutlineActive = IsLightOutlineActive
+ns.UI_IsLightOutlineActive = IsLightOutlineActiveForInk
 
---- Lift only very dark ink on light stone + OUTLINE (never darken white / pale class fills).
+--- Lift only very dark saturated ink that will carry OUTLINE on light stone.
 ---@param r number
 ---@param g number
 ---@param b number
 ---@return number nr, number ng, number nb
 local function AdjustRGBForLightOutline(r, g, b)
-    if not IsLightOutlineActive() then
+    if not IsLightModeEnabled() then
         return r, g, b
     end
     if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
         return r or 1, g or 1, b or 1
+    end
+    if IsInkNearBlack(r, g, b) then
+        return r, g, b
     end
 
     local minLum = 0.36
@@ -764,13 +787,131 @@ local TEXT_COLOR_REGISTRY = ns.TEXT_COLOR_REGISTRY
 function ns.UI_SetTextColorRole(fs, role, alpha)
     if not fs or not fs.SetTextColor then return end
     local r, g, b, a = ResolveTextRoleRGBA(role)
-    fs:SetTextColor(r, g, b, alpha or a)
     fs._wnTextRole = role
     fs._wnTextRoleAlpha = alpha
+    fs._wnColoredInk = false
     if not fs._wnTextRoleRegistered then
         fs._wnTextRoleRegistered = true
         table.insert(TEXT_COLOR_REGISTRY, fs)
     end
+    if fs._wnBypassInkHook then
+        fs:SetTextColor(r, g, b, alpha or a)
+    else
+        fs._wnBypassInkHook = true
+        fs:SetTextColor(r, g, b, alpha or a)
+        fs._wnBypassInkHook = false
+    end
+    ns.UI_SyncFontStringInkOutline(fs)
+end
+
+--- Set arbitrary ink; light mode adds OUTLINE only when ink is not near-black.
+---@param fs FontString|EditBox
+---@param r number
+---@param g number
+---@param b number
+---@param alpha number|nil
+function ns.UI_SetInkColor(fs, r, g, b, alpha)
+    if not fs or not fs.SetTextColor then return end
+    fs._wnTextRole = nil
+    fs._wnTextRoleAlpha = nil
+    fs._wnColoredInk = not IsInkNearBlack(r, g, b)
+    fs._wnBypassInkHook = true
+    fs:SetTextColor(r, g, b, alpha or 1)
+    fs._wnBypassInkHook = false
+    ns.UI_SyncFontStringInkOutline(fs)
+end
+
+--- True when `|cff…` / `|cAARRGGBB` segments include non–near-black ink.
+---@param text string|nil
+---@return boolean
+function ns.UI_TextHasColoredMarkup(text)
+    if not text or text == "" then return false end
+    if issecretvalue and issecretvalue(text) then return false end
+    local pos = 1
+    while true do
+        local s, e, hex6 = text:find("|c[fF][fF](%x%x%x%x%x%x)", pos)
+        if not s then
+            s, e, hex6 = text:find("|c(%x%x%x%x%x%x%x%x)", pos)
+            if s and hex6 then
+                local lead = hex6:sub(1, 2):lower()
+                if lead == "ff" then
+                    hex6 = hex6:sub(3, 8)
+                else
+                    hex6 = hex6:sub(3, 8)
+                end
+            else
+                break
+            end
+        end
+        local r = tonumber(hex6:sub(1, 2), 16)
+        local g = tonumber(hex6:sub(3, 4), 16)
+        local b = tonumber(hex6:sub(5, 6), 16)
+        if r and g and b then
+            if not IsInkNearBlack(r / 255, g / 255, b / 255) then
+                return true
+            end
+        end
+        pos = e + 1
+    end
+    return false
+end
+
+--- Whether a FontString needs OUTLINE in light mode (not achromatic near-black).
+---@param fs FontString|EditBox|nil
+---@param text string|nil
+---@return boolean
+local function FontStringRequiresColoredOutline(fs, text)
+    if not fs then return false end
+    if not IsLightModeEnabled() then return false end
+    if fs._colorType == "accent" then return true end
+    if text == nil and fs.GetText then
+        local ok, t = pcall(fs.GetText, fs)
+        if ok then text = t end
+    end
+    if text and text ~= "" and not (issecretvalue and issecretvalue(text)) then
+        if ns.UI_TextHasColoredMarkup(text) then
+            return true
+        end
+    end
+    if fs.GetTextColor then
+        local ok, r, g, b = pcall(fs.GetTextColor, fs)
+        if ok and r and g and b and not IsInkNearBlack(r, g, b) then
+            return true
+        end
+    end
+    return false
+end
+ns.UI_FontStringRequiresColoredOutline = FontStringRequiresColoredOutline
+
+--- Recompute `_wnColoredInk` and refresh SetFont flags (light mode outline gate).
+---@param fs FontString|EditBox|nil
+---@param text string|nil
+function ns.UI_SyncFontStringInkOutline(fs, text)
+    if not fs or fs._wnInkSyncLock then return end
+    if not IsLightModeEnabled() then
+        return
+    end
+    fs._wnInkSyncLock = true
+    fs._wnColoredInk = FontStringRequiresColoredOutline(fs, text) == true
+    if FontManager and FontManager.RefreshInkAwareFont then
+        FontManager:RefreshInkAwareFont(fs)
+    end
+    fs._wnInkSyncLock = nil
+end
+
+--- After SetText / SetTextColor: apply light-mode outline when ink or markup is colored.
+---@param fs FontString|EditBox|nil
+---@param text string|nil
+function ns.UI_ApplyFontStringPresentation(fs, text)
+    ns.UI_SyncFontStringInkOutline(fs, text)
+end
+
+--- Preferred SetText entry — always runs ink/outline sync in light mode.
+---@param fs FontString|nil
+---@param text string|nil
+function ns.UI_SetFontStringText(fs, text)
+    if not fs or not fs.SetText then return end
+    fs:SetText(text or "")
 end
 
 local function RefreshRoleTextColors()
@@ -785,7 +926,7 @@ local function RefreshRoleTextColors()
 end
 ns.UI_RefreshRoleTextColors = RefreshRoleTextColors
 
---- Main nav / settings category label font — outline in light and dark.
+--- Main nav / settings category label font — ink-aware outline (light: none on role ink).
 ---@param fs FontString
 ---@param isActive boolean
 function ns.UI_SetNavLabelFontStyle(fs, isActive)
@@ -914,6 +1055,35 @@ local function GetTextRoleRGB(role)
     return ResolveTextRoleRGBA(role)
 end
 ns.UI_GetTextRoleRGB = GetTextRoleRGB
+
+--- GameTooltip line — Blizzard tooltip keeps dark chrome; white/grey ink (not theme role ladder).
+---@param tooltip GameTooltip
+---@param text string
+---@param role string|nil
+---@param wrap boolean|nil
+function ns.UI_GameTooltipAddRoleLine(tooltip, text, role, wrap)
+    if not tooltip or not tooltip.AddLine then return end
+    role = role or "Bright"
+    local r, g, b = 1, 1, 1
+    if role == "Normal" or role == "Muted" or role == "Dim" then
+        r, g, b = 0.85, 0.85, 0.85
+    end
+    tooltip:AddLine(text, r, g, b, wrap == true)
+end
+
+--- GameTooltip title — dark tooltip shell (not light-mode panel ink).
+---@param tooltip GameTooltip
+---@param text string
+---@param role string|nil
+function ns.UI_GameTooltipSetRoleText(tooltip, text, role)
+    if not tooltip or not tooltip.SetText then return end
+    role = role or "Bright"
+    local r, g, b = 1, 1, 1
+    if role == "Normal" or role == "Muted" or role == "Dim" then
+        r, g, b = 0.85, 0.85, 0.85
+    end
+    tooltip:SetText(text, r, g, b)
+end
 
 --- Tooltip card shell — matches elevated tab cards (`bgCard` + accent border via ApplyVisuals).
 ---@return table rgba bg, table rgba border
@@ -2269,6 +2439,9 @@ local function RefreshColors()
     UpdateColorsFromTheme()
     SyncSemanticColorAliases()
     SyncPlanUIColors()
+    if ns.VaultButton and ns.VaultButton.SyncEasyAccessThemeInk then
+        ns.VaultButton.SyncEasyAccessThemeInk()
+    end
     -- Ensure namespace reference is current
     ns.UI_COLORS = COLORS
 
@@ -5275,7 +5448,14 @@ local function CreateSection(parent, title, width)
         local titleText = FontManager:CreateFontString(section, UIFontRole("settingsSectionTitle"), "OVERLAY", "accent")
         titleText:SetPoint("TOPLEFT", px, titleTop)
         titleText:SetText(title)
-        titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        if ns.UI_GetAccentTextRGBA then
+            local ar, ag, ab, aa = ns.UI_GetAccentTextRGBA()
+            if ns.UI_SetInkColor then
+                ns.UI_SetInkColor(titleText, ar, ag, ab, aa)
+            else
+                titleText:SetTextColor(ar, ag, ab, aa)
+            end
+        end
         section.titleText = titleText
     end
     
@@ -5550,7 +5730,11 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
     badge:EnableMouse(true)
     badge:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", 1, 1, 1)
+        if ns.UI_GameTooltipAddRoleLine then
+            ns.UI_GameTooltipAddRoleLine(GameTooltip, (ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", "Bright")
+        else
+            GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", 1, 1, 1)
+        end
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_USING"]) or "This tab is using:", 0.7, 0.7, 0.7)
         GameTooltip:AddLine(dataSource, 1, 1, 0)

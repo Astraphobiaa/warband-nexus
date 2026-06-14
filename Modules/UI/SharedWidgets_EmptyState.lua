@@ -62,6 +62,9 @@ local function DrawSectionEmptyState(parent, message, yOffset, height, width)
     end
     
     local emptyText = parent:CreateFontString(nil, "OVERLAY")
+    if ns.UI_HookFontStringInk then
+        ns.UI_HookFontStringInk(emptyText)
+    end
     FontManager:ApplyFont(emptyText, "body")
     emptyText:SetPoint("TOP", parent, "TOP", 0, -yOffset)
     emptyText:SetText(ResolveEmptyStateHex("Dim", "|cff999999") .. message .. "|r")

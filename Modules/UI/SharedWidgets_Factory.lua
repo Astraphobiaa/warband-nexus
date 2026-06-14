@@ -386,8 +386,13 @@ function ns.UI.Factory:CreateAchievementTrackPinButton(parent, achievementID, op
         end
         GameTooltip:SetOwner(b, "ANCHOR_TOP")
         GameTooltip:ClearLines()
-        GameTooltip:SetText(title, 1, 1, 1)
-        GameTooltip:AddLine(body, 1, 1, 1, true)
+        if ns.UI_GameTooltipSetRoleText then
+            ns.UI_GameTooltipSetRoleText(GameTooltip, title, "Bright")
+            ns.UI_GameTooltipAddRoleLine(GameTooltip, body, "Normal", true)
+        else
+            GameTooltip:SetText(title, 1, 1, 1)
+            GameTooltip:AddLine(body, 1, 1, 1, true)
+        end
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2328,6 +2333,9 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
 
         local title = FontManager and FontManager:CreateFontString(f, "small", "OVERLAY") or f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        if title and not title._wnInkHooked and ns.UI_HookFontStringInk then
+            ns.UI_HookFontStringInk(title)
+        end
         title:SetPoint("TOPLEFT", 10, -8)
         title:SetText(
             ns.UI_GetSemanticGoldHex() .. ((ns.L and ns.L["WOWHEAD_LABEL"]) or "Wowhead") .. "|r  "
@@ -2341,6 +2349,9 @@ function ns.UI.Factory:ShowWowheadCopyURL(entityType, id, anchorFrame)
         local closeInset = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL and ns.UI_LAYOUT.MAIN_SHELL.FRAME_CONTENT_INSET) or 2
         closeBtn:SetPoint("TOPRIGHT", -closeInset, -closeInset)
         local closeLbl = FontManager and FontManager:CreateFontString(closeBtn, "body", "OVERLAY") or closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        if closeLbl and not closeLbl._wnInkHooked and ns.UI_HookFontStringInk then
+            ns.UI_HookFontStringInk(closeLbl)
+        end
         closeLbl:SetPoint("CENTER")
         closeLbl:SetText("x")
         ns.UI_SetTextColorRole(closeLbl, "Bright")

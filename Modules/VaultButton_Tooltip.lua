@@ -623,7 +623,6 @@ BuildEasyAccessTooltipData = function(charKey, entry)
         titleAffixPair = {
             left = FormatEasyAccessCharacterTitle(charRow, tooltipEntry),
             right = EAFormatTitleIlvl(ilvl),
-            leftColor = { 1, 1, 1 },
             rightColor = { 1, 0.82, 0 },
         },
         lines = lines,
@@ -634,6 +633,9 @@ end
 -- Themed tooltip helpers (delegate to ns.UI_ShowTooltip / ns.UI_HideTooltip,
 -- with GameTooltip fallback before TooltipService is initialised).
 WNTooltipShow = function(anchor, data)
+    if M.SyncEasyAccessThemeInk then
+        M.SyncEasyAccessThemeInk()
+    end
     if ns.UI_ShowTooltip and WarbandNexus and WarbandNexus.Tooltip then
         ns.UI_ShowTooltip(anchor, data)
     else
@@ -645,8 +647,18 @@ WNTooltipShow = function(anchor, data)
         end
         if data.titleAffixPair then
             local ap = data.titleAffixPair
-            local lc = ap.leftColor or { 1, 1, 1 }
-            local rc = ap.rightColor or { 1, 0.82, 0 }
+            local lc = ap.leftColor
+            if not lc and ns.UI_GetTextRoleRGB then
+                local lr, lg, lb = ns.UI_GetTextRoleRGB("Bright")
+                lc = { lr, lg, lb }
+            end
+            lc = lc or { 1, 1, 1 }
+            local rc = ap.rightColor
+            if not rc and ns.UI_GetSemanticGoldColor then
+                local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+                rc = { gr, gg, gb }
+            end
+            rc = rc or { 1, 0.82, 0 }
             GameTooltip:AddDoubleLine(ap.left or "", ap.right or "", lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
         end
         if data.description then

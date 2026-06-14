@@ -433,12 +433,15 @@ end
 --[[
     OUTLINE POLICY (single source — callers should not hardcode "OUTLINE"):
 
-    Light + dark:
-      - All standard FontStrings / EditBoxes: user `antiAliasing` (default OUTLINE) via SetFont flags.
-      - Nav labels, bar overlays, accent-filled titles: same policy (no light-mode shadow substitute).
+    Dark:
+      - User `antiAliasing` (default OUTLINE) via SetFont flags on all managed text.
+
+    Light:
+      - Near-black theme role ink (Bright–Dim): **no** WoW OUTLINE.
+      - Colored / saturated ink (accent, gold, quality, class): OUTLINE (or user AA pref).
 
     @param category string|nil header|title|subtitle|body|small|metricBarOverlay
-    @param opts table|nil { accentFill, barOverlay, navLabel, navActive }
+    @param opts table|nil { accentFill, coloredInk, forceOutline, navLabel, navActive }
     @return string - Font flags ("", "OUTLINE", or "THICKOUTLINE")
 ]]
 function FontManager:GetAAFlags(category, opts)
@@ -450,9 +453,19 @@ function FontManager:GetAAFlags(category, opts)
         return "OUTLINE"
     end
     local flags = AA_OPTIONS[db.antiAliasing] or "OUTLINE"
-    -- Thick outline reads as muddy black blobs on light cream panels.
-    if ns.UI_IsLightMode and ns.UI_IsLightMode() and flags == "THICKOUTLINE" then
-        flags = "OUTLINE"
+    opts = type(opts) == "table" and opts or {}
+
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        if flags == "THICKOUTLINE" then
+            flags = "OUTLINE"
+        end
+        if opts.coloredInk or opts.accentFill or opts.forceOutline then
+            if flags == "" then
+                flags = "OUTLINE"
+            end
+            return flags
+        end
+        return ""
     end
     return flags
 end
@@ -548,6 +561,7 @@ function FontManager:SafeSetFont(fontString, sizeCategory, opts)
     if fontString._colorType == "accent" then
         flagOpts.accentFill = true
     end
+    ResolveInkOutlineOpts(fontString, flagOpts)
     local flags = FontManager:GetAAFlags(sizeCategory or "body", flagOpts)
     
     if type(fontPath) ~= "string" or fontPath == "" then
@@ -603,6 +617,44 @@ local TEXT_ROLE_BY_CATEGORY = {
     small = "Muted",
 }
 
+--- Hook SetText / SetTextColor so light-mode outline follows any colored ink (global UI policy).
+---@param fs FontString|nil
+function FontManager:HookFontStringInk(fs)
+    if not fs or fs._wnInkHooked or not fs.SetText or not fs.SetTextColor then
+        return
+    end
+    fs._wnInkHooked = true
+    local origSetText = fs.SetText
+    local origSetTextColor = fs.SetTextColor
+
+    fs.SetText = function(self, text, ...)
+        if self._wnBypassInkHook then
+            return origSetText(self, text, ...)
+        end
+        local ret = origSetText(self, text, ...)
+        if ns.UI_SyncFontStringInkOutline then
+            ns.UI_SyncFontStringInkOutline(self, text)
+        end
+        return ret
+    end
+
+    fs.SetTextColor = function(self, r, g, b, a, ...)
+        if self._wnBypassInkHook then
+            return origSetTextColor(self, r, g, b, a, ...)
+        end
+        local ret = origSetTextColor(self, r, g, b, a, ...)
+        if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            if not self._wnTextRole then
+                self._wnColoredInk = ns.UI_IsInkNearBlack and not ns.UI_IsInkNearBlack(r, g, b)
+            end
+        end
+        if ns.UI_SyncFontStringInkOutline then
+            ns.UI_SyncFontStringInkOutline(self)
+        end
+        return ret
+    end
+end
+
 function FontManager:CreateFontString(parent, category, layer, colorType)
     if not parent then
         return nil
@@ -614,6 +666,7 @@ function FontManager:CreateFontString(parent, category, layer, colorType)
     
     local fs = parent:CreateFontString(nil, layer)
     if fs then
+        self:HookFontStringInk(fs)
         fs._fontCategory = category
         fs._colorType = colorType
         local applyOpts = nil
@@ -626,11 +679,17 @@ function FontManager:CreateFontString(parent, category, layer, colorType)
         if colorType == "accent" then
             if ns.UI_GetAccentTextRGBA then
                 local ar, ag, ab, aa = ns.UI_GetAccentTextRGBA()
+                fs._wnBypassInkHook = true
                 fs:SetTextColor(ar, ag, ab, aa)
+                fs._wnBypassInkHook = false
             elseif ns.UI_COLORS and ns.UI_COLORS.accent then
                 local ac = ns.UI_COLORS.accent
+                fs._wnBypassInkHook = true
                 fs:SetTextColor(ac[1], ac[2], ac[3], ac[4] or 1)
+                fs._wnBypassInkHook = false
             end
+            fs._wnColoredInk = true
+            self:RefreshInkAwareFont(fs)
         elseif colorType == "normal" and ns.UI_SetTextColorRole then
             local role = TEXT_ROLE_BY_CATEGORY[category] or "Normal"
             ns.UI_SetTextColorRole(fs, role)
@@ -648,11 +707,68 @@ end
 ]]
 ---Bar overlay labels: same face/size as `small`, with standard outline.
 ---@param fontString FontString
+--- Resolve light-mode outline opts from FontString ink metadata.
+---@param fontString FontString|EditBox
+---@param flagOpts table
+---@return table
+local function ResolveInkOutlineOpts(fontString, flagOpts)
+    if fontString._colorType == "accent" then
+        flagOpts.accentFill = true
+        flagOpts.coloredInk = true
+        return flagOpts
+    end
+    if fontString._wnColoredInk then
+        flagOpts.coloredInk = true
+        return flagOpts
+    end
+    if fontString._wnTextRole and ns.UI_ResolveTextRoleRGBA then
+        local r, g, b = ns.UI_ResolveTextRoleRGBA(fontString._wnTextRole)
+        if ns.UI_IsInkNearBlack and not ns.UI_IsInkNearBlack(r, g, b) then
+            flagOpts.coloredInk = true
+        end
+    end
+    if fontString.GetTextColor then
+        local ok, r, g, b = pcall(fontString.GetTextColor, fontString)
+        if ok and r and ns.UI_IsInkNearBlack and not ns.UI_IsInkNearBlack(r, g, b) then
+            flagOpts.coloredInk = true
+        end
+    end
+    if fontString.GetText and ns.UI_TextHasColoredMarkup then
+        local ok, text = pcall(fontString.GetText, fontString)
+        if ok and text and ns.UI_TextHasColoredMarkup(text) then
+            flagOpts.coloredInk = true
+        end
+    end
+    return flagOpts
+end
+
+--- Re-apply SetFont flags after ink/color change (light mode outline gating).
+---@param fs FontString|EditBox
+function FontManager:RefreshInkAwareFont(fs)
+    if not fs or not fs.SetFont then return end
+    if fs._wnNavLabel then
+        local parent = fs.GetParent and fs:GetParent()
+        local isActive = parent and parent.active == true
+        if ns.UI_SetNavLabelFontStyle then
+            ns.UI_SetNavLabelFontStyle(fs, isActive)
+        end
+        return
+    end
+    if fs._fontOverlay then
+        self:ApplyBarOverlayFont(fs)
+        return
+    end
+    local category = fs._fontCategory or "body"
+    self:ApplyFont(fs, category)
+end
+
 function FontManager:ApplyBarOverlayFont(fontString)
     if not fontString or not fontString.SetFont then return end
     local fontFace = self:GetFontFace()
     local fontSize = self:GetFontSize("small")
-    local flags = self:GetAAFlags("small", { barOverlay = true })
+    local flagOpts = { barOverlay = true }
+    ResolveInkOutlineOpts(fontString, flagOpts)
+    local flags = self:GetAAFlags("small", flagOpts)
     if type(fontFace) ~= "string" or fontFace == "" then
         fontFace = BUILTIN_FALLBACK_FONT_PATH
     end
@@ -686,6 +802,7 @@ function FontManager:CreateBarOverlayFontString(parent, layer)
     layer = layer or "OVERLAY"
     local fs = parent:CreateFontString(nil, layer)
     if not fs then return nil end
+    self:HookFontStringInk(fs)
     fs._fontCategory = "metricBarOverlay"
     fs._fontOverlay = true
     self:ApplyBarOverlayFont(fs)
@@ -701,7 +818,9 @@ function FontManager:ApplyFontToEditBox(editBox, category)
     editBox._fontCategory = category
     local fontFace = self:GetFontFace()
     local fontSize = self:GetFontSize(category)
-    local flags = self:GetAAFlags(category)
+    local flagOpts = {}
+    ResolveInkOutlineOpts(editBox, flagOpts)
+    local flags = self:GetAAFlags(category, flagOpts)
     if type(fontFace) ~= "string" or fontFace == "" then
         fontFace = BUILTIN_FALLBACK_FONT_PATH
     end
@@ -766,6 +885,7 @@ function FontManager:ApplyFont(fontString, category, opts)
     if fontString._colorType == "accent" then
         flagOpts.accentFill = true
     end
+    ResolveInkOutlineOpts(fontString, flagOpts)
     
     local fontFace = self:GetFontFace()
     local fontSize = self:GetFontSize(category)
@@ -815,7 +935,9 @@ function FontManager:ApplyFont(fontString, category, opts)
 
     -- Force re-render by re-setting existing text (never pass secret values back into SetText)
     if existingText and not (issecretvalue and issecretvalue(existingText)) and existingText ~= "" then
+        fontString._wnBypassInkHook = true
         fontString:SetText(existingText)
+        fontString._wnBypassInkHook = false
     end
 end
 
@@ -848,6 +970,9 @@ local function ApplyToAllRegistered()
             table.remove(FONT_REGISTRY, i)
             removed = removed + 1
         else
+            if not fs._wnInkHooked and FontManager.HookFontStringInk then
+                FontManager:HookFontStringInk(fs)
+            end
             if fs._fontOverlay then
                 FontManager:ApplyBarOverlayFont(fs)
             else
@@ -929,6 +1054,8 @@ function FontManager:RefreshAccentColors()
                 a = 1
             end
             fs:SetTextColor(r, g, b, a)
+            fs._wnColoredInk = true
+            self:RefreshInkAwareFont(fs)
             updated = updated + 1
         end
     end
@@ -969,6 +1096,7 @@ end
 
 -- Export to namespace
 ns.FontManager = FontManager
+ns.UI_HookFontStringInk = function(fs) FontManager:HookFontStringInk(fs) end
 ns.GetFilteredFontOptions = GetFilteredFontOptions
 --- Single-source font role table (modules can read it directly)
 ns.UI_FONT_ROLE = FontManager.FONT_ROLE
@@ -1009,9 +1137,22 @@ function ns.UI_ApplyFontStyleForRole(fs, category, options)
     fs._fontCategory = category
     FontManager:ApplyFont(fs, category, options)
 
-    if options.accentFill and ns.UI_COLORS and ns.UI_COLORS.accent and fs.SetTextColor then
-        local ac = ns.UI_COLORS.accent
-        fs:SetTextColor(ac[1], ac[2], ac[3], ac[4] or 1)
+    if options.accentFill and fs.SetTextColor then
+        if ns.UI_GetAccentTextRGBA then
+            local ar, ag, ab, aa = ns.UI_GetAccentTextRGBA()
+            if ns.UI_SetInkColor then
+                ns.UI_SetInkColor(fs, ar, ag, ab, aa)
+            else
+                fs:SetTextColor(ar, ag, ab, aa)
+            end
+        elseif ns.UI_COLORS and ns.UI_COLORS.accent then
+            local ac = ns.UI_COLORS.accent
+            if ns.UI_SetInkColor then
+                ns.UI_SetInkColor(fs, ac[1], ac[2], ac[3], ac[4] or 1)
+            else
+                fs:SetTextColor(ac[1], ac[2], ac[3], ac[4] or 1)
+            end
+        end
     end
 end
 

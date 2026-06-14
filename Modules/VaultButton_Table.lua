@@ -84,6 +84,9 @@ local RebuildTableFrame = function()
 end
 
 function M.ApplyTheme()
+    if M.SyncEasyAccessThemeInk then
+        M.SyncEasyAccessThemeInk()
+    end
     local colors = GetThemeColors()
     local accent = colors.accent or {0.40, 0.20, 0.58}
     local accentDark = colors.accentDark or {0.28, 0.14, 0.41}
@@ -111,7 +114,11 @@ function M.ApplyTheme()
     end
     if S.optionsFrame then
         if S.optionsFrame.columnLabel then
-            S.optionsFrame.columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
+            if ns.UI_SetInkColor then
+                ns.UI_SetInkColor(S.optionsFrame.columnLabel, accent[1], accent[2], accent[3], 1)
+            else
+                S.optionsFrame.columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
+            end
         end
         if S.optionsFrame.opacitySlider then
             local thumb = S.optionsFrame.opacitySlider:GetThumbTexture()
@@ -303,7 +310,11 @@ function M.BuildTableFrame()
                     elseif tooltipKind == "currency" and tooltipID and GameTooltip.SetCurrencyByID then
                         GameTooltip:SetCurrencyByID(tooltipID)
                     else
-                        GameTooltip:AddLine(tooltipTitle, 1, 1, 1)
+                        if ns.UI_GameTooltipAddRoleLine then
+                            ns.UI_GameTooltipAddRoleLine(GameTooltip, tooltipTitle, "Bright")
+                        else
+                            GameTooltip:AddLine(tooltipTitle, 1, 1, 1)
+                        end
                         if tooltipText then
                             GameTooltip:AddLine(tooltipText, 0.75, 0.75, 0.75, true)
                         end

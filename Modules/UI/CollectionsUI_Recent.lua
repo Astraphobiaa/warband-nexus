@@ -569,9 +569,9 @@ function M.DrawRecentContent(contentFrame)
         end
 
         if qlower and #picked == 0 then
-            addRow(defaultEmptyIcon, "|cffffffff" .. searchEmptyTxt .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
+            addRow(defaultEmptyIcon, (M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee") .. searchEmptyTxt .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         elseif #picked == 0 then
-            addRow(defaultEmptyIcon, "|cffffffff" .. noneLine .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
+            addRow(defaultEmptyIcon, (M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee") .. noneLine .. "|r", nil, false, nil, nil, nil, ROW_HEIGHT)
         else
             for j = 1, #picked do
                 local e = picked[j]
@@ -589,7 +589,8 @@ function M.DrawRecentContent(contentFrame)
                 local rowH = ROW_HEIGHT
                 if ob and ob ~= "" then
                     local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(ob))
-                        or "|cffffffff"
+                        or (M.CollectionsBrightHex and M.CollectionsBrightHex())
+                        or "|cffeeeeee"
                     subLine = format((loc and loc["COLLECTIONS_RECENT_ROW_BY"]) or "By %s", cc .. ob .. "|r")
                     rowH = RECENT_ROW_H_SUB
                 end
@@ -607,7 +608,7 @@ function M.DrawRecentContent(contentFrame)
                     })
                 end
 
-                addRow(iconPath, nameRich, "|cffffffff" .. rel .. "|r", true, function()
+                addRow(iconPath, nameRich, (M.CollectionsBrightHex and M.CollectionsBrightHex() or "|cffeeeeee") .. rel .. "|r", true, function()
                     M.RecentRowNavigateToEntry(typCopy, idCopy)
                 end, buildTooltip, subLine, rowH)
             end

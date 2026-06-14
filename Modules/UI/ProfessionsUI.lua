@@ -832,8 +832,12 @@ local function ApplyProfColumnHeaderLabel(lbl, displayText, highlighted)
     if not lbl then return end
     if lbl.SetWordWrap then lbl:SetWordWrap(false) end
     if lbl.SetMaxLines then lbl:SetMaxLines(1) end
-    local c = highlighted and COLORS.textBright or COLORS.textMuted
-    lbl:SetTextColor(c[1], c[2], c[3], c[4] or 1)
+    if ns.UI_SetTextColorRole then
+        ns.UI_SetTextColorRole(lbl, highlighted and "Bright" or "Muted")
+    else
+        local c = highlighted and COLORS.textBright or COLORS.textMuted
+        lbl:SetTextColor(c[1], c[2], c[3], c[4] or 1)
+    end
     lbl:SetText(displayText or "")
 end
 
@@ -2546,7 +2550,11 @@ local function SetEquipCell(cell, eqData, slotKey)
                 if nm and issecretvalue and issecretvalue(nm) then
                     nm = nil
                 end
-                GameTooltip:AddLine(nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1)
+                if ns.UI_GameTooltipAddRoleLine then
+                    ns.UI_GameTooltipAddRoleLine(GameTooltip, nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), "Bright")
+                else
+                    GameTooltip:AddLine(nm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1)
+                end
             end
             GameTooltip:Show()
         end)

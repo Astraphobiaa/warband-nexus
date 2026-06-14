@@ -83,6 +83,17 @@ local function SemanticGoldRGB()
     return 1, 0.82, 0
 end
 
+--- Set row/cell text then refresh light-mode outline when markup or colored ink is present.
+local function PresentFS(fs, text)
+    if not fs then return end
+    if text ~= nil and fs.SetText then
+        fs:SetText(text)
+    end
+    if ns.UI_ApplyFontStringPresentation then
+        ns.UI_ApplyFontStringPresentation(fs, text or (fs.GetText and fs:GetText()))
+    end
+end
+
 --- Section header count badge: role-colored count with standard FontManager outline.
 local function SetSectionHeaderCount(fs, count, role)
     if not fs then return end
@@ -997,9 +1008,9 @@ function WarbandNexus:DrawCharacterList(parent)
         charGoldCard:SetParent(parent)
         wbGoldCard:SetParent(parent)
         totalGoldCard:SetParent(parent)
-        if bundle.cg1Value then bundle.cg1Value:SetText(goldDisplayText) end
-        if bundle.wb1Value then bundle.wb1Value:SetText(FormatMoney(warbandBankGold, 14)) end
-        if bundle.tgValue then bundle.tgValue:SetText(FormatMoney(totalWithWarband, 14)) end
+        if bundle.cg1Value then bundle.cg1Value:SetText(goldDisplayText); PresentFS(bundle.cg1Value) end
+        if bundle.wb1Value then bundle.wb1Value:SetText(FormatMoney(warbandBankGold, 14)); PresentFS(bundle.wb1Value) end
+        if bundle.tgValue then bundle.tgValue:SetText(FormatMoney(totalWithWarband, 14)); PresentFS(bundle.tgValue) end
         -- Spinner lifecycle matters now that the card persists across paints.
         if isLoadingCharacterData and bundle.cg1Value then
             if charGoldCard.loadingSpinner then
@@ -1187,8 +1198,10 @@ function WarbandNexus:DrawCharacterList(parent)
                 .. (((ns.L and ns.L["WOW_TOKEN_COUNT_LABEL"]) or "Tokens"))
                 .. ")|r"
         )
+        PresentFS(tkValueRef)
     else
         tkValueRef:SetText(ThemeTextHex("Dim") .. ((ns.L and ns.L["NOT_AVAILABLE_SHORT"]) or "N/A") .. "|r")
+        PresentFS(tkValueRef)
         -- One-shot retry if price not ready yet (event-driven path is primary).
         if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then
             C_Timer.After(1.25, function()
@@ -2197,6 +2210,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r",
         classColor.r * 255, classColor.g * 255, classColor.b * 255,
         char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
+    PresentFS(row.nameText)
     if char.hasMail then
         if not row.mailIcon then
             row.mailIcon = row:CreateTexture(nil, "OVERLAY")
@@ -2222,6 +2236,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     ns.UI_SetTextColorRole(row.realmText, "Normal")
     row.realmText:SetText(displayRealm)
+    PresentFS(row.realmText)
     
     -- COLUMN: Guild â€” width from max guild name; text centered; strictly between Name and Level
     local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
@@ -2244,6 +2259,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.guildText:SetPoint("CENTER", row, "TOPLEFT", guildOffset + (guildColW - 4) / 2, centerY)
     row.guildText:SetWidth(guildColW - 4)
     row.guildText:SetText(BuildGuildText(char, isCurrent))
+    PresentFS(row.guildText)
     row.guildText:Show()
 
     -- Level column: level + rested line (DB-driven).
@@ -2280,6 +2296,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.levelText:SetText(string.format("|cff%02x%02x%02x%d|r",
         classColor.r * 255, classColor.g * 255, classColor.b * 255,
         char.level or 1))
+    PresentFS(row.levelText)
     row.levelText:Show()
 
     if showRestedLine then
@@ -2291,6 +2308,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         else
             row.levelRestedText:SetText(string.format("|cff66c0ff%.2f%%|r", restedPct))
         end
+        PresentFS(row.levelRestedText)
         row.levelRestedText:Show()
     else
         row.levelRestedText:Hide()
@@ -2315,6 +2333,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     else
         row.itemLevelText:SetText(ThemeTextHex("Muted") .. "--|r")
     end
+    PresentFS(row.itemLevelText)
     
     -- COLUMN 8: Gold (dynamic offset, chained from itemLevel column)
     local goldOffset = itemLevelOffset + (CHAR_ROW_COLUMNS.itemLevel.total or 90)
@@ -2330,6 +2349,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         and ns.Utilities:GetLiveCharacterMoneyCopper(ns.Utilities:GetCharTotalCopper(char))
         or ns.Utilities:GetCharTotalCopper(char)
     row.goldText:SetText(FormatMoney(totalCopper, 12))
+    PresentFS(row.goldText)
     
     -- COLUMN 9: Professions (dynamic offset, chained from gold column)
     local profOffset = goldOffset + (CHAR_ROW_COLUMNS.gold.total or 205)
@@ -2861,7 +2881,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.onlineText:SetWidth(lsW)
             row.onlineText:SetJustifyH("CENTER")
             row.onlineText:SetText((ns.L and ns.L["ONLINE"]) or "Online")
-            row.onlineText:SetTextColor(0, 1, 0)
+            if ns.UI_SetInkColor then
+                ns.UI_SetInkColor(row.onlineText, 0, 1, 0, 1)
+            else
+                row.onlineText:SetTextColor(0, 1, 0)
+            end
         else
             row.onlineText:SetParent(lsHost)
         end
@@ -2898,6 +2922,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.lastSeenText:SetPoint("CENTER", lsHost, "CENTER", 0, 0)
         row.lastSeenText:SetText(lastSeenStr)
         ns.UI_SetTextColorRole(row.lastSeenText, "Normal")
+        PresentFS(row.lastSeenText)
         row.lastSeenText:Show()
     end
     

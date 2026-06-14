@@ -66,6 +66,26 @@ local function TextRoleRGB(role)
     return 0.85, 0.85, 0.85, 1
 end
 
+--- Set ink + light-mode outline (markup-aware).
+local function ApplyTooltipInk(fs, text, r, g, b)
+    if not fs then return end
+    if text ~= nil then
+        fs:SetText(text)
+    end
+    if r ~= nil and g ~= nil and b ~= nil then
+        if ns.UI_SetInkColor then
+            ns.UI_SetInkColor(fs, r, g, b, 1)
+        else
+            fs:SetTextColor(r, g, b, 1)
+        end
+    end
+    if ns.UI_ApplyFontStringPresentation then
+        ns.UI_ApplyFontStringPresentation(fs, text or (fs.GetText and fs:GetText()))
+    elseif FontManager and FontManager.RefreshInkAwareFont then
+        FontManager:RefreshInkAwareFont(fs)
+    end
+end
+
 local function BootstrapTooltipColors()
     if ns.UI_COLORS then
         return ns.UI_COLORS
@@ -429,17 +449,17 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         self.titleAffixPairLeft:SetText(leftText or "")
         if lr ~= nil or lg ~= nil or lb ~= nil then
-            self.titleAffixPairLeft:SetTextColor(lr or 1, lg or 1, lb or 1)
+            ApplyTooltipInk(self.titleAffixPairLeft, leftText, lr or 1, lg or 1, lb or 1)
         else
             local tlR, tlG, tlB = TextRoleRGB("Bright")
-            self.titleAffixPairLeft:SetTextColor(tlR, tlG, tlB, 1)
+            ApplyTooltipInk(self.titleAffixPairLeft, leftText, tlR, tlG, tlB)
         end
         self.titleAffixPairRight:SetText(rightText or "")
         if rr ~= nil or rg ~= nil or rb ~= nil then
-            self.titleAffixPairRight:SetTextColor(rr or 1, rg or 1, rb or 1)
+            ApplyTooltipInk(self.titleAffixPairRight, rightText, rr or 1, rg or 1, rb or 1)
         else
             local trR, trG, trB = SemanticGoldRGB()
-            self.titleAffixPairRight:SetTextColor(trR, trG, trB, 1)
+            ApplyTooltipInk(self.titleAffixPairRight, rightText, trR, trG, trB)
         end
         self.titleAffixPairLeft:Show()
         self.titleAffixPairRight:Show()
@@ -467,16 +487,15 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- API: Add single text line
     frame.AddLine = function(self, text, r, g, b, wrap)
         local line = self:GetOrCreateLine()
-        line:SetText(text)
         if type(r) == "table" and g == nil and b == nil then
-            line:SetTextColor(r[1] or 1, r[2] or 1, r[3] or 1, r[4] or 1)
+            ApplyTooltipInk(line, text, r[1] or 1, r[2] or 1, r[3] or 1)
         elseif type(r) == "number" and type(g) == "number" and type(b) == "number" then
-            line:SetTextColor(r, g, b, 1)
+            ApplyTooltipInk(line, text, r, g, b)
         elseif r ~= nil or g ~= nil or b ~= nil then
-            line:SetTextColor(tonumber(r) or 1, tonumber(g) or 1, tonumber(b) or 1, 1)
+            ApplyTooltipInk(line, text, tonumber(r) or 1, tonumber(g) or 1, tonumber(b) or 1)
         else
             local lr, lg, lb = TextRoleRGB("Bright")
-            line:SetTextColor(lr, lg, lb, 1)
+            ApplyTooltipInk(line, text, lr, lg, lb)
         end
         
         local contentWidth = (self.fixedWidth or MAX_WIDTH) - (self.paddingH * 2)
@@ -506,18 +525,18 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         
         dLine.left:SetText(leftText)
         if lr or lg or lb then
-            dLine.left:SetTextColor(lr, lg, lb, 1)
+            ApplyTooltipInk(dLine.left, leftText, lr, lg, lb)
         else
             local lR, lG, lB = TextRoleRGB("Bright")
-            dLine.left:SetTextColor(lR, lG, lB, 1)
+            ApplyTooltipInk(dLine.left, leftText, lR, lG, lB)
         end
         
         dLine.right:SetText(rightText)
         if rr or rg or rb then
-            dLine.right:SetTextColor(rr, rg, rb, 1)
+            ApplyTooltipInk(dLine.right, rightText, rr, rg, rb)
         else
             local rR, rG, rB = TextRoleRGB("Bright")
-            dLine.right:SetTextColor(rR, rG, rB, 1)
+            ApplyTooltipInk(dLine.right, rightText, rR, rG, rB)
         end
         dLine.right:SetJustifyH("RIGHT")
         

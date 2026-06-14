@@ -41,8 +41,13 @@ function M.CreateMenuCheckbox(parent, labelText, y, getValue, setValue, tooltipT
         function M.ShowTooltip(owner)
             GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
             GameTooltip:ClearLines()
-            GameTooltip:AddLine(labelText, 1, 1, 1)
-            GameTooltip:AddLine(tooltipText, 0.85, 0.85, 0.85, true)
+            if ns.UI_GameTooltipAddRoleLine then
+                ns.UI_GameTooltipAddRoleLine(GameTooltip, labelText, "Bright")
+            else
+                GameTooltip:AddLine(labelText, 1, 1, 1)
+            end
+            local mr, mg, mb = 0.85, 0.85, 0.85
+            GameTooltip:AddLine(tooltipText, mr, mg, mb, true)
             GameTooltip:Show()
         end
         cb:SetScript("OnEnter", ShowTooltip)
@@ -175,7 +180,11 @@ function M.BuildOptionsFrame()
     local columnLabel = VBFontString(f, "small")
     columnLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -168)
     columnLabel:SetText("Columns")
-    columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
+    if ns.UI_SetInkColor then
+        ns.UI_SetInkColor(columnLabel, accent[1], accent[2], accent[3], 1)
+    else
+        columnLabel:SetTextColor(accent[1], accent[2], accent[3], 1)
+    end
     f.columnLabel = columnLabel
 
     CreateMenuCheckbox(f, "Raid", -188,

@@ -77,6 +77,23 @@ M.EA_LABEL_COLOR = { 0.94, 0.94, 0.96 }
 M.EA_VALUE_COLOR = { 0.94, 0.94, 0.96 }
 M.EA_SECTION_COLOR = { 1, 1, 1 }
 M.EA_FOOTER_COLOR = { 0.88, 0.88, 0.90 }
+
+--- Refresh Easy Access tooltip/menu ink from live theme roles (light: charcoal, not white).
+function M.SyncEasyAccessThemeInk()
+    local function roleRGB(role, dr, dg, db)
+        if ns.UI_GetTextRoleRGB then
+            return ns.UI_GetTextRoleRGB(role)
+        end
+        return dr, dg, db
+    end
+    local br, bg, bb = roleRGB("Bright", 0.12, 0.12, 0.14)
+    local nr, ng, nb = roleRGB("Normal", 0.24, 0.24, 0.28)
+    local mr, mg, mb = roleRGB("Muted", 0.38, 0.38, 0.42)
+    M.EA_LABEL_COLOR[1], M.EA_LABEL_COLOR[2], M.EA_LABEL_COLOR[3] = br, bg, bb
+    M.EA_VALUE_COLOR[1], M.EA_VALUE_COLOR[2], M.EA_VALUE_COLOR[3] = nr, ng, nb
+    M.EA_SECTION_COLOR[1], M.EA_SECTION_COLOR[2], M.EA_SECTION_COLOR[3] = br, bg, bb
+    M.EA_FOOTER_COLOR[1], M.EA_FOOTER_COLOR[2], M.EA_FOOTER_COLOR[3] = mr, mg, mb
+end
 M.EA_STATUS_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
 M.EA_CAT_TIP = {
     raids = { key = "EA_TOOLTIP_CAT_RAID", fallback = "Raid", icon = M.TRACK_ICONS.raids },
@@ -92,7 +109,11 @@ function M.VBFontString(parent, role, drawLayer)
     if FM and FM.CreateFontString then
         return FM:CreateFontString(parent, role, drawLayer or "OVERLAY")
     end
-    return parent:CreateFontString(nil, drawLayer or "OVERLAY")
+    local fs = parent:CreateFontString(nil, drawLayer or "OVERLAY")
+    if fs and ns.UI_HookFontStringInk then
+        ns.UI_HookFontStringInk(fs)
+    end
+    return fs
 end
 
 --- Matches `MAIN_SHELL` in Modules/UI/SharedWidgets.lua (`ns.UI_LAYOUT` is nil until that file loads; safe at runtime when frames build).

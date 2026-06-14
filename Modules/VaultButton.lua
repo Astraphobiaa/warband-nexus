@@ -306,9 +306,14 @@ function M.BuildMenu()
     header:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
-        GameTooltip:AddLine((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", 1, 1, 1)
-        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_STAR", "Star marks your left-click action."), 0.85, 0.85, 0.85, true)
-        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_SET_ACTION", "Right-click a menu item to set the left-click action."), 0.85, 0.85, 0.85, true)
+        if ns.UI_GameTooltipAddRoleLine then
+            ns.UI_GameTooltipAddRoleLine(GameTooltip, (ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", "Bright")
+        else
+            GameTooltip:AddLine((ns.L and ns.L["CONFIG_VAULT_BUTTON_SECTION"]) or "Easy Access", 1, 1, 1)
+        end
+        local mr, mg, mb = 0.85, 0.85, 0.85
+        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_STAR", "Star marks your left-click action."), mr, mg, mb, true)
+        GameTooltip:AddLine(EAL("EA_MENU_TOOLTIP_SET_ACTION", "Right-click a menu item to set the left-click action."), mr, mg, mb, true)
         GameTooltip:Show()
     end)
     header:SetScript("OnLeave", function()

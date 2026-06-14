@@ -407,6 +407,18 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
     addBtn:SetAlpha(1)
     local L = ns.L
     local todoTitle = (L and L["COLLECTIONS_TT_TODO_TITLE"]) or "To-Do list"
+    local function ShowThemedGameTooltip(title, bodyText)
+        if ns.UI_GameTooltipSetRoleText then
+            ns.UI_GameTooltipSetRoleText(GameTooltip, title, "Bright")
+        else
+            GameTooltip:SetText(title, 1, 1, 1)
+        end
+        if ns.UI_GameTooltipAddRoleLine then
+            ns.UI_GameTooltipAddRoleLine(GameTooltip, bodyText, "Normal", true)
+        else
+            GameTooltip:AddLine(bodyText, 1, 1, 1, true)
+        end
+    end
     if onTodo then
         addBtn:EnableMouse(true)
         addBtn:RegisterForClicks()
@@ -414,8 +426,7 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
         addBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:ClearLines()
-            GameTooltip:SetText(todoTitle, 1, 1, 1)
-            GameTooltip:AddLine(body, 1, 1, 1, true)
+            ShowThemedGameTooltip(todoTitle, body)
             GameTooltip:Show()
         end)
         addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -431,8 +442,7 @@ function M.RefreshCollectionsDetailPlanButton(addBtn, collected, planned, onClic
         addBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:ClearLines()
-            GameTooltip:SetText(todoTitle, 1, 1, 1)
-            GameTooltip:AddLine(body, 1, 1, 1, true)
+            ShowThemedGameTooltip(todoTitle, body)
             GameTooltip:Show()
         end)
         addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
