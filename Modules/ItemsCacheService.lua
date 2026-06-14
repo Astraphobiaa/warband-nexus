@@ -1539,6 +1539,53 @@ function WarbandNexus:SumTrackedPersonalStorageSlotTally(allowLazyBackfill)
     return stackTotal, usedSlots, lastScan
 end
 
+local function ItemStorageKeysMatch(a, b)
+    if not a or not b then return false end
+    if a == b then return true end
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local ca = ns.Utilities:GetCanonicalCharacterKey(a) or a
+        local cb = ns.Utilities:GetCanonicalCharacterKey(b) or b
+        return ca == cb
+    end
+    return false
+end
+
+--- Account-wide personal bag+bank capacity for overview panels.
+--- Logged-in character uses live C_Container totals; alts use cached occupied slots as a floor.
+function WarbandNexus:SumTrackedPersonalStorageCapacity()
+    local INVENTORY_BAGS = ns.INVENTORY_BAGS or { 0, 1, 2, 3, 4, 5 }
+    local BANK_BAGS = ns.PERSONAL_BANK_BAGS or { -1, 6, 7, 8, 9, 10, 11 }
+    local currentKey = ResolveCurrentItemStorageKey()
+    local totalSlots = 0
+    local allCharacters = self.GetAllCharacters and self:GetAllCharacters() or {}
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
+        if char and char.isTracked ~= false and char._key then
+            local charKey = char._key
+            if ItemStorageKeysMatch(charKey, currentKey) then
+                local charTotal = 0
+                for bi = 1, #INVENTORY_BAGS do
+                    charTotal = charTotal + (C_Container.GetContainerNumSlots(INVENTORY_BAGS[bi]) or 0)
+                end
+                for bi = 1, #BANK_BAGS do
+                    charTotal = charTotal + (C_Container.GetContainerNumSlots(BANK_BAGS[bi]) or 0)
+                end
+                if charTotal <= 0 then
+                    local bagSlots = self:GetItemStorageOccupiedSlotTally(charKey, "bags", false)
+                    local bankSlots = self:GetItemStorageOccupiedSlotTally(charKey, "bank", false)
+                    charTotal = (bagSlots or 0) + (bankSlots or 0)
+                end
+                totalSlots = totalSlots + charTotal
+            else
+                local bagSlots = self:GetItemStorageOccupiedSlotTally(charKey, "bags", false)
+                local bankSlots = self:GetItemStorageOccupiedSlotTally(charKey, "bank", false)
+                totalSlots = totalSlots + (bagSlots or 0) + (bankSlots or 0)
+            end
+        end
+    end
+    return totalSlots
+end
+
 ---Get items data for a specific character (decompressed + hydrated with metadata).
 ---Uses session RAM cache to avoid repeated decompression. Invalidated when items are scanned.
 function WarbandNexus:GetItemsData(charKey)

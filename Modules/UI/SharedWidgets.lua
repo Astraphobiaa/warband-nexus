@@ -1084,33 +1084,34 @@ local function GetSubTabInactiveBorderRGBA(accent)
 end
 ns.UI_GetSubTabInactiveBorderRGBA = GetSubTabInactiveBorderRGBA
 
---- Search / filter / stats strip chrome: accent fill + accent border (matches Items sub-tab strip).
+--- Search / filter / stats strip chrome: transparent fill + accent border only.
 ---@return table rgba bg, table rgba border
 local function GetSearchBoxChromeColors()
     local ac = COLORS.accent or { 0.40, 0.20, 0.58 }
-    local ar, ag, ab, aa
-    if GetSubTabActiveBackdropRGBA then
-        ar, ag, ab, aa = GetSubTabActiveBackdropRGBA(ac)
-    else
-        ar, ag, ab, aa = ac[1] * 0.3, ac[2] * 0.3, ac[3] * 0.3, 1
-    end
-    local bg = { ar, ag, ab, aa or 0.98 }
     local br, bgr, bb, ba = GetSubTabInactiveBorderRGBA(ac)
-    return bg, { br, bgr, bb, ba }
+    return { 0, 0, 0, 0 }, { br, bgr, bb, ba }
 end
 ns.UI_GetSearchBoxChromeColors = GetSearchBoxChromeColors
 
---- Apply search/stats toolbar chrome with live theme refresh hooks.
+--- Apply search/stats toolbar chrome with live theme refresh hooks (border accent only).
 ---@param frame Frame
 local function ApplySearchBoxChrome(frame)
+    if not frame then return end
+    frame._wnSearchChromeBorderOnly = true
     if ns.UI_ApplyAccentControlChrome then
-        ns.UI_ApplyAccentControlChrome(frame, { edgeSize = 2, showRail = true })
-    elseif frame and ApplyVisuals then
+        ns.UI_ApplyAccentControlChrome(frame, {
+            edgeSize = 2,
+            showRail = false,
+            bg = { 0, 0, 0, 0 },
+        })
+        frame._bgAlpha = 0
+    elseif ApplyVisuals then
         local bg, border = GetSearchBoxChromeColors()
         ApplyVisuals(frame, bg, border)
         frame._borderType = "accent"
         frame._bgType = "searchChrome"
         frame._borderAlpha = border[4]
+        frame._bgAlpha = 0
     end
 end
 ns.UI_ApplySearchBoxChrome = ApplySearchBoxChrome
@@ -2241,9 +2242,7 @@ local function ResolveRegistryBackdrop(frame, accentDarkColor, bgColor)
     local bgType = frame._bgType
     local bgAlpha = frame._bgAlpha or 1
     if bgType == "searchChrome" then
-        local ac = COLORS.accent or { 0.40, 0.20, 0.58 }
-        local ar, ag, ab, aa = GetSubTabActiveBackdropRGBA(ac)
-        return ar, ag, ab, aa or bgAlpha
+        return 0, 0, 0, 0
     elseif bgType == "controlChrome" then
         local c = GetControlChromeBackdrop()
         return c[1], c[2], c[3], c[4] or bgAlpha
@@ -2352,9 +2351,13 @@ local function RefreshColors()
             local br, bg, bb, ba = ResolveRegistryBackdrop(frame, accentDarkColor, bgColor)
             frame:SetBackdropColor(br, bg, bb, ba)
 
-            if frame._wnAccentLeftRail and frame._wnAccentLeftRail.SetColorTexture then
-                local railA = IsLightModeEnabled() and 0.98 or 0.92
-                frame._wnAccentLeftRail:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], railA)
+            if frame._wnAccentLeftRail then
+                if frame._wnSearchChromeBorderOnly then
+                    frame._wnAccentLeftRail:Hide()
+                elseif frame._wnAccentLeftRail.SetColorTexture then
+                    local railA = IsLightModeEnabled() and 0.98 or 0.92
+                    frame._wnAccentLeftRail:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], railA)
+                end
             end
 
             if frame._thumbTexture then
@@ -2853,41 +2856,46 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     end
 end
 
---- Pixel border quartet on root shell (accent on all four sides; complements SetBackdrop edgeFile).
+--- Accent border quartet on root shell (OVERLAY so children do not cover the outer edge).
 local function ApplyMainWindowShellBorderQuartet(frame, borderColor)
     if not frame or not borderColor then return end
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local borderW = shell.MAIN_SHELL_FRAME_BORDER_WIDTH or 2
     local pixelScale = GetPixelScale(frame)
+    if borderW < pixelScale then borderW = pixelScale end
+    local borderLayer = "OVERLAY"
+    local borderSubLevel = 7
     if not frame.BorderTop then
-        frame.BorderTop = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderTop = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-        frame.BorderTop:SetHeight(pixelScale)
+        frame.BorderTop:SetHeight(borderW)
         frame.BorderTop:SetSnapToPixelGrid(false)
         frame.BorderTop:SetTexelSnappingBias(0)
 
-        frame.BorderBottom = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderBottom = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        frame.BorderBottom:SetHeight(pixelScale)
+        frame.BorderBottom:SetHeight(borderW)
 
-        frame.BorderLeft = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderLeft = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-        frame.BorderLeft:SetWidth(pixelScale)
+        frame.BorderLeft:SetWidth(borderW)
 
-        frame.BorderRight = frame:CreateTexture(nil, "BORDER", nil, 7)
+        frame.BorderRight = frame:CreateTexture(nil, borderLayer, nil, borderSubLevel)
         frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        frame.BorderRight:SetWidth(pixelScale)
+        frame.BorderRight:SetWidth(borderW)
     else
-        frame.BorderTop:SetHeight(pixelScale)
-        frame.BorderBottom:SetHeight(pixelScale)
-        frame.BorderLeft:SetWidth(pixelScale)
-        frame.BorderRight:SetWidth(pixelScale)
+        frame.BorderTop:SetHeight(borderW)
+        frame.BorderBottom:SetHeight(borderW)
+        frame.BorderLeft:SetWidth(borderW)
+        frame.BorderRight:SetWidth(borderW)
     end
     local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
     frame.BorderTop:SetVertexColor(r, g, b, a)

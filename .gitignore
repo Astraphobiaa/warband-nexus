@@ -42,6 +42,9 @@ Locales/.tmp/
 *.swp
 *.swo
 
+# Maintainer-only audit notes (local; not shipped with addon)
+PROJECT-CLEANUP-AUDIT.md
+
 # Archives / packager output
 *.zip
 *.rar
@@ -67,7 +70,6 @@ WarbandNexus/
 !LICENSE
 !CHANGELOG.md
 !DESCRIPTION.md
-!PROJECT-CLEANUP-AUDIT.md
 !docs/
 !docs/PROJECT-OPS-TODOS.md
 

@@ -76,6 +76,7 @@ local function LocalizeUpgradeTrackName(name)
     local keyMap = {
         Adventurer = "PVE_CREST_ADV", Veteran = "PVE_CREST_VET", Champion = "PVE_CREST_CHAMP",
         Hero = "PVE_CREST_HERO", Myth = "PVE_CREST_MYTH", Explorer = "PVE_CREST_EXPLORER",
+        Crafted = "GEAR_TRACK_CRAFTED_FALLBACK",
     }
     local key = keyMap[name]
     if key and ns.L and ns.L[key] then return ns.L[key] end
@@ -1480,6 +1481,7 @@ ns.GearUI_Paperdoll._slotDeps = {
     format = format,
     GearSlotHideLegacyIncreaseLabels = GearSlotHideLegacyIncreaseLabels,
     SLOT_HALF = SLOT_HALF,
+    LocalizeUpgradeTrackName = LocalizeUpgradeTrackName,
 }
 -- PAPERDOLL CARD  (full width; doll centered like Characters screen)
 

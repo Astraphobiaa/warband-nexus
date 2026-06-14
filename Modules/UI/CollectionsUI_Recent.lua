@@ -385,9 +385,9 @@ function M.DrawRecentContent(contentFrame)
         end
     end
 
-    local innerW = math.max(1, cw - 2 * inset)
+    local innerW = math.max(1, cw)
     local recentCols, cardW = M.ComputeRecentCardGrid(innerW, gap)
-    local gridBodyW = 2 * inset + recentCols * cardW + (recentCols - 1) * gap
+    local gridBodyW = recentCols * cardW + (recentCols - 1) * gap
     M.state._recentGridScrollWidth = gridBodyW
     local recentRows = math.ceil(#RECENT_SECTION_ORDER / recentCols)
     local headerBand = RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON + 8
@@ -465,7 +465,7 @@ function M.DrawRecentContent(contentFrame)
             "TOPLEFT",
             panel,
             "TOPLEFT",
-            inset + gridCol * (cardW + gap),
+            gridCol * (cardW + gap),
             -(inset + gridRow * (cardH + gap))
         )
         if ApplyVisuals then

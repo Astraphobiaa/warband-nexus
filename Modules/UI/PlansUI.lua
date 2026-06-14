@@ -1308,91 +1308,21 @@ function WarbandNexus:DrawPlansTab(parent)
     local function PaintPlansScrollBody()
         local bodyY = scrollTopY
         if currentCategory == "active" then
-        local searchBar = ns.UI.Factory:CreateContainer(parent, nil, 32, false)
         local padH = PlansContentPadH()
+        local searchPlaceholder = (ns.L and ns.L["SEARCH_PLANS"]) or "Search plans..."
+        local initialSearch = ns._plansActiveSearch or ""
+        local searchBar = CreateSearchBox(parent, width, searchPlaceholder, function(text)
+            ns._plansActiveSearch = (text ~= "") and text or nil
+            if ns.UI_ScheduleSearchRefresh then
+                ns.UI_ScheduleSearchRefresh("plans_active", function()
+                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+                end)
+            else
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
+            end
+        end, nil, initialSearch, "plans_active")
         searchBar:SetPoint("TOPLEFT", padH, -bodyY)
         searchBar:SetPoint("TOPRIGHT", -padH, -bodyY)
-        if ns.UI_ApplySearchBoxChrome then
-            ns.UI_ApplySearchBoxChrome(searchBar)
-        elseif ApplyVisuals then
-            local searchBg, searchBorder = ns.UI_GetSearchBoxChromeColors and ns.UI_GetSearchBoxChromeColors()
-            if searchBg then
-                ApplyVisuals(searchBar, searchBg, searchBorder)
-            else
-                local b = ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor() or COLORS.border
-                ApplyVisuals(searchBar, COLORS.bgLight, { b[1], b[2], b[3], 0.55 })
-            end
-        end
-
-        local searchIcon = searchBar:CreateTexture(nil, "OVERLAY")
-        searchIcon:SetSize(14, 14)
-        searchIcon:SetPoint("LEFT", 8, 0)
-        searchIcon:SetAtlas("common-search-magnifyingglass")
-        searchIcon:SetVertexColor(0.6, 0.6, 0.6)
-
-        local searchInput = ns.UI.Factory:CreateEditBox(searchBar)
-        searchInput:SetSize(1, 26)
-        searchInput:SetPoint("LEFT", searchIcon, "RIGHT", 6, 0)
-        searchInput:SetPoint("RIGHT", searchBar, "RIGHT", -8, 0)
-        ns.UI_SetTextColorRole(searchInput, "Bright")
-        searchInput:SetAutoFocus(false)
-        searchInput:SetMaxLetters(50)
-        local searchPlaceholder = (ns.L and ns.L["SEARCH_PLANS"]) or "Search plans..."
-        searchInput.Instructions = FontManager:CreateFontString(
-            searchInput, FontManager:GetFontRole("searchPlaceholder"), "ARTWORK")
-        searchInput.Instructions:SetPoint("LEFT", 0, 0)
-        searchInput.Instructions:SetPoint("RIGHT", 0, 0)
-        searchInput.Instructions:SetJustifyH("LEFT")
-        ns.UI_SetTextColorRole(searchInput.Instructions, "Dim", 0.8)
-        searchInput.Instructions:SetText(searchPlaceholder)
-        if ns._plansActiveSearch and ns._plansActiveSearch ~= "" then
-            searchInput:SetText(ns._plansActiveSearch)
-            searchInput.Instructions:Hide()
-        end
-        searchInput:SetScript("OnEscapePressed", function(self)
-            ns.UI_CancelSearchRefresh("plans_active")
-            self:SetText("")
-            self:ClearFocus()
-            ns._plansActiveSearch = nil
-            if self.Instructions then self.Instructions:Show() end
-            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
-        end)
-        searchInput:SetScript("OnTextChanged", function(self, userInput)
-            if not userInput then return end
-            local text = self:GetText()
-            if issecretvalue and issecretvalue(text) then
-                ns._plansActiveSearch = nil
-                if self.Instructions then self.Instructions:Show() end
-                return
-            end
-            text = text or ""
-            ns._plansActiveSearch = (text ~= "") and text or nil
-            if self.Instructions then
-                if text ~= "" then self.Instructions:Hide() else self.Instructions:Show() end
-            end
-            ns.UI_ScheduleSearchRefresh("plans_active", function()
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
-            end)
-        end)
-        searchInput:SetScript("OnEditFocusLost", function()
-            ns.UI_FlushSearchRefresh("plans_active")
-        end)
-        if ns.UI_RegisterSearchBoxClear then
-            ns.UI_RegisterSearchBoxClear("plans_active", function(fireCallback)
-                if fireCallback == nil then fireCallback = true end
-                ns.UI_CancelSearchRefresh("plans_active")
-                searchInput:SetText("")
-                if searchInput.Instructions then
-                    searchInput.Instructions:Show()
-                end
-                ns._plansActiveSearch = nil
-                if fireCallback and WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
-                end
-            end)
-        end
-        searchBar:EnableMouse(true)
-        searchBar:SetScript("OnMouseDown", function() searchInput:SetFocus() end)
         searchBar:Show()
 
         local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32

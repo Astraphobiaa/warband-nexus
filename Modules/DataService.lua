@@ -2352,50 +2352,64 @@ function WarbandNexus:GetBankStatistics()
     if stats.warband.totalSlots == 0 and stats.warband.usedSlots > 0 then
         stats.warband.totalSlots = stats.warband.usedSlots
     end
+    if stats.warband.totalSlots < stats.warband.usedSlots then
+        stats.warband.totalSlots = stats.warband.usedSlots
+    end
     stats.warband.freeSlots = math.max(0, stats.warband.totalSlots - stats.warband.usedSlots)
     
-    -- ===== PERSONAL STORAGE (inventory bags + personal bank from ItemsCacheService) =====
-    local charKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
-        and ns.CharacterService:ResolveCharactersTableKey(self)
-    if not charKey and ns.Utilities.GetCharacterStorageKey then
-        charKey = ns.Utilities:GetCharacterStorageKey(self)
-    end
-    if not charKey then
-        charKey = ns.Utilities:GetCharacterKey()
-    end
-    local itemsData = self.GetItemsData and self:GetItemsData(charKey)
-    if itemsData then
-        -- Count occupied slots and item stacks from bags
-        local bagSlots = itemsData.bags and #itemsData.bags or 0
-        local bankSlots = itemsData.bank and #itemsData.bank or 0
-        stats.personal.usedSlots = bagSlots + bankSlots
-        
-        local _bags = itemsData.bags or {}
-        for i = 1, #_bags do
-            local item = _bags[i]
-            stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
+    -- ===== PERSONAL STORAGE (all tracked characters — matches Items > Warband tree) =====
+    if self.SumTrackedPersonalStorageSlotTally then
+        local stackTotal, usedSlots, lastScan = self:SumTrackedPersonalStorageSlotTally(false)
+        stats.personal.itemCount = stackTotal or 0
+        stats.personal.usedSlots = usedSlots or 0
+        stats.personal.lastScan = lastScan or 0
+    else
+        local charKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+            and ns.CharacterService:ResolveCharactersTableKey(self)
+        if not charKey and ns.Utilities.GetCharacterStorageKey then
+            charKey = ns.Utilities:GetCharacterStorageKey(self)
         end
-        local _bank = itemsData.bank or {}
-        for i = 1, #_bank do
-            local item = _bank[i]
-            stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
+        if not charKey then
+            charKey = ns.Utilities:GetCharacterKey()
         end
-        
-        stats.personal.lastScan = math.max(itemsData.bagsLastUpdate or 0, itemsData.bankLastUpdate or 0)
+        local itemsData = self.GetItemsData and self:GetItemsData(charKey)
+        if itemsData then
+            local bagSlots = itemsData.bags and #itemsData.bags or 0
+            local bankSlots = itemsData.bank and #itemsData.bank or 0
+            stats.personal.usedSlots = bagSlots + bankSlots
+            
+            local _bags = itemsData.bags or {}
+            for i = 1, #_bags do
+                local item = _bags[i]
+                stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
+            end
+            local _bank = itemsData.bank or {}
+            for i = 1, #_bank do
+                local item = _bank[i]
+                stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
+            end
+            
+            stats.personal.lastScan = math.max(itemsData.bagsLastUpdate or 0, itemsData.bankLastUpdate or 0)
+        end
     end
-    -- Live API for total personal slots (inventory bags always accessible)
-    local INVENTORY_BAGS = ns.INVENTORY_BAGS or {0, 1, 2, 3, 4, 5}
-    local BANK_BAGS = ns.PERSONAL_BANK_BAGS or {-1, 6, 7, 8, 9, 10, 11}
-    for i = 1, #INVENTORY_BAGS do
-        local bagID = INVENTORY_BAGS[i]
-        stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
+    if self.SumTrackedPersonalStorageCapacity then
+        stats.personal.totalSlots = self:SumTrackedPersonalStorageCapacity()
+    else
+        local INVENTORY_BAGS = ns.INVENTORY_BAGS or {0, 1, 2, 3, 4, 5}
+        local BANK_BAGS = ns.PERSONAL_BANK_BAGS or {-1, 6, 7, 8, 9, 10, 11}
+        for i = 1, #INVENTORY_BAGS do
+            local bagID = INVENTORY_BAGS[i]
+            stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
+        end
+        for i = 1, #BANK_BAGS do
+            local bagID = BANK_BAGS[i]
+            stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
+        end
     end
-    for i = 1, #BANK_BAGS do
-        local bagID = BANK_BAGS[i]
-        stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
-    end
-    -- If API returned 0 for everything, use stored item count as minimum
     if stats.personal.totalSlots == 0 and stats.personal.usedSlots > 0 then
+        stats.personal.totalSlots = stats.personal.usedSlots
+    end
+    if stats.personal.totalSlots < stats.personal.usedSlots then
         stats.personal.totalSlots = stats.personal.usedSlots
     end
     stats.personal.freeSlots = math.max(0, stats.personal.totalSlots - stats.personal.usedSlots)

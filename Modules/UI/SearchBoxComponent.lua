@@ -144,22 +144,8 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
         ApplyVisuals(container, searchBg, searchBorder)
     end
     
-    local searchIcon = container:CreateTexture(nil, "ARTWORK")
-    searchIcon:SetSize(16, 16)
-    searchIcon:SetPoint("LEFT", 16, 0)
-    searchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
-    local iconR, iconG, iconB, iconA = ns.UI_GetNavTabIconMutedVertex and ns.UI_GetNavTabIconMutedVertex() or 0.72, 0.74, 0.78, 0.5
-    local ac = COLORS.accent
-    if ac and ac[1] then
-        iconR, iconG, iconB = ac[1], ac[2], ac[3]
-        iconA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.82 or 0.70
-    end
-    searchIcon:SetVertexColor(iconR, iconG, iconB, iconA)
-    searchIcon:SetSnapToPixelGrid(false)
-    searchIcon:SetTexelSnappingBias(0)
-    
     local searchBox = CreateFrame("EditBox", nil, container)
-    searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 8, 0)
+    searchBox:SetPoint("LEFT", 12, 0)
     searchBox:SetPoint("RIGHT", -10, 0)
     searchBox:SetHeight(20)
     
@@ -270,6 +256,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     end
     
     container._wnClearSearch = ClearSearchWidget
+    container._wnSearchPlaceholder = placeholderText
     if registryKey and registryKey ~= "" then
         searchClearByKey[registryKey] = ClearSearchWidget
         container._wnSearchRegistryKey = registryKey
@@ -278,11 +265,20 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     return container, ClearSearchWidget
 end
 
+--- Update placeholder copy on a CreateSearchBox container (e.g. Collections sub-tab switch).
+function ns.UI_SetSearchBoxPlaceholder(container, text)
+    if not container or not text then return end
+    local fs = container._wnSearchPlaceholder
+    if fs and fs.SetText then
+        fs:SetText(text)
+    end
+end
+
 ns.UI_CreateSearchBox = CreateSearchBox
 
 -- Tab ids registered with SearchStateManager (main + browse sub-tabs).
 ns.UI_SEARCH_TAB_IDS = {
-    "items", "gear", "currency", "reputation",
+    "items", "gear", "currency", "reputation", "collections",
     "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement",
 }
 
@@ -325,11 +321,9 @@ function ns.UI_ClearAllSearchQueries()
     local coll = ns.CollectionsUI
     if coll and coll.state then
         coll.state.searchText = ""
-        if coll.state.searchBox then
-            coll.state.searchBox:SetText("")
-            if coll.state.searchBox.Instructions then
-                coll.state.searchBox.Instructions:Show()
-            end
+        local sc = coll.state.searchContainer
+        if sc and sc._wnClearSearch then
+            sc._wnClearSearch(false)
         end
     end
 end

@@ -41,6 +41,7 @@ end
     local format = D("format")
     local GearSlotHideLegacyIncreaseLabels = D("GearSlotHideLegacyIncreaseLabels")
     local SLOT_HALF = D("SLOT_HALF")
+    local LocalizeUpgradeTrackName = D("LocalizeUpgradeTrackName")
 
 function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, hasUpgradePath, statusText, textSide, isNotUpgradeable, textWidth, centerTextOnIcon, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, inspectListHost)
     -- Slot is always the same size; space reserved even when the icon is hidden (empty texture)

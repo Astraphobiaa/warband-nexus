@@ -2718,7 +2718,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local reoW = CHAR_ROW_COLUMNS.reorder and CHAR_ROW_COLUMNS.reorder.width or 44
     local railW = (ns.UI_GetCharRowRightRailWidth and ns.UI_GetCharRowRightRailWidth()) or (R_MARGIN * 2 + delW + R_GAP + trackW + R_GAP + haTot + R_GAP + lsW + R_GAP + reoW)
     local insetDelete = 0
-    local insetTrack = (not isCurrent) and (delW + R_GAP) or 0
+    local insetTrack = delW + R_GAP
     local insetHeader = insetTrack + trackW + R_GAP
     local insetLastSeen = insetHeader + haTot + R_GAP
     local insetReorder = insetLastSeen + lsW + R_GAP
@@ -2831,33 +2831,37 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if row.reorderButtons.down then row.reorderButtons.down:SetScript("OnClick", nil) end
     end
     
-    -- COLUMN: Last Seen (RIGHT-anchored, compact)
+    -- COLUMN: Last Seen (right rail — "Online" only for current character; relative time for alts)
+    if not row._wnLastSeenHost then
+        row._wnLastSeenHost = CreateFrame("Frame", nil, rail)
+        row._wnLastSeenHost.isPersistentRowElement = true
+    end
+    local lsHost = row._wnLastSeenHost
+    lsHost:SetParent(rail)
+    lsHost:SetSize(lsW, 46)
+    lsHost:ClearAllPoints()
+    lsHost:SetPoint("RIGHT", rail, "RIGHT", -insetLastSeen, 0)
+    lsHost:Show()
+
     if isCurrent then
         if not row.onlineText then
-            row.onlineText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            row.onlineText:SetWidth(CHAR_ROW_COLUMNS.lastSeen.width)
+            row.onlineText = FontManager:CreateFontString(lsHost, "body", "OVERLAY")
+            row.onlineText:SetWidth(lsW)
             row.onlineText:SetJustifyH("CENTER")
             row.onlineText:SetText((ns.L and ns.L["ONLINE"]) or "Online")
-            row.onlineText:SetTextColor(0, 1, 0) 
+            row.onlineText:SetTextColor(0, 1, 0)
+        else
+            row.onlineText:SetParent(lsHost)
         end
         row.onlineText:ClearAllPoints()
-        row.onlineText:SetPoint("RIGHT", rail, "RIGHT", -insetLastSeen, 0)
+        row.onlineText:SetPoint("CENTER", lsHost, "CENTER", 0, 0)
         row.onlineText:Show()
         if row.lastSeenText then row.lastSeenText:Hide() end
     else
         if row.onlineText then row.onlineText:Hide() end
-        
+
         local timeDiff = char.lastSeen and (time() - char.lastSeen) or math.huge
-        
-        if not row.lastSeenText then
-            row.lastSeenText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            row.lastSeenText:SetWidth(CHAR_ROW_COLUMNS.lastSeen.width)
-            row.lastSeenText:SetJustifyH("CENTER")
-        end
-        row.lastSeenText:ClearAllPoints()
-        row.lastSeenText:SetPoint("RIGHT", rail, "RIGHT", -insetLastSeen, 0)
-        
-        local lastSeenStr = ""
+        local lastSeenStr
         if timeDiff < 60 then
             lastSeenStr = (ns.L and ns.L["TIME_LESS_THAN_MINUTE"]) or "< 1m ago"
         elseif timeDiff < 3600 then
@@ -2870,6 +2874,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             local daysFormat = (ns.L and ns.L["TIME_DAYS_FORMAT"]) or "%dd ago"
             lastSeenStr = string.format(daysFormat, math.floor(timeDiff / 86400))
         end
+
+        if not row.lastSeenText then
+            row.lastSeenText = FontManager:CreateFontString(lsHost, "body", "OVERLAY")
+            row.lastSeenText:SetWidth(lsW)
+            row.lastSeenText:SetJustifyH("CENTER")
+        else
+            row.lastSeenText:SetParent(lsHost)
+        end
+        row.lastSeenText:ClearAllPoints()
+        row.lastSeenText:SetPoint("CENTER", lsHost, "CENTER", 0, 0)
         row.lastSeenText:SetText(lastSeenStr)
         ns.UI_SetTextColorRole(row.lastSeenText, "Normal")
         row.lastSeenText:Show()

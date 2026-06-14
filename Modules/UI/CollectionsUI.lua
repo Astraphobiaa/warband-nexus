@@ -15,7 +15,6 @@ local format = string.format
 local AFTER_ELEMENT = M.AFTER_ELEMENT
 local SEARCH_ROW_HEIGHT = M.SEARCH_ROW_HEIGHT
 local CONTENT_INSET = M.CONTENT_INSET
-local ApplyVisuals = M.ApplyVisuals
 local SUBTAB_BTN_HEIGHT = 40
 local COLLECTIONS_TITLE_CARD_HEIGHT = M.COLLECTIONS_TITLE_CARD_HEIGHT
 local COLLECTION_HEAVY_DELAY = M.COLLECTION_HEAVY_DELAY
@@ -46,8 +45,7 @@ local DrawMountsContent = M.DrawMountsContent
 local DrawPetsContent = M.DrawPetsContent
 local DrawToysContent = M.DrawToysContent
 local DrawAchievementsContent = M.DrawAchievementsContent
-
-local issecretvalue = issecretvalue
+local CreateSearchBox = ns.UI_CreateSearchBox
 
 local function RedrawCollectionsSearchContentImmediate()
     local cf = M.state.contentFrame
@@ -213,6 +211,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
             hdrCache.filterRow:Show()
         end
         M.LayoutCollectionsSearchBar(hdrCache)
+        M.UpdateCollectionsSearchPlaceholder(hdrCache, M.state.currentSubTab)
 
         headerYOffset = headerYOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
     else
@@ -270,11 +269,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.state.subTabBar:SetActiveTab(tabKey)
             end
             M.state.searchText = ""
-            if M.state.searchBox then
-                M.state.searchBox:SetText("")
-                if M.state.searchBox.Instructions then
-                    M.state.searchBox.Instructions:Show()
-                end
+            local hcSearch = M.state._fixedHeaderCache
+            if hcSearch and hcSearch.searchClearFn then
+                hcSearch.searchClearFn(false)
             end
             if M.ResetCollectionsListScrollPositions then
                 M.ResetCollectionsListScrollPositions()
@@ -290,6 +287,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
             if hc and hc.filterRow then
                 if M.state.currentSubTab == "recent" then hc.filterRow:Hide() else hc.filterRow:Show() end
                 M.LayoutCollectionsSearchBar(hc)
+                M.UpdateCollectionsSearchPlaceholder(hc, tabKey)
             end
         end)
         subTabBar:SetPoint("TOPLEFT", sideMargin, -headerYOffset)
@@ -323,70 +321,28 @@ function WarbandNexus:DrawCollectionsTab(parent)
         filterRow:SetPoint("TOPRIGHT", searchRow, "TOPRIGHT", 0, 0)
         hdrCache.filterRow = filterRow
 
-        local searchBar = Factory:CreateContainer(searchRow, nil, 32, false)
+        local searchPlaceholder = M.GetCollectionsSearchPlaceholder(M.state.currentSubTab)
+        local searchBar, clearSearch = CreateSearchBox(
+            searchRow,
+            1,
+            searchPlaceholder,
+            function(text)
+                M.state.searchText = text
+                if text == "" then
+                    ns.UI_CancelSearchRefresh(CollectionsSearchRefreshKey())
+                    RedrawCollectionsSearchContentImmediate()
+                else
+                    ScheduleCollectionsSearchRedraw()
+                end
+            end,
+            nil,
+            M.state.searchText or "",
+            "collections"
+        )
         searchBar:SetPoint("TOPLEFT", searchRow, "TOPLEFT", 0, 0)
-        searchBar:SetPoint("TOPRIGHT", filterRow, "TOPLEFT", -8, 0)
-        if ApplyVisuals then
-            local accent = (COLORS and COLORS.accent) or { 0.40, 0.20, 0.58 }
-            ApplyVisuals(searchBar, { 0.06, 0.06, 0.08, 1 }, { accent[1], accent[2], accent[3], 0.7 })
-        end
-
-        local searchIcon = searchBar:CreateTexture(nil, "OVERLAY")
-        searchIcon:SetSize(14, 14)
-        searchIcon:SetPoint("LEFT", 8, 0)
-        searchIcon:SetAtlas("common-search-magnifyingglass")
-        searchIcon:SetVertexColor(0.6, 0.6, 0.6)
-
-        local searchBox = Factory:CreateEditBox(searchBar)
-        searchBox:SetSize(1, 26)
-        searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 6, 0)
-        searchBox:SetPoint("RIGHT", searchBar, "RIGHT", -8, 0)
-        ns.UI_SetTextColorRole(searchBox, "Bright")
-        searchBox:SetAutoFocus(false)
-        searchBox:SetMaxLetters(50)
-        searchBox.Instructions = searchBox:CreateFontString(nil, "ARTWORK")
-        if ns.FontManager then
-            ns.FontManager:ApplyFont(searchBox.Instructions, "body")
-        end
-        searchBox.Instructions:SetPoint("LEFT", 0, 0)
-        searchBox.Instructions:SetPoint("RIGHT", 0, 0)
-        searchBox.Instructions:SetJustifyH("LEFT")
-        ns.UI_SetTextColorRole(searchBox.Instructions, "Dim", 0.8)
-        searchBox.Instructions:SetText((ns.L and ns.L["SEARCH_PLACEHOLDER"]) or "Search...")
-        searchBox:SetText(M.state.searchText or "")
-        if (M.state.searchText or "") ~= "" then searchBox.Instructions:Hide() end
-
-        searchBox:SetScript("OnTextChanged", function(self, userInput)
-            local text = self:GetText()
-            if issecretvalue and issecretvalue(text) then
-                M.state.searchText = ""
-                if self.Instructions then self.Instructions:Show() end
-                return
-            end
-            text = text or ""
-            M.state.searchText = text
-            if self.Instructions then
-                if text ~= "" then self.Instructions:Hide() else self.Instructions:Show() end
-            end
-            if not userInput then return end
-            ScheduleCollectionsSearchRedraw()
-        end)
-        searchBox:SetScript("OnEscapePressed", function(self)
-            ns.UI_CancelSearchRefresh(CollectionsSearchRefreshKey())
-            self:SetText("")
-            self:ClearFocus()
-            M.state.searchText = ""
-            if self.Instructions then self.Instructions:Show() end
-            RedrawCollectionsSearchContentImmediate()
-        end)
-        searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-        searchBox:SetScript("OnEditFocusLost", function()
-            ns.UI_FlushSearchRefresh(CollectionsSearchRefreshKey())
-        end)
-        searchBar:EnableMouse(true)
-        searchBar:SetScript("OnMouseDown", function() searchBox:SetFocus() end)
-        M.state.searchBox = searchBox
         hdrCache.searchBar = searchBar
+        hdrCache.searchClearFn = clearSearch
+        M.state.searchContainer = searchBar
 
         local lblOwned = (ns.L and (ns.L["FILTER_SHOW_OWNED"] or ns.L["FILTER_COLLECTED"])) or "Owned"
         local lblMissing = (ns.L and (ns.L["FILTER_SHOW_MISSING"] or ns.L["FILTER_UNCOLLECTED"])) or "Missing"

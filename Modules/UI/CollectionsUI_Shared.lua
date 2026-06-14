@@ -102,6 +102,35 @@ function M.CollectionsRecentCategoryLabel(ctype)
     return tostring(ctype or "")
 end
 
+local COLLECTIONS_SEARCH_CATEGORY_KEYS = {
+    recent = "COLLECTIONS_SUBTAB_RECENT",
+    achievements = "CATEGORY_ACHIEVEMENTS",
+    mounts = "CATEGORY_MOUNTS",
+    pets = "CATEGORY_PETS",
+    toys = "CATEGORY_TOYS",
+}
+
+function M.GetCollectionsSearchPlaceholder(tabKey)
+    local loc = ns.L
+    local fmt = (loc and loc["SEARCH_CATEGORY_FORMAT"]) or "Search %s..."
+    local key = COLLECTIONS_SEARCH_CATEGORY_KEYS[tabKey]
+    local category = (key and loc and loc[key])
+        or (tabKey == "recent" and "Recent")
+        or (tabKey == "achievements" and "Achievements")
+        or (tabKey == "mounts" and "Mounts")
+        or (tabKey == "pets" and "Pets")
+        or (tabKey == "toys" and "Toys")
+        or tostring(tabKey or "")
+    return format(fmt, category)
+end
+
+function M.UpdateCollectionsSearchPlaceholder(hdrCache, tabKey)
+    if not hdrCache or not hdrCache.searchBar or not tabKey then return end
+    if ns.UI_SetSearchBoxPlaceholder then
+        ns.UI_SetSearchBoxPlaceholder(hdrCache.searchBar, M.GetCollectionsSearchPlaceholder(tabKey))
+    end
+end
+
 function M.FormatCollectionsRecentRelativeTime(ts)
     if not ts or type(ts) ~= "number" then return "" end
     local now = time()
@@ -596,7 +625,7 @@ M.state = M.state or {
     modelViewer = nil,
     descriptionPanel = nil,
     loadingPanel = nil,
-    searchBox = nil,
+    searchContainer = nil,
     contentFrame = nil,
     subTabBar = nil,
     showCollected = true,

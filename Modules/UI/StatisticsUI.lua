@@ -46,6 +46,8 @@ function WarbandNexus:InitializeStatisticsUI()
     -- NOTE: Uses StatisticsUIEvents as 'self' key to avoid overwriting other modules' handlers.
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_UPDATED, refreshStatsIfVisible)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.MONEY_UPDATED, refreshStatsIfVisible)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.ITEMS_UPDATED, refreshStatsIfVisible)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.BAGS_UPDATED, refreshStatsIfVisible)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.CHARACTER_UPDATED, function(_, payload)
         if payload and payload.dataType == "gold" then
             refreshStatsIfVisible()
@@ -153,6 +155,27 @@ local function PaintStatisticsClassRow(parent, rowCenterY, rowH, classFile, char
         FontManager:ApplyFont(nameText, "body")
     end
     return nameText, colorBar
+end
+
+local STAT_CARD_H = 90
+local STORAGE_CARD_H = 92
+
+local function ParkStatisticsHeavyDynamicCards(parent)
+    local b = parent._wnStatsHeavyBundle
+    if not b then return end
+    local bin = ns.UI_RecycleBin
+    local function park(frame)
+        if not frame then return end
+        frame:Hide()
+        frame:ClearAllPoints()
+        if bin then
+            frame:SetParent(bin)
+        end
+    end
+    park(b.goldCard)
+    park(b.mpCard)
+    b.goldCard = nil
+    b.mpCard = nil
 end
 
 -- Import shared UI layout constants
@@ -348,9 +371,8 @@ function WarbandNexus:DrawStatistics(parent)
     local useTwoRows = (threeCardWidth < MIN_STAT_CARD_W)
     local cardW, secondRowY
     if useTwoRows then
-        -- First row: Mount + Pet side by side; second row: Toy full width (no overflow)
         cardW = (availableW - cardSpacing) / 2
-        secondRowY = 90 + sectionGap  -- first row height
+        secondRowY = STAT_CARD_H + sectionGap
     else
         cardW = threeCardWidth
         secondRowY = nil
@@ -361,6 +383,8 @@ function WarbandNexus:DrawStatistics(parent)
     local collLayoutSig = (useTwoRows and "2" or "3") .. ":" .. math.floor(cardW + 0.5)
     local collBundle = parent._wnStatsCollectionBundle
     local achCard, mountCard, petCard, toyCard
+
+    local collectionRowY = yOffset + STAT_CARD_H + sectionGap
 
     if collBundle and collBundle.layoutSig == collLayoutSig and collBundle.achCard then
         achCard = collBundle.achCard
@@ -378,7 +402,7 @@ function WarbandNexus:DrawStatistics(parent)
         mountCard:SetParent(parent)
         mountCard:ClearAllPoints()
         mountCard:SetWidth(cardW)
-        mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
+        mountCard:SetPoint("TOPLEFT", leftMargin, -collectionRowY)
         mountCard:Show()
         if collBundle.mountValue then
             collBundle.mountValue:SetText(SemanticInfoHex() .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. " (" .. (numTotalMounts > 0 and math.floor(numCollectedMounts / numTotalMounts * 100) or 0) .. "%)|r")
@@ -397,11 +421,11 @@ function WarbandNexus:DrawStatistics(parent)
         toyCard:SetParent(parent)
         toyCard:ClearAllPoints()
         if useTwoRows then
-            toyCard:SetPoint("TOPLEFT", leftMargin, -(yOffset + secondRowY))
-            toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(yOffset + secondRowY))
+            toyCard:SetPoint("TOPLEFT", leftMargin, -(collectionRowY + secondRowY))
+            toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(collectionRowY + secondRowY))
         else
             toyCard:SetWidth(cardW)
-            toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -yOffset)
+            toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -collectionRowY)
         end
         toyCard:Show()
         if collBundle.toyValue then
@@ -409,7 +433,7 @@ function WarbandNexus:DrawStatistics(parent)
         end
     else
     -- Achievement Card (Account-wide since TWW) - Full width
-    achCard = CreateCard(parent, 90)
+    achCard = CreateCard(parent, STAT_CARD_H)
     achCard:SetPoint("TOPLEFT", SIDE, -yOffset)
     achCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
     if ApplyPanelCardChrome then ApplyPanelCardChrome(achCard) end
@@ -436,12 +460,10 @@ function WarbandNexus:DrawStatistics(parent)
     
     achCard:Show()
 
-    yOffset = yOffset + 90 + sectionGap
-
     -- Mount Card (collection row)
-    mountCard = CreateCard(parent, 90)
+    mountCard = CreateCard(parent, STAT_CARD_H)
     mountCard:SetWidth(cardW)
-    mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
+    mountCard:SetPoint("TOPLEFT", leftMargin, -collectionRowY)
     
     -- Use factory pattern for standardized card header layout
     local mountLayout = CreateCardHeaderLayout(
@@ -468,7 +490,7 @@ function WarbandNexus:DrawStatistics(parent)
     mountCard:Show()
 
     -- Pet Card (collection row)
-    petCard = CreateCard(parent, 90)
+    petCard = CreateCard(parent, STAT_CARD_H)
     petCard:SetWidth(cardW)
     petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
@@ -514,13 +536,13 @@ function WarbandNexus:DrawStatistics(parent)
     petCard:Show()
 
     -- Toys Card: second row when narrow, same row when wide
-    toyCard = CreateCard(parent, 90)
+    toyCard = CreateCard(parent, STAT_CARD_H)
     if useTwoRows then
-        toyCard:SetPoint("TOPLEFT", leftMargin, -(yOffset + secondRowY))
-        toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(yOffset + secondRowY))
+        toyCard:SetPoint("TOPLEFT", leftMargin, -(collectionRowY + secondRowY))
+        toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(collectionRowY + secondRowY))
     else
         toyCard:SetWidth(cardW)
-        toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -yOffset)
+        toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -collectionRowY)
     end
     
     -- Use factory pattern for standardized card header layout
@@ -561,10 +583,19 @@ function WarbandNexus:DrawStatistics(parent)
     }
     end -- collection bundle create
 
-    yOffset = yOffset + (useTwoRows and (90 + 90 + sectionGap) or 90) + sectionGap
+    local collBlockH = STAT_CARD_H
+    if useTwoRows then
+        collBlockH = STAT_CARD_H + sectionGap + STAT_CARD_H
+    end
+    yOffset = yOffset + STAT_CARD_H + sectionGap + collBlockH + sectionGap
 
     local PaintHeavyStatisticsBody
     PaintHeavyStatisticsBody = function(startYOffset)
+    if not parent._wnStatsHeavyBundle then
+        parent._wnStatsHeavyBundle = {}
+    end
+    ParkStatisticsHeavyDynamicCards(parent)
+    local heavyBundle = parent._wnStatsHeavyBundle
     local yOffset = startYOffset
     local GW_VISIBLE_ROWS = 5
     local GW_ROW_HEIGHT = 22
@@ -734,6 +765,7 @@ function WarbandNexus:DrawStatistics(parent)
         end
         
         goldCard:Show()
+        heavyBundle.goldCard = goldCard
         yOffset = yOffset + goldCardHeight + sectionGap
     end
     
@@ -955,52 +987,90 @@ function WarbandNexus:DrawStatistics(parent)
         end
         
         mpCard:Show()
+        heavyBundle.mpCard = mpCard
         yOffset = yOffset + cardHeight + sectionGap
-    end
-    
-    local storageCard = CreateCard(parent, 100)
-    storageCard:SetPoint("TOPLEFT", SIDE, -yOffset)
-    storageCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
-    if ApplyPanelCardChrome then ApplyPanelCardChrome(storageCard) end
-    
-    local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
-    stTitle:SetPoint("TOPLEFT", 15, -12)
-    local storageOverviewLabel = (ns.L and ns.L["STORAGE_OVERVIEW"]) or "Storage Overview"
-    stTitle:SetText(AccentHex() .. storageOverviewLabel .. "|r")
-    
-    local function AddStat(statParent, label, value, x, y, color)
-        local l = FontManager:CreateFontString(statParent, "small", "OVERLAY")
-        l:SetPoint("TOPLEFT", x, y)
-        l:SetText(label)
-        ns.UI_SetTextColorRole(l, "Normal")
-        
-        local v = FontManager:CreateFontString(statParent, "title", "OVERLAY")
-        v:SetPoint("TOPLEFT", x, y - 16)
-        v:SetText(value)
-        if color then
-            v:SetTextColor(unpack(color))
-        else
-            ns.UI_SetTextColorRole(v, "Bright")
-        end
     end
     
     local wb = stats.warband or {}
     local pb = stats.personal or {}
-    local totalSlots = (wb.totalSlots or 0) + (pb.totalSlots or 0)
-    local usedSlots = (wb.usedSlots or 0) + (pb.usedSlots or 0)
     local freeSlots = (wb.freeSlots or 0) + (pb.freeSlots or 0)
-    
-    local cardWidth = storageCard:GetWidth() or 600
-    local columnWidth = (cardWidth - 30) / 4
-    
-    AddStat(storageCard, (ns.L and ns.L["WARBAND_SLOTS"]) or "WARBAND SLOTS", FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0), 15, -40)
-    AddStat(storageCard, (ns.L and ns.L["PERSONAL_SLOTS"]) or "PERSONAL SLOTS", FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0), 15 + columnWidth * 1, -40)
-    local gr, gg, gb = SemanticGreenRGB()
-    AddStat(storageCard, (ns.L and ns.L["TOTAL_FREE"]) or "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, { gr, gg, gb })
-    AddStat(storageCard, (ns.L and ns.L["TOTAL_ITEMS"]) or "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
-    
+    local itemCount = (wb.itemCount or 0) + (pb.itemCount or 0)
+
+    local storageCard = heavyBundle.storageCard
+    if not storageCard then
+        storageCard = CreateCard(parent, STORAGE_CARD_H)
+        heavyBundle.storageCard = storageCard
+        if ApplyPanelCardChrome then ApplyPanelCardChrome(storageCard) end
+        local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
+        stTitle:SetPoint("TOPLEFT", 15, -10)
+        stTitle:SetText(AccentHex() .. ((ns.L and ns.L["STORAGE_OVERVIEW"]) or "Storage Overview") .. "|r")
+        heavyBundle.storageTitle = stTitle
+        heavyBundle.storageCols = {}
+        local colDefs = {
+            { labelKey = "WARBAND_SLOTS", fallback = "Warband Slots" },
+            { labelKey = "PERSONAL_SLOTS", fallback = "Personal Slots" },
+            { labelKey = "TOTAL_FREE", fallback = "Total Free", valueGreen = true },
+            { labelKey = "TOTAL_ITEMS", fallback = "Total Items" },
+        }
+        for ci = 1, 4 do
+            local def = colDefs[ci]
+            local lbl = FontManager:CreateFontString(storageCard, "small", "OVERLAY")
+            lbl:SetJustifyH("LEFT")
+            local val = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
+            val:SetJustifyH("LEFT")
+            heavyBundle.storageCols[ci] = {
+                label = lbl,
+                value = val,
+                labelKey = def.labelKey,
+                fallback = def.fallback,
+                valueGreen = def.valueGreen,
+            }
+        end
+    end
+    storageCard:SetParent(parent)
+    storageCard:ClearAllPoints()
+    storageCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+    storageCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE, -yOffset)
+    storageCard:SetHeight(STORAGE_CARD_H)
     storageCard:Show()
-    yOffset = yOffset + 110
+
+    local cardWidth = storageCard:GetWidth() or 600
+    local padX, padTop, gridGap = 15, 36, 14
+    local useGrid2x2 = cardWidth < 520
+    local colW = useGrid2x2 and math.floor((cardWidth - padX * 2 - gridGap) / 2)
+        or math.floor((cardWidth - padX * 2) / 4)
+    local statValues = {
+        FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0),
+        FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0),
+        FormatNumber(freeSlots),
+        FormatNumber(itemCount),
+    }
+    local gr, gg, gb = SemanticGreenRGB()
+    for ci = 1, 4 do
+        local col = heavyBundle.storageCols[ci]
+        local gridRow = useGrid2x2 and math.floor((ci - 1) / 2) or 0
+        local gridCol = useGrid2x2 and ((ci - 1) % 2) or (ci - 1)
+        local x = padX + gridCol * (colW + gridGap)
+        local y = -(padTop + gridRow * 34)
+        col.label:ClearAllPoints()
+        col.label:SetPoint("TOPLEFT", storageCard, "TOPLEFT", x, y)
+        col.label:SetWidth(colW)
+        col.label:SetText((ns.L and ns.L[col.labelKey]) or col.fallback)
+        ns.UI_SetTextColorRole(col.label, "Normal")
+        col.value:ClearAllPoints()
+        col.value:SetPoint("TOPLEFT", col.label, "BOTTOMLEFT", 0, -2)
+        col.value:SetWidth(colW)
+        col.value:SetText(statValues[ci])
+        if col.valueGreen then
+            col.value:SetTextColor(gr, gg, gb)
+        else
+            ns.UI_SetTextColorRole(col.value, "Bright")
+        end
+        col.label:Show()
+        col.value:Show()
+    end
+
+    yOffset = yOffset + STORAGE_CARD_H + sectionGap
 
     if ns.UI_AnnexResultsToScrollBottom then
         ns.UI_AnnexResultsToScrollBottom(storageCard, parent, SIDE, 8)
