@@ -59,6 +59,8 @@ local FormatNumber = ns.UI_FormatNumber
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
 local GetItemTypeName = ns.UI_GetItemTypeName
 local GetItemClassID = ns.UI_GetItemClassID
+local ResolveItemCategoryName = ns.UI_ResolveItemCategoryName
+local ResolveItemCategoryIcon = ns.UI_ResolveItemCategoryIcon
 local ReleasePooledRowsInSubtree = ns.UI_ReleasePooledRowsInSubtree
 local ChainSectionFrameBelow = ns.UI_ChainSectionFrameBelow
 local AcquireStorageRow = ns.UI_AcquireStorageRow
@@ -130,6 +132,7 @@ local function ShowItemsResultsEmptyState(parent, tabName, baseYOffset)
     if parent and parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
+    HideAllItemsEmptyStateCards(parent)
     local top = ItemsResultsTopGap(baseYOffset or 0)
     if ns.UI_ShowTabEmptyStateCard then
         return ns.UI_ShowTabEmptyStateCard(parent, tabName, top, ITEMS_RESULTS_EMPTY_OPTS)
@@ -564,9 +567,50 @@ local function ResolveItemsSubTabStatsMetrics(addon, currentItemsSubTab)
         return #items, bagsData.usedSlots or 0, bagsData.totalSlots or 0, bagsData.lastScan or 0,
             (ns.UI_GetItemsContextStatHex and ns.UI_GetItemsContextStatHex("inventory")) or "88ccff"
     elseif currentItemsSubTab == "personal" then
+        local charKey = nil
+        if addon.ResolveItemStorageReadKey then
+            charKey = addon:ResolveItemStorageReadKey()
+        elseif ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey then
+            charKey = ns.CharacterService:ResolveSubsidiaryCharacterKey(addon, nil)
+        end
+        if addon.RequestPersonalBankScanIfNeeded then
+            addon:RequestPersonalBankScanIfNeeded()
+        elseif addon.EnsurePersonalBankScannedForDisplay then
+            addon:EnsurePersonalBankScannedForDisplay()
+        end
         local items = addon:GetBankItems() or {}
-        local pb = bankStats.personal or {}
-        return #items, pb.usedSlots or 0, pb.totalSlots or 0, pb.lastScan or 0,
+        local bankSlots, bankStacks, bankLast = 0, 0, 0
+        if charKey and addon.GetItemStorageOccupiedSlotTally then
+            bankSlots, bankStacks, bankLast = addon:GetItemStorageOccupiedSlotTally(charKey, "bank", true)
+        end
+        local itemCount = 0
+        if #items > 0 then
+            for ii = 1, #items do
+                itemCount = itemCount + (items[ii].stackCount or 1)
+            end
+        elseif bankStacks and bankStacks > 0 then
+            itemCount = bankStacks
+        end
+        local usedSlots = (#items > 0) and #items or (bankSlots or 0)
+        local BANK_BAGS = ns.PERSONAL_BANK_BAGS or { -1, 6, 7, 8, 9, 10, 11 }
+        local totalSlots = 0
+        for bi = 1, #BANK_BAGS do
+            totalSlots = totalSlots + (C_Container.GetContainerNumSlots(BANK_BAGS[bi]) or 0)
+        end
+        if totalSlots == 0 and usedSlots > 0 then
+            totalSlots = usedSlots
+        end
+        if totalSlots < usedSlots then
+            totalSlots = usedSlots
+        end
+        local lastScan = bankLast or 0
+        if items and addon.GetItemsData and charKey then
+            local idata = addon:GetItemsData(charKey)
+            if idata and (idata.bankLastUpdate or 0) > lastScan then
+                lastScan = idata.bankLastUpdate
+            end
+        end
+        return itemCount, usedSlots, totalSlots, lastScan,
             (ns.UI_GetItemsContextStatHex and ns.UI_GetItemsContextStatHex("personal")) or "88ff88"
     end
     return 0, 0, 0, 0, (ns.UI_GetItemsContextStatHex and ns.UI_GetItemsContextStatHex("inventory")) or "ffffff"
@@ -951,13 +995,19 @@ function WarbandNexus:_CollectPersonalTypeItems(charKey, typeName)
         for bi = 1, #bagList do
             local item = bagList[bi]
             if item and item.itemID then
-                local cid = item.classID
-                if not cid then
-                    cid = GetItemClassID(item.itemID)
-                    item.classID = cid
-                end
-                if GetItemTypeName(cid) == typeName then
-                    out[#out + 1] = item
+                if ResolveItemCategoryName then
+                    if ResolveItemCategoryName(item) == typeName then
+                        out[#out + 1] = item
+                    end
+                else
+                    local cid = item.classID
+                    if not cid then
+                        cid = GetItemClassID(item.itemID)
+                        item.classID = cid
+                    end
+                    if GetItemTypeName(cid) == typeName then
+                        out[#out + 1] = item
+                    end
                 end
             end
         end
@@ -976,13 +1026,19 @@ function WarbandNexus:_CollectWarbandTypeItems(typeName)
     for ii = 1, #warbandData.items do
         local item = warbandData.items[ii]
         if item and item.itemID then
-            local cid = item.classID
-            if not cid then
-                cid = GetItemClassID(item.itemID)
-                item.classID = cid
-            end
-            if GetItemTypeName(cid) == typeName then
-                out[#out + 1] = item
+            if ResolveItemCategoryName then
+                if ResolveItemCategoryName(item) == typeName then
+                    out[#out + 1] = item
+                end
+            else
+                local cid = item.classID
+                if not cid then
+                    cid = GetItemClassID(item.itemID)
+                    item.classID = cid
+                end
+                if GetItemTypeName(cid) == typeName then
+                    out[#out + 1] = item
+                end
             end
         end
     end
@@ -1001,18 +1057,29 @@ function WarbandNexus:_CollectGuildTypeItems(guildName, typeName)
     for tabIndex, tabData in pairs(guildData.tabs or {}) do
         for slotID, item in pairs(tabData.items or {}) do
             if item and item.itemID then
-                local cid = item.classID
-                if not cid then
-                    cid = GetItemClassID(item.itemID)
-                    item.classID = cid
-                end
-                if GetItemTypeName(cid) == typeName then
-                    item.tabIndex = tabIndex
-                    item.slotID = slotID
-                    item.tabName = tabData.name
-                    item.guildName = guildName
-                    item.source = "guild"
-                    out[#out + 1] = item
+                if ResolveItemCategoryName then
+                    if ResolveItemCategoryName(item) == typeName then
+                        item.tabIndex = tabIndex
+                        item.slotID = slotID
+                        item.tabName = tabData.name
+                        item.guildName = guildName
+                        item.source = "guild"
+                        out[#out + 1] = item
+                    end
+                else
+                    local cid = item.classID
+                    if not cid then
+                        cid = GetItemClassID(item.itemID)
+                        item.classID = cid
+                    end
+                    if GetItemTypeName(cid) == typeName then
+                        item.tabIndex = tabIndex
+                        item.slotID = slotID
+                        item.tabName = tabData.name
+                        item.guildName = guildName
+                        item.source = "guild"
+                        out[#out + 1] = item
+                    end
                 end
             end
         end
@@ -1499,7 +1566,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         return c
     end
 
-    local function ResolvedStorageTypeName(classID)
+    local function ResolvedStorageTypeName(entry)
+        if ResolveItemCategoryName then
+            return ResolveItemCategoryName(entry)
+        end
+        local classID = ResolvedStorageClassID(entry)
         local t = storageDrawTypeNameByClassID[classID]
         if not t then
             t = GetItemTypeName(classID)
@@ -1758,7 +1829,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             for _, item in pairs(tabData.items or {}) do
                                 if item.itemID and ItemMatchesSearch(item) then
                                     local classID = ResolvedStorageClassID(item)
-                                    local typeName = ResolvedStorageTypeName(classID)
+                                    local typeName = ResolvedStorageTypeName(item)
                                     local guildCategoryKey = "guild_" .. guildName
                                     local typeKey = guildCategoryKey .. "_" .. typeName
                                     categoriesWithMatches[typeKey] = true
@@ -1780,7 +1851,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 local item = wbItems[ii]
                 if item.itemID and ItemMatchesSearch(item) then
                     local classID = ResolvedStorageClassID(item)
-                    local typeName = ResolvedStorageTypeName(classID)
+                    local typeName = ResolvedStorageTypeName(item)
                     local categoryKey = "warband_" .. typeName
                     categoriesWithMatches[categoryKey] = true
                     categoriesWithMatches["warband"] = true
@@ -1806,7 +1877,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         local item = bags[bi]
                         if item.itemID and ItemMatchesSearch(item) then
                             local classID = ResolvedStorageClassID(item)
-                            local typeName = ResolvedStorageTypeName(classID)
+                            local typeName = ResolvedStorageTypeName(item)
                             local charCategoryKey = "personal_" .. charKey
                             local typeKey = charCategoryKey .. "_" .. typeName
                             categoriesWithMatches[typeKey] = true
@@ -1825,7 +1896,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         local item = bankItems[bi]
                         if item.itemID and ItemMatchesSearch(item) then
                             local classID = ResolvedStorageClassID(item)
-                            local typeName = ResolvedStorageTypeName(classID)
+                            local typeName = ResolvedStorageTypeName(item)
                             local charCategoryKey = "personal_" .. charKey
                             local typeKey = charCategoryKey .. "_" .. typeName
                             categoriesWithMatches[typeKey] = true
@@ -2208,7 +2279,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             local item = bags[bi]
                             if item.itemID then
                                 local classID = ResolvedStorageClassID(item)
-                                local typeName = ResolvedStorageTypeName(classID)
+                                local typeName = ResolvedStorageTypeName(item)
 
                                 if not charItems[typeName] then
                                     charItems[typeName] = {}
@@ -2225,7 +2296,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             local item = bankItems[bi]
                             if item.itemID then
                                 local classID = ResolvedStorageClassID(item)
-                                local typeName = ResolvedStorageTypeName(classID)
+                                local typeName = ResolvedStorageTypeName(item)
 
                                 if not charItems[typeName] then
                                     charItems[typeName] = {}
@@ -2535,7 +2606,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         -- Index only matches when a filter is active.
                     else
                         local classID = ResolvedStorageClassID(item)
-                        local typeName = ResolvedStorageTypeName(classID)
+                        local typeName = ResolvedStorageTypeName(item)
                         if not warbandItems[typeName] then
                             warbandItems[typeName] = {}
                         end
@@ -2632,7 +2703,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 if item.itemID then
                     if not storageSearchActive or ItemMatchesSearch(item) then
                         local classID = ResolvedStorageClassID(item)
-                        local typeName = ResolvedStorageTypeName(classID)
+                        local typeName = ResolvedStorageTypeName(item)
                         if not warbandItems[typeName] then
                             warbandItems[typeName] = {}
                         end
@@ -2977,7 +3048,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             if item and item.itemID then
                                 if not storageSearchActive or ItemMatchesSearch(item) then
                                     local classID = ResolvedStorageClassID(item)
-                                    local typeName = ResolvedStorageTypeName(classID)
+                                    local typeName = ResolvedStorageTypeName(item)
                                     item.tabIndex = tabIndex
                                     item.slotID = slotID
                                     item.tabName = tabData.name
@@ -3285,6 +3356,9 @@ function WarbandNexus:RefreshItemsSubTabBodyOnly(fromSub, toSub)
 
     local function runBodyRedraw()
         if not (self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "items") then return end
+        if sub == "personal" and self.RequestPersonalBankScanIfNeeded then
+            self:RequestPersonalBankScanIfNeeded()
+        end
         self:RedrawItemsResultsOnly()
         finishPerf()
     end
@@ -3747,6 +3821,7 @@ function WarbandNexus:RedrawItemsResultsOnly()
     if not scrollChild then return end
     local rc = scrollChild.resultsContainer
     if not rc or rc:GetParent() ~= scrollChild then return end
+    HideAllItemsEmptyStateCards(rc)
     if ns.UI_EnsureMainScrollLayout then
         ns.UI_EnsureMainScrollLayout()
     end
@@ -3869,7 +3944,8 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
 
     for i = 1, #items do
         local item = items[i]
-        local typeName = item.itemType or ((ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous")
+        local typeName = (ResolveItemCategoryName and ResolveItemCategoryName(item))
+            or ((ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous")
         if not groups[typeName] then
             local groupKey = currentItemsSubTab .. "_" .. typeName
             if hasSearchFilter then
@@ -3893,8 +3969,12 @@ function WarbandNexus:BuildItemsVirtualFlatList(width, currentItemsSubTab, items
         local isExpanded = (self.itemsExpandAllActive == true) or (expandedGroups[group.groupKey] == true)
 
         local typeIcon = nil
-        if group.items[1] and group.items[1].classID then
-            typeIcon = GetTypeIcon(group.items[1].classID)
+        if group.items[1] then
+            if ResolveItemCategoryIcon then
+                typeIcon = ResolveItemCategoryIcon(group.items[1], group.items[1].classID)
+            elseif group.items[1].classID then
+                typeIcon = GetTypeIcon(group.items[1].classID)
+            end
         end
 
         flatList[#flatList + 1] = {
@@ -4030,11 +4110,18 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
             SearchResultsRenderer:PrepareContainer(parent)
         end
+        HideAllItemsEmptyStateCards(parent)
         return self:DrawStorageResults(parent, yOffset, width, itemsSearchText)
     end
 
     if SearchResultsRenderer and SearchResultsRenderer.PrepareContainer then
         SearchResultsRenderer:PrepareContainer(parent)
+    end
+    HideAllItemsEmptyStateCards(parent)
+    if currentItemsSubTab == "personal" and self.RequestPersonalBankScanIfNeeded then
+        self:RequestPersonalBankScanIfNeeded()
+    elseif currentItemsSubTab == "personal" and self.EnsurePersonalBankScannedForDisplay then
+        self:EnsurePersonalBankScannedForDisplay()
     end
     local flatList, contentEndY, _itemCount, itemsSearchActive = self:BuildItemsVirtualFlatList(width, currentItemsSubTab, itemsSearchText, yOffset)
 

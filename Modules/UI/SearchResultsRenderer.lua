@@ -54,7 +54,10 @@ function SearchResultsRenderer:PrepareContainer(container)
     local children = {container:GetChildren()}
     for i = 1, #children do
         local child = children[i]
-        if not (IsProtected and IsProtected(child, container)) then
+        if IsProtected and IsProtected(child, container) then
+            -- fillParent empty-state cards are protected from recycle but must not bleed across redraws
+            child:Hide()
+        else
             if ReleaseCurrencyRowsFromSubtree then
                 ReleaseCurrencyRowsFromSubtree(child)
             end
@@ -65,7 +68,9 @@ function SearchResultsRenderer:PrepareContainer(container)
     end
     for i = 1, #children do
         local child = children[i]
-        if not (IsProtected and IsProtected(child, container)) then
+        if IsProtected and IsProtected(child, container) then
+            child:Hide()
+        else
             child:Hide()
             if bin then child:SetParent(bin) else child:SetParent(nil) end
         end

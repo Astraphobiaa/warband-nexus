@@ -446,9 +446,11 @@ local function HydrateItem(item)
         item.classID = item.classID or metadata.classID
         item.subclassID = item.subclassID or metadata.subclassID
         item.itemType = item.itemType or metadata.itemType
+        if item.itemType == "" then item.itemType = nil end
         -- Propagate pending state to item (UI uses this to show loading indicator)
         item.pending = metadata.pending or nil
     end
+    if item.itemType == "" then item.itemType = nil end
     
     return item
 end
@@ -461,6 +463,125 @@ local function HydrateItems(items)
         HydrateItem(item)
     end
     return items
+end
+
+---Same key used for itemStorage writes (GUID-first subsidiary key).
+function WarbandNexus:ResolveItemStorageReadKey()
+    return ResolveCurrentItemStorageKey()
+end
+
+---Drop one character's decompressed itemStorage RAM cache (e.g. tally vs list mismatch).
+function WarbandNexus:InvalidateItemsDataCache(charKey)
+    if not charKey or charKey == "" then return end
+    decompressedItemCache[charKey] = nil
+    itemSummaryIndex.pending[charKey] = true
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        local alt = ns.Utilities:GetCanonicalCharacterKey(charKey)
+        if alt and alt ~= charKey then
+            decompressedItemCache[alt] = nil
+            itemSummaryIndex.pending[alt] = true
+        end
+    end
+end
+
+local personalBankUIScanPending = false
+
+---True when C_Container can read personal bank bags (bank frame open / API unlocked).
+local function IsPersonalBankAPIAccessible()
+    if isBankOpen or (WarbandNexus and WarbandNexus.bankIsOpen) then
+        return true
+    end
+    local bankIdx = Enum.BagIndex and Enum.BagIndex.Bank
+    if bankIdx then
+        local n = C_Container.GetContainerNumSlots(bankIdx)
+        if n and n > 0 then
+            return true
+        end
+    end
+    for i = 1, #BANK_BAGS do
+        local n = C_Container.GetContainerNumSlots(BANK_BAGS[i])
+        if n and n > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+---Count occupied personal-bank slots via live API (only valid when bank is accessible).
+local function CountLivePersonalBankOccupiedSlots()
+    local count = 0
+    for i = 1, #BANK_BAGS do
+        local bagID = BANK_BAGS[i]
+        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        for slot = 1, numSlots do
+            local info = C_Container.GetContainerItemInfo(bagID, slot)
+            if info and info.itemID then
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
+---Scan personal bank when the Bank sub-tab is shown and WoW bank APIs are readable.
+---@return boolean didScan
+function WarbandNexus:RequestPersonalBankScanIfNeeded()
+    if not ns.Utilities or not ns.Utilities.IsModuleEnabled or not ns.Utilities:IsModuleEnabled("items") then
+        return false
+    end
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return false
+    end
+    if not IsPersonalBankAPIAccessible() then
+        return false
+    end
+
+    isBankOpen = true
+    self.bankIsOpen = true
+
+    local charKey = ResolveCurrentItemStorageKey()
+    if not charKey then return false end
+
+    local cachedSlots = 0
+    if self.GetItemStorageOccupiedSlotTally then
+        cachedSlots = self:GetItemStorageOccupiedSlotTally(charKey, "bank", false) or 0
+    end
+    local liveSlots = CountLivePersonalBankOccupiedSlots()
+    if cachedSlots > 0 and liveSlots <= cachedSlots then
+        return false
+    end
+    if liveSlots == 0 and cachedSlots == 0 then
+        -- Bank accessible but empty — still persist empty snapshot once.
+        if cachedSlots == 0 and self.GetItemsData then
+            local data = self:GetItemsData(charKey)
+            if data and data.bankLastUpdate and data.bankLastUpdate > 0 then
+                return false
+            end
+        end
+    end
+
+    if personalBankUIScanPending then
+        return false
+    end
+    personalBankUIScanPending = true
+
+    if self.ScanBankBags then
+        self:ScanBankBags(charKey)
+    end
+    personalBankUIScanPending = false
+
+    if self.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.ITEMS_UPDATED then
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {
+            type = "personal_bank_scan",
+            charKey = CanonicalItemsMessageKey(charKey),
+        })
+    end
+    return true
+end
+
+---@deprecated use RequestPersonalBankScanIfNeeded
+function WarbandNexus:EnsurePersonalBankScannedForDisplay()
+    return self:RequestPersonalBankScanIfNeeded()
 end
 
 ---Clear session-only item metadata cache.
@@ -561,6 +682,25 @@ local function CaptureContainerSlotItemLevel(bagID, slot, itemID, itemLink)
     return 0
 end
 
+---Resolve itemID from container slot (keystone hyperlinks may not parse via GetItemInfoInstant alone).
+local function ResolveContainerSlotItemID(itemInfo, hl)
+    local id = itemInfo and itemInfo.itemID
+    if id and id > 0 then return id end
+    if not hl or (issecretvalue and issecretvalue(hl)) then return nil end
+    if C_Item and C_Item.GetItemInfoInstant then
+        local ok, instantId = pcall(C_Item.GetItemInfoInstant, hl)
+        if ok and instantId and instantId > 0 then return instantId end
+    end
+    if type(hl) == "string" then
+        local idFromLink = hl:match("item:(%d+)")
+        if idFromLink then
+            local n = tonumber(idFromLink)
+            if n and n > 0 then return n end
+        end
+    end
+    return nil
+end
+
 ---Scan a specific bag and return LEAN item data (metadata stripped).
 ---Reuses cached slot data from GenerateItemHash when available (single pass).
 ---Only stores: itemID, stackCount, quality, isBound, positional fields.
@@ -579,10 +719,11 @@ local function ScanBag(bagID)
             if itemInfo and itemInfo.hyperlink then
                 local hl = itemInfo.hyperlink
                 if not (issecretvalue and issecretvalue(hl)) then
-                    local itemID = C_Item.GetItemInfoInstant(hl)
+                    local itemID = ResolveContainerSlotItemID(itemInfo, hl)
                     if itemID then
                         n = n + 1
                         local snapIlvl = CaptureContainerSlotItemLevel(bagID, slot, itemID, hl)
+                        local isKs = hl:find("|Hkeystone:", 1, true) ~= nil
                         items[n] = {
                             actualBagID = bagID,
                             bagID = bagID,
@@ -594,6 +735,7 @@ local function ScanBag(bagID)
                             quality = itemInfo.quality,
                             isBound = itemInfo.isBound or false,
                             itemLevel = (snapIlvl > 0) and snapIlvl or nil,
+                            isKeystone = isKs or nil,
                         }
                     end
                 end
@@ -608,10 +750,11 @@ local function ScanBag(bagID)
             if itemInfo and itemInfo.hyperlink then
                 local hl = itemInfo.hyperlink
                 if not (issecretvalue and issecretvalue(hl)) then
-                    local itemID = C_Item.GetItemInfoInstant(hl)
+                    local itemID = ResolveContainerSlotItemID(itemInfo, hl)
                     if itemID then
                         n = n + 1
                         local snapIlvl = CaptureContainerSlotItemLevel(bagID, slot, itemID, hl)
+                        local isKs = hl:find("|Hkeystone:", 1, true) ~= nil
                         items[n] = {
                             actualBagID = bagID,
                             bagID = bagID,
@@ -623,6 +766,7 @@ local function ScanBag(bagID)
                             quality = itemInfo.quality,
                             isBound = itemInfo.isBound or false,
                             itemLevel = (snapIlvl > 0) and snapIlvl or nil,
+                            isKeystone = isKs or nil,
                         }
                     end
                 end
@@ -1670,6 +1814,13 @@ function WarbandNexus:GetItemsData(charKey)
             end
             HydrateItems(result.bank)
             result.bankLastUpdate = storage.bank.lastUpdate or 0
+            local metaSlots = storage.bank.slotCount
+            if metaSlots and metaSlots > 0 and #result.bank == 0 then
+                local retry = storage.bank.compressed and DecompressItemData(storage.bank.data) or storage.bank.data
+                if retry and #retry > 0 then
+                    result.bank = HydrateItems(retry)
+                end
+            end
         end
     end
 

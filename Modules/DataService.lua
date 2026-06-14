@@ -1985,16 +1985,30 @@ function WarbandNexus:ScanMythicKeystone()
     }
 end
 
+--- Resolve itemStorage read key (must match ItemsCacheService writes).
+local function ResolveItemStorageReadKeyForData(addon)
+    if addon.ResolveItemStorageReadKey then
+        return addon:ResolveItemStorageReadKey()
+    end
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey then
+        local k = CS:ResolveSubsidiaryCharacterKey(addon, nil)
+        if k and k ~= "" then return k end
+    end
+    if CS and CS.ResolveCharactersTableKey then
+        return CS:ResolveCharactersTableKey(addon)
+    end
+    if ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        return ns.Utilities:GetCharacterStorageKey(addon)
+    end
+    return nil
+end
+
 --- Get inventory items only (logged-in character bags 0-5).
 function WarbandNexus:GetInventoryItems()
     local items = {}
     
-    -- Same key as ItemsCacheService scans (GUID when available) — Name-Realm alone misses v2 itemStorage.
-    local charKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
-        and ns.CharacterService:ResolveCharactersTableKey(self)
-    if not charKey and ns.Utilities.GetCharacterStorageKey then
-        charKey = ns.Utilities:GetCharacterStorageKey(self)
-    end
+    local charKey = ResolveItemStorageReadKeyForData(self)
     
     -- Use ItemsCacheService (new unified storage)
     if not self.GetItemsData then
@@ -2026,11 +2040,7 @@ end
 function WarbandNexus:GetBankItems()
     local items = {}
     
-    local charKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
-        and ns.CharacterService:ResolveCharactersTableKey(self)
-    if not charKey and ns.Utilities.GetCharacterStorageKey then
-        charKey = ns.Utilities:GetCharacterStorageKey(self)
-    end
+    local charKey = ResolveItemStorageReadKeyForData(self)
     
     -- Use ItemsCacheService (new unified storage)
     if not self.GetItemsData then
@@ -2041,11 +2051,21 @@ function WarbandNexus:GetBankItems()
     if not itemsData then
         return items
     end
+
+    local bankRows = itemsData.bank
+    if (not bankRows or #bankRows == 0) and self.GetItemStorageOccupiedSlotTally then
+        local tallySlots = self:GetItemStorageOccupiedSlotTally(charKey, "bank", false)
+        if tallySlots and tallySlots > 0 and self.InvalidateItemsDataCache then
+            self:InvalidateItemsDataCache(charKey)
+            itemsData = self:GetItemsData(charKey)
+            bankRows = itemsData and itemsData.bank
+        end
+    end
     
     -- Add ONLY bank items (bank field)
-    if itemsData.bank then
-        for i = 1, #itemsData.bank do
-            local item = itemsData.bank[i]
+    if bankRows then
+        for i = 1, #bankRows do
+            local item = bankRows[i]
             if item.itemID then
                 item.bagIndex = item.actualBagID or item.bagID
                 item.slotID = item.slotIndex

@@ -434,6 +434,52 @@ local function GetItemClassID(itemID)
     return classID or 15
 end
 
+local KEYSTONE_CATEGORY_ICON = "Interface\\Icons\\INV_Misc_Key_03"
+
+local function ItemLinkLooksKeystone(link)
+    if not link or link == "" then return false end
+    if issecretvalue and issecretvalue(link) then return false end
+    return link:find("|Hkeystone:", 1, true) ~= nil
+end
+
+---True when a lean/hydrated storage row represents a Mythic+ keystone.
+local function IsItemKeystoneEntry(item)
+    if not item then return false end
+    if item.isKeystone then return true end
+    local link = item.itemLink or item.link
+    if ItemLinkLooksKeystone(link) then return true end
+    local id = item.itemID
+    if id and C_Item and C_Item.IsItemKeystoneByID then
+        local ok, isKs = pcall(C_Item.IsItemKeystoneByID, id)
+        return ok and isKs == true
+    end
+    return false
+end
+
+---Stable display category for item lists (Bank virtual list + storage tree).
+---Falls back from itemType -> classID -> Miscellaneous; keystones get KEYSTONE bucket.
+local function ResolveItemCategoryName(item)
+    local misc = (ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous"
+    local keystoneLbl = (ns.L and ns.L["KEYSTONE"]) or "Keystone"
+    if IsItemKeystoneEntry(item) then
+        return keystoneLbl
+    end
+    local itemType = item.itemType
+    if itemType and itemType ~= "" then
+        return itemType
+    end
+    local classID = item.classID
+    if not classID and item.itemID then
+        classID = GetItemClassID(item.itemID)
+        item.classID = classID
+    end
+    if classID then
+        local tn = GetItemTypeName(classID)
+        if tn and tn ~= "" then return tn end
+    end
+    return misc
+end
+
 -- Get icon texture for item type
 local function GetTypeIcon(classID)
     local icons = {
@@ -456,9 +502,19 @@ local function GetTypeIcon(classID)
     return icons[classID] or "Interface\\Icons\\INV_Misc_Gear_01"
 end
 
+local function ResolveItemCategoryIcon(item, classID)
+    if IsItemKeystoneEntry(item) then
+        return KEYSTONE_CATEGORY_ICON
+    end
+    return GetTypeIcon(classID or (item and item.classID) or 15)
+end
+
 ns.UI_GetItemTypeName = GetItemTypeName
 ns.UI_GetItemClassID = GetItemClassID
 ns.UI_GetTypeIcon = GetTypeIcon
+ns.UI_IsItemKeystoneEntry = IsItemKeystoneEntry
+ns.UI_ResolveItemCategoryName = ResolveItemCategoryName
+ns.UI_ResolveItemCategoryIcon = ResolveItemCategoryIcon
 
 -- CHARACTER ICON HELPERS (Faction, Race, Class)
 
