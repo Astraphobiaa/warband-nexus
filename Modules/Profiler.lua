@@ -1634,6 +1634,21 @@ function Profiler:HandleCommand(addon, subCmd, arg3, arg4)
             .. "  |cff00ccff/wn profiler events on 8|r sets threshold to 8ms" .. C_R)
         self:SavePersistToProfile()
 
+    elseif subCmd == "outside" or subCmd == "outsidewn" or subCmd == "framenoise" then
+        local root = GetProfilePersistRoot()
+        if not root then return end
+        local a = (arg3 and tostring(arg3):lower()) or ""
+        if a == "on" or a == "1" or a == "true" then
+            root.traceOutsideWnFrames = true
+        elseif a == "off" or a == "0" or a == "false" then
+            root.traceOutsideWnFrames = false
+        else
+            root.traceOutsideWnFrames = not (root.traceOutsideWnFrames == true)
+        end
+        self:SavePersistToProfile()
+        local stO = root.traceOutsideWnFrames and (C_GOOD .. "ON") or (C_DIM .. "OFF")
+        print(PREFIX .. "Outside-WN frame rows (<50ms): " .. stO .. C_R)
+
     elseif subCmd == "cachelog" or subCmd == "cachelogs" then
         local root = GetProfilePersistRoot()
         if not root then return end

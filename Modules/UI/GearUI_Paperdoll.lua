@@ -203,6 +203,18 @@ local function GearPaperdollColumnWidth(modelW, baseX)
     return math.ceil(GearPaperdollContentRightX(bx, modelW) + PAPERDOLL_COL_INSET)
 end
 
+--- Center the fixed-width paperdoll block inside a wider paper column (stack / wide hosts).
+local function ComputeGearPaperdollBaseX(paperColW, modelW)
+    local mw = modelW or MODEL_W
+    local blockW = GearPaperdollColumnWidth(mw, PAPERDOLL_COL_INSET)
+    local hostW = tonumber(paperColW) or blockW
+    if hostW <= blockW then
+        return PAPERDOLL_COL_INSET
+    end
+    local extra = math.floor((hostW - blockW) * 0.5 + 0.5)
+    return PAPERDOLL_COL_INSET + extra
+end
+
 local PAPERDOLL_LAYOUT_W = GearPaperdollColumnWidth(MODEL_W + MAX_PAPER_MODEL_BOOST)
 local GEAR_PAPER_COL_FIXED_W = PAPERDOLL_LAYOUT_W
 
@@ -406,7 +418,7 @@ local function RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
 
         left:SetPoint("TOPLEFT", top, "TOPLEFT", 0, 0)
         left:SetPoint("BOTTOMRIGHT", top, "BOTTOMRIGHT", 0, 0)
-        left:SetWidth(math.max(paperColW, topW))
+        left:SetWidth(paperColW)
 
         layoutPaperColumnInHost(left)
 
@@ -554,13 +566,15 @@ local function RelayoutGearPaperdollInCard(card, layout)
 
     local paperParent = layout.paperTopHost or layout.leftColHost or card
     local useColHost = layout.leftColHost ~= nil
-    local baseX = useColHost and PAPERDOLL_COL_INSET or ((layout.paperLeft or CARD_PAD) + PAPERDOLL_COL_INSET)
     local paperColW = layout.paperColW or PAPERDOLL_BLOCK_W
     local modelBoost = math.max(0, math.min(MAX_PAPER_MODEL_BOOST, paperColW - GEAR_PAPER_COL_FIXED_W))
-    layout.paperdollBaseX = baseX
     layout.modelBoost = modelBoost
-
     local modelW = MODEL_W + modelBoost
+    local baseX = layout.paperdollBaseX
+    if not baseX then
+        baseX = useColHost and ComputeGearPaperdollBaseX(paperColW, modelW) or ((layout.paperLeft or CARD_PAD) + PAPERDOLL_COL_INSET)
+    end
+    layout.paperdollBaseX = baseX
     local leftX = baseX + LEFT_PANEL_W - SLOT_SIZE
     local rightX = baseX + LEFT_PANEL_W + CENTER_GAP + modelW + CENTER_GAP
     local rowStep = SLOT_SIZE + SLOT_GAP
@@ -2075,9 +2089,14 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     local rightX = baseX + LEFT_PANEL_W + CENTER_GAP + modelW + CENTER_GAP
 
     local slots = gearData and gearData.slots or {}
+    local function IsViewingLoggedInGear()
+        if isCurrentChar == true then return true end
+        if not charKey or not WarbandNexus.IsGearTabCharacterLoggedInPlayer then return false end
+        return WarbandNexus:IsGearTabCharacterLoggedInPlayer(charKey) == true
+    end
     local function GetSlotData(slotID)
         local persisted = slots[slotID]
-        if not isCurrentChar or not ns.GearUI_BuildLiveEquippedSlotSnapshot then
+        if not IsViewingLoggedInGear() or not ns.GearUI_BuildLiveEquippedSlotSnapshot then
             return persisted
         end
         local live = ns.GearUI_BuildLiveEquippedSlotSnapshot(slotID)
@@ -3150,8 +3169,9 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
     -- Paperdoll slots + model in top band; stats/currencies sit in paperBottomHost below.
     local paperParent = paperTop or leftCol or card
+    local paperBaseX = ComputeGearPaperdollBaseX(paperColW, MODEL_W + modelBoost)
     DrawPaperDollInCard(paperParent, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true,
-        PAPERDOLL_COL_INSET, charKey, 0, slotsOnlyH, paperTopZoneH,
+        paperBaseX, charKey, 0, slotsOnlyH, paperTopZoneH,
         {
             cardRef = card,
             deferCenter = true,
@@ -3357,6 +3377,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             storagePanel = storagePanel,
             cardInnerW = cardInnerW,
             paperColW = paperColW,
+            paperdollBaseX = paperBaseX,
             storageW = storageW,
             storageHeaderH = storageHeaderH,
             storagePad = storagePad,

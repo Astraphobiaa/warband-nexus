@@ -3282,25 +3282,14 @@ function WarbandNexus:DrawGearTab(parent)
     -- ── Data retrieval (all by canonical key) ──────────────────────────────────
     pGearSliceStart("Gear_dataSync")
     local db        = self.db and self.db.global
-    local charData  = db and (db.characters[canonicalKey] or db.characters[charKey])
-    local gearData  = (self.GetEquippedGear and self:GetEquippedGear(canonicalKey)) or nil
-
-    local currentKey = (self.GetCurrentGearStorageKey and self:GetCurrentGearStorageKey())
-        or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
-
-    if canonicalKey == currentKey and self.ScanEquippedGear then
-        local slotsTbl = gearData and gearData.slots
-        if not slotsTbl or not next(slotsTbl) then
-            self:ScanEquippedGear()
-            gearData = (self.GetEquippedGear and self:GetEquippedGear(canonicalKey)) or gearData
-        end
-    end
-
-    if canonicalKey == currentKey and gearData and self.OverlayLiveEquippedIlvlOnGearData then
-        self:OverlayLiveEquippedIlvlOnGearData(gearData)
-        if self.InvalidatePersistedUpgradeInfoCacheForChar then
-            self:InvalidatePersistedUpgradeInfoCacheForChar(canonicalKey)
-        end
+    local charData  = (self.ResolveGearRosterRow and select(1, self:ResolveGearRosterRow(charKey)))
+        or (db and (db.characters[canonicalKey] or db.characters[charKey]))
+    local gearData, isViewingLoggedIn
+    if self.PrepareGearTabViewData then
+        gearData, isViewingLoggedIn = self:PrepareGearTabViewData(charKey, canonicalKey)
+    else
+        gearData = (self.GetEquippedGear and self:GetEquippedGear(canonicalKey)) or nil
+        isViewingLoggedIn = (self.IsGearTabCharacterLoggedInPlayer and self:IsGearTabCharacterLoggedInPlayer(canonicalKey)) == true
     end
 
     GearOpenTracePhase("after_getEquipped+scanIfNeeded", splitPaperDollToNextTick)
@@ -3388,7 +3377,7 @@ function WarbandNexus:DrawGearTab(parent)
         local tCard = gearOpenLog and debugprofilestop() or nil
         yOffset = ns.GearUI_DrawPaperDollCard(
             parent, yOffset, charData, gearData, upgradeInfo, canonicalKey, currencyAmounts,
-            canonicalKey == currentKey, currencies, storageFindings, storageScanPending
+            isViewingLoggedIn == true, currencies, storageFindings, storageScanPending
         )
         if gearOpenLog and tCard then
             GearOpenTraceBlock("DrawPaperDollCard", debugprofilestop() - tCard)

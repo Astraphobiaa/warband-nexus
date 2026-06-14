@@ -851,8 +851,18 @@ function WarbandNexus:IsGearTabCharacterLoggedInPlayer(charKey)
     if not cur and U and U.GetCharacterStorageKey then
         cur = U:GetCharacterStorageKey(WarbandNexus)
     end
-    if not cur then return false end
-    return sel == canon(cur)
+    if cur and sel == canon(cur) then return true end
+    if U and U.GetCharacterStorageKey then
+        local live = U:GetCharacterStorageKey(WarbandNexus)
+        if live and canon(live) == sel then return true end
+    end
+    if UnitGUID then
+        local pg = UnitGUID("player")
+        if pg and not (issecretvalue and issecretvalue(pg)) and canon(pg) == sel then
+            return true
+        end
+    end
+    return false
 end
 
 --- Find items in storage (all chars' bags/bank, warband bank, guild bank cache, plus other chars' equipped warbound)
@@ -1621,6 +1631,13 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
         if ns._gearStorageYieldCo ~= co then
             return
         end
+        if ns._gearStoragePumpProfiling then
+            local Pr = ns.Profiler
+            if Pr and Pr.enabled and Pr.StopSlice then
+                Pr:StopSlice(Pr.CAT.SVC, "Gear_FindStorageUpgrades_pump")
+            end
+            ns._gearStoragePumpProfiling = nil
+        end
         WarbandNexus:GearStorageTrace("RunYield abort: " .. tostring(reason))
         WarbandNexus:GearStoragePanelDebug("RunYield ABORT reason=" .. tostring(reason) .. " canon=" .. tostring(canonicalKey))
         -- `ScheduleGearStorageFindingsResolve` can append follow-up callbacks while this scan runs;
@@ -1667,6 +1684,14 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
     local P = ns.Profiler
     local _gearPumpProfOn = P and P.enabled and P.StartSlice and P.StopSlice
 
+    local function stopGearPumpProfiling()
+        if not ns._gearStoragePumpProfiling then return end
+        if _gearPumpProfOn then
+            P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump")
+        end
+        ns._gearStoragePumpProfiling = nil
+    end
+
     local function pump()
         if paintGen ~= (ns._gearTabDrawGen or 0) then
             abortYieldedFind("stale paintGen")
@@ -1679,23 +1704,24 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
         if ns._gearStorageYieldCo ~= co then
             return
         end
-        if _gearPumpProfOn then P:StartSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
+        if _gearPumpProfOn and not ns._gearStoragePumpProfiling then
+            ns._gearStoragePumpProfiling = true
+            P:StartSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump")
+        end
         local sliceStart = debugprofilestop()
         local resumes = 0
         while coroutine.status(co) ~= "dead" do
             if ns._gearStorageYieldCo ~= co then
-                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
                 return
             end
             resumes = resumes + 1
             if resumes > GEAR_STORAGE_PUMP_MAX_RESUMES then
-                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
+                stopGearPumpProfiling()
                 C_Timer.After(0, pump)
                 return
             end
             local ok, err = coroutine.resume(co)
             if not ok then
-                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
                 if ns._gearStorageYieldCo ~= co then
                     return
                 end
@@ -1704,12 +1730,12 @@ function WarbandNexus:RunFindGearStorageUpgradesYielded(canonicalKey, paintGen, 
                 return
             end
             if (debugprofilestop() - sliceStart) >= GEAR_STORAGE_PUMP_BUDGET_MS then
-                if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
+                stopGearPumpProfiling()
                 C_Timer.After(0, pump)
                 return
             end
         end
-        if _gearPumpProfOn then P:StopSlice(P.CAT.SVC, "Gear_FindStorageUpgrades_pump") end
+        stopGearPumpProfiling()
         if ns._gearStorageYieldCo ~= co then
             return
         end

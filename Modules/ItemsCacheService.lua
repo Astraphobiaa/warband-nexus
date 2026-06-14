@@ -1326,22 +1326,27 @@ ScheduleDeferredBagFlush = function(delaySec)
     if deferredThrottleTimer then return end
     deferredThrottleTimer = C_Timer.After(delaySec, function()
         deferredThrottleTimer = nil
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return
-        end
-        local anyProcessed = false
-        local bagIDs = {}
-        for bagID, _ in pairs(pendingUpdates) do
-            bagIDs[#bagIDs + 1] = bagID
-        end
-        for i = 1, #bagIDs do
-            if ThrottledBagUpdate(bagIDs[i]) then
-                anyProcessed = true
+        local ok, err = pcall(function()
+            if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+                return
             end
-        end
-        if anyProcessed then
-            local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
-            WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
+            local anyProcessed = false
+            local bagIDs = {}
+            for bagID, _ in pairs(pendingUpdates) do
+                bagIDs[#bagIDs + 1] = bagID
+            end
+            for i = 1, #bagIDs do
+                if ThrottledBagUpdate(bagIDs[i]) then
+                    anyProcessed = true
+                end
+            end
+            if anyProcessed then
+                local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+                WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
+            end
+        end)
+        if not ok and WarbandNexus and WarbandNexus.LogError then
+            WarbandNexus:LogError(tostring(err), "ItemsCacheScheduleDeferredBagFlush")
         end
     end)
 end

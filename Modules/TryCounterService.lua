@@ -6554,6 +6554,19 @@ function Fns.RequestTryCounterStatisticsRuntimeRefresh()
     end)
 end
 
+local function HasPersistedTryCountEntries()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return false end
+    local tc = WarbandNexus.db.global.tryCounts
+    if type(tc) ~= "table" then return false end
+    for _, bucket in pairs({ "mount", "pet", "item", "toy" }) do
+        local tbl = tc[bucket]
+        if type(tbl) == "table" and next(tbl) ~= nil then
+            return true
+        end
+    end
+    return false
+end
+
 function Fns.SchedulePerCharacterStatisticsAndRaritySync()
     perCharStatSyncSerial = perCharStatSyncSerial + 1
     local serial = perCharStatSyncSerial
@@ -6563,7 +6576,10 @@ function Fns.SchedulePerCharacterStatisticsAndRaritySync()
         Fns.RebuildMergedStatisticSeedIndex()
         Fns.SeedFromStatistics()
     end
-    C_Timer.After(PER_CHAR_STAT_SYNC_QUICK_SEC, runSeed)
+    local skipQuick = ns._wnPlayerReloading == true and HasPersistedTryCountEntries()
+    if not skipQuick then
+        C_Timer.After(PER_CHAR_STAT_SYNC_QUICK_SEC, runSeed)
+    end
     C_Timer.After(PER_CHAR_STAT_SYNC_FULL_SEC, runSeed)
     C_Timer.After(PER_CHAR_STAT_RARITY_SEC, function()
         if serial ~= perCharStatSyncSerial then return end

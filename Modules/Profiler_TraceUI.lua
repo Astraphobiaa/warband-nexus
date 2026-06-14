@@ -196,7 +196,16 @@ local function ShouldRetainTraceRow(entry)
     if not entry then return false end
     if entry.kind == "error" then return true end
     if entry.kind == "anomaly" then return true end
-    if entry.op == "Frame" then return true end
+    if entry.op == "Frame" then
+        local detail = tostring(entry.detail or "")
+        if detail:find("outside WN", 1, true) and (entry.ms or 0) < 50 then
+            local root = GetPersistRoot()
+            if not (root and root.traceOutsideWnFrames == true) then
+                return false
+            end
+        end
+        return true
+    end
     if entry.op == "Error" then return true end
     if entry.op == "Bag" or entry.op == "Zone" or entry.op == "Event" or entry.op == "Handler" then
         return (entry.ms or 0) >= Profiler.TRACE_TABLE_MIN_MS

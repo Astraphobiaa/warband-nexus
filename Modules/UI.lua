@@ -4068,10 +4068,6 @@ local function PopulateContentBody(self, forceRepaint)
     elseif tab == "gear" then
         -- Full-tab loading veil removed: recommendations panel shows its own "Scanning..." state; smoother tab open.
         mainFrame._wnGearPaintShowVeil = false
-        -- Split DB read (frame N) from paperdoll card build (frame N+1) to cap single-frame Pop_drawTab spikes (WN-PERF).
-        if isTabSwitch then
-            mainFrame._wnGearSplitPaperDollNext = true
-        end
         height = self:DrawGearTab(scrollChild)
     elseif tab == "collections" then
         local cui = ns.CollectionsUI

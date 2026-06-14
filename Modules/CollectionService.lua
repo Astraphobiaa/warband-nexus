@@ -222,13 +222,93 @@ local collectionCache = {
     lastAchievementScan = 0,
 }
 
----P1 warmup: when persisted collectionStore is already complete, run BuildCollectionCache without LoadingTracker (avoids duplicate "Collections" row before collection_data).
-function WarbandNexus:RunCollectionOwnedCacheWarmup()
-    if IsCollectionEnsureDataComplete(self) then
-        self:BuildCollectionCache({ quiet = true })
-    else
-        self:BuildCollectionCache()
+--- True when persisted collectionStore can hydrate RAM owned cache without a journal scan.
+---@param self table
+---@return boolean
+local function CanHydrateOwnedCacheFromStore(self)
+    return IsCollectionEnsureDataComplete(self)
+end
+
+--- Fill collectionCache.owned from collectionStore.collected flags (fast; no C_MountJournal scan).
+---@param self table
+---@return number ownedCount approximate entries set
+local function HydrateOwnedCacheFromStore(self)
+    local owned = collectionCache.owned
+    wipe(owned.mounts)
+    wipe(owned.pets)
+    wipe(owned.toys)
+    local count = 0
+
+    local function absorb(store, bucket)
+        if type(store) ~= "table" then return end
+        for id, data in pairs(store) do
+            if type(data) == "table" and data.collected == true then
+                bucket[id] = true
+                count = count + 1
+            end
+        end
     end
+
+    absorb(collectionStore.mount, owned.mounts)
+    absorb(collectionStore.pet, owned.pets)
+    absorb(collectionStore.toy, owned.toys)
+    collectionCache.lastScan = time()
+    return count
+end
+
+local TOY_OWNED_HYDRATE_BUDGET_MS = 4
+
+--- Time-budgeted PlayerHasToy pass for toys (store rows lack collected flag in SV).
+function WarbandNexus:ScheduleLazyOwnedToyHydrate()
+    if self._lazyToyHydrateRunning then return end
+    local store = collectionStore.toy
+    if type(store) ~= "table" or next(store) == nil then return end
+    self._lazyToyHydrateRunning = true
+    local toyIds = {}
+    for id in pairs(store) do
+        toyIds[#toyIds + 1] = id
+    end
+    local idx = 1
+    local _sv = issecretvalue
+    local function batch()
+        if not self._lazyToyHydrateRunning then return end
+        local batchStart = debugprofilestop()
+        while idx <= #toyIds do
+            local id = toyIds[idx]
+            idx = idx + 1
+            if PlayerHasToy then
+                local raw = PlayerHasToy(id)
+                local collected = false
+                if _sv and raw and _sv(raw) then
+                    collected = true
+                elseif raw == true then
+                    collected = true
+                end
+                if collected then
+                    collectionCache.owned.toys[id] = true
+                end
+            end
+            if debugprofilestop() - batchStart > TOY_OWNED_HYDRATE_BUDGET_MS then
+                C_Timer.After(0, batch)
+                return
+            end
+        end
+        self._lazyToyHydrateRunning = false
+    end
+    C_Timer.After(0.5, batch)
+end
+
+---P1 warmup: when persisted collectionStore is already complete, hydrate owned RAM cache (skip journal scan).
+function WarbandNexus:RunCollectionOwnedCacheWarmup()
+    if CanHydrateOwnedCacheFromStore(self) then
+        local n = HydrateOwnedCacheFromStore(self)
+        DebugPrint(string.format(
+            "|cff00ccff[WN CollectionService]|r Owned cache hydrated from store (%d entries, no journal scan)",
+            n))
+        self:ScheduleLazyOwnedToyHydrate()
+        return
+    end
+    self:BuildCollectionCache()
 end
 
 ---Coalesced EnsureCollectionData (slash / other callers). Does not wipe SV; use DebugForceCollectionRebuild for that.
@@ -1411,6 +1491,62 @@ local COLLECTION_COUNTS_API_TTL = 60
 ---Return cached or freshly computed collection counts from Blizzard API only.
 ---Single source of truth for Statistics and Collections (e.g. mount total 1577 in both).
 ---@return table { mounts = { collected, total }, pets = { collected, totalSpecies, uniqueSpecies, journalEntries }, toys = { collected, total }, achievementPoints = number }
+function WarbandNexus:GetCollectionCountsFromStore()
+    if not IsCollectionEnsureDataComplete(self) then
+        return nil
+    end
+
+    local data = {
+        mounts = { collected = 0, total = 0 },
+        pets = { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
+        toys = { collected = 0, total = 0 },
+        achievementPoints = 0,
+    }
+
+    if GetTotalAchievementPoints then
+        data.achievementPoints = GetTotalAchievementPoints() or 0
+    end
+
+    local mountStore = collectionStore.mount
+    if type(mountStore) == "table" then
+        for _, row in pairs(mountStore) do
+            data.mounts.total = data.mounts.total + 1
+            if type(row) == "table" and row.collected == true then
+                data.mounts.collected = data.mounts.collected + 1
+            end
+        end
+    end
+
+    local petStore = collectionStore.pet
+    if type(petStore) == "table" then
+        local uniqueCollected = 0
+        for _, row in pairs(petStore) do
+            data.pets.totalSpecies = data.pets.totalSpecies + 1
+            if type(row) == "table" and row.collected == true then
+                data.pets.collected = data.pets.collected + 1
+                uniqueCollected = uniqueCollected + 1
+            end
+        end
+        data.pets.uniqueSpecies = uniqueCollected
+        data.pets.journalEntries = data.pets.collected
+    end
+
+    local toyStore = collectionStore.toy
+    if type(toyStore) == "table" then
+        for _ in pairs(toyStore) do
+            data.toys.total = data.toys.total + 1
+        end
+        local ownedToys = collectionCache.owned and collectionCache.owned.toys
+        if type(ownedToys) == "table" then
+            for _ in pairs(ownedToys) do
+                data.toys.collected = data.toys.collected + 1
+            end
+        end
+    end
+
+    return data
+end
+
 function WarbandNexus:GetCollectionCountsFromAPI()
     local now = GetTime()
     if _collectionCountsAPICache and (now - _collectionCountsAPICache.timestamp) < COLLECTION_COUNTS_API_TTL then
@@ -1715,6 +1851,11 @@ end
 function WarbandNexus:BuildCollectionCache(opts)
     opts = opts or {}
     local quiet = opts.quiet == true
+    if not opts.forceJournalScan and CanHydrateOwnedCacheFromStore(self) then
+        HydrateOwnedCacheFromStore(self)
+        self:ScheduleLazyOwnedToyHydrate()
+        return
+    end
     -- Re-entrant calls (e.g. IsCollectibleOwned while pets/toys phases still empty) used to
     -- wipe owned cache and stack parallel timer chains, leaving LoadingTracker "collections" stuck.
     if self._buildingCollectionCache then return end
@@ -1897,7 +2038,14 @@ function WarbandNexus:IsCollectibleOwned(collectibleType, id)
 
     local cache = collectionCache.owned[key]
     if not cache or next(cache) == nil then
-        self:BuildCollectionCache()
+        if CanHydrateOwnedCacheFromStore(self) then
+            HydrateOwnedCacheFromStore(self)
+            cache = collectionCache.owned[key]
+            if cache and cache[id] == true then
+                return true
+            end
+        end
+        self:BuildCollectionCache({ forceJournalScan = true })
         cache = collectionCache.owned[key]
     end
 

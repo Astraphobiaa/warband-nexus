@@ -1338,6 +1338,8 @@ end
     Called when player enters the world (login or reload)
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
+    ns._wnPlayerReloading = isReloadingUi == true
+    ns._wnPlayerInitialLogin = isInitialLogin == true
     -- Character switch at login screen: allow SaveCharacter for the new toon (not only first login of session).
     if isInitialLogin and not isReloadingUi then
         self.characterSaved = false

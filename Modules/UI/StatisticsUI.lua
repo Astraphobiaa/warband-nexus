@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Statistics Tab
     Display account-wide statistics: gold, collections, storage overview
 ]]
@@ -208,13 +208,28 @@ InvalidateStatsCache = function()
     _bankStatsCache = nil
 end
 
--- Compute and cache collection statistics (single source: CollectionService GetCollectionCountsFromAPI)
+-- Compute and cache collection statistics (store fast-path, else CollectionService API counts).
 local function GetCachedCollectionStats()
     local now = GetTime()
     if _statsCache and (now - _statsCache.timestamp) < STATS_CACHE_TTL then
         return _statsCache
     end
-    local api = WarbandNexus.GetCollectionCountsFromAPI and WarbandNexus:GetCollectionCountsFromAPI()
+
+    local api
+    if WarbandNexus.GetCollectionCountsFromStore and WarbandNexus.IsCollectionEnsureDataComplete
+        and WarbandNexus:IsCollectionEnsureDataComplete() then
+        api = WarbandNexus:GetCollectionCountsFromStore()
+        if api and C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                if WarbandNexus.GetCollectionCountsFromAPI then
+                    WarbandNexus:GetCollectionCountsFromAPI()
+                end
+            end)
+        end
+    end
+    if not api then
+        api = WarbandNexus.GetCollectionCountsFromAPI and WarbandNexus:GetCollectionCountsFromAPI()
+    end
     if not api then
         if _statsCache then return _statsCache end
         api = {

@@ -293,6 +293,8 @@ end
 -- When incremented, ALL existing users get a one-time full SV wipe on next login (fresh start).
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
+--- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
+local MIGRATION_FAST_PATH_REVISION = 1
 
 ---Run all database migrations. Returns true if a full schema reset was performed.
 ---@param db table AceDB instance
@@ -305,6 +307,12 @@ function MigrationService:RunMigrations(db)
     -- Schema version check: full reset if outdated
     if self:CheckSchemaReset(db) then
         return true -- Everything was wiped; caller should re-apply defaults
+    end
+
+    if db.global
+        and db.global._wnMigrationFastPathRev == MIGRATION_FAST_PATH_REVISION
+        and (db.global._schemaVersion or 0) >= CURRENT_SCHEMA_VERSION then
+        return false
     end
 
     self:MigrateThemeColors(db)
@@ -331,6 +339,9 @@ function MigrationService:RunMigrations(db)
     self:DropStaleLegacyGlobalCurrencies(db)
     self:DropStaleLegacyGlobalReputations(db)
     self:FinalizeGuidOnlySubsidiaryV1(db)
+    if db.global then
+        db.global._wnMigrationFastPathRev = MIGRATION_FAST_PATH_REVISION
+    end
     return false
 end
 

@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Gear Service
     Scans/persists equipped gear (db.global.gearData[charKey]); ilvl-based upgrade analysis and cross-character storage finder.
 
@@ -1107,6 +1107,274 @@ local function CountGearDataPayloadSlots(entry)
     return count
 end
 
+--- Older SavedVariables stored slots/watermarks by paperdoll row index (1..16), not Blizzard slot id.
+--- Keys 6-16 collide (array[6]=wrist vs slot id 6=waist) so naive slot-id reads show the wrong character's layout.
+local function GearSlotsUseSequentialPaperdollIndex(slots)
+    if type(slots) ~= "table" then return false end
+    for sid, slot in pairs(slots) do
+        if type(sid) == "number" and sid > #GEAR_SLOTS and GearDataSlotHasPayload(slot) then
+            return false
+        end
+    end
+    for i = 1, #GEAR_SLOTS do
+        local defId = GEAR_SLOTS[i].id
+        if i ~= defId and GearDataSlotHasPayload(slots[i]) and not GearDataSlotHasPayload(slots[defId]) then
+            return true
+        end
+    end
+    return false
+end
+
+local function AverageGearPayloadIlvl(entry)
+    local slots = entry and entry.slots
+    if type(slots) ~= "table" then return 0 end
+    local sum, count = 0, 0
+    for _, slot in pairs(slots) do
+        if GearDataSlotHasPayload(slot) then
+            local il = tonumber(slot.itemLevel) or 0
+            if il > 0 then
+                sum = sum + il
+                count = count + 1
+            end
+        end
+    end
+    if count == 0 then return 0 end
+    return sum / count
+end
+
+local SPEC_RANGE_BY_CLASS_ID = {
+    [1]  = { 71, 73 },     -- Warrior
+    [2]  = { 65, 70 },     -- Paladin
+    [3]  = { 253, 255 },   -- Hunter
+    [4]  = { 259, 261 },   -- Rogue
+    [5]  = { 256, 258 },   -- Priest
+    [6]  = { 250, 252 },   -- Death Knight
+    [7]  = { 262, 264 },   -- Shaman
+    [8]  = { 62, 64 },     -- Mage
+    [9]  = { 265, 267 },   -- Warlock
+    [10] = { 268, 270 },   -- Monk
+    [11] = { 102, 105 },   -- Druid
+    [12] = { 577, 581 },   -- Demon Hunter
+    [13] = { 1467, 1473 }, -- Evoker
+}
+
+local function ExtractLinkPlayerSpecId(itemLink)
+    if not itemLink or type(itemLink) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(itemLink) then return nil end
+    local _, specId = itemLink:match("::::::::(%d+):(%d+):")
+    return specId and tonumber(specId) or nil
+end
+
+local function LinkSpecMatchesCharacterRow(row, specId)
+    if not row or not specId then return true end
+    local rowSpec = tonumber(row.specID)
+    if rowSpec and rowSpec > 0 and specId == rowSpec then return true end
+    local classID = tonumber(row.classID)
+    local band = classID and SPEC_RANGE_BY_CLASS_ID[classID]
+    if not band then return true end
+    return specId >= band[1] and specId <= band[2]
+end
+
+--- Resolve db.global.characters row for Gear tab (GUID canonical + legacy roster index).
+---@param charKey string|nil UI / storage key
+---@return table|nil row
+---@return string|nil rosterKey Key under db.characters when found
+local function ResolveGearRosterRow(charKey)
+    local g = WarbandNexus.db and WarbandNexus.db.global
+    local chars = g and g.characters
+    if not chars or not charKey or charKey == "" then return nil, nil end
+    if issecretvalue and issecretvalue(charKey) then return nil, nil end
+    local U = ns.Utilities
+    local canon = (U and U.GetCanonicalCharacterKey) and (U:GetCanonicalCharacterKey(charKey) or charKey) or charKey
+    if chars[canon] then return chars[canon], canon end
+    if charKey ~= canon and chars[charKey] then return chars[charKey], charKey end
+    for rosterKey, row in pairs(chars) do
+        if type(row) == "table" and U and U.GetCanonicalCharacterKey then
+            local ck = U:GetCanonicalCharacterKey(rosterKey)
+            if ck == canon then
+                return row, rosterKey
+            end
+        end
+    end
+    if type(canon) == "string" then
+        for rosterKey, row in pairs(chars) do
+            if type(row) == "table" then
+                local g = row.guid
+                if type(g) == "string" and g ~= "" and g == canon
+                    and not (issecretvalue and issecretvalue(g)) then
+                    return row, rosterKey
+                end
+            end
+        end
+    end
+    return nil, canon
+end
+
+local function GearPayloadSpecMatchesCharacter(charKey, gearEntry)
+    local row = ResolveGearRosterRow(charKey)
+    if not row or not gearEntry or not gearEntry.slots then return true end
+    local checked, mismatched = 0, 0
+    for _, slot in pairs(gearEntry.slots) do
+        if GearDataSlotHasPayload(slot) and slot.itemLink then
+            local specId = ExtractLinkPlayerSpecId(slot.itemLink)
+            if specId then
+                checked = checked + 1
+                if not LinkSpecMatchesCharacterRow(row, specId) then
+                    mismatched = mismatched + 1
+                end
+            end
+        end
+    end
+    if checked == 0 then return true end
+    return mismatched == 0
+end
+
+---@param entry table|nil gearData bucket
+---@return table|nil
+local function NormalizeLegacyGearDataBuckets(entry)
+    if type(entry) ~= "table" then return entry end
+    local slots = entry.slots
+    if type(slots) ~= "table" or not GearSlotsUseSequentialPaperdollIndex(slots) then
+        return entry
+    end
+    local normalized = {}
+    for i = 1, #GEAR_SLOTS do
+        local sid = GEAR_SLOTS[i].id
+        local legacyRow = slots[i]
+        local atId = slots[sid]
+        if GearDataSlotHasPayload(legacyRow) and not GearDataSlotHasPayload(atId) then
+            normalized[sid] = legacyRow
+        elseif GearDataSlotHasPayload(atId) then
+            normalized[sid] = atId
+        end
+    end
+    entry.slots = normalized
+
+    local marks = entry.watermarks
+    if type(marks) == "table" then
+        local wmNorm = {}
+        for i = 1, #GEAR_SLOTS do
+            local sid = GEAR_SLOTS[i].id
+            if marks[sid] ~= nil then
+                wmNorm[sid] = marks[sid]
+            elseif marks[i] ~= nil then
+                wmNorm[sid] = marks[i]
+            end
+        end
+        entry.watermarks = wmNorm
+    end
+    return entry
+end
+
+local function LivePlayerHasAnyEquippedItem()
+    if not GetInventoryItemLink then return false end
+    for i = 1, #GEAR_SLOTS do
+        local sid = GEAR_SLOTS[i].id
+        local link = GetInventoryItemLink("player", sid)
+        if link and link ~= "" and not (issecretvalue and issecretvalue(link)) then
+            return true
+        end
+    end
+    return false
+end
+
+--- Reject scans that would persist starter/foreign gear under a high-ilvl roster row.
+local function GearPayloadPlausibleForCharacter(charKey, gearEntry)
+    local row = ResolveGearRosterRow(charKey)
+    if not row or not gearEntry then return true end
+    if CountGearDataPayloadSlots(gearEntry) == 0 then return true end
+    local rosterIlvl = tonumber(row.itemLevel) or 0
+    local payloadIlvl = AverageGearPayloadIlvl(gearEntry)
+    if rosterIlvl > 0 and payloadIlvl > 0 and payloadIlvl < rosterIlvl - 50 then
+        return false
+    end
+    if not GearPayloadSpecMatchesCharacter(charKey, gearEntry) then
+        return false
+    end
+    return true
+end
+
+--- Hide corrupt snapshots in the UI without mutating SavedVariables on browse.
+local function SanitizeGearDataForView(charKey, entry)
+    if not entry then return nil end
+    NormalizeLegacyGearDataBuckets(entry)
+    if GearPayloadPlausibleForCharacter(charKey, entry) then
+        return entry
+    end
+    local view = {}
+    for k, v in pairs(entry) do
+        if k ~= "slots" and k ~= "watermarks" then
+            view[k] = v
+        end
+    end
+    view.slots = {}
+    view.watermarks = {}
+    return view
+end
+
+local function TryRecoverPlausibleGearEntry(charKey, entry, db)
+    if not entry then return nil end
+    NormalizeLegacyGearDataBuckets(entry)
+    if GearPayloadPlausibleForCharacter(charKey, entry) then
+        return entry
+    end
+    local row = ResolveGearRosterRow(charKey)
+    local U = ns.Utilities
+    if not row or not U or not U.GetCharacterKey then
+        return entry
+    end
+    local legacyKey = U:GetCharacterKey(row.name, row.realm)
+    if not legacyKey or legacyKey == charKey or not db[legacyKey] then
+        return entry
+    end
+    local legacy = db[legacyKey]
+    NormalizeLegacyGearDataBuckets(legacy)
+    if GearPayloadPlausibleForCharacter(charKey, legacy) then
+        return legacy
+    end
+    return entry
+end
+
+local function FinishGearDataRead(charKey, entry)
+    if not entry then return nil end
+    return SanitizeGearDataForView(charKey, entry)
+end
+
+local function GearStorageKeysMatch(storageKey, currentKey)
+    if not storageKey or not currentKey then return false end
+    if storageKey == currentKey then return true end
+    local U = ns.Utilities
+    if not U or not U.GetCanonicalCharacterKey then return false end
+    local a = U:GetCanonicalCharacterKey(storageKey) or storageKey
+    local b = U:GetCanonicalCharacterKey(currentKey) or currentKey
+    return a ~= "" and a == b
+end
+
+---@param charKey string|nil
+---@return table|nil
+---@return string|nil
+function WarbandNexus:ResolveGearRosterRow(charKey)
+    return ResolveGearRosterRow(charKey)
+end
+
+local function PromoteLegacyGearDataBucket(db, canonKey, legacyKey)
+    if not db or not canonKey or not legacyKey or canonKey == legacyKey or not db[legacyKey] then
+        return nil
+    end
+    local legacy = db[legacyKey]
+    local cur = db[canonKey]
+    if cur and not ShouldUseLegacyGearDataBucket(cur, legacy) then
+        return cur
+    end
+    if not db[canonKey] then
+        db[canonKey] = {}
+    end
+    db[canonKey] = MergeGearDataBucket(db[canonKey], legacy)
+    db[legacyKey] = nil
+    WarbandNexus:InvalidatePersistedUpgradeInfoCacheForChar(canonKey)
+    return db[canonKey]
+end
+
 local function ShouldUseLegacyGearDataBucket(current, legacy)
     local currentSlots = CountGearDataPayloadSlots(current)
     local legacySlots = CountGearDataPayloadSlots(legacy)
@@ -1119,6 +1387,9 @@ end
 local function MergeMissingGearDataSlots(target, donor)
     local donorSlots = type(donor) == "table" and donor.slots
     if type(donorSlots) ~= "table" then return end
+    local donorNorm = { slots = donorSlots }
+    NormalizeLegacyGearDataBuckets(donorNorm)
+    donorSlots = donorNorm.slots
     if type(target.slots) ~= "table" then
         target.slots = donorSlots
         return
@@ -1149,6 +1420,15 @@ end
 local function MergeGearDataBucket(current, legacy)
     if type(legacy) ~= "table" then return current end
     if type(current) ~= "table" then return legacy end
+
+    local curNorm = { slots = current.slots, watermarks = current.watermarks }
+    local legNorm = { slots = legacy.slots, watermarks = legacy.watermarks }
+    NormalizeLegacyGearDataBuckets(curNorm)
+    NormalizeLegacyGearDataBuckets(legNorm)
+    if curNorm.slots then current.slots = curNorm.slots end
+    if curNorm.watermarks then current.watermarks = curNorm.watermarks end
+    if legNorm.slots then legacy.slots = legNorm.slots end
+    if legNorm.watermarks then legacy.watermarks = legNorm.watermarks end
 
     local target = current
     local donor = legacy
@@ -1194,6 +1474,10 @@ end
 
 local function MaybeMigrateLegacyGearDataKey(db, storageKey)
     if ns.Utilities and ns.Utilities.IsGuidOnlySubsidiaryReads and ns.Utilities:IsGuidOnlySubsidiaryReads() then
+        return
+    end
+    local currentKey = ResolveGearStorageKey()
+    if not GearStorageKeysMatch(storageKey, currentKey) then
         return
     end
     MigrateLegacyGearDataKey(db, storageKey)
@@ -1724,6 +2008,21 @@ local function FinalizeEquippedGearPersist(charKey, slots, watermarks, baselineG
     local db = GetDB()
     if not db then return end
 
+    local newPayload = CountGearDataPayloadSlots({ slots = slots })
+    local baselinePayload = CountGearDataPayloadSlots(baselineGearData)
+    if newPayload == 0 and baselinePayload > 0 then
+        -- Logout / reload edge: inventory APIs can return nil while watermarks still copy forward.
+        if WarbandNexus._gearSkipEmptyWipe or LivePlayerHasAnyEquippedItem() then
+            return
+        end
+    end
+
+    if not GearPayloadPlausibleForCharacter(charKey, { slots = slots }) then
+        if baselinePayload > 0 or LivePlayerHasAnyEquippedItem() then
+            return
+        end
+    end
+
     db[charKey] = {
         version       = GEAR_DATA_VERSION,
         lastScan      = time(),
@@ -1781,6 +2080,9 @@ function WarbandNexus:ScanEquippedGear(triggerSlotID, opts)
     if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(self) then return end
 
     local baselineGearData = db[charKey]
+    if baselineGearData then
+        NormalizeLegacyGearDataBuckets(baselineGearData)
+    end
     local slots = {}
     local watermarks = {}
     if baselineGearData and baselineGearData.watermarks then
@@ -1826,6 +2128,9 @@ function WarbandNexus:WarmGearUpgradeSnapshotForSession(coldPrefetchGen)
     MaybeMigrateLegacyGearDataKey(db, charKey)
 
     local baselineGearData = db[charKey]
+    if baselineGearData then
+        NormalizeLegacyGearDataBuckets(baselineGearData)
+    end
     local baselineLastScan = baselineGearData and baselineGearData.lastScan
 
     local slots = {}
@@ -1929,7 +2234,9 @@ function WarbandNexus:FlushGearCacheOnLogout()
         gearScanTimer = nil
     end
     if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
+        self._gearSkipEmptyWipe = true
         self:ScanEquippedGear()
+        self._gearSkipEmptyWipe = nil
     end
 end
 
@@ -1945,18 +2252,113 @@ function WarbandNexus:GetEquippedGear(charKey)
         charKey = U:GetCanonicalCharacterKey(charKey) or charKey
     end
     MaybeMigrateLegacyGearDataKey(db, charKey)
-    if db[charKey] then return db[charKey] end
-    -- Pre-migration only: session Name-Realm bucket while UI passes GUID key.
+    if db[charKey] then
+        local entry = TryRecoverPlausibleGearEntry(charKey, db[charKey], db)
+        return FinishGearDataRead(charKey, entry)
+    end
+
+    -- Alt roster / post-GUID migration: gear may still live under that character's Name-Realm only.
+    local gchars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    if U and U.GetCharacterKey and gchars then
+        local row = gchars[charKey]
+        if not row and type(charKey) == "string" then
+            for _, v in pairs(gchars) do
+                if type(v) == "table" then
+                    local g = v.guid
+                    if type(g) == "string" and g ~= "" and g == charKey
+                        and not (issecretvalue and issecretvalue(g)) then
+                        row = v
+                        break
+                    end
+                end
+            end
+        end
+        if type(row) == "table" and row.name then
+            local legacyKey = U:GetCharacterKey(row.name, row.realm)
+            if legacyKey and legacyKey ~= charKey and db[legacyKey] then
+                local promoted = PromoteLegacyGearDataBucket(db, charKey, legacyKey)
+                if promoted then
+                    return FinishGearDataRead(charKey, promoted)
+                end
+                local legacy = db[legacyKey]
+                local cur = db[charKey]
+                if not cur or CountGearDataPayloadSlots(legacy) > CountGearDataPayloadSlots(cur) then
+                    return FinishGearDataRead(charKey, legacy)
+                end
+            end
+        end
+    end
+
+    -- Pre-migration only: logged-in player's own Name-Realm bucket while UI passes GUID key.
     if not (U and U.IsGuidOnlySubsidiaryReads and U:IsGuidOnlySubsidiaryReads()) and U and U.GetCharacterKey then
-        local legacy = U:GetCharacterKey()
-        if legacy and legacy ~= charKey and db[legacy] then
-            local canonLegacy = (U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(legacy)) or legacy
-            if canonLegacy == charKey then
-                return db[legacy]
+        local currentKey = ResolveGearStorageKey()
+        if GearStorageKeysMatch(charKey, currentKey) then
+            local legacy = U:GetCharacterKey()
+            if legacy and legacy ~= charKey and db[legacy] then
+                local canonLegacy = (U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(legacy)) or legacy
+                if canonLegacy == charKey then
+                    return FinishGearDataRead(charKey, db[legacy])
+                end
             end
         end
     end
     return nil
+end
+
+--- Count equipped slots that have displayable item payload (link/id/ilvl).
+---@param gearData table|nil
+---@return number
+function WarbandNexus:CountGearEquippedPayloadSlots(gearData)
+    return CountGearDataPayloadSlots(gearData)
+end
+
+--- Load gear + live overlay for the Gear tab's selected character only.
+---@param charKey string|nil UI / roster key
+---@param canonicalKey string|nil Pre-resolved storage key (optional)
+---@return table|nil gearData
+---@return boolean isViewingLoggedInPlayer
+function WarbandNexus:PrepareGearTabViewData(charKey, canonicalKey)
+    local U = ns.Utilities
+    local canon = canonicalKey
+    if not canon and charKey and U and U.GetCanonicalCharacterKey then
+        canon = U:GetCanonicalCharacterKey(charKey) or charKey
+    elseif not canon then
+        canon = charKey
+    end
+
+    local isLive = false
+    if self.IsGearTabCharacterLoggedInPlayer then
+        if charKey then
+            isLive = self:IsGearTabCharacterLoggedInPlayer(charKey)
+        end
+        if not isLive and canon then
+            isLive = self:IsGearTabCharacterLoggedInPlayer(canon)
+        end
+    end
+
+    local gearData = (canon and self.GetEquippedGear and self:GetEquippedGear(canon)) or nil
+
+    if isLive then
+        gearData = gearData or { slots = {}, watermarks = {} }
+        if self.OverlayLiveEquippedIlvlOnGearData then
+            self:OverlayLiveEquippedIlvlOnGearData(gearData)
+        end
+        if CountGearDataPayloadSlots(gearData) > 0 and self.ScanEquippedGear then
+            self:ScanEquippedGear(nil, { silent = true })
+            local persisted = (canon and self.GetEquippedGear and self:GetEquippedGear(canon)) or nil
+            if persisted and CountGearDataPayloadSlots(persisted) > 0 then
+                gearData = persisted
+                if self.OverlayLiveEquippedIlvlOnGearData then
+                    self:OverlayLiveEquippedIlvlOnGearData(gearData)
+                end
+            end
+        end
+        if canon and self.InvalidatePersistedUpgradeInfoCacheForChar then
+            self:InvalidatePersistedUpgradeInfoCacheForChar(canon)
+        end
+    end
+
+    return gearData, isLive
 end
 
 --- Gear tab 3D paperdoll: persist rotation + zoom in SavedVariables (per character, with gearData).
@@ -2511,11 +2913,12 @@ function WarbandNexus:GetGearUpgradeCurrenciesFromDB(charKey)
 
     local db = self.db and self.db.global
     local gold = 0
-    if db and db.characters then
-        local charEntry = db.characters[canonicalKey] or db.characters[charKey]
-        if charEntry and (charEntry.gold or charEntry.silver or charEntry.copper) then
-            gold = (charEntry.gold or 0) * 10000 + (charEntry.silver or 0) * 100 + (charEntry.copper or 0)
-        end
+    local charEntry = ResolveGearRosterRow(charKey)
+    if not charEntry and db and db.characters then
+        charEntry = db.characters[canonicalKey] or db.characters[charKey]
+    end
+    if charEntry and (charEntry.gold or charEntry.silver or charEntry.copper) then
+        gold = (charEntry.gold or 0) * 10000 + (charEntry.silver or 0) * 100 + (charEntry.copper or 0)
     end
     if isCurrentChar and ns.Utilities and ns.Utilities.GetLiveCharacterMoneyCopper then
         gold = ns.Utilities:GetLiveCharacterMoneyCopper(gold)
