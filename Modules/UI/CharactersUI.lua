@@ -921,22 +921,17 @@ function WarbandNexus:DrawCharacterList(parent)
     local titleBodyGap = (GetLayout().TAB_TITLE_TO_BODY_GAP) or (ns.UI_LAYOUT and ns.UI_LAYOUT.TAB_TITLE_TO_BODY_GAP) or 6
     yOffset = yOffset + titleBodyGap
 
-    -- Get current character's gold (only if tracked)
+    -- Get current character's gold (live bag total for session toon; DB for alts).
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
-    local currentCharGold = 0
+    local currentCharGold = ns.Utilities:GetLiveCharacterMoneyCopper(0)
     local isLoadingCharacterData = false
     
     -- Check if character data is being loaded (SaveCharacter in progress)
     if isTracked then
-        currentCharGold = ns.Utilities:GetLiveCharacterMoneyCopper(0)
-
-        -- Check if character exists in DB (if not, data is being collected)
         local dbKey = sessionTableKey or currentPlayerKey
         if not dbKey or not self.db.global.characters[dbKey] then
             isLoadingCharacterData = true
         elseif not self.db.global.characters[dbKey].gold then
-            -- Character exists but gold not saved yet (initial scan)
-            -- Note: DB stores gold/silver/copper separately, not totalCopper
             isLoadingCharacterData = true
         end
     end
@@ -2321,7 +2316,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     row.goldText:ClearAllPoints()
     row.goldText:SetPoint("LEFT", goldOffset, 0)
-    local totalCopper = ns.Utilities:GetCharTotalCopper(char)
+    local totalCopper = isCurrent and ns.Utilities.GetLiveCharacterMoneyCopper
+        and ns.Utilities:GetLiveCharacterMoneyCopper(ns.Utilities:GetCharTotalCopper(char))
+        or ns.Utilities:GetCharTotalCopper(char)
     row.goldText:SetText(FormatMoney(totalCopper, 12))
     
     -- COLUMN 9: Professions (dynamic offset, chained from gold column)

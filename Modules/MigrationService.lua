@@ -141,6 +141,56 @@ local function RemapCharKeyedBucket(tbl, renames)
     end
 end
 
+--- Union per-character reputation buckets; prefer newer lastScan on faction conflicts.
+local function MergeReputationCharBucket(target, donor)
+    if type(target) ~= "table" or type(donor) ~= "table" then return target end
+    for factionID, entry in pairs(donor) do
+        if type(entry) == "table" then
+            local existing = target[factionID]
+            if type(existing) ~= "table" then
+                target[factionID] = entry
+            else
+                local eScan = tonumber(existing.lastScan) or 0
+                local dScan = tonumber(entry.lastScan) or 0
+                if dScan >= eScan then
+                    target[factionID] = entry
+                end
+            end
+        end
+    end
+    return target
+end
+
+local function RemapReputationCharBuckets(repData, renames)
+    if type(repData) ~= "table" or type(renames) ~= "table" then return end
+    local chars = repData.characters
+    if type(chars) ~= "table" then return end
+    for oldKey, newKey in pairs(renames) do
+        if oldKey ~= newKey and chars[oldKey] then
+            if not chars[newKey] then
+                chars[newKey] = chars[oldKey]
+            else
+                MergeReputationCharBucket(chars[newKey], chars[oldKey])
+            end
+            chars[oldKey] = nil
+        end
+    end
+end
+
+--- Update money log entry.character fields when roster keys rename.
+local function RemapCharacterBankMoneyLogEntries(logs, renames)
+    if type(logs) ~= "table" or type(renames) ~= "table" then return end
+    for i = 1, #logs do
+        local e = logs[i]
+        if type(e) == "table" and e.character then
+            local nk = renames[e.character]
+            if nk then
+                e.character = nk
+            end
+        end
+    end
+end
+
 --- Remap all per-character buckets in db.global.pveCache when roster keys move.
 ---@param pveCache table|nil
 ---@param renames table<string,string>
@@ -268,7 +318,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateRealmSuffixRepairFromCharKey(db)
     self:MigrateCharacterKeyNormalize(db)
     self:MigrateGlobalCharactersToGuidStorageKeys(db)
-    self:DeduplicateGlobalCharactersByGuid(db)
+    self:DeduplicateCharacterRoster(db)
     self:MigrateRestedDataReset(db)
     self:MigrateRarityMountSyncReseed(db)
     self:MigrateReminderToastAnchors(db)
@@ -854,6 +904,16 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
         end
     end
 
+    -- reputationData.characters (per-character faction progress)
+    if db.global.reputationData then
+        RemapReputationCharBuckets(db.global.reputationData, renames)
+    end
+
+    -- characterBankMoneyLogs (entry.character field, not top-level bucket)
+    if db.global.characterBankMoneyLogs then
+        RemapCharacterBankMoneyLogEntries(db.global.characterBankMoneyLogs, renames)
+    end
+
     -- favoriteCharacters (array): replace keys, then dedupe
     if db.global.favoriteCharacters and type(db.global.favoriteCharacters) == "table" then
         local seen = {}
@@ -963,76 +1023,16 @@ function MigrationService:MergeCharacterRowPreserveWinner(winner, loser)
     end
 end
 
---- Merge rows that share the same player GUID (e.g. after a rename created a second key).
---- Consolidates to **guid-shaped** `db.global.characters[guid]` (winner prefers existing guid slot, else newest lastSeen).
---- Applies subsidiary key remaps then clears loser indices from `characters` only when necessary (handled inline).
+--- Collapse duplicate `db.global.characters` rows (same GUID and/or legacy Name-Realm alias).
+--- Uses shared roster merge key logic in DataService_RosterHelpers.
 ---@param db table AceDB root
-function MigrationService:DeduplicateGlobalCharactersByGuid(db)
-    if not db or not db.global or not db.global.characters then return end
-    local issecretvalue = issecretvalue
-    local chars = db.global.characters
-    local byGuid = {}
-
-    for charKey, charData in pairs(chars) do
-        if type(charData) == "table" then
-            local g = charData.guid
-            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
-                local lst = byGuid[g]
-                if not lst then
-                    lst = {}
-                    byGuid[g] = lst
-                end
-                local seen = (type(charData.lastSeen) == "number") and charData.lastSeen or 0
-                lst[#lst + 1] = { k = charKey, seen = seen, guid = g }
-            end
-        end
+---@return number duplicateCount
+function MigrationService:DeduplicateCharacterRoster(db)
+    local Roster = ns.DataServiceRoster
+    if Roster and Roster.ApplyCharacterRosterDeduplication then
+        return Roster.ApplyCharacterRosterDeduplication(db, self)
     end
-
-    local renames = {}
-    for g, lst in pairs(byGuid) do
-        if type(lst) == "table" and #lst > 0 then
-            local win = lst[1]
-            for i = 2, #lst do
-                local e = lst[i]
-                if not e then break end
-                local winAtG = (win.k == g)
-                local eAtG = (e.k == g)
-                if eAtG and not winAtG then
-                    win = e
-                elseif winAtG == eAtG then
-                    if (e.seen or 0) > (win.seen or 0) then
-                        win = e
-                    end
-                end
-            end
-            if win and win.k then
-                local winningTable = chars[win.k]
-                if type(winningTable) == "table" then
-                    for i = 1, #lst do
-                        local e = lst[i]
-                        if e and e.k and e.k ~= win.k then
-                            local loserRow = chars[e.k]
-                            if type(loserRow) == "table" then
-                                self:MergeCharacterRowPreserveWinner(winningTable, loserRow)
-                            end
-                        end
-                    end
-                    for i = 1, #lst do
-                        local e = lst[i]
-                        if e and e.k and e.k ~= g then
-                            renames[e.k] = g
-                            chars[e.k] = nil
-                        end
-                    end
-                    chars[g] = winningTable
-                end
-            end
-        end
-    end
-
-    if not next(renames) then return end
-
-    self:ApplyCharacterKeyedStorageRenames(db, renames)
+    return 0
 end
 
 ---Normalize character keys across all character-keyed tables to canonical form

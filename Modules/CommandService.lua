@@ -34,7 +34,7 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode (extra diagnostics)"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
     if IsDebugOn() then
-        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
+        addon:Print("|cff888888— With debug ON:|r |cff00ccff/wn charkeys|r, |cff00ccff/wn profiler|r, |cff00ccff/wn collection|r, |cff00ccff/wn uimap|r, |cff00ccff/wn dumpitem|r, |cff00ccff/wn trycounterdebug|r, |cff00ccff/wn trycount|r, |cff00ccff/wn check|r, |cff00ccff/wn track|r, |cff00ccff/wn cleanup|r, |cff00ccff/wn recover|r, |cff00ccff/wn testloot|r, |cff00ccff/wn testevents|r, |cff00ccff/wn errors|r")
     end
 end
 
@@ -279,7 +279,16 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     end
 
-    if cmd == "profiler" or cmd == "profile" then
+    if cmd == "charkeys" or cmd == "charkey" then
+        local DS = ns.DebugService
+        if DS and DS.PrintCharacterKeyDiagnostics then
+            DS:PrintCharacterKeyDiagnostics(addon)
+        else
+            addon:Print("|cffff6600[WN]|r DebugService not loaded.|r")
+        end
+        return
+
+    elseif cmd == "profiler" or cmd == "profile" then
         local P = ns.Profiler
         if not P or not P.HandleCommand then
             addon:Print("|cffff6600[WN]|r " .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")

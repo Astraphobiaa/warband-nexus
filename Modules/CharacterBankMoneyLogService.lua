@@ -18,15 +18,25 @@ local IMMEDIATE_SUPPRESS_SEC = 1.5
 local MoneyLogEvents = {}
 
 local function GetCurrentCharKey()
-    if not ns.Utilities or not ns.Utilities.GetCharacterKey then
-        return nil
+    if not ns.Utilities then return nil end
+    local raw
+    if ns.Utilities.GetCharacterStorageKey then
+        raw = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
+    elseif ns.Utilities.GetCharacterKey then
+        raw = ns.Utilities:GetCharacterKey()
     end
-    local raw = ns.Utilities:GetCharacterKey()
     if not raw then return nil end
     if ns.Utilities.GetCanonicalCharacterKey then
         return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
     end
     return raw
+end
+
+local function GetCurrentCharacterLogLabel()
+    if ns.Utilities and ns.Utilities.GetCurrentCharacterDisplayLabel then
+        return ns.Utilities:GetCurrentCharacterDisplayLabel()
+    end
+    return nil
 end
 
 local function GetWarbandMoney()
@@ -149,6 +159,7 @@ local function BuildTransactionEntry(charDelta, warbandDelta)
         type = txType,
         amount = amount,
         character = charKey,
+        characterName = GetCurrentCharacterLogLabel(),
         classFile = classFile,
     }
 end
@@ -187,38 +198,8 @@ local function ProcessMoneyChange()
             C_Timer.After(DEFER_RECHECK_SEC, ProcessMoneyChange)
         else
             WarbandNexus._moneyLogDeferCount = nil
-            -- Fallback: FetchDepositedMoney may never update in some clients; log from single-side delta
-            local amount = 0
-            local txType = nil
-            if charDelta < 0 then
-                txType = "deposit"
-                amount = -charDelta
-            elseif charDelta > 0 then
-                txType = "withdraw"
-                amount = charDelta
-            elseif warbandDelta < 0 then
-                txType = "withdraw"
-                amount = -warbandDelta
-            end
-            if txType and amount > 0 then
-                local _, classFile = UnitClass("player")
-                local entry = {
-                    timestamp = time(),
-                    type = txType,
-                    amount = amount,
-                    character = charKey,
-                    classFile = classFile,
-                }
-                if ShouldSuppressDuplicateImmediate(txType, amount) then
-                    SaveSnapshot(charMoney, warbandMoney)
-                    ClearImmediateLogMarker()
-                    return
-                end
-                PushLogEntry(charKey, entry)
-                if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
-                end
-            end
+            -- Warband API may lag; do not treat character-only gold changes (vendor, loot, AH)
+            -- as bank transfers when the warband balance never moved.
             SaveSnapshot(charMoney, warbandMoney)
         end
         return
@@ -278,6 +259,7 @@ function WarbandNexus:LogMoneyTransactionImmediate(txType, amountCopper, expecte
         type = txType,
         amount = amountCopper,
         character = charKey,
+        characterName = GetCurrentCharacterLogLabel(),
         classFile = classFile,
     }
     PushLogEntry(charKey, entry)
@@ -381,36 +363,6 @@ function WarbandNexus:InitializeCharacterBankMoneyLogService()
                     PushLogEntry(charKey, entry)
                     if WarbandNexus.SendMessage then
                         WarbandNexus:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
-                    end
-                else
-                    -- Single-side fallback if both sides didn't update in time
-                    local amount, txType = 0, nil
-                    if charDelta < 0 then
-                        txType = "deposit"
-                        amount = -charDelta
-                    elseif charDelta > 0 then
-                        txType = "withdraw"
-                        amount = charDelta
-                    elseif warbandDelta < 0 then
-                        txType = "withdraw"
-                        amount = -warbandDelta
-                    elseif warbandDelta > 0 then
-                        txType = "deposit"
-                        amount = warbandDelta
-                    end
-                    if txType and amount > 0 then
-                        local _, classFile = UnitClass("player")
-                        local e = {
-                            timestamp = time(),
-                            type = txType,
-                            amount = amount,
-                            character = charKey,
-                            classFile = classFile,
-                        }
-                        PushLogEntry(charKey, e)
-                        if WarbandNexus.SendMessage then
-                            WarbandNexus:SendMessage(E.CHARACTER_BANK_MONEY_LOG_UPDATED, charKey)
-                        end
                     end
                 end
             end)

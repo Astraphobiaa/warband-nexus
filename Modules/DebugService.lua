@@ -288,3 +288,76 @@ function DebugService:WipeAllData(addon)
         end
     end)
 end
+
+--- Print character key resolution + duplicate/orphan subsidiary diagnostics (debug).
+---@param addon table WarbandNexus
+function DebugService:PrintCharacterKeyDiagnostics(addon)
+    if not addon or not addon.db then return end
+    local U = ns.Utilities
+    local CS = ns.CharacterService
+    local rawKey = U and U.GetCharacterKey and U:GetCharacterKey()
+    local storageKey = U and U.GetCharacterStorageKey and U:GetCharacterStorageKey(addon)
+    local resolvedKey = CS and CS.ResolveCharactersTableKey and CS:ResolveCharactersTableKey(addon)
+    local subsidiaryKey = CS and CS.ResolveSubsidiaryCharacterKey and CS:ResolveSubsidiaryCharacterKey(addon, nil)
+    local canonicalKey = rawKey and U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(rawKey) or nil
+
+    addon:Print("=== Character Key Diagnostics ===")
+    addon:Print("  rawKey (Name-Realm): " .. tostring(rawKey))
+    addon:Print("  storageKey (GUID write): " .. tostring(storageKey))
+    addon:Print("  resolvedTableKey (read): " .. tostring(resolvedKey))
+    addon:Print("  subsidiaryKey: " .. tostring(subsidiaryKey))
+    addon:Print("  canonicalKey: " .. tostring(canonicalKey))
+
+    local chars = addon.db.global and addon.db.global.characters
+    if type(chars) ~= "table" then
+        addon:Print("  characters: (none)")
+        return
+    end
+
+    local Roster = ns.DataServiceRoster
+    local _, toRemove, dupCount = {}, {}, 0
+    if Roster and Roster.CollectCharacterDuplicateRenames then
+        _, toRemove, dupCount = Roster.CollectCharacterDuplicateRenames(chars)
+    end
+    local rawCount = 0
+    for _ in pairs(chars) do rawCount = rawCount + 1 end
+    local removeCount = 0
+    for _ in pairs(toRemove) do removeCount = removeCount + 1 end
+    addon:Print("  db.global.characters rows: " .. tostring(rawCount) .. " (duplicate merge candidates: " .. tostring(dupCount or removeCount) .. ")")
+
+    local function CountOrphanBuckets(tbl, label)
+        if type(tbl) ~= "table" then return end
+        local orphans = {}
+        for k, v in pairs(tbl) do
+            if type(v) == "table" and next(v) and CS and CS.CharacterOwnsSubsidiaryKey then
+                if not CS:CharacterOwnsSubsidiaryKey(addon, k) then
+                    orphans[#orphans + 1] = k
+                end
+            end
+        end
+        if #orphans > 0 then
+            addon:Print("  orphan " .. label .. ": " .. table.concat(orphans, ", "))
+        end
+    end
+
+    local g = addon.db.global
+    if g.currencyData and g.currencyData.currencies then
+        CountOrphanBuckets(g.currencyData.currencies, "currencyData")
+    end
+    if g.itemStorage then CountOrphanBuckets(g.itemStorage, "itemStorage") end
+    if g.gearData then CountOrphanBuckets(g.gearData, "gearData") end
+    if g.reputationData and g.reputationData.characters then
+        CountOrphanBuckets(g.reputationData.characters, "reputationData")
+    end
+    if CS and CS.FindProbableStaleCharacterCopies then
+        local stale = CS:FindProbableStaleCharacterCopies(addon)
+        if stale and #stale > 0 then
+            addon:Print("  stale name copies: " .. tostring(#stale))
+            for i = 1, math.min(#stale, 5) do
+                local c = stale[i]
+                addon:Print("    " .. tostring(c.key) .. " lastSeen=" .. tostring(c.lastSeen))
+            end
+        end
+    end
+    addon:Print("=================================")
+end

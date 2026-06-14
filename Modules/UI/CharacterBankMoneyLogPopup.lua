@@ -177,22 +177,68 @@ local function GetToFromText(entryType)
     return (ns.L and ns.L["MONEY_LOGS_FROM_WARBAND_BANK"]) or "From Warband Bank"
 end
 
+local function LookupCharacterRow(storageKey)
+    if not storageKey or storageKey == "" then return nil end
+    if issecretvalue and issecretvalue(storageKey) then return nil end
+    local chars = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters
+    if not chars then return nil end
+    local charData = chars[storageKey]
+    if charData then return charData end
+    if type(storageKey) == "string" and storageKey:sub(1, 7) == "Player-" then
+        for _, row in pairs(chars) do
+            if type(row) == "table" and row.guid == storageKey then
+                return row
+            end
+        end
+    end
+    local keySafe = type(storageKey) == "string" and not (issecretvalue and issecretvalue(storageKey))
+    if keySafe and storageKey:find("-") and ns.Utilities and ns.Utilities.GetCharacterKey then
+        local name, realm = storageKey:match("^([^%-]+)%-(.*)$")
+        if name and realm then
+            local legacy = ns.Utilities:GetCharacterKey(name, realm)
+            if legacy and chars[legacy] then
+                return chars[legacy]
+            end
+        end
+    end
+    return nil
+end
+
+local function ResolveMoneyLogCharacterLabel(entry)
+    if entry and entry.characterName and entry.characterName ~= "" then
+        if not (issecretvalue and issecretvalue(entry.characterName)) then
+            return entry.characterName
+        end
+    end
+    local storageKey = entry and entry.character
+    if not storageKey or storageKey == "" then return "-" end
+    if issecretvalue and issecretvalue(storageKey) then return "-" end
+    if type(storageKey) == "string" and storageKey:sub(1, 7) ~= "Player-" then
+        local name, realm = storageKey:match("^([^%-]+)%-(.+)$")
+        if name and realm and ns.Utilities and ns.Utilities.FormatRealmName then
+            return name .. "-" .. ns.Utilities:FormatRealmName(realm)
+        end
+        return storageKey
+    end
+    local charData = LookupCharacterRow(storageKey)
+    if charData and charData.name and charData.name ~= "" then
+        local name = charData.name
+        local realm = charData.realm
+        if realm and realm ~= "" then
+            local pretty = ns.Utilities and ns.Utilities.FormatRealmName and ns.Utilities:FormatRealmName(realm) or realm
+            return name .. "-" .. pretty
+        end
+        return name
+    end
+    return storageKey
+end
+
 local function GetClassColorForEntry(entry, charKey)
     local classFile = entry.classFile
-    if not classFile and ns.Utilities and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters then
+    if not classFile then
         local key = entry.character or charKey
-        if key then
-            local charData = WarbandNexus.db.global.characters[key]
-            local keySafe = type(key) == "string" and not (issecretvalue and issecretvalue(key))
-            if not charData and keySafe and key:find("-") then
-                local name, realm = key:match("^([^-]+)-(.*)$")
-                if name and realm then
-                    key = ns.Utilities:GetCharacterKey(name, realm)
-                    charData = WarbandNexus.db.global.characters[key]
-                end
-            end
-            classFile = charData and (charData.classFile or charData.class)
-        end
+        local charData = LookupCharacterRow(key)
+        classFile = charData and (charData.classFile or charData.class)
     end
     if classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] then
         local c = RAID_CLASS_COLORS[classFile]
@@ -438,7 +484,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             charText:SetWidth(LOG_COL_CHAR - 4)
             charText:SetJustifyH("LEFT")
             charText:SetWordWrap(false)
-            charText:SetText(entry.character or "-")
+            charText:SetText(ResolveMoneyLogCharacterLabel(entry))
             charText:SetTextColor(GetClassColorForEntry(entry, charKey))
             lx = lx + LOG_COL_CHAR + LOG_COL_GAP
 
@@ -565,7 +611,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             ct:SetWidth(SUM_COL_CHAR - ROW_INDENT)
             ct:SetJustifyH("LEFT")
             ct:SetWordWrap(false)
-            ct:SetText(s.charKey or "-")
+            ct:SetText(ResolveMoneyLogCharacterLabel({ character = s.charKey, classFile = s.classFile }))
             ct:SetTextColor(GetClassColorForEntry({ classFile = s.classFile }, charKey))
 
             -- Deposit G/S/C

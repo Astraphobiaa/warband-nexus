@@ -1336,6 +1336,11 @@ end
     Called when player enters the world (login or reload)
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
+    -- Character switch at login screen: allow SaveCharacter for the new toon (not only first login of session).
+    if isInitialLogin and not isReloadingUi then
+        self.characterSaved = false
+    end
+
     -- Class-colored accent may need UnitClass("player") — refresh theme once world is ready (login/reload).
     if (isInitialLogin or isReloadingUi) and self.db and self.db.profile and self.db.profile.useClassColorAccent and ns.UI_RefreshColors then
         ns.UI_RefreshColors()

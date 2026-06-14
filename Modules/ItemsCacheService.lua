@@ -25,7 +25,12 @@ local CACHE_VERSION = Constants.ITEMS_CACHE_VERSION
 
 --- Persisted itemStorage key for the logged-in character (GUID slot when available).
 local function ResolveCurrentItemStorageKey()
-    local ck = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey then
+        local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
+        if k and k ~= "" then return k end
+    end
+    local ck = CS and CS.ResolveCharactersTableKey and CS:ResolveCharactersTableKey(WarbandNexus)
     if not ck and ns.Utilities.GetCharacterStorageKey then
         ck = ns.Utilities:GetCharacterStorageKey(WarbandNexus)
     end

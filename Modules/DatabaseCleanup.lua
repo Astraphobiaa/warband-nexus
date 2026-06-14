@@ -70,80 +70,15 @@ function WarbandNexus:CleanupDatabase()
         end
     end
     
-    -- Same GUID duplicates first (merge row payloads, remap subsidiaries, single canonical slot).
-    if self.db.global.characters and ns.MigrationService and ns.MigrationService.DeduplicateGlobalCharactersByGuid then
-        ns.MigrationService:DeduplicateGlobalCharactersByGuid(self.db)
-    end
-
-    -- Remove duplicate characters by identity (GUID when present, else Name-Realm).
-    -- Subsidiary tables must remap before dropping a row key (currency/gear/PvE/itemStorage).
-    if self.db.global.characters then
-        local seen = {}  -- [mergeKey] = survivor table key
-        local toRemove = {}
-        local renames = {}
-
-        local Utilities = ns.Utilities
-        local issecretvalue = issecretvalue
-        local MS = ns.MigrationService
-
-        for charKey, charData in pairs(self.db.global.characters) do
-            local mergeKey
-            local g = charData.guid
-            if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
-                mergeKey = "\001g\001" .. g
-            elseif Utilities and Utilities.GetCharacterKey and charData.name and charData.realm then
-                mergeKey = Utilities:GetCharacterKey(charData.name, charData.realm) or charKey
-            else
-                mergeKey = charKey
+    -- Duplicate roster rows (same GUID and/or legacy Name-Realm alias).
+    if self.db.global.characters and ns.MigrationService and ns.MigrationService.DeduplicateCharacterRoster then
+        local dupCount = ns.MigrationService:DeduplicateCharacterRoster(self.db) or 0
+        cleaned.duplicates = cleaned.duplicates + dupCount
+        if dupCount > 0 then
+            DebugPrint("|cffff8000[WN Cleanup]|r Merged " .. tostring(dupCount) .. " duplicate character row(s)")
+            if self.InvalidateGetAllCharactersCache then
+                self:InvalidateGetAllCharactersCache()
             end
-
-            if seen[mergeKey] then
-                local existingKey = seen[mergeKey]
-                local existingData = self.db.global.characters[existingKey]
-                local existingTime = existingData and existingData.lastSeen or 0
-                local newTime = charData.lastSeen or 0
-
-                if newTime > existingTime then
-                    renames[existingKey] = charKey
-                    toRemove[existingKey] = true
-                    seen[mergeKey] = charKey
-                    cleaned.duplicates = cleaned.duplicates + 1
-                else
-                    renames[charKey] = existingKey
-                    toRemove[charKey] = true
-                    cleaned.duplicates = cleaned.duplicates + 1
-                end
-            else
-                seen[mergeKey] = charKey
-            end
-        end
-
-        -- Resolve chains before remapping (A→B, B→C ⇒ A→C). With 3+ duplicates of one
-        -- identity the map is chained, and RemapCharKeyedBucket iterates in undefined
-        -- pairs order — A's currency/PvE/item buckets could be parked under B's key
-        -- right after row B was deleted, silently orphaning them.
-        for loserKey, survivorKey in pairs(renames) do
-            local visited = { [loserKey] = true }
-            while renames[survivorKey] and not visited[survivorKey] do
-                visited[survivorKey] = true
-                survivorKey = renames[survivorKey]
-            end
-            renames[loserKey] = survivorKey
-        end
-
-        if next(renames) and MS and MS.ApplyCharacterKeyedStorageRenames then
-            MS:ApplyCharacterKeyedStorageRenames(self.db, renames)
-        end
-
-        for loserKey in pairs(toRemove) do
-            local survivorKey = renames[loserKey]
-            local loserData = self.db.global.characters[loserKey]
-            local survivorData = survivorKey and self.db.global.characters[survivorKey]
-            if survivorData and loserData and MS and MS.MergeCharacterRowPreserveWinner then
-                MS:MergeCharacterRowPreserveWinner(survivorData, loserData)
-            end
-            self.db.global.characters[loserKey] = nil
-            DebugPrint("|cffff8000[WN Cleanup]|r Removed duplicate: " .. tostring(loserKey))
         end
     end
     

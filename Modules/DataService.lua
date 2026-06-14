@@ -29,6 +29,7 @@ local _allCharsRosterCache = Roster and Roster.cache or { sig = nil, list = nil 
 local ComputeCharactersRosterSig = Roster and Roster.ComputeCharactersRosterSig
 local InvalidateGetAllCharactersCache = Roster and Roster.InvalidateGetAllCharactersCache
 local SafeGetMoneyCopperFromEntry = Roster and Roster.SafeGetMoneyCopperFromEntry
+local BuildMergedCharacterRosterView = Roster and Roster.BuildMergedCharacterRosterView
 local RelocateLegacyCharacterSlot = Roster and Roster.RelocateLegacyCharacterSlot
 local tableToItemArrayForStorage = Roster and Roster.tableToItemArrayForStorage
 
@@ -924,35 +925,6 @@ function WarbandNexus:SaveCurrentCharacterData()
         hasMail              = HasNewMail() and true or false,
     }
 
-    -- After a rename, a stale row may remain under the old character key with the same player GUID.
-    if ns.MigrationService and ns.MigrationService.ApplyCharacterKeyedStorageRenames then
-        local pg = self.db.global.characters[key] and self.db.global.characters[key].guid
-        if type(pg) == "string" and pg ~= "" and not (issecretvalue and issecretvalue(pg)) then
-            local renames = {}
-            for otherKey, other in pairs(self.db.global.characters) do
-                if otherKey ~= key and type(other) == "table" then
-                    local og = other.guid
-                    if type(og) == "string" and og ~= "" and not (issecretvalue and issecretvalue(og)) and og == pg then
-                        renames[otherKey] = key
-                    end
-                end
-            end
-            if next(renames) then
-                local winnerRow = self.db.global.characters[key]
-                for oldKey in pairs(renames) do
-                    local loserRow = self.db.global.characters[oldKey]
-                    if winnerRow and loserRow and ns.MigrationService.MergeCharacterRowPreserveWinner then
-                        ns.MigrationService:MergeCharacterRowPreserveWinner(winnerRow, loserRow)
-                    end
-                end
-                ns.MigrationService:ApplyCharacterKeyedStorageRenames(self.db, renames)
-                for oldKey in pairs(renames) do
-                    self.db.global.characters[oldKey] = nil
-                end
-            end
-        end
-    end
-
     RelocateLegacyCharacterSlot(self.db, key, legacyKey)
 
     -- Store PvE data globally (v2 path)
@@ -1033,36 +1005,89 @@ function WarbandNexus:UpdateMailStatus()
     end
 end
 
---- Update only gold for current character (PLAYER_MONEY; tracked and untracked).
+--- Update only gold for current character (PLAYER_MONEY, logout flush; tracked and untracked).
 function WarbandNexus:UpdateCharacterGold()
-    -- No tracking guard here - gold updates for both tracked and untracked characters
-    local rawKey = ns.Utilities:GetCharacterKey()
-    if not rawKey then return false end
-    local tableKey = rawKey
-    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
+    local U = ns.Utilities
+    if not U then return false end
+
+    local name = UnitName("player")
+    local realm = GetNormalizedRealmName()
+    if not name or name == "" or not realm or realm == "" then return false end
+    if (issecretvalue and issecretvalue(name)) or (issecretvalue and issecretvalue(realm)) then return false end
+
+    local legacyKey = U.GetCharacterKey and U:GetCharacterKey(name, realm)
+    local storageKey = U.GetCharacterStorageKey and U:GetCharacterStorageKey(self)
+    local writeKey = storageKey or legacyKey
+    if not writeKey then return false end
+
+    if not self.db.global.characters then
+        self.db.global.characters = {}
+    end
+    local chars = self.db.global.characters
+
+    local existingEntry = chars[writeKey]
+        or (legacyKey and legacyKey ~= writeKey and chars[legacyKey])
+        or nil
+    if not existingEntry and ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
         local resolved = ns.CharacterService:ResolveCharactersTableKey(self)
-        if resolved then tableKey = resolved end
-    end
-    if self.db.global.characters and self.db.global.characters[tableKey] then
-        local totalCopper = SafeGetMoneyCopperFromEntry(self.db.global.characters[tableKey])
-        local gold = math.floor(totalCopper / 10000)
-        local silver = math.floor((totalCopper % 10000) / 100)
-        local copper = math.floor(totalCopper % 100)
-        self.db.global.characters[tableKey].gold = gold
-        self.db.global.characters[tableKey].silver = silver
-        self.db.global.characters[tableKey].copper = copper
-        self.db.global.characters[tableKey].lastSeen = time()
-        local msgKey = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)) or rawKey
-        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-            msgKey = ns.Utilities:GetCanonicalCharacterKey(msgKey) or msgKey
+        if resolved and chars[resolved] then
+            existingEntry = chars[resolved]
         end
-        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-            charKey = msgKey,
-            dataType = "gold"
-        })
-        return true
     end
-    return false
+
+    local fallbackCopper = existingEntry and U.GetCharTotalCopper and U:GetCharTotalCopper(existingEntry) or 0
+    local totalCopper = U.GetLiveCharacterMoneyCopper and U:GetLiveCharacterMoneyCopper(fallbackCopper)
+        or SafeGetMoneyCopperFromEntry(existingEntry)
+    local gold = math.floor(totalCopper / 10000)
+    local silver = math.floor((totalCopper % 10000) / 100)
+    local copper = math.floor(totalCopper % 100)
+
+    if not chars[writeKey] then
+        if self.SaveMinimalCharacterData then
+            self:SaveMinimalCharacterData()
+            if chars[writeKey] then
+                chars[writeKey].gold = gold
+                chars[writeKey].silver = silver
+                chars[writeKey].copper = copper
+                chars[writeKey].lastSeen = time()
+            end
+        elseif existingEntry and type(existingEntry) == "table" then
+            chars[writeKey] = existingEntry
+            chars[writeKey].gold = gold
+            chars[writeKey].silver = silver
+            chars[writeKey].copper = copper
+            chars[writeKey].lastSeen = time()
+        else
+            return false
+        end
+    else
+        chars[writeKey].gold = gold
+        chars[writeKey].silver = silver
+        chars[writeKey].copper = copper
+        chars[writeKey].lastSeen = time()
+        if not chars[writeKey].name or chars[writeKey].name == "" then
+            chars[writeKey].name = name
+            chars[writeKey].realm = realm
+        end
+    end
+
+    if legacyKey and legacyKey ~= writeKey and RelocateLegacyCharacterSlot then
+        RelocateLegacyCharacterSlot(self.db, writeKey, legacyKey)
+    end
+
+    if InvalidateGetAllCharactersCache then
+        InvalidateGetAllCharactersCache()
+    end
+
+    local msgKey = writeKey
+    if U.GetCanonicalCharacterKey then
+        msgKey = U:GetCanonicalCharacterKey(writeKey) or writeKey
+    end
+    self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+        charKey = msgKey,
+        dataType = "gold"
+    })
+    return true
 end
 
 ---Flush pending zone debounce and lightweight gold snapshot on PLAYER_LOGOUT.
@@ -1103,54 +1128,9 @@ function WarbandNexus:GetAllCharacters()
         return out
     end
     
-    -- Deduplicate characters (keep newest by lastSeen). Prefer player GUID when present (post-rename duplicates).
-    local seen = {}  -- [mergeKey] = charData
-    
-    for key, data in pairs(charsTbl) do
-        if type(data) ~= "table" then
-            -- skip
-        else
-            local name, realm = data.name, data.realm
-            if (not name or name == "") or (not realm or realm == "") then
-                if key and type(key) == "string" and ns.Utilities and ns.Utilities.SplitCharacterKey then
-                    local n, r = ns.Utilities:SplitCharacterKey(key)
-                    if n and r then
-                        name, realm = n, r
-                        data.name = name
-                        data.realm = realm
-                    end
-                end
-            end
-            if name and realm and name ~= "" and realm ~= "" then
-                local normalizedKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
-                if not normalizedKey then normalizedKey = key end
-                -- Same player can appear under two keys after a rename; `guid` merges them (name+realm alone does not).
-                local mergeKey
-                local g = data.guid
-                if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
-                    mergeKey = "\001g\001" .. g
-                else
-                    local rowStorageKey = ns.Utilities.ResolveCharacterRowKey and ns.Utilities:ResolveCharacterRowKey(data)
-                    mergeKey = "\001n\001" .. (rowStorageKey or normalizedKey or key)
-                end
-                if seen[mergeKey] then
-                    local existingData = seen[mergeKey]
-                    local existingTime = existingData.lastSeen or 0
-                    local newTime = data.lastSeen or 0
-                    if newTime > existingTime then
-                        data._key = key
-                        seen[mergeKey] = data
-                    else
-                        -- Keep existing
-                    end
-                else
-                    data._key = key
-                    seen[mergeKey] = data
-                end
-            end
-        end
-    end
-    
+    -- Deduplicate characters for display (shared merge helper).
+    local seen = BuildMergedCharacterRosterView and BuildMergedCharacterRosterView(charsTbl) or {}
+
     -- Convert seen map to array
     for _, data in pairs(seen) do
         table.insert(characters, data)

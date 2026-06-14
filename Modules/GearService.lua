@@ -1068,8 +1068,13 @@ local function GetDB()
 end
 
 local function ResolveGearStorageKey()
-    if ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey then
-        local k = ns.CharacterService:ResolveCharactersTableKey(WarbandNexus)
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey then
+        local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, nil)
+        if k and k ~= "" then return k end
+    end
+    if CS and CS.ResolveCharactersTableKey then
+        local k = CS:ResolveCharactersTableKey(WarbandNexus)
         if k and k ~= "" then return k end
     end
     local U = ns.Utilities

@@ -133,6 +133,15 @@ end
 --- Canonical PvE cache key for a character row (matches GetPvEData / pveCache writes).
 function ns.PvEUI.GetCanonicalKeyForChar(char)
     if not char then return nil end
+    if ns.Utilities and ns.Utilities.ResolveCharacterRowKey then
+        local rk = ns.Utilities:ResolveCharacterRowKey(char)
+        if rk and rk ~= "" then
+            if ns.Utilities.GetCanonicalCharacterKey then
+                return ns.Utilities:GetCanonicalCharacterKey(rk) or rk
+            end
+            return rk
+        end
+    end
     local raw = char._key
     if (not raw or raw == "") and ns.Utilities and ns.Utilities.GetCharacterKey then
         raw = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
