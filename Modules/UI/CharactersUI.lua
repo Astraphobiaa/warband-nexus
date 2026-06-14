@@ -2689,7 +2689,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Format content based on keystone status
     if char.mythicKey and char.mythicKey.level and char.mythicKey.level > 0 then
         -- HAS KEY: +Level â€¢ Dungeon (colored, bright icon)
-        local dungeonAbbrev = char.mythicKey.dungeonName:sub(1, 4):upper()
+        local dungeonName = (ns.Utilities and ns.Utilities.ResolveKeystoneDungeonName)
+            and ns.Utilities:ResolveKeystoneDungeonName(char.mythicKey)
+            or (char.mythicKey.dungeonName or "????")
+        local dungeonAbbrev = dungeonName:sub(1, 4):upper()
         local keystoneText = string.format("|cffff8000+%d|r %s•|r %s%s|r",
             char.mythicKey.level, ThemeTextHex("Dim"), SemanticGoldHex(), dungeonAbbrev)
         

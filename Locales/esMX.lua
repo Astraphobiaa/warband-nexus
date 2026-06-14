@@ -877,6 +877,8 @@ L["PROFESSIONS_DISABLED_TITLE"] = "Profesións"
 -- Tooltip Service
 L["ITEM_NUMBER_FORMAT"] = "Objeto #%s"
 L["WN_SEARCH"] = "WN Buscar"
+L["TOOLTIP_WN_KEYS"] = "Llaves WN"
+L["TOOLTIP_KEYSTONE_THIS"] = "Esta llave: +%d %s"
 
 -- Notification Manager
 L["COLLECTED_MOUNT_MSG"] = "Has recogido una montura"

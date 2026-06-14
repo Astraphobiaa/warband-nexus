@@ -17,6 +17,7 @@ local tinsert = table.insert
 local issecretvalue = issecretvalue
 
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
+local Utilities = ns.Utilities
 
 local function IsDebugOn()
     return IsDebugModeEnabled and IsDebugModeEnabled()
@@ -223,40 +224,48 @@ function CommandService:HandleSlashCommand(addon, input)
         local keysFound = 0
         local reportLinesLocal = {}
         local reportLinesParty = {}
+        local seenCanon = {}
         
         for i = 1, #characters do
             local char = characters[i]
-            local keystone = nil
-            if addon.GetPvEData then
-                -- GetAllCharacters rows carry the table key as _key (no .key field).
-                local pve = addon:GetPvEData(char._key)
-                keystone = pve and pve.keystone
-            end
-            
-            -- Fallback to v1 data if missing in v2
-            if not keystone and char.mythicKey then
-                keystone = char.mythicKey
-            end
-            
-            if keystone and keystone.level and keystone.level > 0 then
-                local dungeonName = keystone.dungeonName or "Unknown Dungeon"
-                local mapID = keystone.dungeonID or keystone.mapID or 0
-                
-                -- Construct Class Colored Name for Local Print
-                local classColor = char.classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[char.classFile] or {r=1, g=1, b=1}
-                local colorHex = string.format("ff%02x%02x%02x", classColor.r * 255, classColor.g * 255, classColor.b * 255)
-                local coloredName = string.format("|c%s%s|r", colorHex, char.name)
-                
-                -- Construct Clickable Keystone Link for Local Print
-                local keystoneLink = string.format("|cffa335ee|Hitem:180653::::::::80:253::::::|h[%s (+%d)]|h|r", dungeonName, keystone.level)
-                
-                tinsert(reportLinesLocal, string.format("%s - %s", coloredName, keystoneLink))
-                
-                -- Use plain text for Party to prevent WoW Server from dropping unverified item links
-                -- Format: Name [+Level Dungeon]
-                local shortDungeonName = dungeonName:gsub("The ", ""):sub(1, 15) -- shorten dungeon names slightly if needed
-                tinsert(reportLinesParty, string.format("%s [+%d %s]", char.name, keystone.level, shortDungeonName))
-                keysFound = keysFound + 1
+            local canon = (Utilities and Utilities.GetCanonicalCharacterKey and Utilities:GetCanonicalCharacterKey(char._key))
+                or char._key
+            if canon and not seenCanon[canon] then
+                seenCanon[canon] = true
+                local keystone = nil
+                if addon.GetPvEData then
+                    -- GetAllCharacters rows carry the table key as _key (no .key field).
+                    local pve = addon:GetPvEData(char._key)
+                    keystone = pve and pve.keystone
+                end
+
+                -- Fallback to v1 data if missing in v2
+                if not keystone and char.mythicKey then
+                    keystone = char.mythicKey
+                end
+
+                if keystone and keystone.level and keystone.level > 0 then
+                    local dungeonName = (Utilities and Utilities.ResolveKeystoneDungeonName)
+                        and Utilities:ResolveKeystoneDungeonName(keystone)
+                        or (keystone.dungeonName or keystone.name or "Unknown Dungeon")
+                    local mapID = keystone.dungeonID or keystone.mapID or 0
+
+                    -- Construct Class Colored Name for Local Print
+                    local classColor = char.classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[char.classFile] or {r=1, g=1, b=1}
+                    local colorHex = string.format("ff%02x%02x%02x", classColor.r * 255, classColor.g * 255, classColor.b * 255)
+                    local coloredName = string.format("|c%s%s|r", colorHex, char.name)
+
+                    -- Construct Clickable Keystone Link for Local Print
+                    local keystoneLink = string.format("|cffa335ee|Hitem:180653::::::::80:253::::::|h[%s (+%d)]|h|r", dungeonName, keystone.level)
+
+                    tinsert(reportLinesLocal, string.format("%s - %s", coloredName, keystoneLink))
+
+                    -- Use plain text for Party to prevent WoW Server from dropping unverified item links
+                    -- Format: Name [+Level Dungeon]
+                    local shortDungeonName = dungeonName:gsub("The ", ""):sub(1, 15) -- shorten dungeon names slightly if needed
+                    tinsert(reportLinesParty, string.format("%s [+%d %s]", char.name, keystone.level, shortDungeonName))
+                    keysFound = keysFound + 1
+                end
             end
         end
         

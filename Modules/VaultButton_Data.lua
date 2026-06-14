@@ -295,15 +295,9 @@ function M.FormatKeystoneTooltipRight(charKey, charRow)
         return "|cff888888" .. EAL("EA_TOOLTIP_KEYSTONE_NONE", "No keystone") .. "|r"
     end
     local level = tonumber(ks.level) or 0
-    local mapName = ks.dungeonName
-    if (not mapName or mapName == "") and ks.mapID and C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
-        local ok, name = pcall(C_ChallengeMode.GetMapUIInfo, ks.mapID)
-        if ok and name and name ~= "" then
-            if not (issecretvalue and issecretvalue(name)) then
-                mapName = name
-            end
-        end
-    end
+    local mapName = (ns.Utilities and ns.Utilities.ResolveKeystoneDungeonName)
+        and ns.Utilities:ResolveKeystoneDungeonName(ks)
+        or ks.dungeonName
     if not mapName or mapName == "" or (issecretvalue and issecretvalue(mapName)) then
         mapName = EAL("KEYSTONE", "Keystone")
     end

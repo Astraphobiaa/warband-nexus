@@ -877,6 +877,8 @@ L["PROFESSIONS_DISABLED_TITLE"] = "Профессии"
 -- Tooltip Service
 L["ITEM_NUMBER_FORMAT"] = "Предмет №%s"
 L["WN_SEARCH"] = "Поиск WN"
+L["TOOLTIP_WN_KEYS"] = "Ключи WN"
+L["TOOLTIP_KEYSTONE_THIS"] = "Этот ключ: +%d %s"
 
 -- Notification Manager
 L["COLLECTED_MOUNT_MSG"] = "Вы получили верх. животное"

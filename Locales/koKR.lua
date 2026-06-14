@@ -877,6 +877,8 @@ L["PROFESSIONS_DISABLED_TITLE"] = "전문 기술"
 -- Tooltip Service
 L["ITEM_NUMBER_FORMAT"] = "아이템 #%s"
 L["WN_SEARCH"] = "WN 검색"
+L["TOOLTIP_WN_KEYS"] = "WN 열쇠"
+L["TOOLTIP_KEYSTONE_THIS"] = "이 열쇠: +%d %s"
 
 -- Notification Manager
 L["COLLECTED_MOUNT_MSG"] = "탈것을 수집했습니다"

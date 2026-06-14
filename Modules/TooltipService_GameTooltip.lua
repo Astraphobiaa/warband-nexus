@@ -13,6 +13,8 @@ local tonumber = tonumber
 local GT = ns.TooltipGameTooltip or {}
 ns.TooltipGameTooltip = GT
 
+local Utilities = ns.Utilities
+
 local TooltipService
 
 --- Midnight / nameplate aura SetOwner: owner or parent chain may be invalid mid-anchor.
@@ -592,6 +594,92 @@ local function AppendWNItemCountLines(tooltip, itemID)
     return true
 end
 
+--- Mythic keystones share one item template ID; bag/bank counts by itemID are misleading.
+--- Show per-character owned keys from PvE cache instead (same source as /wn keys).
+local function AppendWNKeystoneLines(tooltip, hyperlink)
+    if not tooltip or not tooltip.AddLine or not tooltip.AddDoubleLine then
+        return false
+    end
+    if not WarbandNexus or not WarbandNexus.GetAllCharacters then
+        return false
+    end
+
+    local parsed = Utilities and Utilities.ParseKeystoneHyperlink and Utilities:ParseKeystoneHyperlink(hyperlink)
+    if parsed and parsed.level and parsed.level > 0 then
+        local thisName = Utilities and Utilities.ResolveKeystoneDungeonName
+            and Utilities:ResolveKeystoneDungeonName(parsed)
+            or "Unknown Dungeon"
+        tooltip:AddLine(" ")
+        local thisFmt = (ns.L and ns.L["TOOLTIP_KEYSTONE_THIS"]) or "This key: +%d %s"
+        tooltip:AddLine(string.format(thisFmt, parsed.level, thisName), 1, 0.82, 0, 1)
+    end
+
+    local characters = WarbandNexus:GetAllCharacters()
+    if not characters or #characters == 0 then return parsed ~= nil end
+
+    local roster = {}
+    local seenCanon = {}
+    for i = 1, #characters do
+        local char = characters[i]
+        local charKey = char._key
+        local canon = (Utilities and Utilities.GetCanonicalCharacterKey and Utilities:GetCanonicalCharacterKey(charKey))
+            or charKey
+        if canon and not seenCanon[canon] then
+            seenCanon[canon] = true
+            local keystone = nil
+            if WarbandNexus.GetPvEData then
+                local pve = WarbandNexus:GetPvEData(charKey)
+                keystone = pve and pve.keystone
+            end
+            if (not keystone or not keystone.level or keystone.level <= 0) and char.mythicKey then
+                keystone = char.mythicKey
+            end
+            if keystone and keystone.level and keystone.level > 0 then
+                local dungeonName = Utilities and Utilities.ResolveKeystoneDungeonName
+                    and Utilities:ResolveKeystoneDungeonName(keystone)
+                    or (keystone.dungeonName or keystone.name or "Unknown Dungeon")
+                roster[#roster + 1] = {
+                    name = char.name or "?",
+                    classFile = char.classFile or char.class,
+                    level = keystone.level,
+                    dungeon = dungeonName,
+                }
+            end
+        end
+    end
+
+    if #roster == 0 then return parsed ~= nil end
+
+    table.sort(roster, function(a, b)
+        if a.level ~= b.level then return a.level > b.level end
+        return (a.name or "") < (b.name or "")
+    end)
+
+    tooltip:AddLine(" ")
+    tooltip:AddLine((ns.L and ns.L["TOOLTIP_WN_KEYS"]) or "WN Keys", 0.4, 0.8, 1, 1)
+
+    local isShift = IsShiftKeyDown()
+    local maxShow = isShift and 999 or 8
+    local shown = 0
+    for i = 1, #roster do
+        if shown >= maxShow then break end
+        local row = roster[i]
+        local cc = RAID_CLASS_COLORS[row.classFile] or { r = 1, g = 1, b = 1 }
+        local keyFmt = (ns.L and ns.L["EA_TOOLTIP_KEYSTONE_FORMAT"]) or "+%d %s"
+        tooltip:AddDoubleLine(
+            row.name,
+            string.format(keyFmt, row.level, row.dungeon),
+            cc.r, cc.g, cc.b,
+            1, 0.82, 0
+        )
+        shown = shown + 1
+    end
+    if not isShift and #roster > maxShow then
+        tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
+    end
+    return true
+end
+
 function GT.InitializeGameTooltipHook(service)
     -- Modern TWW API (taint-safe)
     if not TooltipDataProcessor then
@@ -615,10 +703,18 @@ function GT.InitializeGameTooltipHook(service)
                 showTooltipItemCount = WarbandNexus.db.profile.showItemCount
             end
             if showTooltipItemCount and tooltip and itemID then
-                local countToken = "counts:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                local isKeystone = Utilities and Utilities.IsKeystoneItemID and Utilities:IsKeystoneItemID(itemID)
+                local countToken = (isKeystone and "keystone:" or "counts:")
+                    .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
                 if not TooltipInjectionAlreadyDone(tooltip, countToken) then
                     local ok, err = pcall(function()
-                        if AppendWNItemCountLines(tooltip, itemID) then
+                        local injected
+                        if isKeystone then
+                            injected = AppendWNKeystoneLines(tooltip, data and data.hyperlink)
+                        else
+                            injected = AppendWNItemCountLines(tooltip, itemID)
+                        end
+                        if injected then
                             MarkTooltipInjectionDone(tooltip, countToken)
                         end
                     end)

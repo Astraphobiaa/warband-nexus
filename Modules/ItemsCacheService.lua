@@ -2472,12 +2472,14 @@ local function BuildCharacterSummary(charKey, force)
         return
     end
     local summary = {}  -- [itemID] = { bags=N, bank=N }
+    local U = ns.Utilities
 
     local bags = select(1, AcquireV2BucketItemArray(charKey, "bags"))
     if bags then
         for i = 1, #bags do
             local item = bags[i]
-            if item.itemID then
+            if item.itemID and not item.isKeystone
+                and not (U and U.IsKeystoneItemID and U:IsKeystoneItemID(item.itemID)) then
                 local entry = summary[item.itemID]
                 if not entry then
                     entry = { bags = 0, bank = 0 }
@@ -2492,7 +2494,8 @@ local function BuildCharacterSummary(charKey, force)
     if bank then
         for i = 1, #bank do
             local item = bank[i]
-            if item.itemID then
+            if item.itemID and not item.isKeystone
+                and not (U and U.IsKeystoneItemID and U:IsKeystoneItemID(item.itemID)) then
                 local entry = summary[item.itemID]
                 if not entry then
                     entry = { bags = 0, bank = 0 }
@@ -2520,9 +2523,11 @@ local function BuildWarbandSummary()
     
     local warbandData = WarbandNexus:GetWarbandBankData()
     if warbandData and warbandData.items then
+        local U = ns.Utilities
         for i = 1, #warbandData.items do
             local item = warbandData.items[i]
-            if item.itemID then
+            if item.itemID and not item.isKeystone
+                and not (U and U.IsKeystoneItemID and U:IsKeystoneItemID(item.itemID)) then
                 summary[item.itemID] = (summary[item.itemID] or 0) + (item.stackCount or 1)
             end
         end
@@ -2605,6 +2610,9 @@ end
 ---Replaces the old DataService:GetDetailedItemCounts which iterated all items per hover.
 function WarbandNexus:GetDetailedItemCountsFast(itemID)
     if not itemID then return nil end
+    if ns.Utilities and ns.Utilities.IsKeystoneItemID and ns.Utilities:IsKeystoneItemID(itemID) then
+        return nil
+    end
     
     EnsureSummaryColdInit(self)
     ProcessPendingSummariesForTooltip()

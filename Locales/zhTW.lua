@@ -877,6 +877,8 @@ L["PROFESSIONS_DISABLED_TITLE"] = "專業"
 -- Tooltip Service
 L["ITEM_NUMBER_FORMAT"] = "物品 #%s"
 L["WN_SEARCH"] = "WN 搜尋"
+L["TOOLTIP_WN_KEYS"] = "WN 鑰匙"
+L["TOOLTIP_KEYSTONE_THIS"] = "此鑰匙: +%d %s"
 
 -- Notification Manager
 L["COLLECTED_MOUNT_MSG"] = "你已收集坐騎"

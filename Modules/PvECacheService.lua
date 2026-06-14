@@ -243,19 +243,31 @@ local function MirrorKeystoneToCharacterRow(addon, pveCharKey, keystoneLevel, ma
         local oldLevel = old and tonumber(old.level) or nil
         local oldMap = old and tonumber(old.mapID or old.dungeonID) or nil
         if oldLevel == lv and oldMap == mid then
+            local oldName = old and old.dungeonName
+            if oldName and oldName ~= "" and oldName ~= "Unknown Dungeon" then
+                return false
+            end
+            local refreshedName = Utilities and Utilities.ResolveKeystoneDungeonName
+                and Utilities:ResolveKeystoneDungeonName({ mapID = mid, dungeonID = mid, dungeonName = oldName })
+            if refreshedName and refreshedName ~= "Unknown Dungeon" and refreshedName ~= oldName then
+                row.mythicKey = {
+                    level = lv,
+                    dungeonID = mid,
+                    dungeonName = refreshedName,
+                    mapID = mid,
+                    scanTime = time(),
+                }
+                return true
+            end
             return false
         end
-        local mapName
-        if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
-            local ok, mn = pcall(C_ChallengeMode.GetMapUIInfo, mid)
-            if ok and mn and not (issecretvalue and issecretvalue(mn)) then
-                mapName = mn
-            end
-        end
+        local mapName = Utilities and Utilities.ResolveKeystoneDungeonName
+            and Utilities:ResolveKeystoneDungeonName({ mapID = mid, dungeonID = mid })
+            or "Unknown Dungeon"
         row.mythicKey = {
             level = lv,
             dungeonID = mid,
-            dungeonName = mapName or "Unknown Dungeon",
+            dungeonName = mapName,
             mapID = mid,
             scanTime = time(),
         }
@@ -982,10 +994,21 @@ function WarbandNexus:UpdateCharacterKeystone(charKey)
         local oldMap = existing and tonumber(existing.mapID) or nil
         local newLevel = tonumber(keystoneLevel)
         local newMap = tonumber(keystoneInfo)
-        if oldLevel ~= newLevel or oldMap ~= newMap then
+        local dungeonName = Utilities and Utilities.ResolveKeystoneDungeonName
+            and Utilities:ResolveKeystoneDungeonName({
+                mapID = newMap,
+                dungeonID = newMap,
+                dungeonName = existing and existing.dungeonName,
+                name = existing and existing.name,
+            })
+        local nameNeedsRefresh = existing
+            and (not existing.dungeonName or existing.dungeonName == "Unknown Dungeon")
+            and dungeonName and dungeonName ~= "Unknown Dungeon"
+        if oldLevel ~= newLevel or oldMap ~= newMap or nameNeedsRefresh then
             self.db.global.pveCache.mythicPlus.keystones[charKey] = {
                 mapID = keystoneInfo,
                 level = keystoneLevel,
+                dungeonName = dungeonName,
                 lastUpdate = time(),
             }
             didChange = true
@@ -2022,7 +2045,19 @@ function WarbandNexus:GetPvEData(charKey)
 
         -- Return data for specific character
         local vaultActivities = PveSub(dbCache.greatVault and dbCache.greatVault.activities)
-        local keystoneData = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.keystones)
+        local rawKeystone = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.keystones)
+        local keystoneData = rawKeystone
+        if rawKeystone and tonumber(rawKeystone.level) and tonumber(rawKeystone.level) > 0 then
+            local dungeonName = Utilities and Utilities.ResolveKeystoneDungeonName
+                and Utilities:ResolveKeystoneDungeonName(rawKeystone)
+            keystoneData = {
+                mapID = rawKeystone.mapID,
+                level = rawKeystone.level,
+                lastUpdate = rawKeystone.lastUpdate,
+                dungeonName = dungeonName,
+                name = dungeonName,
+            }
+        end
         local worldBosses = PveSub(dbCache.lockouts and dbCache.lockouts.worldBosses)
         local delveCharacter = PveSub(dbCache.delves and dbCache.delves.characters) or {}
         local runHistory = PveSub(dbCache.mythicPlus and dbCache.mythicPlus.runHistory) or {}

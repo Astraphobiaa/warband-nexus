@@ -825,6 +825,66 @@ function Utilities:SafePlainStringFromEdit(edit)
     return t
 end
 
+--- Resolve Mythic+ dungeon display name from a keystone row (mapID + optional cached name).
+---@param keystone table|nil { mapID, dungeonID, dungeonName, name, level }
+---@param fallback string|nil
+---@return string
+function Utilities:ResolveKeystoneDungeonName(keystone, fallback)
+    fallback = fallback or "Unknown Dungeon"
+    if type(keystone) ~= "table" then
+        return fallback
+    end
+    local cached = keystone.dungeonName or keystone.name
+    if cached and cached ~= "" and cached ~= fallback then
+        if not (issecretvalue and issecretvalue(cached)) then
+            return cached
+        end
+    end
+    local mapID = keystone.mapID or keystone.dungeonID
+    local mid = mapID and tonumber(mapID)
+    if mid and mid > 0 and C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
+        local ok, mapName = pcall(C_ChallengeMode.GetMapUIInfo, mid)
+        if ok and mapName and mapName ~= "" then
+            if not (issecretvalue and issecretvalue(mapName)) then
+                return mapName
+            end
+        end
+    end
+    if cached and cached ~= "" and not (issecretvalue and issecretvalue(cached)) then
+        return cached
+    end
+    return fallback
+end
+
+--- True when itemID is a Mythic Keystone template (shared ID across all dungeons).
+---@param itemID number|nil
+---@return boolean
+function Utilities:IsKeystoneItemID(itemID)
+    itemID = itemID and tonumber(itemID)
+    if not itemID or itemID <= 0 then return false end
+    if C_Item and C_Item.IsItemKeystoneByID then
+        local ok, isKs = pcall(C_Item.IsItemKeystoneByID, itemID)
+        if ok and isKs == true then return true end
+    end
+    return false
+end
+
+--- Parse challenge map ID + level from a keystone item hyperlink.
+---@param link string|nil
+---@return table|nil { mapID: number, level: number }
+function Utilities:ParseKeystoneHyperlink(link)
+    if not link or type(link) ~= "string" or (issecretvalue and issecretvalue(link)) then
+        return nil
+    end
+    local mapID, level = link:match("keystone:(%d+):(%d+)")
+    mapID = mapID and tonumber(mapID)
+    level = level and tonumber(level)
+    if mapID and mapID > 0 and level and level > 0 then
+        return { mapID = mapID, level = level }
+    end
+    return nil
+end
+
 -- EXPORT
 
 return Utilities
