@@ -176,6 +176,100 @@ local function EnsureSkillLineBucket(charData, skillLineID, professionName, expa
     return bucket, pd
 end
 
+-- Collector burst: coalesce WN_* emits during RunAllProfessionCollectors / light craft paths.
+local collectorBurstDepth = 0
+local collectorNotifyPending = {}
+local lastConcentrationCollectorAt = 0
+local CONCENTRATION_HOOK_SKIP_SEC = 1.0
+local LIGHT_LIST_COLLECTOR_MIN_INTERVAL = 1.0
+local lastLightListCollectorAt = 0
+
+local function NotifyCollectorUpdate(notifyKey, messageName, charKey)
+    if not notifyKey or not messageName or not charKey then return end
+    if collectorBurstDepth > 0 then
+        collectorNotifyPending[notifyKey] = charKey
+        return
+    end
+    if WarbandNexus and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage(messageName, charKey)
+    end
+end
+
+local function BeginCollectorBurst()
+    collectorBurstDepth = collectorBurstDepth + 1
+end
+
+local function EndCollectorBurst(forceProfessionNotify)
+    if collectorBurstDepth <= 0 then return end
+    collectorBurstDepth = collectorBurstDepth - 1
+    if collectorBurstDepth > 0 then return end
+
+    local charKey = ResolveTrackedCharactersTableKey()
+    if not charKey or not WarbandNexus or not WarbandNexus.SendMessage then
+        for k in pairs(collectorNotifyPending) do
+            collectorNotifyPending[k] = nil
+        end
+        return
+    end
+
+    if forceProfessionNotify then
+        collectorNotifyPending.profession = charKey
+    end
+
+    local notifyOrder = {
+        { "concentration", E.CONCENTRATION_UPDATED },
+        { "knowledge", E.KNOWLEDGE_UPDATED },
+        { "recipe", E.RECIPE_DATA_UPDATED },
+        { "profession", E.PROFESSION_DATA_UPDATED },
+        { "cooldowns", E.PROFESSION_COOLDOWNS_UPDATED },
+        { "orders", E.CRAFTING_ORDERS_UPDATED },
+        { "equipment", E.PROFESSION_EQUIPMENT_UPDATED },
+    }
+    for i = 1, #notifyOrder do
+        local row = notifyOrder[i]
+        if collectorNotifyPending[row[1]] then
+            WarbandNexus:SendMessage(row[2], charKey)
+        end
+    end
+    for k in pairs(collectorNotifyPending) do
+        collectorNotifyPending[k] = nil
+    end
+end
+
+local function GetOpenTradeSkillChildSkillLineID()
+    if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionChildSkillLineID then return nil end
+    local slOk, slID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+    if slOk and slID and slID > 0 then
+        return slID
+    end
+    return nil
+end
+
+local function ProfessionWindowCollectorsNeedRetry()
+    if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady then return false end
+    local readyOk, ready = pcall(C_TradeSkillUI.IsTradeSkillReady)
+    if not readyOk or ready ~= true then return false end
+
+    local skillLineID = GetOpenTradeSkillChildSkillLineID()
+    if not skillLineID then return true end
+
+    local charKey = ResolveTrackedCharactersTableKey()
+    if not charKey or not WarbandNexus or not WarbandNexus.db then return true end
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return true end
+
+    local conc = charData.concentration and charData.concentration[skillLineID]
+    if not conc or not conc.max or conc.max <= 0 then return true end
+
+    local rec = charData.recipes and charData.recipes[skillLineID]
+    if not rec or not rec.totalCount or rec.totalCount <= 0 then return true end
+
+    local kd = charData.knowledgeData and charData.knowledgeData[skillLineID]
+    if not kd then return true end
+
+    return false
+end
+
 -- CONCENTRATION DATA COLLECTION
 
 --[[
@@ -329,10 +423,10 @@ local function CollectConcentrationData()
         WarbandNexus:RebuildConcentrationCurrencyMap()
     end
 
+    lastConcentrationCollectorAt = GetTime()
+
     -- Fire event for consumers (tooltip, UI)
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.CONCENTRATION_UPDATED, charKey)
-    end
+    NotifyCollectorUpdate("concentration", E.CONCENTRATION_UPDATED, charKey)
 end
 
 -- PROFESSION KNOWLEDGE DATA COLLECTION (C_ProfSpecs API)
@@ -690,9 +784,7 @@ local function CollectKnowledgeData()
     end
 
     -- Fire event for consumers
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.KNOWLEDGE_UPDATED, charKey)
-    end
+    NotifyCollectorUpdate("knowledge", E.KNOWLEDGE_UPDATED, charKey)
 end
 
 -- PROFESSION EQUIPMENT DATA COLLECTION
@@ -825,9 +917,7 @@ local function CollectEquipmentDataForCurrentProfession()
     local equipment = CollectEquipmentFromSlots(slotIDs)
     StoreEquipment(charData, profName, equipment)
 
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.PROFESSION_EQUIPMENT_UPDATED, charKey)
-    end
+    NotifyCollectorUpdate("equipment", E.PROFESSION_EQUIPMENT_UPDATED, charKey)
 end
 
 --[[
@@ -860,9 +950,7 @@ local function CollectEquipmentByDetection()
         end
     end
 
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.PROFESSION_EQUIPMENT_UPDATED, charKey)
-    end
+    NotifyCollectorUpdate("equipment", E.PROFESSION_EQUIPMENT_UPDATED, charKey)
 end
 
 --[[
@@ -1503,8 +1591,8 @@ local function CollectMidnightKnowledgeProgressData()
         end
     end
 
-    if CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName) and WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
+    if CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName) then
+        NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
     end
 end
 
@@ -1641,7 +1729,9 @@ local function CollectRecipeSummaryData()
         }
     end
     -- Keep weekly knowledge counters in sync after recipe scans.
-    CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName)
+    if CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName) then
+        NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
+    end
 
     if IsDebugModeEnabled and IsDebugModeEnabled() then
         DebugPrint("[Recipes] source=GetAllRecipeIDs raw=" .. tostring(rawRecipeCount)
@@ -1661,9 +1751,7 @@ local function CollectRecipeSummaryData()
         end
     end
 
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.RECIPE_DATA_UPDATED, charKey)
-    end
+    NotifyCollectorUpdate("recipe", E.RECIPE_DATA_UPDATED, charKey)
 end
 
 -- COOLDOWN DATA COLLECTION
@@ -1825,8 +1913,8 @@ local function CollectCooldownData()
         bucket.lastUpdate = now
     end
 
-    if found > 0 and WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.PROFESSION_COOLDOWNS_UPDATED, charKey)
+    if found > 0 then
+        NotifyCollectorUpdate("cooldowns", E.PROFESSION_COOLDOWNS_UPDATED, charKey)
     end
 end
 
@@ -1919,9 +2007,7 @@ local function CollectCraftingOrdersData()
         DebugPrint("[Orders] Collected for skillLineID=" .. tostring(skillLineID) .. " personal=" .. personalCount .. " guild=" .. guildCount)
     end
 
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage(E.CRAFTING_ORDERS_UPDATED, charKey)
-    end
+    NotifyCollectorUpdate("orders", E.CRAFTING_ORDERS_UPDATED, charKey)
 end
 
 -- EVENT HANDLERS
@@ -1934,21 +2020,15 @@ local recipeSummaryScanScheduled = false
 local lastTradeSkillListSkillLineID = nil
 local tradeSkillListUpdateNeedsReschedule = false
 
-local function GetOpenTradeSkillChildSkillLineID()
-    if not C_TradeSkillUI or not C_TradeSkillUI.GetProfessionChildSkillLineID then return nil end
-    local slOk, slID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
-    if slOk and slID and slID > 0 then
-        return slID
-    end
-    return nil
-end
+local tradeSkillListUpdatePending = false
 
 local function RunRecipeSummaryScanAndKnowledge()
     recipeSummaryScanPending = false
     recipeSummaryScanScheduled = false
     lastRecipeSummaryScanAt = GetTime()
+    BeginCollectorBurst()
     pcall(CollectRecipeSummaryData)
-    pcall(CollectMidnightKnowledgeProgressData)
+    EndCollectorBurst(false)
 end
 
 local function ScheduleThrottledRecipeSummaryScan(forceImmediate)
@@ -1979,8 +2059,17 @@ local function ScheduleThrottledRecipeSummaryScan(forceImmediate)
 end
 
 local function RunLightTradeSkillListCollectors()
+    local now = GetTime()
+    if (now - lastLightListCollectorAt) < LIGHT_LIST_COLLECTOR_MIN_INTERVAL then
+        tradeSkillListUpdateNeedsReschedule = true
+        return
+    end
+    lastLightListCollectorAt = now
+
+    BeginCollectorBurst()
     pcall(CollectConcentrationData)
     pcall(CollectAllExpansionProfessions, true)
+    EndCollectorBurst(false)
     ScheduleThrottledRecipeSummaryScan(false)
 end
 
@@ -1989,15 +2078,16 @@ local function RunAllProfessionCollectors()
     recipeSummaryScanScheduled = false
     lastRecipeSummaryScanAt = GetTime()
     if not WarbandNexus then return end
+    BeginCollectorBurst()
     pcall(CollectConcentrationData)
     pcall(CollectKnowledgeData)
     pcall(CollectAllExpansionProfessions, true)
     pcall(CollectRecipeSummaryData)
-    pcall(CollectMidnightKnowledgeProgressData)
     pcall(CollectCooldownData)
     pcall(CollectCraftingOrdersData)
     pcall(CollectEquipmentDataForCurrentProfession)
     pcall(CollectEquipmentByDetection)
+    EndCollectorBurst(true)
 end
 
 --[[
@@ -2015,32 +2105,18 @@ function WarbandNexus:OnTradeSkillShow()
     -- Install hooks (once, deferred until frame exists)
     InstallRecipeHook()
 
-    local professionWindowBurstGen = 0
-    local function EmitProfessionWindowDataUpdated()
-        if not WarbandNexus or not WarbandNexus.SendMessage then return end
-        local charKey = ResolveTrackedCharactersTableKey()
-        if not charKey then return end
-        professionWindowBurstGen = professionWindowBurstGen + 1
-        local myGen = professionWindowBurstGen
-        C_Timer.After(0.12, function()
-            if myGen ~= professionWindowBurstGen then return end
-            if WarbandNexus and WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
-            end
-        end)
-    end
-
     -- First pass: 0.6s delay so IsTradeSkillReady / GetProfessionChildSkillLineID are ready
     C_Timer.After(0.6, function()
-        RunAllProfessionCollectors()
-        EmitProfessionWindowDataUpdated()
-    end)
-
-    -- Retry pass: 1.2s so UI/list is fully populated (Concentration, Knowledge, etc. then refresh)
-    C_Timer.After(1.2, function()
         if not WarbandNexus then return end
         RunAllProfessionCollectors()
-        EmitProfessionWindowDataUpdated()
+    end)
+
+    -- Retry pass: only when first pass left gaps (API not ready yet)
+    C_Timer.After(1.2, function()
+        if not WarbandNexus then return end
+        if ProfessionWindowCollectorsNeedRetry() then
+            RunAllProfessionCollectors()
+        end
     end)
 
     -- Notify companion window
@@ -2070,8 +2146,6 @@ end
     Without this, switching e.g. Dragon Isles → Khaz Algar keeps showing the previous expansion's
     value (e.g. 1000/1000) while the game shows the current one (e.g. 479/1000).
 ]]
-local tradeSkillListUpdatePending = false
-
 function WarbandNexus:OnTradeSkillListUpdate()
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
@@ -2137,8 +2211,8 @@ function WarbandNexus:OnProfessionQuestProgressChanged()
     if not charKey then return end
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
     if not charData then return end
-    if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 and self.SendMessage then
-        self:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
+    if RefreshAllMidnightKnowledgeProgressForCharacter(charData) > 0 then
+        NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
     end
 end
 
@@ -2773,8 +2847,50 @@ function WarbandNexus:PrintProfessionVerify()
     if rec then
         self:Print("  Recipes: " .. tostring(rec.knownCount or 0) .. " / " .. tostring(rec.totalCount or 0))
         self:Print("  First craft: " .. tostring(rec.firstCraftDoneCount or 0) .. " / " .. tostring(rec.firstCraftTotalCount or 0))
+        if rec.lastScan then
+            self:Print("  Recipe scan age: " .. tostring(time() - rec.lastScan) .. "s")
+        end
     else
         self:Print("  Recipes / First craft: no data (open this profession tab to refresh)")
+    end
+
+    local conc = charData.concentration and charData.concentration[skillLineID]
+    if conc then
+        self:Print("  Concentration DB: " .. tostring(conc.current or 0) .. " / " .. tostring(conc.max or 0))
+        if conc.currencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            local ok, live = pcall(C_CurrencyInfo.GetCurrencyInfo, conc.currencyID)
+            if ok and live then
+                local liveQ = live.quantity or 0
+                local liveM = live.maxQuantity or 0
+                self:Print("  Concentration API: " .. tostring(liveQ) .. " / " .. tostring(liveM))
+                if tonumber(conc.current) ~= tonumber(liveQ) or tonumber(conc.max) ~= tonumber(liveM) then
+                    self:Print("|cffff9900  Concentration DB/API mismatch — open profession window and wait for collectors.|r")
+                end
+            end
+        end
+    else
+        self:Print("  Concentration: no data stored for this skill line")
+    end
+
+    local pd = charData.professionData and charData.professionData.bySkillLine and charData.professionData.bySkillLine[skillLineID]
+    local wk = pd and pd.weeklyKnowledge
+    if wk then
+        local fc = wk.firstCraft
+        local uq = wk.uniques
+        local wq = wk.weeklyQuest
+        if fc and fc.total and fc.total > 0 then
+            self:Print("  Weekly firstCraft: " .. tostring(fc.current or 0) .. " / " .. tostring(fc.total))
+        end
+        if uq and uq.total and uq.total > 0 then
+            self:Print("  Weekly uniques: " .. tostring(uq.current or 0) .. " / " .. tostring(uq.total))
+        end
+        if wq and wq.total and wq.total > 0 then
+            self:Print("  Weekly trainer: " .. tostring(wq.current or 0) .. " / " .. tostring(wq.total))
+        end
+        local cu = wk.catchUp
+        if cu and cu.total and cu.total > 0 then
+            self:Print("  Catch-up currency: " .. tostring(cu.current or 0) .. " / " .. tostring(cu.total))
+        end
     end
 
     local eqByProf = charData.professionEquipment
@@ -3040,6 +3156,9 @@ function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     if not currencyID or currencyID == 0 then return end
+    if (GetTime() - lastConcentrationCollectorAt) < CONCENTRATION_HOOK_SKIP_SEC then
+        return
+    end
     
     -- Rebuild map if empty (first call or after reload)
     if not next(concentrationCurrencyMap) then
@@ -3107,8 +3226,8 @@ function WarbandNexus:OnProfessionProgressCurrencyChanged(currencyID)
             refreshed = RefreshAllMidnightKnowledgeProgressForCharacter(charData)
         end
 
-        if refreshed > 0 and WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage(E.PROFESSION_DATA_UPDATED, charKey)
+        if refreshed > 0 then
+            NotifyCollectorUpdate("profession", E.PROFESSION_DATA_UPDATED, charKey)
         end
     end)
 end
