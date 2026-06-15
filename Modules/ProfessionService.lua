@@ -189,33 +189,6 @@ local PROFESSION_WINDOW_OPEN_GRACE = 2.5
 local professionWindowSyncTimer = nil
 local professionWindowOpenAt = 0
 
-local function RunProfessionWindowSyncCollectors()
-    professionWindowSyncTimer = nil
-    if not WarbandNexus or not IsCurrentCharacterTracked() then return end
-    RunAllProfessionCollectors()
-    if ProfessionWindowCollectorsNeedRetry() then
-        C_Timer.After(0.55, function()
-            if not WarbandNexus or not IsCurrentCharacterTracked() then return end
-            if ProfessionWindowCollectorsNeedRetry() then
-                RunAllProfessionCollectors()
-            end
-        end)
-    end
-end
-
-local function ScheduleProfessionWindowSync()
-    professionWindowOpenAt = GetTime()
-    if professionWindowSyncTimer and professionWindowSyncTimer.Cancel then
-        professionWindowSyncTimer:Cancel()
-    end
-    professionWindowSyncTimer = C_Timer.After(PROFESSION_WINDOW_SYNC_DEBOUNCE, RunProfessionWindowSyncCollectors)
-end
-
-local function IsProfessionWindowOpenGrace()
-    return professionWindowOpenAt > 0
-        and (GetTime() - professionWindowOpenAt) < PROFESSION_WINDOW_OPEN_GRACE
-end
-
 local function NotifyCollectorUpdate(notifyKey, messageName, charKey)
     if not notifyKey or not messageName or not charKey then return end
     if collectorBurstDepth > 0 then
@@ -2151,6 +2124,33 @@ local function RunAllProfessionCollectors()
     pcall(CollectEquipmentDataForCurrentProfession)
     pcall(CollectEquipmentByDetection)
     EndCollectorBurst(true)
+end
+
+local function RunProfessionWindowSyncCollectors()
+    professionWindowSyncTimer = nil
+    if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+    RunAllProfessionCollectors()
+    if ProfessionWindowCollectorsNeedRetry() then
+        C_Timer.After(0.55, function()
+            if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+            if ProfessionWindowCollectorsNeedRetry() then
+                RunAllProfessionCollectors()
+            end
+        end)
+    end
+end
+
+local function ScheduleProfessionWindowSync()
+    professionWindowOpenAt = GetTime()
+    if professionWindowSyncTimer and professionWindowSyncTimer.Cancel then
+        professionWindowSyncTimer:Cancel()
+    end
+    professionWindowSyncTimer = C_Timer.After(PROFESSION_WINDOW_SYNC_DEBOUNCE, RunProfessionWindowSyncCollectors)
+end
+
+local function IsProfessionWindowOpenGrace()
+    return professionWindowOpenAt > 0
+        and (GetTime() - professionWindowOpenAt) < PROFESSION_WINDOW_OPEN_GRACE
 end
 
 --[[

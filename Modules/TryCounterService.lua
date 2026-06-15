@@ -253,6 +253,7 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         if discoveryPendingNpcID then
             Fns.TryDiscoverLockoutQuest()
         end
+        Fns.ProcessKnownLockoutQuestCompletions()
     elseif event == "CRITERIA_UPDATE" then
         Fns.RequestTryCounterStatisticsRuntimeRefresh()
     elseif event == "PLAYER_REGEN_ENABLED" then
@@ -457,6 +458,7 @@ local resolvedIDsReverse = {} -- [collectibleID] = itemID - reverse lookup for O
 local lockoutAttempted = {}  -- [questID] = true : tracks which lockout quests we've already counted this reset period
                              -- Keyed by questID (not npcID) so multiple NPCs sharing the same quest
                              -- (e.g. Arachnoid Harvester 154342/151934 both use quest 55512) are handled correctly.
+local lockoutQuestSnapshot = {} -- [questID] = true : completed lockout quests at last snapshot (QUEST_LOG_UPDATE diff)
 -- When loot has 0 item slots (only rep/currency), GetLootSourceInfo has nothing to return; target may be cleared.
 -- Cache last targeted GUID that is in our DB so we can still attribute the loot open and count the try.
 RT.lastLootSourceGUID = nil
@@ -3350,6 +3352,77 @@ function Fns.SyncLockoutState()
             local qid = questIDs[i]
             if not lockoutAttempted[qid] and C_QuestLog.IsQuestFlaggedCompleted(qid) then
                 lockoutAttempted[qid] = true
+            end
+        end
+    end
+
+    Fns.RefreshLockoutQuestSnapshot()
+end
+
+function Fns.RefreshLockoutQuestSnapshot()
+    wipe(lockoutQuestSnapshot)
+    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return end
+    for _, questData in pairs(lockoutQuestsDB) do
+        local questIDs = type(questData) == "table" and questData or { questData }
+        for i = 1, #questIDs do
+            local qid = questIDs[i]
+            local ok, result = pcall(C_QuestLog.IsQuestFlaggedCompleted, qid)
+            if ok and result then
+                lockoutQuestSnapshot[qid] = true
+            end
+        end
+    end
+end
+
+--- Weekly/daily rare fallback: when the hidden lockout quest flips, count the attempt even if
+--- LOOT_OPENED could not resolve a corpse GUID (phase rares, secret GUIDs, parachute delay).
+function Fns.ProcessLockoutQuestTryCount(npcID, questID)
+    if not npcID or not questID then return end
+    if not tryCounterNpcEligible[npcID] or not npcDropDB[npcID] then return end
+
+    local tryCountSourceKey = "lockout_quest_" .. tostring(questID)
+    local now = GetTime()
+    if V.lastTryCountSourceKey == tryCountSourceKey and (now - V.lastTryCountSourceTime) < 15 then
+        return
+    end
+
+    local drops = npcDropDB[npcID]
+    local trackable = Fns.FilterDropsByDifficulty(drops, nil)
+    if #trackable == 0 then return end
+
+    local dropsToIncrement = {}
+    for i = 1, #trackable do
+        local d = trackable[i]
+        if not Fns.ShouldSkipMissIncrementForDrop(d)
+            and (d.repeatable or not Fns.IsCollectibleCollected(d)) then
+            dropsToIncrement[#dropsToIncrement + 1] = d
+        end
+    end
+    if #dropsToIncrement == 0 then return end
+
+    V.lastTryCountSourceKey = tryCountSourceKey
+    V.lastTryCountSourceTime = now
+    Fns.TryCounterLootDebugDropLines(WarbandNexus, "LockoutQuest", dropsToIncrement, 1)
+    Fns.ProcessMissedDrops(dropsToIncrement, drops.statisticIds, { attemptTimes = 1 })
+end
+
+function Fns.ProcessKnownLockoutQuestCompletions()
+    if not Fns.IsAutoTryCounterEnabled() then return end
+    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return end
+
+    for npcID, questData in pairs(lockoutQuestsDB) do
+        local questIDs = type(questData) == "table" and questData or { questData }
+        for i = 1, #questIDs do
+            local qid = questIDs[i]
+            if not lockoutQuestSnapshot[qid] then
+                local ok, nowComplete = pcall(C_QuestLog.IsQuestFlaggedCompleted, qid)
+                if ok and nowComplete then
+                    lockoutQuestSnapshot[qid] = true
+                    if not lockoutAttempted[qid] then
+                        lockoutAttempted[qid] = true
+                        Fns.ProcessLockoutQuestTryCount(npcID, qid)
+                    end
+                end
             end
         end
     end

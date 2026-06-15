@@ -1060,7 +1060,13 @@ ns.CollectibleSourceDB = {
         { sourceType = "lockout_quest", npcID = 231288, questID = 85004 },  -- Swigs Farsight
         -- TWW 11.2: Karesh (daily lockout)
         { sourceType = "lockout_quest", npcID = 232195, questID = 90593 },  -- Pearlescent Krolusk
-        { sourceType = "lockout_quest", npcID = 234845, questID = 91293 },  -- Sthaarbs
+        { sourceType = "lockout_quest", npcID = 234845, questID = 91293 },  -- Sthaarbs / Shartabb
+        { sourceType = "world_rare", npcID = 234845,
+          drops = { { type = "mount", itemID = 246160, name = "Sthaarbs's Last Lunch" } },
+        },
+        { sourceType = "world_rare", npcID = 232195,
+          drops = { { type = "mount", itemID = 246067, name = "Pearlescent Krolusk" } },
+        },
     },
 
     -- DEPRECATED: do not add here. Add only to sources[]. This table will be removed once fully migrated.
@@ -1785,13 +1791,7 @@ ns.CollectibleSourceDB = {
         [231012] = _miscMechanica, -- Candy Stickemup (Undermine)
         [230931] = _miscMechanica, -- Scrapbeak (Undermine)
 
-        -- 11.2 - Karesh
-        [234845] = { -- Sthaarbs (Karesh) [Verified]
-            { type = "mount", itemID = 246160, name = "Sthaarbs's Last Lunch" },
-        },
-        [232195] = { -- Pearlescent Krolusk rare (Karesh) [Verified]
-            { type = "mount", itemID = 246067, name = "Pearlescent Krolusk" },
-        },
+        -- 11.2 - Karesh (migrated to sources[] world_rare + lockout_quest)
 
         -- Raid Bosses
         [218370] = { -- Queen Ansurek (Nerub-ar Palace) [Verified] - ALL DIFFICULTIES
@@ -2054,6 +2054,9 @@ ns.CollectibleSourceDB = {
         -- Midnight zone rares (mount drops)
         ["Aln'sharan"] = { 242086 },
         ["Rhazul"] = { 248741 },
+        ["Sthaarbs"] = { 234845 },
+        ["Shartabb"] = { 234845 },  -- in-game display name (Karesh phase rare)
+        ["Pearlescent Krolusk"] = { 232195 },
         ["Chironex"] = { 249844 },
         ["Ha'kalawe"] = { 249849 },
         ["Tallcap the Truthspreader"] = { 249902 },
