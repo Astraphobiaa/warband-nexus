@@ -1041,135 +1041,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
-
-Corretto:
-- Borse e bottino: spostare oggetti, comprare/vendere dai mercanti e raccogliere bottino non causano più grandi cali di FPS ricomprimendo l'intera borsa a ogni modifica (regressione v3.1.8).
-- Cache oggetti: corretto errore quando il timer di salvataggio in background era attivo.
-- Notifiche: i toast di cavalcatura e collezione non vanno più in crash quando mancava una tabella icone.
-- Valute: gli importi non seguono più solo il personaggio connesso; le righe confrontano correttamente tutti i personaggi tracciati.
-- Prestazioni: volo draconico e altri incantesimi frequenti non ripetono più le query API degli incantesimi a ogni pressione (meno scatti FPS in volo).
-- Try Counter: il rilevamento incantesimi non viene più eseguito quando il modulo Try Counter e disattivato.
-- Banca di gilda: i personaggi senza permesso di visualizzare le schede della banca di gilda non cancellano più la scansione condivisa aprendo la finestra (gli alt della stessa gilda mantengono gli oggetti in cache).
-- Banca di gilda: Items > Gilda mostra le scansioni in cache dell account anche se il personaggio attuale non e in quella gilda.
+L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
 
 Aggiornato:
-- Modalità chiara: superfici pannello più calde, contrasto righe e pulsanti più chiaro, icone navigazione a colori e tooltip più leggibili (ombre morbide).
-- Modalità chiara: pulsante Grande Deposito, tracciatore accesso rapido e anteprima modello Collezioni seguono la stessa rifinitura del tema.
-- Cache borse: l'inventario resta in memoria di sessione veloce durante il gioco; salvataggio non compresso ~15 s dopo l'ultima modifica borsa (utile con Alt+F4); compressione completa solo a logout o /reload.
-- Riordinare gli slot in una borsa non avvia più una scansione completa del deposito equipaggiamento se le quantità non sono cambiate.
-- Conteggi oggetti nei tooltip e scansioni collezione riusano dati borsa recenti evitando passaggi API container extra.
-- La scansione borse collezione viene saltata se il modulo Collezioni e disattivato ed esegue al frame successivo se attivo.
-- I promemoria missioni sulla mappa saltano il lavoro se non hai piani attivi.
-- Valute: le righe Brigata trasferibili mostrano il tuo personaggio con attuale / totale brigata; quelle specifiche del personaggio mostrano il totale brigata con il badge del massimo.
-- Tooltip valute: importi per personaggio al passaggio del mouse (10 predefiniti, Maiusc per altri, massimo 50 per roster grandi).
-- Reputazione: le righe mostrano la tua posizione rispetto al migliore della brigata sulla barra; i tooltip elencano il progresso per personaggio con gli stessi limiti Maiusc.
+- Prestazioni: voli con drago e rotte aeree non causano piu grandi cali di FPS dal lavoro sul registro missioni (aggiornamenti raggruppati).
+- Promemoria: i controlli promemoria zona si mettono in pausa durante il volo o su rotta aerea; riprendono all'atterraggio o al ritorno del controllo.
+- Tracciamento zona: salvataggi ridondanti saltati quando zona e sottozona non sono cambiate.
+- Missioni giornaliere: controllo reset settimanale in background ogni 5 minuti invece che ogni minuto.
 
 CurseForge: Warband Nexus]=]
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
-
-Valute, Grande Deposito PvE, creste, forzieri e contatore tentativi sugli alt restano dopo un riavvio completo del gioco invece di azzerarsi quando esci da tutti i personaggi. La pulizia automatica e gli aggiornamenti delle chiavi non eliminano più per errore quel progresso salvato.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
-
-La scheda Professioni elenca di nuovo gli alt quando espandi Preferiti o Personaggi dopo aver chiuso tutte le sezioni. La Grande Deposito nella scheda PvE non mostra più Pronto dopo aver riscosso le ricompense, e le colonne delle ricompense sono più larghe così i livelli oggetto non vengono tagliati. Il clic sinistro del pulsante minimappa si imposta in Impostazioni > Generale > Clic sinistro minimappa (ad esempio Collezioni o Professioni). Clic destro su Opzioni apre Impostazioni, e la barra laterale evidenzia la scheda visualizzata.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
-
-Correzioni:
-- Lista To-Do: creare un piano da scan missioni non genera più errori.
-- Equipaggiamento: la scheda non resta vuota dopo il filtro Nascondi.
-- Menu a tendina: niente barra di scorrimento quando la lista sta a schermo.
-- Professioni: sezioni Preferiti e Personaggi aperte di default; sottotitolo tracciati vs dati professione.
-- PvE: sezioni Preferiti e Personaggi aperte di default come nella scheda Personaggi.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
-
-Correzioni:
-- Diario imprese al primo accesso senza /reload: sottocategorie Imprese di forza, icona To-Do in scorrimento, schede stabili.
-- Schede personalizzate To-Do: riga Descrizione e pulsante Completa ripristinati.
-- Imprese solo descrizione: mostra la riga Descrizione.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
-
-Corregge crash dei promemoria eventi mondiali nelle spedizioni quando i campi del calendario sono segreti dopo un boss o un cambio zona. Le liste imprese in Collezioni e Da fare mostrano le intestazioni Imprese di forza come il diario di gioco, e il pulsante Da fare nel diario non interferisce più con le schede Blizzard.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
-
-Aggiunte:
-- Missioni del mondo, eventi di contenuto ed eventi mondiali nel sistema promemoria.
-- Informazioni sulla posta (scheda Personaggi).
-- Ordine colonne personalizzabile.
-
-Correzioni:
-- Tracciatore/contatore oggetti mancante nei tooltip.
-- Problemi di visualizzazione di criteri impresa, progresso e requisiti nella Collezione To-Do.
-- Riepilogo PvE mancante nel menu di accesso rapido.
-- Scheda Personaggi bloccata dopo ricaricamento.
-- Stagger + Virtual Page aggiunti
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
-
-Revision:
-- Layout e UX dell'addon: interfaccia migliorata e esperienza più stabile.
-
-Fixes:
-- Loop infinito: risolto un blocco passando dalla scheda PvE a qualsiasi altra.
-- Duplicati: risolte voci duplicate per imprese, cavalcature e mascotte e giocattoli.
-- Localizzazione: corretti problemi di traduzione e lingua.
-- Dati / UI: sincronizzazione dati e flusso interfaccia ottimizzati.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
-
-L'archiviazione dei personaggi preferisce chiavi GUID stabili quando il gioco lo consente, e le righe duplicate vengono unite in modo sicuro per mantenere l'elenco ordinato. All'accesso compare una breve riga in chat per confermare il caricamento senza spam. Il colore di classe nelle collezioni e protetto dai casi limite, e la finestra di conferma del tracciamento gestisce correttamente i salvataggi con chiave GUID.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
-
-Scheda Professioni: testi modulo e informazioni aggiornati; intestazioni colonna più chiare (Apri, frecce di ordinamento, striscia Professione), colonna Apri più larga con icone ritagliate; dialogo creazione piano Grande Deposito più largo, slot a schede, rimossa la riga di tracciamento ridondante e riempimento inferiore allineato alla cornice.
-
-Schede piano Grande Deposito settimanale e Avanzamento settimanale: corno promemoria, timer di reimpostazione ed Elimina allineati senza sovrapposizione.
-
-Finestre pop-out esterne: sfondo del pannello contenuto allineato alla cornice, niente striscia grigia sotto il contenuto.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
-
-Sezioni personalizzate allineate tra Personaggi, Professioni e PvE con modifiche solo su Personaggi; corno e toast in oro coerente; gruppi PvE e spaziature sistemati.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
-
-Promemoria To-Do (zona, istanza, calendario, avviso), cache collezioni e schede Recenti più pulite, sezioni personalizzate con filtro, ordinamento reame sulle liste; fix stati To-Do, layout tracciatore, scheda Recenti e regolazioni.
-
-CurseForge: Warband Nexus]=]
 
 
-L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
-
-Major per Midnight (istanze salvate, contatore tentativi, PvE/equipaggiamenti/piani, architettura cache). Le note dettagliate delle patch precedenti sono state rimosse dai file di localizzazione; usa `/wn changelog` per la build attuale (v3.1.4).
-
-CurseForge: Warband Nexus]=]
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Conferma azione"

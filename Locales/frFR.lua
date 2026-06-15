@@ -1041,135 +1041,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
-
-Corrige:
-- Sacs et butin : deplacer des objets, acheter/vendre chez un marchand et ramasser du butin ne provoquent plus de grosses chutes de FPS en recompressant tout le sac a chaque changement (regression v3.1.8).
-- Cache d'objets : erreur corrigee lorsque le minuteur de sauvegarde en arriere-plan s'executait.
-- Notifications : les toasts de monture et de collection ne plantent plus quand une table d'icones manquait.
-- Monnaies: les montants ne suivent plus uniquement le personnage connecte; les lignes comparent correctement tous les personnages suivis.
-- Performance : le vol draconique et les autres sorts frequents ne repetent plus les requetes API de sort a chaque pression (moins de saccades FPS en vol).
-- Try Counter : la detection des sorts ne s'execute plus quand le module Try Counter est desactive.
-- Banque de guilde : les personnages sans droit de vue sur les onglets de banque de guilde n'effacent plus le scan partage en ouvrant la fenetre (les autres alts de la meme guilde conservent leurs objets en cache).
-- Banque de guilde : Items > Guilde affiche les scans en cache du compte meme si votre personnage actuel n'est pas dans cette guilde.
+L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
 
 Mis a jour:
-- Mode clair : surfaces de panneaux plus chaudes, meilleur contraste des lignes et boutons, icones de navigation en couleur et infobulles plus lisibles (ombres douces).
-- Mode clair : bouton Vault, tracker d'acces rapide et apercu modele Collections suivent la meme finition de theme.
-- Cache des sacs : l'inventaire reste en memoire de session rapide pendant le jeu ; sauvegarde non compressee ~15 s apres le dernier changement de sac (aide si vous Alt+F4) ; compression complete uniquement a la deconnexion ou /reload.
-- Reordonner les emplacements dans un sac ne declenche plus un scan complet du stockage d'equipement si les quantites n'ont pas change.
-- Comptes d'objets dans les infobulles et scans de collection reutilisent les donnees de sac recentes pour eviter des parcours API supplementaires.
-- Le scan de sac des collections est ignore quand le module Collections est desactive et s'execute a la frame suivante quand il est actif.
-- Les rappels de quetes sur la carte ignorent le travail si vous n'avez pas de plans actifs.
-- Monnaies: les lignes transferables Warband affichent votre personnage avec actuel / total Warband; les specifiques au personnage affichent le total Warband avec le badge du plus haut.
-- Infobulles monnaies: montants par personnage au survol (10 par defaut, Shift pour plus, plafond 50 pour les grands rosters).
-- Reputation: les lignes affichent votre standing vs le meilleur Warband sur la barre; les infobulles listent la progression par personnage avec les memes limites Shift.
+- Performance : les vols en dragon et les trajets aeriens ne provoquent plus de grosses chutes de FPS dues au journal de quetes (les mises a jour sont regroupees).
+- Rappels : les verifications de rappel de zone sont en pause pendant le vol ou un trajet aerien ; elles reprennent a l'atterrissage ou au retour du controle.
+- Suivi de zone : les sauvegardes inutiles sont ignorees si la zone et sous-zone n'ont pas change.
+- Quetes quotidiennes : la verification de reinitialisation hebdomadaire en arriere-plan passe a toutes les 5 minutes au lieu d'une par minute.
 
 CurseForge: Warband Nexus]=]
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
-
-Les monnaies, la chambre forte PvE, les blasons, les coffres et le compteur de tentatives sur les alts survivent a un redemarrage complet du jeu au lieu de se reinitialiser quand vous deconnectez tous les personnages. Le nettoyage automatique et les mises a jour de cles ne suppriment plus ce progres enregistre par erreur.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
-
-L'onglet Metiers liste a nouveau les rerolls lorsque vous depliez Favoris ou Personnages apres avoir replie toutes les sections. La Grande Chambre forte de l'onglet PvE n'affiche plus Pret apres la recuperation des recompenses, et les colonnes de recompenses sont plus larges pour que les niveaux d'objet ne soient pas tronques. Le clic gauche du bouton minimap se regle dans Parametres > General > Clic gauche minimap (par ex. Collections ou Metiers). Un clic droit sur Options ouvre les parametres, et le rail lateral met en surbrillance l'onglet affiche.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
-
-Corrections :
-- Liste To-Do : creer un plan depuis un scan de quetes ne provoque plus d'erreur.
-- Equipement : l'onglet ne reste plus vide après le filtre Masquer.
-- Menus deroulants : plus de barre de defilement quand la liste tient a l'ecran.
-- Metiers : sections Favoris et Personnages ouvertes par defaut ; sous-titre suivi vs donnees metier.
-- PvE : sections Favoris et Personnages ouvertes par defaut comme l'onglet Personnages.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
-
-Corrections:
-- Journal des hauts faits a la premiere connexion sans /reload: sous-categories Exploits de puissance, icone To-Do au defilement, onglets stables.
-- Cartes personnalisees To-Do: ligne Description et bouton Terminer retablis.
-- Hauts faits avec description seule: affichage de la ligne Description.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
-
-Corrige les plantages des rappels d'evenements mondiaux en donjon lorsque les champs du calendrier sont secrets apres un boss ou un changement de zone. Les listes d'accomplissements (Collections et To-Do) affichent les en-têtes Exploits de prouesse comme le journal du jeu, et le bouton To-Do du journal n'interfere plus avec les onglets Blizzard.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
-
-Ajouts:
-- Quetes mondiales, evenements de contenu et evenements mondiaux dans le systeme de rappels.
-- Informations de courrier (onglet Personnages).
-- Ordre des colonnes personnalisable.
-
-Corrections:
-- Suivi/compteur d'objets manquant dans les infobulles.
-- Problemes d'affichage des criteres de succes, de la progression et des exigences dans la collection To-Do.
-- Resume PvE manquant dans le menu d'acces rapide.
-- Onglet Personnages bloque apres rechargement.
-- Stagger + Virtual Page ajoutes
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
-
-Revision:
-- Mise en page & UX : interface amelioree et experience plus stable.
-
-Fixes:
-- Boucle infinie : gel lors du passage de l'onglet PvE vers un autre onglet corrige.
-- Doublons : entrees en double pour hauts faits, montures, mascottes et jouets corrigees.
-- Localisation : problemes de traduction et de langue corriges.
-- Donnees / UI : synchronisation des donnees et flux d'interface optimises.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
-
-Le stockage des personnages privilegie des identifiants GUID stables lorsque le jeu le permet, et les lignes en double sont fusionnees en toute securite pour garder une liste propre. A la connexion, une courte ligne dans le chat confirme le chargement sans spam. La couleur de classe des collections est protegee contre les cas limites, et la fenetre de confirmation du suivi gere correctement les sauvegardes basees sur le GUID.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
-
-Onglet Métiers : textes module et info mis à jour ; en-têtes de colonnes plus lisibles (Ouvrir, flèches de tri, bandeau Métier), colonne Ouvrir plus large avec icônes rognées ; dialogue de création de plan Coffre hebdomadaire plus large, emplacements en cartes, ligne de suivi redondante supprimée, fond inférieur aligné sur la coquille.
-
-Cartes de plan Coffre hebdo et Progrès hebdo : corne de rappel, décompte de réinitialisation et suppression alignés sans chevauchement.
-
-Fenêtres externes : fond du volet de contenu harmonisé avec la coquille pour éviter la bande grise sous le contenu.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
-
-Sections perso alignees Personnages, Metiers et JcE, edition sur l'onglet Personnages ; rappel corne et toasts en or assorti ; groupes JcE et espacement corriges.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
-
-Rappels To-Do (zone, instance, calendrier, alerte), cache collections et cartes Recentes plus propres, sections perso avec filtre, tri par royaume sur les listes; correctifs etats To-Do, disposition du suivi, onglet Recent et reglages.
-
-CurseForge: Warband Nexus]=]
 
 
-L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
-
-Version majeure Midnight (Instances enregistrées, Compteur d'essais, PvE/Équipement/Plans, architecture des caches). Les listes détaillées des anciennes versions ont été retirées des fichiers de locale ; utilisez `/wn changelog` pour la version actuelle (v3.1.4).
-
-CurseForge: Warband Nexus]=]
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirmer l'action"

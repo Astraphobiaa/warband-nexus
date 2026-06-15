@@ -1039,135 +1039,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
-
-Fixed:
-- Bags and loot: moving items, vendor buy/sell, and loot pickup no longer cause large FPS drops from re-compressing your entire bag on every change (v3.1.8 regression).
-- Items cache: fixed error when the idle save timer ran in the background.
-- Notifications: mount and collection toasts no longer crash when an icon table was missing.
-- Currency tab: amounts no longer follow only the logged-in character; rows compare tracked characters correctly.
-- Performance: dragonriding and other frequent spell casts no longer repeat spell API lookups on every button press (fewer FPS stutters while flying).
-- Try Counter: spellcast detection no longer runs when the Try Counter module is disabled.
-- Guild Bank: characters without bank tab view permission no longer clear the shared scan when they open the guild bank window (other alts in the same guild keep their cached items).
-- Guild Bank: Items > Guild shows account-wide cached scans even when your current character is not in that guild.
+L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
 
 Updated:
-- Light mode: warmer panel surfaces, clearer row and button contrast, full-color navigation icons, and more readable tooltips (soft shadows).
-- Light mode: Vault button, easy-access tracker, and Collections model preview follow the same theme polish.
-- Bag cache: inventory stays in fast session memory while playing; uncompressed saves run ~15s after the last bag change (helps if you Alt+F4); full compression only on logout or /reload.
-- Reordering slots in a bag no longer triggers a full gear storage rescan when item counts did not change.
-- Tooltip item counts and collection scans reuse recent bag data to avoid extra container walks.
-- Collections bag scan is skipped when the Collections module is off and runs on the next frame when enabled.
-- Map quest reminders skip work when you have no active plans.
-- Currency tab: Warband Transferable rows show your character with current / warband total amounts; Character-Specific rows show warband total with the highest-holder badge.
-- Currency tooltips: per-character amounts on hover (top 10 by default, hold Shift for more, capped at 50 for large rosters).
-- Reputation tab: rows show your character standing vs warband-best on the progress bar; tooltips list per-character progress with the same Shift limits.
+- Performance: flight paths and taxi rides no longer cause large FPS drops from addon quest-log work (updates are batched).
+- Reminders: zone reminder checks pause while you are flying or on a flight path, then catch up when you land or regain control.
+- Character zone tracking skips redundant saves when your zone and subzone did not change.
+- Daily quests: background weekly-reset polling runs every 5 minutes instead of every minute.
 
 CurseForge: Warband Nexus]=]
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
-
-Alt currency, PvE vault, crest, coffer, and try counter progress now survives a full game restart instead of resetting when you log out every character. Automatic cleanup and character key updates no longer drop that stored progress by mistake.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
-
-Professions tab draws character rows reliably after background loading finishes; expanding Favorites or Characters no longer leaves a blank list while the subtitle still shows profession data counts. Also includes collapsed-section expand without a full tab rebuild, Great Vault no longer showing Ready after claim, wider vault columns, and minimap left-click routing under Settings.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
-
-Fixes:
-- To-Do List: creating a plan from quest scan no longer errors.
-- Gear tab: no longer goes blank after the Hide filter removes every character.
-- Dropdown menus: scrollbars no longer appear when the list fits on screen.
-- Professions tab: Favorites and Characters sections open by default; subtitle shows tracked vs profession data counts.
-- PvE tab: Favorites and Characters sections open by default like the Characters tab.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
-
-Fixes:
-- Achievement journal on first login without /reload: Feats of Strength subcategories, To-Do icon while scrolling, stable category tabs.
-- To-Do List custom cards: Description line and Complete button restored.
-- To-Do List: description-only achievements show their Description line.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
-
-Fixes world event reminders crashing in dungeons when calendar API fields are secret after boss kills or zone changes. Collections and To-Do achievement lists now show Feats of Strength category headers like the game journal, and the achievement journal To-Do button no longer disrupts Blizzard category tabs.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
-
-Added:
-- World Quests, Content Events, and World Events to the Reminder system.
-- Mail information (Character Tab).
-- Customizable column ordering.
-
-Fixes:
-- Missing item tracker/counter on tooltips.
-- Display issues with achievement criteria, progress, and requirement details in the To-Do Collection.
-- PvE summary missing from the Quick Access menu.
-- Character Tab clamp after reload.
-- Stagger + Virtual Page added
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
-
-Revision:
-- AddOn Layout & UX: Enhanced interface layout and user experience stability.
-
-Fixes:
-- Endless Loop: Fixed a freeze occurring when switching from the "PvE" tab to "Any Tab".
-- Duplications: Resolved duplicate entries for Achievements, Mounts, Pets, and Toys.
-- Localization: Fixed translation and language-specific issues.
-- Data / UI Flow: Optimized data syncing and user interface flow.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
-
-Character storage now prefers stable GUID keys where the game allows it, and duplicate character rows are merged safely so your roster stays tidy. On login you get a single short chat line so you know Warband Nexus loaded without spamming. Collections class coloring is guarded against edge cases, and the tracking confirmation dialog handles GUID-keyed saves correctly.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
-
-Professions tab: refreshed module and info descriptions; clearer column headers (Open, sort arrows, Profession strip), wider Open column with clipped icons; Weekly Vault create-plan dialog is wider with card-style vault slots, redundant tracking row removed, and bottom fill matches the shell.
-
-Weekly Vault and Weekly Progress plan cards keep reminder horn, reset timer, and delete aligned without overlap.
-
-External popout windows: content pane background matches the shell so no gray gap shows under the content.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
-
-Custom sections stay in sync across Character, Professions, and PvE with roster edits only on Character; reminder horn and toasts use matching gold highlights; PvE custom groups and spacing get fixes.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
-
-To-Do reminders (zone, instance, calendar, Set Alert), cleaner collection cache and Recent cards, custom roster sections with Filter controls, realm sort on lists; fixes for To-Do states, tracker layout, Recent tab polish, and settings tweaks.
-
-CurseForge: Warband Nexus]=]
 
 
-L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
-
-Major Midnight-era release (Saved Instances, Try Counter, PvE/Gear/Plans, cache architecture). Older per-patch bullets were removed from locale files; use /wn changelog for the current build (v3.1.6).
-
-CurseForge: Warband Nexus]=]
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirm Action"

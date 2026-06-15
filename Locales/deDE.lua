@@ -1041,135 +1041,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
-
-Behoben:
-- Taschen und Beute: Items verschieben, Haendler-Kauf/Verkauf und Beuteaufheben verursachen keine grossen FPS-Einbrueche mehr durch Neukomprimierung der gesamten Tasche bei jeder Aenderung (Regression in v3.1.8).
-- Item-Cache: Fehler beim Hintergrund-Idle-Speicher-Timer behoben.
-- Benachrichtigungen: Reittier- und Sammlungs-Toasts stuerzen nicht mehr ab, wenn eine Icon-Tabelle fehlte.
-- Waehrungen: Betraege folgen nicht mehr nur dem eingeloggten Charakter; Zeilen vergleichen alle verfolgten Charaktere korrekt.
-- Performance: Drachenreiten und andere haeufige Zauber loesen nicht mehr bei jedem Knopfdruck erneute Spell-API-Abfragen aus (weniger FPS-Ruckler beim Fliegen).
-- Try Counter: Zauber-Erkennung laeuft nicht mehr, wenn das Try-Counter-Modul deaktiviert ist.
-- Gildenbank: Charaktere ohne Sichtrecht auf Gildenbank-Tabs loeschen den gemeinsamen Scan nicht mehr beim Oeffnen des Gildenbank-Fensters (andere Alts derselben Gilde behalten ihre zwischengespeicherten Items).
-- Gildenbank: Items > Gilde zeigt kontoweite zwischengespeicherte Scans, auch wenn dein aktueller Charakter nicht in dieser Gilde ist.
+L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
 
 Aktualisiert:
-- Light mode: waermere Panel-Oberflaechen, klarerer Zeilen- und Button-Kontrast, farbige Navigations-Icons und lesbarere Tooltips (weiche Schatten).
-- Light mode: Vault-Button, Easy-Access-Tracker und Sammlungs-Modellvorschau folgen derselben Theme-Politur.
-- Taschen-Cache: Inventar bleibt waehrend des Spiels im schnellen Sitzungsspeicher; unkomprimierte Speicherung ~15s nach der letzten Taschenaenderung (hilft bei Alt+F4); volle Komprimierung nur bei Logout oder /reload.
-- Nur Slot-Reihenfolge aendern loest keinen vollen Ausruestungs-Lager-Scan mehr aus, wenn sich Item-Anzahlen nicht geaendert haben.
-- Tooltip-Item-Zaehler und Sammlungs-Scans nutzen aktuelle Taschendaten erneut und vermeiden zusaetzliche Behaelter-API-Laeufe.
-- Sammlungs-Taschen-Scan wird uebersprungen, wenn das Sammlungs-Modul aus ist, und laeuft im naechsten Frame, wenn es aktiv ist.
-- Karten-Quest-Erinnerungen ueberspringen Arbeit, wenn du keine aktiven Plaene hast.
-- Waehrungen: Warband-uebertragbare Zeilen zeigen deinen Charakter mit aktuell / Warband-Gesamt; charakterspezifische Zeilen zeigen Warband-Summe mit Badge des hoechsten Charakters.
-- Waehrungs-Tooltips: Betraege pro Charakter beim Hover (Top 10, Shift fuer mehr, max. 50 bei grossen Rostern).
-- Ruf: Zeilen zeigen deinen Charakter-Stand vs. Warband-Bestes in der Fortschrittsleiste; Tooltips listen Charakter-Fortschritt mit denselben Shift-Limits.
+- Performance: Flugpfade und Drachenreiten verursachen keine grossen FPS-Einbrueche mehr durch Quest-Log-Arbeit des Addons (Updates werden gebuendelt).
+- Erinnerungen: Zonen-Erinnerungspruefungen pausieren beim Fliegen oder auf einem Flugpfad und laufen nach, wenn du landest oder die Kontrolle zurueckgewinnst.
+- Zonen-Tracking: redundante Speicherungen werden uebersprungen, wenn sich Zone und Unterzone nicht geaendert haben.
+- Tagesquests: Woechentlicher Reset wird im Hintergrund alle 5 Minuten statt jede Minute geprueft.
 
 CurseForge: Warband Nexus]=]
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
-
-Waehrungs-, PvE-Tresor-, Wappen-, Truhen- und Try-Counter-Fortschritt auf Twinks bleibt nach einem vollstaendigen Neustart erhalten, statt sich zurueckzusetzen, wenn du alle Charaktere ausloggst. Automatische Bereinigung und Schluessel-Updates loeschen diesen gespeicherten Fortschritt nicht mehr versehentlich.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
-
-Im Berufe-Tab werden Twinks wieder angezeigt, wenn du Favoriten oder Charaktere aufklappst, nachdem alle Abschnitte zugeklappt waren. Die Grosse Schatzkammer im PvE-Tab zeigt nach dem Abholen der Belohnungen kein Bereit mehr, und die Belohnungsspalten sind breiter, damit Gegenstandsstufen nicht abgeschnitten werden. Linksklick der Minimap-Schaltflaeche wird unter Einstellungen > Allgemein > Minimap Linksklick festgelegt (z. B. Sammlungen oder Berufe). Rechtsklick auf Optionen oeffnet die Einstellungen, und die Seitenleiste hebt den aktuellen Tab hervor.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
-
-Fixes:
-- To-Do-Liste: Plan aus Quest-Scan erzeugt keinen Fehler mehr.
-- Ausruestung: Registerkarte bleibt nach Hide-Filter nicht mehr leer.
-- Dropdown-Menues: keine Scrollleiste mehr, wenn die Liste ohne Scrollen passt.
-- Berufe: Favoriten- und Charakter-Sektionen standardmaessig geoeffnet; Unterzeile zeigt verfolgte vs. Berufsdaten.
-- PvE: Favoriten- und Charakter-Sektionen standardmaessig geoeffnet wie auf der Charakter-Registerkarte.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
-
-Fixes:
-- Erfolgsfenster beim ersten Login ohne /reload: Feats-of-Strength-Unterkategorien, To-Do-Symbol beim Scrollen, stabile Kategorie-Tabs.
-- To-Do benutzerdefinierte Karten: Beschreibungszeile und Complete-Schaltflaeche wiederhergestellt.
-- To-Do: Erfolge nur mit Beschreibung zeigen die Beschreibungszeile.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
-
-Behebt Abstuerze bei Weltereignis-Erinnerungen in Instanzen, wenn Kalender-API-Felder nach Bosskills oder Zonenwechseln geheim sind. Sammlungen und To-Do zeigen Feats-of-Strength-Kategorien wie im Spieljournal, und der To-Do-Button im Erfolgsfenster stoert keine Blizzard-Kategorien mehr.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
-
-Hinzugefuegt:
-- Weltquests, Inhaltsereignisse und Weltereignisse im Erinnerungssystem.
-- Postinformationen (Charakter-Tab).
-- Anpassbare Spaltenreihenfolge.
-
-Behoben:
-- Fehlender Item-Tracker/Zaehler in Tooltips.
-- Anzeigeprobleme bei Erfolgskriterien, Fortschritt und Anforderungen in der To-Do-Sammlung.
-- PvE-Zusammenfassung fehlte im Schnellzugriffsmenue.
-- Charakter-Tab nach Reload eingeklemmt.
-- Stagger + Virtual Page hinzugefuegt
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
-
-Revision:
-- AddOn-Layout & UX: Verbessertes Interface-Layout und stabilere Bedienung.
-
-Fixes:
-- Endlosschleife: Einfrieren beim Wechsel vom Tab "PvE" zu einem anderen Tab behoben.
-- Duplikate: Doppelte Eintraege bei Erfolgen, Reittieren, Begleitern und Spielzeugen behoben.
-- Lokalisierung: Uebersetzungs- und sprachspezifische Probleme behoben.
-- Daten / UI-Ablauf: Datensynchronisierung und Oberflaechenablauf optimiert.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
-
-Die Charakterspeicherung nutzt nach Moeglichkeit stabile GUID-Schluessel, und doppelte Charakterzeilen werden sicher zusammengefuehrt, damit die Liste aufgeraeumt bleibt. Beim Login erscheint eine kurze Chatzeile als Bestaetigung ohne Spam. Bei Sammlungen ist die Klassenfaerbung abgesichert, und der Tracking-Bestaetigungsdialog funktioniert korrekt bei GUID-basierten Speicherungen.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
-
-Berufe-Reiter: ueberarbeitete Modul- und Infotexte; klarere Spaltenkoepfe (Oeffnen, Sortierpfeile, Berufsleiste), breitere Oeffnen-Spalte mit beschnittenen Symbolen; Dialog zum Anlegen eines woechentlichen Tresorplans ist breiter, mit Karten-Slots, ueberfluessige Verfolgen-Zeile entfernt, untere Fuellflaeche passt zur Huelle.
-
-Plan-Karten Woechentlicher Tresor und Wochenfortschritt: Erinnerungshorn, Zuruecksetzen-Timer und Loeschen buendig ausgerichtet ohne Ueberlappung.
-
-Externe Popout-Fenster: Hintergrund des Inhaltsbereichs wie die Huelle, kein grauer Streifen unter dem Inhalt.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
-
-Benutzerdefinierte Abschnitte laufen auf Charakter-, Berufs- und PvE-Reiter synchron, Bearbeitung nur auf dem Charakter-Reiter; Korno und Toasts in passendem Goldton; PvE-Gruppen und Abstaende bereinigt.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
-
-To-Do-Erinnerungen (Zone, Instanz, Kalender, Alarm), aufgeraeumter Sammlungs-Cache und Karten "Neu", benutzerdefinierte Abschnitte mit Filter, Realm-Sortierung in Listen; Korrekturen an To-Do-Status, Tracker-Layout, Register "Neu" und Einstellungen.
-
-CurseForge: Warband Nexus]=]
 
 
-L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
-
-Großes Midnight-Update (Gespeicherte Instanzen, Versuchszähler, PvE/Ausrüstung/Pläne, Cache-Architektur). Ältere Patch-Stichpunkte wurden aus den Locale-Dateien entfernt; für den aktuellen Build (v3.1.4) `/wn changelog` verwenden.
-
-CurseForge: Warband Nexus]=]
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Aktion bestätigen"

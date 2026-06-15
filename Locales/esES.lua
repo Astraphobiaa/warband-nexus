@@ -1041,135 +1041,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V319"] = [=[v3.1.9 (2026-06-15)
-
-Corregido:
-- Bolsas y botin: mover objetos, comprar/vender con vendedores y recoger botin ya no provocan grandes caidas de FPS al recomprimir toda la bolsa en cada cambio (regresion v3.1.8).
-- Cache de objetos: corregido error cuando el temporizador de guardado en segundo plano se ejecutaba.
-- Notificaciones: los avisos de monturas y coleccion ya no fallan cuando faltaba una tabla de iconos.
-- Monedas: los importes ya no siguen solo al personaje conectado; las filas comparan correctamente todos los personajes rastreados.
-- Rendimiento: el vuelo draconico y otros hechizos frecuentes ya no repiten consultas API de hechizos en cada pulsacion (menos tirones de FPS al volar).
-- Try Counter: la deteccion de hechizos ya no se ejecuta cuando el modulo Try Counter esta desactivado.
-- Banco de hermandad: los personajes sin permiso de ver pestanas del banco ya no borran el escaneo compartido al abrir la ventana (otros alts de la misma hermandad conservan sus objetos en cache).
-- Banco de hermandad: Items > Hermandad muestra escaneos en cache de la cuenta aunque tu personaje actual no este en esa hermandad.
+L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
 
 Actualizado:
-- Modo claro: superficies de paneles mas calidas, mejor contraste de filas y botones, iconos de navegacion a color e informacion emergente mas legible (sombras suaves).
-- Modo claro: boton Vault, rastreador de acceso rapido y vista previa del modelo de Colecciones siguen el mismo pulido de tema.
-- Cache de bolsas: el inventario permanece en memoria de sesion rapida durante el juego; guardado sin comprimir ~15 s tras el ultimo cambio de bolsa (ayuda si usas Alt+F4); compresion completa solo al cerrar sesion o /reload.
-- Reordenar ranuras en una bolsa ya no dispara un escaneo completo del almacen de equipo si las cantidades no cambiaron.
-- Recuentos de objetos en tooltips y escaneos de coleccion reutilizan datos recientes de bolsas para evitar recorridos API extra.
-- El escaneo de bolsas de coleccion se omite cuando el modulo Colecciones esta desactivado y se ejecuta en el siguiente fotograma cuando esta activo.
-- Los recordatorios de misiones en el mapa omiten trabajo si no tienes planes activos.
-- Monedas: filas transferibles de Warband muestran tu personaje con actual / total de Warband; las especificas del personaje muestran el total de Warband con la insignia del mayor valor.
-- Tooltips de monedas: importes por personaje al pasar el cursor (10 por defecto, Shift para mas, maximo 50 en listas grandes).
-- Reputacion: las filas muestran tu standing frente al mejor de Warband en la barra; los tooltips listan el progreso por personaje con los mismos limites de Shift.
+- Rendimiento: los vuelos en grifo y rutas de vuelo ya no causan grandes caidas de FPS por el trabajo del registro de misiones (las actualizaciones se agrupan).
+- Recordatorios: las comprobaciones de recordatorios de zona se pausan mientras vuelas o estas en ruta de vuelo; se ejecutan al aterrizar o recuperar el control.
+- Seguimiento de zona: se omiten guardados redundantes cuando la zona y subzona no cambiaron.
+- Misiones diarias: la comprobacion semanal en segundo plano pasa de cada minuto a cada 5 minutos.
 
 CurseForge: Warband Nexus]=]
 
 
 
-L["CHANGELOG_V316"] = [=[v3.1.6c (2026-06-04)
-
-El progreso de monedas, boveda PvE, crestas, cofres y contador de intentos en alts sobrevive a un reinicio completo del juego en lugar de restablecerse al cerrar sesion con todos los personajes. La limpieza automatica y las actualizaciones de claves ya no eliminan ese progreso guardado por error.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V315"] = [=[v3.1.5c (2026-06-02)
-
-La pestana Profesiones vuelve a listar alts al expandir Favoritos o Personajes despues de haber colapsado todas las secciones. La Gran Camara en la pestana PvE ya no muestra Listo tras reclamar recompensas, y las columnas de recompensas son mas anchas para que los niveles de objeto no se corten. El clic izquierdo del boton del minimapa se configura en Ajustes > General > Clic izquierdo del minimapa (por ejemplo Colecciones o Profesiones). Clic derecho en Opciones abre Ajustes, y la barra lateral resalta la pestana que estas viendo.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V314"] = [=[v3.1.4 (2026-05-31)
-
-Correcciones:
-- Lista To-Do: crear un plan desde escaneo de misiones ya no da error.
-- Equipo: la pestana ya no queda en blanco tras el filtro Hide.
-- Menus desplegables: sin barra de desplazamiento cuando la lista cabe en pantalla.
-- Profesiones: secciones Favoritos y Personajes abiertas por defecto; subtitulo con seguidos vs datos de profesion.
-- PvE: secciones Favoritos y Personajes abiertas por defecto como en Personajes.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V313"] = [=[v3.1.3 (2026-05-26)
-
-Correcciones:
-- Diario de logros en el primer inicio sin /reload: subcategorias Gestas de poder, icono To-Do al desplazarse, pestanas estables.
-- Tarjetas personalizadas en To-Do: linea Descripcion y boton Completar restaurados.
-- Logros solo con descripcion: se muestra la linea Descripcion.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V312"] = [=[v3.1.2 (2026-05-26)
-
-Corrige cierres de recordatorios de eventos mundiales en mazmorras cuando los campos del calendario son secretos tras matar a un jefe o cambiar de zona. Las listas de logros en Colecciones y Pendientes muestran las categorias Feats of Strength como el diario del juego, y el boton Pendientes del diario ya no interfiere con las pestanas de Blizzard.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V311"] = [=[v3.1.1 (2026-05-25)
-
-Anadido:
-- Misiones del mundo, eventos de contenido y eventos mundiales en el sistema de recordatorios.
-- Informacion de correo (pestana Personajes).
-- Orden de columnas personalizable.
-
-Correcciones:
-- Contador/rastreador de objetos faltante en las descripciones emergentes.
-- Problemas de visualizacion de criterios de logros, progreso y requisitos en la Coleccion To-Do.
-- Resumen de JcE faltante en el menu de acceso rapido.
-- Pestana Personajes bloqueada tras recargar.
-- Stagger + Virtual Page anadido
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V310"] = [=[v3.1.0 (2026-05-21)
-
-Revision:
-- Diseno y UX del addon: interfaz mejorada y experiencia mas estable.
-
-Fixes:
-- Bucle infinito: corregido un bloqueo al cambiar de la pestana PvE a cualquier otra.
-- Duplicados: corregidas entradas duplicadas de logros, monturas, mascotas y juguetes.
-- Localizacion: corregidos problemas de traduccion e idioma.
-- Datos / UI: optimizada la sincronizacion de datos y el flujo de la interfaz.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V305"] = [=[v3.0.5 (2026-05-13)
-
-El almacenamiento de personajes prioriza claves GUID estables cuando el juego lo permite, y las filas duplicadas se fusionan de forma segura para mantener la lista ordenada. Al iniciar sesion veras una sola linea breve en el chat para confirmar la carga sin spam. El color de clase en colecciones esta protegido ante casos extremos, y el dialogo de confirmacion de seguimiento maneja bien los datos guardados por GUID.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V304"] = [=[v3.0.4 (2026-05-12)
-
-Pestaña Profesiones: descripciones de módulo e información renovadas; cabeceras de columna más claras (Abrir, flechas de ordenación, franja Profesión), columna Abrir más ancha con iconos recortados; el diálogo para crear un plan de Cámara semanal es más ancho, ranuras tipo tarjeta, se eliminó la fila redundante de seguimiento y el relleno inferior iguala el marco.
-
-Tarjetas de plan Cámara semanal y Progreso semanal: cuerno de recordatorio, temporizador de restablecimiento y eliminar alineados sin solaparse.
-
-Ventanas emergentes externas: el fondo del panel de contenido coincide con el marco para evitar la franja gris bajo el contenido.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V303"] = [=[v3.0.3 (2026-05-11)
-
-Secciones personalizadas sincronizadas en Personajes, Profesiones y JcE con ediciones solo en Personajes; corneta y avisos en tono oro; grupos JcE y espaciado corregidos.
-
-CurseForge: Warband Nexus]=]
-
-L["CHANGELOG_V302"] = [=[v3.0.2 (2026-05-10)
-
-Recordatorios To-Do (zona, mazmorra, calendario, alerta), cache de colecciones y tarjetas Recientes mas ordenadas, secciones personalizadas con filtro, orden por reino en listas; arreglos de estados To-Do, layout del rastreador, pestana Reciente y ajustes.
-
-CurseForge: Warband Nexus]=]
 
 
-L["CHANGELOG_V300"] = [=[v3.0.0 (2026-05-09)
-
-Gran lanzamiento Midnight (instancias guardadas, contador de intentos, JcJ/equipo/planes, arquitectura de caché). Se eliminaron las listas detalladas de parches antiguos en los archivos de idioma; usa `/wn changelog` para la compilación actual (v3.1.4).
-
-CurseForge: Warband Nexus]=]
 
 -- Confirm / Tracking Dialog
 L["CONFIRM_ACTION"] = "Confirmar acción"
