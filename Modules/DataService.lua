@@ -319,8 +319,15 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         end
 
     elseif dataType == "zone" then
-        charData.zoneName = GetZoneText()
-        charData.subZoneName = GetSubZoneText()
+        local newZone = GetZoneText()
+        local newSubZone = GetSubZoneText()
+        if newZone and issecretvalue and issecretvalue(newZone) then newZone = nil end
+        if newSubZone and issecretvalue and issecretvalue(newSubZone) then newSubZone = nil end
+        if charData.zoneName == newZone and charData.subZoneName == newSubZone then
+            return
+        end
+        charData.zoneName = newZone
+        charData.subZoneName = newSubZone
     elseif dataType == "rested" then
         local newRested = CollectRestedData()
         local existingRested = charData.rested

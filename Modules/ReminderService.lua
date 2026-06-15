@@ -1075,6 +1075,23 @@ local function SafeIsInInstance()
     return a == true
 end
 
+--- True while on a flight path or dragonriding (skip heavy zone reminder scans mid-transit).
+local function SafeIsPlayerAirborneTransit()
+    if UnitOnTaxi then
+        local ok, onTaxi = pcall(UnitOnTaxi, "player")
+        if ok and onTaxi and not (issecretvalue and issecretvalue(onTaxi)) and onTaxi == true then
+            return true
+        end
+    end
+    if IsFlying then
+        local ok, flying = pcall(IsFlying)
+        if ok and flying and not (issecretvalue and issecretvalue(flying)) and flying == true then
+            return true
+        end
+    end
+    return false
+end
+
 local function SafeGetInstanceInfo()
     local ok, name, instType, difficultyID, difficultyName, maxPlayers, dynamicDifficulty, isDynamic, instanceID, instanceGUID, flags = pcall(GetInstanceInfo)
     if not ok then return nil end
@@ -1573,6 +1590,7 @@ end
 -- EVENT HANDLERS
 
 local zoneChangeTimer = nil
+local zoneReminderDeferredTransit = false
 local calendarResetReminderTimer = nil
 local reminderPlanRescheduleTimer = nil
 --- Coalesce rapid reminder config writes (Set Alert toggles, bulk UI) per WN-PERF.
@@ -1664,6 +1682,12 @@ ScheduleCalendarResetReminderTimer = function()
 end
 
 local function RunZoneOrInstanceChangedNow()
+    if SafeIsPlayerAirborneTransit() then
+        zoneReminderDeferredTransit = true
+        return
+    end
+    zoneReminderDeferredTransit = false
+
     local P = ns.Profiler
     local traceT0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
     local mapID = SafeGetRawPlayerUIMapID()
@@ -1746,6 +1770,13 @@ function WarbandNexus:InitializeReminderService()
         WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_NEW_AREA", OnZoneOrInstanceChanged)
         WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED", OnZoneOrInstanceChanged)
         WarbandNexus.RegisterEvent(ReminderEvents, "ZONE_CHANGED_INDOORS", OnZoneOrInstanceChanged)
+        WarbandNexus.RegisterEvent(ReminderEvents, "PLAYER_CONTROL_GAINED", function()
+            if SafeIsPlayerAirborneTransit() then return end
+            if zoneReminderDeferredTransit then
+                zoneReminderDeferredTransit = false
+                OnZoneOrInstanceChanged()
+            end
+        end)
         local function OnPlayerEnteringWorldReminders()
             if ns.ReminderZoneCatalog and ns.ReminderZoneCatalog.InvalidateZoneApiCache then
                 ns.ReminderZoneCatalog.InvalidateZoneApiCache()

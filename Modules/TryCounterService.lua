@@ -113,6 +113,8 @@ local tryCounterNpcEligible
 local objectDropDB
 local isBlockingInteractionOpen
 local discoveryPendingNpcID
+local questLogLockoutDebounceTimer
+local QUEST_LOG_LOCKOUT_DEBOUNCE_SEC = 0.75 -- coalesce QUEST_LOG bursts during flight / zone transitions
 
 -- TryChat / BuildObtainedChat: Modules/TryCounterService_Shared.lua (Fns.* aliases set above).
 
@@ -250,10 +252,23 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
             RT.lastLootSourceGUID = nil
         end
     elseif event == "QUEST_LOG_UPDATE" then
-        if discoveryPendingNpcID then
-            Fns.TryDiscoverLockoutQuest()
+        if not (C_Timer and C_Timer.NewTimer) then
+            if discoveryPendingNpcID then
+                Fns.TryDiscoverLockoutQuest()
+            end
+            Fns.ProcessKnownLockoutQuestCompletions()
+        else
+            if questLogLockoutDebounceTimer then
+                questLogLockoutDebounceTimer:Cancel()
+            end
+            questLogLockoutDebounceTimer = C_Timer.NewTimer(QUEST_LOG_LOCKOUT_DEBOUNCE_SEC, function()
+                questLogLockoutDebounceTimer = nil
+                if discoveryPendingNpcID then
+                    Fns.TryDiscoverLockoutQuest()
+                end
+                Fns.ProcessKnownLockoutQuestCompletions()
+            end)
         end
-        Fns.ProcessKnownLockoutQuestCompletions()
     elseif event == "CRITERIA_UPDATE" then
         Fns.RequestTryCounterStatisticsRuntimeRefresh()
     elseif event == "PLAYER_REGEN_ENABLED" then

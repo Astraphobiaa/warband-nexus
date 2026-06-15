@@ -989,7 +989,8 @@ function WarbandNexus:InitializeDailyQuestManager()
             self._dailyQuestWeeklyTicker:Cancel()
             self._dailyQuestWeeklyTicker = nil
         end
-        self._dailyQuestWeeklyTicker = C_Timer.NewTicker(60, function()
+        -- Weekly reset detection does not need 60s precision; longer interval cuts idle poll cost.
+        self._dailyQuestWeeklyTicker = C_Timer.NewTicker(300, function()
             if not self.db or not self.db.global then return end
             if ns.Utilities and ns.Utilities.IsModuleEnabled and not ns.Utilities:IsModuleEnabled("plans") then return end
             if not self.db.global.plans then return end
