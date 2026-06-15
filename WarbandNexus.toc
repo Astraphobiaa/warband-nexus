@@ -103,6 +103,7 @@ Modules\TryCounterService_Events.lua
 Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
 Modules\TryCounterService_Handlers.lua
+Modules\TryCounterService_SelfTest.lua
 Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
 Modules\DailyQuestManager.lua

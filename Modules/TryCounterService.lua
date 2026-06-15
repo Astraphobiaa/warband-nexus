@@ -506,6 +506,7 @@ local lootSession = {
 }
 -- Miss-increment chat lines queued while the loot window is open (flush on LOOT_CLOSED).
 local pendingIncrementAnnounces = {}
+local tryCounterSelfTestSyncMiss = false
 
 -- State captured on LOOT_READY (wiki: "before the loot window is shown"; valid until LOOT_CLOSED).
 -- LOOT_READY is the ONLY guaranteed event — LOOT_OPENED may be skipped by fast auto-loot.
@@ -2759,140 +2760,41 @@ function WarbandNexus:OnTryCounterNewPetAdded(petGUID)
     Fns.HandleNewCollectibleAdded("pet", speciesID)
 end
 
---- End-to-end smoke test (slash: /wn tc test). Safe nil/bogus probes; see WN-DEBUG-try-counter-test.mdc.
-local TC_SELF_TEST_FAKE_ITEM_ID = 987654321
+--- Self-test fixtures (slash: /wn tc test — Modules/TryCounterService_SelfTest.lua).
+TC.SELF_TEST_FAKE_ITEM_ID = 987654321
 
-function WarbandNexus:RunTryCounterSelfTest()
-    local WN = self
-    local pass, fail = 0, 0
+function Fns.ClearDeferredLootSession()
+    pendingLootSessionFinalize = nil
+    RT.pendingLootSessionFinalize = nil
+end
 
-    local function linePass(label)
-        pass = pass + 1
-        WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label)
+function Fns.SetDeferredLootSessionSnapshot(pending)
+    pendingLootSessionFinalize = pending
+    RT.pendingLootSessionFinalize = pending
+end
+
+function Fns.SetTryCounterSelfTestSyncMiss(enabled)
+    tryCounterSelfTestSyncMiss = not not enabled
+end
+
+function Fns.GetSelfTestSampleIds()
+    local containerID = nil
+    for cid in pairs(containerDropDB or {}) do
+        containerID = cid
+        break
     end
-    local function lineFail(label, err)
-        fail = fail + 1
-        local tail = err and (": " .. tostring(err)) or ""
-        WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
-    end
-    local function probe(label, fn)
-        local ok, err = pcall(fn)
-        if ok then linePass(label) else lineFail(label, err) end
-    end
-    local function requireFn(name)
-        if type(WN[name]) == "function" then
-            linePass(name .. " registered")
-        else
-            lineFail(name .. " missing")
-        end
-    end
-
-    WN:Print("|cff9370DB[WN-TC-Test]|r Try Counter smoke test (e2e)...")
-
-    requireFn("OnTryCounterNewMountAdded")
-    requireFn("OnTryCounterNewPetAdded")
-    requireFn("OnTryCounterCollectibleObtained")
-    requireFn("GetTryCount")
-    requireFn("SetTryCount")
-    requireFn("IncrementTryCount")
-    requireFn("ResetTryCount")
-    requireFn("CheckTargetDrops")
-
-    local evList = (ns.TryCounter and ns.TryCounter.TRYCOUNTER_EVENTS) or {}
-    local hasMountEv, hasPetEv = false, false
-    for i = 1, #evList do
-        local ev = evList[i]
-        if ev == "NEW_MOUNT_ADDED" then hasMountEv = true end
-        if ev == "NEW_PET_ADDED" then hasPetEv = true end
-    end
-    if hasMountEv then linePass("NEW_MOUNT_ADDED in TRYCOUNTER_EVENTS") else lineFail("NEW_MOUNT_ADDED missing from event list") end
-    if hasPetEv then linePass("NEW_PET_ADDED in TRYCOUNTER_EVENTS") else lineFail("NEW_PET_ADDED missing from event list") end
-
-    local notif = WN.db and WN.db.profile and WN.db.profile.notifications
-    if notif and notif.autoTryCounter == true then
-        linePass("autoTryCounter enabled")
-    else
-        WN:Print("|cffffcc00[WN-TC-Test] WARN|r autoTryCounter off — live kills won't count (Settings > Notifications).")
-    end
-    if Fns.IsTryCounterModuleEnabled and Fns.IsTryCounterModuleEnabled() then
-        linePass("Try Counter module enabled")
-    else
-        WN:Print("|cffffcc00[WN-TC-Test] WARN|r Try Counter module disabled in Settings > Modules.")
-    end
-
-    probe("OnTryCounterNewMountAdded(nil)", function() WN:OnTryCounterNewMountAdded(nil) end)
-    probe("OnTryCounterNewMountAdded(0)", function() WN:OnTryCounterNewMountAdded(0) end)
-    probe("OnTryCounterNewMountAdded(-1)", function() WN:OnTryCounterNewMountAdded(-1) end)
-    probe("OnTryCounterNewMountAdded(unowned id)", function() WN:OnTryCounterNewMountAdded(99999999) end)
-    probe("OnTryCounterNewPetAdded(\"\")", function() WN:OnTryCounterNewPetAdded("") end)
-    probe("OnTryCounterNewPetAdded(nil)", function() WN:OnTryCounterNewPetAdded(nil) end)
-    probe("OnTryCounterNewPetAdded(bogus guid)", function() WN:OnTryCounterNewPetAdded("BattlePet-0-0-0-0") end)
-
-    probe("OnTryCounterCollectibleObtained(nil,nil)", function() WN:OnTryCounterCollectibleObtained(nil, nil) end)
-    probe("OnTryCounterCollectibleObtained(empty)", function() WN:OnTryCounterCollectibleObtained("WN_TEST", {}) end)
-    probe("OnTryCounterCollectibleObtained(invalid type)", function()
-        WN:OnTryCounterCollectibleObtained("WN_TEST", { type = "bogus", id = 1 })
-    end)
-    probe("OnTryCounterCollectibleObtained(unowned mount)", function()
-        WN:OnTryCounterCollectibleObtained("WN_TEST", { type = "mount", id = 99999999 })
-    end)
-
-    probe("GetTryCount(nil,nil)", function()
-        local n = WN:GetTryCount(nil, nil)
-        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
-    end)
-    probe("GetTryCount(bogus type)", function()
-        local n = WN:GetTryCount("bogus", 1)
-        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
-    end)
-    probe("GetTryCount(mount,nil)", function()
-        local n = WN:GetTryCount("mount", nil)
-        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
-    end)
-    probe("GetTryCount(mount,1)", function()
-        local n = WN:GetTryCount("mount", 1)
-        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
-    end)
-    probe("GetTryCount(pet,1)", function()
-        local n = WN:GetTryCount("pet", 1)
-        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
-    end)
-    probe("GetTryCount(toy,1)", function()
-        local n = WN:GetTryCount("toy", 1)
-        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
-    end)
-    probe("GetTryCount(item,fake)", function()
-        local n = WN:GetTryCount("item", TC_SELF_TEST_FAKE_ITEM_ID)
-        if type(n) ~= "number" then error("expected number, got " .. type(n)) end
-    end)
-
-    probe("IncrementTryCount(mount,nil)", function()
-        local n = WN:IncrementTryCount("mount", nil)
-        if n ~= 0 then error("expected 0, got " .. tostring(n)) end
-    end)
-    probe("SetTryCount/GetTryCount roundtrip", function()
-        local fakeID = TC_SELF_TEST_FAKE_ITEM_ID
-        local old = WN:GetTryCount("item", fakeID)
-        WN:SetTryCount("item", fakeID, 42)
-        local n = WN:GetTryCount("item", fakeID)
-        if n ~= 42 then error("expected 42, got " .. tostring(n)) end
-        WN:SetTryCount("item", fakeID, old or 0)
-    end)
-    probe("ResetTryCount(nil id)", function() WN:ResetTryCount("mount", nil) end)
-
-    probe("ShouldSuppressBagToast(nil)", function()
-        local suppressed = WN:ShouldSuppressBagCollectibleToastAsTryCounterDuplicate(nil, nil, nil)
-        if suppressed ~= false then error("expected false") end
-    end)
-    probe("CheckTargetDrops(no target)", function() WN:CheckTargetDrops() end)
-
-    if fail == 0 then
-        WN:Print(string.format(
-            "|cff00ff00[WN-TC-Test] OK|r %d checks passed. Handlers tolerate nil/bogus inputs without Lua errors.",
-            pass))
-    else
-        WN:Print(string.format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed.", pass, fail))
-    end
+    return {
+        fakeItemID = TC.SELF_TEST_FAKE_ITEM_ID,
+        containerID = containerID,
+        objectID = 469857,
+        rareNpcID = 230995,
+        raidBossNpcID = 241526,
+        mechanicaItemID = 234741,
+        dumpsterGUID = "GameObject-0-0-0-0-469857-000000000000",
+        rareNpcGUID = "Creature-0-0-0-0-230995-000000000000",
+        raidBossGUID = "Creature-0-0-0-0-241526-000000000000",
+        herbGUID = "GameObject-0-0-0-0-999999-000000000000",
+    }
 end
 
 function Fns.SumStatisticTotalsFromIds(statIds)
@@ -3202,7 +3104,9 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
 
     if Fns.DropsHaveStatBackedReseed(drops, statIds) and not allRepeatableMisses then
         local announceTry = Fns.IsAutoTryCounterEnabled()
-        C_Timer.After(2, function()
+        local syncNow = tryCounterSelfTestSyncMiss or (options and options.sync == true)
+
+        local function runStatMissReseedJob()
             if not Fns.EnsureDB() then return end
             local WN = WarbandNexus
             local incrementAnnounce = {}
@@ -3215,9 +3119,6 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
                     local statSumBefore = select(1, Fns.SumStatisticTotalsFromIds(sids))
                     Fns.ReseedStatisticsForDrops({ drop }, sids)
                     local newCount = (tryKey and WN:GetTryCount(tcType, tryKey)) or 0
-                    -- GetStatistic can lag behind a kill; re-seed never exceeds stat-derived totals. When the
-                    -- stored counter is already ahead of stats (imports) or both are zero (first pull), a
-                    -- real loot miss still needs +1. Skip when stats match the stored count (already synced).
                     if statLootMissFb and tryKey and newCount <= prevCount and drop and not drop.guaranteed
                         and (drop.repeatable or not Fns.IsCollectibleCollected(drop)) then
                         if prevCount > statSumBefore or (prevCount == 0 and statSumBefore == 0) then
@@ -3236,11 +3137,19 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
             if announceTry and next(incrementAnnounce) then
                 Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce)
             end
-        end)
+        end
+
+        if syncNow then
+            runStatMissReseedJob()
+        else
+            C_Timer.After(2, runStatMissReseedJob)
+        end
         return
     end
 
-    C_Timer.After(0, function()
+    local syncNow = tryCounterSelfTestSyncMiss or (options and options.sync == true)
+
+    local function runManualMissIncrementJob()
         if not Fns.EnsureDB() then return end
         local WN = WarbandNexus
         local announceTry = Fns.IsAutoTryCounterEnabled()
@@ -3265,9 +3174,6 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
         local function ProcessManualDrop(drop, mult, fromRecursion)
             mult = tonumber(mult) or attemptTimes
             if mult < 1 then mult = 1 end
-            -- Defense: deferred paths may run after learn; never increment for already-owned collectibles.
-            -- Include item-type drops (yields / quest chains): IsCollectibleCollected is true when all goals are met.
-            -- Repeatable farm sources stay eligible even when owned (BoE / world farm mounts).
             if drop and drop.repeatable ~= true and Fns.IsCollectibleCollected(drop) then
                 return
             end
@@ -3281,13 +3187,6 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
                         MirrorQuestStarterMountsToCount(drop, newCount)
                     end
                     local added = (newCount or 0) - prevCount
-                    -- NO MarkDropReseeded here. The mark exists strictly for the stat-backed
-                    -- found-path "-1" correction (GetStatistic includes this very kill, so the
-                    -- displayed total is `count`, not `count + 1`). Manual +1 increments only
-                    -- account for PRIOR misses — the dropping kill itself is not pre-counted in
-                    -- this branch, so the found-path's natural `preResetCount + 1` is correct.
-                    -- Marking here caused the "after N-1 attempts" off-by-one on open-world rare
-                    -- farms where 4 prior misses + drop on kill 5 displayed "after 4 attempts".
                     if announceTry and not fromRecursion and added > 0 then
                         local mergeKey = tcType .. "\0" .. tostring(tryKey)
                         local ex = incrementAnnounce[mergeKey]
@@ -3321,7 +3220,13 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
             Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce)
         end
         Fns.SchedulePlansTryCountUIUpdate()
-    end)
+    end
+
+    if syncNow then
+        runManualMissIncrementJob()
+    else
+        C_Timer.After(0, runManualMissIncrementJob)
+    end
 end
 
 -- SETTING CHECK
