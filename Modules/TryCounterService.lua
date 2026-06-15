@@ -282,6 +282,27 @@ function Fns.LootSessionSourcesAreOnlyGameObjects(sourceGUIDs)
     return true
 end
 
+--- First tracked try-counter object in loot source GUIDs (e.g. Overflowing Dumpster 469857).
+---@return number|nil objectID
+---@return string|nil sourceGUID
+function Fns.GetTrackedObjectIDFromSourceGUIDs(sourceGUIDs)
+    if not sourceGUIDs or not objectDropDB then return nil end
+    for i = 1, #sourceGUIDs do
+        local guid = sourceGUIDs[i]
+        if type(guid) == "string" and not (issecretvalue and issecretvalue(guid)) then
+            local oid = Fns.GetObjectIDFromGUID(guid)
+            if oid and objectDropDB[oid] then
+                return oid, guid
+            end
+        end
+    end
+    return nil
+end
+
+function Fns.LootSessionHasTrackedObjectSource(sourceGUIDs)
+    return Fns.GetTrackedObjectIDFromSourceGUIDs(sourceGUIDs) ~= nil
+end
+
 function Fns.LootSourcesLookLikeFishingOnly(sourceGUIDs)
     if not sourceGUIDs or #sourceGUIDs == 0 then return false end
     -- Fishing loot is bobber Creature(s) and/or a pool GameObject next to the bobber.
@@ -1820,6 +1841,9 @@ V.isPickpocketing = V.isPickpocketing or false
 V.isProfessionLooting = V.isProfessionLooting or false
 V.lastContainerItemID = V.lastContainerItemID
 V.lastContainerItemTime = V.lastContainerItemTime or 0
+V.lastTrackedObjectInteractID = V.lastTrackedObjectInteractID
+V.lastTrackedObjectInteractGUID = V.lastTrackedObjectInteractGUID
+V.lastTrackedObjectInteractTime = V.lastTrackedObjectInteractTime or 0
 V.lastEncounterEndTime = V.lastEncounterEndTime or 0
 V.lastTryCountSourceKey = V.lastTryCountSourceKey
 V.lastTryCountSourceTime = V.lastTryCountSourceTime or 0
@@ -4875,6 +4899,18 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
         lastGatherCastTime = GetTime()
     end
 
+    -- Overflowing Dumpster and other objectDropDB nodes: target is often nil on UNIT_SPELLCAST_SENT;
+    -- mouseover/target GUID is reliable for attributing currency-only opens (no LOOT_OPENED).
+    do
+        local goGUID = Fns.SafeGetMouseoverGUID() or Fns.SafeGetTargetGUID()
+        local oid = goGUID and Fns.GetObjectIDFromGUID(goGUID)
+        if oid and objectDropDB[oid] then
+            V.lastTrackedObjectInteractID = oid
+            V.lastTrackedObjectInteractGUID = goGUID
+            V.lastTrackedObjectInteractTime = GetTime()
+        end
+    end
+
     if spellID and PICKPOCKET_SPELLS[spellID] then
         V.isPickpocketing = true
         return
@@ -4996,6 +5032,57 @@ end
 
 -- LOOT / CHAT_MSG_LOOT handlers: Modules/TryCounterService_Handlers.lua
 
+---CHAT_MSG_CURRENCY / CHAT_MSG_MONEY fallback for tracked world objects (Overflowing Dumpster).
+---When loot is currency-only, LOOT_OPENED may not fire; attribute a miss once per interact.
+function Fns.TryProcessTrackedObjectCurrencyFallback(self)
+    if not self or not Fns.IsAutoTryCounterEnabled() then return end
+    if RT.pendingLootSessionFinalize or RT.lootSession.opened then return end
+
+    local now = GetTime()
+    local objectID, sourceGUID = Fns.GetTrackedObjectIDFromSourceGUIDs(RT.lootReady.sourceGUIDs)
+    if not objectID and V.lastTrackedObjectInteractID
+        and (now - (V.lastTrackedObjectInteractTime or 0)) < 12 then
+        objectID = V.lastTrackedObjectInteractID
+        sourceGUID = V.lastTrackedObjectInteractGUID
+    end
+    if not objectID then return end
+
+    local dedupKey = Fns.BuildTryCountSourceKey(nil, nil, objectID, sourceGUID)
+    if dedupKey and V.lastTryCountSourceKey == dedupKey
+        and (now - V.lastTryCountSourceTime) < RT.CHAT_LOOT_DEBOUNCE then
+        return
+    end
+
+    local drops = objectDropDB[objectID]
+    if not drops then return end
+    local trackable = {}
+    for i = 1, #drops do
+        local drop = drops[i]
+        if drop and (drop.repeatable or not Fns.IsCollectibleCollected(drop)) then
+            trackable[#trackable + 1] = drop
+        end
+    end
+    if #trackable == 0 then return end
+
+    local allObtained = true
+    for i = 1, #trackable do
+        local tcType, tryKey = Fns.GetTryCountTypeAndKey(trackable[i])
+        if not tryKey or not Fns.IsObtainOutcomeApplied(tcType, tryKey, trackable[i]) then
+            allObtained = false
+            break
+        end
+    end
+    if allObtained then return end
+
+    Fns.ApplyNpcLootOutcomes(self, {
+        trackable = trackable,
+        found = {},
+        lastMatchedObjectID = objectID,
+        dedupGUID = sourceGUID,
+        baselineTryCounts = Fns.CaptureTryCountBaselines(trackable),
+    })
+end
+
 ---CHAT_MSG_CURRENCY / CHAT_MSG_MONEY fallback logic.
 ---In WoW, when gathering objects (like Overflowing Dumpster) that ONLY drop currency/money,
 ---LOOT_OPENED may not fire or closes instantly. This attributes currency to:
@@ -5004,7 +5091,7 @@ end
 ---@param message string
 function WarbandNexus:OnTryCounterChatMsgCurrency(event, message)
     if not Fns.IsAutoTryCounterEnabled() then return end
-    -- Zone-object (dumpster) try count removed: attribution was unreliable (UNIT_SPELLCAST_SENT target often nil for objects).
+    Fns.TryProcessTrackedObjectCurrencyFallback(self)
 end
 
 ---ITEM_LOCK_CHANGED handler (detect container item usage for try count tracking)
@@ -5328,20 +5415,25 @@ Fns.ClassifyLootSession = function(source, isFromItem)
             end
         end
         if anyGameObject and not anyMob and not Fns.LootSessionHasMobLootContext() then
-            return "skip"
+            if not Fns.LootSessionHasTrackedObjectSource(lootSession.sourceGUIDs) then
+                return "skip"
+            end
         end
     end
 
     -- GameObject-only loot (herb/ore) in open-world maps that have fishing DB entries is not fishing
     -- unless API or structural bobber/pool says so (prevents false ProcessFishingLoot on Thorncap etc.).
+    -- Tracked objectDropDB sources (Overflowing Dumpster, raid chests) always use NPC/object path.
     local inInstance = IsInInstance()
     if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
     if not inInstance and Fns.LootSessionSourcesAreOnlyGameObjects(lootSession.sourceGUIDs) and Fns.IsInTrackableFishingZone() then
-        local structFish = Fns.LootSourcesLookLikeFishingOnly(lootSession.sourceGUIDs)
-        local apiOpen = (source == "opened" and Fns.SafeIsFishingLoot() and not V.isProfessionLooting)
-        local closedFish = (source == "closed" and lootReady.wasFishing)
-        if not structFish and not apiOpen and not closedFish then
-            return "skip"
+        if not Fns.LootSessionHasTrackedObjectSource(lootSession.sourceGUIDs) then
+            local structFish = Fns.LootSourcesLookLikeFishingOnly(lootSession.sourceGUIDs)
+            local apiOpen = (source == "opened" and Fns.SafeIsFishingLoot() and not V.isProfessionLooting)
+            local closedFish = (source == "closed" and lootReady.wasFishing)
+            if not structFish and not apiOpen and not closedFish then
+                return "skip"
+            end
         end
     end
 
