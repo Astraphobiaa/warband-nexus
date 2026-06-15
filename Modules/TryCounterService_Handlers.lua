@@ -302,64 +302,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         end
     end
     
-    -- DELAYED FALLBACK: If no loot window opens within 5s, manually increment try counters.
-    -- Global debounce prevents double-count vs LOOT_OPENED/CHAT_MSG_LOOT paths.
+    -- Loot-session-first: attempt counts come from LOOT_READY→LOOT_CLOSED resolver (or CHAT fallback).
+    -- Stat reseed catches up when GetStatistic updates after the pull.
     if addedCount > 0 then
-        local keyForDelayed = encounterKey
-        -- Counting is event-driven by ENCOUNTER_END(success=1). We schedule on the NEXT frame
-        -- (C_Timer.After(0)) instead of waiting 5s — Wowpedia/Rarity confirm GetStatistic is
-        -- updated by then, and our drop-key mark + IsDropAlreadyCounted filter is the dedup
-        -- mechanism (replaces the old 5s race window vs LOOT_OPENED). If LOOT_OPENED runs first,
-        -- it marks the drops and our ProcessMissedDrops here filters them out; if it runs after,
-        -- the found-path consumes the mark we just set. Either order is correct.
-        C_Timer.After(0, function()
-            if not Fns.IsAutoTryCounterEnabled() then return end
-            local delayedNow = GetTime()
-            -- Dedup ONLY against prior paths that already counted *this same encounter*. A repeatable
-            -- item / currency / unrelated-NPC chat path setting V.lastTryCountSourceKey ("item_X" /
-            -- "npc_Y") would previously suppress the entire encounter fallback (e.g. Sylvanas drops
-            -- Anima Vessels and tier tokens via CHAT_MSG_LOOT during the kill window — those bumped
-            -- V.lastTryCountSourceTime and silently killed Vengeance counting).
-            if keyForDelayed and V.lastTryCountSourceKey == keyForDelayed
-                and (delayedNow - V.lastTryCountSourceTime) < 10 then
-                return
-            end
-
-            local matchedNpcID = nil
-            local trackable = {}
-            local bestGuid, bestKill = nil, nil
-            for guid, killData in pairs(RT.recentKills) do
-                if killData.isEncounter and (delayedNow - killData.time < 10) and RT.tryCounterNpcEligible[killData.npcID] then
-                    local drops = RT.npcDropDB[killData.npcID]
-                    if drops and (not bestKill or killData.time > bestKill.time) then
-                        bestGuid = guid
-                        bestKill = killData
-                    end
-                end
-            end
-            if bestKill then
-                matchedNpcID = bestKill.npcID
-                local inInst = IsInInstance()
-                if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
-                local encDiff = Fns.ResolveEncounterDifficultyForLootGating(inInst, bestKill.difficultyID, nil)
-                local npcDrops = RT.npcDropDB[matchedNpcID]
-                local diffSkipped
-                trackable, diffSkipped = Fns.FilterDropsByDifficulty(npcDrops, encDiff)
-                if matchedNpcID and (#trackable == 0) then
-                    Fns.DebugLogDifficultyFilterEmpty(self, "EncounterEnd", npcDrops, encDiff, trackable, diffSkipped)
-                end
-            end
-
-            if #trackable > 0 and matchedNpcID then
-                V.lastTryCountSourceKey = keyForDelayed
-                V.lastTryCountSourceTime = delayedNow
-                Fns.TryCounterLootDebugDropLines(self, "Encounter", trackable)
-                Fns.ProcessMissedDrops(trackable, RT.npcDropDB[matchedNpcID].statisticIds, {
-                    statReseedLootMissFallback = true,
-                })
-            end
-        end)
-        -- Statistics panel / GetStatistic often lags kill by many seconds; re-seed when APIs catch up.
         Fns.RequestTryCounterStatisticsRuntimeRefresh()
     end
     
@@ -427,6 +372,7 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
     -- fishing near kills); mob ground loot has IsFishingLoot() false, so we do not need the old unit guard.
     RT.lootReady.wasFishing = structuralFish
         or (apiFish and not V.isProfessionLooting)
+    Fns.TryCancelLockoutFallbackFromSourceGUIDs(RT.lootReady.sourceGUIDs)
 end
 
 ---LOOT_CLOSED handler (reset fishing flag, pickpocket flag, safety timer)
@@ -435,6 +381,11 @@ end
 ---is opened multiple times in quick succession (user takes partial loot, closes, reopens).
 ---Different loot sources get their own GUID and are counted separately.
 function WarbandNexus:OnTryCounterLootClosed()
+    -- Loot session resolver: one attempt decision after looting finishes (slot scan + session obtain marks).
+    if RT.pendingLootSessionFinalize then
+        Fns.FinalizeDeferredLootSessionOutcome(self)
+    end
+
     -- When LOOT_OPENED was missed (fast auto-loot), use LOOT_READY captured data through
     -- the same ClassifyLootSession→RouteLootSession path. Unit GUIDs come from LOOT_READY
     -- snapshot (guaranteed valid) rather than fresh reads (may be nil by now).
@@ -453,6 +404,8 @@ function WarbandNexus:OnTryCounterLootClosed()
             end
         end
     end
+
+    Fns.FlushDeferredTryCounterIncrementAnnounces()
 
     -- Full cleanup: wipe both session and ready state so nothing bleeds into next loot event.
     Fns.ResetLootSession()
@@ -517,7 +470,9 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
     if foundDrop then
         if not foundDrop.repeatable and foundDrop.type == "item" then Fns.MarkItemObtained(foundDrop.itemID) end
         local tcType, tryKey = Fns.GetTryCountTypeAndKey(foundDrop)
-        if tryKey then
+        if tryKey and Fns.IsObtainOutcomeApplied(tcType, tryKey, foundDrop) then
+            -- obtain chat+reset already handled (e.g. LOOT_CLOSED finalize)
+        elseif tryKey then
             Fns.MarkDropObtainedThisKill(tcType, tryKey, foundDrop)
             local preResetCount = self:GetTryCount(tcType, tryKey)
             preResetCount = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
@@ -539,6 +494,7 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
                     fromTryCounter = true,
                 }, foundDrop.itemID)
             end
+            Fns.MarkObtainOutcomeApplied(tcType, tryKey, foundDrop)
         end
     end
 
@@ -597,22 +553,26 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
         return
     end
 
-    -- Loot window guard: if a loot session is actively open, the primary path
-    -- (LOOT_OPENED → ProcessNPCLoot/ProcessFishingLoot) already handled counting.
-    -- CHAT_MSG_LOOT fires per-item during manual loot; suppress NPC/encounter/fishing
-    -- paths (2-4) to prevent double-counting when debounce has expired.
-    -- Path 1 (repeatable resets) still runs because the primary path may not cover
-    -- repeatable items obtained from non-tracked sources.
+    -- Loot window guard: deferred loot sessions stage on LOOT_OPENED and finalize on LOOT_CLOSED.
+    -- CHAT_MSG_LOOT can fire per-item during manual loot and again after LOOT_CLOSED (wiki order).
+    -- During an active/pending session only mark session obtains; full chat+reset runs once at close.
     local lootWindowActive = RT.lootSession.opened
 
-    -- Path 1: Repeatable item obtained → reset + notification
+    -- Path 1: Repeatable item obtained → reset + notification (fallback when no deferred session)
     local repDrop = RT.repeatableItemDrops[itemID]
     if repDrop then
-        local tryKey = Fns.GetTryCountKey(repDrop)
+        local tcType, tryKey = Fns.GetTryCountTypeAndKey(repDrop)
         if tryKey then
-            Fns.MarkDropObtainedThisKill(repDrop.type, tryKey, repDrop)
-            local preResetCount = self:GetTryCount(repDrop.type, tryKey)
-            self:ResetTryCount(repDrop.type, tryKey)
+            if Fns.IsObtainOutcomeApplied(tcType, tryKey, repDrop) then
+                return
+            end
+            if lootWindowActive or RT.pendingLootSessionFinalize or Fns.IsLootSessionPendingOrRecent() then
+                Fns.TryMarkSessionObtainFromChatItem(itemID)
+                return
+            end
+            Fns.MarkDropObtainedThisKill(tcType, tryKey, repDrop)
+            local preResetCount = self:GetTryCount(tcType, tryKey)
+            self:ResetTryCount(tcType, tryKey)
             V.lastTryCountSourceKey = "item_" .. tostring(itemID)
             V.lastTryCountSourceTime = now
             local itemLink = Fns.GetDropItemLink(repDrop)
@@ -625,12 +585,16 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                 preResetTryCount = preResetCount,
                 fromTryCounter = true,
             }, repDrop.itemID)
+            Fns.MarkObtainOutcomeApplied(tcType, tryKey, repDrop)
         end
         return
     end
 
-    -- Paths 2-4: suppress when loot window is active (primary path already counted).
-    if lootWindowActive then return end
+    -- Paths 2-4: suppress full chat fallback when loot window is active; still mark session obtains.
+    if lootWindowActive then
+        Fns.TryMarkSessionObtainFromChatItem(itemID)
+        return
+    end
 
     -- Path 2: Exact item→NPC match (RT.chatLootItemToNpc built from eligible NPC + object sources)
     local npcID = RT.chatLootItemToNpc[itemID]
