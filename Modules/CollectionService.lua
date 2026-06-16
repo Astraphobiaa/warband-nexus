@@ -2883,9 +2883,11 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         Notify.MarkAsPermanentlyNotified("achievement", achievementID)
         DebugPrint("|cff888888[WN CollectionService]|r Skip achievement toast (already completed in collection store)")
     elseif replaceAlerts then
-        Notify.MarkAsNotified("achievement", achievementID)
-        Notify.MarkAsPermanentlyNotified("achievement", achievementID)
-        DebugPrint("|cff888888[WN CollectionService]|r Skip achievement toast (AddAlert replacement handles popup)")
+        -- Defer toast to NotificationManager's AddAlert hook (ShowAchievementNotification).
+        -- Do NOT MarkAsNotified here: ACHIEVEMENT_EARNED often fires before AddAlert; pre-marking
+        -- makes ShowAchievementNotification return true (handled) without showing, while the hook
+        -- swallows Blizzard's frame — user sees no popup at all.
+        DebugPrint("|cff888888[WN CollectionService]|r Defer achievement toast to AddAlert replacement")
     elseif not Notify.WasRecentlyNotified("achievement", achievementID) then
         Notify.MarkAsNotified("achievement", achievementID)
         local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)

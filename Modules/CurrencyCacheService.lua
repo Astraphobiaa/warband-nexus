@@ -51,6 +51,64 @@ local function IsTrackerMetaCurrencyName(nm)
     if nm:find("%d+%.%d+", 1) and nm:find("Delves", 1, true) then
         return true
     end
+    -- Scenario / challenge internal scoring rows (CURRENCY_DISPLAY_UPDATE, not Currency panel)
+    if nm:match("^Challenge%s*%-") then return true end
+    if nm:match("^Sites%s") then return true end
+    if nm:match("^Total%s") then return true end
+    -- Profession order-book capacity rows (CURRENCY_DISPLAY_UPDATE; not Currency panel)
+    if lower:find("public order capacity", 1, true) then return true end
+    return false
+end
+
+-- Whitelist: currency IDs observed during scans (accumulates across FullScans and sessions).
+-- Backed by db.global.currencyData.visibleCurrencyIDs — seeded from GetCurrencyList during FullScan.
+-- Event-path chat/DB updates also require panel visibility (ShouldIgnoreCurrencyEvent) after first scan.
+local function GetVisibleCurrencyIDs()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
+        return nil
+    end
+    local root = WarbandNexus.db.global.currencyData
+    if not root then return nil end
+    if not root.visibleCurrencyIDs then
+        root.visibleCurrencyIDs = {}
+    end
+    return root.visibleCurrencyIDs
+end
+
+local function MarkCurrencyVisible(currencyID)
+    if not currencyID or currencyID == 0 then return end
+    local set = GetVisibleCurrencyIDs()
+    if set then set[currencyID] = true end
+end
+
+local function IsCurrencyVisibleKnown(currencyID)
+    local set = GetVisibleCurrencyIDs()
+    return set and set[currencyID] == true
+end
+
+local function IsVisibleSetEmpty()
+    local set = GetVisibleCurrencyIDs()
+    if not set then return true end
+    return next(set) == nil
+end
+
+---Event-path currencies must be player-facing panel rows (FullScan seeds visibleCurrencyIDs from GetCurrencyList).
+local function ShouldIgnoreCurrencyEvent(currencyID, currencyData, apiInfo)
+    if not currencyID or currencyID == 0 then return true end
+    if not apiInfo and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+        apiInfo = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    end
+    if apiInfo and apiInfo.isHeader == true then return true end
+    local nm = (currencyData and currencyData.name) or ""
+    if (nm == "" or nm == ("Currency #" .. tostring(currencyID)))
+        and apiInfo and apiInfo.name and not (issecretvalue and issecretvalue(apiInfo.name)) then
+        nm = apiInfo.name
+    end
+    if IsTrackerMetaCurrencyName(nm or "") then return true end
+    if apiInfo and apiInfo.name and not (issecretvalue and issecretvalue(apiInfo.name)) then
+        if IsTrackerMetaCurrencyName(apiInfo.name) then return true end
+    end
+    if not IsVisibleSetEmpty() and not IsCurrencyVisibleKnown(currencyID) then return true end
     return false
 end
 
@@ -118,38 +176,6 @@ local currencyMetadataCache = {}          -- [currencyID] = { name, icon, ... }
 local currencyMetadataCacheOrder = {}     -- Circular buffer eviction order
 local currencyMetadataCacheHead = 1       -- Circular buffer head index
 local CURRENCY_METADATA_CACHE_MAX = 256
-
--- Whitelist: currency IDs observed during scans (accumulates across FullScans and sessions).
--- Backed by db.global.currencyData.visibleCurrencyIDs — used for UI hints; chat eligibility uses
--- C_CurrencyInfo (isHeader, etc.) in DispatchCurrencyGainChat, not this set alone.
-local function GetVisibleCurrencyIDs()
-    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
-        return nil
-    end
-    local root = WarbandNexus.db.global.currencyData
-    if not root then return nil end
-    if not root.visibleCurrencyIDs then
-        root.visibleCurrencyIDs = {}
-    end
-    return root.visibleCurrencyIDs
-end
-
-local function MarkCurrencyVisible(currencyID)
-    if not currencyID or currencyID == 0 then return end
-    local set = GetVisibleCurrencyIDs()
-    if set then set[currencyID] = true end
-end
-
-local function IsCurrencyVisibleKnown(currencyID)
-    local set = GetVisibleCurrencyIDs()
-    return set and set[currencyID] == true
-end
-
-local function IsVisibleSetEmpty()
-    local set = GetVisibleCurrencyIDs()
-    if not set then return true end
-    return next(set) == nil
-end
 
 ---Normalize API quantity for currencies that expose "total earned" style values.
 ---Some capped currencies report (max + current); we want display = current on hand.
@@ -694,18 +720,9 @@ local function DispatchCurrencyGainChat(currencyID, currencyData, gainAmount, ga
     if CurrencyCache.suppressCurrencyGainChatUntilScan then
         return false
     end
-    -- Player-facing currency rows: CurrencyInfo.isHeader = category rows, not spendable currency (API docs).
     local live = (C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo) and C_CurrencyInfo.GetCurrencyInfo(currencyID) or nil
+    if ShouldIgnoreCurrencyEvent(currencyID, currencyData, live) then return false end
     if live then
-        if live.isHeader == true then return false end
-        local chkName = currencyData.name
-        if (not chkName or chkName == "") and live.name and not (issecretvalue and issecretvalue(live.name)) then
-            chkName = live.name
-        end
-        if IsTrackerMetaCurrencyName(chkName or "") then return false end
-        if live.name and not (issecretvalue and issecretvalue(live.name)) then
-            if IsTrackerMetaCurrencyName(live.name) then return false end
-        end
         if IsSeasonProgressSplitCurrency(currencyID, live) then
             local prev = lastCurrencyGainChatByID[currencyID]
             local now = GetTime()
@@ -714,8 +731,6 @@ local function DispatchCurrencyGainChat(currencyID, currencyData, gainAmount, ga
                 return false
             end
         end
-    elseif IsTrackerMetaCurrencyName(currencyData.name or "") then
-        return false
     end
     MarkCurrencyVisible(currencyID)
     if WarbandNexus.SendMessage then
@@ -780,6 +795,11 @@ local function UpdateSingleCurrency(currencyID, eventHint)
     if not currencyData then
         return false
     end
+
+    local apiInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    if ShouldIgnoreCurrencyEvent(currencyID, currencyData, apiInfo) then
+        return false
+    end
     
     local mergedQty, usedEventHint = MergeCurrencyQuantityWithEventHint(oldQuantity, currencyData.quantity or 0, eventHint)
     local newQuantity = mergedQty
@@ -787,7 +807,6 @@ local function UpdateSingleCurrency(currencyID, eventHint)
         currencyData.quantity = newQuantity
     end
     local te = currencyData.totalEarned
-    local apiInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
     local splitCur = apiInfo and IsSeasonProgressSplitCurrency(currencyID, apiInfo)
     if not db.totalEarned then db.totalEarned = {} end
     if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end

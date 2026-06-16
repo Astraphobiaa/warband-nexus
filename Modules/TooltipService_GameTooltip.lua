@@ -493,19 +493,56 @@ end
 local tooltipInjectTokensByFrame = setmetatable({}, { __mode = "k" })
 local tooltipItemCountTimerByFrame = setmetatable({}, { __mode = "k" })
 
---- Post-call runs before GameTooltip_AddWidgetSet; defer so widgetSetID is visible first.
-local function DeferGameTooltipInjection(tooltip, fn)
+--- Tooltip types that may mount UI widget sets during Show (after post-call).
+local function WillTooltipUseWidgets(tooltip, data)
+    if IsBlizzardWidgetTooltip(tooltip) then return true end
+    if not data then return false end
+    local ws = data.widgetSetID
+    if ws ~= nil then
+        if issecretvalue and issecretvalue(ws) then return true end
+        if ws ~= 0 then return true end
+    end
+    local tooltipType = data.type
+    if tooltipType == nil then return false end
+    if issecretvalue and issecretvalue(tooltipType) then return true end
+    local T = Enum and Enum.TooltipDataType
+    if not T then return false end
+    return tooltipType == T.MinimapMouseover
+        or tooltipType == T.Quest
+        or tooltipType == T.Object
+end
+
+--- Resize NineSlice after lines added post-Show (deferred widget-check path only).
+local function RefreshGameTooltipLayout(tooltip)
+    if not tooltip or not tooltip.Show then return end
+    if tooltip.IsShown and not tooltip:IsShown() then return end
+    -- Injection tokens prevent duplicate AddLine if Show retriggers post-call.
+    tooltip:Show()
+end
+
+--- TooltipDataProcessor post-call runs before InternalProcessInfo :Show().
+--- Bag/item lines must inject synchronously so backdrop sizing includes WN Search.
+--- Widget map/quest tooltips defer one frame so IsBlizzardWidgetTooltip can skip AddLine.
+local function RunGameTooltipInjection(tooltip, data, fn)
     if not tooltip or type(fn) ~= "function" then return end
     if IsBlizzardWidgetTooltip(tooltip) then return end
-    if C_Timer and C_Timer.After then
+
+    local function inject(deferred)
+        if tooltip.IsShown and not tooltip:IsShown() then return end
+        if IsBlizzardWidgetTooltip(tooltip) then return end
+        pcall(fn)
+        if deferred then
+            RefreshGameTooltipLayout(tooltip)
+        end
+    end
+
+    if WillTooltipUseWidgets(tooltip, data) and C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             if not tooltip then return end
-            if tooltip.IsShown and not tooltip:IsShown() then return end
-            if IsBlizzardWidgetTooltip(tooltip) then return end
-            pcall(fn)
+            inject(true)
         end)
     else
-        pcall(fn)
+        inject(false)
     end
 end
 
@@ -737,12 +774,12 @@ function GT.InitializeGameTooltipHook(service)
     -- ITEM TOOLTIP — single post-call (counts + planned + container drops)
     -- One TooltipDataProcessor registration avoids triple invocation per hover.
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        DeferGameTooltipInjection(tooltip, function()
+        RunGameTooltipInjection(tooltip, data, function()
         if IsBlizzardWidgetTooltip(tooltip) then return end
         local itemID = ResolveItemTooltipID(data)
         local dataInstanceID = data and data.dataInstanceID
 
-        -- WN Search counts per character (deferred post-call; never call Show() — retriggers rebuild loop)
+        -- WN Search counts per character (sync pre-Show; never call Show() here — retriggers rebuild loop)
         if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
             local showTooltipItemCount = WarbandNexus.db.profile.showTooltipItemCount
             if showTooltipItemCount == nil then
@@ -1013,7 +1050,7 @@ function GT.InitializeGameTooltipHook(service)
 
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
             if tooltip ~= GameTooltip then return end
-            DeferGameTooltipInjection(tooltip, function()
+            RunGameTooltipInjection(tooltip, data, function()
             if IsBlizzardWidgetTooltip(tooltip) then return end
 
             local sourceDB = ns.CollectibleSourceDB
@@ -1548,7 +1585,7 @@ function GT.InstallConcentrationTooltipHook(service)
             if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
             if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
             if not data or not data.id or not IsConcentrationCurrencyID(data.id) then return end
-            DeferGameTooltipInjection(tooltip, function()
+            RunGameTooltipInjection(tooltip, data, function()
                 if IsBlizzardWidgetTooltip(tooltip) then return end
                 if HasAlreadyInjected(tooltip) then return end
 
