@@ -90,7 +90,14 @@ local function PresentFS(fs, text)
         fs:SetText(text)
     end
     if ns.UI_ApplyFontStringPresentation then
-        ns.UI_ApplyFontStringPresentation(fs, text or (fs.GetText and fs:GetText()))
+        local presentationText = text
+        if presentationText == nil and fs.GetText then
+            local got = fs:GetText()
+            if not (issecretvalue and issecretvalue(got)) then
+                presentationText = got
+            end
+        end
+        ns.UI_ApplyFontStringPresentation(fs, presentationText)
     end
 end
 

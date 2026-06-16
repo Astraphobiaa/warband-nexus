@@ -23,6 +23,11 @@ local function IsDebugOn()
     return IsDebugModeEnabled and IsDebugModeEnabled()
 end
 
+local function SafeSlashLower(s)
+    if not s or (issecretvalue and issecretvalue(s)) then return nil end
+    return s:lower()
+end
+
 local function PrintSlashHelp(addon)
     addon:Print("|cff00ccffWarband Nexus|r — " .. ((ns.L and ns.L["AVAILABLE_COMMANDS"]) or "Available commands:"))
     addon:Print("  |cff00ccff/wn|r — " .. ((ns.L and ns.L["CMD_OPEN"]) or "Open addon window"))
@@ -58,16 +63,21 @@ function CommandService:HandleTryCountDebugCommand(addon, input)
         return
     end
 
+    if issecretvalue and issecretvalue(collectibleType) then
+        addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
+        return
+    end
+    if id and issecretvalue and issecretvalue(id) then
+        addon:Print("|cffff6600Invalid ID:|r Must be a number")
+        return
+    end
+
     id = tonumber(id)
     if not id then
         addon:Print("|cffff6600Invalid ID:|r Must be a number")
         return
     end
 
-    if issecretvalue and issecretvalue(collectibleType) then
-        addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
-        return
-    end
     local validTypes = { item = true, mount = true, pet = true, toy = true }
     local ctLower = collectibleType:lower()
     if not validTypes[ctLower] then
@@ -377,7 +387,7 @@ function CommandService:HandleSlashCommand(addon, input)
 
     elseif cmd == "collection" or cmd == "collections" then
         local _, sub, third = addon:GetArgs(input, 3)
-        sub = sub and sub:lower() or ""
+        sub = SafeSlashLower(sub) or ""
         if sub == "rescan" then
             if addon.RequestCollectionDataRefreshForce then
                 addon:RequestCollectionDataRefreshForce()
@@ -386,7 +396,7 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             return
         elseif sub == "sync" or sub == "refresh" then
-            if third and third:lower() == "force" then
+            if SafeSlashLower(third) == "force" then
                 if addon.RequestCollectionDataRefreshForce then
                     addon:RequestCollectionDataRefreshForce()
                 else
@@ -406,7 +416,7 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             return
         elseif sub == "rebuild" then
-            local full = third and third:lower() == "full"
+            local full = SafeSlashLower(third) == "full"
             if addon.DebugForceCollectionRebuild then
                 addon:DebugForceCollectionRebuild(full)
             else
@@ -437,7 +447,7 @@ function CommandService:HandleSlashCommand(addon, input)
 
     elseif cmd == "gearstash" or cmd == "stashrec" or cmd == "gearrec" then
         local _, itemArg = addon:GetArgs(input, 2)
-        local probeID = itemArg and tonumber(itemArg) or nil
+        local probeID = (itemArg and not (issecretvalue and issecretvalue(itemArg)) and tonumber(itemArg)) or nil
         if addon.DiagnoseGearStorageRecToChat then
             addon:DiagnoseGearStorageRecToChat(nil, probeID)
         else
@@ -474,10 +484,13 @@ function CommandService:HandleSlashCommand(addon, input)
 
     elseif cmd == "errors" or cmd == "error" then
         local _, subCmd, idxArg = addon:GetArgs(input, 3)
-        if subCmd == "full" and addon.ShowErrorDetails then
-            addon:ShowErrorDetails(tonumber(idxArg) or 1)
+        local subLower = SafeSlashLower(subCmd)
+        if subLower == "full" and addon.ShowErrorDetails then
+            local idx = (idxArg and not (issecretvalue and issecretvalue(idxArg)) and tonumber(idxArg)) or 1
+            addon:ShowErrorDetails(idx)
         elseif addon.PrintRecentErrors then
-            addon:PrintRecentErrors(tonumber(subCmd) or 5)
+            local n = (subCmd and not (issecretvalue and issecretvalue(subCmd)) and tonumber(subCmd)) or 5
+            addon:PrintRecentErrors(n)
         end
         return
 
@@ -520,7 +533,7 @@ function CommandService:HandleSlashCommand(addon, input)
         return
 
     elseif cmd == "trackchar" or cmd == "track" then
-        local subCmd = select(2, addon:GetArgs(input, 2))
+        local subCmd = SafeSlashLower(select(2, addon:GetArgs(input, 2)))
         if subCmd == "enable" or subCmd == "on" then
             local charKey = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey and ns.CharacterService:ResolveCharactersTableKey(addon))
                 or (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
@@ -580,6 +593,18 @@ local function uiMapSafeName(info)
     return n
 end
 
+local function uiMapSafeScalar(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return tonumber(v)
+end
+
+local function uiMapDebugScalar(v)
+    if v == nil then return "?" end
+    if issecretvalue and issecretvalue(v) then return "<secret>" end
+    return tostring(v)
+end
+
 --- Throttled chat lines (long catalog dumps won’t drop silently).
 local function printLinesThrottled(addon, lines)
     if not lines or #lines == 0 then return end
@@ -603,7 +628,7 @@ end
 ---@param input string Raw slash payload (after /wn)
 function CommandService:HandleUiMapDebug(addon, input)
     local _, sub, arg = addon:GetArgs(input, 3)
-    sub = sub and sub:lower() or ""
+    sub = SafeSlashLower(sub) or ""
 
     local function banner(msg)
         addon:Print("|cff00ccff[WN uiMap]|r " .. msg)
@@ -622,8 +647,8 @@ function CommandService:HandleUiMapDebug(addon, input)
             banner("|cffff6600C_Map API unavailable.|r")
             return
         end
-        local okm, mid = pcall(C_Map.GetBestMapForUnit, "player")
-        mid = okm and tonumber(mid) or nil
+        local okm, midRaw = pcall(C_Map.GetBestMapForUnit, "player")
+        local mid = okm and uiMapSafeScalar(midRaw) or nil
         if not mid or mid <= 0 then
             banner("|cffff6600Could not read player uiMapID.|r")
             return
@@ -640,10 +665,10 @@ function CommandService:HandleUiMapDebug(addon, input)
                 break
             end
             local nm = uiMapSafeName(info) or "?"
-            local pid = tonumber(info.parentMapID)
+            local pid = uiMapSafeScalar(info.parentMapID)
             local mt = info.mapType
             chain[#chain + 1] = string.format("  %d | %s | parent=%s | mapType=%s",
-                cur, nm, tostring(pid), tostring(mt))
+                cur, nm, uiMapDebugScalar(pid), uiMapDebugScalar(mt))
             if not pid or pid <= 0 or pid == cur then break end
             cur = pid
         end
@@ -651,8 +676,14 @@ function CommandService:HandleUiMapDebug(addon, input)
 
         local okI, name, instType, difficultyID, _, _, _, _, instanceID = pcall(GetInstanceInfo)
         if okI and name and not (issecretvalue and issecretvalue(name)) then
+            local safeInstType = instType
+            if issecretvalue and issecretvalue(safeInstType) then safeInstType = "?" end
+            local safeInstanceID = instanceID
+            if issecretvalue and issecretvalue(safeInstanceID) then safeInstanceID = "?" end
+            local safeDiffID = difficultyID
+            if issecretvalue and issecretvalue(safeDiffID) then safeDiffID = "?" end
             addon:Print(string.format("  Instance: %s | type=%s | instanceID=%s | difficultyID=%s",
-                tostring(name), tostring(instType), tostring(instanceID), tostring(difficultyID)))
+                tostring(name), tostring(safeInstType), tostring(safeInstanceID), tostring(safeDiffID)))
         end
         return
     end
@@ -678,7 +709,7 @@ function CommandService:HandleUiMapDebug(addon, input)
         local nm = uiMapSafeName(info) or "?"
         local kind = UICK and UICK.Resolve and UICK.Resolve(mid, info) or "?"
         banner(string.format("id=%d | name=%s | parent=%s | mapType=%s | kind=%s",
-            mid, nm, tostring(info.parentMapID), tostring(info.mapType), tostring(kind)))
+            mid, nm, uiMapDebugScalar(info.parentMapID), uiMapDebugScalar(info.mapType), uiMapDebugScalar(kind)))
         return
     end
 

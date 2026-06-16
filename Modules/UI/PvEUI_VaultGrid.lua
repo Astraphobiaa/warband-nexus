@@ -12,6 +12,20 @@ local FontManager = ns.FontManager
 local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
 local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
 local VAULT_SLOT_UPARROW = "|A:loottoast-arrow-green:12:12|a"
+local issecretvalue = issecretvalue
+
+local function SafeVaultNumber(v, default)
+    default = default or 0
+    if v == nil then return default end
+    if issecretvalue and issecretvalue(v) then return default end
+    return tonumber(v) or default
+end
+
+local function SafeStorageKey(s)
+    if not s or s == "" then return nil end
+    if issecretvalue and issecretvalue(s) then return nil end
+    return s
+end
 
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
@@ -105,11 +119,13 @@ end
     @return boolean - True if at maximum level, false otherwise
 ]]
 local function IsVaultSlotAtMax(activity, typeName)
-    if not activity or not activity.level then
+    if not activity then
         return false
     end
-    
-    local level = activity.level
+    local level = SafeVaultNumber(activity.level, nil)
+    if level == nil then
+        return false
+    end
     
     -- Define max thresholds per activity type
     if typeName == "Raid" then
@@ -135,18 +151,19 @@ function ns.PvEUI.GetCanonicalKeyForChar(char)
     if not char then return nil end
     if ns.Utilities and ns.Utilities.ResolveCharacterRowKey then
         local rk = ns.Utilities:ResolveCharacterRowKey(char)
-        if rk and rk ~= "" then
+        rk = SafeStorageKey(rk)
+        if rk then
             if ns.Utilities.GetCanonicalCharacterKey then
                 return ns.Utilities:GetCanonicalCharacterKey(rk) or rk
             end
             return rk
         end
     end
-    local raw = char._key
-    if (not raw or raw == "") and ns.UI_GetCharKey then
-        raw = ns.UI_GetCharKey(char)
+    local raw = SafeStorageKey(char._key)
+    if not raw and ns.UI_GetCharKey then
+        raw = SafeStorageKey(ns.UI_GetCharKey(char))
     end
-    if not raw or raw == "" then return nil end
+    if not raw then return nil end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         return ns.Utilities:GetCanonicalCharacterKey(raw) or raw
     end
@@ -156,10 +173,10 @@ end
 --- Completed slot but reward can still improve (API iLvl or difficulty/M+ tier ceiling).
 local function PvE_SlotShowsVaultUpgrade(act, typeName)
     if not act then return false end
-    local ni = tonumber(act.nextLevelIlvl) or 0
+    local ni = SafeVaultNumber(act.nextLevelIlvl, 0)
     if ni > 0 then return true end
-    local th = tonumber(act.threshold) or 0
-    local prog = tonumber(act.progress) or 0
+    local th = SafeVaultNumber(act.threshold, 0)
+    local prog = SafeVaultNumber(act.progress, 0)
     if th <= 0 or prog < th then return false end
     if IsVaultSlotAtMax(act, typeName) then return false end
     return true
@@ -190,8 +207,8 @@ function ns.PvEUI.FormatVaultTrackColumn(activityList, slotCount, typeName, vaul
     local parts = {}
     for s = 1, slotCount do
         local act = activityList and activityList[s]
-        local th = tonumber(act and act.threshold) or 0
-        local prog = tonumber(act and act.progress) or 0
+        local th = SafeVaultNumber(act and act.threshold, 0)
+        local prog = SafeVaultNumber(act and act.progress, 0)
         local complete = (th > 0 and prog >= th)
         if not complete then
             parts[s] = NOT_READY
@@ -210,8 +227,8 @@ local function PvE_VaultTrackSlotsAllComplete(activityList, slotCount)
     if slotCount < 1 then return false end
     for s = 1, slotCount do
         local act = activityList and activityList[s]
-        local th = tonumber(act and act.threshold) or 0
-        local prog = tonumber(act and act.progress) or 0
+        local th = SafeVaultNumber(act and act.threshold, 0)
+        local prog = SafeVaultNumber(act and act.progress, 0)
         if th <= 0 or prog < th then
             return false
         end
@@ -241,8 +258,11 @@ local function GetRewardItemLevel(activity)
     end
     
     -- Priority: Use rewardItemLevel field (extracted from C_WeeklyRewards.GetExampleRewardItemHyperlinks)
-    if activity.rewardItemLevel and activity.rewardItemLevel > 0 then
-        return activity.rewardItemLevel
+    if activity.rewardItemLevel then
+        local rewardIlvl = SafeVaultNumber(activity.rewardItemLevel, 0)
+        if rewardIlvl > 0 then
+            return rewardIlvl
+        end
     end
     
     return nil
@@ -255,11 +275,13 @@ end
     @return string|nil - Next tier/difficulty name (e.g., "Tier 2", "+6", "Mythic")
 ]]
 local function GetNextTierName(activity, typeName)
-    if not activity or not activity.level then
+    if not activity then
         return nil
     end
-    
-    local currentLevel = activity.level
+    local currentLevel = SafeVaultNumber(activity.level, nil)
+    if currentLevel == nil then
+        return nil
+    end
     
     local mythicLabel = GetLocalizedText("DIFFICULTY_MYTHIC", "Mythic")
     local heroicLabel = GetLocalizedText("DIFFICULTY_HEROIC", "Heroic")
@@ -342,29 +364,30 @@ local function GetVaultActivityDisplayText(activity, typeName)
     
     if typeName == "Raid" then
         local difficulty = unknownLabel
-        if activity.level then
+        local raidLevel = SafeVaultNumber(activity.level, nil)
+        if raidLevel then
             -- Raid difficultyIDs: 14=Normal, 15=Heroic, 16=Mythic, 17=LFR
             -- Use exact matches — LFR (17) > Mythic (16) by ID
-            if activity.level == 16 then
+            if raidLevel == 16 then
                 difficulty = mythicLabel
-            elseif activity.level == 15 then
+            elseif raidLevel == 15 then
                 difficulty = heroicLabel
-            elseif activity.level == 14 then
+            elseif raidLevel == 14 then
                 difficulty = normalLabel
-            elseif activity.level == 17 then
+            elseif raidLevel == 17 then
                 difficulty = lfrLabel
             end
         end
         return difficulty
     elseif typeName == "M+" or typeName == "Dungeon" then
-        local level = activity.level or 0
+        local level = SafeVaultNumber(activity.level, 0)
         if level == 0 then
             return mythicLabel .. " 0"
         else
             return string.format(tierFmt, level)
         end
     elseif typeName == "World" then
-        local tier = activity.level or 1
+        local tier = SafeVaultNumber(activity.level, 1)
         return string.format(tierFmt, tier)
     elseif typeName == "PvP" then
         return pvpLabel
@@ -884,8 +907,8 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
             -- Get activity data for this slot
             local activity = activities and activities[slotIndex]
 
-            local threshold = (activity and activity.threshold) or thresholds[slotIndex] or 0
-            local progress = activity and activity.progress or 0
+            local threshold = SafeVaultNumber(activity and activity.threshold, SafeVaultNumber(thresholds[slotIndex], 0))
+            local progress = SafeVaultNumber(activity and activity.progress, 0)
             local isComplete = (threshold > 0 and progress >= threshold)
 
             if activity and isComplete then
@@ -961,10 +984,11 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                             if nextTierName then
                                 table.insert(lines, { text = " ", color = VaultSpacerColor() })
                                 local improveLabel = GetLocalizedText("VAULT_IMPROVE_TO", "Improve to")
-                                if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
+                                local nextIlvl = SafeVaultNumber(activity.nextLevelIlvl, 0)
+                                if nextIlvl > 0 then
                                     table.insert(lines, {
                                         text = string.format("|cffa0d0ff%s iLvl %d:|r",
-                                            improveLabel, activity.nextLevelIlvl),
+                                            improveLabel, nextIlvl),
                                         color = VaultInfoLineColor()
                                     })
                                 end

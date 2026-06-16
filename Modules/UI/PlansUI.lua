@@ -21,6 +21,10 @@ local function SafeLower(s)
     return s:lower()
 end
 
+local function IsSafeDisplayString(s)
+    return type(s) == "string" and s ~= "" and not (issecretvalue and issecretvalue(s))
+end
+
 --- Display-safe player name / realm (Midnight: never concatenate secret API strings).
 local function SafePlayerName()
     local n = UnitName("player")
@@ -1413,17 +1417,17 @@ local EVENT_GROUP_NAMES = {
 local function AttachQuestRowTooltip(frame, quest)
     frame:SetScript("OnEnter", function(self)
         local lines = {}
-        if quest.description and quest.description ~= "" then
+        if IsSafeDisplayString(quest.description) then
             lines[#lines + 1] = { text = quest.description, color = {0.9, 0.9, 0.9} }
         end
         if quest.isSubQuest and quest.eventGroup then
             local parentName = EVENT_GROUP_NAMES[quest.eventGroup] or quest.eventGroup
             lines[#lines + 1] = { text = format((ns.L and ns.L["PART_OF_FORMAT"]) or "Part of: %s", parentName), color = {0.8, 0.5, 1.0} }
         end
-        if quest.zone and quest.zone ~= "" then
+        if IsSafeDisplayString(quest.zone) then
             lines[#lines + 1] = { text = quest.zone, color = {0.7, 0.7, 0.7} }
         end
-        if quest.objective and quest.objective ~= "" then
+        if IsSafeDisplayString(quest.objective) then
             lines[#lines + 1] = { text = quest.objective, color = {1, 1, 1} }
         end
         if quest.progress and not quest.isComplete then
@@ -1983,7 +1987,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                                 progFs:SetText(format("%s%d/%d|r", progColor, obj.numFulfilled, obj.numRequired))
                             end
 
-                            if quest.zone and quest.zone ~= "" then
+                            if IsSafeDisplayString(quest.zone) then
                                 local zoneFs = FontManager:CreateFontString(row, "small", "OVERLAY")
                                 zoneFs:SetPoint("TOPRIGHT", -14, -6)
                                 zoneFs:SetJustifyH("RIGHT")
@@ -1995,7 +1999,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                             zoneFs:SetWidth(width * 0.25)
                             zoneFs:SetJustifyH("LEFT")
                             zoneFs:SetWordWrap(false)
-                            zoneFs:SetText(PlanBrightHex() .. (quest.zone or "") .. "|r")
+                            zoneFs:SetText(PlanBrightHex() .. (IsSafeDisplayString(quest.zone) and quest.zone or "") .. "|r")
 
                             if quest.timeLeft and quest.timeLeft > 0 then
                                 local timeFs = FontManager:CreateFontString(row, "body", "OVERLAY")

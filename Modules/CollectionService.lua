@@ -24,6 +24,14 @@ local function NormalizeCollectionSearchText(searchText)
     return searchText:lower()
 end
 
+local function CollectionNameMatchesSearch(name, searchText)
+    if searchText == "" then return true end
+    if type(name) ~= "string" then return false end
+    local lower = (Utilities and Utilities.SafeLower and Utilities:SafeLower(name)) or ""
+    if lower == "" then return false end
+    return lower:find(searchText, 1, true) ~= nil
+end
+
 -- Debug print helper (only prints if debug mode + debugVerbose enabled; reduces BAG SCAN spam)
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local DebugChatPrint = ns.DebugChatPrint
@@ -2158,7 +2166,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
                         local itemLink
                         if GetItemInfo then
                             local _, link = GetItemInfo(mountItemID)
-                            if link and link ~= "" then itemLink = link end
+                            if link and link ~= "" and not (issecretvalue and issecretvalue(link)) then itemLink = link end
                         end
                         if not itemLink then
                             itemLink = (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. "[" .. (name or "Mount") .. "]|r"
@@ -3774,7 +3782,7 @@ COLLECTION_CONFIGS = {
         extract = function(titleMaskID)
             -- Get title info
             local titleString, playerTitle = GetTitleName(titleMaskID)
-            if not titleString or titleString == "" then return nil end
+            if not titleString or titleString == "" or (issecretvalue and issecretvalue(titleString)) then return nil end
             
             -- Check if player knows this title
             local isKnown = IsTitleKnown(titleMaskID)
@@ -4126,6 +4134,7 @@ end
 
 local function TrimText(text)
     if type(text) ~= "string" then return "" end
+    if issecretvalue and issecretvalue(text) then return "" end
     return text:gsub("^%s+", ""):gsub("%s+$", "")
 end
 
@@ -4133,6 +4142,7 @@ end
 ---@return boolean
 function WarbandNexus:IsReliableToySource(sourceText)
     if type(sourceText) ~= "string" then return false end
+    if issecretvalue and issecretvalue(sourceText) then return false end
     local s = TrimText(sourceText)
     if s == "" or IsToySourceGeneric(s) then return false end
 
@@ -4540,7 +4550,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     elseif collectionType == "title" then
         if not GetTitleName then return nil end
         local titleString = GetTitleName(id)
-        if titleString then
+        if titleString and not (issecretvalue and issecretvalue(titleString)) then
             meta = { name = titleString, icon = "Interface\\Icons\\INV_Scroll_11", source = "", description = "" }
         end
     end
@@ -4622,7 +4632,7 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
                     end
 
                     local name = meta.name or ("ID:" .. tostring(mountID))
-                    if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                         meta.id = mountID
                         meta.isCollected = false
                         meta.collected = false
@@ -4669,7 +4679,7 @@ function WarbandNexus:GetUncollectedPets(searchText, limit)
         for petID, d in pairs(store) do
             if d and (d.collected == false or d.collected == nil) then
                 local name = d.name or ("ID:" .. tostring(petID))
-                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                     local meta
                     if d.icon or d.source then
                         meta = { id = petID, name = d.name, icon = d.icon, source = d.source, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = false }
@@ -4716,7 +4726,7 @@ function WarbandNexus:GetUncollectedToys(searchText, limit)
         for toyID, d in pairs(store) do
             if d and (d.collected == false or d.collected == nil) then
                 local name = d.name or ("ID:" .. tostring(toyID))
-                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                     local meta
                     local sourceOk = self:IsReliableToySource(d.source)
                     if (d.icon or d.source) and sourceOk then
@@ -4770,7 +4780,7 @@ function WarbandNexus:GetCollectedMounts(searchText, limit)
             if meta and meta.isCollected then
                 if not (self.ShouldExcludeMountFromCollectionBrowse and self:ShouldExcludeMountFromCollectionBrowse(mountID)) then
                     local name = meta.name or ("ID:" .. tostring(mountID))
-                    if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                         local row = {}
                         for k, v in pairs(meta) do
                             row[k] = v
@@ -4807,7 +4817,7 @@ function WarbandNexus:GetCollectedPets(searchText, limit)
     for petID, d in pairs(store) do
         if d and d.collected == true then
             local name = d.name or ("ID:" .. tostring(petID))
-            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+            if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                 local meta
                 if d.icon or d.source then
                     meta = { id = petID, name = d.name, icon = d.icon, source = d.source, sourceTypeIndex = d.sourceTypeIndex, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = true, collected = true }
@@ -4848,7 +4858,7 @@ function WarbandNexus:GetCollectedToys(searchText, limit)
     for toyID, d in pairs(store) do
         if d and d.collected == true then
             local name = d.name or ("ID:" .. tostring(toyID))
-            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+            if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                 local meta
                 local sourceOk = self:IsReliableToySource(d.source)
                 if (d.icon or d.source) and sourceOk then
@@ -4892,7 +4902,7 @@ function WarbandNexus:GetCollectedIllusions(searchText, limit)
     for illusionID, d in pairs(store) do
         if d and d.collected == true then
             local name = d.name or ("ID:" .. tostring(illusionID))
-            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+            if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                 local base = (d.icon or d.source) and d or self:ResolveCollectionMetadata("illusion", illusionID)
                 local meta = base and { id = illusionID, name = base.name or name, icon = base.icon, source = base.source, isCollected = true, collected = true }
                 if meta then
@@ -4926,7 +4936,7 @@ function WarbandNexus:GetCollectedTitles(searchText, limit)
     for titleID, d in pairs(store) do
         if d and d.collected == true then
             local name = d.name or d.rewardText or ("ID:" .. tostring(titleID))
-            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+            if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                 local base = (d.icon or d.rewardText) and d or self:ResolveCollectionMetadata("title", titleID)
                 local meta = base and {
                     id = titleID,
@@ -5231,7 +5241,7 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
         for achID, d in pairs(store) do
             if d and (d.collected == false or d.collected == nil) then
                 local name = d.name or ("ID:" .. tostring(achID))
-                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                     local meta
                     if d.icon or d.points then
                         meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = false, categoryID = d.categoryID, rewardItemID = d.rewardItemID, rewardTitle = d.rewardTitle, rewardText = d.rewardTitle }
@@ -5283,7 +5293,7 @@ function WarbandNexus:GetCompletedAchievements(searchText, limit)
     for achID, d in pairs(store) do
         if d and d.collected == true then
             local name = d.name or ("ID:" .. tostring(achID))
-            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+            if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                 local meta
                 if d.icon or d.points then
                     meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = true, categoryID = d.categoryID, rewardItemID = d.rewardItemID, rewardTitle = d.rewardTitle, rewardText = d.rewardTitle }
@@ -5326,7 +5336,7 @@ function WarbandNexus:GetUncollectedIllusions(searchText, limit)
         for illusionID, d in pairs(store) do
             if d and (d.collected == false or d.collected == nil) then
                 local name = d.name or ("ID:" .. tostring(illusionID))
-                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                     local meta = (d.icon or d.source) and d or self:ResolveCollectionMetadata("illusion", illusionID)
                     if meta then
                         meta = { id = illusionID, name = meta.name or name, icon = meta.icon, source = meta.source, isCollected = false }
@@ -5367,7 +5377,7 @@ function WarbandNexus:GetUncollectedTitles(searchText, limit)
         for titleID, d in pairs(store) do
             if d and (d.collected == false or d.collected == nil) then
                 local name = d.name or d.rewardText or ("ID:" .. tostring(titleID))
-                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
                     local meta = (d.icon or d.rewardText) and d or self:ResolveCollectionMetadata("title", titleID)
                     if meta then
                         meta = { id = titleID, name = meta.name or meta.rewardText or name, icon = meta.icon, rewardText = meta.rewardText, isCollected = false }
@@ -5410,12 +5420,13 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
     end
     
     -- Title reward
-    if rewardTitle and rewardTitle ~= "" then
+    if rewardTitle and rewardTitle ~= "" and not (issecretvalue and issecretvalue(rewardTitle)) then
         local _, name, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
+        local safeName = (name and not (issecretvalue and issecretvalue(name))) and name or nil
         return {
             type = "title",
             title = rewardTitle,
-            achievementName = name,
+            achievementName = safeName,
             achievementID = achievementID,
             icon = icon or 134400
         }

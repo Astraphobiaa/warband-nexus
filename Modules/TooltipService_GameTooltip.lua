@@ -456,14 +456,57 @@ local function SafeTooltipNumber(val)
     return tonumber(val)
 end
 
---- Blizzard UI widget tooltips (map vignettes, etc.) attach widgetSetID to GameTooltip.
---- Do not inject lines or HookScript on these paths — widget layout uses secret numbers on Hide.
+--- widgetSetID is stored on GameTooltip.widgetContainer (Blizzard_GameTooltip), not the tooltip root.
+local function ResolveTooltipWidgetSetID(tooltip)
+    if not tooltip then return nil end
+    local widgetSetID = tooltip.widgetSetID
+    if widgetSetID == nil then
+        local widgetContainer = tooltip.widgetContainer
+        if widgetContainer then
+            widgetSetID = widgetContainer.widgetSetID
+        end
+    end
+    return widgetSetID
+end
+
+--- Blizzard UI widget tooltips (map vignettes, quest pins, etc.).
+--- Never AddLine or store custom fields on these tooltips — widget layout uses secret numbers.
 local function IsBlizzardWidgetTooltip(tooltip)
     if not tooltip then return false end
-    local widgetSetID = tooltip.widgetSetID
-    if widgetSetID == nil then return false end
-    if issecretvalue and issecretvalue(widgetSetID) then return true end
-    return widgetSetID ~= 0
+    local widgetSetID = ResolveTooltipWidgetSetID(tooltip)
+    if widgetSetID ~= nil then
+        if issecretvalue and issecretvalue(widgetSetID) then return true end
+        if widgetSetID ~= 0 then return true end
+    end
+    local widgetContainer = tooltip.widgetContainer
+    if widgetContainer then
+        local shown = widgetContainer.shownWidgetCount
+        if type(shown) == "number" and shown > 0
+            and not (issecretvalue and issecretvalue(shown)) then
+            return true
+        end
+    end
+    return false
+end
+
+--- Injection state in weak tables — never assign tooltip._wn* (taints GameTooltip).
+local tooltipInjectTokensByFrame = setmetatable({}, { __mode = "k" })
+local tooltipItemCountTimerByFrame = setmetatable({}, { __mode = "k" })
+
+--- Post-call runs before GameTooltip_AddWidgetSet; defer so widgetSetID is visible first.
+local function DeferGameTooltipInjection(tooltip, fn)
+    if not tooltip or type(fn) ~= "function" then return end
+    if IsBlizzardWidgetTooltip(tooltip) then return end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if not tooltip then return end
+            if tooltip.IsShown and not tooltip:IsShown() then return end
+            if IsBlizzardWidgetTooltip(tooltip) then return end
+            pcall(fn)
+        end)
+    else
+        pcall(fn)
+    end
 end
 
 local function ParseItemIDFromItemLink(link)
@@ -485,26 +528,29 @@ end
 --- Per-tooltip injection guard (prevents post-call + Show() refresh loops).
 local function TooltipInjectionAlreadyDone(tooltip, token)
     if not tooltip or not token then return false end
-    local tokens = tooltip._wnInjectTokens
+    local tokens = tooltipInjectTokensByFrame[tooltip]
     return tokens and tokens[token] == true
 end
 
 local function MarkTooltipInjectionDone(tooltip, token)
     if not tooltip or not token then return end
-    if not tooltip._wnInjectTokens then
-        tooltip._wnInjectTokens = {}
+    local tokens = tooltipInjectTokensByFrame[tooltip]
+    if not tokens then
+        tokens = {}
+        tooltipInjectTokensByFrame[tooltip] = tokens
     end
-    tooltip._wnInjectTokens[token] = true
+    tokens[token] = true
 end
 
 local function ClearTooltipInjectionTokens(tooltip)
     if not tooltip then return end
-    tooltip._wnInjectTokens = nil
-    if tooltip._wnItemCountTimer then
-        if tooltip._wnItemCountTimer.Cancel then
-            tooltip._wnItemCountTimer:Cancel()
+    tooltipInjectTokensByFrame[tooltip] = nil
+    local timer = tooltipItemCountTimerByFrame[tooltip]
+    if timer then
+        if timer.Cancel then
+            timer:Cancel()
         end
-        tooltip._wnItemCountTimer = nil
+        tooltipItemCountTimerByFrame[tooltip] = nil
     end
 end
 
@@ -512,8 +558,7 @@ local function InstallGameTooltipInjectionClearHooks()
     if TooltipService._injectionHideHooked then return end
     if not hooksecurefunc then return end
     TooltipService._injectionHideHooked = true
-    -- hooksecurefunc(Hide) is taint-safe; HookScript(OnHide) taints GameTooltip and breaks
-    -- Blizzard UI widget layout (secret number compares) when map vignette tooltips hide.
+    -- hooksecurefunc(Hide) clears weak-table injection state only (never tooltip._wn* fields).
     local function hookHide(frame)
         if not frame then return end
         hooksecurefunc(frame, "Hide", function(service)
@@ -692,11 +737,12 @@ function GT.InitializeGameTooltipHook(service)
     -- ITEM TOOLTIP — single post-call (counts + planned + container drops)
     -- One TooltipDataProcessor registration avoids triple invocation per hover.
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        DeferGameTooltipInjection(tooltip, function()
         if IsBlizzardWidgetTooltip(tooltip) then return end
         local itemID = ResolveItemTooltipID(data)
         local dataInstanceID = data and data.dataInstanceID
 
-        -- WN Search counts per character (sync in post-call; never call Show() — retriggers rebuild loop)
+        -- WN Search counts per character (deferred post-call; never call Show() — retriggers rebuild loop)
         if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
             local showTooltipItemCount = WarbandNexus.db.profile.showTooltipItemCount
             if showTooltipItemCount == nil then
@@ -802,6 +848,7 @@ function GT.InitializeGameTooltipHook(service)
                 end
             end
         end
+        end)
     end)
 
     service:Debug("Item tooltip hook initialized (counts + planned + container drops)")
@@ -966,6 +1013,7 @@ function GT.InitializeGameTooltipHook(service)
 
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
             if tooltip ~= GameTooltip then return end
+            DeferGameTooltipInjection(tooltip, function()
             if IsBlizzardWidgetTooltip(tooltip) then return end
 
             local sourceDB = ns.CollectibleSourceDB
@@ -1191,6 +1239,7 @@ function GT.InitializeGameTooltipHook(service)
 
             -- Use shared rendering function (pass npcID for lockout checking)
             InjectCollectibleDropLines(tooltip, finalDrops, resolvedNpcID)
+            end)
         end)
 
         -- Expose diagnostic accessors (MUST be inside this scope to access closures)
@@ -1496,17 +1545,19 @@ function GT.InstallConcentrationTooltipHook(service)
         local CURRENCY_TYPE = Enum.TooltipDataType.Currency
         TooltipDataProcessor.AddTooltipPostCall(CURRENCY_TYPE, function(tooltip, data)
             if tooltip ~= GameTooltip then return end
-            if IsBlizzardWidgetTooltip(tooltip) then return end
             if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
             if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
             if not data or not data.id or not IsConcentrationCurrencyID(data.id) then return end
-            if HasAlreadyInjected(tooltip) then return end
+            DeferGameTooltipInjection(tooltip, function()
+                if IsBlizzardWidgetTooltip(tooltip) then return end
+                if HasAlreadyInjected(tooltip) then return end
 
-            if WarbandNexus and WarbandNexus.Debug then
-                WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, currencyID=" .. tostring(data.id))
-            end
+                if WarbandNexus and WarbandNexus.Debug then
+                    WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, currencyID=" .. tostring(data.id))
+                end
 
-            pcall(AppendConcentrationData, tooltip)
+                pcall(AppendConcentrationData, tooltip)
+            end)
         end)
     end
 
@@ -1558,6 +1609,7 @@ end
 
 function GT.Install(service)
     TooltipService = service
+    GT.IsBlizzardWidgetTooltip = IsBlizzardWidgetTooltip
     service.PreCacheCollectibleItems = function(s, ...) return GT.PreCacheCollectibleItems(s, ...) end
     service.InitializeGameTooltipHook = function(s, ...) return GT.InitializeGameTooltipHook(s, ...) end
     service.RunDiagnostics = function(s, ...) return GT.RunDiagnostics(s, ...) end

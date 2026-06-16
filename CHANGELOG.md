@@ -1,10 +1,3 @@
-# Warband Nexus — Release notes
-
-Canonical source for CurseForge / Wago uploads (BigWigs packager `manual-changelog`).
-Mirror the same bullets in `Locales/*/CHANGELOG_V*` for in-game What's New.
-
-**Release ritual:** prepend a new `## vX.Y.Z (date)` section below; trim older locale keys when shipping.
-
 ## v3.1.10 (2026-06-16)
 
 ### Updated

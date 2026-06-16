@@ -37,6 +37,13 @@ local function AchievementCompletedSafe(completed)
     return completed and true or false
 end
 
+local function SafeCategoryParent(categoryID)
+    if not categoryID or not GetCategoryInfo then return nil end
+    local _, parent = GetCategoryInfo(categoryID)
+    if parent == nil or (issecretvalue and issecretvalue(parent)) then return nil end
+    return parent
+end
+
 ---GetAchievementInfo after pcall: returns are id, name, points, completed, ... (NOT id at select 2 when skipping — always use explicit indices).
 local function GetAchievementCompletedFlag(achievementID)
     local ok, _, _, _, completed = pcall(GetAchievementInfo, achievementID)
@@ -145,7 +152,7 @@ local function WNCategories_MakeCategoryList(source, fakeSummaryId)
     for i = 1, #source do
         local id = source[i]
         if id then
-            local _, parent = GetCategoryInfo(id)
+            local parent = SafeCategoryParent(id)
             if parent == -1 or parent == WN_GUILD_CATEGORY_ID then
                 categories[#categories + 1] = { id = id }
             end
@@ -154,7 +161,7 @@ local function WNCategories_MakeCategoryList(source, fakeSummaryId)
     for i = #source, 1, -1 do
         local childID = source[i]
         if childID then
-            local _, parent = GetCategoryInfo(childID)
+            local parent = SafeCategoryParent(childID)
             for j = 1, #categories do
                 local category = categories[j]
                 if category.id == parent then
@@ -193,7 +200,7 @@ local function CountApiChildCategories(parentID)
     for i = 1, #list do
         local id = list[i]
         if id then
-            local _, parent = GetCategoryInfo(id)
+            local parent = SafeCategoryParent(id)
             if parent == parentID then
                 n = n + 1
             end
@@ -423,7 +430,9 @@ end
 
 local function RowStillBoundToAchievement(row, achID)
     if not row or not achID then return false end
-    if row.id == achID or row.achievementID == achID then return true end
+    local rowId = SafeAchievementID(row.id)
+    local rowAchId = SafeAchievementID(row.achievementID)
+    if rowId == achID or rowAchId == achID then return true end
     return ResolveAchievementIDFromArgs(row) == achID
 end
 
@@ -448,7 +457,7 @@ local function RunRowWNAttach(row, achID)
     if not row or not achID or not RowStillBoundToAchievement(row, achID) then
         return true
     end
-    if GetAchievementCompletedFlag(achID) or row.completed then
+    if GetAchievementCompletedFlag(achID) or AchievementCompletedSafe(row.completed) then
         HideRowWNButton(row)
         return true
     end
@@ -494,7 +503,7 @@ end
 
 local function TryAttachRowWNButton(row, achID)
     if not row or not achID then return end
-    if GetAchievementCompletedFlag(achID) or row.completed then
+    if GetAchievementCompletedFlag(achID) or AchievementCompletedSafe(row.completed) then
         HideRowWNButton(row)
         return
     end

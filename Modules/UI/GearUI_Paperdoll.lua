@@ -72,7 +72,7 @@ end
 
 local function LocalizeUpgradeTrackName(name)
     if not name or name == "" then return name end
-    if issecretvalue and issecretvalue(name) then return name end
+    if issecretvalue and issecretvalue(name) then return "" end
     local keyMap = {
         Adventurer = "PVE_CREST_ADV", Veteran = "PVE_CREST_VET", Champion = "PVE_CREST_CHAMP",
         Hero = "PVE_CREST_HERO", Myth = "PVE_CREST_MYTH", Explorer = "PVE_CREST_EXPLORER",

@@ -1989,6 +1989,7 @@ end
 ---Shorten Blizzard's long criteria description to a display name (e.g. "Player Has Opened all X" -> "X").
 local function ShortenCriteriaDisplayName(criteriaString)
     if not criteriaString or criteriaString == "" then return (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
+    if issecretvalue and issecretvalue(criteriaString) then return (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
     local s = criteriaString:gsub("^%s+", ""):gsub("%s+$", "")
     local prefixes = {
         "player has opened all ", "player has opened ", "player has open ", "player has collected all ", "player has collected ",
@@ -2930,7 +2931,7 @@ function WarbandNexus:TestLootNotification(type, id, step)
             local titleName = "the Patient"
             if GetTitleName then
                 local rawTitle = GetTitleName(62)
-                if rawTitle and rawTitle ~= "" then
+                if rawTitle and rawTitle ~= "" and not (issecretvalue and issecretvalue(rawTitle)) then
                     titleName = rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
                 end
             end

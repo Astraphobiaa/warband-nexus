@@ -238,8 +238,15 @@ local function GetContentWidth(frame)
     return GetTrackerListWidth(frame)
 end
 
+local function IsNonSecretNonEmptyString(s)
+    if type(s) ~= "string" or s == "" then return false end
+    if issecretvalue and issecretvalue(s) then return false end
+    return true
+end
+
 local function IsPlaceholderSourceText(sourceText)
     if type(sourceText) ~= "string" then return true end
+    if issecretvalue and issecretvalue(sourceText) then return true end
     local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
     if s == "" then return true end
     local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
@@ -249,16 +256,19 @@ end
 
 --- Short description for card subtitle (same style as My Plans: Quest/Drop/Source with icon when applicable)
 local function GetPlanDescription(plan)
+    if not plan then return "" end
+    local planSource = plan.source
     -- Resolve placeholder source for mount/pet so Tracker shows correct source (e.g. Nether-Warped Drake)
-    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(plan.source) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(planSource) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
         local resolved = WarbandNexus:GetPlanDisplaySource(plan)
-        if resolved and resolved ~= "" then
+        if IsNonSecretNonEmptyString(resolved) then
             plan.source = resolved
+            planSource = resolved
         end
     end
     local parts = {}
-    if plan.source and plan.source ~= "" then
-        local src = plan.source
+    if IsNonSecretNonEmptyString(planSource) then
+        local src = planSource
         if WarbandNexus.CleanSourceText then src = WarbandNexus:CleanSourceText(src) end
         parts[#parts + 1] = src
     end
@@ -313,7 +323,7 @@ end
 local function GetAchievementDescriptionForRow(plan)
     if plan.type ~= "achievement" or not plan.achievementID then return "" end
     local _, _, _, _, _, _, _, achDesc = GetAchievementInfo(plan.achievementID)
-    if achDesc and achDesc ~= "" then return achDesc end
+    if IsNonSecretNonEmptyString(achDesc) then return achDesc end
     return ""
 end
 
@@ -324,24 +334,32 @@ end
 local function ResolveTrackerPlanSources(plan)
     if not plan then return {} end
     -- Mount/Pet: resolve placeholder source from API for parity with main UI.
-    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(plan.source) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+    local planSource = plan.source
+    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(planSource) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
         local resolved = WarbandNexus:GetPlanDisplaySource(plan)
-        if resolved and resolved ~= "" then plan.source = resolved end
+        if IsNonSecretNonEmptyString(resolved) then
+            plan.source = resolved
+            planSource = resolved
+        end
     end
     -- Toy reliability filter (same as main UI).
     if plan.type == "toy" and plan.itemID and WarbandNexus and WarbandNexus.ResolveCollectionMetadata then
         local function reliable(s)
+            if not IsNonSecretNonEmptyString(s) then return false end
             if WarbandNexus.IsReliableToySource then return WarbandNexus:IsReliableToySource(s) end
-            return s and s ~= ""
+            return true
         end
-        if not reliable(plan.source) then
+        if not reliable(planSource) then
             local meta = WarbandNexus:ResolveCollectionMetadata("toy", plan.itemID)
-            if meta and reliable(meta.source) then plan.source = meta.source end
+            if meta and reliable(meta.source) then
+                plan.source = meta.source
+                planSource = meta.source
+            end
         end
     end
-    if not plan.source or plan.source == "" or type(plan.source) ~= "string" then return {} end
+    if not IsNonSecretNonEmptyString(planSource) then return {} end
     if WarbandNexus and WarbandNexus.ParseMultipleSources then
-        local ok, result = pcall(function() return WarbandNexus:ParseMultipleSources(plan.source) end)
+        local ok, result = pcall(function() return WarbandNexus:ParseMultipleSources(planSource) end)
         if ok and result then return result end
     end
     return {}
@@ -778,14 +796,14 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
             local ri = WarbandNexus:GetAchievementRewardInfo(plan.achievementID)
             if ri then rewardDisplay = ri.title or ri.itemName end
         end
-        if rewardDisplay and rewardDisplay ~= "" then
+        if rewardDisplay and IsNonSecretNonEmptyString(rewardDisplay) then
             local rewardLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["REWARD_LABEL"]) or "Reward:")
             lines[#lines + 1] = { left = rewardLabel, right = rewardDisplay, leftColor = { rewardLblR, rewardLblG, rewardLblB }, rightColor = { rewardValR, rewardValG, rewardValB } }
         end
     end
 
     -- Source
-    if plan.source and plan.source ~= "" then
+    if IsNonSecretNonEmptyString(plan.source) then
         local src = plan.source
         if WarbandNexus.CleanSourceText then src = WarbandNexus:CleanSourceText(src) end
         local sourceLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:")
@@ -793,11 +811,11 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
     end
 
     -- Zone / Vendor
-    if plan.zone and plan.zone ~= "" then
+    if IsNonSecretNonEmptyString(plan.zone) then
         local zoneLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["ZONE_LABEL"]) or "Zone:")
         lines[#lines + 1] = { left = zoneLabel, right = plan.zone, leftColor = { lblR, lblG, lblB }, rightColor = { zoneR, zoneG, zoneB } }
     end
-    if plan.vendor and plan.vendor ~= "" then
+    if IsNonSecretNonEmptyString(plan.vendor) then
         local vendorLabel = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:")
         lines[#lines + 1] = { left = vendorLabel, right = plan.vendor, leftColor = { lblR, lblG, lblB }, rightColor = { zoneR, zoneG, zoneB } }
     end

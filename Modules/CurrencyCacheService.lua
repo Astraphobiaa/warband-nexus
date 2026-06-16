@@ -172,14 +172,21 @@ local function IsSeasonProgressSplitCurrency(currencyID, info)
     return IsCofferKeyShardByApiInfo(info)
 end
 
+--- Safe tonumber for C_CurrencyInfo fields (Midnight may return secret values).
+local function SafeCurrencyNumber(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    return tonumber(v)
+end
+
 --- Season denominator for "Current / Season Max" + cap coloring (totalEarned vs cap).
 --- Prefer maxQuantity when set (Blizzard's season cap for Dawncrests/shards). Some currencies
 --- expose only maxWeeklyQuantity for the same cap — if we leave seasonMax nil, UI falls back to
 --- weekly branch and treats bag qty 0 as "not capped" → wrong green for capped Coffer Key Shards.
 local function SeasonMaxFromSplitCurrencyInfo(currencyID, info)
     if not info or not IsSeasonProgressSplitCurrency(currencyID, info) then return nil end
-    local maxQ = tonumber(info.maxQuantity) or 0
-    local maxWeekly = tonumber(info.maxWeeklyQuantity) or 0
+    local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
+    local maxWeekly = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
     if maxQ > 0 then
         return maxQ
     end
@@ -187,13 +194,6 @@ local function SeasonMaxFromSplitCurrencyInfo(currencyID, info)
         return maxWeekly
     end
     return nil
-end
-
---- Safe tonumber for C_CurrencyInfo fields (Midnight may return secret values).
-local function SafeCurrencyNumber(v)
-    if v == nil then return nil end
-    if issecretvalue and issecretvalue(v) then return nil end
-    return tonumber(v)
 end
 
 --- Legacy global (if present): earned-this-week may differ from structured API on some builds.
@@ -257,8 +257,8 @@ end
 
 ---When quantity > maxQuantity we treat as (cap + current) and use quantity - cap.
 local function NormalizeQuantity(rawQuantity, maxQuantity, useTotalEarnedForMaxQty)
-    local quantity = tonumber(rawQuantity) or 0
-    local cap = tonumber(maxQuantity) or 0
+    local quantity = SafeCurrencyNumber(rawQuantity) or 0
+    local cap = SafeCurrencyNumber(maxQuantity) or 0
     if cap > 0 and quantity > cap then
         quantity = quantity - cap
     end
@@ -432,8 +432,8 @@ local function ResolveCurrencyMetadata(currencyID)
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     if not info then return nil end
 
-    local maxQ = info.maxQuantity or 0
-    local maxWeekly = info.maxWeeklyQuantity or 0
+    local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
+    local maxWeekly = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
     -- Dawncrests / Coffer Key Shards: maxQuantity = season cap, maxWeeklyQuantity = weekly cap.
     -- For display we want the weekly cap; for NormalizeQuantity we need the season cap.
     local effectiveMax
@@ -649,8 +649,8 @@ local function FetchCurrencyFromAPI(currencyID)
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     if not info then return nil end
 
-    local maxQ = info.maxQuantity or 0
-    local maxWeekly = info.maxWeeklyQuantity or 0
+    local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
+    local maxWeekly = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
     local normCap = NormalizationCapFromCurrencyInfo(currencyID, info)
     local rawQty = SafeCurrencyNumber(info.quantity)
     if rawQty == nil then rawQty = 0 end
@@ -738,7 +738,7 @@ end
 ---Merge API quantity with CURRENCY_DISPLAY_UPDATE payload when the client API is one frame stale
 ---(multi-currency loot: first ID updates, second still reads old values from GetCurrencyInfo).
 local function MergeCurrencyQuantityWithEventHint(oldQuantity, apiQuantity, eventHint)
-    local n = tonumber(apiQuantity) or 0
+    local n = SafeCurrencyNumber(apiQuantity) or 0
     if not eventHint then return n, false end
     local evDelta = SafeCurrencyNumber(eventHint.quantityChange)
     local evAbs = SafeCurrencyNumber(eventHint.absQuantity)
@@ -838,7 +838,7 @@ local function UpdateSingleCurrency(currencyID, eventHint)
             local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
             if not info or not IsSeasonProgressSplitCurrency(currencyID, info) then return end
             local teN = cd.totalEarned
-            local qN = tonumber(cd.quantity) or 0
+            local qN = SafeCurrencyNumber(cd.quantity) or 0
             if type(teN) == "number" and type(snapTe) == "number" and teN > snapTe then
                 local g = teN - snapTe
                 if g > 0 then
@@ -2089,12 +2089,23 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
         if accountCharacters and type(accountCharacters) == "table" then
             for j = 1, #accountCharacters do
                 local info = accountCharacters[j]
-                if info.characterName and info.quantity then
-                    table.insert(apiChars, {
-                        name = info.characterName,
-                        guid = info.characterGUID,
-                        quantity = info.quantity
-                    })
+                local qty = SafeCurrencyNumber(info.quantity)
+                if qty ~= nil then
+                    local cName = info.characterName
+                    if not cName or (issecretvalue and issecretvalue(cName)) then
+                        cName = nil
+                    end
+                    local cGuid = info.characterGUID
+                    if cGuid and (issecretvalue and issecretvalue(cGuid)) then
+                        cGuid = nil
+                    end
+                    if cName or cGuid then
+                        table.insert(apiChars, {
+                            name = cName,
+                            guid = cGuid,
+                            quantity = qty,
+                        })
+                    end
                 end
             end
         end

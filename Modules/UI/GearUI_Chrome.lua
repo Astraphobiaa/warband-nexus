@@ -10,6 +10,7 @@ local FontManager = ns.FontManager
 local GearFact = ns.UI and ns.UI.Factory
 local format = string.format
 local floor = math.floor
+local issecretvalue = issecretvalue
 
 local Chrome = {}
 ns.GearUI_Chrome = Chrome
@@ -177,9 +178,12 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
     end
 
     local name = (charData and charData.name) or ""
+    if issecretvalue and issecretvalue(name) then name = "" end
     local realm = (charData and charData.realm) or ""
+    if issecretvalue and issecretvalue(realm) then realm = "" end
     if realm ~= "" and ns.Utilities and ns.Utilities.FormatRealmName then
         realm = ns.Utilities:FormatRealmName(realm) or realm
+        if issecretvalue and issecretvalue(realm) then realm = "" end
     end
 
     local nameFs = FontManager and FontManager.CreateFontString
@@ -204,7 +208,11 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
         realmFs:SetText(realm ~= "" and realm or "")
     end
 
-    local avgIlvl = charData and tonumber(charData.itemLevel) or 0
+    local rawIlvl = charData and charData.itemLevel
+    local avgIlvl = 0
+    if rawIlvl ~= nil and not (issecretvalue and issecretvalue(rawIlvl)) then
+        avgIlvl = tonumber(rawIlvl) or 0
+    end
     if avgIlvl > 0 then
         local pillW = L.HERO_ILVL_PILL_W or 88
         local pillH = L.HERO_ILVL_PILL_H or 22

@@ -5,6 +5,8 @@
 
 local ADDON_NAME, ns = ...
 
+local issecretvalue = issecretvalue
+
 -- Debug print helper
 local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
@@ -93,6 +95,10 @@ function SearchResultsRenderer:RenderEmptyState(addon, container, searchText, ta
     end
     
     local isSearch = searchText and searchText ~= ""
+    if isSearch and issecretvalue and issecretvalue(searchText) then
+        isSearch = false
+        searchText = nil
+    end
     
     if isSearch and ns.UI_ShowSearchEmptyStateCard then
         return ns.UI_ShowSearchEmptyStateCard(container, searchText, 0, { fillParent = true })

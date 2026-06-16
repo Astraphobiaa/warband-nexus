@@ -405,6 +405,7 @@ end
 
 local function PvE_StripMarkupForMeasure(text)
     if not text or text == "" then return "" end
+    if issecretvalue and issecretvalue(text) then return "" end
     local s = tostring(text)
     s = s:gsub("|T.-|t", "@@@")
     s = s:gsub("|A.-|a", "@@@")

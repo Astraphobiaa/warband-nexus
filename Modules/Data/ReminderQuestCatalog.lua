@@ -87,11 +87,16 @@ function M.ClearRowCache()
     rowCache = {}
 end
 
+local function SafeSortKey(s)
+    if not s or s == "" or (issecretvalue and issecretvalue(s)) then return "" end
+    return s:lower()
+end
+
 local function CmpTitle(a, b)
-    local za = (a and a.zone) or ""
-    local zb = (b and b.zone) or ""
-    if za ~= zb then return za:lower() < zb:lower() end
-    return ((a and a.title) or ""):lower() < ((b and b.title) or ""):lower()
+    local za = SafeSortKey(a and a.zone)
+    local zb = SafeSortKey(b and b.zone)
+    if za ~= zb then return za < zb end
+    return SafeSortKey(a and a.title) < SafeSortKey(b and b.title)
 end
 
 ---@return table[] { questID, title, zone }

@@ -197,7 +197,7 @@ local function ApplyItemLinkTooltipContext(itemLink, itemID, linkLevel, speciali
             itemLink = select(2, GetItemInfo(itemID))
         end
     end
-    if not itemLink or itemLink == "" then return itemLink end
+    if itemLink == nil or itemLink == "" then return itemLink end
     if issecretvalue and issecretvalue(itemLink) then return itemLink end
 
     local hs, he = itemLink:find("|Hitem:", 1, true)

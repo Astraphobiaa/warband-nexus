@@ -13,6 +13,13 @@ local E = Constants.EVENTS
 local issecretvalue = issecretvalue
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
+---@return string|nil text safe for :find/:match/:gsub (nil when secret or empty)
+local function SafeTextForStringOps(text)
+    if not text or text == "" then return nil end
+    if issecretvalue and issecretvalue(text) then return nil end
+    return text
+end
+
 -- Unique AceEvent handler identity for PlansManager
 local PlansManagerEvents = {}
 
@@ -667,8 +674,8 @@ function WarbandNexus:GetPlanDisplayName(plan)
         if name and name ~= "" then return name end
     elseif plan.type == "title" and plan.titleID then
         if GetTitleName then
-            local rawTitle = GetTitleName(plan.titleID)
-            if rawTitle and rawTitle ~= "" then
+            local rawTitle = SafeTextForStringOps(GetTitleName(plan.titleID))
+            if rawTitle then
                 return rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
             end
         end
@@ -709,8 +716,9 @@ end
 function WarbandNexus:GetPlanDisplaySource(plan)
     if not plan then return "" end
     local function IsPlaceholderSource(sourceText)
-        if type(sourceText) ~= "string" then return true end
-        local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
+        local safe = SafeTextForStringOps(sourceText)
+        if not safe then return true end
+        local s = safe:gsub("^%s+", ""):gsub("%s+$", "")
         if s == "" then return true end
         local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
         local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
@@ -720,7 +728,8 @@ function WarbandNexus:GetPlanDisplaySource(plan)
     -- Achievement descriptions can be resolved from API.
     if plan.type == "achievement" and plan.achievementID then
         local _, _, _, _, _, _, _, description = GetAchievementInfo(plan.achievementID)
-        if description and description ~= "" then return description end
+        local safeDesc = SafeTextForStringOps(description)
+        if safeDesc then return safeDesc end
     end
     -- Stored source takes precedence when present.
     if plan.source and not IsPlaceholderSource(plan.source) then
@@ -995,7 +1004,7 @@ function WarbandNexus:AddPlan(planData)
     local planID = self.db.global.plansNextID or 1
     self.db.global.plansNextID = planID + 1
     
-    local sourceText = (type(planData.source) == "string") and planData.source or ""
+    local sourceText = SafeTextForStringOps(planData.source) or ""
     sourceText = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
     do
         local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
@@ -1167,8 +1176,9 @@ function WarbandNexus:UpdatePlanSources()
     if not plans then return end
     
     local function IsPlaceholderSource(sourceText)
-        if type(sourceText) ~= "string" then return true end
-        local s = sourceText:gsub("^%s+", ""):gsub("%s+$", "")
+        local safe = SafeTextForStringOps(sourceText)
+        if not safe then return true end
+        local s = safe:gsub("^%s+", ""):gsub("%s+$", "")
         if s == "" then return true end
         local unknownSource = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
         local sourceUnknown = (ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown"
@@ -1567,6 +1577,7 @@ end
 local SOURCE_KEYWORDS  -- lazy-init (locale must be loaded first)
 
 local function HasSourceKeyword(text)
+    text = SafeTextForStringOps(text)
     if not text then return false end
     if not SOURCE_KEYWORDS then
         SOURCE_KEYWORDS = BuildSourceKeywords()
@@ -1891,8 +1902,9 @@ end
     @return string - Clean text
 ]]
 function WarbandNexus:CleanSourceText(text)
-    if not text then return "" end
-    local result = text
+    local safe = SafeTextForStringOps(text)
+    if not safe then return "" end
+    local result = safe
     
     -- Convert WoW newline escape |n to actual newline FIRST
     result = result:gsub("|n", "\n")

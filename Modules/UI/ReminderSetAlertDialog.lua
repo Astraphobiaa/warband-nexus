@@ -990,7 +990,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
     f.planTitleFs:SetPoint("LEFT", titleLeft, "RIGHT", 8, 0)
 
     local pts = plan.points
-    if pts and tonumber(pts) and f.planPointsFs then
+    if pts and not (issecretvalue and issecretvalue(pts)) and tonumber(pts) and f.planPointsFs then
         f.planPointsFs:Show()
         local pf = (L and L["ACHIEVEMENT_POINTS_FORMAT"]) or (L and L["POINTS_FORMAT"]) or "%d pts"
         f.planPointsFs:SetText(string.format(pf, tonumber(pts)))

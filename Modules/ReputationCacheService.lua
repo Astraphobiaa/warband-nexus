@@ -189,9 +189,10 @@ local function ResolveFactionMetadata(factionID)
     -- GUARD: Do NOT cache if API returned nil/empty name.
     -- This means the data isn't loaded yet — return nil so HydrateFactionData
     -- uses the stored compact name instead. Next call will retry the API.
-    if not fData.name or fData.name == "" then
-        return nil
-    end
+    local metaName = fData.name
+    if metaName == nil then return nil end
+    if issecretvalue and issecretvalue(metaName) then return nil end
+    if metaName == "" then return nil end
     
     -- Determine type
     local factionType = "classic"

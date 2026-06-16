@@ -201,7 +201,7 @@ end
 ---@param itemName string The item/collectible name
 ---@return boolean
 local function WasRecentlyShownByName(itemName)
-    if not itemName then return false end
+    if not itemName or (issecretvalue and issecretvalue(itemName)) then return false end
     local blocked = RingBufferCheck(recentNotifications, "name:" .. itemName)
     if blocked then
         DebugPrintf("|cffff8800[WN NameDebounce]|r '%s' → BLOCKED (quick debounce)", itemName)
@@ -212,7 +212,7 @@ end
 ---Mark item name as recently shown (2s debounce)
 ---@param itemName string
 local function MarkAsShownByName(itemName)
-    if not itemName then return end
+    if not itemName or (issecretvalue and issecretvalue(itemName)) then return end
     RingBufferAdd(recentNotifications, "name:" .. itemName, NAME_DEBOUNCE_COOLDOWN)
 end
 
@@ -252,11 +252,11 @@ local Notify = {
     MarkAsNotified = MarkAsNotified,
     CollectiblePayloadObtainedBy = CollectiblePayloadObtainedBy,
     MarkPetNameBagCooldown = function(itemName)
-        if not itemName then return end
+        if not itemName or (issecretvalue and issecretvalue(itemName)) then return end
         RingBufferAdd(recentNotifications, "petname:" .. itemName, BAG_PET_NAME_COOLDOWN)
     end,
     IsPetNameBagCooldownActive = function(itemName)
-        if not itemName then return false end
+        if not itemName or (issecretvalue and issecretvalue(itemName)) then return false end
         return RingBufferCheck(recentNotifications, "petname:" .. itemName)
     end,
 }

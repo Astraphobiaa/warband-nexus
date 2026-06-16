@@ -843,6 +843,9 @@ function MigrationService:MigrateRealmSuffixRepairFromCharKey(db)
     end
     for charKey, charData in pairs(chars) do
         if type(charKey) == "string" and type(charData) == "table" and charData.name then
+            if issecretvalue and issecretvalue(charData.name) then
+                -- skip: cannot normalize secret roster names
+            else
             local nKey, rKey = Utilities:SplitCharacterKey(charKey)
             if nKey and rKey then
                 local nameNorm = tostring(charData.name):gsub("%s+", "")
@@ -857,6 +860,7 @@ function MigrationService:MigrateRealmSuffixRepairFromCharKey(db)
                         end
                     end
                 end
+            end
             end
         end
     end

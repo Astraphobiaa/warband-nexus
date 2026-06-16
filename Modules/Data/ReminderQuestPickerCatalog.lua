@@ -10,6 +10,7 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local issecretvalue = issecretvalue
 
 local M = {}
 ns.ReminderQuestPickerCatalog = M
@@ -28,16 +29,24 @@ local EVENT_GROUP_HEADER = {
 local sectionCache = nil
 local rowCache = {}
 
+local function SafeSortKey(s)
+    if not s or s == "" or (issecretvalue and issecretvalue(s)) then return "" end
+    return s:lower()
+end
+
 local function CmpTitle(a, b)
-    local za = (a and a.zone) or ""
-    local zb = (b and b.zone) or ""
-    if za ~= zb then return za:lower() < zb:lower() end
-    return ((a and a.title) or ""):lower() < ((b and b.title) or ""):lower()
+    local za = SafeSortKey(a and a.zone)
+    local zb = SafeSortKey(b and b.zone)
+    if za ~= zb then return za < zb end
+    return SafeSortKey(a and a.title) < SafeSortKey(b and b.title)
 end
 
 local function ResolveTitle(entry)
     if not entry then return "?" end
-    if entry.title and entry.title ~= "" then return entry.title end
+    local title = entry.title
+    if title and title ~= "" and not (issecretvalue and issecretvalue(title)) then
+        return title
+    end
     if entry.questID and RQC and RQC.ResolveQuestTitle then
         return RQC.ResolveQuestTitle(entry.questID) or ("Quest " .. tostring(entry.questID))
     end

@@ -20,7 +20,7 @@ local function NormalizeColonLabelSpacing(label)
     end
     if label == "" then return "" end
     if issecretvalue and issecretvalue(label) then
-        return label
+        return ""
     end
     local trimmed = label:match("^%s*(.-)%s*$") or label
     trimmed = trimmed:gsub("%s*:%s*$", "")
@@ -69,7 +69,7 @@ local function FormatNumber(number)
 end
 local function FormatTextNumbers(text)
     if not text or text == "" then return text end
-    if issecretvalue and issecretvalue(text) then return text end
+    if issecretvalue and issecretvalue(text) then return "" end
     
     -- Find all numbers (4+ digits) and format them
     -- Pattern matches whole numbers not already formatted (no dots inside)

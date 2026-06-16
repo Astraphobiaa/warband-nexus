@@ -167,6 +167,10 @@ end
 
 local UIMapType = Enum and Enum.UIMapType
 
+local function IsSecret(val)
+    return issecretvalue and val and issecretvalue(val)
+end
+
 local MAP_TREE_MAX_DEPTH = 48
 
 local function mergeTreeDepth(depthOut, mapID, depth)
@@ -184,7 +188,10 @@ local function getParentMapId(mid)
     if not id or id <= 0 or not C_Map or not C_Map.GetMapInfo then return nil end
     local ok, info = pcall(C_Map.GetMapInfo, id)
     if not ok or not info then return nil end
-    local p = tonumber(info.parentMapID)
+    local p = info.parentMapID
+    if p == nil or p == 0 then return nil end
+    if IsSecret(p) then return nil end
+    p = tonumber(p)
     if not p or p <= 0 or p == id then return nil end
     return p
 end
@@ -214,7 +221,11 @@ local function gatherDescendantIds(rootID, into, depthOut)
                 if ok and type(children) == "table" then
                     for i = 1, #children do
                         local ch = children[i]
-                        local cid = ch and tonumber(ch.mapID)
+                        local rawCid = ch and (ch.mapID or ch.mapId)
+                        if rawCid == nil or IsSecret(rawCid) then
+                            rawCid = nil
+                        end
+                        local cid = rawCid and tonumber(rawCid)
                         if cid and cid > 0 and cid ~= id then
                             local pc = getParentMapId(cid)
                             local parentOk = (d == 0 and pc == rid) or (d > 0 and pc == id)
@@ -282,8 +293,11 @@ local function firstZoneAncestorMapId(fromId)
         if info.mapType == UIMapType.Zone then
             return id
         end
-        local p = tonumber(info.parentMapID)
-        if not p or p <= 0 or p == id then return nil end
+        local p = info.parentMapID
+        if p == nil or p == 0 or p == id then return nil end
+        if IsSecret(p) then return nil end
+        p = tonumber(p)
+        if not p or p <= 0 then return nil end
         id = p
         guard = guard + 1
     end
@@ -318,8 +332,11 @@ local function uiMapStructuredUnderRoots(mid, apiRoots)
                 return false
             end
         end
-        local p = tonumber(info.parentMapID)
-        if not p or p <= 0 or p == id then return false end
+        local p = info.parentMapID
+        if p == nil or p == 0 or p == id then return false end
+        if IsSecret(p) then return false end
+        p = tonumber(p)
+        if not p or p <= 0 then return false end
         id = p
         guard = guard + 1
     end

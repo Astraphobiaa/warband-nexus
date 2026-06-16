@@ -91,7 +91,9 @@ end
 
 function M.FormatEasyAccessCharacterTitle(charRow, entry)
     local name = (entry and entry.name) or (charRow and charRow.name) or "?"
+    if issecretvalue and issecretvalue(name) then name = "?" end
     local realm = (entry and entry.realm) or (charRow and charRow.realm) or ""
+    if issecretvalue and issecretvalue(realm) then realm = "" end
     local classFile = (entry and entry.classFile) or (charRow and charRow.classFile) or "WARRIOR"
     local classHex = GetClassHex(classFile)
     if realm == "" then
@@ -107,6 +109,7 @@ end
 local NormalizeColonLabel = ns.UI_NormalizeColonLabelSpacing
     or function(label)
         if not label or label == "" then return "" end
+        if issecretvalue and issecretvalue(label) then return "" end
         local trimmed = label:match("^%s*(.-)%s*$") or label
         trimmed = trimmed:gsub("%s*:%s*$", "")
         return trimmed .. " : "

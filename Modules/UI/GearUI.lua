@@ -432,7 +432,7 @@ end
 --- English track names from Blizzard tooltip/API → locale (e.g. zhCN PVE_CREST_*).
 local function LocalizeUpgradeTrackName(name)
     if not name or name == "" then return name end
-    if issecretvalue and issecretvalue(name) then return name end
+    if issecretvalue and issecretvalue(name) then return "" end
     local L = ns.L
     if not L then return name end
     local trimmed = name:match("^%s*(.-)%s*$") or name

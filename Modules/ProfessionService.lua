@@ -1288,9 +1288,10 @@ end
 ]]
 -- Normalize to base profession name so equipment is keyed consistently (Alchemy, Tailoring, etc.).
 NormalizeProfessionNameForEquipment = function(name)
-    if not name or name == "" then return name end
-    local s = name:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("^Shadowlands ", "")
-    return (s ~= "" and s) or name
+    local safe = SafeAPIString(name)
+    if not safe or safe == "" then return nil end
+    local s = safe:gsub("^Midnight ", ""):gsub("^Khaz Algar ", ""):gsub("^Dragon Isles ", ""):gsub("^Shadowlands ", "")
+    return (s ~= "" and s) or safe
 end
 
 GetCurrentProfessionName = function()
@@ -1308,7 +1309,8 @@ GetCurrentProfessionName = function()
             raw = childInfos[1].parentProfessionName or childInfos[1].professionName
         end
     end
-    return raw and NormalizeProfessionNameForEquipment(raw) or nil
+    local safe = raw and SafeAPIString(raw) or nil
+    return safe and NormalizeProfessionNameForEquipment(safe) or nil
 end
 
 -- RECIPE SUMMARY DATA COLLECTION

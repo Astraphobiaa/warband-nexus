@@ -32,7 +32,7 @@ ns.Utilities = Utilities
 ---@return string|nil namePart Space-stripped name prefix
 ---@return string|nil realmPart Space-stripped realm suffix (may include hyphens, apostrophes)
 function Utilities:SplitCharacterKey(charKey)
-    if not charKey or charKey == "" then return nil, nil end
+    if charKey == nil or charKey == "" then return nil, nil end
     if issecretvalue and issecretvalue(charKey) then return nil, nil end
     local name, realm = tostring(charKey):match("^([^-]+)%-(.+)$")
     if not name or not realm then return nil, nil end
@@ -131,7 +131,7 @@ end
 ---@param charKey string Key from db.characters or UI (may be guid, Name-Realm, or spaced legacy)
 ---@return string Canonical storage key
 function Utilities:GetCanonicalCharacterKey(charKey)
-    if not charKey or charKey == "" then return charKey end
+    if charKey == nil or charKey == "" then return charKey end
     -- Never return a secret string: callers often do `GetCanonicalCharacterKey(k) or k` and would
     -- reintroduce the secret for downstream strsplit / equality / table indexing (ADDON_ACTION_FORBIDDEN).
     if issecretvalue and issecretvalue(charKey) then return nil end
@@ -660,7 +660,7 @@ end
 ---@param name string|nil
 ---@return boolean
 function Utilities:IsCofferKeyShardCurrency(currencyID, name)
-    if not name or name == "" then
+    if name == nil or name == "" then
         return false
     end
     if issecretvalue and issecretvalue(name) then

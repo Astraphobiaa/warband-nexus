@@ -29,6 +29,8 @@ end
 function M.FormatCharacterName(entry)
     local name = entry and entry.name or ""
     local realm = entry and entry.realm or ""
+    if issecretvalue and issecretvalue(name) then name = "" end
+    if issecretvalue and issecretvalue(realm) then realm = "" end
     if GetSettings().showRealmName and realm ~= "" then
         name = name .. " - " .. realm
     end
@@ -659,7 +661,13 @@ function M.PaintVaultTrackerColumnCells(cellGroup, opts)
 
     if showProg and nextThresh and nextThresh > 0 and fses[3] and fses[3].SetText then
         local progShown = math.min(tonumber(nextProg) or 0, nextThresh)
-        local slotText = fses[3]:GetText() or ""
+        local slotText = ""
+        if fses[3].GetText then
+            local rawSlotText = fses[3]:GetText()
+            if rawSlotText and not (issecretvalue and issecretvalue(rawSlotText)) then
+                slotText = rawSlotText
+            end
+        end
         fses[3]:SetText(slotText .. " |cffaaaaaa(" .. progShown .. "/" .. nextThresh .. ")|r")
     end
 end

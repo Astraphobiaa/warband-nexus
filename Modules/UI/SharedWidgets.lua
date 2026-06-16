@@ -4266,7 +4266,8 @@ ns.UI_GetCharKey = function(char)
         local rk = ns.Utilities:ResolveCharacterRowKey(char)
         if rk then return rk end
     end
-    if char._key and ns.Utilities.GetCanonicalCharacterKey then
+    if char._key and ns.Utilities.GetCanonicalCharacterKey
+        and not (issecretvalue and issecretvalue(char._key)) then
         local ck = ns.Utilities:GetCanonicalCharacterKey(char._key)
         if ck then return ck end
     end
@@ -4274,10 +4275,15 @@ ns.UI_GetCharKey = function(char)
     if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
         return g
     end
-    if ns.Utilities.GetCharacterKey and char.name and char.realm then
-        return ns.Utilities:GetCharacterKey(char.name, char.realm)
+    local n, r = char.name, char.realm
+    if ns.Utilities.GetCharacterKey and n and r
+        and not (issecretvalue and (issecretvalue(n) or issecretvalue(r))) then
+        return ns.Utilities:GetCharacterKey(n, r)
     end
-    return char._key
+    if char._key and not (issecretvalue and issecretvalue(char._key)) then
+        return char._key
+    end
+    return nil
 end
 
 --- Canonical subsidiary storage key (currency/PvE/gear caches). Mirrors VaultButton_Data.GetCurrentCharKey.
@@ -4289,7 +4295,8 @@ function ns.UI_GetSubsidiaryCharKey(optionalCharKey)
         local k = CS:ResolveSubsidiaryCharacterKey(WarbandNexus, optionalCharKey)
         if k then return k end
     end
-    if optionalCharKey and optionalCharKey ~= "" then
+    if optionalCharKey and optionalCharKey ~= ""
+        and not (issecretvalue and issecretvalue(optionalCharKey)) then
         if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
             return ns.Utilities:GetCanonicalCharacterKey(optionalCharKey) or optionalCharKey
         end
@@ -4453,7 +4460,7 @@ function ns.UI_LayoutTitleCardTextStack(textContainer, titleFs, subtitleFs, text
     local hasSub = false
     if subtitleFs then
         local subText = subtitleFs:GetText()
-        hasSub = subText ~= nil and subText ~= ""
+        hasSub = subText and not (issecretvalue and issecretvalue(subText)) and subText ~= ""
         subtitleFs:ClearAllPoints()
         if hasSub then
             subtitleFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -gap)
@@ -5511,7 +5518,8 @@ local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, la
         value:SetText(valueText)
         value:SetJustifyH("LEFT")
         value:SetWordWrap(false)
-        if type(valueText) ~= "string" or not valueText:find("|cff", 1, true) then
+        if type(valueText) ~= "string" or (issecretvalue and issecretvalue(valueText))
+            or not valueText:find("|cff", 1, true) then
             ns.UI_SetTextColorRole(value, "Normal")
         end
 

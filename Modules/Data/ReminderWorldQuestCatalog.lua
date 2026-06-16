@@ -6,6 +6,7 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local issecretvalue = issecretvalue
 
 local M = {}
 ns.ReminderWorldQuestCatalog = M
@@ -74,6 +75,7 @@ end
 function M.UpsertWorldQuest(questID, zoneKey, title, mapID)
     questID = tonumber(questID)
     if not questID or questID <= 0 then return end
+    if title and issecretvalue and issecretvalue(title) then title = nil end
     local cat = GetDbCatalog()
     if not cat or type(cat.worldQuests) ~= "table" then return end
     local row = cat.worldQuests[questID]

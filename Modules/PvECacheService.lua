@@ -56,7 +56,7 @@ end
 --- One SavedVariables bucket per logical character: normalize legacy/UI key spellings
 --- so imports, migration, and live API paths never split the same toon across multiple keys.
 local function CanonicalizePvEKey(charKey)
-    if not charKey or charKey == "" then return charKey end
+    if charKey == nil or charKey == "" then return charKey end
     if issecretvalue and issecretvalue(charKey) then return nil end
     if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
         local k = ns.Utilities:GetCanonicalCharacterKey(charKey)
@@ -610,8 +610,9 @@ end
 ---@return number|nil current
 ---@return number|nil weeklyMax
 local function ParseGildedStashFraction(text)
-    if not text or text == "" then return nil, nil end
+    if text == nil then return nil, nil end
     if issecretvalue and issecretvalue(text) then return nil, nil end
+    if text == "" then return nil, nil end
     local cur, max = text:match("(%d+)%s*/%s*(%d+)")
     if not cur then return nil, nil end
     return tonumber(cur), tonumber(max)
@@ -747,7 +748,7 @@ end
 local function ChatLootAuthorIsPlayer(author)
     local playerName = UnitName("player")
     if not playerName or (issecretvalue and issecretvalue(playerName)) then return false end
-    if not author or author == "" then return true end
+    if author == nil or author == "" then return true end
     if issecretvalue and issecretvalue(author) then return false end
     local authorBase = author:match("^([^%-]+)") or author
     return author == playerName or authorBase == playerName

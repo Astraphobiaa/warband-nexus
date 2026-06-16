@@ -702,8 +702,15 @@ function WarbandNexus:OnInitialize()
         local taintFrame = CreateFrame("Frame")
         taintFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
         taintFrame:SetScript("OnEvent", function(frame, event, addonName, blockedFunc)
+            if not addonName or (issecretvalue and issecretvalue(addonName)) then return end
             if addonName == ADDON_NAME then
-                ns.DebugChatPrint("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN event: " .. tostring(blockedFunc))
+                local blockedLabel = blockedFunc
+                if issecretvalue and blockedLabel and issecretvalue(blockedLabel) then
+                    blockedLabel = "<secret>"
+                else
+                    blockedLabel = tostring(blockedFunc)
+                end
+                ns.DebugChatPrint("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN event: " .. blockedLabel)
                 C_Timer.After(0.05, function()
                     for i = 1, STATICPOPUP_NUMDIALOGS or 4 do
                         local popup = _G["StaticPopup" .. i]

@@ -121,6 +121,9 @@ local function CollectQuestIDsOnMap(mapID, playerMap, seen, out, filterFn)
             for j = 1, #taskPOIs do
                 local qi = taskPOIs[j]
                 local qid = qi and (qi.questID or qi.questId)
+                if qid == nil or IsSecret(qid) then
+                    qid = nil
+                end
                 if qid then
                     tryAdd(qid, qi.mapID or qi.mapId or mapID)
                 end
@@ -132,8 +135,12 @@ local function CollectQuestIDsOnMap(mapID, playerMap, seen, out, filterFn)
         local ok, mapQuests = pcall(C_QuestLog.GetQuestsOnMap, mapID)
         if ok and type(mapQuests) == "table" then
             for _, qi in pairs(mapQuests) do
-                if qi and qi.questID then
-                    tryAdd(qi.questID, qi.mapID or mapID)
+                local qid = qi and qi.questID
+                if qid == nil or IsSecret(qid) then
+                    qid = nil
+                end
+                if qid then
+                    tryAdd(qid, qi.mapID or mapID)
                 end
             end
         end

@@ -58,7 +58,11 @@ local function EnsureZoneMapExpansion(zoneIndex)
         for ci = 1, #children do
             local child = children[ci]
             local childID = child and (child.mapID or child.mapId)
-            childID = tonumber(childID)
+            if childID == nil or IsSecret(childID) then
+                childID = nil
+            else
+                childID = tonumber(childID)
+            end
             if childID and childID > 0 and not seen[childID] then
                 seen[childID] = true
                 z.mapIDs[#z.mapIDs + 1] = childID
@@ -106,6 +110,11 @@ function INDEX.ResolveZoneIndexFromEmissaryTitle(title)
     if lower:find("hara'ti", 1, true) or lower:find("harati", 1, true) or lower:find("haranir", 1, true) then return 4 end
     if lower:find("singularity", 1, true) or lower:find("stormarion", 1, true) then return 6 end
     return nil
+end
+
+local function SafeTitleSortKey(title)
+    if not title or title == "" or IsSecret(title) then return "" end
+    return title:lower()
 end
 
 local function ResolveQuestTitle(questID, questInfo)
@@ -248,6 +257,9 @@ local function CollectWorldQuestsOnMap(mapID, zoneName, seen, out)
             for j = 1, #taskPOIs do
                 local qi = taskPOIs[j]
                 local qid = qi and (qi.questID or qi.questId)
+                if qid == nil or IsSecret(qid) then
+                    qid = nil
+                end
                 if qid then
                     tryAdd(qid, qi.mapID or qi.mapId or mapID, qi, "task")
                 end
@@ -259,8 +271,12 @@ local function CollectWorldQuestsOnMap(mapID, zoneName, seen, out)
         local ok, mapQuests = pcall(C_QuestLog.GetQuestsOnMap, mapID)
         if ok and type(mapQuests) == "table" then
             for _, qi in pairs(mapQuests) do
-                if qi and qi.questID then
-                    tryAdd(qi.questID, qi.mapID or mapID, qi, "questlog")
+                local qid = qi and qi.questID
+                if qid == nil or IsSecret(qid) then
+                    qid = nil
+                end
+                if qid then
+                    tryAdd(qid, qi.mapID or mapID, qi, "questlog")
                 end
             end
         end
@@ -392,8 +408,8 @@ function INDEX.CollectForZone(zoneIndex)
         local aa = a.isActive and 0 or 1
         local ab = b.isActive and 0 or 1
         if aa ~= ab then return aa < ab end
-        local ta = (a.title or ""):lower()
-        local tb = (b.title or ""):lower()
+        local ta = SafeTitleSortKey(a.title)
+        local tb = SafeTitleSortKey(b.title)
         return ta < tb
     end)
 
@@ -487,7 +503,12 @@ function INDEX.GetExpandedMapIDList()
         for ci = 1, #children do
             local child = children[ci]
             local childID = child and (child.mapID or child.mapId)
-            if childID then
+            if childID == nil or IsSecret(childID) then
+                childID = nil
+            else
+                childID = tonumber(childID)
+            end
+            if childID and childID > 0 then
                 walk(childID, depth + 1)
             end
         end

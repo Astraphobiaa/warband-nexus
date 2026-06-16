@@ -18,6 +18,7 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local issecretvalue = issecretvalue
 local FontManager = ns.FontManager  -- Centralized font management
 
 --- SharedWidgets sets `ns.UI_SPACING`; never capture nil at file load (TOC/embed order can defer assignment).
@@ -80,7 +81,14 @@ local function ApplyTooltipInk(fs, text, r, g, b)
         end
     end
     if ns.UI_ApplyFontStringPresentation then
-        ns.UI_ApplyFontStringPresentation(fs, text or (fs.GetText and fs:GetText()))
+        local presentationText = text
+        if presentationText == nil and fs.GetText then
+            local got = fs:GetText()
+            if not (issecretvalue and issecretvalue(got)) then
+                presentationText = got
+            end
+        end
+        ns.UI_ApplyFontStringPresentation(fs, presentationText)
     elseif FontManager and FontManager.RefreshInkAwareFont then
         FontManager:RefreshInkAwareFont(fs)
     end

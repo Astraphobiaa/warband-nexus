@@ -2509,7 +2509,8 @@ function Fns.ScanLootForItems(expectedDrops, cachedNumLoot, cachedSlotData)
             link = GetLootSlotLink and GetLootSlotLink(i)
             if link and issecretvalue and issecretvalue(link) then link = nil end
         end
-        if hasItem and link and type(link) == "string" then
+        if hasItem and link and type(link) == "string"
+            and not (issecretvalue and issecretvalue(link)) then
             -- GetItemInfoInstant's first return is item name, not ID — parse the hyperlink.
             local lootItemID = tonumber(link:match("|Hitem:(%d+):"))
             if lootItemID and expectedSet[lootItemID] then
@@ -4939,7 +4940,7 @@ function Fns.IsFishingSourceCompatible(sourceGUIDs)
     if not sourceGUIDs or #sourceGUIDs == 0 then return true end
     for i = 1, #sourceGUIDs do
         local srcGUID = sourceGUIDs[i]
-        if type(srcGUID) == "string" then
+        if type(srcGUID) == "string" and not (issecretvalue and issecretvalue(srcGUID)) then
             local typeStr = srcGUID:match("^(%a+)")
             local npcID = Fns.GetNPCIDFromGUID(srcGUID)
             if npcID and npcDropDB[npcID] then return false end
@@ -5126,6 +5127,7 @@ end
 
 function Fns.UnitGuidLooksLikeMobCorpse(guid)
     if type(guid) ~= "string" then return false end
+    if issecretvalue and issecretvalue(guid) then return false end
     return guid:match("^Creature") ~= nil or guid:match("^Vehicle") ~= nil
 end
 
@@ -5530,7 +5532,8 @@ Fns.GetAllLootSourceGUIDs = function()
     local inRaidForGo = false
     do
         local okII, inI, instType = pcall(IsInInstance)
-        if okII and inI and instType and not (issecretvalue and issecretvalue(instType)) and instType == "raid" then
+        if okII and inI and not (issecretvalue and issecretvalue(inI)) and inI
+            and instType and not (issecretvalue and issecretvalue(instType)) and instType == "raid" then
             inRaidForGo = true
         end
     end

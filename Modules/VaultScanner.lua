@@ -7,6 +7,8 @@
 
 local addonName, ns = ...
 
+local issecretvalue = issecretvalue
+
 -- Bail if already loaded
 if ns.VaultScanner then return end
 
@@ -32,6 +34,9 @@ local scannerFrame = CreateFrame("Frame")
 ---@return number Item level (0 if failed)
 local function GetItemLevelFromLink(itemLink)
     if not itemLink or itemLink == "" then
+        return 0
+    end
+    if issecretvalue and issecretvalue(itemLink) then
         return 0
     end
     

@@ -4,6 +4,7 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local issecretvalue = issecretvalue
 
 -- Illusion cache: built once per session, maps visualID and sourceID to illusionInfo
 local illusionCache = nil
@@ -145,6 +146,13 @@ CollectionRules.MOUNT = {
         -- 12.0.5: 13 return values; isUsable=#5, isCollected=#11
         local name, _, _, _, isUsable, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
         
+        if issecretvalue and name and issecretvalue(name) then
+            return {
+                canUse = false,
+                reason = (ns.L and ns.L["COLLECTION_RULE_INVALID_MOUNT"]) or "Invalid mount",
+                isCollected = false
+            }
+        end
         if not name then
             return {
                 canUse = false,
@@ -161,9 +169,16 @@ CollectionRules.MOUNT = {
             collected = true
         end
         
+        local canUse = false
+        if issecretvalue and isUsable and issecretvalue(isUsable) then
+            canUse = false
+        elseif isUsable == true then
+            canUse = true
+        end
+        
         local result = {
             isCollected = collected,
-            canUse = isUsable or false,
+            canUse = canUse,
             reason = ""
         }
         
@@ -191,6 +206,9 @@ CollectionRules.PET = {
         end
         
         local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
+        if issecretvalue and numOwned and issecretvalue(numOwned) then
+            return "KNOWN"
+        end
         return (numOwned and numOwned > 0) and "KNOWN" or "UNKNOWN"
     end,
     GetCharacterEligibility = function(speciesID)
@@ -199,7 +217,12 @@ CollectionRules.PET = {
         end
         
         local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
-        local isCollected = numOwned and numOwned > 0
+        local isCollected = false
+        if issecretvalue and numOwned and issecretvalue(numOwned) then
+            isCollected = true
+        elseif numOwned and numOwned > 0 then
+            isCollected = true
+        end
         
         -- Pets are account-wide and usable by all characters
         return {

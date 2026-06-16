@@ -995,8 +995,9 @@ function CharacterService:AddCustomCharacterSection(addon, displayName)
     self:EnsureCustomCharacterSectionsProfile(profile)
     local name = displayName
     if type(name) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(name) then return nil end
     name = name:match("^%s*(.-)%s*$") or ""
-    if name == "" or (issecretvalue and issecretvalue(name)) then return nil end
+    if name == "" then return nil end
     local id = self:GenerateCustomGroupId(profile)
     profile.characterCustomGroups[#profile.characterCustomGroups + 1] = { id = id, name = name }
     local lk = self:GetCustomGroupListKey(id)
@@ -1018,8 +1019,9 @@ function CharacterService:RenameCustomCharacterSection(addon, groupId, displayNa
     self:EnsureCustomCharacterSectionsProfile(profile)
     local name = displayName
     if type(name) ~= "string" then return false end
+    if issecretvalue and issecretvalue(name) then return false end
     name = name:match("^%s*(.-)%s*$") or ""
-    if name == "" or (issecretvalue and issecretvalue(name)) then return false end
+    if name == "" then return false end
     local groups = profile.characterCustomGroups
     for i = 1, #groups do
         if groups[i].id == groupId then

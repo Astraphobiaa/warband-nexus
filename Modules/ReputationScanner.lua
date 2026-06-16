@@ -61,21 +61,30 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
     
     -- Fetch base faction data
     local success, factionData = pcall(C_Reputation.GetFactionDataByID, factionID)
-    if not success or not factionData or not factionData.name then
+    if not success or not factionData then
         return nil
     end
-    
+    local factionName = factionData.name
+    if factionName == nil then return nil end
+    if issecretvalue and issecretvalue(factionName) then return nil end
+    if factionName == "" then return nil end
+
     -- Use the longer description between GetFactionDataByID and the pre-fetched index description
     local fullDescription = factionData.description or ""
-    if indexDescription and indexDescription ~= "" and #indexDescription > #fullDescription then
-        fullDescription = indexDescription
+    if issecretvalue and issecretvalue(fullDescription) then fullDescription = "" end
+    if indexDescription then
+        if issecretvalue and issecretvalue(indexDescription) then
+            indexDescription = nil
+        elseif indexDescription ~= "" and #indexDescription > #fullDescription then
+            fullDescription = indexDescription
+        end
     end
     
     -- Create result table with ALL API fields (exact field names from Blizzard)
     local result = {
         -- Base fields from GetFactionDataByID
         factionID = factionData.factionID or factionID,
-        name = factionData.name,
+        name = factionName,
         description = fullDescription,
         reaction = factionData.reaction,  -- Standing ID (1-8)
         currentStanding = factionData.currentStanding,

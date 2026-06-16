@@ -69,6 +69,7 @@ local function PetJournalBuildMaterializeStep(budgetMs, state)
             end
             EnsureBlizzardCollectionsLoaded()
             state.origSearch = (C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter()) or ""
+            if _iv and state.origSearch and _iv(state.origSearch) then state.origSearch = "" end
             if not InCombatLockdown() then
                 pcall(function()
                     if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
@@ -210,6 +211,7 @@ local function ToyBoxBuildMaterializeStep(budgetMs, state, addon)
             state.origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
             state.origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
             state.origFilterString = (C_ToyBox.GetFilterString and C_ToyBox.GetFilterString()) or ""
+            if _iv and state.origFilterString and _iv(state.origFilterString) then state.origFilterString = "" end
             if InCombatLockdown() then
                 state.toyToSource = {}
                 state.phase = "prep_list_filters"

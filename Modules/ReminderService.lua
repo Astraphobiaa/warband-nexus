@@ -1103,12 +1103,23 @@ local function SafeGetInstanceInfo()
     else
         difficultyID = tonumber(difficultyID)
     end
-    instanceID = tonumber(instanceID)
+    local safeInstType = instType
+    if issecretvalue and issecretvalue(safeInstType) then
+        safeInstType = nil
+    else
+        safeInstType = tonumber(safeInstType)
+    end
+    local safeInstanceID = instanceID
+    if issecretvalue and issecretvalue(safeInstanceID) then
+        safeInstanceID = nil
+    else
+        safeInstanceID = tonumber(safeInstanceID)
+    end
     return {
         name = name,
-        instanceType = tonumber(instType),
+        instanceType = safeInstType,
         difficultyID = difficultyID,
-        instanceID = instanceID,
+        instanceID = safeInstanceID,
     }
 end
 
@@ -1122,8 +1133,9 @@ local function SafeUIMapDisplayName(mapID)
     local ok, info = pcall(C_Map.GetMapInfo, id)
     if not ok or not info then return nil end
     local name = info.name
-    if not name or name == "" then return nil end
+    if name == nil then return nil end
     if issecretvalue and issecretvalue(name) then return nil end
+    if name == "" then return nil end
     return name
 end
 
