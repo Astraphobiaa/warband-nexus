@@ -1276,6 +1276,7 @@ L["DAILY_QUEST_TRACKER"] = "일일 퀘스트 추적기"
 -- Achievement Popup
 L["ACHIEVEMENT_NOT_COMPLETED"] = "미완료"
 L["ACHIEVEMENT_POINTS_FORMAT"] = "%d 점"
+L["ACHIEVEMENT_TOAST_ACTION_FORMAT"] = "%s - %s"
 L["ADD_PLAN"] = "추가"
 L["PLANNED"] = "계획됨"
 

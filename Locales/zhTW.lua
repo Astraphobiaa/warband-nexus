@@ -1276,6 +1276,7 @@ L["DAILY_QUEST_TRACKER"] = "每日任務追蹤"
 -- Achievement Popup
 L["ACHIEVEMENT_NOT_COMPLETED"] = "未完成"
 L["ACHIEVEMENT_POINTS_FORMAT"] = "%d 點"
+L["ACHIEVEMENT_TOAST_ACTION_FORMAT"] = "%s - %s"
 L["ADD_PLAN"] = "新增"
 L["PLANNED"] = "計畫中"
 

@@ -830,7 +830,8 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
     local displayName = self:GetPlanDisplayName(plan)
     local displayIcon = self:GetPlanDisplayIcon(plan)
     
-    -- Send plan completion event
+    -- Achievement plans may also fire WN_COLLECTIBLE_OBTAINED (achievement toast) in the same
+    -- burst; both toasts are intentional (plan lane + achievement lane stay separate).
     self:SendMessage(E.PLAN_COMPLETED, {
         planType = plan.type,
         name = displayName,

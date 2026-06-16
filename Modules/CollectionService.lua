@@ -4,6 +4,13 @@
     collectionStore (SV) + collectionCache.owned (RAM); incremental EnsureCollectionData scans.
     Emits WN_COLLECTIBLE_OBTAINED, WN_COLLECTION_SCAN_COMPLETE, WN_COLLECTION_SCAN_PROGRESS.
 
+    NOTIFICATION FLOW (toast lane; display in NotificationManager):
+      NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED / bag scan -> dedup -> WN_COLLECTIBLE_OBTAINED
+      ACHIEVEMENT_EARNED + Replace Achievement ON -> AddAlert hook (ShowAchievementNotification)
+        + ScheduleAchievementToastFallback if AddAlert never fires
+      ACHIEVEMENT_EARNED + Replace OFF -> Blizzard AddAlert only (suppressToast on WN_COLLECTIBLE_OBTAINED)
+    Currency/reputation: ChatMessageService only (not WN_COLLECTIBLE_OBTAINED).
+
     WN_NONUI_UI: `bagScanFrame` (and similar) are background event hosts (`CreateFrame`); Browse UI stays in Modules/UI.
 ]]
 
@@ -2148,7 +2155,6 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     if not skipNotification then
         Notify.MarkAsNotified("mount", mountID)
         Notify.MarkAsShownByName(name)
-        Notify.MarkAsPermanentlyNotified("mount", mountID)
 
         -- "What a grind" chat line when cumulative drop probability > 70%.
         -- Honors hideTryCounterChat; gracefully no-ops when rate/itemID unknown.
@@ -2312,7 +2318,6 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     if not skipNotification then
         Notify.MarkAsNotified("pet", speciesID)
         Notify.MarkAsShownByName(notifyPetName)
-        Notify.MarkAsPermanentlyNotified("pet", speciesID)
 
         self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             obtainedBy = Notify.CollectiblePayloadObtainedBy(),
@@ -2383,7 +2388,6 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     if not skipNotification then
         Notify.MarkAsNotified("toy", itemID)
         Notify.MarkAsShownByName(name)
-        Notify.MarkAsPermanentlyNotified("toy", itemID)
 
         self:SendMessage(E.COLLECTIBLE_OBTAINED, {
             type = "toy",
@@ -2463,10 +2467,7 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
             
             -- Remove from uncollected cache if present
             self:RemoveFromUncollected("illusion", visualID)
-            
-            -- Persistent dedup (survives logout)
-            Notify.MarkAsPermanentlyNotified("illusion", visualID)
-            
+
             -- Fire notification event
             self:SendMessage(E.COLLECTIBLE_OBTAINED, {
                 type = "illusion",
@@ -2645,7 +2646,6 @@ if E and E.COLLECTIBLE_OBTAINED then
             if data.fromTryCounter then
                 Notify.MarkAsNotified(t, id)
                 if data.name then Notify.MarkAsShownByName(data.name) end
-                Notify.MarkAsPermanentlyNotified(t, id)
             end
         end
         InvalidateCollectionCountsCache(_, data)
@@ -2888,6 +2888,9 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         -- makes ShowAchievementNotification return true (handled) without showing, while the hook
         -- swallows Blizzard's frame — user sees no popup at all.
         DebugPrint("|cff888888[WN CollectionService]|r Defer achievement toast to AddAlert replacement")
+        if Notify.ScheduleAchievementToastFallback then
+            Notify.ScheduleAchievementToastFallback(achievementID)
+        end
     elseif not Notify.WasRecentlyNotified("achievement", achievementID) then
         Notify.MarkAsNotified("achievement", achievementID)
         local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)
@@ -2925,10 +2928,16 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
     -- show Blizzard's popup instead of swallowing the alert entirely.
     local notif = self.db and self.db.profile and self.db.profile.notifications
     if not notif or notif.enabled == false then return false end
-    -- Recently shown by WN: report handled (true) — falling back to Blizzard here
-    -- would double-pop the same achievement from the second alert system.
-    if Notify.WasRecentlyNotified("achievement", achievementID) then return true end
-    Notify.MarkAsNotified("achievement", achievementID)
+    if notif.hideBlizzardAchievementAlert ~= true then return false end
+    if notif.showAchievementNotifications == false then return false end
+    -- Session dedup: only report handled when toast was displayed or permanently recorded.
+    if Notify.WasRecentlyNotified("achievement", achievementID) then
+        if Notify.WasAchievementToastDisplayed(achievementID)
+            or Notify.WasAlreadyNotified("achievement", achievementID) then
+            return true
+        end
+        -- Stale session mark without a displayed toast — allow retry / fallback.
+    end
     local ok, _aid, achName, achPoints, _c, _m, _d, _y, _desc, _flags, achIcon = pcall(GetAchievementInfo, achievementID)
     if not ok then achName = nil; achIcon = nil; achPoints = nil end
     if issecretvalue then
@@ -2942,7 +2951,6 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         displayName = (ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement"
         displayIcon = nil
     end
-    Notify.MarkAsPermanentlyNotified("achievement", achievementID)
     local accountFirstEarn = true
     local okEarn, _, _, _, completed, _, _, _, _, _, _, _, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
     if okEarn and completed == true and wasEarnedByMe == false then
@@ -2957,7 +2965,7 @@ function WarbandNexus:ShowAchievementNotification(achievementID)
         obtainedBy = Notify.CollectiblePayloadObtainedBy(),
         accountFirstEarn = accountFirstEarn,
     })
-    return true
+    return Notify.WasAchievementToastDisplayed and Notify.WasAchievementToastDisplayed(achievementID) or false
 end
 
 -- Register achievement earned event for cache invalidation

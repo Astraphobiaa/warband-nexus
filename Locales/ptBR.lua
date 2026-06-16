@@ -1276,6 +1276,7 @@ L["DAILY_QUEST_TRACKER"] = "Rastreador de missões diárias"
 -- Achievement Popup
 L["ACHIEVEMENT_NOT_COMPLETED"] = "Não concluído"
 L["ACHIEVEMENT_POINTS_FORMAT"] = "%d pontos"
+L["ACHIEVEMENT_TOAST_ACTION_FORMAT"] = "%s - %s"
 L["ADD_PLAN"] = "Adicionar"
 L["PLANNED"] = "Planejado"
 

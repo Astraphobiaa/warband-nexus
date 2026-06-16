@@ -1276,6 +1276,7 @@ L["DAILY_QUEST_TRACKER"] = "Трекер ежедневных заданий"
 -- Achievement Popup
 L["ACHIEVEMENT_NOT_COMPLETED"] = "Не выполнено"
 L["ACHIEVEMENT_POINTS_FORMAT"] = "%d очк."
+L["ACHIEVEMENT_TOAST_ACTION_FORMAT"] = "%s - %s"
 L["ADD_PLAN"] = "Добавить"
 L["PLANNED"] = "Запланировано"
 

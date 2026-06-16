@@ -279,7 +279,6 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
                 if collectible.type == "pet" and collectible.itemID == collectible.collectibleID then
                     Notify.MarkPetNameBagCooldown(collectible.itemName)
                 end
-                Notify.MarkAsPermanentlyNotified(collectible.type, collectible.collectibleID)
 
                 if self.SendMessage then
                     self:SendMessage(E.COLLECTIBLE_OBTAINED, {

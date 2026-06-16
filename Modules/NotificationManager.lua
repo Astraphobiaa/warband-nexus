@@ -2,6 +2,13 @@
     Warband Nexus - Notification Manager
     Handles in-game notifications and reminders
 
+    NOTIFICATION FLOW:
+      WN_COLLECTIBLE_OBTAINED dispatch -> OnCollectibleObtained -> Notify -> ShowModalNotification (queue max 6)
+      WN_PLAN_COMPLETED / WN_VAULT_* / WN_QUEST_COMPLETED -> handler -> Notify
+      WN_SHOW_REMINDER_TOAST -> OnShowReminderToast
+      Replace Achievement ON: Blizzard AddAlert hook -> CollectionService:ShowAchievementNotification
+      Currency/reputation: ChatMessageService only (not toast lane)
+
     WN_FACTORY: Changelog popup scroll-child + themed close use `ns.UI.Factory` / ApplyVisuals; toast layering
     (effects/backdrop/icon z-order) stays plain `CreateFrame`; screen flash overlay remains an intentional fullscreen host.
 ]]
@@ -304,8 +311,8 @@ end
 local function NM_ResolveToastFxSize(toastHost, toastWidth, toastHeight)
     local w = toastHost:GetWidth() or toastHost._toastFxWidth or toastWidth or 0
     local h = toastHost:GetHeight() or toastHost._toastFxHeight or toastHeight or 0
-    if w < 1 then w = toastWidth or toastHost._toastFxWidth or 400 end
-    if h < 1 then h = toastHeight or toastHost._toastFxHeight or 88 end
+    if w < 1 then w = toastWidth or toastHost._toastFxWidth or 360 end
+    if h < 1 then h = toastHeight or toastHost._toastFxHeight or 64 end
     return w, h
 end
 
@@ -658,21 +665,16 @@ local function DequeueAlert()
     return nextConfig
 end
 
--- Alert positioning constants
-local ALERT_HEIGHT = 88       -- Full achievement toast height
-local ALERT_HEIGHT_COMPACT = 88  -- Compact notification lane (collectibles, etc.) â€” wide frame
-local ALERT_GAP = 10          -- Pixel gap between stacked alerts
-local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP  -- Legacy: total slot spacing (98px)
--- Full + compact notification width (achievement / collector lane)
-local ALERT_WIDTH_FIXED = 400
--- Progress / criteria / To-Do reminder: outer width resolved at show time via GetBlizzardProgressAlertToastWidth().
--- Height is fitted per toast (stacked header / title / detail) between min and max.
-local ALERT_HEIGHT_PROGRESS_MIN = 68
--- Allow wrapped title + up to 3-line body + optional detail without clipping (dynamic height from GetStringHeight).
-local ALERT_HEIGHT_PROGRESS_MAX = 120
-local ALERT_HEIGHT_PROGRESS = 74
--- Reference width used to scale progress-lane icon column when matching a narrower Blizzard criteria bar.
-local ALERT_PROGRESS_LAYOUT_REF_WIDTH = 400
+-- Alert positioning constants (tighter than default Blizzard ~76px; plan/loot use fixed full/compact lane)
+local ALERT_HEIGHT = 64
+local ALERT_HEIGHT_COMPACT = 64
+local ALERT_GAP = 6
+local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP
+local ALERT_WIDTH_FIXED = 360
+local ALERT_HEIGHT_PROGRESS_MIN = 56
+local ALERT_HEIGHT_PROGRESS_MAX = 96
+local ALERT_HEIGHT_PROGRESS = 60
+local ALERT_PROGRESS_LAYOUT_REF_WIDTH = 360
 -- Left inset inside the toast so the icon column matches full compact lane breathing room (criteria felt flush to border).
 local ALERT_PROGRESS_ICON_LEADING_PAD = 10
 
@@ -703,7 +705,7 @@ local function GetBlizzardAlertFramePosition()
     end
     local fLeft, fTop = f:GetLeft(), f:GetTop()
     if not fLeft or not fTop then return nil, nil, nil end
-    local w = f:GetWidth() or 400
+    local w = f:GetWidth() or ALERT_WIDTH_FIXED
     local uiw = UIParent:GetWidth()
     local uiTop = UIParent:GetTop()
     local centerX = fLeft + (w / 2)
@@ -1086,11 +1088,11 @@ function WarbandNexus:ShowModalNotification(config)
         -- Progress lane: icon column scales with Blizzard criteria bar width (ref = wide compact at 400px).
         local refW = ALERT_PROGRESS_LAYOUT_REF_WIDTH
         local ICON_SLOT_WIDTH_COMPACT = laneUsesProgressSizing
-            and math.max(52, math.floor(72 * popupWidthCompact / refW + 0.5))
-            or 62
+            and math.max(46, math.floor(62 * popupWidthCompact / refW + 0.5))
+            or 54
         local iconSizeCompact = laneUsesProgressSizing
-            and math.max(36, math.floor(54 * popupWidthCompact / refW + 0.5))
-            or 42
+            and math.max(32, math.floor(48 * popupWidthCompact / refW + 0.5))
+            or 38
         local laneIconLeadingPad = laneUsesProgressSizing and ALERT_PROGRESS_ICON_LEADING_PAD or 0
         local contentFrameCompactW = popupWidthCompact - ICON_SLOT_WIDTH_COMPACT - laneIconLeadingPad
         local compactPopup = (ToastFactory and ToastFactory.CreateToastHost)
@@ -1264,7 +1266,7 @@ function WarbandNexus:ShowModalNotification(config)
             local h2 = nameLine:GetStringHeight()
             local h3 = detailLine and detailLine:GetStringHeight() or 0
             local stackH = h1 + gapMid + h2 + (detailLine and (gapDetail + h3) or 0)
-            local padV = 8
+            local padV = 6
             local newH = math.min(ALERT_HEIGHT_PROGRESS_MAX, math.max(ALERT_HEIGHT_PROGRESS_MIN, math.ceil(stackH + padV * 2)))
 
             compactPopup:SetHeight(newH)
@@ -1272,7 +1274,7 @@ function WarbandNexus:ShowModalNotification(config)
             contentFrameCompact:SetHeight(newH)
             compactPopup._alertHeight = newH
 
-            local padTop = math.max(6, (newH - stackH) / 2)
+            local padTop = math.max(4, (newH - stackH) / 2 + 2)
             progressLine:ClearAllPoints()
             nameLine:ClearAllPoints()
             progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, -padTop)
@@ -1282,15 +1284,21 @@ function WarbandNexus:ShowModalNotification(config)
                 detailLine:SetPoint("TOPLEFT", nameLine, "BOTTOMLEFT", 0, -gapDetail)
             end
         else
-            local line1Y, line2Y = -20, -42
-            progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line1Y)
             progressLine:SetWidth(textUseW)
-            nameLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, line2Y)
             nameLine:SetWidth(textUseW)
             nameLine:SetWordWrap(true)
             nameLine:SetMaxLines(2)
             progressLine:SetWordWrap(true)
             progressLine:SetMaxLines(2)
+            local gapMid = 3
+            local h1 = progressLine:GetStringHeight()
+            local h2 = nameLine:GetStringHeight()
+            local stackH = h1 + gapMid + h2
+            local padTop = math.max(4, (COMPACT_HEIGHT - stackH) / 2 + 2)
+            progressLine:ClearAllPoints()
+            nameLine:ClearAllPoints()
+            progressLine:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", textPad, -padTop)
+            nameLine:SetPoint("TOPLEFT", progressLine, "BOTTOMLEFT", 0, -gapMid)
         end
         
         if config.playSound then
@@ -1373,7 +1381,7 @@ function WarbandNexus:ShowModalNotification(config)
     local popupWidthFull = ALERT_WIDTH_FIXED
     
     -- WoW Achievement-style: container = icon slot (left) + content frame (text).
-    local ICON_SLOT_WIDTH = 62  -- 14 pad + 42 icon + 6 gap
+    local ICON_SLOT_WIDTH = 54
     local contentFrameWidth = popupWidthFull - ICON_SLOT_WIDTH
     
     local popup = (ToastFactory and ToastFactory.CreateToastHost)
@@ -1411,10 +1419,10 @@ function WarbandNexus:ShowModalNotification(config)
     iconSlot:SetSize(ICON_SLOT_WIDTH, ALERT_HEIGHT)
     iconSlot:SetPoint("LEFT", popup, "LEFT", 0, 0)
     
-    local iconSize = 42
+    local iconSize = 38
     local icon = iconSlot:CreateTexture(nil, "ARTWORK", nil, 0)
     icon:SetSize(iconSize, iconSize)
-    icon:SetPoint("LEFT", iconSlot, "LEFT", 14, 0)
+    icon:SetPoint("LEFT", iconSlot, "LEFT", 10, 0)
     if iconAtlas and iconAtlas ~= "" then
         icon:SetAtlas(iconAtlas)
     else
@@ -1429,7 +1437,7 @@ function WarbandNexus:ShowModalNotification(config)
     end
     
     local iconBling = iconSlot:CreateTexture(nil, "OVERLAY", nil, 7)
-    iconBling:SetSize(64, 64)
+    iconBling:SetSize(52, 52)
     iconBling:SetPoint("CENTER", icon, "CENTER", 0, 0)
     iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
     iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
@@ -1538,10 +1546,10 @@ function WarbandNexus:ShowModalNotification(config)
     local textAreaWidth = math.max(40, contentFrameWidth - 20)
     
     -- Font metrics (adjusted for better centering)
-    local smallFontHeight = 13  -- Small font actual height
-    local mediumFontHeight = 14  -- Medium font actual height
-    local largeFontHeight = 16  -- Large font actual height
-    local lineSpacing = 4
+    local smallFontHeight = 12
+    local mediumFontHeight = 13
+    local largeFontHeight = 15
+    local lineSpacing = 3
     
     -- Determine layout
     local showCategory = categoryText and categoryText ~= ""
@@ -1560,9 +1568,9 @@ function WarbandNexus:ShowModalNotification(config)
         totalHeight = totalHeight + ((lineCount - 1) * lineSpacing)
     end
     
-    -- Vertical: text block centered in the toast panel.
-    -- Use negative offset so block sits in the middle; -8 matches compact toast visual balance.
-    local startY = totalHeight / 2 - 8
+    -- Vertical: text block centered in the toast panel (more negative = nudge block down).
+    local textVerticalBias = -7
+    local startY = (totalHeight / 2) + textVerticalBias
     
     -- LINE 1: Category (optional)
     -- NOTE: All text FontStrings use OVERLAY sublevel 7 to render above
@@ -1984,6 +1992,13 @@ function WarbandNexus:InitializeNotificationListeners()
             self:ApplyBlizzardAchievementAlertSuppression()
         end
     end)
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        C_Timer.After(0, function()
+            if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+            end
+        end)
+    end)
 end
 
 ---Shorten Blizzard's long criteria description to a display name (e.g. "Player Has Opened all X" -> "X").
@@ -2014,6 +2029,40 @@ end
 
 local function GetNotificationProfileDb()
     return WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+end
+
+---Central toast gate: master enabled + per-channel toggles.
+---@param channel string "achievement"|"loot"|"plan"|"vault"|"quest"|"reminder"
+---@param lootType string|nil mount/pet/toy/... when channel is loot
+---@return boolean
+function WarbandNexus:CanShowToast(channel, lootType)
+    local db = GetNotificationProfileDb()
+    if not db or not db.enabled then return false end
+    if channel == "achievement" then
+        return db.hideBlizzardAchievementAlert == true and db.showAchievementNotifications ~= false
+    elseif channel == "loot" then
+        if not db.showLootNotifications then return false end
+        if lootType then
+            local typeToggleMap = {
+                mount = "showMountNotifications",
+                pet = "showPetNotifications",
+                toy = "showToyNotifications",
+                transmog = "showTransmogNotifications",
+                illusion = "showIllusionNotifications",
+                title = "showTitleNotifications",
+            }
+            local toggleKey = typeToggleMap[lootType]
+            if toggleKey and db[toggleKey] == false then return false end
+        end
+        return true
+    elseif channel == "plan" or channel == "quest" then
+        return true
+    elseif channel == "vault" then
+        return db.showVaultReminder ~= false
+    elseif channel == "reminder" then
+        return db.showPlanReminderToast ~= false
+    end
+    return true
 end
 
 ---Replace Achievement Popup ON => WN alerts; OFF => Blizzard only (no WN achievement/criteria toasts).
@@ -2371,6 +2420,15 @@ function TestLootFireAchievementAddAlert(addon, achievementID, criteriaIndex)
     return pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID)
 end
 
+---Production Blizzard achievement alert fallback (when WN replace mode cannot show a toast).
+function WarbandNexus:InvokeBlizzardAchievementAddAlert(achievementID, criteriaIndex)
+    if not achievementID or type(achievementID) ~= "number" then return false end
+    if issecretvalue and issecretvalue(achievementID) then return false end
+    TestLootEnsureAchievementAlertUI(self)
+    local ok = TestLootFireAchievementAddAlert(self, achievementID, criteriaIndex)
+    return ok == true
+end
+
 function TestLootResolveAchievementWithCriteria(preferredID)
     local tryIDs = { 6, 7, 8, 11, 12, 60981, 40752 }
     if preferredID then
@@ -2395,9 +2453,10 @@ function WarbandNexus:OnShowCriteriaProgressMessage(_, payload)
     TryDispatchCriteriaProgressToast(payload.achievementID, payload.criteriaIndex)
 end
 
----Dedicated To-Do reminder toast lane (ReminderService ActivateReminder â†’ WN_SHOW_REMINDER_TOAST).
+---Dedicated To-Do reminder toast lane (ReminderService ActivateReminder -> WN_SHOW_REMINDER_TOAST).
 function WarbandNexus:OnShowReminderToast(_, payload)
     if not payload or not payload.data then return end
+    if not self:CanShowToast("reminder") then return end
     self:ShowModalNotification(payload.data)
 end
 
@@ -2492,6 +2551,29 @@ function WarbandNexus:PlayScreenFlash(duration)
     f.fadeAnim:Play()
 end
 
+local CollectNotify = ns.CollectionNotify
+
+---Record toast display ack + permanent dedup after modal is queued (not at emit time).
+local function MarkCollectibleToastAcknowledged(data)
+    if not CollectNotify or not data or not data.type or not data.id then return end
+    local t, id = data.type, data.id
+    if t == "achievement" then
+        if CollectNotify.MarkAchievementToastDisplayed then
+            CollectNotify.MarkAchievementToastDisplayed(id)
+        end
+        if CollectNotify.ClearPendingAchievementToast then
+            CollectNotify.ClearPendingAchievementToast(id)
+        end
+        if CollectNotify.MarkAsNotified then
+            CollectNotify.MarkAsNotified(t, id)
+        end
+    end
+    local permanentTypes = { mount = true, pet = true, toy = true, illusion = true, achievement = true, title = true }
+    if permanentTypes[t] and CollectNotify.MarkAsPermanentlyNotified then
+        CollectNotify.MarkAsPermanentlyNotified(t, id)
+    end
+end
+
 ---Collectible obtained handler (mount/pet/toy/achievement/title/illusion)
 function WarbandNexus:OnCollectibleObtained(event, data)
     if not data or not data.type then return end
@@ -2510,47 +2592,18 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         data.type or "nil",
         displayName or "nil",
         tostring(data.id or "nil"))
-    
-    -- Check if loot notifications are enabled
-    if not self.db or not self.db.profile or not self.db.profile.notifications then
-        NotifyDebug("|cffff6600BLOCKED: notifications table missing|r")
-        return
-    end
-    
-    if not self.db.profile.notifications.enabled then
-        NotifyDebug("|cffff6600BLOCKED: notifications.enabled = false|r")
-        return
-    end
 
-    -- Replace Achievement Popup: OFF => Blizzard classic only (never WN achievement toast).
-    if data.type == "achievement" and not self.db.profile.notifications.hideBlizzardAchievementAlert then
-        NotifyDebug("|cffff6600BLOCKED: achievement (Blizzard classic mode)|r")
-        return
-    end
-
-    -- Loot master + per-type toggles (achievement in replace mode uses hideBlizzardAchievementAlert only).
-    if data.type ~= "achievement" then
-        if not self.db.profile.notifications.showLootNotifications then
-            NotifyDebug("|cffff6600BLOCKED: showLootNotifications = false|r")
+    if data.type == "achievement" then
+        if not self:CanShowToast("achievement") then
+            NotifyDebug("|cffff6600BLOCKED: achievement toast (settings)|r")
             return
         end
-
-        local typeToggleMap = {
-            mount = "showMountNotifications",
-            pet = "showPetNotifications",
-            toy = "showToyNotifications",
-            transmog = "showTransmogNotifications",
-            illusion = "showIllusionNotifications",
-            title = "showTitleNotifications",
-        }
-        local toggleKey = typeToggleMap[data.type]
-        if toggleKey and self.db.profile.notifications[toggleKey] == false then
-            NotifyDebug("|cffff6600BLOCKED: %s = false|r", toggleKey)
-            return
-        end
+    elseif not self:CanShowToast("loot", data.type) then
+        NotifyDebug("|cffff6600BLOCKED: loot toast (settings)|r")
+        return
     end
 
-    -- TryCounter fires on loot; CollectionService fires on NEW_MOUNT / journal â€” same mount, two toasts.
+    -- TryCounter fires on loot; CollectionService fires on NEW_MOUNT / journal — same mount, two toasts.
     -- Normalize mount itemID â†’ mountID so both payloads share one dedupe key.
     local lootToastDedupeKey = BuildCollectibleLootToastDedupeKey(data)
     if lootToastDedupeKey then
@@ -2621,7 +2674,8 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         end
         local doneMsg = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!"
         local ptsFmt = (ns.L and ns.L["ACHIEVEMENT_POINTS_FORMAT"]) or "%d pts"
-        overrides.action = string.format("%s  Â·  %s", doneMsg, string.format(ptsFmt, pts))
+        local actionFmt = (ns.L and ns.L["ACHIEVEMENT_TOAST_ACTION_FORMAT"]) or "%s - %s"
+        overrides.action = string.format(actionFmt, doneMsg, string.format(ptsFmt, pts))
     end
     -- Farmed drop obtained: keep notification on screen longer for the "yeeey" moment
     if hasTryCount then
@@ -2629,6 +2683,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     end
     -- Intentionally omit data.obtainedBy from toast body (Collections Recent still uses it elsewhere).
     self:Notify(data.type, displayName, data.icon, overrides)
+    MarkCollectibleToastAcknowledged(data)
     if lootToastDedupeKey then
         lastCollectibleLootToastShownAt[lootToastDedupeKey] = GetTime()
     end
@@ -2650,8 +2705,9 @@ end
 ---Plan completed handler
 function WarbandNexus:OnPlanCompleted(event, data)
     if not data or not data.name then return end
-    
-    -- Use planType icon fallback chain: data.icon â†’ planType category icon â†’ plan default
+    if not self:CanShowToast("plan") then return end
+
+    -- Use planType icon fallback chain: data.icon -> planType category icon -> plan default
     local icon = data.icon or CATEGORY_ICONS[data.planType] or CATEGORY_ICONS.plan
     self:Notify("plan", data.name, icon)
 end
@@ -2677,6 +2733,7 @@ local QUEST_CATEGORIES = {
 ---Vault checkpoint completed handler (individual progress gain)
 function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     if not data or not data.characterName or not data.category or not data.progress then return end
+    if not self:CanShowToast("vault") then return end
     
     local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local thresholds = cat.thresholds or {1, 4, 8}
@@ -2696,6 +2753,7 @@ end
 ---Vault slot completed handler
 function WarbandNexus:OnVaultSlotCompleted(event, data)
     if not data or not data.characterName or not data.category then return end
+    if not self:CanShowToast("vault") then return end
 
     local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local threshold = data.threshold or 0
@@ -2712,6 +2770,7 @@ end
 ---Vault plan fully completed handler
 function WarbandNexus:OnVaultPlanCompleted(event, data)
     if not data or not data.characterName then return end
+    if not self:CanShowToast("vault") then return end
     
     self:Notify("vault", string.format((ns.L and ns.L["WEEKLY_VAULT_PLAN_FORMAT"]) or "Weekly Vault Plan - %s", data.characterName), nil, {
         iconAtlas = "greatVault-whole-normal",
@@ -2722,6 +2781,7 @@ end
 ---Quest completed handler
 function WarbandNexus:OnQuestCompleted(event, data)
     if not data or not data.characterName or not data.questTitle then return end
+    if not self:CanShowToast("quest") then return end
     
     local cat = QUEST_CATEGORIES[data.category] or {name = (ns.L and ns.L["QUEST_LABEL"]) or "Quest:", atlas = "questlog-questtypeicon-heroic"}
     
@@ -2733,15 +2793,8 @@ end
 
 ---Vault reward available handler
 function WarbandNexus:OnVaultRewardAvailable(event, data)
-    -- Check if vault notifications are enabled
-    if not self.db or not self.db.profile or not self.db.profile.notifications then
-        return
-    end
-    
-    if not self.db.profile.notifications.showVaultReminder then
-        return
-    end
-    
+    if not self:CanShowToast("vault") then return end
+
     self:Notify("vault", (ns.L and ns.L["WEEKLY_VAULT_READY"]) or "Weekly Vault Ready!", CATEGORY_ICONS.vault, {
         action = (ns.L and ns.L["UNCLAIMED_REWARDS"]) or "You have unclaimed rewards",
     })
@@ -3024,9 +3077,53 @@ function WarbandNexus:TestNotificationEvents(type, id)
         self:Print("|cffffcc00/wn testevents quest|r - Test quest completion event")
         self:Print("|cffffcc00/wn testevents reputation|r - Test reputation gain event")
         self:Print("|cffffcc00/wn testevents reputation valeera|r - Test Valeera Sanguinar (delve companion) rep message")
+        self:Print("|cffffcc00/wn testevents achievementfallback [id]|r - ACHIEVEMENT_EARNED without AddAlert (replace fallback)")
+        self:Print("|cffffcc00/wn testevents queueflood|r - 8 plan toasts (queue drain, max 6 visible)")
         self:Print("|cff888888Examples:|r")
         self:Print("|cff888888  /wn testevents plan 60981|r")
         self:Print("|cff888888  /wn testevents collectible 460|r")
+        return
+    end
+
+    -- Replace-mode achievement fallback: fire ACHIEVEMENT_EARNED only (no AddAlert); expect WN toast ~1.25s
+    if type == "achievementfallback" or type == "achfallback" then
+        local achievementID = tonumber(id) or 6
+        local okInfo, name = pcall(GetAchievementInfo, achievementID)
+        if not okInfo or not name then
+            self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
+            return
+        end
+        local db = self.db and self.db.profile and self.db.profile.notifications
+        if not db or not db.hideBlizzardAchievementAlert then
+            self:Print("|cffff8800Replace Achievement Popup must be ON for this test.|r")
+            return
+        end
+        self:Print("|cff00ccffAchievement fallback test:|r " .. tostring(name) .. " (ID " .. achievementID .. ")")
+        if self.OnAchievementEarned then
+            self:OnAchievementEarned("ACHIEVEMENT_EARNED", achievementID)
+        end
+        self:Print("|cff888888Watch for WN toast within ~1.25s (ScheduleAchievementToastFallback).|r")
+        return
+    end
+
+    -- Queue flood: 8 toasts enqueued; all should appear (6 visible, rest after dismiss)
+    if type == "queueflood" or type == "queue" then
+        if not self:CanShowToast("plan") then
+            self:Print("|cffff8800Notifications disabled; enable master toggle first.|r")
+            return
+        end
+        for i = 1, 8 do
+            local n = i
+            C_Timer.After((n - 1) * 0.08, function()
+                if WarbandNexus and WarbandNexus.Notify then
+                    WarbandNexus:Notify("plan", "Queue flood test " .. n, nil, {
+                        playSound = false,
+                        autoDismiss = 10,
+                    })
+                end
+            end)
+        end
+        self:Print("|cff00ff00Queue flood: 8 plan toasts scheduled (max 6 visible at once).|r")
         return
     end
     
