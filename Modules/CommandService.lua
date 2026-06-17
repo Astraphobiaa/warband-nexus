@@ -37,6 +37,7 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
     addon:Print("  |cff00ccff/wn notif|r — " .. ((ns.L and ns.L["CMD_NOTIF"]) or "Test notification popups (no debug mode)"))
+    addon:Print("  |cff00ccff/wn alerttest|r — " .. ((ns.L and ns.L["CMD_ALERTTEST"]) or "Fire all toast types (stack QA)"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
 end
 
@@ -466,6 +467,13 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cff00ff00[WN] Try counter loot debug ENABLED. Open any loot (dumpster, chest, corpse) — you should see [WN-TryCounter] lines in chat.|r")
         else
             addon:Print("|cffff8800[WN] Try counter loot debug DISABLED.|r")
+        end
+        return
+
+    elseif cmd == "alerttest" or cmd == "alerttests" then
+        local _, typeArg = addon:GetArgs(input, 2)
+        if addon.TestAlertTest then
+            addon:TestAlertTest(typeArg)
         end
         return
 

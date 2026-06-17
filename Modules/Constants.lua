@@ -388,6 +388,8 @@ local Constants = {
     -- Compact achievement-style lane: existing default for collector-style toasts.
     NOTIFICATION_SOUND_PROGRESS = 44294,
     NOTIFICATION_SOUND_COMPACT_DEFAULT = 44295,
+    -- Full earned / rare drop celebration (UI achievement toast kit when SOUNDKIT unavailable).
+    NOTIFICATION_SOUND_CELEBRATION = 8565,
 }
 
 -- Export to namespace
