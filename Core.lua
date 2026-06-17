@@ -350,7 +350,7 @@ local defaults = {
             showIllusionNotifications = true,  -- Show illusion notifications
             showAchievementNotifications = true, -- Show achievement notifications
             showCriteriaProgressNotifications = true, -- Small toast when achievement criteria complete (Progress X/Y + criteria name)
-            hideBlizzardAchievementAlert = true, -- Hide Blizzard's default achievement popup (use ours instead)
+            hideBlizzardAchievementAlert = true, -- Warband achievement popups ON (WN themed); false = Blizzard native alerts only
             showReputationGains = true,        -- Show reputation gain chat messages
             showCurrencyGains = true,          -- Show currency gain chat messages
             popupDuration = 5,                 -- Popup auto-dismiss in seconds (Blizzard default ~5s)

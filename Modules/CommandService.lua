@@ -36,6 +36,7 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
     addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
+    addon:Print("  |cff00ccff/wn notif|r — " .. ((ns.L and ns.L["CMD_NOTIF"]) or "Test notification popups (no debug mode)"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
 end
 
@@ -468,8 +469,23 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
+    elseif cmd == "notif" or cmd == "notifications" then
+        local _, typeArg, idArg, stepArg = addon:GetArgs(input, 4)
+        if addon.RunNotificationSlashCommand then
+            addon:RunNotificationSlashCommand(typeArg, idArg, stepArg)
+        end
+        return
+
     elseif cmd == "testloot" or cmd == "testnotif" then
         local _, typeArg, idArg, stepArg = addon:GetArgs(input, 4)
+        if addon.RunNotificationSlashCommand then
+            local sub = typeArg and SafeSlashLower(typeArg) or nil
+            if sub == "stack" or sub == "earn" or sub == "progress" or sub == "earned"
+                or sub == "help" or sub == "?" or not sub then
+                addon:RunNotificationSlashCommand(typeArg, idArg, stepArg)
+                return
+            end
+        end
         if addon.TestLootNotification then
             addon:TestLootNotification(typeArg, idArg, stepArg)
         end

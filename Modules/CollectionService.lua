@@ -6,9 +6,9 @@
 
     NOTIFICATION FLOW (toast lane; display in NotificationManager):
       NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED / bag scan -> dedup -> WN_COLLECTIBLE_OBTAINED
-      ACHIEVEMENT_EARNED + Replace Achievement ON -> AddAlert hook (ShowAchievementNotification)
+      ACHIEVEMENT_EARNED + Warband achievement popups ON -> AddAlert hook (ShowAchievementNotification)
         + ScheduleAchievementToastFallback if AddAlert never fires
-      ACHIEVEMENT_EARNED + Replace OFF -> Blizzard AddAlert only (suppressToast on WN_COLLECTIBLE_OBTAINED)
+      ACHIEVEMENT_EARNED + Warband popups OFF -> Blizzard AddAlert only (suppressToast on WN_COLLECTIBLE_OBTAINED)
     Currency/reputation: ChatMessageService only (not WN_COLLECTIBLE_OBTAINED).
 
     WN_NONUI_UI: `bagScanFrame` (and similar) are background event hosts (`CreateFrame`); Browse UI stays in Modules/UI.
@@ -2875,14 +2875,14 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     end
     -- Emit collectible toast only for a genuinely new completion (store already had .collected skips spam).
     -- AddAlert hook may still run; MarkAsNotified here prevents duplicate toast when priorCollected.
-    -- Toast: Replace mode uses AddAlert replacement; classic mode uses Blizzard AddAlert only.
-    local replaceAlerts = self.db and self.db.profile and self.db.profile.notifications
-        and self.db.profile.notifications.hideBlizzardAchievementAlert
+    -- Toast: Warband achievement popups ON uses AddAlert replacement; OFF uses Blizzard AddAlert only.
+    local useWarbandPopups = ns.NotificationPresentation
+        and ns.NotificationPresentation.UseWarbandAchievementPopups()
     if priorAchievementCollected then
         Notify.MarkAsNotified("achievement", achievementID)
         Notify.MarkAsPermanentlyNotified("achievement", achievementID)
         DebugPrint("|cff888888[WN CollectionService]|r Skip achievement toast (already completed in collection store)")
-    elseif replaceAlerts then
+    elseif useWarbandPopups then
         -- Defer toast to NotificationManager's AddAlert hook (ShowAchievementNotification).
         -- Do NOT MarkAsNotified here: ACHIEVEMENT_EARNED often fires before AddAlert; pre-marking
         -- makes ShowAchievementNotification return true (handled) without showing, while the hook
@@ -2903,7 +2903,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         local displayName = achName or ((ns.L and ns.L["HIDDEN_ACHIEVEMENT"]) or "Hidden Achievement")
         local displayIcon = achIcon
         Notify.MarkAsPermanentlyNotified("achievement", achievementID)
-        -- Classic mode (Replace OFF): Blizzard's own popup is the visible alert; the
+        -- Classic mode (Warband popups OFF): Blizzard's own popup is the visible alert; the
         -- message still feeds try-counter/recent-ring/caches but must not ALSO toast
         -- (it double-popped). suppressToast skips only the popup in NotificationManager.
         self:SendMessage(E.COLLECTIBLE_OBTAINED, {
@@ -2919,17 +2919,13 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     end
 end
 
----Called from AddAlert hook when "Replace Achievement Popup" is on. Builds payload, marks notified, sends WN_COLLECTIBLE_OBTAINED.
+---Called from AddAlert hook when Warband achievement popups are ON.
 ---@return boolean shown false when the WN toast will NOT appear — the AddAlert hook then falls back to the Blizzard popup
 function WarbandNexus:ShowAchievementNotification(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return false end
     if issecretvalue and issecretvalue(achievementID) then return false end
-    -- Notifications master switch off: WN toast can never appear; tell the hook to
-    -- show Blizzard's popup instead of swallowing the alert entirely.
-    local notif = self.db and self.db.profile and self.db.profile.notifications
-    if not notif or notif.enabled == false then return false end
-    if notif.hideBlizzardAchievementAlert ~= true then return false end
-    if notif.showAchievementNotifications == false then return false end
+    local NP = ns.NotificationPresentation
+    if not NP or not NP.CanShowWarbandAchievementEarnedToast() then return false end
     -- Session dedup: only report handled when toast was displayed or permanently recorded.
     if Notify.WasRecentlyNotified("achievement", achievementID) then
         if Notify.WasAchievementToastDisplayed(achievementID)

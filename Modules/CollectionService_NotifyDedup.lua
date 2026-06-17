@@ -273,6 +273,8 @@ end
 local function ScheduleAchievementToastFallback(achievementID)
     if not achievementID or type(achievementID) ~= "number" then return end
     if issecretvalue and issecretvalue(achievementID) then return end
+    local NP = ns.NotificationPresentation
+    if not NP or not NP.UseWarbandAchievementPopups() then return end
     pendingAchievementToast[achievementID] = true
     C_Timer.After(ACHIEVEMENT_TOAST_FALLBACK_SEC, function()
         if not pendingAchievementToast[achievementID] then return end
