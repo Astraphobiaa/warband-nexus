@@ -34,7 +34,7 @@ local Constants = {
     
     -- EXPANSION TARGETING
     
-    CURRENT_EXPANSION_INTERFACE = 120005,   -- Midnight 12.0.5 (## Interface in TOC; must match WarbandNexus.toc)
+    CURRENT_EXPANSION_INTERFACE = 120007,   -- Midnight 12.0.7 (## Interface in TOC; must match WarbandNexus.toc)
     CURRENT_EXPANSION_NAME = "Midnight",    -- Used for filtering profession content to latest expansion
     
     -- CACHE VERSIONS

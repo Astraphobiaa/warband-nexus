@@ -670,7 +670,7 @@ local PLANS_BROWSE_CARD_CHUNK = 8
 local COLLECTED_BROWSE_FETCH_LIMIT = 99999
 
 local PLANS_BROWSE_STORE_CATEGORIES = {
-    mount = true, pet = true, toy = true, illusion = true, title = true,
+    mount = true, pet = true, toy = true, achievement = true, illusion = true, title = true,
 }
 
 local function RunChunkedPlansBrowseCardPaint(opts)
@@ -1241,6 +1241,26 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             item.isPlanned = self:IsAchievementPlanned(item.id)
         end
         local achResults = MergePlansBrowseResults(resultsCollected, resultsUncollected, showPlannedBrowse, showCompletedBrowse)
+        if #achResults == 0 and PlansBrowseCategoryStoreEmpty("achievement") then
+            if (ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading) or categoryState.isLoading then
+                if parent._plansAchBrowseState then
+                    parent._plansAchBrowseState._achOuterScrollActive = false
+                end
+                local loadingStateData = {
+                    isLoading = true,
+                    loadingProgress = categoryState.loadingProgress or 0,
+                    currentStage = categoryState.currentStage or ((ns.L and ns.L["LOADING_ACHIEVEMENTS"]) or "Loading achievements..."),
+                }
+                local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+                if UI_CreateLoadingStateCard then
+                    local displayName = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements"
+                    return UI_CreateLoadingStateCard(parent, yOffset, loadingStateData,
+                        format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
+                end
+            end
+            ns.RequestPlansBrowseCollectionEnsure("achievement")
+            return DrawPlansBrowseLoadingCard(parent, yOffset, "achievement", categoryState)
+        end
         local achievementHeight = self:DrawAchievementsTable(parent, achResults, yOffset, width, searchText)
         if parent and parent.SetHeight then
             parent:SetHeight(math.max(achievementHeight, 1))

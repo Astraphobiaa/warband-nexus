@@ -1,5 +1,5 @@
 --[[
-    Set Alert → zone picker: expansion sections grouped by live content kind (Interface 120005+).
+    Set Alert → zone picker: expansion sections grouped by live content kind (Interface 120007+).
 
     Classification: Modules/Data/UIMapContentKind.lua — Enum.UIMapType + Encounter Journal
     (EJ_GetInstanceForMap → EJ_GetInstanceInfo … isRaid; see warcraft.wiki.gg/API_EJ_GetInstanceForMap).

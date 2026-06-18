@@ -78,6 +78,58 @@ local function GetCategoryAchievementListCount(categoryID)
     return select(1, GetCategoryNumAchievements(categoryID)) or 0
 end
 
+---GetCategoryList() is empty until achievement APIs hydrate (often after login).
+local ACHIEVEMENT_CATEGORY_LIST_MIN_IDS = 40
+local achievementScanDeferAttempts = 0
+local ACHIEVEMENT_SCAN_DEFER_MAX_ATTEMPTS = 24
+
+local function AchievementCategoryListReady()
+    if not GetCategoryList then return false end
+    local list = GetCategoryList() or {}
+    return #list >= ACHIEVEMENT_CATEGORY_LIST_MIN_IDS
+end
+
+local function EnsurePlansAchievementLoadingState(isLoading)
+    if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
+    if not ns.PlansLoadingState.achievement then
+        ns.PlansLoadingState.achievement = { isLoading = false, loader = nil }
+    end
+    if isLoading == nil then return end
+    ns.PlansLoadingState.achievement.isLoading = isLoading
+    if isLoading then
+        ns.PlansLoadingState.achievement.loadingProgress = ns.PlansLoadingState.achievement.loadingProgress or 0
+        ns.PlansLoadingState.achievement.currentStage = ns.PlansLoadingState.achievement.currentStage
+            or ((ns.L and ns.L["LOADING_ACHIEVEMENTS"]) or "Loading achievements...")
+    end
+end
+
+local function SafeAchievementDisplayName(id, name)
+    if not id or (issecretvalue and issecretvalue(id)) then return nil end
+    if name and name ~= "" then
+        if issecretvalue and issecretvalue(name) then
+            return "ID:" .. tostring(id)
+        end
+        return name
+    end
+    return "ID:" .. tostring(id)
+end
+
+---GetAchievementInfo(categoryID, index[, includeAll]) — try includeAll=true first (journal parity).
+local function GetAchievementInfoByCategoryIndex(categoryID, achIndex)
+    if not GetAchievementInfo or not categoryID or not achIndex then return false end
+    local ok, id, name, points, completed, month, day, year, description, flags, icon, achRewardText =
+        pcall(GetAchievementInfo, categoryID, achIndex, true)
+    if ok and id and not (issecretvalue and issecretvalue(id)) then
+        return true, id, name, points, completed, month, day, year, description, flags, icon, achRewardText
+    end
+    ok, id, name, points, completed, month, day, year, description, flags, icon, achRewardText =
+        pcall(GetAchievementInfo, categoryID, achIndex)
+    if ok and id and not (issecretvalue and issecretvalue(id)) then
+        return true, id, name, points, completed, month, day, year, description, flags, icon, achRewardText
+    end
+    return false
+end
+
 -- CONSTANTS
 
 local Constants = ns.Constants
@@ -170,6 +222,30 @@ local collectionStore = {
 -- collectionData = collectionStore alias (GetAllMountsData etc. use collectionData)
 local collectionData = collectionStore
 
+---Full journal scan should persist thousands of rows; a tiny store means a failed/partial scan.
+local ACHIEVEMENT_STORE_MIN_TRUST = 250
+
+local function CountAchievementStoreEntries()
+    local store = collectionStore.achievement
+    if type(store) ~= "table" then return 0 end
+    local n = 0
+    for _ in pairs(store) do
+        n = n + 1
+    end
+    return n
+end
+
+local function IsAchievementStoreInadequate()
+    return CountAchievementStoreEntries() < ACHIEVEMENT_STORE_MIN_TRUST
+end
+
+local function SignalAchievementScanPipelineDone(sender, payload)
+    EnsurePlansAchievementLoadingState(false)
+    if Constants and Constants.EVENTS and sender and sender.SendMessage then
+        sender:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, payload or { category = "achievement" })
+    end
+end
+
 ---True when EnsureCollectionData would return immediately (SV version matches, store has all categories).
 ---Includes toy/pet count sanity vs journal totals (same rules as EnsureCollectionData).
 ---@return boolean
@@ -185,6 +261,9 @@ local function IsCollectionEnsureDataComplete(self)
     local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
     local needAchievementIncludeAllRescan = self.db.global and not self.db.global.wnAchievementDirectScanV2
     if not (versionOk and hasMounts and hasPets and hasToys and hasAchievements and hasTitles and hasIllusions and not needAchievementIncludeAllRescan) then
+        return false
+    end
+    if hasAchievements and IsAchievementStoreInadequate() then
         return false
     end
     if hasToys and C_ToyBox and C_ToyBox.GetNumToys then
@@ -224,6 +303,9 @@ end
 ---@return boolean
 function WarbandNexus:IsPlansBrowseCategoryStoreEmpty(category)
     if not category then return true end
+    if category == "achievement" and IsAchievementStoreInadequate() then
+        return true
+    end
     local tbl = collectionStore[category]
     return not tbl or next(tbl) == nil
 end
@@ -474,6 +556,10 @@ function WarbandNexus:InitializeCollectionCache()
     end
     collectionCache.lastScan = dbCache.lastScan or 0
     collectionCache.lastAchievementScan = dbCache.lastAchievementScan or 0
+
+    if IsAchievementStoreInadequate() then
+        collectionCache.lastAchievementScan = 0
+    end
 
     -- One-shot: force a fresh achievement scan when switching from includeAll=true to includeAll=false.
     -- includeAll=false is correct because GetCategoryList() returns all subcategories, and each
@@ -925,7 +1011,7 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     if not hasMounts or not hasPets or not hasToys then
         queue[#queue + 1] = "build"  -- BuildFullCollectionData (mounts, pets, toys)
     end
-    if (not hasAchievements) or needAchievementIncludeAllRescan then
+    if (not hasAchievements) or needAchievementIncludeAllRescan or IsAchievementStoreInadequate() then
         queue[#queue + 1] = "achievement"
     end
     if not (collectionStore.title and next(collectionStore.title)) then
@@ -1723,8 +1809,12 @@ end
 ---Get all achievements (complete + incomplete) for Collections UI. Uses cache from ScanAchievementsAsync.
 ---@return table[] Array of { id, name, icon, points, description, categoryID, collected }
 function WarbandNexus:GetAllAchievementsData()
-    if _allAchievementsMergedCache then
+    if _allAchievementsMergedCache and not IsAchievementStoreInadequate() then
         return _allAchievementsMergedCache
+    end
+    ClearAchievementMergedListCache()
+    if IsAchievementStoreInadequate() and self.ScanAchievementsAsync then
+        self:ScanAchievementsAsync()
     end
     local uncollected = self:GetUncollectedAchievements("", 999999) or {}
     local completed = self:GetCompletedAchievements("", 999999) or {}
@@ -3623,8 +3713,11 @@ COLLECTION_CONFIGS = {
             return allAchievements
         end,
         extract = function(item)
-            local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, item.categoryID, item.achIndex)
-            if not success or not id or not name then return nil end
+            local success, id, name, points, completed, month, day, year, description, flags, icon =
+                GetAchievementInfoByCategoryIndex(item.categoryID, item.achIndex)
+            if not success or not id then return nil end
+            local displayName = SafeAchievementDisplayName(id, name)
+            if not displayName then return nil end
             
             -- Get reward info
             local rewardItemID, rewardTitle
@@ -3651,7 +3744,7 @@ COLLECTION_CONFIGS = {
             
             return {
                 id = id,
-                name = name,
+                name = displayName,
                 icon = icon,
                 points = points,
                 description = description,
@@ -4985,15 +5078,43 @@ function WarbandNexus:ScanAchievementsAsync()
         timeSinceLastScan = math.huge  -- Force scan
     end
     
-    -- Check cooldown (5 minutes)
-    if timeSinceLastScan < 300 then
+    -- Check cooldown (5 minutes) — bypass when persisted store is empty/truncated
+    local forceRescan = IsAchievementStoreInadequate()
+    if timeSinceLastScan < 300 and not forceRescan then
     DebugPrintf("|cffffcc00[WN CollectionService]|r Achievement scan skipped (last scan %.0f seconds ago)", timeSinceLastScan)
+        SignalAchievementScanPipelineDone(self, { category = "achievement", skipped = true })
         return
     end
+
+    if not AchievementCategoryListReady() then
+        achievementScanDeferAttempts = achievementScanDeferAttempts + 1
+        if achievementScanDeferAttempts >= ACHIEVEMENT_SCAN_DEFER_MAX_ATTEMPTS then
+            achievementScanDeferAttempts = 0
+            DebugPrint("|cffff0000[WN CollectionService]|r GetCategoryList() still empty after defer — achievement scan aborted")
+            EnsurePlansAchievementLoadingState(false)
+            ns.CollectionLoadingState.isLoading = false
+            if Constants and Constants.EVENTS then
+                self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = "achievement", failed = true })
+            end
+            return
+        end
+        EnsurePlansAchievementLoadingState(true)
+        ns.CollectionLoadingState.isLoading = true
+        ns.CollectionLoadingState.loadingProgress = 0
+        ns.CollectionLoadingState.currentStage = (ns.L and ns.L["LOADING_ACHIEVEMENTS"]) or "Loading achievements..."
+        ns.CollectionLoadingState.currentCategory = "achievement"
+        DebugPrint("|cffffcc00[WN CollectionService]|r GetCategoryList() not ready — deferring achievement scan")
+        C_Timer.After(0.25, function()
+            self:ScanAchievementsAsync()
+        end)
+        return
+    end
+    achievementScanDeferAttempts = 0
     
     DebugPrint("|cff9370DB[WN CollectionService]|r Starting async achievement scan...")
     
     -- Update loading state (may already be set by GetUncollectedAchievements)
+    EnsurePlansAchievementLoadingState(true)
     ns.CollectionLoadingState.isLoading = true
     ns.CollectionLoadingState.loadingProgress = 0
     ns.CollectionLoadingState.currentStage = "Achievements"
@@ -5018,8 +5139,7 @@ function WarbandNexus:ScanAchievementsAsync()
 
         local categoryList = GetCategoryList()
         if not categoryList or #categoryList == 0 then
-    DebugPrint("|cffff0000[WN CollectionService]|r GetCategoryList() returned no categories")
-            coroutine.yield()
+    DebugPrint("|cffff0000[WN CollectionService]|r GetCategoryList() returned no categories during scan")
             return
         end
         
@@ -5029,8 +5149,8 @@ function WarbandNexus:ScanAchievementsAsync()
                 local numAchievements = GetCategoryAchievementListCount(categoryID)
 
                 for achIndex = 1, numAchievements do
-                    -- GetAchievementInfo with pcall protection
-                    local success, id, name, points, completed, month, day, year, description, flags, icon, achRewardText = pcall(GetAchievementInfo, categoryID, achIndex)
+                    local success, id, name, points, completed, month, day, year, description, flags, icon, achRewardText =
+                        GetAchievementInfoByCategoryIndex(categoryID, achIndex)
                     
                     -- Update progress (throttled to reduce event spam)
                     scannedCount = scannedCount + 1
@@ -5059,24 +5179,27 @@ function WarbandNexus:ScanAchievementsAsync()
                         end
                     end
                     
-                    if not success or not id or not name then
+                    if not success or not id then
                         -- Yield and continue
                     else
                         local rewardItemID, rewardTitle
                         local rewardSuccess, item, title = pcall(GetAchievementReward, id)
                         if rewardSuccess then
                             if type(item) == "number" then rewardItemID = item end
-                            if type(title) == "string" and title ~= "" then
+                            if type(title) == "string" and title ~= "" and not (issecretvalue and issecretvalue(title)) then
                                 rewardTitle = title
-                            elseif type(item) == "string" and item ~= "" then
+                            elseif type(item) == "string" and item ~= "" and not (issecretvalue and issecretvalue(item)) then
                                 rewardTitle = item
                             end
                         end
-                        if not rewardTitle and achRewardText and achRewardText ~= "" then
+                        if not rewardTitle and achRewardText and achRewardText ~= "" and not (issecretvalue and issecretvalue(achRewardText)) then
                             rewardTitle = achRewardText
                         end
 
-                        local displayName = (name and name ~= "") and name or ("ID:" .. tostring(id))
+                        local displayName = SafeAchievementDisplayName(id, name)
+                        if not displayName then
+                            -- skip secret id
+                        else
                         -- Store the achievement's ACTUAL category (not the iterator's parent category)
                         local realCategoryID = categoryID
                         if GetAchievementCategory then
@@ -5102,6 +5225,7 @@ function WarbandNexus:ScanAchievementsAsync()
                         else
                             collectionCache.uncollected.achievement[id] = displayName
                             totalAchievements = totalAchievements + 1
+                        end
                         end
                     end
                     
@@ -5131,10 +5255,18 @@ function WarbandNexus:ScanAchievementsAsync()
         -- Achievement-specific timestamp only. Writing the shared lastScan here made
         -- ScanCollection's 5-minute skip gate treat title/illusion caches as fresh and
         -- starve those scans right after an achievement pass.
-        collectionCache.lastAchievementScan = time()
+        local storedAchCount = CountAchievementStoreEntries()
+        if storedAchCount >= ACHIEVEMENT_STORE_MIN_TRUST then
+            collectionCache.lastAchievementScan = time()
+        else
+            collectionCache.lastAchievementScan = 0
+            DebugPrintf("|cffffcc00[WN CollectionService]|r Achievement scan stored only %d rows — will retry on next request", storedAchCount)
+        end
         
         -- Save to DB
+        self:SaveCollectionStore()
         self:SaveCollectionCache()
+        WipeUncollectedResultsCacheAndMergedAchievements()
 
         if self.db and self.db.global then
             self.db.global.wnAchievementDirectScanV2 = true
@@ -5241,39 +5373,40 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
     local store = collectionStore.achievement
     local hasData = store and next(store) ~= nil
 
-    if hasData then
-        local results = {}
-        local count = 0
-        for achID, d in pairs(store) do
-            if d and (d.collected == false or d.collected == nil) then
-                local name = d.name or ("ID:" .. tostring(achID))
-                if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
-                    local meta
-                    if d.icon or d.points then
-                        meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = false, categoryID = d.categoryID, rewardItemID = d.rewardItemID, rewardTitle = d.rewardTitle, rewardText = d.rewardTitle }
-                    else
-                        meta = self:ResolveCollectionMetadata("achievement", achID)
-                        if meta then meta.id = achID; meta.isCollected = false end
-                    end
-                    if meta and not meta.categoryID and GetAchievementCategory then
-                        meta.categoryID = GetAchievementCategory(achID)
-                    end
-                    if meta then
-                        results[#results + 1] = meta
-                        count = count + 1
-                        if limit and count >= limit then
-                            uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
-                            return results
-                        end
+    if not hasData then
+        EmitPlansBrowseCollectionEnsure("achievement")
+        return {}
+    end
+
+    local results = {}
+    local count = 0
+    for achID, d in pairs(store) do
+        if d and (d.collected == false or d.collected == nil) then
+            local name = d.name or ("ID:" .. tostring(achID))
+            if searchText == "" or CollectionNameMatchesSearch(name, searchText) then
+                local meta
+                if d.icon or d.points then
+                    meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = false, categoryID = d.categoryID, rewardItemID = d.rewardItemID, rewardTitle = d.rewardTitle, rewardText = d.rewardTitle }
+                else
+                    meta = self:ResolveCollectionMetadata("achievement", achID)
+                    if meta then meta.id = achID; meta.isCollected = false end
+                end
+                if meta and not meta.categoryID and GetAchievementCategory then
+                    meta.categoryID = GetAchievementCategory(achID)
+                end
+                if meta then
+                    results[#results + 1] = meta
+                    count = count + 1
+                    if limit and count >= limit then
+                        uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
+                        return results
                     end
                 end
             end
         end
-        uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
-        return results
     end
-
-    return {}
+    uncollectedResultsCache[cacheKey] = { r = results, t = GetTime() }
+    return results
 end
 
 ---Get completed achievements (UNIFIED: collectionStore-first). Collections shows collected only.

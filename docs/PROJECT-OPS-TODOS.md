@@ -2,7 +2,7 @@
 
 Branch: `chore/ops-deferred-final` (integration) · prior: `chore/ops-deferred-wave-1` (#42), widgets/SOA/UI/taint branches  
 Source: `PROJECT-CLEANUP-AUDIT.md`, Epic ABC (#39/#40), codebase inventory (2026-06-12)  
-Target: Midnight 12.0.1 (`Interface: 120005`)
+Target: Midnight 12.0.7 (`Interface: 120007`)
 
 ### Manual QA checklist (ops-048 / ops-050 / ops-051 / ops-054 / ops-055 — no CI runner)
 

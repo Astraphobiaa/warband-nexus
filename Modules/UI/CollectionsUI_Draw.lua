@@ -1655,8 +1655,20 @@ function M.DrawAchievementsContent(contentFrame)
 
     local loadingState = ns.PlansLoadingState and ns.PlansLoadingState.achievement
     local collLoading = ns.CollectionLoadingState
+    local achStoreEmpty = WarbandNexus.IsPlansBrowseCategoryStoreEmpty
+        and WarbandNexus:IsPlansBrowseCategoryStoreEmpty("achievement")
+    if achStoreEmpty then
+        M.state._achGroupedCache = nil
+        M.state._lastAchievementCategoryData = nil
+        M.state._achFlatList = nil
+        if ns.RequestPlansBrowseCollectionEnsure then
+            ns.RequestPlansBrowseCollectionEnsure("achievement")
+        end
+    end
     -- Loading only when a scan/load is actually in progress; not when filters result in empty list (e.g. both Owned and Missing unchecked)
-    local isLoading = (loadingState and loadingState.isLoading) or (collLoading and collLoading.isLoading and collLoading.currentCategory == "achievement")
+    local isLoading = (loadingState and loadingState.isLoading)
+        or (collLoading and collLoading.isLoading and collLoading.currentCategory == "achievement")
+        or achStoreEmpty
 
     if isLoading then
         M.CollectionsSubTabTrace("DrawAchievementsContent_path", { path = "loading" })

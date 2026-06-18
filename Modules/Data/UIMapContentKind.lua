@@ -1,5 +1,5 @@
 --[[
-    UiMapID → content kind for reminder zone picker (Midnight / Interface 120005).
+    UiMapID → content kind for reminder zone picker (Midnight / Interface 120007).
 
     Curated picker ids (Midnight): Modules/Data/ReminderContentIndex.lua — optional journalInstanceID;
     live projection uses EJ_GetInstanceForMap (warcraft.wiki.gg/wiki/API_EJ_GetInstanceForMap) + EJ_GetInstanceInfo.
