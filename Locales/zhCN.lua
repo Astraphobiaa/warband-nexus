@@ -1005,6 +1005,20 @@ L["CMD_PLANS"] = "切换待办追踪器窗口"
 L["CMD_FIRSTCRAFT"] = "按资料片列出首次制作奖励配方（请先打开专业窗口）"
 L["CMD_OPTIONS"] = "打开设置"
 L["CMD_MINIMAP"] = "切换小地图按钮"
+L["CMD_NOTIF"] = "测试通知弹窗（无需调试模式）"
+L["CMD_ALERTTEST"] = "触发所有吐司类型进行 QA（无需调试模式）"
+L["TOAST_CAT_MOUNT"] = "已获得坐骑"
+L["TOAST_CAT_PET"] = "已获得战斗宠物"
+L["TOAST_CAT_TOY"] = "已获得玩具"
+L["TOAST_CAT_ILLUSION"] = "已获得幻象"
+L["TOAST_CAT_ACHIEVEMENT"] = "已获得成就"
+L["TOAST_CAT_PLAN"] = "计划已完成"
+L["TOAST_CAT_ITEM"] = "稀有掉落"
+L["TOAST_CAT_TITLE"] = "已获得头衔"
+L["TOAST_CAT_VAULT"] = "伟大宝库"
+L["TOAST_CAT_REPUTATION"] = "已获得名望"
+L["TOAST_CAT_QUEST"] = "任务已完成"
+L["TOAST_CAT_TRY_COUNTER"] = "终于！"
 L["CMD_CHANGELOG"] = "显示更新日志"
 L["CMD_DEBUG"] = "切换调试模式"
 L["CMD_UIMAP_HERE"] = "当前 uiMapID 与父级链（无需调试）"
@@ -1039,13 +1053,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
+L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
 
-更新:
-- 性能：飞行路径和骑乘飞行时不再因任务日志扫描导致明显 FPS 下降（更新会合并处理）。
-- 提醒：飞行中或搭乘飞行路径时暂停区域提醒检查，落地或恢复控制后补检。
-- 区域跟踪：当区域和子区域未变化时跳过多余的缓存写入。
-- 日常任务：后台每周重置检查由每 1 分钟改为每 5 分钟。
+修复:
+- 伟大宝库: 在暴雪发送每周奖励数据之前，登录时不再清除未领取宝箱状态。
+- 伟大宝库: 领取奖励或关闭宝库界面后，快速访问徽章和宝库追踪器会立即刷新。
+- 伟大宝库: 仅在奖励变为新可领取时显示宝库就绪提示，已领取后不再提示。
+- 成就: 计划和收藏列表现包含深层子分类成就(如荣耀与元成就链); 扫描会重试直到日志 API 就绪。
+- 通知: 连续弹出多个提醒时，堆叠吐司保持正确间距和顺序。
+- 通知: 当暴雪同时触发成就与条件提醒路径时，条件进度吐司会去重。
+- 通知: 修正吐司卡片大小与堆叠位置，混合提醒类型不再重叠或跳动。
+- 专业: 修复法术名称返回 nil 或 API 秘密值时的错误。
+- Midnight 污染: 在提示、收藏、提醒和宝库界面增加更多秘密值保护。
 
 CurseForge: Warband Nexus]=]
 
@@ -1783,6 +1802,7 @@ L["STANDING_REVERED"] = "崇敬"
 L["STANDING_EXALTED"] = "崇拜"
 
 -- Notification (popup) - "BAM" moment when farmed drop obtained
+L["NOTIFICATION_ATTEMPTS_FMT"] = "%d 次尝试"
 L["NOTIFICATION_FIRST_TRY"] = "第一次尝试就获得了！"
 L["NOTIFICATION_GOT_IT_AFTER"] = "经过%d次尝试后获得！"
 L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "角色：%s"

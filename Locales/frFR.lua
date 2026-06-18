@@ -1005,6 +1005,20 @@ L["CMD_PLANS"] = "Basculer la fenêtre Suivi To-Do"
 L["CMD_FIRSTCRAFT"] = "Lister les recettes à bonus de première fabrication par extension (ouvrir d'abord le métier)"
 L["CMD_OPTIONS"] = "Ouvrir les paramètres"
 L["CMD_MINIMAP"] = "Basculer le bouton de la minicarte"
+L["CMD_NOTIF"] = "Tester les popups de notification (sans mode debug)"
+L["CMD_ALERTTEST"] = "Declencher tous les types de toast pour QA (sans mode debug)"
+L["TOAST_CAT_MOUNT"] = "Monture obtenue"
+L["TOAST_CAT_PET"] = "Mascotte de combat obtenue"
+L["TOAST_CAT_TOY"] = "Jouet obtenu"
+L["TOAST_CAT_ILLUSION"] = "Illusion obtenue"
+L["TOAST_CAT_ACHIEVEMENT"] = "Haut fait obtenu"
+L["TOAST_CAT_PLAN"] = "Plan termine"
+L["TOAST_CAT_ITEM"] = "Butin rare"
+L["TOAST_CAT_TITLE"] = "Titre obtenu"
+L["TOAST_CAT_VAULT"] = "Grande Chambre forte"
+L["TOAST_CAT_REPUTATION"] = "Renommee gagnee"
+L["TOAST_CAT_QUEST"] = "Quete terminee"
+L["TOAST_CAT_TRY_COUNTER"] = "Enfin !"
 L["CMD_CHANGELOG"] = "Afficher le journal des modifications"
 L["CMD_DEBUG"] = "Basculer le mode débogage"
 L["CMD_UIMAP_HERE"] = "uiMapID actuelle et chaine parente (sans debug)"
@@ -1041,13 +1055,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
+L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
 
-Mis a jour:
-- Performance : les vols en dragon et les trajets aeriens ne provoquent plus de grosses chutes de FPS dues au journal de quetes (les mises a jour sont regroupees).
-- Rappels : les verifications de rappel de zone sont en pause pendant le vol ou un trajet aerien ; elles reprennent a l'atterrissage ou au retour du controle.
-- Suivi de zone : les sauvegardes inutiles sont ignorees si la zone et sous-zone n'ont pas change.
-- Quetes quotidiennes : la verification de reinitialisation hebdomadaire en arriere-plan passe a toutes les 5 minutes au lieu d'une par minute.
+Corrige :
+- Grande Chambre forte : le statut de coffre non reclame ne s'efface plus a la connexion avant l'envoi des donnees de recompenses hebdomadaires par Blizzard.
+- Grande Chambre forte : le badge Acces rapide et le suivi de chambre forte se mettent a jour immediatement apres avoir reclame une recompense ou ferme l'interface de la chambre forte.
+- Grande Chambre forte : notification chambre prete uniquement quand les recompenses deviennent nouvellement reclamables, pas apres avoir deja reclame le coffre.
+- Hauts faits : les listes Plans et Collections incluent desormais les hauts faits des sous-categories profondes (ex. Gloire et chaines meta) ; le scan reessaie jusqu'a ce que l'API du journal soit prete.
+- Notifications : les toasts empiles conservent un espacement et un ordre corrects lorsque plusieurs alertes se declenchent rapidement.
+- Notifications : les toasts de progression de criteres sont dedupliques lorsque Blizzard declenche a la fois les chemins haut fait et criteres.
+- Notifications : cartes de toast avec taille et position de pile corrigees ; les types mixtes ne se chevauchent ni ne sautent plus.
+- Metiers : correction d'erreurs lorsque les noms de sorts renvoient nil ou des valeurs secretes de l'API.
+- Taint Midnight : protections supplementaires des valeurs secretes dans infobulles, collections, rappels et interface de chambre forte.
 
 CurseForge: Warband Nexus]=]
 
@@ -1785,6 +1804,7 @@ L["STANDING_REVERED"] = "Révéré"
 L["STANDING_EXALTED"] = "Exalté"
 
 -- Notification (popup) - "BAM" moment when farmed drop obtained
+L["NOTIFICATION_ATTEMPTS_FMT"] = "%d tentatives"
 L["NOTIFICATION_FIRST_TRY"] = "Obtenu du premier coup !"
 L["NOTIFICATION_GOT_IT_AFTER"] = "Obtenu après %d tentatives !"
 L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "Personnage : %s"

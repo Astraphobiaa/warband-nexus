@@ -1005,6 +1005,20 @@ L["CMD_PLANS"] = "Attiva/disattiva finestra To-Do"
 L["CMD_FIRSTCRAFT"] = "Elenco ricette bonus prima creazione per espansione (apri prima la professione)"
 L["CMD_OPTIONS"] = "Apri impostazioni"
 L["CMD_MINIMAP"] = "Attiva/disattiva pulsante minimappa"
+L["CMD_NOTIF"] = "Prova popup notifiche (senza modalita debug)"
+L["CMD_ALERTTEST"] = "Attiva tutti i tipi di toast per QA (senza modalita debug)"
+L["TOAST_CAT_MOUNT"] = "Cavalcatura ottenuta"
+L["TOAST_CAT_PET"] = "Mascotte da combattimento ottenuta"
+L["TOAST_CAT_TOY"] = "Giocattolo ottenuto"
+L["TOAST_CAT_ILLUSION"] = "Illusione ottenuta"
+L["TOAST_CAT_ACHIEVEMENT"] = "Impresa completata"
+L["TOAST_CAT_PLAN"] = "Piano completato"
+L["TOAST_CAT_ITEM"] = "Bottino raro"
+L["TOAST_CAT_TITLE"] = "Titolo ottenuto"
+L["TOAST_CAT_VAULT"] = "Gran Deposito"
+L["TOAST_CAT_REPUTATION"] = "Fama ottenuta"
+L["TOAST_CAT_QUEST"] = "Missione completata"
+L["TOAST_CAT_TRY_COUNTER"] = "Finalmente!"
 L["CMD_CHANGELOG"] = "Mostra changelog"
 L["CMD_DEBUG"] = "Attiva/disattiva modalità debug"
 L["CMD_UIMAP_HERE"] = "uiMapID corrente e catena genitori (senza debug)"
@@ -1041,13 +1055,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
+L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
 
-Aggiornato:
-- Prestazioni: voli con drago e rotte aeree non causano piu grandi cali di FPS dal lavoro sul registro missioni (aggiornamenti raggruppati).
-- Promemoria: i controlli promemoria zona si mettono in pausa durante il volo o su rotta aerea; riprendono all'atterraggio o al ritorno del controllo.
-- Tracciamento zona: salvataggi ridondanti saltati quando zona e sottozona non sono cambiate.
-- Missioni giornaliere: controllo reset settimanale in background ogni 5 minuti invece che ogni minuto.
+Corretto:
+- Gran Deposito: lo stato del forziere non reclamato non viene piu cancellato al login prima che Blizzard invii i dati delle ricompense settimanali.
+- Gran Deposito: badge Accesso rapido e tracker del deposito si aggiornano subito dopo aver reclamato una ricompensa o chiuso l'interfaccia del deposito.
+- Gran Deposito: avviso deposito pronto solo quando le ricompense diventano nuovamente reclamabili, non dopo aver gia reclamato il forziere.
+- Imprese: gli elenchi Piani e Collezioni includono ora imprese in sottocategorie profonde (es. Gloria e catene meta); la scansione riprova finche l'API del diario e pronta.
+- Notifiche: i toast impilati mantengono spaziatura e ordine corretti quando diverse avvisi si attivano in rapida successione.
+- Notifiche: i toast di progresso criteri sono deduplicati quando Blizzard attiva sia i percorsi impresa sia criteri.
+- Notifiche: schede toast con dimensione e posizione della pila corrette; i tipi misti non si sovrappongono piu ne saltano.
+- Professioni: corretti errori quando i nomi degli incantesimi restituiscono nil o valori segreti dall'API.
+- Taint Midnight: ulteriori protezioni per valori segreti in tooltip, collezioni, promemoria e interfaccia deposito.
 
 CurseForge: Warband Nexus]=]
 
@@ -1785,6 +1804,7 @@ L["STANDING_REVERED"] = "Riverito"
 L["STANDING_EXALTED"] = "Osannato"
 
 -- Notification (popup) - "BAM" moment when farmed drop obtained
+L["NOTIFICATION_ATTEMPTS_FMT"] = "%d tentativi"
 L["NOTIFICATION_FIRST_TRY"] = "Ottenuto al primo tentativo!"
 L["NOTIFICATION_GOT_IT_AFTER"] = "Ottenuto dopo %d tentativi!"
 L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "Personaggio: %s"

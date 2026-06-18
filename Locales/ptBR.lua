@@ -1005,6 +1005,20 @@ L["CMD_PLANS"] = "Alternar janela do rastreador de tarefas"
 L["CMD_FIRSTCRAFT"] = "Liste receitas de bônus de primeira criação por expansão (abra a profissão primeiro)"
 L["CMD_OPTIONS"] = "Abrir configurações"
 L["CMD_MINIMAP"] = "Alternar botão do minimapa"
+L["CMD_NOTIF"] = "Testar popups de notificacao (sem modo debug)"
+L["CMD_ALERTTEST"] = "Disparar todos os tipos de toast para QA (sem modo debug)"
+L["TOAST_CAT_MOUNT"] = "Montaria coletada"
+L["TOAST_CAT_PET"] = "Mascote de batalha coletado"
+L["TOAST_CAT_TOY"] = "Brinquedo coletado"
+L["TOAST_CAT_ILLUSION"] = "Ilusao coletada"
+L["TOAST_CAT_ACHIEVEMENT"] = "Conquista obtida"
+L["TOAST_CAT_PLAN"] = "Plano concluido"
+L["TOAST_CAT_ITEM"] = "Saque raro"
+L["TOAST_CAT_TITLE"] = "Titulo obtido"
+L["TOAST_CAT_VAULT"] = "Grande Camara"
+L["TOAST_CAT_REPUTATION"] = "Renome ganho"
+L["TOAST_CAT_QUEST"] = "Missao concluida"
+L["TOAST_CAT_TRY_COUNTER"] = "Finalmente!"
 L["CMD_CHANGELOG"] = "Mostrar registro de alterações"
 L["CMD_DEBUG"] = "Alternar modo de depuração"
 L["CMD_UIMAP_HERE"] = "uiMapID atual e cadeia de pais (sem debug)"
@@ -1041,13 +1055,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
+L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
 
-Atualizado:
-- Desempenho: rotas de voo e voo a cavalo/draco nao causam mais quedas grandes de FPS pelo trabalho no registro de missoes (atualizacoes agrupadas).
-- Lembretes: verificacoes de lembrete de zona pausam enquanto voce voa ou esta em rota de voo; retomam ao pousar ou recuperar o controle.
-- Rastreamento de zona: salvamentos redundantes ignorados quando zona e subzona nao mudaram.
-- Missoes diarias: verificacao semanal em segundo plano a cada 5 minutos em vez de cada minuto.
+Corrigido:
+- Grande Camara: o status de bau nao reclamado nao e mais apagado no login antes de a Blizzard enviar os dados de recompensas semanais.
+- Grande Camara: o emblema de Acesso rapido e o rastreador de camara atualizam imediatamente apos reclamar uma recompensa ou fechar a interface da camara.
+- Grande Camara: aviso de camara pronta apenas quando as recompensas ficam recém-reclamaveis, nao apos ja ter reclamado o bau.
+- Conquistas: listas de Planos e Colecoes agora incluem conquistas em subcategorias profundas (ex. Gloria e cadeias meta); a varredura repete ate a API do diario estar pronta.
+- Notificacoes: toasts empilhados mantem espacamento e ordem corretos quando varios alertas disparam em sequencia.
+- Notificacoes: toasts de progresso de criterios sao deduplicados quando a Blizzard dispara caminhos de conquista e criterios ao mesmo tempo.
+- Notificacoes: cartoes de toast com tamanho e posicao de pilha corrigidos; tipos mistos nao se sobrepõem nem pulam mais.
+- Profissoes: corrigidos erros quando nomes de feiticos retornam nil ou valores secretos da API.
+- Taint Midnight: protecoes adicionais de valores secretos em tooltips, colecoes, lembretes e interface da camara.
 
 CurseForge: Warband Nexus]=]
 
@@ -1785,6 +1804,7 @@ L["STANDING_REVERED"] = "Reverenciado"
 L["STANDING_EXALTED"] = "Exaltado"
 
 -- Notification (popup) - "BAM" moment when farmed drop obtained
+L["NOTIFICATION_ATTEMPTS_FMT"] = "%d tentativas"
 L["NOTIFICATION_FIRST_TRY"] = "Você acertou na primeira tentativa!"
 L["NOTIFICATION_GOT_IT_AFTER"] = "Você conseguiu depois de %d tentativas!"
 L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "Personagem: %s"

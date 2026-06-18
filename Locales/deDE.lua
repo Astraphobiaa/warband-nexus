@@ -1005,6 +1005,20 @@ L["CMD_PLANS"] = "To-Do-Tracker-Fenster umschalten"
 L["CMD_FIRSTCRAFT"] = "Erstherstellungs-Bonus-Rezepte pro Erweiterung anzeigen (zuerst Beruf öffnen)"
 L["CMD_OPTIONS"] = "Einstellungen öffnen"
 L["CMD_MINIMAP"] = "Minimap-Schaltfläche umschalten"
+L["CMD_NOTIF"] = "Benachrichtigungs-Popups testen (ohne Debug-Modus)"
+L["CMD_ALERTTEST"] = "Alle Toast-Typen fuer Stack-Test ausloesen (ohne Debug-Modus)"
+L["TOAST_CAT_MOUNT"] = "Reittier gesammelt"
+L["TOAST_CAT_PET"] = "Kampfhaustier gesammelt"
+L["TOAST_CAT_TOY"] = "Spielzeug gesammelt"
+L["TOAST_CAT_ILLUSION"] = "Illusion gesammelt"
+L["TOAST_CAT_ACHIEVEMENT"] = "Erfolg erzielt"
+L["TOAST_CAT_PLAN"] = "Plan abgeschlossen"
+L["TOAST_CAT_ITEM"] = "Seltene Beute"
+L["TOAST_CAT_TITLE"] = "Titel erhalten"
+L["TOAST_CAT_VAULT"] = "Grosser Schatz"
+L["TOAST_CAT_REPUTATION"] = "Ruhm erhalten"
+L["TOAST_CAT_QUEST"] = "Quest abgeschlossen"
+L["TOAST_CAT_TRY_COUNTER"] = "Endlich!"
 L["CMD_CHANGELOG"] = "Änderungsprotokoll anzeigen"
 L["CMD_DEBUG"] = "Debug-Modus umschalten"
 L["CMD_UIMAP_HERE"] = "Aktuelle uiMapID und Elternkette (ohne Debug)"
@@ -1041,13 +1055,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
+L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
 
-Aktualisiert:
-- Performance: Flugpfade und Drachenreiten verursachen keine grossen FPS-Einbrueche mehr durch Quest-Log-Arbeit des Addons (Updates werden gebuendelt).
-- Erinnerungen: Zonen-Erinnerungspruefungen pausieren beim Fliegen oder auf einem Flugpfad und laufen nach, wenn du landest oder die Kontrolle zurueckgewinnst.
-- Zonen-Tracking: redundante Speicherungen werden uebersprungen, wenn sich Zone und Unterzone nicht geaendert haben.
-- Tagesquests: Woechentlicher Reset wird im Hintergrund alle 5 Minuten statt jede Minute geprueft.
+Behoben:
+- Grosser Schatz: Unbeanspruchter Truhenstatus wird beim Login nicht mehr geloescht, bevor Blizzard wöchentliche Belohnungsdaten sendet.
+- Grosser Schatz: Easy-Access-Abzeichen und Vault-Tracker aktualisieren sich sofort nach dem Abholen einer Belohnung oder Schliessen der Vault-Oberflaeche.
+- Grosser Schatz: Vault-bereit-Hinweis nur, wenn Belohnungen neu abholbar werden, nicht nach bereits abgeholter Truhe.
+- Erfolge: Plaene- und Sammlungslisten enthalten jetzt Erfolge in tiefen Unterkategorien (z. B. Ruhm und Meta-Ketten); Scan wiederholt, bis die Journal-API bereit ist.
+- Benachrichtigungen: Gestapelte Toasts behalten korrekten Abstand und Reihenfolge bei schnellen Folgemeldungen.
+- Benachrichtigungen: Kriterien-Fortschritts-Toasts werden dedupliziert, wenn Blizzard Erfolgs- und Kriterien-Alert-Pfade gleichzeitig ausloest.
+- Benachrichtigungen: Toast-Karten mit korrigierter Groesse und Stack-Position; gemischte Alert-Typen ueberlappen oder springen nicht mehr.
+- Berufe: Fehler behoben, wenn Berufs-Zaubernamen nil oder geheime API-Werte zurueckgeben.
+- Midnight-Taint: zusaetzliche Geheimwert-Schutzguards in Tooltips, Sammlungen, Erinnerungen und Vault-UI.
 
 CurseForge: Warband Nexus]=]
 
@@ -1785,6 +1804,7 @@ L["STANDING_REVERED"] = "Respektiert"
 L["STANDING_EXALTED"] = "Ehrfürchtig"
 
 -- Notification (popup) - "BAM" moment when farmed drop obtained
+L["NOTIFICATION_ATTEMPTS_FMT"] = "%d Versuche"
 L["NOTIFICATION_FIRST_TRY"] = "Beim ersten Versuch bekommen!"
 L["NOTIFICATION_GOT_IT_AFTER"] = "Nach %d Versuchen bekommen!"
 L["NOTIFICATION_COLLECTIBLE_CHARACTER_LINE"] = "Charakter: %s"

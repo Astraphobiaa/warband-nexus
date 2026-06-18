@@ -1053,13 +1053,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V3110"] = [=[v3.1.10 (2026-06-16)
+L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
 
-Updated:
-- Performance: flight paths and taxi rides no longer cause large FPS drops from addon quest-log work (updates are batched).
-- Reminders: zone reminder checks pause while you are flying or on a flight path, then catch up when you land or regain control.
-- Character zone tracking skips redundant saves when your zone and subzone did not change.
-- Daily quests: background weekly-reset polling runs every 5 minutes instead of every minute.
+Fixed:
+- Great Vault: unclaimed chest status no longer clears on login before Blizzard sends weekly rewards data.
+- Great Vault: Easy Access badge and vault tracker refresh immediately after you claim a reward or close the vault UI.
+- Great Vault: vault-ready toast only when rewards become newly claimable, not after you already claimed the chest.
+- Achievements: Plans and Collections lists now include achievements in deep subcategories (e.g. Glory and meta chains); scan retries until the journal API is ready.
+- Notifications: stacked toasts keep correct spacing and order when several alerts fire in quick succession.
+- Notifications: criteria progress toasts are deduplicated when Blizzard fires both achievement and criteria alert paths.
+- Notifications: toast cards use corrected size and stack position so mixed alert types no longer overlap or jump.
+- Professions: fixed errors when profession spell names return nil or secret values from the API.
+- Midnight taint: additional secret-value guards across tooltips, collections, reminders, and vault UI.
 
 CurseForge: Warband Nexus]=]
 
