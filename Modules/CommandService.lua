@@ -5,7 +5,7 @@
     Handles:
     - Main slash command routing (/wn, /warbandnexus)
     - Public commands (window toggles, settings, help)
-    - Optional debug-mode diagnostics (/wn debug)
+    - Debug-mode-only diagnostics, smoke tests, and QA (/wn debug, then e.g. vault/tc/notif)
 ============================================================================]]
 
 local addonName, ns = ...
@@ -36,8 +36,6 @@ local function PrintSlashHelp(addon)
     addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Settings"))
     addon:Print("  |cff00ccff/wn keys|r — Announce alt keystones (party)")
     addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Changelog popup"))
-    addon:Print("  |cff00ccff/wn notif|r — " .. ((ns.L and ns.L["CMD_NOTIF"]) or "Test notification popups (no debug mode)"))
-    addon:Print("  |cff00ccff/wn alerttest|r — " .. ((ns.L and ns.L["CMD_ALERTTEST"]) or "Fire all toast types (stack QA)"))
     addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "This list"))
 end
 
@@ -60,7 +58,6 @@ function CommandService:HandleTryCountDebugCommand(addon, input)
         addon:Print("|cffff6600Usage:|r /wn trycount <type> <id>")
         addon:Print("|cff888888Example:|r /wn trycount item 226683")
         addon:Print("|cff888888Types:|r item, mount, pet, toy")
-        addon:Print("|cff888888Smoke test:|r /wn tc test  (full route regression; no debug required)")
         addon:Print("|cff888888Sync:|r /wn tc sync-stats  (re-read WoW Statistics for this character)")
         return
     end
@@ -207,61 +204,6 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "tc" or cmd == "trycount" then
-        local _, subCmd = addon:GetArgs(input, 2)
-        local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
-        if subLower == "test" then
-            if addon.RunTryCounterSelfTest then
-                addon:RunTryCounterSelfTest()
-            else
-                addon:Print("|cffff6600[WN]|r Try Counter module not loaded.")
-            end
-            return
-        end
-        if not IsDebugOn() then
-            addon:Print("|cffff6600Usage:|r /wn tc test  — full try-counter regression (always available)")
-            addon:Print("|cff888888Other /wn tc commands need |cff00ccff/wn debug|r first.")
-            return
-        end
-        CommandService:HandleTryCountDebugCommand(addon, input)
-        return
-
-    elseif cmd == "vault" then
-        local _, subCmd, thirdArg = addon:GetArgs(input, 3)
-        local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
-        local thirdLower = thirdArg and (not (issecretvalue and issecretvalue(thirdArg)) and thirdArg:lower()) or nil
-        if subLower == "test" then
-            if addon.RunVaultClaimSelfTest then
-                addon:RunVaultClaimSelfTest()
-            else
-                addon:Print("|cffff6600[WN]|r Vault self-test module not loaded.")
-            end
-            return
-        end
-        if subLower == "simulate" then
-            if thirdLower == "ready" then
-                if addon.SimulateVaultReadyForTest then
-                    addon:SimulateVaultReadyForTest()
-                end
-                return
-            elseif thirdLower == "claim" then
-                if addon.SimulateVaultClaimForTest then
-                    addon:SimulateVaultClaimForTest()
-                end
-                return
-            elseif thirdLower == "clear" then
-                if addon.ClearVaultSimulationForTest then
-                    addon:ClearVaultSimulationForTest()
-                end
-                return
-            end
-            addon:Print("|cffff6600Usage:|r /wn vault simulate ready | claim | clear")
-            return
-        end
-        addon:Print("|cffff6600Usage:|r /wn vault test  — claim refresh smoke test (no real vault needed)")
-        addon:Print("|cff888888Visual:|r /wn vault simulate ready  then  simulate claim  /  simulate clear")
-        return
-
     elseif cmd == "keys" or cmd == "keystones" then
         if not addon.GetAllCharacters then
             addon:Print("|cffff6600[WN] Character data not available.|r")
@@ -404,7 +346,56 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     end
 
-    if cmd == "charkeys" or cmd == "charkey" then
+    if cmd == "tc" or cmd == "trycount" then
+        local _, subCmd = addon:GetArgs(input, 2)
+        local subLower = SafeSlashLower(subCmd)
+        if subLower == "test" then
+            if addon.RunTryCounterSelfTest then
+                addon:RunTryCounterSelfTest()
+            else
+                addon:Print("|cffff6600[WN]|r Try Counter module not loaded.")
+            end
+            return
+        end
+        CommandService:HandleTryCountDebugCommand(addon, input)
+        return
+
+    elseif cmd == "vault" then
+        local _, subCmd, thirdArg = addon:GetArgs(input, 3)
+        local subLower = SafeSlashLower(subCmd)
+        local thirdLower = SafeSlashLower(thirdArg)
+        if subLower == "test" then
+            if addon.RunVaultClaimSelfTest then
+                addon:RunVaultClaimSelfTest()
+            else
+                addon:Print("|cffff6600[WN]|r Vault self-test module not loaded.")
+            end
+            return
+        end
+        if subLower == "simulate" then
+            if thirdLower == "ready" then
+                if addon.SimulateVaultReadyForTest then
+                    addon:SimulateVaultReadyForTest()
+                end
+                return
+            elseif thirdLower == "claim" then
+                if addon.SimulateVaultClaimForTest then
+                    addon:SimulateVaultClaimForTest()
+                end
+                return
+            elseif thirdLower == "clear" then
+                if addon.ClearVaultSimulationForTest then
+                    addon:ClearVaultSimulationForTest()
+                end
+                return
+            end
+            addon:Print("|cffff6600Usage:|r /wn vault simulate ready | claim | clear")
+            return
+        end
+        addon:Print("|cffff6600Usage:|r /wn vault test | simulate ready | claim | clear")
+        return
+
+    elseif cmd == "charkeys" or cmd == "charkey" then
         local DS = ns.DebugService
         if DS and DS.PrintCharacterKeyDiagnostics then
             DS:PrintCharacterKeyDiagnostics(addon)
