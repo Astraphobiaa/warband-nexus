@@ -206,13 +206,20 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PVE_UPDATED, function()
+        local VB = ns.VaultButton
+        if VB and VB.ScheduleDataRefresh then
+            VB.ScheduleDataRefresh()
+        end
         if HiddenOrMissing() then return end
         -- PvE tab + Characters tab (mythic key column reads character row; mirror updates from PvECacheService)
         if f.currentTab == "pve" then
+            if ns.PvE_ClearVaultStatusScratch then
+                ns.PvE_ClearVaultStatusScratch()
+            end
             -- Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
             -- Reset cooldown so this event is never silently dropped.
             st.lastEventPopulateTime = 0
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
             st.lastEventPopulateTime = 0
             SchedulePopulateContent(true)
@@ -394,21 +401,30 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.COLLECTION_UPDATED, refreshCollection)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED, refreshCollection)
 
-    -- Vault: any vault data delta (slot completion, reward available, plan completion) must
-    -- propagate to PvE tab (vault card) and chars-tab vault badge.
-    local function refreshVault()
+    -- Vault: slot/plan completion repaints PvE rows; reward availability uses PVE_UPDATED (no double populate).
+    local function refreshVaultBadge()
+        local VB = ns.VaultButton
+        if VB and VB.ScheduleDataRefresh then
+            VB.ScheduleDataRefresh()
+        end
+    end
+    local function refreshVaultSlots()
+        refreshVaultBadge()
         if HiddenOrMissing() then return end
         if f.currentTab == "pve" then
+            if ns.PvE_ClearVaultStatusScratch then
+                ns.PvE_ClearVaultStatusScratch()
+            end
             st.lastEventPopulateTime = 0
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         elseif f.currentTab == "chars" then
             SchedulePopulateContent(true)
         end
     end
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_CHECKPOINT_COMPLETED, refreshVault)
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_SLOT_COMPLETED, refreshVault)
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_PLAN_COMPLETED, refreshVault)
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_REWARD_AVAILABLE, refreshVault)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_CHECKPOINT_COMPLETED, refreshVaultSlots)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_SLOT_COMPLETED, refreshVaultSlots)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_PLAN_COMPLETED, refreshVaultSlots)
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.VAULT_REWARD_AVAILABLE, refreshVaultBadge)
 
     -- Tracking toggle changes the visible character roster on every tab that lists chars.
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_TRACKING_CHANGED, function()

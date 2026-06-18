@@ -3406,10 +3406,12 @@ end
 
 ---Vault reward available handler
 function WarbandNexus:OnVaultRewardAvailable(event, data)
+    if data and data.claimable == false then return end
     if not self:CanShowToast("vault") then return end
 
     self:Notify("vault", (ns.L and ns.L["WEEKLY_VAULT_READY"]) or "Weekly Vault Ready!", CATEGORY_ICONS.vault, {
         action = (ns.L and ns.L["UNCLAIMED_REWARDS"]) or "You have unclaimed rewards",
+        categoryTitle = "",
     })
 end
 

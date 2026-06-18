@@ -226,6 +226,42 @@ function CommandService:HandleSlashCommand(addon, input)
         CommandService:HandleTryCountDebugCommand(addon, input)
         return
 
+    elseif cmd == "vault" then
+        local _, subCmd, thirdArg = addon:GetArgs(input, 3)
+        local subLower = subCmd and (not (issecretvalue and issecretvalue(subCmd)) and subCmd:lower()) or nil
+        local thirdLower = thirdArg and (not (issecretvalue and issecretvalue(thirdArg)) and thirdArg:lower()) or nil
+        if subLower == "test" then
+            if addon.RunVaultClaimSelfTest then
+                addon:RunVaultClaimSelfTest()
+            else
+                addon:Print("|cffff6600[WN]|r Vault self-test module not loaded.")
+            end
+            return
+        end
+        if subLower == "simulate" then
+            if thirdLower == "ready" then
+                if addon.SimulateVaultReadyForTest then
+                    addon:SimulateVaultReadyForTest()
+                end
+                return
+            elseif thirdLower == "claim" then
+                if addon.SimulateVaultClaimForTest then
+                    addon:SimulateVaultClaimForTest()
+                end
+                return
+            elseif thirdLower == "clear" then
+                if addon.ClearVaultSimulationForTest then
+                    addon:ClearVaultSimulationForTest()
+                end
+                return
+            end
+            addon:Print("|cffff6600Usage:|r /wn vault simulate ready | claim | clear")
+            return
+        end
+        addon:Print("|cffff6600Usage:|r /wn vault test  — claim refresh smoke test (no real vault needed)")
+        addon:Print("|cff888888Visual:|r /wn vault simulate ready  then  simulate claim  /  simulate clear")
+        return
+
     elseif cmd == "keys" or cmd == "keystones" then
         if not addon.GetAllCharacters then
             addon:Print("|cffff6600[WN] Character data not available.|r")

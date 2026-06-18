@@ -656,11 +656,20 @@ end)
 -- rebuild its rows up to four times per cache wave.
 local pendingDataRefresh = false
 function M.ScheduleDataRefresh()
+    if M.UpdateBadge then
+        M.UpdateBadge()
+    elseif UpdateBadge then
+        UpdateBadge()
+    end
     if pendingDataRefresh then return end
     pendingDataRefresh = true
     C_Timer.After(0.1, function()
         pendingDataRefresh = false
-        UpdateBadge()
+        if M.UpdateBadge then
+            M.UpdateBadge()
+        elseif UpdateBadge then
+            UpdateBadge()
+        end
         if S.tableFrame and S.tableFrame:IsShown() then
             RefreshTable()
         end
@@ -761,42 +770,30 @@ end
 --- Returns: { isReady, isPending, readySlots } or nil when there's no progress to show.
 function WarbandNexus:GetVaultStatusForChar(charKey)
     if not charKey then return nil end
-    local pveCache = GetPveCache()
-    if not pveCache then return nil end
-    local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
-    local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
-    local isReady = false
-    if rewardData then
-        if ns.VaultRewardsClaimedForCurrentWeek and ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
-            isReady = false
-        else
-            isReady = rewardData.hasAvailableRewards == true
-        end
+    local isReady = ns.CharHasClaimableVaultReward and ns.CharHasClaimableVaultReward(charKey) or false
+    local currentKey = GetCurrentCharKey()
+    if not isReady and currentKey and CharKeysMatch(charKey, currentKey)
+        and WarbandNexus.HealStaleVaultRewardsCache then
+        WarbandNexus:HealStaleVaultRewardsCache(charKey)
+        isReady = ns.CharHasClaimableVaultReward and ns.CharHasClaimableVaultReward(charKey) or false
+    end
+
+    local claimedThisWeek = false
+    local pveCache = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache
+    local rewardData = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
+        and LookupPveCacheSubtable(pveCache.greatVault.rewards, charKey)
+    if rewardData and ns.VaultRewardsClaimedForCurrentWeek then
+        claimedThisWeek = ns.VaultRewardsClaimedForCurrentWeek(rewardData) == true
     end
 
     local readySlots = CountReadySlots(charKey) or 0
-    local currentKey = GetCurrentCharKey()
-
-    if currentKey and CharKeysMatch(charKey, currentKey) then
-        if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
-            isReady = WarbandNexus:HasUnclaimedVaultRewards()
-            if not isReady and WarbandNexus.HealStaleVaultRewardsCache then
-                WarbandNexus:HealStaleVaultRewardsCache(charKey)
-            end
-        else
-            isReady = false
-        end
-    elseif not isReady and readySlots > 0 and VaultResetCrossedFor(charKey) then
-        -- Alt had ready slots last week; reset has crossed -> chest is sitting unclaimed.
-        isReady = true
-    end
-
     local hasProg = readySlots > 0 or HasAnyProgress(charKey)
     if not isReady and not hasProg then return nil end
     return {
-        isReady    = isReady,
-        isPending  = not isReady and hasProg,
-        readySlots = readySlots,
+        isReady         = isReady,
+        isPending       = not isReady and hasProg and not claimedThisWeek,
+        readySlots      = readySlots,
+        claimedThisWeek = claimedThisWeek,
     }
 end
 

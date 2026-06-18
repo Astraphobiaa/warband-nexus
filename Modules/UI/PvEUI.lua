@@ -254,6 +254,17 @@ local _pveDrawPool = {
 }
 local _pveVaultStatusScratch = {}
 
+function ns.PvE_ClearVaultStatusScratch()
+    for k in pairs(_pveVaultStatusScratch) do
+        _pveVaultStatusScratch[k] = nil
+    end
+end
+
+--- Vault claim / reward cache changed: clear per-row status scratch (drawSig includes vault roster).
+function ns.PvE_InvalidateBodyPaint()
+    ns.PvE_ClearVaultStatusScratch()
+end
+
 local function PvE_EnsureDrawPoolHolder()
     local h = _pveDrawPool.holder
     if not h then
@@ -527,6 +538,9 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
             if vs.isReady then
                 return PvE_MeasurePlainWidth(bodyFs, GetLocalizedText("VAULT_READY_TO_CLAIM", "Ready to Claim"))
             end
+            if vs.claimedThisWeek and not vs.isReady then
+                return PvE_MeasurePlainWidth(bodyFs, GetLocalizedText("VAULT_PENDING", "Pending..."))
+            end
             if (vs.readySlots or 0) > 0 then
                 local fmt = GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots")
                 return PvE_MeasurePlainWidth(bodyFs, fmt:format(tonumber(vs.readySlots) or 0))
@@ -712,6 +726,60 @@ local function PveBuildSectionExpandSig(profile)
     return table.concat(parts, "\1")
 end
 
+local function PveVaultActSig(acts)
+    if not acts then return "-" end
+    if acts.isPostReset then return "post" end
+    local chunks = {}
+    local cats = { "raids", "mythicPlus", "world" }
+    for ci = 1, #cats do
+        local list = acts[cats[ci]]
+        if list then
+            for si = 1, #list do
+                local a = list[si]
+                chunks[#chunks + 1] = string.format(
+                    "%d,%d",
+                    tonumber(a and a.progress) or 0,
+                    tonumber(a and a.threshold) or 0
+                )
+            end
+        end
+    end
+    return table.concat(chunks, ";")
+end
+
+--- Vault reward + activity snapshot for drawSig (bust fast-path when only vault rows change).
+local function PveBuildVaultRosterSig(addon, profile)
+    if not addon or not addon.GetAllCharacters then return "" end
+    local gv = addon.db and addon.db.global and addon.db.global.pveCache
+        and addon.db.global.pveCache.greatVault
+    if not gv then return "" end
+    local lookup = ns.LookupPvECacheSubtable
+    local allCharacters = addon:GetAllCharacters()
+    local minLevel = GetLowLevelHideThreshold(profile)
+    local parts = {}
+    for i = 1, #allCharacters do
+        local char = allCharacters[i]
+        local lvl = tonumber(char.level) or 0
+        if char.isTracked ~= false and (minLevel == 0 or lvl >= minLevel) then
+            local rk = (ns.PvEUI and ns.PvEUI.GetCanonicalKeyForChar and ns.PvEUI.GetCanonicalKeyForChar(char))
+                or (char._key or char.guid)
+            if rk then
+                local rewards = gv.rewards and (lookup and lookup(gv.rewards, rk) or gv.rewards[rk])
+                local acts = gv.activities and (lookup and lookup(gv.activities, rk) or gv.activities[rk])
+                parts[#parts + 1] = table.concat({
+                    rk,
+                    rewards and rewards.hasAvailableRewards and "1" or "0",
+                    tostring(rewards and rewards.claimedAt or 0),
+                    tostring(rewards and rewards.claimedResetTime or 0),
+                    PveVaultActSig(acts),
+                }, ":")
+            end
+        end
+    end
+    table.sort(parts)
+    return table.concat(parts, "\1")
+end
+
 local function PveBuildFullDrawSig(addon, profile, rosterSig, colSig)
     local vb = profile and profile.vaultButton or {}
     return table.concat({
@@ -721,6 +789,7 @@ local function PveBuildFullDrawSig(addon, profile, rosterSig, colSig)
         PveBuildSectionExpandSig(profile),
         (vb.showRewardProgress and "1" or "0"),
         (vb.showRewardItemLevel and "1" or "0"),
+        PveBuildVaultRosterSig(addon, profile),
     }, "\2")
 end
 
@@ -2172,7 +2241,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     local chrome, metrics, fixedHeader, headerParent, headerYOffset, contentSide, stackWidth, scrollTopY
 
     if not bodyOnly then
-        for k in pairs(_pveVaultStatusScratch) do _pveVaultStatusScratch[k] = nil end
+        ns.PvE_ClearVaultStatusScratch()
         parent._pveChunkPaintPending = nil
 
         chrome = ns.UI_BeginTabChromeLayout and ns.UI_BeginTabChromeLayout(mf)
@@ -3636,7 +3705,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             if vsCached then
                 vaultLootClaimable = vsCached.isReady == true
             else
-                vaultLootClaimable = pve.hasUnclaimedRewards == true
+                vaultLootClaimable = ns.CharHasClaimableVaultReward
+                    and ns.CharHasClaimableVaultReward(charKey) == true
             end
 
             local profileVault = L.WarbandNexus and L.WarbandNexus.db and L.WarbandNexus.db.profile
@@ -3964,6 +4034,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     statusTxt = EM_DASH_RICH
                 elseif vs.isReady then
                     statusTxt = "|cff44ff44" .. (GetLocalizedText("VAULT_READY_TO_CLAIM", "Ready to Claim")) .. "|r"
+                elseif vs.claimedThisWeek and not vs.isReady then
+                    statusTxt = "|cffffd700" .. (GetLocalizedText("VAULT_PENDING", "Pending\226\128\166")) .. "|r"
                 elseif (vs.readySlots or 0) > 0 then
                     statusTxt = "|cff66ddff" .. L.GetLocalizedText("VAULT_SLOTS_SHORT_FORMAT", "%d Slots"):format(tonumber(vs.readySlots) or 0) .. "|r"
                 else

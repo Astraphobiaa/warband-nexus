@@ -294,29 +294,7 @@ function M.ResolveVaultTooltipFlags(charKey, entry)
     if not charKey then
         return false, false, 0, nil, nil, nil, nil
     end
-    local pveCache = GetPveCache()
-    local rewards = pveCache and pveCache.greatVault and pveCache.greatVault.rewards
-    local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
-    local isReady = false
-    if rewardData then
-        if ns.VaultRewardsClaimedForCurrentWeek and ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
-            isReady = false
-        else
-            isReady = rewardData.hasAvailableRewards == true
-        end
-    end
-    local currentKey = GetCurrentCharKey()
-    if CharKeysMatch(charKey, currentKey) then
-        if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
-            isReady = WarbandNexus:HasUnclaimedVaultRewards()
-        else
-            isReady = false
-        end
-    elseif not isReady and not CharKeysMatch(charKey, currentKey)
-        and (CountReadySlots(charKey) or 0) > 0
-        and VaultResetCrossedFor(charKey) then
-        isReady = true
-    end
+    local isReady = ns.CharHasClaimableVaultReward and ns.CharHasClaimableVaultReward(charKey) or false
     local isPending = not isReady and HasAnyProgress(charKey)
     return isReady, isPending, CountReadySlots(charKey),
         GetBountyStatus(charKey), GetVoidcoreData(charKey), GetGildedStashData(charKey), GetManafluxData(charKey)

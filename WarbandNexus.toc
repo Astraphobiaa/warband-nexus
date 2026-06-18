@@ -72,6 +72,7 @@ Modules\ReputationProcessor.lua
 Modules\ReputationCacheService.lua
 Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua
+Modules\PvECacheService_VaultSelfTest.lua
 Modules\ItemsCacheService.lua
 Modules\ItemsCacheService_BagPerf.lua
 Modules\ItemsCacheService_PerfStress.lua

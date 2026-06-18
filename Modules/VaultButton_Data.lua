@@ -161,12 +161,69 @@ function ns.VaultRewardsClaimedForCurrentWeek(rewardData)
         return true
     end
     local claimedAt = tonumber(rewardData.claimedAt) or 0
+    -- Legacy rows: only treat as claimed this period when the stamp falls in the current week.
     if claimedAt > 0 and rewardData.hasAvailableRewards == false then
+        if resetStart then
+            return claimedAt >= resetStart
+        end
         return true
     end
     return false
 end
 M.VaultRewardsClaimedForCurrentWeek = ns.VaultRewardsClaimedForCurrentWeek
+
+--- Count completed vault slots including preserved post-reset rows (unclaimed chest from last week).
+function M.CountEarnedVaultSlots(charKey)
+    local acts = GetCharActivities(charKey)
+    if not acts then return 0 end
+    local n = 0
+    for _, cat in ipairs({ acts.raids, acts.mythicPlus, acts.world }) do
+        if cat then
+            for _, a in ipairs(cat) do
+                local p = tonumber(a.progress) or 0
+                local t = tonumber(a.threshold) or 0
+                if t > 0 and p >= t then
+                    n = n + 1
+                end
+            end
+        end
+    end
+    return n
+end
+ns.CountEarnedVaultSlots = M.CountEarnedVaultSlots
+
+--- True when this character has a Great Vault chest ready to claim (not merely in-progress slots).
+function ns.CharHasClaimableVaultReward(charKey)
+    if not charKey then return false end
+    local pveCache = GetPveCache()
+    if not pveCache then return false end
+    local rewards = pveCache.greatVault and pveCache.greatVault.rewards
+    local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
+    if rewardData and ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
+        return false
+    end
+    local currentKey = GetCurrentCharKey()
+    if currentKey and CharKeysMatch(charKey, currentKey) then
+        if rewardData and rewardData.hasAvailableRewards == false then
+            local claimedAt = tonumber(rewardData.claimedAt) or 0
+            if claimedAt > 0 and (time() - claimedAt) < 8 then
+                return false
+            end
+        end
+        if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
+            return WarbandNexus:HasUnclaimedVaultRewards() == true
+        end
+        return false
+    end
+    if rewardData and rewardData.hasAvailableRewards == true then
+        return true
+    end
+    if (CountEarnedVaultSlots(charKey) or 0) > 0 and VaultResetCrossedFor(charKey) then
+        return true
+    end
+    return false
+end
+M.CharHasClaimableVaultReward = ns.CharHasClaimableVaultReward
 
 --- True if `time()` has crossed the stored weeklyResetTime for this char's activities,
 --- meaning the cached "ready slots" are now sitting unclaimed in the vault chest.
@@ -791,33 +848,11 @@ function M.BuildCharList()
     local pveCache   = GetPveCache()
     local characters = GetCharacters()
     if not pveCache or not characters then return {} end
-    local rewards    = pveCache.greatVault and pveCache.greatVault.rewards
     local currentKey = GetCurrentCharKey()
     local settings   = GetSettings()
     local result     = {}
     for charKey, charData in pairs(characters) do
-        local rewardData = rewards and LookupPveCacheSubtable(rewards, charKey)
-        local isReady = false
-        if rewardData then
-            if ns.VaultRewardsClaimedForCurrentWeek(rewardData) then
-                isReady = false
-            else
-                isReady = rewardData.hasAvailableRewards == true
-            end
-        end
-        if CharKeysMatch(charKey, currentKey) then
-            if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
-                isReady = WarbandNexus:HasUnclaimedVaultRewards()
-            else
-                isReady = false
-            end
-        end
-        -- Alt auto-flip: cached \226\128\156slots earned\226\128\157 last week + reset crossed -> sitting chest.
-        if not isReady and not CharKeysMatch(charKey, currentKey)
-            and (CountReadySlots(charKey) or 0) > 0
-            and VaultResetCrossedFor(charKey) then
-            isReady = true
-        end
+        local isReady = ns.CharHasClaimableVaultReward(charKey) == true
         local isPending  = not isReady and HasAnyProgress(charKey)
         local bounty = GetBountyStatus(charKey)
         if isReady or isPending or (settings.includeBountyOnly and bounty == true) then

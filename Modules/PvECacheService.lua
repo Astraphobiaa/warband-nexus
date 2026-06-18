@@ -191,6 +191,12 @@ end
 --- (false when the player must travel to the Great Vault, matching Blizzard's unclaimed prompt).
 ---@return boolean
 function ns.WeeklyVaultHasPendingRewards()
+    if ns._vaultSelfTestOverridePending == true then
+        return true
+    end
+    if ns._vaultSelfTestOverridePending == false then
+        return false
+    end
     if not C_WeeklyRewards or not C_WeeklyRewards.HasAvailableRewards then
         return false
     end
@@ -2433,6 +2439,27 @@ end
 
 -- VAULT CLAIM / KEYSTONE SYNC (Easy Access, PvE tab, Vault Tracker)
 
+---Redraw Easy Access badge / tracker immediately (not gated on main window visibility).
+function WarbandNexus:NotifyVaultEasyAccessRefresh()
+    local VB = ns.VaultButton
+    if not VB then return end
+    if VB.BuildButton and not (VB.state and VB.state.badge) then
+        VB.BuildButton()
+    end
+    if VB.UpdateBadge then
+        VB.UpdateBadge()
+    end
+    if VB.ScheduleDataRefresh then
+        VB.ScheduleDataRefresh()
+    end
+end
+
+local function NotifyVaultEasyAccessRefresh()
+    if WarbandNexus and WarbandNexus.NotifyVaultEasyAccessRefresh then
+        WarbandNexus:NotifyVaultEasyAccessRefresh()
+    end
+end
+
 ---When live API reports no pending vault but SV still has hasAvailableRewards=true, heal the row.
 function WarbandNexus:HealStaleVaultRewardsCache(charKey)
     if not charKey or not self.db or not self.db.global or not self.db.global.pveCache then
@@ -2460,6 +2487,41 @@ function WarbandNexus:HealStaleVaultRewardsCache(charKey)
     self:SavePvECache()
 end
 
+---Toast only on false→true claimable transition (not after claim clears the chest).
+local function SessionVaultWasClaimable(addon, charKey)
+    if not charKey or not IsSessionPvECharacter(charKey) then
+        return false
+    end
+    if ns.WeeklyVaultHasPendingRewards and ns.WeeklyVaultHasPendingRewards() then
+        return true
+    end
+    local rewardsTable = addon.db and addon.db.global and addon.db.global.pveCache
+        and addon.db.global.pveCache.greatVault and addon.db.global.pveCache.greatVault.rewards
+    local row = LookupVaultRewardsEntry(rewardsTable, charKey)
+    if row and row.hasAvailableRewards == true then
+        return true
+    end
+    if ns.CharHasClaimableVaultReward and ns.CharHasClaimableVaultReward(charKey) then
+        return true
+    end
+    return false
+end
+
+local function EmitVaultReadyToastIfNewlyClaimable(addon, charKey, wasClaimable, claimableNow)
+    if not claimableNow or wasClaimable then
+        return
+    end
+    if not addon or not addon.SendMessage or not Constants or not Constants.EVENTS then
+        return
+    end
+    if Constants.EVENTS.VAULT_REWARD_AVAILABLE then
+        addon:SendMessage(Constants.EVENTS.VAULT_REWARD_AVAILABLE, {
+            charKey = charKey,
+            claimable = true,
+        })
+    end
+end
+
 ---After claiming a Great Vault reward (or closing the vault UI): refresh reward flags,
 ---keystone (vault can grant a key), and emit WN_PVE_UPDATED for all vault UIs.
 function WarbandNexus:RefreshVaultClaimState(charKey)
@@ -2474,6 +2536,8 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     if not charKey or not self.db or not self.db.global or not self.db.global.pveCache then
         return
     end
+
+    local wasClaimable = SessionVaultWasClaimable(self, charKey)
 
     ns._vaultClaimSubjectKey = charKey
     vaultDataFreshThisSession = true
@@ -2500,8 +2564,8 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
         self:UpdateCharacterKeystone(charKey)
     end
     self:UpdateGreatVaultRewards(charKey, true)
-    local stillPending = IsSessionPvECharacter(charKey) and ns.WeeklyVaultHasPendingRewards()
-    if not stillPending then
+    local claimableNow = IsSessionPvECharacter(charKey) and ns.WeeklyVaultHasPendingRewards()
+    if not claimableNow then
         WriteVaultRewardsCache(charKey, {
             hasAvailableRewards = false,
             lastUpdate = time(),
@@ -2512,10 +2576,44 @@ function WarbandNexus:RefreshVaultClaimState(charKey)
     self:SavePvECache()
     local afterSig = BuildPvESignature(self.db.global.pveCache, charKey)
 
+    if ns.PvE_ClearVaultStatusScratch then
+        ns.PvE_ClearVaultStatusScratch()
+    end
+
+    local rewardsCleared = not claimableNow
+    if rewardsCleared and IsSessionPvECharacter(charKey) then
+        self:ProcessGreatVaultActivities(charKey)
+        self:SavePvECache()
+        afterSig = BuildPvESignature(self.db.global.pveCache, charKey)
+        if ns.PvE_ClearVaultStatusScratch then
+            ns.PvE_ClearVaultStatusScratch()
+        end
+    end
+
+    NotifyVaultEasyAccessRefresh()
+
+    C_Timer.After(0.2, function()
+        if not WarbandNexus or not WarbandNexus.ProcessGreatVaultActivities then return end
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+        local sigBefore = BuildPvESignature(WarbandNexus.db.global.pveCache, charKey)
+        WarbandNexus:ProcessGreatVaultActivities(charKey)
+        WarbandNexus:SavePvECache()
+        local sigAfter = BuildPvESignature(WarbandNexus.db.global.pveCache, charKey)
+        if sigBefore == sigAfter then return end
+        if ns.PvE_ClearVaultStatusScratch then
+            ns.PvE_ClearVaultStatusScratch()
+        end
+        if WarbandNexus.SendMessage and Constants and Constants.EVENTS and Constants.EVENTS.PVE_UPDATED then
+            WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED)
+        end
+        NotifyVaultEasyAccessRefresh()
+    end)
+
     if self.SendMessage and Constants and Constants.EVENTS then
-        if Constants.EVENTS.PVE_UPDATED then
+        if beforeSig ~= afterSig and Constants.EVENTS.PVE_UPDATED then
             self:SendMessage(Constants.EVENTS.PVE_UPDATED)
         end
+        EmitVaultReadyToastIfNewlyClaimable(self, charKey, wasClaimable, claimableNow)
         if beforeSig ~= afterSig and Constants.EVENTS.CHARACTER_UPDATED then
             self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = charKey, dataType = "vaultClaim" })
         end
@@ -2547,6 +2645,10 @@ end
 function WarbandNexus:RegisterPvECacheEvents()
     if not self.RegisterEvent then
         return
+    end
+
+    if self.EnsureWeeklyRewardsFrameHooks then
+        self:EnsureWeeklyRewardsFrameHooks()
     end
     
     -- Prime C_MythicPlus API cache on login (deferred to ensure API readiness)
@@ -2612,6 +2714,7 @@ function WarbandNexus:RegisterPvECacheEvents()
                 local key = ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey
                 WarbandNexus:RefreshVaultClaimState(key)
             end
+            NotifyVaultEasyAccessRefresh()
         end)
     end
     
@@ -2682,10 +2785,14 @@ function WarbandNexus:RegisterPvECacheEvents()
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_ITEM_CHANGED triggered")
         WarbandNexus:EnsureWeeklyRewardsFrameHooks()
+        if WeeklyRewardsFrame and WeeklyRewardsFrame.IsShown and WeeklyRewardsFrame:IsShown() then
+            ns._weeklyRewardsInteractCharKey = GetSessionCanonicalPvEKey()
+        end
         if WarbandNexus.RefreshVaultClaimState then
             local key = ns._weeklyRewardsInteractCharKey or ns._vaultClaimSubjectKey
             WarbandNexus:RefreshVaultClaimState(key)
         end
+        NotifyVaultEasyAccessRefresh()
         -- Keystone API can lag behind the vault UI by a few frames after a key reward.
         RefreshVaultRewardsAfterItemChange(0.2)
         RefreshVaultRewardsAfterItemChange(0.6)
@@ -2732,6 +2839,7 @@ end
 function WarbandNexus:OnVaultDataReceived()
     local charKey = GetSessionCanonicalPvEKey()
     if not charKey then return end
+    local wasClaimable = SessionVaultWasClaimable(self, charKey)
     local beforeSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
     
     -- DO NOT call ProcessGreatVaultActivities here!
@@ -2746,10 +2854,12 @@ function WarbandNexus:OnVaultDataReceived()
     -- Update timestamp (data already in DB)
     self:SavePvECache()
     
+    local claimableNow = IsSessionPvECharacter(charKey) and ns.WeeklyVaultHasPendingRewards()
     local afterSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
     if beforeSig ~= afterSig then
         self:SendMessage(Constants.EVENTS.PVE_UPDATED)
     end
+    EmitVaultReadyToastIfNewlyClaimable(self, charKey, wasClaimable, claimableNow)
 end
 
 ---Sync vault data from VaultScanner to PvECacheService
