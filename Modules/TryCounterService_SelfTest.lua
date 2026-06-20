@@ -331,6 +331,27 @@ function WarbandNexus:RunTryCounterSelfTest()
             WN:SetTryCount("item", FAKE_ITEM_ID, old)
         end)
     end)
+    probe("Finalize slot_boss: miss +1 (hasItem, no link)", function()
+        withRestoredState(function()
+            local drop = fakeDrop()
+            local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            Fns.StageDeferredLootSession({
+                kind = "slot_boss",
+                trackable = { drop },
+                drops = { drop },
+                slotOutcomeSourceKey = "tc_self_test_slot_nolink",
+                slotBossNpcID = samples.raidBossNpcID or 241526,
+                baselineTryCounts = Fns.CaptureTryCountBaselines({ drop }),
+            })
+            RT.lootSession.numLoot = 1
+            RT.lootSession.slotData[1] = { hasItem = true, link = nil }
+            Fns.FinalizeDeferredLootSessionOutcome(WN)
+            if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
+                error("expected slot_boss miss increment without readable link")
+            end
+            WN:SetTryCount("item", FAKE_ITEM_ID, old)
+        end)
+    end)
     probe("Finalize npc: obtain resets repeatable (fake item)", function()
         withRestoredState(function()
             local drop = fakeDrop()

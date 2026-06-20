@@ -312,12 +312,14 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     -- ProcessNPCLoot found no drops because RT.recentKills was empty. Now that we've added
     -- the encounter entries, retry processing. Short delay ensures loot window state is stable.
     if self._pendingEncounterLoot then
-        
         self._pendingEncounterLoot = nil
         self._pendingEncounterLootRetried = true
+        local canReplay = RT.pendingEncounterLootSnapshot and (RT.pendingEncounterLootSnapshot.numLoot or 0) > 0
         C_Timer.After(0.5, function()
             self._pendingEncounterLootRetried = nil
-            self:ProcessNPCLoot()
+            if canReplay and Fns.TryReplayPendingEncounterLoot then
+                Fns.TryReplayPendingEncounterLoot(self)
+            end
         end)
     end
 

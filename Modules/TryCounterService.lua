@@ -4016,7 +4016,12 @@ function Fns.ApplySlotBossLootOutcomes(self, opts)
         return
     end
 
-    if not Fns.LootSlotsHaveReadableItemLink(lootSession.slotData, lootSession.numLoot) then return end
+    -- Miss path: personal-loot chest slots may have hasItem=true while links are nil/secret at
+    -- LOOT_CLOSED (Midnight / post-cinematic Sylvanas chest). Readable links are not required.
+    if not Fns.LootSlotsHaveReadableItemLink(lootSession.slotData, lootSession.numLoot)
+        and not Fns.LootSlotsHaveItemsPresent(lootSession.slotData, lootSession.numLoot) then
+        return
+    end
 
     local missed = {}
     for mi = 1, #trackable do
@@ -6078,6 +6083,38 @@ function Fns.LootSlotsHaveReadableItemLink(slotData, numLoot)
     return false
 end
 
+function Fns.LootSlotsHaveItemsPresent(slotData, numLoot)
+    if not numLoot or numLoot < 1 then return false end
+    if slotData then
+        for i = 1, numLoot do
+            local sd = slotData[i]
+            if sd and sd.hasItem then return true end
+        end
+    end
+    if LootSlotHasItem then
+        for i = 1, numLoot do
+            local ok, has = pcall(LootSlotHasItem, i)
+            if ok and has then return true end
+        end
+    end
+    return false
+end
+
+function Fns.TryReplayPendingEncounterLoot(self)
+    if not self or not Fns.IsAutoTryCounterEnabled() then return false end
+    local snap = RT.pendingEncounterLootSnapshot
+    RT.pendingEncounterLootSnapshot = nil
+    if not snap or (snap.numLoot or 0) < 1 then return false end
+    local live = Fns.SnapshotLootSessionState()
+    Fns.ApplyLootSessionState(snap)
+    local handled = Fns.TryInstanceBossSlotOutcomeFirst(self, "closed")
+    if not handled then
+        self:ProcessNPCLoot("closed")
+    end
+    Fns.ApplyLootSessionState(live)
+    return true
+end
+
 function Fns.ClearEncounterRecentKillsForNpcId(npcId)
     if not npcId then return end
     for guid, kd in pairs(recentKills) do
@@ -6235,7 +6272,10 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self, lootRouteSource)
             for ti = 1, #trackable do
                 if trackable[ti] and foundEarly[trackable[ti].itemID] then anyEarly = true; break end
             end
-            if not anyEarly then return false end
+            -- Miss on chest loot: mount absent but slots have gear (links may stay secret until close).
+            if not anyEarly and not Fns.LootSlotsHaveItemsPresent(lootSession.slotData, numLoot) then
+                return false
+            end
         end
         Fns.StageDeferredLootSession({
             kind = "slot_boss",
@@ -6339,10 +6379,14 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
     if not ctx.drops then
         if inInstance and not self._pendingEncounterLootRetried then
             self._pendingEncounterLoot = true
+            if (lootSession.numLoot or 0) > 0 then
+                RT.pendingEncounterLootSnapshot = Fns.SnapshotLootSessionState()
+            end
         end
         return
     end
     self._pendingEncounterLoot = nil
+    RT.pendingEncounterLootSnapshot = nil
 
     -- Unpack ctx into locals for readability in post-match processing
     local drops = ctx.drops
@@ -6363,23 +6407,8 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
         C_Timer.After(2, Fns.TryDiscoverLockoutQuest)
     end
 
-    -- HOUSEKEEPING: Mark GUIDs and clean encounter entries BEFORE filtering.
-    -- These MUST run even when all drops are collected (#trackable == 0),
-    -- otherwise encounter entries leak and block subsequent boss loot in
-    -- multi-boss raids, or cause spurious matches on mining/herbing/skinning
-    -- LOOT_OPENED events while still inside the instance.
-
-    local now = GetTime()
-    if dedupGUID and (type(dedupGUID) ~= "string" or not dedupGUID:match("^zone_")) then
-        processedGUIDs[dedupGUID] = now
-    end
-    for i = 1, #allSourceGUIDs do
-        local srcGUID = allSourceGUIDs[i]
-        if not processedGUIDs[srcGUID] then processedGUIDs[srcGUID] = now end
-    end
-    if ctx.targetGUID and not processedGUIDs[ctx.targetGUID] then
-        processedGUIDs[ctx.targetGUID] = now
-    end
+    -- Encounter recentKills cleanup runs before filtering (even when #trackable == 0) so multi-boss
+    -- raids do not leak encounter entries into unrelated loot events.
 
     -- Resolve encounter difficulty BEFORE cleanup deletes recentKills.
     local recentKillDiff = nil
@@ -6479,6 +6508,19 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
         -- 5s delayed fallback (debounce saw a "phantom" encounter touch within 10s) and left mythic chest
         -- paths with nil difficulty permanently uncounted until a reload.
         return
+    end
+
+    -- Mark GUIDs only after we will consume a try (avoids poisoning chest reopen after diff-skip).
+    local now = GetTime()
+    if dedupGUID and (type(dedupGUID) ~= "string" or not dedupGUID:match("^zone_")) then
+        processedGUIDs[dedupGUID] = now
+    end
+    for i = 1, #allSourceGUIDs do
+        local srcGUID = allSourceGUIDs[i]
+        if not processedGUIDs[srcGUID] then processedGUIDs[srcGUID] = now end
+    end
+    if ctx.targetGUID and not processedGUIDs[ctx.targetGUID] then
+        processedGUIDs[ctx.targetGUID] = now
     end
 
     local deferOutcome = Fns.ShouldDeferLootOutcomeUntilClose(lootRouteSource)
