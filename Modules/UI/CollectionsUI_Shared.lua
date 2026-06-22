@@ -160,6 +160,172 @@ function M.FormatCollectionsAcquiredDetail(ts)
     return format((loc and loc["COLLECTIONS_ACQUIRED_LINE"]) or "%s: %s", label, rel)
 end
 
+local UTF8_EM_DASH = "\226\128\148"
+
+local function StripRealmFromCharacterLabel(ob)
+    if type(ob) ~= "string" or ob == "" then return nil end
+    if issecretvalue and issecretvalue(ob) then return nil end
+    local emSep = " " .. UTF8_EM_DASH .. " "
+    local cut = ob:find(emSep, 1, true)
+    if cut then
+        return ob:sub(1, cut - 1)
+    end
+    cut = ob:find(" - ", 1, true)
+    if cut then
+        return ob:sub(1, cut - 1)
+    end
+    return ob
+end
+
+--- Default EU (DD.MM.YYYY) until Settings date-format lands addon-wide.
+function M.FormatAchievementEarnedCalendarDate(month, day, year, unixTs)
+    local m, d, y
+    if month ~= nil and day ~= nil and year ~= nil then
+        if issecretvalue and (issecretvalue(month) or issecretvalue(day) or issecretvalue(year)) then
+            month, day, year = nil, nil, nil
+        else
+            m, d, y = tonumber(month), tonumber(day), tonumber(year)
+        end
+    end
+    if (not m or not d or not y) and type(unixTs) == "number" and unixTs > 0 and date then
+        local t = date("*t", unixTs)
+        if t then
+            m, d, y = tonumber(t.month), tonumber(t.day), tonumber(t.year)
+        end
+    end
+    if y and y < 100 then
+        y = y + 2000
+    end
+    if not m or not d or not y or m < 1 or m > 12 or d < 1 or d > 31 or y < 1 then
+        return nil
+    end
+    return format("%02d.%02d.%04d", d, m, y)
+end
+
+function M.LookupAchievementStoredObtainedBy(achievementID)
+    if not achievementID then return nil end
+    local root = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+    local db = root and root.collectionsRecentObtained
+    if type(db) ~= "table" then return nil end
+    for i = 1, #db do
+        local e = db[i]
+        if e and e.type == "achievement" and e.id == achievementID then
+            local ob = e.obtainedBy
+            if type(ob) == "string" and ob ~= "" then
+                return ob
+            end
+        end
+    end
+    return nil
+end
+
+local function EarnerFromAchievementCriteria(achievementID)
+    if not achievementID or not GetAchievementNumCriteria or not GetAchievementCriteriaInfo then
+        return nil
+    end
+    local okN, num = pcall(GetAchievementNumCriteria, achievementID)
+    if not okN or not num or num < 1 then return nil end
+    if issecretvalue and issecretvalue(num) then return nil end
+    for i = 1, num do
+        local okC, _, _, completed, _, _, charName = pcall(GetAchievementCriteriaInfo, achievementID, i)
+        if okC and completed and type(charName) == "string" and charName ~= ""
+            and not (issecretvalue and issecretvalue(charName)) then
+            return StripRealmFromCharacterLabel(charName)
+        end
+    end
+    return nil
+end
+
+--- Character who completed the achievement, or nil when only warband-level credit is known.
+function M.ResolveAchievementEarnerLabel(achievementID, storedObtainedBy)
+    local ob = StripRealmFromCharacterLabel(storedObtainedBy)
+    if ob and ob ~= "" then return ob end
+    if not achievementID or type(achievementID) ~= "number" then return nil end
+    if issecretvalue and issecretvalue(achievementID) then return nil end
+
+    local ok, _, _, _, completed, _, _, _, _, _, _, _, wasEarnedByMe, earnedBy =
+        pcall(GetAchievementInfo, achievementID)
+    if not ok or not completed then return nil end
+
+    if type(earnedBy) == "string" and earnedBy ~= ""
+        and not (issecretvalue and issecretvalue(earnedBy)) then
+        return StripRealmFromCharacterLabel(earnedBy)
+    end
+
+    if wasEarnedByMe == true and UnitName then
+        local playerName = UnitName("player")
+        if type(playerName) == "string" and playerName ~= ""
+            and not (issecretvalue and issecretvalue(playerName)) then
+            return StripRealmFromCharacterLabel(playerName)
+        end
+    end
+
+    return EarnerFromAchievementCriteria(achievementID)
+end
+
+local function BuildAchievementEarnedRowParts(achievementID)
+    if not achievementID or type(achievementID) ~= "number" then return nil end
+    if issecretvalue and issecretvalue(achievementID) then return nil end
+    local ok, _, _, _, completed, month, day, year = pcall(GetAchievementInfo, achievementID)
+    if not ok or not completed then return nil end
+
+    local unixTs = nil
+    if WarbandNexus and WarbandNexus.GetCollectionsAcquiredAt then
+        unixTs = WarbandNexus:GetCollectionsAcquiredAt("achievement", achievementID)
+    end
+    local dateStr = M.FormatAchievementEarnedCalendarDate(month, day, year, unixTs)
+    local storedOb = M.LookupAchievementStoredObtainedBy(achievementID)
+    local charLabel = M.ResolveAchievementEarnerLabel(achievementID, storedOb)
+    local loc = ns.L
+    local warbandLabel = (loc and loc["COLLECTIONS_ACHIEVEMENT_BY_WARBAND"]) or "Warband"
+    local whoLabel = (charLabel and charLabel ~= "") and charLabel or warbandLabel
+    return dateStr, whoLabel, charLabel
+end
+
+--- Plain text: "01.02.2019 - By Name" or "... By Warband".
+function M.FormatAchievementEarnedMetaPlain(achievementID)
+    local dateStr, whoLabel = BuildAchievementEarnedRowParts(achievementID)
+    if not whoLabel then return nil end
+    local loc = ns.L
+    local lineFmt = (loc and loc["COLLECTIONS_ACHIEVEMENT_EARNED_LINE"]) or "%s - By %s"
+    if dateStr and dateStr ~= "" then
+        return format(lineFmt, dateStr, whoLabel)
+    end
+    local byOnlyFmt = (loc and loc["COLLECTIONS_ACHIEVEMENT_EARNED_BY_ONLY"]) or "By %s"
+    return format(byOnlyFmt, whoLabel)
+end
+
+local COLLECTIONS_LIST_META_WHITE = "|cffffffff"
+
+--- Split earned meta for collection rows: date (right-aligned in column), earner (right column); white + class name.
+function M.FormatAchievementEarnedRowMetaSplit(achievementID)
+    local dateStr, whoLabel, charLabel = BuildAchievementEarnedRowParts(achievementID)
+    if not whoLabel then return nil, nil end
+    local loc = ns.L
+    local warbandLabel = (loc and loc["COLLECTIONS_ACHIEVEMENT_BY_WARBAND"]) or "Warband"
+    local byPrefix = COLLECTIONS_LIST_META_WHITE .. "By " .. "|r"
+    local earnerRich
+    if charLabel and charLabel ~= "" then
+        local cc = (ns.UI_GetClassColorHexForWarbandCharacter and ns.UI_GetClassColorHexForWarbandCharacter(charLabel))
+            or COLLECTIONS_LIST_META_WHITE
+        earnerRich = byPrefix .. cc .. charLabel .. "|r"
+    else
+        earnerRich = byPrefix .. COLLECTIONS_LIST_META_WHITE .. warbandLabel .. "|r"
+    end
+    local dateRich = (dateStr and dateStr ~= "") and (COLLECTIONS_LIST_META_WHITE .. dateStr .. "|r") or nil
+    return dateRich, earnerRich
+end
+
+--- Legacy single-string earned meta (Plans browse fallback).
+function M.FormatAchievementEarnedMetaRich(achievementID)
+    local dateRich, earnerRich = M.FormatAchievementEarnedRowMetaSplit(achievementID)
+    if not earnerRich then return nil end
+    if dateRich and dateRich ~= "" then
+        return dateRich .. "  " .. earnerRich
+    end
+    return earnerRich
+end
+
 local COLLECTIONS_TT_WHITE_R, COLLECTIONS_TT_WHITE_G, COLLECTIONS_TT_WHITE_B = 1, 1, 1
 
 --- Labeled line for Collections GameTooltip (always white).
@@ -435,6 +601,11 @@ end
 
 function M.CollectionsBrightHex()
     return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
+end
+
+--- Collections list: mandatory white markup (GRAY BAN — no Dim/Muted hex on row meta or counts).
+function M.CollectionsListWhiteHex()
+    return "|cffffffff"
 end
 
 function M.CollectionsGoldHex()

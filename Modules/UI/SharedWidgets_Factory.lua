@@ -1855,7 +1855,8 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
         rightLabel:SetPoint("RIGHT", header, "RIGHT", -sp.SIDE_MARGIN, 0)
         rightLabel:SetJustifyH("RIGHT")
         rightLabel:SetText(rightStr)
-        ns.UI_SetTextColorRole(rightLabel, "Muted")
+        ns.UI_SetTextColorRole(rightLabel, "Bright")
+        rightLabel:SetTextColor(1, 1, 1, 1)
         title:SetPoint("RIGHT", rightLabel, "LEFT", -6, 0)
     end
 
@@ -2012,11 +2013,61 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
     rightLabel:Hide()
     row.rightLabel = rightLabel
 
+    local leftMetaLabel = FontManager:CreateFontString(row, UIFontRole("factoryDataRowRight"), "OVERLAY")
+    leftMetaLabel:SetJustifyH("RIGHT")
+    leftMetaLabel:SetWordWrap(false)
+    leftMetaLabel:Hide()
+    row.leftMetaLabel = leftMetaLabel
+
     return row
 end
 
-local COLLECTION_ROW_ICON_READY = "Interface\\RaidFrame\\ReadyCheck-Ready"
-local COLLECTION_ROW_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+local function ApplyCollectionRowStatusIcon(statusIcon, isCollected)
+    if ns.UI_ApplyCollectionRowStatusIcon then
+        ns.UI_ApplyCollectionRowStatusIcon(statusIcon, isCollected == true)
+        return
+    end
+end
+
+local COLLECTION_ROW_META_EARNER_W = 116
+local COLLECTION_ROW_META_DATE_W = 92
+local COLLECTION_ROW_META_GAP = 12
+
+local function ApplyCollectionRowMetaLabelChrome(fs)
+    if not fs then return end
+    fs:SetTextColor(1, 1, 1, 1)
+end
+
+local function LayoutCollectionListRowMetaColumns(row, pad)
+    pad = pad or 10
+    local hasRight = row.rightLabel and row.rightLabel:IsShown()
+    local hasLeft = row.leftMetaLabel and row.leftMetaLabel:IsShown()
+    if not hasRight and not hasLeft then return nil end
+
+    if hasRight then
+        row.rightLabel:ClearAllPoints()
+        row.rightLabel:SetSize(COLLECTION_ROW_META_EARNER_W, row:GetHeight())
+        row.rightLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
+        row.rightLabel:SetJustifyH("RIGHT")
+        row.rightLabel:SetJustifyV("MIDDLE")
+        if row.rightLabel.SetMaxLines then row.rightLabel:SetMaxLines(1) end
+        ApplyCollectionRowMetaLabelChrome(row.rightLabel)
+    end
+    if hasLeft then
+        row.leftMetaLabel:ClearAllPoints()
+        row.leftMetaLabel:SetSize(COLLECTION_ROW_META_DATE_W, row:GetHeight())
+        if hasRight then
+            row.leftMetaLabel:SetPoint("RIGHT", row.rightLabel, "LEFT", -COLLECTION_ROW_META_GAP, 0)
+        else
+            row.leftMetaLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
+        end
+        row.leftMetaLabel:SetJustifyH("RIGHT")
+        row.leftMetaLabel:SetJustifyV("MIDDLE")
+        if row.leftMetaLabel.SetMaxLines then row.leftMetaLabel:SetMaxLines(1) end
+        ApplyCollectionRowMetaLabelChrome(row.leftMetaLabel)
+    end
+    return hasLeft and row.leftMetaLabel or row.rightLabel
+end
 
 local function CollectionListRowIconHost(row)
     return row._iconBorder or row.icon
@@ -2058,6 +2109,14 @@ local function LayoutCollectionListRowText(row, pad, gap, slotGap)
         and subText and not (issecretvalue and issecretvalue(subText))
         and subText ~= ""
     row.label:ClearAllPoints()
+    local metaAnchor = LayoutCollectionListRowMetaColumns(row, pad)
+    if metaAnchor and not hasSub then
+        row.label:SetPoint("LEFT", row, "LEFT", textX, 0)
+        row.label:SetPoint("RIGHT", metaAnchor, "LEFT", -6, 0)
+        row.label:SetJustifyH("LEFT")
+        row.label:SetJustifyV("MIDDLE")
+        return
+    end
     if hasSub and row.subtitle then
         row.subtitle:ClearAllPoints()
         local lineGap = 2
@@ -2079,8 +2138,12 @@ local function LayoutCollectionListRowText(row, pad, gap, slotGap)
         row.subtitle:SetJustifyV("TOP")
         row.label:SetPoint("TOPLEFT", row, "TOPLEFT", textX, -blockTop)
         row.subtitle:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -lineGap)
-        if row.rightLabel and row.rightLabel:IsShown() then
+        if metaAnchor then
+            row.subtitle:SetPoint("RIGHT", metaAnchor, "LEFT", -6, 0)
+        elseif row.rightLabel and row.rightLabel:IsShown() then
             row.subtitle:SetPoint("RIGHT", row.rightLabel, "LEFT", -6, 0)
+        elseif row.leftMetaLabel and row.leftMetaLabel:IsShown() then
+            row.subtitle:SetPoint("RIGHT", row.leftMetaLabel, "LEFT", -6, 0)
         else
             row.subtitle:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
         end
@@ -2091,7 +2154,9 @@ local function LayoutCollectionListRowText(row, pad, gap, slotGap)
         row.label:SetJustifyV("TOP")
         row.label:SetPoint("TOPLEFT", row, "TOPLEFT", textX, -blockTop)
     end
-    if row.rightLabel and row.rightLabel:IsShown() then
+    if metaAnchor then
+        row.label:SetPoint("RIGHT", metaAnchor, "LEFT", -6, 0)
+    elseif row.rightLabel and row.rightLabel:IsShown() then
         row.rightLabel:ClearAllPoints()
         row.rightLabel:SetPoint("RIGHT", row, "RIGHT", -(pad + 4), 0)
         row.rightLabel:SetJustifyV("MIDDLE")
@@ -2220,15 +2285,14 @@ local function ApplyCollectionRowPlanSlotTextures(row, planSlotState, gap, slotG
 end
 
 --- Apply content and selection to a collection list row (from CreateCollectionListRow). Use for virtual scroll.
-function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText, subtitleText, planSlotState)
+function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick, rightAlignedText, subtitleText, planSlotState, leftAlignedText)
     if not row then return end
     local pad = UI_SPACING.SIDE_MARGIN or 10
     local gap = 4
     local slotGap = 3
     self:ApplyRowBackground(row, rowIndex or 1)
     if row.statusIcon then
-        row.statusIcon:SetTexture(isCollected and COLLECTION_ROW_ICON_READY or COLLECTION_ROW_ICON_NOT_READY)
-        row.statusIcon:Show()
+        ApplyCollectionRowStatusIcon(row.statusIcon, isCollected == true)
     end
     if planSlotState and rawget(planSlotState, "achievementCollected") == nil then
         planSlotState.achievementCollected = isCollected == true
@@ -2264,11 +2328,26 @@ function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, la
         row.rightLabel:SetText(rightAlignedText)
         row.rightLabel:SetJustifyV("MIDDLE")
         row.rightLabel:Show()
+        ApplyCollectionRowMetaLabelChrome(row.rightLabel)
     else
         if row.rightLabel then
             row.rightLabel:SetText("")
             row.rightLabel:Hide()
         end
+    end
+    if leftAlignedText and leftAlignedText ~= "" then
+        if not row.leftMetaLabel then
+            row.leftMetaLabel = FontManager:CreateFontString(row, UIFontRole("factoryDataRowRight"), "OVERLAY")
+            row.leftMetaLabel:SetJustifyH("RIGHT")
+            row.leftMetaLabel:SetWordWrap(false)
+        end
+        row.leftMetaLabel:SetText(leftAlignedText)
+        row.leftMetaLabel:SetJustifyV("MIDDLE")
+        row.leftMetaLabel:Show()
+        ApplyCollectionRowMetaLabelChrome(row.leftMetaLabel)
+    elseif row.leftMetaLabel then
+        row.leftMetaLabel:SetText("")
+        row.leftMetaLabel:Hide()
     end
     if row.label and CollectionListRowIconHost(row) then
         LayoutCollectionListRowText(row, pad, gap, slotGap)

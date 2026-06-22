@@ -132,7 +132,7 @@ end
 -- Strip legacy "Name — Realm" payloads for Recent display (realm-free; matches CollectiblePayloadObtainedBy).
 local UTF8_EM_DASH = "\226\128\148"
 function M.RecentCharacterLabelForDisplay(ob)
-    if not ob or ob == "" then return nil end
+    if type(ob) ~= "string" or ob == "" then return nil end
     if issecretvalue and issecretvalue(ob) then return nil end
     local emSep = " " .. UTF8_EM_DASH .. " "
     local cut = ob:find(emSep, 1, true)
@@ -147,13 +147,10 @@ function M.RecentCharacterLabelForDisplay(ob)
 end
 
 function M.RecentAchievementEarnedByLabel(achievementID, storedObtainedBy)
-    local ob = M.RecentCharacterLabelForDisplay(storedObtainedBy)
-    if ob and ob ~= "" then return ob end
-    if not achievementID then return nil end
-    local ok, _, _, _, _, _, _, _, _, _, _, _, _, earnedBy = pcall(GetAchievementInfo, achievementID)
-    if not ok or not earnedBy or earnedBy == "" then return nil end
-    if issecretvalue and issecretvalue(earnedBy) then return nil end
-    return M.RecentCharacterLabelForDisplay(earnedBy)
+    if M.ResolveAchievementEarnerLabel then
+        return M.ResolveAchievementEarnerLabel(achievementID, storedObtainedBy)
+    end
+    return M.RecentCharacterLabelForDisplay(storedObtainedBy)
 end
 
 function M.RecentEntryIdKey(typ, id)

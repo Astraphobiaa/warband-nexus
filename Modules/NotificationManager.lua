@@ -39,12 +39,15 @@ local E = Constants.EVENTS
 -- Dedupe Blizzard progressive criteria: AchievementAlertSystem / CriteriaAlertSystem may both enqueue.
 local lastCriteriaProgressEmitKey = nil
 local lastCriteriaProgressEmitTime = nil
+local lastProgressAlertEmitKey = nil
+local lastProgressAlertEmitTime = nil
 local TOAST_FADE_OUT_SEC = 0.32
 local TOAST_COLLAPSE_DELAY_SEC = 0.14
 local TOAST_REPOSITION_SEC = 0.38
 local TOAST_ENTRANCE_SEC = 0.3
 local TOAST_TRY_COUNTER_FLASH_DELAY_SEC = 0.35
-local TestLootEnsureAchievementAlertUI, TestLootFireAchievementAddAlert, TestLootResolveAchievementWithCriteria, TestLootPrintAchievementReplaceMode
+local TestLootEnsureAchievementAlertUI, TestLootFireAchievementAddAlert, TestLootFireProgressAddAlert
+local TestLootResolveAchievementWithCriteria, TestLootPrintAchievementReplaceMode
 
 -- Changelog / What's New: NotificationManager_Changelog.lua (ns.NotificationChangelog, ns.CHANGELOG)
 local NotificationChangelog = ns.NotificationChangelog
@@ -542,7 +545,7 @@ local ACTION_TEXT = {
     pet = (ns.L and ns.L["COLLECTED_PET_MSG"]) or "You have collected a battle pet",
     toy = (ns.L and ns.L["COLLECTED_TOY_MSG"]) or "You have collected a toy",
     illusion = (ns.L and ns.L["COLLECTED_ILLUSION_MSG"]) or "You have collected an illusion",
-    achievement = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!",
+    achievement = "",
     criteria_progress = (ns.L and ns.L["CRITERIA_PROGRESS_MSG"]) or "Progress",
     title = (ns.L and ns.L["EARNED_TITLE_MSG"]) or "You have earned a title",
     plan = (ns.L and ns.L["COMPLETED_PLAN_MSG"]) or "You have completed a plan",
@@ -632,11 +635,13 @@ end
 
 function WarbandNexus:PrintNotificationTestHelp()
     self:Print("|cff00ccff=== Notification test (Settings button = stack) ===|r")
-    self:Print("|cff44ff44/wn alerttest|r — Fire every toast type (achievement, criteria, reminder, mount, pet, toy, plan, try counter, vault)")
+    self:Print("|cff44ff44/wn alerttest|r (alias: |cff44ff44/wn testalert|r) — Live AddAlert paths + collectible lanes")
     self:Print("|cff44ff44/wn notif stack|r — Achievement + criteria + reminder (respects Warband achievement popups toggle)")
     self:Print("|cff44ff44/wn notif earn [id]|r — Live path: Blizzard AchievementAlertSystem:AddAlert (earned)")
     self:Print("|cff44ff44/wn notif progress [id] [step]|r — Live path: CriteriaAlertSystem:AddAlert (criteria step)")
+    self:Print("|cff44ff44/wn notif traveler|r — Live path: ProgressAlertSystem:AddAlert (Traveler's Log style)")
     self:Print("|cff44ff44/wn notif earned [id]|r — Live path: ACHIEVEMENT_EARNED event (CollectionService)")
+    self:Print("|cff44ff44/wn notif hierarchy|r — Criteria -> sub (type 8) -> meta chain (62901 / 12918 / 40958)")
     self:Print("|cff888888Toggle Settings > Notifications > Warband achievement popups ON/OFF, then re-run.|r")
     self:Print("|cff888888Default test achievement id is 6 if omitted.|r")
 end
@@ -735,8 +740,16 @@ function WarbandNexus:RunNotificationSlashCommand(type, id, step)
         self:TestAchievementAlertProgress(id, step)
         return
     end
+    if type == "traveler" or type == "travelerslog" or type == "progressalert" then
+        self:TestProgressAlert()
+        return
+    end
     if type == "earned" or type == "event" then
         self:TestAchievementEarnedEvent(id)
+        return
+    end
+    if type == "hierarchy" or type == "chain" or type == "meta" then
+        self:TestAchievementAlertHierarchy()
         return
     end
     self:Print("|cffff0000Unknown subcommand.|r")
@@ -752,7 +765,21 @@ function WarbandNexus:TestAlertTest(sub)
     if sub == "help" or sub == "?" then
         self:Print("|cff00ccff=== /wn alerttest ===|r")
         self:Print("|cff44ff44/wn alerttest|r — All toast types in one stack (unified layout)")
-        self:Print("|cff888888Order: achievement, criteria, reminder, mount, pet, toy, plan, try-counter mount, vault progress|r")
+        self:Print("|cff8888881.|r Achievement earned — live AddAlert (shield + points)")
+        self:Print("|cff8888882.|r Criteria step — live CriteriaAlertSystem (no points shield)")
+        self:Print("|cff8888883.|r Traveler's Log — live ProgressAlertSystem")
+        self:Print("|cff8888884.|r To-Do reminder — compact reminder lane")
+        self:Print("|cff8888885.|r Mount — Notify collectible lane")
+        self:Print("|cff8888886.|r Pet — Notify collectible lane")
+        self:Print("|cff8888887.|r Toy — Notify collectible lane")
+        self:Print("|cff8888888.|r Plan completed — Notify plan lane")
+        self:Print("|cff8888889.|r Try-counter mount — COLLECTIBLE_OBTAINED + attempts")
+        self:Print("|cff88888810.|r Vault progress — compact criteria-style (no shield)")
+        self:Print("|cff44ff44/wn alerttest hierarchy|r — Criteria -> sub -> meta chain only")
+        return
+    end
+    if sub == "hierarchy" or sub == "chain" or sub == "meta" then
+        self:TestAchievementAlertHierarchy()
         return
     end
     if not EnsureNotificationTestsEnabled(self) then return end
@@ -765,29 +792,22 @@ function WarbandNexus:TestAlertTest(sub)
         end)
     end
 
-    self:Print("|cff00ccff[WN Alert Test]|r Firing all toast types — watch the unified stack.")
+    self:Print("|cff00ccff[WN Alert Test]|r Firing live alert pipelines — watch the unified stack.")
 
     step(delay, function(addon)
-        addon:Notify(
-            "achievement",
-            (L and L["TEST_NOTIFICATION_TITLE"]) or "Test Notification",
-            nil,
-            { playSound = false, autoDismiss = ALERT_TEST_DISMISS_SEC }
-        )
+        addon:TestAchievementAlertEarn(6)
     end)
     delay = delay + ALERT_TEST_STEP_SEC
 
     step(delay, function(addon)
-        addon:ShowModalNotification({
-            compact = true,
-            progressAnchor = true,
-            criteriaTitle = (L and L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress",
-            itemName = (L and L["TEST_STACK_CRITERIA"]) or "Criteria progress (test)",
-            icon = "Interface\\Icons\\Achievement_Quests_Completed_08",
-            titleColor = ToastChrome.CriteriaAccent(),
-            playSound = false,
-            autoDismiss = ALERT_TEST_DISMISS_SEC,
-        })
+        addon:TestAchievementAlertProgress(nil, 1)
+    end)
+    delay = delay + ALERT_TEST_STEP_SEC
+
+    step(delay, function(addon)
+        if addon.TestProgressAlert then
+            addon:TestProgressAlert()
+        end
     end)
     delay = delay + ALERT_TEST_STEP_SEC
 
@@ -875,28 +895,20 @@ function WarbandNexus:TestNotificationStack()
     local useWarbandAchievementPopups = NP.UseWarbandAchievementPopups(db)
 
     if useWarbandAchievementPopups then
-        self:Print("|cff00ccff[WN Notif]|r Warband achievement popups ON — WN achievement + criteria + reminder.")
-        self:Notify(
-            "achievement",
-            (L and L["TEST_NOTIFICATION_TITLE"]) or "Test Notification",
-            nil,
-            { playSound = false, autoDismiss = 4 }
-        )
+        self:Print("|cff00ccff[WN Notif]|r Warband achievement popups ON — live AddAlert earn + criteria + progress + reminder.")
+        self:TestAchievementAlertEarn(6)
         C_Timer.After(0.12, function()
-            if not self.ShowModalNotification then return end
-            self:ShowModalNotification({
-                compact = true,
-                progressAnchor = true,
-                criteriaTitle = (L and L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress",
-                itemName = (L and L["TEST_STACK_CRITERIA"]) or "Criteria progress (test)",
-                icon = "Interface\\Icons\\Achievement_Quests_Completed_08",
-                titleColor = ToastChrome.CriteriaAccent(),
-                playSound = false,
-                autoDismiss = 4,
-            })
+            if WarbandNexus and WarbandNexus.TestAchievementAlertProgress then
+                WarbandNexus:TestAchievementAlertProgress(nil, 1)
+            end
         end)
         C_Timer.After(0.24, function()
-            ShowTestReminderToastModal(self)
+            if WarbandNexus and WarbandNexus.TestProgressAlert then
+                WarbandNexus:TestProgressAlert()
+            end
+        end)
+        C_Timer.After(0.36, function()
+            ShowTestReminderToastModal(WarbandNexus)
         end)
         return
     end
@@ -993,6 +1005,11 @@ local ALERT_WIDTH_FIXED = ALERT_WIDTH_COMPACT
 local ALERT_WIDTH_PROGRESS = 276
 local ALERT_ICON_SIZE = 36
 local ALERT_ICON_SLOT = 50
+local ACHIEVEMENT_SHIELD_SIZE = 32
+local ACHIEVEMENT_SHIELD_GAP = 1
+local ACHIEVEMENT_SHIELD_ATLAS_POINTS = "UI-Achievement-Shield-1"
+local ACHIEVEMENT_SHIELD_ATLAS_EMPTY = "UI-Achievement-Shield-NoPoints"
+local ACHIEVEMENT_CRITERIA_TYPE_LINKED = 8 -- criteriaType ACHIEVEMENT (sub-achievement row); wiki GetAchievementCriteriaInfo
 local ALERT_PAD_LEFT = 8
 local ALERT_PAD_RIGHT = 10
 local ALERT_PAD_TEXT = 6
@@ -1012,6 +1029,62 @@ local function FormatToastAttemptsLabel(count)
         or (ns.L and ns.L["COLLECTION_LIST_ATTEMPTS_FMT"])
         or "%d Attempts"
     return string.format(fmt, count)
+end
+
+---Resolve achievement points for toast shield (config override or GetAchievementInfo).
+local function NM_ResolveAchievementToastPoints(config)
+    if not config then return nil end
+    local pts = config.achievementPoints
+    if pts == nil and config.achievementID then
+        local achID = config.achievementID
+        if not (issecretvalue and issecretvalue(achID)) then
+            local ok, _, _, p = pcall(GetAchievementInfo, achID)
+            if ok and type(p) == "number" then
+                pts = p
+            end
+        end
+    end
+    return tonumber(pts)
+end
+
+---Blizzard-style points shield to the right of the achievement icon.
+---@return Frame|nil shieldFrame
+---@return number extraWidth additional icon-lane width consumed
+local function NM_AttachAchievementPointsShield(iconSlotCompact, iconCompact, points)
+    if not iconSlotCompact or not iconCompact then return nil, 0 end
+    local numPts = tonumber(points)
+    local hasPoints = numPts ~= nil and numPts > 0
+    local atlas = hasPoints and ACHIEVEMENT_SHIELD_ATLAS_POINTS or ACHIEVEMENT_SHIELD_ATLAS_EMPTY
+
+    local shieldFrame = CreateFrame("Frame", nil, iconSlotCompact)
+    shieldFrame:SetSize(ACHIEVEMENT_SHIELD_SIZE, ACHIEVEMENT_SHIELD_SIZE)
+    shieldFrame:SetPoint("LEFT", iconCompact, "RIGHT", ACHIEVEMENT_SHIELD_GAP, 0)
+
+    local shieldTex = shieldFrame:CreateTexture(nil, "ARTWORK")
+    shieldTex:SetAllPoints()
+    local ok = pcall(function()
+        shieldTex:SetAtlas(atlas, false)
+    end)
+    if not ok then
+        shieldFrame:Hide()
+        return nil, 0
+    end
+    shieldTex:SetSnapToPixelGrid(false)
+    shieldTex:SetTexelSnappingBias(0)
+
+    if hasPoints then
+        local ptsFs = FontManager:CreateFontString(shieldFrame, "body", "OVERLAY")
+        ptsFs:SetPoint("CENTER", shieldTex, "CENTER", 0, 0)
+        ptsFs:SetJustifyH("CENTER")
+        ptsFs:SetJustifyV("MIDDLE")
+        ptsFs:SetText(tostring(numPts))
+        ptsFs:SetTextColor(1, 1, 1)
+        NM_ApplyTextShadow(ptsFs, 1)
+    end
+
+    shieldFrame:SetFrameLevel((iconSlotCompact.GetFrameLevel and iconSlotCompact:GetFrameLevel() or 2) + 4)
+
+    return shieldFrame, ACHIEVEMENT_SHIELD_SIZE + ACHIEVEMENT_SHIELD_GAP
 end
 
 ---Get Blizzard's alert frame position so we can match it when "Use AlertFrame Position" is on.
@@ -1136,6 +1209,9 @@ local function InferToastLane(config)
     end
     if config.notifType == "tryCounter" or config.toastLane == "tryCounter" then
         return "tryCounter"
+    end
+    if config.notifType == "criteria" then
+        return "criteria"
     end
     return "achievement"
 end
@@ -1735,6 +1811,8 @@ function WarbandNexus:ShowModalNotification(config)
         local ICON_SLOT_WIDTH_COMPACT = ALERT_ICON_SLOT
         local iconSizeCompact = ALERT_ICON_SIZE
         local laneIconLeadingPad = ALERT_PAD_LEFT
+        local hideCompactIcon = config.criteriaNoIcon == true
+        local iconLaneWidth = hideCompactIcon and 0 or ICON_SLOT_WIDTH_COMPACT
         local compactPopup = (ToastFactory and ToastFactory.CreateToastHost)
             and ToastFactory:CreateToastHost(UIParent, popupWidthCompact, COMPACT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
             or CreateFrame("Frame", nil, UIParent)
@@ -1769,15 +1847,27 @@ function WarbandNexus:ShowModalNotification(config)
         backdropFrameCompact:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
         ToastChrome.ApplyCompactBackdropChrome(backdropFrameCompact, titleColor, 0.38)
         
-        -- Layer 2: icon slot (icon + bling only)
+        -- Layer 2: icon slot (icon + bling only); criteria lane may omit icon entirely.
         local iconSlotCompact = CreateFrame("Frame", nil, compactPopup)
         iconSlotCompact:SetFrameLevel(2)
-        iconSlotCompact:SetSize(ICON_SLOT_WIDTH_COMPACT, COMPACT_HEIGHT)
-        iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad, 0)
-        
-        local iconCompact = iconSlotCompact:CreateTexture(nil, "ARTWORK")
+        iconSlotCompact:SetSize(iconLaneWidth, COMPACT_HEIGHT)
+        if not hideCompactIcon then
+            iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad, 0)
+        else
+            iconSlotCompact:Hide()
+        end
+
+        local iconCompact
+        local achievementShieldExtra = 0
+        local isAchievementEarnedToast = config.notifType == "achievement"
+        if not hideCompactIcon then
+        iconCompact = iconSlotCompact:CreateTexture(nil, "ARTWORK")
         iconCompact:SetSize(iconSizeCompact, iconSizeCompact)
-        iconCompact:SetPoint("CENTER", iconSlotCompact, "CENTER", 0, 0)
+        if isAchievementEarnedToast then
+            iconCompact:SetPoint("LEFT", iconSlotCompact, "LEFT", 4, 0)
+        else
+            iconCompact:SetPoint("CENTER", iconSlotCompact, "CENTER", 0, 0)
+        end
         -- Use resolved atlas/fileID locals (IsAtlasName promotes config.icon â†’ iconAtlas; compact must not read config.iconAtlas only).
         if iconAtlas and iconAtlas ~= "" then
             iconCompact:SetAtlas(iconAtlas)
@@ -1793,14 +1883,32 @@ function WarbandNexus:ShowModalNotification(config)
         end
         iconCompact:SetVertexColor(1, 1, 1, 1)
         iconCompact:SetAlpha(1)
+        if isAchievementEarnedToast then
+            local iconBling = iconSlotCompact:CreateTexture(nil, "OVERLAY", nil, 3)
+            iconBling:SetSize(iconSizeCompact + 14, iconSizeCompact + 14)
+            iconBling:SetPoint("CENTER", iconCompact, "CENTER", 0, 0)
+            iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
+            iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
+            iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+            iconBling:SetBlendMode("BLEND")
+        end
         ToastChrome.ApplyCompactIconBorder(iconSlotCompact, iconCompact, iconSizeCompact, titleColor)
+        if isAchievementEarnedToast then
+            local achPts = NM_ResolveAchievementToastPoints(config)
+            local _, extraW = NM_AttachAchievementPointsShield(iconSlotCompact, iconCompact, achPts)
+            achievementShieldExtra = extraW or 0
+            if achievementShieldExtra > 0 then
+                iconSlotCompact:SetWidth(iconLaneWidth + achievementShieldExtra)
+            end
+        end
+        end
         
         -- Content frame (right): text only
         local contentFrameCompact = CreateFrame("Frame", nil, compactPopup)
         contentFrameCompact:SetFrameLevel(2)
         contentFrameCompact:SetPoint("TOP", compactPopup, "TOP", 0, 0)
         contentFrameCompact:SetPoint("BOTTOM", compactPopup, "BOTTOM", 0, 0)
-        contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad + ICON_SLOT_WIDTH_COMPACT, 0)
+        contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad + iconLaneWidth + achievementShieldExtra, 0)
         contentFrameCompact:SetPoint("RIGHT", compactPopup, "RIGHT", -ALERT_PAD_RIGHT, 0)
         
         -- Compact: accent lives on the icon flipbook frame only (no card-wide TopBottom streaks).
@@ -1828,6 +1936,9 @@ function WarbandNexus:ShowModalNotification(config)
         if isTryCounterToast and tryCountStr ~= "" then
             headerTitle = tryCountStr
             tryCountStr = ""
+        end
+        if config.notifType == "achievement" then
+            detailStr = ""
         end
         local headerSafe = headerTitle
         if type(headerSafe) == "string" and issecretvalue and issecretvalue(headerSafe) then headerSafe = nil end
@@ -1872,7 +1983,7 @@ function WarbandNexus:ShowModalNotification(config)
             NM_ApplyTextShadow(headerLine, 0.6)
         end
 
-        local textUseW = math.max(48, popupWidthCompact - laneIconLeadingPad - ICON_SLOT_WIDTH_COMPACT - ALERT_PAD_RIGHT - ALERT_PAD_TEXT * 2)
+        local textUseW = math.max(48, popupWidthCompact - laneIconLeadingPad - iconLaneWidth - achievementShieldExtra - ALERT_PAD_RIGHT - ALERT_PAD_TEXT * 2)
         titleLine:SetWidth(textUseW)
         headerLine:SetWidth(textUseW)
 
@@ -2666,6 +2777,158 @@ local function ResolveAchievementAlertCriteria(a1, a2, ...)
     return nil
 end
 
+---ProgressAlertSystem payloads (Traveler's Log, etc.) — no achievementID required.
+local function ResolveProgressAlertPayload(a1, a2, ...)
+    local function safeStr(v)
+        if type(v) ~= "string" or v == "" then return nil end
+        if issecretvalue and issecretvalue(v) then return nil end
+        return v
+    end
+
+    local function fromTable(t)
+        if type(t) ~= "table" then return nil end
+        local nested = t.progressAlertInfo or t.alertInfo or t.info
+        if type(nested) == "table" then
+            local nestedPayload = fromTable(nested)
+            if nestedPayload then return nestedPayload end
+        end
+        return {
+            title = safeStr(t.title) or safeStr(t.label) or safeStr(t.header) or safeStr(t.categoryTitle)
+                or safeStr(t.headerText),
+            text = safeStr(t.text) or safeStr(t.description) or safeStr(t.name) or safeStr(t.subtitle)
+                or safeStr(t.criteriaString) or safeStr(t.body),
+            icon = t.icon,
+            iconAtlas = safeStr(t.iconAtlas) or safeStr(t.atlas) or safeStr(t.textureAtlas),
+            iconFileID = (type(t.iconFileID) == "number" and t.iconFileID)
+                or (type(t.fileID) == "number" and t.fileID) or nil,
+        }
+    end
+
+    if type(a1) == "table" then
+        return fromTable(a1)
+    end
+    local title = safeStr(a1)
+    local text = safeStr(a2)
+    if title or text then
+        return { title = title, text = text }
+    end
+    local n = select("#", ...)
+    for i = 1, n do
+        local v = select(i, ...)
+        if type(v) == "table" then
+            return fromTable(v)
+        end
+    end
+    return nil
+end
+
+local function NormalizeProgressAlertPayload(payload)
+    if not payload then return nil end
+    local title = payload.title
+    local text = payload.text
+    if (not text or text == "") and title and title ~= "" then
+        text = title
+        title = nil
+    end
+    if not text or text == "" then return nil end
+    if not title or title == "" then
+        title = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress"
+    end
+    payload.title = title
+    payload.text = text
+    return payload
+end
+
+---Deduped generic progress toast (Traveler's Log / ProgressAlertSystem lane).
+local function TryDispatchProgressAlertToast(payload)
+    if not NP.UseWarbandCriteriaProgressPopups() then return false end
+    payload = NormalizeProgressAlertPayload(payload)
+    if not payload then return false end
+
+    local key = "prog|" .. tostring(payload.title) .. "|" .. tostring(payload.text)
+    local now = GetTime()
+    if lastProgressAlertEmitKey == key and lastProgressAlertEmitTime
+        and (now - lastProgressAlertEmitTime) < 0.45 then
+        return true
+    end
+
+    local shown = WarbandNexus and WarbandNexus.ShowGenericProgressNotification
+        and WarbandNexus:ShowGenericProgressNotification(payload)
+    if shown then
+        lastProgressAlertEmitKey = key
+        lastProgressAlertEmitTime = now
+        return true
+    end
+    return false
+end
+
+---Resolve criteria row for AddAlert / CRITERIA_EARNED hint (name or index).
+---@return table|nil { index, criteriaType, linkedAchievementID, linkedIcon }
+local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
+    if not achievementID or type(achievementID) ~= "number" then return nil end
+    if issecretvalue and issecretvalue(achievementID) then return nil end
+    local numCriteria = GetAchievementNumCriteria(achievementID)
+    if not numCriteria or numCriteria < 1 then return nil end
+
+    local criteriaIndex = nil
+    if type(criteriaHint) == "number" then
+        criteriaIndex = criteriaHint
+    elseif type(criteriaHint) == "string" and criteriaHint ~= "" then
+        if issecretvalue and issecretvalue(criteriaHint) then return nil end
+        for i = 1, numCriteria do
+            local name = GetAchievementCriteriaInfo(achievementID, i)
+            if name and not (issecretvalue and issecretvalue(name)) and name == criteriaHint then
+                criteriaIndex = i
+                break
+            end
+        end
+    end
+    if not criteriaIndex or criteriaIndex < 1 or criteriaIndex > numCriteria then
+        return nil
+    end
+
+    local ok, _, criteriaType, _, _, _, _, assetID = pcall(GetAchievementCriteriaInfo, achievementID, criteriaIndex)
+    if not ok then return nil end
+
+    local linkedID = nil
+    local ct = tonumber(criteriaType)
+    if ct == ACHIEVEMENT_CRITERIA_TYPE_LINKED and assetID then
+        local n = tonumber(assetID)
+        if n and n > 0 and not (issecretvalue and issecretvalue(assetID)) then
+            linkedID = n
+        end
+    end
+
+    local linkedIcon = nil
+    if linkedID then
+        local okInfo, _, _, _, _, _, _, _, _, icon = pcall(GetAchievementInfo, linkedID)
+        if okInfo and icon and not (issecretvalue and issecretvalue(icon)) then
+            linkedIcon = icon
+        end
+    end
+
+    return {
+        index = criteriaIndex,
+        criteriaType = ct,
+        linkedAchievementID = linkedID,
+        linkedIcon = linkedIcon,
+    }
+end
+
+---Main earned (no hint), sub-achievement row (criteriaType 8), or plain criteria progress.
+---@return string route "earned"|"criteria"
+---@return number routeAchievementID id for earned toast or parent id for criteria toast
+local function NM_ResolveAchievementAlertRoute(achievementID, criteriaHint)
+    if criteriaHint == nil then
+        return "earned", achievementID
+    end
+    local row = NM_FindCriteriaRowForHint(achievementID, criteriaHint)
+    if row and row.linkedAchievementID then
+        return "earned", row.linkedAchievementID
+    end
+    return "criteria", achievementID
+end
+
 ---Deduped criteria progress toast; returns true when WN handled (or duplicate suppressed).
 local function TryDispatchCriteriaProgressToast(achievementID, criteriaIndex)
     if not NP.UseWarbandCriteriaProgressPopups() then return false end
@@ -2702,7 +2965,7 @@ end
 
 ---Wiki: CRITERIA_EARNED achievementID, description, achievementAlreadyEarnedOnAccount
 function WarbandNexus:OnCriteriaEarned(_, achievementID, description, achievementAlreadyEarnedOnAccount)
-    if not NP.UseWarbandCriteriaProgressPopups() then return end
+    if not NP.UseWarbandAchievementPopups() and not NP.UseWarbandCriteriaProgressPopups() then return end
     if not achievementID or type(achievementID) ~= "number" then return end
     if issecretvalue and issecretvalue(achievementID) then return end
     if achievementAlreadyEarnedOnAccount then return end
@@ -2710,6 +2973,14 @@ function WarbandNexus:OnCriteriaEarned(_, achievementID, description, achievemen
         description = nil
     end
     C_Timer.After(0, function()
+        local route, routeID = NM_ResolveAchievementAlertRoute(achievementID, description)
+        if route == "earned" then
+            if NP.UseWarbandAchievementPopups()
+                and WarbandNexus and WarbandNexus.ShowAchievementNotification then
+                WarbandNexus:ShowAchievementNotification(routeID)
+            end
+            return
+        end
         if not NP.UseWarbandCriteriaProgressPopups() then return end
         TryDispatchCriteriaProgressToast(achievementID, description)
     end)
@@ -2731,6 +3002,7 @@ local function CaptureBlizzardAddAlertHandlers(addon)
     if Utilities and Utilities.SafeLoadAddOn then
         Utilities:SafeLoadAddOn("Blizzard_SharedXML")
         Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+        Utilities:SafeLoadAddOn("Blizzard_AdventureGuide")
     end
     if AchievementAlertSystem and type(AchievementAlertSystem.AddAlert) == "function" then
         local fn = AchievementAlertSystem.AddAlert
@@ -2797,6 +3069,15 @@ local function InstallBlizzardAlertFrameHideHooks()
             progF._wnProgAlertHideHooked = true
         end
     end
+    local progRoot = _G.ProgressAlertFrame
+    if progRoot and not progRoot._wnProgAlertHideHooked then
+        progRoot:HookScript("OnShow", function(self)
+            if self.Hide and NP.UseWarbandCriteriaProgressPopups() then
+                self:Hide()
+            end
+        end)
+        progRoot._wnProgAlertHideHooked = true
+    end
 end
 
 local function BuildAchievementAddAlertReplacement(orig)
@@ -2828,10 +3109,10 @@ local function BuildAchievementAddAlertReplacement(orig)
                 pcall(orig, sys, origA1, origA2, unpack(rest))
                 return
             end
-            local _, _, _, completed = GetAchievementInfo(arg1)
-            if completed then
+            local route, routeID = NM_ResolveAchievementAlertRoute(arg1, criteriaHint)
+            if route == "earned" then
                 local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
-                    and WarbandNexus:ShowAchievementNotification(arg1)
+                    and WarbandNexus:ShowAchievementNotification(routeID)
                 if not shown then
                     pcall(orig, sys, origA1, origA2, unpack(rest))
                 end
@@ -2860,16 +3141,47 @@ local function BuildCriteriaAddAlertReplacement(orig)
                 pcall(orig, sys, origA1, origA2, unpack(rest))
                 return
             end
-            local _, _, _, completed = GetAchievementInfo(arg1)
-            if completed then
+            local route, routeID = NM_ResolveAchievementAlertRoute(arg1, criteriaHint)
+            if route == "earned" then
                 local shown = WarbandNexus and WarbandNexus.ShowAchievementNotification
-                    and WarbandNexus:ShowAchievementNotification(arg1)
+                    and WarbandNexus:ShowAchievementNotification(routeID)
                 if not shown then
                     pcall(orig, sys, origA1, origA2, unpack(rest))
                 end
                 return
             end
             FinishCriteriaProgressAddAlert(orig, sys, origA1, origA2, arg1, criteriaHint, rest)
+        end)
+    end
+end
+
+local function BuildProgressAddAlertReplacement(orig)
+    return function(sys, a1, a2, ...)
+        if not NP.UseWarbandAchievementPopups() then
+            return orig(sys, a1, a2, ...)
+        end
+        if not NP.UseWarbandCriteriaProgressPopups() then
+            return orig(sys, a1, a2, ...)
+        end
+        local payload = NormalizeProgressAlertPayload(ResolveProgressAlertPayload(a1, a2, ...))
+        if not payload then
+            return orig(sys, a1, a2, ...)
+        end
+        local origA1, origA2 = a1, a2
+        local rest = { ... }
+        C_Timer.After(0, function()
+            if not NP.UseWarbandAchievementPopups() then
+                pcall(orig, sys, origA1, origA2, unpack(rest))
+                return
+            end
+            if not NP.UseWarbandCriteriaProgressPopups() then
+                pcall(orig, sys, origA1, origA2, unpack(rest))
+                return
+            end
+            if TryDispatchProgressAlertToast(payload) then
+                return
+            end
+            -- WN criteria lane active: never fall back to Blizzard progress alert frames.
         end)
     end
 end
@@ -2950,18 +3262,22 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
     if criteriaName == "" then
         criteriaName = (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria"
     end
-    
-    local _, achName, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
-    if issecretvalue and achName and issecretvalue(achName) then achName = nil end
-    if issecretvalue and achIcon and issecretvalue(achIcon) then achIcon = nil end
-    
+
+    local criteriaRow = NM_FindCriteriaRowForHint(achievementID, criteriaIndex)
+    local criteriaIcon = nil
+    if criteriaRow and criteriaRow.linkedAchievementID and criteriaRow.linkedIcon then
+        criteriaIcon = criteriaRow.linkedIcon
+    end
+
     local criteriaTitleText = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress"
-    
+
     self:ShowModalNotification({
         compact = true,
         progressAnchor = true,
+        notifType = "criteria",
+        criteriaNoIcon = (criteriaIcon == nil),
         criteriaTitle = criteriaTitleText,
-        icon = achIcon or CATEGORY_ICONS.achievement,
+        icon = criteriaIcon,
         itemName = criteriaName,
         action = nil,
         achievementID = achievementID,
@@ -2970,6 +3286,33 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
         autoDismiss = 3,
     })
     return true
+end
+
+---Traveler's Log / ProgressAlertSystem compact toast (no achievement ID).
+---@return boolean shown
+function WarbandNexus:ShowGenericProgressNotification(payload)
+    if not NP.CanShowWarbandCriteriaProgressToast() then return false end
+    payload = NormalizeProgressAlertPayload(payload)
+    if not payload then return false end
+
+    local config = {
+        compact = true,
+        progressAnchor = true,
+        criteriaTitle = payload.title,
+        itemName = payload.text,
+        titleColor = ToastChrome.CriteriaAccent(),
+        playSound = true,
+        autoDismiss = 3,
+    }
+    if payload.iconAtlas and payload.iconAtlas ~= "" then
+        config.iconAtlas = payload.iconAtlas
+    elseif payload.iconFileID then
+        config.iconFileID = payload.iconFileID
+    elseif payload.icon then
+        config.icon = payload.icon
+    end
+
+    return self:ShowModalNotification(config) == true
 end
 
 ---Swap or restore Blizzard AddAlert based on Warband achievement popups (live db read on each call).
@@ -3000,7 +3343,7 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
     local progressSys = _G.ProgressAlertSystem
     if progressSys and type(self._blizzProgressAddAlert) == "function" then
         if useWarbandPopups then
-            local wrapperProg = BuildCriteriaAddAlertReplacement(self._blizzProgressAddAlert)
+            local wrapperProg = BuildProgressAddAlertReplacement(self._blizzProgressAddAlert)
             MarkWnAddAlertWrapper(wrapperProg)
             progressSys.AddAlert = wrapperProg
         else
@@ -3019,6 +3362,7 @@ end
 TestLootEnsureAchievementAlertUI = function(addon)
     if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
         Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
+        Utilities:SafeLoadAddOn("Blizzard_AdventureGuide")
     end
     if addon and addon.ApplyBlizzardAchievementAlertSuppression then
         addon:ApplyBlizzardAchievementAlertSuppression()
@@ -3052,6 +3396,41 @@ TestLootFireAchievementAddAlert = function(addon, achievementID, criteriaIndex)
     return pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID)
 end
 
+TestLootFireProgressAddAlert = function(addon, payload)
+    TestLootEnsureAchievementAlertUI(addon)
+    if Utilities and Utilities.SafeLoadAddOn then
+        Utilities:SafeLoadAddOn("Blizzard_AdventureGuide")
+    end
+    if addon and addon.ApplyBlizzardAchievementAlertSuppression then
+        addon:ApplyBlizzardAchievementAlertSuppression()
+    end
+    local progressSys = _G.ProgressAlertSystem
+    if not progressSys or not progressSys.AddAlert then
+        addon:Print("|cffff8800ProgressAlertSystem not loaded. Try /reload.|r")
+        return false, "no system"
+    end
+    return pcall(progressSys.AddAlert, progressSys, payload)
+end
+
+---Same pipeline as Traveler's Log / ProgressAlertSystem alerts.
+function WarbandNexus:TestProgressAlert()
+    if not EnsureNotificationTestsEnabled(self) then return end
+    if not NP.UseWarbandCriteriaProgressPopups() then
+        self:Print("|cffff8800Criteria progress popups OFF — enable Settings > Criteria progress popup.|r")
+    end
+    TestLootPrintAchievementReplaceMode(self)
+    local payload = {
+        title = "Traveler's Log Progress",
+        text = "Void Assaults: Complete 5 Void Strikes",
+        iconAtlas = "QuestLog-Questtypeicon-Quest",
+    }
+    self:Print("|cff00ccffProgress alert (AddAlert):|r " .. payload.title .. " - " .. payload.text)
+    local ok, err = TestLootFireProgressAddAlert(self, payload)
+    if not ok then
+        self:Print("|cffff8800Progress AddAlert failed: " .. tostring(err) .. " — try /reload.|r")
+    end
+end
+
 TestLootResolveAchievementWithCriteria = function(preferredID)
     local tryIDs = { 6, 7, 8, 11, 12, 60981, 40752 }
     if preferredID then
@@ -3068,6 +3447,122 @@ TestLootResolveAchievementWithCriteria = function(preferredID)
         end
     end
     return nil, 0
+end
+
+--- Wiki-backed QA chain: plain criteria -> sub-achievement (type 8) -> meta earned.
+--- Fixture: Heroic: Power Creep (62901) checklist, Have a Heart (12918) row on Full Heart, Can't Lose (40958).
+local HIERARCHY_FIXTURE_PLAIN_ID = 62901
+local HIERARCHY_FIXTURE_SUB_ID = 12918
+local HIERARCHY_FIXTURE_META_ID = 40958
+local HIERARCHY_TEST_STEP_SEC = 0.65
+
+local function TestHierarchyAchievementName(achievementID)
+    if not achievementID then return nil end
+    local ok, name = pcall(GetAchievementInfo, achievementID)
+    if not ok or not name or name == "" then return nil end
+    if issecretvalue and issecretvalue(name) then return nil end
+    return name
+end
+
+local function TestHierarchyFirstPlainCriteriaHint(achievementID)
+    if not achievementID or not GetAchievementNumCriteria or not GetAchievementCriteriaInfo then return nil end
+    local okN, numCriteria = pcall(GetAchievementNumCriteria, achievementID)
+    if not okN or not numCriteria or numCriteria < 1 then return nil end
+    for i = 1, numCriteria do
+        local ok, criteriaName, criteriaType = pcall(GetAchievementCriteriaInfo, achievementID, i)
+        if ok then
+            local ct = tonumber(criteriaType)
+            if ct ~= ACHIEVEMENT_CRITERIA_TYPE_LINKED then
+                if criteriaName and criteriaName ~= ""
+                    and not (issecretvalue and issecretvalue(criteriaName)) then
+                    return criteriaName, i
+                end
+                return i, i
+            end
+        end
+    end
+    return 1, 1
+end
+
+local function TestHierarchyLinkedSubCriteriaHint(metaID, subID)
+    if not metaID or not subID or not GetAchievementNumCriteria or not GetAchievementCriteriaInfo then
+        return "Have a Heart"
+    end
+    local okN, numCriteria = pcall(GetAchievementNumCriteria, metaID)
+    if not okN or not numCriteria or numCriteria < 1 then
+        return "Have a Heart"
+    end
+    for i = 1, numCriteria do
+        local ok, criteriaName, criteriaType, _, _, _, _, assetID =
+            pcall(GetAchievementCriteriaInfo, metaID, i)
+        if ok and tonumber(criteriaType) == ACHIEVEMENT_CRITERIA_TYPE_LINKED then
+            local linked = tonumber(assetID)
+            if linked and linked == subID then
+                if criteriaName and criteriaName ~= ""
+                    and not (issecretvalue and issecretvalue(criteriaName)) then
+                    return criteriaName
+                end
+                return TestHierarchyAchievementName(subID) or "Have a Heart"
+            end
+        end
+    end
+    return TestHierarchyAchievementName(subID) or "Have a Heart"
+end
+
+local function TestResolveHierarchyFixture()
+    local plainID = HIERARCHY_FIXTURE_PLAIN_ID
+    local subID = HIERARCHY_FIXTURE_SUB_ID
+    local metaID = HIERARCHY_FIXTURE_META_ID
+    local plainName = TestHierarchyAchievementName(plainID)
+    local subName = TestHierarchyAchievementName(subID)
+    local metaName = TestHierarchyAchievementName(metaID)
+    if not plainName or not subName or not metaName then
+        return nil
+    end
+    local plainHint, plainIndex = TestHierarchyFirstPlainCriteriaHint(plainID)
+    local subHint = TestHierarchyLinkedSubCriteriaHint(metaID, subID)
+    return {
+        plain = { id = plainID, name = plainName, hint = plainHint, index = plainIndex },
+        sub = { id = subID, name = subName, parentID = metaID, hint = subHint },
+        meta = { id = metaID, name = metaName },
+    }
+end
+
+--- Live AddAlert chain: criteria progress (puansiz) -> sub earned (puanli) -> meta earned (puanli).
+function WarbandNexus:TestAchievementAlertHierarchy()
+    if not EnsureNotificationTestsEnabled(self) then return end
+    local fix = TestResolveHierarchyFixture()
+    if not fix then
+        self:Print("|cffff0000Hierarchy fixture unavailable.|r")
+        self:Print("|cff888888Need client data for IDs 62901, 12918, 40958 (Midnight Void Assaults + Heart of Azeroth meta).|r")
+        return
+    end
+    TestLootPrintAchievementReplaceMode(self)
+    self:Print("|cff00ccff[WN Hierarchy Test]|r Criteria -> Sub -> Meta (live AddAlert)")
+    self:Print("|cff888888Fixture:|r " .. fix.plain.name .. " / " .. fix.sub.name .. " / " .. fix.meta.name)
+    self:Print("|cff8888881.|r Criteria on |cffcccccc" .. fix.plain.name .. "|r — expect |cff00ccffAchievement Progress|r, no shield")
+    self:Print("|cff8888882.|r Sub row |cffcccccc" .. tostring(fix.sub.hint) .. "|r on meta — expect |cffffff00earned|r + shield for |cffcccccc" .. fix.sub.name .. "|r")
+    self:Print("|cff8888883.|r Meta |cffcccccc" .. fix.meta.name .. "|r — expect |cffffff00earned|r + shield")
+
+    local delay = 0
+    C_Timer.After(delay, function()
+        if not WarbandNexus then return end
+        local hint = fix.plain.hint or fix.plain.index or 1
+        WarbandNexus:Print("|cff00ccff[1/3] Criteria progress|r — " .. fix.plain.name .. " / " .. tostring(hint))
+        TestLootFireAchievementAddAlert(WarbandNexus, fix.plain.id, hint)
+    end)
+    delay = delay + HIERARCHY_TEST_STEP_SEC
+    C_Timer.After(delay, function()
+        if not WarbandNexus then return end
+        WarbandNexus:Print("|cff00ccff[2/3] Sub-achievement earned|r — meta row " .. tostring(fix.sub.hint))
+        TestLootFireAchievementAddAlert(WarbandNexus, fix.sub.parentID, fix.sub.hint)
+    end)
+    delay = delay + HIERARCHY_TEST_STEP_SEC
+    C_Timer.After(delay, function()
+        if not WarbandNexus then return end
+        WarbandNexus:Print("|cff00ccff[3/3] Meta earned|r — " .. fix.meta.name)
+        TestLootFireAchievementAddAlert(WarbandNexus, fix.meta.id, nil)
+    end)
 end
 
 ---Production Blizzard achievement alert fallback (when Warband popups cannot show a toast).
@@ -3297,10 +3792,8 @@ function WarbandNexus:OnCollectibleObtained(event, data)
                 pts = 0
             end
         end
-        local doneMsg = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!"
-        local ptsFmt = (ns.L and ns.L["ACHIEVEMENT_POINTS_FORMAT"]) or "%d pts"
-        local actionFmt = (ns.L and ns.L["ACHIEVEMENT_TOAST_ACTION_FORMAT"]) or "%s - %s"
-        overrides.action = string.format(actionFmt, doneMsg, string.format(ptsFmt, pts))
+        overrides.achievementPoints = pts
+        overrides.action = nil
     end
     if hasTryCount then
         overrides.deferScreenFlash = true

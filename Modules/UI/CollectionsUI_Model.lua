@@ -1935,25 +1935,6 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
         lastPoint = "BOTTOMLEFT"
         lastY = -SECTION_GAP
 
-        if achievement.isCollected and WarbandNexus and WarbandNexus.GetCollectionsAcquiredAt then
-            local obtTs = WarbandNexus:GetCollectionsAcquiredAt("achievement", achievement.id)
-            local obtStr = obtTs and M.FormatCollectionsAcquiredDetail(obtTs) or nil
-            if obtStr then
-                local obtFs = M.CreateCollectionsSmallLabel(content)
-                obtFs:SetPoint("TOP", lastAnchor, "BOTTOM", 0, lastY)
-                obtFs:SetPoint("LEFT", content, "LEFT", CONTENT_COLUMN_LEFT, 0)
-                obtFs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_INSET, 0)
-                obtFs:SetJustifyH("LEFT")
-                obtFs:SetWordWrap(true)
-                ns.UI_SetTextColorRole(obtFs, "Dim")
-                obtFs:SetText(obtStr)
-                addDetailElement(obtFs)
-                lastAnchor = obtFs
-                lastPoint = "BOTTOMLEFT"
-                lastY = -SECTION_GAP
-            end
-        end
-
         if achievement.description and achievement.description ~= "" then
             lastY = lastY - SECTION_HEADER_GAP
             addSection((ns.L and ns.L["DESCRIPTION"]) or "Description", function(titleFs)
@@ -2826,7 +2807,7 @@ function M.UpdateCollectionsFixedSubHeaderText(hdrCache, tabKey)
     end
     if tabChanged or row._subPlain ~= subPlain then
         row._subPlain = subPlain
-        row._subtitle:SetText(subPlain)
+        row._subtitle:SetText(subPlain ~= "" and ("|cffffffff" .. subPlain .. "|r") or "")
         row._subtitle:SetShown(subPlain ~= "")
     end
     row:Show()
@@ -2857,7 +2838,8 @@ function M.LayoutCollectionsFixedSubHeader(hdrCache, headerParent, sideMargin, h
         row._subtitle:SetWordWrap(false)
         row._subtitle:SetNonSpaceWrap(false)
         row._subtitle:SetMaxLines(1)
-        ns.UI_SetTextColorRole(row._subtitle, "Muted")
+        ns.UI_SetTextColorRole(row._subtitle, "Bright")
+        row._subtitle:SetTextColor(1, 1, 1, 1)
         hdrCache.contentSubHeader = row
     end
     row:SetParent(headerParent)

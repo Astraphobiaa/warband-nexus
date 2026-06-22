@@ -502,6 +502,11 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""
         local nameColor = ach.isCollected and GetCollectedNameColor() or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
         local labelText = nameColor .. title .. "|r" .. pointsStr
+        local cui = ns.CollectionsUI
+        local earnedDateRich, earnedEarnerRich
+        if ach.isCollected and ach.id and cui and cui.FormatAchievementEarnedRowMetaSplit then
+            earnedDateRich, earnedEarnerRich = cui.FormatAchievementEarnedRowMetaSplit(ach.id)
+        end
 
         local function IsTracked(id)
             return WarbandNexus.IsAchievementTracked and WarbandNexus:IsAchievementTracked(id)
@@ -518,7 +523,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             local trackTip = col and ((L and L["TRACK_SLOT_DISABLED_COMPLETED"]) or "Completed achievements cannot be tracked in objectives.")
                 or (tracked and ((L and L["TRACK_SLOT_TOOLTIP_UNTRACK"]) or "Click to stop tracking in Blizzard objectives."))
                 or ((L and L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
-            Factory:ApplyCollectionListRowContent(row, item.rowIndex or 1, ach.icon or DEFAULT_ICON_PLANS_ACHIEVEMENT, labelText, col, false, nil, nil, nil, {
+            Factory:ApplyCollectionListRowContent(row, item.rowIndex or 1, ach.icon or DEFAULT_ICON_PLANS_ACHIEVEMENT, labelText, col, false, nil, earnedEarnerRich, nil, {
                 onTodo = plannedNow,
                 onTrack = tracked,
                 achievementRow = true,
@@ -559,12 +564,14 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     end
                     applyAchRowPlanSlots()
                 end or nil,
-            })
+            }, earnedDateRich)
             if row.label then
-                local labelPad = layout.SIDE_MARGIN or (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 10
-                row.label:SetPoint("RIGHT", row, "RIGHT", -labelPad, 0)
                 if row.label.SetMouseClickEnabled then
                     row.label:SetMouseClickEnabled(false)
+                end
+                if not earnedDateRich and not earnedEarnerRich then
+                    local labelPad = layout.SIDE_MARGIN or (ns.UI_LAYOUT and ns.UI_LAYOUT.SIDE_MARGIN) or 10
+                    row.label:SetPoint("RIGHT", row, "RIGHT", -labelPad, 0)
                 end
             end
         end

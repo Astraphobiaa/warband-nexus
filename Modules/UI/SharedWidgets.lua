@@ -1826,16 +1826,49 @@ end
 
 local WN_ICON_PATHS = nil
 
---- Packaged WN action icons: white when idle, yellow when active, grey only when disabled (completed / locked).
+--- Packaged WN action icons: white when idle, yellow when active; disabled = monochrome alpha (never grey RGB).
 ns.WN_ICON_VERTEX_WHITE = { 1, 1, 1, 1 }
 ns.WN_ICON_VERTEX_YELLOW = { 1, 0.88, 0.08, 1 }
 ns.WN_ICON_VERTEX_RED = { 1, 0.28, 0.22, 1 }
-ns.WN_ICON_VERTEX_DISABLED = { 0.45, 0.48, 0.52, 0.75 }
-ns.WN_ICON_VERTEX_IDLE_LIGHT = { 0.22, 0.24, 0.28, 1 }
+ns.WN_ICON_VERTEX_IDLE_LIGHT = { 0.06, 0.06, 0.08, 1 }
+
+function ns.UI_GetMonochromeIconVertex(alpha)
+    alpha = alpha or 1
+    if IsLightModeEnabled() then
+        return { 0.06, 0.06, 0.08, alpha }
+    end
+    return { 1, 1, 1, alpha }
+end
+
+--- Collection list row status: gold `common-icon-checkmark` when collected (canonical WN check).
+function ns.UI_ApplyCollectionRowStatusIcon(statusIcon, isCollected)
+    if not statusIcon then return end
+    statusIcon:SetDesaturated(false)
+    statusIcon:Show()
+    if isCollected then
+        local ok = pcall(statusIcon.SetAtlas, statusIcon, "common-icon-checkmark", false)
+        if not ok then
+            statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        end
+        local g = COLORS and COLORS.gold
+        if g then
+            statusIcon:SetVertexColor(g[1], g[2], g[3], g[4] or 1)
+        else
+            statusIcon:SetVertexColor(1, 0.82, 0, 1)
+        end
+    else
+        local ok = pcall(statusIcon.SetAtlas, statusIcon, "Objective-Nub", false)
+        if not ok then
+            statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
+        end
+        local vc = ns.UI_GetMonochromeIconVertex(0.35)
+        statusIcon:SetVertexColor(vc[1], vc[2], vc[3], vc[4] or 0.35)
+    end
+end
 
 function ns.UI_WnIconVertexForState(active, disabled)
     if disabled then
-        return ns.WN_ICON_VERTEX_DISABLED
+        return ns.UI_GetMonochromeIconVertex(0.35)
     end
     if active then
         return ns.WN_ICON_VERTEX_YELLOW
@@ -1846,10 +1879,10 @@ function ns.UI_WnIconVertexForState(active, disabled)
     return ns.WN_ICON_VERTEX_WHITE
 end
 
---- Vertex tint: todo/alert/track/pin — active=yellow, idle=white; delete/block=red; disabled=grey.
+--- Vertex tint: todo/alert/track/pin — active=yellow, idle=white/black; delete/block=red; disabled=monochrome alpha.
 function ns.UI_WnIconVertexForKey(iconKey, active, disabled)
     if disabled then
-        return ns.WN_ICON_VERTEX_DISABLED
+        return ns.UI_GetMonochromeIconVertex(0.35)
     end
     if iconKey == "delete" or iconKey == "block" then
         return ns.WN_ICON_VERTEX_RED

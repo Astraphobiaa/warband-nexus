@@ -170,8 +170,9 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
     local searchActive = listOpts and listOpts.searchActive == true
     local achRowH = math.max(18, math.floor(baseRowH * scale + 0.5))
     local achRowStride = achRowH + ACH_ROW_GAP
-    local rD, gD, bD = (COLORS.textDim[1] or 0.55), (COLORS.textDim[2] or 0.55), (COLORS.textDim[3] or 0.55)
-    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local whiteHex = (ns.CollectionsUI and ns.CollectionsUI.CollectionsListWhiteHex and ns.CollectionsUI.CollectionsListWhiteHex())
+        or "|cffffffff"
+    local countColor = whiteHex
     local rB, gB, bB = (COLORS.textBright[1] or 1), (COLORS.textBright[2] or 1), (COLORS.textBright[3] or 1)
     local titleColor = format("|cff%02x%02x%02x", rB * 255, gB * 255, bB * 255)
 

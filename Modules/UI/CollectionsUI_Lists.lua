@@ -83,10 +83,8 @@ function M.BuildFlatMountList(groupedData, collapsedHeaders)
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
-    local rD = COLORS.textDim[1] or 0.55
-    local gD = COLORS.textDim[2] or 0.55
-    local bD = COLORS.textDim[3] or 0.55
-    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local countColor = whiteHex
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
     local bB = COLORS.textBright[3] or 1
@@ -129,10 +127,8 @@ function M.BuildFlatPetList(groupedData, collapsedHeaders)
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
-    local rD = COLORS.textDim[1] or 0.55
-    local gD = COLORS.textDim[2] or 0.55
-    local bD = COLORS.textDim[3] or 0.55
-    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local countColor = whiteHex
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
     local bB = COLORS.textBright[3] or 1
@@ -176,10 +172,8 @@ function M.BuildFlatToyList(groupedData, collapsedHeaders, categoriesOverride)
     local flat = {}
     local yOffset = 0
     local rowCounter = 0
-    local rD = COLORS.textDim[1] or 0.55
-    local gD = COLORS.textDim[2] or 0.55
-    local bD = COLORS.textDim[3] or 0.55
-    local countColor = format("|cff%02x%02x%02x", rD * 255, gD * 255, bD * 255)
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local countColor = whiteHex
     local rB = COLORS.textBright[1] or 1
     local gB = COLORS.textBright[2] or 1
     local bB = COLORS.textBright[3] or 1
@@ -659,7 +653,7 @@ function M.CollectionRowPaintHeight(item)
     return ROW_HEIGHT
 end
 
-function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState)
+function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText, isCollected, selectedID, itemID, onSelect, refreshFn, planSlotState, rightAlignedText, leftAlignedText)
     if not rowParent then return nil end
     local rowH = M.CollectionRowPaintHeight(item)
     local f = table.remove(CollectionRowPool)
@@ -682,7 +676,7 @@ function M.AcquireCollectionRow(rowParent, item, leftIndent, iconPath, labelText
             if refreshFn then refreshFn() end
         end
     end
-    Factory:ApplyCollectionListRowContent(f, item.rowIndex, iconPath, labelText, isCollected, (selectedID == itemID), onClick, nil, nil, planSlotState)
+    Factory:ApplyCollectionListRowContent(f, item.rowIndex, iconPath, labelText, isCollected, (selectedID == itemID), onClick, rightAlignedText, nil, planSlotState, leftAlignedText)
     M.ApplyCollectionsRowIconChrome(f)
     f:Show()
     return f
@@ -885,9 +879,15 @@ end
 
 function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchievementID, onSelectAchievement, redraw, cf)
     local ach = item.achievement
-    local nameColor = ach.isCollected and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
+    local achCollected = ach.isCollected == true
+    local whiteHex = M.CollectionsListWhiteHex and M.CollectionsListWhiteHex() or "|cffffffff"
+    local nameColor = achCollected and CollectionsCollectedNameHex() or whiteHex
     local pointsStr = (ach.points and ach.points > 0) and (" (" .. ach.points .. " pts)") or ""
-    local labelText = nameColor .. (ach.name or "") .. "|r" .. pointsStr
+    local labelText = nameColor .. (ach.name or "") .. "|r" .. (pointsStr ~= "" and (whiteHex .. pointsStr .. "|r") or "")
+    local earnedDateRich, earnedEarnerRich
+    if achCollected and ach.id and M.FormatAchievementEarnedRowMetaSplit then
+        earnedDateRich, earnedEarnerRich = M.FormatAchievementEarnedRowMetaSplit(ach.id)
+    end
     local indent = item.indent or 0
     local rowParent = scrollChild
     if item._collSectionKey and M.state._achSectionBodies and M.state._achSectionBodies[item._collSectionKey] then
@@ -907,7 +907,6 @@ function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchieveme
     local WN = WarbandNexus
     local onTodo = WN and WN.IsAchievementPlanned and WN:IsAchievementPlanned(ach.id) or false
     local onTrack = WN and WN.IsAchievementTracked and WN:IsAchievementTracked(ach.id) or false
-    local achCollected = ach.isCollected == true
     local function refreshAchListVisible()
         if M.state._achFlatList and M.state.achievementListScrollFrame then
             M.state._achListSelectedID = ach.id
@@ -956,7 +955,7 @@ function M.AcquireAchievementRow(scrollChild, listWidth, item, selectedAchieveme
     }
     return M.AcquireCollectionRow(rowParent, rowItem, indent, ach.icon or DEFAULT_ICON_ACHIEVEMENT, labelText, ach.isCollected, selectedAchievementID, ach.id, function()
         if onSelectAchievement then onSelectAchievement(ach) end
-    end, refreshAchListVisible, planSlotState)
+    end, refreshAchListVisible, planSlotState, earnedEarnerRich, earnedDateRich)
 end
 
 -- Update visible row frames only (virtual scroll). Headers are created in PopulateMountList.

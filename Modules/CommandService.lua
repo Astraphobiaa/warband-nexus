@@ -505,7 +505,7 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
 
-    elseif cmd == "alerttest" or cmd == "alerttests" then
+    elseif cmd == "alerttest" or cmd == "alerttests" or cmd == "testalert" or cmd == "testalerts" then
         local _, typeArg = addon:GetArgs(input, 2)
         if addon.TestAlertTest then
             addon:TestAlertTest(typeArg)
