@@ -486,6 +486,9 @@ function InitializationService:InitializeBackgroundServices(addon)
             if addon and addon.InitializeCharacterBankMoneyLogService then
                 addon:InitializeCharacterBankMoneyLogService()
             end
+            if addon and addon.InitializeMailSnapshotService then
+                addon:InitializeMailSnapshotService()
+            end
         end, "BankMoneyServices")
     end)
     

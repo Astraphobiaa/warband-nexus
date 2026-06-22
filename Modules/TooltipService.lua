@@ -119,6 +119,13 @@ function TooltipService:Show(anchorFrame, data)
     if data.maxWidth and tonumber(data.maxWidth) then
         local mw = tonumber(data.maxWidth)
         frame.fixedWidth = math.max(260, math.min(mw, 820))
+        frame._wnStableWidth = nil
+    elseif data.stableWidth and tonumber(data.stableWidth) then
+        frame.fixedWidth = tonumber(data.stableWidth)
+        frame._wnStableWidth = true
+    else
+        frame.fixedWidth = 350
+        frame._wnStableWidth = nil
     end
 
     if frame.BeginBatchLayout then
@@ -1863,12 +1870,17 @@ function TooltipService:RegisterSafetyEvents()
         end
         if event ~= "MODIFIER_STATE_CHANGED" then return end
         if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
-        if not isVisible or not activeTooltipData or activeTooltipData.type ~= "currency" then return end
+        if not isVisible or not activeTooltipData then return end
         if not currentAnchor or not currentAnchor.IsShown or not currentAnchor:IsShown() then return end
         local shiftDown = (state == 1)
         if activeShiftKeyDown == shiftDown then return end
-        activeShiftKeyDown = shiftDown
-        self:Show(currentAnchor, activeTooltipData)
+        if activeTooltipData.type == "currency" then
+            activeShiftKeyDown = shiftDown
+            self:Show(currentAnchor, activeTooltipData)
+        elseif activeTooltipData.mailShiftRefresh and activeTooltipData._rebuildMailTooltip then
+            activeShiftKeyDown = shiftDown
+            self:Show(currentAnchor, activeTooltipData._rebuildMailTooltip())
+        end
     end)
 
     local function SafeDefer(fn)

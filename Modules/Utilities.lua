@@ -292,7 +292,13 @@ end
 
 --- Lowercase for search/sort when the string is safe to touch (never call `:lower()` on secret values).
 function Utilities:SafeLower(s)
-    if not s or s == "" then return "" end
+    if s == nil or s == "" then return "" end
+    if type(s) ~= "string" then
+        if type(s) == "number" then
+            return tostring(s):lower()
+        end
+        return ""
+    end
     if issecretvalue and issecretvalue(s) then return "" end
     return s:lower()
 end

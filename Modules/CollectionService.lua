@@ -2505,6 +2505,9 @@ end
 ---Fires when transmog collection changes (including illusions)
 ---We need to detect which illusion was added by comparing before/after
 function WarbandNexus:OnTransmogCollectionUpdated(event)
+    if self.InvalidateTransmogBrowseCache then
+        self:InvalidateTransmogBrowseCache()
+    end
     if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then return end
     
     -- Throttle checks to avoid spam (illusions are rare)

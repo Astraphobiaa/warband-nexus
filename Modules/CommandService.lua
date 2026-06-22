@@ -350,7 +350,15 @@ function CommandService:HandleSlashCommand(addon, input)
         local _, subCmd = addon:GetArgs(input, 2)
         local subLower = SafeSlashLower(subCmd)
         if subLower == "test" then
-            if addon.RunTryCounterSelfTest then
+            local _, _, scope = addon:GetArgs(input, 3)
+            local scopeLower = SafeSlashLower(scope)
+            if scopeLower == "sylvanas" then
+                if addon.RunTryCounterSylvanasSelfTest then
+                    addon:RunTryCounterSylvanasSelfTest()
+                else
+                    addon:Print("|cffff6600[WN]|r Sylvanas self-test not loaded.")
+                end
+            elseif addon.RunTryCounterSelfTest then
                 addon:RunTryCounterSelfTest()
             else
                 addon:Print("|cffff6600[WN]|r Try Counter module not loaded.")

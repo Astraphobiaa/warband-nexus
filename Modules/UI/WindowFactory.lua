@@ -11,7 +11,7 @@ local DebugPrint = ns.DebugPrint
 -- Import dependencies from namespace
 local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
-local ApplyStandardCardElevatedChrome = ns.UI_ApplyStandardCardElevatedChrome
+local ApplyMainWindowShellFill = ns.UI_ApplyMainWindowShellFill
 local FontManager = ns.FontManager
 local CreateIcon = ns.UI_CreateIcon
 local CreateButton = ns.UI_CreateButton
@@ -93,12 +93,9 @@ local function CreateExternalWindow(config)
     local height = config.height or 300
     local preventDuplicates = (config.preventDuplicates ~= false) -- default true
     local mainShellLayout = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
-    local extDlgInset = mainShellLayout.EXTERNAL_DIALOG_SIDE_INSET or 8
-    local extDlgHeaderH = mainShellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT or 45
-    local extInnerShrink = extDlgInset * 2
-    --- Body region below header (`contentFrame` anchors): `height - side - header - side`.
-    local extContentBodyH = math.max(1, height - extInnerShrink - extDlgHeaderH)
-    local extContentTopY = -(extDlgInset + extDlgHeaderH)
+    local extDlgHeaderH = mainShellLayout.HEADER_BAR_HEIGHT or mainShellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT or 40
+    --- Body region below header: full-bleed like main shell (no side/bottom gutter).
+    local extContentBodyH = math.max(1, height - extDlgHeaderH)
     local recycle = ns.UI_RecycleBin
     local dialog
     local function AbortIncompleteExternalWindow(overlayMaybe)
@@ -134,24 +131,33 @@ local function CreateExternalWindow(config)
         dialog:SetFrameLevel(200)
     end
     
-    -- Apply border + background (Phase 2: elevated shell + section atlas underlay, same as main tab cards)
-    if ApplyStandardCardElevatedChrome then
-        ApplyStandardCardElevatedChrome(dialog)
+    -- Shell: same full-bleed fill + accent border quartet as WarbandNexusFrame (no elevated card double-border).
+    local shellBg = COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
+    if ApplyMainWindowShellFill then
+        ApplyMainWindowShellFill(dialog, shellBg)
     elseif ApplyVisuals then
-        ApplyVisuals(dialog, COLORS.bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        ApplyVisuals(dialog, shellBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
     
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     
-    -- Header bar (inner width subtracts symmetric side insets)
-    local header = Factory:CreateContainer(dialog, math.max(1, width - extInnerShrink), extDlgHeaderH, false)
-    if not header then AbortIncompleteExternalWindow() return nil end
-    header:SetPoint("TOPLEFT", extDlgInset, -extDlgInset)
-    
-    -- Apply header border
+    -- Header bar (raw Frame + ApplyVisuals — matches CreateMainWindow title band)
+    local header = CreateFrame("Frame", nil, dialog)
+    header:SetHeight(extDlgHeaderH)
+    header:ClearAllPoints()
+    header:SetPoint("TOPLEFT", dialog, "TOPLEFT", 0, 0)
+    header:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", 0, 0)
+    header:SetFrameLevel(dialog:GetFrameLevel() + 10)
+    dialog._wnExternalHeader = header
+
+    local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
+        or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
     if ApplyVisuals then
-        ApplyVisuals(header, COLORS.bgCard, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+        local headerBg = (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
+            or (COLORS.accentDark and { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 })
+            or COLORS.bgCard
+        ApplyVisuals(header, headerBg, headerBorder)
     end
     
     -- Make header draggable (scale-correct)
@@ -169,22 +175,25 @@ local function CreateExternalWindow(config)
         end)
     end
     
-    -- Icon (support both texture and atlas)
+  -- Icon (support both texture and atlas)
     local iconIsAtlas = config.iconIsAtlas or false
-    local iconFrame = CreateIcon(header, config.icon, 28, iconIsAtlas, nil, true)
-    iconFrame:SetPoint("LEFT", 12, 0)
-    iconFrame:Show()  -- Show the header icon!
+    local iconFrame = CreateIcon(header, config.icon, 24, iconIsAtlas, nil, true)
+    iconFrame:SetPoint("LEFT", 15, 0)
+    iconFrame:Show()
     
-    -- Title
+    -- Title (role color — matches main shell / floating trackers)
     local titleText = FontManager:CreateFontString(header, FontManager:GetFontRole("windowChromeTitle"), "OVERLAY")
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
-    titleText:SetText(ThemeTextHex("Bright") .. config.title .. "|r")
+    titleText:SetText(config.title)
+    if ns.UI_SetTextColorRole then
+        ns.UI_SetTextColorRole(titleText, "Bright")
+    else
+        titleText:SetText(ThemeTextHex("Bright") .. config.title .. "|r")
+    end
     
     -- Close button (SharedWidgets CreateButton + atlas icon)
     local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
-    local closeBtn = CreateButton(header, 28, 28, closeBg, {
-        COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8,
-    }, false)
+    local closeBtn = CreateButton(header, 28, 28, closeBg, headerBorder, false)
     if not closeBtn then AbortIncompleteExternalWindow() return nil end
     closeBtn:SetPoint("RIGHT", -8, 0)
     
@@ -210,7 +219,7 @@ local function CreateExternalWindow(config)
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
         if ApplyVisuals then
             local idle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or closeBg
-            ApplyVisuals(closeBtn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            ApplyVisuals(closeBtn, idle, headerBorder)
         end
     end)
     
@@ -237,15 +246,18 @@ local function CreateExternalWindow(config)
     
     closeBtn:SetScript("OnClick", CloseDialog)
     
-    -- Content frame (explicit size matches header + margins; dialog size is fixed at creation)
-    local contentFrame = Factory:CreateContainer(dialog, math.max(1, width - extInnerShrink), extContentBodyH, false)
+    -- Content frame: edge-to-edge below header (viewport fill — no gray corner gutters).
+    local contentFrame = Factory:CreateContainer(dialog, math.max(1, width), extContentBodyH, false)
     if not contentFrame then AbortIncompleteExternalWindow() return nil end
-    contentFrame:SetPoint("TOPLEFT", extDlgInset, extContentTopY)
-    -- Match shell body: content was transparent, so gaps under widgets read as gray seams.
+    contentFrame:ClearAllPoints()
+    contentFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 0, -extDlgHeaderH)
+    contentFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", 0, 0)
+    local viewportBg = COLORS.surfaceViewport or COLORS.bg
     local contentFill = contentFrame:CreateTexture(nil, "BACKGROUND")
     contentFill:SetDrawLayer("BACKGROUND", -8)
     contentFill:SetAllPoints()
-    contentFill:SetColorTexture(COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], COLORS.bg[4] or 0.98)
+    contentFill:SetColorTexture(viewportBg[1], viewportBg[2], viewportBg[3], viewportBg[4] or 0.98)
+    dialog._wnExternalContentFill = contentFill
     
     -- Click-outside overlay (released in CloseDialog to avoid frame buildup)
     local clickOutsideFrame = Factory:CreateContainer(UIParent, 1, 1, false)
@@ -297,6 +309,10 @@ local function CreateExternalWindow(config)
                 if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
             end
         end)
+    end
+
+    if ns.UI_RaiseMainWindowShellBorderOverlay then
+        ns.UI_RaiseMainWindowShellBorderOverlay(dialog)
     end
 
     return dialog, contentFrame, header

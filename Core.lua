@@ -1764,6 +1764,9 @@ function WarbandNexus:OnMailUpdated()
     if self.UpdateMailStatus then
         self:UpdateMailStatus()
     end
+    if ns.MailSnapshot and ns.MailSnapshot.ScheduleScan then
+        ns.MailSnapshot.ScheduleScan(self, false)
+    end
 end
 
 -- DEBUG HELPERS

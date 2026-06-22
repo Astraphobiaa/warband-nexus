@@ -168,6 +168,7 @@ Modules\UI\SettingsUI_Keybind.lua
 Modules\UI\SettingsUI_Modules.lua
 Modules\UI\SettingsUI.lua
 Modules\UI\CharacterTrackingDialog.lua
+Modules\UI\MailDetailsPopup.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
@@ -182,6 +183,7 @@ Modules\UI\CollectionsUI_SourceData.lua
 Modules\UI\CollectionsUI_Shared.lua
 Modules\UI\CollectionsUI_Lists.lua
 Modules\UI\CollectionsUI_Model.lua
+Modules\UI\CollectionsUI_Transmog.lua
 Modules\UI\CollectionsUI_Recent.lua
 Modules\UI\CollectionsUI_Draw.lua
 Modules\UI\CollectionsUI.lua
@@ -208,3 +210,4 @@ Modules\UI.lua
 # Gold Management (MUST load after UI modules)
 Modules\GoldManagementService.lua
 Modules\CharacterBankMoneyLogService.lua
+Modules\MailSnapshotService.lua

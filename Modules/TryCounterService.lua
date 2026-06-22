@@ -522,6 +522,8 @@ local lootSession = {
 -- Miss-increment chat lines queued while the loot window is open (flush on LOOT_CLOSED).
 local pendingIncrementAnnounces = {}
 local tryCounterSelfTestSyncMiss = false
+local tryCounterSelfTestSlotInstance = nil
+local tryCounterSelfTestBossTrackable = nil
 
 -- State captured on LOOT_READY (wiki: "before the loot window is shown"; valid until LOOT_CLOSED).
 -- LOOT_READY is the ONLY guaranteed event — LOOT_OPENED may be skipped by fast auto-loot.
@@ -814,6 +816,7 @@ function Fns.LoadRuntimeSourceTables()
         zoneDropDB, encounterDB, encounterNameToNpcs, lockoutQuestsDB = {}, {}, {}, {}
         wipe(npcIDToEncounterID)
         wipe(instanceBossSlotOutcomeRules)
+        Fns.SyncTryCounterRTTableRefs()
         return
     end
 
@@ -847,6 +850,15 @@ function Fns.LoadRuntimeSourceTables()
             instanceBossSlotOutcomeRules[i] = slotRules[i]
         end
     end
+    Fns.SyncTryCounterRTTableRefs()
+end
+
+--- Handlers read RT.*; LoadRuntimeSourceTables reassigns file-local DB tables — keep RT in sync.
+function Fns.SyncTryCounterRTTableRefs()
+    RT.npcDropDB = npcDropDB
+    RT.encounterDB = encounterDB
+    RT.encounterNameToNpcs = encounterNameToNpcs
+    RT.tryCounterNpcEligible = tryCounterNpcEligible
 end
 
 function Fns.BuildTryCounterNpcEligible()
@@ -2703,6 +2715,11 @@ function Fns.IsObtainOutcomeApplied(tcType, tryKey, drop)
     return false
 end
 
+function Fns.ClearTryCounterTransientKillMarks()
+    wipe(dropObtainedThisKill)
+    wipe(obtainOutcomeApplied)
+end
+
 function Fns.ShouldSkipMissIncrementForDrop(drop)
     if not drop then return false end
     local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
@@ -2791,6 +2808,17 @@ end
 
 function Fns.SetTryCounterSelfTestSyncMiss(enabled)
     tryCounterSelfTestSyncMiss = not not enabled
+end
+
+--- Optional env for slot-first self-tests (SoD Sylvanas replay; no raid / owned-mount safe).
+function Fns.SetTryCounterSelfTestSlotOutcomeEnv(env)
+    if not env then
+        tryCounterSelfTestSlotInstance = nil
+        tryCounterSelfTestBossTrackable = nil
+        return
+    end
+    tryCounterSelfTestSlotInstance = env.instance
+    tryCounterSelfTestBossTrackable = env.bossTrackable
 end
 
 function Fns.GetSelfTestSampleIds()
@@ -6223,6 +6251,11 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self, lootRouteSource)
     lootRouteSource = lootRouteSource or "opened"
 
     local _, instType, diff, _, _, _, _, tmpl = GetInstanceInfo()
+    if tryCounterSelfTestSlotInstance then
+        instType = tryCounterSelfTestSlotInstance.instanceType or instType
+        diff = tryCounterSelfTestSlotInstance.difficulty or diff
+        tmpl = tryCounterSelfTestSlotInstance.templateInstanceID or tmpl
+    end
     if issecretvalue and instType and issecretvalue(instType) then instType = nil end
     if issecretvalue and diff and issecretvalue(diff) then diff = nil end
     if issecretvalue and tmpl and issecretvalue(tmpl) then tmpl = nil end
@@ -6254,7 +6287,8 @@ function Fns.TryInstanceBossSlotOutcomeFirst(self, lootRouteSource)
     local recentKillDiff = killData.difficultyID
     if issecretvalue and recentKillDiff and issecretvalue(recentKillDiff) then recentKillDiff = nil end
     local encounterDiffID = Fns.ResolveEncounterDifficultyForLootGating(true, recentKillDiff, diff)
-    local trackable = Fns.FilterDropsByDifficulty(drops, encounterDiffID)
+    local trackable = tryCounterSelfTestBossTrackable and tryCounterSelfTestBossTrackable[bestRule.bossNpcID]
+        or Fns.FilterDropsByDifficulty(drops, encounterDiffID)
     if #trackable == 0 then return false end
 
     local numLoot = lootSession.numLoot or 0
@@ -6901,6 +6935,7 @@ function Fns.MergeTrackDB()
         end
     end
     Fns.BuildTryCounterNpcEligible()
+    Fns.SyncTryCounterRTTableRefs()
 end
 
 -- STATISTICS SEEDING (WoW Achievement Statistics API)

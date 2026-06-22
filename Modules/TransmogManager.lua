@@ -13,30 +13,34 @@ local IsDebugModeEnabled = ns.IsDebugModeEnabled
 local FRAME_BUDGET_MS = 16  -- Maximum processing time per frame (16ms = ~60 FPS)
 local BATCH_SIZE = 10       -- Number of items to process before checking frame budget (reduced for more frequent yields)
 local MAX_RESULTS_PER_CATEGORY = 50  -- Limit results per category to prevent freezing (user can search for more)
+local TRANSMOG_BROWSE_CACHE_VERSION = 5
+ns.TRANSMOG_BROWSE_CACHE_VERSION = TRANSMOG_BROWSE_CACHE_VERSION
 
 local function TrimString(text)
     if not text then return "" end
     return (text:gsub("^%s*(.-)%s*$", "%1"))
 end
 
--- Transmog Category Mappings (from Enum.TransmogCollectionType)
--- https://wowpedia.fandom.com/wiki/Enum.TransmogCollectionType
+-- Transmog Category Mappings (Enum.TransmogCollectionType — warcraft.wiki.gg)
+local MAINHAND_COLLECTION_TYPES = { 12, 13, 14, 15, 16, 17, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 }
+local OFFHAND_COLLECTION_TYPES = { 18, 19, 13, 14, 15, 16, 17, 12 }
+
 local function BuildTransmogCategories()
     local L = ns.L
     return {
-        {id = 1, key = "head", name = (L and L["SLOT_HEAD"]) or INVTYPE_HEAD or "Head", slot = "HeadSlot", icon = "Interface\\Icons\\INV_Helmet_01"},
-        {id = 2, key = "shoulder", name = (L and L["SLOT_SHOULDER"]) or INVTYPE_SHOULDER or "Shoulder", slot = "ShoulderSlot", icon = "Interface\\Icons\\INV_Shoulder_02"},
-        {id = 3, key = "back", name = (L and L["SLOT_BACK"]) or INVTYPE_CLOAK or "Back", slot = "BackSlot", icon = "Interface\\Icons\\INV_Misc_Cape_01"},
-        {id = 4, key = "chest", name = (L and L["SLOT_CHEST"]) or INVTYPE_CHEST or "Chest", slot = "ChestSlot", icon = "Interface\\Icons\\INV_Chest_Cloth_17"},
-        {id = 5, key = "shirt", name = (L and L["SLOT_SHIRT"]) or INVTYPE_BODY or "Shirt", slot = "ShirtSlot", icon = "Interface\\Icons\\INV_Shirt_01"},
-        {id = 6, key = "tabard", name = (L and L["SLOT_TABARD"]) or INVTYPE_TABARD or "Tabard", slot = "TabardSlot", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01"},
-        {id = 7, key = "wrist", name = (L and L["SLOT_WRIST"]) or INVTYPE_WRIST or "Wrist", slot = "WristSlot", icon = "Interface\\Icons\\INV_Bracer_02"},
-        {id = 8, key = "hands", name = (L and L["SLOT_HANDS"]) or INVTYPE_HAND or "Hands", slot = "HandsSlot", icon = "Interface\\Icons\\INV_Gauntlets_01"},
-        {id = 9, key = "waist", name = (L and L["SLOT_WAIST"]) or INVTYPE_WAIST or "Waist", slot = "WaistSlot", icon = "Interface\\Icons\\INV_Belt_01"},
-        {id = 10, key = "legs", name = (L and L["SLOT_LEGS"]) or INVTYPE_LEGS or "Legs", slot = "LegsSlot", icon = "Interface\\Icons\\INV_Pants_01"},
-        {id = 11, key = "feet", name = (L and L["SLOT_FEET"]) or INVTYPE_FEET or "Feet", slot = "FeetSlot", icon = "Interface\\Icons\\INV_Boots_01"},
-        {id = 12, key = "mainhand", name = (L and L["SLOT_MAINHAND"]) or INVTYPE_WEAPONMAINHAND or "Main Hand", slot = "MainHandSlot", icon = "Interface\\Icons\\INV_Sword_27"},
-        {id = 13, key = "offhand", name = (L and L["SLOT_OFFHAND"]) or INVTYPE_WEAPONOFFHAND or "Off Hand", slot = "SecondaryHandSlot", icon = "Interface\\Icons\\INV_Shield_06"},
+        { id = 1, key = "head", name = (L and L["SLOT_HEAD"]) or INVTYPE_HEAD or "Head", slot = "HeadSlot", icon = "Interface\\Icons\\INV_Helmet_01", enumIds = { 1 } },
+        { id = 2, key = "shoulder", name = (L and L["SLOT_SHOULDER"]) or INVTYPE_SHOULDER or "Shoulder", slot = "ShoulderSlot", icon = "Interface\\Icons\\INV_Shoulder_02", enumIds = { 2 } },
+        { id = 3, key = "back", name = (L and L["SLOT_BACK"]) or INVTYPE_CLOAK or "Back", slot = "BackSlot", icon = "Interface\\Icons\\INV_Misc_Cape_01", enumIds = { 3 } },
+        { id = 4, key = "chest", name = (L and L["SLOT_CHEST"]) or INVTYPE_CHEST or "Chest", slot = "ChestSlot", icon = "Interface\\Icons\\INV_Chest_Cloth_17", enumIds = { 4 } },
+        { id = 5, key = "shirt", name = (L and L["SLOT_SHIRT"]) or INVTYPE_BODY or "Shirt", slot = "ShirtSlot", icon = "Interface\\Icons\\INV_Shirt_01", enumIds = { 5 } },
+        { id = 6, key = "tabard", name = (L and L["SLOT_TABARD"]) or INVTYPE_TABARD or "Tabard", slot = "TabardSlot", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01", enumIds = { 6 } },
+        { id = 7, key = "wrist", name = (L and L["SLOT_WRIST"]) or INVTYPE_WRIST or "Wrist", slot = "WristSlot", icon = "Interface\\Icons\\INV_Bracer_02", enumIds = { 7 } },
+        { id = 8, key = "hands", name = (L and L["SLOT_HANDS"]) or INVTYPE_HAND or "Hands", slot = "HandsSlot", icon = "Interface\\Icons\\INV_Gauntlets_01", enumIds = { 8 } },
+        { id = 9, key = "waist", name = (L and L["SLOT_WAIST"]) or INVTYPE_WAIST or "Waist", slot = "WaistSlot", icon = "Interface\\Icons\\INV_Belt_01", enumIds = { 9 } },
+        { id = 10, key = "legs", name = (L and L["SLOT_LEGS"]) or INVTYPE_LEGS or "Legs", slot = "LegsSlot", icon = "Interface\\Icons\\INV_Pants_01", enumIds = { 10 } },
+        { id = 11, key = "feet", name = (L and L["SLOT_FEET"]) or INVTYPE_FEET or "Feet", slot = "FeetSlot", icon = "Interface\\Icons\\INV_Boots_01", enumIds = { 11 } },
+        { id = 12, key = "mainhand", name = (L and L["SLOT_MAINHAND"]) or INVTYPE_WEAPONMAINHAND or "Main Hand", slot = "MainHandSlot", icon = "Interface\\Icons\\INV_Sword_27", enumIds = MAINHAND_COLLECTION_TYPES },
+        { id = 18, key = "offhand", name = (L and L["SLOT_OFFHAND"]) or INVTYPE_WEAPONOFFHAND or "Off Hand", slot = "SecondaryHandSlot", icon = "Interface\\Icons\\INV_Shield_06", enumIds = OFFHAND_COLLECTION_TYPES },
     }
 end
 
@@ -59,15 +63,25 @@ local function CheckTransmogAPIs()
     if not C_TransmogCollection then
         return false, "C_TransmogCollection API not available"
     end
-    
+
     if not C_TooltipInfo then
         return false, "C_TooltipInfo API not available"
     end
-    
+
     if not Item then
         return false, "ItemMixin not available"
     end
-    
+
+    return true
+end
+
+local function CheckTransmogBrowseAPIs()
+    if not C_TransmogCollection then
+        return false, "C_TransmogCollection API not available"
+    end
+    if not C_TransmogCollection.GetCategoryAppearances then
+        return false, "C_TransmogCollection.GetCategoryAppearances not available"
+    end
     return true
 end
 
@@ -388,23 +402,39 @@ end
     @return string|nil - Source text or nil
 ]]
 function WarbandNexus:GetSourceFromTooltip(sourceID)
-    local sourceInfo = C_TransmogCollection.GetSourceInfo(sourceID)
-    if not sourceInfo or not sourceInfo.itemID then
+    local itemID
+    local itemLink
+    if C_TransmogCollection and C_TransmogCollection.GetAppearanceSourceInfo then
+        local ok, info = pcall(C_TransmogCollection.GetAppearanceSourceInfo, sourceID)
+        if ok and info then
+            if info.itemLink and not (issecretvalue and issecretvalue(info.itemLink)) then
+                itemLink = info.itemLink
+            end
+        end
+    end
+    local sourceInfo = C_TransmogCollection and C_TransmogCollection.GetSourceInfo and C_TransmogCollection.GetSourceInfo(sourceID)
+    if sourceInfo and sourceInfo.itemID then
+        itemID = sourceInfo.itemID
+    end
+    if not itemID and not itemLink then
         return nil
     end
-    
-    -- Use C_TooltipInfo API (modern method)
-    if not C_TooltipInfo or not C_TooltipInfo.GetItemByID then
+    if not C_TooltipInfo then
         return nil
     end
-    
-    -- GetTransmogrifyItem expects transmogLocation, use GetItemByID for itemID
-    local tooltipData = C_TooltipInfo.GetItemByID(sourceInfo.itemID)
+
+    local tooltipData
+    if itemLink and C_TooltipInfo.GetHyperlink then
+        local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+        if ok then tooltipData = data end
+    end
+    if not tooltipData and itemID and C_TooltipInfo.GetItemByID then
+        local ok, data = pcall(C_TooltipInfo.GetItemByID, itemID)
+        if ok then tooltipData = data end
+    end
     if not tooltipData or not tooltipData.lines then
         return nil
     end
-    
-    -- Source keywords to look for
     local sourceKeywords = {
         "Drop:", "Vendor:", "Quest:", "Achievement:", "Profession:",
         "Crafted:", "World Event:", "Holiday:", "PvP:", "Arena:",
@@ -648,15 +678,491 @@ function WarbandNexus:IsTransmogAvailable()
     return available
 end
 
+local function ItemNameFromTooltip(itemID, itemLink)
+    if not C_TooltipInfo then return nil end
+    local tooltipData
+    if itemLink and itemLink ~= "" and not (issecretvalue and issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
+        local ok, data = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+        if ok then tooltipData = data end
+    elseif itemID and C_TooltipInfo.GetItemByID then
+        local ok, data = pcall(C_TooltipInfo.GetItemByID, itemID)
+        if ok then tooltipData = data end
+    end
+    if not tooltipData or not tooltipData.lines then return nil end
+    local line = tooltipData.lines[1]
+    if not line or not line.leftText then return nil end
+    local text = line.leftText
+    if not text or text == "" or (issecretvalue and issecretvalue(text)) then return nil end
+    local Utilities = ns.Utilities
+    if Utilities and Utilities.StripFormattingCodes then
+        return Utilities:StripFormattingCodes(text)
+    end
+    return text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", ""):gsub("^%s*(.-)%s*$", "%1")
+end
+
+local function SafeTransmogBool(val, defaultWhenSecret)
+    if val == nil then return false end
+    if issecretvalue and issecretvalue(val) then return defaultWhenSecret == true end
+    return val == true
+end
+
+local function SafeTransmogOptionalBool(val)
+    if val == nil then return nil end
+    if issecretvalue and issecretvalue(val) then return nil end
+    if val == true then return true end
+    if val == false then return false end
+    return nil
+end
+
+local function SafeTransmogString(val)
+    if not val or val == "" then return nil end
+    if issecretvalue and issecretvalue(val) then return nil end
+    if type(val) ~= "string" then return nil end
+    return val
+end
+
+--- Merge GetCategoryAppearances across one or more Enum.TransmogCollectionType values.
+local function FetchCategoryAppearances(category)
+    local enumIds = category.enumIds or { category.id }
+    local merged = {}
+    for ei = 1, #enumIds do
+        local enumId = enumIds[ei]
+        local ok, apps = pcall(C_TransmogCollection.GetCategoryAppearances, enumId)
+        if ok and apps then
+            for ai = 1, #apps do
+                merged[#merged + 1] = {
+                    appearanceInfo = apps[ai],
+                    categoryTypeID = enumId,
+                }
+            end
+        end
+    end
+    return merged
+end
+
+local function EnrichTransmogBrowseRow(row)
+    if not row then return end
+    local sourceID = row.sourceID
+    local itemID = row.itemID
+
+    if sourceID and C_TransmogCollection and C_TransmogCollection.GetAppearanceSourceInfo then
+        local ok, info = pcall(C_TransmogCollection.GetAppearanceSourceInfo, sourceID)
+        if ok and info then
+            if type(info.icon) == "number" and info.icon > 0
+                and not (issecretvalue and issecretvalue(info.icon)) then
+                row.icon = info.icon
+            end
+            if info.itemLink and info.itemLink ~= ""
+                and not (issecretvalue and issecretvalue(info.itemLink)) then
+                row.link = info.itemLink
+            end
+        end
+    end
+
+    if itemID and C_Item and C_Item.GetItemIconByID
+        and (type(row.icon) ~= "number" or row.icon <= 0) then
+        local ok, icon = pcall(C_Item.GetItemIconByID, itemID)
+        if ok and type(icon) == "number" and icon > 0
+            and not (issecretvalue and issecretvalue(icon)) then
+            row.icon = icon
+        end
+    end
+
+    local name
+    if row.link and C_Item and C_Item.GetItemInfo then
+        local ok, itemName = pcall(C_Item.GetItemInfo, row.link)
+        if ok and type(itemName) == "string" and itemName ~= ""
+            and not (issecretvalue and issecretvalue(itemName)) then
+            name = itemName
+        end
+    end
+    if (not name or name == "") and itemID and C_Item and C_Item.GetItemInfo then
+        local ok, itemName = pcall(C_Item.GetItemInfo, itemID)
+        if ok and type(itemName) == "string" and itemName ~= ""
+            and not (issecretvalue and issecretvalue(itemName)) then
+            name = itemName
+        end
+    end
+    if (not name or name == "") and itemID and GetItemInfo then
+        local ok, itemName = pcall(GetItemInfo, itemID)
+        if ok and type(itemName) == "string" and itemName ~= ""
+            and not (issecretvalue and issecretvalue(itemName)) then
+            name = itemName
+        end
+    end
+    if not name or name == "" then
+        name = ItemNameFromTooltip(itemID, row.link)
+    end
+    if type(name) == "string" and name ~= "" then
+        row.name = name
+    elseif itemID then
+        row.name = string.format("Item %d", itemID)
+        row._namePending = true
+    end
+    row.icon = nil
+end
+
+local function BuildTransmogSourceEntry(sourceData, categoryTypeID)
+    if not sourceData then return nil end
+    local sourceID = sourceData.sourceID
+    if type(sourceID) ~= "number" or sourceID <= 0 then return nil end
+    if issecretvalue and issecretvalue(sourceID) then return nil end
+
+    local itemID = sourceData.itemID
+    if itemID and issecretvalue and issecretvalue(itemID) then
+        itemID = nil
+    end
+    if not itemID then
+        local okInfo, sourceInfo = pcall(C_TransmogCollection.GetSourceInfo, sourceID)
+        if okInfo and sourceInfo and sourceInfo.itemID then
+            itemID = sourceInfo.itemID
+            if itemID and issecretvalue and issecretvalue(itemID) then
+                itemID = nil
+            end
+        end
+    end
+
+    local entry = {
+        sourceID = sourceID,
+        itemID = itemID,
+        name = SafeTransmogString(sourceData.name),
+        categoryID = sourceData.categoryID or categoryTypeID,
+        quality = sourceData.quality,
+        link = nil,
+        sourceText = nil,
+        isCollected = SafeTransmogOptionalBool(sourceData.isCollected),
+    }
+    if sourceID and C_TransmogCollection and C_TransmogCollection.GetAppearanceSourceInfo then
+        local ok, info = pcall(C_TransmogCollection.GetAppearanceSourceInfo, sourceID)
+        if ok and info and info.itemLink and info.itemLink ~= ""
+            and not (issecretvalue and issecretvalue(info.itemLink)) then
+            entry.link = info.itemLink
+        end
+        if entry.isCollected == nil and info then
+            entry.isCollected = SafeTransmogOptionalBool(info.isCollected)
+        end
+    end
+    return entry
+end
+
+local function PickPrimaryTransmogSource(sources)
+    for i = 1, #sources do
+        if sources[i].isCollected then return sources[i] end
+    end
+    return sources[1]
+end
+
+local function MergeTransmogSourcesIntoRow(row, sourceList, categoryTypeID)
+    row.sources = row.sources or {}
+    row._sourceIDSet = row._sourceIDSet or {}
+    for i = 1, #sourceList do
+        local entry = BuildTransmogSourceEntry(sourceList[i], categoryTypeID)
+        if entry and not row._sourceIDSet[entry.sourceID] then
+            row._sourceIDSet[entry.sourceID] = true
+            row.sources[#row.sources + 1] = entry
+        end
+    end
+end
+
+local function FinalizeTransmogBrowseRow(row, category)
+    if not row or not row.sources or #row.sources == 0 then return end
+    local primary = PickPrimaryTransmogSource(row.sources)
+    row.sourceID = primary.sourceID
+    row.itemID = primary.itemID
+    row.categoryID = primary.categoryID or row.categoryID
+    row.quality = primary.quality
+    row.link = primary.link
+    if not row.name or row.name == "" then
+        row.name = primary.name
+    end
+    if not row.name or row.name == "" then
+        EnrichTransmogBrowseRow(row)
+    else
+        row.icon = nil
+    end
+    if row.sourceText == nil and row.sourceID and WarbandNexus and WarbandNexus.GetTransmogSourceText then
+        row.sourceText = WarbandNexus:GetTransmogSourceText(row.sourceID)
+    end
+    for i = 1, #row.sources do
+        local src = row.sources[i]
+        if (not src.sourceText or src.sourceText == "") and src.sourceID
+            and WarbandNexus and WarbandNexus.GetTransmogSourceText then
+            src.sourceText = WarbandNexus:GetTransmogSourceText(src.sourceID)
+        end
+    end
+end
+
+local function AppendTransmogAppearanceRow(category, wrapped, showCollected, showUncollected, results, visualByID)
+    if not wrapped or not category then return end
+    local appearanceInfo = wrapped.appearanceInfo or wrapped
+    local categoryTypeID = wrapped.categoryTypeID or category.id
+    if not appearanceInfo or not appearanceInfo.visualID then return end
+
+    local isCollected = SafeTransmogBool(appearanceInfo.isCollected, false)
+    if not ((isCollected and showCollected) or (not isCollected and showUncollected)) then
+        return
+    end
+
+    local canDisplay = SafeTransmogOptionalBool(appearanceInfo.canDisplayOnPlayer)
+    if canDisplay == nil then
+        canDisplay = SafeTransmogOptionalBool(appearanceInfo.isUsable)
+    end
+    if canDisplay == false then return end
+
+    local visualID = appearanceInfo.visualID
+    if issecretvalue and issecretvalue(visualID) then return end
+
+    local okSources, sources = pcall(C_TransmogCollection.GetAppearanceSources, visualID, categoryTypeID)
+    if not okSources or not sources or #sources == 0 then return end
+
+    local builtSources = {}
+    for si = 1, #sources do
+        local entry = BuildTransmogSourceEntry(sources[si], categoryTypeID)
+        if entry then builtSources[#builtSources + 1] = entry end
+    end
+    if #builtSources == 0 then return end
+
+    visualByID = visualByID or {}
+    local existing = visualByID[visualID]
+    if existing then
+        MergeTransmogSourcesIntoRow(existing, sources, categoryTypeID)
+        if isCollected then
+            existing.isCollected = true
+            existing.collected = true
+        end
+        FinalizeTransmogBrowseRow(existing, category)
+        return
+    end
+
+    local primary = PickPrimaryTransmogSource(builtSources)
+    local row = {
+        visualID = visualID,
+        sourceID = primary.sourceID,
+        itemID = primary.itemID,
+        sources = builtSources,
+        _sourceIDSet = {},
+        categoryID = primary.categoryID or categoryTypeID or category.id,
+        categoryKey = category.key,
+        categoryName = category.name,
+        isCollected = isCollected,
+        collected = isCollected,
+        name = SafeTransmogString(primary.name),
+        icon = category.icon,
+        quality = primary.quality,
+        link = primary.link,
+        sourceText = nil,
+    }
+    for i = 1, #builtSources do
+        row._sourceIDSet[builtSources[i].sourceID] = true
+    end
+    FinalizeTransmogBrowseRow(row, category)
+    visualByID[visualID] = row
+    results[#results + 1] = row
+end
+
 --[[
-    Search uncollected transmog items by text query
-    Uses WoW's native search API for optimal performance
-    
-    @param categoryKey string - Category key (e.g., "head", "shoulder")
-    @param searchText string - Search query
-    @param callback function - Called with array of transmog items when complete
-    @param progressCallback function (optional) - Called with progress updates
+    Load one equipment-slot category for Collections Transmog sub-tabs.
+    @param categoryKey string - e.g. "head", "chest"
+    @param callback function(table) - flat rows for that slot
 ]]
+function WarbandNexus:LoadTransmogCategoryData(categoryKey, callback, progressCallback, opts)
+    if not callback then return end
+    opts = opts or {}
+    local showCollected = (opts.showCollected ~= false)
+    local showUncollected = (opts.showUncollected ~= false)
+    local forceRefresh = (opts.forceRefresh == true)
+
+    local available, errorMsg = CheckTransmogBrowseAPIs()
+    if not available then
+        if self.Print then
+            self:Print("|cffff0000Error:|r " .. tostring(errorMsg))
+        end
+        callback({})
+        return
+    end
+
+    local category = self:GetTransmogCategoryByKey(categoryKey)
+    if not category then
+        callback({})
+        return
+    end
+
+    self._transmogCategoryCache = self._transmogCategoryCache or {}
+    local bucket = self._transmogCategoryCache[categoryKey]
+    if not forceRefresh and bucket and bucket.version == TRANSMOG_BROWSE_CACHE_VERSION then
+        callback(bucket.rows or {})
+        return
+    end
+
+    if self._transmogCategoryLoadTicker then
+        self._transmogCategoryLoadTicker:Cancel()
+        self._transmogCategoryLoadTicker = nil
+    end
+
+    local results = {}
+    local visualByID = {}
+    local appearances = FetchCategoryAppearances(category)
+    local appIdx = 1
+    local totalApps = #appearances
+
+    if progressCallback then
+        progressCallback(0, totalApps, category.name or category.key or "")
+    end
+
+    if totalApps == 0 then
+        callback(results)
+        return
+    end
+
+    local ticker
+    ticker = C_Timer.NewTicker(0, function()
+        local budgetStart = debugprofilestop()
+        while appIdx <= totalApps and (debugprofilestop() - budgetStart) < FRAME_BUDGET_MS do
+            AppendTransmogAppearanceRow(category, appearances[appIdx], showCollected, showUncollected, results, visualByID)
+            appIdx = appIdx + 1
+            if progressCallback and (appIdx % BATCH_SIZE == 0 or appIdx > totalApps) then
+                progressCallback(appIdx, totalApps, category.name or category.key or "")
+            end
+        end
+
+        if appIdx > totalApps then
+            ticker:Cancel()
+            self._transmogCategoryLoadTicker = nil
+            if totalApps > 0 then
+                self._transmogCategoryCache[categoryKey] = {
+                    rows = results,
+                    version = TRANSMOG_BROWSE_CACHE_VERSION,
+                }
+            end
+            callback(results)
+        end
+    end)
+    self._transmogCategoryLoadTicker = ticker
+end
+
+--[[
+    Build a browse list for Collections UI (collected + uncollected, all slot categories).
+    Results are session-cached on WarbandNexus._transmogBrowseCache until TRANSMOG_COLLECTION_UPDATED.
+    @param callback function(table) - flat array of transmog row entries
+    @param progressCallback function|nil - (current, total, message)
+    @param opts table|nil - { showCollected=true, showUncollected=true, forceRefresh=false }
+]]
+function WarbandNexus:LoadTransmogBrowseData(callback, progressCallback, opts)
+    if not callback then return end
+    opts = opts or {}
+    local showCollected = (opts.showCollected ~= false)
+    local showUncollected = (opts.showUncollected ~= false)
+    local forceRefresh = (opts.forceRefresh == true)
+    local partialCallback = opts.partialCallback
+
+    local available, errorMsg = CheckTransmogBrowseAPIs()
+    if not available then
+        if self.Print then
+            self:Print("|cffff0000Error:|r " .. tostring(errorMsg))
+        end
+        callback({})
+        return
+    end
+
+    if not forceRefresh and self._transmogBrowseCache
+        and self._transmogBrowseCacheVersion == TRANSMOG_BROWSE_CACHE_VERSION then
+        callback(self._transmogBrowseCache)
+        return
+    end
+
+    if self._transmogBrowseLoadTicker then
+        self._transmogBrowseLoadTicker:Cancel()
+        self._transmogBrowseLoadTicker = nil
+    end
+
+    local results = {}
+    local visualByID = {}
+    local categories = GetTransmogCategories()
+    local totalCats = #categories
+    local catIdx = 1
+    local appearances = nil
+    local appIdx = 1
+
+    local function finishBrowseLoad()
+        self._transmogBrowseLoadTicker = nil
+        self._transmogBrowseCache = results
+        self._transmogBrowseCacheVersion = TRANSMOG_BROWSE_CACHE_VERSION
+        callback(results)
+    end
+
+    local ticker
+    ticker = C_Timer.NewTicker(0, function()
+        local budgetStart = debugprofilestop()
+        while (debugprofilestop() - budgetStart) < FRAME_BUDGET_MS do
+            if catIdx > totalCats then
+                ticker:Cancel()
+                finishBrowseLoad()
+                return
+            end
+
+            local category = categories[catIdx]
+            if not appearances then
+                appearances = FetchCategoryAppearances(category)
+                appIdx = 1
+                if progressCallback then
+                    progressCallback(catIdx, totalCats, category.name or category.key or "")
+                end
+            end
+
+            if appIdx > #appearances then
+                if partialCallback then
+                    partialCallback(results, category.key, catIdx, totalCats)
+                end
+                catIdx = catIdx + 1
+                appearances = nil
+                if catIdx > totalCats then
+                    ticker:Cancel()
+                    finishBrowseLoad()
+                end
+                break
+            end
+
+            AppendTransmogAppearanceRow(category, appearances[appIdx], showCollected, showUncollected, results, visualByID)
+            appIdx = appIdx + 1
+        end
+    end)
+    self._transmogBrowseLoadTicker = ticker
+end
+
+function WarbandNexus:InvalidateTransmogBrowseCache()
+    self._transmogBrowseCache = nil
+    self._transmogBrowseCacheVersion = nil
+    self._transmogCategoryCache = nil
+    if self._transmogBrowseLoadTicker then
+        self._transmogBrowseLoadTicker:Cancel()
+        self._transmogBrowseLoadTicker = nil
+    end
+    if self._transmogCategoryLoadTicker then
+        self._transmogCategoryLoadTicker:Cancel()
+        self._transmogCategoryLoadTicker = nil
+    end
+    local cui = ns.CollectionsUI
+    if cui and cui.state then
+        cui.state._cachedTransmogBrowse = nil
+        cui.state._lastGroupedTransmogData = nil
+        cui.state._transmogCategoryRows = nil
+        cui.state._transmogFlatList = nil
+        cui.state._transmogRowByVisualID = nil
+        if cui.state.currentSubTab == "transmog" and cui.state.contentFrame and cui.DrawTransmogContent then
+            cui.state._transmogFlatList = nil
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if cui.state.currentSubTab == "transmog" and cui.state.contentFrame then
+                        cui.DrawTransmogContent(cui.state.contentFrame)
+                    end
+                end)
+            else
+                cui.DrawTransmogContent(cui.state.contentFrame)
+            end
+        end
+    end
+end
+
 function WarbandNexus:SearchUncollectedTransmog(categoryKey, searchText, callback, progressCallback)
     if not searchText or type(searchText) ~= "string" then
         self:GetUncollectedTransmog(categoryKey, callback, progressCallback)

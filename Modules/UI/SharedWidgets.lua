@@ -1712,9 +1712,9 @@ local UI_SPACING = {
         NAV_RAIL_DIVIDER_ALPHA = 1,
         NAV_RAIL_TAB_SEP_HEIGHT = 1,
         NAV_RAIL_TAB_SEP_ALPHA = 1,
-        --- Root `WarbandNexusFrame` outer border (accent quartet).
+        --- Root `WarbandNexusFrame` outer border (accent quartet; 1px — matches ApplyVisuals card borders).
         MAIN_SHELL_FRAME_BORDER_ALPHA = 1,
-        MAIN_SHELL_FRAME_BORDER_WIDTH = 2,
+        MAIN_SHELL_FRAME_BORDER_WIDTH = 1,
         --- Gap between last scrolled tab and footer rule; footer rule to Settings row.
         NAV_RAIL_SCROLL_BOTTOM_GAP = 6,
         NAV_RAIL_SETTINGS_SEP_GAP = 4,
@@ -3089,6 +3089,31 @@ local function ApplyMainWindowShellBorderQuartet(frame, borderColor)
     end
 end
 
+--- Top-most accent border on root shells (header/content must not paint over the outer edge).
+local SHELL_BORDER_OVERLAY_LEVEL_BOOST = 500
+
+local function EnsureShellBorderOverlay(frame, borderColor)
+    if not frame or not borderColor then return end
+    local overlay = frame._wnShellBorderOverlay
+    if not overlay then
+        overlay = CreateFrame("Frame", nil, frame)
+        overlay:SetAllPoints(frame)
+        overlay:EnableMouse(false)
+        frame._wnShellBorderOverlay = overlay
+    end
+    overlay:SetFrameLevel((frame:GetFrameLevel() or 0) + SHELL_BORDER_OVERLAY_LEVEL_BOOST)
+    ApplyMainWindowShellBorderQuartet(overlay, borderColor)
+    overlay:Show()
+end
+
+local function RaiseMainWindowShellBorderOverlay(frame)
+    if not frame or not frame._wnShellBorderOverlay then return end
+    frame._wnShellBorderOverlay:SetFrameLevel((frame:GetFrameLevel() or 0) + SHELL_BORDER_OVERLAY_LEVEL_BOOST)
+end
+
+ns.UI_EnsureShellBorderOverlay = EnsureShellBorderOverlay
+ns.UI_RaiseMainWindowShellBorderOverlay = RaiseMainWindowShellBorderOverlay
+
 --- Hide 1px border quartet on a frame (flat chrome).
 local function HideFrameBorderQuartet(frame)
     if not frame then return end
@@ -3177,7 +3202,8 @@ local function ApplyMainWindowShellFill(frame, bgColor, borderColor)
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
     local borderA = shell.MAIN_SHELL_FRAME_BORDER_ALPHA or 1
     local border = borderColor or GetAccentBorderRGBA(borderA)
-    ApplyMainWindowShellBorderQuartet(frame, border)
+    HideFrameBorderQuartet(frame)
+    EnsureShellBorderOverlay(frame, border)
     frame._wnMainShellBackdrop = true
     frame._wnBorderlessSurface = true
     frame._bgType = "bg"

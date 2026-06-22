@@ -152,6 +152,9 @@ local function RefreshMainShellChrome(mainFrame)
     if ns.UI_ApplyMainWindowShellFill then
         ns.UI_ApplyMainWindowShellFill(mainFrame, shellBg)
     end
+    if ns.UI_RaiseMainWindowShellBorderOverlay then
+        ns.UI_RaiseMainWindowShellBorderOverlay(mainFrame)
+    end
     local headerBg = (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
         or C.surfaceHeaderChrome or C.bgLight
     local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
@@ -3783,6 +3786,10 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     f:SyncMainHeaderDebugReloadLayout()
+
+    if ns.UI_RaiseMainWindowShellBorderOverlay then
+        ns.UI_RaiseMainWindowShellBorderOverlay(f)
+    end
 
     -- Frame is already hidden (Hide() called immediately after CreateFrame)
     return f

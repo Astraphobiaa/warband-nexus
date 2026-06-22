@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Characters Tab
     Display all tracked characters with gold, level, and last seen info
 
@@ -442,7 +442,7 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
     end
 
     local nameOffset = GetColumnOffset("name")
-    local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
+    local guildOffset = GetColumnOffset("guild")
     local guildSpacing = (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.spacing) or 15
     local rowH = row:GetHeight() or 46
     local centerY = -rowH / 2
@@ -512,6 +512,14 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
     if row.keystoneText then
         row.keystoneText:ClearAllPoints()
         row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)
+    end
+
+    local mailOffset = GetColumnOffset("mail")
+    if row.mailBtn and row.mailBtn:IsShown() then
+        local mailColW = CHAR_ROW_COLUMNS.mail and CHAR_ROW_COLUMNS.mail.width or 36
+        local mailBtnSz = row.mailBtn:GetWidth() or 34
+        row.mailBtn:ClearAllPoints()
+        row.mailBtn:SetPoint("LEFT", mailOffset + math.max(0, (mailColW - mailBtnSz) / 2), 0)
     end
 
     if row._wnRightRail then
@@ -639,6 +647,106 @@ local function ApplyPendingMailIconTexture(tex)
         end
     end
     tex:SetTexture("Interface/Minimap/Tracking/Mailbox")
+end
+
+local MAIL_COL_BTN_SIZE = 34
+local MAIL_COL_ICON_SIZE = 26
+local MAIL_TOOLTIP_STABLE_WIDTH = 380
+
+local function EnsureMailTooltipAnchor(btn)
+    if not btn then return nil end
+    local anchor = btn._wnMailTooltipAnchor
+    if not anchor then
+        anchor = CreateFrame("Frame", nil, btn)
+        anchor:SetSize(MAIL_COL_BTN_SIZE, MAIL_COL_BTN_SIZE)
+        anchor:SetPoint("CENTER")
+        anchor:EnableMouse(false)
+        btn._wnMailTooltipAnchor = anchor
+    end
+    return anchor
+end
+
+local function BuildCharacterMailTooltipData(char, isCurrent)
+    local lines = (ns.MailSnapshot and ns.MailSnapshot.BuildTooltipLines(char, isCurrent)) or {}
+    return {
+        type = "custom",
+        icon = false,
+        title = (ns.L and ns.L["MAIL_TOOLTIP_TITLE"]) or "Mail",
+        lines = lines,
+        stableWidth = MAIL_TOOLTIP_STABLE_WIDTH,
+        anchor = "ANCHOR_RIGHT",
+    }
+end
+
+local function ShowCharacterMailTooltip(btn)
+    local anchor = EnsureMailTooltipAnchor(btn) or btn
+    local tipData = BuildCharacterMailTooltipData(btn._mailChar, btn._mailIsCurrent == true)
+    if ShowTooltip then
+        ShowTooltip(anchor, tipData)
+    elseif ns.TooltipService then
+        ns.TooltipService:Show(anchor, tipData)
+    end
+end
+
+local function TryOpenMailDetailsPopup(btn)
+    if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+    local char = btn._mailChar
+    if not char then return false end
+    if HideTooltip then
+        HideTooltip()
+    elseif ns.TooltipService then
+        ns.TooltipService:Hide()
+    end
+    if WarbandNexus.ShowMailDetailsPopup then
+        WarbandNexus:ShowMailDetailsPopup(char)
+    elseif ns.UI_ShowMailDetailsPopup then
+        ns.UI_ShowMailDetailsPopup(char)
+    end
+    return true
+end
+
+local function SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
+    local hasMail = ns.MailSnapshot and ns.MailSnapshot.CharHasPendingMail(char)
+    if not hasMail then
+        if row.mailBtn then
+            row.mailBtn:Hide()
+        end
+        return
+    end
+
+    if not row.mailBtn then
+        local btn = ns.UI.Factory:CreateButton(row, MAIL_COL_BTN_SIZE, MAIL_COL_BTN_SIZE, true)
+        if ns.UI.Factory.ApplyIconOnlyButtonChrome then
+            ns.UI.Factory:ApplyIconOnlyButtonChrome(btn)
+        end
+        btn.isPersistentRowElement = true
+        btn.icon = btn:CreateTexture(nil, "OVERLAY")
+        btn.icon:SetSize(MAIL_COL_ICON_SIZE, MAIL_COL_ICON_SIZE)
+        btn.icon:SetPoint("CENTER")
+        row.mailBtn = btn
+    end
+
+    ApplyPendingMailIconTexture(row.mailBtn.icon)
+    local mailColW = CHAR_ROW_COLUMNS.mail and CHAR_ROW_COLUMNS.mail.width or 36
+    row.mailBtn:ClearAllPoints()
+    row.mailBtn:SetPoint("LEFT", mailOffset + math.max(0, (mailColW - MAIL_COL_BTN_SIZE) / 2), 0)
+    row.mailBtn:Show()
+    row.mailBtn._mailChar = char
+    row.mailBtn._mailIsCurrent = isCurrent
+
+    row.mailBtn:SetScript("OnEnter", function(selfBtn)
+        ShowCharacterMailTooltip(selfBtn)
+    end)
+    row.mailBtn:SetScript("OnClick", function(selfBtn)
+        TryOpenMailDetailsPopup(selfBtn)
+    end)
+    row.mailBtn:SetScript("OnLeave", function()
+        if HideTooltip then
+            HideTooltip()
+        elseif ns.TooltipService then
+            ns.TooltipService:Hide()
+        end
+    end)
 end
 
 local function RegisterCharacterEvents(parent)
@@ -2218,16 +2326,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         classColor.r * 255, classColor.g * 255, classColor.b * 255,
         char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
     PresentFS(row.nameText)
-    if char.hasMail then
-        if not row.mailIcon then
-            row.mailIcon = row:CreateTexture(nil, "OVERLAY")
-            row.mailIcon:SetSize(14, 14)
-        end
-        ApplyPendingMailIconTexture(row.mailIcon)
-        row.mailIcon:ClearAllPoints()
-        row.mailIcon:SetPoint("LEFT", row.nameText, "LEFT", row.nameText:GetStringWidth() + 3, -1)
-        row.mailIcon:Show()
-    elseif row.mailIcon then
+    if row.mailIcon then
         row.mailIcon:Hide()
     end
     if not row.realmText then
@@ -2245,8 +2344,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.realmText:SetText(displayRealm)
     PresentFS(row.realmText)
     
-    -- COLUMN: Guild â€” width from max guild name; text centered; strictly between Name and Level
-    local guildOffset = nameOffset + (CHAR_ROW_COLUMNS.name.total or 115)
+    -- COLUMN: Guild — after mail column; width from max guild name; text centered before Level
+    local guildOffset = GetColumnOffset("guild")
     local guildColW = self._charsListStableGuildColW
         or self._charListMaxGuildWidth
         or (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.width)
@@ -2744,6 +2843,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     row.keystoneIcon:Show()
     row.keystoneText:Show()
+
+    -- COLUMN: Mail (snapshot from last login on this character)
+    local mailOffset = GetColumnOffset("mail")
+    SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     
     -- RIGHT RAIL: fixed slot positions (no per-row width reflow flicker on resize)
     local R_MARGIN = ns.UI_CHAR_ROW_RIGHT_MARGIN or 6
@@ -3144,11 +3247,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local nameColW = CHAR_ROW_COLUMNS.name.width
         local swName = row.nameText:GetStringWidth() or 0
         local swRealm = row.realmText:GetStringWidth() or 0
-        local mailExtra = 0
-        if row.mailIcon and row.mailIcon:IsShown() then
-            mailExtra = (row.mailIcon:GetWidth() or 14) + 4
-        end
-        local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + mailExtra + 4)
+        local nameBlockRight = nameLeft + math.min(nameColW, math.max(swName, swRealm) + 4)
         local gradientEnd = nameBlockRight
         local rowW = row._wnRowPaintWidth
         if not rowW or rowW < 2 then

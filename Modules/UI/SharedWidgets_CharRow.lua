@@ -64,6 +64,11 @@ local CHAR_ROW_COLUMNS = {
         spacing = 15,
         total = 135,
     },
+    mail = {
+        width = 36,
+        spacing = 10,
+        total = 46,
+    },
     reorder = {
         width = 44,
         spacing = 6,
@@ -92,7 +97,7 @@ local CHAR_ROW_COLUMNS = {
 }
 
 local CHAR_ROW_COLUMN_ORDER = {
-    "favorite", "faction", "race", "class", "name", "guild", "level", "itemLevel",
+    "favorite", "faction", "race", "class", "name", "mail", "guild", "level", "itemLevel",
     "gold", "professions", "mythicKey", "reorder", "lastSeen", "headerAssign", "tracking", "delete",
 }
 

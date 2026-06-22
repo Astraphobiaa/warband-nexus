@@ -18,6 +18,9 @@ local GetTime = GetTime
 assert(Fns and RT and V and WarbandNexus, "TryCounterService_SelfTest: load TryCounterService.lua first")
 
 local FAKE_ITEM_ID = TC.SELF_TEST_FAKE_ITEM_ID or 987654321
+local SYLVANAS_NPC_ID = 175732
+local SYLVANAS_ENCOUNTER_ID = 2435
+local SYLVANAS_CHEST_OBJECT_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 368304
 
 local function fakeDrop()
     return { type = "item", itemID = FAKE_ITEM_ID, repeatable = true, name = "TC Self Test Token" }
@@ -61,9 +64,57 @@ end
 local function withRestoredState(fn)
     local snap = snapshotState()
     Fns.ClearDeferredLootSession()
+    if Fns.ClearTryCounterTransientKillMarks then
+        Fns.ClearTryCounterTransientKillMarks()
+    end
+    if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+        Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+    end
+    V.lastTryCountSourceKey = nil
+    V.lastTryCountSourceTime = 0
     local ok, err = pcall(fn)
     restoreState(snap)
+    if Fns.ClearTryCounterTransientKillMarks then
+        Fns.ClearTryCounterTransientKillMarks()
+    end
+    if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+        Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+    end
     if not ok then error(err) end
+end
+
+local function runSelfTestHarness(WN, title, fn)
+    local pass, fail, warn = 0, 0, 0
+    local function linePass(label)
+        pass = pass + 1
+        WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label)
+    end
+    local function lineFail(label, err)
+        fail = fail + 1
+        local tail = err and (": " .. tostring(err)) or ""
+        WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
+    end
+    local function lineWarn(label)
+        warn = warn + 1
+        WN:Print("|cffffcc00[WN-TC-Test] WARN|r " .. label)
+    end
+    local function section(st)
+        WN:Print("|cff9370DB[WN-TC-Test]|r — " .. st)
+    end
+    local function probe(label, pfn)
+        local ok, err = pcall(pfn)
+        if ok then linePass(label) else lineFail(label, err) end
+    end
+    if Fns.ClearTryCounterTransientKillMarks then
+        Fns.ClearTryCounterTransientKillMarks()
+    end
+    WN:Print("|cff9370DB[WN-TC-Test]|r " .. title)
+    fn(section, probe, lineWarn)
+    if fail == 0 then
+        WN:Print(format("|cff00ff00[WN-TC-Test] OK|r %d passed, %d warnings.", pass, warn))
+    else
+        WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d warnings.", pass, fail, warn))
+    end
 end
 
 function WarbandNexus:RunTryCounterSelfTest()
@@ -102,6 +153,10 @@ function WarbandNexus:RunTryCounterSelfTest()
     if not Fns.EnsureDB() then
         WN:Print("|cffff0000[WN-TC-Test]|r DB not ready — aborting.")
         return
+    end
+
+    if Fns.ClearTryCounterTransientKillMarks then
+        Fns.ClearTryCounterTransientKillMarks()
     end
 
     local mechID = samples.mechanicaItemID or 234741
@@ -464,4 +519,94 @@ function WarbandNexus:RunTryCounterSelfTest()
     else
         WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d warnings.", pass, fail, warn))
     end
+end
+
+--- Mythic Sylvanas chest path only (/wn tc test sylvanas). No raid required.
+function WarbandNexus:RunTryCounterSylvanasSelfTest()
+    local WN = self
+    if not Fns.EnsureDB() then
+        WN:Print("|cffff0000[WN-TC-Test]|r DB not ready — aborting.")
+        return
+    end
+    local savedFake = WN:GetTryCount("item", FAKE_ITEM_ID)
+    if Fns.SetTryCounterSelfTestSyncMiss then
+        Fns.SetTryCounterSelfTestSyncMiss(true)
+    end
+
+    runSelfTestHarness(WN, "Sylvanas Mythic chest probes (post-cinematic slot-first + pending replay)...", function(section, probe)
+        section("Encounter bookkeeping")
+        probe("ENCOUNTER_END seeds recentKill for Sylvanas (2435)", function()
+            withRestoredState(function()
+                WN:OnTryCounterEncounterEnd("ENCOUNTER_END", SYLVANAS_ENCOUNTER_ID, "Sylvanas Windrunner", 16, 20, 1)
+                local _, kd = Fns.GetFreshEncounterKillForNpc(SYLVANAS_NPC_ID)
+                if not kd or kd.npcID ~= SYLVANAS_NPC_ID then
+                    error("recentKill missing for npc " .. tostring(SYLVANAS_NPC_ID))
+                end
+            end)
+        end)
+
+        section("Slot-first miss (chest after cinematic)")
+        probe("slot_boss miss: hasItem, no link (Sylvanas npc 175732)", function()
+            withRestoredState(function()
+                local drop = fakeDrop()
+                local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+                WN:OnTryCounterEncounterEnd("ENCOUNTER_END", SYLVANAS_ENCOUNTER_ID, "Sylvanas Windrunner", 16, 20, 1)
+                Fns.StageDeferredLootSession({
+                    kind = "slot_boss",
+                    trackable = { drop },
+                    drops = { drop },
+                    slotOutcomeSourceKey = "encounter_" .. tostring(SYLVANAS_ENCOUNTER_ID),
+                    slotBossNpcID = SYLVANAS_NPC_ID,
+                    baselineTryCounts = Fns.CaptureTryCountBaselines({ drop }),
+                })
+                RT.lootSession.numLoot = 1
+                RT.lootSession.slotData[1] = { hasItem = true, link = nil }
+                Fns.FinalizeDeferredLootSessionOutcome(WN)
+                if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
+                    error("expected miss increment after cinematic-style chest")
+                end
+                WN:SetTryCount("item", FAKE_ITEM_ID, old)
+            end)
+        end)
+
+        section("Chest before ENCOUNTER_END (pending replay)")
+        probe("TryReplayPendingEncounterLoot after ENCOUNTER_END", function()
+            withRestoredState(function()
+                local drop = fakeDrop()
+                local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+                if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                    Fns.SetTryCounterSelfTestSlotOutcomeEnv({
+                        instance = { instanceType = "raid", difficulty = 16, templateInstanceID = 1193 },
+                        bossTrackable = { [SYLVANAS_NPC_ID] = { drop } },
+                    })
+                end
+                Fns.ResetLootSession()
+                RT.lootSession.numLoot = 1
+                RT.lootSession.slotData[1] = { hasItem = true, link = nil }
+                RT.lootSession.sourceGUIDs = { "GameObject-0-0-0-0-" .. tostring(SYLVANAS_CHEST_OBJECT_ID) .. "-000000000001" }
+                RT.pendingEncounterLootSnapshot = Fns.SnapshotLootSessionState()
+                WN._pendingEncounterLoot = true
+                WN:OnTryCounterEncounterEnd("ENCOUNTER_END", SYLVANAS_ENCOUNTER_ID, "Sylvanas Windrunner", 16, 20, 1)
+                if not Fns.TryReplayPendingEncounterLoot then
+                    error("TryReplayPendingEncounterLoot missing")
+                end
+                Fns.TryReplayPendingEncounterLoot(WN)
+                if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                    Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+                end
+                if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
+                    error("expected replay miss increment")
+                end
+                WN:SetTryCount("item", FAKE_ITEM_ID, old)
+            end)
+        end)
+    end)
+
+    if Fns.SetTryCounterSelfTestSyncMiss then
+        Fns.SetTryCounterSelfTestSyncMiss(false)
+    end
+    if Fns.FlushDeferredTryCounterIncrementAnnounces then
+        Fns.FlushDeferredTryCounterIncrementAnnounces()
+    end
+    WN:SetTryCount("item", FAKE_ITEM_ID, savedFake or 0)
 end

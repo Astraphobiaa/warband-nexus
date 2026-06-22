@@ -293,6 +293,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             end
         end
         self._balancedSplit = nil
+        self._wnStableWidth = nil
         
         -- Return all lines to pool
         for i = 1, #self.lines do
@@ -866,6 +867,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local requestedCap = tonumber(self.fixedWidth) or MAX_WIDTH
         local widthCap = math.min(WIDTH_CAP_TOP, math.max(MAX_WIDTH, requestedCap))
         local computedWidth = math.max(MIN_WIDTH, math.min(widthCap, maxContentW + padding * 2))
+        if self._wnStableWidth and self.fixedWidth then
+            computedWidth = self.fixedWidth
+        end
         self.fixedWidth = computedWidth
         self:SetWidth(computedWidth)
         self._balancedSplit = (maxBalancedLeft > 0) and (padding + maxBalancedLeft + 14) or nil

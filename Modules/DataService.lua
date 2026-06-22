@@ -851,6 +851,8 @@ function WarbandNexus:SaveCurrentCharacterData()
     local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
     local preserveProfessionData      = existingEntry and existingEntry.professionData
     local preserveRested              = existingEntry and existingEntry.rested
+    local preserveMailSnapshot        = existingEntry and existingEntry.mailSnapshot
+    local preserveHasMail             = existingEntry and existingEntry.hasMail
     local restedData                  = CollectRestedData() or preserveRested
     -- Preserve maxXP when API returned nil so we don't overwrite good DB value with nil/0
     if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
@@ -914,7 +916,16 @@ function WarbandNexus:SaveCurrentCharacterData()
         specIcon             = specIcon,
         heroSpecID           = heroSpecID,
         heroSpecName         = heroSpecName,
-        hasMail              = HasNewMail() and true or false,
+        hasMail              = (function()
+            if HasNewMail and HasNewMail() then return true end
+            if preserveHasMail then return true end
+            local snap = preserveMailSnapshot
+            if snap and ((snap.count or 0) > 0 or (snap.messages and #snap.messages > 0)) then
+                return true
+            end
+            return false
+        end)(),
+        mailSnapshot         = preserveMailSnapshot,
     }
 
     RelocateLegacyCharacterSlot(self.db, key, legacyKey)
@@ -983,14 +994,27 @@ function WarbandNexus:UpdateMailStatus()
         tableKey = ns.Utilities:GetCharacterStorageKey(self)
     end
     if not tableKey then return end
-    if self.db.global.characters and self.db.global.characters[tableKey] then
-        self.db.global.characters[tableKey].hasMail = HasNewMail() and true or false
-        local msgKey = tableKey
-        if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
-            msgKey = ns.Utilities:GetCanonicalCharacterKey(tableKey) or tableKey
+    local row = self.db.global.characters and self.db.global.characters[tableKey]
+    if not row then return end
+
+    local hasPending = (HasNewMail and HasNewMail()) and true or false
+    if hasPending then
+        row.hasMail = true
+    elseif row.mailSnapshot then
+        if ns.MailSnapshot and ns.MailSnapshot.NormalizeMailSnapshot then
+            ns.MailSnapshot.NormalizeMailSnapshot(row.mailSnapshot)
         end
-        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = msgKey, dataType = "mail" })
+        local snap = row.mailSnapshot
+        row.hasMail = ((snap.count or 0) > 0) or (snap.messages and #snap.messages > 0) or false
+    else
+        row.hasMail = false
     end
+
+    local msgKey = tableKey
+    if ns.Utilities and ns.Utilities.GetCanonicalCharacterKey then
+        msgKey = ns.Utilities:GetCanonicalCharacterKey(tableKey) or tableKey
+    end
+    self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, { charKey = msgKey, dataType = "mail" })
 end
 
 --- Update only gold for current character (PLAYER_MONEY, logout flush; tracked and untracked).
