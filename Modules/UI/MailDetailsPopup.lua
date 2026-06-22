@@ -242,7 +242,24 @@ local function ResolveMailItemTooltipData(item)
         return nil
     end
 
-    return { type = "item", itemID = itemID, itemLink = link, stableWidth = 350, anchor = "ANCHOR_RIGHT" }
+    return { type = "item", itemID = itemID, itemLink = link, fallbackName = item.name, stableWidth = 350, anchor = "ANCHOR_RIGHT" }
+end
+
+local function PrefetchMailSnapshotItems(messages)
+    local TooltipService = ns.TooltipService
+    if not TooltipService or not TooltipService.PrefetchItemID then return end
+    if not messages then return end
+    for mi = 1, #messages do
+        local items = messages[mi] and messages[mi].items
+        if items then
+            for ii = 1, #items do
+                local it = items[ii]
+                if it and it.itemID then
+                    TooltipService:PrefetchItemID(it.itemID)
+                end
+            end
+        end
+    end
 end
 
 local function PaintItemRow(parent, item, y, x, cellW)
@@ -493,6 +510,8 @@ function WarbandNexus:ShowMailDetailsPopup(char)
     end
     local messages = snap and snap.messages
     if not messages or #messages == 0 then return end
+
+    PrefetchMailSnapshotItems(messages)
 
     local charLabel = char.name or L("UNKNOWN", "Unknown")
     if char.realm and char.realm ~= "" then

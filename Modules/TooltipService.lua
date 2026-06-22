@@ -24,6 +24,10 @@ local currentAnchorPref = "ANCHOR_AUTO"
 local isInitialized = false
 local activeTooltipData = nil
 local activeShiftKeyDown = nil
+local activeDataInstanceID = nil
+local tooltipPendingItemLoads = {}
+
+local RETRIEVING_ITEM_INFO = _G.RETRIEVING_ITEM_INFO or "Retrieving item information"
 
 local CURRENCY_TOOLTIP_CHARS_DEFAULT = 10
 local CURRENCY_TOOLTIP_CHARS_SHIFT_MAX = 50
@@ -153,6 +157,7 @@ function TooltipService:Show(anchorFrame, data)
     currentAnchor = anchorFrame
     currentAnchorPref = data.anchor or "ANCHOR_AUTO"
     activeTooltipData = data
+    activeDataInstanceID = data._dataInstanceID
     activeShiftKeyDown = IsShiftKeyDown and IsShiftKeyDown() or false
     
     -- Position then show (single visible frame at final anchor).
@@ -178,6 +183,7 @@ function TooltipService:Hide()
     currentAnchor = nil
     currentAnchorPref = "ANCHOR_AUTO"
     activeTooltipData = nil
+    activeDataInstanceID = nil
     activeShiftKeyDown = nil
     isVisible = false
     
@@ -275,6 +281,69 @@ local function IsVisuallyEmptyTooltipDataLine(line)
     l = l and tostring(l):gsub("%s", "") or ""
     r = r and tostring(r):gsub("%s", "") or ""
     return l == "" and r == ""
+end
+
+local function IsTooltipRetrievingLine(text)
+    if not text or type(text) ~= "string" then return false end
+    if issecretvalue and issecretvalue(text) then return false end
+    if text == RETRIEVING_ITEM_INFO then return true end
+    return text:find("Retrieving item", 1, true) ~= nil
+end
+
+local function ResolveTooltipItemID(itemID, itemLink)
+    if itemID then return itemID end
+    if itemLink and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
+        local idStr = itemLink:match("item:(%d+)")
+        if idStr then return tonumber(idStr) end
+    end
+    return nil
+end
+
+local function QueueTooltipItemPrefetch(itemID)
+    if not itemID or itemID < 1 then return end
+    if tooltipPendingItemLoads[itemID] then return end
+    if not Item or not Item.CreateFromItemID then return end
+    tooltipPendingItemLoads[itemID] = true
+    local item = Item:CreateFromItemID(itemID)
+    if not item or not item.ContinueOnItemLoad then
+        tooltipPendingItemLoads[itemID] = nil
+        return
+    end
+    item:ContinueOnItemLoad(function()
+        tooltipPendingItemLoads[itemID] = nil
+    end)
+end
+
+local function TooltipDataIsSparse(tooltipData)
+    if not tooltipData or not tooltipData.lines or #tooltipData.lines == 0 then
+        return true
+    end
+    local meaningful = 0
+    for i = 1, #tooltipData.lines do
+        local line = tooltipData.lines[i]
+        local left = line and line.leftText
+        local right = line and line.rightText
+        if left and IsTooltipRetrievingLine(left) then return true end
+        if right and IsTooltipRetrievingLine(right) then return true end
+        if not IsVisuallyEmptyTooltipDataLine(line) then
+            meaningful = meaningful + 1
+        end
+    end
+    return meaningful < 2
+end
+
+local function ShouldRefreshActiveItemTooltip(itemID)
+    if not isVisible or not activeTooltipData or activeTooltipData.type ~= "item" then
+        return false
+    end
+    if not currentAnchor or not currentAnchor.IsShown or not currentAnchor:IsShown() then
+        return false
+    end
+    local activeID = activeTooltipData.itemID
+    if not activeID then
+        activeID = ResolveTooltipItemID(nil, activeTooltipData.itemLink)
+    end
+    return activeID and itemID and activeID == itemID
 end
 
 -- Blizzard primaryStat: 1=Str, 2=Agi, 4=Int. Used for which Str/Agi/Int line is "yours" on item tooltips.
@@ -810,6 +879,17 @@ function TooltipService:RenderItemTooltip(frame, data)
             tooltipData = result
         end
     end
+
+    local resolvedID = itemID or ResolveTooltipItemID(nil, itemLink)
+    local sparse = TooltipDataIsSparse(tooltipData)
+    if sparse and resolvedID then
+        QueueTooltipItemPrefetch(resolvedID)
+    end
+    if tooltipData and tooltipData.dataInstanceID then
+        data._dataInstanceID = tooltipData.dataInstanceID
+    else
+        data._dataInstanceID = nil
+    end
     
     if tooltipData and tooltipData.lines and #tooltipData.lines > 0 then
         -- Surface root + per-line args so craftingQuality etc. exist before profession/atlas rewrite.
@@ -820,7 +900,12 @@ function TooltipService:RenderItemTooltip(frame, data)
         
         -- First line = item name (title)
         local firstLine = tooltipData.lines[1]
-        local titleText = firstLine.leftText or itemName or "Item"
+        local titleText = firstLine.leftText or itemName or data.fallbackName or "Item"
+        if IsTooltipRetrievingLine(titleText) and data.fallbackName then
+            titleText = data.fallbackName
+        elseif IsTooltipRetrievingLine(titleText) and itemName then
+            titleText = itemName
+        end
         local titleR, titleG, titleB = 1, 1, 1
         
         if firstLine.leftColor then
@@ -851,10 +936,14 @@ function TooltipService:RenderItemTooltip(frame, data)
         end
 
         -- All remaining lines = item data (binding, type, ilvl, stats, effects, etc.)
+        local renderedBodyLines = 0
         for i = 2, #tooltipData.lines do
             local line = tooltipData.lines[i]
             local leftText = line.leftText
             local rightText = line.rightText
+            if IsTooltipRetrievingLine(leftText) or IsTooltipRetrievingLine(rightText) then
+                sparse = true
+            else
             local skipClass = data.itemTooltipContext and IsItemTooltipClassRestrictionLine(leftText, rightText)
             if not skipClass then
                 if data.itemTooltipContext then
@@ -882,6 +971,7 @@ function TooltipService:RenderItemTooltip(frame, data)
                     lr, lg, lb = RemapTooltipLineRGB(lr, lg, lb)
                     rr, rg, rb = RemapTooltipLineRGB(rr, rg, rb)
                     frame:AddDoubleLine(leftText or "", rightText, lr, lg, lb, rr, rg, rb)
+                    renderedBodyLines = renderedBodyLines + 1
                 else
                     -- Single line
                     local lr, lg, lb = 1, 1, 1
@@ -892,8 +982,14 @@ function TooltipService:RenderItemTooltip(frame, data)
                     end
                     lr, lg, lb = RemapTooltipLineRGB(lr, lg, lb)
                     frame:AddLine(leftText, lr, lg, lb, line.wrapText or false)
+                    renderedBodyLines = renderedBodyLines + 1
                 end
             end
+            end
+        end
+        if sparse and renderedBodyLines == 0 then
+            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", dr, dg, db)
         end
     else
         -- Fallback: basic C_Item.GetItemInfo data
@@ -904,6 +1000,13 @@ function TooltipService:RenderItemTooltip(frame, data)
                 if qColor then r, g, b = qColor.r, qColor.g, qColor.b end
             end
             frame:SetTitle(itemName, r, g, b)
+        elseif data.fallbackName then
+            local r, g, b = 1, 1, 1
+            if itemQuality then
+                local qColor = ITEM_QUALITY_COLORS[itemQuality]
+                if qColor then r, g, b = qColor.r, qColor.g, qColor.b end
+            end
+            frame:SetTitle(data.fallbackName, r, g, b)
         else
             frame:SetTitle(string.format((ns.L and ns.L["ITEM_NUMBER_FORMAT"]) or "Item #%s", itemID or "?"), 1, 1, 1)
         end
@@ -922,6 +1025,9 @@ function TooltipService:RenderItemTooltip(frame, data)
         if itemName then
             local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
             frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading details...", dr, dg, db)
+        elseif data.fallbackName then
+            local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
+            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", dr, dg, db)
         else
             local dr, dg, db = (ns.UI_GetTooltipDescColor and ns.UI_GetTooltipDescColor()) or 0.7, 0.7, 0.7
             frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", dr, dg, db)
@@ -1860,15 +1966,52 @@ end
 function TooltipService:RegisterSafetyEvents()
     -- PLAYER_REGEN_DISABLED: owned by Core.lua (OnCombatStart — hides main UI + tooltip)
     -- PLAYER_LEAVING_WORLD: use dedicated frame (avoids AceEvent collision)
+    local function SafeDefer(fn)
+        if type(fn) ~= "function" then return end
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                pcall(fn)
+            end)
+        else
+            pcall(fn)
+        end
+    end
+
     local safetyFrame = CreateFrame("Frame")
     safetyFrame:RegisterEvent("PLAYER_LEAVING_WORLD")
     safetyFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
-    safetyFrame:SetScript("OnEvent", function(_, event, key, state)
+    safetyFrame:RegisterEvent("TOOLTIP_DATA_UPDATE")
+    safetyFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    safetyFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         if event == "PLAYER_LEAVING_WORLD" then
             self:Hide()
             return
         end
+        if event == "TOOLTIP_DATA_UPDATE" then
+            if not isVisible or not activeTooltipData or activeTooltipData.type ~= "item" then return end
+            if not activeDataInstanceID or not arg1 then return end
+            if tonumber(activeDataInstanceID) ~= tonumber(arg1) then return end
+            if not currentAnchor or not currentAnchor.IsShown or not currentAnchor:IsShown() then return end
+            SafeDefer(function()
+                if isVisible and activeTooltipData and currentAnchor and currentAnchor.IsShown and currentAnchor:IsShown() then
+                    self:Show(currentAnchor, activeTooltipData)
+                end
+            end)
+            return
+        end
+        if event == "GET_ITEM_INFO_RECEIVED" then
+            if arg2 == false then return end
+            local receivedID = tonumber(arg1)
+            if not ShouldRefreshActiveItemTooltip(receivedID) then return end
+            SafeDefer(function()
+                if ShouldRefreshActiveItemTooltip(receivedID) then
+                    self:Show(currentAnchor, activeTooltipData)
+                end
+            end)
+            return
+        end
         if event ~= "MODIFIER_STATE_CHANGED" then return end
+        local key, state = arg1, arg2
         if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
         if not isVisible or not activeTooltipData then return end
         if not currentAnchor or not currentAnchor.IsShown or not currentAnchor:IsShown() then return end
@@ -1883,17 +2026,6 @@ function TooltipService:RegisterSafetyEvents()
         end
     end)
 
-    local function SafeDefer(fn)
-        if type(fn) ~= "function" then return end
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                pcall(fn)
-            end)
-        else
-            pcall(fn)
-        end
-    end
-
     local GT = ns.TooltipGameTooltip
     if GT and GT.InstallGameTooltipOwnerHook then
         GT.InstallGameTooltipOwnerHook(self, SafeDefer)
@@ -1904,6 +2036,18 @@ end
 function TooltipService:Debug(msg)
     if WarbandNexus and WarbandNexus.Debug then
         WarbandNexus:Debug("[Tooltip] " .. msg)
+    end
+end
+
+--- Warm client item cache for tooltip/detail surfaces (mail snapshot, etc.).
+function TooltipService:PrefetchItemID(itemID)
+    QueueTooltipItemPrefetch(tonumber(itemID))
+end
+
+function TooltipService:PrefetchItemIDs(itemIDs)
+    if not itemIDs then return end
+    for i = 1, #itemIDs do
+        QueueTooltipItemPrefetch(tonumber(itemIDs[i]))
     end
 end
 
