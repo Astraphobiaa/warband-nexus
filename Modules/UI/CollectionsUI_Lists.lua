@@ -1058,8 +1058,7 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
 
     local flatList = M.BuildFlatMountList(groupedData, collapsedHeaders)
 
-    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
-    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
+    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListEmpty(scrollChild, "mounts") then
         M.state._mountFlatList = flatList
         M.state._mountVisibleRowFrames = {}
         M.CollectionsEndListChromeDefer()
@@ -1067,6 +1066,8 @@ function M.PopulateMountList(scrollChild, listWidth, groupedData, collapsedHeade
         if onListReady then onListReady() end
         return
     end
+
+    M.HideCollectionsListEmptyCards(scrollChild)
 
     M.state._mountSectionBodies = {}
     local mountSectionContentH = {}
@@ -1372,8 +1373,7 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
 
     local flatList = M.BuildFlatPetList(groupedData, collapsedHeaders)
 
-    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
-    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
+    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListEmpty(scrollChild, "pets") then
         M.state._petFlatList = flatList
         M.state._petVisibleRowFrames = {}
         M.CollectionsEndListChromeDefer()
@@ -1381,6 +1381,8 @@ function M.PopulatePetList(scrollChild, listWidth, groupedData, collapsedHeaders
         if onListReady then onListReady() end
         return
     end
+
+    M.HideCollectionsListEmptyCards(scrollChild)
 
     M.state._petSectionBodies = {}
     local petSectionContentH = {}
@@ -1686,8 +1688,7 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
 
     local flatList = M.BuildFlatToyList(groupedData, collapsedHeaders, SD.TOY_SOURCE_CATEGORIES)
 
-    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
-    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
+    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListEmpty(scrollChild, "toys") then
         M.state._toyFlatList = flatList
         M.state._toyVisibleRowFrames = {}
         M.CollectionsEndListChromeDefer()
@@ -1695,6 +1696,8 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
         if onListReady then onListReady() end
         return
     end
+
+    M.HideCollectionsListEmptyCards(scrollChild)
 
     M.state._toySectionBodies = {}
     local toySectionContentH = {}

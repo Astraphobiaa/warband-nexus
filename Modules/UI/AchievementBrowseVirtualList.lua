@@ -405,10 +405,22 @@ function ns.UI_AchievementBrowse_Populate(opts)
 
     if ns.UI_HideEmptyStateCard then
         ns.UI_HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+        ns.UI_HideEmptyStateCard(scrollChild, "collections_achievements")
     end
     local searchTextRaw = opts.searchText or (state and state.searchText) or ""
-    if opts.searchActive and not (ns.UI_FlatListHasDataRows and ns.UI_FlatListHasDataRows(flatList)) then
-        if ns.UI_TryShowSearchEmptyInContainer and ns.UI_TryShowSearchEmptyInContainer(scrollChild, searchTextRaw, 0) then
+    if not (ns.UI_FlatListHasDataRows and ns.UI_FlatListHasDataRows(flatList)) then
+        if opts.searchActive and ns.UI_TryShowSearchEmptyInContainer and ns.UI_TryShowSearchEmptyInContainer(scrollChild, searchTextRaw, 0) then
+            state._achFlatList = flatList
+            state._achFlatListTotalHeight = math.max(200, (scrollChild:GetParent() and scrollChild:GetParent():GetHeight()) or 200)
+            scrollChild:SetHeight(state._achFlatListTotalHeight)
+            EndAchievementBrowseDeferredChrome()
+            _populateAchievementBrowseBusy = false
+            InvokeAchievementBrowseListReady(opts)
+            DrainAchievementBrowsePopulateQueue()
+            return
+        end
+        if ns.UI_ShowTabEmptyStateCard then
+            ns.UI_ShowTabEmptyStateCard(scrollChild, "collections_achievements", 0, { fillParent = true })
             state._achFlatList = flatList
             state._achFlatListTotalHeight = math.max(200, (scrollChild:GetParent() and scrollChild:GetParent():GetHeight()) or 200)
             scrollChild:SetHeight(state._achFlatListTotalHeight)

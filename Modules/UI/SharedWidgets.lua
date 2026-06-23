@@ -1580,6 +1580,19 @@ local UI_SPACING = {
     TAB_TITLE_TO_BODY_GAP = 6,
     TAB_CHROME_SCROLL_TOP = 8,
     TAB_CHROME_CONTENT_BOTTOM_PAD = 12,
+    --- In-tab horizontal sub-tabs (Collections browse, To-Do categories, Items bank).
+    SUB_TAB = {
+        BTN_HEIGHT = 40,
+        BTN_SPACING = 8,
+        ICON_SIZE = 28,
+        ICON_LEFT = 10,
+        ICON_TEXT_GAP = 8,
+        TEXT_RIGHT = 10,
+        DEFAULT_WIDTH = 150,
+        ACTIVE_BAR_HEIGHT = 3,
+        ACTIVE_BAR_INSET = 8,
+        ACTIVE_BAR_BOTTOM = 4,
+    },
     afterHeader = 72,
     subHeaderSpacing = 44,
     emptyStateSpacing = 100,
@@ -3254,6 +3267,255 @@ end
 ns.UI_ApplyVisuals = ApplyVisuals
 ns.UI_ApplyMainWindowShellFill = ApplyMainWindowShellFill
 ns.UI_ApplyMainWindowShellBackdrop = ApplyMainWindowShellBackdrop
+
+--- Shared horizontal sub-tab strip metrics (Collections, To-Do, Items bank).
+local function GetSubTabLayout()
+    local layout = ns.UI_LAYOUT or {}
+    local st = layout.SUB_TAB or {}
+    return {
+        btnHeight = st.BTN_HEIGHT or 40,
+        btnSpacing = st.BTN_SPACING or 8,
+        iconSize = st.ICON_SIZE or 28,
+        iconLeft = st.ICON_LEFT or 10,
+        iconTextGap = st.ICON_TEXT_GAP or 8,
+        textRight = st.TEXT_RIGHT or 10,
+        defaultWidth = st.DEFAULT_WIDTH or 150,
+        activeBarHeight = st.ACTIVE_BAR_HEIGHT or 3,
+        activeBarInset = st.ACTIVE_BAR_INSET or 8,
+        activeBarBottom = st.ACTIVE_BAR_BOTTOM or 4,
+    }
+end
+ns.UI_GetSubTabLayout = GetSubTabLayout
+
+local function SubTabIdleBackdrop()
+    if ns.UI_GetNavTabInactiveBackdrop then
+        return ns.UI_GetNavTabInactiveBackdrop()
+    end
+    local row = COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
+    return { row[1], row[2], row[3], row[4] or 1 }
+end
+
+local function SubTabHoverBackdrop()
+    if ns.UI_GetControlChromeHoverBackdrop then
+        return ns.UI_GetControlChromeHoverBackdrop()
+    end
+    return SubTabIdleBackdrop()
+end
+
+--- Apply idle/active chrome for horizontal sub-tab buttons (theme-aware light/dark).
+function ns.UI_ApplySubTabButtonVisuals(btn, isActive, accent)
+    if not btn then return end
+    local acc = accent or COLORS.accent or { 0.40, 0.20, 0.58 }
+    local updateBorder = ns.UI_UpdateBorderColor
+    if isActive then
+        local ar, ag, ab, aa
+        if GetSubTabActiveBackdropRGBA then
+            ar, ag, ab, aa = GetSubTabActiveBackdropRGBA(acc)
+        else
+            ar, ag, ab, aa = acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1
+        end
+        ApplyVisuals(btn, { ar, ag, ab, aa }, { acc[1], acc[2], acc[3], 1 })
+        if btn._text then
+            ns.UI_SetTextColorRole(btn._text, "Bright")
+            if ns.UI_SetNavLabelFontStyle then
+                ns.UI_SetNavLabelFontStyle(btn._text, true)
+            end
+        end
+        if updateBorder then updateBorder(btn, { acc[1], acc[2], acc[3], 1 }) end
+        if btn.SetBackdropColor then btn:SetBackdropColor(ar, ag, ab, aa) end
+    else
+        local idle = SubTabIdleBackdrop()
+        local br, bgr, bbb, bba
+        if GetSubTabInactiveBorderRGBA then
+            br, bgr, bbb, bba = GetSubTabInactiveBorderRGBA(acc)
+        else
+            br, bgr, bbb, bba = acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 0.6
+        end
+        ApplyVisuals(btn, idle, { br, bgr, bbb, bba })
+        if btn._text then
+            if btn.IsEnabled and btn:IsEnabled() then
+                ns.UI_SetTextColorRole(btn._text, "Muted")
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(btn._text, false)
+                end
+            else
+                ns.UI_SetTextColorRole(btn._text, "Dim")
+            end
+        end
+        if updateBorder then updateBorder(btn, { br, bgr, bbb, bba }) end
+        if btn.SetBackdropColor then btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1) end
+    end
+end
+
+--- Atlas or file icon for sub-tab buttons (`icon`, `iconAtlas`, optional `iconFallback`).
+function ns.UI_ApplySubTabIcon(tex, tabInfo, iconSize)
+    if not tex or not tabInfo then return end
+    local L = GetSubTabLayout()
+    local sz = (iconSize or L.iconSize) - 2
+    tex:SetTexture(nil)
+    if tabInfo.iconAtlas then
+        local ok = pcall(function()
+            tex:SetAtlas(tabInfo.iconAtlas, false)
+        end)
+        if ok then
+            tex:SetSize(sz, sz)
+            tex:SetSnapToPixelGrid(false)
+            tex:SetTexelSnappingBias(0)
+            return
+        end
+    end
+    tex:SetTexture(tabInfo.icon or tabInfo.iconFallback or "Interface\\Icons\\INV_Misc_QuestionMark")
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    tex:SetSize(sz, sz)
+end
+
+--- Horizontal sub-tab bar shared by Collections, To-Do, and Items bank strips.
+--- opts: `{ tabs, activeKey, onSelect, maxWidth, wrapRows, rightReserve, accent }`
+--- tabs[]: `{ key, label|name, icon?, iconAtlas?, iconFallback?, disabled? }`
+function ns.UI_CreateSubTabBar(parent, opts)
+    opts = type(opts) == "table" and opts or {}
+    local tabs = opts.tabs or {}
+    local L = GetSubTabLayout()
+    local Factory = ns.UI and ns.UI.Factory
+    if not Factory or not Factory.CreateContainer or not Factory.CreateButton then return nil end
+
+    local accent = opts.accent or COLORS.accent or { 0.40, 0.20, 0.58 }
+    local btnHeight = L.btnHeight
+    local bar = Factory:CreateContainer(parent, 400, btnHeight, false)
+    if not bar then return nil end
+
+    local barHost = bar
+    local rightReserve = opts.rightReserve or 0
+    if rightReserve > 0 then
+        local btnArea = Factory:CreateContainer(bar, 200, btnHeight, false)
+        if btnArea then
+            btnArea:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+            btnArea:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -rightReserve, 0)
+            barHost = btnArea
+        end
+    end
+
+    local btnWidths = {}
+    for i = 1, #tabs do
+        local tabInfo = tabs[i]
+        local label = tabInfo.label or tabInfo.name or tabInfo.key or ""
+        local tempFs = FontManager:CreateFontString(bar, "body", "OVERLAY")
+        tempFs:SetText(label)
+        local textW = tempFs:GetStringWidth() or 0
+        tempFs:Hide()
+        local needed = L.iconLeft + L.iconSize + L.iconTextGap + textW + L.textRight
+        btnWidths[i] = math.max(needed, L.defaultWidth)
+    end
+
+    local maxWidth = opts.maxWidth
+    local wrapRows = opts.wrapRows
+    local buttons = {}
+    local xPos = 0
+    local currentRow = 0
+
+    for i = 1, #tabs do
+        local tabInfo = tabs[i]
+        local tabKey = tabInfo.key
+        local label = tabInfo.label or tabInfo.name or tabKey
+        local btnWidth = btnWidths[i]
+        local isActive = (tabKey == opts.activeKey)
+
+        if wrapRows and maxWidth and xPos + btnWidth > maxWidth and xPos > 0 then
+            xPos = 0
+            currentRow = currentRow + 1
+        end
+
+        local btn = Factory:CreateButton(barHost, btnWidth, btnHeight)
+        btn:SetPoint("TOPLEFT", barHost, "TOPLEFT", xPos, -(currentRow * (btnHeight + L.btnSpacing)))
+        btn._tabKey = tabKey
+
+        if Factory.ApplyHighlight then
+            Factory:ApplyHighlight(btn)
+        end
+
+        local activeBar = btn:CreateTexture(nil, "OVERLAY")
+        activeBar:SetHeight(L.activeBarHeight)
+        activeBar:SetPoint("BOTTOMLEFT", L.activeBarInset, L.activeBarBottom)
+        activeBar:SetPoint("BOTTOMRIGHT", -L.activeBarInset, L.activeBarBottom)
+        activeBar:SetColorTexture(accent[1], accent[2], accent[3], 1)
+        activeBar:SetAlpha(isActive and 1 or 0)
+        btn.activeBar = activeBar
+
+        local btnIcon = btn:CreateTexture(nil, "ARTWORK")
+        ns.UI_ApplySubTabIcon(btnIcon, tabInfo)
+        btnIcon:SetPoint("LEFT", L.iconLeft, 0)
+
+        local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        btnText._wnNavLabel = true
+        btnText:SetPoint("LEFT", btnIcon, "RIGHT", L.iconTextGap, 0)
+        btnText:SetPoint("RIGHT", btn, "RIGHT", -L.textRight, 0)
+        btnText:SetText(label)
+        btnText:SetJustifyH("LEFT")
+        btnText:SetWordWrap(false)
+        btn._text = btnText
+
+        btn._active = isActive
+        ns.UI_ApplySubTabButtonVisuals(btn, isActive, accent)
+
+        btn:SetScript("OnClick", function()
+            if opts.onSelect then opts.onSelect(tabKey) end
+        end)
+
+        local updateBorder = ns.UI_UpdateBorderColor
+        if updateBorder then
+            btn:SetScript("OnEnter", function(self)
+                if self._active then return end
+                updateBorder(self, { accent[1] * 1.2, accent[2] * 1.2, accent[3] * 1.2, 0.9 })
+            end)
+            btn:SetScript("OnLeave", function(self)
+                if self._active then return end
+                local br, bgr, bbb, bba = GetSubTabInactiveBorderRGBA(accent)
+                updateBorder(self, { br, bgr, bbb, bba })
+            end)
+        else
+            btn:SetScript("OnEnter", function(self)
+                if self._active then return end
+                if self.SetBackdropColor then
+                    local hover = SubTabHoverBackdrop()
+                    self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 0.95)
+                end
+            end)
+            btn:SetScript("OnLeave", function(self)
+                if self._active then return end
+                if self.SetBackdropColor then
+                    local idle = SubTabIdleBackdrop()
+                    self:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
+                end
+            end)
+        end
+
+        if tabInfo.disabled then
+            btn:Disable()
+            btn:SetAlpha(0.5)
+            ns.UI_ApplySubTabButtonVisuals(btn, false, accent)
+        end
+
+        buttons[tabKey] = btn
+        xPos = xPos + btnWidth + L.btnSpacing
+    end
+
+    local totalHeight = wrapRows
+        and ((currentRow + 1) * btnHeight + currentRow * L.btnSpacing)
+        or btnHeight
+    bar:SetHeight(totalHeight)
+    bar.buttons = buttons
+
+    function bar:SetActiveTab(key)
+        for k, btn in pairs(buttons) do
+            local active = (k == key)
+            btn._active = active
+            if btn.activeBar then btn.activeBar:SetAlpha(active and 1 or 0) end
+            ns.UI_ApplySubTabButtonVisuals(btn, active, accent)
+        end
+    end
+
+    return bar
+end
 
 --- Compact rail width for main shell body (below header): ratio of inner width, clamped.
 ---@return number railWidth

@@ -382,6 +382,30 @@ function M.DrawRecentContent(contentFrame)
         end
     end
 
+    if not qlower then
+        local allEmpty = true
+        for si = 1, #RECENT_SECTION_ORDER do
+            if #pickedLists[si] > 0 then
+                allEmpty = false
+                break
+            end
+        end
+        if allEmpty then
+            local inner_viewport = math.max(1, viewCap - headerBlockH)
+            if ns.UI_ShowTabEmptyStateCard then
+                ns.UI_ShowTabEmptyStateCard(panel, "collections_recent", 0, { fillParent = true })
+            end
+            local finalContentH = math.max(viewCap, headerBlockH + math.max(200, inner_viewport) + inset)
+            contentFrame:SetHeight(finalContentH)
+            if panel.SetHeight then
+                panel:SetHeight(math.max(1, inner_viewport))
+            end
+            M.ApplyCollectionsContentHeader(contentFrame, "recent", finalContentH)
+            SyncRecentMainHorizontalScroll()
+            return
+        end
+    end
+
     local innerW = math.max(1, cw)
     local recentCols, cardW = M.ComputeRecentCardGrid(innerW, gap)
     local gridBodyW = recentCols * cardW + (recentCols - 1) * gap

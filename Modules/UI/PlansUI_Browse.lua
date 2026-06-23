@@ -164,7 +164,9 @@ end
 
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     parent._plansCardLayoutManager = nil
-    if HideEmptyStateCard then
+    if ns.UI_HideAllPlansEmptyStateCards then
+        ns.UI_HideAllPlansEmptyStateCards(parent)
+    elseif HideEmptyStateCard then
         HideEmptyStateCard(parent, "plans")
         HideEmptyStateCard(parent, "plans_browse")
     end
@@ -830,10 +832,11 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
         title = "poi-legendsoftheharanir",
         achievement = "Achievement-Icon",
     }
+    local tabKey = "plans_" .. (category or "mount")
     if ns.UI_ShowTabEmptyStateCard then
-        return ns.UI_ShowTabEmptyStateCard(parent, "plans", yOffset, {
+        return ns.UI_ShowTabEmptyStateCard(parent, tabKey, yOffset, {
             fillParent = true,
-            cacheKey = "plans_browse",
+            cacheKey = "plans_browse_" .. (category or "browse"),
             titleText = titleStr,
             descText = descStr,
             atlas = atlasByCategory[category] or "poi-workorders",

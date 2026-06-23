@@ -95,6 +95,8 @@ local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
+local HideAllPlansEmptyStateCards = ns.UI_HideAllPlansEmptyStateCards
+local ResolvePlansEmptyStateKey = ns.UI_ResolvePlansEmptyStateKey
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -356,34 +358,8 @@ end
 
 --- Update category bar active styling without rebuilding fixed header (sub-tab perf).
 local function ApplyPlansCategoryBarActive(categoryBar, activeKey)
-    if not categoryBar or not categoryBar.buttons then return end
-    local acc = COLORS.accent
-    for k, btn in pairs(categoryBar.buttons) do
-        local isActive = (k == activeKey)
-        btn._active = isActive
-        if btn.activeBar then btn.activeBar:SetAlpha(isActive and 1 or 0) end
-        if ApplyVisuals then
-            if isActive then
-                local act = COLORS.tabActive or { acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1 }
-                ApplyVisuals(btn, act, { acc[1], acc[2], acc[3], 1 })
-            else
-                local idleBg = (ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop()) or COLORS.bgCard
-                ApplyVisuals(btn, idleBg, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
-            end
-        end
-        if btn._text then
-            if isActive then
-                ns.UI_SetTextColorRole(btn._text, "Bright")
-                if ns.UI_SetNavLabelFontStyle then
-                    ns.UI_SetNavLabelFontStyle(btn._text, true)
-                end
-            else
-                ns.UI_SetTextColorRole(btn._text, "Muted")
-                if ns.UI_SetNavLabelFontStyle then
-                    ns.UI_SetNavLabelFontStyle(btn._text, false)
-                end
-            end
-        end
+    if categoryBar and categoryBar.SetActiveTab then
+        categoryBar:SetActiveTab(activeKey)
     end
 end
 
@@ -482,9 +458,8 @@ end
 local function ReleasePlansScrollBody(parent)
     if not parent then return end
     TeardownPlansScrollChildBrowseArtifacts(parent)
-    if HideEmptyStateCard then
-        HideEmptyStateCard(parent, "plans")
-        HideEmptyStateCard(parent, "plans_browse")
+    if HideAllPlansEmptyStateCards then
+        HideAllPlansEmptyStateCards(parent)
     end
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -706,7 +681,11 @@ function WarbandNexus:DrawPlansTab(parent)
         parent.emptyStateContainer:Hide()
     end
     -- Hide standardized empty state card
-    HideEmptyStateCard(parent, "plans")
+    if ns.UI_HideAllPlansEmptyStateCards then
+        ns.UI_HideAllPlansEmptyStateCards(parent)
+    elseif HideEmptyStateCard then
+        HideEmptyStateCard(parent, "plans")
+    end
 
     -- Default: To-Do List ("active"). Same session: remember last category until /reload.
     ResolvePlansCategoryFromSession()
@@ -1054,135 +1033,31 @@ function WarbandNexus:DrawPlansTab(parent)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
     
-    local categoryBar = ns.UI.Factory:CreateContainer(headerParent, nil, nil, false)
-    categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
-    categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
-    
-    local DEFAULT_CAT_BTN_WIDTH = 150
-    local catBtnHeight = 40
-    local catBtnSpacing = 8
-    local catIconSize = 28
-    local catIconLeftPad = 10
-    local catIconTextGap = 8
-    local catTextRightPad = 10
     local maxWidth = (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
         or math.max(200, (parent:GetWidth() or 600) - (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin() or 12) * 2)
-    
-    -- Pre-calculate button widths based on text (icon + padding + text + padding)
-    local catBtnWidths = {}
+
+    local plansSubTabs = {}
     for i = 1, #CATEGORIES do
         local cat = CATEGORIES[i]
-        -- Measure text width using a temporary FontString
-        local tempFs = FontManager:CreateFontString(categoryBar, "body", "OVERLAY")
-        tempFs:SetText(cat.name)
-        local textW = tempFs:GetStringWidth() or 0
-        tempFs:Hide()
-        local needed = catIconLeftPad + catIconSize + catIconTextGap + textW + catTextRightPad
-        catBtnWidths[i] = math.max(needed, DEFAULT_CAT_BTN_WIDTH)
+        plansSubTabs[i] = {
+            key = cat.key,
+            label = cat.name,
+            icon = cat.icon,
+            iconAtlas = cat.iconAtlas,
+        }
     end
-    
-    local currentX = 0
-    local currentRow = 0
-    local categoryButtons = {}
-    
-    for i = 1, #CATEGORIES do
-        local cat = CATEGORIES[i]
-        local catBtnWidth = catBtnWidths[i]
-        
-        -- Check if button fits in current row
-        if currentX + catBtnWidth > maxWidth and currentX > 0 then
-            -- Move to next row
-            currentX = 0
-            currentRow = currentRow + 1
-        end
-        
-        local btn = ns.UI.Factory:CreateButton(categoryBar, catBtnWidth, catBtnHeight)
-        btn:SetPoint("TOPLEFT", currentX, -(currentRow * (catBtnHeight + catBtnSpacing)))
-        
-        -- Check if this is the active category
-        local isActive = (cat.key == currentCategory)
-        local acc = COLORS.accent
 
-        if ApplyVisuals then
-            if isActive then
-                local act = COLORS.tabActive or { acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1 }
-                ApplyVisuals(btn, act, { acc[1], acc[2], acc[3], 1 })
-            else
-                local idleBg = (ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop()) or COLORS.bgCard
-                ApplyVisuals(btn, idleBg, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
-            end
-        end
-
-        -- Apply highlight effect (safe check for Factory)
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-            ns.UI.Factory:ApplyHighlight(btn)
-        end
-
-        -- Active indicator bar (same as Collections/Items sub-tab)
-        local activeBar = btn:CreateTexture(nil, "OVERLAY")
-        activeBar:SetHeight(3)
-        activeBar:SetPoint("BOTTOMLEFT", 8, 4)
-        activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
-        activeBar:SetColorTexture(acc[1], acc[2], acc[3], 1)
-        activeBar:SetAlpha(isActive and 1 or 0)
-        btn.activeBar = activeBar
-
-        -- Use atlas icon if available, otherwise use regular icon path
-        local iconFrame
-        if cat.iconAtlas then
-            -- Create frame for atlas icon (using Factory pattern)
-            iconFrame = ns.UI.Factory:CreateContainer(btn, 28, 28)
-        iconFrame:SetPoint("LEFT", 10, 0)
-            iconFrame:EnableMouse(false)
-            
-            local iconTexture = iconFrame:CreateTexture(nil, "OVERLAY")
-            iconTexture:SetAllPoints()
-            local iconSuccess = pcall(function()
-                iconTexture:SetAtlas(cat.iconAtlas, false)
-            end)
-            if not iconSuccess then
-                iconFrame:Hide()
-                iconFrame = nil
-            else
-                iconTexture:SetSnapToPixelGrid(false)
-                iconTexture:SetTexelSnappingBias(0)
-                iconFrame:Show()  -- Show atlas icon!
-            end
-        end
-        
-        -- Fallback to regular icon if atlas failed or not available
-        if not iconFrame and cat.icon then
-            iconFrame = CreateIcon(btn, cat.icon, 28, false, nil, true)
-            iconFrame:SetPoint("LEFT", 10, 0)
-            iconFrame:Show()  -- Show category tab icon (My Plans, Daily Tasks, Achievements)!
-        end
-        
-        local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
-        label._wnNavLabel = true
-        label:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
-        label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
-        label:SetText(cat.name)
-        label:SetJustifyH("LEFT")
-        label:SetWordWrap(false)
-        btn._text = label
-        categoryButtons[cat.key] = btn
-        if isActive then
-            ns.UI_SetTextColorRole(label, "Bright")
-            if ns.UI_SetNavLabelFontStyle then
-                ns.UI_SetNavLabelFontStyle(label, true)
-            end
-        else
-            ns.UI_SetTextColorRole(label, "Muted")
-            if ns.UI_SetNavLabelFontStyle then
-                ns.UI_SetNavLabelFontStyle(label, false)
-            end
-        end
-
-        btn:SetScript("OnClick", function()
-            if currentCategory == cat.key then return end
+    local categoryBar = ns.UI_CreateSubTabBar and ns.UI_CreateSubTabBar(headerParent, {
+        tabs = plansSubTabs,
+        activeKey = currentCategory,
+        accent = COLORS.accent,
+        wrapRows = true,
+        maxWidth = maxWidth,
+        onSelect = function(catKey)
+            if currentCategory == catKey then return end
             local fromCat = currentCategory
-            currentCategory = cat.key
-            ns._sessionPlansCategory = cat.key
+            currentCategory = catKey
+            ns._sessionPlansCategory = catKey
             if ns.UI_ClearPlansCategorySearches then
                 ns.UI_ClearPlansCategorySearches()
             end
@@ -1192,24 +1067,20 @@ function WarbandNexus:DrawPlansTab(parent)
             C_Timer.After(0, function()
                 if not WarbandNexus then return end
                 if ns._plansCategoryBodyGen ~= bodyGen then return end
-                if not (WarbandNexus.RefreshPlansCategoryBodyOnly and WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, cat.key)) then
+                if not (WarbandNexus.RefreshPlansCategoryBodyOnly and WarbandNexus:RefreshPlansCategoryBodyOnly(fromCat, catKey)) then
                     if WarbandNexus.SendMessage then
                         WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
                     end
                 end
             end)
-        end)
-        
-        -- Update X position for next button
-        currentX = currentX + catBtnWidth + catBtnSpacing
+        end,
+    })
+    if categoryBar then
+        categoryBar:SetPoint("TOPLEFT", contentSide, -headerYOffset)
+        categoryBar:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
-    
-    -- Set categoryBar height based on rows
-    -- Formula: (rows * buttonHeight) + (gaps_between_rows * spacing)
-    -- Example: 2 rows = 2 * 40px + 1 * 8px = 88px (not 96px!)
-    local totalHeight = (currentRow + 1) * catBtnHeight + currentRow * catBtnSpacing
-    categoryBar:SetHeight(totalHeight)
-    categoryBar.buttons = categoryButtons
+
+    local totalHeight = categoryBar and categoryBar:GetHeight() or 40
     if mf then
         mf._plansCategoryBar = categoryBar
     end
@@ -1513,9 +1384,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 
     if #filteredPlans == 0 then
         if ns.UI_ShowTabEmptyStateCard then
-            return ns.UI_ShowTabEmptyStateCard(parent, "plans", yOffset, { fillParent = true }) + 10
+            return ns.UI_ShowTabEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true }) + 10
         end
-        local _, height = CreateEmptyStateCard(parent, "plans", yOffset, { fillParent = true })
+        local _, height = CreateEmptyStateCard(parent, "plans_daily_tasks", yOffset, { fillParent = true })
         return yOffset + height + 10
     end
 
@@ -2097,9 +1968,8 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
 end
 
 function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
-    if HideEmptyStateCard then
-        HideEmptyStateCard(parent, "plans")
-        HideEmptyStateCard(parent, "plans_browse")
+    if HideAllPlansEmptyStateCards then
+        HideAllPlansEmptyStateCards(parent)
     end
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -2207,10 +2077,11 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     
     if #plans == 0 then
         parent._plansCardLayoutManager = nil
+        local emptyKey = ResolvePlansEmptyStateKey(category)
         if ns.UI_ShowTabEmptyStateCard then
-            return ns.UI_ShowTabEmptyStateCard(parent, "plans", yOffset, { fillParent = true }) + 10
+            return ns.UI_ShowTabEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true }) + 10
         end
-        local _, height = CreateEmptyStateCard(parent, "plans", yOffset, { fillParent = true })
+        local _, height = CreateEmptyStateCard(parent, emptyKey, yOffset, { fillParent = true })
         return yOffset + height + 10
     end
     

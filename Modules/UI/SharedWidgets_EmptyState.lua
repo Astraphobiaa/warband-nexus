@@ -141,6 +141,20 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "No Plans Yet",
         descFallback = "Browse Mounts, Pets, Toys, or Achievements above\nto add collection goals and track your progress.",
     },
+    plans_active = {
+        atlas = "poi-workorders",
+        titleKey = "EMPTY_PLANS_ACTIVE_TITLE",
+        descKey = "EMPTY_PLANS_ACTIVE_DESC",
+        titleFallback = "No To-Do Items Yet",
+        descFallback = "Browse Mounts, Pets, Toys, or Achievements above to add goals to your list,\nor use Add Vault to track Great Vault progress.",
+    },
+    plans_daily_tasks = {
+        atlas = "questlog-questtypeicon-weekly",
+        titleKey = "EMPTY_PLANS_WEEKLY_TITLE",
+        descKey = "EMPTY_PLANS_WEEKLY_DESC",
+        titleFallback = "No Weekly Progress Yet",
+        descFallback = "Use Add Quest above to start tracking weekly quest progress\non your characters.",
+    },
     reputation = {
         atlas = "MajorFactions_MapIcons_Centaur64",
         titleKey = "EMPTY_REPUTATION_TITLE",
@@ -184,12 +198,82 @@ local EMPTY_STATE_CONFIG = {
         titleFallback = "Coming Soon",
         descFallback = "Collection overview (mounts, pets, toys) will be available here.",
     },
+    collections_recent = {
+        atlas = "poi-workorders",
+        titleKey = "COLLECTIONS_RECENT_TAB_EMPTY",
+        descKey = "COLLECTIONS_RECENT_TAB_EMPTY_DESC",
+        titleFallback = "Nothing recorded yet.",
+        descFallback = "Recent mounts, pets, toys, and achievements you earn will appear here.",
+    },
+    collections_mounts = {
+        atlas = "dragon-rostrum",
+        titleKey = "EMPTY_COLLECTIONS_MOUNTS_TITLE",
+        descKey = "EMPTY_COLLECTIONS_MOUNTS_DESC",
+        titleFallback = "No mounts to show",
+        descFallback = "Adjust search or filters, or wait for the mount journal to finish loading.",
+    },
+    collections_pets = {
+        atlas = "WildBattlePetCapturable",
+        titleKey = "EMPTY_COLLECTIONS_PETS_TITLE",
+        descKey = "EMPTY_COLLECTIONS_PETS_DESC",
+        titleFallback = "No pets to show",
+        descFallback = "Adjust search or filters, or wait for the pet journal to finish loading.",
+    },
+    collections_toys = {
+        atlas = "CreationCatalyst-32x32",
+        titleKey = "EMPTY_COLLECTIONS_TOYS_TITLE",
+        descKey = "EMPTY_COLLECTIONS_TOYS_DESC",
+        titleFallback = "No toys to show",
+        descFallback = "Adjust search or filters, or wait for the toy box to finish loading.",
+    },
+    collections_achievements = {
+        atlas = "Achievement-Icon",
+        titleKey = "EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE",
+        descKey = "EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC",
+        titleFallback = "No achievements to show",
+        descFallback = "Adjust search or filters, or try /reload if the achievement list stays blank.",
+    },
     plans_achievement = {
         atlas = "Achievement-Icon",
         titleKey = "PLANS_ACHIEVEMENTS_EMPTY_TITLE",
         descKey = "PLANS_ACHIEVEMENTS_EMPTY_HINT",
         titleFallback = "No achievements to display",
         descFallback = "Add achievements from this list to your To-Do, or change Show Planned / Show Completed. The list fills as achievements are scanned; try /reload if nothing appears.",
+    },
+    plans_mount = {
+        atlas = "dragon-rostrum",
+        titleKey = "EMPTY_PLANS_MOUNT_TITLE",
+        descKey = "EMPTY_PLANS_MOUNT_DESC",
+        titleFallback = "No mounts to show",
+        descFallback = "Add mounts from this tab to your To-Do, or adjust Show Planned / Show Completed.",
+    },
+    plans_pet = {
+        atlas = "WildBattlePetCapturable",
+        titleKey = "EMPTY_PLANS_PET_TITLE",
+        descKey = "EMPTY_PLANS_PET_DESC",
+        titleFallback = "No pets to show",
+        descFallback = "Add pets from this tab to your To-Do, or adjust Show Planned / Show Completed.",
+    },
+    plans_toy = {
+        atlas = "CreationCatalyst-32x32",
+        titleKey = "EMPTY_PLANS_TOY_TITLE",
+        descKey = "EMPTY_PLANS_TOY_DESC",
+        titleFallback = "No toys to show",
+        descFallback = "Add toys from this tab to your To-Do, or adjust Show Planned / Show Completed.",
+    },
+    plans_illusion = {
+        atlas = "UpgradeItem-32x32",
+        titleKey = "EMPTY_PLANS_ILLUSION_TITLE",
+        descKey = "EMPTY_PLANS_ILLUSION_DESC",
+        titleFallback = "No illusions to show",
+        descFallback = "Add illusions from this tab to your To-Do, or adjust Show Planned / Show Completed.",
+    },
+    plans_title = {
+        atlas = "poi-legendsoftheharanir",
+        titleKey = "EMPTY_PLANS_TITLE_TAB_TITLE",
+        descKey = "EMPTY_PLANS_TITLE_TAB_DESC",
+        titleFallback = "No titles to show",
+        descFallback = "Add titles from this tab to your To-Do, or adjust Show Planned / Show Completed.",
     },
     gear = {
         atlas = "poi-helm",
@@ -431,6 +515,28 @@ local function HideEmptyStateCard(parent, tabName)
     local cacheKey = "emptyStateCard_" .. tabName
     if parent[cacheKey] then
         parent[cacheKey]:Hide()
+    end
+end
+
+local PLANS_EMPTY_STATE_KEYS = {
+    active = "plans_active",
+    daily_tasks = "plans_daily_tasks",
+}
+
+function ns.UI_ResolvePlansEmptyStateKey(category)
+    return PLANS_EMPTY_STATE_KEYS[category] or "plans"
+end
+
+function ns.UI_HideAllPlansEmptyStateCards(parent)
+    if not parent then return end
+    HideEmptyStateCard(parent, "plans")
+    HideEmptyStateCard(parent, "plans_active")
+    HideEmptyStateCard(parent, "plans_daily_tasks")
+    HideEmptyStateCard(parent, "plans_browse")
+    HideEmptyStateCard(parent, "plans_achievement")
+    local browseCats = { "mount", "pet", "toy", "illusion", "title", "achievement" }
+    for i = 1, #browseCats do
+        HideEmptyStateCard(parent, "plans_browse_" .. browseCats[i])
     end
 end
 

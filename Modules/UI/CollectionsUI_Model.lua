@@ -2060,155 +2060,17 @@ local SUB_TABS = {
     { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), icon = "Interface\\Icons\\INV_Misc_Toy_07" },
 }
 
--- Exactly matches the Plans category bar (catBtnHeight=40, catBtnSpacing=8, DEFAULT_CAT_BTN_WIDTH=150)
-local SUBTAB_BTN_HEIGHT = 40
-local SUBTAB_BTN_SPACING = 8
-local SUBTAB_ICON_SIZE = 28
-local SUBTAB_ICON_LEFT = 10
-local SUBTAB_ICON_TEXT_GAP = 8
-local SUBTAB_TEXT_RIGHT = 10
-local SUBTAB_DEFAULT_WIDTH = 150
-
 function M.CreateSubTabBar(parent, onTabSelect)
-    local bar = Factory:CreateContainer(parent, 400, SUBTAB_BTN_HEIGHT, false)
-    bar:SetPoint("TOPLEFT", 0, 0)
-    bar:SetPoint("TOPRIGHT", 0, 0)
-
-    -- Compute button width from text, like Plans
-    local btnWidths = {}
-    for i = 1, #SUB_TABS do
-        local tabInfo = SUB_TABS[i]
-        local tempFs = FontManager:CreateFontString(bar, "body", "OVERLAY")
-        tempFs:SetText(tabInfo.label)
-        local textW = tempFs:GetStringWidth() or 0
-        tempFs:Hide()
-        local needed = SUBTAB_ICON_LEFT + SUBTAB_ICON_SIZE + SUBTAB_ICON_TEXT_GAP + textW + SUBTAB_TEXT_RIGHT
-        btnWidths[i] = math.max(needed, SUBTAB_DEFAULT_WIDTH)
+    local bar = ns.UI_CreateSubTabBar and ns.UI_CreateSubTabBar(parent, {
+        tabs = SUB_TABS,
+        activeKey = M.state and M.state.currentSubTab,
+        accent = COLORS.accent,
+        onSelect = onTabSelect,
+    })
+    if bar then
+        bar:SetPoint("TOPLEFT", 0, 0)
+        bar:SetPoint("TOPRIGHT", 0, 0)
     end
-
-    local buttons = {}
-    local xPos = 0
-    local btnHeight = SUBTAB_BTN_HEIGHT
-    local spacing = SUBTAB_BTN_SPACING
-
-    local accentColor = COLORS.accent
-    local subTabIdleBg = M.CollectionsSubTabInactiveBg()
-    local subTabHoverBg = M.CollectionsSubTabHoverBg()
-    for i = 1, #SUB_TABS do
-        local tabInfo = SUB_TABS[i]
-        local btnWidth = btnWidths[i]
-        local btn = ns.UI.Factory:CreateButton(bar, btnWidth, btnHeight)
-        btn:SetPoint("TOPLEFT", xPos, 0)
-        btn._tabKey = tabInfo.key
-
-        if ApplyVisuals then
-            ApplyVisuals(btn, subTabIdleBg, { accentColor[1], accentColor[2], accentColor[3], 0.6 })
-        end
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-            ns.UI.Factory:ApplyHighlight(btn)
-        end
-
-        -- Active indicator bar (same as main window tab: underline accent)
-        local activeBar = btn:CreateTexture(nil, "OVERLAY")
-        activeBar:SetHeight(3)
-        activeBar:SetPoint("BOTTOMLEFT", 8, 4)
-        activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
-        activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-        activeBar:SetAlpha(0)
-        btn.activeBar = activeBar
-
-        local btnIcon = btn:CreateTexture(nil, "ARTWORK")
-        btnIcon:SetSize(SUBTAB_ICON_SIZE - 2, SUBTAB_ICON_SIZE - 2)
-        btnIcon:SetPoint("LEFT", SUBTAB_ICON_LEFT, 0)
-        btnIcon:SetTexture(tabInfo.icon)
-        btnIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-
-        local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
-        btnText:SetPoint("LEFT", btnIcon, "RIGHT", SUBTAB_ICON_TEXT_GAP, 0)
-        btnText:SetPoint("RIGHT", btn, "RIGHT", -SUBTAB_TEXT_RIGHT, 0)
-        btnText:SetText(tabInfo.label)
-        btnText:SetJustifyH("LEFT")
-        btnText:SetWordWrap(false)
-        ns.UI_SetTextColorRole(btnText, "Normal")
-        btn._text = btnText
-
-        btn:SetScript("OnClick", function()
-            if onTabSelect then onTabSelect(tabInfo.key) end
-        end)
-
-        if UpdateBorderColor then
-            btn:SetScript("OnEnter", function(self)
-                if self._active then return end
-                UpdateBorderColor(self, {accentColor[1] * 1.2, accentColor[2] * 1.2, accentColor[3] * 1.2, 0.9})
-            end)
-            btn:SetScript("OnLeave", function(self)
-                if self._active then return end
-                UpdateBorderColor(self, {accentColor[1], accentColor[2], accentColor[3], 0.6})
-            end)
-        else
-            btn:SetScript("OnEnter", function(self)
-                if self._active then return end
-                if self.SetBackdropColor then
-                    local hover = subTabHoverBg
-                    self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 0.95)
-                end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                if self._active then return end
-                if self.SetBackdropColor then
-                    local idle = subTabIdleBg
-                    self:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
-                end
-            end)
-        end
-
-        buttons[tabInfo.key] = btn
-        xPos = xPos + btnWidths[i] + spacing
-    end
-
-    bar.buttons = buttons
-
-    function bar:SetActiveTab(key)
-        local acc = COLORS.accent
-        local activeBg = M.CollectionsSubTabActiveBg()
-        local idleBg = M.CollectionsSubTabInactiveBg()
-        for k, btn in pairs(buttons) do
-            if k == key then
-                btn._active = true
-                if btn.activeBar then btn.activeBar:SetAlpha(1) end
-                if ApplyVisuals then
-                    ApplyVisuals(btn, activeBg, { acc[1], acc[2], acc[3], 1 })
-                end
-                if btn._text then
-                    ns.UI_SetTextColorRole(btn._text, "Bright")
-                    if ns.UI_SetNavLabelFontStyle then
-                        ns.UI_SetNavLabelFontStyle(btn._text, true)
-                    end
-                end
-                if UpdateBorderColor then UpdateBorderColor(btn, { acc[1], acc[2], acc[3], 1 }) end
-                if btn.SetBackdropColor then
-                    btn:SetBackdropColor(activeBg[1], activeBg[2], activeBg[3], activeBg[4] or 1)
-                end
-            else
-                btn._active = false
-                if btn.activeBar then btn.activeBar:SetAlpha(0) end
-                if ApplyVisuals then
-                    ApplyVisuals(btn, idleBg, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 })
-                end
-                if btn._text then
-                    ns.UI_SetTextColorRole(btn._text, "Muted")
-                    if ns.UI_SetNavLabelFontStyle then
-                        ns.UI_SetNavLabelFontStyle(btn._text, false)
-                    end
-                end
-                if UpdateBorderColor then UpdateBorderColor(btn, { acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1 }) end
-                if btn.SetBackdropColor then
-                    btn:SetBackdropColor(idleBg[1], idleBg[2], idleBg[3], idleBg[4] or 1)
-                end
-            end
-        end
-    end
-
     return bar
 end
 

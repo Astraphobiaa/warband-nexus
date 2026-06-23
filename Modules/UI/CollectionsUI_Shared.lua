@@ -625,21 +625,6 @@ function M.CreateCollectionsSmallLabel(parent)
     return fs
 end
 
-function M.CollectionsSubTabInactiveBg()
-    return ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop()
-        or M.ResolveCollectionsSurface("rowOdd")
-end
-
-function M.CollectionsSubTabActiveBg()
-    local t = COLORS.tabActive or COLORS.accent
-    return { t[1], t[2], t[3], t[4] or 1 }
-end
-
-function M.CollectionsSubTabHoverBg()
-    return ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()
-        or M.ResolveCollectionsSurface("rowEven")
-end
-
 -- Detail container border: SharedWidgets 4-texture border system (accent)
 function M.ApplyDetailAccentVisuals(frame)
     if ns.UI_ApplyDetailContainerVisuals then
@@ -1170,6 +1155,50 @@ function M.FlatListHasDataRows(flatList)
     if not flatList then return false end
     for i = 1, #flatList do
         if flatList[i].type == "row" then return true end
+    end
+    return false
+end
+
+--- Hide Collections browse empty-state cards (search + per-sub-tab).
+function M.HideCollectionsListEmptyCards(scrollChild)
+    if not scrollChild or not HideEmptyStateCard then return end
+    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
+    HideEmptyStateCard(scrollChild, "collections_mounts")
+    HideEmptyStateCard(scrollChild, "collections_pets")
+    HideEmptyStateCard(scrollChild, "collections_toys")
+    HideEmptyStateCard(scrollChild, "collections_achievements")
+    HideEmptyStateCard(scrollChild, "collections_recent")
+end
+
+local function SyncCollectionsListEmptyScrollHeight(scrollChild)
+    if not scrollChild or not scrollChild.SetHeight then return end
+    local h = 200
+    local parent = scrollChild:GetParent()
+    if parent and parent.GetHeight then
+        local ph = parent:GetHeight()
+        if ph and ph > 0 then h = math.max(200, ph) end
+    end
+    scrollChild:SetHeight(h)
+end
+
+--- Search-no-results or sub-tab empty card inside Collections list scrollChild.
+---@return boolean shown
+function M.TryShowCollectionsListEmpty(scrollChild, subTabKey)
+    if not scrollChild then return false end
+    M.HideCollectionsListEmptyCards(scrollChild)
+    local q = M.state and M.state.searchText or ""
+    if q ~= "" and not (issecretvalue and issecretvalue(q)) then
+        if M.TryShowCollectionsListSearchEmpty(scrollChild) then
+            SyncCollectionsListEmptyScrollHeight(scrollChild)
+            return true
+        end
+        return false
+    end
+    local tabKey = "collections_" .. (subTabKey or "mounts")
+    if ns.UI_ShowTabEmptyStateCard then
+        ns.UI_ShowTabEmptyStateCard(scrollChild, tabKey, 0, { fillParent = true })
+        SyncCollectionsListEmptyScrollHeight(scrollChild)
+        return true
     end
     return false
 end
