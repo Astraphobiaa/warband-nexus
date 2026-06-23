@@ -1110,18 +1110,31 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
+L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+
+Added:
+- Characters: mail column shows pending mail per alt; tooltip lists sender, subject, gold, and attachments; shift-click opens Mail Details with full messages and item rows.
+- To-Do: Weekly Progress planner lets you choose weekly categories (Spark, world quests, dailies, events, vault assignments) and specific Midnight objectives per character.
+- Collections: achievement rows show completion date and which character earned the achievement, including on the Recent tab.
+- PvE: Shard of Dundun currency column next to coffer shards in the vault grid.
+- Notifications: achievement hierarchy routes criteria, sub-achievements, and meta chains into the right toast lane; Traveler's Log progress uses the progress lane.
+
+Updated:
+- Login: currencies, reputations, and bags skip full rescans when saved data is warm; only event-driven deltas refresh.
+- To-Do: Collections browse subtabs (Mounts, Pets, Toys, Achievements) are separate from To-Do List and Weekly Progress; Show Planned applies only to browse views.
+- Midnight weekly catalog expanded for 12.0.7 objectives (upcoming entries stay labeled until live on your client).
+- Profiler: unified trace window with nested timing, tab paint traces, and optional verbose phase splits.
+- Item tooltips: Item ID on the bottom line of every item hover (addon cards and GameTooltip).
 
 Fixed:
-- Great Vault: unclaimed chest status no longer clears on login before Blizzard sends weekly rewards data.
-- Great Vault: Easy Access badge and vault tracker refresh immediately after you claim a reward or close the vault UI.
-- Great Vault: vault-ready toast only when rewards become newly claimable, not after you already claimed the chest.
-- Achievements: Plans and Collections lists now include achievements in deep subcategories (e.g. Glory and meta chains); scan retries until the journal API is ready.
-- Notifications: stacked toasts keep correct spacing and order when several alerts fire in quick succession.
-- Notifications: criteria progress toasts are deduplicated when Blizzard fires both achievement and criteria alert paths.
-- Notifications: toast cards use corrected size and stack position so mixed alert types no longer overlap or jump.
-- Professions: fixed errors when profession spell names return nil or secret values from the API.
-- Midnight taint: additional secret-value guards across tooltips, collections, reminders, and vault UI.
+- Try Counter: Mythic Sylvanas chest tries count after the post-kill cinematic when loot links are secret or missing at chest close.
+- Tooltips: nil and secret API returns no longer break item hover cards.
+- Notifications: improved stacking, spacing, and deduplication across earned, criteria, and collectible lanes.
+- Professions: safer handling when profession spell names are nil or secret.
+- Migrations: legacy transmog To-Do plans and stale currency buckets are cleaned on upgrade.
+
+Removed:
+- Transmog To-Do plans and the legacy transmog tracking / Clear Start system (other collection tracking is unchanged).
 
 CurseForge: Warband Nexus]=]
 

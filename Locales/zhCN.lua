@@ -351,19 +351,43 @@ L["EMPTY_COLLECTIONS_TOYS_TITLE"] = "暂无玩具"
 L["EMPTY_COLLECTIONS_TOYS_DESC"] = "调整搜索或筛选，或等待玩具箱加载。\n若列表仍为空，请尝试 /reload。"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE"] = "暂无成就"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC"] = "调整搜索或筛选，或等待成就列表加载。\n若列表仍为空，请尝试 /reload。"
-L["MAIL_TOOLTIP_TITLE"] = "Mail"
-L["MAIL_TOOLTIP_NO_MAIL"] = "No mail waiting."
-L["MAIL_TOOLTIP_PENDING_ONLY"] = "Mail waiting. Open the mailbox on this character to refresh details."
-L["MAIL_TOOLTIP_LOGIN_HINT"] = "Log in on this character to update the list."
-L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "Unknown"
-L["MAIL_TOOLTIP_FROM"] = "From: %s"
-L["MAIL_TOOLTIP_SUBJECT"] = "Subject: %s"
-L["MAIL_TOOLTIP_GOLD"] = "Gold: %s"
-L["MAIL_TOOLTIP_COD"] = "COD: %s"
-L["MAIL_TOOLTIP_ITEMS"] = "Items"
-L["MAIL_TOOLTIP_ITEM_COUNT"] = "%s x%d"
-L["MAIL_TOOLTIP_MORE"] = "... and %d more message(s)."
-L["MAIL_TOOLTIP_SCANNED"] = "Snapshot from the last time this character was played."
+L["MAIL_TOOLTIP_TITLE"] = "邮件"
+L["MAIL_TOOLTIP_NO_MAIL"] = "没有待收邮件。"
+L["MAIL_TOOLTIP_PENDING_ONLY"] = "有待收邮件。在此角色打开邮箱以刷新详情。"
+L["MAIL_TOOLTIP_LOGIN_HINT"] = "登录此角色以更新列表。"
+L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "未知"
+L["MAIL_SENDER_AUCTION_HOUSE"] = "拍卖行"
+L["MAIL_SENDER_GM"] = "游戏管理员"
+L["MAIL_SENDER_RETURNED"] = "退信"
+L["MAIL_SENDER_CRAFTING_ORDER"] = "制造订单"
+L["MAIL_SENDER_RESTRICTED"] = "受限"
+L["MAIL_TOOLTIP_FROM"] = "发件人: %s"
+L["MAIL_TOOLTIP_FROM_LABEL"] = "发件人"
+L["MAIL_TOOLTIP_SUBJECT"] = "主题: %s"
+L["MAIL_TOOLTIP_SUBJECT_LABEL"] = "主题"
+L["MAIL_TOOLTIP_GOLD"] = "金币: %s"
+L["MAIL_TOOLTIP_GOLD_LABEL"] = "金币"
+L["MAIL_TOOLTIP_COD"] = "货到付款: %s"
+L["MAIL_TOOLTIP_COD_LABEL"] = "货到付款"
+L["MAIL_TOOLTIP_CURRENCY_LABEL"] = "货币"
+L["MAIL_TOOLTIP_ITEMS"] = "物品"
+L["MAIL_TOOLTIP_CONTAINS_LABEL"] = "包含"
+L["MAIL_TOOLTIP_MESSAGE_HEADER"] = "邮件 %d/%d"
+L["MAIL_TOOLTIP_ITEM_COUNT"] = " x%d"
+L["MAIL_TOOLTIP_ITEM_ILVL"] = " (%d)"
+L["MAIL_TOOLTIP_MORE"] = "... 还有 %d 封邮件。"
+L["MAIL_TOOLTIP_CONTAINS"] = "包含: %s"
+L["MAIL_TOOLTIP_CONTAINS_ITEMS"] = "%d 件物品"
+L["MAIL_TOOLTIP_CONTAINS_REAGENTS"] = "%d 种材料"
+L["MAIL_TOOLTIP_CONTAINS_CONSUMABLES"] = "%d 种消耗品"
+L["MAIL_TOOLTIP_CONTAINS_EMPTY"] = "无附件"
+L["MAIL_TOOLTIP_COD_SHORT"] = "货到付款 %s"
+L["MAIL_TOOLTIP_SHIFT_CLICK"] = "Shift-点击查看完整邮件详情。"
+L["MAIL_DETAILS_TITLE"] = "邮件详情"
+L["MAIL_DETAILS_ILVL"] = "物品等级"
+L["MAIL_DETAILS_EXPIRED"] = "已过期"
+L["MAIL_INDEX_LABEL"] = "邮件 #%d"
+L["MAIL_TOOLTIP_SCANNED"] = "此角色上次游玩时的快照。"
 L["COLLECTIONS_COMING_SOON_TITLE"] = "即将推出"
 L["COLLECTIONS_COMING_SOON_DESC"] = "收集概览（坐骑、宠物、玩具、幻化）将在此处提供。"
 
@@ -1086,18 +1110,31 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
+L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+
+新增:
+- 角色: 邮件列显示每个小号待收邮件; 提示列出发件人、主题、金币和附件; Shift-点击打开邮件详情,含完整消息和物品行.
+- 待办: 周进度规划器可选择周常类别(火花、世界任务、日常、活动、宝库指派)和每个角色的 Midnight 目标.
+- 收藏: 成就行显示完成日期和获得角色,最近标签页同样显示.
+- PvE: 宝库网格中保险箱碎片旁新增敦敦碎片货币列.
+- 通知: 成就层级将条件、子成就和元链路由到正确的吐司通道; 旅行者日志进度使用进度通道.
+
+更新:
+- 登录: 已保存数据就绪时跳过货币、声望和背包全量扫描; 仅通过事件增量刷新.
+- 待办: 收藏浏览子标签(坐骑、宠物、玩具、成就)与待办列表和周进度分离; 仅浏览视图应用显示已计划.
+- Midnight 周常目录扩展 12.0.7 目标(补丁上线前条目保持即将推出标记).
+- 分析器: 统一追踪窗口支持嵌套计时、标签绘制追踪和可选阶段拆分.
+- 物品提示: 每次物品悬停底部显示物品 ID(插件卡片和 GameTooltip).
 
 修复:
-- 伟大宝库: 在暴雪发送每周奖励数据之前，登录时不再清除未领取宝箱状态。
-- 伟大宝库: 领取奖励或关闭宝库界面后，快速访问徽章和宝库追踪器会立即刷新。
-- 伟大宝库: 仅在奖励变为新可领取时显示宝库就绪提示，已领取后不再提示。
-- 成就: 计划和收藏列表现包含深层子分类成就(如荣耀与元成就链); 扫描会重试直到日志 API 就绪。
-- 通知: 连续弹出多个提醒时，堆叠吐司保持正确间距和顺序。
-- 通知: 当暴雪同时触发成就与条件提醒路径时，条件进度吐司会去重。
-- 通知: 修正吐司卡片大小与堆叠位置，混合提醒类型不再重叠或跳动。
-- 专业: 修复法术名称返回 nil 或 API 秘密值时的错误。
-- Midnight 污染: 在提示、收藏、提醒和宝库界面增加更多秘密值保护。
+- 尝试计数: 战利品链接为秘密或关闭时缺失时, 史诗希尔瓦娜斯宝箱在过场动画后仍正确计数.
+- 提示: nil 和秘密 API 返回不再破坏物品悬停卡片.
+- 通知: 获得、条件和收藏品通道的堆叠、间距和去重改进.
+- 专业: 法术名称为 nil 或秘密时处理更安全.
+- 迁移: 升级时清理旧版 transmog 待办计划和过时货币桶.
+
+移除:
+- Transmog 待办计划和旧版 transmog 追踪 / Clear Start 系统(其他收藏追踪不变).
 
 CurseForge: Warband Nexus]=]
 

@@ -299,6 +299,36 @@ local function ResolveTooltipItemID(itemID, itemLink)
     return nil
 end
 
+local function BuildItemIDTooltipMarkup(itemID)
+    if itemID == nil then return nil end
+    if issecretvalue and issecretvalue(itemID) then return nil end
+    local n = tonumber(itemID)
+    if not n or n < 1 then return nil end
+    local rawLabel = (ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID:"
+    if issecretvalue and issecretvalue(rawLabel) then return nil end
+    local labelText = rawLabel:match("^%s*(.-)%s*$") or rawLabel
+    labelText = labelText:gsub("%s*:%s*$", "")
+    local goldHex = (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex()) or "|cffffcc00"
+    local whiteHex = "|cffffffff"
+    return goldHex .. labelText .. "|r" .. whiteHex .. " : " .. tostring(n) .. "|r"
+end
+
+local function FormatItemIDTooltipText(itemID)
+    return BuildItemIDTooltipMarkup(itemID)
+end
+
+local function AppendItemIDFooterLine(frame, itemID)
+    if not frame or not frame.AddLine then return end
+    local text = BuildItemIDTooltipMarkup(itemID)
+    if not text then return end
+    frame:AddSpacer(4)
+    frame:AddLine(text, nil, nil, nil, false)
+end
+
+function TooltipService:FormatItemIDTooltipText(itemID)
+    return BuildItemIDTooltipMarkup(itemID)
+end
+
 local function QueueTooltipItemPrefetch(itemID)
     if not itemID or itemID < 1 then return end
     if tooltipPendingItemLoads[itemID] then return end
@@ -1070,6 +1100,10 @@ function TooltipService:RenderItemTooltip(frame, data)
                 frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
             end
         end
+    end
+
+    if not data.skipItemIDLine then
+        AppendItemIDFooterLine(frame, resolvedID)
     end
 end
 

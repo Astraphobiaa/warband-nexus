@@ -351,19 +351,43 @@ L["EMPTY_COLLECTIONS_TOYS_TITLE"] = "Sin juguetes"
 L["EMPTY_COLLECTIONS_TOYS_DESC"] = "Ajusta la busqueda o los filtros, o espera a que cargue la caja de juguetes.\nPrueba /reload si la lista sigue vacia."
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE"] = "Sin logros"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC"] = "Ajusta la busqueda o los filtros, o espera a que cargue el diario de logros.\nPrueba /reload si la lista sigue vacia."
-L["MAIL_TOOLTIP_TITLE"] = "Mail"
-L["MAIL_TOOLTIP_NO_MAIL"] = "No mail waiting."
-L["MAIL_TOOLTIP_PENDING_ONLY"] = "Mail waiting. Open the mailbox on this character to refresh details."
-L["MAIL_TOOLTIP_LOGIN_HINT"] = "Log in on this character to update the list."
-L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "Unknown"
-L["MAIL_TOOLTIP_FROM"] = "From: %s"
-L["MAIL_TOOLTIP_SUBJECT"] = "Subject: %s"
-L["MAIL_TOOLTIP_GOLD"] = "Gold: %s"
-L["MAIL_TOOLTIP_COD"] = "COD: %s"
-L["MAIL_TOOLTIP_ITEMS"] = "Items"
-L["MAIL_TOOLTIP_ITEM_COUNT"] = "%s x%d"
-L["MAIL_TOOLTIP_MORE"] = "... and %d more message(s)."
-L["MAIL_TOOLTIP_SCANNED"] = "Snapshot from the last time this character was played."
+L["MAIL_TOOLTIP_TITLE"] = "Correo"
+L["MAIL_TOOLTIP_NO_MAIL"] = "No hay correo pendiente."
+L["MAIL_TOOLTIP_PENDING_ONLY"] = "Correo pendiente. Abre el buzon en este personaje para actualizar los detalles."
+L["MAIL_TOOLTIP_LOGIN_HINT"] = "Inicia sesion en este personaje para actualizar la lista."
+L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "Desconocido"
+L["MAIL_SENDER_AUCTION_HOUSE"] = "Casa de subastas"
+L["MAIL_SENDER_GM"] = "Maestro de juego"
+L["MAIL_SENDER_RETURNED"] = "Correo devuelto"
+L["MAIL_SENDER_CRAFTING_ORDER"] = "Pedido de fabricacion"
+L["MAIL_SENDER_RESTRICTED"] = "Restringido"
+L["MAIL_TOOLTIP_FROM"] = "De: %s"
+L["MAIL_TOOLTIP_FROM_LABEL"] = "De"
+L["MAIL_TOOLTIP_SUBJECT"] = "Asunto: %s"
+L["MAIL_TOOLTIP_SUBJECT_LABEL"] = "Asunto"
+L["MAIL_TOOLTIP_GOLD"] = "Oro: %s"
+L["MAIL_TOOLTIP_GOLD_LABEL"] = "Oro"
+L["MAIL_TOOLTIP_COD"] = "Contra reembolso: %s"
+L["MAIL_TOOLTIP_COD_LABEL"] = "Contra reembolso"
+L["MAIL_TOOLTIP_CURRENCY_LABEL"] = "Moneda"
+L["MAIL_TOOLTIP_ITEMS"] = "Objetos"
+L["MAIL_TOOLTIP_CONTAINS_LABEL"] = "Contiene"
+L["MAIL_TOOLTIP_MESSAGE_HEADER"] = "Mensaje %d de %d"
+L["MAIL_TOOLTIP_ITEM_COUNT"] = " x%d"
+L["MAIL_TOOLTIP_ITEM_ILVL"] = " (%d)"
+L["MAIL_TOOLTIP_MORE"] = "... y %d mensaje(s) mas."
+L["MAIL_TOOLTIP_CONTAINS"] = "Contiene: %s"
+L["MAIL_TOOLTIP_CONTAINS_ITEMS"] = "%d objeto(s)"
+L["MAIL_TOOLTIP_CONTAINS_REAGENTS"] = "%d componente(s)"
+L["MAIL_TOOLTIP_CONTAINS_CONSUMABLES"] = "%d consumible(s)"
+L["MAIL_TOOLTIP_CONTAINS_EMPTY"] = "Sin adjuntos"
+L["MAIL_TOOLTIP_COD_SHORT"] = "CR %s"
+L["MAIL_TOOLTIP_SHIFT_CLICK"] = "Mayus-clic para ver todos los detalles del correo."
+L["MAIL_DETAILS_TITLE"] = "Detalles del correo"
+L["MAIL_DETAILS_ILVL"] = "niv. obj."
+L["MAIL_DETAILS_EXPIRED"] = "Caducado"
+L["MAIL_INDEX_LABEL"] = "Correo n.%d"
+L["MAIL_TOOLTIP_SCANNED"] = "Instantanea de la ultima vez que jugaste este personaje."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Muy pronto"
 L["COLLECTIONS_COMING_SOON_DESC"] = "La descripción general de la colección (monturas, mascotas, juguetes, transfiguración) estará disponible aquí."
 
@@ -1088,18 +1112,31 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
+L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+
+Anadido:
+- Personajes: columna de correo muestra correo pendiente por alt; tooltip con remitente, asunto, oro y adjuntos; Mayus-clic abre Detalles del correo con mensajes y filas de objetos.
+- To-Do: planificador de Progreso semanal para elegir categorias (Chispa, misiones de mundo, diarias, eventos, asignaciones de camara) y objetivos Midnight por personaje.
+- Colecciones: filas de logros muestran fecha y que personaje obtuvo el logro, tambien en la pestana Recientes.
+- PvE: columna Fragmento de Dundun junto a fragmentos de cofre en la cuadricula de camara.
+- Notificaciones: jerarquia de logros enruta criterios, sublogros y cadenas meta a la via de toast correcta; progreso del Diario del viajero usa la via de progreso.
+
+Actualizado:
+- Inicio de sesion: monedas, reputaciones y bolsas omiten escaneos completos si los datos guardados estan listos; solo deltas por eventos.
+- To-Do: subpestanas de navegacion de Colecciones (Monturas, Mascotas, Juguetes, Logros) separadas de Lista To-Do y Progreso semanal; Mostrar planificados solo en vistas de navegacion.
+- Catalogo semanal Midnight ampliado para objetivos 12.0.7 (entradas proximas etiquetadas hasta que el parche este en tu cliente).
+- Profiler: ventana de traza unificada con tiempos anidados, trazas de pintado de pestanas y divisiones de fase opcionales.
+- Tooltips de objetos: ID de objeto en la ultima linea de cada hover (tarjetas del addon y GameTooltip).
 
 Corregido:
-- Gran Camara: el estado de cofre sin reclamar ya no se borra al iniciar sesion antes de que Blizzard envie los datos de recompensas semanales.
-- Gran Camara: la insignia de Acceso rapido y el rastreador de camara se actualizan al instante tras reclamar una recompensa o cerrar la interfaz de la camara.
-- Gran Camara: aviso de camara lista solo cuando las recompensas pasan a ser reclamables, no despues de haber reclamado el cofre.
-- Logros: las listas de Planes y Colecciones incluyen logros en subcategorias profundas (p. ej. Gloria y cadenas meta); el escaneo reintenta hasta que la API del diario este lista.
-- Notificaciones: los avisos apilados mantienen espaciado y orden correctos cuando varias alertas se disparan seguidas.
-- Notificaciones: los avisos de progreso de criterios se deduplican cuando Blizzard dispara rutas de logro y criterios a la vez.
-- Notificaciones: tarjetas de aviso con tamano y posicion de pila corregidos; tipos mixtos ya no se solapan ni saltan.
-- Profesiones: corregidos errores cuando los nombres de hechizos devuelven nil o valores secretos de la API.
-- Taint de Midnight: mas protecciones de valores secretos en tooltips, colecciones, recordatorios e interfaz de camara.
+- Contador de intentos: cofre mitico de Sylvanas cuenta tras el cinematico si los enlaces de botin son secretos o faltan al cerrar.
+- Tooltips: retornos API nil o secretos ya no rompen las tarjetas al pasar el cursor.
+- Notificaciones: mejor apilado, espaciado y deduplicacion entre vias de logro, criterios y coleccionables.
+- Profesiones: manejo mas seguro cuando los nombres de hechizos son nil o secretos.
+- Migraciones: planes transmog To-Do legacy y buckets de moneda obsoletos se limpian al actualizar.
+
+Eliminado:
+- Planes transmog To-Do y seguimiento transmog legacy / sistema Clear Start (otro seguimiento de coleccion sin cambios).
 
 CurseForge: Warband Nexus]=]
 

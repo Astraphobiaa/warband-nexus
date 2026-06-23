@@ -885,6 +885,20 @@ function GT.InitializeGameTooltipHook(service)
                 end
             end
         end
+
+        -- Item ID footer (bottom line)
+        if tooltip and tooltip.AddLine and itemID then
+            local idToken = "itemid:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+            if not TooltipInjectionAlreadyDone(tooltip, idToken) then
+                local TooltipService = ns.TooltipService
+                local idText = TooltipService and TooltipService.FormatItemIDTooltipText
+                    and TooltipService:FormatItemIDTooltipText(itemID)
+                if idText then
+                    tooltip:AddLine(idText)
+                    MarkTooltipInjectionDone(tooltip, idToken)
+                end
+            end
+        end
         end)
     end)
 

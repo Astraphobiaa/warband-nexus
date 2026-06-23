@@ -351,19 +351,43 @@ L["EMPTY_COLLECTIONS_TOYS_TITLE"] = "Aucun jouet"
 L["EMPTY_COLLECTIONS_TOYS_DESC"] = "Ajustez la recherche ou les filtres, ou attendez le chargement de la boite a jouets.\nEssayez /reload si la liste reste vide."
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE"] = "Aucun haut fait"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC"] = "Ajustez la recherche ou les filtres, ou attendez le chargement du journal des hauts faits.\nEssayez /reload si la liste reste vide."
-L["MAIL_TOOLTIP_TITLE"] = "Mail"
-L["MAIL_TOOLTIP_NO_MAIL"] = "No mail waiting."
-L["MAIL_TOOLTIP_PENDING_ONLY"] = "Mail waiting. Open the mailbox on this character to refresh details."
-L["MAIL_TOOLTIP_LOGIN_HINT"] = "Log in on this character to update the list."
-L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "Unknown"
-L["MAIL_TOOLTIP_FROM"] = "From: %s"
-L["MAIL_TOOLTIP_SUBJECT"] = "Subject: %s"
-L["MAIL_TOOLTIP_GOLD"] = "Gold: %s"
-L["MAIL_TOOLTIP_COD"] = "COD: %s"
-L["MAIL_TOOLTIP_ITEMS"] = "Items"
-L["MAIL_TOOLTIP_ITEM_COUNT"] = "%s x%d"
-L["MAIL_TOOLTIP_MORE"] = "... and %d more message(s)."
-L["MAIL_TOOLTIP_SCANNED"] = "Snapshot from the last time this character was played."
+L["MAIL_TOOLTIP_TITLE"] = "Courrier"
+L["MAIL_TOOLTIP_NO_MAIL"] = "Aucun courrier en attente."
+L["MAIL_TOOLTIP_PENDING_ONLY"] = "Courrier en attente. Ouvrez la boite aux lettres sur ce personnage pour actualiser les details."
+L["MAIL_TOOLTIP_LOGIN_HINT"] = "Connectez-vous sur ce personnage pour mettre a jour la liste."
+L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "Inconnu"
+L["MAIL_SENDER_AUCTION_HOUSE"] = "Hotel des ventes"
+L["MAIL_SENDER_GM"] = "Maitre du jeu"
+L["MAIL_SENDER_RETURNED"] = "Courrier retourne"
+L["MAIL_SENDER_CRAFTING_ORDER"] = "Commande d'artisanat"
+L["MAIL_SENDER_RESTRICTED"] = "Restreint"
+L["MAIL_TOOLTIP_FROM"] = "De : %s"
+L["MAIL_TOOLTIP_FROM_LABEL"] = "De"
+L["MAIL_TOOLTIP_SUBJECT"] = "Objet : %s"
+L["MAIL_TOOLTIP_SUBJECT_LABEL"] = "Objet"
+L["MAIL_TOOLTIP_GOLD"] = "Or : %s"
+L["MAIL_TOOLTIP_GOLD_LABEL"] = "Or"
+L["MAIL_TOOLTIP_COD"] = "Contre-remboursement : %s"
+L["MAIL_TOOLTIP_COD_LABEL"] = "Contre-remboursement"
+L["MAIL_TOOLTIP_CURRENCY_LABEL"] = "Monnaie"
+L["MAIL_TOOLTIP_ITEMS"] = "Objets"
+L["MAIL_TOOLTIP_CONTAINS_LABEL"] = "Contient"
+L["MAIL_TOOLTIP_MESSAGE_HEADER"] = "Message %d sur %d"
+L["MAIL_TOOLTIP_ITEM_COUNT"] = " x%d"
+L["MAIL_TOOLTIP_ITEM_ILVL"] = " (%d)"
+L["MAIL_TOOLTIP_MORE"] = "... et %d autre(s) message(s)."
+L["MAIL_TOOLTIP_CONTAINS"] = "Contient : %s"
+L["MAIL_TOOLTIP_CONTAINS_ITEMS"] = "%d objet(s)"
+L["MAIL_TOOLTIP_CONTAINS_REAGENTS"] = "%d reactif(s)"
+L["MAIL_TOOLTIP_CONTAINS_CONSUMABLES"] = "%d consommable(s)"
+L["MAIL_TOOLTIP_CONTAINS_EMPTY"] = "Aucune piece jointe"
+L["MAIL_TOOLTIP_COD_SHORT"] = "CR %s"
+L["MAIL_TOOLTIP_SHIFT_CLICK"] = "Maj-clic pour les details complets du courrier."
+L["MAIL_DETAILS_TITLE"] = "Details du courrier"
+L["MAIL_DETAILS_ILVL"] = "ilvl"
+L["MAIL_DETAILS_EXPIRED"] = "Expire"
+L["MAIL_INDEX_LABEL"] = "Courrier n.%d"
+L["MAIL_TOOLTIP_SCANNED"] = "Instantane de la derniere session de ce personnage."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Bientôt disponible"
 L["COLLECTIONS_COMING_SOON_DESC"] = "L'aperçu des collections (montures, mascottes, jouetsrifications) sera disponible ici."
 
@@ -1088,18 +1112,31 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
+L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+
+Ajoute :
+- Personnages : colonne courrier pour le courrier en attente par alt ; infobulle avec expediteur, objet, or et pieces jointes ; Maj-clic ouvre Details du courrier avec messages et lignes d'objets.
+- To-Do : planificateur Progres hebdomadaire pour choisir categories (Etincelle, world quests, quotidiennes, evenements, assignations du coffre) et objectifs Midnight par personnage.
+- Collections : lignes de succes avec date et personnage qui a obtenu le succes, y compris dans l'onglet Recents.
+- PvE : colonne Fragment de Dundun a cote des eclats de coffre dans la grille du coffre.
+- Notifications : hierarchie des succes pour criteres, sous-succes et chaines meta dans la bonne voie de toast ; progres du Journal du voyageur sur la voie progres.
+
+Mis a jour :
+- Connexion : devises, reputations et sacs evitent les scans complets si les donnees sont deja chargees ; seuls les deltas par evenements.
+- To-Do : sous-onglets Collections (Montures, Mascottes, Jouets, Succes) separes de la liste To-Do et Progres hebdomadaire ; Afficher planifies uniquement en navigation.
+- Catalogue hebdomadaire Midnight elargi pour 12.0.7 (entrees a venir etiquetees jusqu'au patch sur votre client).
+- Profiler : fenetre de trace unifiee avec timing imbrique, traces de dessin d'onglets et phases detaillees optionnelles.
+- Infobulles d'objets : ID d'objet en derniere ligne de chaque survol (cartes addon et GameTooltip).
 
 Corrige :
-- Grande Chambre forte : le statut de coffre non reclame ne s'efface plus a la connexion avant l'envoi des donnees de recompenses hebdomadaires par Blizzard.
-- Grande Chambre forte : le badge Acces rapide et le suivi de chambre forte se mettent a jour immediatement apres avoir reclame une recompense ou ferme l'interface de la chambre forte.
-- Grande Chambre forte : notification chambre prete uniquement quand les recompenses deviennent nouvellement reclamables, pas apres avoir deja reclame le coffre.
-- Hauts faits : les listes Plans et Collections incluent desormais les hauts faits des sous-categories profondes (ex. Gloire et chaines meta) ; le scan reessaie jusqu'a ce que l'API du journal soit prete.
-- Notifications : les toasts empiles conservent un espacement et un ordre corrects lorsque plusieurs alertes se declenchent rapidement.
-- Notifications : les toasts de progression de criteres sont dedupliques lorsque Blizzard declenche a la fois les chemins haut fait et criteres.
-- Notifications : cartes de toast avec taille et position de pile corrigees ; les types mixtes ne se chevauchent ni ne sautent plus.
-- Metiers : correction d'erreurs lorsque les noms de sorts renvoient nil ou des valeurs secretes de l'API.
-- Taint Midnight : protections supplementaires des valeurs secretes dans infobulles, collections, rappels et interface de chambre forte.
+- Compteur d'essais : coffre mythique Sylvanas compte apres le cinematik si les liens de butin sont secrets ou absents a la fermeture.
+- Infobulles : retours API nil ou secrets ne cassent plus les cartes au survol.
+- Notifications : empilement, espacement et deduplication ameliores entre succes, criteres et collectibles.
+- Metiers : gestion plus sure quand les noms de sorts sont nil ou secrets.
+- Migrations : anciens plans transmog To-Do et buckets de devises obsoletes nettoyes a la mise a jour.
+
+Retire :
+- Plans transmog To-Do et suivi transmog legacy / systeme Clear Start (autres suivis de collection inchanges).
 
 CurseForge: Warband Nexus]=]
 

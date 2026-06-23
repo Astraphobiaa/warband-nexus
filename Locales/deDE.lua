@@ -351,19 +351,43 @@ L["EMPTY_COLLECTIONS_TOYS_TITLE"] = "Keine Spielzeuge"
 L["EMPTY_COLLECTIONS_TOYS_DESC"] = "Passe Suche oder Filter an oder warte, bis die Spielzeugkiste geladen ist.\nBei leerer Liste /reload versuchen."
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_TITLE"] = "Keine Erfolge"
 L["EMPTY_COLLECTIONS_ACHIEVEMENTS_DESC"] = "Passe Suche oder Filter an oder warte, bis das Erfolgsjournal geladen ist.\nBei leerer Liste /reload versuchen."
-L["MAIL_TOOLTIP_TITLE"] = "Mail"
-L["MAIL_TOOLTIP_NO_MAIL"] = "No mail waiting."
-L["MAIL_TOOLTIP_PENDING_ONLY"] = "Mail waiting. Open the mailbox on this character to refresh details."
-L["MAIL_TOOLTIP_LOGIN_HINT"] = "Log in on this character to update the list."
-L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "Unknown"
-L["MAIL_TOOLTIP_FROM"] = "From: %s"
-L["MAIL_TOOLTIP_SUBJECT"] = "Subject: %s"
+L["MAIL_TOOLTIP_TITLE"] = "Post"
+L["MAIL_TOOLTIP_NO_MAIL"] = "Keine Post wartend."
+L["MAIL_TOOLTIP_PENDING_ONLY"] = "Post wartet. Briefkasten auf diesem Charakter oeffnen, um Details zu aktualisieren."
+L["MAIL_TOOLTIP_LOGIN_HINT"] = "Auf diesem Charakter einloggen, um die Liste zu aktualisieren."
+L["MAIL_TOOLTIP_UNKNOWN_SENDER"] = "Unbekannt"
+L["MAIL_SENDER_AUCTION_HOUSE"] = "Auktionshaus"
+L["MAIL_SENDER_GM"] = "Gamemaster"
+L["MAIL_SENDER_RETURNED"] = "Zurueckgesandte Post"
+L["MAIL_SENDER_CRAFTING_ORDER"] = "Herstellungsauftrag"
+L["MAIL_SENDER_RESTRICTED"] = "Eingeschraenkt"
+L["MAIL_TOOLTIP_FROM"] = "Von: %s"
+L["MAIL_TOOLTIP_FROM_LABEL"] = "Von"
+L["MAIL_TOOLTIP_SUBJECT"] = "Betreff: %s"
+L["MAIL_TOOLTIP_SUBJECT_LABEL"] = "Betreff"
 L["MAIL_TOOLTIP_GOLD"] = "Gold: %s"
-L["MAIL_TOOLTIP_COD"] = "COD: %s"
-L["MAIL_TOOLTIP_ITEMS"] = "Items"
-L["MAIL_TOOLTIP_ITEM_COUNT"] = "%s x%d"
-L["MAIL_TOOLTIP_MORE"] = "... and %d more message(s)."
-L["MAIL_TOOLTIP_SCANNED"] = "Snapshot from the last time this character was played."
+L["MAIL_TOOLTIP_GOLD_LABEL"] = "Gold"
+L["MAIL_TOOLTIP_COD"] = "Nachnahme: %s"
+L["MAIL_TOOLTIP_COD_LABEL"] = "Nachnahme"
+L["MAIL_TOOLTIP_CURRENCY_LABEL"] = "Waehrung"
+L["MAIL_TOOLTIP_ITEMS"] = "Gegenstaende"
+L["MAIL_TOOLTIP_CONTAINS_LABEL"] = "Enthaelt"
+L["MAIL_TOOLTIP_MESSAGE_HEADER"] = "Nachricht %d von %d"
+L["MAIL_TOOLTIP_ITEM_COUNT"] = " x%d"
+L["MAIL_TOOLTIP_ITEM_ILVL"] = " (%d)"
+L["MAIL_TOOLTIP_MORE"] = "... und %d weitere Nachricht(en)."
+L["MAIL_TOOLTIP_CONTAINS"] = "Enthaelt: %s"
+L["MAIL_TOOLTIP_CONTAINS_ITEMS"] = "%d Gegenstand/Gegenstaende"
+L["MAIL_TOOLTIP_CONTAINS_REAGENTS"] = "%d Reagenz/Reagenzien"
+L["MAIL_TOOLTIP_CONTAINS_CONSUMABLES"] = "%d Verbrauchsgut/Verbrauchsgueter"
+L["MAIL_TOOLTIP_CONTAINS_EMPTY"] = "Keine Anhaenge"
+L["MAIL_TOOLTIP_COD_SHORT"] = "Nachnahme %s"
+L["MAIL_TOOLTIP_SHIFT_CLICK"] = "Shift-Klick fuer vollstaendige Post-Details."
+L["MAIL_DETAILS_TITLE"] = "Post-Details"
+L["MAIL_DETAILS_ILVL"] = "Gegenstandsstufe"
+L["MAIL_DETAILS_EXPIRED"] = "Abgelaufen"
+L["MAIL_INDEX_LABEL"] = "Post #%d"
+L["MAIL_TOOLTIP_SCANNED"] = "Momentaufnahme vom letzten Spielen dieses Charakters."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Demnächst"
 L["COLLECTIONS_COMING_SOON_DESC"] = "Die Sammlungsübersicht (Reittiere, Haustiere, Spielzeuge) wird hier verfügbar sein."
 
@@ -1088,18 +1112,31 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V3111"] = [=[v3.1.11 (2026-06-18)
+L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+
+Hinzugefuegt:
+- Charaktere: Mail-Spalte zeigt ausstehende Post pro Alt; Tooltip listet Absender, Betreff, Gold und Anhaenge; Shift-Klick oeffnet Mail-Details mit vollstaendigen Nachrichten und Gegenstandszeilen.
+- To-Do: Wochenfortschritt-Planer zum Auswaehlen von Wochenkategorien (Funke, Weltquests, Tagesquests, Events, Tresor-Auftraege) und einzelnen Midnight-Zielen pro Charakter.
+- Sammlungen: Erfolgszeilen zeigen Abschlussdatum und welcher Charakter den Erfolg erzielt hat, auch im Tab Zuletzt.
+- PvE: Waehrungsspalte Scherbe von Dundun neben Truhenscherben im Tresor-Raster.
+- Benachrichtigungen: Erfolgs-Hierarchie leitet Kriterien, Untererfolge und Meta-Ketten in die richtige Toast-Spur; Reisetagebuch-Fortschritt nutzt die Fortschritts-Spur.
+
+Aktualisiert:
+- Login: Waehrungen, Rufe und Taschen ueberspringen Vollscans bei warmen gespeicherten Daten; nur ereignisgesteuerte Deltas.
+- To-Do: Sammlungs-Browse-Untertabs (Reittiere, Begleiter, Spielzeuge, Erfolge) getrennt von To-Do-Liste und Wochenfortschritt; Geplante anzeigen nur in Browse-Ansichten.
+- Midnight-Wochenkatalog fuer 12.0.7-Ziele erweitert (bevorstehende Eintraege markiert bis live auf dem Client).
+- Profiler: einheitliches Trace-Fenster mit verschachtelter Zeitmessung, Tab-Zeichnungs-Traces und optionalen Phasen-Splits.
+- Item-Tooltips: Gegenstands-ID in der letzten Zeile jedes Item-Hovers (Addon-Karten und GameTooltip).
 
 Behoben:
-- Grosser Schatz: Unbeanspruchter Truhenstatus wird beim Login nicht mehr geloescht, bevor Blizzard wöchentliche Belohnungsdaten sendet.
-- Grosser Schatz: Easy-Access-Abzeichen und Vault-Tracker aktualisieren sich sofort nach dem Abholen einer Belohnung oder Schliessen der Vault-Oberflaeche.
-- Grosser Schatz: Vault-bereit-Hinweis nur, wenn Belohnungen neu abholbar werden, nicht nach bereits abgeholter Truhe.
-- Erfolge: Plaene- und Sammlungslisten enthalten jetzt Erfolge in tiefen Unterkategorien (z. B. Ruhm und Meta-Ketten); Scan wiederholt, bis die Journal-API bereit ist.
-- Benachrichtigungen: Gestapelte Toasts behalten korrekten Abstand und Reihenfolge bei schnellen Folgemeldungen.
-- Benachrichtigungen: Kriterien-Fortschritts-Toasts werden dedupliziert, wenn Blizzard Erfolgs- und Kriterien-Alert-Pfade gleichzeitig ausloest.
-- Benachrichtigungen: Toast-Karten mit korrigierter Groesse und Stack-Position; gemischte Alert-Typen ueberlappen oder springen nicht mehr.
-- Berufe: Fehler behoben, wenn Berufs-Zaubernamen nil oder geheime API-Werte zurueckgeben.
-- Midnight-Taint: zusaetzliche Geheimwert-Schutzguards in Tooltips, Sammlungen, Erinnerungen und Vault-UI.
+- Try Counter: Mythische Sylvanas-Truhe zaehlt Versuche nach dem Cinematik, wenn Loot-Links geheim oder beim Schliessen fehlend sind.
+- Tooltips: nil- und Geheim-API-Rueckgaben brechen Item-Hover-Karten nicht mehr.
+- Benachrichtigungen: verbessertes Stapeln, Abstand und Deduplizierung ueber Erfolgs-, Kriterien- und Sammel-Spuren.
+- Berufe: sicherere Behandlung wenn Zaubernamen nil oder geheim sind.
+- Migrationen: Legacy-Transmog-To-Do-Plaene und veraltete Waehrungs-Buckets werden beim Upgrade bereinigt.
+
+Entfernt:
+- Transmog-To-Do-Plaene und das Legacy-Transmog-Tracking / Clear-Start-System (andere Sammlungsverfolgung unveraendert).
 
 CurseForge: Warband Nexus]=]
 

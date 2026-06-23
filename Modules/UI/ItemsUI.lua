@@ -4245,7 +4245,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 if item.location then
                     table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. item.location, color = {mutedR, mutedG, mutedB}})
                 end
-                table.insert(additionalLines, {text = NormalizeColonLabelSpacing((ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID:") .. tostring(item.itemID or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")), color = {infoR, infoG, infoB}})
                 table.insert(additionalLines, {type = "spacer"})
                 if WarbandNexus.bankIsOpen then
                     table.insert(additionalLines, {text = "Right-Click " .. ((ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"), color = {greenR, greenG, greenB}})
