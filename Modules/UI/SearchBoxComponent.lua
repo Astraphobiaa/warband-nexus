@@ -284,7 +284,7 @@ ns.UI_CreateSearchBox = CreateSearchBox
 -- Tab ids registered with SearchStateManager (main + browse sub-tabs).
 ns.UI_SEARCH_TAB_IDS = {
     "items", "gear", "currency", "reputation", "collections",
-    "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement",
+    "plans_mount", "plans_pet", "plans_toy", "plans_illusion", "plans_title", "plans_achievement",
 }
 
 local COLLECTIONS_SEARCH_REFRESH_KEYS = {

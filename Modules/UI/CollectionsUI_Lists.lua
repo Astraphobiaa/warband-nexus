@@ -407,7 +407,7 @@ function M.CollectionVirtual_FillRowScrollIndex(flatList, sectionContentH, colla
     return math.max(y + PADDING, 1)
 end
 
---- Flat list without collapsible headers (Transmog category rows use BuildFlatToyListOnly + yOffset).
+--- Flat list without collapsible headers.
 function M.CollectionVirtual_FillSimpleFlatRowScrollIndex(flatList, outFlatIdx, outTops, outHeights)
     wipe(outFlatIdx)
     wipe(outTops)
@@ -527,21 +527,6 @@ function M.CollectionVirtual_RefreshToyRowScrollIndex()
     )
     state._toyFlatListTotalHeight = contentH
     CollectionVirtual_SyncListScrollChildHeight(state.toyListScrollChild, state.toyListScrollFrame, contentH)
-end
-
-function M.CollectionVirtual_RefreshTransmogRowScrollIndex()
-    local state = M.state
-    local contentH = M.CollectionVirtual_FillRowScrollIndex(
-        state._transmogFlatList,
-        state._transmogSectionContentH,
-        state.transmogListCollapsedHeaders or {},
-        SECTION_SPACING,
-        state._transmogRowScrollFlatIdx or {},
-        state._transmogRowScrollTops or {},
-        state._transmogRowScrollHeights or {}
-    )
-    state._transmogFlatListTotalHeight = contentH
-    CollectionVirtual_SyncListScrollChildHeight(state.transmogListScrollChild, state.transmogListScrollFrame, contentH)
 end
 
 -- Forward declarations: scroll handlers schedule next-frame refresh via C_Timer.After(0).
@@ -793,16 +778,13 @@ end
 
 function M.AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectToy, redraw, cf)
     local toy = item.toy
-    local isTransmogBrowse = (M.state.currentSubTab == "transmog")
-    local planType = isTransmogBrowse and "transmog" or "toy"
-    local trySuffixType = isTransmogBrowse and "transmog" or "toy"
     local nameColor = (toy.isCollected or toy.collected) and CollectionsCollectedNameHex() or CollectionsUncollectedNameHex()
     local trySuffix = (SD and SD.FormatMountPetToyListTrySuffix and toy.id)
-        and SD.FormatMountPetToyListTrySuffix(trySuffixType, toy.id) or ""
+        and SD.FormatMountPetToyListTrySuffix("toy", toy.id) or ""
     local labelText = nameColor .. (toy.name or "") .. "|r" .. trySuffix
     local rowParent = scrollChild
     if item._collSectionKey then
-        local sectionBodies = isTransmogBrowse and M.state._transmogSectionBodies or M.state._toySectionBodies
+        local sectionBodies = M.state._toySectionBodies
         if sectionBodies and sectionBodies[item._collSectionKey] then
             rowParent = sectionBodies[item._collSectionKey]
         end
@@ -812,17 +794,10 @@ function M.AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectTo
         rowItem = { toy = item.toy, rowIndex = item.rowIndex, yOffset = item._collRelY, height = item.height, rowPaintHeight = item.rowPaintHeight }
     end
     local WN = WarbandNexus
-    local tmRow = toy._transmogRow
-    local planKey = isTransmogBrowse and (tmRow and tmRow.sourceID or toy.id) or toy.id
-    local onTodo = WN and WN.IsItemPlanned and WN:IsItemPlanned(planType, planKey) or false
+    local planKey = toy.id
+    local onTodo = WN and WN.IsItemPlanned and WN:IsItemPlanned("toy", planKey) or false
     local toyCollected = (toy.isCollected == true) or (toy.collected == true)
     local function refreshToyListVisible()
-        if isTransmogBrowse and M.state._transmogFlatList and M.state.transmogListScrollFrame then
-            M.state._transmogListSelectedID = toy.id
-            local r = M.state._transmogListRefreshVisible
-            if r then r() end
-            return
-        end
         if M.state._toyFlatList and M.state.toyListScrollFrame then
             M.state._toyListSelectedID = toy.id
             local r = M.state._toyListRefreshVisible
@@ -837,35 +812,18 @@ function M.AcquireToyRow(scrollChild, listWidth, item, selectedToyID, onSelectTo
         todoTooltip = M.CollectionRowTodoSlotTooltip(onTodo, onTodo or not toyCollected),
         onTodoClick = (onTodo or not toyCollected) and function()
             if not WN then return end
-            if WN.IsItemPlanned and WN:IsItemPlanned(planType, planKey) then
+            if WN.IsItemPlanned and WN:IsItemPlanned("toy", planKey) then
                 M.RemoveFirstMatchingPlan(function(p)
-                    if isTransmogBrowse then
-                        local tm = toy._transmogRow
-                        local primarySourceID = tm and tm.sourceID or toy.id
-                        return p.type == "transmog" and (p.sourceID == primarySourceID or p.itemID == toy.itemID)
-                    end
                     return p.type == "toy" and p.itemID == toy.id
                 end)
             elseif not toyCollected and WN.AddPlan then
-                if isTransmogBrowse then
-                    local tm = toy._transmogRow
-                    WN:AddPlan({
-                        type = "transmog",
-                        sourceID = tm and tm.sourceID or toy.id,
-                        itemID = tm and tm.itemID or toy.itemID,
-                        name = toy.name,
-                        icon = toy.icon,
-                        source = toy.sourceTypeName or toy.source or "",
-                    })
-                else
-                    WN:AddPlan({
-                        type = "toy",
-                        itemID = toy.id,
-                        name = toy.name,
-                        icon = toy.icon,
-                        source = toy.sourceTypeName or "",
-                    })
-                end
+                WN:AddPlan({
+                    type = "toy",
+                    itemID = toy.id,
+                    name = toy.name,
+                    icon = toy.icon,
+                    source = toy.sourceTypeName or "",
+                })
             end
             refreshToyListVisible()
         end or nil,
@@ -1690,8 +1648,7 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
     end
     _populateToyListBusy = true
     collapsedHeaders = collapsedHeaders or {}
-    local browseSubKey = (M.state.currentSubTab == "transmog") and "transmog" or "toys"
-    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab(browseSubKey))
+    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("toys"))
     local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
     M.CollectionsSubTabTrace("PopulateToyList_start", { deferChrome = deferListChrome, headersChunk = headerChunkSize })
     local cf = contentFrameForRefresh
@@ -1727,9 +1684,7 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
         regions[i]:Hide()
     end
 
-    local flatList = M.BuildFlatToyList(groupedData, collapsedHeaders,
-        (M.state.currentSubTab == "transmog" and M.GetTransmogListCategories and M.GetTransmogListCategories())
-        or SD.TOY_SOURCE_CATEGORIES)
+    local flatList = M.BuildFlatToyList(groupedData, collapsedHeaders, SD.TOY_SOURCE_CATEGORIES)
 
     HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
     if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
@@ -1847,7 +1802,7 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
                     M.CollectionVirtual_RefreshToyRowScrollIndex()
                     M.UpdateToyListVisibleRange()
                 end
-            end, ((M.state.currentSubTab == "transmog" and M.GetTransmogCategoryIcon and M.GetTransmogCategoryIcon(key)) or SD.GetToyCategoryIcon(key)), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
+            end, SD.GetToyCategoryIcon(key), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
                 wrapFrame = sectionWrap,
                 bodyGetter = function() return sectionBody end,
                 headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
@@ -1910,324 +1865,6 @@ function M.PopulateToyList(scrollChild, listWidth, groupedData, collapsedHeaders
     end
 
     pumpToyHeaders()
-end
-
-local _populateTransmogListBusy = false
-local transmogListScrollVisibleCoalesce = false
-
-function M.RequestTransmogListVisibleRangeAfterScroll()
-    if transmogListScrollVisibleCoalesce then return end
-    transmogListScrollVisibleCoalesce = true
-    C_Timer.After(0, function()
-        transmogListScrollVisibleCoalesce = false
-        M.UpdateTransmogListVisibleRange()
-    end)
-end
-
-M.UpdateTransmogListVisibleRange = function()
-    local state = M.state
-    if state.currentSubTab ~= "transmog" then return end
-    local flatList = state._transmogFlatList
-    local scrollFrame = state.transmogListScrollFrame
-    local scrollChild = state.transmogListScrollChild
-    if not flatList or not scrollFrame or not scrollChild then return end
-    local scrollTop = scrollFrame:GetVerticalScroll()
-    local visibleHeight = scrollFrame:GetHeight()
-    local bottom = scrollTop + visibleHeight
-    local visible = state._transmogVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-    end
-    state._transmogVisibleRowFrames = {}
-    local selectedVisualID = state._transmogListSelectedID or state.selectedTransmogVisualID
-    local onSelectRow = state._transmogListOnSelectRow
-    local cf = state._transmogListContentFrame
-    local listWidth = state._transmogListWidth or scrollChild:GetWidth()
-    local tinsert = table.insert
-
-    local rowFlatIdx = state._transmogRowScrollFlatIdx
-    local rowTops = state._transmogRowScrollTops
-    local rowHeights = state._transmogRowScrollHeights
-    if rowFlatIdx and rowTops and rowHeights and #rowFlatIdx > 0 then
-        local firstK, lastK = M.CollectionVirtual_GetVisibleRowIndexRange(rowTops, rowHeights, scrollTop, bottom)
-        for k = firstK, lastK do
-            local i = rowFlatIdx[k]
-            local it = flatList[i]
-            if it and it.type == "row" then
-                local body = state._transmogSectionBodies and state._transmogSectionBodies[it._collSectionKey]
-                if body and body:IsShown() then
-                    local frame = M.AcquireToyRow(scrollChild, listWidth, it, selectedVisualID, onSelectRow, nil, cf)
-                    tinsert(state._transmogVisibleRowFrames, { frame = frame, flatIndex = i })
-                end
-            end
-        end
-        return
-    end
-
-    local n = #flatList
-    for i = 1, n do
-        local it = flatList[i]
-        if it.type == "row" then
-            local rowTop = it.yOffset or 0
-            local rowHeight = it.height or ROW_HEIGHT
-            local rowBottom = rowTop + rowHeight
-            if it._collSectionKey and M.state._transmogSectionBodies then
-                local body = M.state._transmogSectionBodies[it._collSectionKey]
-                if not body or not body:IsShown() then
-                    rowTop, rowBottom = nil, nil
-                else
-                    local scTop = scrollChild:GetTop()
-                    local bodyTop = body:GetTop()
-                    if scTop and bodyTop then
-                        local relY = it._collRelY or 0
-                        rowTop = (scTop - bodyTop) + relY
-                        rowBottom = rowTop + rowHeight
-                    end
-                end
-            end
-            if rowTop and rowBottom and rowBottom > scrollTop and rowTop < bottom then
-                local frame = M.AcquireToyRow(scrollChild, listWidth, it, selectedVisualID, onSelectRow, nil, cf)
-                tinsert(state._transmogVisibleRowFrames, { frame = frame, flatIndex = i })
-            end
-        end
-    end
-end
-
-function M.PopulateTransmogFlatList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedVisualID, onSelectRow, contentFrameForRefresh, redrawFn, drawGen, onListReady)
-    if not scrollChild or not Factory then return end
-    if _populateTransmogListBusy then
-        if drawGen and M.state._transmogDrawGen and M.state._transmogDrawGen ~= drawGen then
-            M.ReleaseCollectionsDrawBusy("Transmog", drawGen)
-        elseif C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                M.PopulateTransmogFlatList(scrollChild, listWidth, groupedData, collapsedHeaders, selectedVisualID, onSelectRow, contentFrameForRefresh, redrawFn, drawGen, onListReady)
-            end)
-        else
-            M.ReleaseCollectionsDrawBusy("Transmog", drawGen)
-        end
-        return
-    end
-    _populateTransmogListBusy = true
-    collapsedHeaders = collapsedHeaders or {}
-    local deferListChrome = M.CollectionsBeginListChromeDefer(M.CollectionsListChromeFramesForSubTab("transmog"))
-    local headerChunkSize = deferListChrome and COLLECTIONS_HEADER_CHUNK_DEFERRED or COLLECTIONS_HEADER_CHUNK
-    local cf = contentFrameForRefresh
-    local redraw = redrawFn or function() end
-
-    listWidth = ns.UI_ResolveListContentWidth and ns.UI_ResolveListContentWidth(scrollChild, listWidth or 260, 0)
-        or (listWidth or 260)
-    scrollChild:SetWidth(listWidth)
-
-    local visible = M.state._transmogVisibleRowFrames
-    if visible then
-        for i = 1, #visible do
-            local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                CollectionRowPool[#CollectionRowPool + 1] = v.frame
-            end
-        end
-        M.state._transmogVisibleRowFrames = {}
-    end
-
-    local children = { scrollChild:GetChildren() }
-    for i = 1, #children do
-        local c = children[i]
-        c:Hide()
-        c:ClearAllPoints()
-        local bin = ns.UI_RecycleBin
-        if bin then c:SetParent(bin) else c:SetParent(nil) end
-    end
-    local regions = { scrollChild:GetRegions() }
-    for i = 1, #regions do
-        regions[i]:Hide()
-    end
-
-    local flatList = M.BuildFlatToyList(groupedData, collapsedHeaders,
-        M.GetTransmogListCategories and M.GetTransmogListCategories())
-
-    HideEmptyStateCard(scrollChild, ns.UI_SEARCH_EMPTY_TAB_KEY or "search")
-    if not M.FlatListHasDataRows(flatList) and M.TryShowCollectionsListSearchEmpty(scrollChild) then
-        M.state._transmogFlatList = flatList
-        M.state._transmogVisibleRowFrames = {}
-        M.CollectionsEndListChromeDefer()
-        _populateTransmogListBusy = false
-        if onListReady then onListReady() end
-        return
-    end
-
-    M.state._transmogSectionBodies = {}
-    local transmogSectionContentH = {}
-    for fi = 1, #flatList do
-        local fit = flatList[fi]
-        if fit.type == "header" then
-            local sk = fit.key
-            local sh = 0
-            for fj = fi + 1, #flatList do
-                local r = flatList[fj]
-                if r.type == "header" then break end
-                if r.type == "row" then sh = sh + (r.height or ROW_HEIGHT) end
-            end
-            transmogSectionContentH[sk] = sh
-        end
-    end
-    M.AnnotateFlatRowsByNearestHeader(flatList)
-
-    local function finishTransmogListPopulate()
-        M.state._transmogFlatList = flatList
-        M.state._transmogSectionContentH = transmogSectionContentH
-        M.state._transmogRowScrollFlatIdx = M.state._transmogRowScrollFlatIdx or {}
-        M.state._transmogRowScrollTops = M.state._transmogRowScrollTops or {}
-        M.state._transmogRowScrollHeights = M.state._transmogRowScrollHeights or {}
-        M.state._transmogListWidth = listWidth
-        M.state._transmogListSelectedID = selectedVisualID
-        M.state._transmogListOnSelectRow = onSelectRow
-        M.state.transmogListCollapsedHeaders = collapsedHeaders
-        M.state._transmogListRedrawFn = redraw
-        M.state._transmogListContentFrame = cf
-        M.state._transmogListRefreshVisible = M.UpdateTransmogListVisibleRange
-        M.CollectionVirtual_RefreshTransmogRowScrollIndex()
-        local scrollFrame = M.state.transmogListScrollFrame
-        if scrollFrame then
-            scrollFrame:SetScript("OnVerticalScroll", function()
-                M.RequestTransmogListVisibleRangeAfterScroll()
-            end)
-        end
-        M.UpdateTransmogListVisibleRange()
-        M.ScheduleCollectionsVisibleSync("transmog", M.UpdateTransmogListVisibleRange)
-        M.CollectionsEndListChromeDefer()
-        if type(onListReady) == "function" then
-            onListReady()
-        end
-        _populateTransmogListBusy = false
-    end
-
-    local function abortTransmogListPopulate()
-        M.CollectionsEndListChromeDefer()
-        _populateTransmogListBusy = false
-        if drawGen then
-            M.ReleaseCollectionsDrawBusy("Transmog", drawGen)
-        end
-    end
-
-    local collHdrChainTail = nil
-    local flatIdx = 1
-    local function hasRemainingTransmogHeaders()
-        for hi = flatIdx, #flatList do
-            if flatList[hi].type == "header" then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function pumpTransmogHeaders()
-        if drawGen and M.state._transmogDrawGen and M.state._transmogDrawGen ~= drawGen then
-            abortTransmogListPopulate()
-            return
-        end
-
-        local built = 0
-        while flatIdx <= #flatList and built < headerChunkSize do
-            while flatIdx <= #flatList and flatList[flatIdx].type ~= "header" do
-                flatIdx = flatIdx + 1
-            end
-            if flatIdx > #flatList then
-                break
-            end
-            local it = flatList[flatIdx]
-            flatIdx = flatIdx + 1
-            local key = it.key
-            local gap = collHdrChainTail and SECTION_SPACING or nil
-
-            local sectionWrap = Factory:CreateContainer(scrollChild, listWidth, COLLAPSE_HEADER_HEIGHT_COLL + 0.1, false)
-            sectionWrap:ClearAllPoints()
-            if sectionWrap.SetClipsChildren then
-                sectionWrap:SetClipsChildren(true)
-            end
-            ChainSectionFrameBelow(scrollChild, sectionWrap, collHdrChainTail, 0, gap, collHdrChainTail and nil or 0)
-
-            local sectionBody
-            local secH = transmogSectionContentH[key] or 0
-            if secH <= 0 then
-                secH = ((it.itemCount or 0) * ROW_STRIDE) or 0
-            end
-            local header = CreateCollapsibleHeader(sectionWrap, it.label, key, not it.isCollapsed, function(isExpanded)
-                if isExpanded then
-                    M.CollectionVirtual_RefreshTransmogRowScrollIndex()
-                    M.UpdateTransmogListVisibleRange()
-                end
-            end, (M.GetTransmogCategoryIcon and M.GetTransmogCategoryIcon(key)), true, 0, nil, ns.UI_BuildCollapsibleSectionOpts({
-                wrapFrame = sectionWrap,
-                bodyGetter = function() return sectionBody end,
-                headerHeight = COLLAPSE_HEADER_HEIGHT_COLL,
-                hideOnCollapse = true,
-                applyToggleBeforeCollapseAnimate = true,
-                persistFn = function(exp)
-                    if exp then
-                        collapsedHeaders[key] = false
-                    end
-                end,
-                updateVisibleFn = function()
-                    M.CollectionVirtual_RefreshTransmogRowScrollIndex()
-                    M.UpdateTransmogListVisibleRange()
-                end,
-                onComplete = function(exp)
-                    if not exp then
-                        collapsedHeaders[key] = true
-                    end
-                    M.CollectionVirtual_RefreshTransmogRowScrollIndex()
-                    M.UpdateTransmogListVisibleRange()
-                end,
-            }))
-            if ns.UI_AnchorSectionHeaderInWrap then
-                ns.UI_AnchorSectionHeaderInWrap(header, sectionWrap, listWidth)
-            else
-                header:ClearAllPoints()
-                header:SetPoint("TOPLEFT", sectionWrap, "TOPLEFT", 0, 0)
-                header:SetWidth(listWidth)
-            end
-            header:SetHeight(it.height)
-
-            sectionBody = Factory:CreateContainer(sectionWrap, listWidth, 0.1, false)
-            sectionBody:ClearAllPoints()
-            sectionBody:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-            sectionBody:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-            sectionBody._wnSectionFullH = secH
-            if not it.isCollapsed then
-                sectionBody:Show()
-                sectionBody:SetHeight(math.max(0.1, secH))
-            else
-                sectionBody:Hide()
-                sectionBody:SetHeight(0.1)
-            end
-            sectionWrap:SetHeight(COLLAPSE_HEADER_HEIGHT_COLL + sectionBody:GetHeight())
-            M.state._transmogSectionBodies[key] = sectionBody
-
-            collHdrChainTail = sectionWrap
-            built = built + 1
-        end
-
-        if hasRemainingTransmogHeaders() then
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, pumpTransmogHeaders)
-            else
-                pumpTransmogHeaders()
-            end
-            return
-        end
-        finishTransmogListPopulate()
-    end
-
-    pumpTransmogHeaders()
 end
 
 function M.UpdateAchievementListVisibleRange()

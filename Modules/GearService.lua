@@ -724,42 +724,6 @@ local function BuildCharacterModelSnapshot()
         dressGender = UnitSexToDressGender0Or1(uSex),
     }
 
-    -- Capture transmog list via a hidden DressUpModel: SetUnit + Dress reads the
-    -- live worn appearance, GetItemTransmogInfoList returns 19 ItemTransmogInfo
-    -- entries (per-slot appearanceID/secondaryAppearanceID/illusionID). We serialise
-    -- raw fields because the mixin metatable can't survive SavedVariables.
-    local ok, list = pcall(function()
-        -- Singleton probe model: frames are never garbage collected, and this used
-        -- to create-and-abandon a full DressUpModel on every transmog snapshot.
-        local m = ns._wnTransmogSnapshotModel
-        if not m then
-            m = CreateFrame("DressUpModel")
-            m:Hide()
-            ns._wnTransmogSnapshotModel = m
-        end
-        m:SetUnit("player")
-        if m.Dress then m:Dress() end
-        if m.SetUseTransmogChoices then m:SetUseTransmogChoices(true) end
-        if m.SetUseTransmogSkin then m:SetUseTransmogSkin(false) end
-        local l = m.GetItemTransmogInfoList and m:GetItemTransmogInfoList() or nil
-        m:Hide()
-        return l
-    end)
-    if ok and type(list) == "table" then
-        local serialised = {}
-        for i = 1, #list do
-            local t = list[i]
-            if type(t) == "table" then
-                serialised[i] = {
-                    app = t.appearanceID or 0,
-                    sec = t.secondaryAppearanceID or 0,
-                    ill = t.illusionID or 0,
-                }
-            end
-        end
-        snap.transmogList = serialised
-    end
-
     return snap
 end
 

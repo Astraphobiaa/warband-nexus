@@ -44,7 +44,6 @@ end
 local DrawMountsContent = M.DrawMountsContent
 local DrawPetsContent = M.DrawPetsContent
 local DrawToysContent = M.DrawToysContent
-local DrawTransmogContent = M.DrawTransmogContent
 local DrawAchievementsContent = M.DrawAchievementsContent
 local CreateSearchBox = ns.UI_CreateSearchBox
 
@@ -60,8 +59,6 @@ local function RedrawCollectionsSearchContentImmediate()
         DrawPetsContent(cf)
     elseif sub == "toys" then
         DrawToysContent(cf)
-    elseif sub == "transmog" then
-        DrawTransmogContent(cf)
     elseif sub == "achievements" then
         DrawAchievementsContent(cf)
     end
@@ -110,8 +107,6 @@ function ns.Collections_RelayoutActiveSubTabChrome()
         M.DrawPetsContent(cf)
     elseif sub == "toys" then
         M.DrawToysContent(cf)
-    elseif sub == "transmog" then
-        M.DrawTransmogContent(cf)
     elseif sub == "achievements" then
         M.DrawAchievementsContent(cf)
     end
@@ -230,7 +225,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         local titleCard, headerIcon, textContainer, titleText, subtitleText = ns.UI_CreateStandardTabTitleCard(headerParent, {
             tabKey = "collections",
             titleText = "|cff" .. hexColor .. ((ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections") .. "|r",
-            subtitleText = (ns.L and ns.L["COLLECTIONS_SUBTITLE"]) or "Mounts, pets, toys, and transmog overview",
+            subtitleText = (ns.L and ns.L["COLLECTIONS_SUBTITLE"]) or "Mounts, pets, and toys overview",
         })
         if chrome and ns.UI_AnchorTabTitleCard then
             ns.UI_AnchorTabTitleCard(titleCard, chrome)
@@ -371,8 +366,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
                     M.DrawPetsContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "toys" then
                     M.DrawToysContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "transmog" then
-                    M.DrawTransmogContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "achievements" then
                     M.DrawAchievementsContent(M.state.contentFrame)
                 end
@@ -398,8 +391,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
                     M.DrawPetsContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "toys" then
                     M.DrawToysContent(M.state.contentFrame)
-                elseif M.state.currentSubTab == "transmog" then
-                    M.DrawTransmogContent(M.state.contentFrame)
                 elseif M.state.currentSubTab == "achievements" then
                     M.DrawAchievementsContent(M.state.contentFrame)
                 end
@@ -517,8 +508,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
         M.DrawPetsContent(contentFrame)
     elseif M.state.currentSubTab == "toys" then
         M.DrawToysContent(contentFrame)
-    elseif M.state.currentSubTab == "transmog" then
-        M.DrawTransmogContent(contentFrame)
     elseif M.state.currentSubTab == "achievements" then
         M.DrawAchievementsContent(contentFrame)
     end
@@ -545,12 +534,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
             M.state._petFlatList = nil
             M.state._lastGroupedToyData = nil
             M.state._toyFlatList = nil
-            M.state._cachedTransmogBrowse = nil
-            M.state._lastGroupedTransmogData = nil
-            M.state._transmogFlatList = nil
-            if WarbandNexus.InvalidateTransmogBrowseCache then
-                WarbandNexus:InvalidateTransmogBrowseCache()
-            end
             M.state._achGroupedCache = nil
             M.state._lastAchievementCategoryData = nil
             M.state._achFlatList = nil
@@ -569,13 +552,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.state._cachedToysData = nil
                 M.state._lastGroupedToyData = nil
                 M.state._toyFlatList = nil
-            elseif collectionType == "transmog" then
-                M.state._cachedTransmogBrowse = nil
-                M.state._lastGroupedTransmogData = nil
-                M.state._transmogFlatList = nil
-                if WarbandNexus.InvalidateTransmogBrowseCache then
-                    WarbandNexus:InvalidateTransmogBrowseCache()
-                end
             elseif collectionType == "achievement" then
                 M.state._achGroupedCache = nil
                 M.state._lastAchievementCategoryData = nil
@@ -595,8 +571,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 M.DrawPetsContent(M.state.contentFrame)
             elseif M.state.currentSubTab == "toys" then
                 M.DrawToysContent(M.state.contentFrame)
-            elseif M.state.currentSubTab == "transmog" then
-                M.DrawTransmogContent(M.state.contentFrame)
             elseif M.state.currentSubTab == "achievements" then
                 M.DrawAchievementsContent(M.state.contentFrame)
             end

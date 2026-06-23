@@ -55,7 +55,7 @@ Factions, renown, paragon, and friendship ranks in one view. Currencies grouped 
 Profession skills, concentration, knowledge, specs, and weekly progress for all tracked characters. **Recipe Companion** shows which alt has which reagents (and quality tiers) while you have a profession window open.
 
 ### Set goals and actually finish them
-Add mounts, pets, toys, achievements, and transmog to your to-do list. Keep the floating **Plans Tracker** on screen while you play. The built-in **try counter** remembers how long that farm really took.
+Add mounts, pets, toys, and achievements to your to-do list. Keep the floating **Plans Tracker** on screen while you play. The built-in **try counter** remembers how long that farm really took.
 
 ### Celebrate drops - without losing context
 Optional on-screen alerts for new mounts, pets, toys, and achievements, with try count when relevant. Themes, position, and sounds are yours to tune.

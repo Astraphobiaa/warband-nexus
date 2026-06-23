@@ -304,7 +304,6 @@ local CATEGORIES = {
     { key = "pet", name = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets", iconAtlas = "WildBattlePetCapturable" },
     { key = "title", name = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles", iconAtlas = "poi-legendsoftheharanir" },
     { key = "toy", name = (ns.L and ns.L["CATEGORY_TOYS"]) or "Toys", iconAtlas = "CreationCatalyst-32x32" },
-    { key = "transmog", name = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog", iconAtlas = "poi-transmogrifier" },
 }
 
 -- Module state
@@ -3692,58 +3691,6 @@ function WarbandNexus:ShowDailyPlanDialog()
     cancelBtn:SetScript("OnClick", function() dialog.Close() end)
     
     dialog:Show()
-end
-
--- TRANSMOG BROWSER
-
--- Module state for transmog browser
-local currentTransmogSubCategory = "all"
-local transmogResults = {}
-local transmogLoading = false
-local transmogLoadAttempted = false  -- Track if we've tried to load at least once
-local transmogLoadProgress = {current = 0, total = 0, message = ""}
-local transmogSearchText = ""  -- Search query text
-local transmogCache = {}  -- Cache results per category: {categoryKey = {results, timestamp}}
-
---[[
-    Draw transmog browser with sub-category filters
-    @param parent Frame - Parent frame
-    @param yOffset number - Current Y offset
-    @param width number - Width of parent
-    @return number - New Y offset
-]]
-function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
-    local COLORS = ns.UI_COLORS
-    
-    -- Work in Progress screen (full area, not centered)
-    local wipCard = CreateCard(parent, 230)
-    
-    -- Anchor to top, stretch horizontally (like other content)
-    wipCard:SetPoint("TOPLEFT", 10, -(yOffset + 10))
-    wipCard:SetPoint("TOPRIGHT", -10, -(yOffset + 10))
-    wipCard:SetHeight(230)
-    
-    local wipIconFrame2 = CreateIcon(wipCard, "Interface\\Icons\\INV_Misc_EngGizmos_20", 64, false, nil, true)
-    wipIconFrame2:SetPoint("CENTER", wipCard, "CENTER", 0, 40)  -- Move icon slightly up from center
-    local wipIcon = wipIconFrame2.texture
-    
-    local wipTitle = FontManager:CreateFontString(wipCard, "header", "OVERLAY")
-    wipTitle:SetPoint("TOP", wipIcon, "BOTTOM", 0, -20)
-    ns.UI_SetTextColorRole(wipTitle, "Bright")
-    wipTitle:SetText((ns.L and ns.L["WORK_IN_PROGRESS"]) or "Work in Progress")
-    
-    local wipDesc = FontManager:CreateFontString(wipCard, "body", "OVERLAY")
-    wipDesc:SetPoint("TOP", wipTitle, "BOTTOM", 0, -15)
-    wipDesc:SetWidth(width - 100)
-    ns.UI_SetTextColorRole(wipDesc, "Bright") -- White
-    wipDesc:SetJustifyH("CENTER")
-    wipDesc:SetText((ns.L and ns.L["TRANSMOG_WIP_DESC"]) or "Transmog collection tracking is currently under development.\n\nThis feature will be available in a future update with improved\nperformance and better integration with Warband systems.")
-    
-    -- Show the card and icon!
-    wipCard:Show()
-    wipIconFrame2:Show()
-    
-    return yOffset + 250  -- Return yOffset + card height + spacing
 end
 
 if ns.UI_LayoutCoordinator and CardLayoutManager then

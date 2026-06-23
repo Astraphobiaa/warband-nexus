@@ -1,6 +1,6 @@
 --[[
     Warband Nexus - Collection Rules
-    Per-type collection status and character eligibility (transmog, mounts, pets, etc.).
+    Per-type collection status and character eligibility (mounts, pets, toys, illusions, etc.).
 ]]
 
 local ADDON_NAME, ns = ...
@@ -27,76 +27,6 @@ local DebugPrint = ns.DebugPrint
 local WarbandNexus = ns.WarbandNexus
 
 local CollectionRules = {}
-
-CollectionRules.TRANSMOG = {
-    CheckIfItemID = function(itemID)
-        if not itemID or not C_TransmogCollection then
-            return false
-        end
-        
-        local _, _, _, _, _, _, _, _, _, _, _, classID = C_Item.GetItemInfo(itemID)
-        if not classID then
-            return false
-        end
-        
-        -- Transmog items are: Weapons (2), Armor (4)
-        return classID == 2 or classID == 4
-    end,
-    GetStatus = function(sourceID)
-        if not sourceID or not C_TransmogCollection then
-            return "UNKNOWN"
-        end
-        
-        local sourceInfo = C_TransmogCollection.GetSourceInfo(sourceID)
-        if not sourceInfo then
-            return "UNKNOWN"
-        end
-        
-        return sourceInfo.isCollected and "KNOWN" or "UNKNOWN"
-    end,
-    GetCharacterEligibility = function(sourceID)
-        if not sourceID or not C_TransmogCollection then
-            return {
-                canUse = false,
-                reason = (ns.L and ns.L["COLLECTION_RULE_API_NOT_AVAILABLE"]) or "API not available",
-                isCollected = false
-            }
-        end
-        
-        local sourceInfo = C_TransmogCollection.GetSourceInfo(sourceID)
-        if not sourceInfo then
-            return {canUse = false, reason = "Invalid source", isCollected = false}
-        end
-        
-        local result = {
-            isCollected = sourceInfo.isCollected or false,
-            canUse = false,
-            reason = ""
-        }
-        
-        -- TWW 11.0+ field (backward compatible)
-        if sourceInfo.canDisplayOnPlayer ~= nil then
-            result.canUse = sourceInfo.canDisplayOnPlayer
-            if not result.canUse then
-                result.reason = "Wrong armor class"
-            end
-        else
-            -- Fallback: use isUsable (pre-11.0)
-            result.canUse = sourceInfo.isUsable or false
-            if not result.canUse then
-                result.reason = "Not usable by character"
-            end
-        end
-        
-        -- Check playerCanCollect (TWW 11.0+)
-        if sourceInfo.playerCanCollect ~= nil and not sourceInfo.playerCanCollect then
-            result.canUse = false
-            result.reason = "Restricted item"
-        end
-        
-        return result
-    end
-}
 
 CollectionRules.MOUNT = {
     CheckIfItemID = function(itemID)

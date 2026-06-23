@@ -785,7 +785,6 @@ local function DrawPlansBrowseLoadingCard(parent, yOffset, category, categorySta
         achievement = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements",
         illusion = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
         title = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
-        transmog = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog",
     }
     local displayName = categoryNameMap[category] or (category and (category:gsub("^%l", string.upper) .. "s")) or "Items"
     return UI_CreateLoadingStateCard(
@@ -827,7 +826,6 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
         mount = "dragon-rostrum",
         pet = "WildBattlePetCapturable",
         toy = "CreationCatalyst-32x32",
-        transmog = "poi-transmogrifier",
         illusion = "UpgradeItem-32x32",
         title = "poi-legendsoftheharanir",
         achievement = "Achievement-Icon",
@@ -844,7 +842,7 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
     return yOffset + 200
 end
 
---- Single browse card: To-Do unified expandable row (Mounts / Pets / Toys / Illusions / Titles / Transmog).
+--- Single browse card: To-Do unified expandable row (Mounts / Pets / Toys / Illusions / Titles).
 function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, category, gridIndex, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
     if not item or not layoutManager or not parent then return end
     local PCF = ns.UI_PlanCardFactory
@@ -1124,7 +1122,6 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 achievement = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements",
                 illusion = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
                 title = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
-                transmog = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog",
             }
             local displayName = categoryNameMap[category] or (category:gsub("^%l", string.upper) .. "s")
 
@@ -1189,7 +1186,6 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 achievement = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements",
                 illusion = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
                 title = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
-                transmog = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog",
             }
             local displayName = categoryNameMap[category] or (category:gsub("^%l", string.upper) .. "s")
 
@@ -1205,10 +1201,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
 
-    if category == "transmog" then
-        -- Transmog browser with sub-categories
-        return self:DrawTransmogBrowser(parent, yOffset, width)
-    elseif category == "illusion" then
+    if category == "illusion" then
         if needUncollected then resultsUncollected = self:GetUncollectedIllusions(searchText, 50) end
         if needCollected then resultsCollected = self.GetCollectedIllusions and self:GetCollectedIllusions(searchText, COLLECTED_BROWSE_FETCH_LIMIT) or {} end
     elseif category == "title" then

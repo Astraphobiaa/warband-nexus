@@ -162,10 +162,10 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
     AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "See every tracked character's crafting professions in one sortable grid: skill level, equipped tools, concentration and recharge, knowledge points, recipe coverage, and weekly knowledge progress. Data updates when you open each character's profession panel (default K). While a profession window stays open, Recipe Companion shows how many of each reagent you carry in bags.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_COLLECTIONS"]) or "Collections", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, transmog, and other collectibles. Track collection progress and find missing items.", "body", nil, 10)
+    AddText((ns.L and ns.L["COLLECTIONS_DESC"]) or "Overview of mounts, pets, toys, and other collectibles. Track collection progress and find missing items.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "To-Do", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
-    AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, achievements, and transmogs. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", nil, 10)
+    AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, and achievements. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
     AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics.", "body", nil, 25)

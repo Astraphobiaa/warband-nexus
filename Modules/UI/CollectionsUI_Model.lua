@@ -2058,7 +2058,6 @@ local SUB_TABS = {
     { key = "mounts", label = (ns.L and ns.L["CATEGORY_MOUNTS"]) or MOUNTS or "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
     { key = "pets", label = (ns.L and ns.L["CATEGORY_PETS"]) or PETS or "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
     { key = "toys", label = (ns.L and ns.L["CATEGORY_TOYS"]) or (TOY_BOX or "Toys"), icon = "Interface\\Icons\\INV_Misc_Toy_07" },
-    { key = "transmog", label = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or (TRANSMOGRIFY or "Transmog"), icon = "Interface\\Icons\\INV_Chest_Chain_05" },
 }
 
 -- Exactly matches the Plans category bar (catBtnHeight=40, catBtnSpacing=8, DEFAULT_CAT_BTN_WIDTH=150)
@@ -2774,7 +2773,6 @@ local CONTENT_HEADER_LOCALE_KEYS = {
     mounts = { title = "COLLECTIONS_CONTENT_TITLE_MOUNTS", sub = "COLLECTIONS_CONTENT_SUB_MOUNTS" },
     pets = { title = "COLLECTIONS_CONTENT_TITLE_PETS", sub = "COLLECTIONS_CONTENT_SUB_PETS" },
     toys = { title = "COLLECTIONS_CONTENT_TITLE_TOYS", sub = "COLLECTIONS_CONTENT_SUB_TOYS" },
-    transmog = { title = "COLLECTIONS_CONTENT_TITLE_TRANSMOG", sub = "COLLECTIONS_CONTENT_SUB_TRANSMOG" },
     recent = { title = "COLLECTIONS_CONTENT_TITLE_RECENT", sub = "COLLECTIONS_CONTENT_SUB_RECENT" },
 }
 
@@ -2786,7 +2784,6 @@ function M.GetCollectionsSubTabHeaderText(tabKey)
         or (tabKey == "mounts" and ((loc and loc["CATEGORY_MOUNTS"]) or "Mounts"))
         or (tabKey == "pets" and ((loc and loc["CATEGORY_PETS"]) or "Pets"))
         or (tabKey == "toys" and ((loc and loc["CATEGORY_TOYS"]) or "Toys"))
-        or (tabKey == "transmog" and ((loc and loc["CATEGORY_TRANSMOG"]) or "Transmog"))
         or (tabKey == "recent" and ((loc and loc["COLLECTIONS_SUBTAB_RECENT"]) or "Recent"))
         or tostring(tabKey or "")
     local subPlain = (keys and loc and loc[keys.sub]) or ""
@@ -2892,13 +2889,6 @@ function M.HideAllCollectionsResultFrames()
     if M.state.toyListScrollBarContainer then M.state.toyListScrollBarContainer:Hide() end
     if M.state.toyDetailContainer then M.state.toyDetailContainer:Hide() end
     if M.state.toyDetailScrollBarContainer then M.state.toyDetailScrollBarContainer:Hide() end
-    if M.state.transmogListContainer then M.state.transmogListContainer:Hide() end
-    if M.state.transmogListScrollBarContainer then M.state.transmogListScrollBarContainer:Hide() end
-    if M.state.transmogCategoryBar then M.state.transmogCategoryBar:Hide() end
-    if M.state.transmogDetailContainer then M.state.transmogDetailContainer:Hide() end
-    if M.state.transmogDressViewer and M.state.transmogDressViewer.ClearTransmogItem then
-        M.state.transmogDressViewer:ClearTransmogItem()
-    end
     if M.state.recentTabPanel then M.state.recentTabPanel:Hide() end
     if M.state.collectionRightColumn then M.state.collectionRightColumn:Hide() end
     if M.state.collectionProgressFrame then M.state.collectionProgressFrame:Hide() end
@@ -2910,7 +2900,6 @@ function M.ResetCollectionsListScrollPositions()
         M.state.mountListScrollFrame,
         M.state.petListScrollFrame,
         M.state.toyListScrollFrame,
-        M.state.transmogListScrollFrame,
         M.state.achievementListScrollFrame,
     }
     for i = 1, #scrollFrames do

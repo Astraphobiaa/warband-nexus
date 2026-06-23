@@ -2714,7 +2714,6 @@ function WarbandNexus:CanShowToast(channel, lootType)
                 mount = "showMountNotifications",
                 pet = "showPetNotifications",
                 toy = "showToyNotifications",
-                transmog = "showTransmogNotifications",
                 illusion = "showIllusionNotifications",
                 title = "showTitleNotifications",
             }

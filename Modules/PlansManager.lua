@@ -695,7 +695,7 @@ function WarbandNexus:GetPlanDisplayName(plan)
                 end
             end
         end
-    elseif (plan.type == "transmog" or plan.type == "recipe") and plan.itemID then
+    elseif plan.type == "recipe" and plan.itemID then
         local name = C_Item.GetItemNameByID(plan.itemID)
         if name and name ~= "" then return name end
     end
@@ -790,7 +790,6 @@ function WarbandNexus:GetPlanDisplayIcon(plan)
         illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
         achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
         title = "Interface\\Icons\\INV_Scroll_11",
-        transmog = "Interface\\Icons\\INV_Chest_Cloth_17",
         recipe = "Interface\\Icons\\INV_Scroll_03",
         custom = "Interface\\Icons\\INV_Misc_Note_06",
         vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
@@ -813,7 +812,7 @@ function WarbandNexus:GetPlanDisplayIcon(plan)
         end
         local icon = GetItemIcon(plan.itemID)
         if icon then return icon end
-    elseif (plan.type == "transmog" or plan.type == "recipe") and plan.itemID then
+    elseif plan.type == "recipe" and plan.itemID then
         local icon = GetItemIcon(plan.itemID)
         if icon then return icon end
     end
@@ -999,7 +998,7 @@ function WarbandNexus:AddPlan(planData)
     if planType == "toy" and planData.itemID and self:IsItemPlanned("toy", planData.itemID) then return nil end
     if planType == "illusion" and planData.illusionID and self:IsIllusionPlanned(planData.illusionID) then return nil end
     if planType == "title" and planData.titleID and self:IsTitlePlanned(planData.titleID) then return nil end
-    if (planType == "transmog" or planType == "recipe") and planData.itemID and self:IsItemPlanned(planType, planData.itemID) then return nil end
+    if planType == "recipe" and planData.itemID and self:IsItemPlanned(planType, planData.itemID) then return nil end
     
     -- Generate unique ID
     local planID = self.db.global.plansNextID or 1
@@ -2188,7 +2187,7 @@ function WarbandNexus:PlanSupportsChatLink(plan)
     local t = plan.type
     if t == "mount" and plan.mountID then return true end
     if t == "pet" and plan.speciesID then return true end
-    if (t == "toy" or t == "recipe" or t == "transmog") and plan.itemID then return true end
+    if (t == "toy" or t == "recipe") and plan.itemID then return true end
     if t == "illusion" and plan.itemID then return true end
     if t == "achievement" and plan.achievementID then return true end
     return false
@@ -2227,7 +2226,7 @@ function WarbandNexus:GetPlanChatLink(plan)
         return nil
     end
 
-    if (t == "toy" or t == "recipe" or t == "transmog") and plan.itemID and type(plan.itemID) == "number" and C_Item and C_Item.GetItemLinkByID then
+    if (t == "toy" or t == "recipe") and plan.itemID and type(plan.itemID) == "number" and C_Item and C_Item.GetItemLinkByID then
         local ok, link = pcall(C_Item.GetItemLinkByID, plan.itemID)
         return SafeChatLinkString(ok and link)
     end

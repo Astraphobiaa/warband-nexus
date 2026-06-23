@@ -154,7 +154,7 @@ local defaults = {
             plans = true,        -- Collection plans and goals
             professions = true,  -- Profession tracking and companion window
             gear = true,         -- Gear management tab
-            collections = true,  -- Collections (mounts, pets, toys, transmog) tab
+            collections = true,  -- Collections (mounts, pets, toys) tab
             tryCounter = true,   -- Automatic try counter for drop attempts
         },
         
@@ -345,7 +345,6 @@ local defaults = {
             showMountNotifications = true,     -- Show mount notifications
             showPetNotifications = true,       -- Show pet notifications
             showToyNotifications = true,       -- Show toy notifications
-            showTransmogNotifications = true,  -- Show transmog/appearance notifications
             showTitleNotifications = true,     -- Show title notifications
             showIllusionNotifications = true,  -- Show illusion notifications
             showAchievementNotifications = true, -- Show achievement notifications
@@ -998,7 +997,7 @@ function WarbandNexus:OnEnable()
 
     -- Collection events: owned by EventManager (debounced) → CollectionService (handlers)
     -- ACHIEVEMENT_EARNED: owned by CollectionService (OnAchievementEarned)
-    -- TRANSMOG_COLLECTION_UPDATED: owned by EventManager → CollectionService
+    -- TRANSMOG_COLLECTION_UPDATED: illusion detection (EventManager -> CollectionService)
     -- NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED: owned by EventManager → CollectionService
     -- Do NOT register here — single-owner pattern prevents duplicate processing
     

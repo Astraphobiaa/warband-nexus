@@ -2498,14 +2498,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             set = function(value) WarbandNexus.db.profile.notifications.showToyNotifications = value end,
         },
         {
-            key = "lootTransmog",
-            parentKey = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG"]) or "Appearances",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG_TOOLTIP"]) or "Popup when you unlock a new transmog appearance.",
-            get = function() return WarbandNexus.db.profile.notifications.showTransmogNotifications end,
-            set = function(value) WarbandNexus.db.profile.notifications.showTransmogNotifications = value end,
-        },
-        {
             key = "lootIllusion",
             parentKey = "loot",
             label = (ns.L and ns.L["LOOT_ALERTS_ILLUSION"]) or "Illusions",

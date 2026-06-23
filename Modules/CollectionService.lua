@@ -313,7 +313,7 @@ end
 -- collectionCache: deprecated; GetUncollected* now filters from collectionStore. ScanCollection still writes uncollected (transitional).
 local collectionCache = {
     owned = { mounts = {}, pets = {}, toys = {} },
-    uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, transmog = {}, illusion = {} },
+    uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, illusion = {} },
     completed = { achievement = {} },
     lastScan = 0,
     lastAchievementScan = 0,
@@ -521,7 +521,7 @@ function WarbandNexus:InitializeCollectionCache()
         return
     end
     
-    local defaultUncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, transmog = {}, illusion = {} }
+    local defaultUncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, illusion = {} }
 
     -- Reset the legacy cache when missing or version-mismatched, but DO NOT return
     -- early: the collectionStore load below must still run. The cache and the store
@@ -2505,9 +2505,6 @@ end
 ---Fires when transmog collection changes (including illusions)
 ---We need to detect which illusion was added by comparing before/after
 function WarbandNexus:OnTransmogCollectionUpdated(event)
-    if self.InvalidateTransmogBrowseCache then
-        self:InvalidateTransmogBrowseCache()
-    end
     if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then return end
     
     -- Throttle checks to avoid spam (illusions are rare)
@@ -2615,7 +2612,7 @@ end
 function WarbandNexus:AppendCollectionsRecentObtained(data)
     if not data or type(data) ~= "table" or not data.type then return end
     local allowed = {
-        mount = true, pet = true, toy = true, achievement = true, title = true, illusion = true, transmog = true,
+        mount = true, pet = true, toy = true, achievement = true, title = true, illusion = true,
     }
     if not allowed[data.type] then return end
     if data.id == nil then return end
@@ -5603,8 +5600,6 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
             rewardType = "pet"
         elseif C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(rewardItemID) then
             rewardType = "toy"
-        elseif C_TransmogCollection and C_TransmogCollection.GetItemInfo and C_TransmogCollection.GetItemInfo(rewardItemID) then
-            rewardType = "transmog"
         end
         
         return {

@@ -140,7 +140,7 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
             {
                 key = "collections",
                 label = (ns.L and ns.L["MODULE_COLLECTIONS"]) or "Collections",
-                tooltip = (ns.L and ns.L["MODULE_COLLECTIONS_DESC"]) or "Mounts, pets, toys, transmog, and collection overview",
+                tooltip = (ns.L and ns.L["MODULE_COLLECTIONS_DESC"]) or "Mounts, pets, toys, and collection overview",
                 get = function() return WarbandNexus.db.profile.modulesEnabled.collections ~= false end,
                 set = function(value)
                     WarbandNexus.db.profile.modulesEnabled.collections = value

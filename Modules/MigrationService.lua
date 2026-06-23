@@ -294,7 +294,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 1
+local MIGRATION_FAST_PATH_REVISION = 2
 
 ---Run all database migrations. Returns true if a full schema reset was performed.
 ---@param db table AceDB instance
@@ -336,6 +336,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateCustomSectionChangelogLog(db)
     self:MigrateReminderQuestCatalog(db)
     self:MigrateFontScalePreset(db)
+    self:MigrateRemoveTransmogV1(db)
     self:DropStaleLegacyGlobalCurrencies(db)
     self:DropStaleLegacyGlobalReputations(db)
     self:FinalizeGuidOnlySubsidiaryV1(db)
@@ -374,6 +375,36 @@ function MigrationService:RunGuidSubsidiaryRemap(db)
     self:MigrateSubsidiaryAliasBucketsV1(db)
     self:FinalizeGuidOnlySubsidiaryV1(db)
     return total
+end
+
+--- Remove legacy transmog plans and cache buckets after feature removal.
+---@param db table AceDB root
+function MigrationService:MigrateRemoveTransmogV1(db)
+    if not db or not db.global or db.global.transmogRemovedV1 then return end
+    local removedPlans = 0
+    if type(db.global.plans) == "table" then
+        local kept = {}
+        for i = 1, #db.global.plans do
+            local plan = db.global.plans[i]
+            if plan and plan.type == "transmog" then
+                removedPlans = removedPlans + 1
+            else
+                kept[#kept + 1] = plan
+            end
+        end
+        db.global.plans = kept
+    end
+    local cache = db.global.collectionCache
+    if type(cache) == "table" and type(cache.uncollected) == "table" then
+        cache.uncollected.transmog = nil
+    end
+    if db.profile and db.profile.notifications then
+        db.profile.notifications.showTransmogNotifications = nil
+    end
+    db.global.transmogRemovedV1 = true
+    if DebugPrint and removedPlans > 0 then
+        DebugPrint("|cff9370DB[WN Migration]|r Removed " .. tostring(removedPlans) .. " transmog To-Do plan(s)")
+    end
 end
 
 --- Remove unused db.global.currencies table when currencyData is populated (no readers remain).

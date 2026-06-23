@@ -182,7 +182,7 @@ local EMPTY_STATE_CONFIG = {
         titleKey = "COLLECTIONS_COMING_SOON_TITLE",
         descKey = "COLLECTIONS_COMING_SOON_DESC",
         titleFallback = "Coming Soon",
-        descFallback = "Collection overview (mounts, pets, toys, transmog) will be available here.",
+        descFallback = "Collection overview (mounts, pets, toys) will be available here.",
     },
     plans_achievement = {
         atlas = "Achievement-Icon",

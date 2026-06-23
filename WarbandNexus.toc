@@ -105,7 +105,6 @@ Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
 Modules\TryCounterService_Handlers.lua
 Modules\TryCounterService_SelfTest.lua
-Modules\TransmogManager.lua
 Modules\Data\MidnightQuestCatalog.lua
 Modules\DailyQuestManager.lua
 Modules\Data\ReminderMapContent.lua
@@ -183,7 +182,6 @@ Modules\UI\CollectionsUI_SourceData.lua
 Modules\UI\CollectionsUI_Shared.lua
 Modules\UI\CollectionsUI_Lists.lua
 Modules\UI\CollectionsUI_Model.lua
-Modules\UI\CollectionsUI_Transmog.lua
 Modules\UI\CollectionsUI_Recent.lua
 Modules\UI\CollectionsUI_Draw.lua
 Modules\UI\CollectionsUI.lua

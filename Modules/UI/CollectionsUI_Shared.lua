@@ -97,7 +97,6 @@ function M.CollectionsRecentCategoryLabel(ctype)
     elseif ctype == "achievement" then return (loc and loc["CATEGORY_ACHIEVEMENTS"]) or "Achievements"
     elseif ctype == "title" then return (loc and loc["CATEGORY_TITLES"]) or "Titles"
     elseif ctype == "illusion" then return (loc and loc["CATEGORY_ILLUSIONS"]) or "Illusions"
-    elseif ctype == "transmog" then return (loc and loc["CATEGORY_TRANSMOG"]) or "Transmog"
     end
     return tostring(ctype or "")
 end
@@ -108,7 +107,6 @@ local COLLECTIONS_SEARCH_CATEGORY_KEYS = {
     mounts = "CATEGORY_MOUNTS",
     pets = "CATEGORY_PETS",
     toys = "CATEGORY_TOYS",
-    transmog = "CATEGORY_TRANSMOG",
 }
 
 function M.GetCollectionsSearchPlaceholder(tabKey)
@@ -121,7 +119,6 @@ function M.GetCollectionsSearchPlaceholder(tabKey)
         or (tabKey == "mounts" and "Mounts")
         or (tabKey == "pets" and "Pets")
         or (tabKey == "toys" and "Toys")
-        or (tabKey == "transmog" and "Transmog")
         or tostring(tabKey or "")
     return format(fmt, category)
 end
@@ -408,9 +405,6 @@ function M.CollectionsListChromeFramesForSubTab(subTabKey, extraFrame)
     elseif subTabKey == "toys" then
         add(M.state.toyListContainer)
         add(M.state.toyListScrollBarContainer)
-    elseif subTabKey == "transmog" then
-        add(M.state.transmogListContainer)
-        add(M.state.transmogListScrollBarContainer)
     elseif subTabKey == "achievements" then
         add(M.state.achievementListContainer)
         add(M.state.achievementListScrollBarContainer)
@@ -446,7 +440,6 @@ function M.CollectionsBrowseSnapshotPrefix(subTabKey)
     if subTabKey == "mounts" then return "mount" end
     if subTabKey == "pets" then return "pet" end
     if subTabKey == "toys" then return "toy" end
-    if subTabKey == "transmog" then return "transmog" end
     if subTabKey == "achievements" then return "ach" end
     return nil
 end
@@ -487,7 +480,6 @@ function M.CollectionsSubTabBrowseCacheDiag(subTabKey)
     local groupedKey = (subTabKey == "mounts") and "_lastGroupedMountData"
         or (subTabKey == "pets") and "_lastGroupedPetData"
         or (subTabKey == "toys") and "_lastGroupedToyData"
-        or (subTabKey == "transmog") and "_lastGroupedTransmogData"
         or (subTabKey == "achievements") and "_lastAchievementCategoryData"
     return {
         hasFlat = st[flatKey] ~= nil,
@@ -764,7 +756,6 @@ function M.CreateDetailEmptyOverlay(parent, typeKey)
         or (typeKey == "pet" and ((ns.L and ns.L["TYPE_PET"]) or "pet"))
         or (typeKey == "toy" and ((ns.L and ns.L["TYPE_TOY"]) or "toy"))
         or (typeKey == "achievement" and ((ns.L and ns.L["ACHIEVEMENT"]) or "achievement"))
-        or (typeKey == "transmog" and ((ns.L and ns.L["TYPE_TRANSMOG"]) or "transmog"))
         or typeKey
     if typeName == "TYPE_MOUNT" then typeName = "mount" end
     if typeName == "TYPE_PET" then typeName = "pet" end
@@ -788,7 +779,6 @@ M.VALID_COLLECTIONS_SUBTABS = {
     mounts = true,
     pets = true,
     toys = true,
-    transmog = true,
     achievements = true,
 }
 
@@ -829,22 +819,6 @@ M.state = M.state or {
     toyDetailScrollBarContainer = nil,
     collapsedHeadersToys = {},
     selectedToyID = nil,
-    transmogDetailContainer = nil,
-    transmogModelContainer = nil,
-    transmogDressViewer = nil,
-    transmogListContainer = nil,
-    transmogListScrollFrame = nil,
-    transmogListScrollChild = nil,
-    transmogListScrollBarContainer = nil,
-    transmogCategoryBar = nil,
-    transmogListCollapsedHeaders = {},
-    _lastGroupedTransmogData = nil,
-    _cachedTransmogBrowse = nil,
-    collapsedHeadersTransmog = {},
-    selectedTransmogVisualID = nil,
-    selectedTransmogSourceID = nil,
-    _transmogFlatList = nil,
-    _transmogCategoryRows = nil,
     initialized = false,
     recentTabPanel = nil,
     --- Last viewport height cap for Recent layout (rows fill vs main-window scroll); refreshed in DrawCollectionsTab.
@@ -1063,7 +1037,6 @@ function M.ClearCollectionsDrawBusyFlags()
     M.state._drawMountsContentBusy = nil
     M.state._drawPetsContentBusy = nil
     M.state._drawToysContentBusy = nil
-    M.state._drawTransmogContentBusy = nil
     M.state._drawAchievementsContentBusy = nil
     M.CollectionsEndListChromeDefer()
     if ns.UI_AchievementBrowse_ResetPopulateBusy then
@@ -1085,7 +1058,6 @@ function WarbandNexus:AbortCollectionsChunkedBuilds()
     M.state._mountsDrawGen = (M.state._mountsDrawGen or 0) + 1
     M.state._petDrawGen = (M.state._petDrawGen or 0) + 1
     M.state._toysDrawGen = (M.state._toysDrawGen or 0) + 1
-    M.state._transmogDrawGen = (M.state._transmogDrawGen or 0) + 1
     M.state._achPopulateGen = (M.state._achPopulateGen or 0) + 1
     M.ClearCollectionsDrawBusyFlags()
 end
@@ -1104,8 +1076,6 @@ local function DrawActiveCollectionsSubTab(contentFrame)
         M.DrawPetsContent(contentFrame)
     elseif sub == "toys" then
         M.DrawToysContent(contentFrame)
-    elseif sub == "transmog" then
-        M.DrawTransmogContent(contentFrame)
     elseif sub == "achievements" then
         M.DrawAchievementsContent(contentFrame)
     end
@@ -1118,12 +1088,6 @@ function M.ScheduleCollectionsSubTabRedraw(fromSub, toSub, perfWallStart)
     if fromSub == "toys" or toSub == "toys" then
         M.state._toyFlatList = nil
         M.state._lastGroupedToyData = nil
-    end
-    if fromSub == "transmog" or toSub == "transmog" then
-        M.state._transmogFlatList = nil
-        M.state._transmogCategoryRows = nil
-        M.state._lastGroupedTransmogData = nil
-        M.state._cachedTransmogBrowse = nil
     end
     if WarbandNexus.AbortCollectionsChunkedBuilds then
         WarbandNexus:AbortCollectionsChunkedBuilds()

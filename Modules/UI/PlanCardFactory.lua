@@ -337,7 +337,6 @@ local TYPE_COLORS = {
     toy = {1, 0.9, 0.2},
     recipe = {0.8, 0.8, 0.5},
     achievement = {1, 0.8, 0.2},
-    transmog = {0.8, 0.5, 1},
     custom = {1, 0.2, 0.2},  -- Will use COLORS.accent in actual usage
     weekly_vault = {1, 0.2, 0.2},  -- Will use COLORS.accent
     illusion = {0.8, 0.5, 1},
@@ -353,7 +352,6 @@ local TYPE_NAMES = {
     illusion = (ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion",
     title = (ns.L and ns.L["TYPE_TITLE"]) or "Title",
     custom = (ns.L and ns.L["TYPE_CUSTOM"]) or "Custom",
-    transmog = (ns.L and ns.L["TYPE_TRANSMOG"]) or "Transmog",
 }
 
 -- Type icon atlas mapping (used by both PlanCardFactory and PlansTrackerWindow as the canonical
@@ -364,7 +362,6 @@ local TYPE_ICONS = {
     toy = "CreationCatalyst-32x32",
     illusion = "UpgradeItem-32x32",
     title = "poi-legendsoftheharanir",
-    transmog = "poi-transmogrifier",
     achievement = "UI-Achievement-Shield-NoPoints",
 }
 
@@ -1363,7 +1360,7 @@ end
 function PlanCardFactory:ReflowSourcePlanCard(card, opts)
     if not card or not card.plan then return end
     local pt = card.plan.type
-    if pt ~= "mount" and pt ~= "pet" and pt ~= "toy" and pt ~= "illusion" and pt ~= "title" and pt ~= "transmog" then
+    if pt ~= "mount" and pt ~= "pet" and pt ~= "toy" and pt ~= "illusion" and pt ~= "title" then
         return
     end
     local deferLayout = opts and opts.deferLayout
@@ -1411,7 +1408,7 @@ function PlanCardFactory:ReflowAllPlanCards(layoutInstance)
             local t = c.plan.type
             if t == "achievement" then
                 self:ReflowAchievementCard(c, { deferLayout = true })
-            elseif t == "mount" or t == "pet" or t == "toy" or t == "illusion" or t == "title" or t == "transmog" then
+            elseif t == "mount" or t == "pet" or t == "toy" or t == "illusion" or t == "title" then
                 self:ReflowSourcePlanCard(c, { deferLayout = true })
             end
         elseif c and c.headerFrame and ns.UI_ReflowExpandableTodoRow then

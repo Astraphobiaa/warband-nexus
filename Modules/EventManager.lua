@@ -62,8 +62,7 @@ end
     Waits for rapid collection changes to settle
 ]]
 function WarbandNexus:OnCollectionChangedDebounced(event, ...)
-    -- TRANSMOG_COLLECTION_UPDATED: Debounced transmog + illusion handling
-    -- (Only event still routed through EventManager — mount/pet/toy owned by CollectionService)
+    -- TRANSMOG_COLLECTION_UPDATED: debounced illusion handling (mount/pet/toy owned by CollectionService)
     if event == "TRANSMOG_COLLECTION_UPDATED" then
         Debounce("TRANSMOG_COLLECTION", EVENT_CONFIG.THROTTLE.COLLECTION_CHANGED, function()
             self:OnTransmogCollectionUpdated(event)
