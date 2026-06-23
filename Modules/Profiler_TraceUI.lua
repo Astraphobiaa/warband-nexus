@@ -81,6 +81,13 @@ local function SplitSliceLabel(label)
     return "Svc", label
 end
 
+local function GetTraceTableMinMs()
+    if Profiler.IsTraceVerbose and Profiler:IsTraceVerbose() then
+        return 1
+    end
+    return Profiler.TRACE_TABLE_MIN_MS or 8
+end
+
 --- Drop noisy plain lines before structuring.
 local function ShouldParsePlainLine(clean)
     if clean == "" then return false end
@@ -189,29 +196,33 @@ local function ParsePlainTraceLine(plainLine)
     }
 end
 
---- Keep trace table focused: bag/zone/events/errors/spikes + slow slices only.
+--- Keep trace table focused: WN slices, bag/zone/events/errors/spikes; hide client noise.
 ---@param entry table
 ---@return boolean
 local function ShouldRetainTraceRow(entry)
     if not entry then return false end
     if entry.kind == "error" then return true end
     if entry.kind == "anomaly" then return true end
+    local minMs = GetTraceTableMinMs()
     if entry.op == "Frame" then
         local detail = tostring(entry.detail or "")
-        if detail:find("outside WN", 1, true) and (entry.ms or 0) < 50 then
+        if detail:find("outside WN", 1, true) or detail:find("no WN work", 1, true) then
             local root = GetPersistRoot()
-            if not (root and root.traceOutsideWnFrames == true) then
+            if (entry.ms or 0) < 100 and not (root and root.traceOutsideWnFrames == true) then
                 return false
             end
         end
-        return true
+        if detail:find("^near ", 1, false) or detail:find("profiler was off", 1, true) then
+            return false
+        end
+        return (entry.ms or 0) >= minMs
     end
     if entry.op == "Error" then return true end
     if entry.op == "Bag" or entry.op == "Zone" or entry.op == "Event" or entry.op == "Handler" then
-        return (entry.ms or 0) >= Profiler.TRACE_TABLE_MIN_MS
+        return (entry.ms or 0) >= minMs
     end
     if entry.op == "Slice" or entry.op == "Async" or entry.op == "Perf" then
-        return (entry.ms or 0) >= Profiler.TRACE_TABLE_MIN_MS
+        return (entry.ms or 0) >= minMs
     end
     if entry.op == "Log" then
         local root = GetPersistRoot()
@@ -230,6 +241,31 @@ local function NormalizeFrameCoalesceDetail(detail)
         return detail:sub(1, 48)
     end
     return detail
+end
+
+--- Suppress duplicate Frame row when the previous row already captured the same WN work.
+---@param entry table
+---@param prev table|nil
+---@return boolean
+local function ShouldSkipRedundantFrameRow(entry, prev)
+    if not entry or entry.op ~= "Frame" or not prev then return false end
+    if prev.op == "Slice" or prev.op == "Async" or prev.op == "Event" or prev.op == "Handler" then
+        if (entry.t or 0) - (prev.t or 0) > 1 then return false end
+        local detail = tostring(entry.detail or "")
+        local prevDetail = tostring(prev.detail or "")
+        if detail == prevDetail then return true end
+        if prevDetail ~= "" and detail:find(prevDetail:sub(1, math.min(24, #prevDetail)), 1, true) then
+            return true
+        end
+    end
+    if prev.op == "Frame" then
+        local prevDetail = NormalizeFrameCoalesceDetail(prev.detail)
+        local entryDetail = NormalizeFrameCoalesceDetail(entry.detail)
+        if prevDetail == entryDetail and prevDetail == "outside WN" then
+            return true
+        end
+    end
+    return false
 end
 
 local function TraceRowsCoalesce(entry, prev)
@@ -291,12 +327,16 @@ function Profiler:AppendTraceRow(op, where, detail, ms, kind)
     }
     if not ShouldRetainTraceRow(entry) then return end
 
+    local rows = self._traceRows
+    local prev = rows[#rows]
+    if entry.op == "Frame" and ShouldSkipRedundantFrameRow(entry, prev) then
+        return
+    end
+
     if self.NoteActivityHint and entry.op ~= "Frame" then
         self:NoteActivityHint(entry.op, entry.where, entry.detail, entry.ms)
     end
 
-    local rows = self._traceRows
-    local prev = rows[#rows]
     if prev and TraceRowsCoalesce(entry, prev) then
         if self._traceWindow and self._traceWindow:IsShown() then
             self:_ScheduleTraceTableSync(true)
@@ -330,6 +370,10 @@ function Profiler:AppendTraceRowFromPlain(plainLine, dedupe)
 
     local rows = self._traceRows
     local prev = rows[#rows]
+    if entry.op == "Frame" and ShouldSkipRedundantFrameRow(entry, prev) then
+        return
+    end
+
     if prev and TraceRowsCoalesce(entry, prev) then
         if self._traceWindow and self._traceWindow:IsShown() then
             self:_ScheduleTraceTableSync(true)
@@ -557,7 +601,7 @@ function Profiler:EnsureTraceWindow()
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("TOP", 0, -28)
-    hint:SetText("|cff808080Slow ops (>=8ms), bag, zone, errors. Frame rows show likely cause in Detail.|r")
+    hint:SetText("|cff808080WN work >=8ms (>=1ms verbose). Frame spikes show attributed cause; outside-WN/GC hidden by default.|r")
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", -4, -4)
@@ -700,7 +744,7 @@ function Profiler:EnsureTraceWindow()
     emptyFs:SetPoint("TOP", content, "TOP", 0, -28)
     emptyFs:SetWidth(620)
     emptyFs:SetJustifyH("CENTER")
-    emptyFs:SetText("|cff808080No rows yet.|r\n|cff00ccff/wn profiler|r then loot, fly, or vendor.\nRows >=8ms, bag/zone events, and errors are kept.")
+    emptyFs:SetText("|cff808080No rows yet.|r\n|cff00ccff/wn profiler|r then loot, fly, or vendor.\nWN slices >=8ms; |cff00ccff/wn profiler verbose on|r for all slices.")
     self._traceEmptyLabel = emptyFs
 
     self._traceWindow = f

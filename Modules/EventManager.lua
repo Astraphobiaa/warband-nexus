@@ -25,6 +25,14 @@ local activeTimers = {}    -- Active throttle/debounce timers
 
 -- THROTTLE & DEBOUNCE UTILITIES
 
+local function ProfiledExec(label, fn)
+    local P = ns.Profiler
+    if P and P.enabled and P.RunSlice then
+        return P:RunSlice(P.CAT.MSG, label, fn)
+    end
+    return fn()
+end
+
 local function Throttle(key, interval, func)
     -- If already throttled, skip
     if activeTimers[key] then
@@ -37,7 +45,7 @@ local function Throttle(key, interval, func)
     end)
     
     -- Execute immediately
-    func()
+    ProfiledExec("Throttle_" .. tostring(key), func)
     
     return true
 end
@@ -51,7 +59,7 @@ local function Debounce(key, interval, func)
     -- Set new timer
     activeTimers[key] = C_Timer.NewTimer(interval, function()
         activeTimers[key] = nil
-        func()
+        ProfiledExec("Debounce_" .. tostring(key), func)
     end)
 end
 

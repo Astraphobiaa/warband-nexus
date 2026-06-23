@@ -167,28 +167,12 @@ local CATEGORY_DISPLAY = {
 ns.QUEST_CATEGORIES = QUEST_CATEGORIES
 ns.CATEGORY_DISPLAY = CATEGORY_DISPLAY
 
--- Default quest type selections for new plans
-local DEFAULT_QUEST_TYPES = {
-    weeklyQuests = true,
-    worldQuests  = true,
-    assignments  = true,
-    dailyQuests  = true,
-    events       = true,
-}
-
+local Tracking = ns.DailyQuestManagerTracking
 local function NormalizeQuestTypes(questTypes)
-    if type(questTypes) ~= "table" then
-        local result = {}
-        for k, v in pairs(DEFAULT_QUEST_TYPES) do result[k] = v end
-        return result
+    if Tracking and Tracking.NormalizeQuestTypes then
+        return Tracking.NormalizeQuestTypes(questTypes)
     end
-    return {
-        weeklyQuests = (questTypes.weeklyQuests ~= false),
-        worldQuests  = (questTypes.worldQuests ~= false),
-        assignments  = (questTypes.assignments ~= false),
-        dailyQuests  = (questTypes.dailyQuests ~= false),
-        events       = (questTypes.events ~= false),
-    }
+    return questTypes or {}
 end
 
 -- QUEST FLAG HELPERS
@@ -394,6 +378,13 @@ local function DetermineQuestCategory(questID, questTitle, flags)
         return KNOWN_QUEST_LOOKUP[questID].category
     end
 
+    if ns.MidnightQuestCatalog and ns.MidnightQuestCatalog.ResolveByTitlePattern and questTitle then
+        local byTitle = ns.MidnightQuestCatalog.ResolveByTitlePattern(questTitle)
+        if byTitle and byTitle.category then
+            return byTitle.category
+        end
+    end
+
     local lowerTitle = ""
     if type(questTitle) == "string" and questTitle ~= "" and not IsSecretValue(questTitle) then
         lowerTitle = questTitle:lower()
@@ -529,8 +520,20 @@ function WarbandNexus:ScanMidnightQuests()
             questDesc = questDesc or "Prey hunt contract. Defeat enemies to track and fight your target."
         end
 
+        local catalogKey = known and known.catalogKey or nil
+        if not catalogKey and title and ns.MidnightQuestCatalog and ns.MidnightQuestCatalog.ResolveByTitlePattern then
+            local byTitle = ns.MidnightQuestCatalog.ResolveByTitlePattern(title)
+            if byTitle then
+                catalogKey = byTitle.catalogKey
+                if not questIcon and byTitle.icon then questIcon = byTitle.icon end
+                if not questDesc and byTitle.description then questDesc = byTitle.description end
+                if displayTitle == title and byTitle.title then displayTitle = byTitle.title end
+            end
+        end
+
         local questData = {
             questID      = questID,
+            catalogKey   = catalogKey,
             title        = displayTitle,
             isComplete   = isComplete,
             zone         = (known and known.zone) or zoneName or "",
@@ -817,7 +820,7 @@ end
 
 -- PLAN MANAGEMENT
 
-function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
+function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes, trackedCatalogKeys)
     if not characterName or not characterRealm then
         self:Print("|cffff0000Error:|r Character name and realm required")
         return nil
@@ -836,6 +839,10 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
     self.db.global.plansNextID = planID + 1
 
     local normalizedTypes = NormalizeQuestTypes(questTypes)
+    local trackedKeys = trackedCatalogKeys
+    if type(trackedKeys) ~= "table" or not next(trackedKeys) then
+        trackedKeys = self:BuildDefaultTrackedCatalogKeys(normalizedTypes)
+    end
     local quests = self:ScanMidnightQuests()
 
     local _, currentClass = UnitClass("player")
@@ -862,7 +869,8 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes)
         characterClass = characterClass,
         contentType    = "midnight",
         contentName    = "Midnight",
-        questTypes     = normalizedTypes,
+        questTypes          = normalizedTypes,
+        trackedCatalogKeys  = trackedKeys,
         name           = ((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. characterName,
         iconAtlas      = "questlog-questtypeicon-daily",
         iconIsAtlas    = true,
@@ -894,6 +902,7 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
     if not plan or plan.type ~= "daily_quests" then return end
 
     plan.questTypes = NormalizeQuestTypes(plan.questTypes)
+    self:NormalizeTrackedCatalogKeys(plan)
 
     local oldQuests = plan.quests
     local newQuests = self:ScanMidnightQuests()
@@ -965,6 +974,24 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
 end
 
 -- EVENT HANDLERS
+
+function WarbandNexus:UpdateDailyPlanTracking(plan, questTypes, trackedCatalogKeys)
+    if not plan or plan.type ~= "daily_quests" then return false end
+    plan.questTypes = NormalizeQuestTypes(questTypes)
+    if type(trackedCatalogKeys) == "table" and next(trackedCatalogKeys) then
+        plan.trackedCatalogKeys = trackedCatalogKeys
+    else
+        plan.trackedCatalogKeys = self:BuildDefaultTrackedCatalogKeys(plan.questTypes)
+    end
+    self:NormalizeTrackedCatalogKeys(plan)
+    self:UpdateDailyPlanProgress(plan, true)
+    self:SendMessage(ns.Constants.EVENTS.PLANS_UPDATED, {
+        action   = "daily_plan_tracking_updated",
+        planID   = plan.id,
+        planType = "daily_quests",
+    })
+    return true
+end
 
 function WarbandNexus:InitializeDailyQuestManager()
     if self._dailyQuestManagerInitialized then

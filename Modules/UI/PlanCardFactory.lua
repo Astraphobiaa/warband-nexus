@@ -2507,6 +2507,9 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         local catKey = categoryOrder[cki]
         if plan.questTypes and plan.questTypes[catKey] then
             local questsForCat = plan.quests and plan.quests[catKey] or {}
+            if WarbandNexus.FilterWeeklyProgressQuestList then
+                questsForCat = WarbandNexus:FilterWeeklyProgressQuestList(plan, catKey, questsForCat)
+            end
             for qi = 1, #questsForCat do
                 local quest = questsForCat[qi]
                 if not quest.isSubQuest then
@@ -2590,6 +2593,9 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
         local catKey = categoryOrder[cki]
         if plan.questTypes and plan.questTypes[catKey] then
             local questList = plan.quests and plan.quests[catKey] or {}
+            if WarbandNexus.FilterWeeklyProgressQuestList then
+                questList = WarbandNexus:FilterWeeklyProgressQuestList(plan, catKey, questList)
+            end
             local completed, total = 0, 0
             for qi = 1, #questList do
                 local q = questList[qi]

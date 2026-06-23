@@ -277,8 +277,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     local addedCount = 0
     for i = 1, #npcIDs do
         local npcID = npcIDs[i]
-        if RT.tryCounterNpcEligible[npcID] and RT.npcDropDB[npcID] then
-            local syntheticGUID
+            if RT.tryCounterNpcEligible[npcID] and RT.npcDropDB[npcID] then
+                Fns.MarkNpcForRuntimeStatReseed(npcID)
+                local syntheticGUID
             if useNameFallback then
                 if safeEncounterDisplayName then
                     syntheticGUID = "Encounter-Name-" .. safeEncounterDisplayName .. "-" .. npcID .. "-" .. now

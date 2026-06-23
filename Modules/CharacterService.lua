@@ -278,10 +278,12 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                     return
                 end
                 if addonInstance then
-                    if addonInstance.CollectConcentrationOnLogin then
+                    if addonInstance.CollectConcentrationOnLogin
+                        and not (addonInstance.IsConcentrationPersistedWarm and addonInstance:IsConcentrationPersistedWarm()) then
                         addonInstance:CollectConcentrationOnLogin()
                     end
-                    if addonInstance.CollectEquipmentOnLogin then
+                    if addonInstance.CollectEquipmentOnLogin
+                        and not (addonInstance.IsProfessionEquipmentPersistedWarm and addonInstance:IsProfessionEquipmentPersistedWarm()) then
                         addonInstance:CollectEquipmentOnLogin()
                     end
                 end
@@ -294,7 +296,8 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                 if addonInstance and addonInstance._coreStartupPhasesPending then
                     return
                 end
-                if addonInstance and addonInstance.CollectExpansionProfessionsOnLogin then
+                if addonInstance and addonInstance.CollectExpansionProfessionsOnLogin
+                    and not (addonInstance.IsExpansionProfessionsPersistedWarm and addonInstance:IsExpansionProfessionsPersistedWarm()) then
                     addonInstance:CollectExpansionProfessionsOnLogin()
                 end
                 local LT = ns.LoadingTracker
@@ -314,11 +317,13 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                     if addonInstance.db and addonInstance.db.profile
                         and addonInstance.db.profile.modulesEnabled
                         and addonInstance.db.profile.modulesEnabled.pve then
-                        if addonInstance.UpdatePvEData then
+                        if addonInstance.UpdatePvEData
+                            and not (addonInstance.IsPvERowPersistedWarm and addonInstance:IsPvERowPersistedWarm()) then
                             addonInstance:UpdatePvEData()
                         end
                     end
-                    if addonInstance.CollectKnowledgeOnLogin then
+                    if addonInstance.CollectKnowledgeOnLogin
+                        and not (addonInstance.IsKnowledgePersistedWarm and addonInstance:IsKnowledgePersistedWarm()) then
                         addonInstance:CollectKnowledgeOnLogin()
                     end
                 end

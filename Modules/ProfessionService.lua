@@ -999,6 +999,9 @@ end
 function WarbandNexus:CollectEquipmentOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
+    if self.IsProfessionEquipmentPersistedWarm and self:IsProfessionEquipmentPersistedWarm() then
+        return
+    end
     C_Timer.After(2, function()
         if not WarbandNexus or not IsCurrentCharacterTracked() then return end
         pcall(CollectEquipmentDataForCurrentProfession)
@@ -2992,6 +2995,9 @@ function WarbandNexus:CollectConcentrationOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     if not self.db or not self.db.global then return end
+    if self.IsConcentrationPersistedWarm and self:IsConcentrationPersistedWarm() then
+        return
+    end
 
     local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end
@@ -3119,7 +3125,20 @@ end
 function WarbandNexus:CollectExpansionProfessionsOnLogin()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
+    if self.IsExpansionProfessionsPersistedWarm and self:IsExpansionProfessionsPersistedWarm() then
+        return
+    end
     pcall(CollectAllExpansionProfessions, false)
+end
+
+---@return boolean
+function WarbandNexus:IsExpansionProfessionsPersistedWarm()
+    if not self.db or not self.db.global then return false end
+    local charKey = ResolveTrackedCharactersTableKey()
+    if not charKey then return false end
+    local charData = self.db.global.characters and self.db.global.characters[charKey]
+    local DF = ns.DataFreshness
+    return DF and DF.IsExpansionProfessionsWarm and DF.IsExpansionProfessionsWarm(charData) == true
 end
 
 -- LOGIN-TIME KNOWLEDGE COLLECTION
@@ -3129,38 +3148,80 @@ end
     Uses stored discoveredSkillLines + C_Traits API chain (same as Blizzard's own code).
     Called from Core.lua on PLAYER_ENTERING_WORLD with a delay.
 ]]
---- Skip expensive C_Traits scan on /reload when persisted knowledge already covers discovered skill lines.
+--- Skip expensive C_Traits scan when every discovered skill line already has persisted knowledge.
+--- Event path (TRAIT_NODE_CHANGED) uses CollectKnowledgeOnLogin({ reason = "event" }).
 ---@return boolean
-function WarbandNexus:ShouldSkipKnowledgeLoginWarmup()
+function WarbandNexus:IsKnowledgePersistedWarm()
     if not self.db or not self.db.global then return false end
     local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return false end
     local charData = self.db.global.characters and self.db.global.characters[charKey]
-    if not charData or not charData.discoveredSkillLines then return false end
-    local kd = charData.knowledgeData
-    if type(kd) ~= "table" then return false end
-
-    local now = time()
-    local maxAge = 7 * 24 * 3600
-    for _, skillLines in pairs(charData.discoveredSkillLines) do
-        if skillLines and #skillLines > 0 then
-            for sli = 1, #skillLines do
-                local sl = skillLines[sli]
-                local slID = sl and (sl.id or sl)
-                if slID then
-                    local entry = kd[slID]
-                    local lu = entry and tonumber(entry.lastUpdate)
-                    if not lu or (now - lu) > maxAge then
-                        return false
-                    end
-                end
-            end
-        end
+    local DF = ns.DataFreshness
+    if DF and DF.IsKnowledgeWarmForCharacter then
+        return DF.IsKnowledgeWarmForCharacter(charData) == true
     end
-    return true
+    return false
 end
 
-function WarbandNexus:CollectKnowledgeOnLogin()
+---@deprecated Use IsKnowledgePersistedWarm
+function WarbandNexus:ShouldSkipKnowledgeLoginWarmup()
+    return self:IsKnowledgePersistedWarm()
+end
+
+---@return boolean
+function WarbandNexus:IsConcentrationPersistedWarm()
+    if not self.db or not self.db.global then return false end
+    local charKey = ResolveTrackedCharactersTableKey()
+    if not charKey then return false end
+    local charData = self.db.global.characters and self.db.global.characters[charKey]
+    local DF = ns.DataFreshness
+    return DF and DF.IsConcentrationWarm and DF.IsConcentrationWarm(charData) == true
+end
+
+---@return boolean
+function WarbandNexus:IsProfessionEquipmentPersistedWarm()
+    if not self.db or not self.db.global then return false end
+    local charKey = ResolveTrackedCharactersTableKey()
+    if not charKey then return false end
+    local charData = self.db.global.characters and self.db.global.characters[charKey]
+    local DF = ns.DataFreshness
+    return DF and DF.IsProfessionEquipmentWarm and DF.IsProfessionEquipmentWarm(charData) == true
+end
+
+local knowledgeLoginCollectSerial = 0
+local knowledgeLoginCollectQueue = {}
+local knowledgeLoginCollectInFlight = false
+local KNOWLEDGE_LOGIN_SLICE_GAP_SEC = 0.2
+
+local function ApplyKnowledgeCollectResult(charData, slID, profName, expansionName, result)
+    if not result or not charData then return end
+    result.professionName = profName
+    result.expansionName = expansionName
+    if not charData.knowledgeData then
+        charData.knowledgeData = {}
+    end
+    charData.knowledgeData[slID] = result
+    local bucket = EnsureSkillLineBucket(charData, slID, profName, expansionName)
+    if bucket then
+        bucket.knowledge = {
+            hasUnspentPoints = result.hasUnspentPoints or false,
+            unspentPoints = result.unspentPoints or 0,
+            spentPoints = result.spentPoints or 0,
+            maxPoints = result.maxPoints or 0,
+            currencyName = SafeAPIString(result.currencyName) or "",
+            currencyIcon = result.currencyIcon,
+            specTabs = result.specTabs,
+            lastUpdate = result.lastUpdate or time(),
+        }
+    end
+end
+
+function WarbandNexus:CollectKnowledgeOnLogin(opts)
+    opts = opts or {}
+    if opts.reason ~= "event" and self.IsKnowledgePersistedWarm and self:IsKnowledgePersistedWarm() then
+        return
+    end
+    if knowledgeLoginCollectInFlight then return end
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
     if not self.db or not self.db.global then return end
@@ -3178,40 +3239,77 @@ function WarbandNexus:CollectKnowledgeOnLogin()
 
     if not charData.discoveredSkillLines then return end
 
+    wipe(knowledgeLoginCollectQueue)
+    local qLen = 0
     for profName, skillLines in pairs(charData.discoveredSkillLines) do
         if skillLines and #skillLines > 0 then
             for sli = 1, #skillLines do
                 local sl = skillLines[sli]
-                local slID = sl.id or sl
-                local expansionName = (type(sl) == "table" and sl.name) or nil
-
-                local result = CollectKnowledgeForSkillLine(slID, profName)
-                if result then
-                    result.professionName = profName
-                    result.expansionName = expansionName
-                    charData.knowledgeData[slID] = result
-                    local bucket = EnsureSkillLineBucket(charData, slID, profName, expansionName)
-                    if bucket then
-                        bucket.knowledge = {
-                            hasUnspentPoints = result.hasUnspentPoints or false,
-                            unspentPoints = result.unspentPoints or 0,
-                            spentPoints = result.spentPoints or 0,
-                            maxPoints = result.maxPoints or 0,
-                            currencyName = SafeAPIString(result.currencyName) or "",
-                            currencyIcon = result.currencyIcon,
-                            specTabs = result.specTabs,
-                            lastUpdate = result.lastUpdate or time(),
-                        }
-                    end
-                    -- Continue: collect ALL expansion skill lines, not just the first
+                local slID = sl and (sl.id or sl)
+                if slID then
+                    qLen = qLen + 1
+                    knowledgeLoginCollectQueue[qLen] = {
+                        slID = slID,
+                        profName = profName,
+                        expansionName = (type(sl) == "table" and sl.name) or nil,
+                    }
                 end
             end
         end
     end
+    if qLen == 0 then return end
 
-    if self.SendMessage then
-        self:SendMessage(E.KNOWLEDGE_UPDATED, charKey)
+    knowledgeLoginCollectInFlight = true
+    knowledgeLoginCollectSerial = knowledgeLoginCollectSerial + 1
+    local serial = knowledgeLoginCollectSerial
+    local idx = 1
+    local addon = self
+
+    local function finishKnowledgeLoginCollect()
+        knowledgeLoginCollectInFlight = false
     end
+
+    local function collectNextSkillLine()
+        if serial ~= knowledgeLoginCollectSerial then
+            finishKnowledgeLoginCollect()
+            return
+        end
+        if idx > qLen then
+            finishKnowledgeLoginCollect()
+            if addon.SendMessage then
+                addon:SendMessage(E.KNOWLEDGE_UPDATED, charKey)
+            end
+            return
+        end
+
+        local entry = knowledgeLoginCollectQueue[idx]
+        idx = idx + 1
+
+        local function collectOne()
+            local result = CollectKnowledgeForSkillLine(entry.slID, entry.profName)
+            if result then
+                ApplyKnowledgeCollectResult(charData, entry.slID, entry.profName, entry.expansionName, result)
+            end
+        end
+
+        local P = ns.Profiler
+        if P and P.enabled and P.RunSlice then
+            P:RunSlice(P.CAT.SVC, "CollectKnowledge", collectOne)
+        else
+            collectOne()
+        end
+
+        if idx <= qLen then
+            C_Timer.After(KNOWLEDGE_LOGIN_SLICE_GAP_SEC, collectNextSkillLine)
+        else
+            finishKnowledgeLoginCollect()
+            if addon.SendMessage then
+                addon:SendMessage(E.KNOWLEDGE_UPDATED, charKey)
+            end
+        end
+    end
+
+    collectNextSkillLine()
 end
 
 -- REAL-TIME UPDATE SYSTEM
@@ -3353,7 +3451,7 @@ function WarbandNexus:OnKnowledgeChanged()
         
         -- Re-collect knowledge for all professions
         pcall(function()
-            WarbandNexus:CollectKnowledgeOnLogin()
+            WarbandNexus:CollectKnowledgeOnLogin({ reason = "event" })
         end)
         
         if IsDebugModeEnabled and IsDebugModeEnabled() then
@@ -3386,7 +3484,7 @@ function WarbandNexus:FlushProfessionOnLogout()
 
     if knowledgePending then
         pcall(function()
-            WarbandNexus:CollectKnowledgeOnLogin()
+            WarbandNexus:CollectKnowledgeOnLogin({ reason = "event" })
         end)
     end
 end

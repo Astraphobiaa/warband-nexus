@@ -1066,17 +1066,34 @@ end
     Save character data - called once per login
 ]]
 function WarbandNexus:SaveCharacter()
-    -- Prevent duplicate saves
-    if self.characterSaved then
+    if self.characterSaved and not self._characterFullSavePending then
+        return
+    end
+
+    local inCombat = InCombatLockdown and InCombatLockdown()
+    if inCombat then
+        local success, err = pcall(function()
+            self:SaveCurrentCharacterData({ lightOnly = true, bypassCombatDefer = true })
+        end)
+        if success then
+            self.characterSaved = true
+            self._characterFullSavePending = true
+            if self.ScheduleDeferredCharacterSave then
+                self:ScheduleDeferredCharacterSave(true)
+            end
+        else
+            self:Print("Error saving character: " .. tostring(err))
+        end
         return
     end
     
     local success, err = pcall(function()
-        self:SaveCurrentCharacterData()
+        self:SaveCurrentCharacterData({ bypassCombatDefer = true })
     end)
     
     if success then
         self.characterSaved = true
+        self._characterFullSavePending = nil
     else
         self:Print("Error saving character: " .. tostring(err))
     end
@@ -1345,6 +1362,7 @@ end
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
     ns._wnPlayerReloading = isReloadingUi == true
+    ns._wnStartupQuietUntil = GetTime() + 15
     ns._wnPlayerInitialLogin = isInitialLogin == true
     -- Character switch at login screen: allow SaveCharacter for the new toon (not only first login of session).
     if isInitialLogin and not isReloadingUi then
@@ -1396,8 +1414,30 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                 or ns.Utilities:GetCharacterKey()
             local charData = charKey and self.db.global.characters and self.db.global.characters[charKey]
             if charData and charData.trackingConfirmed then
-                if self.SaveCharacter then
-                    self:SaveCharacter()
+                -- Light save at T+2; full PvE/prof/stats pass deferred past startup storm (~T+12+).
+                local ok, err = pcall(function()
+                    if self.SaveCurrentCharacterData then
+                        self:SaveCurrentCharacterData({
+                            lightOnly = true,
+                            bypassCombatDefer = true,
+                            profilerSliceName = "SaveCurrentCharacterData [login-light]",
+                        })
+                    end
+                end)
+                if ok then
+                    self.characterSaved = true
+                    self._characterFullSavePending = true
+                    C_Timer.After(12, function()
+                        if self.IsCharacterRowPersistedWarm and self:IsCharacterRowPersistedWarm() then
+                            self._characterFullSavePending = nil
+                            return
+                        end
+                        if self.ScheduleDeferredCharacterSave then
+                            self:ScheduleDeferredCharacterSave(true)
+                        end
+                    end)
+                elseif self.Print then
+                    self:Print("Error saving character: " .. tostring(err))
                 end
             elseif not (isInitialLogin and ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)) then
                 -- Untracked characters: keep level/gold/class fresh for the Characters tab.
@@ -1414,7 +1454,7 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     --   Core P0 (T+4s):   Lightweight resets + profession basics (batched, <3ms)
     --   Core P1 (T+5s):   Expansion professions (moderate)
     --   Core P2 (T+5.5s): PvE data refresh (needs PvECache from T+2s)
-    --   Core P2.5 (T+7s): Profession knowledge warmup (deferred to reduce reload spikes)
+    --   Core P2.5 (T+9s): Profession knowledge warmup (staggered past TryCounter init)
     --   Core P3 (T+6.5s): Plan tracking (initial login only, low priority)
     if isInitialLogin or isReloadingUi then
         local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
@@ -1444,11 +1484,17 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                 local P = ns.Profiler
                 local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectConcentration")
                 if P and P.enabled and lab then P:Start(lab) end
-                if self and self.CollectConcentrationOnLogin then self:CollectConcentrationOnLogin() end
+                if self and self.CollectConcentrationOnLogin
+                    and not (self.IsConcentrationPersistedWarm and self:IsConcentrationPersistedWarm()) then
+                    self:CollectConcentrationOnLogin()
+                end
                 if P and P.enabled and lab then P:Stop(lab) end
                 lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectEquipment")
                 if P and P.enabled and lab then P:Start(lab) end
-                if self and self.CollectEquipmentOnLogin then self:CollectEquipmentOnLogin() end
+                if self and self.CollectEquipmentOnLogin
+                    and not (self.IsProfessionEquipmentPersistedWarm and self:IsProfessionEquipmentPersistedWarm()) then
+                    self:CollectEquipmentOnLogin()
+                end
                 if P and P.enabled and lab then P:Stop(lab) end
             end
         end)
@@ -1460,7 +1506,8 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                 local P = ns.Profiler
                 local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectExpansionProfessions")
                 if P and P.enabled and lab then P:Start(lab) end
-                if self and self.CollectExpansionProfessionsOnLogin then
+                if self and self.CollectExpansionProfessionsOnLogin
+                    and not (self.IsExpansionProfessionsPersistedWarm and self:IsExpansionProfessionsPersistedWarm()) then
                     self:CollectExpansionProfessionsOnLogin()
                 end
                 if P and P.enabled and lab then P:Stop(lab) end
@@ -1477,7 +1524,10 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                     local P = ns.Profiler
                     local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "UpdatePvEData")
                     if P and P.enabled and lab then P:Start(lab) end
-                    if self and self.UpdatePvEData then self:UpdatePvEData() end
+                    if self and self.UpdatePvEData
+                        and not (self.IsPvERowPersistedWarm and self:IsPvERowPersistedWarm()) then
+                        self:UpdatePvEData()
+                    end
                     if P and P.enabled and lab then P:Stop(lab) end
                 end
             end
@@ -1485,19 +1535,12 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             if LT then LT:Complete("pve") end
         end)
 
-        -- Core P2.5 (T+7s): Profession knowledge warmup (tracked only; skip on /reload when SV is fresh)
-        C_Timer.After(7, function()
+        -- Core P2.5 (T+9s): Knowledge — only when not already persisted (TRAIT_* events refresh later)
+        C_Timer.After(9, function()
             local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
             if tracked then
-                local skipKnowledge = isReloadingUi
-                    and self.ShouldSkipKnowledgeLoginWarmup
-                    and self:ShouldSkipKnowledgeLoginWarmup()
-                if not skipKnowledge then
-                    local P = ns.Profiler
-                    local lab = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "CollectKnowledge")
-                    if P and P.enabled and lab then P:Start(lab) end
-                    if self and self.CollectKnowledgeOnLogin then self:CollectKnowledgeOnLogin() end
-                    if P and P.enabled and lab then P:Stop(lab) end
+                if not (self.IsKnowledgePersistedWarm and self:IsKnowledgePersistedWarm()) then
+                    if self.CollectKnowledgeOnLogin then self:CollectKnowledgeOnLogin() end
                 end
             end
             if self then
@@ -1631,7 +1674,17 @@ function WarbandNexus:OnCombatEnd()
         
         wipe(hidden)
     end
-    
+
+    C_Timer.After(0.1, function()
+        if not WarbandNexus then return end
+        if InCombatLockdown and InCombatLockdown() then return end
+        if WarbandNexus.FlushDeferredCharacterSave then
+            WarbandNexus:FlushDeferredCharacterSave()
+        end
+        if ns.CurrencyCache and ns.CurrencyCache.FlushPostCombatScan then
+            ns.CurrencyCache:FlushPostCombatScan()
+        end
+    end)
 end
 --[[
     Event handler for pet journal changes (cage/release)

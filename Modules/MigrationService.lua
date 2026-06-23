@@ -237,6 +237,10 @@ end
     misfire can be reverted via /wn ... or InvalidateCache/RestoreCacheBackup.
 ]]
 function MigrationService:CheckVersions(db, addon)
+    local P = ns.Profiler
+    if P and P.enabled and P.StartSlice then P:StartSlice(P.CAT.DB, "Migration_CheckVersions") end
+    local P = ns.Profiler
+    if P and P.enabled and P.StartSlice then P:StartSlice(P.CAT.DB, "Migration_CheckVersions") end
     local Constants = ns.Constants or {}
     local currentAddon  = Constants.ADDON_VERSION or "0.0.0"
     local currentGame   = (select(4, GetBuildInfo()))
@@ -280,6 +284,7 @@ function MigrationService:CheckVersions(db, addon)
                 addon:InvalidateCache(name, "schema_bump")
             end
             v.cache[name] = version
+    if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.DB, "Migration_CheckVersions") end
         end
     end
 end

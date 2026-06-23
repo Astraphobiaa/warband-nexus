@@ -93,6 +93,8 @@ local Profiler = {
     eventTraceMinMs = 12,
     --- Last tab passed to PopulateContentBody (used with gearOnlyRecording for UI/Pop_* slices).
     _populateContentTab = nil,
+    --- Nested Start/Stop stack for hierarchical trace Detail (parent > child).
+    _sliceStack = nil,
 }
 
 ns.Profiler = Profiler
@@ -142,6 +144,35 @@ function Profiler:StopSlice(category, name)
     self:Stop(self:SliceLabel(category, name))
 end
 
+---@param label string
+function Profiler:_PushSliceStack(label)
+    if not label then return end
+    local stack = self._sliceStack
+    if not stack then
+        stack = {}
+        self._sliceStack = stack
+    end
+    stack[#stack + 1] = label
+end
+
+---@param label string
+function Profiler:_PopSliceStack(label)
+    local stack = self._sliceStack
+    if not stack or #stack == 0 then return end
+    if stack[#stack] == label then
+        stack[#stack] = nil
+    end
+end
+
+--- Strip "Category/" prefix from slice labels (Lua 5.1: must be defined before _FormatNestedSliceDetail).
+---@param label string|nil
+---@return string
+local function ShortSliceName(label)
+    label = tostring(label or "")
+    local _, name = label:match("^([^/]+)/(.+)$")
+    return name or label
+end
+
 local function GetProfilePersistRoot()
     local db = ns.db or (_G.WarbandNexus and _G.WarbandNexus.db)
     if not db or not db.profile then return nil end
@@ -149,10 +180,96 @@ local function GetProfilePersistRoot()
     return db.profile.profilerPersist
 end
 
-local function ShortSliceName(label)
-    label = tostring(label or "")
-    local _, name = label:match("^([^/]+)/(.+)$")
-    return name or label
+--- Hierarchical Detail for nested slices (Init/foo > Svc/bar).
+---@param shortName string
+---@return string
+function Profiler:_FormatNestedSliceDetail(shortName)
+    shortName = tostring(shortName or "?")
+    local stack = self._sliceStack
+    if not stack or #stack <= 1 then
+        return shortName
+    end
+    local parts = {}
+    for i = 1, #stack do
+        parts[#parts + 1] = ShortSliceName(stack[i])
+    end
+    return table.concat(parts, " > ")
+end
+
+--- True when sync/async timers or a recent Stop completion indicate WN work this frame window.
+---@return boolean
+function Profiler:_HasActiveOrRecentWnWork()
+    if next(self.activeTimers) or next(self.asyncTimers) then
+        return true
+    end
+    local now = GetTime()
+    local window = 0.05
+    local buf = self._recentCompletions or {}
+    for i = #buf, 1, -1 do
+        local e = buf[i]
+        if e and e.label and (now - (e.t or 0)) <= window then
+            return true
+        end
+    end
+    return false
+end
+
+--- Skip redundant Frame trace row when a matching Slice row was just recorded.
+---@param detail string
+---@param frameMs number
+---@return boolean
+function Profiler:_ShouldSuppressFrameTraceRow(detail, frameMs)
+    detail = tostring(detail or "")
+    if detail == self:_OutsideWnFrameDetail() then
+        if frameMs < 100 then
+            local root = GetProfilePersistRoot()
+            if not (root and root.traceOutsideWnFrames == true) then
+                return true
+            end
+        end
+        if self:_HasActiveOrRecentWnWork() then
+            return true
+        end
+    end
+    local buf = self._recentCompletions
+    if not buf or #buf == 0 then return false end
+    local last = buf[#buf]
+    if not last or not last.label then return false end
+    if (GetTime() - (last.t or 0)) > 0.08 then return false end
+    local short = ShortSliceName(last.label)
+    if short ~= "" and detail:find(short, 1, true) then
+        return true
+    end
+    if last.ms and frameMs <= (last.ms * 2.5) and detail ~= self:_OutsideWnFrameDetail() then
+        return true
+    end
+    return false
+end
+
+--- Convenience: Wrap(self:SliceLabel(category, name), fn, ...).
+---@param category string
+---@param name string
+---@param func function
+---@return any ...
+function Profiler:RunSlice(category, name, func, ...)
+    return self:Wrap(self:SliceLabel(category, name), func, ...)
+end
+
+--- Convenience: StartAsync/StopAsync around a synchronous completion callback.
+---@param category string
+---@param name string
+---@param func function
+---@return any ...
+function Profiler:RunAsyncSlice(category, name, func, ...)
+    local label = self:SliceLabel(category, name)
+    self:StartAsync(label)
+    local results = { pcall(func, ...) }
+    self:StopAsync(label)
+    local ok = tremove(results, 1)
+    if not ok then
+        error(results[1], 2)
+    end
+    return unpack(results)
 end
 
 --- Guess trace "Where" bucket from a profiler label (frame spike attribution).
@@ -863,6 +980,7 @@ function Profiler:Start(label)
     if not self.enabled then return end
     if self.gearOnlyRecording and not self:IsGearFocusedSliceLabel(label) then return end
     self.activeTimers[label] = debugprofilestop()
+    self:_PushSliceStack(label)
     if self:IsMeasuringTraceSinkActive() and self:IsTraceVerbose() then
         self:AppendTraceVerbose("START " .. tostring(label))
     end
@@ -879,7 +997,10 @@ function Profiler:Stop(label)
     if self.gearOnlyRecording and not self:IsGearFocusedSliceLabel(label) then return nil end
 
     local startTime = self.activeTimers[label]
-    if not startTime then return nil end
+    if not startTime then
+        self:_PopSliceStack(label)
+        return nil
+    end
     self.activeTimers[label] = nil
     
     local elapsed = debugprofilestop() - startTime
@@ -889,10 +1010,11 @@ function Profiler:Stop(label)
     if self.AppendTraceRow then
         local cat, name = SplitSliceLabel(label)
         local kind = elapsed >= self.TRACE_ANOMALY_MS and "anomaly" or "perf"
-        self:AppendTraceRow("Slice", cat, name, elapsed, kind)
+        self:AppendTraceRow("Slice", cat, self:_FormatNestedSliceDetail(name), elapsed, kind)
     else
         self:_EmitPerfTraceLine(string.format("STOP %s %.2fms", tostring(label), elapsed), elapsed)
     end
+    self:_PopSliceStack(label)
     if self:ShouldEmitProfilerChat() then
         local color = elapsed > 16.67 and C_BAD or elapsed > 5 and C_WARN or C_GOOD
         print(PREFIX .. C_DIM .. "STOP  " .. C_LABEL .. label .. C_R
@@ -1163,11 +1285,13 @@ function Profiler:SetFrameTracking(enable)
                 
                 local spikePlain = string.format("FRAME SPIKE %.1fms %s", frameMs, spike.date)
                 if self:IsMeasuringTraceSinkActive() then
-                    if self.AppendTraceRow then
-                        local detail, where = self:_BuildSpikeAttribution()
-                        self:AppendTraceRow("Frame", where, detail, frameMs, "anomaly")
-                    else
-                        self:AppendTraceAnomaly(spikePlain)
+                    local detail, where = self:_BuildSpikeAttribution()
+                    if not self:_ShouldSuppressFrameTraceRow(detail, frameMs) then
+                        if self.AppendTraceRow then
+                            self:AppendTraceRow("Frame", where, detail, frameMs, "anomaly")
+                        else
+                            self:AppendTraceAnomaly(spikePlain)
+                        end
                     end
                 end
                 if self:ShouldEmitProfilerChat() then
@@ -1453,6 +1577,7 @@ function Profiler:Reset()
     wipe(self.activeTimers)
     wipe(self.asyncTimers)
     wipe(self.frameSpikes)
+    if self._sliceStack then wipe(self._sliceStack) end
     self._spikeNextSlot = 1
     self._spikeCount = 0
     if self.ClearTraceRows then

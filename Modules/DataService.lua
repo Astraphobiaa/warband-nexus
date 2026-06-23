@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Data Service Module
     Character orchestration, cross-character aggregation, and legacy cache wrappers.
     Domain caches: PvECacheService, ItemsCacheService, CurrencyCacheService, ReputationCacheService.
@@ -22,6 +22,34 @@ local DataServiceEvents = {}
 
 -- Zone debounce (flushable on PLAYER_LOGOUT)
 local zoneUpdateTimer = nil
+
+-- Full character save coalescing (combat defer + debounce)
+local characterSaveDebounceTimer = nil
+local pendingFullCharacterSave = false
+local CHARACTER_SAVE_DEBOUNCE_SEC = 0.75
+local STARTUP_QUIET_SEC = 15
+
+local function GetCharacterSaveDebounceSec()
+    local quietUntil = ns._wnStartupQuietUntil
+    if quietUntil and GetTime() < quietUntil then
+        local remain = quietUntil - GetTime()
+        if remain > CHARACTER_SAVE_DEBOUNCE_SEC then
+            return remain
+        end
+    end
+    return CHARACTER_SAVE_DEBOUNCE_SEC
+end
+
+local function IsPlayerInCombat()
+    return InCombatLockdown and InCombatLockdown()
+end
+
+local function CancelCharacterSaveDebounce()
+    if characterSaveDebounceTimer and characterSaveDebounceTimer.Cancel then
+        characterSaveDebounceTimer:Cancel()
+    end
+    characterSaveDebounceTimer = nil
+end
 
 -- Roster helpers: DataService_RosterHelpers.lua (ns.DataServiceRoster)
 local Roster = ns.DataServiceRoster
@@ -501,10 +529,17 @@ end
 
 --- Collect current player stats for persistence (Gear tab offline display).
 local function CollectPlayerStats()
+    local function safeFloor(val)
+        if val == nil then return nil end
+        if issecretvalue and issecretvalue(val) then return nil end
+        if type(val) ~= "number" then return nil end
+        return math.floor(val)
+    end
     local primary = {}
     for id = 1, 4 do
         local ok, _, total = pcall(UnitStat, "player", id)
-        if ok and total and type(total) == "number" then primary[id] = math.floor(total) end
+        local floored = ok and safeFloor(total) or nil
+        if floored then primary[id] = floored end
     end
     if not next(primary) then primary = nil end
     -- Snapshot main stat code for Gear tab offline — matches live panel (hero specs / Midnight IDs).
@@ -524,9 +559,8 @@ local function CollectPlayerStats()
         local s = secondFns[i]
         local okR, rating = pcall(GetCombatRating, s.rating)
         local okP, pct = pcall(s.pctFn)
-        local rVal = 0
-        if okR and type(rating) == "number" then rVal = math.floor(rating) end
-        local pVal = (okP and pct and type(pct) == "number") and pct or 0
+        local rVal = (okR and safeFloor(rating)) or 0
+        local pVal = (okP and pct and type(pct) == "number" and not (issecretvalue and issecretvalue(pct))) and pct or 0
         secondary[#secondary + 1] = {
             label = s.label,
             rating = rVal,
@@ -694,8 +728,74 @@ function WarbandNexus:SaveMinimalCharacterData()
     return true
 end
 
+--- Coalesce full character saves; defer while in combat (flush on PLAYER_REGEN_ENABLED / logout).
+---@param wantFull boolean|nil
+function WarbandNexus:ScheduleDeferredCharacterSave(wantFull)
+    if wantFull ~= false then
+        pendingFullCharacterSave = true
+    end
+    if IsPlayerInCombat() then
+        return
+    end
+    if characterSaveDebounceTimer then
+        return
+    end
+    if pendingFullCharacterSave and WarbandNexus and WarbandNexus.IsCharacterRowPersistedWarm
+        and WarbandNexus:IsCharacterRowPersistedWarm() then
+        pendingFullCharacterSave = false
+        WarbandNexus._characterFullSavePending = nil
+        return
+    end
+    characterSaveDebounceTimer = C_Timer.After(GetCharacterSaveDebounceSec(), function()
+        characterSaveDebounceTimer = nil
+        if not WarbandNexus or not pendingFullCharacterSave then return end
+        if IsPlayerInCombat() then
+            return
+        end
+        local P = ns.Profiler
+        if P and P.enabled and P.StartAsync then
+            P:StartAsync("SaveCurrentCharacterData [defer]")
+        end
+        local ok, err = pcall(function()
+            WarbandNexus:SaveCurrentCharacterData({ bypassCombatDefer = true })
+        end)
+        if P and P.enabled and P.StopAsync then
+            P:StopAsync("SaveCurrentCharacterData [defer]")
+        end
+        if ok then
+            pendingFullCharacterSave = false
+            WarbandNexus._characterFullSavePending = nil
+        elseif WarbandNexus and WarbandNexus.Print then
+            WarbandNexus:Print("Error saving character: " .. tostring(err))
+        end
+    end)
+end
+
+--- Run a pending deferred full save (post-combat or logout).
+function WarbandNexus:FlushDeferredCharacterSave()
+    CancelCharacterSaveDebounce()
+    if not pendingFullCharacterSave then
+        return
+    end
+    pendingFullCharacterSave = false
+    local ok, err = pcall(function()
+        self:SaveCurrentCharacterData({ bypassCombatDefer = true })
+    end)
+    if ok then
+        self._characterFullSavePending = nil
+    elseif self.Print then
+        self:Print("Error saving character: " .. tostring(err))
+    end
+end
+
 --- Save complete character data (login/reload and significant changes).
-function WarbandNexus:SaveCurrentCharacterData()
+---@param options table|nil lightOnly, bypassCombatDefer, profilerSliceName
+function WarbandNexus:SaveCurrentCharacterData(options)
+    options = options or {}
+    local lightOnly = options.lightOnly == true
+    local bypassCombatDefer = options.bypassCombatDefer == true
+    local profSliceName = options.profilerSliceName or (lightOnly and "SaveCurrentCharacterData [light]" or "SaveCurrentCharacterData")
+
     -- Check tracking status
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
     
@@ -703,29 +803,50 @@ function WarbandNexus:SaveCurrentCharacterData()
     if not isTracked then
         return self:SaveMinimalCharacterData()
     end
+
+    if not lightOnly and not bypassCombatDefer and IsPlayerInCombat() then
+        pendingFullCharacterSave = true
+        self:ScheduleDeferredCharacterSave(true)
+        return self:SaveCurrentCharacterData({
+            lightOnly = true,
+            bypassCombatDefer = true,
+            profilerSliceName = "SaveCurrentCharacterData [combat-light]",
+        })
+    end
+
+    local P = ns.Profiler
+    local _saveProfActive = P and P.enabled and P.StartSlice
+    if _saveProfActive then P:StartSlice(P.CAT.DB, profSliceName) end
+    local function _saveProfEnd(ret)
+        if _saveProfActive and P and P.StopSlice then
+            P:StopSlice(P.CAT.DB, profSliceName)
+            _saveProfActive = false
+        end
+        return ret
+    end
     
     local name = UnitName("player")
     local realm = GetNormalizedRealmName()  -- Get realm name
-    if name and issecretvalue and issecretvalue(name) then return false end
-    if realm and issecretvalue and issecretvalue(realm) then return false end
+    if name and issecretvalue and issecretvalue(name) then return _saveProfEnd(false) end
+    if realm and issecretvalue and issecretvalue(realm) then return _saveProfEnd(false) end
     
     -- Safety check
     if not name or name == "" or name == "Unknown" then
-        return false
+        return _saveProfEnd(false)
     end
     if not realm or realm == "" then
-        return false
+        return _saveProfEnd(false)
     end
     
     local legacyKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey(name, realm)
     local key = ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self)
         or legacyKey
-    if not key then return false end
+    if not key then return _saveProfEnd(false) end
 
     -- Get character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
-    if issecretvalue and level and issecretvalue(level) then return false end
+    if issecretvalue and level and issecretvalue(level) then return _saveProfEnd(false) end
     local guildName = IsInGuild() and GetGuildInfo("player") or nil
     if guildName and issecretvalue and issecretvalue(guildName) then guildName = nil end
     
@@ -758,7 +879,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         self:Print(string.format("|cffff0000[SaveChar] FAILED: Missing critical data (class=%s, level=%s)|r", 
             tostring(classFile or "nil"), 
             tostring(level or "0")))
-        return false
+        return _saveProfEnd(false)
     end
     
     -- Initialize characters table if needed
@@ -768,13 +889,40 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     -- Check if new character
     local isNew = (existingSnapshot == nil)
+
+    local existingEntry = existingSnapshot
+    local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
+    local preserveTimePlayed = existingEntry and existingEntry.timePlayed
+    local preserveConcentration       = existingEntry and existingEntry.concentration
+    local preserveRecipes             = existingEntry and existingEntry.recipes
+    local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
+    local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
+    local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
+    local preserveProfessionCooldowns = existingEntry and existingEntry.professionCooldowns
+    local preserveProfessionEquipment = existingEntry and existingEntry.professionEquipment
+    local preserveCooldownRecipeIDs   = existingEntry and existingEntry.cooldownRecipeIDs
+    local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
+    local preserveProfessionData      = existingEntry and existingEntry.professionData
+    local preserveRested              = existingEntry and existingEntry.rested
+    local preserveMailSnapshot        = existingEntry and existingEntry.mailSnapshot
+    local preserveHasMail             = existingEntry and existingEntry.hasMail
+    local preserveStats               = existingEntry and existingEntry.stats
+    local preserveMythicKey           = existingEntry and existingEntry.mythicKey
     
     -- Collect PvE data (Great Vault, Lockouts, M+)
-    local pveData = self:CollectPvEData()
+    local pveData = nil
+    if not lightOnly then
+        pveData = self:CollectPvEData()
+    end
     
     -- Collect Profession data (only if new character or professions don't exist)
     local professionData = nil
-    if isNew or not existingSnapshot or not existingSnapshot.professions then
+    if lightOnly then
+        professionData = existingEntry and existingEntry.professions
+        if professionData and next(professionData) then
+            ns._professionDataReady = true
+        end
+    elseif isNew or not existingSnapshot or not existingSnapshot.professions then
         professionData = self:CollectProfessionData()
         if professionData and next(professionData) then
             ns._professionDataReady = true
@@ -787,10 +935,15 @@ function WarbandNexus:SaveCurrentCharacterData()
         end
     end
     
-    -- Get character's average item level (ALWAYS fresh from API)
-    local _, avgItemLevelEquipped = GetAverageItemLevel()
-    if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then avgItemLevelEquipped = nil end
-    local itemLevel = avgItemLevelEquipped or 0
+    -- Get character's average item level (ALWAYS fresh from API when not light-only)
+    local itemLevel = (lightOnly and existingEntry and existingEntry.itemLevel) or 0
+    if not lightOnly then
+        local _, avgItemLevelEquipped = GetAverageItemLevel()
+        if issecretvalue and avgItemLevelEquipped and issecretvalue(avgItemLevelEquipped) then
+            avgItemLevelEquipped = existingEntry and existingEntry.itemLevel
+        end
+        itemLevel = avgItemLevelEquipped or 0
+    end
     
     -- Spec (for offline main stat in Gear tab)
     local specID, specName, specIcon = nil, nil, nil
@@ -814,14 +967,14 @@ function WarbandNexus:SaveCurrentCharacterData()
     end
     
     -- Scan for Mythic Keystone (always scan on login to check if key exists)
-    local keystoneData = nil
-    if self.ScanMythicKeystone then
+    local keystoneData = preserveMythicKey
+    if not lightOnly and self.ScanMythicKeystone then
         keystoneData = self:ScanMythicKeystone()
     end
     
-    local bagsArray = (self.db.char.bags and self.db.char.bags.items) and tableToItemArrayForStorage(self.db.char.bags.items) or nil
-    local bankArray = (self.db.char.personalBank and self.db.char.personalBank.items) and tableToItemArrayForStorage(self.db.char.personalBank.items) or nil
-    if self.SaveItemsCompressed and key then
+    if not lightOnly and self.SaveItemsCompressed and key then
+        local bagsArray = (self.db.char.bags and self.db.char.bags.items) and tableToItemArrayForStorage(self.db.char.bags.items) or nil
+        local bankArray = (self.db.char.personalBank and self.db.char.personalBank.items) and tableToItemArrayForStorage(self.db.char.personalBank.items) or nil
         if bagsArray then self:SaveItemsCompressed(key, "bags", bagsArray) end
         if bankArray then self:SaveItemsCompressed(key, "bank", bankArray) end
     end
@@ -833,34 +986,69 @@ function WarbandNexus:SaveCurrentCharacterData()
     local silver = math.floor((totalCopper % 10000) / 100)
     local copper = math.floor(totalCopper % 100)
     
-    -- Preserve trackingConfirmed flag from existing entry.
-    -- This flag is set by ConfirmCharacterTracking() when user makes a choice.
-    -- Without preserving it, every save would lose the user's tracking confirmation.
-    local existingEntry = existingSnapshot
-    local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
-    local preserveTimePlayed = existingEntry and existingEntry.timePlayed
-    -- Preserve profession service data (collected separately by ProfessionService)
-    local preserveConcentration       = existingEntry and existingEntry.concentration
-    local preserveRecipes             = existingEntry and existingEntry.recipes
-    local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
-    local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
-    local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
-    local preserveProfessionCooldowns = existingEntry and existingEntry.professionCooldowns
-    local preserveProfessionEquipment = existingEntry and existingEntry.professionEquipment
-    local preserveCooldownRecipeIDs   = existingEntry and existingEntry.cooldownRecipeIDs
-    local preserveCraftingOrders      = existingEntry and existingEntry.craftingOrders
-    local preserveProfessionData      = existingEntry and existingEntry.professionData
-    local preserveRested              = existingEntry and existingEntry.rested
-    local preserveMailSnapshot        = existingEntry and existingEntry.mailSnapshot
-    local preserveHasMail             = existingEntry and existingEntry.hasMail
-    local restedData                  = CollectRestedData() or preserveRested
-    -- Preserve maxXP when API returned nil so we don't overwrite good DB value with nil/0
-    if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
-        restedData.maxXP = preserveRested.maxXP
-        if not restedData.restedCapXP or restedData.restedCapXP == 0 then
-            local capMul = GetRestedCapMultiplier(raceFile)
-            restedData.restedCapXP = math.floor(preserveRested.maxXP * capMul)
+    local restedData = preserveRested
+    if not lightOnly then
+        restedData = CollectRestedData() or preserveRested
+        -- Preserve maxXP when API returned nil so we don't overwrite good DB value with nil/0
+        if restedData and (restedData.maxXP == nil or restedData.maxXP == 0) and preserveRested and type(preserveRested.maxXP) == "number" and preserveRested.maxXP > 0 then
+            restedData.maxXP = preserveRested.maxXP
+            if not restedData.restedCapXP or restedData.restedCapXP == 0 then
+                local capMul = GetRestedCapMultiplier(raceFile)
+                restedData.restedCapXP = math.floor(preserveRested.maxXP * capMul)
+            end
         end
+    end
+
+    local statsData = preserveStats
+    if not lightOnly then
+        statsData = CollectPlayerStats()
+    end
+
+    -- Login-light: patch existing row in place — avoids full table alloc + PopulateContent storm.
+    if lightOnly and existingEntry then
+        existingEntry.name = name
+        existingEntry.realm = realm
+        existingEntry.class = className
+        existingEntry.classFile = classFile
+        existingEntry.classID = classID
+        existingEntry.level = level
+        existingEntry.gold = gold
+        existingEntry.silver = silver
+        existingEntry.copper = copper
+        existingEntry.faction = faction
+        existingEntry.guildName = guildName
+        existingEntry.race = race
+        existingEntry.raceFile = raceFile
+        existingEntry.gender = gender
+        existingEntry.isTracked = true
+        existingEntry.trackingConfirmed = preserveConfirmed == nil and true or preserveConfirmed
+        existingEntry.lastSeen = time()
+        existingEntry.specID = specID
+        existingEntry.specName = specName
+        existingEntry.specIcon = specIcon
+        existingEntry.heroSpecID = heroSpecID
+        existingEntry.heroSpecName = heroSpecName
+        existingEntry.hasMail = (function()
+            if HasNewMail and HasNewMail() then return true end
+            if preserveHasMail then return true end
+            local snap = preserveMailSnapshot
+            if snap and ((snap.count or 0) > 0 or (snap.messages and #snap.messages > 0)) then
+                return true
+            end
+            return false
+        end)()
+        if not existingEntry.guid or existingEntry.guid == ""
+            or (issecretvalue and issecretvalue(existingEntry.guid)) then
+            if ns.Utilities and ns.Utilities.SafeGuid then
+                local g = ns.Utilities:SafeGuid("player")
+                if g and not (issecretvalue and issecretvalue(g)) then
+                    existingEntry.guid = g
+                end
+            end
+        end
+        self.db.global.characters[key] = existingEntry
+        RelocateLegacyCharacterSlot(self.db, key, legacyKey)
+        return _saveProfEnd(true)
     end
 
     self.db.global.characters[key] = {
@@ -910,7 +1098,7 @@ function WarbandNexus:SaveCurrentCharacterData()
             end
             return nil
         end)(),
-        stats                = CollectPlayerStats(),  -- For Gear tab offline Character Stats
+        stats                = statsData,  -- For Gear tab offline Character Stats
         specID               = specID,
         specName             = specName,
         specIcon             = specIcon,
@@ -926,20 +1114,23 @@ function WarbandNexus:SaveCurrentCharacterData()
             return false
         end)(),
         mailSnapshot         = preserveMailSnapshot,
+        lastFullSaveAt       = (not lightOnly) and time() or (existingEntry and existingEntry.lastFullSaveAt),
     }
 
     RelocateLegacyCharacterSlot(self.db, key, legacyKey)
 
-    -- Store PvE data globally (v2 path)
-    self:UpdatePvEDataV2(key, pveData)
-    
-    -- Bags/bank stored via SaveItemsCompressed above (itemStorage); no duplicate in character record or personalBanks from this path
-    -- Update currencies to global storage (v2)
-    self:UpdateCurrencyData()
+    if not lightOnly then
+        -- Store PvE data globally (v2 path)
+        self:UpdatePvEDataV2(key, pveData)
+        
+        -- Bags/bank stored via SaveItemsCompressed above (itemStorage); no duplicate in character record or personalBanks from this path
+        -- Update currencies to global storage (v2)
+        self:UpdateCurrencyData()
 
-    -- Keep equipped-gear cache fresh for Gear tab.
-    if self.ScanEquippedGear then
-        self:ScanEquippedGear()
+        -- Keep equipped-gear cache fresh for Gear tab.
+        if self.ScanEquippedGear then
+            self:ScanEquippedGear()
+        end
     end
     
     -- Fire event for UI refresh (DB-First pattern)
@@ -948,7 +1139,21 @@ function WarbandNexus:SaveCurrentCharacterData()
         isNew = isNew
     })
     
-    return true
+    return _saveProfEnd(true)
+end
+
+--- True when SV already holds a full character snapshot; login should not re-collect PvE/prof/stats.
+function WarbandNexus:IsCharacterRowPersistedWarm()
+    if not self.db or not self.db.global then return false end
+    local key = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+        and ns.CharacterService:ResolveCharactersTableKey(self)
+    if not key and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        key = ns.Utilities:GetCharacterStorageKey(self)
+    end
+    if not key then return false end
+    local charData = self.db.global.characters and self.db.global.characters[key]
+    local DF = ns.DataFreshness
+    return DF and DF.IsCharacterRowWarm and DF.IsCharacterRowWarm(charData) == true
 end
 
 --[[
@@ -1110,6 +1315,9 @@ function WarbandNexus:FlushDataServiceOnLogout()
         if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
             self:UpdateCharacterCache("zone")
         end
+    end
+    if self.FlushDeferredCharacterSave then
+        self:FlushDeferredCharacterSave()
     end
     if self.UpdateCharacterGold then
         self:UpdateCharacterGold()

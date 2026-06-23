@@ -161,6 +161,7 @@ local CurrencyCache = {
     _lastCurrencyDisplayEventAt = 0,
     _broadScanTimer = nil,
     _currencyDrainKickTimer = nil,
+    pendingPostCombatScan = false,
 }
 
 -- Loading state for UI (similar to ReputationLoadingState pattern)
@@ -544,7 +545,9 @@ function WarbandNexus:InitializeCurrencyCache()
         if ns.Utilities.GetCanonicalCharacterKey then
             canonLoop = ns.Utilities:GetCanonicalCharacterKey(charKey) or charKey
         end
-        if canonLoop == currentSubsidiaryKey and type(charCurrencies) == "table" then
+        local isCurrentChar = (canonLoop == currentSubsidiaryKey)
+            or (currentSubsidiaryKey and ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(charKey, currentSubsidiaryKey))
+        if isCurrentChar and type(charCurrencies) == "table" then
             local count = 0
             for _ in pairs(charCurrencies) do
                 count = count + 1
@@ -571,12 +574,32 @@ function WarbandNexus:InitializeCurrencyCache()
             scanReason = string.format("Version mismatch (DB: %s, Current: %s)", tostring(dbVersion), tostring(CurrencyCache.version))
         else
             local age = time() - CurrencyCache.lastFullScan
-            local MAX_CACHE_AGE = 3600  -- 1 hour
+            local MAX_CACHE_AGE = 3600  -- 1 hour (event-driven refresh only after warm persist)
             if age > MAX_CACHE_AGE then
                 needsScan = true
                 scanReason = string.format("Cache is old (%d seconds)", age)
             end
         end
+    end
+
+    local DF = ns.DataFreshness
+    if needsScan and DF and DF.IsCurrencyWarm and DF.IsCurrencyWarm(db, CurrencyCache.version, currentSubsidiaryKey) then
+        needsScan = false
+        scanReason = "Persisted warm — event-driven updates only"
+    end
+
+    if not needsScan then
+        if (db.lastScan or 0) <= 0 then
+            db.lastScan = time()
+        end
+        CurrencyCache.lastFullScan = db.lastScan
+        -- Suppress debounced/event FullScans briefly after warm reload (API burst looks like stale cache).
+        CurrencyCache.initScanPending = true
+        C_Timer.After(12, function()
+            if CurrencyCache then
+                CurrencyCache.initScanPending = false
+            end
+        end)
     end
     
     -- Currency data loaded from DB
@@ -1107,6 +1130,11 @@ end
 ---Builds a proper header tree from Blizzard's API hierarchy (supports Midnight+).
 function CurrencyCache:PerformFullScan(bypassThrottle)
     DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan triggered (bypass=" .. tostring(bypassThrottle) .. ")")
+    if not bypassThrottle and InCombatLockdown and InCombatLockdown() then
+        self.pendingPostCombatScan = true
+        DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan deferred (combat)")
+        return
+    end
     if not C_CurrencyInfo then
         -- Avoid leaving Currency tab stuck on "Loading" (e.g. rare load order / API unavailable).
         ns.CurrencyLoadingState.isLoading = false
@@ -1313,9 +1341,17 @@ local DrainCurrencyQueue
 
 local function ScheduleDebouncedBroadCurrencyScan()
     if CurrencyCache.initScanPending then return end
+    if InCombatLockdown and InCombatLockdown() then
+        CurrencyCache.pendingPostCombatScan = true
+        return
+    end
     if CurrencyCache._broadScanTimer then return end
     CurrencyCache._broadScanTimer = C_Timer.NewTimer(BROAD_CURRENCY_SCAN_DEBOUNCE_SEC, function()
         CurrencyCache._broadScanTimer = nil
+        if InCombatLockdown and InCombatLockdown() then
+            CurrencyCache.pendingPostCombatScan = true
+            return
+        end
         if CurrencyCache and CurrencyCache.PerformFullScan then
             CurrencyCache:PerformFullScan()
         end
@@ -1824,8 +1860,20 @@ function WarbandNexus:ScanCurrencies()
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
+    if InCombatLockdown and InCombatLockdown() then
+        CurrencyCache.pendingPostCombatScan = true
+        return
+    end
     
     CurrencyCache:PerformFullScan(false)
+end
+
+--- Flush a currency broad scan queued during combat.
+function CurrencyCache:FlushPostCombatScan()
+    if not self.pendingPostCombatScan then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    self.pendingPostCombatScan = false
+    self:PerformFullScan(false)
 end
 
 ---Clear currency cache for current character

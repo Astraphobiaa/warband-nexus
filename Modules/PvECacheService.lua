@@ -1868,6 +1868,21 @@ local function VaultActivitiesMissingILvl(bucket)
     return false
 end
 
+--- Skip login full PvE collect when pveCache already has a snapshot for this character.
+---@return boolean
+function WarbandNexus:IsPvERowPersistedWarm()
+    if not self.db or not self.db.global then return false end
+    local charKey = ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey
+        and ns.CharacterService:ResolveSubsidiaryCharacterKey(self)
+    if not charKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
+        charKey = ns.Utilities:GetCharacterStorageKey(self)
+    end
+    if not charKey then return false end
+    local DF = ns.DataFreshness
+    local ver = Constants and Constants.PVE_CACHE_VERSION
+    return DF and DF.IsPvEWarm and DF.IsPvEWarm(self.db.global, ver, charKey) == true
+end
+
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
     DebugPrint("|cff9370DB[PvECache]|r [PvE Action] UpdatePvEData triggered")
@@ -2837,8 +2852,33 @@ end
 ---This handler only updates NON-vault data (keystone, best runs, rewards) to avoid
 ---overwriting VaultScanner's richer data (nextLevelIlvl, maxIlvl, nextKeyLevel).
 function WarbandNexus:OnVaultDataReceived()
+    local P = ns.Profiler
+    if P and P.RunSlice then
+        return P:RunSlice(P.CAT.SVC, "PvE_VaultDataReceived", WarbandNexus._OnVaultDataReceivedBody, self)
+    end
+    return WarbandNexus:_OnVaultDataReceivedBody(self)
+end
+
+function WarbandNexus:_OnVaultDataReceivedBody()
+    ns._pveVaultHandlerActive = true
+    local function releaseVaultBagDefer()
+        ns._pveVaultHandlerActive = nil
+        local pendingBags = ns._pendingBagUpdateAfterVault
+        ns._pendingBagUpdateAfterVault = nil
+        if pendingBags and self.OnBagUpdate then
+            C_Timer.After(0, function()
+                if self and self.OnBagUpdate then
+                    self:OnBagUpdate(pendingBags)
+                end
+            end)
+        end
+    end
+
     local charKey = GetSessionCanonicalPvEKey()
-    if not charKey then return end
+    if not charKey then
+        releaseVaultBagDefer()
+        return
+    end
     local wasClaimable = SessionVaultWasClaimable(self, charKey)
     local beforeSig = BuildPvESignature(self.db.global and self.db.global.pveCache, charKey)
     
@@ -2860,6 +2900,7 @@ function WarbandNexus:OnVaultDataReceived()
         self:SendMessage(Constants.EVENTS.PVE_UPDATED)
     end
     EmitVaultReadyToastIfNewlyClaimable(self, charKey, wasClaimable, claimableNow)
+    releaseVaultBagDefer()
 end
 
 ---Sync vault data from VaultScanner to PvECacheService
@@ -3041,11 +3082,19 @@ end
 
 ---Handle UPDATE_INSTANCE_INFO event
 function WarbandNexus:OnInstanceInfoUpdate()
+    local P = ns.Profiler
+    if P and P.RunSlice then
+        return P:RunSlice(P.CAT.SVC, "PvE_InstanceInfoUpdate", self.UpdatePvEData, self)
+    end
     self:UpdatePvEData()
 end
 
 ---Handle CHALLENGE_MODE_COMPLETED event
 function WarbandNexus:OnChallengeModeCompleted()
+    local P = ns.Profiler
+    if P and P.RunSlice then
+        return P:RunSlice(P.CAT.SVC, "PvE_ChallengeModeCompleted", self.UpdatePvEData, self)
+    end
     self:UpdatePvEData()
 end
 

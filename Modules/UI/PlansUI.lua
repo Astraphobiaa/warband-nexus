@@ -1368,6 +1368,9 @@ local function GetCategoryStats(plan, categoryKey)
         return 0, 0
     end
     local questList = (plan.quests and plan.quests[categoryKey]) or {}
+    if WarbandNexus.FilterWeeklyProgressQuestList then
+        questList = WarbandNexus:FilterWeeklyProgressQuestList(plan, categoryKey, questList)
+    end
     local total, completed = 0, 0
     for i = 1, #questList do
         local q = questList[i]
@@ -1747,8 +1750,38 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             self:RemovePlan(plan.id)
         end)
 
+        local configBtn = Factory:CreateButton(charHeader, 24, 24, true)
+        configBtn:SetPoint("RIGHT", removeBtn, "LEFT", -4, 0)
+        configBtn:SetFrameLevel((charHeader:GetFrameLevel() or 0) + 5)
+        configBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+        configBtn:SetHighlightTexture("Interface\\Buttons\\UI-OptionsButton")
+        configBtn:SetScript("OnClick", function()
+            if self.ShowWeeklyProgressPlanDialog then
+                self:ShowWeeklyProgressPlanDialog(plan)
+            end
+        end)
+        configBtn:SetScript("OnEnter", function(btn)
+            if ns.TooltipService and ns.TooltipService.Show then
+                ns.TooltipService:Show(btn, {
+                    type = "custom",
+                    title = (ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking",
+                    icon = false,
+                    lines = {
+                        { text = (ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE_HELP"]) or "Choose categories and specific weekly objectives to track.", color = {0.85, 0.85, 0.85} },
+                    },
+                })
+            else
+                GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+                GameTooltip:SetText((ns.L and ns.L["WEEKLY_PROGRESS_CONFIGURE"]) or "Configure tracking", 1, 1, 1)
+                GameTooltip:Show()
+            end
+        end)
+        configBtn:SetScript("OnLeave", function()
+            if ns.TooltipService and ns.TooltipService.Hide then ns.TooltipService:Hide() else GameTooltip:Hide() end
+        end)
+
         local totalFs = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
-        totalFs:SetPoint("RIGHT", removeBtn, "LEFT", -6, 0)
+        totalFs:SetPoint("RIGHT", configBtn, "LEFT", -6, 0)
         local totalColor = (totalAll > 0 and completedAll == totalAll) and PlanGreenHex() or PlanGoldHex()
         totalFs:SetText(totalColor .. completedAll .. "/" .. totalAll .. "|r")
 
@@ -1796,6 +1829,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
             local catKey = catInfo.key
             if plan.questTypes and plan.questTypes[catKey] then
                 local questList = (plan.quests and plan.quests[catKey]) or {}
+                if self.FilterWeeklyProgressQuestList then
+                    questList = self:FilterWeeklyProgressQuestList(plan, catKey, questList)
+                end
                 local display = CAT_DISPLAY[catKey] or {}
                 local catColor = display.color or {0.8, 0.8, 0.8}
                 local catName = display.name and display.name() or catKey
@@ -3542,156 +3578,7 @@ function WarbandNexus:CloseAllPlanDialogs()
     end
 end
 
--- DAILY QUEST PLAN DIALOG
-
-function WarbandNexus:ShowDailyPlanDialog()
-    local COLORS = ns.UI_COLORS
-    local CAT_DISPLAY = ns.CATEGORY_DISPLAY or {}
-    
-    local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
-    local currentRealm = SafeRealmName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
-    local _, currentClass = UnitClass("player")
-    local classColors = RAID_CLASS_COLORS[currentClass]
-    
-    local existingPlan = self:HasActiveDailyPlan(currentName, currentRealm)
-    
-    local dialog, contentFrame, header = CreateExternalWindow({
-        name = "DailyPlanDialog",
-        title = (ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Midnight Quest Tracker",
-        icon = "Interface\\Icons\\INV_Misc_Note_06",
-        width = 460,
-        height = existingPlan and 220 or 470,
-    })
-    
-    if not dialog then return end
-    
-    -- Existing plan warning
-    if existingPlan then
-        local warningIconFrame = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 40, false, nil, true)
-        warningIconFrame:SetPoint("TOP", 0, -30)
-        warningIconFrame:Show()
-        
-        local warningText = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
-        warningText:SetPoint("TOP", warningIconFrame, "BOTTOM", 0, -10)
-        warningText:SetText("|cffff9900" .. ((ns.L and ns.L["DAILY_PLAN_EXISTS"]) or "Plan Already Exists") .. "|r")
-        
-        local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-        infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -8)
-        infoText:SetWidth(400)
-        infoText:SetWordWrap(true)
-        infoText:SetJustifyH("CENTER")
-        local charFullName = currentName .. "-" .. currentRealm
-        local dailyExistsDesc = (ns.L and ns.L["DAILY_PLAN_EXISTS_DESC"]) or "%s already has an active weekly quest plan. You can find it in the 'Weekly Progress' category."
-        infoText:SetText("|cffaaaaaa" .. format(dailyExistsDesc, charFullName) .. "|r")
-        
-        local okBtn = CreateThemedButton(contentFrame, OKAY or "OK", 120)
-        okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -16)
-        okBtn:SetScript("OnClick", function() dialog.Close() end)
-        
-        dialog:Show()
-        return
-    end
-    
-    -- Character display
-    local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 420, 42)
-    charFrame:SetPoint("TOP", 0, -12)
-    
-    local _, englishRace = UnitRace("player")
-    local gender = UnitSex("player")
-    local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
-    
-    local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 32, 32)
-    iconContainer:SetPoint("LEFT", 10, 0)
-    if ApplyVisuals and classColors then
-        ApplyVisuals(iconContainer, COLORS.bgCard, {classColors.r, classColors.g, classColors.b, 1})
-    end
-    
-    local charIconFrame = CreateIcon(iconContainer, raceAtlas, 26, true, nil, true)
-    charIconFrame:SetPoint("CENTER")
-    charIconFrame:Show()
-    
-    local charText = FontManager:CreateFontString(charFrame, "title", "OVERLAY")
-    charText:SetPoint("LEFT", iconContainer, "RIGHT", 8, 0)
-    if classColors then charText:SetTextColor(classColors.r, classColors.g, classColors.b) end
-    charText:SetText(currentName .. "-" .. currentRealm)
-    
-    -- "Midnight" content label
-    local contentLabel = FontManager:CreateFontString(charFrame, "small", "OVERLAY")
-    contentLabel:SetPoint("RIGHT", -10, 0)
-    contentLabel:SetText("|cff888888" .. ((ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight") .. "|r")
-    
-    -- Quest type checkboxes
-    local selectedQuestTypes = {
-        weeklyQuests = true,
-        worldQuests  = true,
-        assignments  = true,
-        dailyQuests  = true,
-        events       = true,
-    }
-    
-    local questTypeY = -68
-    local sectionLabel = FontManager:CreateFontString(contentFrame, "subtitle", "OVERLAY")
-    sectionLabel:SetPoint("TOPLEFT", 16, questTypeY)
-    ns.UI_SetTextColorRole(sectionLabel, "Bright")
-    sectionLabel:SetText((ns.L and ns.L["QUEST_TYPES"]) or "Track Categories:")
-    
-    local CATEGORIES = ns.QUEST_CATEGORIES or {}
-    local categoryDescs = {
-        weeklyQuests = (ns.L and ns.L["QUEST_CATEGORY_DESC_WEEKLY"]) or "Weekly objectives, hunts, sparks, world boss, delves",
-        worldQuests  = (ns.L and ns.L["QUEST_CATEGORY_DESC_WORLD"]) or "Zone-wide repeatable world quests",
-        assignments  = (ns.L and ns.L["QUEST_CATEGORY_DESC_ASSIGNMENTS"]) or "Special Assignments and weekly assignment progress",
-        dailyQuests  = (ns.L and ns.L["QUEST_CATEGORY_DESC_DAILY"]) or "Daily repeatable quests from NPCs",
-        events       = (ns.L and ns.L["QUEST_CATEGORY_DESC_EVENTS"]) or "Bonus objectives, tasks, and activities",
-    }
-    
-    for i = 1, #CATEGORIES do
-        local catInfo = CATEGORIES[i]
-        local catKey = catInfo.key
-        local display = CAT_DISPLAY[catKey] or {}
-        local catColor = display.color or {0.8, 0.8, 0.8}
-        local catName = display.name and display.name() or catKey
-        
-        local cb = CreateThemedCheckbox(contentFrame, selectedQuestTypes[catKey])
-        cb:SetPoint("TOPLEFT", 16, questTypeY - 28 - (i - 1) * 46)
-        
-        local colorBar = contentFrame:CreateTexture(nil, "ARTWORK")
-        colorBar:SetSize(3, 30)
-        colorBar:SetPoint("LEFT", cb, "RIGHT", 6, 0)
-        colorBar:SetColorTexture(catColor[1], catColor[2], catColor[3], 0.9)
-        
-        local label = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-        label:SetPoint("LEFT", colorBar, "RIGHT", 6, 5)
-        ns.UI_SetTextColorRole(label, "Bright")
-        label:SetText(catName)
-        
-        local desc = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
-        desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
-        ns.UI_SetTextColorRole(desc, "Muted")
-        desc:SetText(categoryDescs[catKey] or "")
-        
-        cb:SetScript("OnClick", function(self)
-            local isChecked = self:GetChecked()
-            selectedQuestTypes[catKey] = isChecked
-            if self.innerDot then self.innerDot:SetShown(isChecked) end
-        end)
-    end
-    
-    -- Buttons
-    local createBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["CREATE_PLAN"]) or "Track Character", 140)
-    createBtn:SetPoint("BOTTOM", -75, 10)
-    createBtn:SetScript("OnClick", function()
-        local plan = self:CreateDailyPlan(currentName, currentRealm, selectedQuestTypes)
-        if plan then
-            dialog.Close()
-        end
-    end)
-    
-    local cancelBtn = CreateThemedButton(contentFrame, CANCEL or "Cancel", 100)
-    cancelBtn:SetPoint("BOTTOM", 75, 10)
-    cancelBtn:SetScript("OnClick", function() dialog.Close() end)
-    
-    dialog:Show()
-end
+-- DAILY QUEST PLAN DIALOG (see Modules/UI/PlansUI_WeeklyPlanner.lua)
 
 if ns.UI_LayoutCoordinator and CardLayoutManager then
     local LC = ns.UI_LayoutCoordinator

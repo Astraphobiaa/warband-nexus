@@ -114,7 +114,7 @@ local objectDropDB
 local isBlockingInteractionOpen
 local discoveryPendingNpcID
 local questLogLockoutDebounceTimer
-local QUEST_LOG_LOCKOUT_DEBOUNCE_SEC = 0.75 -- coalesce QUEST_LOG bursts during flight / zone transitions
+local QUEST_LOG_LOCKOUT_DEBOUNCE_SEC = 1.5 -- coalesce QUEST_LOG bursts during flight / zone transitions
 
 -- TryChat / BuildObtainedChat: Modules/TryCounterService_Shared.lua (Fns.* aliases set above).
 
@@ -134,6 +134,11 @@ local DEBUG_TRACE_EVENTS = TC.DEBUG_TRACE_EVENTS or {}
 -- MUST be declared before tryCounterFrame:SetScript("OnEvent") — otherwise the closure resolves globals (nil).
 local DEBUG_TRACE_DEDUP_LOOT_MS = 0.22
 local lastDebugTraceLootTime = { LOOT_READY = 0 }
+local pendingRuntimeStatNpcIds = {} -- [npcID] = GetTime(); incremental stat reseed after kills
+local statIncrementalDebounceSerial = 0
+local STAT_INCREMENTAL_DEBOUNCE_SEC = 4
+local STAT_INCREMENTAL_MIN_INTERVAL_SEC = 10
+local lastStatIncrementalReseedAt = 0
 
 -- Encounter lifecycle: ENCOUNTER_START (pull), ENCOUNTER_END (12.0 secret args), BOSS_KILL fallback.
 -- NEW_MOUNT_ADDED / NEW_PET_ADDED: definitive learn signals when loot frames never tie to the kill.
@@ -270,9 +275,16 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
             end)
         end
     elseif event == "CRITERIA_UPDATE" then
-        Fns.RequestTryCounterStatisticsRuntimeRefresh()
+        -- CRITERIA_UPDATE has no payload and fires in bursts during quests/achievements.
+        -- Only re-read Statistics for NPCs we recently killed (ENCOUNTER_END marks them).
+        if next(pendingRuntimeStatNpcIds) then
+            Fns.RequestTryCounterStatisticsIncrementalRefresh()
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
-        Fns.RequestTryCounterStatisticsRuntimeRefresh()
+        if next(pendingRuntimeStatNpcIds) then
+            Fns.RequestTryCounterStatisticsIncrementalRefresh()
+        end
+        Fns.EnsureMergedStatisticSeedIndex()
     end
 end)
 
@@ -442,6 +454,10 @@ local instanceBossSlotOutcomeRules = {}
 local mergedStatSeedByTypeKey = {} -- [type .. "\0" .. key] = { tcType, tryKey, statIds, drops }
 local mergedStatSeedGroupList = {} -- stable iteration order for SeedFromStatistics
 local statSeedTryKeyPending = {}   -- drops with stat IDs but tryKey nil at seed time (API cold)
+local mergedStatSeedIndexDirty = true
+local statSeedWorkQueue = {}       -- reused by SeedFromStatistics (avoid per-seed allocations)
+local runtimeStatReseedDropScratch = {}
+local RUNTIME_STAT_NPC_TTL = 180
 
 -- Runtime state
 local recentKills = {}       -- [guid] = { npcID = n, name = s, time = t }
@@ -468,10 +484,6 @@ local perCharStatSyncSerial = 0
 local PER_CHAR_STAT_SYNC_QUICK_SEC = 1
 local PER_CHAR_STAT_SYNC_FULL_SEC = 8
 local PER_CHAR_STAT_RARITY_SEC = 12
-local statRuntimeDebounceSerial = 0
-local lastStatRuntimeFullSeedAt = 0
-local STAT_RUNTIME_DEBOUNCE_SEC = 5
-local STAT_RUNTIME_MIN_INTERVAL_SEC = 15
 local lastDifficultySkipChatKey = nil
 local lastDifficultySkipChatTime = 0
 local lastLockoutSkipChatKey = nil
@@ -2900,11 +2912,32 @@ function Fns.ApplyTryCountFromStatisticTotals(tcType, tryKey, globalTotal, hadRe
     return true
 end
 
+function Fns.InvalidateMergedStatisticSeedIndex()
+    mergedStatSeedIndexDirty = true
+end
+
+function Fns.EnsureMergedStatisticSeedIndex()
+    if not mergedStatSeedIndexDirty and #mergedStatSeedGroupList > 0 then
+        return
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        mergedStatSeedIndexDirty = true
+        return
+    end
+    Fns.RebuildMergedStatisticSeedIndex()
+end
+
 function Fns.RebuildMergedStatisticSeedIndex()
+    local P = ns.Profiler
+    if P and P.enabled and P.StartSlice then P:StartSlice(P.CAT.SVC, "TC_RebuildMergedStatIndex") end
     wipe(mergedStatSeedByTypeKey)
     wipe(mergedStatSeedGroupList)
     wipe(statSeedTryKeyPending)
-    if not npcDropDB then return end
+    if not npcDropDB then
+        mergedStatSeedIndexDirty = false
+        if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.SVC, "TC_RebuildMergedStatIndex") end
+        return
+    end
     for _, npcData in pairs(npcDropDB) do
         local npcStatIds = npcData.statisticIds
         for idx = 1, #npcData do
@@ -2950,6 +2983,8 @@ function Fns.RebuildMergedStatisticSeedIndex()
         bucket.statIds = arr
         bucket.idSet = nil
     end
+    mergedStatSeedIndexDirty = false
+    if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.SVC, "TC_RebuildMergedStatIndex") end
 end
 
 function Fns.ResolveMergedStatisticIdsForDrop(drop, resolvedDropStatIds)
@@ -2968,16 +3003,27 @@ function Fns.ResolveMergedStatisticIdsForDrop(drop, resolvedDropStatIds)
 end
 
 function Fns.PruneStatisticSnapshotsOrphanKeys()
-    if not Fns.EnsureDB() then return end
+    local P = ns.Profiler
+    if P and P.enabled and P.StartSlice then P:StartSlice(P.CAT.SVC, "TC_PruneStatSnapshots") end
+    if not Fns.EnsureDB() then
+        if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.SVC, "TC_PruneStatSnapshots") end
+        return
+    end
     local db = WarbandNexus.db.global
     local snaps = db.statisticSnapshots
     local chars = db.characters
-    if not snaps or not chars or type(snaps) ~= "table" or type(chars) ~= "table" then return end
+    if not snaps or not chars or type(snaps) ~= "table" or type(chars) ~= "table" then
+        if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.SVC, "TC_PruneStatSnapshots") end
+        return
+    end
     local nChar = 0
     for _ in pairs(chars) do
         nChar = nChar + 1
     end
-    if nChar == 0 then return end
+    if nChar == 0 then
+        if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.SVC, "TC_PruneStatSnapshots") end
+        return
+    end
 
     local CS = ns.CharacterService
     local removed = 0
@@ -2996,17 +3042,23 @@ function Fns.PruneStatisticSnapshotsOrphanKeys()
     if removed > 0 then
         WarbandNexus:Debug("TryCounter: Pruned %d orphan statisticSnapshots (no roster match)", removed)
     end
+    if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.SVC, "TC_PruneStatSnapshots") end
 end
 
 function Fns.ReseedStatisticsForDrops(drops, resolvedDropStatIds)
-    if not drops or #drops == 0 then return end
-    if not Fns.EnsureDB() then return end
-    if not GetStatistic then return end
+    local P = ns.Profiler
+    if P and P.enabled and P.StartSlice then P:StartSlice(P.CAT.SVC, "TC_ReseedStatisticsForDrops") end
+    local function finish()
+        if P and P.enabled and P.StopSlice then P:StopSlice(P.CAT.SVC, "TC_ReseedStatisticsForDrops") end
+    end
+    if not drops or #drops == 0 then finish() return end
+    if not Fns.EnsureDB() then finish() return end
+    if not GetStatistic then finish() return end
 
-    Fns.RebuildMergedStatisticSeedIndex()
+    Fns.EnsureMergedStatisticSeedIndex()
 
     local charKey = StatisticSnapshotStorageKey()
-    if not charKey then return end
+    if not charKey then finish() return end
 
     local snapshots = WarbandNexus.db.global.statisticSnapshots
     if not snapshots then
@@ -3070,6 +3122,7 @@ function Fns.ReseedStatisticsForDrops(drops, resolvedDropStatIds)
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "statistics_reseeded" })
     end
+    finish()
 end
 
 function Fns.DropsHaveStatBackedReseed(drops, npcStatIds)
@@ -5492,12 +5545,19 @@ local function ScheduleLootRouteProcessor(addon, route, source)
         V.isProfessionLooting = professionLootingSnapshot
 
         local ok, err
+        local P = ns.Profiler
+        local routeFn
         if route == "container" then
-            ok, err = pcall(addon.ProcessContainerLoot, addon, source)
+            routeFn = function() addon:ProcessContainerLoot(source) end
         elseif route == "fishing" then
-            ok, err = pcall(addon.ProcessFishingLoot, addon, source)
+            routeFn = function() addon:ProcessFishingLoot(source) end
         elseif route == "npc" then
-            ok, err = pcall(addon.ProcessNPCLoot, addon, source)
+            routeFn = function() addon:ProcessNPCLoot(source) end
+        end
+        if routeFn and P and P.enabled and P.RunSlice then
+            ok, err = pcall(P.RunSlice, P, P.CAT.SVC, "TC_LootRoute_" .. route, routeFn)
+        elseif routeFn then
+            ok, err = pcall(routeFn)
         else
             ok = true
         end
@@ -6954,18 +7014,22 @@ function Fns.ScheduleDeferredRarityMountMaxSync(delaySec)
     end)
 end
 
-function Fns.SeedFromStatistics()
+function Fns.SeedFromStatistics(opts)
+    opts = opts or {}
     if not Fns.EnsureDB() then return end
     if not GetStatistic then return end
 
-    Fns.PruneStatisticSnapshotsOrphanKeys()
-    Fns.RebuildMergedStatisticSeedIndex()
+    if opts.pruneOrphans then
+        Fns.PruneStatisticSnapshotsOrphanKeys()
+    end
+    Fns.EnsureMergedStatisticSeedIndex()
 
     local charKey = StatisticSnapshotStorageKey()
     if not charKey then return end
 
     local P = ns.Profiler
-    if P then P:StartAsync("SeedFromStatistics") end
+    local seedLabel = P and P.SliceLabel and P:SliceLabel(P.CAT.SVC, "TC_SeedFromStatistics")
+    if P and seedLabel then P:StartAsync(seedLabel) end
     local LT = ns.LoadingTracker
     if LT then LT:Register("trycounts", (ns.L and ns.L["TRYCOUNTER_TRY_COUNTS"]) or "Try Counts") end
     local snapshots = WarbandNexus.db.global.statisticSnapshots
@@ -6980,20 +7044,27 @@ function Fns.SeedFromStatistics()
 
     -- Merged buckets: one seed per (type, tryKey) with union of all difficulty/NPC statistic columns.
     -- Plus pending rows where tryKey was nil (journal cold) — same per-drop stat list as before.
-    local seedQueue = {}
+    wipe(statSeedWorkQueue)
+    local seedQueue = statSeedWorkQueue
+    local seedQueueLen = 0
     for i = 1, #mergedStatSeedGroupList do
-        seedQueue[#seedQueue + 1] = { bucket = mergedStatSeedGroupList[i] }
+        seedQueueLen = seedQueueLen + 1
+        seedQueue[seedQueueLen] = { bucket = mergedStatSeedGroupList[i] }
     end
     for p = 1, #statSeedTryKeyPending do
         local pend = statSeedTryKeyPending[p]
         local sids = Fns.ResolveReseedStatIdsForDrop(pend.drop, pend.npcStatIds)
         if sids and #sids > 0 then
-            seedQueue[#seedQueue + 1] = {
+            seedQueueLen = seedQueueLen + 1
+            seedQueue[seedQueueLen] = {
                 drop = pend.drop,
                 statIds = sids,
                 npcStatIds = pend.npcStatIds,
             }
         end
+    end
+    for i = seedQueueLen + 1, #seedQueue do
+        seedQueue[i] = nil
     end
 
     local queueIdx = 1
@@ -7061,7 +7132,7 @@ function Fns.SeedFromStatistics()
             end
         end
 
-        if P then P:StopAsync("SeedFromStatistics") end
+        if P and seedLabel then P:StopAsync(seedLabel) end
         if LT then LT:Complete("trycounts") end
         if seeded > 0 then
             WarbandNexus:Debug("TryCounter: Seeded %d entries from WoW Statistics (char: %s)", seeded, charKey)
@@ -7078,7 +7149,7 @@ function Fns.SeedFromStatistics()
             WarbandNexus:Debug("TryCounter: %d drops unresolved, retrying in 10s...", #unresolvedDrops)
             C_Timer.After(10, function()
                 if not Fns.EnsureDB() then return end
-                Fns.RebuildMergedStatisticSeedIndex()
+                Fns.EnsureMergedStatisticSeedIndex()
                 local retrySeeded = 0
                 local stillUnresolved = {}
                 for i = 1, #unresolvedDrops do
@@ -7109,7 +7180,7 @@ function Fns.SeedFromStatistics()
                     WarbandNexus:Debug("TryCounter: %d still unresolved, final retry in 30s...", #stillUnresolved)
                     C_Timer.After(30, function()
                         if not Fns.EnsureDB() then return end
-                        Fns.RebuildMergedStatisticSeedIndex()
+                        Fns.EnsureMergedStatisticSeedIndex()
                         local finalSeeded = 0
                         local snaps = WarbandNexus.db.global.statisticSnapshots
                         for j = 1, #stillUnresolved do
@@ -7144,20 +7215,78 @@ function Fns.SeedFromStatistics()
     ProcessBatch()
 end
 
-function Fns.RequestTryCounterStatisticsRuntimeRefresh()
+function Fns.PurgeStaleRuntimeStatReseedNpcs()
+    local now = GetTime()
+    for npcID, markedAt in pairs(pendingRuntimeStatNpcIds) do
+        if now - markedAt > RUNTIME_STAT_NPC_TTL then
+            pendingRuntimeStatNpcIds[npcID] = nil
+        end
+    end
+end
+
+function Fns.MarkNpcForRuntimeStatReseed(npcID)
+    npcID = tonumber(npcID)
+    if not npcID then return end
+    pendingRuntimeStatNpcIds[npcID] = GetTime()
+end
+
+--- Reseed Statistics for recently killed NPCs only (not the full CollectibleSourceDB scan).
+---@return boolean didWork
+function Fns.ReseedStatisticsForPendingRuntimeNpcs()
+    Fns.PurgeStaleRuntimeStatReseedNpcs()
+    if not next(pendingRuntimeStatNpcIds) then return false end
+    if not GetStatistic or not Fns.EnsureDB() then return false end
+
+    Fns.EnsureMergedStatisticSeedIndex()
+
+    wipe(runtimeStatReseedDropScratch)
+    local drops = runtimeStatReseedDropScratch
+    local dropCount = 0
+    for npcID in pairs(pendingRuntimeStatNpcIds) do
+        local npcData = npcDropDB and npcDropDB[npcID]
+        if npcData then
+            for idx = 1, #npcData do
+                local drop = npcData[idx]
+                if type(drop) == "table" and drop.type and drop.itemID then
+                    dropCount = dropCount + 1
+                    drops[dropCount] = drop
+                end
+            end
+        end
+    end
+    for i = dropCount + 1, #drops do
+        drops[i] = nil
+    end
+    if dropCount == 0 then
+        wipe(pendingRuntimeStatNpcIds)
+        return false
+    end
+
+    Fns.ReseedStatisticsForDrops(drops, nil)
+    wipe(pendingRuntimeStatNpcIds)
+    return true
+end
+
+function Fns.RequestTryCounterStatisticsIncrementalRefresh()
     if not GetStatistic then return end
-    statRuntimeDebounceSerial = statRuntimeDebounceSerial + 1
-    local token = statRuntimeDebounceSerial
-    C_Timer.After(STAT_RUNTIME_DEBOUNCE_SEC, function()
-        if token ~= statRuntimeDebounceSerial then return end
+    Fns.PurgeStaleRuntimeStatReseedNpcs()
+    if not next(pendingRuntimeStatNpcIds) then return end
+    statIncrementalDebounceSerial = statIncrementalDebounceSerial + 1
+    local token = statIncrementalDebounceSerial
+    C_Timer.After(STAT_INCREMENTAL_DEBOUNCE_SEC, function()
+        if token ~= statIncrementalDebounceSerial then return end
         if not tryCounterReady or not Fns.EnsureDB() then return end
         local now = GetTime()
-        if (now - lastStatRuntimeFullSeedAt) < STAT_RUNTIME_MIN_INTERVAL_SEC then return end
-        lastStatRuntimeFullSeedAt = now
-        Fns.RebuildMergedStatisticSeedIndex()
-        Fns.SeedFromStatistics()
+        if (now - lastStatIncrementalReseedAt) < STAT_INCREMENTAL_MIN_INTERVAL_SEC then return end
+        lastStatIncrementalReseedAt = now
+        Fns.ReseedStatisticsForPendingRuntimeNpcs()
         Fns.ScheduleDeferredRarityMountMaxSync(2)
     end)
+end
+
+--- Legacy name: encounter/loot paths mark pending NPCs then call incremental refresh.
+function Fns.RequestTryCounterStatisticsRuntimeRefresh()
+    Fns.RequestTryCounterStatisticsIncrementalRefresh()
 end
 
 local function HasPersistedTryCountEntries()
@@ -7174,19 +7303,26 @@ local function HasPersistedTryCountEntries()
 end
 
 function Fns.SchedulePerCharacterStatisticsAndRaritySync()
+    local dbGlobal = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+    local charKey = StatisticSnapshotStorageKey()
+    local DF = ns.DataFreshness
+    if DF and DF.IsTryCounterStatisticsWarm and dbGlobal and charKey
+        and DF.IsTryCounterStatisticsWarm(dbGlobal, charKey) then
+        return
+    end
     perCharStatSyncSerial = perCharStatSyncSerial + 1
     local serial = perCharStatSyncSerial
-    local function runSeed()
+    local function runSeed(pruneOrphans)
         if serial ~= perCharStatSyncSerial then return end
         if not tryCounterReady or not Fns.EnsureDB() then return end
-        Fns.RebuildMergedStatisticSeedIndex()
-        Fns.SeedFromStatistics()
+        Fns.InvalidateMergedStatisticSeedIndex()
+        Fns.SeedFromStatistics({ pruneOrphans = pruneOrphans == true })
     end
     local skipQuick = ns._wnPlayerReloading == true and HasPersistedTryCountEntries()
     if not skipQuick then
-        C_Timer.After(PER_CHAR_STAT_SYNC_QUICK_SEC, runSeed)
+        C_Timer.After(PER_CHAR_STAT_SYNC_QUICK_SEC, function() runSeed(false) end)
     end
-    C_Timer.After(PER_CHAR_STAT_SYNC_FULL_SEC, runSeed)
+    C_Timer.After(PER_CHAR_STAT_SYNC_FULL_SEC, function() runSeed(true) end)
     C_Timer.After(PER_CHAR_STAT_RARITY_SEC, function()
         if serial ~= perCharStatSyncSerial then return end
         if WarbandNexus.SyncRarityMountAttemptsMax then
@@ -7204,8 +7340,8 @@ function WarbandNexus:ForceTryCounterStatisticsSync()
         return
     end
     if not Fns.EnsureDB() then return end
-    Fns.RebuildMergedStatisticSeedIndex()
-    Fns.SeedFromStatistics()
+    Fns.InvalidateMergedStatisticSeedIndex()
+    Fns.SeedFromStatistics({ pruneOrphans = true })
     Fns.ScheduleDeferredRarityMountMaxSync(2)
     if self.Print then
         self:Print("|cff9370DB[WN]|r Statistics sync started for this character.")
@@ -7442,7 +7578,8 @@ function WarbandNexus:RebuildTrackDB()
 
     -- Rebuild O(1) lookup indices
     Fns.BuildReverseIndices()
-    Fns.RebuildMergedStatisticSeedIndex()
+    Fns.InvalidateMergedStatisticSeedIndex()
+    Fns.EnsureMergedStatisticSeedIndex()
 end
 
 -- INITIALIZATION
@@ -7492,7 +7629,19 @@ function WarbandNexus:InitializeTryCounter()
     -- Build reverse lookup indices for O(1) Is*Collectible() queries.
     -- Must run AFTER DB references are loaded and trackDB is merged.
     Fns.BuildReverseIndices()
-    Fns.RebuildMergedStatisticSeedIndex()
+
+    local dbGlobal = self.db and self.db.global
+    local charKey = StatisticSnapshotStorageKey()
+    local DF = ns.DataFreshness
+    local statsWarm = DF and DF.IsTryCounterStatisticsWarm and dbGlobal and charKey
+        and DF.IsTryCounterStatisticsWarm(dbGlobal, charKey)
+
+    if not statsWarm then
+        Fns.InvalidateMergedStatisticSeedIndex()
+        Fns.EnsureMergedStatisticSeedIndex()
+    else
+        mergedStatSeedIndexDirty = true
+    end
 
     -- Merge previously discovered lockout quests from SavedVariables
     Fns.MergeDiscoveredLockoutQuests()
@@ -7503,6 +7652,8 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Pre-resolve mount/pet IDs for all known drop items (warmup cache for SeedFromStatistics)
     -- Delayed 5s (absolute ~T+6.5s). Time-budgeted to prevent frame spikes.
+    -- Skip when statistics snapshots already warm — event path resolves on demand.
+    if not statsWarm then
     C_Timer.After(5, function()
         local RESOLVE_BUDGET_MS = 3
         local resolveQueue = {}
@@ -7538,6 +7689,7 @@ function WarbandNexus:InitializeTryCounter()
         end
         ResolveBatch()
     end)
+    end
 
     -- Per-character Statistics seed + Rarity max overlay (PLAYER_ENTERING_WORLD also schedules on alt/reload).
     -- Quick pass T+1s, full pass T+8s (after pre-resolve ~T+5s warms mount/pet IDs).
@@ -7620,7 +7772,7 @@ function WarbandNexus:TryCounterAuditMountStatisticBuckets()
         end
         return
     end
-    Fns.RebuildMergedStatisticSeedIndex()
+    Fns.EnsureMergedStatisticSeedIndex()
     local n = 0
     local multi = 0
     for i = 1, #mergedStatSeedGroupList do

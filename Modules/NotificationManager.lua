@@ -639,7 +639,7 @@ function WarbandNexus:PrintNotificationTestHelp()
     self:Print("|cff44ff44/wn notif stack|r — Achievement + criteria + reminder (respects Warband achievement popups toggle)")
     self:Print("|cff44ff44/wn notif earn [id]|r — Live path: Blizzard AchievementAlertSystem:AddAlert (earned)")
     self:Print("|cff44ff44/wn notif progress [id] [step]|r — Live path: CriteriaAlertSystem:AddAlert (criteria step)")
-    self:Print("|cff44ff44/wn notif traveler|r — Live path: ProgressAlertSystem:AddAlert (Traveler's Log style)")
+    self:Print("|cff44ff44/wn notif traveler|r — Traveler's Log progress toast (AddAlert hook or WN direct)")
     self:Print("|cff44ff44/wn notif earned [id]|r — Live path: ACHIEVEMENT_EARNED event (CollectionService)")
     self:Print("|cff44ff44/wn notif hierarchy|r — Criteria -> sub (type 8) -> meta chain (62901 / 12918 / 40958)")
     self:Print("|cff888888Toggle Settings > Notifications > Warband achievement popups ON/OFF, then re-run.|r")
@@ -2563,6 +2563,18 @@ end
     Central event listener for all notification types
 ============================================================================]]
 
+local function ScheduleAlertSuppressionRetries(addon)
+    if not addon or not addon.ApplyBlizzardAchievementAlertSuppression then return end
+    local delays = { 0.5, 2.0, 5.0 }
+    for i = 1, #delays do
+        C_Timer.After(delays[i], function()
+            if addon.ApplyBlizzardAchievementAlertSuppression then
+                addon:ApplyBlizzardAchievementAlertSuppression()
+            end
+        end)
+    end
+end
+
 ---Initialize event-driven notification system
 function WarbandNexus:InitializeNotificationListeners()
     -- Register for custom notification events
@@ -2642,14 +2654,15 @@ function WarbandNexus:InitializeNotificationListeners()
     C_Timer.After(0, function()
         if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
             WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+            ScheduleAlertSuppressionRetries(WarbandNexus)
         end
     end)
     -- AceEvent: callback is (eventName, ...wowArgs); ADDON_LOADED's sole payload is the loaded addon name.
     self:RegisterEvent("ADDON_LOADED", function(_, loadedAddon)
-        if loadedAddon == "Blizzard_SharedXML" or loadedAddon == "Blizzard_AchievementUI"
-            or loadedAddon == "Blizzard_AdventureGuide" then
+        if IsAlertSourceAddOn(loadedAddon) then
             if self.ApplyBlizzardAchievementAlertSuppression then
                 self:ApplyBlizzardAchievementAlertSuppression()
+                ScheduleAlertSuppressionRetries(self)
             end
         end
     end)
@@ -2662,6 +2675,7 @@ function WarbandNexus:InitializeNotificationListeners()
         C_Timer.After(0, function()
             if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
                 WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                ScheduleAlertSuppressionRetries(WarbandNexus)
             end
         end)
     end)
@@ -2793,9 +2807,11 @@ local function ResolveProgressAlertPayload(a1, a2, ...)
         end
         return {
             title = safeStr(t.title) or safeStr(t.label) or safeStr(t.header) or safeStr(t.categoryTitle)
-                or safeStr(t.headerText),
+                or safeStr(t.headerText) or safeStr(t.topLine) or safeStr(t.activityTitle) or safeStr(t.parentTitle),
             text = safeStr(t.text) or safeStr(t.description) or safeStr(t.name) or safeStr(t.subtitle)
-                or safeStr(t.criteriaString) or safeStr(t.body),
+                or safeStr(t.criteriaString) or safeStr(t.body) or safeStr(t.bodyText) or safeStr(t.message)
+                or safeStr(t.criteriaText) or safeStr(t.objectiveText) or safeStr(t.taskName)
+                or safeStr(t.activityName) or safeStr(t.activityDescription),
             icon = t.icon,
             iconAtlas = safeStr(t.iconAtlas) or safeStr(t.atlas) or safeStr(t.textureAtlas),
             iconFileID = (type(t.iconFileID) == "number" and t.iconFileID)
@@ -2997,12 +3013,158 @@ local function IsWnAddAlertWrapper(fn)
     return type(fn) == "function" and wnAddAlertWrappers[fn] == true
 end
 
-local function CaptureBlizzardAddAlertHandlers(addon)
-    if Utilities and Utilities.SafeLoadAddOn then
-        Utilities:SafeLoadAddOn("Blizzard_SharedXML")
-        Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-        Utilities:SafeLoadAddOn("Blizzard_AdventureGuide")
+--- Midnight may omit _G.ProgressAlertSystem; try known globals after alert addons load.
+local PROGRESS_ALERT_SYSTEM_GLOBALS = {
+    "ProgressAlertSystem",
+    "MonthlyActivitiesAlertSystem",
+    "PerksActivitiesAlertSystem",
+}
+
+local function FindProgressAlertSystem()
+    for i = 1, #PROGRESS_ALERT_SYSTEM_GLOBALS do
+        local sys = _G[PROGRESS_ALERT_SYSTEM_GLOBALS[i]]
+        if sys and type(sys.AddAlert) == "function" then
+            return sys
+        end
     end
+    return nil
+end
+
+local function SafeAlertFrameText(region)
+    if not region or not region.GetText then return nil end
+    local ok, text = pcall(region.GetText, region)
+    if not ok or type(text) ~= "string" or text == "" then return nil end
+    if issecretvalue and issecretvalue(text) then return nil end
+    return text
+end
+
+---Scrape title/body from Blizzard progress alert frames when AddAlert hook is unavailable.
+local function ScrapeProgressAlertFrameText(frame)
+    if not frame then return nil, nil end
+    local lines = {}
+    local function collectRegion(region)
+        if not region then return end
+        if region.IsObjectType and region:IsObjectType("FontString") then
+            local text = SafeAlertFrameText(region)
+            if text then lines[#lines + 1] = text end
+            return
+        end
+        if region.GetRegions then
+            local ok, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z =
+                pcall(region.GetRegions, region)
+            if ok then
+                local regions = { a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z }
+                for ri = 1, #regions do
+                    collectRegion(regions[ri])
+                end
+            end
+        end
+    end
+    collectRegion(frame)
+    if frame.GetChildren then
+        local ok, c1, c2, c3, c4, c5, c6, c7, c8 = pcall(frame.GetChildren, frame)
+        if ok then
+            local children = { c1, c2, c3, c4, c5, c6, c7, c8 }
+            for ci = 1, #children do
+                collectRegion(children[ci])
+            end
+        end
+    end
+    local named = { "Header", "Label", "Name", "Text", "Title", "TopText", "BottomText" }
+    for ni = 1, #named do
+        local child = frame[named[ni]]
+        if child then
+            if child.IsObjectType and child:IsObjectType("FontString") then
+                local text = SafeAlertFrameText(child)
+                if text then lines[#lines + 1] = text end
+            elseif child.GetText then
+                local text = SafeAlertFrameText(child)
+                if text then lines[#lines + 1] = text end
+            end
+        end
+    end
+    if #lines == 0 then return nil, nil end
+    if #lines == 1 then return nil, lines[1] end
+    return lines[1], lines[2]
+end
+
+local function MirrorAndSuppressProgressAlertFrame(frame)
+    if not frame or not NP.UseWarbandCriteriaProgressPopups() then return end
+    if frame._wnProgMirrorPending then return end
+    local title, text = ScrapeProgressAlertFrameText(frame)
+    if title or text then
+        TryDispatchProgressAlertToast({ title = title, text = text })
+    else
+        frame._wnProgMirrorPending = true
+        C_Timer.After(0, function()
+            frame._wnProgMirrorPending = nil
+            if not frame.IsShown or not frame:IsShown() then return end
+            local retryTitle, retryText = ScrapeProgressAlertFrameText(frame)
+            if retryTitle or retryText then
+                TryDispatchProgressAlertToast({ title = retryTitle, text = retryText })
+            end
+        end)
+    end
+    if frame.Hide then
+        frame:Hide()
+    end
+end
+
+local function FrameLooksLikeProgressAlert(frame)
+    if not frame or not frame.GetName then return false end
+    local ok, name = pcall(frame.GetName, frame)
+    if not ok or type(name) ~= "string" or name == "" then return false end
+    if name:find("ProgressAlert", 1, true) then return true end
+    if name:find("MonthlyActiv", 1, true) then return true end
+    if name:find("PerksActiv", 1, true) then return true end
+    if name:find("Traveler", 1, true) then return true end
+    return false
+end
+
+local function ScanAlertFrameForProgressAlerts()
+    if not NP.UseWarbandCriteriaProgressPopups() then return end
+    local alertFrame = _G.AlertFrame
+    if not alertFrame or not alertFrame.GetNumChildren then return end
+    local ok, n = pcall(alertFrame.GetNumChildren, alertFrame)
+    if not ok or not n or n < 1 then return end
+    for i = 1, n do
+        local child = select(i, alertFrame:GetChildren())
+        if child and child.IsShown and child:IsShown() and FrameLooksLikeProgressAlert(child) then
+            MirrorAndSuppressProgressAlertFrame(child)
+        end
+    end
+end
+
+--- Blizzard addons that may define ProgressAlertSystem / alert frames (load order varies by patch).
+local ALERT_SOURCE_ADDONS = {
+    "Blizzard_SharedXML",
+    "Blizzard_AchievementUI",
+    "Blizzard_AdventureGuide",
+    "Blizzard_MonthlyActivities",
+    "Blizzard_PerksActivities",
+    "Blizzard_TradingPostUI",
+}
+
+local function IsAlertSourceAddOn(loadedAddon)
+    if not loadedAddon or loadedAddon == "" then return false end
+    for i = 1, #ALERT_SOURCE_ADDONS do
+        if loadedAddon == ALERT_SOURCE_ADDONS[i] then
+            return true
+        end
+    end
+    return false
+end
+
+local function LoadAlertSourceAddOns()
+    if Utilities and Utilities.SafeLoadAddOn then
+        for i = 1, #ALERT_SOURCE_ADDONS do
+            Utilities:SafeLoadAddOn(ALERT_SOURCE_ADDONS[i])
+        end
+    end
+end
+
+local function CaptureBlizzardAddAlertHandlers(addon)
+    LoadAlertSourceAddOns()
     if AchievementAlertSystem and type(AchievementAlertSystem.AddAlert) == "function" then
         local fn = AchievementAlertSystem.AddAlert
         if not IsWnAddAlertWrapper(fn) then
@@ -3015,11 +3177,15 @@ local function CaptureBlizzardAddAlertHandlers(addon)
             addon._blizzCriteriaAddAlert = fn
         end
     end
-    local progressSys = _G.ProgressAlertSystem
-    if progressSys and type(progressSys.AddAlert) == "function" then
-        local fn = progressSys.AddAlert
-        if not IsWnAddAlertWrapper(fn) then
-            addon._blizzProgressAddAlert = fn
+    addon._blizzProgressAddAlertOrig = addon._blizzProgressAddAlertOrig or {}
+    for i = 1, #PROGRESS_ALERT_SYSTEM_GLOBALS do
+        local globalName = PROGRESS_ALERT_SYSTEM_GLOBALS[i]
+        local sys = _G[globalName]
+        if sys and type(sys.AddAlert) == "function" then
+            local fn = sys.AddAlert
+            if not IsWnAddAlertWrapper(fn) then
+                addon._blizzProgressAddAlertOrig[globalName] = fn
+            end
         end
     end
 end
@@ -3061,9 +3227,7 @@ local function InstallBlizzardAlertFrameHideHooks()
         local progF = _G["ProgressAlertFrame" .. i]
         if progF and not progF._wnProgAlertHideHooked then
             progF:HookScript("OnShow", function(self)
-                if self.Hide and NP.UseWarbandCriteriaProgressPopups() then
-                    self:Hide()
-                end
+                MirrorAndSuppressProgressAlertFrame(self)
             end)
             progF._wnProgAlertHideHooked = true
         end
@@ -3071,11 +3235,16 @@ local function InstallBlizzardAlertFrameHideHooks()
     local progRoot = _G.ProgressAlertFrame
     if progRoot and not progRoot._wnProgAlertHideHooked then
         progRoot:HookScript("OnShow", function(self)
-            if self.Hide and NP.UseWarbandCriteriaProgressPopups() then
-                self:Hide()
-            end
+            MirrorAndSuppressProgressAlertFrame(self)
         end)
         progRoot._wnProgAlertHideHooked = true
+    end
+    local alertFrame = _G.AlertFrame
+    if alertFrame and not alertFrame._wnProgressAlertScanHooked then
+        alertFrame:HookScript("OnShow", function()
+            ScanAlertFrameForProgressAlerts()
+        end)
+        alertFrame._wnProgressAlertScanHooked = true
     end
 end
 
@@ -3156,9 +3325,6 @@ end
 
 local function BuildProgressAddAlertReplacement(orig)
     return function(sys, a1, a2, ...)
-        if not NP.UseWarbandAchievementPopups() then
-            return orig(sys, a1, a2, ...)
-        end
         if not NP.UseWarbandCriteriaProgressPopups() then
             return orig(sys, a1, a2, ...)
         end
@@ -3166,22 +3332,8 @@ local function BuildProgressAddAlertReplacement(orig)
         if not payload then
             return orig(sys, a1, a2, ...)
         end
-        local origA1, origA2 = a1, a2
-        local rest = { ... }
-        C_Timer.After(0, function()
-            if not NP.UseWarbandAchievementPopups() then
-                pcall(orig, sys, origA1, origA2, unpack(rest))
-                return
-            end
-            if not NP.UseWarbandCriteriaProgressPopups() then
-                pcall(orig, sys, origA1, origA2, unpack(rest))
-                return
-            end
-            if TryDispatchProgressAlertToast(payload) then
-                return
-            end
-            -- WN criteria lane active: never fall back to Blizzard progress alert frames.
-        end)
+        TryDispatchProgressAlertToast(payload)
+        -- WN criteria lane active: suppress Blizzard progress alert frames (never call orig).
     end
 end
 
@@ -3339,18 +3491,31 @@ function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
         end
     end
 
-    local progressSys = _G.ProgressAlertSystem
-    if progressSys and type(self._blizzProgressAddAlert) == "function" then
-        if useWarbandPopups then
-            local wrapperProg = BuildProgressAddAlertReplacement(self._blizzProgressAddAlert)
-            MarkWnAddAlertWrapper(wrapperProg)
-            progressSys.AddAlert = wrapperProg
-        else
-            progressSys.AddAlert = self._blizzProgressAddAlert
+    local useCriteriaLane = NP.UseWarbandCriteriaProgressPopups()
+    self._blizzProgressAddAlertOrig = self._blizzProgressAddAlertOrig or {}
+    for i = 1, #PROGRESS_ALERT_SYSTEM_GLOBALS do
+        local globalName = PROGRESS_ALERT_SYSTEM_GLOBALS[i]
+        local sys = _G[globalName]
+        if sys and type(sys.AddAlert) == "function" then
+            local orig = self._blizzProgressAddAlertOrig[globalName]
+            if type(orig) ~= "function" then
+                local fn = sys.AddAlert
+                if not IsWnAddAlertWrapper(fn) then
+                    orig = fn
+                    self._blizzProgressAddAlertOrig[globalName] = orig
+                end
+            end
+            if useCriteriaLane and type(orig) == "function" then
+                local wrapperProg = BuildProgressAddAlertReplacement(orig)
+                MarkWnAddAlertWrapper(wrapperProg)
+                sys.AddAlert = wrapperProg
+            elseif type(orig) == "function" then
+                sys.AddAlert = orig
+            end
         end
     end
 
-    if useWarbandPopups then
+    if useWarbandPopups or useCriteriaLane then
         InstallBlizzardAlertFrameHideHooks()
         C_Timer.After(0.5, InstallBlizzardAlertFrameHideHooks)
         C_Timer.After(2, InstallBlizzardAlertFrameHideHooks)
@@ -3360,8 +3525,7 @@ end
 ---Ensure achievement UI + current presentation toggle is applied (test + live share one AddAlert path).
 TestLootEnsureAchievementAlertUI = function(addon)
     if not InCombatLockdown() and Utilities and Utilities.SafeLoadAddOn then
-        Utilities:SafeLoadAddOn("Blizzard_AchievementUI")
-        Utilities:SafeLoadAddOn("Blizzard_AdventureGuide")
+        LoadAlertSourceAddOns()
     end
     if addon and addon.ApplyBlizzardAchievementAlertSuppression then
         addon:ApplyBlizzardAchievementAlertSuppression()
@@ -3398,17 +3562,25 @@ end
 TestLootFireProgressAddAlert = function(addon, payload)
     TestLootEnsureAchievementAlertUI(addon)
     if Utilities and Utilities.SafeLoadAddOn then
-        Utilities:SafeLoadAddOn("Blizzard_AdventureGuide")
+        LoadAlertSourceAddOns()
     end
     if addon and addon.ApplyBlizzardAchievementAlertSuppression then
         addon:ApplyBlizzardAchievementAlertSuppression()
     end
-    local progressSys = _G.ProgressAlertSystem
-    if not progressSys or not progressSys.AddAlert then
-        addon:Print("|cffff8800ProgressAlertSystem not loaded. Try /reload.|r")
-        return false, "no system"
+    local progressSys = FindProgressAlertSystem()
+    if progressSys and progressSys.AddAlert then
+        return pcall(progressSys.AddAlert, progressSys, payload)
     end
-    return pcall(progressSys.AddAlert, progressSys, payload)
+    if addon and addon.ShowGenericProgressNotification then
+        local shown = addon:ShowGenericProgressNotification(payload)
+        if shown then
+            addon:Print("|cff44ff44WN progress toast shown|r (ProgressAlertSystem unavailable in this client).")
+            return true, "direct"
+        end
+        return false, "toast blocked"
+    end
+    addon:Print("|cffff8800Progress toast blocked — enable Notifications + Warband achievement popups + Criteria progress.|r")
+    return false, "no system"
 end
 
 ---Same pipeline as Traveler's Log / ProgressAlertSystem alerts.
@@ -3425,9 +3597,12 @@ function WarbandNexus:TestProgressAlert()
     }
     self:Print("|cff00ccffProgress alert (AddAlert):|r " .. payload.title .. " - " .. payload.text)
     local ok, err = TestLootFireProgressAddAlert(self, payload)
-    if not ok then
-        self:Print("|cffff8800Progress AddAlert failed: " .. tostring(err) .. " — try /reload.|r")
+    if ok then return end
+    if err == "toast blocked" then
+        self:Print("|cffff8800Progress toast blocked — check Notifications settings.|r")
+        return
     end
+    self:Print("|cffff8800Progress AddAlert failed: " .. tostring(err) .. "|r")
 end
 
 TestLootResolveAchievementWithCriteria = function(preferredID)

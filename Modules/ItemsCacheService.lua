@@ -938,6 +938,18 @@ local function HasBagChanged(bagID)
     return false
 end
 
+--- Seed hash cache after a full bag scan so the next BAG_UPDATE bucket does not look like a change.
+local function SeedBagHashForBag(bagID)
+    local hash = GenerateItemHash(bagID)
+    bagHashCache[bagID] = hash
+end
+
+local function SeedInventoryBagHashes()
+    for i = 1, #INVENTORY_BAGS do
+        SeedBagHashForBag(INVENTORY_BAGS[i])
+    end
+end
+
 local function ShouldCaptureSlotItemLevel()
     return WarbandNexus.IsGearStorageRecommendationsEnabled
         and WarbandNexus:IsGearStorageRecommendationsEnabled()
@@ -1247,6 +1259,7 @@ function WarbandNexus:ScanInventoryBags(charKey)
     -- Save to DB (compressed)
     itemSummaryIndex.pending[charKey] = true
     self:SaveItemsCompressed(charKey, "bags", allItems)
+    SeedInventoryBagHashes()
     
     -- Populate legacy metadata for ItemsUI header (usedSlots, totalSlots, lastScan).
     -- This replaces the expensive DataService:ScanCharacterBags() login scan which called
@@ -1466,6 +1479,11 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
+
+    if ns._pveVaultHandlerActive then
+        ns._pendingBagUpdateAfterVault = bagIDs
+        return
+    end
     
     -- RegisterBucketEvent passes a table of bagIDs
     if not bagIDs or type(bagIDs) ~= "table" then
@@ -1508,7 +1526,8 @@ function WarbandNexus:OnBagUpdate(bagIDs)
 
     local anyProcessed = false
     local bagIdx = 1
-    local function processNextBag()
+    local processNextBag -- forward declare (runBagBatch was above this local — Lua 5.1 nil call)
+    processNextBag = function()
         if bagIdx > changedCount then
             if anyProcessed then
                 local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
@@ -1532,7 +1551,11 @@ function WarbandNexus:OnBagUpdate(bagIDs)
             traceBagUpdateDone(false)
         end
     end
-    processNextBag()
+    if P and P.enabled and P.RunSlice then
+        P:RunSlice(P.CAT.SVC, "Items_OnBagUpdate_batch", processNextBag)
+    else
+        processNextBag()
+    end
 end
 
 ---Chunked bank-area scan: one bag (container) per frame to cap frame cost (inventory → bank → warband).

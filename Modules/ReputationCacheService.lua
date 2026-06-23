@@ -501,7 +501,13 @@ function ReputationCache:Initialize()
     
     -- Fast presence checks (avoid full DB counting on every reload).
     local hasAnyData = next(db.accountWide) ~= nil
-    local currentCharFactions = currentSubsidiaryKey and db.characters[currentSubsidiaryKey] or nil
+    local currentCharFactions = nil
+    if currentSubsidiaryKey and db.characters then
+        currentCharFactions = db.characters[currentSubsidiaryKey]
+        if not (type(currentCharFactions) == "table" and next(currentCharFactions)) and ns.DataFreshness then
+            currentCharFactions = ns.DataFreshness.ResolveWarmSubsidiaryBucket(db.characters, currentSubsidiaryKey)
+        end
+    end
     local currentCharHasData = type(currentCharFactions) == "table" and next(currentCharFactions) ~= nil
     if not hasAnyData then
         for _, charFactions in pairs(db.characters) do
@@ -530,12 +536,32 @@ function ReputationCache:Initialize()
             scanReason = string.format("Version mismatch (DB: %s, Current: %s)", tostring(dbVersion), tostring(self.version))
         else
             local age = time() - self.lastFullScan
-            local MAX_CACHE_AGE = 3600  -- 1 hour
+            local MAX_CACHE_AGE = 3600  -- 1 hour (event-driven refresh only after warm persist)
             if age > MAX_CACHE_AGE then
                 needsScan = true
                 scanReason = string.format("Cache is old (%d seconds)", age)
             end
         end
+    end
+
+    local DF = ns.DataFreshness
+    if needsScan and DF and DF.IsReputationWarm and DF.IsReputationWarm(db, self.version, currentSubsidiaryKey) then
+        needsScan = false
+        scanReason = "Persisted warm — event-driven updates only"
+    end
+
+    if not needsScan then
+        if (db.lastScan or 0) <= 0 then
+            db.lastScan = time()
+        end
+        self.lastFullScan = db.lastScan
+        -- Warm reload: block UPDATE_FACTION-driven FullScans during login burst (same window as cold init defer).
+        self.initScanPending = true
+        C_Timer.After(12, function()
+            if ReputationCache then
+                ReputationCache.initScanPending = false
+            end
+        end)
     end
     
     -- Reputation data loaded from DB
@@ -563,8 +589,8 @@ function ReputationCache:Initialize()
             -- Deferred PerformFullScan will broadcast LOADING_STARTED again unless suppressed.
             ReputationCache.skipNextReputationLoadingStartedBroadcast = true
             
-            -- Delayed 6s to avoid competing with DataServices (T+0.5..3s) and Core (T+4..5.5s)
-            C_Timer.After(6, function()
+            -- Delayed 11s — after TryCounter init (T+7.5) and currency scan; avoids T+6 triple spike.
+            C_Timer.After(11, function()
                 if ReputationCache then
                     ReputationCache.initScanPending = false
                     ReputationCache:PerformFullScan()

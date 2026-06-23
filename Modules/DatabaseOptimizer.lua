@@ -665,6 +665,12 @@ function WarbandNexus:InitializeDatabaseOptimizer()
         -- Trigger a currency update after a short delay to rebuild global data
         C_Timer.After(3, function()
             if WarbandNexus and WarbandNexus.UpdateCurrencyData then
+                if InCombatLockdown and InCombatLockdown() then
+                    if ns.CurrencyCache then
+                        ns.CurrencyCache.pendingPostCombatScan = true
+                    end
+                    return
+                end
                 if IsDebugModeEnabled and IsDebugModeEnabled() then
                     addon:Print("|cff00ccffRebuilding currency data...|r")
                 end

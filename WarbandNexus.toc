@@ -46,6 +46,7 @@ Modules\Profiler_TraceUI.lua
 Modules\LoadingTracker.lua
 Modules\APIWrapper.lua
 Modules\Utilities.lua
+Modules\DataFreshness.lua
 Modules\MigrationService.lua
 Modules\InitializationService.lua
 Modules\CharacterService.lua
@@ -106,6 +107,7 @@ Modules\TryCounterService.lua
 Modules\TryCounterService_Handlers.lua
 Modules\TryCounterService_SelfTest.lua
 Modules\Data\MidnightQuestCatalog.lua
+Modules\DailyQuestManager_Tracking.lua
 Modules\DailyQuestManager.lua
 Modules\Data\ReminderMapContent.lua
 Modules\Data\ReminderWorldQuestIndex.lua
@@ -187,6 +189,7 @@ Modules\UI\CollectionsUI_Draw.lua
 Modules\UI\CollectionsUI.lua
 Modules\UI\PlansUI_SourceParser.lua
 Modules\UI\PlansUI_Browse.lua
+Modules\UI\PlansUI_WeeklyPlanner.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua

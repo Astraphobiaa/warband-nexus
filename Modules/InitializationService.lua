@@ -311,7 +311,7 @@ function InitializationService:InitializeDataServices(addon)
     --
     -- PRIORITY TIERS:
     --   P0 (T+0.5s): Merged into InitializeCoreInfrastructure (same tick as CoreEventSetup)
-    --   P1 (T+1s):   Heavy async collection build (4ms/frame budget)
+    --   P1 (T+2.35s): Owned collection RAM hydrate (staggered past Core T+2 login-light save)
     --   P2 (T+2s):   Character + tracked-only caches (batched)
     --   P3 (T+3s):   Items cache + vault (tracked only)
     --   P4 (T+6s):   Moderate index build (TryCounter, deferred for smoother reload)
@@ -321,10 +321,9 @@ function InitializationService:InitializeDataServices(addon)
     local collectionFeaturesEnabled = (not modulesEnabled) or modulesEnabled.collections ~= false or modulesEnabled.plans ~= false
     local tryCounterEnabled = (not modulesEnabled) or modulesEnabled.tryCounter ~= false
 
-    -- P1: Owned lookup cache — RunCollectionOwnedCacheWarmup (quiet when SV store already warm; avoids duplicate LT vs collection_data).
-    -- Run only when collection/plans features are enabled.
+    -- P1: Owned lookup cache — stagger past T+2 login-light save to avoid one heavy frame.
     if collectionFeaturesEnabled then
-        C_Timer.After(1, function()
+        C_Timer.After(2.35, function()
             SafeInit(function()
                 if addon and addon.RunCollectionOwnedCacheWarmup then
                     addon:RunCollectionOwnedCacheWarmup()
@@ -349,9 +348,9 @@ function InitializationService:InitializeDataServices(addon)
     end
 
     -- P4: Moderate — TryCounter index build from CollectibleSourceDB
-    -- Deferred further to keep /reload entry smoother; service remains functionally identical.
+    -- Staggered past currency init scan (T+3.5) and before reputation full scan (T+11).
     if tryCounterEnabled then
-        C_Timer.After(6, function()
+        C_Timer.After(7.5, function()
             SafeInit(function()
                 if addon and addon.InitializeTryCounter then
                     addon:InitializeTryCounter()
