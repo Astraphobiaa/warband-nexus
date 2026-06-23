@@ -90,8 +90,10 @@ local PVE_VAULT_COL_PROGRESS_W = 72
 local PVE_VAULT_COL_REWARD_PROGRESS_W = 88
 local PVE_BOUNTIFUL_COL_W = 28
 local PVE_STATUS_COL_W = 64
+local PVE_DUNDUN_COL_W = 36
 local PVE_VOIDCORE_COL_W = 40
 local PVE_MANAFLUX_COL_W = 40
+local PVE_DUNDUN_ID = 3376
 local PVE_VOIDCORE_ID = 3418
 local PVE_MANAFLUX_ID = 3378
 
@@ -130,6 +132,8 @@ local function PvE_BuildCompactHeaderLabel(col)
         return GetLocalizedText("PVE_COMPACT_COFFER_SHARD", "Coffer Shard"), "ffffff"
     elseif key == "restored_key" then
         return GetLocalizedText("PVE_COMPACT_RESTORED", "Restored"), "ffffff"
+    elseif key == "shard_of_dundun" then
+        return GetLocalizedText("PVE_COMPACT_DUNDUN", "Dundun"), "ffffff"
     elseif key == "voidcore" then
         return GetLocalizedText("PVE_COMPACT_VOIDCORE", "Voidcore"), "ffffff"
     elseif key == "manaflux" then
@@ -498,6 +502,11 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
             local q = cd and cd.quantity or 0
             return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
         end
+        if key == "shard_of_dundun" and ctx.dundunId then
+            local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.dundunId, charKey)
+            local q = tonumber(cd and cd.quantity) or 0
+            return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
+        end
         if key == "voidcore" and ctx.voidcoreId then
             local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.voidcoreId, charKey)
             local q = tonumber(cd and cd.quantity) or 0
@@ -687,6 +696,7 @@ local function EnsurePvEExtraVisibleColumns(profile)
     MigrateLegacyPvEColumnsToVault(profile)
     if ex.coffer_shards == nil then ex.coffer_shards = true end
     if ex.restored_key == nil then ex.restored_key = true end
+    if ex.shard_of_dundun == nil then ex.shard_of_dundun = true end
     return ex
 end
 
@@ -980,6 +990,7 @@ local function GetPvEDefaultColumnKeyOrder(profile)
     end
     order[#order + 1] = "coffer_shards"
     order[#order + 1] = "restored_key"
+    order[#order + 1] = "shard_of_dundun"
     order[#order + 1] = "voidcore"
     order[#order + 1] = "manaflux"
     order[#order + 1] = "slot1"
@@ -1026,6 +1037,7 @@ local function IsPvEInlineColumnKeyVisible(key, profile, vc, ex)
     end
     if key == "coffer_shards" then return ex.coffer_shards ~= false end
     if key == "restored_key" then return ex.restored_key ~= false end
+    if key == "shard_of_dundun" then return ex.shard_of_dundun ~= false end
     if key == "voidcore" then return vc.voidcore ~= false end
     if key == "manaflux" then return vc.manaflux == true end
     if key == "slot1" then return vc.raids ~= false end
@@ -1071,6 +1083,7 @@ local function PveBuildStructureColSig(profile)
     end
     if ex.coffer_shards ~= false then keys[#keys + 1] = "coffer_shards" end
     if ex.restored_key ~= false then keys[#keys + 1] = "restored_key" end
+    if ex.shard_of_dundun ~= false then keys[#keys + 1] = "shard_of_dundun" end
     if vc.voidcore ~= false then keys[#keys + 1] = "voidcore" end
     if vc.manaflux == true then keys[#keys + 1] = "manaflux" end
     if vc.raids ~= false then keys[#keys + 1] = "slot1" end
@@ -1087,7 +1100,10 @@ local function PvE_GetGapAfterColumnKey(leftKey, visibleKeySet)
     if leftKey == "slot3" then return PVE_KEY_TO_VAULT_GAP end
     if leftKey == "manaflux" then return PVE_KEY_TO_VAULT_GAP end
     if leftKey == "voidcore" and (not visibleKeySet.manaflux) then return PVE_KEY_TO_VAULT_GAP end
-    if leftKey == "restored_key" and (not visibleKeySet.voidcore) and (not visibleKeySet.manaflux) then
+    if leftKey == "shard_of_dundun" and (not visibleKeySet.voidcore) and (not visibleKeySet.manaflux) then
+        return PVE_KEY_TO_VAULT_GAP
+    end
+    if leftKey == "restored_key" and (not visibleKeySet.shard_of_dundun) and (not visibleKeySet.voidcore) and (not visibleKeySet.manaflux) then
         return PVE_KEY_TO_VAULT_GAP
     end
     return PVE_COL_SPACING
@@ -1176,6 +1192,7 @@ function ns.ComputePvEMinScrollWidth(self)
     local widthByKey = {
         coffer_shards = PVE_COFFER_COL_W,
         restored_key = PVE_KEY_COL_W,
+        shard_of_dundun = PVE_DUNDUN_COL_W,
         voidcore = PVE_VOIDCORE_COL_W,
         manaflux = PVE_MANAFLUX_COL_W,
         slot1 = vaultTrackColW,
@@ -2178,8 +2195,10 @@ if not ns.PvEDrawLibs then
         PVE_VAULT_COL_W = PVE_VAULT_COL_W,
         PVE_BOUNTIFUL_COL_W = PVE_BOUNTIFUL_COL_W,
         PVE_STATUS_COL_W = PVE_STATUS_COL_W,
+        PVE_DUNDUN_COL_W = PVE_DUNDUN_COL_W,
         PVE_VOIDCORE_COL_W = PVE_VOIDCORE_COL_W,
         PVE_MANAFLUX_COL_W = PVE_MANAFLUX_COL_W,
+        PVE_DUNDUN_ID = PVE_DUNDUN_ID,
         PVE_VOIDCORE_ID = PVE_VOIDCORE_ID,
         PVE_MANAFLUX_ID = PVE_MANAFLUX_ID,
         VAULT_SLOT_CHECK = VAULT_SLOT_CHECK,
@@ -2597,6 +2616,21 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             headerLabel = L.GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"),
         }
     end
+    if pveExtraCols.shard_of_dundun ~= false then
+        local dundunIcon = "Interface\\Icons\\INV_Misc_Gem_Variety_02"
+        local dundunDisp = L.GetPvECachedCurrencyDisplay(L.PVE_DUNDUN_ID)
+        if dundunDisp and dundunDisp.iconFileID then
+            dundunIcon = dundunDisp.iconFileID
+        end
+        PVE_COLUMNS[#PVE_COLUMNS + 1] = {
+            key = "shard_of_dundun",
+            label = "",
+            width = L.PVE_DUNDUN_COL_W,
+            icon = dundunIcon,
+            tooltipTitle = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
+            headerLabel = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
+        }
+    end
     if vaultCols.voidcore ~= false then
         PVE_COLUMNS[#PVE_COLUMNS + 1] = {
             key = "voidcore",
@@ -2705,7 +2739,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         local key = leftCol.key
         if key == "manaflux" then return L.PVE_KEY_TO_VAULT_GAP end
         if key == "voidcore" and (not visiblePveColumnKeys.manaflux) then return L.PVE_KEY_TO_VAULT_GAP end
-        if key == "restored_key" and (not visiblePveColumnKeys.voidcore) and (not visiblePveColumnKeys.manaflux) then
+        if key == "shard_of_dundun" and (not visiblePveColumnKeys.voidcore) and (not visiblePveColumnKeys.manaflux) then
+            return L.PVE_KEY_TO_VAULT_GAP
+        end
+        if key == "restored_key" and (not visiblePveColumnKeys.shard_of_dundun) and (not visiblePveColumnKeys.voidcore) and (not visiblePveColumnKeys.manaflux) then
             return L.PVE_KEY_TO_VAULT_GAP
         end
         if key == "slot1" or key == "slot2" then return L.PVE_VAULT_CLUSTER_GAP end
@@ -3127,6 +3164,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 crests = PVE_DAWNCRESTS,
                 shardsId = PVE_SHARDS_ID,
                 keyId = PVE_RESTORED_KEY_ID,
+                dundunId = L.PVE_DUNDUN_ID,
                 voidcoreId = L.PVE_VOIDCORE_ID,
                 manafluxId = L.PVE_MANAFLUX_ID,
                 formatSeasonShift = ns.UI_FormatSeasonProgressShiftAware,
@@ -3890,6 +3928,27 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 seasonProgressData = shardData,
             }
             colValuesByKey.restored_key = { text = keyQty > 0 and L.FormatNumber(keyQty) or EM_DASH, color = keyQty > 0 and NORMAL_COLOR or DIM_COLOR }
+            local dundunData = L.WarbandNexus:GetCurrencyData(L.PVE_DUNDUN_ID, charKey)
+            local dqty = (dundunData and tonumber(dundunData.quantity)) or 0
+            local dcap = (dundunData and (tonumber(dundunData.maxQuantity) or tonumber(dundunData.seasonMax))) or 0
+            local dundunTxt
+            if dcap > 0 then
+                local capped = dqty >= dcap
+                local col = capped and "|cffff5959" or "|cff80ff80"
+                dundunTxt = col .. L.FormatNumber(dqty) .. "|r"
+            elseif dqty > 0 then
+                dundunTxt = PveBrightHex() .. L.FormatNumber(dqty) .. "|r"
+            else
+                dundunTxt = EM_DASH_RICH
+            end
+            colValuesByKey.shard_of_dundun = {
+                text = dundunTxt,
+                richText = true,
+                tooltip = BuildCurrencyTooltip(L.PVE_DUNDUN_ID, dundunData and dundunData.name, dqty, dundunData and dundunData.maxQuantity or 0, dundunData and dundunData.totalEarned, dundunData and dundunData.seasonMax),
+                tooltipTitle = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
+                tooltipIcon = dundunData and dundunData.icon,
+                currencyID = L.PVE_DUNDUN_ID,
+            }
             local raidTotal = vaultActs.raids and #vaultActs.raids or 3
             local dungeonTotal = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
             local worldTotal = vaultActs.world and #vaultActs.world or 3

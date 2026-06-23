@@ -317,6 +317,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     end
     pickerRows[#pickerRows + 1] = { key = "coffer_shards", label = GetLocalizedText("PVE_COL_COFFER_SHARDS", "Coffer Shards"), checked = ex.coffer_shards ~= false, vault = false, toggle = function(checked) ex.coffer_shards = checked applyColumnPickerChange(false) end }
     pickerRows[#pickerRows + 1] = { key = "restored_key", label = GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Key"), checked = ex.restored_key ~= false, vault = false, toggle = function(checked) ex.restored_key = checked applyColumnPickerChange(false) end }
+    pickerRows[#pickerRows + 1] = { key = "shard_of_dundun", label = GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"), checked = ex.shard_of_dundun ~= false, vault = false, toggle = function(checked) ex.shard_of_dundun = checked applyColumnPickerChange(false) end }
     pickerRows[#pickerRows + 1] = { key = "voidcore", label = GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"), checked = vc.voidcore ~= false, vault = true, toggle = function(checked) vc.voidcore = checked applyColumnPickerChange(true) end }
     pickerRows[#pickerRows + 1] = { key = "manaflux", label = GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"), checked = vc.manaflux == true, vault = true, toggle = function(checked) vc.manaflux = checked profile.vaultButton = profile.vaultButton or {} profile.vaultButton.showManaflux = checked applyColumnPickerChange(true) end }
     pickerRows[#pickerRows + 1] = { key = "slot1", label = GetLocalizedText("PVE_HEADER_RAID_SHORT", "Raid"), checked = vc.raids ~= false, vault = true, toggle = function(checked) vc.raids = checked applyColumnPickerChange(true) end }
@@ -374,6 +375,7 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
             end
             ex.coffer_shards = true
             ex.restored_key = true
+            ex.shard_of_dundun = true
             vc.raids = true
             vc.mythicPlus = true
             vc.world = true
