@@ -2575,6 +2575,26 @@ local function ScheduleAlertSuppressionRetries(addon)
     end
 end
 
+--- Blizzard addons that may define ProgressAlertSystem / alert frames (load order varies by patch).
+local ALERT_SOURCE_ADDONS = {
+    "Blizzard_SharedXML",
+    "Blizzard_AchievementUI",
+    "Blizzard_AdventureGuide",
+    "Blizzard_MonthlyActivities",
+    "Blizzard_PerksActivities",
+    "Blizzard_TradingPostUI",
+}
+
+local function IsAlertSourceAddOn(loadedAddon)
+    if not loadedAddon or loadedAddon == "" then return false end
+    for i = 1, #ALERT_SOURCE_ADDONS do
+        if loadedAddon == ALERT_SOURCE_ADDONS[i] then
+            return true
+        end
+    end
+    return false
+end
+
 ---Initialize event-driven notification system
 function WarbandNexus:InitializeNotificationListeners()
     -- Register for custom notification events
@@ -3133,26 +3153,6 @@ local function ScanAlertFrameForProgressAlerts()
             MirrorAndSuppressProgressAlertFrame(child)
         end
     end
-end
-
---- Blizzard addons that may define ProgressAlertSystem / alert frames (load order varies by patch).
-local ALERT_SOURCE_ADDONS = {
-    "Blizzard_SharedXML",
-    "Blizzard_AchievementUI",
-    "Blizzard_AdventureGuide",
-    "Blizzard_MonthlyActivities",
-    "Blizzard_PerksActivities",
-    "Blizzard_TradingPostUI",
-}
-
-local function IsAlertSourceAddOn(loadedAddon)
-    if not loadedAddon or loadedAddon == "" then return false end
-    for i = 1, #ALERT_SOURCE_ADDONS do
-        if loadedAddon == ALERT_SOURCE_ADDONS[i] then
-            return true
-        end
-    end
-    return false
 end
 
 local function LoadAlertSourceAddOns()
