@@ -38,8 +38,32 @@ local function NormalizeQuestTypes(questTypes)
     }
 end
 
---- Build default trackedCatalogKeys: all selectable catalog rows for enabled categories.
+--- Build default trackedCatalogKeys: core weekly objectives for enabled categories.
 function WarbandNexus:BuildDefaultTrackedCatalogKeys(questTypes)
+    local keys = {}
+    local normalized = NormalizeQuestTypes(questTypes)
+    if Catalog and Catalog.GetCoreWeeklyCatalogKeys then
+        local core = Catalog.GetCoreWeeklyCatalogKeys()
+        for catKey, enabled in pairs(normalized) do
+            if enabled and Catalog.GetSelectableForCategory then
+                local rows = Catalog.GetSelectableForCategory(catKey)
+                for i = 1, #rows do
+                    local row = rows[i]
+                    if row and row.catalogKey and core[row.catalogKey] then
+                        keys[row.catalogKey] = true
+                    end
+                end
+            end
+        end
+    end
+    if not next(keys) then
+        return self:BuildAllAvailableTrackedCatalogKeys(questTypes)
+    end
+    return keys
+end
+
+--- All selectable catalog rows for enabled categories (Track all preset).
+function WarbandNexus:BuildAllAvailableTrackedCatalogKeys(questTypes)
     local keys = {}
     local normalized = NormalizeQuestTypes(questTypes)
     if not Catalog or not Catalog.GetSelectableForCategory then

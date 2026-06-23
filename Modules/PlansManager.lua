@@ -1868,8 +1868,14 @@ function WarbandNexus:IsActivePlanComplete(plan)
     end
     if plan.type == "daily_quests" then
         local totalQuests, completedQuests = 0, 0
-        for cat, questList in pairs(plan.quests or {}) do
+        local categoryOrder = { "weeklyQuests", "worldQuests", "assignments", "dailyQuests", "events" }
+        for cki = 1, #categoryOrder do
+            local cat = categoryOrder[cki]
             if plan.questTypes and plan.questTypes[cat] then
+                local questList = plan.quests and plan.quests[cat] or {}
+                if self.FilterWeeklyProgressQuestList then
+                    questList = self:FilterWeeklyProgressQuestList(plan, cat, questList)
+                end
                 for qi = 1, #questList do
                     local quest = questList[qi]
                     if quest and not quest.isSubQuest then

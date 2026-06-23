@@ -974,8 +974,13 @@ local function RefreshTrackerContentImmediate()
         return plan and plan.type ~= "weekly_vault" and plan.type ~= "daily_quests"
     end
 
+    local function IsTrackerFullWidthPlan(plan)
+        return plan and (plan.type == "weekly_vault" or plan.type == "daily_quests")
+    end
+
     -- Tracker: never list completed plans (only active / in-progress goals).
     local filtered = {}
+    local fullWidthPlans = {}
     local trackerEligibleTotal = 0
     local planDoneMemo = {}
     local function memoIsPlanDone(plan)
@@ -991,8 +996,12 @@ local function RefreshTrackerContentImmediate()
     end
     for i = 1, #plans do
         local plan = plans[i]
-        if not IsTrackerListPlan(plan) then
-            -- Great Vault / Daily Quest Tracker: main To-Do tab only (narrow tracker overlaps).
+        if IsTrackerFullWidthPlan(plan) then
+            if not memoIsPlanDone(plan) then
+                fullWidthPlans[#fullWidthPlans + 1] = plan
+            end
+        elseif not IsTrackerListPlan(plan) then
+            -- unknown type
         elseif not memoIsPlanDone(plan) then
             trackerEligibleTotal = trackerEligibleTotal + 1
             if currentCategoryKey == nil or plan.type == currentCategoryKey then
@@ -1000,6 +1009,16 @@ local function RefreshTrackerContentImmediate()
             end
         end
     end
+
+    local typePriority = { daily_quests = 1, weekly_vault = 2 }
+    table.sort(fullWidthPlans, function(a, b)
+        local pa = typePriority[a.type] or 99
+        local pb = typePriority[b.type] or 99
+        if pa ~= pb then return pa < pb end
+        local aID = tonumber(a.id) or 0
+        local bID = tonumber(b.id) or 0
+        return aID < bID
+    end)
 
     table.sort(filtered, function(a, b)
         if (a.type or "") ~= (b.type or "") then return (a.type or "") < (b.type or "") end
@@ -1024,7 +1043,15 @@ local function RefreshTrackerContentImmediate()
         r:ClearAllPoints()
     end
 
-    if #filtered == 0 then
+    for fw = 1, #fullWidthPlans do
+        local fwPlan = fullWidthPlans[fw]
+        local fwCard = CreateTrackerFullWidthPlanCard(scrollChild, fwPlan, width)
+        if fwCard then
+            trackerRowOrder[#trackerRowOrder + 1] = fwCard
+        end
+    end
+
+    if #fullWidthPlans == 0 and #filtered == 0 then
         local emptyFrame = Factory and Factory:CreateContainer(scrollChild, width, 50, false)
         if not emptyFrame then
             emptyFrame = CreateFrame("Frame", nil, scrollChild)

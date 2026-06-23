@@ -88,9 +88,9 @@ function M.ShowDailyPlanDialog(editPlan)
 
     local selectedQuestTypes = {
         weeklyQuests = true,
-        worldQuests  = true,
+        worldQuests  = false,
         assignments  = true,
-        dailyQuests  = true,
+        dailyQuests  = false,
         events       = true,
     }
     local selectedCatalogKeys = {}
@@ -122,7 +122,7 @@ function M.ShowDailyPlanDialog(editPlan)
         RebuildDefaultCatalogKeys()
     end
 
-    local titleKey = isEdit and "WEEKLY_PROGRESS_EDIT_TITLE" or "DAILY_QUEST_TRACKER"
+    local titleKey = isEdit and "WEEKLY_PROGRESS_EDIT_TITLE" or "WEEKLY_PROGRESS_ADD_TITLE"
     local PAD = LAYOUT.PAD
     local DIALOG_W = LAYOUT.DIALOG_W
     local DIALOG_H = LAYOUT.DIALOG_H
@@ -135,7 +135,7 @@ function M.ShowDailyPlanDialog(editPlan)
 
     local dialog, contentFrame = CreateExternalWindow({
         name = isEdit and "WeeklyProgressEditDialog" or "DailyPlanDialog",
-        title = (ns.L and ns.L[titleKey]) or (isEdit and "Edit Weekly Progress" or "Midnight Quest Tracker"),
+        title = (ns.L and ns.L[titleKey]) or (isEdit and "Edit Weekly Progress" or "Track Weekly Progress"),
         icon = "Interface\\Icons\\INV_Misc_Note_06",
         width = DIALOG_W,
         height = DIALOG_H,
@@ -300,11 +300,16 @@ function M.ShowDailyPlanDialog(editPlan)
                         local entry = selectable[si]
                         local ckey = entry.catalogKey
                         if ckey then
+                            local titleLine = entry.title or ckey
+                            if entry.coreWeekly then
+                                titleLine = titleLine .. " " .. ((ns.L and ns.L["WEEKLY_CORE_BADGE"]) or "(core)")
+                            end
+
                             local row = TrackRow(Factory:CreateContainer(scrollChild, scrollContentW, LAYOUT.ROW_H, false))
                             row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
 
                             local itemCb = CreateThemedCheckbox(row, selectedCatalogKeys[ckey] == true)
-                            itemCb:SetPoint("LEFT", 0, 0)
+                            itemCb:SetPoint("TOPLEFT", 0, -2)
                             itemCb:SetScript("OnClick", function(self2)
                                 local checked = self2:GetChecked()
                                 selectedCatalogKeys[ckey] = checked or nil
@@ -312,14 +317,27 @@ function M.ShowDailyPlanDialog(editPlan)
                             end)
 
                             local lbl = FontManager:CreateFontString(row, "small", "OVERLAY")
-                            lbl:SetPoint("LEFT", itemCb, "RIGHT", LAYOUT.INNER_GAP, 0)
+                            lbl:SetPoint("TOPLEFT", itemCb, "TOPRIGHT", LAYOUT.INNER_GAP, 0)
                             lbl:SetPoint("RIGHT", row, "RIGHT", -4, 0)
                             lbl:SetJustifyH("LEFT")
                             lbl:SetWordWrap(true)
                             ns.UI_SetTextColorRole(lbl, "Normal")
-                            lbl:SetText(entry.title or ckey)
+                            lbl:SetText(titleLine)
 
-                            y = y + LAYOUT.ROW_H + 2
+                            local rowH = math.max(LAYOUT.ROW_H, lbl:GetStringHeight() + 4)
+                            if entry.description and entry.description ~= "" then
+                                local descFs = FontManager:CreateFontString(row, "small", "OVERLAY")
+                                descFs:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -2)
+                                descFs:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+                                descFs:SetJustifyH("LEFT")
+                                descFs:SetWordWrap(true)
+                                ns.UI_SetTextColorRole(descFs, "Muted")
+                                descFs:SetText(entry.description)
+                                rowH = math.max(rowH, LAYOUT.ROW_H + (descFs:GetStringHeight() or 12) + 2)
+                            end
+                            row:SetHeight(rowH)
+
+                            y = y + rowH + 4
                         end
                     end
 
@@ -337,6 +355,60 @@ function M.ShowDailyPlanDialog(editPlan)
                     y = y + 6
                 end
             end
+
+            -- Upcoming patch objectives (preview only; not selectable until live)
+            local upcomingAny = false
+            for ci = 1, #CATEGORIES do
+                local catKey = CATEGORIES[ci].key
+                if selectedQuestTypes[catKey] then
+                    local upcoming = Catalog.GetSelectableForCategory(catKey, { includeUpcoming = true })
+                    for ui = 1, #upcoming do
+                        local entry = upcoming[ui]
+                        if entry and Catalog.IsEntryAvailable and not Catalog.IsEntryAvailable(entry) then
+                            upcomingAny = true
+                            break
+                        end
+                    end
+                    if upcomingAny then break end
+                end
+            end
+            if upcomingAny then
+                y = y + LAYOUT.SECTION_GAP
+                local upHdr = TrackRow(FontManager:CreateFontString(scrollChild, "subtitle", "OVERLAY"))
+                upHdr:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
+                upHdr:SetWidth(scrollContentW)
+                upHdr:SetJustifyH("LEFT")
+                ns.UI_SetTextColorRole(upHdr, "Bright")
+                upHdr:SetText((ns.L and ns.L["WEEKLY_CATALOG_SECTION_UPCOMING"]) or "Patch 12.0.7 (upcoming)")
+                y = y + 20
+                local upNote = TrackRow(FontManager:CreateFontString(scrollChild, "small", "OVERLAY"))
+                upNote:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
+                upNote:SetWidth(scrollContentW)
+                upNote:SetJustifyH("LEFT")
+                upNote:SetWordWrap(true)
+                ns.UI_SetTextColorRole(upNote, "Muted")
+                upNote:SetText((ns.L and ns.L["WEEKLY_CATALOG_UPCOMING_NOTE"]) or "These objectives appear when patch 12.0.7 is live on your client.")
+                y = y + (upNote:GetStringHeight() or 14) + 8
+                for ci = 1, #CATEGORIES do
+                    local catKey = CATEGORIES[ci].key
+                    if selectedQuestTypes[catKey] then
+                        local upcoming = Catalog.GetSelectableForCategory(catKey, { includeUpcoming = true })
+                        for ui = 1, #upcoming do
+                            local entry = upcoming[ui]
+                            if entry and Catalog.IsEntryAvailable and not Catalog.IsEntryAvailable(entry) then
+                                local line = TrackRow(FontManager:CreateFontString(scrollChild, "small", "OVERLAY"))
+                                line:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", labelIndent, -y)
+                                line:SetWidth(descW)
+                                line:SetJustifyH("LEFT")
+                                line:SetWordWrap(true)
+                                ns.UI_SetTextColorRole(line, "Muted")
+                                line:SetText("- " .. (entry.title or entry.catalogKey or "?"))
+                                y = y + (line:GetStringHeight() or 14) + 2
+                            end
+                        end
+                    end
+                end
+            end
         end
 
         scrollChild:SetHeight(math.max(1, y + 12))
@@ -348,7 +420,41 @@ function M.ShowDailyPlanDialog(editPlan)
         end
     end
 
-    local scrollTop = -(PAD + CHAR_HDR_H)
+    local function ApplyEssentialsPreset()
+        selectedQuestTypes.weeklyQuests = true
+        selectedQuestTypes.events = true
+        selectedQuestTypes.assignments = true
+        selectedQuestTypes.worldQuests = false
+        selectedQuestTypes.dailyQuests = false
+        RebuildDefaultCatalogKeys()
+        RebuildScrollContent()
+    end
+
+    local function ApplyTrackAllPreset()
+        for k in pairs(selectedQuestTypes) do
+            selectedQuestTypes[k] = true
+        end
+        wipe(selectedCatalogKeys)
+        local allKeys = WarbandNexus:BuildAllAvailableTrackedCatalogKeys(selectedQuestTypes)
+        for k, v in pairs(allKeys) do
+            if v then selectedCatalogKeys[k] = true end
+        end
+        RebuildScrollContent()
+    end
+
+    local PRESET_H = 34
+    local presetBar = Factory:CreateContainer(contentFrame, scrollContentW + (PAD * 2), PRESET_H, false)
+    presetBar:SetPoint("TOPLEFT", charFrame, "BOTTOMLEFT", 0, -6)
+
+    local essentialsBtn = CreateThemedButton(presetBar, (ns.L and ns.L["WEEKLY_PRESET_ESSENTIALS"]) or "Weekly essentials", 150)
+    essentialsBtn:SetPoint("LEFT", 0, 0)
+    essentialsBtn:SetScript("OnClick", ApplyEssentialsPreset)
+
+    local allBtn = CreateThemedButton(presetBar, (ns.L and ns.L["WEEKLY_PRESET_ALL"]) or "Track all", 120)
+    allBtn:SetPoint("LEFT", essentialsBtn, "RIGHT", 8, 0)
+    allBtn:SetScript("OnClick", ApplyTrackAllPreset)
+
+    local scrollTop = -(PAD + CHAR_HDR_H + PRESET_H + 6)
     scrollFrame = Factory:CreateScrollFrame(contentFrame, nil, true)
     scrollFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, scrollTop)
     scrollFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -(PAD + sbReserve), FOOTER_H)

@@ -2525,16 +2525,15 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     end
     if totalAll == 0 then allComplete = false end
     
+    local trackerTitle = (ns.L and ns.L["WEEKLY_PROGRESS_TRACKER"]) or "Weekly Progress"
     local titleText = FontManager:CreateFontString(card, "header", "OVERLAY")
     titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     if allComplete then
         SetSemanticGreenText(titleText)
-        titleText:SetText(((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
+        titleText:SetText(trackerTitle .. " - " .. ((ns.L and ns.L["COMPLETE_LABEL"]) or "Complete"))
     else
         ns.UI_SetTextColorRole(titleText, "Bright")
-        local displayContent = plan.contentName or "Midnight"
-        if displayContent == "" then displayContent = "Midnight" end
-        titleText:SetText(((ns.L and ns.L["DAILY_QUEST_TRACKER"]) or "Daily Quest Tracker") .. " - " .. displayContent)
+        titleText:SetText(trackerTitle .. " - " .. completedAll .. "/" .. totalAll)
     end
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)

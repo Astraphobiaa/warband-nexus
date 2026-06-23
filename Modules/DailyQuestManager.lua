@@ -555,9 +555,12 @@ function WarbandNexus:ScanMidnightQuests()
     end
 
     -- Phase 1: Hardcoded weekly quests (always check, even if not in quest log)
+    local Catalog = ns.MidnightQuestCatalog
     for i = 1, #KNOWN_WEEKLY_QUESTS do
         local kq = KNOWN_WEEKLY_QUESTS[i]
-        AddQuest(kq.questID, 0, kq.zone, nil, kq.category)
+        if kq.questID and (not Catalog or not Catalog.IsEntryAvailable or Catalog.IsEntryAvailable(kq)) then
+            AddQuest(kq.questID, 0, kq.zone, nil, kq.category)
+        end
     end
 
     -- Phase 2: Map-based scanning (world quests, task quests, bounties)

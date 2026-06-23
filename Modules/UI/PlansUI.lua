@@ -796,6 +796,13 @@ function WarbandNexus:DrawPlansTab(parent)
         addDailyBtn:SetScript("OnClick", function()
             self:ShowDailyPlanDialog()
         end)
+        addDailyBtn:SetScript("OnEnter", function(btn)
+            GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
+            GameTooltip:SetText((ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 1, 1, 1)
+            GameTooltip:AddLine((ns.L and ns.L["ADD_QUEST_TOOLTIP"]) or "Track weekly Midnight objectives for this character.", 0.85, 0.85, 0.85, true)
+            GameTooltip:Show()
+        end)
+        addDailyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
         -- Checkbox (using shared widget) - Next to Add Quest button
         local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
@@ -1484,10 +1491,69 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     local weeklyChainTail = nil
     local totalBlockH = 0
 
-    if parent._weeklyScrollFixTimer then
-        parent._weeklyScrollFixTimer:Cancel()
-        parent._weeklyScrollFixTimer = nil
+    --- After expand/collapse, adjust scrollChild height only — no PopulateContent (Characters tab parity).
+    local function SyncWeeklyProgressScrollHeight()
+        if not parent then return end
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        if not mf or mf.currentTab ~= "plans" then return end
+
+        local y = parent._wnWeeklyScrollTop or scrollTop
+        local resetBarLocal = parent._wnPlansResetBar
+        if resetBarLocal and resetBarLocal:IsShown() then
+            y = y + (resetBarLocal:GetHeight() or resetBarH) + 6
+        end
+
+        local wraps = parent._wnWeeklyCharWraps
+        if wraps then
+            for wi = 1, #wraps do
+                if wi > 1 then y = y + sectionSpacing end
+                local wrapFr = wraps[wi]
+                if wrapFr then
+                    y = y + (wrapFr:GetHeight() or 0)
+                end
+            end
+        end
+        y = y + 10
+
+        local viewportH = (mf.scroll and mf.scroll:GetHeight()) or 0
+        if viewportH < 2 and mf.scroll and mf.fixedHeader then
+            local fhBot = mf.fixedHeader:GetBottom()
+            local sb = mf.scroll:GetBottom()
+            if fhBot and sb and fhBot > sb then
+                viewportH = fhBot - sb
+            end
+        end
+        local totalScrollH = math.max(y, viewportH)
+        parent:SetHeight(totalScrollH)
+
+        local fill = parent._wnScrollBottomFill
+        if fill then
+            local slack = totalScrollH - y
+            if slack > 1 then
+                fill:ClearAllPoints()
+                fill:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
+                fill:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+                fill:Show()
+            else
+                fill:ClearAllPoints()
+                fill:Hide()
+            end
+        end
+
+        local sc = mf.scroll
+        if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then
+            local maxV = sc:GetVerticalScrollRange() or 0
+            local cur = sc:GetVerticalScroll() or 0
+            if cur > maxV then
+                sc:SetVerticalScroll(maxV)
+            end
+        end
+        if ns.UI and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility and mf.scroll then
+            ns.UI.Factory:UpdateScrollBarVisibility(mf.scroll)
+        end
     end
+
+    local weeklyVisibleScrollBump = SyncWeeklyProgressScrollHeight
 
     --- Sum stacked rows (stats strip + category wraps) so inner section height updates outer height.
     local function ReflowWeeklyProgressCharSectionBody(body)
@@ -1513,25 +1579,10 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         end
     end
 
-    local function ScheduleWeeklyProgressScrollSync()
-        if not parent then return end
-        if parent._weeklyScrollFixTimer then
-            parent._weeklyScrollFixTimer:Cancel()
-        end
-        parent._weeklyScrollFixTimer = C_Timer.NewTimer(0.06, function()
-            parent._weeklyScrollFixTimer = nil
-            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-            if mf and mf.currentTab == "plans" then
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-                    tab = "plans",
-                    skipCooldown = true,
-                    instantPopulate = true,
-                })
-            end
-        end)
-    end
-
     local function WeeklySectionToggleNoop() end
+
+    parent._wnWeeklyCharWraps = {}
+    parent._wnWeeklyScrollTop = scrollTop
 
     for pi = 1, #filteredPlans do
         local plan = filteredPlans[pi]
@@ -1552,6 +1603,7 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
         end
 
         local charWrap = Factory:CreateContainer(parent, innerW, SECTION_COLLAPSE_H + 0.1, false)
+        parent._wnWeeklyCharWraps[#parent._wnWeeklyCharWraps + 1] = charWrap
         if charWrap.SetClipsChildren then
             charWrap:SetClipsChildren(true)
         end
@@ -1592,9 +1644,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                 persistFn = function(exp)
                     expandedGroups[charGroupKey] = exp
                 end,
+                updateVisibleFn = weeklyVisibleScrollBump,
                 onComplete = function()
                     ReflowWeeklyProgressCharSectionBody(charSectionBody)
-                    ScheduleWeeklyProgressScrollSync()
                 end,
             })
         )
@@ -1750,12 +1802,12 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
                         persistFn = function(exp)
                             expandedGroups[groupKey] = exp
                         end,
+                        updateVisibleFn = weeklyVisibleScrollBump,
                         onUpdate = function()
                             ReflowWeeklyProgressCharSectionBody(charSectionBody)
                         end,
                         onComplete = function()
                             ReflowWeeklyProgressCharSectionBody(charSectionBody)
-                            ScheduleWeeklyProgressScrollSync()
                         end,
                     })
                 )
