@@ -1,6 +1,6 @@
 --[[
     Warband Nexus - Statistics Tab
-    Display account-wide statistics: gold, collections, storage overview
+    Display account-wide statistics: gold, collections, to-do, playtime
 ]]
 
 local ADDON_NAME, ns = ...
@@ -45,9 +45,20 @@ function WarbandNexus:InitializeStatisticsUI()
     -- Register for collection and character wealth update events
     -- NOTE: Uses StatisticsUIEvents as 'self' key to avoid overwriting other modules' handlers.
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_UPDATED, refreshStatsIfVisible)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.COLLECTION_SCAN_COMPLETE, function(_, payload)
+        if not payload then
+            refreshStatsIfVisible()
+            return
+        end
+        local cat = payload.category
+        if cat == "achievement" or cat == "all" then
+            refreshStatsIfVisible()
+        end
+    end)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.MONEY_UPDATED, refreshStatsIfVisible)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.ITEMS_UPDATED, refreshStatsIfVisible)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.BAGS_UPDATED, refreshStatsIfVisible)
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, E.PLANS_UPDATED, refreshStatsIfVisible)
     WarbandNexus.RegisterMessage(StatisticsUIEvents, E.CHARACTER_UPDATED, function(_, payload)
         if payload and payload.dataType == "gold" then
             refreshStatsIfVisible()
@@ -59,8 +70,54 @@ end
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
-local FormatMoney = ns.UI_FormatMoney
+local FormatMoneyPartsColumn = ns.UI_FormatMoneyPartsColumn
+
+-- Warband Wealth money columns (right-aligned G / S / C stacks per row)
+local GW_MONEY_PAD_R = 15
+local GW_MONEY_ICON_ROW = 12
+local GW_MONEY_ICON_HDR = 14
+local GW_COL_COPPER_W = 52
+local GW_COL_SILVER_W = 52
+local GW_COL_GOLD_W = 108
+local GW_NAME_RIGHT_INSET = -(GW_MONEY_PAD_R + GW_COL_GOLD_W + GW_COL_SILVER_W + GW_COL_COPPER_W + 8)
+
+local function PaintStatisticsMoneyColumns(parent, anchorY, copper, iconSize)
+    if not FormatMoneyPartsColumn then return end
+    copper = tonumber(copper) or 0
+    iconSize = iconSize or GW_MONEY_ICON_ROW
+    local gStr, sStr, cStr = FormatMoneyPartsColumn(copper, iconSize)
+
+    local cFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    cFs:SetPoint("RIGHT", parent, "TOPRIGHT", -GW_MONEY_PAD_R, anchorY)
+    cFs:SetWidth(GW_COL_COPPER_W)
+    cFs:SetJustifyH("RIGHT")
+    cFs:SetText(cStr)
+
+    local sFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    sFs:SetPoint("RIGHT", parent, "TOPRIGHT", -(GW_MONEY_PAD_R + GW_COL_COPPER_W), anchorY)
+    sFs:SetWidth(GW_COL_SILVER_W)
+    sFs:SetJustifyH("RIGHT")
+    sFs:SetText(sStr)
+
+    local gFs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    gFs:SetPoint("RIGHT", parent, "TOPRIGHT", -(GW_MONEY_PAD_R + GW_COL_COPPER_W + GW_COL_SILVER_W), anchorY)
+    gFs:SetWidth(GW_COL_GOLD_W)
+    gFs:SetJustifyH("RIGHT")
+    gFs:SetText(gStr)
+end
 local FormatNumber = ns.UI_FormatNumber
+
+local function FormatStatCountPair(current, max)
+    return FormatNumber(current) .. " / " .. FormatNumber(max)
+end
+
+local function FormatStatCountPairPct(collected, total)
+    local c = tonumber(collected) or 0
+    local t = tonumber(total) or 0
+    local pct = t > 0 and math.floor(c / t * 100) or 0
+    return FormatStatCountPair(c, t) .. " (" .. pct .. "%)"
+end
+
 local CreateIcon = ns.UI_CreateIcon
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
@@ -158,7 +215,6 @@ local function PaintStatisticsClassRow(parent, rowCenterY, rowH, classFile, char
 end
 
 local STAT_CARD_H = 90
-local STORAGE_CARD_H = 92
 
 local function ParkStatisticsHeavyDynamicCards(parent)
     local b = parent._wnStatsHeavyBundle
@@ -174,8 +230,12 @@ local function ParkStatisticsHeavyDynamicCards(parent)
     end
     park(b.goldCard)
     park(b.mpCard)
+    park(b.storageCard)
     b.goldCard = nil
     b.mpCard = nil
+    b.storageCard = nil
+    b.storageTitle = nil
+    b.storageCols = nil
 end
 
 -- Import shared UI layout constants
@@ -198,14 +258,11 @@ local format = string.format
 -- don't re-run thousands of synchronous WoW API calls.
 local STATS_CACHE_TTL = 60  -- seconds before cache is considered stale (invalidated on WN_COLLECTION_UPDATED)
 local _statsCache = nil     -- { mounts={}, pets={}, toys={}, achievements={}, timestamp=number }
-local BANK_STATS_CACHE_TTL = 3  -- short TTL: tab pool revisits skip slot tally rescans
-local _bankStatsCache = nil
 
 -- Invalidate cache so next DrawStatistics recomputes from API
 -- (forward-declared above InitializeStatisticsUI so event callbacks can reference it)
 InvalidateStatsCache = function()
     _statsCache = nil
-    _bankStatsCache = nil
 end
 
 -- Compute and cache collection statistics (store fast-path, else CollectionService API counts).
@@ -237,26 +294,24 @@ local function GetCachedCollectionStats()
             pets = { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
             toys = { collected = 0, total = 0 },
             achievementPoints = 0,
+            achievementPointsCharacter = 0,
+            achievementPointsMax = 0,
+            achievementsTotal = 0,
+            achievementsCompleted = 0,
         }
     end
     _statsCache = {
         timestamp = now,
         achievementPoints = api.achievementPoints or 0,
+        achievementPointsCharacter = api.achievementPointsCharacter or 0,
+        achievementPointsMax = api.achievementPointsMax or 0,
+        achievementsTotal = api.achievementsTotal or 0,
+        achievementsCompleted = api.achievementsCompleted or 0,
         mounts = api.mounts or { collected = 0, total = 0 },
         pets = api.pets or { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
         toys = api.toys or { collected = 0, total = 0 },
     }
     return _statsCache
-end
-
-local function GetCachedBankStatistics(addon)
-    local now = GetTime()
-    if _bankStatsCache and (now - _bankStatsCache.timestamp) < BANK_STATS_CACHE_TTL then
-        return _bankStatsCache.stats
-    end
-    local stats = addon:GetBankStatistics()
-    _bankStatsCache = { timestamp = now, stats = stats }
-    return stats
 end
 
 --- Reposition cached Statistics fixedHeader title (Items/Collections parity — WN-PERF tab revisit).
@@ -275,6 +330,191 @@ local function RepositionStatisticsFixedHeader(hdrCache, headerParent, chrome, h
         return ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
     end
     return headerYOffset + (GetLayout().afterHeader or 72)
+end
+
+local function FormatTodoProgressLine(completed, total)
+    local c = tonumber(completed) or 0
+    local t = tonumber(total) or 0
+    local remain = math.max(0, t - c)
+    local L = ns.L
+    local fmt = (L and L["STATS_TODO_PROGRESS"]) or "%s / %s completed (%s remaining)"
+    return string.format(fmt, FormatNumber(c), FormatNumber(t), FormatNumber(remain))
+end
+
+local function HideLegacyAchievementWidgets(bundle)
+    if not bundle then return end
+    local legacyKeys = {
+        "achTitle", "achAccountLabel", "achAccountValue", "achProgress",
+        "achCharLine",
+        "achProgLabel", "achProgValue", "achScoreLabel", "achScoreValue",
+    }
+    for i = 1, #legacyKeys do
+        local fs = bundle[legacyKeys[i]]
+        if fs then fs:Hide() end
+    end
+    if bundle.achCols then
+        for ci = 1, #bundle.achCols do
+            local col = bundle.achCols[ci]
+            if col and col.label then col.label:Hide() end
+            if col and col.value then col.value:Hide() end
+        end
+    end
+    local layout = bundle.achLayout
+    if layout then
+        if layout.icon then layout.icon:Hide() end
+        if layout.label then layout.label:Hide() end
+        if layout.value then layout.value:Hide() end
+        if layout.container then layout.container:Hide() end
+    end
+end
+
+--- Achievement stat cards: same left-icon header layout as mount/toy (36px atlas).
+local ACH_HEADER_CARD_VER = 6
+local ACH_COLL_ICON_SIZE = 36
+local STAT_CARD_ICON_LEFT = 15
+local ACH_ATLAS_SCORE = "UI-Achievement-Shield-NoPoints"
+local ACH_ATLAS_CHARACTER = "shop-icon-housing-characters-up"
+local ACH_ATLAS_PROGRESS = "UI-Frame-DastardlyDuos-icon-Speed"
+
+local function FormatAchPointsCurrentMax(hex, current, max)
+    local c = tonumber(current) or 0
+    local m = tonumber(max) or 0
+    if m > 0 and m >= c then
+        return hex .. FormatStatCountPair(c, m) .. "|r"
+    end
+    return hex .. FormatNumber(c) .. "|r"
+end
+
+local function FitCardHeaderLayoutToCard(card, layout, iconSize)
+    if not card or not layout or not layout.container or not layout.icon then return end
+    iconSize = iconSize or ACH_COLL_ICON_SIZE
+    local cardW = card:GetWidth() or 200
+    local textW = cardW - STAT_CARD_ICON_LEFT - iconSize - 12 - 8
+    if textW < 48 then textW = 48 end
+    layout.container:SetWidth(textW)
+    layout.icon:ClearAllPoints()
+    layout.icon:SetPoint("CENTER", card, "LEFT", STAT_CARD_ICON_LEFT + (iconSize / 2), 0)
+    layout.container:ClearAllPoints()
+    layout.container:SetPoint("LEFT", layout.icon, "RIGHT", 12, 0)
+    layout.container:SetPoint("CENTER", card, "CENTER", 0, 0)
+end
+
+local function TeardownAchievementCardBundle(bundle, prefix)
+    if not bundle then return end
+    local layout = bundle[prefix .. "Layout"]
+    if layout then
+        if layout.icon then layout.icon:Hide() end
+        if layout.label then layout.label:Hide() end
+        if layout.value then layout.value:Hide() end
+        if layout.container then layout.container:Hide() end
+        bundle[prefix .. "Layout"] = nil
+    end
+    for mi = 1, 3 do
+        local suffix = (mi == 1 and "Title") or (mi == 2 and "Metric") or "Value"
+        local key = prefix .. suffix
+        local fs = bundle[key]
+        if fs then fs:Hide(); bundle[key] = nil end
+    end
+    bundle[prefix .. "LayoutVer"] = nil
+    bundle[prefix .. "HeaderVer"] = nil
+end
+
+local function GetLoggedInClassColorHex()
+    local _, classFile = UnitClass("player")
+    if classFile and ns.UI_GetClassColorHexForSurface then
+        return ns.UI_GetClassColorHexForSurface(classFile)
+    end
+    return "ffffff"
+end
+
+local function EnsureAchievementHeaderCard(card, bundle, prefix, atlas, titleText, valueText)
+    local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
+    if not CreateCardHeaderLayout then return end
+    local verKey = prefix .. "HeaderVer"
+    if bundle[verKey] ~= ACH_HEADER_CARD_VER then
+        TeardownAchievementCardBundle(bundle, prefix)
+        local layout = CreateCardHeaderLayout(card, atlas, ACH_COLL_ICON_SIZE, true, titleText, valueText, "subtitle", "header")
+        if layout and layout.label then
+            ns.UI_SetTextColorRole(layout.label, "Bright")
+        end
+        bundle[prefix .. "Layout"] = layout
+        bundle[verKey] = ACH_HEADER_CARD_VER
+    else
+        local layout = bundle[prefix .. "Layout"]
+        if layout then
+            if layout.label then
+                layout.label:SetText(titleText)
+                layout.label:Show()
+            end
+            if layout.value then
+                layout.value:SetText(valueText)
+                layout.value:Show()
+            end
+            if layout.icon then layout.icon:Show() end
+            if layout.container then layout.container:Show() end
+        end
+    end
+    FitCardHeaderLayoutToCard(card, bundle[prefix .. "Layout"], ACH_COLL_ICON_SIZE)
+end
+
+local function PaintAchievementCollectionCards(bundle, achScoreCard, achCharCard, achProgCard,
+    accountPoints, characterPoints, accountPointsMax, completed, total)
+    local L = ns.L
+    local gold = SemanticGoldHex()
+    local toyHex = SemanticToyHex()
+    local classHex = GetLoggedInClassColorHex()
+    local c = tonumber(completed) or 0
+    local t = tonumber(total) or 0
+    local titleScore = (L and L["STATS_ACH_CARD_SCORE"]) or "Achievement Score"
+    local titleChar = (L and L["STATS_ACH_CARD_CHARACTER"]) or "Character Achievements"
+    local titleProg = (L and L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress"
+    HideLegacyAchievementWidgets(bundle)
+    EnsureAchievementHeaderCard(achScoreCard, bundle, "achScore", ACH_ATLAS_SCORE, titleScore,
+        FormatAchPointsCurrentMax(gold, accountPoints, accountPointsMax))
+    EnsureAchievementHeaderCard(achCharCard, bundle, "achChar", ACH_ATLAS_CHARACTER, titleChar,
+        FormatAchPointsCurrentMax("|cff" .. classHex, characterPoints, accountPoints))
+    EnsureAchievementHeaderCard(achProgCard, bundle, "achProg", ACH_ATLAS_PROGRESS, titleProg,
+        FormatAchPointsCurrentMax(toyHex, c, t))
+end
+
+local function PositionStatsCollectionCard(card, parent, colIndex, rowIndex, leftMargin, yBase, cardW, cardSpacing, rowStep)
+    local xOff = leftMargin + (colIndex - 1) * (cardW + cardSpacing)
+    local yOff = yBase + (rowIndex - 1) * rowStep
+    card:SetParent(parent)
+    card:ClearAllPoints()
+    card:SetWidth(cardW)
+    card:SetHeight(STAT_CARD_H)
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", xOff, -yOff)
+    card:Show()
+end
+
+local function PaintTodoSummaryCard(card, bundle, completed, total)
+    local todoIcon = CreateIcon(card, "Interface\\Icons\\INV_Misc_Note_06", 36, false, nil, true)
+    todoIcon:SetPoint("TOPLEFT", card, "TOPLEFT", 15, -14)
+    todoIcon:Show()
+
+    local titleFs = bundle and bundle.todoTitle
+    if not titleFs then
+        titleFs = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
+        titleFs:SetPoint("TOPLEFT", todoIcon, "TOPRIGHT", 12, -2)
+        titleFs:SetText((ns.L and ns.L["STATS_TODO_TITLE"]) or "To-Do")
+        ns.UI_SetTextColorRole(titleFs, "Bright")
+        if bundle then bundle.todoTitle = titleFs end
+    end
+    titleFs:Show()
+
+    local valueFs = bundle and bundle.todoValue
+    if not valueFs then
+        valueFs = FontManager:CreateFontString(card, "header", "OVERLAY")
+        valueFs:SetPoint("TOPLEFT", todoIcon, "BOTTOMLEFT", 0, -8)
+        valueFs:SetJustifyH("LEFT")
+        if bundle then bundle.todoValue = valueFs end
+    end
+    local gr, gg, gb = SemanticGreenRGB()
+    valueFs:SetText(string.format("|cff%02x%02x%02x%s|r",
+        math.floor(gr * 255), math.floor(gg * 255), math.floor(gb * 255),
+        FormatTodoProgressLine(completed, total)))
+    valueFs:Show()
 end
 
 -- DRAW STATISTICS (Modern Design)
@@ -325,7 +565,7 @@ function WarbandNexus:DrawStatistics(parent)
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "statistics",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ACCOUNT_STATISTICS"]) or "Account Statistics") .. "|r",
-        subtitleText = (ns.L and ns.L["STATISTICS_SUBTITLE"]) or "Collection progress, gold, and storage overview",
+        subtitleText = (ns.L and ns.L["STATISTICS_SUBTITLE"]) or "Collection progress, gold, and account activity",
         showUnderline = false,
     }))
     if chrome and ns.UI_AnchorTabTitleCard then
@@ -358,14 +598,15 @@ function WarbandNexus:DrawStatistics(parent)
         parent._wnStatsHeavyPaintDone = false
     end
 
-    -- Get statistics
-    local stats = GetCachedBankStatistics(self)
-    
     -- Use cached collection stats to avoid expensive API iteration on every redraw
     -- (mount/pet scanning is 1000+ API calls; cache is invalidated on real data changes)
     local collectionStats = GetCachedCollectionStats()
     
     local achievementPoints = collectionStats.achievementPoints
+    local achievementPointsCharacter = collectionStats.achievementPointsCharacter or 0
+    local achievementPointsMax = collectionStats.achievementPointsMax or 0
+    local achievementsTotal = collectionStats.achievementsTotal or 0
+    local achievementsCompleted = collectionStats.achievementsCompleted or 0
     local numCollectedMounts = collectionStats.mounts.collected
     local numTotalMounts = collectionStats.mounts.total
     local numCollectedPets = collectionStats.pets.collected
@@ -375,234 +616,175 @@ function WarbandNexus:DrawStatistics(parent)
     local numCollectedToys = collectionStats.toys.collected
     local numTotalToys = collectionStats.toys.total
     
-    -- Collection row: 3 cards (Mount, Pet, Toy). Wraps to 2 rows to avoid overflow in narrow windows.
+    -- Collection grid: row 1 = 3 achievement cards, row 2 = mount / pet / toy.
     local leftMargin = SIDE
     local rightMargin = SIDE
     local cardSpacing = CARD_GAP_M
-    local MIN_STAT_CARD_W = 220  -- Minimum width so the card shows without clipping
+    local COLL_COLS = 3
     local availableW = width - leftMargin - rightMargin
-    local totalSpacing = cardSpacing * 2
-    local threeCardWidth = (availableW - totalSpacing) / 3
-    local useTwoRows = (threeCardWidth < MIN_STAT_CARD_W)
-    local cardW, secondRowY
-    if useTwoRows then
-        cardW = (availableW - cardSpacing) / 2
-        secondRowY = STAT_CARD_H + sectionGap
-    else
-        cardW = threeCardWidth
-        secondRowY = nil
-    end
-    
-    local accountWideLabel = (ns.L and ns.L["ACCOUNT_WIDE"]) or "Account-wide"
+    local cardW = (availableW - cardSpacing * (COLL_COLS - 1)) / COLL_COLS
+    local collRowStep = STAT_CARD_H + sectionGap
+    local collectionRowY = yOffset
+    local collLayoutSig = "3x2:h7:" .. math.floor(cardW + 0.5)
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
-    local collLayoutSig = (useTwoRows and "2" or "3") .. ":" .. math.floor(cardW + 0.5)
     local collBundle = parent._wnStatsCollectionBundle
-    local achCard, mountCard, petCard, toyCard
+    local achScoreCard, achCharCard, achProgCard, mountCard, petCard, toyCard
 
-    local collectionRowY = yOffset + STAT_CARD_H + sectionGap
-
-    if collBundle and collBundle.layoutSig == collLayoutSig and collBundle.achCard then
-        achCard = collBundle.achCard
+    if collBundle and collBundle.layoutSig == collLayoutSig and collBundle.achScoreCard then
+        achScoreCard = collBundle.achScoreCard
+        achCharCard = collBundle.achCharCard
+        achProgCard = collBundle.achProgCard
         mountCard = collBundle.mountCard
         petCard = collBundle.petCard
         toyCard = collBundle.toyCard
-        achCard:SetParent(parent)
-        achCard:ClearAllPoints()
-        achCard:SetPoint("TOPLEFT", SIDE, -yOffset)
-        achCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
-        achCard:Show()
-        if collBundle.achValue then
-            collBundle.achValue:SetText(SemanticGoldHex() .. FormatNumber(achievementPoints) .. "|r")
-        end
-        mountCard:SetParent(parent)
-        mountCard:ClearAllPoints()
-        mountCard:SetWidth(cardW)
-        mountCard:SetPoint("TOPLEFT", leftMargin, -collectionRowY)
-        mountCard:Show()
+        PositionStatsCollectionCard(achScoreCard, parent, 1, 1, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+        PositionStatsCollectionCard(achCharCard, parent, 2, 1, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+        PositionStatsCollectionCard(achProgCard, parent, 3, 1, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+        PaintAchievementCollectionCards(collBundle, achScoreCard, achCharCard, achProgCard,
+            achievementPoints, achievementPointsCharacter, achievementPointsMax,
+            achievementsCompleted, achievementsTotal)
+        PositionStatsCollectionCard(mountCard, parent, 1, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+        PositionStatsCollectionCard(petCard, parent, 2, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+        PositionStatsCollectionCard(toyCard, parent, 3, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+        FitCardHeaderLayoutToCard(mountCard, collBundle.mountLayout, ACH_COLL_ICON_SIZE)
+        FitCardHeaderLayoutToCard(toyCard, collBundle.toyLayout, ACH_COLL_ICON_SIZE)
         if collBundle.mountValue then
-            collBundle.mountValue:SetText(SemanticInfoHex() .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. " (" .. (numTotalMounts > 0 and math.floor(numCollectedMounts / numTotalMounts * 100) or 0) .. "%)|r")
+            collBundle.mountValue:SetText(SemanticInfoHex() .. FormatStatCountPairPct(numCollectedMounts, numTotalMounts) .. "|r")
         end
-        petCard:SetParent(parent)
-        petCard:ClearAllPoints()
-        petCard:SetWidth(cardW)
-        petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
-        petCard:Show()
         if collBundle.bpValue then
-            collBundle.bpValue:SetText(SemanticPetHex() .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
+            collBundle.bpValue:SetText(SemanticPetHex() .. FormatStatCountPair(numCollectedPets, numJournalEntries) .. "|r")
         end
         if collBundle.upValue then
-            collBundle.upValue:SetText(SemanticPetHex() .. FormatNumber(numUniqueSpecies) .. "/" .. FormatNumber(numTotalSpecies) .. "|r")
+            collBundle.upValue:SetText(SemanticPetHex() .. FormatStatCountPair(numUniqueSpecies, numTotalSpecies) .. "|r")
         end
-        toyCard:SetParent(parent)
-        toyCard:ClearAllPoints()
-        if useTwoRows then
-            toyCard:SetPoint("TOPLEFT", leftMargin, -(collectionRowY + secondRowY))
-            toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(collectionRowY + secondRowY))
-        else
-            toyCard:SetWidth(cardW)
-            toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -collectionRowY)
-        end
-        toyCard:Show()
         if collBundle.toyValue then
-            collBundle.toyValue:SetText(SemanticToyHex() .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. " (" .. (numTotalToys > 0 and math.floor(numCollectedToys / numTotalToys * 100) or 0) .. "%)|r")
+            collBundle.toyValue:SetText(SemanticToyHex() .. FormatStatCountPairPct(numCollectedToys, numTotalToys) .. "|r")
         end
     else
-    -- Achievement Card (Account-wide since TWW) - Full width
-    achCard = CreateCard(parent, STAT_CARD_H)
-    achCard:SetPoint("TOPLEFT", SIDE, -yOffset)
-    achCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
-    if ApplyPanelCardChrome then ApplyPanelCardChrome(achCard) end
-    
-    local achLayout = CreateCardHeaderLayout(
-        achCard,
-        "Interface\\Icons\\Achievement_General_StayClassy",
-        36,
-        false,
-        (ns.L and ns.L["ACHIEVEMENT_POINTS"]) or "ACHIEVEMENT POINTS",
-        SemanticGoldHex() .. FormatNumber(achievementPoints) .. "|r",
-        "subtitle",
-        "header"
-    )
-    -- Override label color to white (factory defaults to white, but ensure it)
-    if achLayout.label then
-        ns.UI_SetTextColorRole(achLayout.label, "Bright")
-    end
-    
-    local achNote = FontManager:CreateFontString(achCard, "small", "OVERLAY")
-    achNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    achNote:SetText(accountWideLabel)
-    ns.UI_SetTextColorRole(achNote, "Bright") -- White
-    
-    achCard:Show()
+    local collFields = {}
 
-    -- Mount Card (collection row)
+    achScoreCard = CreateCard(parent, STAT_CARD_H)
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(achScoreCard) end
+    achCharCard = CreateCard(parent, STAT_CARD_H)
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(achCharCard) end
+    achProgCard = CreateCard(parent, STAT_CARD_H)
+    if ApplyPanelCardChrome then ApplyPanelCardChrome(achProgCard) end
+    PositionStatsCollectionCard(achScoreCard, parent, 1, 1, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+    PositionStatsCollectionCard(achCharCard, parent, 2, 1, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+    PositionStatsCollectionCard(achProgCard, parent, 3, 1, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
+    PaintAchievementCollectionCards(collFields, achScoreCard, achCharCard, achProgCard,
+        achievementPoints, achievementPointsCharacter, achievementPointsMax,
+        achievementsCompleted, achievementsTotal)
+
     mountCard = CreateCard(parent, STAT_CARD_H)
-    mountCard:SetWidth(cardW)
-    mountCard:SetPoint("TOPLEFT", leftMargin, -collectionRowY)
-    
-    -- Use factory pattern for standardized card header layout
+    PositionStatsCollectionCard(mountCard, parent, 1, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
     local mountLayout = CreateCardHeaderLayout(
         mountCard,
         "Interface\\Icons\\Ability_Mount_RidingHorse",
         36,
         false,
         (ns.L and ns.L["MOUNTS_COLLECTED"]) or "MOUNTS COLLECTED",
-        SemanticInfoHex() .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. " (" .. (numTotalMounts > 0 and math.floor(numCollectedMounts / numTotalMounts * 100) or 0) .. "%)|r",
+        SemanticInfoHex() .. FormatStatCountPairPct(numCollectedMounts, numTotalMounts) .. "|r",
         "subtitle",
         "header"
     )
-    -- Override label color to white (factory defaults to white, but ensure it)
     if mountLayout.label then
         ns.UI_SetTextColorRole(mountLayout.label, "Bright")
     end
-    
-    local mountNote = FontManager:CreateFontString(mountCard, "small", "OVERLAY")
-    mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    mountNote:SetText(accountWideLabel)
-    ns.UI_SetTextColorRole(mountNote, "Bright") -- White
-    
+    FitCardHeaderLayoutToCard(mountCard, mountLayout, ACH_COLL_ICON_SIZE)
     if ApplyPanelCardChrome then ApplyPanelCardChrome(mountCard) end
-    mountCard:Show()
 
-    -- Pet Card (collection row)
     petCard = CreateCard(parent, STAT_CARD_H)
-    petCard:SetWidth(cardW)
-    petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
-    
-    -- Single icon (left, vertically centered)
+    PositionStatsCollectionCard(petCard, parent, 2, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
     local petIcon = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false, nil, true)
     petIcon:SetPoint("CENTER", petCard, "LEFT", 15 + 18, 0)
     petIcon:Show()
-    
-    local textX = 15 + 36 + 12  -- left margin + icon + gap
-    
-    -- Two side-by-side columns, both vertically centered to icon center
-    -- Left column: Battle Pets (label above icon center, value below)
     local bpLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
     bpLabel:SetPoint("BOTTOMLEFT", petIcon, "RIGHT", 10, 2)
     bpLabel:SetText((ns.L and ns.L["BATTLE_PETS"]) or "BATTLE PETS")
     ns.UI_SetTextColorRole(bpLabel, "Bright")
     bpLabel:SetJustifyH("LEFT")
-    
     local bpValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
     bpValue:SetPoint("TOPLEFT", petIcon, "RIGHT", 10, -2)
-    bpValue:SetText(SemanticPetHex() .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
+    bpValue:SetText(SemanticPetHex() .. FormatStatCountPair(numCollectedPets, numJournalEntries) .. "|r")
     bpValue:SetJustifyH("LEFT")
-    
-    -- Right column: Unique Pets â€” start after Battle Pets *value* (not only the label), or counts merge visually.
     local upLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
     upLabel:SetPoint("TOP", bpLabel, "TOP", 0, 0)
     upLabel:SetPoint("LEFT", bpValue, "RIGHT", 20, 0)
     upLabel:SetText((ns.L and ns.L["UNIQUE_PETS"]) or "UNIQUE PETS")
     ns.UI_SetTextColorRole(upLabel, "Bright")
     upLabel:SetJustifyH("LEFT")
-    
     local upValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
     upValue:SetPoint("TOPLEFT", upLabel, "BOTTOMLEFT", 0, -4)
-    upValue:SetText(SemanticPetHex() .. FormatNumber(numUniqueSpecies) .. "/" .. FormatNumber(numTotalSpecies) .. "|r")
+    upValue:SetText(SemanticPetHex() .. FormatStatCountPair(numUniqueSpecies, numTotalSpecies) .. "|r")
     upValue:SetJustifyH("LEFT")
-    
-    local petNote = FontManager:CreateFontString(petCard, "small", "OVERLAY")
-    petNote:SetPoint("BOTTOMRIGHT", -10, 8)
-    petNote:SetText(accountWideLabel)
-    ns.UI_SetTextColorRole(petNote, "Bright")
-    
     if ApplyPanelCardChrome then ApplyPanelCardChrome(petCard) end
-    petCard:Show()
 
-    -- Toys Card: second row when narrow, same row when wide
     toyCard = CreateCard(parent, STAT_CARD_H)
-    if useTwoRows then
-        toyCard:SetPoint("TOPLEFT", leftMargin, -(collectionRowY + secondRowY))
-        toyCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -rightMargin, -(collectionRowY + secondRowY))
-    else
-        toyCard:SetWidth(cardW)
-        toyCard:SetPoint("TOPLEFT", leftMargin + (cardW + cardSpacing) * 2, -collectionRowY)
-    end
-    
-    -- Use factory pattern for standardized card header layout
+    PositionStatsCollectionCard(toyCard, parent, 3, 2, leftMargin, collectionRowY, cardW, cardSpacing, collRowStep)
     local toyLayout = CreateCardHeaderLayout(
         toyCard,
         "Interface\\Icons\\INV_Misc_Toy_10",
         36,
         false,
         (ns.L and ns.L["CATEGORY_TOYS"]) or "TOYS",
-        SemanticToyHex() .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. " (" .. (numTotalToys > 0 and math.floor(numCollectedToys / numTotalToys * 100) or 0) .. "%)|r",
+        SemanticToyHex() .. FormatStatCountPairPct(numCollectedToys, numTotalToys) .. "|r",
         "subtitle",
         "header"
     )
-    -- Override label color to white (factory defaults to white, but ensure it)
     if toyLayout.label then
         ns.UI_SetTextColorRole(toyLayout.label, "Bright")
     end
-    
-    local toyNote = FontManager:CreateFontString(toyCard, "small", "OVERLAY")
-    toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    toyNote:SetText(accountWideLabel)
-    ns.UI_SetTextColorRole(toyNote, "Bright") -- White
-    
+    FitCardHeaderLayoutToCard(toyCard, toyLayout, ACH_COLL_ICON_SIZE)
     if ApplyPanelCardChrome then ApplyPanelCardChrome(toyCard) end
-    toyCard:Show()
 
-    parent._wnStatsCollectionBundle = {
-        layoutSig = collLayoutSig,
-        achCard = achCard,
-        achValue = achLayout and achLayout.value,
-        mountCard = mountCard,
-        mountValue = mountLayout and mountLayout.value,
-        petCard = petCard,
-        bpValue = bpValue,
-        upValue = upValue,
-        toyCard = toyCard,
-        toyValue = toyLayout and toyLayout.value,
-    }
+    parent._wnStatsCollectionBundle = collFields
+    parent._wnStatsCollectionBundle.layoutSig = collLayoutSig
+    parent._wnStatsCollectionBundle.achScoreCard = achScoreCard
+    parent._wnStatsCollectionBundle.achCharCard = achCharCard
+    parent._wnStatsCollectionBundle.achProgCard = achProgCard
+    parent._wnStatsCollectionBundle.mountCard = mountCard
+    parent._wnStatsCollectionBundle.mountLayout = mountLayout
+    parent._wnStatsCollectionBundle.mountValue = mountLayout and mountLayout.value
+    parent._wnStatsCollectionBundle.petCard = petCard
+    parent._wnStatsCollectionBundle.bpValue = bpValue
+    parent._wnStatsCollectionBundle.upValue = upValue
+    parent._wnStatsCollectionBundle.toyCard = toyCard
+    parent._wnStatsCollectionBundle.toyLayout = toyLayout
+    parent._wnStatsCollectionBundle.toyValue = toyLayout and toyLayout.value
     end -- collection bundle create
 
-    local collBlockH = STAT_CARD_H
-    if useTwoRows then
-        collBlockH = STAT_CARD_H + sectionGap + STAT_CARD_H
+    local collBlockH = collRowStep + STAT_CARD_H
+    yOffset = yOffset + collBlockH + sectionGap
+
+    local todoCounts = self.GetPlansStatisticsCounts and self:GetPlansStatisticsCounts() or { total = 0, completed = 0 }
+    local todoCompleted = todoCounts.completed or 0
+    local todoTotal = todoCounts.total or 0
+    local todoBundle = parent._wnStatsTodoBundle
+    local todoCard
+    if todoBundle and todoBundle.todoCard then
+        todoCard = todoBundle.todoCard
+        todoCard:SetParent(parent)
+        todoCard:ClearAllPoints()
+        todoCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+        todoCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
+        todoCard:Show()
+        PaintTodoSummaryCard(todoCard, todoBundle, todoCompleted, todoTotal)
+    else
+        local todoFields = {}
+        todoCard = CreateCard(parent, STAT_CARD_H)
+        todoCard:SetPoint("TOPLEFT", SIDE, -yOffset)
+        todoCard:SetPoint("TOPRIGHT", -SIDE, -yOffset)
+        if ApplyPanelCardChrome then ApplyPanelCardChrome(todoCard) end
+        PaintTodoSummaryCard(todoCard, todoFields, todoCompleted, todoTotal)
+        todoCard:Show()
+        parent._wnStatsTodoBundle = {
+            todoCard = todoCard,
+            todoTitle = todoFields.todoTitle,
+            todoValue = todoFields.todoValue,
+        }
     end
-    yOffset = yOffset + STAT_CARD_H + sectionGap + collBlockH + sectionGap
+    yOffset = yOffset + STAT_CARD_H + sectionGap
 
     local PaintHeavyStatisticsBody
     PaintHeavyStatisticsBody = function(startYOffset)
@@ -671,10 +853,8 @@ function WarbandNexus:DrawStatistics(parent)
         ns.UI_SetTextColorRole(gwTitle, "Bright")
         gwTitle:SetJustifyH("LEFT")
         
-        local gwTotal = FontManager:CreateFontString(goldCard, "header", "OVERLAY")
-        gwTotal:SetPoint("RIGHT", goldCard, "TOPRIGHT", -15, -24)
-        gwTotal:SetText(FormatMoney(grandTotalCopper, 14))
-        gwTotal:SetJustifyH("RIGHT")
+        local gwTotalAnchorY = -24
+        PaintStatisticsMoneyColumns(goldCard, gwTotalAnchorY, grandTotalCopper, GW_MONEY_ICON_HDR)
         
         local gwRowY = GW_HEADER_AREA
         local maxCopper = goldChars[1] and goldChars[1].copper or 1
@@ -694,16 +874,9 @@ function WarbandNexus:DrawStatistics(parent)
             stripe = stripe or { 0.768, 0.760, 0.744, 0.98 }
             rowBg:SetColorTexture(stripe[1], stripe[2], stripe[3], stripe[4] or 0.98)
             
-            PaintStatisticsClassRow(goldCard, rowCenterY, GW_ROW_HEIGHT, charInfo.classFile, charInfo.name, -160)
+            PaintStatisticsClassRow(goldCard, rowCenterY, GW_ROW_HEIGHT, charInfo.classFile, charInfo.name, GW_NAME_RIGHT_INSET)
             
-            local goldText = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
-            goldText:SetPoint("RIGHT", goldCard, "TOPRIGHT", -15, rowCenterY)
-            if charInfo.copper > 0 then
-                goldText:SetText(FormatMoney(charInfo.copper, 12))
-            else
-                goldText:SetText(ThemeTextHex("Dim") .. "-|r")
-            end
-            goldText:SetJustifyH("RIGHT")
+            PaintStatisticsMoneyColumns(goldCard, rowCenterY, charInfo.copper, GW_MONEY_ICON_ROW)
             
             gwRowY = gwRowY + GW_ROW_HEIGHT + GW_ROW_SPACING
         end
@@ -726,13 +899,12 @@ function WarbandNexus:DrawStatistics(parent)
             
             local wbName = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
             wbName:SetPoint("LEFT", wbIcon, "RIGHT", 6, 0)
-            wbName:SetText(SemanticInfoHex() .. ((ns.L and ns.L["WARBAND_BANK"]) or "Warband Bank") .. "|r")
+            wbName:SetPoint("RIGHT", goldCard, "RIGHT", GW_NAME_RIGHT_INSET, 0)
+            wbName:SetWordWrap(false)
             wbName:SetJustifyH("LEFT")
+            wbName:SetText(SemanticInfoHex() .. ((ns.L and ns.L["WARBAND_BANK"]) or "Warband Bank") .. "|r")
             
-            local wbGold = FontManager:CreateFontString(goldCard, "body", "OVERLAY")
-            wbGold:SetPoint("RIGHT", goldCard, "TOPRIGHT", -15, rowCenterY)
-            wbGold:SetText(FormatMoney(warbandBankCopper, 12))
-            wbGold:SetJustifyH("RIGHT")
+            PaintStatisticsMoneyColumns(goldCard, rowCenterY, warbandBankCopper, GW_MONEY_ICON_ROW)
             
             gwRowY = gwRowY + GW_ROW_HEIGHT + GW_ROW_SPACING
         end
@@ -1005,90 +1177,10 @@ function WarbandNexus:DrawStatistics(parent)
         heavyBundle.mpCard = mpCard
         yOffset = yOffset + cardHeight + sectionGap
     end
-    
-    local wb = stats.warband or {}
-    local pb = stats.personal or {}
-    local freeSlots = (wb.freeSlots or 0) + (pb.freeSlots or 0)
-    local itemCount = (wb.itemCount or 0) + (pb.itemCount or 0)
 
-    local storageCard = heavyBundle.storageCard
-    if not storageCard then
-        storageCard = CreateCard(parent, STORAGE_CARD_H)
-        heavyBundle.storageCard = storageCard
-        if ApplyPanelCardChrome then ApplyPanelCardChrome(storageCard) end
-        local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
-        stTitle:SetPoint("TOPLEFT", 15, -10)
-        stTitle:SetText(AccentHex() .. ((ns.L and ns.L["STORAGE_OVERVIEW"]) or "Storage Overview") .. "|r")
-        heavyBundle.storageTitle = stTitle
-        heavyBundle.storageCols = {}
-        local colDefs = {
-            { labelKey = "WARBAND_SLOTS", fallback = "Warband Slots" },
-            { labelKey = "PERSONAL_SLOTS", fallback = "Personal Slots" },
-            { labelKey = "TOTAL_FREE", fallback = "Total Free", valueGreen = true },
-            { labelKey = "TOTAL_ITEMS", fallback = "Total Items" },
-        }
-        for ci = 1, 4 do
-            local def = colDefs[ci]
-            local lbl = FontManager:CreateFontString(storageCard, "small", "OVERLAY")
-            lbl:SetJustifyH("LEFT")
-            local val = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
-            val:SetJustifyH("LEFT")
-            heavyBundle.storageCols[ci] = {
-                label = lbl,
-                value = val,
-                labelKey = def.labelKey,
-                fallback = def.fallback,
-                valueGreen = def.valueGreen,
-            }
-        end
-    end
-    storageCard:SetParent(parent)
-    storageCard:ClearAllPoints()
-    storageCard:SetPoint("TOPLEFT", SIDE, -yOffset)
-    storageCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE, -yOffset)
-    storageCard:SetHeight(STORAGE_CARD_H)
-    storageCard:Show()
-
-    local cardWidth = storageCard:GetWidth() or 600
-    local padX, padTop, gridGap = 15, 36, 14
-    local useGrid2x2 = cardWidth < 520
-    local colW = useGrid2x2 and math.floor((cardWidth - padX * 2 - gridGap) / 2)
-        or math.floor((cardWidth - padX * 2) / 4)
-    local statValues = {
-        FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0),
-        FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0),
-        FormatNumber(freeSlots),
-        FormatNumber(itemCount),
-    }
-    local gr, gg, gb = SemanticGreenRGB()
-    for ci = 1, 4 do
-        local col = heavyBundle.storageCols[ci]
-        local gridRow = useGrid2x2 and math.floor((ci - 1) / 2) or 0
-        local gridCol = useGrid2x2 and ((ci - 1) % 2) or (ci - 1)
-        local x = padX + gridCol * (colW + gridGap)
-        local y = -(padTop + gridRow * 34)
-        col.label:ClearAllPoints()
-        col.label:SetPoint("TOPLEFT", storageCard, "TOPLEFT", x, y)
-        col.label:SetWidth(colW)
-        col.label:SetText((ns.L and ns.L[col.labelKey]) or col.fallback)
-        ns.UI_SetTextColorRole(col.label, "Normal")
-        col.value:ClearAllPoints()
-        col.value:SetPoint("TOPLEFT", col.label, "BOTTOMLEFT", 0, -2)
-        col.value:SetWidth(colW)
-        col.value:SetText(statValues[ci])
-        if col.valueGreen then
-            col.value:SetTextColor(gr, gg, gb)
-        else
-            ns.UI_SetTextColorRole(col.value, "Bright")
-        end
-        col.label:Show()
-        col.value:Show()
-    end
-
-    yOffset = yOffset + STORAGE_CARD_H + sectionGap
-
-    if ns.UI_AnnexResultsToScrollBottom then
-        ns.UI_AnnexResultsToScrollBottom(storageCard, parent, SIDE, 8)
+    local annexAnchor = heavyBundle.mpCard or heavyBundle.goldCard
+    if annexAnchor and ns.UI_AnnexResultsToScrollBottom then
+        ns.UI_AnnexResultsToScrollBottom(annexAnchor, parent, SIDE, 8)
     end
 
     return yOffset

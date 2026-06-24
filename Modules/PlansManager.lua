@@ -1300,6 +1300,34 @@ function WarbandNexus:GetActiveNonDailyIncompleteCount()
     return n
 end
 
+--- Statistics tab: completed vs total saved To-Do rows (plans + customPlans).
+---@return table { total = number, completed = number }
+function WarbandNexus:GetPlansStatisticsCounts()
+    if not self.db or not self.db.global then
+        return { total = 0, completed = 0 }
+    end
+    local total, completed = 0, 0
+    local memo = {}
+    local function tally(list)
+        if not list then return end
+        for i = 1, #list do
+            local plan = list[i]
+            total = total + 1
+            local isComplete = memo[plan]
+            if isComplete == nil then
+                isComplete = self:IsActivePlanComplete(plan) == true
+                memo[plan] = isComplete
+            end
+            if isComplete then
+                completed = completed + 1
+            end
+        end
+    end
+    tally(self.db.global.plans)
+    tally(self.db.global.customPlans)
+    return { total = total, completed = completed }
+end
+
 --[[
     Get a specific plan by ID
     @param planID number - Plan ID

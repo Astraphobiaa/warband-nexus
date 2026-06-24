@@ -65,17 +65,13 @@ end
 local Notify = ns.CollectionNotify
 local Mat = ns.CollectionMaterialize
 
----How many achievements to iterate in a category via GetAchievementInfo(categoryID, index).
----Must use includeAll=true: GetAchievementInfo(catID, index) can return subcategory achievements
----when iterating a parent category. Without includeAll=true the count is too low and many
----achievements (including Glory/meta achievements in deep subcategories) are silently skipped.
+---V2 direct scan: GetCategoryList() returns leaf categories — pair with GetAchievementInfo(categoryID, index)
+---(two args only; includeAll applies to GetCategoryNumAchievements, not GetAchievementInfo per wiki).
 local function GetCategoryAchievementListCount(categoryID)
     if not categoryID or not GetCategoryNumAchievements then return 0 end
-    local ok, total = pcall(function()
-        return select(1, GetCategoryNumAchievements(categoryID, true))
-    end)
+    local ok, total = pcall(GetCategoryNumAchievements, categoryID)
     if ok and type(total) == "number" then return total end
-    return select(1, GetCategoryNumAchievements(categoryID)) or 0
+    return 0
 end
 
 ---GetCategoryList() is empty until achievement APIs hydrate (often after login).
@@ -114,20 +110,116 @@ local function SafeAchievementDisplayName(id, name)
     return "ID:" .. tostring(id)
 end
 
----GetAchievementInfo(categoryID, index[, includeAll]) — try includeAll=true first (journal parity).
+local function IsAchievementEarnedByMe(wasEarnedByMe)
+    if wasEarnedByMe == nil then return false end
+    if issecretvalue and issecretvalue(wasEarnedByMe) then return false end
+    return wasEarnedByMe == true
+end
+
+---Per-character credit is authoritative on GetAchievementInfo(achievementID) (wiki #13 wasEarnedByMe).
+local function GetAchievementEarnedByMeInfo(achievementID, fallbackPoints, fallbackWasEarned, fallbackIsGuild)
+    if not achievementID or not GetAchievementInfo then
+        return fallbackWasEarned, fallbackIsGuild, fallbackPoints
+    end
+    if issecretvalue and issecretvalue(achievementID) then
+        return false, fallbackIsGuild, fallbackPoints
+    end
+    local ok, packed = pcall(function()
+        return { GetAchievementInfo(achievementID) }
+    end)
+    if not ok or not packed or not packed[1] then
+        return fallbackWasEarned, fallbackIsGuild, fallbackPoints
+    end
+    return packed[13], packed[12], packed[3] or fallbackPoints
+end
+
+---GetAchievementInfo(categoryID, index) — wiki: 15 returns; wasEarnedByMe is index 13.
 local function GetAchievementInfoByCategoryIndex(categoryID, achIndex)
     if not GetAchievementInfo or not categoryID or not achIndex then return false end
-    local ok, id, name, points, completed, month, day, year, description, flags, icon, achRewardText =
-        pcall(GetAchievementInfo, categoryID, achIndex, true)
-    if ok and id and not (issecretvalue and issecretvalue(id)) then
-        return true, id, name, points, completed, month, day, year, description, flags, icon, achRewardText
+    local ok, packed = pcall(function()
+        return { GetAchievementInfo(categoryID, achIndex) }
+    end)
+    if not ok or not packed or not packed[1] or (issecretvalue and issecretvalue(packed[1])) then
+        return false
     end
-    ok, id, name, points, completed, month, day, year, description, flags, icon, achRewardText =
-        pcall(GetAchievementInfo, categoryID, achIndex)
-    if ok and id and not (issecretvalue and issecretvalue(id)) then
-        return true, id, name, points, completed, month, day, year, description, flags, icon, achRewardText
+    return true, packed[1], packed[2], packed[3], packed[4], packed[5], packed[6], packed[7],
+        packed[8], packed[9], packed[10], packed[11], packed[12], packed[13]
+end
+
+local _achievementCharacterPointsCache = nil
+local _collectionCountsAPICache = nil
+local COLLECTION_COUNTS_API_TTL = 60
+
+local function SafeAchievementCountPair()
+    if not GetNumCompletedAchievements then return 0, 0 end
+    local ok, total, completed = pcall(GetNumCompletedAchievements)
+    if not ok then return 0, 0 end
+    if total and issecretvalue and issecretvalue(total) then total = 0 end
+    if completed and issecretvalue and issecretvalue(completed) then completed = 0 end
+    return tonumber(total) or 0, tonumber(completed) or 0
+end
+
+local function NeedsCharacterAchievementPointsRecompute(addon)
+    if not addon or not addon.db or not addon.db.global then return false end
+    local CS = ns.CharacterService
+    local charKey = (CS and CS.ResolveCharactersTableKey and CS:ResolveCharactersTableKey(addon))
+        or (CS and CS.GetCharactersTablePersistKey and CS:GetCharactersTablePersistKey(addon))
+    if not charKey or (issecretvalue and issecretvalue(charKey)) then return false end
+    local row = addon.db.global.characters and addon.db.global.characters[charKey]
+    local stored = row and row.achievementPointsEarned
+    if type(stored) == "number" and stored > 0 then return false end
+    if row and row.achievementPointsResolvedAt then return false end
+    local accountPts = 0
+    if GetTotalAchievementPoints then
+        accountPts = tonumber(GetTotalAchievementPoints()) or 0
     end
-    return false
+    local _, completed = SafeAchievementCountPair()
+    return completed > 0 and accountPts > 0
+end
+
+local function PersistCharacterAchievementPoints(addon, points)
+    if not addon or not addon.db or not addon.db.global then return end
+    local CS = ns.CharacterService
+    local charKey = (CS and CS.GetCharactersTablePersistKey and CS:GetCharactersTablePersistKey(addon))
+        or (CS and CS.ResolveCharactersTableKey and CS:ResolveCharactersTableKey(addon))
+        or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
+    if not charKey or (issecretvalue and issecretvalue(charKey)) then return end
+    local chars = addon.db.global.characters
+    if not chars then return end
+    if not chars[charKey] and addon.SaveCurrentCharacterData then
+        addon:SaveCurrentCharacterData({ lightOnly = true })
+        charKey = (CS and CS.ResolveCharactersTableKey and CS:ResolveCharactersTableKey(addon)) or charKey
+    end
+    local row = chars[charKey]
+    if not row then return end
+    local n = tonumber(points) or 0
+    row.achievementPointsEarned = n
+    row.achievementPointsResolvedAt = time()
+    _achievementCharacterPointsCache = {
+        charKey = charKey,
+        points = n,
+        timestamp = GetTime(),
+    }
+    _collectionCountsAPICache = nil
+end
+
+local function ResolveCharacterAchievementPoints(addon)
+    local CS = ns.CharacterService
+    local charKey = (CS and CS.ResolveCharactersTableKey and CS:ResolveCharactersTableKey(addon))
+        or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(addon))
+    if charKey and _achievementCharacterPointsCache
+        and _achievementCharacterPointsCache.charKey == charKey then
+        local age = GetTime() - (_achievementCharacterPointsCache.timestamp or 0)
+        if age < COLLECTION_COUNTS_API_TTL then
+            return _achievementCharacterPointsCache.points or 0
+        end
+    end
+    if not charKey or not addon.db or not addon.db.global then return 0 end
+    local row = addon.db.global.characters and addon.db.global.characters[charKey]
+    if row and type(row.achievementPointsEarned) == "number" and row.achievementPointsEarned > 0 then
+        return row.achievementPointsEarned
+    end
+    return 0
 end
 
 -- CONSTANTS
@@ -237,6 +329,35 @@ end
 
 local function IsAchievementStoreInadequate()
     return CountAchievementStoreEntries() < ACHIEVEMENT_STORE_MIN_TRUST
+end
+
+local function SumAchievementJournalPointsMax()
+    if IsAchievementStoreInadequate() then return 0 end
+    local store = collectionStore.achievement
+    if type(store) ~= "table" then return 0 end
+    local sum = 0
+    for _, record in pairs(store) do
+        if type(record) == "table" and record.isGuild ~= true then
+            local pt = tonumber(record.points) or 0
+            if pt > 0 then sum = sum + pt end
+        end
+    end
+    return sum
+end
+
+local function ApplyAchievementSummaryToData(addon, data)
+    if not data then return data end
+    if GetTotalAchievementPoints then
+        data.achievementPoints = GetTotalAchievementPoints() or 0
+    end
+    data.achievementsTotal, data.achievementsCompleted = SafeAchievementCountPair()
+    data.achievementPointsCharacter = ResolveCharacterAchievementPoints(addon)
+    data.achievementPointsMax = SumAchievementJournalPointsMax()
+    if NeedsCharacterAchievementPointsRecompute(addon)
+        and addon.RecomputeCharacterAchievementPointsAsync then
+        addon:RecomputeCharacterAchievementPointsAsync()
+    end
+    return data
 end
 
 local function SignalAchievementScanPipelineDone(sender, payload)
@@ -566,6 +687,24 @@ function WarbandNexus:InitializeCollectionCache()
     -- category should only scan its direct achievements. V2 flag triggers rescan for all users.
     if self.db.global and not self.db.global.wnAchievementDirectScanV2 then
         collectionCache.lastAchievementScan = 0
+    end
+    -- One-shot: re-sum wasEarnedByMe points after character score persistence shipped.
+    if self.db.global and not self.db.global.wnAchievementCharPointsBackfillV1 then
+        self.db.global.wnAchievementCharPointsBackfillV1 = true
+        collectionCache.lastAchievementScan = 0
+    end
+    -- One-shot: clear stale persisted 0 (failed scan) so ID-based recompute can run.
+    if self.db.global and not self.db.global.wnAchievementCharPointsRecomputeV2 then
+        self.db.global.wnAchievementCharPointsRecomputeV2 = true
+        local chars = self.db.global.characters
+        if type(chars) == "table" then
+            for _, row in pairs(chars) do
+                if type(row) == "table" and row.achievementPointsEarned == 0 then
+                    row.achievementPointsEarned = nil
+                    row.achievementPointsResolvedAt = nil
+                end
+            end
+        end
     end
 
     -- SINGLE SOURCE: load collectionStore or migrate from the old DB
@@ -1586,8 +1725,6 @@ end
 
 -- Canonical collection counts from Blizzard API only (single source for Statistics + Collections).
 -- Cache invalidated on WN_COLLECTION_UPDATED / WN_COLLECTIBLE_OBTAINED so both tabs show same numbers.
-local _collectionCountsAPICache = nil
-local COLLECTION_COUNTS_API_TTL = 60
 
 ---Return cached or freshly computed collection counts from Blizzard API only.
 ---Single source of truth for Statistics and Collections (e.g. mount total 1577 in both).
@@ -1604,9 +1741,7 @@ function WarbandNexus:GetCollectionCountsFromStore()
         achievementPoints = 0,
     }
 
-    if GetTotalAchievementPoints then
-        data.achievementPoints = GetTotalAchievementPoints() or 0
-    end
+    ApplyAchievementSummaryToData(self, data)
 
     local mountStore = collectionStore.mount
     if type(mountStore) == "table" then
@@ -1661,9 +1796,7 @@ function WarbandNexus:GetCollectionCountsFromAPI()
         achievementPoints = 0,
     }
 
-    if GetTotalAchievementPoints then
-        data.achievementPoints = GetTotalAchievementPoints() or 0
-    end
+    ApplyAchievementSummaryToData(self, data)
 
     if C_MountJournal and C_MountJournal.GetMountIDs then
         local mountIDs = C_MountJournal.GetMountIDs()
@@ -2757,6 +2890,7 @@ WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
 WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_UPDATED, InvalidateCollectionCountsCache)
 WarbandNexus.RegisterMessage(CSListeners, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
     WipeUncollectedResultsCacheAndMergedAchievements()
+    InvalidateCollectionCountsCache(nil, nil)
     WarbandNexus:SendMessage(Constants.EVENTS.ACHIEVEMENT_CATEGORY_CACHE_INVALIDATED)
 end)
 
@@ -2863,6 +2997,38 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         entry.collected = true
     end
     self:SaveCollectionStore()
+
+    if not priorAchievementCollected and GetAchievementInfo then
+        local okPts, _, _, pts, _, _, _, _, _, _, _, isGuild, wasEarnedByMe = pcall(GetAchievementInfo, achievementID)
+        if okPts and IsAchievementEarnedByMe(wasEarnedByMe) and isGuild ~= true then
+            local pt = tonumber(pts) or 0
+            if pt > 0 then
+                local charKey = (ns.CharacterService and ns.CharacterService.GetCharactersTablePersistKey
+                    and ns.CharacterService:GetCharactersTablePersistKey(self))
+                    or (ns.Utilities and ns.Utilities.GetCharacterStorageKey
+                    and ns.Utilities:GetCharacterStorageKey(self))
+                if charKey and not (issecretvalue and issecretvalue(charKey)) then
+                    local chars = self.db and self.db.global and self.db.global.characters
+                    local row = chars and chars[charKey]
+                    if not row and self.SaveCurrentCharacterData then
+                        self:SaveCurrentCharacterData({ lightOnly = true })
+                        row = chars and chars[charKey]
+                    end
+                    if row then
+                        local prev = tonumber(row.achievementPointsEarned) or 0
+                        row.achievementPointsEarned = prev + pt
+                        row.achievementPointsResolvedAt = time()
+                        _achievementCharacterPointsCache = {
+                            charKey = charKey,
+                            points = row.achievementPointsEarned,
+                            timestamp = GetTime(),
+                        }
+                        _collectionCountsAPICache = nil
+                    end
+                end
+            end
+        end
+    end
 
     -- Check for chained/superceding achievements (e.g., 5/5 → 0/10)
     -- GetSupercedingAchievements returns the next achievement in the chain
@@ -5082,6 +5248,9 @@ function WarbandNexus:ScanAchievementsAsync()
     local forceRescan = IsAchievementStoreInadequate()
     if timeSinceLastScan < 300 and not forceRescan then
     DebugPrintf("|cffffcc00[WN CollectionService]|r Achievement scan skipped (last scan %.0f seconds ago)", timeSinceLastScan)
+        if NeedsCharacterAchievementPointsRecompute(self) and self.RecomputeCharacterAchievementPointsAsync then
+            self:RecomputeCharacterAchievementPointsAsync()
+        end
         SignalAchievementScanPipelineDone(self, { category = "achievement", skipped = true })
         return
     end
@@ -5128,6 +5297,7 @@ function WarbandNexus:ScanAchievementsAsync()
     local startTime = debugprofilestop()  -- Use debugprofilestop for elapsed time measurement
     local totalAchievements = 0
     local scannedCount = 0
+    local characterPointsSum = 0
     local totalEstimated = 5000  -- Rough estimate for progress bar
     local lastProgressUpdate = 0  -- Throttle progress events
     local lastYield = debugprofilestop()  -- Track time since last yield
@@ -5149,7 +5319,7 @@ function WarbandNexus:ScanAchievementsAsync()
                 local numAchievements = GetCategoryAchievementListCount(categoryID)
 
                 for achIndex = 1, numAchievements do
-                    local success, id, name, points, completed, month, day, year, description, flags, icon, achRewardText =
+                    local success, id, name, points, completed, month, day, year, description, flags, icon, achRewardText, isGuild, wasEarnedByMe =
                         GetAchievementInfoByCategoryIndex(categoryID, achIndex)
                     
                     -- Update progress (throttled to reduce event spam)
@@ -5220,6 +5390,13 @@ function WarbandNexus:ScanAchievementsAsync()
                             rewardTitle = rewardTitle,
                         }
                         collectionStore.achievement[id] = record
+                        local earnedByMe, guildFlag, pt = GetAchievementEarnedByMeInfo(id, points, wasEarnedByMe, isGuild)
+                        if IsAchievementEarnedByMe(earnedByMe) and guildFlag ~= true then
+                            local ptNum = tonumber(pt)
+                            if ptNum and ptNum > 0 then
+                                characterPointsSum = characterPointsSum + ptNum
+                            end
+                        end
                         if completed then
                             collectionCache.completed.achievement[id] = displayName
                         else
@@ -5264,6 +5441,7 @@ function WarbandNexus:ScanAchievementsAsync()
         end
         
         -- Save to DB
+        PersistCharacterAchievementPoints(self, characterPointsSum)
         self:SaveCollectionStore()
         self:SaveCollectionCache()
         WipeUncollectedResultsCacheAndMergedAchievements()
@@ -5295,6 +5473,9 @@ function WarbandNexus:ScanAchievementsAsync()
             totalAchievements = totalAchievements,
             elapsed = elapsed,
         })
+        if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+            self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "achievement")
+        end
         
         -- UI refreshes via WN_COLLECTION_SCAN_COMPLETE listener in UI.lua (event-driven).
         
@@ -5360,6 +5541,82 @@ function WarbandNexus:ScanAchievementsAsync()
     end
     
     resumeCoroutine()
+end
+
+---Sum wasEarnedByMe points from persisted achievement store (GetAchievementInfo per ID).
+---Runs when full scan is on cooldown but character score was never persisted.
+function WarbandNexus:RecomputeCharacterAchievementPointsAsync()
+    if activeCoroutines["achievement_char_points"] or activeCoroutines["achievements"] then
+        return
+    end
+    if not NeedsCharacterAchievementPointsRecompute(self) then
+        return
+    end
+    if IsAchievementStoreInadequate() then
+        self:ScanAchievementsAsync()
+        return
+    end
+
+    local function worker()
+        local sum = 0
+        local scanned = 0
+        local store = collectionStore.achievement
+        if type(store) ~= "table" then
+            activeCoroutines["achievement_char_points"] = nil
+            return
+        end
+        for achID, record in pairs(store) do
+            if not activeCoroutines["achievement_char_points"] then return end
+            local id = achID
+            if type(record) == "table" and type(record.id) == "number" then
+                id = record.id
+            end
+            if type(id) == "number" and not (issecretvalue and issecretvalue(id)) then
+                local wasEarnedByMe, isGuild, points = GetAchievementEarnedByMeInfo(id)
+                if IsAchievementEarnedByMe(wasEarnedByMe) and isGuild ~= true then
+                    local pt = tonumber(points) or 0
+                    if pt > 0 then sum = sum + pt end
+                end
+            end
+            scanned = scanned + 1
+            if scanned % 100 == 0 then
+                coroutine.yield()
+            end
+        end
+        PersistCharacterAchievementPoints(self, sum)
+        if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+            self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "achievement")
+        end
+        activeCoroutines["achievement_char_points"] = nil
+    end
+
+    local co = coroutine.create(worker)
+    activeCoroutines["achievement_char_points"] = co
+
+    local function resumeCharPoints()
+        local c = activeCoroutines["achievement_char_points"]
+        if not c then return end
+        if InCombatLockdown and InCombatLockdown() then
+            C_Timer.After(0, resumeCharPoints)
+            return
+        end
+        local budget = FRAME_BUDGET_MS
+        local t0 = debugprofilestop()
+        while (debugprofilestop() - t0) < budget do
+            local ok, err = coroutine.resume(c)
+            if not ok then
+                DebugPrint("|cffff0000[WN CollectionService ERROR]|r Char achievement points recompute failed: " .. tostring(err))
+                activeCoroutines["achievement_char_points"] = nil
+                return
+            end
+            if coroutine.status(c) == "dead" then
+                activeCoroutines["achievement_char_points"] = nil
+                return
+            end
+        end
+        C_Timer.After(0, resumeCharPoints)
+    end
+    resumeCharPoints()
 end
 
 ---Get uncollected achievements (UNIFIED: collectionStore-first). Plans shows uncollected only.

@@ -163,6 +163,36 @@ local function FormatMoney(copper, iconSize, showZero)
     return table.concat(parts, " ")
 end
 
+--- Fixed-width G / S / C strings for column-aligned money rows (Statistics wealth, money logs).
+--- Gold: up to 7 digits with thousand separators; silver/copper always 2 digits.
+local function FormatMoneyPartsColumn(copper, iconSize)
+    copper = tonumber(copper) or 0
+    if copper < 0 then copper = 0 end
+    iconSize = tonumber(iconSize) or 12
+    if iconSize < 8 then iconSize = 8 end
+    if iconSize > 32 then iconSize = 32 end
+
+    local gold = floor(copper / 10000)
+    local silver = floor((copper % 10000) / 100)
+    local copperAmount = floor(copper % 100)
+
+    local goldStr = tostring(gold)
+    local k
+    while true do
+        goldStr, k = gsub(goldStr, "^(-?%d+)(%d%d%d)", "%1.%2")
+        if k == 0 then break end
+    end
+
+    local gIcon = format("|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", iconSize, iconSize)
+    local sIcon = format("|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", iconSize, iconSize)
+    local cIcon = format("|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", iconSize, iconSize)
+
+    local gStr = format("%s%s|r%s", GetMoneyGoldHex(), goldStr, gIcon)
+    local sStr = format("|cffc7c7cf%02d|r%s", silver, sIcon)
+    local cStr = format("|cffeda55f%02d|r%s", copperAmount, cIcon)
+    return gStr, sStr, cStr
+end
+
 -- SEASON / CAPPED CURRENCY LINE (Dawncrest, Coffer Key Shards, etc.)
 -- Matches Gear tab: bag qty colored by earn room; "/ seasonMax" muted.
 
@@ -360,6 +390,7 @@ local FormatHelpers = {
     FormatNumber = FormatNumber,
     FormatTextNumbers = FormatTextNumbers,
     FormatMoney = FormatMoney,
+    FormatMoneyPartsColumn = FormatMoneyPartsColumn,
 }
 
 -- Export to namespace
@@ -370,6 +401,7 @@ ns.UI_FormatNumber = FormatNumber
 ns.UI_FormatTextNumbers = FormatTextNumbers
 ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
+ns.UI_FormatMoneyPartsColumn = FormatMoneyPartsColumn
 ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
 ns.UI_FormatSeasonProgressShiftAware = FormatSeasonProgressShiftAware
 ns.UI_BindSeasonProgressAmount = BindSeasonProgressAmount
