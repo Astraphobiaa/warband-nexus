@@ -556,6 +556,11 @@ ns.CollectibleSourceDB = {
               { type = "mount", itemID = 248761, name = "Brewfest Barrel Bomber" },
           },
         },
+        { sourceType = "container", containerItemID = 117394,  -- Satchel of Chilled Goods (Midsummer - Ahune daily)
+          drops = {
+              { type = "mount", itemID = 275464, name = "Sun Festival's Painted Roc" },
+          },
+        },
 
         -- Zone Drops
         -- TWW: Isle of Dorn — Crackling Shard (any killable mob in zone, <1% for normals)
@@ -1922,6 +1927,7 @@ ns.CollectibleSourceDB = {
         -- Headless Horseman â†’ Loot-Filled Pumpkin (container 209024)
         -- Coren Direbrew â†’ Keg-Shaped Treasure Chest (container 117393)
         -- Apothecary Hummel â†’ Heart-Shaped Box (container 54537)
+        -- Lord Ahune â†’ Satchel of Chilled Goods (container 117394)
         -- All holiday boss mounts are tracked in the containers table below.
     },
 
