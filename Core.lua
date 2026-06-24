@@ -1289,6 +1289,9 @@ function WarbandNexus:OnGuildBankUpdate()
     if not self.guildBankIsOpen then
         self:OnGuildBankOpened()
     else
+        if self.InvalidateLiveOpenGuildBankSummary then
+            self:InvalidateLiveOpenGuildBankSummary()
+        end
         -- The +0.5s open scan hasn't run yet and will already capture this change.
         if self._guildBankOpenScanAt and (GetTime() - self._guildBankOpenScanAt) < 0.5 then
             return
@@ -1352,6 +1355,9 @@ function WarbandNexus:OnGuildBankClosed()
         self:ThrottledGuildBankScan()
     end
     self.guildBankIsOpen = false
+    if self.InvalidateLiveOpenGuildBankSummary then
+        self:InvalidateLiveOpenGuildBankSummary()
+    end
     if self.InvalidateGuildBankScan then
         self:InvalidateGuildBankScan()
     end

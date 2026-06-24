@@ -614,10 +614,28 @@ local function AppendWNItemCountLines(tooltip, itemID)
         return false
     end
 
+    local function SafeAtlasMarkup(atlas, w, h)
+        if not CreateAtlasMarkup then return "" end
+        local ok, markup = pcall(CreateAtlasMarkup, atlas, w, h)
+        return (ok and markup) or ""
+    end
+
+    local function SafeAddDoubleLine(left, right, lr, lg, lb, rr, rg, rb)
+        local ok = pcall(tooltip.AddDoubleLine, tooltip, left, right, lr, lg, lb, rr, rg, rb)
+        return ok
+    end
+
+    local GUILD_VAULT_ICON_ATLAS = "Warfronts-FieldMapIcons-Neutral-Banner-Minimap"
+
     local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
     if not details then return false end
 
     local total = details.warbandBank or 0
+    if details.guilds then
+        for i = 1, #details.guilds do
+            total = total + (details.guilds[i].count or 0)
+        end
+    end
     for i = 1, #details.characters do
         total = total + details.characters[i].bagCount + details.characters[i].bankCount
     end
@@ -626,49 +644,96 @@ local function AppendWNItemCountLines(tooltip, itemID)
     tooltip:AddLine(" ")
     tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
 
-    local bagIcon     = CreateAtlasMarkup and CreateAtlasMarkup("Banker", 16, 16) or ""
-    local bankIcon    = CreateAtlasMarkup and CreateAtlasMarkup("VignetteLoot", 16, 16) or ""
-    local warbandIcon = CreateAtlasMarkup and CreateAtlasMarkup("warbands-icon", 16, 16) or ""
+    local bagIcon       = SafeAtlasMarkup("Banker", 16, 16)
+    local bankIcon      = SafeAtlasMarkup("VignetteLoot", 16, 16)
+    local warbandIcon   = SafeAtlasMarkup("warbands-icon", 16, 16)
+    local guildVaultIcon = SafeAtlasMarkup(GUILD_VAULT_ICON_ATLAS, 16, 16)
+
+    local function PaintCharacterLines(char)
+        if not char or (char.bagCount <= 0 and char.bankCount <= 0) then return end
+        local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+        if char.bagCount > 0 then
+            SafeAddDoubleLine(
+                bagIcon .. " " .. char.charName,
+                "x" .. char.bagCount,
+                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+            )
+        end
+        if char.bankCount > 0 then
+            SafeAddDoubleLine(
+                bankIcon .. " " .. char.charName,
+                "x" .. char.bankCount,
+                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+            )
+        end
+    end
+
+    local liveChar
+    local otherChars = {}
+    for i = 1, #details.characters do
+        local char = details.characters[i]
+        if char.isLiveSession then
+            liveChar = char
+        else
+            otherChars[#otherChars + 1] = char
+        end
+    end
+
+    -- Bag > bank (live) > warband bank > other chars > guild vaults
+    if liveChar then
+        PaintCharacterLines(liveChar)
+    end
 
     if details.warbandBank > 0 then
-        tooltip:AddDoubleLine(
+        SafeAddDoubleLine(
             warbandIcon .. " " .. ((ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"),
             "x" .. details.warbandBank,
             0.8, 0.8, 0.8, 0.3, 0.9, 0.3
         )
     end
 
-    if #details.characters > 0 then
+    if #otherChars > 0 then
         local isShift = IsShiftKeyDown()
         local maxShow = isShift and 999 or 5
         local shown = 0
-
-        for i = 1, #details.characters do
+        for i = 1, #otherChars do
             if shown >= maxShow then break end
-            local char = details.characters[i]
-            if char.bankCount > 0 or char.bagCount > 0 then
-                local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-                if char.bankCount > 0 then
-                    tooltip:AddDoubleLine(
-                        bankIcon .. " " .. char.charName,
-                        "x" .. char.bankCount,
-                        cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                    )
-                end
-                if char.bagCount > 0 then
-                    tooltip:AddDoubleLine(
-                        bagIcon .. " " .. char.charName,
-                        "x" .. char.bagCount,
-                        cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-                    )
-                end
+            local char = otherChars[i]
+            if char.bagCount > 0 or char.bankCount > 0 then
+                PaintCharacterLines(char)
                 shown = shown + 1
             end
         end
-
-        if not isShift and #details.characters > 5 then
+        if not isShift and #otherChars > 5 then
             tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
         end
+    end
+
+    if details.guilds and #details.guilds > 0 then
+        local isShiftGuild = IsShiftKeyDown()
+        local maxGuildShow = isShiftGuild and 999 or 5
+        local guildShown = 0
+        for i = 1, #details.guilds do
+            if guildShown >= maxGuildShow then break end
+            local row = details.guilds[i]
+            if row.count and row.count > 0 then
+                local label = (ns.L and ns.L["TOOLTIP_GUILD_VAULT"]) or "Guild Vault"
+                if row.guildName and not (issecretvalue and issecretvalue(row.guildName)) then
+                    label = row.guildName
+                end
+                if SafeAddDoubleLine(
+                    guildVaultIcon .. " " .. label,
+                    "x" .. row.count,
+                    0.8, 0.8, 0.8, 0.3, 0.9, 0.3
+                ) then
+                    guildShown = guildShown + 1
+                end
+            end
+        end
+    end
+
+    if details.guilds and #details.guilds > 5 and not IsShiftKeyDown() then
+        tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
     end
 
     local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"

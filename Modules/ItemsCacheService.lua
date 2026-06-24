@@ -131,8 +131,10 @@ local decompressedWarbandCache = nil  -- { items={}, lastUpdate=N }
 local itemSummaryIndex = {
     characters = {},  -- [charKey] = { [itemID] = { bags=N, bank=N } }
     warband = {},     -- [itemID] = N
+    guild = {},       -- [guildName] = { [itemID] = N }
     pending = {},     -- [charKey] = true (needs rebuild)
     warbandPending = false,
+    guildPending = false,
     coldInitDone = false,
     sessionGen = {},  -- [charKey] = { bags=N, bank=N } bumped on incremental writes
 }
@@ -919,9 +921,11 @@ function WarbandNexus:ClearItemMetadataCache()
     decompressedWarbandCache = nil
     wipe(itemSummaryIndex.characters)
     wipe(itemSummaryIndex.warband)
+    wipe(itemSummaryIndex.guild)
     wipe(itemSummaryIndex.pending)
     wipe(itemSummaryIndex.sessionGen)
     itemSummaryIndex.warbandPending = false
+    itemSummaryIndex.guildPending = false
     itemSummaryIndex.coldInitDone = false
 end
 
@@ -2631,16 +2635,32 @@ local function BuildWarbandSummary()
     itemSummaryIndex.warbandPending = false
 end
 
----Tooltip hot path: rebuild only live character + warband summaries; defer roster backlog.
-local function ProcessPendingSummariesForTooltip()
-    local liveKey = ResolveCurrentItemStorageKey()
-    if liveKey and itemSummaryIndex.pending[liveKey] then
-        BuildCharacterSummary(liveKey)
-        itemSummaryIndex.pending[liveKey] = nil
+---Build item count summary for cached guild bank vaults (account-wide scan cache).
+local function BuildGuildSummary()
+    local summary = {} -- [guildName] = { [itemID] = N }
+    local gb = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.guildBank
+    if gb then
+        local U = ns.Utilities
+        for guildName, guildData in pairs(gb) do
+            if guildName and not (issecretvalue and issecretvalue(guildName)) and type(guildData) == "table" then
+                local guildSum = {}
+                for _, tabData in pairs(guildData.tabs or {}) do
+                    for _, itemData in pairs(tabData.items or {}) do
+                        local id = itemData.itemID
+                        if id and not itemData.isKeystone
+                            and not (U and U.IsKeystoneItemID and U:IsKeystoneItemID(id)) then
+                            guildSum[id] = (guildSum[id] or 0) + (itemData.stackCount or 1)
+                        end
+                    end
+                end
+                if next(guildSum) then
+                    summary[guildName] = guildSum
+                end
+            end
+        end
     end
-    if itemSummaryIndex.warbandPending then
-        BuildWarbandSummary()
-    end
+    itemSummaryIndex.guild = summary
+    itemSummaryIndex.guildPending = false
 end
 
 ---Process any pending summary rebuilds (call before tooltip lookup).
@@ -2659,6 +2679,10 @@ local function ProcessPendingSummariesBudgeted(budgetMs)
         BuildWarbandSummary()
     end
 
+    if itemSummaryIndex.guildPending then
+        BuildGuildSummary()
+    end
+
     for charKey in pairs(itemSummaryIndex.pending) do
         if debugprofilestop() - t0 >= budget then
             break
@@ -2670,7 +2694,103 @@ end
 
 local function SummaryDrainHasWork()
     if itemSummaryIndex.warbandPending then return true end
+    if itemSummaryIndex.guildPending then return true end
     return next(itemSummaryIndex.pending) ~= nil
+end
+
+--- Midnight-safe GetItemCount for tooltip live session row.
+local function SafeGetItemCount(itemID, includeBank)
+    if not itemID then return 0 end
+    local ok, count
+    if includeBank then
+        ok, count = pcall(GetItemCount, itemID, true)
+    else
+        ok, count = pcall(GetItemCount, itemID)
+    end
+    if not ok or count == nil then return 0 end
+    if issecretvalue and issecretvalue(count) then return 0 end
+    return tonumber(count) or 0
+end
+
+local function CharacterKeysMatchForTooltip(charKey, liveKey)
+    if not charKey or not liveKey then return false end
+    if charKey == liveKey then return true end
+    local U = ns.Utilities
+    local rowCanon = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(charKey)) or charKey
+    local liveCanon = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(liveKey)) or liveKey
+    if rowCanon == liveCanon then return true end
+    if ns.VaultCharKeysMatch and ns.VaultCharKeysMatch(charKey, liveKey) then return true end
+    return false
+end
+
+local function CountItemIDInArray(items, itemID)
+    if not items or not itemID then return 0 end
+    local U = ns.Utilities
+    if U and U.IsKeystoneItemID and U:IsKeystoneItemID(itemID) then return 0 end
+    local total = 0
+    for i = 1, #items do
+        local item = items[i]
+        if item and item.itemID == itemID and not item.isKeystone then
+            total = total + (item.stackCount or 1)
+        end
+    end
+    return total
+end
+
+local function CountItemInWarbandBank(itemID)
+    local warbandData = WarbandNexus:GetWarbandBankData()
+    if warbandData and warbandData.items then
+        return CountItemIDInArray(warbandData.items, itemID)
+    end
+    return 0
+end
+
+local function CollectGuildItemCountsFromDB(itemID, guildBank)
+    local guildRows = {}
+    if not itemID or not guildBank then return guildRows end
+    local U = ns.Utilities
+    for guildName, guildData in pairs(guildBank) do
+        if guildName and not (issecretvalue and issecretvalue(guildName)) and type(guildData) == "table" then
+            local count = 0
+            for _, tabData in pairs(guildData.tabs or {}) do
+                for _, itemData in pairs(tabData.items or {}) do
+                    local id = itemData and itemData.itemID
+                    if id == itemID and not itemData.isKeystone
+                        and not (U and U.IsKeystoneItemID and U:IsKeystoneItemID(id)) then
+                        count = count + (itemData.stackCount or 1)
+                    end
+                end
+            end
+            if count > 0 then
+                guildRows[#guildRows + 1] = {
+                    guildName = guildName,
+                    count = count,
+                    tabard = guildData.tabard,
+                }
+            end
+        end
+    end
+    if #guildRows > 1 then
+        table.sort(guildRows, function(a, b)
+            if a.count ~= b.count then return a.count > b.count end
+            return (a.guildName or "") < (b.guildName or "")
+        end)
+    end
+    return guildRows
+end
+
+local function ResolveCharacterStorageKeyForCount(self, charKey)
+    local CS = ns.CharacterService
+    if CS and CS.ResolveSubsidiaryCharacterKey then
+        return CS:ResolveSubsidiaryCharacterKey(self, charKey) or charKey
+    end
+    return charKey
+end
+
+local function CountCharacterItemFromStorage(self, storageKey, itemID)
+    local data = self:GetItemsData(storageKey)
+    if not data then return 0, 0 end
+    return CountItemIDInArray(data.bags, itemID), CountItemIDInArray(data.bank, itemID)
 end
 
 local function ScheduleBackgroundSummaryDrain()
@@ -2685,65 +2805,66 @@ local function ScheduleBackgroundSummaryDrain()
     end)
 end
 
-local function EnsureSummaryColdInit(self)
-    if itemSummaryIndex.coldInitDone then return end
-    itemSummaryIndex.coldInitDone = true
-    if self.db and self.db.global and self.db.global.characters then
-        for charKey in pairs(self.db.global.characters) do
-            if not itemSummaryIndex.characters[charKey] then
-                itemSummaryIndex.pending[charKey] = true
-            end
-        end
-    end
-    if not next(itemSummaryIndex.warband) then
-        itemSummaryIndex.warbandPending = true
-    end
-end
-
----Get detailed item counts for tooltip display (O(1) lookup after lazy rebuild).
----Replaces the old DataService:GetDetailedItemCounts which iterated all items per hover.
+---Get detailed item counts for tooltip display (direct itemStorage / guildBank lookup by itemID).
 function WarbandNexus:GetDetailedItemCountsFast(itemID)
     if not itemID then return nil end
     if ns.Utilities and ns.Utilities.IsKeystoneItemID and ns.Utilities:IsKeystoneItemID(itemID) then
         return nil
     end
-    
-    EnsureSummaryColdInit(self)
-    ProcessPendingSummariesForTooltip()
-    if SummaryDrainHasWork() then
-        ScheduleBackgroundSummaryDrain()
+
+    local liveRaw = ResolveCurrentItemStorageKey()
+    local guildBank = self.db and self.db.global and self.db.global.guildBank
+
+    local warbandCount = CountItemInWarbandBank(itemID)
+    local guildRows = CollectGuildItemCountsFromDB(itemID, guildBank)
+
+    if self.guildBankIsOpen and self.GetLiveOpenGuildBankItemCountForTooltip then
+        local okLive, liveGuildName, liveCount = pcall(self.GetLiveOpenGuildBankItemCountForTooltip, self, itemID)
+        if okLive and liveGuildName and liveCount and liveCount > 0 then
+            local merged = false
+            for i = 1, #guildRows do
+                if guildRows[i].guildName == liveGuildName then
+                    guildRows[i].count = liveCount
+                    merged = true
+                    break
+                end
+            end
+            if not merged then
+                local gd = guildBank and guildBank[liveGuildName]
+                guildRows[#guildRows + 1] = {
+                    guildName = liveGuildName,
+                    count = liveCount,
+                    tabard = gd and gd.tabard,
+                }
+            end
+        end
     end
-    
-    -- O(1) lookup: warband bank
-    local warbandCount = itemSummaryIndex.warband[itemID] or 0
-    
-    -- O(1) lookup per character
+    if #guildRows > 1 then
+        table.sort(guildRows, function(a, b)
+            if a.count ~= b.count then return a.count > b.count end
+            return (a.guildName or "") < (b.guildName or "")
+        end)
+    end
+
     local result = {
         warbandBank = warbandCount,
+        guilds = guildRows,
         personalBankTotal = 0,
         characters = {},
     }
-    
-    local liveRaw = ResolveCurrentItemStorageKey()
-    local U = ns.Utilities
-    local liveCanon = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(liveRaw)) or liveRaw
+
     for charKey, charData in pairs(self.db.global.characters or {}) do
         local bagCount, bankCount = 0, 0
-        local rowCanon = (U and U.GetCanonicalCharacterKey and U:GetCanonicalCharacterKey(charKey)) or charKey
-        if rowCanon == liveCanon then
-            -- Current character: use live Blizzard API (O(1), always accurate)
-            bagCount = GetItemCount(itemID) or 0
-            local totalIncBank = GetItemCount(itemID, true) or 0
+        if CharacterKeysMatchForTooltip(charKey, liveRaw) then
+            bagCount = SafeGetItemCount(itemID, false)
+            local totalIncBank = SafeGetItemCount(itemID, true)
             bankCount = totalIncBank - bagCount
+            if bankCount < 0 then bankCount = 0 end
         else
-            -- Other characters: O(1) summary lookup
-            local summary = itemSummaryIndex.characters[charKey]
-            if summary and summary[itemID] then
-                bagCount = summary[itemID].bags or 0
-                bankCount = summary[itemID].bank or 0
-            end
+            local storageKey = ResolveCharacterStorageKeyForCount(self, charKey)
+            bagCount, bankCount = CountCharacterItemFromStorage(self, storageKey, itemID)
         end
-        
+
         if bagCount > 0 or bankCount > 0 then
             result.personalBankTotal = result.personalBankTotal + bankCount
             result.characters[#result.characters + 1] = {
@@ -2757,19 +2878,16 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
                 bagCount = bagCount,
                 bankCount = bankCount,
                 total = bagCount + bankCount,
-                isLiveSession = (rowCanon == liveCanon),
+                isLiveSession = CharacterKeysMatchForTooltip(charKey, liveRaw),
             }
         end
     end
-    
-    -- Sort: current character first, then by total descending
+
     table.sort(result.characters, function(a, b)
-        local aIsCurrent = a.isLiveSession
-        local bIsCurrent = b.isLiveSession
-        if aIsCurrent ~= bIsCurrent then return aIsCurrent end
+        if a.isLiveSession ~= b.isLiveSession then return a.isLiveSession end
         return a.total > b.total
     end)
-    
+
     return result
 end
 
@@ -2784,7 +2902,13 @@ function WarbandNexus:InvalidateItemSummary(charKey)
             itemSummaryIndex.pending[key] = true
         end
         itemSummaryIndex.warbandPending = true
+        itemSummaryIndex.guildPending = true
     end
+end
+
+---Invalidate guild vault item summary (call after guild bank scan or cache purge).
+function WarbandNexus:InvalidateGuildItemSummary()
+    itemSummaryIndex.guildPending = true
 end
 
 ---Force refresh all bags (ignore cache)

@@ -25,6 +25,11 @@ local tinsert = table.insert
 local guildBankScanGeneration = 0
 local MAX_GUILDBANK_SLOTS_PER_TAB = 98
 local activeScanCtx = nil
+local liveOpenGuildSummary = nil -- { guildName, items = { [itemID]=stackCount }, gen=N }
+
+local function InvalidateLiveOpenGuildBankSummary()
+    liveOpenGuildSummary = nil
+end
 
 local function RecomputeGuildBankTotals(guildData)
     if not guildData then
@@ -119,6 +124,7 @@ function WarbandNexus:ScanGuildBank()
     end
 
     guildBankScanGeneration = guildBankScanGeneration + 1
+    InvalidateLiveOpenGuildBankSummary()
     local myGen = guildBankScanGeneration
     activeScanCtx = { myGen = myGen, guildData = guildData, tabIndex = 1, slotID = 0, tabItemsBuilding = nil }
 
@@ -147,6 +153,20 @@ function WarbandNexus:ScanGuildBank()
         guildData.totalItems = recomputedItems
         guildData.usedSlots = recomputedUsed
         guildData.totalSlots = math.max(guildData.totalSlots or 0, recomputedSlots, totalSlots)
+        if C_GuildInfo and C_GuildInfo.GetGuildTabardInfo then
+            local okTab, tabard = pcall(C_GuildInfo.GetGuildTabardInfo, "player")
+            if okTab and tabard and tabard.emblemFileID and tabard.emblemFileID > 0
+                and not (issecretvalue and issecretvalue(tabard.emblemFileID)) then
+                local stored = { emblemFileID = tabard.emblemFileID }
+                if tabard.emblemColor and tabard.emblemColor.GetRGB then
+                    local okRgb, er, eg, eb = pcall(tabard.emblemColor.GetRGB, tabard.emblemColor)
+                    if okRgb and er then
+                        stored.emblemR, stored.emblemG, stored.emblemB = er, eg, eb
+                    end
+                end
+                guildData.tabard = stored
+            end
+        end
         local guildGold = GetGuildBankMoney()
         if guildGold then
             guildData.cachedGold = guildGold
@@ -154,6 +174,10 @@ function WarbandNexus:ScanGuildBank()
         end
         DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. recomputedItems .. " items in " .. recomputedUsed .. " slots")
         ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+        if self.InvalidateGuildItemSummary then
+            self:InvalidateGuildItemSummary()
+        end
+        InvalidateLiveOpenGuildBankSummary()
         self:SendMessage(E.ITEMS_UPDATED)
     end
 
@@ -253,7 +277,61 @@ end
 ---Abort in-flight chunked guild bank scan (window closed or superseded).
 function WarbandNexus:InvalidateGuildBankScan()
     guildBankScanGeneration = guildBankScanGeneration + 1
+    InvalidateLiveOpenGuildBankSummary()
     activeScanCtx = nil
+end
+
+--- Drop live guild-bank tooltip tally (guild bank closed or scan superseded).
+function WarbandNexus:InvalidateLiveOpenGuildBankSummary()
+    InvalidateLiveOpenGuildBankSummary()
+end
+
+--- Live item stacks in the open guild bank (session cache; used by tooltip WN Search).
+function WarbandNexus:BuildLiveOpenGuildBankItemSummary()
+    if not self.guildBankIsOpen or not IsInGuild() then
+        return nil
+    end
+    local gen = guildBankScanGeneration
+    if liveOpenGuildSummary and liveOpenGuildSummary.gen == gen then
+        return liveOpenGuildSummary
+    end
+    local guildName = GetGuildInfo("player")
+    if not guildName or (issecretvalue and issecretvalue(guildName)) then
+        return nil
+    end
+    local items = {}
+    local U = ns.Utilities
+    local numTabs = GetNumGuildBankTabs() or 0
+    for tabIndex = 1, numTabs do
+        local _, _, isViewable = GetGuildBankTabInfo(tabIndex)
+        if isViewable then
+            for slotID = 1, MAX_GUILDBANK_SLOTS_PER_TAB do
+                local itemLink = GetGuildBankItemLink(tabIndex, slotID)
+                if itemLink and type(itemLink) == "string" and not (issecretvalue and issecretvalue(itemLink)) then
+                    local id = tonumber(itemLink:match("item:(%d+)"))
+                    if id and not (U and U.IsKeystoneItemID and U:IsKeystoneItemID(id)) then
+                        local _, itemCount = GetGuildBankItemInfo(tabIndex, slotID)
+                        items[id] = (items[id] or 0) + (itemCount or 1)
+                    end
+                end
+            end
+        end
+    end
+    liveOpenGuildSummary = { guildName = guildName, items = items, gen = gen }
+    return liveOpenGuildSummary
+end
+
+---@return string? guildName
+---@return number stackCount
+function WarbandNexus:GetLiveOpenGuildBankItemCountForTooltip(itemID)
+    if not itemID then
+        return nil, 0
+    end
+    local summary = self:BuildLiveOpenGuildBankItemSummary()
+    if not summary then
+        return nil, 0
+    end
+    return summary.guildName, summary.items[itemID] or 0
 end
 
 ---Persist partial guild bank tab progress on PLAYER_LOGOUT.
@@ -312,13 +390,9 @@ function WarbandNexus:HasGuildBankCache()
     end
     for guildName, guildData in pairs(gb) do
         if guildName and not (issecretvalue and issecretvalue(guildName)) and type(guildData) == "table" then
-            if (guildData.lastScan or 0) > 0 or (guildData.usedSlots or 0) > 0 then
+            local used = self:CountGuildBankOccupiedSlots(guildData)
+            if used > 0 or (guildData.cachedGold or 0) > 0 then
                 return true
-            end
-            for _, tabData in pairs(guildData.tabs or {}) do
-                if tabData.items and next(tabData.items) then
-                    return true
-                end
             end
         end
     end
@@ -368,6 +442,26 @@ function WarbandNexus:GetGuildBankCacheAggregateStats()
     return stats
 end
 
+--- Occupied slot count from persisted tab rows (authoritative vs stale usedSlots/totalItems).
+function WarbandNexus:CountGuildBankOccupiedSlots(guildData)
+    local _, usedSlots = RecomputeGuildBankTotals(guildData)
+    return usedSlots or 0
+end
+
+--- Repair guildData.usedSlots/totalItems from tabs (fixes legacy empty-cache rows like lastScan-only stubs).
+function WarbandNexus:SyncGuildBankCacheMetadata(guildData)
+    if not guildData then
+        return 0, 0, 0
+    end
+    local totalItems, usedSlots, totalSlots = RecomputeGuildBankTotals(guildData)
+    guildData.usedSlots = usedSlots
+    guildData.totalItems = totalItems
+    if totalSlots > (guildData.totalSlots or 0) then
+        guildData.totalSlots = totalSlots
+    end
+    return totalItems, usedSlots, totalSlots
+end
+
 --- Sorted { name, data } entries for every scanned guild (account-wide cache).
 function WarbandNexus:GetGuildBankSortedEntries()
     local out = {}
@@ -377,7 +471,10 @@ function WarbandNexus:GetGuildBankSortedEntries()
     end
     for guildName, guildData in pairs(gb) do
         if guildName and not (issecretvalue and issecretvalue(guildName)) and guildData then
-            out[#out + 1] = { name = guildName, data = guildData }
+            local _, usedSlots = self:SyncGuildBankCacheMetadata(guildData)
+            if usedSlots > 0 or (guildData.cachedGold or 0) > 0 then
+                out[#out + 1] = { name = guildName, data = guildData }
+            end
         end
     end
     table.sort(out, function(a, b)
@@ -555,6 +652,9 @@ function WarbandNexus:HandleGuildMembershipChange(oldGuildName, newGuildName, ch
     local removed = self:MaybeRemoveGuildBankCache(oldGuildName, charKey)
     if removed then
         self:InvalidateGuildBankScan()
+        if self.InvalidateGuildItemSummary then
+            self:InvalidateGuildItemSummary()
+        end
         self:SendMessage(E.ITEMS_UPDATED)
     end
     return removed

@@ -1961,14 +1961,16 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             for ei = 1, #entries do
                 local gd = entries[ei].data
                 local slots = gd.usedSlots or 0
+                if slots <= 0 and self.CountGuildBankOccupiedSlots then
+                    slots = self:CountGuildBankOccupiedSlots(gd)
+                end
                 guildTotalMatches = guildTotalMatches + slots
-                if slots > 0 or (gd.lastScan or 0) > 0 then
+                if slots > 0 or (gd.cachedGold or 0) > 0 then
                     hasAnyData = true
                 end
             end
             if not hasAnyData and StorageTreeHasExpandedPrefixCategory(expanded, "guild_") then
                 hasAnyData = true
-                guildTotalMatches = math.max(guildTotalMatches, 1)
             end
         else
         local allowBackfill = StorageScanAllowLazyBackfill(embedItemsWarband, expanded, expandAllActive)
@@ -3002,20 +3004,19 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             local guildName = guildEntries[gei].name
             local guildData = guildEntries[gei].data
             local guildCategoryKey = "guild_" .. guildName
-            local guildItemSlots = guildData.usedSlots or guildData.totalItems or 0
+            local guildItemSlots = guildData.usedSlots or 0
+            if guildItemSlots <= 0 and self.CountGuildBankOccupiedSlots then
+                guildItemSlots = self:CountGuildBankOccupiedSlots(guildData)
+            end
 
             if storageSearchActive and not categoriesWithMatches[guildCategoryKey] then
                 -- skip guild with no search hits
-            elseif guildItemSlots <= 0 and (guildData.lastScan or 0) <= 0 and not storageSearchActive
+            elseif guildItemSlots <= 0 and not storageSearchActive
                 and not expandAllActive
                 and not expanded.categories[guildCategoryKey]
                 and not StorageTreeHasExpandedPrefixCategory(expanded, guildCategoryKey .. "_") then
-                -- skip empty guild unless user left subtree expanded or a prior scan exists
+                -- skip empty guild unless user left subtree expanded
             else
-                if guildItemSlots <= 0 then
-                    guildItemSlots = 1
-                end
-
                 local guildExpanded = (self.storageExpandAllActive == true) or (expanded.categories[guildCategoryKey] == true)
                 if embedItemsGuild and not storageSearchActive and expanded.categories[guildCategoryKey] == nil then
                     guildExpanded = true
@@ -3099,7 +3100,25 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         return
                     end
                     if not ensureGuildItemsIndexed() then
-                        guildBody._wnSectionFullH = 0.1
+                        if guildExpanded then
+                            local hintH = 28
+                            local hint = FontManager:CreateFontString(guildBody, "body", "OVERLAY")
+                            hint:SetPoint("TOPLEFT", guildBody, "TOPLEFT", BASE_INDENT, -8)
+                            hint:SetPoint("TOPRIGHT", guildBody, "TOPRIGHT", -BASE_INDENT, -8)
+                            hint:SetJustifyH("LEFT")
+                            hint:SetWordWrap(true)
+                            hint:SetText((ns.L and ns.L["EMPTY_GUILD_BANK_DESC"]) or "Open your Guild Bank to scan items.")
+                            ns.UI_SetTextColorRole(hint, "Muted")
+                            guildBody._wnSectionFullH = hintH
+                            guildBody:Show()
+                            guildBody:SetHeight(hintH)
+                            guildWrap:SetHeight(MAIN_SECTION_HEADER_H + hintH)
+                            storageStackAnchor = guildWrap
+                            parent._wnStorageLayoutTail = storageStackAnchor
+                        else
+                            guildBody._wnSectionFullH = 0.1
+                        end
+                        guildBody._wnStorageMajorBodyBuilt = true
                         return
                     end
 

@@ -146,6 +146,7 @@ L["TOTAL"] = TOTAL or "Total"
 
 -- Tooltips
 L["TOOLTIP_WARBAND_BANK"] = "Banque de bataillon"
+L["TOOLTIP_GUILD_VAULT"] = "Coffre de guilde"
 L["CHARACTER_INVENTORY"] = "Inventaire"
 L["CHARACTER_BANK"] = "Banque personnelle"
 
