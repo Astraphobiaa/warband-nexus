@@ -386,6 +386,7 @@ L["MAIL_TOOLTIP_SHIFT_CLICK"] = "Shift-клик для полных детале
 L["MAIL_DETAILS_TITLE"] = "Детали почты"
 L["MAIL_DETAILS_ILVL"] = "ур. предм."
 L["MAIL_DETAILS_EXPIRED"] = "Истекло"
+L["MAIL_DETAILS_TOTAL_GOLD"] = "Всего: %s"
 L["MAIL_INDEX_LABEL"] = "Почта №%d"
 L["MAIL_TOOLTIP_SCANNED"] = "Снимок с последней игры этим персонажем."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Скоро"

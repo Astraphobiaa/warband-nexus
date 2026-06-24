@@ -386,6 +386,7 @@ L["MAIL_TOOLTIP_SHIFT_CLICK"] = "Shift-클릭으로 전체 우편 상세 보기.
 L["MAIL_DETAILS_TITLE"] = "우편 상세"
 L["MAIL_DETAILS_ILVL"] = "템렙"
 L["MAIL_DETAILS_EXPIRED"] = "만료됨"
+L["MAIL_DETAILS_TOTAL_GOLD"] = "합계: %s"
 L["MAIL_INDEX_LABEL"] = "우편 #%d"
 L["MAIL_TOOLTIP_SCANNED"] = "이 캐릭터를 마지막으로 플레이했을 때의 스냅샷입니다."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "출시 예정"

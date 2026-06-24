@@ -386,6 +386,7 @@ L["MAIL_TOOLTIP_SHIFT_CLICK"] = "Maiusc-clic per i dettagli completi della posta
 L["MAIL_DETAILS_TITLE"] = "Dettagli posta"
 L["MAIL_DETAILS_ILVL"] = "ilvl"
 L["MAIL_DETAILS_EXPIRED"] = "Scaduto"
+L["MAIL_DETAILS_TOTAL_GOLD"] = "Totale: %s"
 L["MAIL_INDEX_LABEL"] = "Posta n.%d"
 L["MAIL_TOOLTIP_SCANNED"] = "Istantanea dell'ultima sessione di questo personaggio."
 L["COLLECTIONS_COMING_SOON_TITLE"] = "Prossimamente"

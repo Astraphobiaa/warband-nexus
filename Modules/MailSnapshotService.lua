@@ -20,7 +20,6 @@ ns.MailSnapshot = M
 
 local MailSnapshotEvents = {}
 
-local MAX_SNAPSHOT_MESSAGES = 12
 local SCAN_DEBOUNCE_SEC = 0.3
 local scanPending = false
 
@@ -438,20 +437,40 @@ local function ReadInboxItems(mailIndex)
     return items
 end
 
-local function BuildMessagesFromInbox()
+local function SumMailGold(messages)
+    if not messages then return 0 end
+    local total = 0
+    for i = 1, #messages do
+        local msg = messages[i]
+        if msg then
+            local money = SafeMailNumber(msg.money) or 0
+            if money > 0 then
+                total = total + money
+            end
+        end
+    end
+    return total
+end
+
+function M.SumMailSnapshotGold(messages)
+    return SumMailGold(messages)
+end
+
+local function BuildMessagesFromInbox(numItems)
     local messages = {}
-    if not GetInboxNumItems or not GetInboxHeaderInfo then
+    if not GetInboxHeaderInfo then
         return messages
     end
-    local okNum, numItems = pcall(GetInboxNumItems)
-    if not okNum or type(numItems) ~= "number" or numItems < 1 then
+    if (not numItems or numItems < 1) and GetInboxNumItems then
+        local okNum, n = pcall(GetInboxNumItems)
+        if okNum and type(n) == "number" then
+            numItems = n
+        end
+    end
+    if not numItems or numItems < 1 then
         return messages
     end
-    local limit = numItems
-    if limit > MAX_SNAPSHOT_MESSAGES then
-        limit = MAX_SNAPSHOT_MESSAGES
-    end
-    for i = 1, limit do
+    for i = 1, numItems do
         local okHdr, _, _, sender, subject, money, codAmount, daysLeft, hasItem, _, wasReturned, _, _, isGM =
             pcall(GetInboxHeaderInfo, i)
         if okHdr then
@@ -550,19 +569,24 @@ function WarbandNexus:ScanCurrentCharacterMailSnapshot(opts)
     end
 
     local numItems = 0
+    local totalItems = 0
     if GetInboxNumItems then
-        local ok, n = pcall(GetInboxNumItems)
+        local ok, n, total = pcall(GetInboxNumItems)
         if ok and type(n) == "number" then
             numItems = n
         end
+        if ok and type(total) == "number" and total > 0 then
+            totalItems = total
+        end
     end
+    local inboxCount = (totalItems > numItems) and totalItems or numItems
 
     local messages = {}
     if numItems > 0 then
-        messages = BuildMessagesFromInbox()
+        messages = BuildMessagesFromInbox(numItems)
     end
 
-    M.ApplyMailSnapshotToRow(row, hasPending, numItems, messages)
+    M.ApplyMailSnapshotToRow(row, hasPending, inboxCount, messages)
 
     local msgKey = ResolveMessageKey(tableKey)
     if self.SendMessage and E and E.CHARACTER_UPDATED then

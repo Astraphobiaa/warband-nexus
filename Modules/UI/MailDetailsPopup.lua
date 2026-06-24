@@ -513,9 +513,13 @@ function WarbandNexus:ShowMailDetailsPopup(char)
 
     PrefetchMailSnapshotItems(messages)
 
-    local charLabel = char.name or L("UNKNOWN", "Unknown")
-    if char.realm and char.realm ~= "" then
-        charLabel = charLabel .. " - " .. char.realm
+    local nameRich = (ns.UI_FormatClassColoredName and ns.UI_FormatClassColoredName(char.name, char.classFile))
+        or (char.name or L("UNKNOWN", "Unknown"))
+    local totalGold = (MailSnapshot.SumMailSnapshotGold and MailSnapshot.SumMailSnapshotGold(messages)) or 0
+    local fmtMoney = ns.UI_FormatMoney
+    local totalGoldText
+    if fmtMoney then
+        totalGoldText = format(L("MAIL_DETAILS_TOTAL_GOLD", "Total: %s"), fmtMoney(totalGold, 12, true))
     end
 
     local dialog, contentFrame = CreateExternalWindow({
@@ -528,20 +532,42 @@ function WarbandNexus:ShowMailDetailsPopup(char)
     })
     if not dialog or not contentFrame then return end
 
-    local subtitle = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    subtitle:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", LAYOUT.PAD, -LAYOUT.SCROLL_TOP_GAP)
-    subtitle:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -(LAYOUT.PAD + SCROLLBAR_LANE), -LAYOUT.SCROLL_TOP_GAP)
-    subtitle:SetHeight(LAYOUT.SUBTITLE_H)
-    subtitle:SetJustifyH("LEFT")
-    SetRole(subtitle, "Normal")
-    subtitle:SetText(charLabel)
+    local subtitleLeft = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+    subtitleLeft:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", LAYOUT.PAD, -LAYOUT.SCROLL_TOP_GAP)
+    subtitleLeft:SetHeight(LAYOUT.SUBTITLE_H)
+    subtitleLeft:SetJustifyH("LEFT")
+    subtitleLeft:SetJustifyV("MIDDLE")
+    subtitleLeft:SetText(nameRich)
+
+    if totalGoldText then
+        local subtitleRight = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+        subtitleRight:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -(LAYOUT.PAD + SCROLLBAR_LANE), -LAYOUT.SCROLL_TOP_GAP)
+        subtitleRight:SetPoint("TOPLEFT", subtitleLeft, "TOPRIGHT", LAYOUT.TEXT_GAP, 0)
+        subtitleRight:SetHeight(LAYOUT.SUBTITLE_H)
+        subtitleRight:SetJustifyH("RIGHT")
+        subtitleRight:SetJustifyV("MIDDLE")
+        local gr, gg, gb = GoldRGB()
+        subtitleRight:SetTextColor(gr, gg, gb, 1)
+        subtitleRight:SetText(totalGoldText)
+    else
+        subtitleLeft:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -(LAYOUT.PAD + SCROLLBAR_LANE), -LAYOUT.SCROLL_TOP_GAP)
+    end
 
     local scrollTop = LAYOUT.SUBTITLE_H + LAYOUT.SCROLL_TOP_GAP + LAYOUT.SUBTITLE_SCROLL_GAP
     local scrollGap = ScrollContentGap()
 
     local footerReserved = 0
     local footerFs
+    local footerParts = {}
+    if snap.count and snap.count > #messages then
+        footerParts[#footerParts + 1] = format(
+            L("MAIL_TOOLTIP_MORE", "... and %d more message(s)."),
+            snap.count - #messages)
+    end
     if snap.scannedAt and snap.scannedAt > 0 then
+        footerParts[#footerParts + 1] = L("MAIL_TOOLTIP_SCANNED", "Snapshot from the last time this character was played.")
+    end
+    if #footerParts > 0 then
         footerReserved = LAYOUT.FOOTER_H + LAYOUT.FOOTER_GAP
         footerFs = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
         footerFs:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", LAYOUT.PAD, LAYOUT.FOOTER_GAP)
@@ -551,8 +577,8 @@ function WarbandNexus:ShowMailDetailsPopup(char)
         footerFs:SetJustifyV("MIDDLE")
         SetRole(footerFs, "Dim")
         footerFs:SetWordWrap(true)
-        footerFs:SetMaxLines(2)
-        footerFs:SetText(L("MAIL_TOOLTIP_SCANNED", "Snapshot from the last time this character was played."))
+        footerFs:SetMaxLines(3)
+        footerFs:SetText(table.concat(footerParts, "\n"))
     end
 
     local scrollBottom = footerReserved > 0 and footerReserved or LAYOUT.PAD
