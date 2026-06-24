@@ -493,12 +493,50 @@ local function AddToFIFOCache(itemID)
     end
 end
 
+---Fill missing icon on metadata (async name resolution used to skip texture).
+local function FillMetadataIcon(metadata, itemID, itemLink)
+    if not metadata then return end
+    if metadata.iconFileID and metadata.iconFileID ~= 0 then return end
+    local U = ns.Utilities
+    if not U or not U.ResolveItemIconFileID then return end
+    local icon = U:ResolveItemIconFileID(itemLink or itemID)
+    if icon and icon ~= 0 then
+        metadata.icon = icon
+        metadata.iconFileID = icon
+    end
+end
+
 ---Sync decompressed item cache with resolved metadata.
 ---HydrateItem does value copies (not references), so after async resolution
 ---the cached items still have name=nil, pending=true. This function patches
 ---them in-place so the UI sees updated names without a full re-hydration.
 local function SyncDecompressedCacheWithMetadata()
     local syncedCount = 0
+
+    local function PatchCachedItem(item)
+        if not item or not item.itemID then return end
+        local meta = itemMetadataCache[item.itemID]
+        if not meta then return end
+        FillMetadataIcon(meta, item.itemID, item.itemLink or item.link or meta.link)
+
+        local changed = false
+        if item.pending and not meta.pending then
+            item.name = meta.name
+            item.link = item.link or meta.link
+            item.classID = item.classID or meta.classID
+            item.pending = nil
+            changed = true
+        end
+        local icon = meta.iconFileID or meta.icon
+        if (not item.iconFileID or item.iconFileID == 0) and icon and icon ~= 0 then
+            item.iconFileID = icon
+            changed = true
+        end
+        if changed then
+            syncedCount = syncedCount + 1
+        end
+    end
+
     -- Sync personal item caches (bags + bank per character)
     for charKey, data in pairs(decompressedItemCache) do
         local sources = {"bags", "bank"}
@@ -507,18 +545,7 @@ local function SyncDecompressedCacheWithMetadata()
             local items = data[source]
             if items then
                 for j = 1, #items do
-                    local item = items[j]
-                    if item.pending and item.itemID then
-                        local meta = itemMetadataCache[item.itemID]
-                        if meta and not meta.pending then
-                            item.name = meta.name
-                            item.link = item.link or meta.link
-                            item.iconFileID = item.iconFileID or meta.iconFileID
-                            item.classID = item.classID or meta.classID
-                            item.pending = nil
-                            syncedCount = syncedCount + 1
-                        end
-                    end
+                    PatchCachedItem(items[j])
                 end
             end
         end
@@ -526,18 +553,7 @@ local function SyncDecompressedCacheWithMetadata()
     -- Sync warband bank cache
     if decompressedWarbandCache and decompressedWarbandCache.items then
         for i = 1, #decompressedWarbandCache.items do
-            local item = decompressedWarbandCache.items[i]
-            if item.pending and item.itemID then
-                local meta = itemMetadataCache[item.itemID]
-                if meta and not meta.pending then
-                    item.name = meta.name
-                    item.link = item.link or meta.link
-                    item.iconFileID = item.iconFileID or meta.iconFileID
-                    item.classID = item.classID or meta.classID
-                    item.pending = nil
-                    syncedCount = syncedCount + 1
-                end
-            end
+            PatchCachedItem(decompressedWarbandCache.items[i])
         end
     end
     return syncedCount
@@ -575,8 +591,8 @@ local function QueueAsyncItemLoad(itemID)
     item:ContinueOnItemLoad(function()
         pendingItemLoads[itemID] = nil
         
-        -- Fetch now-available data
-        local resolvedName, resolvedLink = C_Item.GetItemInfo(itemID)
+        -- Fetch now-available data (include texture — rows used to keep question-mark icons)
+        local resolvedName, resolvedLink, _, _, _, _, _, _, _, texture = C_Item.GetItemInfo(itemID)
         if not resolvedName then return end  -- Safety: still not available (shouldn't happen)
         
         -- Update existing cache entry (or create new one)
@@ -585,6 +601,12 @@ local function QueueAsyncItemLoad(itemID)
             existing.name = resolvedName
             existing.link = resolvedLink
             existing.pending = nil
+            if texture and texture ~= 0 then
+                existing.icon = texture
+                existing.iconFileID = texture
+            else
+                FillMetadataIcon(existing, itemID, resolvedLink)
+            end
             -- Now fully resolved: add to FIFO eviction
             AddToFIFOCache(itemID)
         end
@@ -601,17 +623,26 @@ local function ResolveItemMetadata(itemID)
     
     -- Check RAM cache (return immediately if fully resolved)
     local cached = itemMetadataCache[itemID]
-    if cached and not cached.pending then return cached end
+    if cached and not cached.pending then
+        FillMetadataIcon(cached, itemID)
+        return cached
+    end
     -- If pending, re-check API (may have resolved since last call)
     if cached and cached.pending then
-        local name, link
+        local name, link, _, _, _, _, _, _, _, texture
         if C_Item and C_Item.GetItemInfo then
-            name, link = C_Item.GetItemInfo(itemID)
+            name, link, _, _, _, _, _, _, _, texture = C_Item.GetItemInfo(itemID)
         end
         if name then
             cached.name = name
             cached.link = link
             cached.pending = nil
+            if texture and texture ~= 0 then
+                cached.icon = texture
+                cached.iconFileID = texture
+            else
+                FillMetadataIcon(cached, itemID, link)
+            end
             AddToFIFOCache(itemID)
             pendingItemLoads[itemID] = nil
             return cached
@@ -644,6 +675,8 @@ local function ResolveItemMetadata(itemID)
         pending = isPending or nil,
     }
     
+    FillMetadataIcon(metadata, itemID, link)
+
     -- Store in lookup table (always, so we don't create duplicate entries)
     itemMetadataCache[itemID] = metadata
     
@@ -723,11 +756,17 @@ local function HydrateItem(item)
         local originalLink = item.itemLink or item.link
         item.link = originalLink or metadata.link
         item.itemLink = item.link
-        item.iconFileID = item.iconFileID or metadata.iconFileID
+        item.iconFileID = item.iconFileID or metadata.iconFileID or metadata.icon
         item.classID = item.classID or metadata.classID
         item.subclassID = item.subclassID or metadata.subclassID
         item.itemType = item.itemType or metadata.itemType
         if item.itemType == "" then item.itemType = nil end
+        if (not item.iconFileID or item.iconFileID == 0) and ns.Utilities and ns.Utilities.ResolveItemIconFileID then
+            local icon = ns.Utilities:ResolveItemIconFileID(originalLink or item.itemID)
+            if icon and icon ~= 0 then
+                item.iconFileID = icon
+            end
+        end
         -- Propagate pending state to item (UI uses this to show loading indicator)
         item.pending = metadata.pending or nil
     end

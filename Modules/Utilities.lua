@@ -862,6 +862,58 @@ function Utilities:ResolveKeystoneDungeonName(keystone, fallback)
     return fallback
 end
 
+--- Row icon for Bags/Bank/Storage lists; caches resolved fileID on the item table.
+---@param item table|nil
+---@return number|string texture fileID or fallback 134400
+function Utilities:ResolveItemRowIcon(item)
+    local fallback = 134400
+    if not item then return fallback end
+    local icon = item.iconFileID
+    if icon and icon ~= 0 then return icon end
+    icon = self:ResolveItemIconFileID(item.itemLink or item.link or item.itemID)
+    if icon and icon ~= 0 then
+        item.iconFileID = icon
+        return icon
+    end
+    return fallback
+end
+
+--- Resolve item icon file ID from hyperlink or numeric itemID (bags/bank list rows).
+--- Prefers link-aware APIs so bonus-heavy links match tooltip icons.
+---@param linkOrId string|number|nil
+---@return number|string|nil texture fileID or icon path
+function Utilities:ResolveItemIconFileID(linkOrId)
+    if linkOrId == nil or linkOrId == "" then return nil end
+    if type(linkOrId) == "string" and issecretvalue and issecretvalue(linkOrId) then
+        return nil
+    end
+    local ok, result = pcall(function()
+        if C_Item and C_Item.GetItemIconByID then
+            local byId = C_Item.GetItemIconByID(linkOrId)
+            if byId and byId ~= 0 and byId ~= "" then return byId end
+        end
+        local itemId = type(linkOrId) == "number" and linkOrId or nil
+        if not itemId and type(linkOrId) == "string" then
+            itemId = tonumber(linkOrId:match("item:(%d+)"))
+        end
+        if type(linkOrId) == "string" and C_Item and C_Item.GetItemInfo then
+            local _, _, _, _, _, _, _, _, _, tex = C_Item.GetItemInfo(linkOrId)
+            if tex and tex ~= 0 and tex ~= "" then return tex end
+        end
+        if not itemId then return nil end
+        if C_Item and C_Item.GetItemInfoInstant then
+            local _, _, _, _, icon = C_Item.GetItemInfoInstant(itemId)
+            if icon and icon ~= 0 and icon ~= "" then return icon end
+        end
+        if C_Item and C_Item.GetItemInfo then
+            local _, _, _, _, _, _, _, _, _, tex2 = C_Item.GetItemInfo(itemId)
+            if tex2 and tex2 ~= 0 and tex2 ~= "" then return tex2 end
+        end
+        return nil
+    end)
+    return (ok and result) or nil
+end
+
 --- True when itemID is a Mythic Keystone template (shared ID across all dungeons).
 ---@param itemID number|nil
 ---@return boolean

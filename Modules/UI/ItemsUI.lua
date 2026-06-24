@@ -1203,6 +1203,9 @@ function WarbandNexus:_ApplyStorageTypeLeafTogglePartial(wrap)
             self:RedrawStorageResultsOnly()
             return
         end
+        if not ns.ItemsUI._storageNameCache then
+            ns.ItemsUI._storageNameCache = {}
+        end
         local h = self:_RenderStorageLeafRowsQuick(rows, meta.rowWidth, items, meta.locTextForItem, q, meta.populateRow, rcInv)
         rows._wnSectionFullH = h
         rows:Show()
@@ -1310,6 +1313,66 @@ local function StorageGuildSectionVisible(guildTotalMatches, embedItemsGuild, ex
         return true
     end
     return StorageTreeHasExpandedPrefixCategory(expanded, "guild_")
+end
+
+ns.ItemsUI = ns.ItemsUI or {}
+
+--- Extracted from DrawStorageResults — nested row paint must not capture 60+ DrawStorage upvalues (Lua 5.1).
+local function ItemsUI_PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
+    local U = ns.Utilities
+    row:SetAlpha(1)
+    if row.anim then row.anim:Stop() end
+    ns.UI.Factory:ApplyRowBackground(row, rowIdx)
+
+    row.qtyText:SetText(ns.UI_FormatStackCountMarkup and ns.UI_FormatStackCountMarkup(item.stackCount or 1)
+        or format("|cffffcc00%s|r", FormatNumber(item.stackCount or 1)))
+    row.icon:SetTexture(U and U.ResolveItemRowIcon and U:ResolveItemRowIcon(item) or (item.iconFileID or 134400))
+
+    local nameCache = ns.ItemsUI._storageNameCache
+    local baseName = item.name
+    if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
+        baseName = item.link:match("%[(.-)%]")
+    end
+    if not baseName and item.pending then
+        baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+    end
+    if not baseName and item.itemID and nameCache then
+        local iid = item.itemID
+        local cachedName = nameCache[iid]
+        if cachedName == nil then
+            cachedName = C_Item.GetItemInfo(iid) or false
+            nameCache[iid] = cachedName
+        end
+        if cachedName and cachedName ~= false then
+            baseName = cachedName
+        end
+    end
+    baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
+
+    local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+    if item.pending then
+        row.nameText:SetText(ItemsDimMarkup(displayName))
+    else
+        row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+    end
+
+    row.locationText:SetText(locText or "")
+    ns.UI_SetTextColorRole(row.locationText, "Bright")
+    row.locationText:SetWordWrap(false)
+    row.locationText:SetNonSpaceWrap(false)
+
+    row:SetScript("OnEnter", function(self)
+        if not ShowTooltip then
+            if item.itemLink then
+                ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
+            end
+            return
+        end
+        ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
+    end)
+    row:SetScript("OnLeave", function()
+        if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
+    end)
 end
 
 function WarbandNexus:ScheduleStorageResultsRedraw()
@@ -1572,6 +1635,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local storageDrawClassIDByItemID = {}
     local storageDrawTypeNameByClassID = {}
     local storageDrawItemInfoNameByItemID = {}
+    ns.ItemsUI._storageNameCache = storageDrawItemInfoNameByItemID
 
     local function ResolvedStorageClassID(entry)
         if entry.classID then return entry.classID end
@@ -1599,61 +1663,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         return t
     end
 
-    local function PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
-        row:SetAlpha(1)
-        if row.anim then row.anim:Stop() end
-        ns.UI.Factory:ApplyRowBackground(row, rowIdx)
-
-        row.qtyText:SetText(ns.UI_FormatStackCountMarkup and ns.UI_FormatStackCountMarkup(item.stackCount or 1)
-            or format("|cffffcc00%s|r", FormatNumber(item.stackCount or 1)))
-        row.icon:SetTexture(item.iconFileID or 134400)
-
-        local baseName = item.name
-        if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
-            baseName = item.link:match("%[(.-)%]")
-        end
-        if not baseName and item.pending then
-            baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
-        end
-        if not baseName and item.itemID then
-            local iid = item.itemID
-            local cachedName = storageDrawItemInfoNameByItemID[iid]
-            if cachedName == nil then
-                cachedName = C_Item.GetItemInfo(iid) or false
-                storageDrawItemInfoNameByItemID[iid] = cachedName
-            end
-            if cachedName and cachedName ~= false then
-                baseName = cachedName
-            end
-        end
-        baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-
-        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-        if item.pending then
-            row.nameText:SetText(ItemsDimMarkup(displayName))
-        else
-            row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
-        end
-
-        row.locationText:SetText(locText or "")
-        ns.UI_SetTextColorRole(row.locationText, "Bright")
-        row.locationText:SetWordWrap(false)
-        row.locationText:SetNonSpaceWrap(false)
-
-        row:SetScript("OnEnter", function(self)
-            if not ShowTooltip then
-                if item.itemLink then
-                    ns.TooltipService:Show(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
-                end
-                return
-            end
-            ShowTooltip(self, { type = "item", itemID = item.itemID, itemLink = item.itemLink })
-        end)
-        row:SetScript("OnLeave", function()
-            if HideTooltip then HideTooltip() else ns.TooltipService:Hide() end
-        end)
-    end
-    
     -- Search filtering helper
     local function ItemMatchesSearch(item)
         if not storageSearchActive then
@@ -1707,7 +1716,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     row:ClearAllPoints()
                     row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -yy)
                     row:Show()
-                    pcall(PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
+                    pcall(ItemsUI_PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
                     row._wnStorageItemRef = item
                     row._wnStorageRowIdx = globalRowIdxAll
                     row._wnStorageLocText = locTextForItem(item) or ""
@@ -1782,7 +1791,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     row:ClearAllPoints()
                     row:SetPoint("TOPLEFT", rowsContainer, "TOPLEFT", 0, -yAcc)
                     row:Show()
-                    pcall(PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
+                    pcall(ItemsUI_PopulateStorageRowDirect, row, item, globalRowIdxAll, rowWidth, locTextForItem(item))
                     row._wnStorageItemRef = item
                     row._wnStorageRowIdx = globalRowIdxAll
                     row._wnStorageLocText = locTextForItem(item) or ""
@@ -2477,7 +2486,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 rowWidth = rowWidthPersonal,
                                 typeHeaderH = TYPE_SECTION_HEADER_H,
                                 locTextForItem = locTextForPersonalStorageItem,
-                                populateRow = PopulateStorageRowDirect,
+                                populateRow = ItemsUI_PopulateStorageRowDirect,
                                 searchQueryTabKey = searchResultTabKey,
                             }
                             charBodyAdvance = charBodyAdvance + typeSectionWrap:GetHeight() + SECTION_SPACING
@@ -2907,7 +2916,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 rowWidth = rowWidthWB,
                 typeHeaderH = TYPE_SECTION_HEADER_H,
                 locTextForItem = locTextForWarbandStorageItem,
-                populateRow = PopulateStorageRowDirect,
+                populateRow = ItemsUI_PopulateStorageRowDirect,
                 searchQueryTabKey = searchResultTabKey,
             }
             warbandBodyAdvance = warbandBodyAdvance + typeSectionWrapWB:GetHeight() + SECTION_SPACING
@@ -3229,7 +3238,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 rowWidth = rowWidthGuild,
                                 typeHeaderH = TYPE_SECTION_HEADER_H,
                                 locTextForItem = locTextForGuildStorageItem,
-                                populateRow = PopulateStorageRowDirect,
+                                populateRow = ItemsUI_PopulateStorageRowDirect,
                                 searchQueryTabKey = searchResultTabKey,
                             }
                             guildBodyAdvance = guildBodyAdvance + typeSectionWrap:GetHeight() + SECTION_SPACING
@@ -3259,7 +3268,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local hasAsyncLeaves = stageNow and stageNow.gen == leafPaintGen and (stageNow.pending or 0) > 0
     if (parent._wnStorageRowRefs and #parent._wnStorageRowRefs > 0) or hasAsyncLeaves then
         parent._wnStorageApplyRowVisual = function(row, item, rowIdx, rowWidth, locText)
-            PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
+            ItemsUI_PopulateStorageRowDirect(row, item, rowIdx, rowWidth, locText)
         end
     else
         parent._wnStorageApplyRowVisual = nil
@@ -4182,7 +4191,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
 
             row.qtyText:SetText(ns.UI_FormatStackCountMarkup and ns.UI_FormatStackCountMarkup(item.stackCount or 1)
             or format("|cffffcc00%s|r", FormatNumber(item.stackCount or 1)))
-            row.icon:SetTexture(item.iconFileID or 134400)
+            row.icon:SetTexture(ns.Utilities and ns.Utilities.ResolveItemRowIcon and ns.Utilities:ResolveItemRowIcon(item) or (item.iconFileID or 134400))
 
             local baseName = item.name
             if not baseName and item.link and not (issecretvalue and issecretvalue(item.link)) then
