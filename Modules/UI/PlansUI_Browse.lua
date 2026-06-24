@@ -297,6 +297,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     local profileAchBrowse = WarbandNexus.db and WarbandNexus.db.profile
     local showCompletedAchBrowse = ProfileBool(profileAchBrowse, "plansShowCompleted", false)
     local showPlannedAchBrowse = ProfileBool(profileAchBrowse, "plansShowPlanned", false)
+    -- Plans To-Do browse: never mirror empty Blizzard journal slots — only categories with visible (filtered) rows.
+    local hideEmptyAchCategories = true
     -- Full uncollected browse only: mix of planned / not — suffix helps. Any filter that restricts to "on To-Do" makes (Planned) redundant noise.
     local showAchievementPlannedSuffix = (not showCompletedAchBrowse) and (not showPlannedAchBrowse)
 
@@ -434,6 +436,9 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     local flatListOpts = { rowHeightScale = achRowScale }
     if searchActive then
         flatListOpts.searchActive = true
+    end
+    if hideEmptyAchCategories then
+        flatListOpts.hideEmptyCategories = true
     end
     local _, totalPrev = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, flatListOpts)
     rootFrame:SetHeight(math.max(1, totalPrev))
@@ -635,6 +640,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         rowHeightScale = achRowScale,
         searchActive = searchActive,
         searchText = searchText,
+        hideEmptyCategories = hideEmptyAchCategories,
         drawGen = popGen,
         plansCategoryGen = catBodyGen,
         chromeHostFrame = rootFrame,
@@ -1147,8 +1153,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
     
-    -- Fetch lists: neither checkbox = uncollected only; Show Completed = use collected list (filtered to planned);
-    -- Show Planned without Completed = uncollected + planned; both = union of planned from both lists.
+    -- To-Do browse: default = uncollected/incomplete only. Show Completed adds collected rows (optionally planned-only).
+    -- Show Planned narrows to items on your To-Do list. Neither checkbox = full uncollected catalog in that category.
     local needUncollected = (not showCompletedBrowse) or (showPlannedBrowse and showCompletedBrowse)
     local needCollected = showCompletedBrowse
 

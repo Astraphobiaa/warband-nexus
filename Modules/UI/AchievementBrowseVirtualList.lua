@@ -211,9 +211,11 @@ function ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, col
         return children and #children > 0
     end
 
+    local hideEmptyCategories = listOpts and listOpts.hideEmptyCategories == true
+
     local function CategoryShouldAppear(catID)
-        -- Search: only branches that contain matched achievements (skip empty API journal slots).
-        if searchActive then
+        -- Search / Plans To-Do browse: only branches that contain visible (uncollected/filtered) achievements.
+        if searchActive or hideEmptyCategories then
             return CountCategoryAchievements(catID) > 0
         end
         if CountCategoryAchievements(catID) > 0 then return true end
@@ -382,13 +384,16 @@ function ns.UI_AchievementBrowse_Populate(opts)
     end
 
     local listBuildOpts = nil
-    if (opts.rowHeightScale and type(opts.rowHeightScale) == "number") or opts.searchActive then
+    if (opts.rowHeightScale and type(opts.rowHeightScale) == "number") or opts.searchActive or opts.hideEmptyCategories then
         listBuildOpts = {}
         if opts.rowHeightScale and type(opts.rowHeightScale) == "number" then
             listBuildOpts.rowHeightScale = opts.rowHeightScale
         end
         if opts.searchActive then
             listBuildOpts.searchActive = true
+        end
+        if opts.hideEmptyCategories then
+            listBuildOpts.hideEmptyCategories = true
         end
     end
     local flatList = ns.UI_AchievementBrowse_BuildFlatList(categoryData, rootCategories, collapsedHeaders, listBuildOpts)
