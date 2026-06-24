@@ -146,6 +146,7 @@ Modules\UI\NotificationToastFactory.lua
 Modules\NotificationManager_Presentation.lua
 Modules\NotificationManager_ToastFx.lua
 Modules\NotificationManager_ToastChrome.lua
+Modules\NotificationManager_AlertStack.lua
 Modules\NotificationManager_Changelog.lua
 Modules\NotificationManager.lua
 Modules\UI\AchievementBrowseVirtualList.lua

@@ -702,7 +702,7 @@ local function SendPlanReminderToast(plan, triggerLabel, fromLocation)
     local toastData = {
         compact = true,
         planReminderToast = true,
-        criteriaTitle = (ns.L and ns.L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
+        criteriaTitle = (ns.L and ns.L["REMINDER_TOAST_TITLE"]) or "To-Do",
         itemName = planTitle,
         icon = GetPlanReminderToastIcon(plan),
         playSound = true,
@@ -754,7 +754,7 @@ local function FlushCalendarToastBatch()
     local toastData = {
         compact = true,
         planReminderToast = true,
-        criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
+        criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do",
         itemName = (L and L["REMINDER_AGGREGATE_CALENDAR_TITLE"]) or "Multiple reminders",
         icon = GetReminderToastIconTexture(),
         playSound = true,

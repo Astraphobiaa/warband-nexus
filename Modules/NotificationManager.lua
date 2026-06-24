@@ -624,7 +624,7 @@ local function ShowTestReminderToastModal(addon)
     addon:ShowModalNotification({
         compact = true,
         planReminderToast = true,
-        criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
+        criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do",
         itemName = (L and L["TEST_STACK_REMINDER"]) or "Plan reminder (test)",
         icon = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager",
         playSound = false,
@@ -816,7 +816,7 @@ function WarbandNexus:TestAlertTest(sub)
         addon:ShowModalNotification({
             compact = true,
             planReminderToast = true,
-            criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do reminder",
+            criteriaTitle = (L and L["REMINDER_TOAST_TITLE"]) or "To-Do",
             itemName = (L and L["TEST_STACK_REMINDER"]) or "Plan reminder (test)",
             icon = (ns.Constants and ns.Constants.REMINDER_ALERT_ATLAS) or "icon_cooldownmanager",
             playSound = false,
@@ -879,7 +879,7 @@ function WarbandNexus:TestAlertTest(sub)
             compact = true,
             progressAnchor = true,
             iconAtlas = "questlog-questtypeicon-heroic",
-            criteriaTitle = string.format((L and L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", 4, 8),
+            criteriaTitle = (L and L["TOAST_CAT_VAULT"]) or "Vault",
             itemName = (L and L["DUNGEON"]) or "Dungeon",
             titleColor = ToastChrome.CriteriaAccent(),
             playSound = false,
@@ -939,805 +939,65 @@ function WarbandNexus:TestNotificationStack()
     end)
 end
 
---[[============================================================================
-    ACHIEVEMENT-STYLE ALERT FRAME SYSTEM (WOW-STYLE)
-============================================================================]]
+--[[ Alert stack: NotificationManager_AlertStack.lua (ns.NotificationAlertStack) ]]
+local AS = ns.NotificationAlertStack
+assert(AS, "NotificationManager: load NotificationManager_AlertStack.lua first")
 
--- Max simultaneous toasts (rest queue with C_Timer debounce). Raised so mixed lanes can briefly co-exist.
-local NOTIFICATION_MAX_VISIBLE_ALERTS = 6
+-- Blizzard MonthlyActivityFrameTemplate icon (Interface/AddOns/Blizzard_FrameXML/Mainline/AlertFrameSystems.xml).
+local TRAVELERS_LOG_PROGRESS_ICON_ATLAS = "activities-toast-icon"
 
--- Initialize AlertFrame tracking (like WoW's AlertFrame system)
-if not WarbandNexus.activeAlerts then
-    WarbandNexus.activeAlerts = {} -- Currently visible alerts (capped; see NOTIFICATION_MAX_VISIBLE_ALERTS)
-end
-if not WarbandNexus.alertQueue then
-    WarbandNexus.alertQueue = {} -- Waiting alerts (if >3 active)
-end
-WarbandNexus.alertQueueHead = WarbandNexus.alertQueueHead or 1
--- Queue processing debounce timer (prevents multiple simultaneous queue processing)
-local queueProcessTimer = nil
-local stackRepositionWatchTicker = nil
-local dismissQueue = {}
-local dismissQueueHead = 1
-local dismissSessionActive = false
-local RequestDismissToast
-local RemoveAlert
-local BeginDismissToast
-
-local function HasQueuedAlerts()
-    return WarbandNexus.alertQueueHead <= #WarbandNexus.alertQueue
-end
-
-local function EnqueueAlert(config)
-    WarbandNexus.alertQueue[#WarbandNexus.alertQueue + 1] = config
-end
-
-local function DequeueAlert()
-    if not HasQueuedAlerts() then
-        WarbandNexus.alertQueue = {}
-        WarbandNexus.alertQueueHead = 1
-        return nil
+local function NM_IsTravelersLogProgressTitle(title)
+    if type(title) ~= "string" or title == "" then return false end
+    if issecretvalue and issecretvalue(title) then return false end
+    local monthlyTitle = _G.MONTHLY_ACTIVITIES_PROGRESSED
+    if type(monthlyTitle) == "string" and monthlyTitle ~= ""
+        and not (issecretvalue and issecretvalue(monthlyTitle)) and title == monthlyTitle then
+        return true
     end
-
-    local nextConfig = WarbandNexus.alertQueue[WarbandNexus.alertQueueHead]
-    WarbandNexus.alertQueue[WarbandNexus.alertQueueHead] = nil
-    WarbandNexus.alertQueueHead = WarbandNexus.alertQueueHead + 1
-
-    if WarbandNexus.alertQueueHead > 16 and WarbandNexus.alertQueueHead > (#WarbandNexus.alertQueue / 2) then
-        local compacted = {}
-        for i = WarbandNexus.alertQueueHead, #WarbandNexus.alertQueue do
-            compacted[#compacted + 1] = WarbandNexus.alertQueue[i]
-        end
-        WarbandNexus.alertQueue = compacted
-        WarbandNexus.alertQueueHead = 1
+    local lower = string.lower(title)
+    if lower:find("traveler", 1, true) and lower:find("log", 1, true) then
+        return true
     end
-
-    return nextConfig
-end
-
--- Collection toasts: full card width. Progress/criteria/reminder: narrower Blizzard criteria-bar width.
-local ALERT_HEIGHT = 64
-local ALERT_HEIGHT_COMPACT = 58
-local ALERT_GAP = 6
-local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP
-local ALERT_WIDTH_COMPACT = 320
-local ALERT_WIDTH_FIXED = ALERT_WIDTH_COMPACT
-local ALERT_WIDTH_PROGRESS = 276
-local ALERT_ICON_SIZE = 36
-local ALERT_ICON_SLOT = 50
-local ACHIEVEMENT_SHIELD_SIZE = 32
-local ACHIEVEMENT_SHIELD_GAP = 1
-local ACHIEVEMENT_SHIELD_ATLAS_POINTS = "UI-Achievement-Shield-1"
-local ACHIEVEMENT_SHIELD_ATLAS_EMPTY = "UI-Achievement-Shield-NoPoints"
-local ACHIEVEMENT_CRITERIA_TYPE_LINKED = 8 -- criteriaType ACHIEVEMENT (sub-achievement row); wiki GetAchievementCriteriaInfo
-local ALERT_PAD_LEFT = 8
-local ALERT_PAD_RIGHT = 10
-local ALERT_PAD_TEXT = 6
-local ALERT_HEIGHT_TALL = 74
-local ALERT_HEIGHT_PROGRESS_MIN = ALERT_HEIGHT_COMPACT
-local ALERT_HEIGHT_PROGRESS_MAX = ALERT_HEIGHT_TALL
-local ALERT_HEIGHT_PROGRESS = ALERT_HEIGHT_COMPACT
-local ALERT_PROGRESS_LAYOUT_REF_WIDTH = ALERT_WIDTH_PROGRESS
-local ALERT_PROGRESS_ICON_LEADING_PAD = ALERT_PAD_LEFT
-
-local function FormatToastAttemptsLabel(count)
-    count = tonumber(count)
-    if not count or count < 1 then
-        return nil
-    end
-    local fmt = (ns.L and ns.L["NOTIFICATION_ATTEMPTS_FMT"])
-        or (ns.L and ns.L["COLLECTION_LIST_ATTEMPTS_FMT"])
-        or "%d Attempts"
-    return string.format(fmt, count)
-end
-
----Resolve achievement points for toast shield (config override or GetAchievementInfo).
-local function NM_ResolveAchievementToastPoints(config)
-    if not config then return nil end
-    local pts = config.achievementPoints
-    if pts == nil and config.achievementID then
-        local achID = config.achievementID
-        if not (issecretvalue and issecretvalue(achID)) then
-            local ok, _, _, p = pcall(GetAchievementInfo, achID)
-            if ok and type(p) == "number" then
-                pts = p
-            end
-        end
-    end
-    return tonumber(pts)
-end
-
----Blizzard-style points shield to the right of the achievement icon.
----@return Frame|nil shieldFrame
----@return number extraWidth additional icon-lane width consumed
-local function NM_AttachAchievementPointsShield(iconSlotCompact, iconCompact, points)
-    if not iconSlotCompact or not iconCompact then return nil, 0 end
-    local numPts = tonumber(points)
-    local hasPoints = numPts ~= nil and numPts > 0
-    local atlas = hasPoints and ACHIEVEMENT_SHIELD_ATLAS_POINTS or ACHIEVEMENT_SHIELD_ATLAS_EMPTY
-
-    local shieldFrame = CreateFrame("Frame", nil, iconSlotCompact)
-    shieldFrame:SetSize(ACHIEVEMENT_SHIELD_SIZE, ACHIEVEMENT_SHIELD_SIZE)
-    shieldFrame:SetPoint("LEFT", iconCompact, "RIGHT", ACHIEVEMENT_SHIELD_GAP, 0)
-
-    local shieldTex = shieldFrame:CreateTexture(nil, "ARTWORK")
-    shieldTex:SetAllPoints()
-    local ok = pcall(function()
-        shieldTex:SetAtlas(atlas, false)
-    end)
-    if not ok then
-        shieldFrame:Hide()
-        return nil, 0
-    end
-    shieldTex:SetSnapToPixelGrid(false)
-    shieldTex:SetTexelSnappingBias(0)
-
-    if hasPoints then
-        local ptsFs = FontManager:CreateFontString(shieldFrame, "body", "OVERLAY")
-        ptsFs:SetPoint("CENTER", shieldTex, "CENTER", 0, 0)
-        ptsFs:SetJustifyH("CENTER")
-        ptsFs:SetJustifyV("MIDDLE")
-        ptsFs:SetText(tostring(numPts))
-        ptsFs:SetTextColor(1, 1, 1)
-        NM_ApplyTextShadow(ptsFs, 1)
-    end
-
-    shieldFrame:SetFrameLevel((iconSlotCompact.GetFrameLevel and iconSlotCompact:GetFrameLevel() or 2) + 4)
-
-    return shieldFrame, ACHIEVEMENT_SHIELD_SIZE + ACHIEVEMENT_SHIELD_GAP
-end
-
----Get Blizzard's alert frame position so we can match it when "Use AlertFrame Position" is on.
----Tries AchievementAlertFrame1, CriteriaAlertFrame1, AlertFrameHolder, then any visible AlertFrame child.
-local function GetBlizzardAlertFramePosition()
-    local tryNames = { "AchievementAlertFrame1", "CriteriaAlertFrame1", "AlertFrameHolder", "GroupLootFrame1" }
-    local f
-    for _, name in ipairs(tryNames) do
-        f = _G[name]
-        if f and f.GetPoint and f:GetNumPoints() >= 1 then break end
-        f = nil
-    end
-    if not f then
-        if AlertFrame and AlertFrame.GetNumChildren then
-            for i = 1, AlertFrame:GetNumChildren() do
-                local child = select(i, AlertFrame:GetChildren())
-                if child and child.GetPoint and child:GetNumPoints() >= 1 and child:IsShown() then f = child break end
-            end
-        end
-    end
-    if not f or not f.GetPoint then return nil, nil, nil end
-    local point, relativeTo, relativePoint, x, y = f:GetPoint(1)
-    if not point then return nil, nil, nil end
-    x, y = tonumber(x) or 0, tonumber(y) or -100
-    if relativeTo == UIParent then
-        return point, x, y
-    end
-    local fLeft, fTop = f:GetLeft(), f:GetTop()
-    if not fLeft or not fTop then return nil, nil, nil end
-    local w = f:GetWidth() or ALERT_WIDTH_FIXED
-    local uiw = UIParent:GetWidth()
-    local uiTop = UIParent:GetTop()
-    local centerX = fLeft + (w / 2)
-    local offsetX = math.floor(centerX - (uiw / 2))
-    local offsetY = math.floor(fTop - uiTop)
-    return "TOP", offsetX, offsetY
-end
-
----Match Blizzard criteria alert position when "Use CriteriaAlert position" is on (criteria lane only).
-local function GetBlizzardCriteriaAlertFramePosition()
-    local f = _G.CriteriaAlertFrame1
-    if not f or not f.GetPoint or f:GetNumPoints() < 1 then return nil, nil, nil end
-    local point, relativeTo, relativePoint, x, y = f:GetPoint(1)
-    if not point then return nil, nil, nil end
-    x, y = tonumber(x) or 0, tonumber(y) or -100
-    if relativeTo == UIParent then
-        return point, x, y
-    end
-    local fLeft, fTop = f:GetLeft(), f:GetTop()
-    if not fLeft or not fTop then return nil, nil, nil end
-    local w = f:GetWidth() or 300
-    local uiw = UIParent:GetWidth()
-    local uiTop = UIParent:GetTop()
-    local centerX = fLeft + (w / 2)
-    local offsetX = math.floor(centerX - (uiw / 2))
-    local offsetY = math.floor(fTop - uiTop)
-    return "TOP", offsetX, offsetY
-end
-
-local function CriteriaAnchorFromDb(db)
-    if not db then return "TOP", 0, -100 end
-    if db.useCriteriaAlertFramePosition then
-        local pt, px, py = GetBlizzardCriteriaAlertFramePosition()
-        if pt and px ~= nil and py ~= nil then return pt, px, py end
-    end
-    return db.popupPointCompact or db.popupPoint or "TOP",
-        db.popupXCompact ~= nil and db.popupXCompact or (db.popupX or 0),
-        db.popupYCompact ~= nil and db.popupYCompact or (db.popupY or -100)
-end
-
----Resolve UIParent anchor for a toast lane. unifiedToastLayout=true uses one stack anchor for all lanes.
-local function ResolveToastAnchor(lane)
-    local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
-    if not db then return "TOP", 0, -100 end
-    local unified = db.unifiedToastLayout ~= false
-
-    if unified then
-        if db.useAlertFramePosition then
-            local pt, px, py = GetBlizzardAlertFramePosition()
-            if pt and px ~= nil and py ~= nil then return pt, px, py end
-        end
-        return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
-    end
-
-    if lane == "achievement" then
-        if db.useAlertFramePosition then
-            local pt, px, py = GetBlizzardAlertFramePosition()
-            if pt and px ~= nil and py ~= nil then return pt, px, py end
-        end
-        return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
-    elseif lane == "criteria" then
-        return CriteriaAnchorFromDb(db)
-    elseif lane == "tryCounter" then
-        return db.tryCounterToastPoint or db.popupPoint or "TOP",
-            db.tryCounterToastX ~= nil and db.tryCounterToastX or (db.popupX or 0),
-            db.tryCounterToastY ~= nil and db.tryCounterToastY or (db.popupY or -100)
-    elseif lane == "reminder" then
-        if db.reminderToastUseCriteriaLane ~= false then
-            return CriteriaAnchorFromDb(db)
-        end
-        return db.reminderToastPoint or "TOPRIGHT",
-            db.reminderToastX or -42,
-            db.reminderToastY or -172
-    end
-    return "TOP", 0, -100
-end
-
-local function InferToastLane(config)
-    if type(config.toastLane) == "string" and config.toastLane ~= "" then
-        return config.toastLane
-    end
-    if config.planReminderToast then
-        return "reminder"
-    end
-    local isCompact = config.compact and true or false
-    local hasCrit = type(config.criteriaTitle) == "string" and config.criteriaTitle ~= ""
-    if isCompact and (config.progressAnchor == true or config.planReminderToast) then
-        return "criteria"
-    end
-    if isCompact and hasCrit and not config.categoryTitle then
-        return "criteria"
-    end
-    if config.notifType == "tryCounter" or config.toastLane == "tryCounter" then
-        return "tryCounter"
-    end
-    if config.notifType == "criteria" then
-        return "criteria"
-    end
-    return "achievement"
-end
-
-local function GetSavedPosition(compact)
-    return ResolveToastAnchor("achievement")
-end
-
----Outer width for progress-lane toasts (criteria, vault checkpoints, To-Do reminders): match live Blizzard CriteriaAlertFrame* when loaded.
----Fallback 300 matches AchievementAlertFrameTemplate (FrameXML alert lane) before CriteriaAlert frames exist.
-local function GetBlizzardProgressAlertToastWidth()
-    for i = 1, 10 do
-        local f = _G["CriteriaAlertFrame" .. i]
-        if f and type(f.GetWidth) == "function" and not (f.IsForbidden and f:IsForbidden()) then
-            local ok, w = pcall(function()
-                return f:GetWidth()
-            end)
-            if ok and type(w) == "number" and w >= 160 and w <= 900 then
-                return math.floor(w + 0.5)
-            end
-        end
-    end
-    return 300
-end
-
-local function UsesUnifiedToastLayout()
-    local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
-    return db == nil or db.unifiedToastLayout ~= false
-end
-
----Progress lane (criteria, vault, reminders) uses Blizzard CriteriaAlertFrame width when available.
-local function GetCompactToastWidth(laneUsesProgressSizing)
-    if laneUsesProgressSizing then
-        local blizzW = GetBlizzardProgressAlertToastWidth()
-        if blizzW and blizzW >= 160 and blizzW <= ALERT_WIDTH_COMPACT then
-            return math.min(blizzW, 300)
-        end
-        return ALERT_WIDTH_PROGRESS
-    end
-    return ALERT_WIDTH_COMPACT
-end
-
-local function GetCompactToastBaseHeight(_laneUsesProgressSizing)
-    return ALERT_HEIGHT_COMPACT
-end
-
-local function GetStackMaxToastWidth(alertList)
-    local maxW = ALERT_WIDTH_PROGRESS
-    for i = 1, #alertList do
-        local w = alertList[i]._toastWidth
-        if type(w) == "number" and w > maxW then
-            maxW = w
-        end
-    end
-    return maxW
-end
-
----Narrow progress lane stays screen-centered; wide collection toasts left-align in a mixed stack.
-local function GetStackAdjustedAnchorX(point, baseX, toastWidth, stackMaxWidth, toastLane)
-    if not UsesUnifiedToastLayout() then
-        return baseX
-    end
-    if toastLane == "criteria" or toastLane == "reminder" then
-        return baseX
-    end
-    if toastWidth and toastWidth <= ALERT_WIDTH_PROGRESS + 4 then
-        return baseX
-    end
-    if not stackMaxWidth or not toastWidth or stackMaxWidth <= toastWidth then
-        return baseX
-    end
-    local halfDelta = (toastWidth - stackMaxWidth) * 0.5
-    if point == "TOP" or point == "BOTTOM" or point == "CENTER" then
-        return baseX + halfDelta
-    elseif point == "TOPRIGHT" or point == "BOTTOMRIGHT" or point == "RIGHT" then
-        return baseX - halfDelta
-    end
-    return baseX
-end
-
----Determine growth direction based on anchor position on screen (always AUTO)
----Returns 1 for DOWN (negative Y), -1 for UP (positive Y)
-local function GetGrowthDirection(point, x, y)
-    if not point then
-        point, x, y = GetSavedPosition()
-    end
-    local screenHeight = UIParent:GetHeight()
-    
-    -- Calculate approximate Y position of anchor on screen (0 = bottom, screenHeight = top)
-    local anchorScreenY
-    if point == "TOP" or point == "TOPLEFT" or point == "TOPRIGHT" then
-        anchorScreenY = screenHeight + y
-    elseif point == "BOTTOM" or point == "BOTTOMLEFT" or point == "BOTTOMRIGHT" then
-        anchorScreenY = y
-    else -- CENTER variants
-        anchorScreenY = (screenHeight / 2) + y
-    end
-    
-    -- If anchor is in the top 55% of screen â†’ grow DOWN, else grow UP
-    if anchorScreenY > screenHeight * 0.45 then
-        return 1   -- DOWN (negative Y offsets)
-    else
-        return -1   -- UP (positive Y offsets)
-    end
-end
-
----Get height of an alert frame (full and compact both fixed) for stacking
-local function GetAlertHeight(alert)
-    return (alert and alert._alertHeight) or ALERT_HEIGHT
-end
-
----Calculate Y offset for a new alert that will be appended to a group (cumulative height of existing alerts in that anchor).
----Used so achievement and criteria progress never overlap regardless of order or mix.
-local function GetCumulativeOffsetForNewAlert(anchorKey, direction)
-    local cumulative = 0
-    for _, alert in ipairs(WarbandNexus.activeAlerts) do
-        local pt = alert._anchorPoint
-        local bx, by = alert._baseX, alert._baseY
-        if pt and bx and by then
-            local key = pt .. "|" .. tostring(bx) .. "|" .. tostring(by)
-            if key == anchorKey then
-                cumulative = cumulative + GetAlertHeight(alert) + ALERT_GAP
-            end
-        end
-    end
-    return cumulative * -direction
-end
-
-local function HasAnyClosingAlert()
-    local alerts = WarbandNexus and WarbandNexus.activeAlerts
-    if not alerts then return false end
-    for i = 1, #alerts do
-        if alerts[i].isClosing then
-            return true
-        end
+    if lower:find("reisenden", 1, true) and lower:find("log", 1, true) then
+        return true
     end
     return false
 end
 
-local function StopStackRepositionWatch()
-    if stackRepositionWatchTicker then
-        stackRepositionWatchTicker:Cancel()
-        stackRepositionWatchTicker = nil
+local function NM_FormatToastBadgeLabel(label)
+    if type(label) ~= "string" or label == "" then return label end
+    if issecretvalue and issecretvalue(label) then return label end
+    if NM_IsTravelersLogProgressTitle(label) then
+        return (ns.L and ns.L["TOAST_BADGE_TRAVELERS_LOG"]) or "Traveler's Log"
     end
+    local achProgress = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress"
+    if label == achProgress then
+        return (ns.L and ns.L["TOAST_CAT_ACHIEVEMENT"]) or "Achievement"
+    end
+    local progressSuffix = " Progress"
+    if #label > #progressSuffix and label:sub(-#progressSuffix) == progressSuffix then
+        return label:sub(1, #label - #progressSuffix)
+    end
+    return label
 end
 
-local RepositionAlerts
-
-local function RunStackRepositionIfIdle()
-    if HasAnyClosingAlert() then
-        return false
+local function NM_EnsureTravelersLogProgressIcon(payload)
+    if not payload then return payload end
+    if payload.iconAtlas and payload.iconAtlas ~= "" then return payload end
+    if payload.iconFileID or payload.icon then return payload end
+    if NM_IsTravelersLogProgressTitle(payload.title) then
+        payload.iconAtlas = TRAVELERS_LOG_PROGRESS_ICON_ATLAS
     end
-    StopStackRepositionWatch()
-    if WarbandNexus and WarbandNexus.activeAlerts and #WarbandNexus.activeAlerts > 0 then
-        RepositionAlerts()
-    end
-    return true
+    return payload
 end
 
----Wait until no toast is mid-fade before sliding the stack (avoids overlap when several dismiss together).
-local function RequestStackReposition()
-    C_Timer.After(0.02, function()
-        if RunStackRepositionIfIdle() then
-            return
-        end
-        if not stackRepositionWatchTicker then
-            stackRepositionWatchTicker = C_Timer.NewTicker(0.05, function()
-                RunStackRepositionIfIdle()
-            end)
-        end
-    end)
-end
-
----Reposition all active alerts (when one closes, others fill the gap). Alerts with same anchor stack together; slot Y uses each alert's actual height so full and compact never overlap.
-RepositionAlerts = function(instant, force)
-    if not force and not instant and (HasAnyClosingAlert() or dismissSessionActive) then
-        return
-    end
-    local defaultPoint, defaultX, defaultY = GetSavedPosition()
-    -- Group alerts by anchor (point,x,y) so each stack has its own slot indices
-    local groups = {}
-    for i, alert in ipairs(WarbandNexus.activeAlerts) do
-        local pt = alert._anchorPoint or defaultPoint
-        local bx = alert._baseX or defaultX
-        local by = alert._baseY or defaultY
-        local key = pt .. "|" .. tostring(bx) .. "|" .. tostring(by)
-        if not groups[key] then groups[key] = {} end
-        table.insert(groups[key], alert)
-    end
-    for key, list in pairs(groups) do
-        local pt = list[1]._anchorPoint or defaultPoint
-        local bx = list[1]._baseX or defaultX
-        local by = list[1]._baseY or defaultY
-        local direction = GetGrowthDirection(pt, bx, by)
-        local stackMaxW = GetStackMaxToastWidth(list)
-        local cumulativeOffset = 0
-        for slotInGroup, alert in ipairs(list) do
-            local newYOffset = by + (cumulativeOffset * -direction)
-            cumulativeOffset = cumulativeOffset + GetAlertHeight(alert) + ALERT_GAP
-            local ax = GetStackAdjustedAnchorX(pt, bx, alert._toastWidth or ALERT_WIDTH_COMPACT, stackMaxW, alert._toastLane)
-            alert._anchorX = ax
-            if not alert.isClosing then
-                -- Z-order: same strata, rising frame level for higher stack slots (newer toasts) so the latest message paints on top.
-                alert:SetFrameStrata("HIGH")
-                alert:SetFrameLevel(1000 + slotInGroup * 5)
-                if alert.isAnimating then
-                    alert:SetScript("OnUpdate", nil)
-                    alert.isAnimating = false
-                end
-                if alert.isEntering then
-                    if alert._entranceTargetY ~= newYOffset then
-                        alert._entranceStartY = alert.currentYOffset or newYOffset
-                        alert._entranceTargetY = newYOffset
-                        alert._entranceStartTime = GetTime()
-                    end
-                    local cy = alert.currentYOffset or alert._entranceTargetY or newYOffset
-                    alert:ClearAllPoints()
-                    alert:SetPoint(pt, UIParent, pt, ax, cy)
-                elseif instant then
-                    alert:ClearAllPoints()
-                    alert:SetPoint(pt, UIParent, pt, ax, newYOffset)
-                    alert.currentYOffset = newYOffset
-                    alert._lastAnchorX = ax
-                elseif alert.currentYOffset ~= newYOffset or alert._lastAnchorX ~= ax then
-                    local repositionStart = GetTime()
-                    local repositionDuration = TOAST_REPOSITION_SEC
-                    local startY = alert.currentYOffset or newYOffset
-                    local moveDistance = newYOffset - startY
-                    local _point, _anchorX = pt, ax
-                    alert._lastAnchorX = ax
-                    alert.isAnimating = true
-                    alert:SetScript("OnUpdate", function(self, elapsed)
-                        local elapsedTime = GetTime() - repositionStart
-                        local progress = math.min(1, elapsedTime / repositionDuration)
-                        local easedProgress = progress < 0.5 and (2 * progress * progress) or (1 - math.pow(-2 * progress + 2, 2) / 2)
-                        local currentY = startY + (moveDistance * easedProgress)
-                        self:ClearAllPoints()
-                        self:SetPoint(_point, UIParent, _point, _anchorX, currentY)
-                        self.currentYOffset = currentY
-                        if progress >= 1 then
-                            self:SetScript("OnUpdate", nil)
-                            self.isAnimating = false
-                            self.currentYOffset = newYOffset
-                        end
-                    end)
-                end
-            end
-        end
-    end
-    for i, alert in ipairs(WarbandNexus.activeAlerts) do
-        alert.alertIndex = i
-    end
-end
-
-local function GetAlertStackKey(alert)
-    if not alert then return nil end
-    local pt = alert._anchorPoint
-    local bx = alert._baseX
-    local by = alert._baseY
-    if not pt or bx == nil or by == nil then return nil end
-    return pt .. "|" .. tostring(bx) .. "|" .. tostring(by)
-end
-
-local function EnqueueDismissToast(toast)
-    if not toast then return end
-    for i = dismissQueueHead, #dismissQueue do
-        if dismissQueue[i] == toast then
-            return
-        end
-    end
-    dismissQueue[#dismissQueue + 1] = toast
-end
-
-local function DequeueDismissToast()
-    if dismissQueueHead > #dismissQueue then
-        dismissQueue = {}
-        dismissQueueHead = 1
-        return nil
-    end
-    local toast = dismissQueue[dismissQueueHead]
-    dismissQueueHead = dismissQueueHead + 1
-    return toast
-end
-
-local function PauseStackDismissTimers(stackKey, exceptToast)
-    if not stackKey then return end
-    local alerts = WarbandNexus and WarbandNexus.activeAlerts
-    if not alerts then return end
-    for i = 1, #alerts do
-        local alert = alerts[i]
-        if alert ~= exceptToast and GetAlertStackKey(alert) == stackKey and not alert.isClosing and not alert._removed then
-            if alert.dismissTimer then
-                if alert._dismissDeadline then
-                    alert._dismissPausedRemaining = math.max(0, alert._dismissDeadline - GetTime())
-                end
-                alert.dismissTimer:Cancel()
-                alert.dismissTimer = nil
-                alert._dismissTimerPaused = true
-            end
-        end
-    end
-end
-
-local function ResumeStackDismissTimers(stackKey)
-    if not stackKey then return end
-    local alerts = WarbandNexus and WarbandNexus.activeAlerts
-    if not alerts then return end
-    for i = 1, #alerts do
-        local alert = alerts[i]
-        if GetAlertStackKey(alert) == stackKey and alert._dismissTimerPaused and not alert.isClosing and not alert._removed then
-            local delay = alert._dismissPausedRemaining
-            if type(delay) ~= "number" or delay <= 0 then
-                delay = 0.05
-            end
-            alert._dismissTimerPaused = nil
-            alert._dismissPausedRemaining = nil
-            alert._dismissDeadline = GetTime() + delay
-            alert.dismissTimer = C_Timer.NewTimer(delay, function()
-                alert.dismissTimer = nil
-                alert._dismissDeadline = nil
-                if not alert:IsShown() or alert.isClosing or alert._removed then return end
-                RequestDismissToast(alert)
-            end)
-        end
-    end
-end
-
-local function ScheduleToastDismiss(toast, delay)
-    if not toast then return end
-    delay = tonumber(delay)
-    if not delay or delay <= 0 then return end
-    if toast.dismissTimer then
-        toast.dismissTimer:Cancel()
-        toast.dismissTimer = nil
-    end
-    toast._dismissTimerPaused = nil
-    toast._dismissPausedRemaining = nil
-    toast._dismissDeadline = GetTime() + delay
-    toast.dismissTimer = C_Timer.NewTimer(delay, function()
-        toast.dismissTimer = nil
-        toast._dismissDeadline = nil
-        if not toast:IsShown() or toast.isClosing or toast._removed then return end
-        RequestDismissToast(toast)
-    end)
-end
-
-local function ProcessDismissQueue()
-    if HasAnyClosingAlert() then return end
-    local nextToast = DequeueDismissToast()
-    if not nextToast or nextToast._removed or nextToast.isClosing then
-        return
-    end
-    dismissSessionActive = true
-    PauseStackDismissTimers(GetAlertStackKey(nextToast), nextToast)
-    BeginDismissToast(nextToast)
-end
-
-local function FinishDismissStep(removedToast)
-    local stackKey = removedToast and GetAlertStackKey(removedToast)
-
-    local function continueAfterCollapse()
-        if HasAnyClosingAlert() then
-            return
-        end
-        if dismissQueueHead <= #dismissQueue then
-            ProcessDismissQueue()
-            return
-        end
-        dismissSessionActive = false
-        StopStackRepositionWatch()
-        if stackKey then
-            ResumeStackDismissTimers(stackKey)
-        end
-    end
-
-    local alerts = WarbandNexus and WarbandNexus.activeAlerts
-    if alerts and #alerts > 0 then
-        C_Timer.After(0.02, function()
-            if HasAnyClosingAlert() then return end
-            RepositionAlerts(false, true)
-            C_Timer.After(TOAST_REPOSITION_SEC + 0.02, continueAfterCollapse)
-        end)
-    else
-        continueAfterCollapse()
-    end
-end
-
----Fade out in place; stack collapse waits until every fading toast in the stack has been removed.
-BeginDismissToast = function(toast)
-    if not toast or toast.isClosing or toast._removed then return end
-    toast.isClosing = true
-    toast.isEntering = false
-    toast.isAnimating = false
-    if toast.dismissTimer then
-        toast.dismissTimer:Cancel()
-        toast.dismissTimer = nil
-    end
-    if toast.EnableMouse then
-        toast:EnableMouse(false)
-    end
-    if toast.SetFrameLevel and toast.GetFrameLevel then
-        toast:SetFrameLevel(math.max(1, toast:GetFrameLevel() - 100))
-    end
-    local t0 = GetTime()
-    toast:SetScript("OnUpdate", function(self, elapsed)
-        local p = math.min(1, (GetTime() - t0) / TOAST_FADE_OUT_SEC)
-        self:SetAlpha(math.max(0, 1 - p))
-        if p >= 1 then
-            self:SetScript("OnUpdate", nil)
-            self:SetAlpha(0)
-            C_Timer.After(TOAST_COLLAPSE_DELAY_SEC, function()
-                if self and not self._removed then
-                    RemoveAlert(self)
-                end
-            end)
-        end
-    end)
-end
-
-RequestDismissToast = function(toast)
-    if not toast or toast.isClosing or toast._removed then return end
-    if toast.dismissTimer then
-        toast.dismissTimer:Cancel()
-        toast.dismissTimer = nil
-    end
-    toast._dismissTimerPaused = nil
-    toast._dismissPausedRemaining = nil
-    toast._dismissDeadline = nil
-
-    if HasAnyClosingAlert() then
-        EnqueueDismissToast(toast)
-        return
-    end
-
-    dismissSessionActive = true
-    PauseStackDismissTimers(GetAlertStackKey(toast), toast)
-    BeginDismissToast(toast)
-end
-
----Remove alert and process queue
-RemoveAlert = function(alert)
-    if not alert then 
-        return
-    end
-    
-    -- Prevent double-removal
-    if alert._removed then return end
-    alert._removed = true
-    
-    -- Cancel any active timers
-    if alert.dismissTimer then
-        alert.dismissTimer:Cancel()
-        alert.dismissTimer = nil
-    end
-    if alert._effectTimer then
-        alert._effectTimer:Cancel()
-        alert._effectTimer = nil
-    end
-    
-    -- Stop any OnUpdate scripts
-    alert:SetScript("OnUpdate", nil)
-    alert.isAnimating = false
-    alert.isClosing = false
-    alert.isEntering = false
-    
-    -- Clear all scripts for proper cleanup
-    alert:SetScript("OnEnter", nil)
-    alert:SetScript("OnLeave", nil)
-    alert:SetScript("OnMouseDown", nil)
-    
-    -- Find and remove from active alerts
-    for i, a in ipairs(WarbandNexus.activeAlerts) do
-        if a == alert then
-            table.remove(WarbandNexus.activeAlerts, i)
-            break
-        end
-    end
-    
-    alert:Hide()
-    do
-        local bin = ns.UI_RecycleBin
-        if bin then alert:SetParent(bin) else alert:SetParent(nil) end
-    end
-    
-    -- One toast gone: slide stack, then resume paused timers / next queued dismiss.
-    FinishDismissStep(alert)
-    
-    -- Process queue with debounce (prevents multiple simultaneous dismissals from spawning too many alerts)
-    if HasQueuedAlerts() then
-        -- Cancel any existing queue timer
-        if queueProcessTimer then
-            queueProcessTimer:Cancel()
-        end
-        
-        -- Short debounce to batch rapid dismissals, then process queue
-        queueProcessTimer = C_Timer.NewTimer(0.15, function()
-            queueProcessTimer = nil
-            
-            -- Process queue: show ONE alert at a time with staggered entrance
-            local function ProcessNextInQueue()
-                if not WarbandNexus or not WarbandNexus.activeAlerts then return end
-                if HasQueuedAlerts() and #WarbandNexus.activeAlerts < NOTIFICATION_MAX_VISIBLE_ALERTS then
-                    local nextConfig = DequeueAlert()
-                    
-                    if WarbandNexus.ShowModalNotification then
-                        WarbandNexus:ShowModalNotification(nextConfig)
-                        
-                        -- If more slots available, stagger next alert after entrance completes
-                        if HasQueuedAlerts() and #WarbandNexus.activeAlerts < NOTIFICATION_MAX_VISIBLE_ALERTS then
-                            C_Timer.After(0.25, ProcessNextInQueue)
-                        end
-                    end
-                end
-            end
-            
-            ProcessNextInQueue()
-        end)
-    end
-end
 
 ---Show an achievement-style notification with all visual effects (WoW AlertFrame style)
 ---Addon-created toast frames are not secure; showing them during combat is safe (no taint).
 function WarbandNexus:ShowModalNotification(config)
     -- Queue when at capacity; dequeue on dismiss via C_Timer (no polling queue logic).
-    if #self.activeAlerts >= NOTIFICATION_MAX_VISIBLE_ALERTS then
-        EnqueueAlert(config)
+    if #self.activeAlerts >= AS.NOTIFICATION_MAX_VISIBLE_ALERTS then
+        AS.EnqueueAlert(config)
         return false
     end
     
@@ -1792,27 +1052,35 @@ function WarbandNexus:ShowModalNotification(config)
             config.progressGlow = false
         end
     end
-    local toastLane = InferToastLane(config)
-    local point, baseX, baseY = ResolveToastAnchor(toastLane)
+    local toastLane = AS.InferToastLane(config)
+    local point, baseX, baseY = AS.ResolveToastAnchor(toastLane)
     local dbN = self.db and self.db.profile and self.db.profile.notifications
-    local direction = GetGrowthDirection(point, baseX, baseY)
+    local direction = AS.GetGrowthDirection(point, baseX, baseY)
     -- Per-lane prefix when anchors are split so two lanes at the same pixel do not share one vertical stack slot.
     local lanePrefix = (dbN and dbN.unifiedToastLayout == false) and (toastLane .. "|") or ""
     local anchorKey = lanePrefix .. point .. "|" .. tostring(baseX) .. "|" .. tostring(baseY)
-    local yOffset = baseY + GetCumulativeOffsetForNewAlert(anchorKey, direction)
+    local yOffset = baseY + AS.GetCumulativeOffsetForNewAlert(anchorKey, direction)
     
     -- Compact toast: icon left, content (backdrop + text) right.
-    -- Progress lane (criteria / vault / To-Do reminders): Blizzard criteria-bar width scaling.
     if config.compact then
-        local laneUsesProgressSizing = useProgressSlot or useReminderSlot
+        local laneUsesProgressLane = (config.progressAnchor == true or config.notifType == "criteria")
+            and not isPlanReminderToast
 
-        local COMPACT_HEIGHT = GetCompactToastBaseHeight(laneUsesProgressSizing)
-        local popupWidthCompact = GetCompactToastWidth(laneUsesProgressSizing)
-        local ICON_SLOT_WIDTH_COMPACT = ALERT_ICON_SLOT
-        local iconSizeCompact = ALERT_ICON_SIZE
-        local laneIconLeadingPad = ALERT_PAD_LEFT
-        local hideCompactIcon = config.criteriaNoIcon == true
-        local iconLaneWidth = hideCompactIcon and 0 or ICON_SLOT_WIDTH_COMPACT
+        local popupWidthCompact, COMPACT_HEIGHT, ICON_SLOT_WIDTH_COMPACT, iconSizeCompact
+        if AS.ResolveCompactToastDimensions then
+            popupWidthCompact, COMPACT_HEIGHT, ICON_SLOT_WIDTH_COMPACT, iconSizeCompact =
+                AS.ResolveCompactToastDimensions(laneUsesProgressLane)
+        else
+            COMPACT_HEIGHT = AS.GetCompactToastBaseHeight(laneUsesProgressLane)
+            popupWidthCompact = AS.GetCompactToastWidth(laneUsesProgressLane)
+            ICON_SLOT_WIDTH_COMPACT = laneUsesProgressLane and AS.ALERT_PROGRESS_ICON_SLOT or AS.ALERT_ICON_SLOT
+            iconSizeCompact = laneUsesProgressLane and AS.ALERT_PROGRESS_ICON_SIZE or AS.ALERT_ICON_SIZE
+        end
+        local laneIconLeadingPad = AS.ALERT_PAD_LEFT
+        if config.criteriaNoIcon == true and not iconAtlas and (not iconTexture or iconTexture == "") then
+            iconTexture = AS.CRITERIA_TOAST_FALLBACK_ICON
+        end
+        local iconLaneWidth = ICON_SLOT_WIDTH_COMPACT
         local compactPopup = (ToastFactory and ToastFactory.CreateToastHost)
             and ToastFactory:CreateToastHost(UIParent, popupWidthCompact, COMPACT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
             or CreateFrame("Frame", nil, UIParent)
@@ -1847,27 +1115,21 @@ function WarbandNexus:ShowModalNotification(config)
         backdropFrameCompact:SetBackdropColor(NM_GetElevatedBackdropFillRGBA())
         ToastChrome.ApplyCompactBackdropChrome(backdropFrameCompact, titleColor, 0.38)
         
-        -- Layer 2: icon slot (icon + bling only); criteria lane may omit icon entirely.
+        -- Layer 2: icon slot (always reserved so stacked toasts share one left gutter)
         local iconSlotCompact = CreateFrame("Frame", nil, compactPopup)
         iconSlotCompact:SetFrameLevel(2)
         iconSlotCompact:SetSize(iconLaneWidth, COMPACT_HEIGHT)
-        if not hideCompactIcon then
-            iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad, 0)
-        else
-            iconSlotCompact:Hide()
-        end
+        iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad, 0)
 
         local iconCompact
-        local achievementShieldExtra = 0
         local isAchievementEarnedToast = config.notifType == "achievement"
-        if not hideCompactIcon then
+        if isAchievementEarnedToast then
+            local achPts = AS.NM_ResolveAchievementToastPoints(config)
+            iconCompact = AS.NM_CreateAchievementShieldSlot(iconSlotCompact, achPts, titleColor)
+        else
         iconCompact = iconSlotCompact:CreateTexture(nil, "ARTWORK")
         iconCompact:SetSize(iconSizeCompact, iconSizeCompact)
-        if isAchievementEarnedToast then
-            iconCompact:SetPoint("LEFT", iconSlotCompact, "LEFT", 4, 0)
-        else
-            iconCompact:SetPoint("CENTER", iconSlotCompact, "CENTER", 0, 0)
-        end
+        iconCompact:SetPoint("CENTER", iconSlotCompact, "CENTER", 0, 0)
         -- Use resolved atlas/fileID locals (IsAtlasName promotes config.icon â†’ iconAtlas; compact must not read config.iconAtlas only).
         if iconAtlas and iconAtlas ~= "" then
             iconCompact:SetAtlas(iconAtlas)
@@ -1883,24 +1145,7 @@ function WarbandNexus:ShowModalNotification(config)
         end
         iconCompact:SetVertexColor(1, 1, 1, 1)
         iconCompact:SetAlpha(1)
-        if isAchievementEarnedToast then
-            local iconBling = iconSlotCompact:CreateTexture(nil, "OVERLAY", nil, 3)
-            iconBling:SetSize(iconSizeCompact + 14, iconSizeCompact + 14)
-            iconBling:SetPoint("CENTER", iconCompact, "CENTER", 0, 0)
-            iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
-            iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
-            iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
-            iconBling:SetBlendMode("BLEND")
-        end
         ToastChrome.ApplyCompactIconBorder(iconSlotCompact, iconCompact, iconSizeCompact, titleColor)
-        if isAchievementEarnedToast then
-            local achPts = NM_ResolveAchievementToastPoints(config)
-            local _, extraW = NM_AttachAchievementPointsShield(iconSlotCompact, iconCompact, achPts)
-            achievementShieldExtra = extraW or 0
-            if achievementShieldExtra > 0 then
-                iconSlotCompact:SetWidth(iconLaneWidth + achievementShieldExtra)
-            end
-        end
         end
         
         -- Content frame (right): text only
@@ -1908,11 +1153,10 @@ function WarbandNexus:ShowModalNotification(config)
         contentFrameCompact:SetFrameLevel(2)
         contentFrameCompact:SetPoint("TOP", compactPopup, "TOP", 0, 0)
         contentFrameCompact:SetPoint("BOTTOM", compactPopup, "BOTTOM", 0, 0)
-        contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad + iconLaneWidth + achievementShieldExtra, 0)
-        contentFrameCompact:SetPoint("RIGHT", compactPopup, "RIGHT", -ALERT_PAD_RIGHT, 0)
-        
-        -- Compact: accent lives on the icon flipbook frame only (no card-wide TopBottom streaks).
-        -- Card layout: title (large) on top, category/description (small) below; progress lane text centered.
+        contentFrameCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad + iconLaneWidth, 0)
+        contentFrameCompact:SetPoint("RIGHT", compactPopup, "RIGHT", -AS.ALERT_PAD_RIGHT, 0)
+        contentFrameCompact:SetClipsChildren(true)
+        -- Compact card: small category/header on top, primary title below; text block vertically centered in content lane.
         local headerTitle = headerTitleStr
         if type(headerTitle) == "string" and issecretvalue and issecretvalue(headerTitle) then headerTitle = nil end
         local progressStr = (messageText or actionText or "")
@@ -1923,7 +1167,7 @@ function WarbandNexus:ShowModalNotification(config)
         if type(detailStr) == "string" and issecretvalue and issecretvalue(detailStr) then detailStr = "" end
         local tryCountStr = ""
         if type(config.tryCount) == "number" and config.tryCount > 0 then
-            tryCountStr = FormatToastAttemptsLabel(config.tryCount) or ""
+            tryCountStr = AS.FormatToastAttemptsLabel(config.tryCount) or ""
         elseif config.tryCountText and config.tryCountText ~= "" then
             tryCountStr = config.tryCountText
         end
@@ -1933,8 +1177,14 @@ function WarbandNexus:ShowModalNotification(config)
             detailStr = ""
         end
         local isTryCounterToast = config.notifType == "tryCounter"
-        if isTryCounterToast and tryCountStr ~= "" then
-            headerTitle = tryCountStr
+        local tryCounterCountLine = nil
+        if isTryCounterToast then
+            if type(config.tryCount) == "number" and config.tryCount > 0 then
+                tryCounterCountLine = AS.FormatToastAttemptsLabel(config.tryCount) or tostring(config.tryCount)
+            elseif tryCountStr ~= "" then
+                tryCounterCountLine = tryCountStr
+            end
+            headerTitle = (ns.L and ns.L["TOAST_BADGE_ATTEMPTS"]) or "Attempts"
             tryCountStr = ""
         end
         if config.notifType == "achievement" then
@@ -1945,36 +1195,44 @@ function WarbandNexus:ShowModalNotification(config)
         local titleHex = ToastChrome.TitleHex(titleColor)
         local categoryHex = ToastChrome.CategoryHex(titleColor)
         local useTwoLineCard = headerSafe and headerSafe ~= ""
+        local categoryFirstLayout = useTwoLineCard
         local titleLine, headerLine
         local textGroup = CreateFrame("Frame", nil, contentFrameCompact)
         textGroup:SetFrameLevel(1)
         textGroup:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", 0, 0)
         textGroup:SetPoint("BOTTOMRIGHT", contentFrameCompact, "BOTTOMRIGHT", 0, 0)
 
-        titleLine = FontManager:CreateFontString(textGroup, "title", "OVERLAY")
+        -- Balanced stack: small category + primary line; progress lane uses narrower body typography.
+        local primaryFontRole = laneUsesProgressLane and "body" or "title"
+        local maxPrimaryLines = laneUsesProgressLane and AS.ALERT_PROGRESS_PRIMARY_MAX_LINES or AS.ALERT_PRIMARY_MAX_LINES
+        titleLine = AS.NM_CreateToastFontString(textGroup, primaryFontRole, "OVERLAY", nil, laneUsesProgressLane)
         titleLine:SetJustifyH("LEFT")
         titleLine:SetWordWrap(true)
-        titleLine:SetMaxLines(2)
+        titleLine:SetMaxLines(maxPrimaryLines)
+        if not laneUsesProgressLane then
+            titleLine:SetWordWrap(false)
+        end
         titleLine:SetText(titleHex .. (nameStr or "") .. "|r")
         titleLine:SetShadowOffset(1, -1)
         NM_ApplyTextShadow(titleLine, 0.85)
 
         if useTwoLineCard then
-            headerLine = FontManager:CreateFontString(textGroup, "small", "OVERLAY")
+            headerLine = AS.NM_CreateToastFontString(textGroup, "small", "OVERLAY", nil, laneUsesProgressLane)
             headerLine:SetJustifyH("LEFT")
             headerLine:SetWordWrap(false)
             headerLine:SetMaxLines(1)
             if isTryCounterToast then
-                headerLine:SetText(NM_ThemeTextHex("Bright") .. (headerSafe or "") .. "|r")
-                headerLine:SetShadowOffset(1, -1)
-                NM_ApplyTextShadow(headerLine, 0.85)
-            else
                 headerLine:SetText(categoryHex .. (headerSafe or "") .. "|r")
+                headerLine:SetShadowOffset(1, -1)
+                NM_ApplyTextShadow(headerLine, 0.8)
+            else
+                local badgeLabel = NM_FormatToastBadgeLabel(headerSafe)
+                headerLine:SetText(categoryHex .. (badgeLabel or "") .. "|r")
                 headerLine:SetShadowOffset(1, -1)
                 NM_ApplyTextShadow(headerLine, 0.8)
             end
         else
-            headerLine = FontManager:CreateFontString(textGroup, "small", "OVERLAY")
+            headerLine = AS.NM_CreateToastFontString(textGroup, "small", "OVERLAY", nil, laneUsesProgressLane)
             headerLine:SetJustifyH("LEFT")
             headerLine:SetWordWrap(true)
             headerLine:SetMaxLines(2)
@@ -1983,15 +1241,24 @@ function WarbandNexus:ShowModalNotification(config)
             NM_ApplyTextShadow(headerLine, 0.6)
         end
 
-        local textUseW = math.max(48, popupWidthCompact - laneIconLeadingPad - iconLaneWidth - achievementShieldExtra - ALERT_PAD_RIGHT - ALERT_PAD_TEXT * 2)
+        local textUseW = math.max(48, popupWidthCompact - laneIconLeadingPad - iconLaneWidth - AS.ALERT_PAD_RIGHT - AS.ALERT_PAD_TEXT * 2)
         titleLine:SetWidth(textUseW)
         headerLine:SetWidth(textUseW)
 
         local tryCountLine = nil
         local detailLine = nil
 
-        if useTwoLineCard and detailStr ~= "" and detailStr ~= (ACTION_TEXT[config.notifType] or "") then
-            detailLine = FontManager:CreateFontString(textGroup, "small", "OVERLAY")
+        if isTryCounterToast and tryCounterCountLine and tryCounterCountLine ~= "" then
+            detailLine = AS.NM_CreateToastFontString(textGroup, "title", "OVERLAY", nil, false)
+            detailLine:SetWidth(textUseW)
+            detailLine:SetJustifyH("LEFT")
+            detailLine:SetWordWrap(false)
+            detailLine:SetMaxLines(1)
+            detailLine:SetText(titleHex .. tryCounterCountLine .. "|r")
+            detailLine:SetShadowOffset(1, -1)
+            NM_ApplyTextShadow(detailLine, 0.85)
+        elseif useTwoLineCard and detailStr ~= "" and detailStr ~= (ACTION_TEXT[config.notifType] or "") then
+            detailLine = AS.NM_CreateToastFontString(textGroup, "small", "OVERLAY")
             detailLine:SetWidth(textUseW)
             detailLine:SetJustifyH("LEFT")
             detailLine:SetWordWrap(false)
@@ -2001,34 +1268,48 @@ function WarbandNexus:ShowModalNotification(config)
             NM_ApplyTextShadow(detailLine, 0.6)
         end
 
-        local gapTitle = 2
+        local gapTitle = AS.ALERT_TEXT_LINE_GAP
         local hTitle = titleLine:GetStringHeight()
         local hHeader = headerLine:GetStringHeight()
-        local titleWraps = hTitle > ((FontManager.GetFontSize and FontManager:GetFontSize("title")) or 14) + 4
         local hDetail = detailLine and detailLine:GetStringHeight() or 0
-        local stackH = hTitle + gapTitle + hHeader + (detailLine and (gapTitle + hDetail) or 0)
-        local newH = (titleWraps or detailLine) and ALERT_HEIGHT_TALL or ALERT_HEIGHT_COMPACT
-        newH = math.max(ALERT_HEIGHT_COMPACT, math.min(ALERT_HEIGHT_TALL, math.ceil(stackH + 10)))
+        local stackH
+        if categoryFirstLayout then
+            stackH = hTitle + (detailLine and (gapTitle + hDetail) or 0)
+        else
+            stackH = hTitle + gapTitle + hHeader + (detailLine and (gapTitle + hDetail) or 0)
+        end
 
+        local newH = COMPACT_HEIGHT
         compactPopup:SetHeight(newH)
         iconSlotCompact:SetHeight(newH)
         contentFrameCompact:SetHeight(newH)
         compactPopup._alertHeight = newH
+        compactPopup._toastTier = laneUsesProgressLane and "progress" or "collectible"
 
-        local padTop = math.floor((newH - stackH) * 0.5 + 0.5)
-        titleLine:ClearAllPoints()
-        headerLine:ClearAllPoints()
-        titleLine:SetPoint("TOPLEFT", textGroup, "TOPLEFT", ALERT_PAD_TEXT, -padTop)
-        headerLine:SetPoint("TOPLEFT", titleLine, "BOTTOMLEFT", 0, -gapTitle)
-        if detailLine then
-            detailLine:ClearAllPoints()
-            detailLine:SetPoint("TOPLEFT", headerLine, "BOTTOMLEFT", 0, -gapTitle)
+        textGroup:SetSize(textUseW, stackH)
+        local compactTextMode = "legacySingle"
+        if categoryFirstLayout then
+            compactTextMode = "standard"
+        end
+        if ToastFactory and ToastFactory.ApplyCompactTextLayout then
+            ToastFactory:ApplyCompactTextLayout({
+                mode = compactTextMode,
+                contentFrame = contentFrameCompact,
+                textGroup = textGroup,
+                headerLine = headerLine,
+                titleLine = titleLine,
+                detailLine = detailLine,
+                textUseW = textUseW,
+                stackH = stackH,
+                hHeader = hHeader,
+                gapTitle = gapTitle,
+            })
         end
         
         if config.playSound then
             local Constants = ns.Constants
             local defaultSound
-            if laneUsesProgressSizing then
+            if laneUsesProgressLane then
                 defaultSound = (SOUNDKIT and (SOUNDKIT.UI_AUTO_QUEST_COMPLETE or SOUNDKIT.AUTO_QUEST_COMPLETE))
                     or (Constants and Constants.NOTIFICATION_SOUND_PROGRESS)
                     or 44294
@@ -2043,7 +1324,7 @@ function WarbandNexus:ShowModalNotification(config)
             if button == "LeftButton" and self.achievementID and not InCombatLockdown() and OpenAchievementFrameToAchievement then
                 pcall(OpenAchievementFrameToAchievement, self.achievementID)
             end
-            RequestDismissToast(self)
+            AS.RequestDismissToast(self)
         end)
         
         local compactDuration = config.autoDismiss or 3
@@ -2062,7 +1343,7 @@ function WarbandNexus:ShowModalNotification(config)
 
         table.insert(self.activeAlerts, compactPopup)
         compactPopup.isEntering = true
-        RepositionAlerts(true)
+        AS.RepositionAlerts(true)
         local _bx = compactPopup._anchorX or baseX
         NM_AssignToastFxMetadata(compactPopup, config, titleColor, iconCompact, backdropFrameCompact)
         compactPopup:Show()
@@ -2084,22 +1365,22 @@ function WarbandNexus:ShowModalNotification(config)
             end
         end)
 
-        ScheduleToastDismiss(compactPopup, compactDuration)
+        AS.ScheduleToastDismiss(compactPopup, compactDuration)
         MaybeScheduleTryCounterCelebration(config, compactPopup)
         return true
     end
     
     -- Full achievement popup: fixed width; long titles/subtitles wrap inside the text area
-    local popupWidthFull = ALERT_WIDTH_FIXED
+    local popupWidthFull = AS.ALERT_WIDTH_FIXED
     
     -- WoW Achievement-style: container = icon slot (left) + content frame (text).
-    local ICON_SLOT_WIDTH = 54
+    local ICON_SLOT_WIDTH = AS.ALERT_ICON_SLOT_FULL
     local contentFrameWidth = popupWidthFull - ICON_SLOT_WIDTH
     
     local popup = (ToastFactory and ToastFactory.CreateToastHost)
-        and ToastFactory:CreateToastHost(UIParent, popupWidthFull, ALERT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
+        and ToastFactory:CreateToastHost(UIParent, popupWidthFull, AS.ALERT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
         or CreateFrame("Frame", nil, UIParent)
-    popup:SetSize(popupWidthFull, ALERT_HEIGHT)
+    popup:SetSize(popupWidthFull, AS.ALERT_HEIGHT)
     popup:SetMouseClickEnabled(true)
     if ns.UI_ApplyAddonUIScale then
         ns.UI_ApplyAddonUIScale(popup)
@@ -2128,13 +1409,13 @@ function WarbandNexus:ShowModalNotification(config)
     -- Layer 2: icon slot (icon + bling only)
     local iconSlot = CreateFrame("Frame", nil, popup)
     iconSlot:SetFrameLevel(2)
-    iconSlot:SetSize(ICON_SLOT_WIDTH, ALERT_HEIGHT)
+    iconSlot:SetSize(ICON_SLOT_WIDTH, AS.ALERT_HEIGHT)
     iconSlot:SetPoint("LEFT", popup, "LEFT", 0, 0)
     
-    local iconSize = 38
+    local iconSize = AS.ALERT_ICON_SIZE_FULL
     local icon = iconSlot:CreateTexture(nil, "ARTWORK", nil, 0)
     icon:SetSize(iconSize, iconSize)
-    icon:SetPoint("LEFT", iconSlot, "LEFT", 10, 0)
+    icon:SetPoint("LEFT", iconSlot, "LEFT", AS.ALERT_ICON_INSET_FULL, 0)
     if iconAtlas and iconAtlas ~= "" then
         icon:SetAtlas(iconAtlas)
     else
@@ -2149,7 +1430,7 @@ function WarbandNexus:ShowModalNotification(config)
     end
     
     local iconBling = iconSlot:CreateTexture(nil, "OVERLAY", nil, 7)
-    iconBling:SetSize(52, 52)
+    iconBling:SetSize(AS.ALERT_ICON_BLING_FULL, AS.ALERT_ICON_BLING_FULL)
     iconBling:SetPoint("CENTER", icon, "CENTER", 0, 0)
     iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
     iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
@@ -2159,10 +1440,10 @@ function WarbandNexus:ShowModalNotification(config)
     -- Layer 2: content frame (text only)
     local contentFrame = CreateFrame("Frame", nil, popup)
     contentFrame:SetFrameLevel(2)
-    contentFrame:SetSize(contentFrameWidth, ALERT_HEIGHT)
+    contentFrame:SetSize(contentFrameWidth, AS.ALERT_HEIGHT)
     contentFrame:SetPoint("LEFT", popup, "LEFT", ICON_SLOT_WIDTH, 0)
     
-    local popupHeight = ALERT_HEIGHT
+    local popupHeight = AS.ALERT_HEIGHT
     -- Glow lines span ENTIRE toast width (effectsFrame) for full Blizzard-style coverage
     if glowAtlas:find("TopBottom:") then
         local gInset = NM_GetShellContentInset()
@@ -2253,15 +1534,15 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- Symmetric layout: text block center = content frame center.
     local popupWidth = contentFrameWidth
-    local popupHeight = ALERT_HEIGHT
+    local popupHeight = AS.ALERT_HEIGHT
     local textCenterX = contentFrameWidth / 2
-    local textAreaWidth = math.max(40, contentFrameWidth - 20)
+    local textAreaWidth = math.max(AS.ToastPx(40), contentFrameWidth - AS.ToastPx(20))
     
-    -- Font metrics (adjusted for better centering)
-    local smallFontHeight = 12
-    local mediumFontHeight = 13
-    local largeFontHeight = 15
-    local lineSpacing = 3
+    -- Font metrics (scaled with toast layout)
+    local smallFontHeight = AS.NM_ToastFontSize("small")
+    local mediumFontHeight = AS.NM_ToastFontSize("body")
+    local largeFontHeight = AS.NM_ToastFontSize("title")
+    local lineSpacing = AS.ToastPx(3)
     
     -- Determine layout
     local showCategory = categoryText and categoryText ~= ""
@@ -2281,14 +1562,14 @@ function WarbandNexus:ShowModalNotification(config)
     end
     
     -- Vertical: text block centered in the toast panel (more negative = nudge block down).
-    local textVerticalBias = -7
+    local textVerticalBias = -AS.ToastPx(7)
     local startY = (totalHeight / 2) + textVerticalBias
     
     -- LINE 1: Category (optional)
     -- NOTE: All text FontStrings use OVERLAY sublevel 7 to render above
     -- glow textures (TopBottom lines at sublevel 5, edgeShine at 6, iconBling at 7)
     if showCategory then
-        local category = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
+        local category = AS.NM_CreateToastFontString(contentFrame, "small", "OVERLAY")
         category:SetDrawLayer("OVERLAY", 7)
         category:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         category:SetWidth(textAreaWidth)
@@ -2302,7 +1583,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- LINE 2: Title (BIG, ACCENT COLOR, NORMAL FONT)
     if showTitle then
-        local title = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
+        local title = AS.NM_CreateToastFontString(contentFrame, "title", "OVERLAY")
         title:SetDrawLayer("OVERLAY", 7)
         title:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         title:SetWidth(textAreaWidth)
@@ -2324,7 +1605,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- LINE 3: Subtitle (MEDIUM SIZE, NORMAL FONT)
     if showSubtitle then
-        local subtitle = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+        local subtitle = AS.NM_CreateToastFontString(contentFrame, "body", "OVERLAY")
         subtitle:SetDrawLayer("OVERLAY", 7)
         subtitle:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         subtitle:SetWidth(textAreaWidth)
@@ -2338,7 +1619,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- Legacy subtitle support
     if not showSubtitle and subtitleText and subtitleText ~= "" then
-        local legacySub = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+        local legacySub = AS.NM_CreateToastFontString(contentFrame, "body", "OVERLAY")
         legacySub:SetDrawLayer("OVERLAY", 7)
         legacySub:SetPoint("CENTER", contentFrame, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         legacySub:SetWidth(textAreaWidth)
@@ -2359,7 +1640,7 @@ function WarbandNexus:ShowModalNotification(config)
                 pcall(OpenAchievementFrameToAchievement, achID)
             end
         end
-        RequestDismissToast(self)
+        AS.RequestDismissToast(self)
     end)
     
     -- Hover effect
@@ -2392,7 +1673,7 @@ function WarbandNexus:ShowModalNotification(config)
     popup._baseY = baseY
     popup._direction = direction
     popup._toastLane = toastLane
-    popup._alertHeight = ALERT_HEIGHT
+    popup._alertHeight = AS.ALERT_HEIGHT
     popup.achievementID = config.achievementID
 
     table.insert(self.activeAlerts, popup)
@@ -2405,10 +1686,10 @@ function WarbandNexus:ShowModalNotification(config)
     popup._entranceTargetY = finalYOffset
     popup._entranceStartTime = GetTime()
 
-    RepositionAlerts(true)
+    AS.RepositionAlerts(true)
     NM_AssignToastFxMetadata(popup, config, titleColor, icon, backdropFrame)
     popup:Show()
-    NM_TriggerToastEntranceEffects(popup, popupWidthFull, ALERT_HEIGHT)
+    NM_TriggerToastEntranceEffects(popup, popupWidthFull, AS.ALERT_HEIGHT)
 
     local slideDuration = 0.3
     local _point, _bx = point, baseX
@@ -2430,7 +1711,7 @@ function WarbandNexus:ShowModalNotification(config)
         end
     end)
 
-    ScheduleToastDismiss(popup, autoDismissDelay)
+    AS.ScheduleToastDismiss(popup, autoDismissDelay)
     MaybeScheduleTryCounterCelebration(config, popup)
     return true
 end
@@ -2871,7 +2152,7 @@ local function NormalizeProgressAlertPayload(payload)
     end
     payload.title = title
     payload.text = text
-    return payload
+    return NM_EnsureTravelersLogProgressIcon(payload)
 end
 
 ---Deduped generic progress toast (Traveler's Log / ProgressAlertSystem lane).
@@ -2927,7 +2208,7 @@ local function NM_FindCriteriaRowForHint(achievementID, criteriaHint)
 
     local linkedID = nil
     local ct = tonumber(criteriaType)
-    if ct == ACHIEVEMENT_CRITERIA_TYPE_LINKED and assetID then
+    if ct == AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED and assetID then
         local n = tonumber(assetID)
         if n and n > 0 and not (issecretvalue and issecretvalue(assetID)) then
             linkedID = n
@@ -3112,8 +2393,18 @@ local function MirrorAndSuppressProgressAlertFrame(frame)
     if not frame or not NP.UseWarbandCriteriaProgressPopups() then return end
     if frame._wnProgMirrorPending then return end
     local title, text = ScrapeProgressAlertFrameText(frame)
+    local function buildMirrorPayload(mTitle, mText)
+        local payload = { title = mTitle, text = mText }
+        if frame and frame.GetName then
+            local ok, name = pcall(frame.GetName, frame)
+            if ok and type(name) == "string" and (name:find("MonthlyActiv", 1, true) or name:find("Traveler", 1, true)) then
+                payload.iconAtlas = TRAVELERS_LOG_PROGRESS_ICON_ATLAS
+            end
+        end
+        return payload
+    end
     if title or text then
-        TryDispatchProgressAlertToast({ title = title, text = text })
+        TryDispatchProgressAlertToast(buildMirrorPayload(title, text))
     else
         frame._wnProgMirrorPending = true
         C_Timer.After(0, function()
@@ -3121,7 +2412,7 @@ local function MirrorAndSuppressProgressAlertFrame(frame)
             if not frame.IsShown or not frame:IsShown() then return end
             local retryTitle, retryText = ScrapeProgressAlertFrameText(frame)
             if retryTitle or retryText then
-                TryDispatchProgressAlertToast({ title = retryTitle, text = retryText })
+                TryDispatchProgressAlertToast(buildMirrorPayload(retryTitle, retryText))
             end
         end)
     end
@@ -3449,7 +2740,7 @@ function WarbandNexus:ShowGenericProgressNotification(payload)
     local config = {
         compact = true,
         progressAnchor = true,
-        criteriaTitle = payload.title,
+        criteriaTitle = NM_FormatToastBadgeLabel(payload.title),
         itemName = payload.text,
         titleColor = ToastChrome.CriteriaAccent(),
         playSound = true,
@@ -3591,9 +2882,9 @@ function WarbandNexus:TestProgressAlert()
     end
     TestLootPrintAchievementReplaceMode(self)
     local payload = {
-        title = "Traveler's Log Progress",
+        title = (ns.L and ns.L["TOAST_BADGE_TRAVELERS_LOG"]) or "Traveler's Log",
         text = "Void Assaults: Complete 5 Void Strikes",
-        iconAtlas = "QuestLog-Questtypeicon-Quest",
+        iconAtlas = TRAVELERS_LOG_PROGRESS_ICON_ATLAS,
     }
     self:Print("|cff00ccffProgress alert (AddAlert):|r " .. payload.title .. " - " .. payload.text)
     local ok, err = TestLootFireProgressAddAlert(self, payload)
@@ -3646,7 +2937,7 @@ local function TestHierarchyFirstPlainCriteriaHint(achievementID)
         local ok, criteriaName, criteriaType = pcall(GetAchievementCriteriaInfo, achievementID, i)
         if ok then
             local ct = tonumber(criteriaType)
-            if ct ~= ACHIEVEMENT_CRITERIA_TYPE_LINKED then
+            if ct ~= AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED then
                 if criteriaName and criteriaName ~= ""
                     and not (issecretvalue and issecretvalue(criteriaName)) then
                     return criteriaName, i
@@ -3669,7 +2960,7 @@ local function TestHierarchyLinkedSubCriteriaHint(metaID, subID)
     for i = 1, numCriteria do
         local ok, criteriaName, criteriaType, _, _, _, _, assetID =
             pcall(GetAchievementCriteriaInfo, metaID, i)
-        if ok and tonumber(criteriaType) == ACHIEVEMENT_CRITERIA_TYPE_LINKED then
+        if ok and tonumber(criteriaType) == AS.ACHIEVEMENT_CRITERIA_TYPE_LINKED then
             local linked = tonumber(assetID)
             if linked and linked == subID then
                 if criteriaName and criteriaName ~= ""

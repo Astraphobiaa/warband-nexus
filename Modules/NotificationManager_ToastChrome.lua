@@ -12,57 +12,57 @@ local TYPE_CHROME = {
     mount = {
         accent = { 0.58, 0.50, 0.72 },
         labelKey = "TOAST_CAT_MOUNT",
-        defaultLabel = "Mount collected",
+        defaultLabel = "Mount",
     },
     pet = {
         accent = { 0.46, 0.62, 0.50 },
         labelKey = "TOAST_CAT_PET",
-        defaultLabel = "Battle pet collected",
+        defaultLabel = "Pet",
     },
     toy = {
         accent = { 0.70, 0.54, 0.40 },
         labelKey = "TOAST_CAT_TOY",
-        defaultLabel = "Toy collected",
+        defaultLabel = "Toy",
     },
     illusion = {
         accent = { 0.50, 0.58, 0.68 },
         labelKey = "TOAST_CAT_ILLUSION",
-        defaultLabel = "Illusion collected",
+        defaultLabel = "Illusion",
     },
     achievement = {
         accent = { 0.78, 0.66, 0.40 },
         labelKey = "TOAST_CAT_ACHIEVEMENT",
-        defaultLabel = "Achievement earned",
+        defaultLabel = "Achievement",
     },
     plan = {
         accent = { 0.48, 0.58, 0.72 },
         labelKey = "TOAST_CAT_PLAN",
-        defaultLabel = "Plan completed",
+        defaultLabel = "Plan",
     },
     item = {
         accent = { 0.68, 0.48, 0.50 },
         labelKey = "TOAST_CAT_ITEM",
-        defaultLabel = "Rare drop",
+        defaultLabel = "Item",
     },
     title = {
         accent = { 0.62, 0.56, 0.72 },
         labelKey = "TOAST_CAT_TITLE",
-        defaultLabel = "Title earned",
+        defaultLabel = "Title",
     },
     vault = {
         accent = { 0.42, 0.62, 0.64 },
         labelKey = "TOAST_CAT_VAULT",
-        defaultLabel = "Great Vault",
+        defaultLabel = "Vault",
     },
     reputation = {
         accent = { 0.48, 0.62, 0.46 },
         labelKey = "TOAST_CAT_REPUTATION",
-        defaultLabel = "Renown gained",
+        defaultLabel = "Renown",
     },
     quest = {
         accent = { 0.72, 0.64, 0.42 },
         labelKey = "TOAST_CAT_QUEST",
-        defaultLabel = "Quest complete",
+        defaultLabel = "Quest",
     },
     tryCounter = {
         accent = { 0.76, 0.62, 0.36 },
