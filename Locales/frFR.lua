@@ -1128,31 +1128,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+L["CHANGELOG_V321"] = [=[v3.2.1 (2026-06-25)
 
 Ajoute :
-- Personnages : colonne courrier pour le courrier en attente par alt ; infobulle avec expediteur, objet, or et pieces jointes ; Maj-clic ouvre Details du courrier avec messages et lignes d'objets.
-- To-Do : planificateur Progres hebdomadaire pour choisir categories (Etincelle, world quests, quotidiennes, evenements, assignations du coffre) et objectifs Midnight par personnage.
-- Collections : lignes de succes avec date et personnage qui a obtenu le succes, y compris dans l'onglet Recents.
-- PvE : colonne Fragment de Dundun a cote des eclats de coffre dans la grille du coffre.
-- Notifications : hierarchie des succes pour criteres, sous-succes et chaines meta dans la bonne voie de toast ; progres du Journal du voyageur sur la voie progres.
+- Banque de guilde : infobulle au survol resume le contenu du coffre (types et quantites d'objets), comme la banque de bataillon.
+- Compteur d'essais : Roc peint du Festival du soleil ajoute a la base de butins.
 
 Mis a jour :
-- Connexion : devises, reputations et sacs evitent les scans complets si les donnees sont deja chargees ; seuls les deltas par evenements.
-- To-Do : sous-onglets Collections (Montures, Mascottes, Jouets, Succes) separes de la liste To-Do et Progres hebdomadaire ; Afficher planifies uniquement en navigation.
-- Catalogue hebdomadaire Midnight elargi pour 12.0.7 (entrees a venir etiquetees jusqu'au patch sur votre client).
-- Profiler : fenetre de trace unifiee avec timing imbrique, traces de dessin d'onglets et phases detaillees optionnelles.
-- Infobulles d'objets : ID d'objet en derniere ligne de chaque survol (cartes addon et GameTooltip).
+- Compteur d'essais : echecs en raid/donjon via Statistiques WoW a la fin de l'encounter au lieu de loot +1 ; resynchronisation des stats plus rapide apres les kills.
+- Statistiques : cartes score de succes, personnage et progression avec valeurs revisees.
+- Bouton minimap : icone d'addon actualisee.
 
 Corrige :
-- Compteur d'essais : coffre mythique Sylvanas compte apres le cinematik si les liens de butin sont secrets ou absents a la fermeture.
-- Infobulles : retours API nil ou secrets ne cassent plus les cartes au survol.
-- Notifications : empilement, espacement et deduplication ameliores entre succes, criteres et collectibles.
-- Metiers : gestion plus sure quand les noms de sorts sont nil ou secrets.
-- Migrations : anciens plans transmog To-Do et buckets de devises obsoletes nettoyes a la mise a jour.
+- To-Do : filtres Afficher planifies et Afficher termines affichent les bons resultats.
+- Onglet Objets : icones de ligne reapparaissent pour les entrees en cache.
+- Personnages : snapshots courrier et Details du courrier jusqu'a 100 messages (limite client).
+- Notifications : largeur et hauteur des popups d'alerte ne coupent plus le contenu.
 
 Retire :
-- Plans transmog To-Do et suivi transmog legacy / systeme Clear Start (autres suivis de collection inchanges).
+- Statistiques : section Apercu du stockage retiree ; l'onglet se concentre sur collections et succes.
 
 CurseForge: Warband Nexus]=]
 

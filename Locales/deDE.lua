@@ -1128,31 +1128,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+L["CHANGELOG_V321"] = [=[v3.2.1 (2026-06-25)
 
 Hinzugefuegt:
-- Charaktere: Mail-Spalte zeigt ausstehende Post pro Alt; Tooltip listet Absender, Betreff, Gold und Anhaenge; Shift-Klick oeffnet Mail-Details mit vollstaendigen Nachrichten und Gegenstandszeilen.
-- To-Do: Wochenfortschritt-Planer zum Auswaehlen von Wochenkategorien (Funke, Weltquests, Tagesquests, Events, Tresor-Auftraege) und einzelnen Midnight-Zielen pro Charakter.
-- Sammlungen: Erfolgszeilen zeigen Abschlussdatum und welcher Charakter den Erfolg erzielt hat, auch im Tab Zuletzt.
-- PvE: Waehrungsspalte Scherbe von Dundun neben Truhenscherben im Tresor-Raster.
-- Benachrichtigungen: Erfolgs-Hierarchie leitet Kriterien, Untererfolge und Meta-Ketten in die richtige Toast-Spur; Reisetagebuch-Fortschritt nutzt die Fortschritts-Spur.
+- Gildenbank: Hover-Tooltip fasst Tresor-Inhalt zusammen (Gegenstandstypen und Anzahl), aehnlich Warband-Bank.
+- Try Counter: Sonnenfest-Bemalter Roc zur Drop-Datenbank hinzugefuegt.
 
 Aktualisiert:
-- Login: Waehrungen, Rufe und Taschen ueberspringen Vollscans bei warmen gespeicherten Daten; nur ereignisgesteuerte Deltas.
-- To-Do: Sammlungs-Browse-Untertabs (Reittiere, Begleiter, Spielzeuge, Erfolge) getrennt von To-Do-Liste und Wochenfortschritt; Geplante anzeigen nur in Browse-Ansichten.
-- Midnight-Wochenkatalog fuer 12.0.7-Ziele erweitert (bevorstehende Eintraege markiert bis live auf dem Client).
-- Profiler: einheitliches Trace-Fenster mit verschachtelter Zeitmessung, Tab-Zeichnungs-Traces und optionalen Phasen-Splits.
-- Item-Tooltips: Gegenstands-ID in der letzten Zeile jedes Item-Hovers (Addon-Karten und GameTooltip).
+- Try Counter: Raid- und Dungeon-Fehlversuche nutzen WoW-Statistiken bei Encounter-Ende statt Loot +1; schnellere Stat-Nachsynchronisation nach Kills.
+- Statistiken: Erfolgs-Punkte-, Charakter- und Fortschritts-Karten mit ueberarbeiteten Werten.
+- Minimap-Schaltflaeche: aktualisiertes Addon-Icon.
 
 Behoben:
-- Try Counter: Mythische Sylvanas-Truhe zaehlt Versuche nach dem Cinematik, wenn Loot-Links geheim oder beim Schliessen fehlend sind.
-- Tooltips: nil- und Geheim-API-Rueckgaben brechen Item-Hover-Karten nicht mehr.
-- Benachrichtigungen: verbessertes Stapeln, Abstand und Deduplizierung ueber Erfolgs-, Kriterien- und Sammel-Spuren.
-- Berufe: sicherere Behandlung wenn Zaubernamen nil oder geheim sind.
-- Migrationen: Legacy-Transmog-To-Do-Plaene und veraltete Waehrungs-Buckets werden beim Upgrade bereinigt.
+- To-Do: Geplante anzeigen und Abgeschlossene anzeigen liefern die richtigen Ergebnismengen.
+- Gegenstaende-Tab: Zeilen-Icons erscheinen wieder fuer zwischengespeicherte Eintraege.
+- Charaktere: Mail-Snapshots und Mail-Details unterstuetzen bis zu 100 Nachrichten (Client-Postfachlimit).
+- Benachrichtigungen: Alert-Popup-Breite und -Hoehe schneiden Inhalt nicht mehr ab.
 
 Entfernt:
-- Transmog-To-Do-Plaene und das Legacy-Transmog-Tracking / Clear-Start-System (andere Sammlungsverfolgung unveraendert).
+- Statistiken: Abschnitt Lager-Uebersicht entfernt; Tab konzentriert sich auf Sammlungs- und Erfolgsstatistiken.
 
 CurseForge: Warband Nexus]=]
 

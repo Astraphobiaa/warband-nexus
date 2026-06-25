@@ -1,29 +1,23 @@
-## v3.2.0 (2026-06-23)
+## v3.2.1 (2026-06-25)
 
 ### Added
 
-- Characters: mail column shows pending mail per alt; tooltip lists sender, subject, gold, and attachments; shift-click opens Mail Details with full messages and item rows.
-- To-Do: Weekly Progress planner lets you choose weekly categories (Spark, world quests, dailies, events, vault assignments) and specific Midnight objectives per character.
-- Collections: achievement rows show completion date and which character earned the achievement, including on the Recent tab.
-- PvE: Shard of Dundun currency column next to coffer shards in the vault grid.
-- Notifications: achievement hierarchy routes criteria, sub-achievements, and meta chains into the right toast lane; Traveler's Log progress uses the progress lane.
+- Guild Bank: hover tooltip summarizes vault contents (item types and counts), similar to Warband Bank.
+- Try Counter: Sun Festival's Painted Roc added to the drop database.
 
 ### Updated
 
-- Login: currencies, reputations, and bags skip full rescans when saved data is warm; only event-driven deltas refresh.
-- To-Do: Collections browse subtabs (Mounts, Pets, Toys, Achievements) are separate from To-Do List and Weekly Progress; Show Planned applies only to browse views.
-- Midnight weekly catalog expanded for 12.0.7 objectives (upcoming entries stay labeled until live on your client).
-- Profiler: unified trace window with nested timing, tab paint traces, and optional verbose phase splits.
-- Item tooltips: Item ID on the bottom line of every item hover (addon cards and GameTooltip).
+- Try Counter: raid and dungeon miss counts use WoW Statistics on encounter end instead of loot +1; faster stat reseed retries after kills.
+- Statistics: achievement score, character, and progress cards with revised values.
+- Minimap button: refreshed addon icon.
 
 ### Fixed
 
-- Try Counter: Mythic Sylvanas chest tries count after the post-kill cinematic when loot links are secret or missing at chest close.
-- Tooltips: nil and secret API returns no longer break item hover cards.
-- Notifications: improved stacking, spacing, and deduplication across earned, criteria, and collectible lanes.
-- Professions: safer handling when profession spell names are nil or secret.
-- Migrations: legacy transmog To-Do plans and stale currency buckets are cleaned on upgrade.
+- To-Do: Show Planned and Show Completed filters display the correct result sets.
+- Items tab: row icons show again for cached entries.
+- Characters: mail snapshots and Mail Details support up to 100 messages (client inbox limit).
+- Notifications: alert popup width and height no longer clip content.
 
 ### Removed
 
-- Transmog To-Do plans and the legacy transmog tracking / Clear Start system (other collection tracking is unchanged).
+- Statistics: Storage Overview section removed; tab focuses on collection and achievement stats.

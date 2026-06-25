@@ -1128,31 +1128,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+L["CHANGELOG_V321"] = [=[v3.2.1 (2026-06-25)
 
 Aggiunto:
-- Personaggi: colonna posta mostra posta in sospeso per alt; tooltip con mittente, oggetto, oro e allegati; Maiusc-clic apre Dettagli posta con messaggi e righe oggetti.
-- To-Do: pianificatore Progresso settimanale per scegliere categorie (Scintilla, missioni mondo, giornaliere, eventi, incarichi del forziere) e obiettivi Midnight per personaggio.
-- Collezioni: righe imprese mostrano data e quale personaggio ha ottenuto l'impresa, anche nella scheda Recenti.
-- PvE: colonna Frammento di Dundun accanto ai frammenti del forziere nella griglia del deposito.
-- Notifiche: gerarchia imprese instrada criteri, sotto-imprese e catene meta nella corsia toast corretta; progresso Diario del viaggiatore usa la corsia progresso.
+- Banca di gilda: tooltip al passaggio del mouse riassume il contenuto del caveau (tipi e quantita di oggetti), come la banca della banda.
+- Contatore tentativi: Roc dipinto del Festival del Sole aggiunto al database drop.
 
 Aggiornato:
-- Login: valute, reputazioni e sacche saltano scansioni complete se i dati salvati sono caldi; solo delta guidati dagli eventi.
-- To-Do: sotto-schede navigazione Collezioni (Mount, Mascotte, Giocattoli, Imprese) separate da Elenco To-Do e Progresso settimanale; Mostra pianificati solo nelle viste navigazione.
-- Catalogo settimanale Midnight ampliato per obiettivi 12.0.7 (voci in arrivo etichettate finche il patch e live sul client).
-- Profiler: finestra traccia unificata con tempi annidati, tracce disegno schede e split di fase opzionali.
-- Tooltip oggetti: ID oggetto nell'ultima riga di ogni hover (schede addon e GameTooltip).
+- Contatore tentativi: mancati in raid/dungeon usano Statistiche WoW a fine encounter invece di loot +1; reseed statistiche piu rapido dopo i kill.
+- Statistiche: card punteggio, personaggio e progresso imprese con valori rivisti.
+- Pulsante minimappa: icona addon aggiornata.
 
 Corretto:
-- Contatore tentativi: forziere mitico Sylvanas conta dopo il cinematic se i link bottino sono segreti o assenti alla chiusura.
-- Tooltip: ritorni API nil o segreti non rompono piu le card al passaggio del mouse.
-- Notifiche: impilamento, spaziatura e deduplicazione migliorati tra corsie ottenuto, criteri e collezionabili.
-- Professioni: gestione piu sicura quando i nomi degli incantesimi sono nil o segreti.
-- Migrazioni: piani transmog To-Do legacy e bucket valute obsoleti ripuliti all'aggiornamento.
+- To-Do: filtri Mostra pianificati e Mostra completati mostrano i set di risultati corretti.
+- Scheda Oggetti: icone riga di nuovo visibili per voci in cache.
+- Personaggi: snapshot posta e Dettagli posta supportano fino a 100 messaggi (limite client).
+- Notifiche: larghezza e altezza popup avviso non tagliano piu il contenuto.
 
 Rimosso:
-- Piani transmog To-Do e tracciamento transmog legacy / sistema Clear Start (altro tracciamento collezione invariato).
+- Statistiche: sezione Panoramica deposito rimossa; scheda focalizzata su statistiche collezione e imprese.
 
 CurseForge: Warband Nexus]=]
 

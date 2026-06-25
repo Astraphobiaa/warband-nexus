@@ -1128,31 +1128,25 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V320"] = [=[v3.2.0 (2026-06-23)
+L["CHANGELOG_V321"] = [=[v3.2.1 (2026-06-25)
 
 Anadido:
-- Personajes: columna de correo muestra correo pendiente por alt; tooltip con remitente, asunto, oro y adjuntos; Mayus-clic abre Detalles del correo con mensajes y filas de objetos.
-- To-Do: planificador de Progreso semanal para elegir categorias (Chispa, misiones de mundo, diarias, eventos, asignaciones de camara) y objetivos Midnight por personaje.
-- Colecciones: filas de logros muestran fecha y que personaje obtuvo el logro, tambien en la pestana Recientes.
-- PvE: columna Fragmento de Dundun junto a fragmentos de cofre en la cuadricula de camara.
-- Notificaciones: jerarquia de logros enruta criterios, sublogros y cadenas meta a la via de toast correcta; progreso del Diario del viajero usa la via de progreso.
+- Banco de hermandad: tooltip al pasar el cursor resume el contenido de la boveda (tipos y cantidades de objetos), similar al banco de banda guerrera.
+- Contador de intentos: Roc pintado del Festival del Sol anadido a la base de botin.
 
 Actualizado:
-- Inicio de sesion: monedas, reputaciones y bolsas omiten escaneos completos si los datos guardados estan listos; solo deltas por eventos.
-- To-Do: subpestanas de navegacion de Colecciones (Monturas, Mascotas, Juguetes, Logros) separadas de Lista To-Do y Progreso semanal; Mostrar planificados solo en vistas de navegacion.
-- Catalogo semanal Midnight ampliado para objetivos 12.0.7 (entradas proximas etiquetadas hasta que el parche este en tu cliente).
-- Profiler: ventana de traza unificada con tiempos anidados, trazas de pintado de pestanas y divisiones de fase opcionales.
-- Tooltips de objetos: ID de objeto en la ultima linea de cada hover (tarjetas del addon y GameTooltip).
+- Contador de intentos: fallos en banda/mazmorra usan Estadisticas de WoW al final del encuentro en lugar de loot +1; reintentos de sincronizacion de estadisticas mas rapidos tras kills.
+- Estadisticas: tarjetas de puntuacion, personaje y progreso de logros con valores revisados.
+- Boton del minimapa: icono del addon actualizado.
 
 Corregido:
-- Contador de intentos: cofre mitico de Sylvanas cuenta tras el cinematico si los enlaces de botin son secretos o faltan al cerrar.
-- Tooltips: retornos API nil o secretos ya no rompen las tarjetas al pasar el cursor.
-- Notificaciones: mejor apilado, espaciado y deduplicacion entre vias de logro, criterios y coleccionables.
-- Profesiones: manejo mas seguro cuando los nombres de hechizos son nil o secretos.
-- Migraciones: planes transmog To-Do legacy y buckets de moneda obsoletos se limpian al actualizar.
+- To-Do: filtros Mostrar planificados y Mostrar completados muestran los conjuntos de resultados correctos.
+- Pestana Objetos: iconos de fila vuelven a mostrarse para entradas en cache.
+- Personajes: instantaneas de correo y Detalles del correo admiten hasta 100 mensajes (limite del cliente).
+- Notificaciones: ancho y alto de popups de alerta ya no recortan el contenido.
 
 Eliminado:
-- Planes transmog To-Do y seguimiento transmog legacy / sistema Clear Start (otro seguimiento de coleccion sin cambios).
+- Estadisticas: seccion Resumen de almacen eliminada; la pestana se centra en estadisticas de coleccion y logros.
 
 CurseForge: Warband Nexus]=]
 
