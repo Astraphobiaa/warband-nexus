@@ -235,6 +235,47 @@ function WarbandNexus:RunTryCounterSelfTest()
     end)
     probe("CheckTargetDrops(no target)", function() WN:CheckTargetDrops() end)
 
+    section("Statistics-only miss (raid/dungeon gate)")
+    probe("ShouldUseStatisticsOnlyMiss false without statisticIds", function()
+        if Fns.ShouldUseStatisticsOnlyMiss({ fakeDrop() }, nil) then
+            error("expected false without statisticIds")
+        end
+    end)
+    probe("ShouldUseStatisticsOnlyMiss false outside instance (with stat ids)", function()
+        if Fns.IsRaidOrDungeonInstance() then return end
+        if Fns.ShouldUseStatisticsOnlyMiss({ { type = "mount", itemID = 1 } }, { 15176 }) then
+            error("expected false outside raid/dungeon")
+        end
+    end)
+    probe("ProcessMissedDrops noop for stat-only in raid sim", function()
+        if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+            Fns.SetTryCounterSelfTestSlotOutcomeEnv({
+                instance = { instanceType = "raid", difficulty = 16 },
+            })
+        end
+        withRestoredState(function()
+            local drop = { type = "mount", itemID = 1, name = "TC Stat Gate" }
+            local old = WN:GetTryCount("mount", 1) or 0
+            Fns.ProcessMissedDrops({ drop }, { 15176 }, { sync = true })
+            if WN:GetTryCount("mount", 1) ~= old then
+                error("loot miss must not increment stat-only raid drops")
+            end
+        end)
+        if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+            Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+        end
+    end)
+    probe("RunStatisticsOnlyMissReseed no manual +1 when stat unchanged", function()
+        withRestoredState(function()
+            local drop = { type = "item", itemID = FAKE_ITEM_ID, repeatable = true, name = "TC Self Test Token" }
+            local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            Fns.RunStatisticsOnlyMissReseed({ drop }, { 99999999 }, { sync = true })
+            if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old then
+                error("expected no manual fallback increment")
+            end
+        end)
+    end)
+
     -- ── Classify-Lock-Process routes ──────────────────────────────────
     section("Loot classify routes")
     probe("Classify: herb GameObject -> skip (gather window)", function()

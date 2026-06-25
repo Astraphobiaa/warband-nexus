@@ -2,7 +2,7 @@
     Warband Nexus - Try Counter Service
     Classify-Lock-Process loot pipeline: one route per session (SKIP/CONTAINER/FISHING/NPC-OBJECT).
     Sources: CollectibleSourceDB + trackDB overlays; db.global.tryCounts[type][id].
-    Found drop resets count; miss increments (+ ReseedStatistics when statisticIds exist).
+    Found drop resets count; raid/dungeon miss from GetStatistic on ENCOUNTER_END (loot not required).
     Midnight 12.0.x: issecretvalue on ENCOUNTER_*/GetLootSourceInfo/UnitGUID/CHAT_MSG_LOOT; no CLEU.
     ProcessNPCLoot resolver P1->P5; ENCOUNTER_END + CHAT_MSG_LOOT debounced fallbacks.
     Events: LOOT_*, CHAT_MSG_LOOT, ENCOUNTER_*, BOSS_KILL, spellcast/fishing hooks, ITEM_LOCK_CHANGED.
@@ -70,6 +70,7 @@ local C_Timer = C_Timer
 local C_Container = C_Container
 local InCombatLockdown = InCombatLockdown
 local C_QuestLog = C_QuestLog
+local IsInInstance = IsInInstance
 
 -- Midnight 12.0: Secret Values API (nil on pre-12.0 clients, backward-compatible)
 -- Secret values are returned by combat APIs during instanced combat.
@@ -134,10 +135,12 @@ local DEBUG_TRACE_EVENTS = TC.DEBUG_TRACE_EVENTS or {}
 -- MUST be declared before tryCounterFrame:SetScript("OnEvent") — otherwise the closure resolves globals (nil).
 local DEBUG_TRACE_DEDUP_LOOT_MS = 0.22
 local lastDebugTraceLootTime = { LOOT_READY = 0 }
-local pendingRuntimeStatNpcIds = {} -- [npcID] = GetTime(); incremental stat reseed after kills
+local pendingRuntimeStatNpcIds = {} -- [npcID] = { at, difficultyID? } encounter stat reseed queue
 local statIncrementalDebounceSerial = 0
-local STAT_INCREMENTAL_DEBOUNCE_SEC = 4
+local encounterStatRetrySerial = 0
+local STAT_INCREMENTAL_DEBOUNCE_SEC = 1.5
 local STAT_INCREMENTAL_MIN_INTERVAL_SEC = 10
+local ENCOUNTER_STAT_RETRY_DELAYS = { 0, 0.5, 1.5, 3, 6, 12 }
 local lastStatIncrementalReseedAt = 0
 
 -- Encounter lifecycle: ENCOUNTER_START (pull), ENCOUNTER_END (12.0 secret args), BOSS_KILL fallback.
@@ -3133,6 +3136,59 @@ function Fns.DropsHaveStatBackedReseed(drops, npcStatIds)
     return false
 end
 
+--- True when inside a party or raid instance (not scenario / open world).
+function Fns.IsRaidOrDungeonInstance()
+    if tryCounterSelfTestSlotInstance and tryCounterSelfTestSlotInstance.instanceType then
+        local st = tryCounterSelfTestSlotInstance.instanceType
+        if st == "party" or st == "raid" then return true end
+    end
+    if not IsInInstance then return false end
+    local inInst, typ = IsInInstance()
+    if issecretvalue and inInst and issecretvalue(inInst) then return false end
+    if not inInst then return false end
+    if issecretvalue and typ and issecretvalue(typ) then return false end
+    return typ == "party" or typ == "raid"
+end
+
+--- Raid/dungeon miss try count: authoritative Statistics only (no loot +1).
+function Fns.ShouldUseStatisticsOnlyMiss(drops, npcStatIds)
+    if not Fns.IsRaidOrDungeonInstance() then return false end
+    return Fns.DropsHaveStatBackedReseed(drops, npcStatIds)
+end
+
+--- Reseed try counts from Statistics and announce increments (no manual +1 fallback).
+function Fns.RunStatisticsOnlyMissReseed(drops, statIds, options)
+    if not drops or #drops == 0 then return end
+    if not Fns.EnsureDB() then return end
+    local WN = WarbandNexus
+    local announceTry = Fns.IsAutoTryCounterEnabled()
+    local immediateAnnounce = options and options.immediateAnnounce
+    local incrementAnnounce = {}
+    for i = 1, #drops do
+        local drop = drops[i]
+        local sids = Fns.ResolveReseedStatIdsForDrop(drop, statIds)
+        if sids and #sids > 0 then
+            local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+            local prevCount = (tryKey and WN:GetTryCount(tcType, tryKey)) or 0
+            Fns.ReseedStatisticsForDrops({ drop }, sids)
+            local newCount = (tryKey and WN:GetTryCount(tcType, tryKey)) or 0
+            if tryKey and newCount > prevCount then
+                Fns.MarkDropReseeded(tcType, tryKey)
+                if announceTry then
+                    local mergeKey = tcType .. "\0" .. tostring(tryKey)
+                    incrementAnnounce[mergeKey] = { drop = drop, finalCount = newCount }
+                end
+            end
+        end
+    end
+    if announceTry and next(incrementAnnounce) then
+        Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce, immediateAnnounce)
+    end
+    if options and options.sync then
+        Fns.SchedulePlansTryCountUIUpdate()
+    end
+end
+
 --- Queue miss-increment chat until LOOT_CLOSED so boss loot lines stay grouped (not item/item/try/item).
 function Fns.RunOrDeferTryCounterIncrementAnnounce(emitFn)
     if type(emitFn) ~= "function" then return end
@@ -3153,9 +3209,9 @@ function Fns.FlushDeferredTryCounterIncrementAnnounces()
     end
 end
 
-function Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce)
+function Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce, immediate)
     if not incrementAnnounce or not next(incrementAnnounce) then return end
-    Fns.RunOrDeferTryCounterIncrementAnnounce(function()
+    local function emitFn()
         for _, info in pairs(incrementAnnounce) do
             local link = info.drop and Fns.GetDropItemLink(info.drop)
             local count = info.finalCount or info.added
@@ -3164,7 +3220,12 @@ function Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce)
                 Fns.TryChat("|cff9370DB[WN-Counter]|r |cffffffff" .. format(tmpl, count, link) .. "|r")
             end
         end
-    end)
+    end
+    if immediate then
+        emitFn()
+    else
+        Fns.RunOrDeferTryCounterIncrementAnnounce(emitFn)
+    end
 end
 
 function Fns.ProcessMissedDrops(drops, statIds, options)
@@ -3189,7 +3250,11 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
 
     local attemptTimes = options and tonumber(options.attemptTimes) or 1
     if attemptTimes < 1 then attemptTimes = 1 end
-    local statLootMissFb = options and options.statReseedLootMissFallback
+
+    -- Raid/dungeon + statisticIds: miss is owned by ENCOUNTER_END stat sync (loot = found only).
+    if Fns.ShouldUseStatisticsOnlyMiss(drops, statIds) then
+        return
+    end
 
     local allRepeatableMisses = true
     for i = 1, #drops do
@@ -3197,51 +3262,6 @@ function Fns.ProcessMissedDrops(drops, statIds, options)
             allRepeatableMisses = false
             break
         end
-    end
-
-    if Fns.DropsHaveStatBackedReseed(drops, statIds) and not allRepeatableMisses then
-        local announceTry = Fns.IsAutoTryCounterEnabled()
-        local syncNow = tryCounterSelfTestSyncMiss or (options and options.sync == true)
-
-        local function runStatMissReseedJob()
-            if not Fns.EnsureDB() then return end
-            local WN = WarbandNexus
-            local incrementAnnounce = {}
-            for i = 1, #drops do
-                local drop = drops[i]
-                local sids = Fns.ResolveReseedStatIdsForDrop(drop, statIds)
-                if sids and #sids > 0 then
-                    local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
-                    local prevCount = (tryKey and WN:GetTryCount(tcType, tryKey)) or 0
-                    local statSumBefore = select(1, Fns.SumStatisticTotalsFromIds(sids))
-                    Fns.ReseedStatisticsForDrops({ drop }, sids)
-                    local newCount = (tryKey and WN:GetTryCount(tcType, tryKey)) or 0
-                    if statLootMissFb and tryKey and newCount <= prevCount and drop and not drop.guaranteed
-                        and (drop.repeatable or not Fns.IsCollectibleCollected(drop)) then
-                        if prevCount > statSumBefore or (prevCount == 0 and statSumBefore == 0) then
-                            newCount = WN:AddTryCountDelta(tcType, tryKey, 1)
-                        end
-                    end
-                    if tryKey and newCount > prevCount then
-                        Fns.MarkDropReseeded(tcType, tryKey)
-                        if announceTry then
-                            local mergeKey = tcType .. "\0" .. tostring(tryKey)
-                            incrementAnnounce[mergeKey] = { drop = drop, finalCount = newCount }
-                        end
-                    end
-                end
-            end
-            if announceTry and next(incrementAnnounce) then
-                Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce)
-            end
-        end
-
-        if syncNow then
-            runStatMissReseedJob()
-        else
-            C_Timer.After(2, runStatMissReseedJob)
-        end
-        return
     end
 
     local syncNow = tryCounterSelfTestSyncMiss or (options and options.sync == true)
@@ -3888,7 +3908,7 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
         local statIds = drops and drops.statisticIds
         for i = 1, #dropsToIncrement do
             local drop = dropsToIncrement[i]
-            if Fns.DropsHaveStatBackedReseed({ drop }, statIds) then
+            if Fns.ShouldUseStatisticsOnlyMiss({ drop }, statIds) then
                 statBackedOnly[#statBackedOnly + 1] = drop
             end
         end
@@ -3919,6 +3939,14 @@ function Fns.ApplyNpcLootOutcomes(self, opts)
     end
 
     local statIds = drops and drops.statisticIds or nil
+    local lootMiss = {}
+    for i = 1, #dropsToIncrement do
+        local drop = dropsToIncrement[i]
+        if not Fns.ShouldUseStatisticsOnlyMiss({ drop }, statIds) then
+            lootMiss[#lootMiss + 1] = drop
+        end
+    end
+    dropsToIncrement = lootMiss
     Fns.TryCounterLootDebugDropLines(self, "NPC", dropsToIncrement, farmCorpseMult)
     Fns.ProcessMissedDrops(dropsToIncrement, statIds, { attemptTimes = farmCorpseMult })
     if mergeFp and willIncrementMisses then
@@ -4113,6 +4141,13 @@ function Fns.ApplySlotBossLootOutcomes(self, opts)
     end
     if #missed == 0 then return end
 
+    if Fns.ShouldUseStatisticsOnlyMiss(missed, drops and drops.statisticIds) then
+        V.lastTryCountSourceKey = slotOutcomeSourceKey
+        V.lastTryCountSourceTime = now
+        V.lastTryCountLootSourceGUID = allSourceGUIDs[1]
+        return
+    end
+
     if slotOutcomeSourceKey and V.lastTryCountSourceKey == slotOutcomeSourceKey
         and (now - V.lastTryCountSourceTime) < 15 then
         V.lastTryCountLootSourceGUID = allSourceGUIDs[1]
@@ -4121,10 +4156,7 @@ function Fns.ApplySlotBossLootOutcomes(self, opts)
 
     Fns.ClearEncounterRecentKillsForNpcId(slotBossNpcID)
     Fns.TryCounterLootDebugDropLines(self, "SlotOutcome", missed, 1)
-    Fns.ProcessMissedDrops(missed, drops and drops.statisticIds, {
-        attemptTimes = 1,
-        statReseedLootMissFallback = true,
-    })
+    Fns.ProcessMissedDrops(missed, drops and drops.statisticIds, { attemptTimes = 1 })
     V.lastTryCountSourceKey = slotOutcomeSourceKey
     V.lastTryCountSourceTime = now
     V.lastTryCountLootSourceGUID = allSourceGUIDs[1]
@@ -7217,53 +7249,145 @@ end
 
 function Fns.PurgeStaleRuntimeStatReseedNpcs()
     local now = GetTime()
-    for npcID, markedAt in pairs(pendingRuntimeStatNpcIds) do
-        if now - markedAt > RUNTIME_STAT_NPC_TTL then
+    for npcID, entry in pairs(pendingRuntimeStatNpcIds) do
+        local markedAt = type(entry) == "table" and entry.at or entry
+        if not markedAt or (now - markedAt) > RUNTIME_STAT_NPC_TTL then
             pendingRuntimeStatNpcIds[npcID] = nil
         end
     end
 end
 
-function Fns.MarkNpcForRuntimeStatReseed(npcID)
+function Fns.MarkNpcForRuntimeStatReseed(npcID, difficultyID)
     npcID = tonumber(npcID)
     if not npcID then return end
-    pendingRuntimeStatNpcIds[npcID] = GetTime()
+    local safeDiff = difficultyID
+    if issecretvalue and safeDiff and issecretvalue(safeDiff) then safeDiff = nil end
+    pendingRuntimeStatNpcIds[npcID] = {
+        at = GetTime(),
+        difficultyID = safeDiff,
+    }
+end
+
+--- Staggered stat reads after ENCOUNTER_END (boss death); does not wait for loot.
+function Fns.ScheduleEncounterStatisticsRefresh()
+    if not next(pendingRuntimeStatNpcIds) then return end
+    encounterStatRetrySerial = encounterStatRetrySerial + 1
+    local token = encounterStatRetrySerial
+    for i = 1, #ENCOUNTER_STAT_RETRY_DELAYS do
+        local delay = ENCOUNTER_STAT_RETRY_DELAYS[i]
+        C_Timer.After(delay, function()
+            if token ~= encounterStatRetrySerial then return end
+            if not tryCounterReady or not Fns.EnsureDB() then return end
+            if not next(pendingRuntimeStatNpcIds) then return end
+            Fns.ReseedStatisticsForPendingRuntimeNpcs({ immediateAnnounce = true })
+        end)
+    end
 end
 
 --- Reseed Statistics for recently killed NPCs only (not the full CollectibleSourceDB scan).
+---@param options table|nil { immediateAnnounce = boolean }
 ---@return boolean didWork
-function Fns.ReseedStatisticsForPendingRuntimeNpcs()
+function Fns.ReseedStatisticsForPendingRuntimeNpcs(options)
     Fns.PurgeStaleRuntimeStatReseedNpcs()
     if not next(pendingRuntimeStatNpcIds) then return false end
+    if not Fns.IsRaidOrDungeonInstance() then return false end
     if not GetStatistic or not Fns.EnsureDB() then return false end
+
+    local immediateAnnounce = options and options.immediateAnnounce
 
     Fns.EnsureMergedStatisticSeedIndex()
 
+    local WN = WarbandNexus
     wipe(runtimeStatReseedDropScratch)
     local drops = runtimeStatReseedDropScratch
     local dropCount = 0
-    for npcID in pairs(pendingRuntimeStatNpcIds) do
+    local prevByNpc = {}
+
+    for npcID, entry in pairs(pendingRuntimeStatNpcIds) do
         local npcData = npcDropDB and npcDropDB[npcID]
-        if npcData then
-            for idx = 1, #npcData do
-                local drop = npcData[idx]
-                if type(drop) == "table" and drop.type and drop.itemID then
+        if npcData and Fns.NpcEntryHasStatisticIds(npcData) then
+            local encDiff = type(entry) == "table" and entry.difficultyID or nil
+            local trackable = Fns.FilterDropsByDifficulty(npcData, encDiff)
+            local maxPrev = 0
+            for idx = 1, #trackable do
+                local drop = trackable[idx]
+                if type(drop) == "table" and drop.type and drop.itemID and not drop.guaranteed then
+                    local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+                    if tryKey then
+                        local c = WN:GetTryCount(tcType, tryKey) or 0
+                        if c > maxPrev then maxPrev = c end
+                    end
                     dropCount = dropCount + 1
                     drops[dropCount] = drop
                 end
             end
+            prevByNpc[npcID] = maxPrev
+        else
+            pendingRuntimeStatNpcIds[npcID] = nil
         end
     end
     for i = dropCount + 1, #drops do
         drops[i] = nil
     end
     if dropCount == 0 then
-        wipe(pendingRuntimeStatNpcIds)
         return false
     end
 
+    local prevByDropKey = {}
+    for i = 1, dropCount do
+        local drop = drops[i]
+        local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+        if tryKey then
+            prevByDropKey[tcType .. "\0" .. tostring(tryKey)] = WN:GetTryCount(tcType, tryKey) or 0
+        end
+    end
+
     Fns.ReseedStatisticsForDrops(drops, nil)
-    wipe(pendingRuntimeStatNpcIds)
+
+    local incrementAnnounce = {}
+    local announceTry = Fns.IsAutoTryCounterEnabled()
+    for i = 1, dropCount do
+        local drop = drops[i]
+        local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+        if tryKey then
+            local mk = tcType .. "\0" .. tostring(tryKey)
+            local prevCount = prevByDropKey[mk] or 0
+            local newCount = WN:GetTryCount(tcType, tryKey) or 0
+            if newCount > prevCount then
+                Fns.MarkDropReseeded(tcType, tryKey)
+                if announceTry then
+                    incrementAnnounce[mk] = { drop = drop, finalCount = newCount }
+                end
+            end
+        end
+    end
+    if announceTry and next(incrementAnnounce) then
+        Fns.EmitTryCounterIncrementAnnounce(incrementAnnounce, immediateAnnounce)
+    end
+
+    for npcID, prevMax in pairs(prevByNpc) do
+        local npcData = npcDropDB and npcDropDB[npcID]
+        local encDiff = nil
+        local entry = pendingRuntimeStatNpcIds[npcID]
+        if type(entry) == "table" then encDiff = entry.difficultyID end
+        local trackable = npcData and Fns.FilterDropsByDifficulty(npcData, encDiff) or {}
+        local maxNew = 0
+        for idx = 1, #trackable do
+            local drop = trackable[idx]
+            if type(drop) == "table" and drop.type and drop.itemID and not drop.guaranteed then
+                local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+                if tryKey then
+                    local c = WN:GetTryCount(tcType, tryKey) or 0
+                    if c > maxNew then maxNew = c end
+                end
+            end
+        end
+        if maxNew > prevMax then
+            pendingRuntimeStatNpcIds[npcID] = nil
+        end
+    end
+
+    Fns.ScheduleDeferredRarityMountMaxSync(2)
     return true
 end
 
@@ -7284,7 +7408,7 @@ function Fns.RequestTryCounterStatisticsIncrementalRefresh()
     end)
 end
 
---- Legacy name: encounter/loot paths mark pending NPCs then call incremental refresh.
+--- Legacy name: CRITERIA_UPDATE / regen retry for pending encounter stat NPCs.
 function Fns.RequestTryCounterStatisticsRuntimeRefresh()
     Fns.RequestTryCounterStatisticsIncrementalRefresh()
 end

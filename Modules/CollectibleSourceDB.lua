@@ -11,9 +11,9 @@
     -----------------------------------------------------------------------------------
       Rows define tracked itemIDs (drops[]), optional dropDifficulty / difficultyIDs, repeatable,
       guaranteed. Try counts live in db.global.tryCounts[type][id].
-      Loot path: scan slots → tracked item present = found (ResetTryCount + “first try / after N”
-      chat via BuildObtainedChat) → absent = miss (ProcessMissedDrops: +1 or ReseedStatistics when
-      statisticIds exist + increment chat). CHAT_MSG_LOOT and ENCOUNTER_END (+5s) are debounced fallbacks.
+      Loot path: scan slots → tracked item present = found (ResetTryCount + obtain chat)
+      → absent = miss (+1 via loot open world; raid/dungeon + statisticIds = GetStatistic on boss kill).
+      CHAT_MSG_LOOT and ENCOUNTER_END are debounced fallbacks.
       statisticIds must be GetStatistic() statistics IDs (character Statistics), not achievement IDs;
       verify with /dump GetStatistic(id) when adding bosses.
       Rows with ambiguous statisticIds benefit from Midnight in-game sanity checks whenever kills do not bump expected stats.

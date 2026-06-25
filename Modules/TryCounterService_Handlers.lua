@@ -275,10 +275,16 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
 
     -- Create synthetic kill entries for eligible encounter NPCs only.
     local addedCount = 0
+    local statRefreshScheduled = false
+    local safeDiffID = difficultyID
+    if issecretvalue and safeDiffID and issecretvalue(safeDiffID) then safeDiffID = nil end
     for i = 1, #npcIDs do
         local npcID = npcIDs[i]
             if RT.tryCounterNpcEligible[npcID] and RT.npcDropDB[npcID] then
-                Fns.MarkNpcForRuntimeStatReseed(npcID)
+                if Fns.IsRaidOrDungeonInstance() and Fns.NpcEntryHasStatisticIds(RT.npcDropDB[npcID]) then
+                    Fns.MarkNpcForRuntimeStatReseed(npcID, safeDiffID)
+                    statRefreshScheduled = true
+                end
                 local syntheticGUID
             if useNameFallback then
                 if safeEncounterDisplayName then
@@ -289,8 +295,6 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
             else
                 syntheticGUID = "Encounter-" .. tostring(encounterID) .. "-" .. npcID .. "-" .. now
             end
-            local safeDiffID = difficultyID
-            if issecretvalue and safeDiffID and issecretvalue(safeDiffID) then safeDiffID = nil end
             RT.recentKills[syntheticGUID] = {
                 npcID = npcID,
                 name = safeEncounterDisplayName or "Boss",
@@ -303,10 +307,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         end
     end
     
-    -- Loot-session-first: attempt counts come from LOOT_READY→LOOT_CLOSED resolver (or CHAT fallback).
-    -- Stat reseed catches up when GetStatistic updates after the pull.
-    if addedCount > 0 then
-        Fns.RequestTryCounterStatisticsRuntimeRefresh()
+    -- Raid/dungeon + statisticIds: read GetStatistic on boss death (loot optional / delayed).
+    if statRefreshScheduled and Fns.ScheduleEncounterStatisticsRefresh then
+        Fns.ScheduleEncounterStatisticsRefresh()
     end
     
     -- DEFERRED RETRY: If a chest was opened BEFORE this encounter ended (RP/cinematic timing),
@@ -479,7 +482,9 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
             Fns.MarkDropObtainedThisKill(tcType, tryKey, foundDrop)
             local preResetCount = self:GetTryCount(tcType, tryKey)
             preResetCount = Fns.AdjustPreResetForDelayedReseed(preResetCount, tcType, tryKey)
-            self:ResetTryCount(tcType, tryKey)
+            if foundDrop.repeatable then
+                self:ResetTryCount(tcType, tryKey)
+            end
             local cacheKey = tcType .. "\0" .. tostring(tryKey)
             RT.pendingPreResetCounts[cacheKey] = preResetCount or 0
             C_Timer.After(30, function() RT.pendingPreResetCounts[cacheKey] = nil end)
@@ -501,7 +506,7 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
         end
     end
 
-    if #missed > 0 then
+    if #missed > 0 and not Fns.ShouldUseStatisticsOnlyMiss(missed, drops.statisticIds) then
         Fns.TryCounterLootDebugDropLines(self, clearRecentKillGuid and "Chat-Encounter" or "Chat-NPC", missed)
         Fns.ProcessMissedDrops(missed, drops.statisticIds)
     end
