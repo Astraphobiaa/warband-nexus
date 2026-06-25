@@ -28,7 +28,7 @@ setfenv(1, VB__setfenv())
      lockout row inner highlights, main floating vault `WarbandNexusVaultButton`.]]
 
 -- Constants
-M.BUTTON_SIZE = 48
+M.BUTTON_SIZE = 60  -- Easy Access floater; was 48 (+25%)
 M.BADGE_SIZE = 18
 M.ROW_H = 28
 M.HEADER_H = 24

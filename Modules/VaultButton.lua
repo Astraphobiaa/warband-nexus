@@ -529,21 +529,15 @@ function M.BuildButton()
     btn:RegisterForDrag("LeftButton")
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
-    -- Pixel-perfect 1px accent border via the addon's standard visual system,
-    -- so the icon fills the whole button instead of looking like "frame in frame".
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    local btnAccent = (ns.UI_COLORS and ns.UI_COLORS.accent) or {0.40, 0.20, 0.58}
-    if ApplyVisuals then
-        ApplyVisuals(btn, {0,0,0,0}, {btnAccent[1], btnAccent[2], btnAccent[3], 0.9})
-    else
-        btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-        btn:SetBackdropColor(0,0,0,0)
-    end
-    S.border = btn  -- backwards-compat: ApplyTheme refers to S.border for accent updates
+    -- Borderless floater: transparent hit target; logo fills the full button.
+    btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    btn:SetBackdropColor(0, 0, 0, 0)
+    S.border = btn  -- backwards-compat: badge/theme hooks
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT",     btn, "TOPLEFT",     1, -1)
-    icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    icon:SetAllPoints(btn)
+    if icon.SetSnapToPixelGrid then icon:SetSnapToPixelGrid(false) end
+    if icon.SetTexelSnappingBias then icon:SetTexelSnappingBias(0) end
     icon:SetTexture(ICON_TEXTURE)
     if not icon:GetTexture() then
         icon:SetTexture(ICON_FALLBACK)

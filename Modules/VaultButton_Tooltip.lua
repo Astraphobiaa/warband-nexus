@@ -22,17 +22,14 @@ local UpdateBadge = function()
     local count = CountReady()
     local colors = GetThemeColors()
     local accent = colors.accent or {0.40, 0.20, 0.58}
-    local border = colors.border or accent
     if count > 0 then
         S.badge:SetText(count)
         S.badgeBg:Show()
         S.badge:Show()
         if S.badgeBg then S.badgeBg:SetColorTexture(accent[1], accent[2], accent[3], 1.0) end
-        if S.border then S.border:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1.0) end
     else
         S.badge:Hide()
         S.badgeBg:Hide()
-        if S.border then S.border:SetBackdropBorderColor(border[1], border[2], border[3], 0.85) end
     end
     ApplyButtonVisibility(false)
     if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
