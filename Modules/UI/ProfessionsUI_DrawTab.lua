@@ -191,19 +191,14 @@ function WarbandNexus:DrawProfessionsTab(parent)
         if ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
             ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
         end
-        local sortOptions = {
-            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
-        }
+        local sortOptions = (ns.UI_BuildCharacterSortOptions and ns.UI_BuildCharacterSortOptions())
+            or {}
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
         if not self.db.profile.professionSectionFilter then self.db.profile.professionSectionFilter = { sectionKey = "all" } end
         sortBtn = ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
             sortOptions = sortOptions,
             dbSortTable = self.db.profile.professionSort,
+            sortTabId = "professions",
             dbSectionFilter = self.db.profile.professionSectionFilter,
             getCustomSections = function()
                 return self.db.profile.characterCustomGroups or {}
@@ -223,18 +218,12 @@ function WarbandNexus:DrawProfessionsTab(parent)
             end
         end
     elseif ns.UI_CreateCharacterSortDropdown then
-        local sortOptions = {
-            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
-        }
+        local sortOptions = (ns.UI_BuildCharacterSortOptions and ns.UI_BuildCharacterSortOptions())
+            or {}
         if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
         sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
-        end)
+        end, "professions")
         if ns.UI_AnchorTitleCardToolbarControl then
             ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, filterBtn, "LEFT", -hdrGap)
         else
@@ -388,7 +377,9 @@ function WarbandNexus:DrawProfessionsTab(parent)
         end
     end
 
-    local colSortCmp = GetColumnSortCharComparator()
+    local rosterSortKey = (ns.CharacterService and ns.CharacterService.GetTabSortKey)
+        and ns.CharacterService:GetTabSortKey(self.db.profile, "professions") or "default"
+    local colSortCmp = (rosterSortKey == "manual") and GetColumnSortCharComparator() or nil
     if colSortCmp and colForKeys and colForKeys ~= "name" then
         attachProfSortKeys(trackedFavorites)
         for gci = 1, #customGroupsOrdered do

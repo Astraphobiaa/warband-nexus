@@ -2110,67 +2110,26 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             characters[i] = trackedCharacters[i]
         end
         
-        -- Sort Characters
-        local sortMode = self.db.profile.storageSort and self.db.profile.storageSort.key
-        if sortMode and sortMode ~= "manual" then
-            table.sort(characters, function(a, b)
-                if sortMode == "name" then
-                    return CompareCharNameLower(a, b)
-                elseif sortMode == "level" then
-                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                    return CompareCharNameLower(a, b)
-                elseif sortMode == "ilvl" then
-                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then return (a.itemLevel or 0) > (b.itemLevel or 0) end
-                    return CompareCharNameLower(a, b)
-                elseif sortMode == "gold" then
-                    local goldA = ns.Utilities:GetCharTotalCopper(a)
-                    local goldB = ns.Utilities:GetCharTotalCopper(b)
-                    if goldA ~= goldB then return goldA > goldB end
-                    return CompareCharNameLower(a, b)
-                elseif sortMode == "realm" then
-                    local ra = SafeLower(a.realm or "")
-                    local rb = SafeLower(b.realm or "")
-                    if ra ~= rb then return ra < rb end
-                    return CompareCharNameLower(a, b)
-                end
-                return (a.level or 0) > (b.level or 0)
-            end)
+        -- Sort Characters (account-wide roster sort)
+        local CS = ns.CharacterService
+        local profile = self.db.profile
+        if CS and CS.SortCharacterRosterList then
+            CS:SortCharacterRosterList(characters, profile, "regular", {
+                tabId = "storage",
+                compareNameFn = CompareCharNameLower,
+                isLoggedInFn = function(char)
+                    local ck = (ns.UI_GetCharKey and ns.UI_GetCharKey(char))
+                    return CS:IsLoggedInCharacterRow(self, ck)
+                end,
+                getCharKeyFn = function(char)
+                    return (ns.UI_GetCharKey and ns.UI_GetCharKey(char))
+                end,
+            })
         else
-            -- Manual order or default
-            local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder.regular or {}
-            if #customOrder > 0 then
-                local ordered, charMap = {}, {}
-                for ci = 1, #characters do
-                    local c = characters[ci]
-                    local ck = (ns.UI_GetCharKey and ns.UI_GetCharKey(c))
-                    if ck then charMap[ck] = c end
-                end
-                for coi = 1, #customOrder do
-                    local ck = customOrder[coi]
-                    local canon = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey)
-                        and ns.Utilities:GetCanonicalCharacterKey(ck) or ck
-                    if charMap[canon] then
-                        table.insert(ordered, charMap[canon])
-                        charMap[canon] = nil
-                    elseif charMap[ck] then
-                        table.insert(ordered, charMap[ck])
-                        charMap[ck] = nil
-                    end
-                end
-                local remaining = {}
-                for _, c in pairs(charMap) do table.insert(remaining, c) end
-                table.sort(remaining, function(a, b)
-                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                    return CompareCharNameLower(a, b)
-                end)
-                for ri = 1, #remaining do table.insert(ordered, remaining[ri]) end
-                characters = ordered
-            else
-                table.sort(characters, function(a, b)
-                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                    return CompareCharNameLower(a, b)
-                end)
-            end
+            table.sort(characters, function(a, b)
+                if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                return CompareCharNameLower(a, b)
+            end)
         end
         
         local charsToPaint = {}

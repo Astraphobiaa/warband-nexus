@@ -642,7 +642,8 @@ local COL_HEADER_HEIGHT_PVE = 48
 
 local function PveBuildToolbarDrawSig(profile)
     if not profile then return "" end
-    local sortKey = (profile.pveSort and profile.pveSort.key) or "default"
+    local sortKey = (profile and ns.CharacterService and ns.CharacterService.GetTabSortKey)
+        and ns.CharacterService:GetTabSortKey(profile, "pve") or "default"
     local sortAsc = (profile.pveSort and profile.pveSort.ascending) and "1" or "0"
     local sec = (profile.pveSectionFilter and profile.pveSectionFilter.sectionKey) or "all"
     local ll = GetLowLevelHideThreshold(profile)
@@ -2779,14 +2780,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     
     -- Sort + section filter (Characters/Professions parity) or legacy sort-only control
     local sortAnchor = resetTimer.container
-    local sortOptions = {
-        {key = "manual", label = GetLocalizedText("SORT_MODE_MANUAL", "Manual (Custom Order)")},
-        {key = "name", label = GetLocalizedText("SORT_MODE_NAME", "Name (A-Z)")},
-        {key = "level", label = GetLocalizedText("SORT_MODE_LEVEL", "Level (Highest)")},
-        {key = "ilvl", label = GetLocalizedText("SORT_MODE_ILVL", "Item Level (Highest)")},
-        {key = "gold", label = GetLocalizedText("SORT_MODE_GOLD", "Gold (Highest)")},
-        {key = "realm", label = GetLocalizedText("SORT_MODE_REALM", "Realm (A-Z)")},
-    }
+    local sortOptions = (L.ns.UI_BuildCharacterSortOptions and L.ns.UI_BuildCharacterSortOptions())
+        or {}
     if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
     if L.ns.UI_CreateCharacterTabAdvancedFilterButton and L.ns.CharacterService and L.ns.CharacterService.EnsureCustomCharacterSectionsProfile then
         L.ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
@@ -2794,6 +2789,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         sortBtn = L.ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
             sortOptions = sortOptions,
             dbSortTable = self.db.profile.pveSort,
+            sortTabId = "pve",
             dbSectionFilter = self.db.profile.pveSectionFilter,
             getCustomSections = function()
                 return self.db.profile.characterCustomGroups or {}
@@ -2815,7 +2811,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     elseif L.ns.UI_CreateCharacterSortDropdown then
         sortBtn = L.ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
             L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
-        end)
+        end, "pve")
         local hdrGap = tm.gap or 8
         if L.ns.UI_AnchorTitleCardToolbarControl then
             L.ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, resetTimer.container, "LEFT", -hdrGap)
@@ -3214,8 +3210,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     
     -- Load sorting preferences from profile (persistent across sessions)
     if not parent.sortPrefsLoaded then
-        parent.sortKey = self.db.profile.pveSort.key
-        parent.sortAscending = self.db.profile.pveSort.ascending
+        parent.sortKey = (L.ns.CharacterService and L.ns.CharacterService.GetTabSortKey)
+            and L.ns.CharacterService:GetTabSortKey(self.db.profile, "pve") or "default"
+        parent.sortAscending = self.db.profile.pveSort and self.db.profile.pveSort.ascending
         parent.sortPrefsLoaded = true
     end
     
@@ -3227,6 +3224,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         end
     end
 
+    local rosterSortKey = (L.ns.CharacterService and L.ns.CharacterService.GetTabSortKey)
+        and L.ns.CharacterService:GetTabSortKey(profile, "pve") or "default"
+    local peelCurrentChar = (rosterSortKey == "default")
+
     -- Use the same sorting logic as Characters tab
     local currentChar = nil
     local favorites = {}
@@ -3237,9 +3238,8 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         -- Same canonical key as PvECacheService + row loop below (vault/M+ are per-key in pveCache)
         local charKey = GetRowCanonicalPvEKey(char)
         
-        -- Separate current character
-        if charKey == currentPlayerKey
-            or (L.ns.VaultCharKeysMatch and L.ns.VaultCharKeysMatch(charKey, currentPlayerKey)) then
+        if peelCurrentChar and (charKey == currentPlayerKey
+            or (L.ns.VaultCharKeysMatch and L.ns.VaultCharKeysMatch(charKey, currentPlayerKey))) then
             currentChar = char
         elseif L.ns.CharacterService and L.ns.CharacterService:IsFavoriteCharacter(self, charKey) then
             table.insert(favorites, char)
@@ -3250,103 +3250,21 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     
     -- Sort function (with custom order support, same as Characters tab)
     local function sortCharacters(list, orderKey)
-        local sortMode = self.db.profile.pveSort and self.db.profile.pveSort.key
-        
-        if sortMode and sortMode ~= "manual" then
-            table.sort(list, function(a, b)
-                if sortMode == "name" then
-                    return L.CompareCharNameLower(a, b)
-                elseif sortMode == "level" then
-                    if (a.level or 0) ~= (b.level or 0) then
-                        return (a.level or 0) > (b.level or 0)
-                    else
-                        return L.CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "ilvl" then
-                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
-                        return (a.itemLevel or 0) > (b.itemLevel or 0)
-                    else
-                        return L.CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "gold" then
-                    local goldA = L.ns.Utilities:GetCharTotalCopper(a)
-                    local goldB = L.ns.Utilities:GetCharTotalCopper(b)
-                    if goldA ~= goldB then
-                        return goldA > goldB
-                    else
-                        return L.CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "realm" then
-                    local ra = L.SafeLower(a.realm or "")
-                    local rb = L.SafeLower(b.realm or "")
-                    if ra ~= rb then
-                        return ra < rb
-                    else
-                        return L.CompareCharNameLower(a, b)
-                    end
-                end
-                -- Fallback
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return L.CompareCharNameLower(a, b)
-                end
-            end)
-            return list
+        local CS = L.ns.CharacterService
+        if CS and CS.SortCharacterRosterList then
+            return CS:SortCharacterRosterList(list, self.db.profile, orderKey, {
+                tabId = "pve",
+                compareNameFn = L.CompareCharNameLower,
+                isLoggedInFn = function(char)
+                    return CS:IsLoggedInCharacterRow(L.WarbandNexus, GetRowCanonicalPvEKey(char))
+                end,
+                getCharKeyFn = GetRowCanonicalPvEKey,
+            })
         end
-        
-        local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder[orderKey] or {}
-        
-        -- If custom order exists and has items, use it
-        if #customOrder > 0 then
-            local ordered = {}
-            local charMap = {}
-            
-            -- Create a map for quick lookup
-            for i = 1, #list do
-                local char = list[i]
-                local key = GetRowCanonicalPvEKey(char)
-                if key then charMap[key] = char end
-            end
-            
-            -- Add characters in custom order
-            for i = 1, #customOrder do
-                local charKey = customOrder[i]
-                if charMap[charKey] then
-                    table.insert(ordered, charMap[charKey])
-                    charMap[charKey] = nil  -- Remove to track remaining
-                end
-            end
-            
-            -- Add any new characters not in custom order (at the end, sorted)
-            local remaining = {}
-            for _, char in pairs(charMap) do
-                table.insert(remaining, char)
-            end
-            table.sort(remaining, function(a, b)
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return L.CompareCharNameLower(a, b)
-                end
-            end)
-            for i = 1, #remaining do
-                local char = remaining[i]
-                table.insert(ordered, char)
-            end
-            
-            return ordered
-        else
-            -- Default sort: level desc → name asc
-            table.sort(list, function(a, b)
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return L.CompareCharNameLower(a, b)
-                end
-            end)
-            return list
-        end
+        table.sort(list, function(a, b)
+            return L.CompareCharNameLower(a, b)
+        end)
+        return list
     end
     
     -- Sort favorites; split non-favorites into custom sections + main list (Characters tab parity)
@@ -3367,7 +3285,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             regularUngrouped[#regularUngrouped + 1] = rchar
         end
     end
-    local sortModeKey = (self.db.profile.pveSort and self.db.profile.pveSort.key) or "default"
+    local sortModeKey = rosterSortKey
     local customGroupsOrdered = {}
     if profile and L.ns.CharacterService and L.ns.CharacterService.BuildOrderedCustomCharacterGroups then
         customGroupsOrdered = L.ns.CharacterService:BuildOrderedCustomCharacterGroups(profile, sortModeKey)
@@ -3383,9 +3301,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     end
     regularUngrouped = sortCharacters(regularUngrouped, "regular")
 
-    -- Merge: current first, then favorites, then each custom group in order, then ungrouped regular
+    -- Merge: current first (default sort only), then favorites, then each custom group, then ungrouped regular
     local sortedCharacters = {}
-    if currentChar then
+    if peelCurrentChar and currentChar then
         sortedCharacters[#sortedCharacters + 1] = currentChar
     end
     for fi = 1, #favorites do

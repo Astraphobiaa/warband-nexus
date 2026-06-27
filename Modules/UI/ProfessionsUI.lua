@@ -1342,6 +1342,12 @@ local function SetColumnSortState(col, dir)
 end
 
 ToggleColumnSort = function(col)
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if profile and ns.CharacterService then
+        if ns.CharacterService:GetTabSortKey(profile, "professions") ~= "manual" then
+            ns.CharacterService:SetTabSortKey(profile, "professions", "manual")
+        end
+    end
     local state = GetColumnSortState()
     if state and state.col == col then
         if state.dir == "asc" then
@@ -1509,71 +1515,23 @@ end
 -- CHARACTER SORTING (mirrors CharactersUI)
 
 local function SortCharacters(list, orderKey)
-    if not WarbandNexus.db or not WarbandNexus.db.profile then
-        table.sort(list, function(a, b)
-            if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return CompareCharNameLower(a, b)
-        end)
-        return list
+    local CS = ns.CharacterService
+    local profile = WarbandNexus.db and WarbandNexus.db.profile
+    if CS and CS.SortCharacterRosterList then
+        return CS:SortCharacterRosterList(list, profile, orderKey, {
+            tabId = "professions",
+            compareNameFn = CompareCharNameLower,
+            isLoggedInFn = function(char)
+                return CS:IsLoggedInCharacterRow(WarbandNexus, GetCharKey(char))
+            end,
+            getCharKeyFn = GetCharKey,
+        })
     end
-    
-    local sortMode = WarbandNexus.db.profile.professionSort and WarbandNexus.db.profile.professionSort.key
-    if sortMode and sortMode ~= "manual" then
-        table.sort(list, function(a, b)
-            if sortMode == "name" then
-                return CompareCharNameLower(a, b)
-            elseif sortMode == "level" then
-                if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-                return CompareCharNameLower(a, b)
-            elseif sortMode == "ilvl" then
-                if (a.itemLevel or 0) ~= (b.itemLevel or 0) then return (a.itemLevel or 0) > (b.itemLevel or 0) end
-                return CompareCharNameLower(a, b)
-            elseif sortMode == "gold" then
-                local goldA = ns.Utilities:GetCharTotalCopper(a)
-                local goldB = ns.Utilities:GetCharTotalCopper(b)
-                if goldA ~= goldB then return goldA > goldB end
-                return CompareCharNameLower(a, b)
-            elseif sortMode == "realm" then
-                local ra = SafeLower(a.realm or "")
-                local rb = SafeLower(b.realm or "")
-                if ra ~= rb then return ra < rb end
-                return CompareCharNameLower(a, b)
-            end
-            if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return CompareCharNameLower(a, b)
-        end)
-        return list
-    end
-
-    if not WarbandNexus.db.profile.characterOrder then
-        WarbandNexus.db.profile.characterOrder = { favorites = {}, regular = {}, untracked = {} }
-    end
-    local customOrder = WarbandNexus.db.profile.characterOrder[orderKey] or {}
-    if #customOrder > 0 then
-        local ordered, charMap = {}, {}
-        for li = 1, #list do
-            local c = list[li]
-            charMap[GetCharKey(c)] = c
-        end
-        for coi = 1, #customOrder do
-            local ck = customOrder[coi]
-            if charMap[ck] then tinsert(ordered, charMap[ck]); charMap[ck] = nil end
-        end
-        local remaining = {}
-        for _, c in pairs(charMap) do tinsert(remaining, c) end
-        table.sort(remaining, function(a, b)
-            if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return CompareCharNameLower(a, b)
-        end)
-        for ri = 1, #remaining do tinsert(ordered, remaining[ri]) end
-        return ordered
-    else
-        table.sort(list, function(a, b)
-            if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-            return CompareCharNameLower(a, b)
-        end)
-        return list
-    end
+    table.sort(list, function(a, b)
+        if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+        return CompareCharNameLower(a, b)
+    end)
+    return list
 end
 
 local function CategorizeCharacters(characters)
@@ -1582,7 +1540,8 @@ local function CategorizeCharacters(characters)
     if profile and ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
         ns.CharacterService:EnsureCustomCharacterSectionsProfile(profile)
     end
-    local sortKey = (profile and profile.characterSort and profile.characterSort.key) or "default"
+    local sortKey = (profile and ns.CharacterService and ns.CharacterService.GetTabSortKey)
+        and ns.CharacterService:GetTabSortKey(profile, "professions") or "default"
     local customGroupsOrdered = (profile and ns.CharacterService and ns.CharacterService.BuildOrderedCustomCharacterGroups)
         and ns.CharacterService:BuildOrderedCustomCharacterGroups(profile, sortKey)
         or ((profile and profile.characterCustomGroups) or {})
@@ -1613,7 +1572,19 @@ local function CategorizeCharacters(characters)
             end
         end
     end
-    return SortCharacters(favorites, "favorites"), groupedById, customGroupsOrdered, SortCharacters(regular, "regular"), SortCharacters(untracked, "untracked")
+    favorites = SortCharacters(favorites, "favorites")
+    for gi = 1, #customGroupsOrdered do
+        local gid = customGroupsOrdered[gi].id
+        local list = groupedById[gid]
+        if list and #list > 0 then
+            local lk = (ns.CharacterService and ns.CharacterService.GetCustomGroupListKey
+                and ns.CharacterService:GetCustomGroupListKey(gid)) or ("group_" .. tostring(gid))
+            SortCharacters(list, lk)
+        end
+    end
+    regular = SortCharacters(regular, "regular")
+    untracked = SortCharacters(untracked, "untracked")
+    return favorites, groupedById, customGroupsOrdered, regular, untracked
 end
 
 -- Realm display: use centralized Utilities:FormatRealmName

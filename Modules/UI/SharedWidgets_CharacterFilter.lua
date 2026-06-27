@@ -39,7 +39,43 @@ local function MutedIconVertex()
     return 0.58, 0.62, 0.72, 1
 end
 
-local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged)
+local function ResolveSortMenuCurrentKey(dbSortTable, sortOptions)
+    local itemCount = sortOptions and #sortOptions or 0
+    local CS = ns.CharacterService
+    local rawKey = dbSortTable and dbSortTable.key
+    if CS and CS.NormalizeCharacterSortKey then
+        rawKey = CS:NormalizeCharacterSortKey(rawKey, "default")
+    elseif not rawKey or rawKey == "" then
+        rawKey = "default"
+    end
+    if type(rawKey) == "string" and rawKey ~= "" then
+        for j = 1, itemCount do
+            if sortOptions[j].key == rawKey then
+                return rawKey
+            end
+        end
+    end
+    if sortOptions[1] and sortOptions[1].key then
+        return sortOptions[1].key
+    end
+    return "default"
+end
+
+local function ApplyTabSortPick(dbSortTable, sortTabId, optKey)
+    local CS = ns.CharacterService
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if profile and CS and CS.SetTabSortKey and sortTabId then
+        CS:SetTabSortKey(profile, sortTabId, optKey)
+    elseif dbSortTable then
+        if CS and CS.NormalizeCharacterSortKey then
+            dbSortTable.key = CS:NormalizeCharacterSortKey(optKey, "default")
+        else
+            dbSortTable.key = optKey
+        end
+    end
+end
+
+local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged, sortTabId)
     -- Symmetric Filter button: fixed size, icon + text centered as a group
     local buttonHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local btnWidth = 90
@@ -127,22 +163,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         end
         activeSortDropdownMenu = menu
 
-        local rawKey = dbSortTable and dbSortTable.key
-        local currentKey = nil
-        if type(rawKey) == "string" and rawKey ~= "" then
-            for j = 1, itemCount do
-                if sortOptions[j].key == rawKey then
-                    currentKey = rawKey
-                    break
-                end
-            end
-        end
-        if not currentKey and sortOptions[1] and sortOptions[1].key then
-            currentKey = sortOptions[1].key
-        end
-        if not currentKey then
-            currentKey = "manual"
-        end
+        local currentKey = ResolveSortMenuCurrentKey(dbSortTable, sortOptions)
 
         local scrollChild = select(2, ns.UI_ApplyDropdownScrollLayout(menu, itemCount, itemHeight))
         local btnContentWidth = (scrollChild and scrollChild:GetWidth()) or (menuWidth - sideMargin * 2)
@@ -186,7 +207,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
             end
 
             optionBtn:SetScript("OnClick", function()
-                dbSortTable.key = opt.key
+                ApplyTabSortPick(dbSortTable, sortTabId, opt.key)
                 menu:Hide()
                 activeSortDropdownMenu = nil
                 if self._sortClickCatcher then
@@ -282,6 +303,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     local getCustomSections = opts.getCustomSections
     local onRefresh = opts.onRefresh
     local onDeleteSection = opts.onDeleteSection
+    local sortTabId = opts.sortTabId
     if not sortOptions or not dbSortTable or not dbSectionFilter or not onRefresh then
         return nil
     end
@@ -443,7 +465,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         end
 
         makeRootRow(1, rootLabels[1], function()
-            local rawKey = dbSortTable and dbSortTable.key
+            local rawKey = ResolveSortMenuCurrentKey(dbSortTable, sortOptions)
             local rows = {}
             for si = 1, #sortOptions do
                 local opt = sortOptions[si]
@@ -451,7 +473,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
                     label = opt.label,
                     selected = (rawKey == opt.key),
                     onPick = function()
-                        dbSortTable.key = opt.key
+                        ApplyTabSortPick(dbSortTable, sortTabId, opt.key)
                     end,
                 }
             end
@@ -717,6 +739,24 @@ function ns.UI_ShowCharacterSectionsToolbarMenu(anchorFrame, profile)
         end
     end
     WnShowLabeledPickMenu(anchorFrame, rows, nil)
+end
+
+local function SortOptionLabel(key, fallback)
+    return (ns.L and ns.L[key]) or fallback
+end
+
+--- Shared character-list sort modes (same order on every tab).
+function ns.UI_BuildCharacterSortOptions()
+    local out = {}
+    out[#out + 1] = { key = "default", label = SortOptionLabel("SORT_MODE_DEFAULT", "Default Order") }
+    out[#out + 1] = { key = "manual", label = SortOptionLabel("SORT_MODE_MANUAL", "Manual (Custom Order)") }
+    out[#out + 1] = { key = "name", label = SortOptionLabel("SORT_MODE_NAME", "Name (A-Z)") }
+    out[#out + 1] = { key = "class", label = SortOptionLabel("SORT_MODE_CLASS", "Class (A-Z)") }
+    out[#out + 1] = { key = "level", label = SortOptionLabel("SORT_MODE_LEVEL", "Level (Highest)") }
+    out[#out + 1] = { key = "ilvl", label = SortOptionLabel("SORT_MODE_ILVL", "Item Level (Highest)") }
+    out[#out + 1] = { key = "gold", label = SortOptionLabel("SORT_MODE_GOLD", "Gold (Highest)") }
+    out[#out + 1] = { key = "realm", label = SortOptionLabel("SORT_MODE_REALM", "Realm (A-Z)") }
+    return out
 end
 
 ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown

@@ -893,20 +893,14 @@ function WarbandNexus:DrawCharacterList(parent)
         if ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
             ns.CharacterService:EnsureCustomCharacterSectionsProfile(self.db.profile)
         end
-        local sortOptions = {
-            {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
-            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
-        }
+        local sortOptions = (ns.UI_BuildCharacterSortOptions and ns.UI_BuildCharacterSortOptions())
+            or {}
         if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
         if not self.db.profile.characterSectionFilter then self.db.profile.characterSectionFilter = { sectionKey = "all" } end
         sortBtn = ns.UI_CreateCharacterTabAdvancedFilterButton(titleCard, {
             sortOptions = sortOptions,
             dbSortTable = self.db.profile.characterSort,
+            sortTabId = "characters",
             dbSectionFilter = self.db.profile.characterSectionFilter,
             getCustomSections = function()
                 return self.db.profile.characterCustomGroups or {}
@@ -986,19 +980,12 @@ function WarbandNexus:DrawCharacterList(parent)
         if titleCard._wnCharCustomSectionBtn then
             titleCard._wnCharCustomSectionBtn:Hide()
         end
-        local sortOptions = {
-            {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
-            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-            {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
-        }
+        local sortOptions = (ns.UI_BuildCharacterSortOptions and ns.UI_BuildCharacterSortOptions())
+            or {}
         if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
         sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
-        end)
+        end, "characters")
         if ns.UI_AnchorTitleCardToolbarControl then
             ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, titleCard, "RIGHT", -titleControlInset)
         else
@@ -1390,21 +1377,13 @@ function WarbandNexus:DrawCharacterList(parent)
         yOffset = yOffset + bannerH + 8
     end
     
-    local sortOptions = {
-        {key = "default", label = (ns.L and ns.L["SORT_MODE_DEFAULT"]) or "Default Order"},
-        {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
-        {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
-        {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
-        {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
-        {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
-        {key = "realm", label = (ns.L and ns.L["SORT_MODE_REALM"]) or "Realm (A-Z)"},
-    }
+    local sortOptions = (ns.UI_BuildCharacterSortOptions and ns.UI_BuildCharacterSortOptions())
+        or {}
     
     if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
-    local sk = self.db.profile.characterSort.key
-    local currentSortKey = (type(sk) == "string" and sk ~= "" and
-        (sk == "default" or sk == "manual" or sk == "name" or sk == "level" or sk == "ilvl" or sk == "gold" or sk == "realm"))
-        and sk or "default"
+    local currentSortKey = (ns.CharacterService and ns.CharacterService.GetTabSortKey)
+        and ns.CharacterService:GetTabSortKey(self.db.profile, "characters")
+        or "default"
 
     local sectionFilter = "all"
     if self.db.profile.characterSectionFilter and type(self.db.profile.characterSectionFilter.sectionKey) == "string" then
@@ -1478,118 +1457,19 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Sort function (with custom order support)
     local function sortCharacters(list, orderKey)
-        local sortMode = currentSortKey
-
-        if sortMode ~= "manual" then
-            if sortMode == "default" then
-                -- Standard: logged-in character first, then level (high to low), then name (A-Z, case-insensitive).
-                table.sort(list, function(a, b)
-                    local aOn = IsCharLoggedInSession(a)
-                    local bOn = IsCharLoggedInSession(b)
-                    if aOn ~= bOn then
-                        return aOn
-                    end
-                    if (a.level or 0) ~= (b.level or 0) then
-                        return (a.level or 0) > (b.level or 0)
-                    end
-                    return CompareCharNameLower(a, b)
-                end)
-                return list
-            end
-            table.sort(list, function(a, b)
-                if sortMode == "name" then
-                    return CompareCharNameLower(a, b)
-                elseif sortMode == "level" then
-                    if (a.level or 0) ~= (b.level or 0) then
-                        return (a.level or 0) > (b.level or 0)
-                    else
-                        return CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "ilvl" then
-                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
-                        return (a.itemLevel or 0) > (b.itemLevel or 0)
-                    else
-                        return CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "gold" then
-                    local goldA = ns.Utilities:GetCharTotalCopper(a)
-                    local goldB = ns.Utilities:GetCharTotalCopper(b)
-                    if goldA ~= goldB then
-                        return goldA > goldB
-                    else
-                        return CompareCharNameLower(a, b)
-                    end
-                elseif sortMode == "realm" then
-                    local ra = SafeLower(a.realm or "")
-                    local rb = SafeLower(b.realm or "")
-                    if ra ~= rb then
-                        return ra < rb
-                    else
-                        return CompareCharNameLower(a, b)
-                    end
-                end
-                -- Fallback
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return CompareCharNameLower(a, b)
-                end
-            end)
-            return list
+        local CS = ns.CharacterService
+        if CS and CS.SortCharacterRosterList then
+            return CS:SortCharacterRosterList(list, self.db.profile, orderKey, {
+                tabId = "characters",
+                compareNameFn = CompareCharNameLower,
+                isLoggedInFn = IsCharLoggedInSession,
+                getCharKeyFn = GetCharKey,
+            })
         end
-        
-        local customOrder = self.db.profile.characterOrder[orderKey] or {}
-        
-        -- If custom order exists and has items, use it
-        if #customOrder > 0 then
-            local ordered = {}
-            local charMap = {}
-            
-            -- Create a map for quick lookup
-            for i = 1, #list do
-                local char = list[i]
-                local key = GetCharKey(char)
-                charMap[key] = char
-            end
-            
-            -- Add characters in custom order
-            for i = 1, #customOrder do
-                local charKey = customOrder[i]
-                if charMap[charKey] then
-                    tinsert(ordered, charMap[charKey])
-                    charMap[charKey] = nil  -- Remove to track remaining
-                end
-            end
-            
-            -- Add any new characters not in custom order (at the end, sorted)
-            local remaining = {}
-            for _, char in pairs(charMap) do
-                tinsert(remaining, char)
-            end
-            table.sort(remaining, function(a, b)
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return CompareCharNameLower(a, b)
-                end
-            end)
-            for i = 1, #remaining do
-                local char = remaining[i]
-                tinsert(ordered, char)
-            end
-            
-            return ordered
-        else
-            -- Default sort: level desc Ã¢â€ â€™ name asc (ignore table header sorting for now)
-            table.sort(list, function(a, b)
-                if (a.level or 0) ~= (b.level or 0) then
-                    return (a.level or 0) > (b.level or 0)
-                else
-                    return CompareCharNameLower(a, b)
-                end
-            end)
-            return list
-        end
+        table.sort(list, function(a, b)
+            return CompareCharNameLower(a, b)
+        end)
+        return list
     end
     
     -- Sort favorites, each custom header bucket, ungrouped regular, then untracked
@@ -1604,27 +1484,6 @@ function WarbandNexus:DrawCharacterList(parent)
     end
     trackedRegular = sortCharacters(trackedRegular, "regular")
     untracked = sortCharacters(untracked, "untracked")
-
-    -- Logged-in character always first within each section (any sort mode / manual custom order).
-    local function pinOnlineCharacterFirst(list)
-        if not list or #list == 0 then return end
-        for i = 1, #list do
-            if IsCharLoggedInSession(list[i]) then
-                if i > 1 then
-                    local c = tremove(list, i)
-                    tinsert(list, 1, c)
-                end
-                break
-            end
-        end
-    end
-    pinOnlineCharacterFirst(trackedFavorites)
-    for gi = 1, #customGroupsOrdered do
-        local gid = customGroupsOrdered[gi].id
-        if groupedById[gid] then pinOnlineCharacterFirst(groupedById[gid]) end
-    end
-    pinOnlineCharacterFirst(trackedRegular)
-    pinOnlineCharacterFirst(untracked)
     
     -- Guild column width: max guild name width across all visible characters (centered text)
     do

@@ -1131,6 +1131,251 @@ function CharacterService:GetCharacterCustomSectionId(addon, charKey)
     return assign[charKey]
 end
 
+-- CHARACTER LIST SORT (shared by Characters / Professions / PvE / Storage)
+
+CharacterService.VALID_CHARACTER_SORT_KEYS = {
+    default = true,
+    manual = true,
+    name = true,
+    class = true,
+    level = true,
+    ilvl = true,
+    gold = true,
+    realm = true,
+}
+
+local function CharSortSafeLower(s)
+    if not s or s == "" then return "" end
+    if issecretvalue and issecretvalue(s) then return "" end
+    return string.lower(tostring(s))
+end
+
+function CharacterService:NormalizeCharacterSortKey(key, fallback)
+    fallback = fallback or "default"
+    if type(key) == "string" and key ~= "" and self.VALID_CHARACTER_SORT_KEYS[key] then
+        return key
+    end
+    return fallback
+end
+
+function CharacterService:GetCharacterClassSortName(char)
+    if not char then return "\255" end
+    local cls = char.class
+    if cls and cls ~= "" and not (issecretvalue and issecretvalue(cls)) then
+        return CharSortSafeLower(cls)
+    end
+    local classFile = char.classFile
+    if classFile and classFile ~= "" and not (issecretvalue and issecretvalue(classFile)) then
+        if LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[classFile] then
+            return CharSortSafeLower(LOCALIZED_CLASS_NAMES_MALE[classFile])
+        end
+        return CharSortSafeLower(classFile)
+    end
+    return "\255"
+end
+
+--- Lua table.sort comparator: true when `a` should appear before `b`.
+function CharacterService:CompareCharactersBySortKey(a, b, sortKey, opts)
+    opts = opts or {}
+    local compareName = opts.compareNameFn
+    if not compareName then
+        compareName = function(x, y)
+            return CharSortSafeLower(x and x.name) < CharSortSafeLower(y and y.name)
+        end
+    end
+    if not a or not b then return false end
+
+    sortKey = self:NormalizeCharacterSortKey(sortKey, "default")
+
+    if sortKey == "name" then
+        return compareName(a, b)
+    elseif sortKey == "class" then
+        local ca = self:GetCharacterClassSortName(a)
+        local cb = self:GetCharacterClassSortName(b)
+        if ca ~= cb then
+            return ca < cb
+        end
+        return compareName(a, b)
+    elseif sortKey == "level" then
+        if (a.level or 0) ~= (b.level or 0) then
+            return (a.level or 0) > (b.level or 0)
+        end
+        return compareName(a, b)
+    elseif sortKey == "ilvl" then
+        if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
+            return (a.itemLevel or 0) > (b.itemLevel or 0)
+        end
+        return compareName(a, b)
+    elseif sortKey == "gold" then
+        local Utilities = ns.Utilities
+        local goldA = Utilities and Utilities.GetCharTotalCopper and Utilities:GetCharTotalCopper(a) or 0
+        local goldB = Utilities and Utilities.GetCharTotalCopper and Utilities:GetCharTotalCopper(b) or 0
+        if goldA ~= goldB then
+            return goldA > goldB
+        end
+        return compareName(a, b)
+    elseif sortKey == "realm" then
+        local ra = CharSortSafeLower(a.realm)
+        local rb = CharSortSafeLower(b.realm)
+        if ra ~= rb then
+            return ra < rb
+        end
+        return compareName(a, b)
+    elseif sortKey == "default" then
+        local isLoggedIn = opts.isLoggedInFn
+        if isLoggedIn then
+            local aOn = isLoggedIn(a)
+            local bOn = isLoggedIn(b)
+            if aOn ~= bOn then
+                return aOn
+            end
+        end
+        if (a.level or 0) ~= (b.level or 0) then
+            return (a.level or 0) > (b.level or 0)
+        end
+        return compareName(a, b)
+    end
+
+    if (a.level or 0) ~= (b.level or 0) then
+        return (a.level or 0) > (b.level or 0)
+    end
+    return compareName(a, b)
+end
+
+--- Per-tab roster sort profile keys (`db.profile.*`).
+CharacterService.TAB_SORT_DB_KEYS = {
+    characters = "characterSort",
+    professions = "professionSort",
+    pve = "pveSort",
+    storage = "storageSort",
+}
+
+function CharacterService:GetTabSortTable(profile, tabId)
+    local field = self.TAB_SORT_DB_KEYS[tabId]
+    if not profile or not field then return nil end
+    profile[field] = profile[field] or {}
+    return profile[field]
+end
+
+function CharacterService:GetTabSortKey(profile, tabId)
+    local tbl = self:GetTabSortTable(profile, tabId)
+    return self:NormalizeCharacterSortKey(tbl and tbl.key, "default")
+end
+
+function CharacterService:SetTabSortKey(profile, tabId, key)
+    local tbl = self:GetTabSortTable(profile, tabId)
+    if not tbl then return end
+    tbl.key = self:NormalizeCharacterSortKey(key, "default")
+    if tabId == "professions" and tbl.key ~= "manual" and profile.professionColumnSort then
+        profile.professionColumnSort = nil
+    end
+end
+
+--- True when `rowKey` is the logged-in session character (GUID / roster index parity).
+function CharacterService:IsLoggedInCharacterRow(addon, rowKey)
+    if not rowKey then return false end
+    if issecretvalue and issecretvalue(rowKey) then return false end
+    local Utils = ns.Utilities
+    local storage = Utils and Utils.GetCharacterStorageKey and Utils:GetCharacterStorageKey(addon)
+    if storage and rowKey == storage then return true end
+    local resolved = self.ResolveCharactersTableKey and self:ResolveCharactersTableKey(addon)
+    if resolved and rowKey == resolved then return true end
+    if Utils and Utils.GetCanonicalCharacterKey then
+        local canonRow = Utils:GetCanonicalCharacterKey(rowKey)
+        if storage and canonRow == storage then return true end
+        if resolved and canonRow == resolved then return true end
+    end
+    return false
+end
+
+--- Sort a character list in-place; `orderKey` is the manual-order bucket (favorites / regular / group_*).
+function CharacterService:SortCharacterRosterList(list, profile, orderKey, opts)
+    opts = opts or {}
+    if not list or #list == 0 then return list end
+
+    local compareName = opts.compareNameFn
+    if not compareName then
+        compareName = function(a, b)
+            return CharSortSafeLower(a and a.name) < CharSortSafeLower(b and b.name)
+        end
+    end
+
+    if not profile then
+        table.sort(list, function(a, b)
+            return self:CompareCharactersBySortKey(a, b, "default", { compareNameFn = compareName })
+        end)
+        return list
+    end
+
+    local sortMode = opts.sortKey
+    if not sortMode and opts.tabId then
+        sortMode = self:GetTabSortKey(profile, opts.tabId)
+    elseif not sortMode then
+        sortMode = self:GetTabSortKey(profile, "characters")
+    end
+    if sortMode ~= "manual" then
+        table.sort(list, function(a, b)
+            return self:CompareCharactersBySortKey(a, b, sortMode, {
+                compareNameFn = compareName,
+                isLoggedInFn = opts.isLoggedInFn,
+            })
+        end)
+        return list
+    end
+
+    profile.characterOrder = profile.characterOrder or {
+        favorites = {},
+        regular = {},
+        untracked = {},
+    }
+    local getCharKey = opts.getCharKeyFn
+    local customOrder = profile.characterOrder[orderKey] or {}
+    if #customOrder > 0 and getCharKey then
+        local ordered = {}
+        local charMap = {}
+        for i = 1, #list do
+            local char = list[i]
+            local ck = getCharKey(char)
+            if ck then charMap[ck] = char end
+        end
+        for i = 1, #customOrder do
+            local charKey = customOrder[i]
+            if charMap[charKey] then
+                table.insert(ordered, charMap[charKey])
+                charMap[charKey] = nil
+            end
+        end
+        local remaining = {}
+        for _, char in pairs(charMap) do
+            table.insert(remaining, char)
+        end
+        table.sort(remaining, function(a, b)
+            return self:CompareCharactersBySortKey(a, b, "default", {
+                compareNameFn = compareName,
+                isLoggedInFn = opts.isLoggedInFn,
+            })
+        end)
+        for i = 1, #remaining do
+            table.insert(ordered, remaining[i])
+        end
+        for i = 1, #ordered do
+            list[i] = ordered[i]
+        end
+        for i = #ordered + 1, #list do
+            list[i] = nil
+        end
+        return list
+    end
+
+    table.sort(list, function(a, b)
+        return self:CompareCharactersBySortKey(a, b, "default", {
+            compareNameFn = compareName,
+            isLoggedInFn = opts.isLoggedInFn,
+        })
+    end)
+    return list
+end
+
 -- EXPORT
 
 return CharacterService

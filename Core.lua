@@ -271,8 +271,14 @@ local defaults = {
         
         -- Character list sorting preferences
         characterSort = {
-            key = "default",  -- "default" = online first, then level desc, name; "manual" = custom order; plus name/level/ilvl/gold/realm
+            key = "default",  -- "default" = online first, then level desc, name; "manual" = custom order; plus name/class/level/ilvl/gold/realm
             ascending = true, -- reserved / future use
+        },
+        professionSort = {
+            key = "default",
+        },
+        storageSort = {
+            key = "default",
         },
 
         -- User-defined character list sections (Characters + Professions tabs); assignments only apply to tracked non-favorites.
@@ -323,7 +329,7 @@ local defaults = {
 
         -- PvE list sorting preferences
         pveSort = {
-            key = nil,        -- nil = no sorting (default order)
+            key = "default",
             ascending = true,
         },
         -- PvE currency columns: "current" (owned) or "weekly" (earn progress); Shift inverts while held.
