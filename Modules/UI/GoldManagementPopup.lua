@@ -91,7 +91,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         title = L["GOLD_MANAGEMENT_TITLE"] or "Gold Manager",
         icon = "Interface\\Icons\\INV_Misc_Coin_01",
         width = 440,
-        height = 380,
+        height = 320,
         preventDuplicates = true,
         onClose = function()
             -- Settings are already written to the correct DB table (profile or char)
@@ -383,42 +383,73 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     
     yOffset = yOffset + 42
     
+    local SUMMARY_PAD = 10
+    local SUMMARY_ROW_GAP = 6
+    local Factory = ns.UI and ns.UI.Factory
+    
     local summaryCard = CreateCard(contentFrame, 1)
     summaryCard:SetPoint("TOPLEFT", PADDING, -yOffset)
     summaryCard:SetPoint("TOPRIGHT", -PADDING, -yOffset)
     
-    local summaryPad = 10
-    local summaryY = summaryPad
-    local halfWidth = math.floor((contentWidth - PADDING * 2 - summaryPad * 3) / 2)
+    local halfWidth = math.floor((contentWidth - PADDING * 2 - SUMMARY_PAD * 3) / 2)
+    
+    local leftCol = (Factory and Factory.CreateContainer and Factory:CreateContainer(summaryCard, halfWidth, 1, false))
+        or CreateFrame("Frame", nil, summaryCard)
+    leftCol:SetPoint("TOPLEFT", SUMMARY_PAD, -SUMMARY_PAD)
+    leftCol:SetWidth(halfWidth)
+    
+    local rightCol = (Factory and Factory.CreateContainer and Factory:CreateContainer(summaryCard, halfWidth, 1, false))
+        or CreateFrame("Frame", nil, summaryCard)
+    rightCol:SetPoint("TOPRIGHT", -SUMMARY_PAD, -SUMMARY_PAD)
+    rightCol:SetWidth(halfWidth)
     
     -- Profile column (left)
-    local profileTitle = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
-    profileTitle:SetPoint("TOPLEFT", summaryPad, -summaryY)
+    local profileTitle = FontManager:CreateFontString(leftCol, "small", "OVERLAY")
+    profileTitle:SetPoint("TOPLEFT", leftCol, "TOPLEFT", 0, 0)
     profileTitle:SetWidth(halfWidth)
     profileTitle:SetJustifyH("LEFT")
     
-    local profileInfo = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
-    profileInfo:SetPoint("TOPLEFT", summaryPad, -(summaryY + 16))
+    local profileInfo = FontManager:CreateFontString(leftCol, "small", "OVERLAY")
+    profileInfo:SetPoint("TOPLEFT", profileTitle, "BOTTOMLEFT", 0, -SUMMARY_ROW_GAP)
     profileInfo:SetWidth(halfWidth)
     profileInfo:SetJustifyH("LEFT")
     
     -- Vertical separator
     local sep = summaryCard:CreateTexture(nil, "ARTWORK")
     sep:SetSize(1, 1)
-    sep:SetPoint("TOP", summaryCard, "TOP", 0, -summaryPad)
-    sep:SetPoint("BOTTOM", summaryCard, "BOTTOM", 0, summaryPad)
+    sep:SetPoint("TOP", summaryCard, "TOP", 0, -SUMMARY_PAD)
+    sep:SetPoint("BOTTOM", summaryCard, "BOTTOM", 0, SUMMARY_PAD)
     sep:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
     
     -- Character column (right)
-    local charTitle = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
-    charTitle:SetPoint("TOPRIGHT", -summaryPad, -summaryY)
+    local charTitle = FontManager:CreateFontString(rightCol, "small", "OVERLAY")
+    charTitle:SetPoint("TOPLEFT", rightCol, "TOPLEFT", 0, 0)
     charTitle:SetWidth(halfWidth)
     charTitle:SetJustifyH("LEFT")
     
-    local charInfo = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
-    charInfo:SetPoint("TOPRIGHT", -summaryPad, -(summaryY + 16))
+    local charInfo = FontManager:CreateFontString(rightCol, "small", "OVERLAY")
+    charInfo:SetPoint("TOPLEFT", charTitle, "BOTTOMLEFT", 0, -SUMMARY_ROW_GAP)
     charInfo:SetWidth(halfWidth)
     charInfo:SetJustifyH("LEFT")
+    
+    local function LayoutSummaryCardHeights()
+        local titleH = math.max(profileTitle:GetStringHeight() or 0, charTitle:GetStringHeight() or 0, 12)
+        local infoH = math.max(profileInfo:GetStringHeight() or 0, charInfo:GetStringHeight() or 0, 12)
+        local contentH = titleH + SUMMARY_ROW_GAP + infoH
+        leftCol:SetHeight(contentH)
+        rightCol:SetHeight(contentH)
+        summaryCard:SetHeight(SUMMARY_PAD * 2 + contentH)
+    end
+
+    local function FitDialogToContent()
+        LayoutSummaryCardHeights()
+        local mainShellLayout = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+        local extDlgHeaderH = mainShellLayout.HEADER_BAR_HEIGHT
+            or mainShellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT
+            or 40
+        local bodyH = yOffset + summaryCard:GetHeight() + PADDING
+        dialog:SetHeight(extDlgHeaderH + bodyH)
+    end
     
     local function UpdateSummaryCard()
         local ac = ns.UI_COLORS and ns.UI_COLORS.accent or COLORS.accent
@@ -457,9 +488,9 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
             local usingProfileLabel = (L and L["GOLD_MGMT_USING_PROFILE"]) or "Using profile"
             charInfo:SetText(dimHex .. usingProfileLabel .. "|r")
         end
+        FitDialogToContent()
     end
     
-    summaryCard:SetHeight(summaryY + 16 + summaryPad + 6)
     summaryCard:Show()
     updateSummary = UpdateSummaryCard
     UpdateSummaryCard()
