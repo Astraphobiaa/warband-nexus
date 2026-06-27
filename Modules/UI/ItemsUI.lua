@@ -3523,10 +3523,10 @@ function WarbandNexus:DrawItemList(parent)
     local hexColor = format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local accentColor = COLORS.accent
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
-    local headerBtnH = tm.btnH or (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
-    local HeaderFact = ns.UI and ns.UI.Factory
-    local itemsToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 130, 130 }))
-        or 230
+    local itemsToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
+        tm.actionW or 100,
+        tm.actionW or 100,
+    })) or 230
     local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "items",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r",
@@ -3540,92 +3540,33 @@ function WarbandNexus:DrawItemList(parent)
         titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
     
-    local titleEdgeInset = tm.edgeInset or 0
-    local hdrToolbarGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
-    local goldMgrBtn = HeaderFact and HeaderFact.CreateButton and HeaderFact:CreateButton(titleCard, 100, headerBtnH, true)
-    if not goldMgrBtn then
-        goldMgrBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
-        goldMgrBtn:SetSize(100, headerBtnH)
-    end
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(goldMgrBtn, titleCard, titleCard, "RIGHT", -titleEdgeInset)
-    else
-        goldMgrBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
-    end
-    
-    -- Apply highlight effect
-    if HeaderFact and HeaderFact.ApplyHighlight then
-        HeaderFact:ApplyHighlight(goldMgrBtn)
-    end
-    if ApplyVisuals then
-        local acc = COLORS.accent
-        local chrome = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-            or COLORS.bgCard or COLORS.bgLight or COLORS.bg
-        ApplyVisuals(goldMgrBtn, chrome, { acc[1], acc[2], acc[3], 0.6 })
+    local goldMgrBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        preset = "action",
+        autoWidth = true,
+        text = (ns.L and ns.L["GOLD_MANAGER_BTN"]) or "Gold Target",
+        onClick = function()
+            if self.ShowGoldManagementPopup then
+                self:ShowGoldManagementPopup()
+            end
+        end,
+    })
+    if goldMgrBtn then
+        ns.UI_AnchorTitleToolbarControlRight(titleCard, goldMgrBtn)
     end
 
-    -- Button text (no icon)
-    local goldMgrText = FontManager:CreateFontString(goldMgrBtn, "body", "OVERLAY")
-    goldMgrText:SetPoint("CENTER")
-    goldMgrText:SetText((ns.L and ns.L["GOLD_MANAGER_BTN"]) or "Gold Target")
-    ns.UI_SetTextColorRole(goldMgrText, "Bright")
-    goldMgrText:SetJustifyH("CENTER")
-    goldMgrText:SetWordWrap(false)
-    
-    -- Auto-size button based on text width (with padding)
-    C_Timer.After(0, function()
-        if goldMgrText and goldMgrText:GetStringWidth() > 0 then
-            local textWidth = goldMgrText:GetStringWidth()
-            goldMgrBtn:SetWidth(textWidth + 24)  -- 12px padding each side
-        end
-    end)
-    
-    goldMgrBtn:SetScript("OnClick", function()
-        if self.ShowGoldManagementPopup then
-            self:ShowGoldManagementPopup()
-        end
-    end)
-
-    local moneyLogsBtn = HeaderFact and HeaderFact.CreateButton and HeaderFact:CreateButton(titleCard, 100, headerBtnH, true)
-    if not moneyLogsBtn then
-        moneyLogsBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
-        moneyLogsBtn:SetSize(100, headerBtnH)
+    local moneyLogsBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        preset = "action",
+        autoWidth = true,
+        text = (ns.L and ns.L["MONEY_LOGS_BTN"]) or "Money Logs",
+        onClick = function()
+            if self.ShowCharacterBankMoneyLogPopup then
+                self:ShowCharacterBankMoneyLogPopup()
+            end
+        end,
+    })
+    if moneyLogsBtn and goldMgrBtn then
+        ns.UI_ChainTitleToolbarControl(titleCard, moneyLogsBtn, goldMgrBtn)
     end
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(moneyLogsBtn, titleCard, goldMgrBtn, "LEFT", -hdrToolbarGap)
-    else
-        moneyLogsBtn:SetPoint("RIGHT", goldMgrBtn, "LEFT", -hdrToolbarGap, 0)
-    end
-
-    if HeaderFact and HeaderFact.ApplyHighlight then
-        HeaderFact:ApplyHighlight(moneyLogsBtn)
-    end
-    if ApplyVisuals then
-        local acc = COLORS.accent
-        local chrome = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-            or COLORS.bgCard or COLORS.bgLight or COLORS.bg
-        ApplyVisuals(moneyLogsBtn, chrome, { acc[1], acc[2], acc[3], 0.6 })
-    end
-
-    local moneyLogsText = FontManager:CreateFontString(moneyLogsBtn, "body", "OVERLAY")
-    moneyLogsText:SetPoint("CENTER")
-    moneyLogsText:SetText((ns.L and ns.L["MONEY_LOGS_BTN"]) or "Money Logs")
-    ns.UI_SetTextColorRole(moneyLogsText, "Bright")
-    moneyLogsText:SetJustifyH("CENTER")
-    moneyLogsText:SetWordWrap(false)
-
-    C_Timer.After(0, function()
-        if moneyLogsText and moneyLogsText:GetStringWidth() > 0 then
-            local textWidth = moneyLogsText:GetStringWidth()
-            moneyLogsBtn:SetWidth(textWidth + 24)
-        end
-    end)
-
-    moneyLogsBtn:SetScript("OnClick", function()
-        if self.ShowCharacterBankMoneyLogPopup then
-            self:ShowCharacterBankMoneyLogPopup()
-        end
-    end)
 
     if ns.UI_HideTitleCardExpandCollapseControls then
         ns.UI_HideTitleCardExpandCollapseControls(parent)

@@ -5058,6 +5058,10 @@ function ns.UI_GetTitleCardToolbarMetrics()
         gap = sp.HEADER_TOOLBAR_CONTROL_GAP or 8,
         edgeInset = sp.TITLE_CARD_TOOLBAR_EDGE_INSET or 0,
         filterW = 96,
+        columnsW = 86,
+        hideW = 84,
+        toggleW = 88,
+        actionW = 100,
         trailingGap = 10,
     }
 end

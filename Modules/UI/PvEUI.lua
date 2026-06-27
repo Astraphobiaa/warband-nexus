@@ -160,11 +160,13 @@ local function PvE_BuildCompactHeaderLabel(col)
 end
 
 local function GetLowLevelHideThreshold(profile)
+    if ns.UI_GetLowLevelHideThreshold then
+        return ns.UI_GetLowLevelHideThreshold(profile)
+    end
     if not profile then return 0 end
     local threshold = tonumber(profile.hideLowLevelThreshold) or 0
     if threshold >= 90 then return 90 end
     if threshold >= 80 then return 80 end
-    -- Backward compatibility for older boolean setting.
     if profile.hideLowLevelCharacters == true then
         return 80
     end
@@ -178,12 +180,19 @@ local function GetLowLevelHideCycleNext(current)
 end
 
 local function GetLowLevelHideLabel(threshold)
+    if ns.UI_GetLowLevelHideLabel then
+        return ns.UI_GetLowLevelHideLabel(threshold)
+    end
     if threshold == 90 then return GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") end
     if threshold == 80 then return GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") end
     return GetLocalizedText("HIDE_FILTER_STATE_OFF", "Off")
 end
 
 local function ApplyLowLevelHideThreshold(addon, threshold)
+    if ns.UI_ApplyLowLevelHideThreshold then
+        ns.UI_ApplyLowLevelHideThreshold(addon, threshold)
+        return
+    end
     local profile = addon and addon.db and addon.db.profile
     if not profile then return end
     local nextThreshold = tonumber(threshold) or 0
@@ -1417,7 +1426,7 @@ local function BuildPvEInlineColumnDividerXs(startX, columns, gapAfterIndex)
     return xs
 end
 
--- Column picker + hide filter: PvEUI_ColumnPicker.lua (ns.PvE_AttachInlineColumnPicker)
+-- Toolbar controls: PvEUI_ColumnPicker.lua (Columns, Hide, Current toggle)
 local function GetTrovehunterBountyColumnIcon()
     local Constants = ns.Constants
     local primary = (Constants and Constants.TROVEHUNTERS_BOUNTY_ITEM_ID) or 252415
@@ -2563,7 +2572,8 @@ if not ns.PvEDrawLibs then
         EnsurePvEExtraVisibleColumns = EnsurePvEExtraVisibleColumns,
         ResolvePveDelveCurrencyColumns = ResolvePveDelveCurrencyColumns,
         GetTrovehunterBountyColumnIcon = GetTrovehunterBountyColumnIcon,
-        PvE_AttachInlineColumnPicker = ns.PvE_AttachInlineColumnPicker,
+        PvE_AttachPvEColumnsButton = ns.PvE_AttachPvEColumnsButton,
+        PvE_AttachHideLevelFilterButton = ns.PvE_AttachHideLevelFilterButton,
         PvE_GetCanonicalKeyForChar = PvE_GetCanonicalKeyForChar,
         CompareCharNameLower = CompareCharNameLower,
         SafeLower = SafeLower,
@@ -2717,7 +2727,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     local tm = L.ns.UI_GetTitleCardToolbarMetrics and L.ns.UI_GetTitleCardToolbarMetrics() or {}
     local hdrGapPve = tm.gap or (L.GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
     local pveToolbarReserve = (L.ns.UI_ComputeTitleToolbarReserve and L.ns.UI_ComputeTitleToolbarReserve({
-        168, tm.filterW or 96, 84, 88,
+        168,
+        tm.filterW or 96,
+        tm.columnsW or 86,
+        tm.toggleW or 88,
+        tm.hideW or 84,
     })) or (640 + hdrGapPve)
 
     local hdrCache = mf and mf._pveFixedHeaderCache
@@ -2754,13 +2768,14 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
     
-    -- Weekly reset timer (standardized widget)
+    -- Weekly reset timer (re-anchored left of toolbar buttons after they are placed)
     local CreateResetTimer = L.ns.UI_CreateResetTimer
     local titleEdgeInset = tm.edgeInset or 0
+    local hdrGap = tm.gap or 8
     local resetTimer = CreateResetTimer(
         titleCard,
-        "RIGHT",
-        -titleEdgeInset,
+        "TOPRIGHT",
+        0,
         0,
         function()
             -- Use centralized GetWeeklyResetTime from PlansManager
@@ -2777,9 +2792,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             return 0
         end
     )
+    if resetTimer and resetTimer.container then
+        resetTimer.container:ClearAllPoints()
+    end
     
-    -- Sort + section filter (Characters/Professions parity) or legacy sort-only control
-    local sortAnchor = resetTimer.container
+    -- Sort + section filter: buttons right-aligned (rightmost first), reset sits left of the group
+    local toolbarLeft = titleCard
     local sortOptions = (L.ns.UI_BuildCharacterSortOptions and L.ns.UI_BuildCharacterSortOptions())
         or {}
     if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
@@ -2800,25 +2818,23 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             -- PvE: section filter only — roster edits (delete custom header) stay on Character tab.
         })
         if sortBtn then
-            local hdrGap = tm.gap or 8
             if L.ns.UI_AnchorTitleCardToolbarControl then
-                L.ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, resetTimer.container, "LEFT", -hdrGap)
+                L.ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, titleCard, "RIGHT", -titleEdgeInset)
             else
-                sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -hdrGap, 0)
+                sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
             end
-            sortAnchor = sortBtn
+            toolbarLeft = sortBtn
         end
     elseif L.ns.UI_CreateCharacterSortDropdown then
         sortBtn = L.ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function()
             L.WarbandNexus:SendMessage(L.E.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
         end, "pve")
-        local hdrGap = tm.gap or 8
         if L.ns.UI_AnchorTitleCardToolbarControl then
-            L.ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, resetTimer.container, "LEFT", -hdrGap)
+            L.ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, titleCard, "RIGHT", -titleEdgeInset)
         else
-            sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -hdrGap, 0)
+            sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
         end
-        sortAnchor = sortBtn
+        toolbarLeft = sortBtn
     end
 
     if profile then
@@ -2831,14 +2847,22 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         end
     end
 
-    -- Currency view (Current / Weekly) + column visibility picker
-    local attachCurrencyToggle = L.PvE_AttachCurrencyDisplayToggle or (L.ns and L.ns.PvE_AttachCurrencyDisplayToggle)
-    if attachCurrencyToggle then
-        sortAnchor = attachCurrencyToggle(titleCard, sortAnchor, self)
+    -- Toolbar (right to left): Filter | Columns | Current | Hide | Reset
+    local attachColumnsBtn = L.PvE_AttachPvEColumnsButton or (L.ns and L.ns.PvE_AttachPvEColumnsButton)
+    if attachColumnsBtn and toolbarLeft then
+        toolbarLeft = attachColumnsBtn(titleCard, toolbarLeft, self) or toolbarLeft
     end
-    local attachColumnPicker = L.PvE_AttachInlineColumnPicker or (L.ns and L.ns.PvE_AttachInlineColumnPicker)
-    if attachColumnPicker then
-        sortAnchor = attachColumnPicker(titleCard, sortAnchor, self)
+    local attachCurrencyToggle = L.PvE_AttachCurrencyDisplayToggle or (L.ns and L.ns.PvE_AttachCurrencyDisplayToggle)
+    if attachCurrencyToggle and toolbarLeft then
+        toolbarLeft = attachCurrencyToggle(titleCard, toolbarLeft, self) or toolbarLeft
+    end
+    local attachHideBtn = L.PvE_AttachHideLevelFilterButton or (L.ns and L.ns.PvE_AttachHideLevelFilterButton)
+    if attachHideBtn and toolbarLeft then
+        toolbarLeft = attachHideBtn(titleCard, toolbarLeft, self) or toolbarLeft
+    end
+
+    if resetTimer and resetTimer.container and toolbarLeft then
+        resetTimer.container:SetPoint("RIGHT", toolbarLeft, "LEFT", -hdrGap, 0)
     end
 
     if L.ns.UI_HideTitleCardExpandCollapseControls then

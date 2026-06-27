@@ -309,7 +309,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     end
 
     local buttonHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
-    local btnWidth = 96
+    local btnWidth = ns.UI_GetTitleToolbarPresetWidth and ns.UI_GetTitleToolbarPresetWidth("filter") or 96
     local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
     if ns.UI_ApplyVisuals then
         ns.UI_ApplyVisuals(btn, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})

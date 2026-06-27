@@ -141,6 +141,7 @@ Modules\UI\SharedWidgets_RowPool.lua
 Modules\UI\SharedWidgets_Search.lua
 Modules\UI\SharedWidgets_EmptyState.lua
 Modules\UI\SharedWidgets_CharacterFilter.lua
+Modules\UI\SharedWidgets_TitleToolbar.lua
 Modules\UI\LayoutCoordinator.lua
 Modules\UI\NotificationToastFactory.lua
 Modules\NotificationManager_Presentation.lua

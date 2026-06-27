@@ -1426,8 +1426,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local shiftHintText = (ns.L and ns.L["SHIFT_HINT_SEASON_PROGRESS"]) or "Hold Shift for season progress"
     subtitle = subtitle .. "  " .. ThemeTextHex("Dim") .. "\194\183|r  " .. ThemeTextHex("Muted") .. shiftHintText .. "|r"
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
-    local currencyToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({ 118 }))
-        or 118
+    local currencyToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
+        tm.actionW or 100,
+    })) or 118
     local titleCard, _, _, _, _ = ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "currency",
         titleText = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r",
@@ -1441,24 +1442,27 @@ function WarbandNexus:DrawCurrencyTab(parent)
         titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -headerYOffset)
     end
     
-    local showZeroBtn = CreateThemedButton(titleCard, showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"), 100)
-    local titleEdgeInset = tm.edgeInset or 0
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(showZeroBtn, titleCard, titleCard, "RIGHT", -titleEdgeInset)
-    else
-        showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
+    local showZeroBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        preset = "action",
+        autoWidth = true,
+        text = showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"),
+    })
+    if showZeroBtn then
+        ns.UI_AnchorTitleToolbarControlRight(titleCard, showZeroBtn)
+        if not moduleEnabled then showZeroBtn:Hide() end
+        showZeroBtn:SetScript("OnClick", function(btn)
+            showZero = not showZero
+            self.db.profile.currencyShowZero = showZero
+            if btn._toolbarLabel then
+                btn._toolbarLabel:SetText(showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"))
+            end
+            WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
+                tab = "currency",
+                skipCooldown = true,
+                instantPopulate = true,
+            })
+        end)
     end
-    if not moduleEnabled then showZeroBtn:Hide() end
-    showZeroBtn:SetScript("OnClick", function(btn)
-        showZero = not showZero
-        self.db.profile.currencyShowZero = showZero
-        btn.text:SetText(showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"))
-        WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
-            tab = "currency",
-            skipCooldown = true,
-            instantPopulate = true,
-        })
-    end)
 
     if ns.UI_HideTitleCardExpandCollapseControls then
         ns.UI_HideTitleCardExpandCollapseControls(parent)

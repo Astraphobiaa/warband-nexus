@@ -725,7 +725,12 @@ function WarbandNexus:DrawPlansTab(parent)
     local subtitleTextContent = plansSubtitle .. " • " .. activePlanText
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local plansToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
-        100, 100, 100, 80, 120, 115,
+        tm.actionW or 100,
+        tm.actionW or 100,
+        tm.actionW or 100,
+        ns.UI_GetTitleToolbarPresetWidth and ns.UI_GetTitleToolbarPresetWidth("default") or 80,
+        120,
+        115,
     })) or 600
 
     local hdrCache = mf and mf._plansFixedHeaderCache
@@ -760,49 +765,47 @@ function WarbandNexus:DrawPlansTab(parent)
             showPlanned = ProfileBool(prof, "plansShowPlanned", false)
         end
 
-        -- Add Custom button (using shared widget)
-        local titleEdgeInset = tm.edgeInset or 0
-        local hdrToolbarGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
-        local addCustomBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_CUSTOM"]) or "Add Custom", 100)
-        if ns.UI_AnchorTitleCardToolbarControl then
-            ns.UI_AnchorTitleCardToolbarControl(addCustomBtn, titleCard, titleCard, "RIGHT", -titleEdgeInset)
-        else
-            addCustomBtn:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
+        local addCustomBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+            preset = "action",
+            text = (ns.L and ns.L["ADD_CUSTOM"]) or "Add Custom",
+            onClick = function()
+                self:ShowCustomPlanDialog()
+            end,
+        })
+        if addCustomBtn then
+            ns.UI_AnchorTitleToolbarControlRight(titleCard, addCustomBtn)
         end
-        -- Store reference for state management
         self.addCustomBtn = addCustomBtn
-        addCustomBtn:SetScript("OnClick", function()
-            self:ShowCustomPlanDialog()
-        end)
         
-        -- Add Vault button (using shared widget)
-        local addWeeklyBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_VAULT"]) or "Add Vault", 100)
-        if ns.UI_AnchorTitleCardToolbarControl then
-            ns.UI_AnchorTitleCardToolbarControl(addWeeklyBtn, titleCard, addCustomBtn, "LEFT", -hdrToolbarGap)
-        else
-            addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -hdrToolbarGap, 0)
+        local addWeeklyBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+            preset = "action",
+            text = (ns.L and ns.L["ADD_VAULT"]) or "Add Vault",
+            onClick = function()
+                self:ShowWeeklyPlanDialog()
+            end,
+        })
+        if addWeeklyBtn and addCustomBtn then
+            ns.UI_ChainTitleToolbarControl(titleCard, addWeeklyBtn, addCustomBtn)
         end
-        addWeeklyBtn:SetScript("OnClick", function()
-            self:ShowWeeklyPlanDialog()
-        end)
         
-        -- Add Quest button (opens Daily Plan dialog)
-        local addDailyBtn = CreateThemedButton(titleCard, (ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 100)
-        if ns.UI_AnchorTitleCardToolbarControl then
-            ns.UI_AnchorTitleCardToolbarControl(addDailyBtn, titleCard, addWeeklyBtn, "LEFT", -hdrToolbarGap)
-        else
-            addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -hdrToolbarGap, 0)
+        local addDailyBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+            preset = "action",
+            text = (ns.L and ns.L["ADD_QUEST"]) or "Add Quest",
+            onClick = function()
+                self:ShowDailyPlanDialog()
+            end,
+            onEnter = function(btn)
+                GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
+                GameTooltip:SetText((ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 1, 1, 1)
+                GameTooltip:AddLine((ns.L and ns.L["ADD_QUEST_TOOLTIP"]) or "Track weekly Midnight objectives for this character.", 0.85, 0.85, 0.85, true)
+                GameTooltip:Show()
+            end,
+            onLeave = function() GameTooltip:Hide() end,
+        })
+        if addDailyBtn and addWeeklyBtn then
+            ns.UI_ChainTitleToolbarControl(titleCard, addDailyBtn, addWeeklyBtn)
         end
-        addDailyBtn:SetScript("OnClick", function()
-            self:ShowDailyPlanDialog()
-        end)
-        addDailyBtn:SetScript("OnEnter", function(btn)
-            GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
-            GameTooltip:SetText((ns.L and ns.L["ADD_QUEST"]) or "Add Quest", 1, 1, 1)
-            GameTooltip:AddLine((ns.L and ns.L["ADD_QUEST_TOOLTIP"]) or "Track weekly Midnight objectives for this character.", 0.85, 0.85, 0.85, true)
-            GameTooltip:Show()
-        end)
-        addDailyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        local hdrToolbarGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
 
         -- Checkbox (using shared widget) - Next to Add Quest button
         local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
@@ -824,47 +827,46 @@ function WarbandNexus:DrawPlansTab(parent)
             end
         end
         
-        -- Reset Completed Plans button (left of Add Quest button)
-        local resetBtn = CreateThemedButton(titleCard, (ns.L and ns.L["RESET_LABEL"]) or "Reset", 80)
-        if ns.UI_AnchorTitleCardToolbarControl then
-            ns.UI_AnchorTitleCardToolbarControl(resetBtn, titleCard, addDailyBtn, "LEFT", -hdrToolbarGap)
-        else
-            resetBtn:SetPoint("RIGHT", addDailyBtn, "LEFT", -hdrToolbarGap, 0)
+        local resetBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+            preset = "default",
+            text = (ns.L and ns.L["RESET_LABEL"]) or "Reset",
+            onClick = function()
+                StaticPopupDialogs["WN_RESET_COMPLETED_PLANS"] = {
+                    text = (ns.L and ns.L["RESET_COMPLETED_CONFIRM"]) or "Are you sure you want to remove ALL completed plans?\n\nThis cannot be undone!",
+                    button1 = (ns.L and ns.L["YES_RESET"]) or "Yes, Reset",
+                    button2 = CANCEL or "Cancel",
+                    OnAccept = function()
+                        if WarbandNexus.ResetCompletedPlans then
+                            local count = WarbandNexus:ResetCompletedPlans()
+                            WarbandNexus:Print(format((ns.L and ns.L["REMOVED_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
+                        end
+                    end,
+                    timeout = 0,
+                    whileDead = true,
+                    hideOnEscape = true,
+                    preferredIndex = 3,
+                }
+                StaticPopup_Show("WN_RESET_COMPLETED_PLANS")
+            end,
+            onEnter = function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText((ns.L and ns.L["REMOVE_COMPLETED_TOOLTIP"]) or "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!", 1, 1, 1, 1)
+                GameTooltip:Show()
+            end,
+            onLeave = function() GameTooltip:Hide() end,
+        })
+        if resetBtn and addDailyBtn then
+            ns.UI_ChainTitleToolbarControl(titleCard, resetBtn, addDailyBtn)
         end
 
         -- Checkbox (left of Reset button)
-        if ns.UI_AnchorTitleCardToolbarControl then
-            ns.UI_AnchorTitleCardToolbarControl(checkbox, titleCard, resetBtn, "LEFT", -hdrToolbarGap)
-        else
-            checkbox:SetPoint("RIGHT", resetBtn, "LEFT", -hdrToolbarGap, 0)
+        if resetBtn then
+            if ns.UI_AnchorTitleCardToolbarControl then
+                ns.UI_AnchorTitleCardToolbarControl(checkbox, titleCard, resetBtn, "LEFT", -hdrToolbarGap)
+            else
+                checkbox:SetPoint("RIGHT", resetBtn, "LEFT", -hdrToolbarGap, 0)
+            end
         end
-        resetBtn:SetScript("OnClick", function()
-            -- Confirmation via StaticPopup
-            StaticPopupDialogs["WN_RESET_COMPLETED_PLANS"] = {
-                text = (ns.L and ns.L["RESET_COMPLETED_CONFIRM"]) or "Are you sure you want to remove ALL completed plans?\n\nThis cannot be undone!",
-                button1 = (ns.L and ns.L["YES_RESET"]) or "Yes, Reset",
-                button2 = CANCEL or "Cancel",
-                OnAccept = function()
-                    if WarbandNexus.ResetCompletedPlans then
-                        local count = WarbandNexus:ResetCompletedPlans()
-                        WarbandNexus:Print(format((ns.L and ns.L["REMOVED_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
-                    end
-                end,
-                timeout = 0,
-                whileDead = true,
-                hideOnEscape = true,
-                preferredIndex = 3,
-            }
-            StaticPopup_Show("WN_RESET_COMPLETED_PLANS")
-        end)
-        
-        -- Tooltip for reset button
-        resetBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText((ns.L and ns.L["REMOVE_COMPLETED_TOOLTIP"]) or "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!", 1, 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        resetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         
         -- Add text label for "Show Completed" checkbox (left of checkbox)
         local checkboxLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")

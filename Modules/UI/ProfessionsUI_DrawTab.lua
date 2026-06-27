@@ -88,16 +88,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
     end
     local profDataCharCount = CountCharsWithProfessionData(charListsForProfCount)
 
-    local expBadgeWidth = 100
-    local filterBtnW = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_WIDTH_DEFAULT) or 80
-    local btnHH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
+    local filterBtnW = tm.columnsW or (ns.UI_GetTitleToolbarPresetWidth and ns.UI_GetTitleToolbarPresetWidth("columns")) or 86
     local hdrGapEc = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
     local profToolbarReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
-        expBadgeWidth,
         filterBtnW,
         tm.filterW or 96,
-    })) or (expBadgeWidth + filterBtnW + 40 + hdrGapEc)
+    })) or (filterBtnW + 40 + hdrGapEc)
 
     local subLine = format(
         (ns.L and ns.L["PROFESSIONS_TRACKED_FORMAT"]) or "%s tracked - %s with profession data",
@@ -117,74 +114,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
         titleCard:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     end
 
-    -- Force fixed expansion view: Midnight only (filter selector removed).
+    -- Midnight-only expansion data (no toolbar selector).
     self.db.profile.professionExpansionFilter = "Midnight"
-    local expBadgeHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
-    local expBadge = ns.UI.Factory:CreateButton(titleCard, expBadgeWidth, expBadgeHeight, false)
-    if ApplyVisuals then
-        ApplyVisuals(expBadge, ChromeBackdrop(), ChromeBorder(0.6))
-    end
-    local expBadgeText = FontManager:CreateFontString(expBadge, "body", "OVERLAY")
-    expBadgeText:SetPoint("CENTER", 0, 0)
-    expBadgeText:SetJustifyH("CENTER")
-    expBadgeText:SetText((ns.L and ns.L["CONTENT_MIDNIGHT"]) or "Midnight")
-    ns.UI_SetTextColorRole(expBadgeText, "Bright")
-    expBadge:SetScript("OnClick", nil)
-    expBadge:SetScript("OnEnter", nil)
-    expBadge:SetScript("OnLeave", nil)
-    local titleEdgeInset = tm.edgeInset or 0
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(expBadge, titleCard, titleCard, "RIGHT", -titleEdgeInset)
-    else
-        expBadge:SetPoint("RIGHT", titleCard, "RIGHT", -titleEdgeInset, 0)
-    end
-    
-    local filterBtnH = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
-    local filterBtn = ns.UI.Factory:CreateButton(titleCard, filterBtnW, filterBtnH, false)
-    if ApplyVisuals then
-        ApplyVisuals(filterBtn, ChromeBackdrop(), ChromeBorder(0.6))
-    end
-    local filterBtnText = FontManager:CreateFontString(filterBtn, "body", "OVERLAY")
-    filterBtnText:SetPoint("CENTER", 0, 0)
-    filterBtnText:SetJustifyH("CENTER")
-    filterBtnText:SetText((ns.L and ns.L["COLUMNS_BUTTON"]) or "Columns")
-    ns.UI_SetTextColorRole(filterBtnText, "Bright")
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(filterBtn) end
-    local hdrGap = tm.gap or (GetLayout().HEADER_TOOLBAR_CONTROL_GAP) or 8
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(filterBtn, titleCard, expBadge, "LEFT", -hdrGap)
-    else
-        filterBtn:SetPoint("RIGHT", expBadge, "LEFT", -hdrGap, 0)
-    end
 
-    filterBtn:SetScript("OnClick", function(btn)
-        local menu = WarbandNexus._wnProfColumnPickerMenu
-        if menu and menu:IsShown() and WarbandNexus._wnProfColumnPickerAnchorBtn == btn then
-            menu:Hide()
-            return
-        end
-        if not WarbandNexus.ShowProfessionColumnPicker then return end
-        WarbandNexus:ShowProfessionColumnPicker(btn)
-    end)
-
-    if WarbandNexus._wnProfColumnPickerMenu and WarbandNexus._wnProfColumnPickerMenu:IsShown() then
-        WarbandNexus._wnProfColumnPickerAnchorBtn = filterBtn
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                local picker = WarbandNexus._wnProfColumnPickerMenu
-                local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
-                local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-                if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
-                    ProfColumnPickerHide()
-                    return
-                end
-                ProfColumnPickerPopulateMenu(picker, anchor)
-                ProfColumnPickerPositionMenu(picker, anchor)
-                picker:Show()
-                ProfColumnPickerShowCatcher(picker)
-            end)
-        end
-    end
+    local toolbarLeft = titleCard
 
     local sortBtn
     if ns.UI_CreateCharacterTabAdvancedFilterButton then
@@ -211,11 +144,8 @@ function WarbandNexus:DrawProfessionsTab(parent)
             end,
         })
         if sortBtn then
-            if ns.UI_AnchorTitleCardToolbarControl then
-                ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, filterBtn, "LEFT", -hdrGap)
-            else
-                sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -hdrGap, 0)
-            end
+            ns.UI_AnchorTitleToolbarControlRight(titleCard, sortBtn)
+            toolbarLeft = sortBtn
         end
     elseif ns.UI_CreateCharacterSortDropdown then
         local sortOptions = (ns.UI_BuildCharacterSortOptions and ns.UI_BuildCharacterSortOptions())
@@ -224,10 +154,45 @@ function WarbandNexus:DrawProfessionsTab(parent)
         sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function()
             WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { skipCooldown = true })
         end, "professions")
-        if ns.UI_AnchorTitleCardToolbarControl then
-            ns.UI_AnchorTitleCardToolbarControl(sortBtn, titleCard, filterBtn, "LEFT", -hdrGap)
-        else
-            sortBtn:SetPoint("RIGHT", filterBtn, "LEFT", -hdrGap, 0)
+        if sortBtn then
+            ns.UI_AnchorTitleToolbarControlRight(titleCard, sortBtn)
+            toolbarLeft = sortBtn
+        end
+    end
+
+    local filterBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        preset = "columns",
+        localeKey = "COLUMNS_BUTTON",
+        onClick = function(btn)
+            local menu = WarbandNexus._wnProfColumnPickerMenu
+            if menu and menu:IsShown() and WarbandNexus._wnProfColumnPickerAnchorBtn == btn then
+                menu:Hide()
+                return
+            end
+            if not WarbandNexus.ShowProfessionColumnPicker then return end
+            WarbandNexus:ShowProfessionColumnPicker(btn)
+        end,
+    })
+    if filterBtn and toolbarLeft then
+        ns.UI_ChainTitleToolbarControl(titleCard, filterBtn, toolbarLeft)
+    end
+
+    if filterBtn and WarbandNexus._wnProfColumnPickerMenu and WarbandNexus._wnProfColumnPickerMenu:IsShown() then
+        WarbandNexus._wnProfColumnPickerAnchorBtn = filterBtn
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                local picker = WarbandNexus._wnProfColumnPickerMenu
+                local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
+                local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+                if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
+                    ProfColumnPickerHide()
+                    return
+                end
+                ProfColumnPickerPopulateMenu(picker, anchor)
+                ProfColumnPickerPositionMenu(picker, anchor)
+                picker:Show()
+                ProfColumnPickerShowCatcher(picker)
+            end)
         end
     end
 

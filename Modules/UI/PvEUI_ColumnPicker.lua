@@ -435,27 +435,15 @@ local function PvE_RefreshCurrencyDisplayToggleChrome(toggleBtn, toggleLbl)
 end
 
 local function PvE_AttachCurrencyDisplayToggle(titleCard, sortAnchor, addon)
-    local Factory = ns.UI and ns.UI.Factory
-    if not Factory or not Factory.CreateButton then return sortAnchor end
+    if not sortAnchor then return sortAnchor end
 
-    local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
-    local toggleBtn = Factory:CreateButton(titleCard, 88, btnH, false)
+    local toggleBtn, toggleLbl = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        preset = "toggle",
+        text = GetLocalizedText("PVE_CURRENCY_VIEW_CURRENT", "Current"),
+    })
     if not toggleBtn then return sortAnchor end
 
-    local hdrGap = (ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics().gap) or 8
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(toggleBtn, titleCard, sortAnchor, "LEFT", -hdrGap)
-    else
-        toggleBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -hdrGap, 0)
-    end
-
-    local toggleLbl = FontManager:CreateFontString(toggleBtn, "body", "OVERLAY")
-    toggleLbl:SetPoint("CENTER", 0, 0)
-    ns.UI_SetTextColorRole(toggleLbl, "Bright")
-
-    if Factory.ApplyHighlight then
-        Factory:ApplyHighlight(toggleBtn)
-    end
+    ns.UI_ChainTitleToolbarControl(titleCard, toggleBtn, sortAnchor)
 
     PvE_RefreshCurrencyDisplayToggleChrome(toggleBtn, toggleLbl)
     WarbandNexus._wnPvECurrencyViewToggleBtn = toggleBtn
@@ -478,8 +466,12 @@ local function PvE_AttachCurrencyDisplayToggle(titleCard, sortAnchor, addon)
             and GetLocalizedText("PVE_CURRENCY_VIEW_WEEKLY", "Weekly")
             or GetLocalizedText("PVE_CURRENCY_VIEW_CURRENT", "Current")
         GameTooltip:SetText(activeLabel, 1, 1, 1)
-        GameTooltip:AddLine(toggleHint, 0.8, 0.8, 0.8)
-        GameTooltip:AddLine(shiftHint, 0.8, 0.8, 0.8)
+        local bodyR, bodyG, bodyB = 0.8, 0.8, 0.8
+        if ns.UI_GetTooltipDescColor then
+            bodyR, bodyG, bodyB = ns.UI_GetTooltipDescColor()
+        end
+        GameTooltip:AddLine(toggleHint, bodyR, bodyG, bodyB)
+        GameTooltip:AddLine(shiftHint, bodyR, bodyG, bodyB)
         GameTooltip:Show()
     end)
     toggleBtn:SetScript("OnLeave", function()
@@ -499,213 +491,62 @@ local function PvE_AttachCurrencyDisplayToggle(titleCard, sortAnchor, addon)
     return toggleBtn
 end
 
-local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
-    local Factory = ns.UI and ns.UI.Factory
-    if not Factory or not Factory.CreateButton then return sortAnchor end
+local function PvE_AttachPvEColumnsButton(titleCard, sortAnchor, addon)
+    if not sortAnchor then return sortAnchor end
 
-    local hideBtn = Factory:CreateButton(titleCard, 84, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32, false)
-    if ApplyVisuals then
-        ApplyVisuals(hideBtn, ControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
-    end
-    WarbandNexus._wnPvEHideFilterBtn = hideBtn
-    local hideBtnText = FontManager:CreateFontString(hideBtn, "body", "OVERLAY")
-    hideBtnText:SetPoint("CENTER", 0, 0)
-    hideBtnText:SetJustifyH("CENTER")
-    ns.UI_SetTextColorRole(hideBtnText, "Bright")
-    hideBtnText:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"))
-    if Factory.ApplyHighlight then Factory:ApplyHighlight(hideBtn) end
-    local hdrGapPicker = (ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics().gap) or 8
-    if ns.UI_AnchorTitleCardToolbarControl then
-        ns.UI_AnchorTitleCardToolbarControl(hideBtn, titleCard, sortAnchor, "LEFT", -hdrGapPicker)
-    else
-        hideBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -hdrGapPicker, 0)
-    end
+    local columnsBtn = ns.UI_CreateTitleToolbarTextButton(titleCard, {
+        preset = "columns",
+        localeKey = "COLUMNS_BUTTON",
+        onClick = function(btn)
+            WarbandNexus._wnPvEColumnPickerAnchorBtn = btn
+            local menu = WarbandNexus._wnPvEColumnPickerMenu
+            if menu and menu:IsShown() then
+                WarbandNexus:HidePvEColumnPickerMenu()
+                return
+            end
 
-    local function HideMenuClose()
-        if hideBtn._menu and hideBtn._menu:IsShown() then hideBtn._menu:Hide() end
-        if hideBtn._catcher and hideBtn._catcher:IsShown() then hideBtn._catcher:Hide() end
-    end
-    local function HideMenuApply(threshold, keepMenuOpen)
-        ApplyLowLevelHideThreshold(addon, threshold)
-        if not keepMenuOpen then
-            HideMenuClose()
-        end
-    end
-    local function HideMenuBuild()
-        local menu = hideBtn._menu
-        if not menu then
-            menu = Factory:CreateContainer(UIParent, 132, 66, false)
-            if not menu then
-                menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-                menu:SetBackdrop({
-                    bgFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeSize = 1,
-                    insets = { left = 0, right = 0, top = 0, bottom = 0 },
-                })
-                menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
-                menu:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75)
-            elseif ApplyVisuals then
-                ApplyVisuals(menu, ControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
-            else
-                if not menu.SetBackdrop and BackdropTemplateMixin then
-                    Mixin(menu, BackdropTemplateMixin)
-                end
-                menu:SetBackdrop({
-                    bgFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeSize = 1,
-                    insets = { left = 0, right = 0, top = 0, bottom = 0 },
-                })
-                menu:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
-                menu:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75)
-            end
-            menu:SetFrameStrata("FULLSCREEN_DIALOG")
-            menu:SetFrameLevel(5200)
-            hideBtn._menu = menu
-            if Factory.EnsureDropdownEscClose then
-                Factory:EnsureDropdownEscClose(menu)
-            end
-        end
-        local profile = addon and addon.db and addon.db.profile
-        local cur = GetLowLevelHideThreshold(profile)
-        local options = {
-            { value = 80, label = GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") },
-            { value = 90, label = GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") },
-        }
-        local children = { menu:GetChildren() }
-        local bin = ns.UI_RecycleBin
-        for i = 1, #children do
-            children[i]:Hide()
-            if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
-        end
-        local rowH = 30
-        local menuInnerW = math.max(42, menu:GetWidth() - 6)
-        for i = 1, #options do
-            local opt = options[i]
-            -- Factory shell + single ApplyVisuals pass (avoid default CreateButton fill before row tint).
-            local row = Factory:CreateButton(menu, menuInnerW, rowH - 2, true)
-            row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * rowH)
-            row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * rowH)
-            row:SetHeight(rowH - 2)
-            row:RegisterForClicks("LeftButtonUp")
-            local selBg = ControlChromeHoverBackdrop()
-            if (opt.value == cur) then
-                selBg = { selBg[1] * 1.08, selBg[2] * 1.08, selBg[3] * 1.08, selBg[4] or 1 }
-            end
-            if ApplyVisuals then
-                ApplyVisuals(row, selBg, { COLORS.accent[1] * 0.45, COLORS.accent[2] * 0.45, COLORS.accent[3] * 0.45, 0.45 })
-            else
-                if not row.SetBackdrop and BackdropTemplateMixin then
-                    Mixin(row, BackdropTemplateMixin)
-                end
-                if row.SetBackdrop then
-                    row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-                    row:SetBackdropColor(selBg, selBg, (opt.value == cur) and 0.20 or 0.10, 1)
-                end
-            end
-            local cb = ns.UI_CreateThemedCheckbox and ns.UI_CreateThemedCheckbox(row, opt.value == cur)
-            if not cb then return menu end
-            cb:SetSize(16, 16)
-            cb:SetPoint("LEFT", row, "LEFT", 6, 0)
-            cb:EnableMouse(false)
-            local fs = FontManager:CreateFontString(row, "body", "OVERLAY")
-            fs:SetPoint("LEFT", cb, "RIGHT", 6, 0)
-            fs:SetJustifyH("LEFT")
-            fs:SetText(opt.label)
-            ns.UI_SetTextColorRole(fs, "Bright")
-            row:SetScript("OnClick", function()
-                local active = GetLowLevelHideThreshold(addon and addon.db and addon.db.profile)
-                local nextThreshold = (active == opt.value) and 0 or opt.value
-                HideMenuApply(nextThreshold, true)
-                HideMenuBuild()
-            end)
-        end
-        return menu
-    end
-    hideBtn:SetScript("OnClick", function(self)
-        local menu = hideBtn._menu
-        if menu and menu:IsShown() then
-            HideMenuClose()
-            return
-        end
-        -- avoid overlap with columns menu
-        WarbandNexus:HidePvEColumnPickerMenu()
-        menu = HideMenuBuild()
-        menu:ClearAllPoints()
-        menu:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, -4)
-        menu:Show()
-        local catcher = hideBtn._catcher
-        if not catcher then
-            -- Intentionally raw fullscreen dismiss layer (parity with Columns picker catcher; strata/order).
-            catcher = CreateFrame("Button", nil, UIParent)
-            catcher:SetAllPoints(UIParent)
-            catcher:SetFrameStrata("FULLSCREEN_DIALOG")
-            catcher:SetFrameLevel(5199)
-            catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-            catcher:SetScript("OnClick", function(_, button)
-                if menu and menu:IsShown() and not menu:IsMouseOver() and not hideBtn:IsMouseOver() then
-                    HideMenuClose()
-                end
-            end)
-            hideBtn._catcher = catcher
-        end
-        catcher:Show()
-    end)
-    hideBtn:SetScript("OnEnter", function(self)
-        if not GameTooltip then return end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
-        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_TOGGLE", "Toggle filters: Level 80 / Level 90"), 0.8, 0.8, 0.8)
-        local profile = addon and addon.db and addon.db.profile
-        local cur = GetLowLevelHideThreshold(profile)
-        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_CURRENT", "Current: %s"):format(GetLowLevelHideLabel(cur)), 0.4, 1, 0.4)
-        GameTooltip:Show()
-    end)
-    hideBtn:SetScript("OnLeave", function()
-        if GameTooltip then GameTooltip:Hide() end
-    end)
+            menu = PvE_GetOrCreateColumnPickerMenu()
+            if not menu then return end
 
-    local columnsBtn = Factory:CreateButton(titleCard, 86, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32, false)
-    if ApplyVisuals then
-        ApplyVisuals(columnsBtn, ControlChromeBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
-    end
-    local columnsBtnText = FontManager:CreateFontString(columnsBtn, "body", "OVERLAY")
-    columnsBtnText:SetPoint("CENTER", 0, 0)
-    columnsBtnText:SetJustifyH("CENTER")
-    columnsBtnText:SetText(GetLocalizedText("COLUMNS_BUTTON", "Columns"))
-    ns.UI_SetTextColorRole(columnsBtnText, "Bright")
-    if Factory.ApplyHighlight then Factory:ApplyHighlight(columnsBtn) end
-    columnsBtn:SetPoint("RIGHT", hideBtn, "LEFT", -8, 0)
+            PvE_ColumnPickerPopulateMenu(menu, addon)
+            PvE_ColumnPickerPositionMenu(menu, btn)
+            PvE_ColumnPickerHideTooltipLayers()
+            menu:Show()
+            PvE_ColumnPickerShowCatcher(menu)
+        end,
+    })
+    if not columnsBtn then return sortAnchor end
 
+    ns.UI_ChainTitleToolbarControl(titleCard, columnsBtn, sortAnchor)
     WarbandNexus._wnPvEColumnPickerAnchorBtn = columnsBtn
-
-    columnsBtn:SetScript("OnClick", function(btn)
-        WarbandNexus._wnPvEColumnPickerAnchorBtn = btn
-        local menu = WarbandNexus._wnPvEColumnPickerMenu
-        if menu and menu:IsShown() then
-            WarbandNexus:HidePvEColumnPickerMenu()
-            return
-        end
-
-        menu = PvE_GetOrCreateColumnPickerMenu()
-        if not menu then return end
-
-        PvE_ColumnPickerPopulateMenu(menu, addon)
-        PvE_ColumnPickerPositionMenu(menu, btn)
-        PvE_ColumnPickerHideTooltipLayers()
-        menu:Show()
-        PvE_ColumnPickerShowCatcher(menu)
-    end)
-
     return columnsBtn
+end
+
+local function PvE_AttachHideLevelFilterButton(titleCard, sortAnchor, addon)
+    if not sortAnchor then return sortAnchor end
+
+    local hideBtn = ns.UI_CreateTitleToolbarHideLevelButton(titleCard, {
+        addon = addon,
+        globalRefKey = "_wnPvEHideFilterBtn",
+        onBeforeOpen = function()
+            if WarbandNexus.HidePvEColumnPickerMenu then
+                WarbandNexus:HidePvEColumnPickerMenu()
+            end
+        end,
+    })
+    if not hideBtn then return sortAnchor end
+
+    ns.UI_ChainTitleToolbarControl(titleCard, hideBtn, sortAnchor)
+    return hideBtn
 end
 
 ns.PvE_RefreshCurrencyDisplayToggleChrome = PvE_RefreshCurrencyDisplayToggleChrome
 ns.PvE_AttachCurrencyDisplayToggle = PvE_AttachCurrencyDisplayToggle
-ns.PvE_AttachInlineColumnPicker = PvE_AttachInlineColumnPicker
+ns.PvE_AttachPvEColumnsButton = PvE_AttachPvEColumnsButton
+ns.PvE_AttachHideLevelFilterButton = PvE_AttachHideLevelFilterButton
 -- PvEDrawLibs snapshots ns refs at PvEUI.lua load; patch after this satellite loads.
 if ns.PvEDrawLibs then
     ns.PvEDrawLibs.PvE_AttachCurrencyDisplayToggle = PvE_AttachCurrencyDisplayToggle
-    ns.PvEDrawLibs.PvE_AttachInlineColumnPicker = PvE_AttachInlineColumnPicker
+    ns.PvEDrawLibs.PvE_AttachPvEColumnsButton = PvE_AttachPvEColumnsButton
+    ns.PvEDrawLibs.PvE_AttachHideLevelFilterButton = PvE_AttachHideLevelFilterButton
 end

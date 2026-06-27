@@ -483,8 +483,6 @@ local HEADER_H       = UI_LAYOUT.HEADER_HEIGHT or 32
 local GEAR_CHAR_SELECTOR_WIDTH = 292
 local GEAR_CHAR_SELECTOR_HEIGHT = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or HEADER_H or 32
 local GEAR_CHAR_DROPDOWN_ENTRY_H = (ns.UI_LAYOUT and ns.UI_LAYOUT.DROPDOWN_MENU_ROW_HEIGHT) or (ns.UI_LAYOUT and ns.UI_LAYOUT.ROW_HEIGHT) or 26
-local GEAR_HIDE_FILTER_BUTTON_W = 84
-
 -- Paper doll: paperdoll (left) | recommendations (right); stats/currencies panels removed
 -- [[WN_GEAR_PAPERDOLL_MOVED]]
 -- Paperdoll chunk lives in GearUI_Paperdoll.lua (Lua 200-local limit)
@@ -533,11 +531,13 @@ local function GetSelectedCharKey()
 end
 
 local function GetLowLevelHideThreshold(profile)
+    if ns.UI_GetLowLevelHideThreshold then
+        return ns.UI_GetLowLevelHideThreshold(profile)
+    end
     if not profile then return 0 end
     local threshold = tonumber(profile.hideLowLevelThreshold) or 0
     if threshold >= 90 then return 90 end
     if threshold >= 80 then return 80 end
-    -- Backward compatibility for older boolean setting.
     if profile.hideLowLevelCharacters == true then
         return 80
     end
@@ -551,12 +551,19 @@ local function GetLowLevelHideCycleNext(current)
 end
 
 local function GetLowLevelHideLabel(threshold)
+    if ns.UI_GetLowLevelHideLabel then
+        return ns.UI_GetLowLevelHideLabel(threshold)
+    end
     if threshold == 90 then return GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") end
     if threshold == 80 then return GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") end
     return GetLocalizedText("HIDE_FILTER_STATE_OFF", "Off")
 end
 
 local function ApplyLowLevelHideThreshold(threshold)
+    if ns.UI_ApplyLowLevelHideThreshold then
+        ns.UI_ApplyLowLevelHideThreshold(WarbandNexus, threshold)
+        return
+    end
     local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
     if not profile then return end
     local nextThreshold = tonumber(threshold) or 0
@@ -2704,154 +2711,19 @@ end
 local function CreateGearHeaderHideButton(parent)
     local btn = gearHideFilterBtn
     if not btn then
-        btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-        btn:SetSize(GEAR_HIDE_FILTER_BUTTON_W, (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or GEAR_CHAR_SELECTOR_HEIGHT or 32)
-        btn:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
-            insets = { left = 0, right = 0, top = 0, bottom = 0 },
-        })
-        local txt = FontManager:CreateFontString(btn, "body", "OVERLAY")
-        txt:SetPoint("CENTER", 0, 0)
-        txt:SetJustifyH("CENTER")
-        ns.UI_SetTextColorRole(txt, "Bright")
-        btn._text = txt
-        RegisterGearAccentChrome(btn)
-        gearHideFilterBtn = btn
-    end
-
-    btn:SetParent(parent)
-    btn:ClearAllPoints()
-    ApplyGearControlChromeIdle(btn)
-
-    btn._text:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"))
-
-    local function HideMenuClose()
-        if btn._menu and btn._menu:IsShown() then btn._menu:Hide() end
-        if btn._catcher and btn._catcher:IsShown() then btn._catcher:Hide() end
-    end
-    local function HideMenuApply(threshold, keepMenuOpen)
-        ApplyLowLevelHideThreshold(threshold)
-        if not keepMenuOpen then
-            HideMenuClose()
-        end
-    end
-    local function HideMenuBuild()
-        local menu = btn._menu
-        if not menu then
-            menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-            menu:SetFrameStrata("FULLSCREEN_DIALOG")
-            menu:SetFrameLevel(5200)
-            menu:SetSize(132, 66)
-            menu:SetBackdrop({
-                bgFile = "Interface\\Buttons\\WHITE8x8",
-                edgeFile = "Interface\\Buttons\\WHITE8x8",
-                edgeSize = 1,
-                insets = { left = 0, right = 0, top = 0, bottom = 0 },
-            })
-            ApplyGearDropdownMenuChrome(menu)
-            btn._menu = menu
-        end
-        local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-        local cur = GetLowLevelHideThreshold(profile)
-        local options = {
-            { value = 80, label = GetLocalizedText("HIDE_FILTER_LEVEL_80", "Level 80") },
-            { value = 90, label = GetLocalizedText("HIDE_FILTER_LEVEL_90", "Level 90") },
-        }
-        local children = { menu:GetChildren() }
-        local bin = ns.UI_RecycleBin
-        for i = 1, #children do
-            children[i]:Hide()
-            if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
-        end
-        local rowH = 30
-        for i = 1, #options do
-            local opt = options[i]
-            local row = CreateFrame("Button", nil, menu, "BackdropTemplate")
-            row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * rowH)
-            row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * rowH)
-            row:SetHeight(rowH - 2)
-            row:RegisterForClicks("LeftButtonUp")
-            row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-            row._wnHideThreshold = opt.value
-            local bgColor = (ns.UI_GetDropdownRowBackdrop and ns.UI_GetDropdownRowBackdrop(opt.value == cur))
-                or COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
-            row:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
-            local cb = ns.UI_CreateThemedCheckbox and ns.UI_CreateThemedCheckbox(row, opt.value == cur)
-            if not cb then return menu end
-            cb:SetSize(16, 16)
-            cb:SetPoint("LEFT", row, "LEFT", 6, 0)
-            cb:EnableMouse(false)
-            local fs = FontManager:CreateFontString(row, "body", "OVERLAY")
-            fs:SetPoint("LEFT", cb, "RIGHT", 6, 0)
-            fs:SetJustifyH("LEFT")
-            fs:SetText(opt.label)
-            ns.UI_SetTextColorRole(fs, "Bright")
-            row:SetScript("OnClick", function()
-                local active = GetLowLevelHideThreshold(WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile)
-                local nextThreshold = (active == opt.value) and 0 or opt.value
-                HideMenuApply(nextThreshold, true)
-                HideMenuBuild()
-            end)
-        end
-        return menu
-    end
-
-    btn:SetScript("OnClick", function(self)
-        local menu = btn._menu
-        if menu and menu:IsShown() then
-            HideMenuClose()
-            return
-        end
-        if ns.HideGearCharacterDropdown then
-            ns.HideGearCharacterDropdown()
-        end
-        menu = HideMenuBuild()
-        menu:ClearAllPoints()
-        menu:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, -4)
-        menu:Show()
-        local catcher = btn._catcher
-        if not catcher then
-            catcher = GearFact:CreateButton(UIParent, 64, 64, true)
-            catcher:SetAllPoints(UIParent)
-            catcher:SetFrameStrata("FULLSCREEN_DIALOG")
-            catcher:SetFrameLevel(5199)
-            catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-            catcher:SetScript("OnClick", function(_, button)
-                if menu and menu:IsShown() and not menu:IsMouseOver() and not btn:IsMouseOver() then
-                    HideMenuClose()
+        btn = ns.UI_CreateTitleToolbarHideLevelButton(parent, {
+            onBeforeOpen = function()
+                if ns.HideGearCharacterDropdown then
+                    ns.HideGearCharacterDropdown()
                 end
-            end)
-            btn._catcher = catcher
-        end
-        catcher:Show()
-    end)
-    btn:SetScript("OnEnter", function(self)
-        local C = COLORS or ns.UI_COLORS or {}
-        local a = C.accent or { 0.5, 0.3, 0.8 }
-        local hover = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop())
-            or COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
-        if ApplyVisuals then
-            ApplyVisuals(self, hover, { a[1], a[2], a[3], 1 })
-        elseif self.SetBackdropBorderColor then
-            self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
-        end
-        if not GameTooltip then return end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText(GetLocalizedText("HIDE_FILTER_BUTTON", "Hide"), 1, 1, 1)
-        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_TOGGLE", "Toggle filters: Level 80 / Level 90"), 0.8, 0.8, 0.8)
-        local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-        local cur = GetLowLevelHideThreshold(profile)
-        GameTooltip:AddLine(GetLocalizedText("HIDE_FILTER_TOOLTIP_CURRENT", "Current: %s"):format(GetLowLevelHideLabel(cur)), 0.4, 1, 0.4)
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", function(self)
-        ApplyGearControlChromeIdle(self)
-        if GameTooltip then GameTooltip:Hide() end
-    end)
-
-    btn:Show()
+            end,
+        })
+        gearHideFilterBtn = btn
+    else
+        btn:SetParent(parent)
+        btn:ClearAllPoints()
+        btn:Show()
+    end
     return btn
 end
 
@@ -3194,8 +3066,8 @@ function WarbandNexus:DrawGearTab(parent)
     local tm = ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics() or {}
     local gearHeaderRightReserve = (ns.UI_ComputeTitleToolbarReserve and ns.UI_ComputeTitleToolbarReserve({
         GEAR_CHAR_SELECTOR_WIDTH,
-        GEAR_HIDE_FILTER_BUTTON_W,
-    })) or (GEAR_CHAR_SELECTOR_WIDTH + GEAR_HIDE_FILTER_BUTTON_W + (tm.gap or 8))
+        tm.hideW or 84,
+    })) or (GEAR_CHAR_SELECTOR_WIDTH + (tm.hideW or 84) + (tm.gap or 8))
 
     local headerCard = select(1, ns.UI_CreateStandardTabTitleCard(headerParent, {
         tabKey = "gear",
