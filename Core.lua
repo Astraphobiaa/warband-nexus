@@ -325,6 +325,8 @@ local defaults = {
             key = nil,        -- nil = no sorting (default order)
             ascending = true,
         },
+        -- PvE currency columns: "current" (owned) or "weekly" (earn progress); Shift inverts while held.
+        pveCurrencyDisplayMode = "current",
         -- Weekly Vault Tracker column filter (PvE tab); default off — user opts in via checkbox or minimap
         pveVaultTrackerMode = false,
 

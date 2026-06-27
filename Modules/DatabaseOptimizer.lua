@@ -350,6 +350,13 @@ function WarbandNexus:OptimizeDatabase()
     return results
 end
 
+--- Invalidate all service caches (version reset; backup snapshot per cache). Used by manual optimize.
+function WarbandNexus:ClearAllCaches()
+    for name in pairs(CACHE_PATHS) do
+        self:InvalidateCache(name, "optimize")
+    end
+end
+
 -- USER INTERFACE
 
 --[[

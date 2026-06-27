@@ -310,20 +310,24 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         headerText:Hide()
     end
     
+    -- Pooled rows (PvE / Storage) refresh visualOpts each paint; click must read latest callbacks.
+    header._wnCollVisualOpts = visualOpts
+
     -- Click handler: optional animatedContent body resizes instantly; then onToggle / callbacks.
     header:SetScript("OnClick", function()
         isExpanded = not isExpanded
         ns.UI_CollapseExpandSetState(expandIcon, isExpanded)
 
-        local persistToggleFn = visualOpts and visualOpts.persistToggle
+        local vo = header._wnCollVisualOpts or visualOpts
+        local persistToggleFn = vo and vo.persistToggle
         if persistToggleFn then
             persistToggleFn(isExpanded)
         end
 
-        local animContent = visualOpts and visualOpts.animatedContent
-        local deferToggleUntilComplete = visualOpts and visualOpts.deferOnToggleUntilComplete == true
-        local sectionOnUpdate = visualOpts and visualOpts.sectionOnUpdate
-        local sectionOnCompleteFn = visualOpts and visualOpts.sectionOnComplete
+        local animContent = vo and vo.animatedContent
+        local deferToggleUntilComplete = vo and vo.deferOnToggleUntilComplete == true
+        local sectionOnUpdate = vo and vo.sectionOnUpdate
+        local sectionOnCompleteFn = vo and vo.sectionOnComplete
         local function callSectionOnComplete(expandedState)
             if type(sectionOnCompleteFn) == "function" then
                 sectionOnCompleteFn(expandedState)
@@ -337,15 +341,15 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
                 if fullH and fullH > 0 then animContent._wnSectionFullH = fullH end
             end
 
-            local toggleBeforeCollapse = visualOpts and visualOpts.applyToggleBeforeCollapseAnimate == true
+            local toggleBeforeCollapse = vo and vo.applyToggleBeforeCollapseAnimate == true
             if not isExpanded then
                 if toggleBeforeCollapse then
                     onToggle(isExpanded)
                 end
-                if visualOpts and visualOpts.hideBodyBeforeCollapseAnimate then
+                if vo and vo.hideBodyBeforeCollapseAnimate then
                     animContent:Hide()
                 end
-                local drawEnd = (visualOpts and visualOpts.minBodyHeight) or 0.1
+                local drawEnd = (vo and vo.minBodyHeight) or 0.1
                 animContent:SetHeight(drawEnd)
                 if sectionOnUpdate then sectionOnUpdate(drawEnd) end
                 if not toggleBeforeCollapse then

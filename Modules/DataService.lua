@@ -977,6 +977,14 @@ function WarbandNexus:SaveCurrentCharacterData(options)
         local bankArray = (self.db.char.personalBank and self.db.char.personalBank.items) and tableToItemArrayForStorage(self.db.char.personalBank.items) or nil
         if bagsArray then self:SaveItemsCompressed(key, "bags", bagsArray) end
         if bankArray then self:SaveItemsCompressed(key, "bank", bankArray) end
+        if self.db.char then
+            if self.db.char.bags and self.db.char.bags.items then
+                self.db.char.bags.items = nil
+            end
+            if self.db.char.personalBank and self.db.char.personalBank.items then
+                self.db.char.personalBank.items = nil
+            end
+        end
     end
 
     -- WoW SavedVariables uses 32-bit integers (max: 2,147,483,647)

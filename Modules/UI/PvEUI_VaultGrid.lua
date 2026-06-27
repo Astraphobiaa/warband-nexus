@@ -8,6 +8,13 @@ local _, ns = ...
 ns.PvEUI = ns.PvEUI or {}
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
+local ApplyVisuals = ns.UI_ApplyVisuals
+local COLORS = ns.UI_COLORS
+local FormatNumber = ns.UI_FormatNumber or function(n)
+    local num = tonumber(n)
+    if num == nil then return "0" end
+    return tostring(num)
+end
 
 local VAULT_SLOT_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
 local VAULT_SLOT_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
@@ -731,7 +738,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
     -- Re-apply border after dimension change (skip when painting onto a plain container — WVT outer card already framed)
     if ApplyVisuals and applyVaultCardChrome then
         local cardBg = surfaceTier("card", { 0.05, 0.05, 0.07, 0.95 })
-        local accentColor = COLORS.accent
+        local accentColor = (COLORS and COLORS.accent) or (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.4, 0.2, 0.58 }
         ApplyVisuals(vaultCard, cardBg, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     end
 
@@ -895,9 +902,11 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                     hlTex:SetColorTexture(1, 1, 1, 0.07)
                     slotFrame:SetHighlightTexture(hlTex)
                 else
-                    ApplyVisuals(slotFrame,
-                        {ac[1] * 0.14, ac[2] * 0.14, ac[3] * 0.18, 1},
-                        {ac[1] * 0.70, ac[2] * 0.70, ac[3] * 0.70, 0.70})
+                    if ApplyVisuals then
+                        ApplyVisuals(slotFrame,
+                            {ac[1] * 0.14, ac[2] * 0.14, ac[3] * 0.18, 1},
+                            {ac[1] * 0.70, ac[2] * 0.70, ac[3] * 0.70, 0.70})
+                    end
                     local hl = slotFrame:CreateTexture(nil, "HIGHLIGHT")
                     hl:SetAllPoints()
                     hl:SetColorTexture(ac[1], ac[2], ac[3], 0.14)

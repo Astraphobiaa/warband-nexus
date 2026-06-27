@@ -496,14 +496,16 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
     local specTabs = {}
     local foundCurrency = false
 
-    local function EstimateTreeMaxFromNodes(treeID, seenNodes)
-        if not treeID or treeID <= 0 then return 0, {} end
-        if not C_Traits or not C_Traits.GetTreeNodes or not C_Traits.GetNodeInfo then return 0, {} end
+    --- Pool-max uses deduped node IDs across tabs; tab summary counts every node in this tree.
+    --- Persisted shape is summary-only (no per-node arrays) — UI reads totals from ProfessionInfoWindow / ProfessionsUI.
+    local function ScanKnowledgeTree(treeID, seenNodes)
+        if not treeID or treeID <= 0 then return 0, 0, 0, 0, 0 end
+        if not C_Traits or not C_Traits.GetTreeNodes or not C_Traits.GetNodeInfo then return 0, 0, 0, 0, 0 end
         local ok, nodeIDs = pcall(C_Traits.GetTreeNodes, treeID)
-        if not ok or not nodeIDs or #nodeIDs == 0 then return 0, {} end
+        if not ok or not nodeIDs or #nodeIDs == 0 then return 0, 0, 0, 0, 0 end
 
-        local total = 0
-        local nodeDetails = {}
+        local poolMax = 0
+        local tabTotalRanks, tabSpentRanks, tabAllocated, tabNodeCount = 0, 0, 0, 0
         for n = 1, #nodeIDs do
             local nodeID = nodeIDs[n]
             local isNewForMax = not seenNodes or not seenNodes[nodeID]
@@ -528,92 +530,21 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
                     maxRanks = best
                 end
 
-                -- Resolve node name via definition chain: entryID -> definitionID -> overrideName / spellID
-                -- Uses ResolveAPIString to handle Blizzard secret values (TWW 11.0+)
-                -- Try all entryIDs (active first, then rest) — Midnight API may return name from alternate entry
-                local nodeName = nil
-                local entryIDsToTry = {}
-                if nodeInfo.activeEntry and nodeInfo.activeEntry.entryID then
-                    entryIDsToTry[#entryIDsToTry + 1] = nodeInfo.activeEntry.entryID
-                end
-                if nodeInfo.entryIDs then
-                    for e = 1, #nodeInfo.entryIDs do
-                        local eid = nodeInfo.entryIDs[e]
-                        if eid and (not nodeInfo.activeEntry or eid ~= nodeInfo.activeEntry.entryID) then
-                            entryIDsToTry[#entryIDsToTry + 1] = eid
-                        end
-                    end
-                end
-                for ei = 1, #entryIDsToTry do
-                    if nodeName then break end
-                    local resolveEntryID = entryIDsToTry[ei]
-                    if resolveEntryID and C_Traits.GetEntryInfo and C_Traits.GetDefinitionInfo then
-                        local eOk2, entryInf = pcall(C_Traits.GetEntryInfo, configID, resolveEntryID)
-                        if eOk2 and entryInf and entryInf.definitionID then
-                            -- Entry-level name can exist for some profession trees
-                            if entryInf.name then
-                                nodeName = ResolveAPIString(entryInf.name)
-                            end
-                            local dOk, defInfo = pcall(C_Traits.GetDefinitionInfo, entryInf.definitionID)
-                            if dOk and defInfo then
-                                if not nodeName then
-                                    nodeName = ResolveAPIString(defInfo.overrideName)
-                                end
-                                if not nodeName and defInfo.name then
-                                    nodeName = ResolveAPIString(defInfo.name)
-                                end
-                                if not nodeName and defInfo.spellID then
-                                    nodeName = ResolveSpellName(defInfo.spellID)
-                                end
-                                -- overriddenSpellID can hold the display spell for some profession nodes
-                                if not nodeName and defInfo.overriddenSpellID and defInfo.overriddenSpellID > 0 then
-                                    nodeName = ResolveSpellName(defInfo.overriddenSpellID)
-                                end
-                            end
-                        end
-                    end
-                end
-                -- Additional fallback path for client variants exposing nodeInfo.name directly.
-                if not nodeName and nodeInfo.name then
-                    nodeName = ResolveAPIString(nodeInfo.name)
-                end
-
-                local currentRank = nodeInfo.currentRank or nodeInfo.activeRank or 0
-
-                -- Collect edge targets for tree layout
-                local edgeTargets = nil
-                if nodeInfo.visibleEdges and #nodeInfo.visibleEdges > 0 then
-                    edgeTargets = {}
-                    for e = 1, #nodeInfo.visibleEdges do
-                        local edge = nodeInfo.visibleEdges[e]
-                        if edge and edge.targetNode then
-                            edgeTargets[#edgeTargets + 1] = edge.targetNode
-                        end
-                    end
-                    if #edgeTargets == 0 then edgeTargets = nil end
-                end
-
-                if isNewForMax and type(maxRanks) == "number" and maxRanks > 0 then
-                    total = total + maxRanks
-                end
-
-                -- Store node detail with position data for tree layout
                 if type(maxRanks) == "number" and maxRanks > 0 then
-                    local hasName = (nodeName ~= nil)
-                    nodeDetails[#nodeDetails + 1] = {
-                        name = nodeName or (currentRank > 0 and "Unknown Node" or nil),
-                        hasRealName = hasName,
-                        currentRank = currentRank,
-                        maxRanks = maxRanks,
-                        nodeID = nodeID,
-                        posX = nodeInfo.posX or 0,
-                        posY = nodeInfo.posY or 0,
-                        edges = edgeTargets,
-                    }
+                    local currentRank = nodeInfo.currentRank or nodeInfo.activeRank or 0
+                    tabNodeCount = tabNodeCount + 1
+                    tabTotalRanks = tabTotalRanks + maxRanks
+                    tabSpentRanks = tabSpentRanks + currentRank
+                    if currentRank > 0 then
+                        tabAllocated = tabAllocated + 1
+                    end
+                    if isNewForMax then
+                        poolMax = poolMax + maxRanks
+                    end
                 end
             end
         end
-        return total, nodeDetails
+        return poolMax, tabTotalRanks, tabSpentRanks, tabAllocated, tabNodeCount
     end
 
     local seenKnowledgeNodes = {}
@@ -640,13 +571,17 @@ local function CollectKnowledgeForSkillLine(skillLineID, profName)
             end
         end
 
-        local treeMax, treeNodeDetails = EstimateTreeMaxFromNodes(tabID, seenKnowledgeNodes)
+        local treeMax, tabTotalRanks, tabSpentRanks, tabAllocated, tabNodeCount =
+            ScanKnowledgeTree(tabID, seenKnowledgeNodes)
 
         specTabs[#specTabs + 1] = {
             tabID = tabID,
             name  = tabName,
             state = tabState,
-            nodes = treeNodeDetails,
+            totalRanks = tabTotalRanks,
+            spentRanks = tabSpentRanks,
+            allocatedNodes = tabAllocated,
+            totalNodes = tabNodeCount,
         }
 
         if treeMax and treeMax > 0 then

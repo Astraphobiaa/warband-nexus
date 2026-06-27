@@ -472,7 +472,15 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
     end
 
     local function measureSeasonCell(cd)
-        if not cd or not formatSeasonShift then return 0 end
+        if not cd then return 0 end
+        local fmtCurrent = ns.UI_FormatPvECurrencyCurrentLine
+        local fmtWeekly = ns.UI_FormatPvECurrencyWeeklyLine
+        if fmtCurrent and fmtWeekly then
+            local wCurrent = PvE_MeasurePlainWidth(bodyFs, fmtCurrent(cd))
+            local wWeekly = PvE_MeasurePlainWidth(bodyFs, fmtWeekly(cd))
+            return math.max(wCurrent, wWeekly)
+        end
+        if not formatSeasonShift then return 0 end
         local wNormal = PvE_MeasurePlainWidth(bodyFs, formatSeasonShift(cd, false, compactShift))
         local wShift = PvE_MeasurePlainWidth(bodyFs, formatSeasonShift(cd, true, compactShift))
         return math.max(wNormal, wShift)
@@ -499,21 +507,32 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
         end
         if key == "restored_key" and ctx.keyId then
             local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.keyId, charKey)
-            local q = cd and cd.quantity or 0
-            return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
+            if cd then
+                return measureSeasonCell(cd)
+            end
+            return PvE_MeasurePlainWidth(bodyFs, emDash)
         end
         if key == "shard_of_dundun" and ctx.dundunId then
             local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.dundunId, charKey)
+            if formatSeasonShift and cd then
+                return measureSeasonCell(cd)
+            end
             local q = tonumber(cd and cd.quantity) or 0
             return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
         end
         if key == "voidcore" and ctx.voidcoreId then
             local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.voidcoreId, charKey)
+            if formatSeasonShift and cd then
+                return measureSeasonCell(cd)
+            end
             local q = tonumber(cd and cd.quantity) or 0
             return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
         end
         if key == "manaflux" and ctx.manafluxId then
             local cd = addon.GetCurrencyData and addon:GetCurrencyData(ctx.manafluxId, charKey)
+            if formatSeasonShift and cd then
+                return measureSeasonCell(cd)
+            end
             local q = tonumber(cd and cd.quantity) or 0
             return PvE_MeasurePlainWidth(bodyFs, q > 0 and formatNum(q) or emDash)
         end
@@ -537,7 +556,9 @@ local function PvE_ApplyAdaptiveColumnWidths(columns, ctx)
             end
         end
         if key == "bountiful" then
-            return iconSz
+            local wIcon = PvE_MeasurePlainWidth(bodyFs, "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t")
+            local wProg = PvE_MeasurePlainWidth(bodyFs, "0 / 1")
+            return math.max(iconSz, wIcon, wProg)
         end
         if key == "vault_status" then
             local vs = PvE_GetVaultStatusCached(ctx.addon, charKey)
@@ -896,6 +917,278 @@ function ns.PvEUI.InvalidateBodyCache(parent)
 end
 
 local PvEUI_DrawPvEProgressBody
+
+local PVE_CHAR_ROW_HEADER_H = 46
+
+local function PvEUI_MeasureScrollChildExtent(scrollChild)
+    if not scrollChild or not scrollChild.GetTop then return nil end
+    local pTop = scrollChild:GetTop()
+    if not pTop then return nil end
+    local tail = scrollChild._pveLayoutTailBody
+    if tail and tail:IsShown() and tail.GetBottom then
+        local bot = tail:GetBottom()
+        if bot then
+            return math.max(1, pTop - bot)
+        end
+    end
+    local lowest = pTop
+    local kids = { scrollChild:GetChildren() }
+    for i = 1, #kids do
+        local c = kids[i]
+        if c and c:IsShown() then
+            local b = c:GetBottom()
+            if b and b < lowest then
+                lowest = b
+            end
+        end
+    end
+    return math.max(1, pTop - lowest)
+end
+
+local function PvEUI_SyncPveScrollChildExtent(scrollChild, scrollFrameRef)
+    if not scrollChild then return end
+    local pad = 8
+    local extent = PvEUI_MeasureScrollChildExtent(scrollChild)
+    if not extent then
+        local tail = scrollChild._pveLayoutTailBody
+        if tail and scrollChild.GetTop and tail.GetBottom then
+            local pTop = scrollChild:GetTop()
+            local bot = tail:GetBottom()
+            if pTop and bot then
+                extent = math.max(1, pTop - bot)
+            end
+        end
+    end
+    if not extent then return end
+    local viewportH = (scrollFrameRef and scrollFrameRef.GetHeight and scrollFrameRef:GetHeight()) or 0
+    scrollChild:SetHeight(math.max(viewportH, extent + pad))
+    scrollChild._pvePaintedCoreH = math.max(1, extent)
+    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
+        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
+        local cur = scrollFrameRef:GetVerticalScroll() or 0
+        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
+    end
+end
+
+local PVE_SECTION_SHELL_GAP = 4
+
+local function PvEUI_ResolveCharDetailPaintHeight(detail)
+    if not detail or not detail:IsShown() then
+        return 0.1
+    end
+    local h = detail._wnSectionFullH or detail:GetHeight() or 0.1
+    if h < 2 then
+        return 0.1
+    end
+    return h
+end
+
+--- Re-anchor Favorites / custom / Characters section headers after row-host height changes.
+local function PvEUI_EnsurePveSectionShellOrder(scrollChild)
+    if scrollChild._pveSectionShellOrder and #scrollChild._pveSectionShellOrder > 0 then
+        return scrollChild._pveSectionShellOrder
+    end
+    local shells = _pveDrawPool and _pveDrawPool.sectionShells
+    if not shells then return nil end
+    local ordered = {}
+    local known = { "pveFavoritesExpanded", "pveCharactersExpanded" }
+    for ki = 1, #known do
+        local key = known[ki]
+        if shells[key] and shells[key].header then
+            ordered[#ordered + 1] = key
+        end
+    end
+    for key, sh in pairs(shells) do
+        if type(key) == "string" and key:match("^cgrp_") and sh and sh.header then
+            local dup = false
+            for oi = 1, #ordered do
+                if ordered[oi] == key then dup = true break end
+            end
+            if not dup then
+                ordered[#ordered + 1] = key
+            end
+        end
+    end
+    scrollChild._pveSectionShellOrder = ordered
+    return ordered
+end
+
+local function PvEUI_MeasureRowHostContentHeight(rowHost)
+    if not rowHost or not rowHost.GetTop then return nil end
+    local pTop = rowHost:GetTop()
+    if not pTop then return nil end
+    local lowest = pTop
+    local kids = { rowHost:GetChildren() }
+    for i = 1, #kids do
+        local c = kids[i]
+        if c and c:IsShown() then
+            local b = c:GetBottom()
+            if b and b < lowest then
+                lowest = b
+            end
+        end
+    end
+    return math.max(0.1, pTop - lowest)
+end
+
+--- Row order for reflow: use paint list, or discover headers parented to rowHost (live collapse without repaint).
+local function PvEUI_DiscoverCharKeysOnRowHost(rowHost)
+    local keys = rowHost._pveCharKeysOrdered
+    if keys and #keys > 0 then
+        return keys
+    end
+    local pool = _pveDrawPool and _pveDrawPool.charRows
+    if not pool or not rowHost then
+        return keys or {}
+    end
+    local scratch = {}
+    for charKey, row in pairs(pool) do
+        if row and row.header and row.header:GetParent() == rowHost then
+            local top = row.header:GetTop()
+            scratch[#scratch + 1] = { key = charKey, top = top or 0 }
+        end
+    end
+    table.sort(scratch, function(a, b)
+        return a.top > b.top
+    end)
+    keys = {}
+    for i = 1, #scratch do
+        keys[i] = scratch[i].key
+    end
+    rowHost._pveCharKeysOrdered = keys
+    return keys
+end
+
+--- Re-chain pooled character headers/details after live expand/collapse (anchors alone are not enough).
+local function PvEUI_ReflowSectionCharRows(rowHost, interRowGap)
+    if not rowHost then return 0.1 end
+    local keys = PvEUI_DiscoverCharKeysOnRowHost(rowHost)
+    local pool = _pveDrawPool and _pveDrawPool.charRows
+    if not pool or #keys == 0 then
+        local measured = PvEUI_MeasureRowHostContentHeight(rowHost)
+        if measured then
+            rowHost:SetHeight(measured)
+            rowHost._pveRunningH = measured
+            rowHost._wnSectionFullH = measured
+            rowHost._pvePaintedSectionH = measured
+            return measured
+        end
+        return rowHost:GetHeight() or 0.1
+    end
+    local gap = interRowGap or rowHost._pveRowGap or 0
+    local prev = nil
+    local runningH = 0
+    for ki = 1, #keys do
+        local row = pool[keys[ki]]
+        if row and row.header and row.detail then
+            local hdr = row.header
+            local det = row.detail
+            hdr:ClearAllPoints()
+            if prev then
+                hdr:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -gap)
+                hdr:SetPoint("TOPRIGHT", prev, "BOTTOMRIGHT", 0, -gap)
+            else
+                hdr:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 0, 0)
+                hdr:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", 0, 0)
+            end
+            det:ClearAllPoints()
+            det:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, 0)
+            det:SetPoint("TOPRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
+            local hdrH = hdr:GetHeight() or PVE_CHAR_ROW_HEADER_H
+            local detH = PvEUI_ResolveCharDetailPaintHeight(det)
+            det:SetHeight(detH)
+            if detH >= 2 then
+                det:Show()
+            else
+                det:Hide()
+            end
+            det._pvePaintedDetailH = detH
+            runningH = runningH + hdrH + detH
+            if ki < #keys then
+                runningH = runningH + gap
+            end
+            prev = det
+        end
+    end
+    local secH = math.max(0.1, runningH)
+    local measured = PvEUI_MeasureRowHostContentHeight(rowHost)
+    if measured and measured > 0.1 then
+        secH = measured
+    end
+    rowHost._pveRunningH = secH
+    rowHost._wnSectionFullH = secH
+    rowHost._pvePaintedSectionH = secH
+    rowHost:SetHeight(secH)
+    return secH
+end
+
+local function PvEUI_ReflowPveSectionShellChain(scrollChild)
+    if not scrollChild then return end
+    local order = PvEUI_EnsurePveSectionShellOrder(scrollChild)
+    local shells = _pveDrawPool and _pveDrawPool.sectionShells
+    if not order or not shells or #order == 0 then return end
+    local gap = scrollChild._pveShellSectionGap or PVE_SECTION_SHELL_GAP
+    local side = scrollChild._wnPveContentSide or SIDE_MARGIN or 12
+    local yTop = scrollChild._pveColHeaderBottomY
+    local prevBody = nil
+    local layoutTail = nil
+    for i = 1, #order do
+        local sh = shells[order[i]]
+        if sh and sh.header and sh.body then
+            sh.header:ClearAllPoints()
+            if prevBody then
+                sh.header:SetPoint("TOPLEFT", prevBody, "BOTTOMLEFT", 0, -gap)
+            elseif yTop then
+                sh.header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", side, -yTop)
+            else
+                sh.header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", side, 0)
+            end
+            sh.body:ClearAllPoints()
+            sh.body:SetPoint("TOPLEFT", sh.header, "BOTTOMLEFT", 0, 0)
+            if sh.body:IsShown() then
+                PvEUI_ReflowSectionCharRows(sh.body, sh.body._pveRowGap or gap)
+                local bodyH = sh.body._pveRunningH or PvEUI_MeasureRowHostContentHeight(sh.body) or sh.body:GetHeight() or 0.1
+                bodyH = math.max(0.1, bodyH)
+                sh.body:SetHeight(bodyH)
+                sh.body._wnSectionFullH = bodyH
+                sh.body._pvePaintedSectionH = bodyH
+                layoutTail = sh.body
+            else
+                sh.body:SetHeight(0.1)
+            end
+            prevBody = sh.body
+        end
+    end
+    scrollChild._pveLayoutTailBody = layoutTail
+end
+
+function ns.PvEUI_ApplyLivePveSectionLayout(rowHost, scrollChild)
+    if not scrollChild then return end
+    local gap = (rowHost and rowHost._pveRowGap) or 0
+    local shells = _pveDrawPool and _pveDrawPool.sectionShells
+    local order = PvEUI_EnsurePveSectionShellOrder(scrollChild)
+    if order and shells then
+        for oi = 1, #order do
+            local sh = shells[order[oi]]
+            if sh and sh.body and sh.body:IsShown() then
+                PvEUI_ReflowSectionCharRows(sh.body, sh.body._pveRowGap or gap)
+            end
+        end
+    elseif rowHost then
+        PvEUI_ReflowSectionCharRows(rowHost, gap)
+    end
+    PvEUI_ReflowPveSectionShellChain(scrollChild)
+    local scrollFrameRef = scrollChild.GetParent and scrollChild:GetParent()
+    PvEUI_SyncPveScrollChildExtent(scrollChild, scrollFrameRef)
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if mf and scrollChild._pvePaintedCoreH and ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mf, scrollChild, scrollChild._pvePaintedCoreH)
+    end
+end
+
+ns.PvEUI_ReflowSectionCharRows = PvEUI_ReflowSectionCharRows
+ns.PvEUI_ReflowPveSectionShellChain = PvEUI_ReflowPveSectionShellChain
+ns.PvEUI_SyncPveScrollChildExtent = PvEUI_SyncPveScrollChildExtent
 
 local function PvEAcquireCharRowFrames(rowHost, charKey)
     local pool = _pveDrawPool
@@ -1312,6 +1605,21 @@ local function PvEUI_ExpandedDetailHasCards(charDetailContent)
     return #kids > 0
 end
 
+--- Resolve expanded detail height when cards already exist (skip full rebuild).
+local function PvEUI_MeasureExpandedDetailHeight(charDetailContent)
+    if not charDetailContent then return 0.1 end
+    local stored = charDetailContent._wnSectionFullH
+    if stored and stored >= 2 then return stored end
+    local cc = charDetailContent._pveCardContainer
+    if cc then
+        local ch = cc:GetHeight()
+        if ch and ch >= 2 then return ch end
+    end
+    local fh = charDetailContent:GetHeight()
+    if fh and fh >= 2 then return fh end
+    return (stored and stored > 0.1) and stored or 200
+end
+
 --- Populates expanded PvE per-character detail (M+, keystone, vault grid).
 --- Extracted from DrawPvEProgress to avoid Lua 5.1 "more than 60 upvalues" on nested closures.
 local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
@@ -1322,6 +1630,7 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 and charDetailContent._wnPopulateBodyW
                 and math.abs(charDetailContent._wnPopulateBodyW - bodyW) < 4
                 and PvEUI_ExpandedDetailHasCards(charDetailContent) then
+                charDetailContent._wnSectionFullH = PvEUI_MeasureExpandedDetailHeight(charDetailContent)
                 return
             end
             PvEUI_WipeExpandedDetailSurface(charDetailContent)
@@ -1762,8 +2071,8 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 amountText:SetJustifyH("CENTER")
                 amountText:SetWordWrap(false)
                 if ns.UI_BindSeasonProgressAmount then
-                    -- Shift-aware: default = current only (cap-colored), Shift = expanded current\194\183earned/cap.
-                    ns.UI_BindSeasonProgressAmount(amountText, currencyEntry)
+                    -- Current/Weekly toolbar + Shift invert (see FormatHelpers).
+                    ns.UI_BindSeasonProgressAmount(amountText, currencyEntry, { pveDisplayMode = true })
                 elseif ns.UI_FormatSeasonProgressCurrencyLine then
                     amountText:SetText(ns.UI_FormatSeasonProgressCurrencyLine(currencyEntry))
                 else
@@ -1898,8 +2207,16 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             local function finishDeferredVaultGrid()
                 if not charDetailContent or charDetailContent._wnPopulateKey ~= populateKey then return end
                 if charDetailContent._pveDetailGen ~= detailGen then return end
-                local paintedH = select(1, self:PaintPvEVaultGridOnCard(vaultCard, vaultPaintOpt))
-                cardHeight = paintedH or baseCardHeight
+                local ok, paintedH = pcall(self.PaintPvEVaultGridOnCard, self, vaultCard, vaultPaintOpt)
+                if not ok then
+                    if ns.DebugPrint then
+                        ns.DebugPrint("PvE vault grid paint failed:", paintedH)
+                    end
+                    paintedH = baseCardHeight
+                else
+                    paintedH = paintedH or baseCardHeight
+                end
+                cardHeight = paintedH
                 local vaultPaintedH = cardHeight
                 local mH = mplusCard:GetHeight() or baseCardHeight
                 local sH = summaryCard:GetHeight() or baseCardHeight
@@ -1909,9 +2226,12 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
                 summaryCard:SetHeight(unifiedRowH)
                 vaultCard:SetHeight(unifiedRowH)
                 cardContainer:SetHeight(unifiedRowH)
-                charDetailContent._wnSectionFullH = unifiedRowH
+                local layoutH = math.max(0.1, unifiedRowH)
+                charDetailContent._wnSectionFullH = layoutH
+                charDetailContent:SetHeight(layoutH)
+                charDetailContent:Show()
                 if charDetailContent._pveOnLayoutChanged then
-                    charDetailContent._pveOnLayoutChanged(unifiedRowH)
+                    charDetailContent._pveOnLayoutChanged(layoutH)
                 end
             end
             if C_Timer and C_Timer.After then
@@ -1942,9 +2262,12 @@ local function PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailCon
             summaryCard:SetHeight(unifiedRowH)
             vaultCard:SetHeight(unifiedRowH)
             cardContainer:SetHeight(unifiedRowH)
-            charDetailContent._wnSectionFullH = unifiedRowH
+            local layoutH = math.max(0.1, unifiedRowH)
+            charDetailContent._wnSectionFullH = layoutH
+            charDetailContent:SetHeight(layoutH)
+            charDetailContent:Show()
             if charDetailContent._pveOnLayoutChanged then
-                charDetailContent._pveOnLayoutChanged(unifiedRowH)
+                charDetailContent._pveOnLayoutChanged(layoutH)
             end
 end
 ns.PvEUI_PopulateExpandedCharacterDetail = PvEUI_PopulateExpandedCharacterDetail
@@ -2028,6 +2351,18 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
         else
             expandKey = sectionUiKey or "pveSection"
         end
+    end
+
+    scrollParent._pveSectionShellOrder = scrollParent._pveSectionShellOrder or {}
+    local shellOrderDup = false
+    for soi = 1, #scrollParent._pveSectionShellOrder do
+        if scrollParent._pveSectionShellOrder[soi] == expandKey then
+            shellOrderDup = true
+            break
+        end
+    end
+    if not shellOrderDup then
+        scrollParent._pveSectionShellOrder[#scrollParent._pveSectionShellOrder + 1] = expandKey
     end
 
     local header, grpExpandIcon, hdrIcon, grpHeaderText = CreateCollapsibleHeader(
@@ -2381,7 +2716,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     local tm = L.ns.UI_GetTitleCardToolbarMetrics and L.ns.UI_GetTitleCardToolbarMetrics() or {}
     local hdrGapPve = tm.gap or (L.GetLayout().HEADER_TOOLBAR_CONTROL_GAP or 8)
     local pveToolbarReserve = (L.ns.UI_ComputeTitleToolbarReserve and L.ns.UI_ComputeTitleToolbarReserve({
-        168, tm.filterW or 96, 84,
+        168, tm.filterW or 96, 84, 88,
     })) or (640 + hdrGapPve)
 
     local hdrCache = mf and mf._pveFixedHeaderCache
@@ -2395,6 +2730,12 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         end
         titleCard = hdrCache.titleCard
         sortBtn = hdrCache.sortBtn
+        if ns.PvE_RefreshCurrencyDisplayToggleChrome and WarbandNexus._wnPvECurrencyViewToggleBtn then
+            ns.PvE_RefreshCurrencyDisplayToggleChrome(
+                WarbandNexus._wnPvECurrencyViewToggleBtn,
+                WarbandNexus._wnPvECurrencyViewToggleLbl
+            )
+        end
         headerDone = true
     end
 
@@ -2494,7 +2835,11 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         end
     end
 
-    -- Column visibility (vault columns + PvE crest/shard/key toggles)
+    -- Currency view (Current / Weekly) + column visibility picker
+    local attachCurrencyToggle = L.PvE_AttachCurrencyDisplayToggle or (L.ns and L.ns.PvE_AttachCurrencyDisplayToggle)
+    if attachCurrencyToggle then
+        sortAnchor = attachCurrencyToggle(titleCard, sortAnchor, self)
+    end
     local attachColumnPicker = L.PvE_AttachInlineColumnPicker or (L.ns and L.ns.PvE_AttachInlineColumnPicker)
     if attachColumnPicker then
         sortAnchor = attachColumnPicker(titleCard, sortAnchor, self)
@@ -2789,6 +3134,9 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                         sh.body:SetWidth(math.max(1, stackW))
                     end
                 end
+            end
+            if ns.PvEUI_ApplyLivePveSectionLayout then
+                ns.PvEUI_ApplyLivePveSectionLayout(nil, parent)
             end
             local coreH = parent._pvePaintedCoreH or parent._pveLastBodyEstimate
                 or PveEstimateScrollBodyHeight(rosterCount, 4)
@@ -3329,11 +3677,18 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     colHeaderRow:Show()
     yOffset = yOffset + COL_HEADER_HEIGHT + L.PVE_COLUMN_HEADER_PAD
 
+    parent._pveSectionShellOrder = {}
+    parent._pveColHeaderBottomY = yOffset
+    parent._pveShellSectionGap = 4
+
     local totalLHBox = { v = yOffset }
     -- Same vertical rhythm as Characters virtual rows: `betweenRows` (often 0) after each 46px row.
     local PVE_CHAR_ROW_GAP = L.GetLayout().betweenRows or 0
-    local PVE_CHAR_ROW_HEADER_H = 46
     local scrollFrameRef = parent:GetParent()
+
+    local function applyPveSectionReflow(rowHost, gap)
+        ns.PvEUI_ApplyLivePveSectionLayout(rowHost, parent)
+    end
 
     local sectionFilter = "all"
     if profile and profile.pveSectionFilter and type(profile.pveSectionFilter.sectionKey) == "string" then
@@ -3476,12 +3831,13 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         end
         if expanded then
             body:Show()
-            body:SetHeight(math.max(0.1, h))
+            PvEUI_ReflowSectionCharRows(body, PVE_CHAR_ROW_GAP)
+            PvEUI_ReflowPveSectionShellChain(parent)
         else
             body:Hide()
             body:SetHeight(0.1)
         end
-        body._pvePaintedSectionH = math.max(0.1, h)
+        body._pvePaintedSectionH = math.max(0.1, body._pveRunningH or body:GetHeight() or 0.1)
         layoutTailForShell = body
     end
 
@@ -3617,55 +3973,83 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 -- Runs before SharedWidgets reads _wnSectionFullH for expand target height.
                 persistFn = function(exp)
                     L.expandedStates[charExpandKey] = exp
-                    if exp and charDetailContent and buildPvEDetailIfNeeded then
-                        buildPvEDetailIfNeeded()
+                    if exp then
+                        local detail = charDetailContent
+                        local buildFn = detail and detail._pveBuildDetailFn
+                        if buildFn then
+                            buildFn()
+                        elseif buildPvEDetailIfNeeded then
+                            buildPvEDetailIfNeeded()
+                        end
+                    elseif charDetailContent then
+                        charDetailContent:Hide()
+                        charDetailContent:SetHeight(0.1)
+                        charDetailContent._pvePaintedDetailH = 0.1
+                    end
+                    local host = rowHost
+                    local sc = parent
+                    if host and sc and C_Timer and C_Timer.After then
+                        C_Timer.After(0, function()
+                            ns.PvEUI_ApplyLivePveSectionLayout(host, sc)
+                        end)
+                    elseif host and sc then
+                        ns.PvEUI_ApplyLivePveSectionLayout(host, sc)
                     end
                 end,
-                -- Do live-adjust section body + scroll child while detail height changes so
-                -- siblings reflow and the scroll range matches content (PopulateContent only runs on full refresh).
+                refreshFn = function(exp)
+                    if not exp then return end
+                    local detail = charDetailContent
+                    local buildFn = detail and detail._pveBuildDetailFn
+                    if buildFn then
+                        buildFn()
+                    end
+                    if detail and (not detail._wnSectionFullH or detail._wnSectionFullH < 2) and buildFn then
+                        C_Timer.After(0, function()
+                            if detail._pveBuildDetailFn then
+                                detail._pveBuildDetailFn()
+                            end
+                            if detail._pveOnLayoutChanged and detail._wnSectionFullH then
+                                local lh = math.max(0.1, detail._wnSectionFullH)
+                                detail:SetHeight(lh)
+                                detail:Show()
+                                detail._pveOnLayoutChanged(lh)
+                            end
+                        end)
+                    end
+                end,
+                -- Live expand/collapse: re-chain rows + section shells (Storage-tab pattern).
                 onUpdate = function(drawH)
-                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                        local cur = scrollFrameRef:GetVerticalScroll() or 0
-                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                    end
-                    local dh = tonumber(drawH) or 0.1
-                    local baseD = charDetailContent and charDetailContent._pvePaintedDetailH
-                    local baseS = rowHost and rowHost._pvePaintedSectionH
-                    local sc = scrollFrameRef and scrollFrameRef.GetScrollChild and scrollFrameRef:GetScrollChild()
-                    if charDetailContent and rowHost and baseD and baseS and sc and sc._pvePaintedCoreH then
-                        local secH = baseS + dh - baseD
-                        rowHost._wnSectionFullH = secH
-                        rowHost:SetHeight(math.max(0.1, secH))
-                        local pad = 8
-                        local viewportH = (scrollFrameRef.GetHeight and scrollFrameRef:GetHeight()) or 0
-                        local contentBottom = sc._pvePaintedCoreH + dh - baseD + pad
-                        sc:SetHeight(math.max(viewportH, contentBottom))
-                    end
-                end,
-                onComplete = function()
-                    if scrollFrameRef and scrollFrameRef.GetVerticalScrollRange and scrollFrameRef.GetVerticalScroll and scrollFrameRef.SetVerticalScroll then
-                        local maxV = scrollFrameRef:GetVerticalScrollRange() or 0
-                        local cur = scrollFrameRef:GetVerticalScroll() or 0
-                        scrollFrameRef:SetVerticalScroll(math.min(math.max(cur, 0), maxV))
-                    end
+                    local dh = math.max(0.1, tonumber(drawH) or 0.1)
+                    local collapsing = dh < 2
                     if charDetailContent then
-                        charDetailContent._pvePaintedDetailH = math.max(0.1, charDetailContent:GetHeight() or 0.1)
+                        charDetailContent:SetHeight(collapsing and 0.1 or dh)
+                        if collapsing then
+                            charDetailContent:Hide()
+                            charDetailContent._pvePaintedDetailH = 0.1
+                        else
+                            charDetailContent._wnSectionFullH = dh
+                            charDetailContent:Show()
+                        end
                     end
-                    if rowHost then
-                        rowHost._pvePaintedSectionH = math.max(0.1, rowHost:GetHeight() or rowHost._wnSectionFullH or 0.1)
+                    applyPveSectionReflow(rowHost, interRowGap)
+                end,
+                onComplete = function(exp)
+                    if charDetailContent then
+                        if exp then
+                            charDetailContent._pvePaintedDetailH = PvEUI_ResolveCharDetailPaintHeight(charDetailContent)
+                        else
+                            charDetailContent:Hide()
+                            charDetailContent:SetHeight(0.1)
+                            charDetailContent._pvePaintedDetailH = 0.1
+                        end
                     end
-                    local sc = scrollFrameRef and scrollFrameRef.GetScrollChild and scrollFrameRef:GetScrollChild()
-                    if sc and scrollFrameRef and scrollFrameRef.GetHeight then
-                        local pad = 8
-                        local viewportH = scrollFrameRef:GetHeight() or 0
-                        sc._pvePaintedCoreH = math.max(1, (sc:GetHeight() or 1) - pad)
-                    end
+                    applyPveSectionReflow(rowHost, interRowGap)
                 end,
             }) or {}
         accVisual.suppressSectionChrome = true
         accVisual.sectionHeaderHeight = 46
-        accVisual.deferOnToggleUntilComplete = true
+        -- Populate detail before reading _wnSectionFullH (persistFn); defer left false so onToggle re-reads height after build.
+        accVisual.deferOnToggleUntilComplete = false
 
         local charHeader, charDetailContent, expandIconTex, rowReused = L.PvEAcquireCharRowFrames(rowHost, charKey)
         if not rowReused then
@@ -3700,13 +4084,31 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 expandIcon = expandIconTex,
             }
         end
+        if charHeader then
+            charHeader._wnCollVisualOpts = accVisual
+        end
+        if rowReused and charHeader and charDetailContent then
+            charDetailContent:ClearAllPoints()
+            charDetailContent:SetPoint("TOPLEFT", charHeader, "BOTTOMLEFT", 0, 0)
+            charDetailContent:SetPoint("TOPRIGHT", charHeader, "BOTTOMRIGHT", 0, 0)
+            if charDetailContent.SetClipsChildren then
+                charDetailContent:SetClipsChildren(true)
+            end
+        end
         if prevDet == nil then
+            rowHost._pveCharKeysOrdered = {}
+            rowHost._pveRunningH = 0
             charHeader:SetPoint("TOPLEFT", rowHost, "TOPLEFT", 0, 0)
             charHeader:SetPoint("TOPRIGHT", rowHost, "TOPRIGHT", 0, 0)
         else
             charHeader:SetPoint("TOPLEFT", prevDet, "BOTTOMLEFT", 0, -interRowGap)
             charHeader:SetPoint("TOPRIGHT", prevDet, "BOTTOMRIGHT", 0, -interRowGap)
         end
+        rowHost._pveCharKeysOrdered = rowHost._pveCharKeysOrdered or {}
+        rowHost._pveCharKeysOrdered[#rowHost._pveCharKeysOrdered + 1] = charKey
+        rowHost._pveScrollChild = parent
+        rowHost._pveScrollFrameRef = scrollFrameRef
+        rowHost._pveRowGap = interRowGap
         if charHeader.SetClippingChildren then
             charHeader:SetClippingChildren(true)
         end
@@ -3758,6 +4160,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                         showRewardProgress = vbCols.showRewardProgress == true,
                         showRewardItemLevel = vbCols.showRewardItemLevel == true,
                         vaultLootClaimable = vaultLootClaimable == true,
+                        pveDisplayMode = true,
                     }
                 end
                 return nil
@@ -3789,6 +4192,22 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 local teN = tonumber(totalEarned)
 
                 if L.ns.Utilities and L.ns.Utilities.IsCofferKeyShardCurrency and L.ns.Utilities:IsCofferKeyShardCurrency(currencyID, currencyName) then
+                    local wCap = tonumber(maxQty) or 0
+                    local teForWeek = (teN ~= nil) and teN or 0
+                    table.insert(lines, { text = string.format("%s %s", currentLabel, L.FormatNumber(qty)), color = {1, 1, 1} })
+                    if wCap > 0 then
+                        local remWeek = math.max(wCap - teForWeek, 0)
+                        table.insert(lines, { text = string.format("%s: %s / %s", weeklyLabel, L.FormatNumber(teForWeek), L.FormatNumber(wCap)), color = {1, 1, 1} })
+                        if remWeek > 0 then
+                            table.insert(lines, { text = string.format("%s %s", L.FormatNumber(remWeek), remainingSuffix), color = {0.5, 1, 0.5} })
+                        else
+                            table.insert(lines, { text = cappedText, color = {1, 0.35, 0.35} })
+                        end
+                    end
+                    return lines
+                end
+
+                if L.ns.Utilities and L.ns.Utilities.IsWeeklyCapCurrency and L.ns.Utilities:IsWeeklyCapCurrency(currencyID, currencyName) then
                     local wCap = tonumber(maxQty) or 0
                     local teForWeek = (teN ~= nil) and teN or 0
                     table.insert(lines, { text = string.format("%s %s", currentLabel, L.FormatNumber(qty)), color = {1, 1, 1} })
@@ -3879,6 +4298,14 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     end
                     return NORMAL_COLOR
                 end
+                if L.ns.Utilities and L.ns.Utilities.IsWeeklyCapCurrency and L.ns.Utilities:IsWeeklyCapCurrency(currencyID, currencyName) then
+                    local cap = tonumber(maxQty) or 0
+                    local teN = tonumber(totalEarned)
+                    if cap > 0 and teN ~= nil then
+                        return (teN >= cap) and CAPPED_COLOR or CAP_OPEN_COLOR
+                    end
+                    return NORMAL_COLOR
+                end
                 local sm = tonumber(seasonMax) or 0
                 if sm > 0 then
                     local teN = tonumber(totalEarned)
@@ -3927,27 +4354,35 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 currencyID = PVE_SHARDS_ID,
                 seasonProgressData = shardData,
             }
-            colValuesByKey.restored_key = { text = keyQty > 0 and L.FormatNumber(keyQty) or EM_DASH, color = keyQty > 0 and NORMAL_COLOR or DIM_COLOR }
+            local keyMax = keyData and keyData.maxQuantity or 0
+            local keyTE = keyData and keyData.totalEarned
+            local keySM = keyData and keyData.seasonMax
+            local keyTxt = FormatSeasonLine and FormatSeasonLine(keyData) or FormatCurrencyStatus(keyQty)
+            colValuesByKey.restored_key = {
+                text = keyTxt,
+                richText = FormatSeasonLine ~= nil,
+                color = (not FormatSeasonLine) and ((keyTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(PVE_RESTORED_KEY_ID, keyData and keyData.name, keyQty, keyMax, keyTE, keySM)) or nil,
+                tooltip = BuildCurrencyTooltip(PVE_RESTORED_KEY_ID, keyData and keyData.name, keyQty, keyMax, keyTE, keySM),
+                tooltipTitle = GetLocalizedText("PVE_COL_RESTORED_KEY", "Restored Coffer Key"),
+                tooltipIcon = keyData and keyData.icon,
+                currencyID = PVE_RESTORED_KEY_ID,
+                seasonProgressData = keyData,
+            }
             local dundunData = L.WarbandNexus:GetCurrencyData(L.PVE_DUNDUN_ID, charKey)
             local dqty = (dundunData and tonumber(dundunData.quantity)) or 0
-            local dcap = (dundunData and (tonumber(dundunData.maxQuantity) or tonumber(dundunData.seasonMax))) or 0
-            local dundunTxt
-            if dcap > 0 then
-                local capped = dqty >= dcap
-                local col = capped and "|cffff5959" or "|cff80ff80"
-                dundunTxt = col .. L.FormatNumber(dqty) .. "|r"
-            elseif dqty > 0 then
-                dundunTxt = PveBrightHex() .. L.FormatNumber(dqty) .. "|r"
-            else
-                dundunTxt = EM_DASH_RICH
-            end
+            local dmax = (dundunData and dundunData.maxQuantity) or 0
+            local dte = dundunData and dundunData.totalEarned
+            local dsm = dundunData and dundunData.seasonMax
+            local dundunTxt = FormatSeasonLine and FormatSeasonLine(dundunData) or FormatCurrencyStatus(dqty)
             colValuesByKey.shard_of_dundun = {
                 text = dundunTxt,
-                richText = true,
-                tooltip = BuildCurrencyTooltip(L.PVE_DUNDUN_ID, dundunData and dundunData.name, dqty, dundunData and dundunData.maxQuantity or 0, dundunData and dundunData.totalEarned, dundunData and dundunData.seasonMax),
+                richText = FormatSeasonLine ~= nil,
+                color = (not FormatSeasonLine) and ((dundunTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(L.PVE_DUNDUN_ID, dundunData and dundunData.name, dqty, dmax, dte, dsm)) or nil,
+                tooltip = BuildCurrencyTooltip(L.PVE_DUNDUN_ID, dundunData and dundunData.name, dqty, dmax, dte, dsm),
                 tooltipTitle = L.GetLocalizedText("PVE_COL_SHARD_OF_DUNDUN", "Shard of Dundun"),
                 tooltipIcon = dundunData and dundunData.icon,
                 currencyID = L.PVE_DUNDUN_ID,
+                seasonProgressData = dundunData,
             }
             local raidTotal = vaultActs.raids and #vaultActs.raids or 3
             local dungeonTotal = vaultActs.mythicPlus and #vaultActs.mythicPlus or 3
@@ -4057,29 +4492,26 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 tooltip = bountifulTip,
                 tooltipTitle = bountifulTitle,
                 tooltipIcon = L.GetTrovehunterBountyColumnIcon(),
+                pveBountyData = {
+                    done = bountifulDone == true,
+                    unknown = bountifulUnknown,
+                },
             }
             local voidcoreData = L.WarbandNexus:GetCurrencyData(L.PVE_VOIDCORE_ID, charKey)
-            -- Voidcore: cell shows owned amount only (green if under cap, red if capped); cap/progress in tooltip.
             local vqty = (voidcoreData and tonumber(voidcoreData.quantity)) or 0
-            local vcap = (voidcoreData and (tonumber(voidcoreData.seasonMax) or tonumber(voidcoreData.maxQuantity))) or 0
-            local voidcoreTxt
-            if vcap > 0 then
-                local capped = vqty >= vcap
-                local col = capped and "|cffff5959" or "|cff80ff80"
-                voidcoreTxt = col .. L.FormatNumber(vqty) .. "|r"
-            elseif vqty > 0 then
-                voidcoreTxt = PveBrightHex() .. L.FormatNumber(vqty) .. "|r"
-            else
-                voidcoreTxt = EM_DASH_RICH
-            end
+            local vmax = (voidcoreData and voidcoreData.maxQuantity) or 0
+            local vte = voidcoreData and voidcoreData.totalEarned
+            local vsm = voidcoreData and voidcoreData.seasonMax
+            local voidcoreTxt = FormatSeasonLine and FormatSeasonLine(voidcoreData) or FormatCurrencyStatus(vqty)
             colValuesByKey.voidcore = {
                 text = voidcoreTxt,
-                richText = true,
-                tooltip = BuildCurrencyTooltip(L.PVE_VOIDCORE_ID, voidcoreData and voidcoreData.name, vqty, voidcoreData and voidcoreData.maxQuantity or 0, voidcoreData and voidcoreData.totalEarned, voidcoreData and voidcoreData.seasonMax),
+                richText = FormatSeasonLine ~= nil,
+                color = (not FormatSeasonLine) and ((voidcoreTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(L.PVE_VOIDCORE_ID, voidcoreData and voidcoreData.name, vqty, vmax, vte, vsm)) or nil,
+                tooltip = BuildCurrencyTooltip(L.PVE_VOIDCORE_ID, voidcoreData and voidcoreData.name, vqty, vmax, vte, vsm),
                 tooltipTitle = L.GetLocalizedText("PVE_COL_NEBULOUS_VOIDCORE", "Nebulous Voidcore"),
                 tooltipIcon = voidcoreData and voidcoreData.icon,
                 currencyID = L.PVE_VOIDCORE_ID,
-                -- seasonProgressData intentionally omitted: voidcore must NOT use shift-aware binder.
+                seasonProgressData = voidcoreData,
             }
             -- Vault Status (matches Vault Tracker quick window readout):
             --   Ready -> "Ready to Claim" (green)
@@ -4108,17 +4540,24 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
 
             local manafluxData = L.WarbandNexus:GetCurrencyData(L.PVE_MANAFLUX_ID, charKey)
             local manafluxQty = (manafluxData and manafluxData.quantity) or 0
+            local mfMax = (manafluxData and manafluxData.maxQuantity) or 0
+            local mfTe = manafluxData and manafluxData.totalEarned
+            local mfSm = manafluxData and manafluxData.seasonMax
+            local mfTxt = FormatSeasonLine and FormatSeasonLine(manafluxData) or FormatCurrencyStatus(manafluxQty)
             colValuesByKey.manaflux = {
-                text = manafluxQty > 0 and L.FormatNumber(manafluxQty) or EM_DASH,
-                color = manafluxQty > 0 and NORMAL_COLOR or DIM_COLOR,
-                tooltip = BuildCurrencyTooltip(L.PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, manafluxData and manafluxData.maxQuantity or 0, manafluxData and manafluxData.totalEarned, manafluxData and manafluxData.seasonMax),
+                text = mfTxt,
+                richText = FormatSeasonLine ~= nil,
+                color = (not FormatSeasonLine) and ((mfTxt == EM_DASH) and DIM_COLOR or GetCapStateColor(L.PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, mfMax, mfTe, mfSm)) or nil,
+                tooltip = BuildCurrencyTooltip(L.PVE_MANAFLUX_ID, manafluxData and manafluxData.name, manafluxQty, mfMax, mfTe, mfSm),
                 tooltipTitle = L.GetLocalizedText("PVE_COL_DAWNLIGHT_MANAFLUX", "Dawnlight Manaflux"),
                 tooltipIcon = manafluxData and manafluxData.icon,
                 currencyID = L.PVE_MANAFLUX_ID,
+                seasonProgressData = manafluxData,
             }
 
             local UnbindSeason = L.ns.UI_UnbindSeasonProgressAmount
             local UnbindVaultCol = L.ns.UI_UnbindVaultColumnDisplay
+            local UnbindBounty = L.ns.UI_UnbindPvEBountyDisplay
             for ci = 1, #PVE_COLUMNS do
                 local col = PVE_COLUMNS[ci]
                 local val = colValuesByKey[col.key]
@@ -4134,15 +4573,26 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                     colText:SetWordWrap(false)
                     if val.vaultColumnData and L.ns.UI_BindVaultColumnDisplay then
                         if UnbindSeason then UnbindSeason(colText) end
+                        if UnbindBounty then UnbindBounty(colText) end
                         L.ns.UI_BindVaultColumnDisplay(colText, val.vaultColumnData)
                         ns.UI_SetTextColorRole(colText, "Bright")
                     elseif val.seasonProgressData and L.ns.UI_BindSeasonProgressAmount then
                         if UnbindVaultCol then UnbindVaultCol(colText) end
-                        L.ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData, { compactShift = true })
+                        if UnbindBounty then UnbindBounty(colText) end
+                        L.ns.UI_BindSeasonProgressAmount(colText, val.seasonProgressData, {
+                            compactShift = true,
+                            pveDisplayMode = true,
+                        })
+                        ns.UI_SetTextColorRole(colText, "Bright")
+                    elseif val.pveBountyData and L.ns.UI_BindPvEBountyDisplay then
+                        if UnbindSeason then UnbindSeason(colText) end
+                        if UnbindVaultCol then UnbindVaultCol(colText) end
+                        L.ns.UI_BindPvEBountyDisplay(colText, val.pveBountyData)
                         ns.UI_SetTextColorRole(colText, "Bright")
                     else
                         if UnbindSeason then UnbindSeason(colText) end
                         if UnbindVaultCol then UnbindVaultCol(colText) end
+                        if UnbindBounty then UnbindBounty(colText) end
                         colText:SetText(val.text)
                         if not val.richText and val.color then
                             colText:SetTextColor(val.color[1], val.color[2], val.color[3])
@@ -4210,11 +4660,15 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
         
         charHeader:SetAlpha(1)
 
-        charDetailContent._pveOnLayoutChanged = accVisual.onUpdate
+        -- BuildCollapsibleSectionOpts exposes config.onUpdate as sectionOnUpdate (not .onUpdate).
+        charDetailContent._pveOnLayoutChanged = accVisual.sectionOnUpdate
         charDetailContent._pveLayoutHost = rowHost
 
         buildPvEDetailIfNeeded = function()
             ns.PvEUI_PopulateExpandedCharacterDetail(self, parent, charDetailContent, charExpandKey, charKey, pve, pveData, isCurrentChar)
+        end
+        if charDetailContent then
+            charDetailContent._pveBuildDetailFn = buildPvEDetailIfNeeded
         end
 
         if charExpanded then
@@ -4279,7 +4733,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
                 pvePaintCursor = toI + 1
                 if pvePaintCursor > #paintOrder then
                     finalizePveCharPaint()
-                    local coreHDone = totalLHBox.v + 12
+                    if ns.PvEUI_ApplyLivePveSectionLayout then
+                        ns.PvEUI_ApplyLivePveSectionLayout(nil, parent)
+                    end
+                    local coreHDone = parent._pvePaintedCoreH or (totalLHBox.v + 12)
                     parent._pvePaintedCoreH = coreHDone
                     parent._pveChunkPaintPending = nil
                     if mf and ns.UI_SyncMainTabScrollChrome then
@@ -4297,6 +4754,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
     end
 
     local coreH = chunkPaintScheduled and estimatedBodyH or (totalLHBox.v + 12)
+    if not chunkPaintScheduled and ns.PvEUI_ApplyLivePveSectionLayout then
+        ns.PvEUI_ApplyLivePveSectionLayout(nil, parent)
+        coreH = parent._pvePaintedCoreH or coreH
+    end
     parent._pvePaintedCoreH = coreH
     parent._pveBodyReady = true
     parent._pveDrawSig = drawSig

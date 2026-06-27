@@ -413,7 +413,92 @@ PvE_ColumnPickerTryRefreshAfterDraw = function(addon)
     PvE_ColumnPickerShowCatcher(menu)
 end
 
---- Columns picker: Vault Tracker options styling (Factory container + scroll + themed toggles).
+--- PvE header: single toggle between Current and Weekly currency/vault display.
+local function PvE_RefreshCurrencyDisplayToggleChrome(toggleBtn, toggleLbl)
+    local profile = WarbandNexus.db and WarbandNexus.db.profile
+    local mode = (profile and profile.pveCurrencyDisplayMode == "weekly") and "weekly" or "current"
+    local accent = COLORS.accent or { 0.40, 0.20, 0.58 }
+    local idle = ControlChromeBackdrop()
+    local active = (ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop())
+        or ControlChromeHoverBackdrop()
+    local border = { accent[1], accent[2], accent[3], 0.6 }
+    if toggleBtn and ApplyVisuals then
+        ApplyVisuals(toggleBtn, active, border)
+    end
+    if toggleLbl and toggleLbl.SetText then
+        if mode == "weekly" then
+            toggleLbl:SetText(GetLocalizedText("PVE_CURRENCY_VIEW_WEEKLY", "Weekly"))
+        else
+            toggleLbl:SetText(GetLocalizedText("PVE_CURRENCY_VIEW_CURRENT", "Current"))
+        end
+    end
+end
+
+local function PvE_AttachCurrencyDisplayToggle(titleCard, sortAnchor, addon)
+    local Factory = ns.UI and ns.UI.Factory
+    if not Factory or not Factory.CreateButton then return sortAnchor end
+
+    local btnH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT) or 32
+    local toggleBtn = Factory:CreateButton(titleCard, 88, btnH, false)
+    if not toggleBtn then return sortAnchor end
+
+    local hdrGap = (ns.UI_GetTitleCardToolbarMetrics and ns.UI_GetTitleCardToolbarMetrics().gap) or 8
+    if ns.UI_AnchorTitleCardToolbarControl then
+        ns.UI_AnchorTitleCardToolbarControl(toggleBtn, titleCard, sortAnchor, "LEFT", -hdrGap)
+    else
+        toggleBtn:SetPoint("RIGHT", sortAnchor, "LEFT", -hdrGap, 0)
+    end
+
+    local toggleLbl = FontManager:CreateFontString(toggleBtn, "body", "OVERLAY")
+    toggleLbl:SetPoint("CENTER", 0, 0)
+    ns.UI_SetTextColorRole(toggleLbl, "Bright")
+
+    if Factory.ApplyHighlight then
+        Factory:ApplyHighlight(toggleBtn)
+    end
+
+    PvE_RefreshCurrencyDisplayToggleChrome(toggleBtn, toggleLbl)
+    WarbandNexus._wnPvECurrencyViewToggleBtn = toggleBtn
+    WarbandNexus._wnPvECurrencyViewToggleLbl = toggleLbl
+
+    local shiftHint = GetLocalizedText(
+        "PVE_CURRENCY_VIEW_SHIFT_HINT",
+        "Hold Shift to temporarily show the other view."
+    )
+    local toggleHint = GetLocalizedText(
+        "PVE_CURRENCY_VIEW_TOGGLE_HINT",
+        "Click to switch between Current and Weekly view."
+    )
+
+    toggleBtn:SetScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        local mode = (ns.UI_GetPvECurrencyDisplayMode and ns.UI_GetPvECurrencyDisplayMode()) or "current"
+        local activeLabel = (mode == "weekly")
+            and GetLocalizedText("PVE_CURRENCY_VIEW_WEEKLY", "Weekly")
+            or GetLocalizedText("PVE_CURRENCY_VIEW_CURRENT", "Current")
+        GameTooltip:SetText(activeLabel, 1, 1, 1)
+        GameTooltip:AddLine(toggleHint, 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(shiftHint, 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end)
+    toggleBtn:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
+    toggleBtn:SetScript("OnClick", function()
+        if ns.UI_TogglePvECurrencyDisplayMode then
+            ns.UI_TogglePvECurrencyDisplayMode()
+        elseif ns.UI_SetPvECurrencyDisplayMode then
+            local mode = (ns.UI_GetPvECurrencyDisplayMode and ns.UI_GetPvECurrencyDisplayMode()) or "current"
+            ns.UI_SetPvECurrencyDisplayMode((mode == "weekly") and "current" or "weekly")
+        end
+        PvE_RefreshCurrencyDisplayToggleChrome(toggleBtn, toggleLbl)
+    end)
+
+    return toggleBtn
+end
+
 local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     local Factory = ns.UI and ns.UI.Factory
     if not Factory or not Factory.CreateButton then return sortAnchor end
@@ -616,8 +701,11 @@ local function PvE_AttachInlineColumnPicker(titleCard, sortAnchor, addon)
     return columnsBtn
 end
 
+ns.PvE_RefreshCurrencyDisplayToggleChrome = PvE_RefreshCurrencyDisplayToggleChrome
+ns.PvE_AttachCurrencyDisplayToggle = PvE_AttachCurrencyDisplayToggle
 ns.PvE_AttachInlineColumnPicker = PvE_AttachInlineColumnPicker
 -- PvEDrawLibs snapshots ns refs at PvEUI.lua load; patch after this satellite loads.
 if ns.PvEDrawLibs then
+    ns.PvEDrawLibs.PvE_AttachCurrencyDisplayToggle = PvE_AttachCurrencyDisplayToggle
     ns.PvEDrawLibs.PvE_AttachInlineColumnPicker = PvE_AttachInlineColumnPicker
 end

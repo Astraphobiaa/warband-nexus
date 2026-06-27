@@ -263,10 +263,75 @@ local function FormatSeasonProgressCurrencyLine(cd)
     return SeasonMutedHex() .. EM_DASH_U .. "|r"
 end
 
+-- PvE CURRENCY DISPLAY MODE (Current / Weekly toolbar + Shift invert)
+local function PvEWeeklyProgressResolved(cd)
+    if not cd then return 0, 0 end
+    local qty = tonumber(cd.quantity) or 0
+    local te = tonumber(cd.totalEarned)
+    local sm = tonumber(cd.seasonMax) or 0
+    local maxQ = tonumber(cd.maxQuantity) or 0
+    local utils = ns.Utilities
+    local isWeeklyShard = utils and (
+        (utils.IsCofferKeyShardCurrency and utils:IsCofferKeyShardCurrency(cd.currencyID, cd.name))
+        or (utils.IsWeeklyCapCurrency and utils:IsWeeklyCapCurrency(cd.currencyID, cd.name))
+    )
+    if isWeeklyShard and maxQ > 0 then
+        return te or 0, maxQ
+    end
+    if utils and utils.IsRestoredCofferKeyCurrency and utils:IsRestoredCofferKeyCurrency(cd.currencyID, cd.name) and maxQ > 0 then
+        return te or 0, maxQ
+    end
+    if sm > 0 then
+        return te or 0, sm
+    end
+    if maxQ > 0 then
+        return te or qty, maxQ
+    end
+    return qty, 0
+end
+
+local FormatPvECurrencyCurrentLine
+local FormatPvECurrencyWeeklyLine
+
+function ns.UI_GetPvECurrencyDisplayMode()
+    local WN = ns.WarbandNexus
+    local profile = WN and WN.db and WN.db.profile
+    if profile and profile.pveCurrencyDisplayMode == "weekly" then
+        return "weekly"
+    end
+    return "current"
+end
+
+function ns.UI_GetPvEShowWeeklyView()
+    local weekly = (ns.UI_GetPvECurrencyDisplayMode() == "weekly")
+    local shift = IsShiftKeyDown and IsShiftKeyDown() or false
+    return weekly ~= shift
+end
+
+function ns.UI_TogglePvECurrencyDisplayMode()
+    local mode = ns.UI_GetPvECurrencyDisplayMode()
+    ns.UI_SetPvECurrencyDisplayMode((mode == "weekly") and "current" or "weekly")
+end
+
+function ns.UI_SetPvECurrencyDisplayMode(mode)
+    local WN = ns.WarbandNexus
+    if not WN or not WN.db or not WN.db.profile then return end
+    WN.db.profile.pveCurrencyDisplayMode = (mode == "weekly") and "weekly" or "current"
+    if ns.UI_RefreshSeasonProgressBindings then
+        ns.UI_RefreshSeasonProgressBindings()
+    end
+    if ns.RefreshVaultShiftAwareDisplays then
+        ns.RefreshVaultShiftAwareDisplays()
+    end
+    if WN.SendMessage then
+        WN:SendMessage("WN_UI_MAIN_REFRESH_REQUESTED", { tab = "pve", skipCooldown = true })
+    end
+end
+
 -- SHIFT-AWARE SEASON PROGRESS BINDING
 -- Default view: current bag balance only, colored by cap state (open=green, capped=red).
 -- Hold Shift: expanded "<bag> \194\183 <earned> / <cap>" view, same color rule.
--- Bindings auto-refresh on MODIFIER_STATE_CHANGED. Weak keys so retired FontStrings GC cleanly.
+-- PvE grid: toolbar Current/Weekly mode; Shift inverts. Bindings refresh on MODIFIER_STATE_CHANGED.
 local function ResolveSeasonCapState(cd)
     if not cd then return 0, 0, 0, false end
     local qty = tonumber(cd.quantity) or 0
@@ -304,6 +369,26 @@ local function FormatSeasonProgressShiftAware(cd, expanded, compactRemainingOnly
     if qty > 0 then return SeasonAmountHex() .. FormatNumber(qty) .. "|r" end
     return SeasonMutedHex() .. EM_DASH_U .. "|r"
 end
+
+FormatPvECurrencyCurrentLine = function(cd)
+    return FormatSeasonProgressShiftAware(cd, false, false)
+end
+
+FormatPvECurrencyWeeklyLine = function(cd)
+    if not cd then return SeasonMutedHex() .. EM_DASH_U .. "|r" end
+    local progress, cap = PvEWeeklyProgressResolved(cd)
+    if cap > 0 then
+        local color = (progress >= cap) and SeasonCappedHex() or SeasonCapOpenHex()
+        return color .. FormatNumber(progress) .. "|r " .. SeasonSepHex() .. "/|r " ..
+            SeasonCapValHex() .. FormatNumber(cap) .. "|r"
+    end
+    local qty = tonumber(cd.quantity) or 0
+    if qty > 0 then
+        return SeasonAmountHex() .. FormatNumber(qty) .. "|r"
+    end
+    return SeasonMutedHex() .. EM_DASH_U .. "|r"
+end
+
 local function ResolveSeasonBinding(entry)
     if type(entry) == "table" and entry.cd ~= nil then
         return entry.cd, entry.compactShift == true
@@ -311,10 +396,26 @@ local function ResolveSeasonBinding(entry)
     return entry, false
 end
 
-local function ApplySeasonProgressBindingText(fs, entry, expanded)
+local function ResolveBindingShowWeekly(entry)
+    if type(entry) == "table" and entry.pveDisplayMode then
+        return ns.UI_GetPvEShowWeeklyView and ns.UI_GetPvEShowWeeklyView() or false
+    end
+    return IsShiftKeyDown and IsShiftKeyDown() or false
+end
+
+local function ApplySeasonProgressBindingText(fs, entry, forceWeekly)
     if not fs or not fs.SetText then return end
     local cd, compact = ResolveSeasonBinding(entry)
-    local text = FormatSeasonProgressShiftAware(cd, expanded, compact)
+    local showWeekly = forceWeekly
+    if showWeekly == nil then
+        showWeekly = ResolveBindingShowWeekly(entry)
+    end
+    local text
+    if type(entry) == "table" and entry.pveDisplayMode then
+        text = showWeekly and FormatPvECurrencyWeeklyLine(cd) or FormatPvECurrencyCurrentLine(cd)
+    else
+        text = FormatSeasonProgressShiftAware(cd, showWeekly, compact)
+    end
     if type(entry) == "table" and entry.warbandTotal ~= nil then
         text = text .. SeasonMutedHex() .. " / " .. FormatNumber(entry.warbandTotal) .. "|r"
     end
@@ -322,6 +423,26 @@ local function ApplySeasonProgressBindingText(fs, entry, expanded)
 end
 
 local _seasonAmountBindings = setmetatable({}, { __mode = "k" })
+local _pveBountyBindings = setmetatable({}, { __mode = "k" })
+local PVE_BOUNTY_CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
+local PVE_BOUNTY_CROSS = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+
+local function ApplyPvEBountyBindingText(fs, entry)
+    if not fs or not fs.SetText or not entry then return end
+    if entry.unknown then
+        fs:SetText(SeasonMutedHex() .. EM_DASH_U .. "|r")
+        return
+    end
+    local showWeekly = ns.UI_GetPvEShowWeeklyView and ns.UI_GetPvEShowWeeklyView() or false
+    if showWeekly then
+        local progress = entry.done and 1 or 0
+        local color = entry.done and SeasonCappedHex() or SeasonCapOpenHex()
+        fs:SetText(color .. progress .. "|r " .. SeasonSepHex() .. "/|r " .. SeasonCapValHex() .. "1|r")
+    else
+        fs:SetText(entry.done and PVE_BOUNTY_CHECK or PVE_BOUNTY_CROSS)
+    end
+end
+
 local _seasonAmountWatcher
 local function EnsureSeasonAmountWatcher()
     if _seasonAmountWatcher then return end
@@ -329,24 +450,42 @@ local function EnsureSeasonAmountWatcher()
     _seasonAmountWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
     _seasonAmountWatcher:SetScript("OnEvent", function(_, _, key)
         if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
-        local expanded = IsShiftKeyDown() and true or false
         for fs, entry in pairs(_seasonAmountBindings) do
             if fs and fs.SetText and fs.IsObjectType then
-                ApplySeasonProgressBindingText(fs, entry, expanded)
+                ApplySeasonProgressBindingText(fs, entry)
+            end
+        end
+        for fs, entry in pairs(_pveBountyBindings) do
+            if fs and fs.SetText and fs.IsObjectType then
+                ApplyPvEBountyBindingText(fs, entry)
             end
         end
     end)
+end
+
+local function BindPvEBountyDisplay(fs, bountyData)
+    if not fs or not fs.SetText or not bountyData then return end
+    EnsureSeasonAmountWatcher()
+    _pveBountyBindings[fs] = bountyData
+    ApplyPvEBountyBindingText(fs, bountyData)
+end
+
+local function UnbindPvEBountyDisplay(fs)
+    if fs then _pveBountyBindings[fs] = nil end
 end
 local function BindSeasonProgressAmount(fs, cd, opts)
     if not fs or not fs.SetText then return end
     EnsureSeasonAmountWatcher()
     local compact = opts and opts.compactShift == true
     local entry = { cd = cd, compactShift = compact }
+    if opts and opts.pveDisplayMode then
+        entry.pveDisplayMode = true
+    end
     if opts and opts.warbandTotal ~= nil then
         entry.warbandTotal = opts.warbandTotal
     end
     _seasonAmountBindings[fs] = entry
-    ApplySeasonProgressBindingText(fs, entry, IsShiftKeyDown() and true or false)
+    ApplySeasonProgressBindingText(fs, entry)
 end
 local function UnbindSeasonProgressAmount(fs)
     if fs then _seasonAmountBindings[fs] = nil end
@@ -356,6 +495,9 @@ local function RefreshSeasonProgressAmount(fs, cd, opts)
     local compact = opts and opts.compactShift == true
     if cd ~= nil then
         _seasonAmountBindings[fs] = { cd = cd, compactShift = compact }
+        if opts and opts.pveDisplayMode then
+            _seasonAmountBindings[fs].pveDisplayMode = true
+        end
         if opts and opts.warbandTotal ~= nil then
             _seasonAmountBindings[fs].warbandTotal = opts.warbandTotal
         end
@@ -367,7 +509,10 @@ local function RefreshSeasonProgressAmount(fs, cd, opts)
     if opts and opts.warbandTotal ~= nil and entry then
         entry.warbandTotal = opts.warbandTotal
     end
-    ApplySeasonProgressBindingText(fs, entry, IsShiftKeyDown() and true or false)
+    if opts and opts.pveDisplayMode ~= nil and entry then
+        entry.pveDisplayMode = opts.pveDisplayMode == true
+    end
+    ApplySeasonProgressBindingText(fs, entry)
 end
 
 -- Achievement criteria helpers: Modules/UI/AchievementCriteriaHelpers.lua (loaded after this file in TOC)
@@ -375,11 +520,14 @@ end
 -- NAMESPACE EXPORTS
 
 function ns.UI_RefreshSeasonProgressBindings()
-    if not _seasonAmountWatcher then return end
-    local expanded = IsShiftKeyDown() and true or false
     for fs, entry in pairs(_seasonAmountBindings) do
         if fs and fs.SetText and fs.IsObjectType then
-            ApplySeasonProgressBindingText(fs, entry, expanded)
+            ApplySeasonProgressBindingText(fs, entry)
+        end
+    end
+    for fs, entry in pairs(_pveBountyBindings) do
+        if fs and fs.SetText and fs.IsObjectType then
+            ApplyPvEBountyBindingText(fs, entry)
         end
     end
 end
@@ -404,8 +552,12 @@ ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatMoneyPartsColumn = FormatMoneyPartsColumn
 ns.UI_FormatSeasonProgressCurrencyLine = FormatSeasonProgressCurrencyLine
 ns.UI_FormatSeasonProgressShiftAware = FormatSeasonProgressShiftAware
+ns.UI_FormatPvECurrencyCurrentLine = FormatPvECurrencyCurrentLine
+ns.UI_FormatPvECurrencyWeeklyLine = FormatPvECurrencyWeeklyLine
 ns.UI_BindSeasonProgressAmount = BindSeasonProgressAmount
 ns.UI_UnbindSeasonProgressAmount = UnbindSeasonProgressAmount
+ns.UI_BindPvEBountyDisplay = BindPvEBountyDisplay
+ns.UI_UnbindPvEBountyDisplay = UnbindPvEBountyDisplay
 ns.UI_NormalizeColonLabelSpacing = NormalizeColonLabelSpacing
 
 -- Module loaded - verbose logging removed

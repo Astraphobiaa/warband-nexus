@@ -146,6 +146,20 @@ function WarbandNexus:CleanupDatabase()
         cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
     end
 
+    -- Legacy per-character AceDB char scope (full bag dumps duplicated in itemStorage)
+    if self.db.char then
+        for _, charScope in pairs(self.db.char) do
+            if type(charScope) == "table" and charScope.bags and charScope.bags.items then
+                charScope.bags.items = nil
+                cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
+            end
+            if type(charScope) == "table" and charScope.personalBank and charScope.personalBank.items then
+                charScope.personalBank.items = nil
+                cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
+            end
+        end
+    end
+
     -- Try Counter — remove statistic snapshot rows for characters no longer in db (deleted alts).
     -- TryCounterService registers this method after DatabaseCleanup loads; Core delays cleanup 10s so it exists.
     if self.PruneOrphanStatisticSnapshots then

@@ -676,6 +676,40 @@ function Utilities:IsCofferKeyShardCurrency(currencyID, name)
     return n:find("coffer", 1, true) ~= nil and n:find("shard", 1, true) ~= nil
 end
 
+function Utilities:IsRestoredCofferKeyCurrency(currencyID, name)
+    if name == nil or name == "" then
+        return false
+    end
+    if issecretvalue and issecretvalue(name) then
+        return false
+    end
+    local n = string.lower(tostring(name))
+    return n:find("restored", 1, true) ~= nil
+        and n:find("coffer", 1, true) ~= nil
+        and n:find("key", 1, true) ~= nil
+end
+
+--- Weekly-earn cap currencies (Shard of Dundun, etc.) -- progress uses totalEarned vs maxQuantity.
+---@param currencyID number|nil
+---@param name string|nil
+---@return boolean
+function Utilities:IsWeeklyCapCurrency(currencyID, name)
+    if currencyID == 3376 then
+        return true
+    end
+    if name == nil or name == "" then
+        return false
+    end
+    if issecretvalue and issecretvalue(name) then
+        return false
+    end
+    local n = string.lower(tostring(name))
+    if n:find("dundun", 1, true) ~= nil then
+        return true
+    end
+    return false
+end
+
 --- Season-split Dawncrests: on-hand / season max; cap color from totalEarned vs seasonMax.
 --- Coffer Key Shards: weekly earned / weekly max (inventory in parentheses); cap color from weekly earn vs cap.
 --- Weekly-only cap (no seasonMax): Current / weekly cap with qty vs maxQuantity.
@@ -702,6 +736,23 @@ function Utilities.FormatCurrencySeasonProgressLine(cd)
             end
             return numColor .. fmtNum(teNum or 0) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(maxQ)
                 .. "|r " .. CC_MUTED .. "(" .. SeasonWhiteHex() .. fmtNum(qty) .. CC_MUTED .. ")|r"
+        end
+        if qty > 0 then
+            return SeasonWhiteHex() .. fmtNum(qty) .. "|r"
+        end
+        return CC_MUTED .. EM_DASH_CUR .. "|r"
+    end
+
+    if Utilities:IsWeeklyCapCurrency(cd.currencyID, cd.name) then
+        local teNum = tonumber(te)
+        if maxQ > 0 then
+            local numColor
+            if teNum ~= nil then
+                numColor = (teNum >= maxQ) and CC_CAPPED or CC_CAP_OPEN
+            else
+                numColor = SeasonWhiteHex()
+            end
+            return numColor .. fmtNum(teNum or 0) .. "|r " .. CC_MUTED .. "/ " .. fmtNum(maxQ) .. "|r"
         end
         if qty > 0 then
             return SeasonWhiteHex() .. fmtNum(qty) .. "|r"

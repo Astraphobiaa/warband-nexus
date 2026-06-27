@@ -653,6 +653,20 @@ function ns.VaultFormatCategoryColumn(slots, category, opts)
 
     local nextProg, nextThresh = GetVaultColumnNextProgress(slots)
 
+    if opts.pveWeeklyView then
+        if nextThresh and nextThresh > 0 then
+            local progShown = math.min(tonumber(nextProg) or 0, nextThresh)
+            local capped = progShown >= nextThresh
+            local color = capped and "|cffff8888" or "|cff80ff80"
+            return color .. progShown .. "/" .. nextThresh .. "|r"
+        end
+        local parts = {}
+        for i = 1, 3 do
+            parts[i] = FormatVaultSlotPart(slots[i], category, false)
+        end
+        return table.concat(parts, " ")
+    end
+
     if shiftHeld and nextThresh and nextThresh > 0 then
         local rem = nextThresh - math.min(tonumber(nextProg) or 0, nextThresh)
         if rem > 0 then
@@ -741,8 +755,15 @@ function M.RefreshVaultShiftBindings()
     end
     for fs, data in pairs(S.vaultColumnBindings) do
         if fs and fs.SetText and data and data.slots then
+            local pveWeekly = false
+            local colShift = shiftHeld
+            if data.pveDisplayMode then
+                pveWeekly = ns.UI_GetPvEShowWeeklyView and ns.UI_GetPvEShowWeeklyView() or false
+                colShift = false
+            end
             fs:SetText(ns.VaultFormatCategoryColumn(data.slots, data.category, {
-                shiftHeld = shiftHeld,
+                shiftHeld = colShift,
+                pveWeeklyView = pveWeekly,
                 showRewardProgress = data.showRewardProgress,
                 showRewardItemLevel = data.showRewardItemLevel,
                 vaultLootClaimable = data.vaultLootClaimable,
@@ -789,8 +810,15 @@ function ns.UI_BindVaultColumnDisplay(fs, bindData)
     if not fs or not fs.SetText or not bindData then return end
     EnsureVaultShiftWatcher()
     S.vaultColumnBindings[fs] = bindData
+    local pveWeekly = false
+    local shiftHeld = IsShiftKeyDown and IsShiftKeyDown() or false
+    if bindData.pveDisplayMode then
+        pveWeekly = ns.UI_GetPvEShowWeeklyView and ns.UI_GetPvEShowWeeklyView() or false
+        shiftHeld = false
+    end
     fs:SetText(ns.VaultFormatCategoryColumn(bindData.slots, bindData.category, {
-        shiftHeld = IsShiftKeyDown and IsShiftKeyDown(),
+        shiftHeld = shiftHeld,
+        pveWeeklyView = pveWeekly,
         showRewardProgress = bindData.showRewardProgress,
         showRewardItemLevel = bindData.showRewardItemLevel,
         vaultLootClaimable = bindData.vaultLootClaimable,

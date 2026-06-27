@@ -196,7 +196,11 @@ local function IsSeasonProgressSplitCurrency(currencyID, info)
     if not info then return false end
     if info.isHeader then return false end
     if info.useTotalEarnedForMaxQty == true then return true end
-    return IsCofferKeyShardByApiInfo(info)
+    if IsCofferKeyShardByApiInfo(info) then return true end
+    if ns.Utilities and ns.Utilities.IsWeeklyCapCurrency and ns.Utilities:IsWeeklyCapCurrency(currencyID, info.name) then
+        return true
+    end
+    return false
 end
 
 --- Safe tonumber for C_CurrencyInfo fields (Midnight may return secret values).
@@ -243,9 +247,11 @@ local function ProgressEarnedFromCurrencyInfo(currencyID, info)
     local tracked = SafeCurrencyNumber(info.trackedQuantity)
     local useTotal = info.useTotalEarnedForMaxQty == true
 
-    if IsCofferKeyShardByApiInfo(info) then
+    if IsCofferKeyShardByApiInfo(info)
+        or (ns.Utilities and ns.Utilities.IsWeeklyCapCurrency and ns.Utilities:IsWeeklyCapCurrency(currencyID, info.name))
+        or (ns.Utilities and ns.Utilities.IsRestoredCofferKeyCurrency and ns.Utilities:IsRestoredCofferKeyCurrency(currencyID, info.name)) then
         -- Do NOT max() across fields: totalEarned can be cumulative (e.g. 1800) while UI cap is weekly/season (600) → bogus "1800/600".
-        -- Prefer this-week progress, then clamp any fallback to the smallest known cap (weekly, else maxQuantity).
+        -- quantityEarnedThisWeek is authoritative for this-week progress, including 0 after weekly reset.
         local maxW = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
         local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
         local cap = (maxW > 0) and maxW or maxQ
@@ -254,13 +260,15 @@ local function ProgressEarnedFromCurrencyInfo(currencyID, info)
             if v > cap then return cap end
             return v
         end
-        -- Positive signals first (skip stale zeros when another field has the cap)
-        if qew ~= nil and qew > 0 then return clampToCap(qew) end
-        if tracked ~= nil and tracked > 0 then return clampToCap(tracked) end
-        if te ~= nil and te > 0 then return clampToCap(te) end
-        if qew ~= nil then return clampToCap(qew) end
-        if tracked ~= nil then return clampToCap(tracked) end
-        if te ~= nil then return clampToCap(te) end
+        if qew ~= nil then
+            return clampToCap(qew)
+        end
+        if tracked ~= nil and tracked > 0 then
+            return clampToCap(tracked)
+        end
+        if te ~= nil then
+            return clampToCap(te)
+        end
         local leg = LegacyEarnedThisWeekFromGlobal(currencyID)
         if leg ~= nil then return clampToCap(leg) end
         return nil
@@ -302,7 +310,7 @@ local function NormalizationCapFromCurrencyInfo(currencyID, info)
     if not info then return 0 end
     local maxQ = SafeCurrencyNumber(info.maxQuantity) or 0
     local maxWeekly = SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
-    if IsCofferKeyShardByApiInfo(info) then
+    if IsCofferKeyShardByApiInfo(info) or (ns.Utilities and ns.Utilities.IsWeeklyCapCurrency and ns.Utilities:IsWeeklyCapCurrency(currencyID, info.name)) then
         return (maxQ > 0) and maxQ or 0
     end
     local normCap = (maxQ > 0) and maxQ or maxWeekly
@@ -425,7 +433,145 @@ local function LookupStoredCurrencyValue(db, charKey, currencyID)
     return nil
 end
 
-local function LookupStoredTotalEarned(db, charKey, currencyID)
+--- Weekly-cap PvE currencies (coffer shards, Dundun, restored key): progress resets each week.
+--- Dawncrests use season totalEarned — not weekly-persisted here.
+local function UsesWeeklyProgressPersistence(currencyID, info)
+    if not info and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+        info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    end
+    if not info then return false end
+    if IsCofferKeyShardByApiInfo(info) then return true end
+    if ns.Utilities and ns.Utilities.IsWeeklyCapCurrency and ns.Utilities:IsWeeklyCapCurrency(currencyID, info.name) then
+        return true
+    end
+    if ns.Utilities and ns.Utilities.IsRestoredCofferKeyCurrency and ns.Utilities:IsRestoredCofferKeyCurrency(currencyID, info.name) then
+        return true
+    end
+    return false
+end
+
+local function GetCharacterLastSeen(charKey)
+    if not charKey or not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
+        return nil
+    end
+    local chars = WarbandNexus.db.global.characters
+    if not chars then return nil end
+    local row = chars[charKey]
+    if type(row) == "table" and type(row.lastSeen) == "number" then
+        return row.lastSeen
+    end
+    if ns.VaultCharKeysMatch then
+        for k, v in pairs(chars) do
+            if type(v) == "table" and ns.VaultCharKeysMatch(k, charKey) and type(v.lastSeen) == "number" then
+                return v.lastSeen
+            end
+        end
+    end
+    return nil
+end
+
+local function IsWeeklyProgressStaleForChar(db, charKey, currencyID)
+    if not db or not charKey or not currencyID then return false end
+    local currentWeekStart = ns.GetCurrentWeeklyResetStartTime and ns.GetCurrentWeeklyResetStartTime()
+    if not currentWeekStart or currentWeekStart <= 0 then return false end
+
+    local weekBucket = db.currencyProgressWeek and db.currencyProgressWeek[charKey]
+    local storedWeek = weekBucket and weekBucket[currencyID]
+    if type(storedWeek) == "number" and storedWeek > 0 then
+        return storedWeek < currentWeekStart
+    end
+
+    -- Legacy rows saved before per-week stamps: infer from last time this character was active.
+    local lastSeen = GetCharacterLastSeen(charKey)
+    if type(lastSeen) == "number" then
+        return lastSeen < currentWeekStart
+    end
+    return true
+end
+
+local function RecordCurrencyProgressWeek(db, charKey, currencyID, info)
+    if not db or not charKey or not currencyID then return end
+    if not UsesWeeklyProgressPersistence(currencyID, info) then return end
+    local weekStart = ns.GetCurrentWeeklyResetStartTime and ns.GetCurrentWeeklyResetStartTime()
+    if not weekStart or weekStart <= 0 then return end
+    if not db.currencyProgressWeek then db.currencyProgressWeek = {} end
+    if not db.currencyProgressWeek[charKey] then db.currencyProgressWeek[charKey] = {} end
+    db.currencyProgressWeek[charKey][currencyID] = weekStart
+end
+
+local function ApplyWeeklyProgressFreshness(db, charKey, currencyID, storedTe)
+    if storedTe == nil then return nil end
+    if not UsesWeeklyProgressPersistence(currencyID, nil) then
+        return storedTe
+    end
+    if IsWeeklyProgressStaleForChar(db, charKey, currencyID) then
+        return 0
+    end
+    return storedTe
+end
+
+--- Clear stale weekly progress in SV (offline alts after weekly reset).
+local function PruneStaleWeeklyCurrencyProgress(db)
+    if not db or not db.totalEarned then return end
+    local currentWeekStart = ns.GetCurrentWeeklyResetStartTime and ns.GetCurrentWeeklyResetStartTime()
+    if not currentWeekStart or currentWeekStart <= 0 then return end
+
+    for charKey, row in pairs(db.totalEarned) do
+        if type(row) == "table" then
+            for currencyID, te in pairs(row) do
+                if type(te) == "number" and te > 0 and UsesWeeklyProgressPersistence(currencyID, nil) then
+                    if IsWeeklyProgressStaleForChar(db, charKey, currencyID) then
+                        row[currencyID] = 0
+                        if db.weeklyEarnedThisWeek and db.weeklyEarnedThisWeek[charKey] then
+                            db.weeklyEarnedThisWeek[charKey][currencyID] = 0
+                        end
+                        RecordCurrencyProgressWeek(db, charKey, currencyID, nil)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function RecordWeeklyEarnedSnapshot(db, charKey, currencyID, info)
+    if not db or not charKey or not currencyID or not info then return end
+    if not UsesWeeklyProgressPersistence(currencyID, info) then return end
+    local qew = SafeCurrencyNumber(info.quantityEarnedThisWeek)
+    if qew == nil then return end
+    if not db.weeklyEarnedThisWeek then db.weeklyEarnedThisWeek = {} end
+    if not db.weeklyEarnedThisWeek[charKey] then db.weeklyEarnedThisWeek[charKey] = {} end
+    db.weeklyEarnedThisWeek[charKey][currencyID] = qew
+    RecordCurrencyProgressWeek(db, charKey, currencyID, info)
+end
+
+--- One-time heal: capped weekly progress without an API weekly snapshot was often stale totalEarned.
+local function HealSuspiciousWeeklyCapProgress(db)
+    if not db or not db.totalEarned then return end
+    if db.weeklyEarnedSnapshotV1 then return end
+    for charKey, row in pairs(db.totalEarned) do
+        if type(row) == "table" then
+            for currencyID, te in pairs(row) do
+                if type(te) == "number" and te > 0 and UsesWeeklyProgressPersistence(currencyID, nil) then
+                    local snap = db.weeklyEarnedThisWeek
+                        and db.weeklyEarnedThisWeek[charKey]
+                        and db.weeklyEarnedThisWeek[charKey][currencyID]
+                    if snap == nil then
+                        local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
+                        local maxW = info and SafeCurrencyNumber(info.maxWeeklyQuantity) or 0
+                        local maxQ = info and SafeCurrencyNumber(info.maxQuantity) or 0
+                        local cap = (maxW > 0) and maxW or maxQ
+                        if cap > 0 and te >= cap then
+                            row[currencyID] = 0
+                        end
+                    end
+                end
+            end
+        end
+    end
+    db.weeklyEarnedSnapshotV1 = true
+end
+
+local function LookupStoredTotalEarnedRaw(db, charKey, currencyID)
     if not db or not db.totalEarned or not charKey or not currencyID then return nil end
     local bucket = db.totalEarned[charKey]
     if bucket and bucket[currencyID] ~= nil then
@@ -436,12 +582,27 @@ local function LookupStoredTotalEarned(db, charKey, currencyID)
     end
     if ns.VaultCharKeysMatch then
         for k, row in pairs(db.totalEarned) do
-            if type(row) == "table" and ns.VaultCharKeysMatch(k, charKey) and row[currencyID] ~= nil then
+            if type(row) == "table" and k ~= charKey and ns.VaultCharKeysMatch(k, charKey) and row[currencyID] ~= nil then
                 return row[currencyID]
             end
         end
     end
     return nil
+end
+
+local function LookupStoredTotalEarned(db, charKey, currencyID)
+    if UsesWeeklyProgressPersistence(currencyID, nil) then
+        if IsWeeklyProgressStaleForChar(db, charKey, currencyID) then
+            return 0
+        end
+        local weekBucket = db.weeklyEarnedThisWeek and db.weeklyEarnedThisWeek[charKey]
+        if weekBucket and weekBucket[currencyID] ~= nil then
+            return weekBucket[currencyID]
+        end
+    end
+    local stored = LookupStoredTotalEarnedRaw(db, charKey, currencyID)
+    if stored == nil then return nil end
+    return ApplyWeeklyProgressFreshness(db, charKey, currencyID, stored)
 end
 
 -- ON-DEMAND METADATA RESOLVER (Session RAM only)
@@ -530,6 +691,9 @@ function WarbandNexus:InitializeCurrencyCache()
     
     -- Load metadata
     CurrencyCache.lastFullScan = db.lastScan or 0
+
+    PruneStaleWeeklyCurrencyProgress(db)
+    HealSuspiciousWeeklyCapProgress(db)
     
     -- Get current character subsidiary key (GUID-backed after migration; resolves legacy API key).
     local currentSubsidiaryKey = CurrencySubsidiaryKey(nil)
@@ -848,6 +1012,11 @@ local function UpdateSingleCurrency(currencyID, eventHint)
 
     if splitCur and te ~= nil and type(te) == "number" then
         db.totalEarned[charKey][currencyID] = te
+        if apiInfo then
+            RecordWeeklyEarnedSnapshot(db, charKey, currencyID, apiInfo)
+        else
+            RecordCurrencyProgressWeek(db, charKey, currencyID, nil)
+        end
     end
 
     PruneCurrencyAliasBuckets(db, charKey)
@@ -1298,12 +1467,15 @@ function CurrencyCache:UpdateAll(currencyDataArray)
             local rowApi = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(data.currencyID)
             if teFull ~= nil and type(teFull) == "number" and rowApi and IsSeasonProgressSplitCurrency(data.currencyID, rowApi) then
                 db.totalEarned[currentCharKey][data.currencyID] = teFull
+                RecordWeeklyEarnedSnapshot(db, currentCharKey, data.currencyID, rowApi)
             end
             currencyCount = currencyCount + 1
         end
     end
 
     PruneCurrencyAliasBuckets(db, currentCharKey)
+
+    PruneStaleWeeklyCurrencyProgress(db)
 
     -- Do NOT emit WN_CURRENCY_GAINED from FullScan reconciliation diffs. That path compares
     -- last SV snapshot to fresh API; after character change / account sync, hundreds of
@@ -1586,6 +1758,7 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
                 if not db.totalEarned then db.totalEarned = {} end
                 if not db.totalEarned[charKey] then db.totalEarned[charKey] = {} end
                 db.totalEarned[charKey][currencyID] = liveTotalEarned
+                RecordWeeklyEarnedSnapshot(db, charKey, currencyID, teSplitInfo)
             end
         end
     end
@@ -1895,6 +2068,12 @@ function CurrencyCache:Clear(clearDB)
             end
             if db.totalEarned and db.totalEarned[currentCharKey] then
                 wipe(db.totalEarned[currentCharKey])
+            end
+            if db.currencyProgressWeek and db.currencyProgressWeek[currentCharKey] then
+                wipe(db.currencyProgressWeek[currentCharKey])
+            end
+            if db.weeklyEarnedThisWeek and db.weeklyEarnedThisWeek[currentCharKey] then
+                wipe(db.weeklyEarnedThisWeek[currentCharKey])
             end
             
             -- Reset scan time for current character only

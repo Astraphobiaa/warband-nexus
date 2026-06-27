@@ -1653,9 +1653,11 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
         end
         local isCofferShard = ns.Utilities and ns.Utilities.IsCofferKeyShardCurrency
             and ns.Utilities:IsCofferKeyShardCurrency(currencyID, info.name)
+        local isWeeklyCap = ns.Utilities and ns.Utilities.IsWeeklyCapCurrency
+            and ns.Utilities:IsWeeklyCapCurrency(currencyID, info.name)
         local weeklyCapFromAPI = SafeCurrencyTooltipNum(info.maxWeeklyQuantity) or 0
 
-        if hasSeasonProgress or (type(maxQty) == "number" and maxQty > 0) or isCofferShard then
+        if hasSeasonProgress or (type(maxQty) == "number" and maxQty > 0) or isCofferShard or isWeeklyCap then
             local fmtNumber = ns.UI_FormatNumber or function(n) return tostring(n or 0) end
             local currentLabel = (ns.L and ns.L["CURRENT_ENTRIES_LABEL"]) or "Current:"
             local seasonLabel = (ns.L and ns.L["SEASON"]) or "Season"
@@ -1664,7 +1666,7 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             local remainingSuffix = (ns.L and ns.L["VAULT_REMAINING_SUFFIX"]) or "remaining"
             frame:AddSpacer(6)
 
-            if isCofferShard then
+            if isCofferShard or isWeeklyCap then
                 local wCap = weeklyCapFromAPI
                 if wCap <= 0 and type(maxQty) == "number" and maxQty > 0 then
                     wCap = maxQty

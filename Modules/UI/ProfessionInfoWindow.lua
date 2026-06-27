@@ -787,8 +787,10 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                         local stateLower = (type(stateTxt) == "string" and not (issecretvalue and issecretvalue(stateTxt)))
                             and stateTxt:lower() or ""
                         local isUnlocked = (stateTxt == "1" or stateLower == "unlocked")
-                        local allocatedCount, totalRanks, spentRanks, totalNodes = 0, 0, 0, 0
-                        if tab.nodes then
+                        local allocatedCount, totalRanks, spentRanks, totalNodes =
+                            tab.allocatedNodes, tab.totalRanks, tab.spentRanks, tab.totalNodes
+                        if totalRanks == nil and tab.nodes then
+                            allocatedCount, totalRanks, spentRanks, totalNodes = 0, 0, 0, 0
                             for ni = 1, #tab.nodes do
                                 local node = tab.nodes[ni]
                                 if node then
@@ -801,6 +803,10 @@ local function PopulateContent(scrollChild, charData, charKey, profName, profSlo
                                 end
                             end
                         end
+                        allocatedCount = allocatedCount or 0
+                        totalRanks = totalRanks or 0
+                        spentRanks = spentRanks or 0
+                        totalNodes = totalNodes or 0
 
                         -- Tab header bar with summary (e.g. Alchemical Mastery: 15/30 pts)
                         yOffset = AddTabHeader(scrollChild, yOffset, tab.name or "?",

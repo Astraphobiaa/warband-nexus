@@ -297,7 +297,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 2
+local MIGRATION_FAST_PATH_REVISION = 4
 
 ---Run all database migrations. Returns true if a full schema reset was performed.
 ---@param db table AceDB instance
@@ -342,6 +342,12 @@ function MigrationService:RunMigrations(db)
     self:MigrateRemoveTransmogV1(db)
     self:DropStaleLegacyGlobalCurrencies(db)
     self:DropStaleLegacyGlobalReputations(db)
+    self:MigrateKnowledgeSpecTabsSlimV1(db)
+    self:MigratePruneCacheBackupsV1(db)
+    self:MigratePruneOrphanSvKeysV1(db)
+    self:MigrateDropLegacyCollectionDataV1(db)
+    self:MigratePruneRedundantCollectionCacheV1(db)
+    self:MigratePruneAceCharLegacyBagItemsV1(db)
     self:FinalizeGuidOnlySubsidiaryV1(db)
     if db.global then
         db.global._wnMigrationFastPathRev = MIGRATION_FAST_PATH_REVISION
@@ -1728,6 +1734,168 @@ function MigrationService:DropStaleLegacyGlobalReputations(db)
         end
     end
     db.global._legacyReputationsDropV1 = true
+end
+
+--- Collapse legacy per-node knowledge trees into tab summary fields (drops ~MB of SV per account).
+local function SlimKnowledgeSpecTabs(specTabs)
+    if type(specTabs) ~= "table" then return end
+    for i = 1, #specTabs do
+        local tab = specTabs[i]
+        if type(tab) == "table" and tab.nodes then
+            if tab.totalRanks == nil then
+                local totalRanks, spentRanks, allocated, totalNodes = 0, 0, 0, 0
+                for ni = 1, #tab.nodes do
+                    local node = tab.nodes[ni]
+                    if type(node) == "table" then
+                        totalNodes = totalNodes + 1
+                        totalRanks = totalRanks + (node.maxRanks or 0)
+                        spentRanks = spentRanks + (node.currentRank or 0)
+                        if (node.currentRank or 0) > 0 then
+                            allocated = allocated + 1
+                        end
+                    end
+                end
+                tab.totalRanks = totalRanks
+                tab.spentRanks = spentRanks
+                tab.allocatedNodes = allocated
+                tab.totalNodes = totalNodes
+            end
+            tab.nodes = nil
+        end
+    end
+end
+
+---@param db table AceDB root
+function MigrationService:MigrateKnowledgeSpecTabsSlimV1(db)
+    if not db or not db.global or db.global.knowledgeSpecTabsSlimV1 then return end
+    local chars = db.global.characters
+    if type(chars) == "table" then
+        for _, charData in pairs(chars) do
+            if type(charData) == "table" then
+                local kd = charData.knowledgeData
+                if type(kd) == "table" then
+                    for _, row in pairs(kd) do
+                        if type(row) == "table" then
+                            SlimKnowledgeSpecTabs(row.specTabs)
+                        end
+                    end
+                end
+                local pd = charData.professionData
+                if pd and type(pd.bySkillLine) == "table" then
+                    for _, bucket in pairs(pd.bySkillLine) do
+                        if type(bucket) == "table" and type(bucket.knowledge) == "table" then
+                            SlimKnowledgeSpecTabs(bucket.knowledge.specTabs)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if DebugPrint then
+        DebugPrint("|cff9370DB[Migration]|r knowledgeSpecTabsSlimV1: profession knowledge stored as tab summaries only")
+    end
+    db.global.knowledgeSpecTabsSlimV1 = true
+end
+
+--- Drop invalidation archive copies (live caches remain; backups are recovery-only).
+---@param db table AceDB root
+function MigrationService:MigratePruneCacheBackupsV1(db)
+    if not db or not db.global or db.global.cacheBackupsPrunedV1 then return end
+    if db.global.cacheBackups then
+        db.global.cacheBackups = nil
+        if DebugPrint then
+            DebugPrint("|cff9370DB[Migration]|r cacheBackupsPrunedV1: removed cache backup archive")
+        end
+    end
+    db.global.cacheBackupsPrunedV1 = true
+end
+
+--- Remove orphaned dev instrumentation keys written at SavedVariables root (_agentLog_*).
+---@param db table AceDB root
+function MigrationService:MigratePruneOrphanSvKeysV1(db)
+    if not db or not db.global or db.global.pruneOrphanSvKeysV1 then return end
+    local sv = db.sv
+    if type(sv) == "table" then
+        local removed = 0
+        for key in pairs(sv) do
+            if type(key) == "string" and key:sub(1, 10) == "_agentLog_" then
+                sv[key] = nil
+                removed = removed + 1
+            end
+        end
+        if DebugPrint and removed > 0 then
+            DebugPrint("|cff9370DB[Migration]|r pruneOrphanSvKeysV1: removed " .. tostring(removed) .. " _agentLog_* key(s)")
+        end
+    end
+    db.global.pruneOrphanSvKeysV1 = true
+end
+
+local function CollectionStoreIsAuthoritative(global)
+    if type(global) ~= "table" then return false end
+    local store = global.collectionStore
+    if type(store) ~= "table" then return false end
+    local ver = ns.Constants and ns.Constants.COLLECTION_CACHE_VERSION
+    if ver and store.version ~= ver then return false end
+    if store.mount and next(store.mount) ~= nil then return true end
+    if store.pet and next(store.pet) ~= nil then return true end
+    if store.achievement and next(store.achievement) ~= nil then return true end
+    return false
+end
+
+--- Remove duplicate legacy db.global.collectionData (~1.5MB) after collectionStore is populated.
+---@param db table AceDB root
+function MigrationService:MigrateDropLegacyCollectionDataV1(db)
+    if not db or not db.global or db.global.legacyCollectionDataDropV1 then return end
+    if type(db.global.collectionData) == "table" and CollectionStoreIsAuthoritative(db.global) then
+        db.global.collectionData = nil
+        if DebugPrint then
+            DebugPrint("|cff9370DB[Migration]|r legacyCollectionDataDropV1: removed duplicate db.global.collectionData")
+        end
+    end
+    db.global.legacyCollectionDataDropV1 = true
+end
+
+--- Drop redundant collectionCache browse mirrors when collectionStore is authoritative.
+---@param db table AceDB root
+function MigrationService:MigratePruneRedundantCollectionCacheV1(db)
+    if not db or not db.global or db.global.collectionCachePrunedV1 then return end
+    if CollectionStoreIsAuthoritative(db.global) then
+        local cache = db.global.collectionCache
+        if type(cache) == "table" then
+            cache.uncollected = nil
+            cache.completed = nil
+            if DebugPrint then
+                DebugPrint("|cff9370DB[Migration]|r collectionCachePrunedV1: removed redundant uncollected/completed mirrors")
+            end
+        end
+    end
+    db.global.collectionCachePrunedV1 = true
+end
+
+--- One-shot: legacy AceDB char-scope bag dumps (itemStorage is authoritative).
+---@param db table AceDB root
+function MigrationService:MigratePruneAceCharLegacyBagItemsV1(db)
+    if not db or not db.global or db.global.aceCharLegacyBagItemsPrunedV1 then return end
+    local charScope = db.char
+    if type(charScope) == "table" then
+        local n = 0
+        for _, row in pairs(charScope) do
+            if type(row) == "table" then
+                if row.bags and row.bags.items then
+                    row.bags.items = nil
+                    n = n + 1
+                end
+                if row.personalBank and row.personalBank.items then
+                    row.personalBank.items = nil
+                    n = n + 1
+                end
+            end
+        end
+        if DebugPrint and n > 0 then
+            DebugPrint("|cff9370DB[Migration]|r aceCharLegacyBagItemsPrunedV1: cleared " .. tostring(n) .. " legacy char bag dump(s)")
+        end
+    end
+    db.global.aceCharLegacyBagItemsPrunedV1 = true
 end
 
 return MigrationService
