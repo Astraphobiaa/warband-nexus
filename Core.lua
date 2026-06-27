@@ -229,8 +229,9 @@ local defaults = {
         -- When true, UI accent (and derived tab/border tones) follows the logged-in character's class color; falls back to themeColors.accent if class is unavailable.
         useClassColorAccent = false,
         themeMode = "dark",  -- "dark" | "light" — surface/text palette (Settings > Theme)
-        showItemCount = true,
+        showItemCount = true, -- legacy fallback when showTooltipItemCount is nil
         showTooltipItemCount = true,
+        showTooltipItemID = true,
         recipeCompanionEnabled = true,
         -- To-Do browse filters (Mounts, Pets, Achievements, …)
         plansShowCompleted = false,

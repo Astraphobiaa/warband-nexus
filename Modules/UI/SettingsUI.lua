@@ -1529,46 +1529,14 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local generalSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(generalSection, yOffset)
     
-    -- General options grid
-    local generalOptions = {
-        {
-            key = "showItemCount",
-            label = (ns.L and ns.L["SHOW_ITEM_COUNT"]) or "Show Item Count",
-            tooltip = (ns.L and ns.L["SHOW_ITEM_COUNT_TOOLTIP"]) or "Display stack counts on items in storage view",
-            get = function() return WarbandNexus.db.profile.showItemCount end,
-            set = function(value) WarbandNexus.db.profile.showItemCount = value end,
-        },
-        {
-            key = "showTooltipItemCount",
-            label = (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP"]) or "Show Items in Tooltips",
-            tooltip = (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"]) or "Display Warband and Character item counts in item tooltips.",
-            get = function() return WarbandNexus.db.profile.showTooltipItemCount ~= false end,
-            set = function(value) WarbandNexus.db.profile.showTooltipItemCount = value end,
-        },
+    -- General options: features (minimap, login stats) — item tooltips in separate subsection below
+    local generalFeatureOptions = {
         {
             key = "requestPlayedTimeOnLogin",
             label = (ns.L and ns.L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN"]) or "Request played time on login",
             tooltip = (ns.L and ns.L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"]) or "When enabled, the addon requests /played data in the background to update statistics. Chat output from that request is suppressed. When disabled, no automatic request on login.",
             get = function() return WarbandNexus.db.profile.requestPlayedTimeOnLogin ~= false end,
             set = function(value) WarbandNexus.db.profile.requestPlayedTimeOnLogin = value end,
-        },
-        {
-            key = "vaultButtonEnabled",
-            label = (ns.L and ns.L["CONFIG_VAULT_BUTTON"]) or "Easy Access",
-            tooltip = (ns.L and ns.L["CONFIG_VAULT_BUTTON_DESC"]) or "Show the draggable Easy Access shortcut on screen. Left-click runs your chosen action; right-click opens the WN shortcut menu (Vault Tracker, Saved Instances, Plans / Todo, Settings).",
-            get = function()
-                local vb = WarbandNexus.db.profile.vaultButton
-                return not vb or vb.enabled ~= false
-            end,
-            set = function(value)
-                WarbandNexus.db.profile.vaultButton = WarbandNexus.db.profile.vaultButton or {}
-                WarbandNexus.db.profile.vaultButton.enabled = value and true or false
-                if WarbandNexus.SetVaultButtonEnabled then
-                    WarbandNexus:SetVaultButtonEnabled(value and true or false)
-                elseif WarbandNexus.RefreshVaultButtonSettings then
-                    WarbandNexus:RefreshVaultButtonSettings()
-                end
-            end,
         },
         {
             key = "minimapVisible",
@@ -1607,17 +1575,25 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 end
             end,
         },
+    }
+
+    local tooltipOptions = {
         {
-            key = "recipeCompanionEnabled",
-            label = (ns.L and ns.L["CONFIG_RECIPE_COMPANION"]) or "Recipe Companion",
-            tooltip = (ns.L and ns.L["CONFIG_RECIPE_COMPANION_DESC"]) or "Show the Recipe Companion window alongside the Professions UI, displaying reagent availability per character.",
-            get = function() return WarbandNexus.db.profile.recipeCompanionEnabled ~= false end,
+            key = "showTooltipItemCount",
+            label = (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP"]) or "Show Items in Tooltips",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"]) or "Display Warband and Character item counts in item tooltips.",
+            get = function() return WarbandNexus.db.profile.showTooltipItemCount ~= false end,
             set = function(value)
-                WarbandNexus.db.profile.recipeCompanionEnabled = value
-                if not value and ns.RecipeCompanionWindow then
-                    ns.RecipeCompanionWindow.Hide()
-                end
+                WarbandNexus.db.profile.showTooltipItemCount = value
+                WarbandNexus.db.profile.showItemCount = value
             end,
+        },
+        {
+            key = "showTooltipItemID",
+            label = (ns.L and ns.L["CONFIG_SHOW_TOOLTIP_ITEM_ID"]) or "Show Item ID in Tooltips",
+            tooltip = (ns.L and ns.L["CONFIG_SHOW_TOOLTIP_ITEM_ID_DESC"]) or "Append the numeric item ID at the bottom of item tooltips.",
+            get = function() return WarbandNexus.db.profile.showTooltipItemID ~= false end,
+            set = function(value) WarbandNexus.db.profile.showTooltipItemID = value end,
         },
     }
 
@@ -1629,7 +1605,12 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_GENERAL_FEATURES"]) or "Features",
             iw, cy, { skipGapBefore = true })
-        cy = CreateCheckboxGrid(inner, generalOptions, cy, iw)
+        cy = CreateCheckboxGrid(inner, generalFeatureOptions, cy, iw)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_TOOLTIPS"]) or "Item tooltips",
+            iw, cy, {})
+        cy = CreateCheckboxGrid(inner, tooltipOptions, cy, iw)
 
         local VB = ns.VaultButton
         local function GetMinimapClickSettings()

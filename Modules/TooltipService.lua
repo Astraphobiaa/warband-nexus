@@ -317,7 +317,14 @@ local function FormatItemIDTooltipText(itemID)
     return BuildItemIDTooltipMarkup(itemID)
 end
 
+local function ProfileShowsTooltipItemID()
+    local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if not profile then return true end
+    return profile.showTooltipItemID ~= false
+end
+
 local function AppendItemIDFooterLine(frame, itemID)
+    if not ProfileShowsTooltipItemID() then return end
     if not frame or not frame.AddLine then return end
     local text = BuildItemIDTooltipMarkup(itemID)
     if not text then return end

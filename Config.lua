@@ -153,7 +153,17 @@ local options = {
             get = function() return WarbandNexus.db.profile.showTooltipItemCount ~= false end,
             set = function(_, value)
                 WarbandNexus.db.profile.showTooltipItemCount = value
+                WarbandNexus.db.profile.showItemCount = value
             end,
+        },
+        showTooltipItemID = {
+            order = 15.5,
+            type = "toggle",
+            name = function() return (ns.L and ns.L["CONFIG_SHOW_TOOLTIP_ITEM_ID"]) or "Show Item ID in Tooltips" end,
+            desc = function() return (ns.L and ns.L["CONFIG_SHOW_TOOLTIP_ITEM_ID_DESC"]) or "Append the numeric item ID at the bottom of item tooltips." end,
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.showTooltipItemID ~= false end,
+            set = function(_, value) WarbandNexus.db.profile.showTooltipItemID = value end,
         },
         requestPlayedTimeOnLogin = {
             order = 16,
@@ -289,8 +299,9 @@ local options = {
         showItemCount = {
             order = 46,
             type = "toggle",
+            hidden = true,
             name = function() return (ns.L and ns.L["CONFIG_SHOW_ITEM_COUNT"]) or "Show Item Count" end,
-            desc = function() return (ns.L and ns.L["CONFIG_SHOW_ITEM_COUNT_DESC"]) or "Display item count tooltips showing how many of each item you have across all characters." end,
+            desc = function() return (ns.L and ns.L["CONFIG_SHOW_ITEM_COUNT_DESC"]) or "Legacy fallback for tooltip item counts. Use Show Items in Tooltips instead." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.showItemCount end,
             set = function(_, value)

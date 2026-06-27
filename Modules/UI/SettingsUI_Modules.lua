@@ -164,6 +164,24 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
         }
 
         cy = CreateCheckboxGrid(inner, moduleOptions, cy, iw)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_MODULES_PROFESSION_TOOLS"]) or "Profession tools",
+            iw, cy, {})
+        cy = CreateCheckboxGrid(inner, {
+            {
+                key = "recipeCompanionEnabled",
+                label = (ns.L and ns.L["CONFIG_RECIPE_COMPANION"]) or "Recipe Companion",
+                tooltip = (ns.L and ns.L["CONFIG_RECIPE_COMPANION_DESC"]) or "Show the Recipe Companion window alongside the Professions UI, displaying reagent availability per character.",
+                get = function() return WarbandNexus.db.profile.recipeCompanionEnabled ~= false end,
+                set = function(value)
+                    WarbandNexus.db.profile.recipeCompanionEnabled = value
+                    if not value and ns.RecipeCompanionWindow then
+                        ns.RecipeCompanionWindow.Hide()
+                    end
+                end,
+            },
+        }, cy, iw)
         return cy
     end, { flat = true, noTrailingGap = true })
 

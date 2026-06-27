@@ -953,14 +953,18 @@ function GT.InitializeGameTooltipHook(service)
 
         -- Item ID footer (bottom line)
         if tooltip and tooltip.AddLine and itemID then
-            local idToken = "itemid:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
-            if not TooltipInjectionAlreadyDone(tooltip, idToken) then
-                local TooltipService = ns.TooltipService
-                local idText = TooltipService and TooltipService.FormatItemIDTooltipText
-                    and TooltipService:FormatItemIDTooltipText(itemID)
-                if idText then
-                    tooltip:AddLine(idText)
-                    MarkTooltipInjectionDone(tooltip, idToken)
+            local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+            local showItemID = not profile or profile.showTooltipItemID ~= false
+            if showItemID then
+                local idToken = "itemid:" .. tostring(dataInstanceID or 0) .. ":" .. tostring(itemID)
+                if not TooltipInjectionAlreadyDone(tooltip, idToken) then
+                    local TooltipService = ns.TooltipService
+                    local idText = TooltipService and TooltipService.FormatItemIDTooltipText
+                        and TooltipService:FormatItemIDTooltipText(itemID)
+                    if idText then
+                        tooltip:AddLine(idText)
+                        MarkTooltipInjectionDone(tooltip, idToken)
+                    end
                 end
             end
         end
