@@ -151,6 +151,29 @@ def main() -> int:
         suffix = f" (+{len(orphans) - 10} more)" if len(orphans) > 10 else ""
         errors.append(f"ns.L keys used in code but missing from enUS.lua: {sample}{suffix}")
 
+    quality_script = ROOT / "scripts" / "check_locale_quality.py"
+    if quality_script.is_file():
+        import subprocess
+
+        proc = subprocess.run(
+            [sys.executable, str(quality_script)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if proc.returncode != 0:
+            for line in (proc.stdout + proc.stderr).splitlines():
+                line = line.strip()
+                if line.startswith("ERROR:"):
+                    errors.append(f"locale quality: {line[6:].strip()}")
+                elif "Locale quality FAILED" in line:
+                    errors.append("locale quality check failed (see script output)")
+            if not any("locale quality" in e for e in errors):
+                errors.append("locale quality check failed (scripts/check_locale_quality.py)")
+    else:
+        warnings.append("scripts/check_locale_quality.py missing — skip transliteration audit")
+
     _report(errors, warnings)
     return 1 if errors else 0
 
