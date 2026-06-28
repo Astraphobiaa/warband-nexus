@@ -2254,6 +2254,61 @@ function CurrencyCache:SyncAccountCurrencies(specificCurrencyID)
     end)
 end
 
+--- Normalized Name-Realm key for a roster row (never name-only — duplicate names on different realms stay distinct).
+local function RosterNameRealmKey(charData, charKey)
+    if type(charData) ~= "table" then return nil end
+    local U = ns.Utilities
+    if not U or not U.GetCharacterKey then return nil end
+    local name, realm = charData.name, charData.realm
+    if (not name or name == "") or (not realm or realm == "") then
+        if charKey and type(charKey) == "string" and U.SplitCharacterKey then
+            name, realm = U:SplitCharacterKey(charKey)
+        end
+    end
+    if not name or not realm
+        or (issecretvalue and (issecretvalue(name) or issecretvalue(realm))) then
+        return nil
+    end
+    return U:GetCharacterKey(name, realm)
+end
+
+--- Build normalized Name-Realm key from FetchCurrencyDataFromAccountCharacters entry (11.0.2+ fullCharacterName preferred).
+local function ResolveApiEntryRosterKey(fullCharacterName, characterName)
+    local U = ns.Utilities
+    if not U or not U.GetCharacterKey or not U.SplitCharacterKey then return nil end
+    local candidates = { fullCharacterName, characterName }
+    for i = 1, #candidates do
+        local raw = candidates[i]
+        if raw and raw ~= "" and not (issecretvalue and issecretvalue(raw)) then
+            local n, r = U:SplitCharacterKey(raw)
+            if n and r then
+                local key = U:GetCharacterKey(n, r)
+                if key then return key end
+            end
+        end
+    end
+    return nil
+end
+
+--- Match one API account-currency row to a tracked roster character (GUID, then Name-Realm only).
+local function AccountCurrencyEntryMatchesRosterRow(apiChar, charData, charKey)
+    if charData.guid and apiChar.guid
+        and not (issecretvalue and issecretvalue(charData.guid))
+        and not (issecretvalue and issecretvalue(apiChar.guid))
+        and charData.guid == apiChar.guid then
+        return true
+    end
+    local wantKey = RosterNameRealmKey(charData, charKey)
+    local apiKey = apiChar.rosterKey
+    if wantKey and apiKey and wantKey == apiKey then
+        if apiChar.guid and not charData.guid and not (issecretvalue and issecretvalue(apiChar.guid)) then
+            charData.guid = apiChar.guid
+        end
+        return true
+    end
+    return false
+end
+
 ---Actually performs the update using the fetched data (called from Event).
 function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
     specificCurrencyID = specificCurrencyID or CurrencyCache.pendingSyncCurrencyID
@@ -2341,13 +2396,20 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                     if not cName or (issecretvalue and issecretvalue(cName)) then
                         cName = nil
                     end
+                    local cFull = info.fullCharacterName
+                    if not cFull or (issecretvalue and issecretvalue(cFull)) then
+                        cFull = nil
+                    end
                     local cGuid = info.characterGUID
                     if cGuid and (issecretvalue and issecretvalue(cGuid)) then
                         cGuid = nil
                     end
-                    if cName or cGuid then
+                    local rosterKey = ResolveApiEntryRosterKey(cFull, cName)
+                    if cName or cGuid or rosterKey then
                         table.insert(apiChars, {
                             name = cName,
+                            fullName = cFull,
+                            rosterKey = rosterKey,
                             guid = cGuid,
                             quantity = qty,
                         })
@@ -2389,40 +2451,15 @@ function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
                 
                 if not isCurrentPlayer then
                     local newQuantity = 0
-                    local dbNameBase = nil
-                    if charData.name and not (issecretvalue and issecretvalue(charData.name)) then
-                        dbNameBase = strsplit("-", charData.name)
-                    end
-                    
+
                     for k = 1, #apiChars do
                         local apiChar = apiChars[k]
-                        local isMatch = false
-                        -- Strategy 1: Match by GUID (100% accurate)
-                        if charData.guid and apiChar.guid
-                            and not (issecretvalue and issecretvalue(charData.guid))
-                            and not (issecretvalue and issecretvalue(apiChar.guid))
-                            and charData.guid == apiChar.guid then
-                            isMatch = true
-                        else
-                            -- Strategy 2: Match by exact API name or API base name
-                            local apiNameBase = nil
-                            if apiChar.name and not (issecretvalue and issecretvalue(apiChar.name)) then
-                                apiNameBase = strsplit("-", apiChar.name)
-                            end
-                            local namesComparable = charData.name and apiChar.name
-                                and not (issecretvalue and issecretvalue(charData.name))
-                                and not (issecretvalue and issecretvalue(apiChar.name))
-                            if (namesComparable and apiChar.name == charData.name) or (dbNameBase and apiNameBase and apiNameBase == dbNameBase) then
-                                isMatch = true
-                                -- Opportunistically save GUID for future comparisons
-                                if apiChar.guid and not charData.guid and not (issecretvalue and issecretvalue(apiChar.guid)) then
-                                    charData.guid = apiChar.guid
-                                end
-                            end
-                        end
-                        
-                        if isMatch then
+                        if AccountCurrencyEntryMatchesRosterRow(apiChar, charData, charKey) then
                             newQuantity = apiChar.quantity
+                            if apiChar.guid and not charData.guid
+                                and not (issecretvalue and issecretvalue(apiChar.guid)) then
+                                charData.guid = apiChar.guid
+                            end
                             break
                         end
                     end
