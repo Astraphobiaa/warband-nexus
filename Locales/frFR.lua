@@ -1137,6 +1137,28 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
+L["CHANGELOG_V322"] = [=[v3.2.2 (2026-06-28)
+
+Ajoute :
+- Personnages, Metiers, PvE et Stockage : tri des listes par classe dans le menu filtre/tri.
+- Parametres : option pour afficher ou masquer l'ID numerique d'objet en bas des infobulles d'objets (active par defaut).
+- PvE : vues de colonnes Actuel et Hebdomadaire ; clic sur les en-tetes pour changer, Maj enfoncee pour previsualiser l'autre vue.
+
+Mis a jour :
+- Barres de titre des onglets : style de boutons de barre d'outils partage et disposition coherente (PvE, Objets, To-Do, Equipement, Monnaies, Metiers).
+- Gestion de l'or : l'apercu resume se met a jour en direct lors des changements de montant cible, de mode ou de reglages par personnage.
+- Infobulles d'objets : comptages WN regroupes sous Personnage actuel, Alts, Banque de bande de guerre et Banque de guilde.
+- Tri des personnages : moteur de tri partage pour Personnages, Metiers, PvE et Stockage (nom, classe, niveau, ilvl, or, royaume, ordre manuel).
+- Cache des monnaies : liaison de personnage par GUID plus fiable pour les transferts de compte et totaux inter-personnages.
+
+Corrige :
+- PvE : l'etat developpe/replie des sections Favoris et Personnages persiste correctement apres rechargement.
+- Reputation : le chargement au demarrage ne reste plus bloque sur la premiere barre de progression.
+- Monnaies : les quantites correspondent au bon personnage lorsque les donnees utilise des cles GUID.
+- Journaux d'or de la banque perso : la barre de defilement ne chevauche plus les lignes de transactions.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V321"] = [=[v3.2.1 (2026-06-25)
 
 Ajoute :

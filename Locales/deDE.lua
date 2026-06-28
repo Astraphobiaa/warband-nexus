@@ -1137,6 +1137,28 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
+L["CHANGELOG_V322"] = [=[v3.2.2 (2026-06-28)
+
+Hinzugefuegt:
+- Charaktere, Berufe, PvE und Lager: Charakterlisten im Filter-/Sortiermenue nach Klasse sortieren.
+- Einstellungen: Optionale Anzeige der numerischen Gegenstands-ID am Ende von Gegenstands-Tooltips (standardmaessig an).
+- PvE: Spaltenansichten Aktuell und Woechentlich; Klick auf Spaltenkoepfe zum Wechseln, Umschalt gedrueckt halten fuer Vorschau der anderen Ansicht.
+
+Aktualisiert:
+- Tab-Titelleisten: gemeinsame Toolbar-Schaltflaechen und einheitliches Layout in PvE, Gegenstaende, To-Do, Ausruestung, Waehrung und Berufen.
+- Gold-Manager: Zusammenfassung aktualisiert sich live bei Aenderung von Zielbetrag, Modus oder charakterbezogenen Einstellungen.
+- Gegenstands-Tooltips: WN-Gegenstandszaehler gruppiert unter Aktueller Charakter, Alt-Charaktere, Warband-Bank und Gildenbank.
+- Charaktersortierung: gemeinsame Sortierlogik fuer Charaktere, Berufe, PvE und Lager (Name, Klasse, Stufe, Gegenstandsstufe, Gold, Realm, manuelle Reihenfolge).
+- Waehrungs-Cache: zuverlaessigere GUID-basierte Charakterzuordnung fuer Konto-Transfers und kontoübergreifende Summen.
+
+Behoben:
+- PvE: Ein-/Ausklappzustand der Abschnitte Favoriten und Charaktere bleibt nach /reload erhalten.
+- Ruf: Start-Ladeanzeige bleibt nicht mehr auf dem ersten Fortschrittsbalken haengen.
+- Waehrung: Mengen werden dem richtigen Charakter zugeordnet, wenn gespeicherte Daten GUID-Roster-Schluessel nutzen.
+- Charakterbank-Geldprotokolle: Scrollleiste ueberlappt Transaktionszeilen nicht mehr.
+
+CurseForge: Warband Nexus]=]
+
 L["CHANGELOG_V321"] = [=[v3.2.1 (2026-06-25)
 
 Hinzugefuegt:
