@@ -1950,11 +1950,41 @@ end
 
 -- SCAN OPERATIONS
 
+local function CompleteReputationLoadingTracker()
+    local LT = ns.LoadingTracker
+    if LT then LT:Complete("reputations") end
+end
+
+local function IsReputationLoadingTrackerPending()
+    local LT = ns.LoadingTracker
+    if LT and LT.IsPending then
+        return LT:IsPending("reputations")
+    end
+    return false
+end
+
+local function ScheduleDeferredReputationFullScan(delaySec, bypassThrottle)
+    C_Timer.After(delaySec or 0.5, function()
+        if ReputationCache then
+            ReputationCache:PerformFullScan(bypassThrottle == true)
+        end
+    end)
+end
+
+function ReputationCache:AbortFullScanInProgress()
+    self.isScanning = false
+    ns._fullScanInProgress = false
+    ns.ReputationLoadingState.isLoading = false
+    CompleteReputationLoadingTracker()
+end
+
 ---Perform full scan of all reputations
 function ReputationCache:PerformFullScan(bypassThrottle)
     DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] FullScan triggered (bypass=" .. tostring(bypassThrottle) .. ")")
     if not Scanner or not Processor then
-        -- Scanner or Processor not loaded
+        if IsReputationLoadingTrackerPending() then
+            CompleteReputationLoadingTracker()
+        end
         return
     end
     
@@ -1962,6 +1992,9 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     -- (the init scan at 3s will cover everything; UPDATE_FACTION-driven scans before that are redundant)
     if not bypassThrottle and self.initScanPending then
         DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] FullScan SKIPPED (init scan pending)")
+        if IsReputationLoadingTrackerPending() then
+            ScheduleDeferredReputationFullScan(0.5, true)
+        end
         return
     end
     
@@ -1986,18 +2019,16 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                     ReputationCache:PerformFullScan()
                 end)
             end
+            if IsReputationLoadingTrackerPending() then
+                ScheduleDeferredReputationFullScan(0.5, true)
+            end
             return
         end
     end
     
     if self.isScanning then
-        -- If there are pending chat notifications, schedule a retry instead of dropping
-        if bypassThrottle and next(self._pendingChatNotifications) then
-            C_Timer.After(0.5, function()
-                if ReputationCache then
-                    ReputationCache:PerformFullScan(true)
-                end
-            end)
+        if bypassThrottle or IsReputationLoadingTrackerPending() or next(self._pendingChatNotifications) then
+            ScheduleDeferredReputationFullScan(0.5, true)
         end
         return
     end
@@ -2037,8 +2068,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
             self.isScanning = false
             ns._fullScanInProgress = false
             ns.ReputationLoadingState.isLoading = false
-            local LT = ns.LoadingTracker
-            if LT then LT:Complete("reputations") end
+            CompleteReputationLoadingTracker()
             C_Timer.After(5, function()
                 if ReputationCache then
                     ReputationCache:PerformFullScan(true)
@@ -2059,9 +2089,11 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                 while ri <= #rawData do
                     local raw = rawData[ri]
                     ri = ri + 1
-                    local normalized = Processor:Process(raw)
-                    if normalized then
+                    local ok, normalized = pcall(Processor.Process, Processor, raw)
+                    if ok and normalized then
                         normalizedData[#normalizedData + 1] = normalized
+                    elseif not ok then
+                        DebugPrint("|cff9370DB[ReputationCache]|r Process error: " .. tostring(normalized))
                     end
                     if (GetTime() - sliceStart) > 0.018 then
                         C_Timer.After(0, chunkPhase2)
@@ -2074,9 +2106,16 @@ function ReputationCache:PerformFullScan(bypassThrottle)
 
                 -- Phase 3 (next frame): Update DB
                 C_Timer.After(0, function()
-                -- Chat notifications come only from: parsed CHAT_MSG lines, MAJOR_FACTION_RENOWN,
-                -- or CHAT_MSG_LOOT companion XP seed — never from comparing the full faction list here.
-                self:UpdateAll(normalizedData)
+                local ok, err = pcall(function()
+                    -- Chat notifications come only from: parsed CHAT_MSG lines, MAJOR_FACTION_RENOWN,
+                    -- or CHAT_MSG_LOOT companion XP seed — never from comparing the full faction list here.
+                    self:UpdateAll(normalizedData)
+                end)
+                if not ok then
+                    DebugPrint("|cff9370DB[ReputationCache]|r UpdateAll error: " .. tostring(err))
+                    self:AbortFullScanInProgress()
+                    return
+                end
                 
                 ns.ReputationLoadingState.isLoading = false
                 ns.ReputationLoadingState.loadingProgress = 100
@@ -2104,8 +2143,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
                 C_Timer.After(0, function()
                     if P then P:StopAsync("PerformFullScan") end
                     self:BuildSnapshotAsync()
-                    local LT = ns.LoadingTracker
-                    if LT then LT:Complete("reputations") end
+                    CompleteReputationLoadingTracker()
                     
                     if self.updateThrottle then
                         self.updateThrottle:Cancel()
@@ -2444,13 +2482,14 @@ function WarbandNexus:GetReputation(factionID)
 end
 
 ---Trigger full reputation scan
-function WarbandNexus:ScanReputations()
+---@param bypassThrottle boolean|nil When true, bypass init/throttle guards (post-confirm import)
+function WarbandNexus:ScanReputations(bypassThrottle)
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
     
-    ReputationCache:PerformFullScan(false)
+    ReputationCache:PerformFullScan(bypassThrottle == true)
 end
 
 ---Clear reputation cache

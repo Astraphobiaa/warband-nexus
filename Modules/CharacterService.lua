@@ -206,14 +206,20 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if SafeInit then SafeInit(step3, "PostConfirm:ScanInventoryBags") else step3() end
         end)
         
-        -- Trigger reputation scan
+        -- Trigger reputation scan (bypass throttle — post-confirm must not leave sync bar stuck)
         C_Timer.After(1, function()
             local function step4()
                 local addonInstance = _G.WarbandNexus or addon
                 if addonInstance and addonInstance.ScanReputations then
-                    addonInstance:ScanReputations()
+                    addonInstance:ScanReputations(true)
                 end
-                -- LT:Complete("reputations") called by PerformFullScan when done
+                -- LT:Complete("reputations") normally from PerformFullScan; safety net for deferred SafeInit
+                C_Timer.After(90, function()
+                    local LT = ns.LoadingTracker
+                    if LT and LT.IsPending and LT:IsPending("reputations") then
+                        LT:Complete("reputations")
+                    end
+                end)
             end
             if SafeInit then SafeInit(step4, "PostConfirm:ScanReputations") else step4() end
         end)

@@ -60,6 +60,13 @@ function Tracker:IsComplete()
     return allComplete or totalOps == 0
 end
 
+---@param id string Operation id passed to Register
+---@return boolean True when the operation was registered and not yet Complete
+function Tracker:IsPending(id)
+    local op = operations[id]
+    return op ~= nil and not op.complete
+end
+
 ---@return table labels Ephemeral array; same table on every call (next call overwrites).
 function Tracker:GetPendingLabels()
     twipe(pendingLabelsScratch)
