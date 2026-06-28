@@ -1112,6 +1112,18 @@ function TooltipService:RenderItemTooltip(frame, data)
     if not data.skipItemIDLine then
         AppendItemIDFooterLine(frame, resolvedID)
     end
+
+    local profile = WarbandNexus.db and WarbandNexus.db.profile
+    local showTooltipItemCount = profile and profile.showTooltipItemCount
+    if showTooltipItemCount == nil and profile then
+        showTooltipItemCount = profile.showItemCount
+    end
+    if showTooltipItemCount ~= false and resolvedID then
+        local GTModule = ns.TooltipGameTooltip
+        if GTModule and GTModule.PaintWNItemCountToFrame then
+            GTModule.PaintWNItemCountToFrame(frame, resolvedID)
+        end
+    end
 end
 
 --[[
@@ -2058,11 +2070,22 @@ function TooltipService:RegisterSafetyEvents()
         if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
         if not isVisible or not activeTooltipData then return end
         if not currentAnchor or not currentAnchor.IsShown or not currentAnchor:IsShown() then return end
-        local shiftDown = (state == 1)
+        local shiftDown = IsShiftKeyDown and IsShiftKeyDown() or false
+        if issecretvalue and issecretvalue(shiftDown) then return end
         if activeShiftKeyDown == shiftDown then return end
         if activeTooltipData.type == "currency" then
             activeShiftKeyDown = shiftDown
             self:Show(currentAnchor, activeTooltipData)
+        elseif activeTooltipData.type == "item" then
+            local profile = WarbandNexus.db and WarbandNexus.db.profile
+            local showCounts = profile and profile.showTooltipItemCount
+            if showCounts == nil and profile then
+                showCounts = profile.showItemCount
+            end
+            if showCounts ~= false then
+                activeShiftKeyDown = shiftDown
+                self:Show(currentAnchor, activeTooltipData)
+            end
         elseif activeTooltipData.mailShiftRefresh and activeTooltipData._rebuildMailTooltip then
             activeShiftKeyDown = shiftDown
             self:Show(currentAnchor, activeTooltipData._rebuildMailTooltip())

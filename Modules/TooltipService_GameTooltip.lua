@@ -492,6 +492,8 @@ end
 --- Injection state in weak tables — never assign tooltip._wn* (taints GameTooltip).
 local tooltipInjectTokensByFrame = setmetatable({}, { __mode = "k" })
 local tooltipItemCountTimerByFrame = setmetatable({}, { __mode = "k" })
+local itemCountShiftStateByTooltip = setmetatable({}, { __mode = "k" })
+local itemCountShiftWatcherFrame = nil
 
 --- Tooltip types that may mount UI widget sets during Show (after post-call).
 local function WillTooltipUseWidgets(tooltip, data)
@@ -582,6 +584,7 @@ end
 local function ClearTooltipInjectionTokens(tooltip)
     if not tooltip then return end
     tooltipInjectTokensByFrame[tooltip] = nil
+    itemCountShiftStateByTooltip[tooltip] = nil
     local timer = tooltipItemCountTimerByFrame[tooltip]
     if timer then
         if timer.Cancel then
@@ -589,6 +592,307 @@ local function ClearTooltipInjectionTokens(tooltip)
         end
         tooltipItemCountTimerByFrame[tooltip] = nil
     end
+end
+
+local function SafeAtlasMarkup(atlas, w, h)
+    if not CreateAtlasMarkup then return "" end
+    local ok, markup = pcall(CreateAtlasMarkup, atlas, w, h)
+    return (ok and markup) or ""
+end
+
+local GUILD_VAULT_ICON_ATLAS = "Warfronts-FieldMapIcons-Neutral-Banner-Minimap"
+local ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H = 16, 16
+local ITEM_COUNT_RIGHT_R, ITEM_COUNT_RIGHT_G, ITEM_COUNT_RIGHT_B = 0.3, 0.9, 0.3
+local ITEM_COUNT_BANK_R, ITEM_COUNT_BANK_G, ITEM_COUNT_BANK_B = 0.8, 0.8, 0.8
+
+local function FormatBagBankCountText(bagIcon, bankIcon, bagCount, bankCount)
+    bagCount = bagCount or 0
+    bankCount = bankCount or 0
+    if bagCount <= 0 and bankCount <= 0 then return nil end
+    return bagIcon .. " : " .. bagCount .. " - " .. bankIcon .. " : " .. bankCount
+end
+
+local function FormatLeftLabelWithIcon(iconMarkup, text)
+    if iconMarkup and iconMarkup ~= "" then
+        return iconMarkup .. " " .. text
+    end
+    return text
+end
+
+local function ResolveBrightLabelRGB()
+    if ns.UI_GetTextRoleRGB then
+        return ns.UI_GetTextRoleRGB("Bright")
+    end
+    return 1, 1, 1
+end
+
+local function ResolveGoldLabelRGB()
+    if ns.UI_GetSemanticGoldColor then
+        return ns.UI_GetSemanticGoldColor()
+    end
+    return 1, 0.82, 0
+end
+
+local function ResolveInfoLabelRGB()
+    if ns.UI_GetSemanticInfoColor then
+        return ns.UI_GetSemanticInfoColor()
+    end
+    return 0.4, 0.8, 1
+end
+
+local function ResolveLiveCharacterLabel(liveChar)
+    if liveChar and liveChar.charName and liveChar.charName ~= ""
+        and not (issecretvalue and issecretvalue(liveChar.charName)) then
+        return liveChar.charName
+    end
+    if UnitName then
+        local name = UnitName("player")
+        if name and name ~= "" and not (issecretvalue and issecretvalue(name)) then
+            return name
+        end
+    end
+    if Utilities and Utilities.GetCurrentCharacterDisplayLabel then
+        local label = Utilities:GetCurrentCharacterDisplayLabel()
+        if label and label ~= "" and not (issecretvalue and issecretvalue(label)) then
+            return label
+        end
+    end
+    return (ns.L and ns.L["HEADER_CURRENT_CHARACTER"]) or "Current Character"
+end
+
+local function SplitLiveAndAltCharacters(characters)
+    local liveChar, otherChars = nil, {}
+    if not characters then return liveChar, otherChars end
+    for i = 1, #characters do
+        local char = characters[i]
+        if char.isLiveSession then
+            liveChar = char
+        else
+            otherChars[#otherChars + 1] = char
+        end
+    end
+    return liveChar, otherChars
+end
+
+local function SumAltCharacterCounts(otherChars)
+    local bagTotal, bankTotal = 0, 0
+    for i = 1, #otherChars do
+        local char = otherChars[i]
+        bagTotal = bagTotal + (char.bagCount or 0)
+        bankTotal = bankTotal + (char.bankCount or 0)
+    end
+    return bagTotal, bankTotal
+end
+
+local function SumGuildCounts(guilds)
+    local total = 0
+    if not guilds then return total end
+    for i = 1, #guilds do
+        total = total + (guilds[i].count or 0)
+    end
+    return total
+end
+
+--- Build WN Search item-count rows (online / alts / warband / guild).
+function GT.BuildWNItemCountRows(itemID, isShift)
+    if not itemID or not WarbandNexus or not WarbandNexus.GetDetailedItemCountsFast then
+        return nil, 0
+    end
+    if Utilities and Utilities.IsKeystoneItemID and Utilities:IsKeystoneItemID(itemID) then
+        return nil, 0
+    end
+
+    local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
+    if not details then return nil, 0 end
+
+    local bagIcon = SafeAtlasMarkup("Banker", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
+    local bankIcon = SafeAtlasMarkup("VignetteLoot", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
+    local warbandIcon = SafeAtlasMarkup("warbands-icon", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
+    local guildIcon = SafeAtlasMarkup(GUILD_VAULT_ICON_ATLAS, ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
+    local altGroupIcon = SafeAtlasMarkup("shop-icon-housing-characters-up", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
+
+    local liveChar, otherChars = SplitLiveAndAltCharacters(details.characters)
+    local altBagTotal, altBankTotal = SumAltCharacterCounts(otherChars)
+    local guildTotal = SumGuildCounts(details.guilds)
+
+    local total = (details.warbandBank or 0) + guildTotal
+    if liveChar then
+        total = total + (liveChar.bagCount or 0) + (liveChar.bankCount or 0)
+    end
+    if isShift then
+        for i = 1, #otherChars do
+            local char = otherChars[i]
+            total = total + (char.bagCount or 0) + (char.bankCount or 0)
+        end
+    else
+        total = total + altBagTotal + altBankTotal
+    end
+    if total <= 0 then return nil, 0 end
+
+    local rows = {}
+    local altLabel = (ns.L and ns.L["TOOLTIP_ALT_CHARACTERS"]) or "Alt Characters"
+    local warbandLabel = (ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"
+    local guildLabel = (ns.L and ns.L["TOOLTIP_GUILD_BANK"]) or (ns.L and ns.L["TOOLTIP_GUILD_VAULT"]) or "Guild Bank"
+
+    local function pushRow(label, rightText, lr, lg, lb)
+        if not rightText then return end
+        rows[#rows + 1] = {
+            left = label,
+            right = rightText,
+            lr = lr, lg = lg, lb = lb,
+            rr = ITEM_COUNT_RIGHT_R, rg = ITEM_COUNT_RIGHT_G, rb = ITEM_COUNT_RIGHT_B,
+            balanced = true,
+        }
+    end
+
+    if liveChar then
+        local right = FormatBagBankCountText(bagIcon, bankIcon, liveChar.bagCount, liveChar.bankCount)
+        local cc = RAID_CLASS_COLORS[liveChar.classFile] or { r = 1, g = 1, b = 1 }
+        pushRow(ResolveLiveCharacterLabel(liveChar), right, cc.r, cc.g, cc.b)
+    end
+
+    if isShift then
+        for i = 1, #otherChars do
+            local char = otherChars[i]
+            if (char.bagCount or 0) > 0 or (char.bankCount or 0) > 0 then
+                local right = FormatBagBankCountText(bagIcon, bankIcon, char.bagCount, char.bankCount)
+                local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+                local name = char.charName or altLabel
+                pushRow(name, right, cc.r, cc.g, cc.b)
+            end
+        end
+    elseif #otherChars > 0 and (altBagTotal > 0 or altBankTotal > 0) then
+        local right = FormatBagBankCountText(bagIcon, bankIcon, altBagTotal, altBankTotal)
+        local lr, lg, lb = ResolveBrightLabelRGB()
+        pushRow(FormatLeftLabelWithIcon(altGroupIcon, altLabel), right, lr, lg, lb)
+    end
+
+    if (details.warbandBank or 0) > 0 then
+        local lr, lg, lb = ResolveGoldLabelRGB()
+        pushRow(
+            FormatLeftLabelWithIcon(warbandIcon, warbandLabel),
+            warbandIcon .. " : " .. details.warbandBank,
+            lr, lg, lb
+        )
+    end
+
+    if guildTotal > 0 then
+        local lr, lg, lb = ResolveInfoLabelRGB()
+        pushRow(
+            FormatLeftLabelWithIcon(guildIcon, guildLabel),
+            guildIcon .. " : " .. guildTotal,
+            lr, lg, lb
+        )
+    end
+
+    if not isShift and #otherChars > 1 then
+        rows[#rows + 1] = {
+            hint = true,
+            text = (ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list",
+        }
+    end
+
+    return rows, total
+end
+
+local function PaintRowsToSink(sink, rows, total)
+    if not sink or not rows or #rows == 0 then return false end
+    local addLine = sink.AddLine
+    local addDouble = sink.AddDoubleLine
+    if not addLine or not addDouble then return false end
+
+    addLine(sink, " ")
+    local header = (ns.L and ns.L["WN_SEARCH"]) or "WN Search"
+    addLine(sink, header, 0.4, 0.8, 1, 1)
+
+    for i = 1, #rows do
+        local row = rows[i]
+        if row.hint then
+            addLine(sink, row.text, 0.5, 0.5, 0.5)
+        else
+            if row.balanced then
+                addDouble(sink,
+                    row.left, row.right,
+                    row.lr, row.lg, row.lb,
+                    row.rr, row.rg, row.rb,
+                    { balanced = true }
+                )
+            else
+                addDouble(sink,
+                    row.left, row.right,
+                    row.lr, row.lg, row.lb,
+                    row.rr, row.rg, row.rb
+                )
+            end
+        end
+    end
+
+    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+    addDouble(sink, totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1, { balanced = true })
+    return true
+end
+
+function GT.PaintWNItemCountToFrame(frame, itemID, isShift)
+    if not frame then return false end
+    if isShift == nil then
+        isShift = IsShiftKeyDown and IsShiftKeyDown() or false
+    end
+    local rows, total = GT.BuildWNItemCountRows(itemID, isShift)
+    if not rows then return false end
+    return PaintRowsToSink(frame, rows, total)
+end
+
+local function RefreshGameTooltipItemCountsOnShift(tooltip)
+    if not tooltip or not tooltip.IsShown or not tooltip:IsShown() then return end
+    ClearTooltipInjectionTokens(tooltip)
+    local owner = tooltip.GetOwner and tooltip:GetOwner()
+    if owner and owner.GetScript then
+        local onEnter = owner:GetScript("OnEnter")
+        if onEnter then
+            pcall(onEnter, owner)
+            return
+        end
+    end
+    if tooltip.GetItem and tooltip.SetHyperlink then
+        local _, link = tooltip:GetItem()
+        if link and type(link) == "string" and not (issecretvalue and issecretvalue(link)) then
+            local anchor = (tooltip.GetAnchorType and tooltip:GetAnchorType()) or "ANCHOR_RIGHT"
+            if owner and tooltip.SetOwner then
+                pcall(tooltip.SetOwner, tooltip, owner, anchor)
+            end
+            pcall(tooltip.SetHyperlink, tooltip, link)
+        end
+    end
+end
+
+local function EnsureItemCountShiftWatcher()
+    if itemCountShiftWatcherFrame then return end
+    itemCountShiftWatcherFrame = CreateFrame("Frame")
+    itemCountShiftWatcherFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+    itemCountShiftWatcherFrame:SetScript("OnEvent", function(_, _, key)
+        if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+        local shiftDown = IsShiftKeyDown and IsShiftKeyDown() or false
+        local tooltips = { GameTooltip, ItemRefTooltip }
+        for ti = 1, #tooltips do
+            local tooltip = tooltips[ti]
+            if tooltip and tooltip.IsShown and tooltip:IsShown() then
+                local shiftState = itemCountShiftStateByTooltip[tooltip]
+                if shiftState and shiftState.lastShift ~= shiftDown then
+                    shiftState.lastShift = shiftDown
+                    RefreshGameTooltipItemCountsOnShift(tooltip)
+                end
+            end
+        end
+    end)
+end
+
+local function RegisterItemCountShiftTooltip(tooltip, itemID)
+    if not tooltip or not itemID then return end
+    itemCountShiftStateByTooltip[tooltip] = {
+        itemID = itemID,
+        lastShift = IsShiftKeyDown and IsShiftKeyDown() or false,
+    }
+    EnsureItemCountShiftWatcher()
 end
 
 local function InstallGameTooltipInjectionClearHooks()
@@ -610,135 +914,28 @@ local function AppendWNItemCountLines(tooltip, itemID)
     if not tooltip or not itemID or not tooltip.AddLine or not tooltip.AddDoubleLine then
         return false
     end
-    if not WarbandNexus or not WarbandNexus.GetDetailedItemCountsFast then
-        return false
-    end
-
-    local function SafeAtlasMarkup(atlas, w, h)
-        if not CreateAtlasMarkup then return "" end
-        local ok, markup = pcall(CreateAtlasMarkup, atlas, w, h)
-        return (ok and markup) or ""
-    end
 
     local function SafeAddDoubleLine(left, right, lr, lg, lb, rr, rg, rb)
-        local ok = pcall(tooltip.AddDoubleLine, tooltip, left, right, lr, lg, lb, rr, rg, rb)
-        return ok
+        return pcall(tooltip.AddDoubleLine, tooltip, left, right, lr, lg, lb, rr, rg, rb)
     end
 
-    local GUILD_VAULT_ICON_ATLAS = "Warfronts-FieldMapIcons-Neutral-Banner-Minimap"
+    local isShift = IsShiftKeyDown and IsShiftKeyDown() or false
+    local rows, total = GT.BuildWNItemCountRows(itemID, isShift)
+    if not rows then return false end
 
-    local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
-    if not details then return false end
-
-    local total = details.warbandBank or 0
-    if details.guilds then
-        for i = 1, #details.guilds do
-            total = total + (details.guilds[i].count or 0)
-        end
+    local sink = {
+        AddLine = function(_, text, r, g, b, wrap)
+            tooltip:AddLine(text, r, g, b, wrap)
+        end,
+        AddDoubleLine = function(_, left, right, lr, lg, lb, rr, rg, rb, opts)
+            SafeAddDoubleLine(left, right, lr, lg, lb, rr, rg, rb)
+        end,
+    }
+    local painted = PaintRowsToSink(sink, rows, total)
+    if painted then
+        RegisterItemCountShiftTooltip(tooltip, itemID)
     end
-    for i = 1, #details.characters do
-        total = total + details.characters[i].bagCount + details.characters[i].bankCount
-    end
-    if total == 0 then return false end
-
-    tooltip:AddLine(" ")
-    tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
-
-    local bagIcon       = SafeAtlasMarkup("Banker", 16, 16)
-    local bankIcon      = SafeAtlasMarkup("VignetteLoot", 16, 16)
-    local warbandIcon   = SafeAtlasMarkup("warbands-icon", 16, 16)
-    local guildVaultIcon = SafeAtlasMarkup(GUILD_VAULT_ICON_ATLAS, 16, 16)
-
-    local function PaintCharacterLines(char)
-        if not char or (char.bagCount <= 0 and char.bankCount <= 0) then return end
-        local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-        if char.bagCount > 0 then
-            SafeAddDoubleLine(
-                bagIcon .. " " .. char.charName,
-                "x" .. char.bagCount,
-                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-            )
-        end
-        if char.bankCount > 0 then
-            SafeAddDoubleLine(
-                bankIcon .. " " .. char.charName,
-                "x" .. char.bankCount,
-                cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
-            )
-        end
-    end
-
-    local liveChar
-    local otherChars = {}
-    for i = 1, #details.characters do
-        local char = details.characters[i]
-        if char.isLiveSession then
-            liveChar = char
-        else
-            otherChars[#otherChars + 1] = char
-        end
-    end
-
-    -- Bag > bank (live) > warband bank > other chars > guild vaults
-    if liveChar then
-        PaintCharacterLines(liveChar)
-    end
-
-    if details.warbandBank > 0 then
-        SafeAddDoubleLine(
-            warbandIcon .. " " .. ((ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"),
-            "x" .. details.warbandBank,
-            0.8, 0.8, 0.8, 0.3, 0.9, 0.3
-        )
-    end
-
-    if #otherChars > 0 then
-        local isShift = IsShiftKeyDown()
-        local maxShow = isShift and 999 or 5
-        local shown = 0
-        for i = 1, #otherChars do
-            if shown >= maxShow then break end
-            local char = otherChars[i]
-            if char.bagCount > 0 or char.bankCount > 0 then
-                PaintCharacterLines(char)
-                shown = shown + 1
-            end
-        end
-        if not isShift and #otherChars > 5 then
-            tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
-        end
-    end
-
-    if details.guilds and #details.guilds > 0 then
-        local isShiftGuild = IsShiftKeyDown()
-        local maxGuildShow = isShiftGuild and 999 or 5
-        local guildShown = 0
-        for i = 1, #details.guilds do
-            if guildShown >= maxGuildShow then break end
-            local row = details.guilds[i]
-            if row.count and row.count > 0 then
-                local label = (ns.L and ns.L["TOOLTIP_GUILD_VAULT"]) or "Guild Vault"
-                if row.guildName and not (issecretvalue and issecretvalue(row.guildName)) then
-                    label = row.guildName
-                end
-                if SafeAddDoubleLine(
-                    guildVaultIcon .. " " .. label,
-                    "x" .. row.count,
-                    0.8, 0.8, 0.8, 0.3, 0.9, 0.3
-                ) then
-                    guildShown = guildShown + 1
-                end
-            end
-        end
-    end
-
-    if details.guilds and #details.guilds > 5 and not IsShiftKeyDown() then
-        tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
-    end
-
-    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-    tooltip:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
-    return true
+    return painted
 end
 
 --- Mythic keystones share one item template ID; bag/bank counts by itemID are misleading.
