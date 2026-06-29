@@ -110,6 +110,9 @@ ns.ItemsLoadingState = {
 local isBankOpen = false
 local isWarbandBankOpen = false
 local bankScanInProgress = false  -- True during OnBankOpened deferred scans; suppresses duplicate work
+local bankOpenScanGeneration = 0   -- Supersede in-flight RunBudgetedBankOpenScan (bank close / new open)
+local warbandBankScanGeneration = 0  -- Invalidate live warband tooltip tally (guildBankScanGeneration parity)
+local liveOpenWarbandSummary = nil   -- { items = { [itemID] = N }, gen = N } session cache while bank open
 
 -- Hash cache for bag change detection (RAM only)
 local bagHashCache = {} -- [bagID] = hash
@@ -919,6 +922,7 @@ function WarbandNexus:ClearItemMetadataCache()
     -- Also clear decompressed data cache and summary index
     wipe(decompressedItemCache)
     decompressedWarbandCache = nil
+    liveOpenWarbandSummary = nil
     wipe(itemSummaryIndex.characters)
     wipe(itemSummaryIndex.warband)
     wipe(itemSummaryIndex.guild)
@@ -1602,90 +1606,85 @@ function WarbandNexus:OnBagUpdate(bagIDs)
 end
 
 ---Chunked bank-area scan: one bag (container) per frame to cap frame cost (inventory → bank → warband).
+---Each bag/tab commits immediately (UpdateSingleBag / UpdateSingleWarbandBag) — guild-bank tab parity.
 function WarbandNexus:RunBudgetedBankOpenScan(charKey)
     if not charKey then
         charKey = ResolveCurrentItemStorageKey()
     end
 
+    bankOpenScanGeneration = bankOpenScanGeneration + 1
+    local myGen = bankOpenScanGeneration
+
     local invIdx = 1
-    local allInv = {}
-    local totalSlots = 0
-
     local bankIdx = 1
-    local allBank = {}
-
     local wbIdx = 1
-    local allWb = {}
+
+    local function scanStillActive()
+        return myGen == bankOpenScanGeneration and isBankOpen
+    end
+
+    local function finishBankScan(aborted)
+        bankScanInProgress = false
+        if aborted and self.InvalidateLiveOpenWarbandBankSummary then
+            self:InvalidateLiveOpenWarbandBankSummary()
+        end
+    end
 
     local runInv
     local runBank
     local runWarband
 
     runWarband = function()
-        if not isBankOpen then
-            bankScanInProgress = false
+        if not scanStillActive() then
+            finishBankScan(true)
             return
         end
         if wbIdx > #WARBAND_BAGS then
-            self:SaveWarbandBankCompressed(allWb)
-            bankScanInProgress = false
+            finishBankScan(false)
             self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "all", charKey = CanonicalItemsMessageKey(charKey) })
             return
         end
-        local bagID = WARBAND_BAGS[wbIdx]
-        local bagItems = ScanBag(bagID)
-        for i = 1, #bagItems do
-            local item = bagItems[i]
-            item.tabIndex = wbIdx
-            allWb[#allWb + 1] = item
-        end
+        self:UpdateSingleWarbandBag(WARBAND_BAGS[wbIdx])
         wbIdx = wbIdx + 1
         C_Timer.After(0, runWarband)
     end
 
     runBank = function()
-        if not isBankOpen then
-            bankScanInProgress = false
+        if not scanStillActive() then
+            finishBankScan(true)
             return
         end
         if bankIdx > #BANK_BAGS then
-            itemSummaryIndex.pending[charKey] = true
-            self:SaveItemsCompressed(charKey, "bank", allBank)
             C_Timer.After(0, runWarband)
             return
         end
-        local bagID = BANK_BAGS[bankIdx]
-        local bagItems = ScanBag(bagID)
-        for i = 1, #bagItems do
-            allBank[#allBank + 1] = bagItems[i]
-        end
+        self:UpdateSingleBag(charKey, BANK_BAGS[bankIdx])
         bankIdx = bankIdx + 1
         C_Timer.After(0, runBank)
     end
 
     runInv = function()
-        if not isBankOpen then
-            bankScanInProgress = false
+        if not scanStillActive() then
+            finishBankScan(true)
             return
         end
         if invIdx > #INVENTORY_BAGS then
-            itemSummaryIndex.pending[charKey] = true
-            self:SaveItemsCompressed(charKey, "bags", allInv)
             if self.db and self.db.char then
+                local data = self:GetItemsData(charKey)
+                local bagItems = data and data.bags or {}
+                local totalSlots = 0
+                for i = 1, #INVENTORY_BAGS do
+                    totalSlots = totalSlots + (C_Container.GetContainerNumSlots(INVENTORY_BAGS[i]) or 0)
+                end
                 if not self.db.char.bags then self.db.char.bags = {} end
-                self.db.char.bags.usedSlots = #allInv
+                self.db.char.bags.usedSlots = #bagItems
                 self.db.char.bags.totalSlots = totalSlots
                 self.db.char.bags.lastScan = time()
             end
             C_Timer.After(0, runBank)
             return
         end
-        local bagID = INVENTORY_BAGS[invIdx]
-        totalSlots = totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
-        local bagItems = ScanBag(bagID)
-        for i = 1, #bagItems do
-            allInv[#allInv + 1] = bagItems[i]
-        end
+        self:UpdateSingleBag(charKey, INVENTORY_BAGS[invIdx])
         invIdx = invIdx + 1
         C_Timer.After(0, runInv)
     end
@@ -1726,10 +1725,15 @@ end
 
 ---Handle BANKFRAME_CLOSED event
 function WarbandNexus:OnBankClosed()
+    bankOpenScanGeneration = bankOpenScanGeneration + 1
+    warbandBankScanGeneration = warbandBankScanGeneration + 1
     isBankOpen = false
     isWarbandBankOpen = false  -- Both tabs close together
     bankScanInProgress = false  -- Safety: ensure flag is cleared
     WarbandNexus.bankIsOpen = false  -- Clear global flag for Gold Manager
+    if self.InvalidateLiveOpenWarbandBankSummary then
+        self:InvalidateLiveOpenWarbandBankSummary()
+    end
     DebugVerbosePrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_CLOSED")
 end
 
@@ -2052,6 +2056,7 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
         }
         decompressedWarbandCache = { items = items, lastUpdate = now }
         itemSummaryIndex.warbandPending = true
+        warbandBankScanGeneration = warbandBankScanGeneration + 1
         BumpGearStorageScanGeneration()
         return
     end
@@ -2067,6 +2072,7 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
     
     decompressedWarbandCache = { items = items, lastUpdate = now }
     itemSummaryIndex.warbandPending = true
+    warbandBankScanGeneration = warbandBankScanGeneration + 1
     BumpGearStorageScanGeneration()
 end
 
@@ -2745,6 +2751,67 @@ local function CountItemInWarbandBank(itemID)
     return 0
 end
 
+local function IsWarbandBankAccessibleForLiveScan()
+    if isWarbandBankOpen or isBankOpen then
+        return true
+    end
+    if WarbandNexus and WarbandNexus.bankIsOpen then
+        return true
+    end
+    return false
+end
+
+local function InvalidateLiveOpenWarbandBankSummary()
+    liveOpenWarbandSummary = nil
+end
+
+--- Live warband bank stacks while bank frame is open (session cache; tooltip WN Search parity with guild).
+function WarbandNexus:BuildLiveOpenWarbandBankItemSummary()
+    if not IsWarbandBankAccessibleForLiveScan() then
+        return nil
+    end
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return nil
+    end
+    local gen = warbandBankScanGeneration
+    if liveOpenWarbandSummary and liveOpenWarbandSummary.gen == gen then
+        return liveOpenWarbandSummary
+    end
+    local items = {}
+    local U = ns.Utilities
+    for wi = 1, #WARBAND_BAGS do
+        local bagID = WARBAND_BAGS[wi]
+        local bagItems = ScanBag(bagID)
+        for i = 1, #bagItems do
+            local item = bagItems[i]
+            local id = item and item.itemID
+            if id and not item.isKeystone
+                and not (U and U.IsKeystoneItemID and U:IsKeystoneItemID(id)) then
+                items[id] = (items[id] or 0) + (item.stackCount or 1)
+            end
+        end
+    end
+    liveOpenWarbandSummary = { items = items, gen = gen }
+    return liveOpenWarbandSummary
+end
+
+---@return number stackCount
+function WarbandNexus:GetLiveOpenWarbandBankItemCountForTooltip(itemID)
+    if not itemID then
+        return 0
+    end
+    local summary = self:BuildLiveOpenWarbandBankItemSummary()
+    if not summary then
+        return 0
+    end
+    return summary.items[itemID] or 0
+end
+
+--- Drop live warband-bank tooltip tally (bank closed or scan superseded).
+function WarbandNexus:InvalidateLiveOpenWarbandBankSummary()
+    InvalidateLiveOpenWarbandBankSummary()
+end
+
 local function CollectGuildItemCountsFromDB(itemID, guildBank)
     local guildRows = {}
     if not itemID or not guildBank then return guildRows end
@@ -2816,6 +2883,12 @@ function WarbandNexus:GetDetailedItemCountsFast(itemID)
     local guildBank = self.db and self.db.global and self.db.global.guildBank
 
     local warbandCount = CountItemInWarbandBank(itemID)
+    if IsWarbandBankAccessibleForLiveScan() and self.GetLiveOpenWarbandBankItemCountForTooltip then
+        local okLive, liveCount = pcall(self.GetLiveOpenWarbandBankItemCountForTooltip, self, itemID)
+        if okLive and liveCount ~= nil then
+            warbandCount = liveCount
+        end
+    end
     local guildRows = CollectGuildItemCountsFromDB(itemID, guildBank)
 
     if self.guildBankIsOpen and self.GetLiveOpenGuildBankItemCountForTooltip then
