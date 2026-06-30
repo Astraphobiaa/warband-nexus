@@ -12,9 +12,13 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     if not ctx or not ctx.addon or not ctx.frame or not ctx.eventsSelf or not ctx.constants or not ctx.state then
         return
     end
+    local UIEvents = ctx.eventsSelf
+    if UIEvents._wnMainShellListenersRegistered then
+        return
+    end
+    UIEvents._wnMainShellListenersRegistered = true
     local WarbandNexus = ctx.addon
     local f = ctx.frame
-    local UIEvents = ctx.eventsSelf
     local Constants = ctx.constants
     local st = ctx.state
     local SchedulePopulateContent = ctx.schedulePopulate
@@ -272,13 +276,18 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         return PROFESSION_STORM_DEBOUNCE
     end
 
+    local function professionStormSkipCooldown()
+        return WarbandNexus.IsProfessionTradeWindowUiCoalesce
+            and WarbandNexus:IsProfessionTradeWindowUiCoalesce() == true
+    end
+
     local function flushProfessionStormRefresh()
         professionStormTimer = nil
         if HiddenOrMissing() then return end
         local needChars = professionStormNeedsChars
         professionStormNeedsChars = false
         if f.currentTab == "professions" then
-            SchedulePopulateContent(true)
+            SchedulePopulateContent(professionStormSkipCooldown())
         elseif needChars and f.currentTab == "chars" then
             SchedulePopulateContent()
         end
@@ -292,16 +301,34 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         professionStormTimer = C_Timer.After(getProfessionStormDebounce(), flushProfessionStormRefresh)
     end
 
+    local function professionsChunkPaintActive()
+        local sc = f.scrollChild
+        return sc and sc._wnProfChunkPending == true
+    end
+
+    --- Logged-in row repaint only (no full PopulateContent). During chunked first paint, defer storm.
     local function tryProfessionsIncrementalRefresh(charKey)
-        if not charKey then return false end
-        if not WarbandNexus.IsProfessionTradeWindowUiCoalesce
-            or not WarbandNexus:IsProfessionTradeWindowUiCoalesce() then
-            return false
+        if professionsChunkPaintActive() then
+            f._professionStormDeferred = true
+            return true
         end
+        if not charKey then return false end
         if WarbandNexus.TryRefreshProfessionsLoggedInRow then
             return WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey) == true
         end
         return false
+    end
+
+    local function flushDeferredProfessionStorm()
+        if not f._professionStormDeferred then return end
+        f._professionStormDeferred = nil
+        if HiddenOrMissing() or f.currentTab ~= "professions" then return end
+        scheduleProfessionStormRefresh(false)
+    end
+
+    local ProfUI = ns.ProfessionsUI
+    if ProfUI then
+        ProfUI.FlushDeferredShellRefresh = flushDeferredProfessionStorm
     end
 
     local function onProfessionsTabRefresh(_, charKey)
@@ -311,6 +338,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             scheduleProfessionStormRefresh(false)
         end
     end
+
     local function onProfessionsOrCharsRefresh(_, charKey)
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
@@ -320,7 +348,23 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             scheduleProfessionStormRefresh(true)
         end
     end
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, onProfessionsOrCharsRefresh)
+
+    --- Concentration ticks (passive regen / 60s estimate): row-only when idle; full storm only with trade window open.
+    local function onConcentrationUpdated(_, charKey)
+        if HiddenOrMissing() then return end
+        if f.currentTab == "professions" then
+            if tryProfessionsIncrementalRefresh(charKey) then return end
+            if professionStormSkipCooldown() then
+                scheduleProfessionStormRefresh(false)
+            end
+            return
+        end
+        if f.currentTab == "chars" then
+            scheduleProfessionStormRefresh(true)
+        end
+    end
+
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, onConcentrationUpdated)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, onProfessionsOrCharsRefresh)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_EQUIPMENT_UPDATED, onProfessionsOrCharsRefresh)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, onProfessionsTabRefresh)
@@ -347,7 +391,7 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
             return
         end
         local dataType = payload and payload.dataType
-        if dataType and not PROFESSION_CHAR_UPD_TYPES[dataType] then
+        if not dataType or not PROFESSION_CHAR_UPD_TYPES[dataType] then
             return
         end
         if dataType == "professions" then
@@ -673,8 +717,12 @@ function ns.UI_RefreshRouter.RegisterShellLifecycleHooks(ctx)
     if not ctx or not ctx.addon or not ctx.frame or not ctx.state or not ctx.schedulePopulate then
         return
     end
-    local WarbandNexus = ctx.addon
     local f = ctx.frame
+    if f._wnShellLifecycleHooksRegistered then
+        return
+    end
+    f._wnShellLifecycleHooksRegistered = true
+    local WarbandNexus = ctx.addon
     local st = ctx.state
     local SchedulePopulateContent = ctx.schedulePopulate
 

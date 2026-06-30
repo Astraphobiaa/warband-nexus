@@ -3573,10 +3573,8 @@ end
 -- PERIODIC RECHARGE TIMER (1-minute tick)
 
 --[[
-    Start a 1-minute repeating ticker that fires WN_CONCENTRATION_UPDATED.
-    
-    The ticker is lightweight: no API calls, just fires the message event
-    so consumers re-read from DB and recalculate with GetEstimatedConcentration().
+    Start a 1-minute repeating ticker that refreshes the logged-in profession row estimate.
+    View-only: no WN_CONCENTRATION_UPDATED (DB unchanged; avoids PopulateContent storms while idle).
 ]]
 local rechargeTickerHandle = nil
 
@@ -3586,13 +3584,14 @@ function WarbandNexus:StartRechargeTimer()
     if rechargeTickerHandle then return end  -- Already running
     
     rechargeTickerHandle = C_Timer.NewTicker(60, function()
-        if not WarbandNexus or not WarbandNexus.SendMessage then return end
-        -- Guard each tick: stop sending if module was disabled mid-session
+        if not WarbandNexus then return end
+        -- Guard each tick: stop if module was disabled mid-session
         if not ns.Utilities:IsModuleEnabled("professions") then return end
         
         local charKey = ResolveTrackedCharactersTableKey()
-        if charKey then
-            WarbandNexus:SendMessage(E.CONCENTRATION_UPDATED, charKey)
+        if not charKey then return end
+        if WarbandNexus.TryRefreshProfessionsLoggedInRow then
+            WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey)
         end
     end)
     

@@ -3377,7 +3377,7 @@ function WarbandNexus:CreateMainWindow()
     local POPULATE_COOLDOWN = 0.8  -- Skip event-driven rebuild if one ran within 800ms
     -- This prevents duplicate rebuilds from WN_ITEMS_UPDATED (~0.5s) + WN_BAGS_UPDATED (~1.0s)
     -- firing for the same loot event. Does NOT affect direct PopulateContent calls (tab switch, resize).
-    -- Profession events (concentration, knowledge, recipe) use skipCooldown so updates always show.
+    -- Profession storms use skipCooldown only while the trade skill window is open (UI_RefreshRouter).
     -- GET_ITEM_INFO_RECEIVED / metadata warm-up can storm while the client resolves many links; throttle gear repaints.
     local MAIN_TAB_DEBOUNCED_QUIET = SHELL_TAB_SWITCH_POPULATE_QUIET
     local GEAR_ASYNC_ITEM_REPAINT_INTERVAL = 0.55

@@ -783,6 +783,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
                 parent._wnProfEstimatedScrollBody = nil
                 parent._wnProfQueuedRowCount = nil
                 FinishProfessionsTabChrome(parent)
+                local profMod = ns.ProfessionsUI
+                if profMod and profMod.FlushDeferredShellRefresh then
+                    profMod.FlushDeferredShellRefresh()
+                end
             end,
         })
     else
