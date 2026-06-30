@@ -106,6 +106,11 @@ function WarbandNexus:OnSkillLinesChanged()
             end
         end
 
+        -- Window-open sync already emits WN_PROFESSION_* / coalesced UI refresh; skip duplicate CHARACTER_UPDATED.
+        if self.IsProfessionTradeWindowUiCoalesce and self:IsProfessionTradeWindowUiCoalesce() then
+            return
+        end
+
         -- CHARACTER_UPDATED always fires (basic character data, not profession-specific)
         local msgKey = (ns.CharacterService and ns.CharacterService.ResolveSubsidiaryCharacterKey and ns.CharacterService:ResolveSubsidiaryCharacterKey(self, nil))
             or (ns.Utilities and ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(self))

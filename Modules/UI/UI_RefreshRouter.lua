@@ -296,6 +296,15 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     local professionStormTimer = nil
     local professionStormNeedsChars = false
     local PROFESSION_STORM_DEBOUNCE = 0.28
+    local PROFESSION_STORM_DEBOUNCE_WINDOW_OPEN = 0.85
+
+    local function getProfessionStormDebounce()
+        if WarbandNexus.IsProfessionTradeWindowUiCoalesce
+            and WarbandNexus:IsProfessionTradeWindowUiCoalesce() then
+            return PROFESSION_STORM_DEBOUNCE_WINDOW_OPEN
+        end
+        return PROFESSION_STORM_DEBOUNCE
+    end
 
     local function flushProfessionStormRefresh()
         professionStormTimer = nil
@@ -314,18 +323,32 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
         if professionStormTimer and professionStormTimer.Cancel then
             professionStormTimer:Cancel()
         end
-        professionStormTimer = C_Timer.After(PROFESSION_STORM_DEBOUNCE, flushProfessionStormRefresh)
+        professionStormTimer = C_Timer.After(getProfessionStormDebounce(), flushProfessionStormRefresh)
     end
 
-    local function onProfessionsTabRefresh()
+    local function tryProfessionsIncrementalRefresh(charKey)
+        if not charKey then return false end
+        if not WarbandNexus.IsProfessionTradeWindowUiCoalesce
+            or not WarbandNexus:IsProfessionTradeWindowUiCoalesce() then
+            return false
+        end
+        if WarbandNexus.TryRefreshProfessionsLoggedInRow then
+            return WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey) == true
+        end
+        return false
+    end
+
+    local function onProfessionsTabRefresh(_, charKey)
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
+            if tryProfessionsIncrementalRefresh(charKey) then return end
             scheduleProfessionStormRefresh(false)
         end
     end
-    local function onProfessionsOrCharsRefresh()
+    local function onProfessionsOrCharsRefresh(_, charKey)
         if HiddenOrMissing() then return end
         if f.currentTab == "professions" then
+            if tryProfessionsIncrementalRefresh(charKey) then return end
             scheduleProfessionStormRefresh(false)
         elseif f.currentTab == "chars" then
             scheduleProfessionStormRefresh(true)

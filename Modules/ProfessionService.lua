@@ -178,6 +178,7 @@ end
 -- Collector burst: coalesce WN_* emits during RunAllProfessionCollectors / light craft paths.
 local collectorBurstDepth = 0
 local collectorNotifyPending = {}
+local collectorUiNotifySuppressed = false
 local lastConcentrationCollectorAt = 0
 local CONCENTRATION_HOOK_SKIP_SEC = 1.0
 local LIGHT_LIST_COLLECTOR_MIN_INTERVAL = 1.0
@@ -188,6 +189,17 @@ local PROFESSION_WINDOW_SYNC_DEBOUNCE = 0.45
 local PROFESSION_WINDOW_OPEN_GRACE = 2.5
 local professionWindowSyncTimer = nil
 local professionWindowOpenAt = 0
+-- Set after the debounced open sync runs once; prevents TRADE_SKILL_LIST_UPDATE from
+-- re-scheduling full collector passes for the entire grace window (grace anchor is TRADE_SKILL_SHOW only).
+local professionWindowInitialSyncComplete = false
+local professionWindowRetryUsed = false
+local professionWindowSyncedSkillLineID = nil
+
+local function IsProfessionTradeWindowReady()
+    if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady then return false end
+    local readyOk, ready = pcall(C_TradeSkillUI.IsTradeSkillReady)
+    return readyOk and ready == true
+end
 
 local function NotifyCollectorUpdate(notifyKey, messageName, charKey)
     if not notifyKey or not messageName or not charKey then return end
@@ -219,6 +231,13 @@ local function EndCollectorBurst(forceProfessionNotify)
 
     if forceProfessionNotify then
         collectorNotifyPending.profession = charKey
+    end
+
+    if collectorUiNotifySuppressed then
+        for k in pairs(collectorNotifyPending) do
+            collectorNotifyPending[k] = nil
+        end
+        return
     end
 
     local notifyOrder = {
@@ -835,6 +854,48 @@ local function StoreEquipment(charData, profName, equipment)
     end
 end
 
+local EQUIPMENT_SLOT_KEYS = { "tool", "accessory1", "accessory2" }
+
+local function EquipmentSlotsEqual(a, b)
+    if not a and not b then return true end
+    if not a or not b then return false end
+    for i = 1, #EQUIPMENT_SLOT_KEYS do
+        local k = EQUIPMENT_SLOT_KEYS[i]
+        local ida = a[k] and a[k].itemID
+        local idb = b[k] and b[k].itemID
+        if ida ~= idb then return false end
+    end
+    return true
+end
+
+-- Persist equipment only when equipped item IDs changed; returns true when stored.
+local function StoreEquipmentIfChanged(charData, profName, equipment)
+    local key = NormalizeProfessionNameForEquipment(profName) or profName
+    local prev = charData.professionEquipment and charData.professionEquipment[key]
+    if EquipmentSlotsEqual(prev, equipment) then
+        return false
+    end
+    StoreEquipment(charData, profName, equipment)
+    return true
+end
+
+local function CooldownStateFingerprint(entries)
+    if not entries then return "" end
+    local parts = {}
+    for recipeID, entry in pairs(entries) do
+        local remaining = 0
+        if entry.cooldownEnd and entry.lastUpdate then
+            remaining = entry.cooldownEnd - entry.lastUpdate
+        end
+        parts[#parts + 1] = tostring(recipeID) .. ":"
+            .. tostring(entry.charges or 0) .. ":"
+            .. tostring(entry.maxCharges or 0) .. ":"
+            .. tostring(remaining)
+    end
+    table.sort(parts)
+    return table.concat(parts, ";")
+end
+
 --[[
     Collect equipment for the CURRENTLY OPEN profession window.
     Uses C_TradeSkillUI.GetProfessionSlots to get the correct slot IDs from the game.
@@ -873,9 +934,9 @@ local function CollectEquipmentDataForCurrentProfession()
     if not slotIDs then return end
 
     local equipment = CollectEquipmentFromSlots(slotIDs)
-    StoreEquipment(charData, profName, equipment)
-
-    NotifyCollectorUpdate("equipment", E.PROFESSION_EQUIPMENT_UPDATED, charKey)
+    if StoreEquipmentIfChanged(charData, profName, equipment) then
+        NotifyCollectorUpdate("equipment", E.PROFESSION_EQUIPMENT_UPDATED, charKey)
+    end
 end
 
 --[[
@@ -894,6 +955,7 @@ local function CollectEquipmentByDetection()
 
     local prof1, prof2, _, fish, cook = GetProfessions()
     local profIndicesAll = { prof1, prof2, cook, fish }
+    local anyEquipmentChanged = false
     for ii = 1, #profIndicesAll do
         local profIndex = profIndicesAll[ii]
         if profIndex then
@@ -902,13 +964,17 @@ local function CollectEquipmentByDetection()
                 local slotIDs = GetProfessionSlotIDs(profName, skillLine)
                 if slotIDs then
                     local equipment = CollectEquipmentFromSlots(slotIDs)
-                    StoreEquipment(charData, profName, equipment)
+                    if StoreEquipmentIfChanged(charData, profName, equipment) then
+                        anyEquipmentChanged = true
+                    end
                 end
             end
         end
     end
 
-    NotifyCollectorUpdate("equipment", E.PROFESSION_EQUIPMENT_UPDATED, charKey)
+    if anyEquipmentChanged then
+        NotifyCollectorUpdate("equipment", E.PROFESSION_EQUIPMENT_UPDATED, charKey)
+    end
 end
 
 --[[
@@ -1467,6 +1533,28 @@ local function BuildProgressEntry(current, total, source)
     return { current = current, total = total, source = source }
 end
 
+local WEEKLY_PROGRESS_KEYS = {
+    "firstCraft", "uniques", "treatise", "weeklyQuest", "treasure", "gathering", "catchUp",
+}
+
+local function ProgressEntryEqual(a, b)
+    if not a and not b then return true end
+    if not a or not b then return false end
+    return (tonumber(a.current) or 0) == (tonumber(b.current) or 0)
+        and (tonumber(a.total) or 0) == (tonumber(b.total) or 0)
+end
+
+local function WeeklyKnowledgeProgressEqual(prev, next)
+    if not prev and not next then return true end
+    if not prev or not next then return false end
+    for i = 1, #WEEKLY_PROGRESS_KEYS do
+        if not ProgressEntryEqual(prev[WEEKLY_PROGRESS_KEYS[i]], next[WEEKLY_PROGRESS_KEYS[i]]) then
+            return false
+        end
+    end
+    return true
+end
+
 local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineID, professionName, expansionName)
     local source = MIDNIGHT_WEEKLY_SOURCES[skillLineID]
     if not source then return false end
@@ -1509,6 +1597,10 @@ local function CollectMidnightKnowledgeProgressForSkillLine(charData, skillLineI
         catchUp     = BuildProgressEntry(catchUpCurrent, catchUpTotal, "api_currency"),
         lastUpdate = time(),
     }
+
+    if WeeklyKnowledgeProgressEqual(bucket.weeklyKnowledge, progress) then
+        return false
+    end
 
     bucket.weeklyKnowledge = progress
 
@@ -1809,6 +1901,7 @@ local function CollectCooldownData()
     if #recipeIDsToCheck == 0 then return end
 
     local cooldownEntries = charData.professionCooldowns[skillLineID]
+    local prevCooldownFingerprint = CooldownStateFingerprint(cooldownEntries)
     local knownCooldownIDs = {}
     local found = 0
 
@@ -1885,7 +1978,7 @@ local function CollectCooldownData()
         bucket.lastUpdate = now
     end
 
-    if found > 0 then
+    if CooldownStateFingerprint(cooldownEntries) ~= prevCooldownFingerprint then
         NotifyCollectorUpdate("cooldowns", E.PROFESSION_COOLDOWNS_UPDATED, charKey)
     end
 end
@@ -2049,11 +2142,15 @@ local function RunLightTradeSkillListCollectors()
     ScheduleThrottledRecipeSummaryScan(false)
 end
 
-local function RunAllProfessionCollectors()
+local function RunAllProfessionCollectors(silentUiNotify)
     recipeSummaryScanPending = false
     recipeSummaryScanScheduled = false
     lastRecipeSummaryScanAt = GetTime()
     if not WarbandNexus then return end
+    local prevSuppress = collectorUiNotifySuppressed
+    if silentUiNotify then
+        collectorUiNotifySuppressed = true
+    end
     BeginCollectorBurst()
     pcall(CollectConcentrationData)
     pcall(CollectKnowledgeData)
@@ -2063,25 +2160,33 @@ local function RunAllProfessionCollectors()
     pcall(CollectCraftingOrdersData)
     pcall(CollectEquipmentDataForCurrentProfession)
     pcall(CollectEquipmentByDetection)
-    EndCollectorBurst(true)
+    -- Only WN_* when a collector marked dirty — never force PROFESSION_DATA_UPDATED every open.
+    EndCollectorBurst(false)
+    collectorUiNotifySuppressed = prevSuppress
 end
 
 local function RunProfessionWindowSyncCollectors()
     professionWindowSyncTimer = nil
+    professionWindowInitialSyncComplete = true
     if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+    if WarbandNexus.UpdateProfessionData then
+        pcall(WarbandNexus.UpdateProfessionData, WarbandNexus)
+    end
     RunAllProfessionCollectors()
-    if ProfessionWindowCollectorsNeedRetry() then
+    professionWindowSyncedSkillLineID = GetOpenTradeSkillChildSkillLineID()
+    if ProfessionWindowCollectorsNeedRetry() and not professionWindowRetryUsed then
+        professionWindowRetryUsed = true
         C_Timer.After(0.55, function()
             if not WarbandNexus or not IsCurrentCharacterTracked() then return end
+            if not IsProfessionTradeWindowReady() then return end
             if ProfessionWindowCollectorsNeedRetry() then
-                RunAllProfessionCollectors()
+                RunAllProfessionCollectors(true)
             end
         end)
     end
 end
 
 local function ScheduleProfessionWindowSync()
-    professionWindowOpenAt = GetTime()
     if professionWindowSyncTimer and professionWindowSyncTimer.Cancel then
         professionWindowSyncTimer:Cancel()
     end
@@ -2091,6 +2196,13 @@ end
 local function IsProfessionWindowOpenGrace()
     return professionWindowOpenAt > 0
         and (GetTime() - professionWindowOpenAt) < PROFESSION_WINDOW_OPEN_GRACE
+end
+
+--- True while the Blizzard profession window is open or in the post-open grace window.
+--- UI layers use this to coalesce professions-tab PopulateContent bursts.
+function WarbandNexus:IsProfessionTradeWindowUiCoalesce()
+    if IsProfessionWindowOpenGrace() then return true end
+    return IsProfessionTradeWindowReady()
 end
 
 --[[
@@ -2107,6 +2219,12 @@ function WarbandNexus:OnTradeSkillShow()
     
     -- Install hooks (once, deferred until frame exists)
     InstallRecipeHook()
+
+    -- Grace anchor: TRADE_SKILL_SHOW only (list updates must not extend grace or UI refresh storms).
+    professionWindowOpenAt = GetTime()
+    professionWindowInitialSyncComplete = false
+    professionWindowRetryUsed = false
+    professionWindowSyncedSkillLineID = nil
 
     -- Trailing debounce: one collector pass after API settles (replaces fixed 0.6s + 1.2s double run).
     ScheduleProfessionWindowSync()
@@ -2126,6 +2244,14 @@ function WarbandNexus:OnTradeSkillClose()
     if not ns.Utilities:IsModuleEnabled("professions") then return end
 
     lastTradeSkillListSkillLineID = nil
+    professionWindowOpenAt = 0
+    professionWindowInitialSyncComplete = false
+    professionWindowRetryUsed = false
+    professionWindowSyncedSkillLineID = nil
+    if professionWindowSyncTimer and professionWindowSyncTimer.Cancel then
+        professionWindowSyncTimer:Cancel()
+        professionWindowSyncTimer = nil
+    end
     
     if self.SendMessage then
         self:SendMessage(E.PROFESSION_WINDOW_CLOSED)
@@ -2167,11 +2293,21 @@ function WarbandNexus:OnTradeSkillListUpdate()
         end
 
         if expansionSwitched then
-            -- Expansion tab switch: refresh every bucket keyed by skillLineID.
-            RunAllProfessionCollectors()
+            -- Open debouncer already ran full collectors for this skill line; avoid a second full pass.
+            if skillLineID and professionWindowSyncedSkillLineID
+                and skillLineID == professionWindowSyncedSkillLineID then
+                RunLightTradeSkillListCollectors()
+            elseif IsProfessionWindowOpenGrace() and not professionWindowInitialSyncComplete then
+                ScheduleProfessionWindowSync()
+            else
+                RunAllProfessionCollectors()
+                professionWindowSyncedSkillLineID = skillLineID
+            end
         elseif IsProfessionWindowOpenGrace() then
-            -- Initial profession open: fold list-update ticks into the window sync debouncer.
-            ScheduleProfessionWindowSync()
+            -- Initial profession open: coalesce early list bursts into the open debouncer once.
+            if not professionWindowInitialSyncComplete then
+                ScheduleProfessionWindowSync()
+            end
         else
             -- Post-craft bursts: avoid full recipe/cooldown/order rescans every list tick.
             RunLightTradeSkillListCollectors()
@@ -2219,6 +2355,8 @@ function WarbandNexus:OnProfessionChanged()
     -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not IsCurrentCharacterTracked() then return end
+    -- Open-window sync collectors already refresh expansion + profession buckets.
+    if IsProfessionTradeWindowReady() then return end
     
     local charKey = ResolveTrackedCharactersTableKey()
     if not charKey then return end

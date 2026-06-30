@@ -1193,10 +1193,14 @@ function WarbandNexus:UpdateProfessionData()
         self.db.global.characters[key].professions = newData
         self.db.global.characters[key].lastSeen = time()
 
-        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-            charKey = key,
-            dataType = "professions"
-        })
+        local suppressCharUpdated = self.IsProfessionTradeWindowUiCoalesce
+            and self:IsProfessionTradeWindowUiCoalesce()
+        if not suppressCharUpdated then
+            self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+                charKey = key,
+                dataType = "professions"
+            })
+        end
     end)
 end
 

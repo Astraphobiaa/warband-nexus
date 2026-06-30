@@ -308,7 +308,18 @@ local function ReleaseProfessionRow(row)
         if row[lineKey .. "ConcBar"] then row[lineKey .. "ConcBar"]:Hide() end
         if row[lineKey .. "SkillHit"] then row[lineKey .. "SkillHit"]:Hide() end
         if row[lineKey .. "KnowWarn"] then row[lineKey .. "KnowWarn"]:Hide() end
-        if row[lineKey .. "Btn"] then row[lineKey .. "Btn"]:Hide() end
+        if row[lineKey .. "Btn"] then
+            row[lineKey .. "Btn"]:Hide()
+            row[lineKey .. "Btn"]:SetScript("OnClick", nil)
+            row[lineKey .. "Btn"]:SetScript("OnEnter", nil)
+            row[lineKey .. "Btn"]:SetScript("OnLeave", nil)
+        end
+        if row.openBtn then
+            row.openBtn:Hide()
+            row.openBtn:SetScript("OnClick", nil)
+            row.openBtn:SetScript("OnEnter", nil)
+            row.openBtn:SetScript("OnLeave", nil)
+        end
         if row[lineKey .. "InfoBtn"] then row[lineKey .. "InfoBtn"]:Hide() end
         if row[lineKey .. "Icon"] then
             row[lineKey .. "Icon"]:Hide()

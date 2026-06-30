@@ -14,7 +14,7 @@
 
     Column grid (character row + per profession line):
         [FavIcon] [ClassIcon] [Name/Realm] [Open]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] â€¦
-    Open is one control per character (vertically centered); disabled when no primary profession or not logged in.
+    Open is one control per profession line (slots 1 and 2); disabled when that slot is empty or character is not logged in.
 
     Default column visibility matches prior behavior (Columns toggles persist in SavedVariables).
     Skill column has a hover tooltip showing all expansion skill breakdowns.
@@ -1481,7 +1481,12 @@ local function RegisterProfessionEvents(parent)
     parent.professionUpdateHandler = true
     local Constants = ns.Constants
 
-    local function Refresh()
+    local function Refresh(_, payload)
+        if WarbandNexus.IsProfessionTradeWindowUiCoalesce
+            and WarbandNexus:IsProfessionTradeWindowUiCoalesce() then
+            wipe(profSessionRecipeMapByCharKey)
+            return
+        end
         wipe(profSessionRecipeMapByCharKey)
         if profCharRefreshTimer and profCharRefreshTimer.Cancel then
             profCharRefreshTimer:Cancel()
@@ -1854,16 +1859,78 @@ local function AnyProfessionsSectionExpanded(profile, customGroupsOrdered)
     return false
 end
 
---- First primary profession slot for OpenTradeSkill (skillLine / skillLineID from CollectProfessionData).
-local function GetFirstPrimaryProfessionSlot(char)
-    if not char or not char.professions then return nil end
-    for pi = 1, 2 do
-        local prof = char.professions[pi]
-        if prof and (prof.skillLine or prof.skillLineID or prof.name) then
-            return prof
+local function ProfessionSlotCanOpen(isCurrent, prof)
+    if not isCurrent or not prof then return false end
+    local nm = prof.name
+    if nm and nm ~= "" then
+        if issecretvalue and issecretvalue(nm) then
+            return (prof.skillLine or prof.skillLineID) and true or false
+        end
+        return true
+    end
+    return (prof.skillLine or prof.skillLineID) and true or false
+end
+
+local function BuildProfessionOpenTooltip(isCurrent, prof)
+    if not prof or not ProfessionSlotCanOpen(isCurrent, prof) then
+        if prof and prof.name and prof.name ~= "" and not isCurrent then
+            return (ns.L and ns.L["GEAR_NO_PREVIEW_HINT"]) or "Log in on this character to refresh the appearance preview."
+        end
+        return (ns.L and ns.L["NO_PROFESSION"]) or "No Profession"
+    end
+    local base = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open this profession's recipe list"
+    local nm = prof.name
+    if nm and nm ~= "" and not (issecretvalue and issecretvalue(nm)) then
+        return nm .. " - " .. base
+    end
+    return base
+end
+
+local function ResolveOpenTradeSkillID(prof)
+    if not prof then return nil end
+    if prof.skillLine and prof.skillLine > 0 then return prof.skillLine end
+    if prof.skillLineID and prof.skillLineID > 0 then return prof.skillLineID end
+    return nil
+end
+
+local function IsSameProfessionWindowOpen(prof)
+    if not prof or not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady then return false end
+    local readyOk, ready = pcall(C_TradeSkillUI.IsTradeSkillReady)
+    if not readyOk or not ready then return false end
+    local targetID = ResolveOpenTradeSkillID(prof)
+    if not targetID or not C_TradeSkillUI.GetProfessionChildSkillLineID then return false end
+    local slOk, openID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
+    if not slOk or not openID or openID <= 0 then return false end
+    if openID == targetID then return true end
+    -- OpenTradeSkill may use parent skill line while the window reports child line.
+    if C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+        local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, openID)
+        if piOk and profInfo then
+            local parentSL = profInfo.parentSkillLineID or profInfo.skillLineID
+            if parentSL and parentSL == targetID then return true end
+        end
+        local tgtOk, tgtInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, targetID)
+        if tgtOk and tgtInfo and tgtInfo.skillLineID and tgtInfo.skillLineID == openID then
+            return true
         end
     end
-    return nil
+    return false
+end
+
+local function OpenProfessionSlot(prof)
+    if InCombatLockdown() or not prof then return end
+    if IsSameProfessionWindowOpen(prof) then return end
+    if C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill then
+        if prof.skillLine then
+            C_TradeSkillUI.OpenTradeSkill(prof.skillLine)
+        elseif prof.skillLineID then
+            C_TradeSkillUI.OpenTradeSkill(prof.skillLineID)
+        else
+            ToggleProfessionsBook()
+        end
+    else
+        ToggleProfessionsBook()
+    end
 end
 
 local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
@@ -1887,6 +1954,38 @@ local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
         if ShowTooltip then ShowTooltip(self, { type = "custom", title = tipTitle, lines = {} }) end
     end)
     btn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
+end
+
+local function WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCurrent)
+    local p = "l" .. lineIndex
+    local FactRow = ns.UI and ns.UI.Factory
+    if not row[p .. "Btn"] then
+        local btn = FactRow and FactRow:CreateButton(row, ColWidth("open"), 18, true)
+        if not btn then
+            btn = CreateFrame("Button", nil, row)
+            btn:SetSize(ColWidth("open"), 18)
+        end
+        if ApplyVisuals then
+            ApplyVisuals(btn, ChromeBackdrop(), ChromeBorder(0.5))
+        end
+        btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
+        btn.label:SetPoint("CENTER", 0, 0)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(btn) end
+        row[p .. "Btn"] = btn
+    end
+    local btn = row[p .. "Btn"]
+    AnchorCellInColumn(btn, "open", row, centerY, "CENTER")
+    local canOpen = ProfessionSlotCanOpen(isCurrent, prof)
+    SetProfessionOpenButtonState(btn, canOpen, BuildProfessionOpenTooltip(isCurrent, prof))
+    if canOpen then
+        local capturedProf = prof
+        btn:SetScript("OnClick", function()
+            OpenProfessionSlot(capturedProf)
+        end)
+    else
+        btn:SetScript("OnClick", nil)
+    end
+    btn:Show()
 end
 
 local function FormatProgressPair(entry)
@@ -2392,61 +2491,18 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     end
     row._wnGradientRefresh = ApplyProfessionRowClassGradient
 
-    -- OPEN (character-level; after identity columns, before profession lines)
-    local FactRow = ns.UI and ns.UI.Factory
-    if not row.openBtn then
-        local btn = FactRow and FactRow:CreateButton(row, ColWidth("open"), 18, true)
-        if not btn then
-            btn = CreateFrame("Button", nil, row)
-            btn:SetSize(ColWidth("open"), 18)
-        end
-        if ApplyVisuals then
-            ApplyVisuals(btn, ChromeBackdrop(), ChromeBorder(0.5))
-        end
-        btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
-        btn.label:SetPoint("CENTER", 0, 0)
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(btn) end
-        row.openBtn = btn
-    end
-    row.openBtn:ClearAllPoints()
-    row.openBtn:SetPoint("CENTER", row, "LEFT", ColCenterX("open"), 0)
-
-    local hasPrimaryProf = CharacterHasPrimaryProfession(char)
-    local canOpenProf = isCurrent and hasPrimaryProf
-    local openTip
-    if not hasPrimaryProf then
-        openTip = (ns.L and ns.L["NO_PROFESSION"]) or "No Profession"
-    elseif not isCurrent then
-        openTip = (ns.L and ns.L["GEAR_NO_PREVIEW_HINT"]) or "Log in on this character to refresh the appearance preview."
-    else
-        openTip = (ns.L and ns.L["PROF_OPEN_RECIPE_TOOLTIP"]) or "Open recipe list"
-    end
-    SetProfessionOpenButtonState(row.openBtn, canOpenProf, openTip)
-    if canOpenProf then
-        row.openBtn:SetScript("OnClick", function()
-            if InCombatLockdown() then return end
-            local slot = GetFirstPrimaryProfessionSlot(char)
-            if C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill and slot then
-                if slot.skillLine then
-                    C_TradeSkillUI.OpenTradeSkill(slot.skillLine)
-                elseif slot.skillLineID then
-                    C_TradeSkillUI.OpenTradeSkill(slot.skillLineID)
-                else
-                    ToggleProfessionsBook()
-                end
-            else
-                ToggleProfessionsBook()
-            end
-        end)
-    else
+    if row.openBtn then
+        row.openBtn:Hide()
         row.openBtn:SetScript("OnClick", nil)
+        row.openBtn:SetScript("OnEnter", nil)
+        row.openBtn:SetScript("OnLeave", nil)
     end
 
     ApplyProfessionRowClassGradient()
 
-    -- PROFESSION LINES
-    self:DrawProfessionLine(row, char, char.professions and char.professions[1], 1, LINE1_Y)
-    self:DrawProfessionLine(row, char, char.professions and char.professions[2], 2, LINE2_Y)
+    -- PROFESSION LINES (per-line Open in the open column)
+    self:DrawProfessionLine(row, char, char.professions and char.professions[1], 1, LINE1_Y, isCurrent)
+    self:DrawProfessionLine(row, char, char.professions and char.professions[2], 2, LINE2_Y, isCurrent)
 
     if row._wnProfMidRule then
         row._wnProfMidRule:Hide()
@@ -2457,6 +2513,15 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     -- Row hover
     row:SetScript("OnEnter", function(self) self:SetAlpha(0.9) end)
     row:SetScript("OnLeave", function(self) self:SetAlpha(1) end)
+
+    row._wnCharKey = charKey
+    row._wnProfPaintCtx = {
+        sectionParent = parent,
+        yOffset = yOffset,
+        rowIndex = index,
+        width = width,
+        currentPlayerKey = currentPlayerKey,
+    }
 
     return yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0), row
 end
@@ -2686,10 +2751,12 @@ end
 
 -- DRAW PROFESSION LINE (single profession within a row)
 
-function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
+function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, isCurrent)
     local p = "l" .. lineIndex
     local FactRow = ns.UI and ns.UI.Factory
     local charKey = GetCharKey(char)
+
+    WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCurrent == true)
 
     local iconSize = ColWidth("profIcon")
 
@@ -2849,14 +2916,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
     if IsColumnVisible("cooldowns") then cdHit:Show() else cdHit:Hide() end
     local rechargeHit = AcquireColumnHitFrame(row, p.."RechargeHit", "recharge", centerY)
     if rechargeVisible then rechargeHit:Show() else rechargeHit:Hide() end
-
-    -- Per-line Open retired (character-level row.openBtn); hide pooled legacy buttons.
-    if row[p.."Btn"] then
-        row[p.."Btn"]:Hide()
-        row[p.."Btn"]:SetScript("OnClick", nil)
-        row[p.."Btn"]:SetScript("OnEnter", nil)
-        row[p.."Btn"]:SetScript("OnLeave", nil)
-    end
 
     -- INFO BUTTON (read-only detail window)
     if not row[p.."InfoBtn"] then
@@ -3316,12 +3375,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY)
         elseif row[p .. "EquipEmpty"] then
             row[p .. "EquipEmpty"]:Hide()
         end
-        if row[p.."Btn"] then
-            row[p.."Btn"]:Hide()
-            row[p.."Btn"]:SetScript("OnClick", nil)
-            row[p.."Btn"]:SetScript("OnEnter", nil)
-            row[p.."Btn"]:SetScript("OnLeave", nil)
-        end
         if row[p.."InfoBtn"] then row[p.."InfoBtn"]:Hide() end
         local concX = ColOffset("conc")
         UpdateConcentrationBar(row, p.."ConcBar", concX, ColBarTopY(centerY), ColWidth("conc"), 0, 0)
@@ -3509,6 +3562,41 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
     end
 
     C_Timer.After(0, pump)
+end
+
+function ProfUI.TryRefreshLoggedInRow(msgCharKey)
+    if not msgCharKey or not WarbandNexus then return false end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "professions" then return false end
+    local scrollChild = mf.scroll and mf.scroll:GetScrollChild()
+    if not scrollChild or not scrollChild._wnProfNestedRows then return false end
+
+    local resolvedKey = msgCharKey
+    if Utilities and Utilities.GetCanonicalCharacterKey then
+        resolvedKey = Utilities:GetCanonicalCharacterKey(msgCharKey) or msgCharKey
+    end
+    local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[resolvedKey]
+    if not charData then return false end
+
+    for ri = 1, #scrollChild._wnProfNestedRows do
+        local row = scrollChild._wnProfNestedRows[ri]
+        local ctx = row and row._wnProfPaintCtx
+        if row and row._wnCharKey == resolvedKey and ctx and ctx.sectionParent then
+            local ok = pcall(WarbandNexus.DrawProfessionRow, WarbandNexus,
+                ctx.sectionParent, charData, ctx.rowIndex, ctx.width, ctx.yOffset, ctx.currentPlayerKey)
+            if ok then
+                if row._wnGradientRefresh then
+                    pcall(row._wnGradientRefresh)
+                end
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function WarbandNexus:TryRefreshProfessionsLoggedInRow(charKey)
+    return ProfUI.TryRefreshLoggedInRow(charKey) == true
 end
 
 --- Tab switch (AbortTabOperations): clear session profession caches so GUID/API-heavy maps are not retained across tabs.
