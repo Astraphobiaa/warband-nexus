@@ -57,7 +57,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
     local headerParent = (chrome and chrome.headerParent) or fixedHeader or parent
     local headerYOffset = (chrome and chrome.yOffset) or 0
     local contentSide = (chrome and chrome.side) or (metrics and metrics.sideMargin) or SIDE_MARGIN
-    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local scrollTopY = (ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0
   -- Single stack width for title card, column headers, sections, and row chrome (Characters-tab parity).
     local stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
         or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
@@ -202,7 +202,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
 
     titleCard:Show()
     if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight(), 0)
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
     else
         headerYOffset = headerYOffset + (GetLayout().afterHeader or 72)

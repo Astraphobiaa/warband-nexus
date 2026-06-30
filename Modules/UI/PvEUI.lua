@@ -913,9 +913,9 @@ local function RepositionPveFixedHeader(mf, hdrCache, headerParent, chrome, head
         ns.UI_HideTitleCardExpandCollapseControls(scrollChild)
     end
     if ns.UI_AdvanceTabChromeYOffset then
-        return ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        return ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight(), 0)
     end
-    return headerYOffset + (GetLayout().afterHeader or 72)
+    return headerYOffset + (titleCard:GetHeight() or 64)
 end
 
 function ns.PvEUI.InvalidateBodyCache(parent)
@@ -2619,10 +2619,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
             or (ns.UI_ResolveMainTabBodyWidth and ns.UI_ResolveMainTabBodyWidth(mf, parent))
             or math.max(200, (parent:GetWidth() or 600) - contentSide * 2)
         parent._wnPveContentSide = contentSide
-        scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+        scrollTopY = (ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0
     else
         contentSide = parent._wnPveContentSide or L.SIDE_MARGIN
-        scrollTopY = opts.scrollTopY or (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+        scrollTopY = opts.scrollTopY or ((ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0)
         local mfBody = L.WarbandNexus.UI and L.WarbandNexus.UI.mainFrame
         metrics = mfBody and ns.UI_GetMainTabLayoutMetrics and ns.UI_GetMainTabLayoutMetrics(mfBody)
         stackWidth = (metrics and metrics.bodyWidth and metrics.bodyWidth > 0) and metrics.bodyWidth
@@ -2871,10 +2871,10 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
 
     titleCard:Show()
     if ns.UI_AdvanceTabChromeYOffset then
-        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight())
+        headerYOffset = ns.UI_AdvanceTabChromeYOffset(headerYOffset, titleCard:GetHeight(), 0)
         if ns.UI_CommitTabFixedHeader then ns.UI_CommitTabFixedHeader(mf, headerYOffset) end
     else
-        headerYOffset = headerYOffset + (L.GetLayout().afterHeader or 72)
+        headerYOffset = headerYOffset + (titleCard:GetHeight() or 64)
         if fixedHeader then fixedHeader:SetHeight(headerYOffset) end
     end
 

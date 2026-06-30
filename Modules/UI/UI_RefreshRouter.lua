@@ -42,40 +42,6 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
     -- overwriting other modules' handlers for the same AceEvent message.
     -- AceEvent allows only ONE handler per (event, self) pair.
-    -- Must bypass POPULATE_COOLDOWN: after login/alt switch, ITEMS_UPDATED etc. can set st.lastEventPopulateTime
-    -- and this refresh would be dropped — leaving Character tab layout stale or visually broken.
-    -- Gear tab rebuilds 3D paperdoll + full card — avoid skipCooldown (full populate every ~0.1s) on
-    -- rapid WN_CHARACTER_UPDATED (e.g. item level ticks at 0.3s, DataService) or models appear to "flicker".
-    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function(_, payload)
-        if HiddenOrMissing() then return end
-        local tab = f.currentTab
-        if tab ~= "chars" and tab ~= "stats" and tab ~= "gear" then return end
-        -- Characters tab: avoid skipCooldown here — ilvl/zone/gold batching fires this often and full
-        -- PopulateContent every ~100ms feels like a constant refresh (virtual rows make it more noticeable).
-        if tab == "chars" then
-            if payload and payload.dataType == "mythicKey" then
-                SchedulePopulateContent(true)
-            else
-                SchedulePopulateContent()
-            end
-        elseif tab == "stats" then
-            SchedulePopulateContent(true)
-        elseif tab == "gear" then
-            if payload and payload.dataType == "itemLevel" and payload.charKey
-                and WarbandNexus.TryRefreshGearTabItemLevelOnly
-                and WarbandNexus:TryRefreshGearTabItemLevelOnly(payload.charKey) then
-                return
-            end
-            if f._gearCharUpdSuppressUntil and GetTime() < f._gearCharUpdSuppressUntil then
-                return
-            end
-            if IsGearTabPopulateQuiet() then
-                return
-            end
-            SchedulePopulateContent()
-        end
-    end)
-    
     local function onItemsOrBagsInventoryUpdated()
         if not HiddenOrMissing() and (f.currentTab == "items" or f.currentTab == "gear") then
             -- Bank > Warband aggregate can sit on this tab while cache finishes; 800ms POPULATE_COOLDOWN
@@ -361,6 +327,77 @@ function ns.UI_RefreshRouter.RegisterMainShellListeners(ctx)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CRAFTING_ORDERS_UPDATED, onProfessionsTabRefresh)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_DATA_UPDATED, onProfessionsTabRefresh)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PROFESSION_COOLDOWNS_UPDATED, onProfessionsTabRefresh)
+
+    -- Professions tab: only roster/profession payloads — gold/ilvl/zone CHARACTER_UPDATED must not full redraw.
+    local PROFESSION_CHAR_UPD_TYPES = {
+        professions = true,
+        customSections = true,
+        customSection = true,
+        favorite = true,
+        rosterPrune = true,
+    }
+
+    local function onProfessionsCharacterUpdated(payload)
+        if WarbandNexus.IsProfessionTradeWindowUiCoalesce
+            and WarbandNexus:IsProfessionTradeWindowUiCoalesce() then
+            local ProfUI = ns.ProfessionsUI
+            if ProfUI and ProfUI.InvalidateTradeSessionCaches then
+                ProfUI.InvalidateTradeSessionCaches()
+            end
+            return
+        end
+        local dataType = payload and payload.dataType
+        if dataType and not PROFESSION_CHAR_UPD_TYPES[dataType] then
+            return
+        end
+        if dataType == "professions" then
+            local ProfUI = ns.ProfessionsUI
+            if ProfUI and ProfUI.InvalidateTradeSessionCaches then
+                ProfUI.InvalidateTradeSessionCaches()
+            end
+        end
+        local charKey = payload and payload.charKey
+        if tryProfessionsIncrementalRefresh(charKey) then return end
+        scheduleProfessionStormRefresh(false)
+    end
+
+    -- Must bypass POPULATE_COOLDOWN: after login/alt switch, ITEMS_UPDATED etc. can set st.lastEventPopulateTime
+    -- and this refresh would be dropped — leaving Character tab layout stale or visually broken.
+    -- Gear tab rebuilds 3D paperdoll + full card — avoid skipCooldown (full populate every ~0.1s) on
+    -- rapid WN_CHARACTER_UPDATED (e.g. item level ticks at 0.3s, DataService) or models appear to "flicker".
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function(_, payload)
+        if HiddenOrMissing() then return end
+        local tab = f.currentTab
+        if tab == "professions" then
+            onProfessionsCharacterUpdated(payload)
+            return
+        end
+        if tab ~= "chars" and tab ~= "stats" and tab ~= "gear" then return end
+        -- Characters tab: avoid skipCooldown here — ilvl/zone/gold batching fires this often and full
+        -- PopulateContent every ~100ms feels like a constant refresh (virtual rows make it more noticeable).
+        if tab == "chars" then
+            if payload and payload.dataType == "mythicKey" then
+                SchedulePopulateContent(true)
+            else
+                SchedulePopulateContent()
+            end
+        elseif tab == "stats" then
+            SchedulePopulateContent(true)
+        elseif tab == "gear" then
+            if payload and payload.dataType == "itemLevel" and payload.charKey
+                and WarbandNexus.TryRefreshGearTabItemLevelOnly
+                and WarbandNexus:TryRefreshGearTabItemLevelOnly(payload.charKey) then
+                return
+            end
+            if f._gearCharUpdSuppressUntil and GetTime() < f._gearCharUpdSuppressUntil then
+                return
+            end
+            if IsGearTabPopulateQuiet() then
+                return
+            end
+            SchedulePopulateContent()
+        end
+    end)
     
     -- BAGS_UPDATED also feeds the gear-tab recommendation scan (cross-character bag items
     -- are candidates) so newly looted BoEs surface without a manual reopen.

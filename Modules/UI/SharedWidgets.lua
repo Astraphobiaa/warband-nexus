@@ -3731,6 +3731,12 @@ function ns.UI_GetTabScrollContentStartY()
     return sp.TAB_CHROME_SCROLL_TOP or 8
 end
 
+--- Y inside scrollChild when a column-header strip sits flush under the title card (PvE / Professions).
+---@return number
+function ns.UI_GetTabColumnHeaderScrollTop()
+    return 0
+end
+
 --- Scroll child bottom padding (PopulateContent post-layout).
 ---@return number
 function ns.UI_GetTabScrollContentBottomPad()

@@ -1474,47 +1474,13 @@ local function InvalidateProfessionsTradeSessionCaches()
     wipe(profSessionRecipeMapByCharKey)
 end
 
-local profCharRefreshTimer = nil
+ProfUI.InvalidateTradeSessionCaches = InvalidateProfessionsTradeSessionCaches
 
 local function RegisterProfessionEvents(parent)
     if parent.professionUpdateHandler then return end
     parent.professionUpdateHandler = true
-    local Constants = ns.Constants
-
-    local function Refresh(_, payload)
-        if WarbandNexus.IsProfessionTradeWindowUiCoalesce
-            and WarbandNexus:IsProfessionTradeWindowUiCoalesce() then
-            wipe(profSessionRecipeMapByCharKey)
-            return
-        end
-        wipe(profSessionRecipeMapByCharKey)
-        if profCharRefreshTimer and profCharRefreshTimer.Cancel then
-            profCharRefreshTimer:Cancel()
-            profCharRefreshTimer = nil
-        end
-        if not (C_Timer and C_Timer.After) then
-            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-            if mf and mf:IsShown() and mf.currentTab == "professions" then
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
-            end
-            return
-        end
-        profCharRefreshTimer = C_Timer.After(0.12, function()
-            profCharRefreshTimer = nil
-            local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-            if mf and mf:IsShown() and mf.currentTab == "professions" then
-                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
-            end
-        end)
-    end
-
-    -- CONCENTRATION_UPDATED, KNOWLEDGE_UPDATED, RECIPE_DATA_UPDATED: REMOVED â€”
-    -- UI.lua's SchedulePopulateContent already handles professions tab refresh for these events.
-    -- Having both caused double PopulateContent â†’ DrawProfessionsTab per event.
-    
-    -- Keep CHARACTER_UPDATED: UI.lua does not schedule professions-tab refresh for this event.
-    WarbandNexus.RegisterMessage(ProfessionsUIEvents, Constants.EVENTS.CHARACTER_UPDATED, Refresh)
-    -- CHARACTER_TRACKING_CHANGED refresh is centralized in UI.lua.
+    -- WN_CHARACTER_UPDATED + profession WN_* tab refresh: UI_RefreshRouter (storm debounce, dataType filter).
+    -- Duplicate handler here caused full skipCooldown redraw on gold/ilvl/zone ticks.
 end
 
 -- CHARACTER SORTING (mirrors CharactersUI)
@@ -2288,7 +2254,7 @@ local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
     local side = scrollChild._wnProfContentSide or SIDE_MARGIN
     local paintW = ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, stackW)
     local barW = ProfessionStackBodyWidth(paintW, side)
-    local scrollTopY = (ns.UI_GetTabScrollContentStartY and ns.UI_GetTabScrollContentStartY()) or 8
+    local scrollTopY = (ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0
     colHeaderRow:ClearAllPoints()
     colHeaderRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", side, -scrollTopY)
     if colHeaderRow.SetWidth then
@@ -3514,7 +3480,8 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
         end
     end
 
-    local function pump()
+    local pump, scheduleNextChunk
+    pump = function()
         if ProfUI._drawGen ~= drawGen then return end
         local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
         if not mf or not mf:IsShown() or mf.currentTab ~= "professions" then return end
@@ -3558,10 +3525,16 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
         if mf and ns.UI_SyncMainTabScrollChrome and parent._wnProfEstimatedScrollBody then
             ns.UI_SyncMainTabScrollChrome(mf, parent, parent._wnProfEstimatedScrollBody)
         end
-        C_Timer.After(0, pump)
+        scheduleNextChunk()
     end
 
-    C_Timer.After(0, pump)
+    scheduleNextChunk = function()
+        if idx <= #queue and C_Timer and C_Timer.After then
+            C_Timer.After(0, pump)
+        end
+    end
+
+    pump()
 end
 
 function ProfUI.TryRefreshLoggedInRow(msgCharKey)
@@ -3602,10 +3575,6 @@ end
 --- Tab switch (AbortTabOperations): clear session profession caches so GUID/API-heavy maps are not retained across tabs.
 function WarbandNexus:AbortProfessionsTabWork()
     ProfUI.AbortChunkedRowPaint()
-    if profCharRefreshTimer and profCharRefreshTimer.Cancel then
-        profCharRefreshTimer:Cancel()
-        profCharRefreshTimer = nil
-    end
     InvalidateProfessionsTradeSessionCaches()
 end
 
