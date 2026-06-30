@@ -35,6 +35,10 @@ for zi = 1, #INDEX.ZONES do
     end
 end
 
+local function IsSecret(val)
+    return issecretvalue and val and issecretvalue(val)
+end
+
 local expandedZoneMapTrees = {}
 
 --- Merge C_Map child uiMapIDs under each zone root (Silvermoon subfloors, etc.).
@@ -80,10 +84,6 @@ end
 
 --- Optional curated quest IDs per uiMapID (merged with API scan + discovery).
 INDEX.QUEST_SEEDS = {}
-
-local function IsSecret(val)
-    return issecretvalue and val and issecretvalue(val)
-end
 
 local function IsWorldQuest(questID)
     if not questID or questID <= 0 then return false end
