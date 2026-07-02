@@ -17,18 +17,28 @@ local function DebugPrintf(fmt, ...)
 end
 local blizzardCollectionsLoaded = false
 local function EnsureBlizzardCollectionsLoaded()
-    if blizzardCollectionsLoaded then return end
-    if InCombatLockdown() then return end
-    blizzardCollectionsLoaded = true
+    if blizzardCollectionsLoaded then return true end
+    if InCombatLockdown() then return false end
     local P = ns.Profiler
     if P and P.enabled then P:Start("EnsureBlizzard_CollectionsLoad") end
+    local ok = false
     if Utilities and Utilities.SafeLoadAddOn then
-        Utilities:SafeLoadAddOn("Blizzard_Collections")
+        ok = Utilities:SafeLoadAddOn("Blizzard_Collections") == true
+    elseif C_AddOns and C_AddOns.IsAddOnLoaded then
+        ok = C_AddOns.IsAddOnLoaded("Blizzard_Collections") == true
     end
     if P and P.enabled then P:Stop("EnsureBlizzard_CollectionsLoad") end
-    DebugPrint("|cff00ff00[WN CollectionService]|r Ensured Blizzard_Collections is loaded for API data")
+    if ok then
+        blizzardCollectionsLoaded = true
+        DebugPrint("|cff00ff00[WN CollectionService]|r Ensured Blizzard_Collections is loaded for API data")
+    end
+    return ok
+end
+local function ResetBlizzardCollectionsLoadState()
+    blizzardCollectionsLoaded = false
 end
 ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
+ns.ResetBlizzardCollectionsLoadState = ResetBlizzardCollectionsLoadState
 
 ---Chunked pet journal prep for BuildFullCollectionData (replaces synchronous COLLECTION_CONFIGS.pet.iterator).
 ---Spreads SetPetSourceChecked / GetPetInfoByIndex work across frames using FRAME_BUDGET_MS.
@@ -330,6 +340,7 @@ end
 
 local Mat = {
     EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded,
+    ResetBlizzardCollectionsLoadState = ResetBlizzardCollectionsLoadState,
     PetJournalBuildMaterializeStep = PetJournalBuildMaterializeStep,
     ToyBoxBuildMaterializeStep = ToyBoxBuildMaterializeStep,
 }

@@ -309,6 +309,7 @@ local collectionStore = {
     achievement = {},
     title = {},
     illusion = {},
+    scanCompleted = {},
 }
 
 -- collectionData = collectionStore alias (GetAllMountsData etc. use collectionData)
@@ -316,6 +317,26 @@ local collectionData = collectionStore
 
 ---Full journal scan should persist thousands of rows; a tiny store means a failed/partial scan.
 local ACHIEVEMENT_STORE_MIN_TRUST = 250
+
+local function IsCategoryScanMarkedComplete(category)
+    local sc = collectionStore.scanCompleted
+    return sc and sc[category] ~= nil
+end
+
+local function MarkCategoryScanComplete(category)
+    if not category then return end
+    if not collectionStore.scanCompleted then
+        collectionStore.scanCompleted = {}
+    end
+    collectionStore.scanCompleted[category] = time()
+end
+
+local function CategoryNeedsInitialScan(category)
+    local tbl = collectionStore[category]
+    local hasRows = tbl and next(tbl) ~= nil
+    if hasRows then return false end
+    return not IsCategoryScanMarkedComplete(category)
+end
 
 local function CountAchievementStoreEntries()
     local store = collectionStore.achievement
@@ -378,8 +399,10 @@ local function IsCollectionEnsureDataComplete(self)
     local hasPets = collectionStore.pet and next(collectionStore.pet) ~= nil
     local hasToys = collectionStore.toy and next(collectionStore.toy) ~= nil
     local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
-    local hasTitles = collectionStore.title and next(collectionStore.title) ~= nil
-    local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
+    local hasTitles = (collectionStore.title and next(collectionStore.title) ~= nil)
+        or IsCategoryScanMarkedComplete("title")
+    local hasIllusions = (collectionStore.illusion and next(collectionStore.illusion) ~= nil)
+        or IsCategoryScanMarkedComplete("illusion")
     local needAchievementIncludeAllRescan = self.db.global and not self.db.global.wnAchievementDirectScanV2
     if not (versionOk and hasMounts and hasPets and hasToys and hasAchievements and hasTitles and hasIllusions and not needAchievementIncludeAllRescan) then
         return false
@@ -426,6 +449,9 @@ function WarbandNexus:IsPlansBrowseCategoryStoreEmpty(category)
     if not category then return true end
     if category == "achievement" and IsAchievementStoreInadequate() then
         return true
+    end
+    if (category == "illusion" or category == "title") and IsCategoryScanMarkedComplete(category) then
+        return false
     end
     local tbl = collectionStore[category]
     return not tbl or next(tbl) == nil
@@ -722,6 +748,7 @@ function WarbandNexus:InitializeCollectionCache()
         collectionStore.achievement = dbStore.achievement or {}
         collectionStore.title = dbStore.title or {}
         collectionStore.illusion = dbStore.illusion or {}
+        collectionStore.scanCompleted = dbStore.scanCompleted or {}
         collectionStore.lastBuilt = dbStore.lastBuilt or 0
         if debugMode then
             local m, p, t, a, ti, il = 0, 0, 0, 0, 0, 0
@@ -848,6 +875,7 @@ function WarbandNexus:SaveCollectionStore()
         achievement = collectionStore.achievement,
         title = collectionStore.title,
         illusion = collectionStore.illusion,
+        scanCompleted = collectionStore.scanCompleted or {},
     }
     DebugPrint("|cff00ff00[WN CollectionService]|r Saved collectionStore to DB")
 end
@@ -1153,10 +1181,10 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     if (not hasAchievements) or needAchievementIncludeAllRescan or IsAchievementStoreInadequate() then
         queue[#queue + 1] = "achievement"
     end
-    if not (collectionStore.title and next(collectionStore.title)) then
+    if CategoryNeedsInitialScan("title") then
         queue[#queue + 1] = "title"
     end
-    if not (collectionStore.illusion and next(collectionStore.illusion)) then
+    if CategoryNeedsInitialScan("illusion") then
         queue[#queue + 1] = "illusion"
     end
 
@@ -1247,9 +1275,20 @@ function WarbandNexus:EnsureCollectionData(onComplete)
             stopEnsureProf()
             ns.CollectionLoadingState.isLoading = false
             ns.CollectionLoadingState.loadingProgress = 100
+            if ns.PlansLoadingState then
+                for cat, st in pairs(ns.PlansLoadingState) do
+                    if type(st) == "table" and st.isLoading then
+                        st.isLoading = false
+                        st.loadingProgress = 100
+                    end
+                end
+            end
             if LT then LT:Complete("collection_data") end
             if WarbandNexus.SaveCollectionStore then
                 WarbandNexus:SaveCollectionStore()
+            end
+            if Constants and Constants.EVENTS and WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = "all", timedOut = true })
             end
             DebugPrint("|cffff4444[WN CollectionService]|r EnsureCollectionData safety timeout — force-cleared loading state")
         end
@@ -2027,6 +2066,13 @@ end
 
 -- Active coroutines for async scanning
 local activeCoroutines = {}
+local scanCompleteCallbacks = {}
+
+local function InvokeScanCompleteCallback(collectionType, results)
+    local cb = scanCompleteCallbacks[collectionType]
+    scanCompleteCallbacks[collectionType] = nil
+    if cb then cb(results or {}) end
+end
 
 -- ASYNC SCAN ABORT PROTOCOL (for tab switches)
 
@@ -2035,10 +2081,12 @@ function WarbandNexus:AbortCollectionScans()
     local abortCount = 0
     for collectionType, co in pairs(activeCoroutines) do
         if co and coroutine.status(co) ~= "dead" then
-            -- Coroutines can't be forcibly killed in Lua, but we can mark them as aborted
-            -- The scan loop will check and exit gracefully
             activeCoroutines[collectionType] = nil
             abortCount = abortCount + 1
+            if ns.PlansLoadingState and ns.PlansLoadingState[collectionType] then
+                ns.PlansLoadingState[collectionType].isLoading = false
+            end
+            InvokeScanCompleteCallback(collectionType, collectionStore[collectionType] or {})
         end
     end
     
@@ -3965,7 +4013,15 @@ COLLECTION_CONFIGS = {
             if not illusionInfo then return nil end
             
             -- CORRECT API: GetIllusionStrings(sourceID) - NOT visualID!
-            local name, hyperlink, sourceText = C_TransmogCollection.GetIllusionStrings(sourceID)
+            local name, hyperlink, sourceText
+            if C_TransmogCollection.GetIllusionStrings then
+                local ok, n, h, s = pcall(C_TransmogCollection.GetIllusionStrings, sourceID)
+                if ok then
+                    name, hyperlink, sourceText = n, h, s
+                end
+            end
+            if name and issecretvalue and issecretvalue(name) then name = nil end
+            if sourceText and issecretvalue and issecretvalue(sourceText) then sourceText = nil end
             
             -- Fallback 1: Try basic illusion info if API returns nil
             if not name or name == "" then
@@ -4092,9 +4148,18 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
     
     -- Prevent duplicate scans (already scanning)
     if activeCoroutines[collectionType] then
-    DebugPrint("|cffffcc00[WN CollectionService]|r Scan already in progress for: " .. tostring(collectionType) .. ", skipping")
-        return
+        local existing = activeCoroutines[collectionType]
+        if existing and coroutine.status(existing) ~= "dead" then
+            DebugPrint("|cffffcc00[WN CollectionService]|r Scan already in progress for: " .. tostring(collectionType) .. ", chaining callback")
+            if onComplete then
+                scanCompleteCallbacks[collectionType] = onComplete
+            end
+            return
+        end
+        activeCoroutines[collectionType] = nil
     end
+
+    scanCompleteCallbacks[collectionType] = onComplete
     
     -- Check if scan is needed (collectionStore or collectionCache populated and current)
     local storeHasData = collectionStore[collectionType] and next(collectionStore[collectionType]) ~= nil
@@ -4106,9 +4171,8 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         
         -- If cache exists and scan was recent (< 5 minutes), skip
         if timeSinceLastScan < 300 then
-    DebugPrint("|cffffcc00[WN CollectionService]|r Cache exists and recent for " .. tostring(collectionType) .. " (scanned " .. timeSinceLastScan .. "s ago), skipping scan")
-            -- EnsureCollectionData relies on onComplete to advance the queue; always invoke when skipping
-            if onComplete then onComplete(collectionStore[collectionType] or {}) end
+            DebugPrint("|cffffcc00[WN CollectionService]|r Cache exists and recent for " .. tostring(collectionType) .. " (scanned " .. timeSinceLastScan .. "s ago), skipping scan")
+            InvokeScanCompleteCallback(collectionType, collectionStore[collectionType] or {})
             return
         end
     end
@@ -4180,36 +4244,52 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
 
         -- Handle empty collection (nothing to scan)
         if total == 0 then
-            -- For toy scans, 0 results likely means filters didn't apply yet; schedule retry instead of caching empty
-            if collectionType == "toy" then
-                local retryKey = "__toyRetryCount"
+            local retryKey = "__" .. collectionType .. "ScanRetryCount"
+            local retryTypes = { toy = true, illusion = true, title = true }
+            if retryTypes[collectionType] then
                 local retryCount = ns[retryKey] or 0
                 if retryCount < 3 then
                     ns[retryKey] = retryCount + 1
-                    ns.PlansLoadingState[collectionType].isLoading = false
+                    ns.PlansLoadingState[collectionType].isLoading = true
                     ns.PlansLoadingState[collectionType].currentStage = "Retrying..."
-                    DebugPrint("|cffffcc00[WN CollectionService]|r Toy scan returned 0 results, scheduling retry " .. (retryCount + 1) .. "/3")
+                    if collectionType == "illusion" or collectionType == "title" or collectionType == "toy" then
+                        if Mat.ResetBlizzardCollectionsLoadState then
+                            Mat.ResetBlizzardCollectionsLoadState()
+                        elseif ns.ResetBlizzardCollectionsLoadState then
+                            ns.ResetBlizzardCollectionsLoadState()
+                        end
+                        Mat.EnsureBlizzardCollectionsLoaded()
+                    end
+                    DebugPrint("|cffffcc00[WN CollectionService]|r " .. collectionType .. " scan returned 0 results, scheduling retry " .. (retryCount + 1) .. "/3")
+                    local addon = self
+                    local pendingCb = scanCompleteCallbacks[collectionType]
                     C_Timer.After(0.5, function()
-                        if self and self.ScanCollection then self:ScanCollection("toy") end
+                        activeCoroutines[collectionType] = nil
+                        if addon and addon.ScanCollection then
+                            addon:ScanCollection(collectionType, onProgress, pendingCb)
+                        end
                     end)
                     return
                 end
-                -- After 3 retries, give up and cache empty
                 ns[retryKey] = nil
+            end
+            if collectionType == "illusion" or collectionType == "title" then
+                MarkCategoryScanComplete(collectionType)
             end
             if collectionStore[collectionType] ~= nil then
                 collectionStore[collectionType] = results
             end
             collectionCache.uncollected[collectionType] = results
+            collectionCache.lastScan = time()
             ns.PlansLoadingState[collectionType].isLoading = false
             ns.PlansLoadingState[collectionType].loadingProgress = 100
             ns.PlansLoadingState[collectionType].currentStage = "Complete!"
             SendCollectionScanProgress(self, collectionType, 100, 0, 0)
-            -- EnsureCollectionData queue advances only when onComplete is called (e.g. illusion/title empty scan)
-            if onComplete then onComplete(results) end
+            InvokeScanCompleteCallback(collectionType, results)
             if Constants and Constants.EVENTS then
                 self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = collectionType, results = results, elapsed = 0 })
             end
+            self:SaveCollectionCache()
             return
         end
 
@@ -4245,7 +4325,8 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                 if not activeCoroutines[collectionType] then
     DebugPrint("|cffffcc00[WN CollectionService]|r Scan aborted for: " .. collectionType)
                     ns.PlansLoadingState[collectionType].isLoading = false
-                    return  -- Exit coroutine gracefully
+                    InvokeScanCompleteCallback(collectionType, results)
+                    return
                 end
                 coroutine.yield()
             end
@@ -4273,6 +4354,9 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         collectionCache.uncollected[collectionType] = uncollectedMap
         collectionCache.lastScan = time()
         collectionStore.lastBuilt = time()
+        if collectionType == "illusion" or collectionType == "title" then
+            MarkCategoryScanComplete(collectionType)
+        end
 
         -- FINAL PROGRESS: Set to 100%
         ns.PlansLoadingState[collectionType].loadingProgress = 100
@@ -4309,11 +4393,8 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         
         -- Set loading state to false (scan complete)
         ns.PlansLoadingState[collectionType].isLoading = false
-        
-        -- Completion callback
-        if onComplete then
-            onComplete(results)
-        end
+
+        InvokeScanCompleteCallback(collectionType, results)
         
         -- Fire completion event
         if Constants and Constants.EVENTS then
@@ -4359,6 +4440,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                 self:Debug("CollectionService: Scan error - " .. tostring(err))
                 activeCoroutines[collectionType] = nil
                 resetScanLoadingStateOnError()
+                InvokeScanCompleteCallback(collectionType, {})
                 return
             end
             if coroutine.status(coRef) == "dead" then
