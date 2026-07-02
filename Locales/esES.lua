@@ -1069,6 +1069,8 @@ L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Contador de intentos"
 L["HEADER_INFO_TOOLTIP"] = "Guía del addon y créditos"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Funciones y colaboradores — los créditos están arriba."
 L["CONTRIBUTORS_TITLE"] = "Colaboradores"
+L["ABOUT_PATREON_SUPPORTERS"] = "Patrocinadores de Patreon"
+L["ABOUT_PATREON_SUPPORTER_1"] = "Melissa CD"
 L["THANK_YOU_MSG"] = "¡Gracias por usar Warband Nexus!"
 
 -- Information Dialog - Professions Tab

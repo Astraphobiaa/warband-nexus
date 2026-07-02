@@ -1068,6 +1068,8 @@ L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "嘗試次數"
 L["HEADER_INFO_TOOLTIP"] = "插件說明與致謝"
 L["HEADER_INFO_TOOLTIP_HINT"] = "功能與貢獻者 — 名單在頂端。"
 L["CONTRIBUTORS_TITLE"] = "貢獻者"
+L["ABOUT_PATREON_SUPPORTERS"] = "Patreon 贊助者"
+L["ABOUT_PATREON_SUPPORTER_1"] = "Melissa CD"
 L["THANK_YOU_MSG"] = "感謝使用 Warband Nexus！"
 
 -- Information Dialog - Professions Tab

@@ -133,6 +133,10 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
     yOffset = yOffset + contribGoldLine:GetStringHeight() + 20
     lastElement = contribGoldLine
 
+    AddText((ns.L and ns.L["ABOUT_PATREON_SUPPORTERS"]) or "Patreon Supporters", "title", { ar, ag, ab }, 6, true)
+    local patreonR, patreonG, patreonB = SemanticGoldRGB()
+    AddText((ns.L and ns.L["ABOUT_PATREON_SUPPORTER_1"]) or "Melissa CD", "body", { patreonR, patreonG, patreonB }, 20, true)
+
     AddText((ns.L and ns.L["INFO_FEATURES_SECTION_TITLE"]) or "Features overview", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 14, true)
     AddText((ns.L and ns.L["ADDON_OVERVIEW_TITLE"]) or "AddOn Overview", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 6)
     AddText((ns.L and ns.L["ADDON_OVERVIEW_DESC"]) or "Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", nil, 18)

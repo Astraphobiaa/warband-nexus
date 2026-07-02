@@ -1068,6 +1068,8 @@ L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Versuchs-Zähler"
 L["HEADER_INFO_TOOLTIP"] = "Anleitung & Danksagungen"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Funktionen und Mitwirkende — Danksagungen stehen oben."
 L["CONTRIBUTORS_TITLE"] = "Mitwirkende"
+L["ABOUT_PATREON_SUPPORTERS"] = "Patreon-Unterstützer"
+L["ABOUT_PATREON_SUPPORTER_1"] = "Melissa CD"
 L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
 
 -- Information Dialog - Professions Tab

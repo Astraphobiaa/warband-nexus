@@ -1068,6 +1068,8 @@ L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "시도 횟수"
 L["HEADER_INFO_TOOLTIP"] = "애드온 안내 및 감사"
 L["HEADER_INFO_TOOLTIP_HINT"] = "기능과 기여자 — 감사 목록은 상단에 있습니다."
 L["CONTRIBUTORS_TITLE"] = "기여자"
+L["ABOUT_PATREON_SUPPORTERS"] = "Patreon 후원자"
+L["ABOUT_PATREON_SUPPORTER_1"] = "Melissa CD"
 L["THANK_YOU_MSG"] = "Warband Nexus를 사용해 주셔서 감사합니다!"
 
 -- Information Dialog - Professions Tab

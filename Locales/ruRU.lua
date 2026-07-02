@@ -1069,6 +1069,8 @@ L["SETTINGS_SECTION_NOTIF_TRY_COUNTER"] = "Счетчик попыток"
 L["HEADER_INFO_TOOLTIP"] = "Справка и благодарности"
 L["HEADER_INFO_TOOLTIP_HINT"] = "Функции и участники — список благодарностей вверху."
 L["CONTRIBUTORS_TITLE"] = "Участники"
+L["ABOUT_PATREON_SUPPORTERS"] = "Спонсоры Patreon"
+L["ABOUT_PATREON_SUPPORTER_1"] = "Melissa CD"
 L["THANK_YOU_MSG"] = "Спасибо за использование Warband Nexus!"
 
 -- Information Dialog - Professions Tab
