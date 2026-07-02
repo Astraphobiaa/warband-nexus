@@ -1140,25 +1140,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V322"] = [=[v3.2.2 (2026-06-28)
+L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
 
 Añadido:
-- Personajes, Profesiones, PvE y Almacen: ordenar listas por clase desde el menú de filtro/orden.
-- Ajustes: opción para mostrar u ocultar el ID numérico del objeto al final de los tooltips (activado por defecto).
-- PvE: vistas de columnas Actual y Semanal; clic en encabezados para cambiar, Mayús para previsualizar la otra vista.
+- Acerca de: sección Patreon Supporters (¡gracias, Melissa CD!).
 
 Actualizado:
-- Barras de título de pestañas: estilo compartido de botones y disposición coherente en PvE, Objetos, To-Do, Equipo, Monedas y Profesiones.
-- Gestor de oro: el resumen se actualiza al instante al cambiar cantidad objetivo, modo o ajustes por personaje.
-- Tooltips de objetos: recuentos WN agrupados bajo Personaje actual, Alts, Banco de banda guerrera y Banco de hermandad.
-- Orden de personajes: motor de orden compartido para Personajes, Profesiones, PvE y Almacen (nombre, clase, nivel, ilvl, oro, reino, orden manual).
-- Cache de monedas: vinculación de personaje por GUID más fiable para transferencias de cuenta y totales entre personajes.
+- Tooltips de objetos: mejor intervalo de actualización de recuentos de almacén al escanear bolsas.
 
 Corregido:
-- PvE: el estado expandido/contraído de Favoritos y Personajes persiste correctamente tras recargar.
-- Reputación: la carga inicial ya no se queda bloqueada en la primera barra de progreso.
-- Monedas: las cantidades coinciden con el personaje correcto cuando los datos usan claves GUID.
-- Registros de oro del banco personal: la barra de desplazamiento ya no solapa filas de transacciones.
+- To-Do Ilusiones: la vista ya no se queda en «Scanning Illusions» mientras cargan los datos de colección.
+- Profesiones: la pestaña se actualiza correctamente al abrir o actualizar la ventana de profesión.
+- Profesiones: corregido el registro duplicado de eventos que causaba actualizaciones extra.
+- Ventana principal: el pool de filas ya no deja entradas obsoletas tras cambios rápidos de pestaña.
+- Recordatorios de zona: mejor manejo de recordatorios de misiones de mundo.
 
 CurseForge: Warband Nexus]=]
 

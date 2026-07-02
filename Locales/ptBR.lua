@@ -1140,25 +1140,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V322"] = [=[v3.2.2 (2026-06-28)
+L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
 
 Adicionado:
-- Personagens, Profissões, PvE e Armazenamento: ordenar listas por classe no menu de filtro/ordenação.
-- Configurações: opção para mostrar ou ocultar o ID numérico do item no final dos tooltips (ativado por padrão).
-- PvE: visualizações de colunas Atual e Semanal; clique nos cabeçalhos para alternar, Shift para pré-visualizar a outra vista.
+- Sobre: seção Patreon Supporters (obrigado, Melissa CD!).
 
 Atualizado:
-- Barras de título das abas: estilo compartilhado de botões da barra de ferramentas e layout consistente em PvE, Itens, To-Do, Equipamento, Moedas e Profissões.
-- Gerenciador de ouro: resumo atualiza ao vivo ao mudar valor alvo, modo ou configurações por personagem.
-- Tooltips de itens: contagens WN agrupadas em Personagem atual, Alts, Banco da warband e Banco da guilda.
-- Ordenação de personagens: mecanismo compartilhado para Personagens, Profissões, PvE e Armazenamento (nome, classe, nível, ilvl, ouro, reino, ordem manual).
-- Cache de moedas: vinculação de personagem por GUID mais confiável para transferências de conta e totais entre personagens.
+- Tooltips de itens: melhor intervalo de atualização das contagens de armazenamento ao escanear bolsas.
 
 Corrigido:
-- PvE: estado expandido/recolhido das seções Favoritos e Personagens persiste corretamente após recarregar.
-- Reputação: carregamento inicial não fica mais preso na primeira barra de progresso.
-- Moedas: quantidades correspondem ao personagem correto quando os dados usam chaves GUID.
-- Registros de ouro do banco pessoal: barra de rolagem não sobrepõe mais linhas de transação.
+- To-Do Ilusões: a navegação não fica mais presa em «Scanning Illusions» enquanto os dados de coleção carregam.
+- Profissões: a aba atualiza corretamente ao abrir ou atualizar a janela de profissão.
+- Profissões: corrigido registro duplicado de eventos que causava atualizações extras.
+- Janela principal: o pool de linhas não deixa mais entradas obsoletas após trocas rápidas de aba.
+- Lembretes de zona: melhor tratamento de lembretes de missões mundiais.
 
 CurseForge: Warband Nexus]=]
 

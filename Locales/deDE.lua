@@ -1139,25 +1139,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V322"] = [=[v3.2.2 (2026-06-28)
+L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
 
 Hinzugefügt:
-- Charaktere, Berufe, PvE und Lager: Charakterlisten im Filter-/Sortiermenü nach Klasse sortieren.
-- Einstellungen: Optionale Anzeige der numerischen Gegenstands-ID am Ende von Gegenstands-Tooltips (standardmäßig an).
-- PvE: Spaltenansichten Aktuell und Wöchentlich; Klick auf Spaltenköpfe zum Wechseln, Umschalt gedrückt halten für Vorschau der anderen Ansicht.
+- Info: Abschnitt Patreon-Unterstützer (Danke, Melissa CD!).
 
 Aktualisiert:
-- Tab-Titelleisten: gemeinsame Toolbar-Schaltflächen und einheitliches Layout in PvE, Gegenstände, To-Do, Ausrüstung, Währung und Berufen.
-- Gold-Manager: Zusammenfassung aktualisiert sich live bei Änderung von Zielbetrag, Modus oder charakterbezogenen Einstellungen.
-- Gegenstands-Tooltips: WN-Gegenstandszähler gruppiert unter Aktueller Charakter, Alt-Charaktere, Kriegsmeute-Bank und Gildenbank.
-- Charaktersortierung: gemeinsame Sortierlogik für Charaktere, Berufe, PvE und Lager (Name, Klasse, Stufe, Gegenstandsstufe, Gold, Realm, manuelle Reihenfolge).
-- Währungs-Cache: zuverlässigere GUID-basierte Charakterzuordnung für Konto-Transfers und kontoübergreifende Summen.
+- Gegenstands-Tooltips: verbessertes Timing für Lagerzähler-Aktualisierung beim Taschen-Scan.
 
 Behoben:
-- PvE: Ein-/Ausklappzustand der Abschnitte Favoriten und Charaktere bleibt nach /reload erhalten.
-- Ruf: Start-Ladeanzeige hängt nicht mehr auf dem ersten Fortschrittsbalken.
-- Währung: Mengen werden dem richtigen Charakter zugeordnet, wenn gespeicherte Daten GUID-Roster-Schlüssel nutzen.
-- Charakterbank-Geldprotokolle: Scrollleiste überlappt Transaktionszeilen nicht mehr.
+- To-Do Illusionen: „Scanning Illusions“ hängt nicht mehr beim Laden der Sammlungsdaten.
+- Berufe: Tab aktualisiert sich korrekt beim Öffnen oder Aktualisieren des Berufsfensters.
+- Berufe: doppelte Event-Registrierung behoben (keine Doppel-Aktualisierungen mehr).
+- Hauptfenster: Zeilen-Pool hinterlässt nach schnellem Tab-Wechsel keine veralteten Einträge.
+- Zonen-Erinnerungen: Weltquest-Erinnerungen verbessert.
 
 CurseForge: Warband Nexus]=]
 

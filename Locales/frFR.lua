@@ -1139,25 +1139,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V322"] = [=[v3.2.2 (2026-06-28)
+L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
 
 Ajouté :
-- Personnages, Métiers, PvE et Stockage : tri des listes par classe dans le menu filtre/tri.
-- Paramètres : option pour afficher ou masquer l'ID numérique d'objet en bas des infobulles d'objets (activé par défaut).
-- PvE : vues de colonnes Actuel et Hebdomadaire ; clic sur les en-têtes pour changer, Maj enfoncée pour prévisualiser l'autre vue.
+- À propos : section Supporters Patreon (merci, Melissa CD !).
 
 Mis à jour :
-- Barres de titre des onglets : style de boutons de barre d'outils partagé et disposition cohérente (PvE, Objets, To-Do, Équipement, Monnaies, Métiers).
-- Gestion de l'or : l'aperçu résumé se met à jour en direct lors des changements de montant cible, de mode ou de réglages par personnage.
-- Infobulles d'objets : comptages WN regroupés sous Personnage actuel, Alts, Banque de bande de guerre et Banque de guilde.
-- Tri des personnages : moteur de tri partagé pour Personnages, Métiers, PvE et Stockage (nom, classe, niveau, ilvl, or, royaume, ordre manuel).
-- Cache des monnaies : liaison de personnage par GUID plus fiable pour les transferts de compte et totaux inter-personnages.
+- Infobulles d'objets : meilleur timing de rafraîchissement des comptages de stockage pendant le scan des sacs.
 
 Corrigé :
-- PvE : l'état développé/replié des sections Favoris et Personnages persiste correctement après rechargement.
-- Réputation : le chargement au démarrage ne reste plus bloqué sur la première barre de progression.
-- Monnaies : les quantités correspondent au bon personnage lorsque les données utilisent des clés GUID.
-- Journaux d'or de la banque perso : la barre de défilement ne chevauche plus les lignes de transactions.
+- To-Do Illusions : la navigation ne reste plus bloquée sur « Scanning Illusions » pendant le chargement des données de collection.
+- Métiers : l'onglet se rafraîchit correctement à l'ouverture ou la mise à jour de la fenêtre de métier.
+- Métiers : correction d'une double inscription d'événements provoquant des rafraîchissements en trop.
+- Fenêtre principale : le pool de lignes ne laisse plus d'entrées obsolètes après des changements d'onglet rapides.
+- Rappels de zone : meilleure gestion des rappels de expéditions mondiales.
 
 CurseForge: Warband Nexus]=]
 

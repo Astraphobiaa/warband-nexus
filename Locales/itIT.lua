@@ -1140,25 +1140,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V322"] = [=[v3.2.2 (2026-06-28)
+L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
 
 Aggiunto:
-- Personaggi, Professioni, PvE e Deposito: ordina le liste per classe dal menu filtro/ordine.
-- Impostazioni: opzione per mostrare o nascondere l'ID numerico dell'oggetto in fondo ai tooltip (attivo di default).
-- PvE: viste colonne Attuale e Settimanale; clic sulle intestazioni per cambiare, Maiusc per anteprima dell'altra vista.
+- Informazioni: sezione Patreon Supporters (grazie, Melissa CD!).
 
 Aggiornato:
-- Barre titolo delle schede: stile pulsanti toolbar condiviso e layout coerente in PvE, Oggetti, To-Do, Equipaggiamento, Valute e Professioni.
-- Gestore oro: l'anteprima riepilogo si aggiorna in tempo reale al cambio di importo obiettivo, modalità o impostazioni per personaggio.
-- Tooltip oggetti: conteggi WN raggruppati sotto Personaggio attuale, Alt, Banca della Brigata e Banca di gilda.
-- Ordinamento personaggi: motore condiviso per Personaggi, Professioni, PvE e Deposito (nome, classe, livello, ilvl, oro, reame, ordine manuale).
-- Cache valute: associazione personaggio GUID più affidabile per trasferimenti account e totali tra personaggi.
+- Tooltip oggetti: migliorato l'intervallo di aggiornamento dei conteggi deposito durante la scansione delle sacche.
 
 Corretto:
-- PvE: lo stato espanso/compresso di Preferiti e Personaggi persiste correttamente dopo reload.
-- Reputazione: il caricamento iniziale non resta più bloccato sulla prima barra di progresso.
-- Valute: le quantità corrispondono al personaggio giusto quando i dati usano chiavi GUID.
-- Registri oro banca personaggio: la barra di scorrimento non sovrappone più le righe delle transazioni.
+- To-Do Illusioni: la navigazione non resta più bloccata su «Scanning Illusions» durante il caricamento dei dati di collezione.
+- Professioni: la scheda si aggiorna correttamente all'apertura o aggiornamento della finestra professione.
+- Professioni: corretta registrazione eventi duplicata che causava aggiornamenti extra.
+- Finestra principale: il pool righe non lascia più voci obsolete dopo rapidi cambi scheda.
+- Promemoria zona: gestione migliorata dei promemoria missioni mondiali.
 
 CurseForge: Warband Nexus]=]
 
