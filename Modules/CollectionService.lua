@@ -331,6 +331,15 @@ local function MarkCategoryScanComplete(category)
     collectionStore.scanCompleted[category] = time()
 end
 
+local function CountCollectionRows(rows)
+    if type(rows) ~= "table" then return 0 end
+    local count = 0
+    for _ in pairs(rows) do
+        count = count + 1
+    end
+    return count
+end
+
 local function CategoryNeedsInitialScan(category)
     local tbl = collectionStore[category]
     local hasRows = tbl and next(tbl) ~= nil
@@ -2702,8 +2711,11 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     local currentCollected = {}
     for i = 1, #illusions do
         local illusionInfo = illusions[i]
-        if illusionInfo and illusionInfo.visualID and illusionInfo.isCollected then
-            currentCollected[illusionInfo.visualID] = illusionInfo
+        if illusionInfo and illusionInfo.isCollected then
+            local illusionID = illusionInfo.sourceID or illusionInfo.visualID
+            if illusionID then
+                currentCollected[illusionID] = illusionInfo
+            end
         end
     end
     
@@ -2715,8 +2727,8 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     
     -- Compare and find newly collected illusions
     local newIllusionLearned = false
-    for visualID, illusionInfo in pairs(currentCollected) do
-        if not self._previousIllusionState[visualID] then
+    for illusionID, illusionInfo in pairs(currentCollected) do
+        if not self._previousIllusionState[illusionID] then
             newIllusionLearned = true
             -- NEW ILLUSION COLLECTED!
             local name = illusionInfo.name
@@ -2729,26 +2741,26 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
                 end
             end
             
-            -- Fallback to visualID
+            -- Fallback to the sourceID-keyed collection row ID.
             if not name or name == "" then
-                name = ((ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion") .. " " .. visualID
+                name = ((ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion") .. " " .. tostring(illusionID)
             end
             
             local icon = illusionInfo.icon or 134400
             
             -- Remove from uncollected cache if present
-            self:RemoveFromUncollected("illusion", visualID)
+            self:RemoveFromUncollected("illusion", illusionID)
 
             -- Fire notification event
             self:SendMessage(E.COLLECTIBLE_OBTAINED, {
                 type = "illusion",
-                id = visualID,
+                id = illusionID,
                 name = name,
                 icon = icon,
                 obtainedBy = Notify.CollectiblePayloadObtainedBy(),
             })
             
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. visualID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. tostring(illusionID) .. ")")
         end
     end
 
@@ -4272,6 +4284,20 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                     return
                 end
                 ns[retryKey] = nil
+            end
+            if retryTypes[collectionType] then
+                local preservedResults = collectionStore[collectionType] or collectionCache.uncollected[collectionType] or results
+                local preservedCount = CountCollectionRows(preservedResults)
+                DebugPrint("|cffffcc00[WN CollectionService]|r " .. collectionType .. " scan still returned 0 results after retries; preserving existing store (" .. preservedCount .. " rows)")
+                ns.PlansLoadingState[collectionType].isLoading = false
+                ns.PlansLoadingState[collectionType].loadingProgress = 100
+                ns.PlansLoadingState[collectionType].currentStage = "Complete!"
+                SendCollectionScanProgress(self, collectionType, 100, preservedCount, preservedCount)
+                InvokeScanCompleteCallback(collectionType, preservedResults)
+                if Constants and Constants.EVENTS then
+                    self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = collectionType, results = preservedResults, elapsed = 0 })
+                end
+                return
             end
             if collectionType == "illusion" or collectionType == "title" then
                 MarkCategoryScanComplete(collectionType)
