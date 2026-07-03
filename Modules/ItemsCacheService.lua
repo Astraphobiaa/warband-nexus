@@ -1605,11 +1605,20 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     end
 end
 
----Chunked bank-area scan: one bag (container) per frame to cap frame cost (inventory → bank → warband).
----Each bag/tab commits immediately (UpdateSingleBag / UpdateSingleWarbandBag) — guild-bank tab parity.
+---Chunked bank-area scan: one bag (container) per frame to cap frame cost (inventory -> bank -> warband).
+---Stages all rows and commits only after every container succeeds, so closing the bank cannot persist a mixed snapshot.
 function WarbandNexus:RunBudgetedBankOpenScan(charKey)
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        bankScanInProgress = false
+        return
+    end
+
     if not charKey then
         charKey = ResolveCurrentItemStorageKey()
+    end
+    if not charKey or charKey == "" then
+        bankScanInProgress = false
+        return
     end
 
     bankOpenScanGeneration = bankOpenScanGeneration + 1
@@ -1618,6 +1627,10 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
     local invIdx = 1
     local bankIdx = 1
     local wbIdx = 1
+    local stagedBags = {}
+    local stagedBank = {}
+    local stagedWarband = {}
+    local totalInventorySlots = 0
 
     local function scanStillActive()
         return myGen == bankOpenScanGeneration and isBankOpen
@@ -1627,6 +1640,36 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
         bankScanInProgress = false
         if aborted and self.InvalidateLiveOpenWarbandBankSummary then
             self:InvalidateLiveOpenWarbandBankSummary()
+        end
+    end
+
+    local function appendScannedBag(target, bagID, tabIndex)
+        local bagItems = ScanBag(bagID)
+        for i = 1, #bagItems do
+            local item = bagItems[i]
+            if tabIndex then
+                item.tabIndex = tabIndex
+            end
+            target[#target + 1] = item
+        end
+        return bagItems
+    end
+
+    local function commitStagedBankScan()
+        itemSummaryIndex.pending[charKey] = true
+        self:SaveItemsCompressed(charKey, "bags", stagedBags)
+        SeedInventoryBagHashes()
+
+        itemSummaryIndex.pending[charKey] = true
+        self:SaveItemsCompressed(charKey, "bank", stagedBank)
+
+        self:SaveWarbandBankCompressed(stagedWarband)
+
+        if self.db and self.db.char then
+            if not self.db.char.bags then self.db.char.bags = {} end
+            self.db.char.bags.usedSlots = #stagedBags
+            self.db.char.bags.totalSlots = totalInventorySlots
+            self.db.char.bags.lastScan = time()
         end
     end
 
@@ -1640,11 +1683,12 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             return
         end
         if wbIdx > #WARBAND_BAGS then
+            commitStagedBankScan()
             finishBankScan(false)
             self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "all", charKey = CanonicalItemsMessageKey(charKey) })
             return
         end
-        self:UpdateSingleWarbandBag(WARBAND_BAGS[wbIdx])
+        appendScannedBag(stagedWarband, WARBAND_BAGS[wbIdx], wbIdx)
         wbIdx = wbIdx + 1
         C_Timer.After(0, runWarband)
     end
@@ -1658,7 +1702,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             C_Timer.After(0, runWarband)
             return
         end
-        self:UpdateSingleBag(charKey, BANK_BAGS[bankIdx])
+        appendScannedBag(stagedBank, BANK_BAGS[bankIdx])
         bankIdx = bankIdx + 1
         C_Timer.After(0, runBank)
     end
@@ -1669,22 +1713,15 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             return
         end
         if invIdx > #INVENTORY_BAGS then
-            if self.db and self.db.char then
-                local data = self:GetItemsData(charKey)
-                local bagItems = data and data.bags or {}
-                local totalSlots = 0
-                for i = 1, #INVENTORY_BAGS do
-                    totalSlots = totalSlots + (C_Container.GetContainerNumSlots(INVENTORY_BAGS[i]) or 0)
-                end
-                if not self.db.char.bags then self.db.char.bags = {} end
-                self.db.char.bags.usedSlots = #bagItems
-                self.db.char.bags.totalSlots = totalSlots
-                self.db.char.bags.lastScan = time()
-            end
             C_Timer.After(0, runBank)
             return
         end
-        self:UpdateSingleBag(charKey, INVENTORY_BAGS[invIdx])
+        local bagID = INVENTORY_BAGS[invIdx]
+        local bagItems = appendScannedBag(stagedBags, bagID)
+        totalInventorySlots = totalInventorySlots + (C_Container.GetContainerNumSlots(bagID) or 0)
+        if bagID >= 0 and bagID <= 4 then
+            PublishBagSnapshotForCollection(bagID, bagItems)
+        end
         invIdx = invIdx + 1
         C_Timer.After(0, runInv)
     end
