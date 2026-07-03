@@ -143,7 +143,38 @@ function M.ApplyCategoryNavStates(parent, activeId)
         if btn and btn:IsShown() then
             local panelId = btn._wnSettingsPanelId
             local isActive = (panelId == activeId)
-            if isActive then
+            if btn._wnBlizzardButton then
+                if ns.UI_ApplyClassicNavTabActiveState then
+                    ns.UI_ApplyClassicNavTabActiveState(btn, isActive)
+                end
+                if btn.activeBar and btn.activeBar.Hide then
+                    btn.activeBar:Hide()
+                end
+                btn.active = isActive
+                if btn.label then
+                    if isActive then
+                        if ns.UI_GetSemanticGoldColor then
+                            local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+                            btn.label:SetTextColor(gr, gg, gb)
+                        else
+                            ns.UI_SetTextColorRole(btn.label, "Bright")
+                        end
+                        if ns.UI_SetNavLabelFontStyle then
+                            ns.UI_SetNavLabelFontStyle(btn.label, true)
+                        end
+                    else
+                        ns.UI_SetTextColorRole(btn.label, "Muted")
+                        if ns.UI_SetNavLabelFontStyle then
+                            ns.UI_SetNavLabelFontStyle(btn.label, false)
+                        elseif fm then
+                            fm:ApplyFont(btn.label, "body")
+                        end
+                    end
+                end
+                if btn.tabIcon and ns.UI_ApplyNavTabIconStyle then
+                    ns.UI_ApplyNavTabIconStyle(btn.tabIcon, isActive, { packaged = btn.tabIcon._wnNavPackagedIcon, rail = true })
+                end
+            elseif isActive then
                 btn.active = true
                 if btn.label then
                     ns.UI_SetTextColorRole(btn.label, "Bright")
@@ -199,8 +230,19 @@ function M.ApplyCategoryNavStates(parent, activeId)
 end
 
 local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
-    local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(btnW, rowH)
+    local useClassic = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+    local btn
+    if useClassic then
+        btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        local tabH = (ns.UI_GetNavRailTabHeight and ns.UI_GetNavRailTabHeight()) or rowH
+        btn:SetSize(btnW, tabH)
+        btn:SetHeight(tabH)
+        btn:SetText("")
+        btn._wnBlizzardButton = true
+    else
+        btn = CreateFrame("Button", nil, parent)
+        btn:SetSize(btnW, rowH)
+    end
     btn._wnRailTextMode = true
     btn._wnSettingsPanelId = panelId
 
@@ -210,19 +252,23 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
     local iconGap = shell.TAB_ICON_GAP or 6
     local ac = COLORS.accent or { 0.6, 0.4, 1 }
 
-    if ns.UI_ApplyBorderlessSurface then
-        local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
-        ns.UI_ApplyBorderlessSurface(btn, idle)
-    elseif ApplyVisuals then
-        local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
-        ApplyVisuals(btn, idle, { ac[1], ac[2], ac[3], 0.12 })
-        if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(btn) end
+    if not useClassic then
+        if ns.UI_ApplyBorderlessSurface then
+            local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+            ns.UI_ApplyBorderlessSurface(btn, idle)
+        elseif ApplyVisuals then
+            local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+            ApplyVisuals(btn, idle, { ac[1], ac[2], ac[3], 0.12 })
+            if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(btn) end
+        end
     end
 
-    if ns.UI_ApplyNavButtonHighlight then
-        ns.UI_ApplyNavButtonHighlight(btn)
-    elseif ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(btn)
+    if not useClassic then
+        if ns.UI_ApplyNavButtonHighlight then
+            ns.UI_ApplyNavButtonHighlight(btn)
+        elseif ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(btn)
+        end
     end
 
     local activeBar = btn:CreateTexture(nil, "OVERLAY")
@@ -231,6 +277,9 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
     activeBar:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, -3)
     activeBar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 3)
     activeBar:SetAlpha(0)
+    if useClassic then
+        activeBar:Hide()
+    end
     btn.activeBar = activeBar
 
     local tabIcon = btn:CreateTexture(nil, "ARTWORK")
@@ -282,7 +331,7 @@ end
 function M.BuildCategoryNav(parent, width, activeId, onSelect)
     if not parent then return 0 end
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
-    local rowH = shell.NAV_RAIL_TAB_HEIGHT or 38
+    local rowH = (ns.UI_GetNavRailTabHeight and ns.UI_GetNavRailTabHeight()) or shell.NAV_RAIL_TAB_HEIGHT or 38
     local vGap = shell.NAV_RAIL_TAB_V_GAP or 4
     local pad = shell.SETTINGS_NAV_PAD or shell.NAV_RAIL_PAD or 6
     local sepH = shell.NAV_RAIL_TAB_SEP_HEIGHT or 1
@@ -315,12 +364,20 @@ function M.BuildCategoryNav(parent, width, activeId, onSelect)
             sep:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
             local gapAbove = math.floor(vGap * 0.5)
             local gapBelow = vGap - gapAbove
-            sep:SetPoint("TOP", prevBtn, "BOTTOM", 0, -gapAbove)
-            sep:Show()
-            btn:ClearAllPoints()
-            btn:SetPoint("TOP", sep, "BOTTOM", 0, -gapBelow)
-            btn:SetPoint("LEFT", parent, "LEFT", pad, 0)
-            btn:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
+            if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+                sep:Hide()
+                btn:ClearAllPoints()
+                btn:SetPoint("TOP", prevBtn, "BOTTOM", 0, -(gapAbove + sepH + gapBelow))
+                btn:SetPoint("LEFT", parent, "LEFT", pad, 0)
+                btn:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
+            else
+                sep:SetPoint("TOP", prevBtn, "BOTTOM", 0, -gapAbove)
+                sep:Show()
+                btn:ClearAllPoints()
+                btn:SetPoint("TOP", sep, "BOTTOM", 0, -gapBelow)
+                btn:SetPoint("LEFT", parent, "LEFT", pad, 0)
+                btn:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
+            end
         else
             btn:ClearAllPoints()
             btn:SetPoint("TOP", parent, "TOP", 0, -topInset)
@@ -374,11 +431,50 @@ function M.RefreshThemeChrome()
     local mf = _G.WarbandNexusFrame
     local navCol = mf and mf._wnSettingsNavCol
     if not navCol then return end
+    local useClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
     local navBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop())
         or (ns.UI_COLORS and (ns.UI_COLORS.surfaceViewport or ns.UI_COLORS.bg))
-    if navBg and ns.UI_ApplyBorderlessSurface then
+    if useClassic then
+        if ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(navCol)
+        end
+    elseif navBg and ns.UI_ApplyBorderlessSurface then
         local railOpts = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and { surfaceTier = "surfaceViewport" } or { bgType = "bg" }
         ns.UI_ApplyBorderlessSurface(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, railOpts)
+    end
+    local navDivider = navCol._wnSettingsNavDivider
+    if navDivider then
+        if useClassic then
+            navDivider:Hide()
+        else
+            navDivider:Show()
+            local divNav = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
+                or (ns.UI_COLORS and ns.UI_COLORS.borderLight)
+            if divNav and navDivider.SetColorTexture then
+                navDivider:SetColorTexture(divNav[1], divNav[2], divNav[3], divNav[4] or 1)
+            end
+        end
+    end
+    local navDividerClassic = navCol._wnClassicNavDivider
+    if navDividerClassic then
+        if useClassic then
+            navDividerClassic:Show()
+        else
+            navDividerClassic:Hide()
+        end
+    end
+    local bodyRow = mf and mf._wnSettingsBodyRow
+    if bodyRow and bodyRow._wnClassicTopBorder then
+        if useClassic then
+            bodyRow._wnClassicTopBorder:Show()
+        else
+            bodyRow._wnClassicTopBorder:Hide()
+        end
+    end
+    if useClassic and ns.UI_ApplyClassicTransparentInterior then
+        if bodyRow then ns.UI_ApplyClassicTransparentInterior(bodyRow) end
+        local host = mf and mf._wnSettingsHost
+        if host then ns.UI_ApplyClassicTransparentInterior(host) end
     end
     M.ApplyCategoryNavStates(navCol, M.GetActivePanel())
 end

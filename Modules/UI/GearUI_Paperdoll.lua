@@ -6,6 +6,8 @@
 local _, ns = ...
 local WarbandNexus, FontManager = ns.WarbandNexus, ns.FontManager
 
+local PD = {} -- module fn table (WN-CODE-lua-local-limit: keep chunk locals under ~120)
+
 local function GFR(roleKey)
     return FontManager:GetFontRole(roleKey)
 end
@@ -34,7 +36,7 @@ local debugprofilestop = debugprofilestop
 
 local GearFact = ns.UI.Factory
 
-local function GearTabL(key, fallback)
+function PD.GearTabL(key, fallback)
     local v = ns.L and ns.L[key]
     if type(v) == "string" and v ~= "" and v ~= key then
         return v
@@ -46,26 +48,26 @@ local UI_LAYOUT      = ns.UI_LAYOUT or {}
 local SIDE_MARGIN    = UI_LAYOUT.SIDE_MARGIN or 16
 local TOP_MARGIN     = UI_LAYOUT.TOP_MARGIN or 12
 
-local function GetLocalizedText(key, fallback)
-    return GearTabL(key, fallback)
+function PD.GetLocalizedText(key, fallback)
+    return PD.GearTabL(key, fallback)
 end
 
-local function GetUpgradeTrackHex(englishName)
+function PD.GetUpgradeTrackHex(englishName)
     if ns.UI_GetUpgradeTrackTierHex then
         return ns.UI_GetUpgradeTrackTierHex(englishName)
     end
     return nil
 end
 
-local function FormatTrackMarkup(englishName, text, fallbackQuality)
+function PD.FormatTrackMarkup(englishName, text, fallbackQuality)
     if ns.UI_FormatUpgradeTrackMarkup then
         return ns.UI_FormatUpgradeTrackMarkup(englishName, text, fallbackQuality)
     end
-    local hex = GetUpgradeTrackHex(englishName) or (GetQualityHex and GetQualityHex(fallbackQuality or 0)) or "ffffff"
+    local hex = PD.GetUpgradeTrackHex(englishName) or (GetQualityHex and GetQualityHex(fallbackQuality or 0)) or "ffffff"
     return "|cff" .. hex .. (text or "") .. "|r"
 end
 
-local function FormatFloat2(value)
+function PD.FormatFloat2(value)
     if type(value) ~= "number" then return nil end
     return format("%.2f", value)
 end
@@ -83,7 +85,7 @@ local function LocalizeUpgradeTrackName(name)
     return name
 end
 
-local function GetClassHex(classFile)
+function PD.GetClassHex(classFile)
     if classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] then
         local c = RAID_CLASS_COLORS[classFile]
         return format("%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255)
@@ -95,7 +97,7 @@ local AcquireStorageRow = ns.UI_AcquireStorageRow
 local ReleasePooledRowsInSubtree = ns.UI_ReleasePooledRowsInSubtree
 
 local _gearRecChildScratch = {}
-local function PackGearRecChildren(recContent, ...)
+function PD.PackGearRecChildren(recContent, ...)
     wipe(_gearRecChildScratch)
     local n = select("#", ...)
     for i = 1, n do
@@ -159,25 +161,36 @@ local GEAR_MODEL_VIEWPORT_BACKDROP = {
     insets = { left = 0, right = 0, top = 0, bottom = 0 },
 }
 
-local function CreateGearSubpanel(parent, width, height, accent)
+function PD.CreateGearSubpanel(parent, width, height, accent, opts)
     local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     f:SetSize(width or 100, height or 100)
     if ns.GearUI_Chrome and ns.GearUI_Chrome.ApplySubpanel then
-        ns.GearUI_Chrome.ApplySubpanel(f, accent)
+        ns.GearUI_Chrome.ApplySubpanel(f, accent, opts)
     elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(f)
     end
     return f
 end
 
-local function ApplyGearModelViewportFill(frame)
-    if not frame or not frame.SetBackdrop then return end
+function PD.ApplyGearModelViewportFill(frame)
+    if not frame then return end
+    if ns.GearUI_Chrome and ns.GearUI_Chrome.ApplyPaperdollViewport then
+        ns.GearUI_Chrome.ApplyPaperdollViewport(frame)
+        return
+    end
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        if ns.UI_ApplyBlizzardPanelBackdrop then
+            ns.UI_ApplyBlizzardPanelBackdrop(frame)
+        end
+        return
+    end
+    if not frame.SetBackdrop then return end
     frame:SetBackdrop(GEAR_MODEL_VIEWPORT_BACKDROP)
     local bg = COLORS.bg or COLORS.bgCard or { 0.042, 0.042, 0.055, 0.98 }
     frame:SetBackdropColor(bg[1], bg[2], bg[3], (bg[4] or 1) * 0.95)
 end
 
-local function GearPanelRowBgColor(zebra)
+function PD.GearPanelRowBgColor(zebra)
     local base = COLORS.bgCard or COLORS.bg or { 0.118, 0.118, 0.145, 0.98 }
     local lift = (zebra % 2 == 0) and 0.014 or 0.005
     return base[1] + lift, base[2] + lift, base[3] + lift * 1.05, base[4] or 0.98
@@ -193,20 +206,20 @@ local PAPERDOLL_COL_INSET = 4
 local PAPER_TRACK_EDGE_PAD = 12
 local MAX_PAPER_MODEL_BOOST = 48
 
-local function GearPaperdollContentRightX(baseX, modelW)
+function PD.GearPaperdollContentRightX(baseX, modelW)
     local rightX = baseX + LEFT_PANEL_W + CENTER_GAP + modelW + CENTER_GAP
     return rightX + SLOT_HALF + TEXT_OFFSET_FROM_SLOT_CENTER + math.ceil(TRACK_TEXT_W * 0.5) + PAPER_TRACK_EDGE_PAD
 end
 
-local function GearPaperdollColumnWidth(modelW, baseX)
+function PD.GearPaperdollColumnWidth(modelW, baseX)
     local bx = baseX or PAPERDOLL_COL_INSET
-    return math.ceil(GearPaperdollContentRightX(bx, modelW) + PAPERDOLL_COL_INSET)
+    return math.ceil(PD.GearPaperdollContentRightX(bx, modelW) + PAPERDOLL_COL_INSET)
 end
 
 --- Center the fixed-width paperdoll block inside a wider paper column (stack / wide hosts).
-local function ComputeGearPaperdollBaseX(paperColW, modelW)
+function PD.ComputeGearPaperdollBaseX(paperColW, modelW)
     local mw = modelW or MODEL_W
-    local blockW = GearPaperdollColumnWidth(mw, PAPERDOLL_COL_INSET)
+    local blockW = PD.GearPaperdollColumnWidth(mw, PAPERDOLL_COL_INSET)
     local hostW = tonumber(paperColW) or blockW
     if hostW <= blockW then
         return PAPERDOLL_COL_INSET
@@ -215,7 +228,7 @@ local function ComputeGearPaperdollBaseX(paperColW, modelW)
     return PAPERDOLL_COL_INSET + extra
 end
 
-local PAPERDOLL_LAYOUT_W = GearPaperdollColumnWidth(MODEL_W + MAX_PAPER_MODEL_BOOST)
+local PAPERDOLL_LAYOUT_W = PD.GearPaperdollColumnWidth(MODEL_W + MAX_PAPER_MODEL_BOOST)
 local GEAR_PAPER_COL_FIXED_W = PAPERDOLL_LAYOUT_W
 
 if ns.GearUI_BindPaperdollLayoutConstants then
@@ -232,7 +245,7 @@ local GEAR_BOTTOM_STAT_MIN_W = GEAR_LAYOUT.BOTTOM_STAT_MIN_W or 136
 local GEAR_BOTTOM_CURR_MIN_W = GEAR_LAYOUT.BOTTOM_CURR_MIN_W or 148
 local GEAR_BOTTOM_BAND_MIN_H = GEAR_LAYOUT.BOTTOM_BAND_MIN_H or 120
 
-local function ComputeGearLayoutWidths(cardInnerW, recEnabled)
+function PD.ComputeGearLayoutWidths(cardInnerW, recEnabled)
     if ns.GearUI_ComputeTopRowWidths then
         local paperW, recW = ns.GearUI_ComputeTopRowWidths(cardInnerW, recEnabled)
         return math.max(paperW or 0, GEAR_PAPER_COL_FIXED_W), recW or 0
@@ -251,7 +264,7 @@ local function ComputeGearLayoutWidths(cardInnerW, recEnabled)
     return paperW, math.max(0, inner - paperW)
 end
 
-local function EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
+function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if not card or not layout then return end
     if not layout.bodyHost then
         local body = CreateFrame("Frame", nil, card)
@@ -333,9 +346,9 @@ local function EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     end
 end
 
-local function RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
+function PD.RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if not card or not layout then return nil end
-    EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled == true)
+    PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled == true)
     local gap = layout.panelGutter or GEAR_LAYOUT.COL_GAP or GEAR_PANEL_GAP
     local paperColW = math.max(GEAR_PAPER_COL_FIXED_W, layout.paperColW or GEAR_PAPER_COL_FIXED_W)
     layout.paperColW = paperColW
@@ -356,7 +369,7 @@ local function RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
         topW = layout.cardInnerW or 0
     end
     if topW < 1 and card and card.GetWidth then
-        topW = GetGearCardInnerWidthFromCard(card)
+        topW = PD.GetGearCardInnerWidthFromCard(card)
     end
     local minTopW = paperColW + (recColW > 0 and (gap + recColW) or 0)
     layout.topRowMinW = minTopW
@@ -531,7 +544,7 @@ local function RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     return storageW
 end
 
-local function ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extraTopInset)
+function PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extraTopInset)
     local rowStep = SLOT_SIZE + SLOT_GAP
     local columnH = (maxRows - 1) * rowStep + SLOT_SIZE
     local zoneH = tonumber(paperZoneH) or columnH
@@ -539,7 +552,7 @@ local function ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extr
     return (tonumber(anchorY) or 0) - padTop - (tonumber(extraTopInset) or 0)
 end
 
-local function AnchorGearPaperChromeBehindModel(chrome, modelHost, cardRef)
+function PD.AnchorGearPaperChromeBehindModel(chrome, modelHost, cardRef)
     if not chrome then return end
     if not modelHost or not modelHost.IsShown or not modelHost:IsShown() then
         if chrome.Hide then chrome:Hide() end
@@ -559,7 +572,7 @@ local function AnchorGearPaperChromeBehindModel(chrome, modelHost, cardRef)
     end
 end
 
-local function RelayoutGearPaperdollInCard(card, layout)
+function PD.RelayoutGearPaperdollInCard(card, layout)
     if not card or not layout then return end
     local slotList = card._gearSlotInspectList
     if not slotList or #slotList == 0 then return end
@@ -572,7 +585,7 @@ local function RelayoutGearPaperdollInCard(card, layout)
     local modelW = MODEL_W + modelBoost
     local baseX = layout.paperdollBaseX
     if not baseX then
-        baseX = useColHost and ComputeGearPaperdollBaseX(paperColW, modelW) or ((layout.paperLeft or CARD_PAD) + PAPERDOLL_COL_INSET)
+        baseX = useColHost and PD.ComputeGearPaperdollBaseX(paperColW, modelW) or ((layout.paperLeft or CARD_PAD) + PAPERDOLL_COL_INSET)
     end
     layout.paperdollBaseX = baseX
     local leftX = baseX + LEFT_PANEL_W - SLOT_SIZE
@@ -593,7 +606,7 @@ local function RelayoutGearPaperdollInCard(card, layout)
     local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
     local maxRows = math.max(#leftSlots, #rightSlots)
     local paperZoneH = layout.paperTopZoneH or layout.paperZoneH or paperBandH or paperdollNaturalH
-    local startY = ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
+    local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
     local modelX = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
     layout.modelX = modelX
@@ -643,7 +656,7 @@ local function RelayoutGearPaperdollInCard(card, layout)
     anchorModelFrame(ns._gearPortraitPanel)
     anchorModelFrame(ns._gearPaperdollCenterPlaceholder)
 
-    local measuredPaperW = GearPaperdollColumnWidth(modelW, baseX)
+    local measuredPaperW = PD.GearPaperdollColumnWidth(modelW, baseX)
     layout.paperColW = math.max(GEAR_PAPER_COL_FIXED_W, layout.paperColW or 0, measuredPaperW)
     layout.measuredPaperColW = measuredPaperW
     if layout.leftColHost and layout.leftColHost.SetSize then
@@ -657,7 +670,7 @@ local function RelayoutGearPaperdollInCard(card, layout)
         centerShown = ns._gearPortraitPanel
     end
     if layout.paperChrome then
-        AnchorGearPaperChromeBehindModel(layout.paperChrome, centerShown, card)
+        PD.AnchorGearPaperChromeBehindModel(layout.paperChrome, centerShown, card)
     end
     if centerShown and ns._gearModelBorder then
         ns._gearModelBorder:ClearAllPoints()
@@ -666,22 +679,22 @@ local function RelayoutGearPaperdollInCard(card, layout)
     end
 end
 
-local function GetGearTabMinCardInnerW()
+function PD.GetGearTabMinCardInnerW()
     if ns.GearUI_GetGearTabMinCardInnerW then
         return ns.GearUI_GetGearTabMinCardInnerW(WarbandNexus:IsGearStorageRecommendationsEnabled())
     end
     return GEAR_PAPER_COL_FIXED_W + GEAR_PANEL_GAP + (GEAR_LAYOUT.REC_COL_MIN_W or 300)
 end
 
-local function ResolveGearTabCardInnerWidth(scrollChildW)
+function PD.ResolveGearTabCardInnerWidth(scrollChildW)
     if ns.GearUI_ResolveCardInnerWidth then
         return ns.GearUI_ResolveCardInnerWidth(scrollChildW, SIDE_MARGIN)
     end
-    return GetGearTabMinCardInnerW()
+    return PD.GetGearTabMinCardInnerW()
 end
 
-local function AnchorGearCardFillWidth(card, parent, yOffset, mf)
-    if not card or not parent then return GetGearTabMinCardInnerW() end
+function PD.AnchorGearCardFillWidth(card, parent, yOffset, mf)
+    if not card or not parent then return PD.GetGearTabMinCardInnerW() end
     local side = SIDE_MARGIN or 16
     local scrollChildW = (parent.GetWidth and parent:GetWidth()) or 0
     local outerW = math.max(1, scrollChildW - 2 * side)
@@ -691,18 +704,18 @@ local function AnchorGearCardFillWidth(card, parent, yOffset, mf)
     return math.max(1, outerW - 2 * CARD_PAD)
 end
 
-local function GetGearCardInnerWidthFromCard(card)
+function PD.GetGearCardInnerWidthFromCard(card)
     if not card or not card.GetWidth then
-        return GetGearTabMinCardInnerW()
+        return PD.GetGearTabMinCardInnerW()
     end
     local outerW = card:GetWidth() or 0
     if outerW < 1 then
-        return GetGearTabMinCardInnerW()
+        return PD.GetGearTabMinCardInnerW()
     end
     return math.max(1, outerW - 2 * CARD_PAD)
 end
 
-local function ComputeGearStatColumnWidths(statInnerW, colGap)
+function PD.ComputeGearStatColumnWidths(statInnerW, colGap)
     if ns.GearUI_ComputeStatColumnWidths then
         return ns.GearUI_ComputeStatColumnWidths(statInnerW, colGap)
     end
@@ -735,7 +748,7 @@ local SLOT_FALLBACK_TEXTURE = "Interface\\PaperDollInfoFrame\\UI-PaperDoll-Slot-
 local GEAR_REFRESH_PAIR_SLOTS = { [11] = 12, [12] = 11, [13] = 14, [14] = 13, [16] = 17, [17] = 16 }
 -- Paperdoll slot list for cache-warm repaints (GET_ITEM_INFO / metadata); stable table — no fresh {} in hot path.
 local GEAR_PAPERDOLL_REFRESH_SLOT_IDS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 }
-local function ItemLinkHasEnchantment(itemLink)
+function PD.ItemLinkHasEnchantment(itemLink)
     if not itemLink or type(itemLink) ~= "string" then return false end
     if issecretvalue and issecretvalue(itemLink) then return false end
     local segment = itemLink:match("|H(item:[^|]+)|h") or itemLink:match("(item:[^|]+)|h") or itemLink
@@ -751,7 +764,7 @@ local function ItemLinkHasEnchantment(itemLink)
     return false
 end
 
-local function GetItemHyperlinkEnchantmentId(itemLink)
+function PD.GetItemHyperlinkEnchantmentId(itemLink)
     if not itemLink or type(itemLink) ~= "string" then return nil end
     if issecretvalue and issecretvalue(itemLink) then return nil end
     local segment = itemLink:match("|H(item:[^|]+)|h") or itemLink:match("(item:[^|]+)|h") or itemLink
@@ -766,7 +779,7 @@ local function GetItemHyperlinkEnchantmentId(itemLink)
     return nil
 end
 
-local function ResolveGearSpellName(spellID)
+function PD.ResolveGearSpellName(spellID)
     if not spellID or spellID <= 0 then return nil end
     if C_Spell and C_Spell.GetSpellName then
         local ok, name = pcall(C_Spell.GetSpellName, spellID)
@@ -783,7 +796,7 @@ local function ResolveGearSpellName(spellID)
     return nil
 end
 
-local function GetGearSlotEnchantQualityTier(itemLink)
+function PD.GetGearSlotEnchantQualityTier(itemLink)
     if not itemLink or type(itemLink) ~= "string" then return nil end
     if not GetEnchantmentCraftingQualityTierFromItemLink then return nil end
     local q = GetEnchantmentCraftingQualityTierFromItemLink(itemLink)
@@ -792,7 +805,7 @@ local function GetGearSlotEnchantQualityTier(itemLink)
     return nil
 end
 
-local function SetupGearSlotEnchantQualityTexture(tex, tierIdx, pixelSize)
+function PD.SetupGearSlotEnchantQualityTexture(tex, tierIdx, pixelSize)
     if not tex then return false end
     local tier = tonumber(tierIdx) or 1
     if tier < 1 then tier = 1 end
@@ -826,7 +839,7 @@ local EMPTY_SOCKET_TEX_BY_SUFFIX = {
 }
 local EMPTY_SOCKET_TEX_DEFAULT = "Interface\\ItemSocketingFrame\\UI-EmptySocket-Prismatic"
 
-local function CollectEmptySocketSuffixesFromStats(stats)
+function PD.CollectEmptySocketSuffixesFromStats(stats)
     local list = {}
     if not stats then return list end
     for k, v in pairs(stats) do
@@ -847,7 +860,7 @@ local function CollectEmptySocketSuffixesFromStats(stats)
     return list
 end
 
-local function GetGearGemIconTexture(gemLink)
+function PD.GetGearGemIconTexture(gemLink)
     if not gemLink or type(gemLink) ~= "string" or (issecretvalue and issecretvalue(gemLink)) then
         return nil
     end
@@ -875,7 +888,7 @@ local function GetGearGemIconTexture(gemLink)
 end
 
 -- Gem per socket: C_Item.GetItemGem / GetItemGem return (name, itemLink) — second value is the hyperlink (warcraft.wiki.gg API pages).
-local function GetItemGemForSocket(itemLink, socketIndex)
+function PD.GetItemGemForSocket(itemLink, socketIndex)
     if not itemLink or not socketIndex then return nil end
     local gemName, gemLink
     local ok, a, b = pcall(function()
@@ -898,7 +911,7 @@ local function GetItemGemForSocket(itemLink, socketIndex)
     return nil
 end
 
-local function ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
+function PD.ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
     local entries = {}
     if not itemLink or type(itemLink) ~= "string" or (issecretvalue and issecretvalue(itemLink)) then
         return entries, ""
@@ -928,7 +941,7 @@ local function ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
     end
     local maxGemIdx = 0
     for i = 1, MAX_GEAR_ITEM_SOCKETS do
-        local g = GetItemGemForSocket(itemLink, i)
+        local g = PD.GetItemGemForSocket(itemLink, i)
         if g then maxGemIdx = i end
     end
     if (not n or n <= 0) then
@@ -937,12 +950,12 @@ local function ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
     if n > MAX_GEAR_ITEM_SOCKETS then n = MAX_GEAR_ITEM_SOCKETS end
     if n <= 0 then return entries, "" end
 
-    local emptySuffixQueue = CollectEmptySocketSuffixesFromStats(stats)
+    local emptySuffixQueue = PD.CollectEmptySocketSuffixesFromStats(stats)
     local eq = 1
 
     local sigParts = {}
     for i = 1, n do
-        local gem = GetItemGemForSocket(itemLink, i)
+        local gem = PD.GetItemGemForSocket(itemLink, i)
         if gem then
             local id = nil
             pcall(function()
@@ -967,19 +980,19 @@ local function ComputeGearSocketLayout(itemLink, slotID, useLiveSlot)
     return entries, table.concat(sigParts, ":")
 end
 
-local function PlaceGearSocketClusterInSlotBottom(btn, cluster)
+function PD.PlaceGearSocketClusterInSlotBottom(btn, cluster)
     if not btn or not cluster then return end
     cluster:ClearAllPoints()
     local anchor = btn.iconTex or btn
     cluster:SetPoint("BOTTOM", anchor, "BOTTOM", 0, 5)
 end
 
-local function HideGearSocketCluster(btn)
+function PD.HideGearSocketCluster(btn)
     local c = btn and btn._gearSocketCluster
     if c then c:Hide() end
 end
 
-local function GetGearStatusLayoutMode(side)
+function PD.GetGearStatusLayoutMode(side)
     if side == "left" or side == "bottom" or side == "bottom_left" then
         return "left"
     end
@@ -989,7 +1002,7 @@ local function GetGearStatusLayoutMode(side)
     return "left"
 end
 
-local function EnsureGearOuterSideHost(btn)
+function PD.EnsureGearOuterSideHost(btn)
     if not btn._gearOuterSideHost then
         local outer = GearFact:CreateContainer(btn, STATUS_OUTER_COL_W, STATUS_OUTER_COL_H, false)
         local gemCell = GearFact:CreateContainer(outer, STATUS_OUTER_COL_W, STATUS_OUTER_ICON, false)
@@ -1002,7 +1015,7 @@ local function EnsureGearOuterSideHost(btn)
     return btn._gearOuterSideHost
 end
 
-local function ApplyGearOuterSideCellLayout(outer, gemCell, encCell, hasGem, hasEnc)
+function PD.ApplyGearOuterSideCellLayout(outer, gemCell, encCell, hasGem, hasEnc)
     gemCell:ClearAllPoints()
     encCell:ClearAllPoints()
     if hasGem and hasEnc then
@@ -1038,14 +1051,14 @@ local function ApplyGearOuterSideCellLayout(outer, gemCell, encCell, hasGem, has
     end
 end
 
-local function PlaceGearOuterSideHost(btn, side, hasGem, hasEnc)
+function PD.PlaceGearOuterSideHost(btn, side, hasGem, hasEnc)
     local icon = btn.iconTex or btn
-    local mode = GetGearStatusLayoutMode(side)
-    local outer = EnsureGearOuterSideHost(btn)
+    local mode = PD.GetGearStatusLayoutMode(side)
+    local outer = PD.EnsureGearOuterSideHost(btn)
     local gemCell = outer._gemCell
     local encCell = outer._encCell
     outer:ClearAllPoints()
-    ApplyGearOuterSideCellLayout(outer, gemCell, encCell, hasGem, hasEnc)
+    PD.ApplyGearOuterSideCellLayout(outer, gemCell, encCell, hasGem, hasEnc)
     local cx = (mode == "left") and -(SLOT_HALF + STATUS_HOST_GAP + STATUS_OUTER_COL_W / 2)
         or (SLOT_HALF + STATUS_HOST_GAP + STATUS_OUTER_COL_W / 2)
     outer:SetPoint("CENTER", icon, "CENTER", cx, 0)
@@ -1112,7 +1125,7 @@ local function PlaceGearUpgradeLockTowardModel(btn, icon, side, upgradeArrowBgBo
     end
 end
 
-local function BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
+function PD.BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
     local rows = {}
     local goldCurrency = nil
     local byId = {}
@@ -1237,7 +1250,7 @@ end
 
 local function GearSlotClearPaperdollOverlays(btn)
     if not btn then return end
-    HideGearSocketCluster(btn)
+    PD.HideGearSocketCluster(btn)
     if btn.enchantQualityIcon then btn.enchantQualityIcon:Hide() end
     if btn.missingEnchantIcon then btn.missingEnchantIcon:Hide() end
     if btn.missingGemIcon then btn.missingGemIcon:Hide() end
@@ -1246,11 +1259,11 @@ local function GearSlotClearPaperdollOverlays(btn)
     GearSlotHideLegacyIncreaseLabels(btn)
 end
 
-local function UpdateGearSocketCluster(btn, entries, opts)
+function PD.UpdateGearSocketCluster(btn, entries, opts)
     opts = opts or {}
     if not btn then return end
     if not entries or #entries == 0 then
-        HideGearSocketCluster(btn)
+        PD.HideGearSocketCluster(btn)
         return
     end
     local gemPx = tonumber(opts.gemPx)
@@ -1295,7 +1308,7 @@ local function UpdateGearSocketCluster(btn, entries, opts)
             end
             local e = entries[i]
             if e and e.gemLink then
-                local ic = GetGearGemIconTexture(e.gemLink)
+                local ic = PD.GetGearGemIconTexture(e.gemLink)
                 if ic then
                     if type(ic) == "number" then
                         t:SetTexture(ic)
@@ -1325,11 +1338,11 @@ local function UpdateGearSocketCluster(btn, entries, opts)
     if opts.anchorCell then
         f:SetPoint("CENTER", opts.anchorCell, "CENTER", 0, 0)
     else
-        PlaceGearSocketClusterInSlotBottom(btn, f)
+        PD.PlaceGearSocketClusterInSlotBottom(btn, f)
     end
 end
 
-local function GearSlotApplyDeferredEnchantGemInspect(btn)
+function PD.GearSlotApplyDeferredEnchantGemInspect(btn)
     if not btn then return end
     local slotData = btn._slotDataRef
     local slotID = btn._slotID
@@ -1351,7 +1364,7 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
         return
     end
 
-    st.hasEnchant = ItemLinkHasEnchantment(link)
+    st.hasEnchant = PD.ItemLinkHasEnchantment(link)
     local stats = GetItemStats and GetItemStats(link) or {}
     st.isMissingGem = false
     for k, v in pairs(stats) do
@@ -1361,9 +1374,9 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
         end
     end
     st.isEnchantable = ns.GearUI_IsPrimaryEnchantExpected(slotID, slotData)
-    st.craftingQualityTier = GetGearSlotEnchantQualityTier(link)
+    st.craftingQualityTier = PD.GetGearSlotEnchantQualityTier(link)
 
-    local sockEntries, sockSig = ComputeGearSocketLayout(link, slotID, btn._gearIsCurrentChar == true)
+    local sockEntries, sockSig = PD.ComputeGearSocketLayout(link, slotID, btn._gearIsCurrentChar == true)
     sockSig = sockSig or ""
     if st.ready and st.socketSig == sockSig then
         local notUp = (slotData and slotData.notUpgradeable) and true or false
@@ -1400,7 +1413,7 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
     local showGemHost = showSocketRow or isMissingGem
     local showEnchantHost = showEnchantQuality or missEnchant
 
-    local outer, gemHost, encHost = PlaceGearOuterSideHost(btn, side, showGemHost, showEnchantHost)
+    local outer, gemHost, encHost = PD.PlaceGearOuterSideHost(btn, side, showGemHost, showEnchantHost)
     local inner = STATUS_OUTER_ICON - 2 * STATUS_ICON_INSET
     PlaceGearUpgradeLockTowardModel(btn, icon, side, btn._gearUpgradeArrowBgBorder, btn._gearUpgradeArrowBg, upgradeArrow, lockIcon)
 
@@ -1416,7 +1429,7 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
             local eqTex = btn:CreateTexture(nil, "OVERLAY", nil, 7)
             btn.enchantQualityIcon = eqTex
         end
-        SetupGearSlotEnchantQualityTexture(btn.enchantQualityIcon, enchantDisplayTier, encSz)
+        PD.SetupGearSlotEnchantQualityTexture(btn.enchantQualityIcon, enchantDisplayTier, encSz)
         btn.enchantQualityIcon:ClearAllPoints()
         btn.enchantQualityIcon:SetPoint("CENTER", encHost, "CENTER", 0, 0)
         btn.enchantQualityIcon:Show()
@@ -1439,11 +1452,11 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
 
     if showSocketRow then
         if btn.missingGemIcon then btn.missingGemIcon:Hide() end
-        UpdateGearSocketCluster(btn, st.socketEntries, {
+        PD.UpdateGearSocketCluster(btn, st.socketEntries, {
             anchorCell = gemHost,
         })
     elseif isMissingGem then
-        HideGearSocketCluster(btn)
+        PD.HideGearSocketCluster(btn)
         if not btn.missingGemIcon then
             local ic = btn:CreateTexture(nil, "OVERLAY", nil, 7)
             btn.missingGemIcon = ic
@@ -1454,7 +1467,7 @@ local function GearSlotApplyDeferredEnchantGemInspect(btn)
         btn.missingGemIcon:SetPoint("CENTER", gemHost, "CENTER", 0, 0)
         btn.missingGemIcon:Show()
     else
-        HideGearSocketCluster(btn)
+        PD.HideGearSocketCluster(btn)
         if btn.missingGemIcon then btn.missingGemIcon:Hide() end
     end
 
@@ -1502,7 +1515,7 @@ ns.GearUI_Paperdoll._slotDeps = {
 local CURRENCY_ROW_H = 26
 local ROW_H = 34
 
-local function FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
+function PD.FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
     if not up or not up.canUpgrade or up.notUpgradeable then return nil end
     if up.isCrafted then
         local range = currencyAmounts and ns.GearUI_GetCraftedIlvlRange and ns.GearUI_GetCraftedIlvlRange(up, currencyAmounts) or nil
@@ -1535,7 +1548,7 @@ local function FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
     return " |cff" .. hex .. "(" .. format(fmt, haveGold, needGold) .. ")|r"
 end
 
-local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData)
+function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData)
     local up = upgradeInfo and (upgradeInfo[slotID] or upgradeInfo[tostring(slotID)])
     if not up and slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
         if ns.Gear_ResolveSlotUpgradeTrackAndTier then
@@ -1543,7 +1556,7 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, s
             if tn and tc and tm and tm > 0 then
                 local track = LocalizeUpgradeTrackName(tn)
                 if track and track ~= "" then
-                    return FormatTrackMarkup(tn, track .. " " .. tostring(tc) .. "/" .. tostring(tm), quality)
+                    return PD.FormatTrackMarkup(tn, track .. " " .. tostring(tc) .. "/" .. tostring(tm), quality)
                 end
             end
         end
@@ -1582,20 +1595,20 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, s
         if maxT > 0 and curT > 0 and currentTier then
             if canRecast then
                 local bestEnglish = range.bestCrestName or ""
-                return FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+                return PD.FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
                     .. " → "
-                    .. FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
+                    .. PD.FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
             end
-            return FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+            return PD.FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
         end
         if canRecast then
             local bestEnglish = range.bestCrestName or ""
-            return FormatTrackMarkup(currentEnglish, currentTier or LocalizeUpgradeTrackName(currentEnglish), quality)
+            return PD.FormatTrackMarkup(currentEnglish, currentTier or LocalizeUpgradeTrackName(currentEnglish), quality)
                 .. " → "
-                .. FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
+                .. PD.FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
         end
         if currentTier and currentTier ~= "" then
-            return FormatTrackMarkup(currentEnglish, currentTier, quality)
+            return PD.FormatTrackMarkup(currentEnglish, currentTier, quality)
         end
     end
 
@@ -1603,9 +1616,9 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, s
     local track = (englishTrack and englishTrack ~= "") and LocalizeUpgradeTrackName(englishTrack) or nil
     local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
     if maxT and maxT > 0 and track then
-        return FormatTrackMarkup(englishTrack, track .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+        return PD.FormatTrackMarkup(englishTrack, track .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
     end
-    if track and track ~= "" then return FormatTrackMarkup(englishTrack, track, quality) end
+    if track and track ~= "" then return PD.FormatTrackMarkup(englishTrack, track, quality) end
     if slotData and slotData.upgradeTrack and not (issecretvalue and issecretvalue(slotData.upgradeTrack)) then
         local raw = slotData.upgradeTrack
         local englishTrack = raw:match("^(%S+)") or raw
@@ -1613,16 +1626,16 @@ local function GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, s
         local curT = tonumber(slotData.currUpgrade) or tonumber(up.currUpgrade) or 0
         local maxT = tonumber(slotData.maxUpgrade) or tonumber(up.maxUpgrade) or 0
         if trackLbl and maxT > 0 then
-            return FormatTrackMarkup(englishTrack, trackLbl .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+            return PD.FormatTrackMarkup(englishTrack, trackLbl .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
         end
         if trackLbl and trackLbl ~= "" then
-            return FormatTrackMarkup(englishTrack, trackLbl, quality)
+            return PD.FormatTrackMarkup(englishTrack, trackLbl, quality)
         end
     end
     return nil
 end
 
--- Stat helpers (must be above PaintGearPaperBottomBand — Lua 5.1 local scope).
+-- Stat helpers (must be above PD.PaintGearPaperBottomBand — Lua 5.1 local scope).
 local STAT_IDS = {
     { id = 1, label = (ns.L and ns.L["STAT_STRENGTH"]) or SPELL_STAT1_NAME or "Strength",    icon = "Interface\\Icons\\spell_nature_strength" },
     { id = 2, label = (ns.L and ns.L["STAT_AGILITY"]) or SPELL_STAT2_NAME or "Agility",      icon = "Interface\\Icons\\ability_backstab" },
@@ -1635,7 +1648,7 @@ local SECONDARY_STATS = {
     { label = (ns.L and ns.L["STAT_MASTERY"]) or "Mastery",                 fn = function() return GetCombatRating and GetCombatRating(26) or 0 end, pctFn = function() return GetMasteryEffect and select(1, GetMasteryEffect()) or 0 end },
     { label = (ns.L and ns.L["STAT_VERSATILITY"]) or "Versatility",         fn = function() return GetCombatRating and GetCombatRating(29) or 0 end, pctFn = function() return GetCombatRatingBonus and GetCombatRatingBonus(29) or 0 end },
 }
-local function MergeOfflineSecondaryForGear(savedSec)
+function PD.MergeOfflineSecondaryForGear(savedSec)
     local out = {}
     for i = 1, #SECONDARY_STATS do
         local def = SECONDARY_STATS[i]
@@ -1659,7 +1672,7 @@ local function MergeOfflineSecondaryForGear(savedSec)
     return out
 end
 
-local function PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueStr, iconFileID)
+function PD.PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, valueStr, iconFileID)
     local labelLeft = pad
     if iconFileID then
         local iconSz = math.min(22, rowH - 2)
@@ -1688,33 +1701,33 @@ local function PaintGearPaperBandRow(col, rowY, rowH, pad, valueColW, label, val
     return rowY - rowH
 end
 
-local function PaintGearStatGridRow(statCol, statY, statRowH, statPad, valueColW, label, valueStr, pctStr)
+function PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valueColW, label, valueStr, pctStr)
     local displayVal = valueStr or ""
     if pctStr and pctStr ~= "" then
         local fmt = (ns.L and ns.L["GEAR_STAT_VALUE_PCT_FORMAT"]) or "%s (%s)"
         displayVal = format(fmt, (valueStr and valueStr ~= "") and valueStr or "--", pctStr)
     end
-    return PaintGearPaperBandRow(statCol, statY, statRowH, statPad, valueColW, label, displayVal, nil)
+    return PD.PaintGearPaperBandRow(statCol, statY, statRowH, statPad, valueColW, label, displayVal, nil)
 end
 
-local function ComputeGearPaperStatValueColW(statInnerW, statPad)
+function PD.ComputeGearPaperStatValueColW(statInnerW, statPad)
     return math.max(96, math.floor((statInnerW - statPad * 2) * 0.42 + 0.5))
 end
 
-local function SafeGearStatNumber(val)
+function PD.SafeGearStatNumber(val)
     if val == nil then return nil end
     if issecretvalue and issecretvalue(val) then return nil end
     if type(val) ~= "number" then return nil end
     return val
 end
 
-local function FormatGearStatDisplayNumber(val)
-    local n = SafeGearStatNumber(val)
+function PD.FormatGearStatDisplayNumber(val)
+    local n = PD.SafeGearStatNumber(val)
     if not n then return nil end
     return FormatNumber and FormatNumber(math.floor(n)) or tostring(math.floor(n))
 end
 
-local function BuildGearPaperStatRows(charData, isCurrentChar)
+function PD.BuildGearPaperStatRows(charData, isCurrentChar)
     local primaryRows = {}
     local secondaryRows = {}
     if isCurrentChar and UnitStat then
@@ -1729,7 +1742,7 @@ local function BuildGearPaperStatRows(charData, isCurrentChar)
             if stat then
                 local ok, _, total = pcall(UnitStat, "player", stat.id)
                 if ok then
-                    local valueStr = FormatGearStatDisplayNumber(total)
+                    local valueStr = PD.FormatGearStatDisplayNumber(total)
                     if valueStr then
                         primaryRows[#primaryRows + 1] = {
                             statId = stat.id,
@@ -1744,8 +1757,8 @@ local function BuildGearPaperStatRows(charData, isCurrentChar)
             local stat = SECONDARY_STATS[i]
             local okR, rating = pcall(stat.fn)
             local okP, pct = pcall(stat.pctFn)
-            local rNum = okR and SafeGearStatNumber(rating) or nil
-            local pNum = okP and SafeGearStatNumber(pct) or nil
+            local rNum = okR and PD.SafeGearStatNumber(rating) or nil
+            local pNum = okP and PD.SafeGearStatNumber(pct) or nil
             if rNum or pNum then
                 secondaryRows[#secondaryRows + 1] = {
                     label = stat.label,
@@ -1771,7 +1784,7 @@ local function BuildGearPaperStatRows(charData, isCurrentChar)
                     stat = nil
                 end
                 if stat then
-                    local valueStr = FormatGearStatDisplayNumber(prim[stat.id])
+                    local valueStr = PD.FormatGearStatDisplayNumber(prim[stat.id])
                     if valueStr then
                         primaryRows[#primaryRows + 1] = {
                             statId = stat.id,
@@ -1782,12 +1795,12 @@ local function BuildGearPaperStatRows(charData, isCurrentChar)
                 end
             end
         end
-        local mergedSec = MergeOfflineSecondaryForGear(charData.stats.secondary)
+        local mergedSec = PD.MergeOfflineSecondaryForGear(charData.stats.secondary)
         for j = 1, #mergedSec do
             local s = mergedSec[j]
             if s then
-                local pNum = SafeGearStatNumber(s.pct)
-                local rNum = SafeGearStatNumber(s.rating)
+                local pNum = PD.SafeGearStatNumber(s.pct)
+                local rNum = PD.SafeGearStatNumber(s.rating)
                 if pNum or rNum then
                     secondaryRows[#secondaryRows + 1] = {
                         label = s.label,
@@ -1803,17 +1816,17 @@ end
 
 local GEAR_VIEWPORT_IDENTITY_H = 42
 
-local function PaintGearViewportIdentity(viewportHost, charData, accent)
+function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
     if not viewportHost then return nil end
     local pad = 8
     local classFile = charData and charData.classFile
-    local classHex = GetClassHex(classFile)
+    local classHex = PD.GetClassHex(classFile)
     local name = (charData and charData.name) or ""
     local realm = (charData and charData.realm) or ""
     if realm ~= "" and ns.Utilities and ns.Utilities.FormatRealmName then
         realm = ns.Utilities:FormatRealmName(realm) or realm
     end
-    local avgIlvl = SafeGearStatNumber(charData and charData.itemLevel) or 0
+    local avgIlvl = PD.SafeGearStatNumber(charData and charData.itemLevel) or 0
 
     local bar = CreateFrame("Frame", nil, viewportHost)
     bar:SetHeight(GEAR_VIEWPORT_IDENTITY_H)
@@ -1858,12 +1871,12 @@ local function PaintGearViewportIdentity(viewportHost, charData, accent)
             ilvlFs:SetShadowOffset(1, -1)
             ilvlFs:SetShadowColor(0, 0, 0, 1)
         end
-        ilvlFs:SetText((FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
+        ilvlFs:SetText((PD.FormatFloat2(avgIlvl) or tostring(avgIlvl)) .. " " .. PD.GetLocalizedText("ILVL_SHORT_LABEL", "iLvl"))
     end
     return bar
 end
 
-local function ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH)
+function PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH)
     local hasDivider = (#primaryRows > 0 and #secondaryRows > 0)
     local statContentRows = #primaryRows + #secondaryRows
     local statH = subHdr + (statContentRows * statRowH) + (hasDivider and 8 or 0) + 12
@@ -1875,7 +1888,7 @@ local function ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, cre
     return bandH, statH, currH
 end
 
-local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows)
+function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isCurrentChar, currencies, charKey, accent, primaryRows, secondaryRows)
     if not bottomHost or paperColW < 1 or bandH < 1 then return nil end
     local gearChrome = ns.GearUI_Chrome
     local splitGap = math.max(14, GEAR_LAYOUT.SIDE_BAND_GAP or 8)
@@ -1886,42 +1899,56 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
     local crestRowH = GEAR_LAYOUT.CREST_ROW_H or 26
     local statPad = GEAR_LAYOUT.SUBPANEL_PAD or 10
     if not primaryRows or not secondaryRows then
-        primaryRows, secondaryRows = BuildGearPaperStatRows(charData, isCurrentChar)
+        primaryRows, secondaryRows = PD.BuildGearPaperStatRows(charData, isCurrentChar)
     end
 
-    local crestCurrencies, goldCurrency = BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
+    local crestCurrencies, goldCurrency = PD.BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
 
-    local bandPanel = CreateGearSubpanel(bottomHost, paperColW, bandH, accent)
+    local classicBand = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    local bandPanel = PD.CreateGearSubpanel(bottomHost, paperColW, bandH, accent)
     bandPanel:SetAllPoints(bottomHost)
 
+    local bandInset = 0
+    if classicBand then
+        bandInset = (ns.UI_CLASSIC_CARD_BACKDROP and ns.UI_CLASSIC_CARD_BACKDROP.insets and ns.UI_CLASSIC_CARD_BACKDROP.insets.left) or 8
+    end
+    local innerBandW = math.max(1, paperColW - bandInset * 2)
+    local innerBandH = math.max(1, bandH - bandInset * 2)
+    local innerStatColW = math.max(120, math.floor((innerBandW - splitGap) * 0.5 + 0.5))
+    local innerCurrColW = math.max(120, innerBandW - splitGap - innerStatColW)
+
     local statCol = CreateFrame("Frame", nil, bandPanel)
-    statCol:SetSize(statColW, bandH)
-    statCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", 0, 0)
+    statCol:SetSize(innerStatColW, innerBandH)
+    statCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset, -bandInset)
     statCol:EnableMouse(false)
     if statCol.SetClipsChildren then statCol:SetClipsChildren(true) end
 
     local currCol = CreateFrame("Frame", nil, bandPanel)
-    currCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", statColW + splitGap, 0)
-    currCol:SetPoint("TOPRIGHT", bandPanel, "TOPRIGHT", 0, 0)
-    currCol:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, 0)
+    currCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset + innerStatColW + splitGap, -bandInset)
+    currCol:SetPoint("TOPRIGHT", bandPanel, "TOPRIGHT", -bandInset, -bandInset)
+    currCol:SetPoint("BOTTOM", bandPanel, "BOTTOM", bandInset, bandInset)
     currCol:EnableMouse(false)
     if currCol.SetClipsChildren then currCol:SetClipsChildren(true) end
 
     local midDiv = bandPanel:CreateTexture(nil, "ARTWORK")
     midDiv:SetColorTexture(accent[1] * 0.22, accent[2] * 0.22, accent[3] * 0.22, 0.5)
     midDiv:SetWidth(1)
-    midDiv:SetPoint("TOP", bandPanel, "TOP", 0, -(subHdr - 4))
-    midDiv:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, 6)
+    midDiv:SetPoint("TOP", bandPanel, "TOP", 0, -(bandInset + subHdr - 4))
+    midDiv:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, bandInset + 6)
     midDiv:SetPoint("LEFT", statCol, "RIGHT", math.floor(splitGap * 0.5 + 0.5), 0)
+    if classicBand then
+        midDiv:Hide()
+    end
 
-    local statInnerW = math.max(1, statColW - statPad * 2)
-    local currInnerW = math.max(1, currColW - statPad * 2)
+    local statInnerW = math.max(1, innerStatColW - statPad * 2)
+    local currInnerW = math.max(1, innerCurrColW - statPad * 2)
     local valColW = math.max(96, math.floor(math.min(statInnerW, currInnerW) * 0.42 + 0.5))
     local function PaperSectionHdrOpts(titleColor)
         return {
             fontRole = "gearPanelTitle",
             hideAccentBar = true,
-            underlineHeader = true,
+            plainHost = classicBand,
+            underlineHeader = not classicBand,
             titleColor = titleColor,
         }
     end
@@ -1937,14 +1964,14 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
     if #primaryRows > 0 or #secondaryRows > 0 then
         for i = 1, #primaryRows do
             local stat = primaryRows[i]
-            statY = PaintGearStatGridRow(statCol, statY, statRowH, statPad, valColW, stat.label, stat.value, nil)
+            statY = PD.PaintGearStatGridRow(statCol, statY, statRowH, statPad, valColW, stat.label, stat.value, nil)
         end
         if #primaryRows > 0 and #secondaryRows > 0 then
             statY = statY - 6
         end
         for i = 1, #secondaryRows do
             local stat = secondaryRows[i]
-            statY = PaintGearStatGridRow(
+            statY = PD.PaintGearStatGridRow(
                 statCol, statY, statRowH, statPad, valColW,
                 stat.label, stat.ratingStr or "0", stat.pctStr or "0.0%")
         end
@@ -1973,7 +2000,7 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
             local rawCrestName = cur.name or ""
             if rawCrestName and not (issecretvalue and issecretvalue(rawCrestName)) and rawCrestName ~= "" then
                 local firstWord = rawCrestName:match("^(%S+)")
-                displayCrestName = FormatTrackMarkup(firstWord, firstWord, nil)
+                displayCrestName = PD.FormatTrackMarkup(firstWord, firstWord, nil)
             else
                 displayCrestName = rawCrestName
             end
@@ -1991,7 +2018,7 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
         if ns.UI_FormatSeasonProgressCurrencyLine then
             amountStr = ns.UI_FormatSeasonProgressCurrencyLine(cd) or amountStr
         end
-        curY = PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
+        curY = PD.PaintGearPaperBandRow(currCol, curY, crestRowH, currPad, valColW, displayCrestName or "", amountStr, iconFileID)
     end
     if goldCurrency then
         curY = curY - 6
@@ -2000,7 +2027,7 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
             copper = goldCurrency._goldCopper
         end
         local goldLabel = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
-        curY = PaintGearPaperBandRow(
+        curY = PD.PaintGearPaperBandRow(
             currCol, curY, crestRowH, currPad, valColW,
             goldLabel, "|cffffff00" .. FormatGold(copper) .. "|r",
             goldCurrency.icon or 133784)
@@ -2011,7 +2038,7 @@ local function PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, 
     return bandPanel
 end
 
-local function ApplyGearOfflineCenterChrome(centerRef, classFile)
+function PD.ApplyGearOfflineCenterChrome(centerRef, classFile)
     if not centerRef then return end
     local chrome = ns._gearOfflineCenterChrome
     if not chrome then
@@ -2072,7 +2099,7 @@ local function ApplyGearOfflineCenterChrome(centerRef, classFile)
     chrome:Show()
 end
 
-local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX, charKey, paperOriginY, paperdollNaturalH, paperBandH, opts)
+function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, currencyAmounts, isCurrentChar, baseX, charKey, paperOriginY, paperdollNaturalH, paperBandH, opts)
     opts = opts or {}
     paperParent = paperParent or opts.cardRef
     local card = opts.cardRef or paperParent
@@ -2138,14 +2165,14 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         anchorY = 0
     end
     local paperZoneH = tonumber(paperBandH) or tonumber(paperdollNaturalH) or 0
-    local startY = ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
+    local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
 
     -- Left column: 6 armor slots — text left of icon (Icon - Text), right-aligned text
     for i = 1, #leftSlots do
         local slotID = leftSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
         local slotData = GetSlotData(slotID)
-        ns.GearUI_Paperdoll.CreateSlotButton(paperParent, slotID, slotData, leftX, startY - (i - 1) * rowStep, SlotAffordsUpgrade(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
+        ns.GearUI_Paperdoll.CreateSlotButton(paperParent, slotID, slotData, leftX, startY - (i - 1) * rowStep, SlotAffordsUpgrade(slotID), PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), "left", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
     end
 
     -- Right column: 6 armor + 2 trinkets — slot | icon | text (finger slots 11 then 12 = API order).
@@ -2153,7 +2180,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         local slotID = rightSlots[i]
         local quality = (slots[slotID] and slots[slotID].quality) or 0
         local slotData = GetSlotData(slotID)
-        ns.GearUI_Paperdoll.CreateSlotButton(paperParent, slotID, slotData, rightX, startY - (i - 1) * rowStep, SlotAffordsUpgrade(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
+        ns.GearUI_Paperdoll.CreateSlotButton(paperParent, slotID, slotData, rightX, startY - (i - 1) * rowStep, SlotAffordsUpgrade(slotID), PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), "right", IsNotUpgradeable(slotID), TRACK_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
     end
 
     -- Alt panel: weapons centered under model; text offset matches armor columns (TEXT_OFFSET_FROM_SLOT_CENTER).
@@ -2169,7 +2196,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         local wx = (i == 1) and weaponStartX or (weaponStartX + SLOT_SIZE + WEAPON_GAP)
         local weaponSide = (i == 1) and "bottom_left" or "bottom_right"
         local slotData = GetSlotData(slotID)
-        ns.GearUI_Paperdoll.CreateSlotButton(paperParent, slotID, slotData, wx, bottomY, SlotAffordsUpgrade(slotID), GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
+        ns.GearUI_Paperdoll.CreateSlotButton(paperParent, slotID, slotData, wx, bottomY, SlotAffordsUpgrade(slotID), PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData), weaponSide, IsNotUpgradeable(slotID), WEAPON_TEXT_W, nil, upgradeInfo, currencyAmounts, itemTooltipContext, charKey, isCurrentChar, card)
     end
 
     local numRightRows = #rightSlots  -- 8 (Hands .. Trinket 2)
@@ -2227,7 +2254,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             ns._gearPortraitPanel = pan
         end
         if not pan._wnGearTooltipPanelBg then
-            ApplyGearModelViewportFill(pan)
+            PD.ApplyGearModelViewportFill(pan)
             pan._wnGearTooltipPanelBg = true
         end
         return pan
@@ -2274,7 +2301,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         -- prevents the model from drawing over neighbouring cards/scroll edges.
         local clip = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
         if clip.SetClipsChildren then clip:SetClipsChildren(true) end
-        ApplyGearModelViewportFill(clip)
+        PD.ApplyGearModelViewportFill(clip)
         clip.isPersistentRowElement = true
 
         -- Class-tinted vertical gradient drawn behind the 3D model. Same look as the
@@ -2445,7 +2472,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     elseif not centerRef then
         local clip = AcquireGearDressModel()
         if not clip._wnGearTooltipPanelBg then
-            ApplyGearModelViewportFill(clip)
+            PD.ApplyGearModelViewportFill(clip)
             clip._wnGearTooltipPanelBg = true
         end
         if clip._SetClassTint then clip:_SetClassTint(classFile) end
@@ -2604,18 +2631,24 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             local pill = CreateFrame("Frame", nil, portrait, "BackdropTemplate")
             pill:SetSize(78, 22)
             pill:SetPoint("TOP", meta, "BOTTOM", 0, -10)
-            pill:SetBackdrop({
-                bgFile = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                edgeSize = 1,
-                insets = { left = 0, right = 0, top = 0, bottom = 0 },
-            })
-            local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
-                or COLORS.bgCard or COLORS.bgLight or COLORS.bg
-            pill:SetBackdropColor(pillBg[1], pillBg[2], pillBg[3], (pillBg[4] or 1) * 0.85)
-            local pillBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.55
-            local ac = COLORS.accent or { 0.5, 0.3, 0.8 }
-            pill:SetBackdropBorderColor(ac[1] * 0.5, ac[2] * 0.5, ac[3] * 0.5, pillBorderA)
+            if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+                if ns.UI_ApplyBlizzardPanelBackdrop then
+                    ns.UI_ApplyBlizzardPanelBackdrop(pill)
+                end
+            elseif pill.SetBackdrop then
+                pill:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeSize = 1,
+                    insets = { left = 0, right = 0, top = 0, bottom = 0 },
+                })
+                local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+                    or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+                pill:SetBackdropColor(pillBg[1], pillBg[2], pillBg[3], (pillBg[4] or 1) * 0.85)
+                local pillBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.55
+                local ac = COLORS.accent or { 0.5, 0.3, 0.8 }
+                pill:SetBackdropBorderColor(ac[1] * 0.5, ac[2] * 0.5, ac[3] * 0.5, pillBorderA)
+            end
             portrait._pill = pill
             local pillLabel = FontManager:CreateFontString(pill, GFR("gearPortraitMeta"), "OVERLAY")
             pillLabel:SetPoint("CENTER", pill, "CENTER", 0, 0)
@@ -2637,7 +2670,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         portrait:SetSize(modelW, MODEL_H)
         portrait:SetPoint("TOPLEFT", paperParent, "TOPLEFT", modelX, modelTopY)
         portrait:SetFrameLevel(card:GetFrameLevel() + 5)
-        ApplyGearModelViewportFill(portrait)
+        PD.ApplyGearModelViewportFill(portrait)
 
         local cc = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile])
             or { r = 0.55, g = 0.5, b = 0.75 }
@@ -2718,7 +2751,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
                 ns._gearOfflineCenterChrome:Hide()
             end
         else
-            ApplyGearOfflineCenterChrome(centerRef, classFile)
+            PD.ApplyGearOfflineCenterChrome(centerRef, classFile)
         end
     end
 
@@ -2734,10 +2767,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     modelBorder:ClearAllPoints()
     modelBorder:SetPoint("TOPLEFT",     centerRef, "TOPLEFT",      -1,  1)
     modelBorder:SetPoint("BOTTOMRIGHT", centerRef, "BOTTOMRIGHT",   1, -1)
-    local modelBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.45 or 0.65
-    modelBorder:SetBackdropBorderColor(accent[1], accent[2], accent[3], modelBorderA)
-    modelBorder:SetFrameLevel(centerRef:GetFrameLevel() + 6)
-    modelBorder:Show()
+    modelBorder:Hide()
 
     -- Character name + average item level: stacked inside model/portrait panel (top).
     local avgIlvl = charData and charData.itemLevel or 0
@@ -2791,11 +2821,11 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
             ns._gearModelIdentityBar:Hide()
             ns._gearModelIdentityBar:SetParent(nil)
         end
-        ns._gearModelIdentityBar = PaintGearViewportIdentity(idHost, charData, accent)
+        ns._gearModelIdentityBar = PD.PaintGearViewportIdentity(idHost, charData, accent)
     end
 
     if opts.paperChrome and centerRef then
-        AnchorGearPaperChromeBehindModel(opts.paperChrome, centerRef, card)
+        PD.AnchorGearPaperChromeBehindModel(opts.paperChrome, centerRef, card)
     end
     end
 
@@ -2821,7 +2851,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
         ph:ClearAllPoints()
         ph:SetSize(modelW, MODEL_H)
         ph:SetPoint("TOPLEFT", paperParent, "TOPLEFT", modelX, modelTopY)
-        ApplyGearModelViewportFill(ph)
+        PD.ApplyGearModelViewportFill(ph)
         ph:SetFrameLevel((card:GetFrameLevel() or 2) + 3)
         ph:Show()
         card._gearPaperdollCenterDefer = runPaperdollCenterPaint
@@ -2831,7 +2861,7 @@ local function DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo,
     runPaperdollCenterPaint()
 end
 
-local function ResolveGearTabPanelHeight(mf, yOffset, contentBandMinH, paperdollNaturalH)
+function PD.ResolveGearTabPanelHeight(mf, yOffset, contentBandMinH, paperdollNaturalH)
     local panelH = math.max(contentBandMinH or 0, paperdollNaturalH or 0)
     local bodyAvailH = (ns.UI_GetMainTabScrollBodyHeight and ns.UI_GetMainTabScrollBodyHeight(mf)) or 0
     if bodyAvailH > 0 then
@@ -2842,7 +2872,7 @@ local function ResolveGearTabPanelHeight(mf, yOffset, contentBandMinH, paperdoll
     return panelH
 end
 
-local function EnforceGearTopRowNoOverlap(card, layout, mf)
+function PD.EnforceGearTopRowNoOverlap(card, layout, mf)
     if not layout then return false end
     local gap = layout.panelGutter or GEAR_PANEL_GAP
     local paperColW = math.max(GEAR_PAPER_COL_FIXED_W, layout.paperColW or GEAR_PAPER_COL_FIXED_W)
@@ -2851,13 +2881,13 @@ local function EnforceGearTopRowNoOverlap(card, layout, mf)
     layout.minTopRowInnerW = needInner
     layout.paperColW = paperColW
     if card and card.GetWidth then
-        layout.cardInnerW = GetGearCardInnerWidthFromCard(card)
+        layout.cardInnerW = PD.GetGearCardInnerWidthFromCard(card)
     end
     layout.layoutInnerW = layout.cardInnerW or layout.layoutInnerW or needInner
     return false
 end
 
-local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings, storageScanPending)
+function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, charKey, currencyAmounts, isCurrentChar, currencies, storageFindings, storageScanPending)
     local rowStep = SLOT_SIZE + SLOT_GAP
     -- Content height: section + slot columns + gap + weapon row (Main/Off Hand) + bottom pad so card border is below weapons
     local contentTop = 8
@@ -2871,23 +2901,23 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     local subHdr = GEAR_LAYOUT.SUBPANEL_HDR or 28
     local statRowH = GEAR_LAYOUT.STAT_ROW_H or 22
     local crestRowH = GEAR_LAYOUT.CREST_ROW_H or 26
-    local primaryRows, secondaryRows = BuildGearPaperStatRows(charData, isCurrentChar == true)
-    local paperBottomBandH = select(1, ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH))
+    local primaryRows, secondaryRows = PD.BuildGearPaperStatRows(charData, isCurrentChar == true)
+    local paperBottomBandH = select(1, PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH))
     local paperdollNaturalH = slotsOnlyH + 10 + paperBottomBandH
     local cardH = CARD_PAD + 8 + paperdollNaturalH + CARD_PAD
 
     local parentW = (parent and parent.GetWidth) and parent:GetWidth() or 0
 
-    -- New card on every DrawPaperDollCard: PopulateContent tears down scrollChild, so roster changes cannot reuse the old card here.
+    -- New card on every PD.DrawPaperDollCard: PopulateContent tears down scrollChild, so roster changes cannot reuse the old card here.
     local card = CreateCard(parent, cardH)
     if card.SetClipsChildren then
         card:SetClipsChildren(false)
     end
     local mfDraw = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    AnchorGearCardFillWidth(card, parent, yOffset, mfDraw)
-    local cardInnerW = GetGearCardInnerWidthFromCard(card)
+    PD.AnchorGearCardFillWidth(card, parent, yOffset, mfDraw)
+    local cardInnerW = PD.GetGearCardInnerWidthFromCard(card)
     if (card:GetWidth() or 0) < 1 and parentW > 0 then
-        cardInnerW = ResolveGearTabCardInnerWidth(parentW)
+        cardInnerW = PD.ResolveGearTabCardInnerWidth(parentW)
     end
 
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.5, 0.4, 0.7 }
@@ -2901,22 +2931,22 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         _, paperColW, recColW, layoutInnerW = ns.GearUI_ComputeTopRowLayout(cardInnerW, nil)
         if not recEnabled then recColW = 0 end
     else
-        paperColW, recColW = ComputeGearLayoutWidths(cardInnerW, recEnabled)
+        paperColW, recColW = PD.ComputeGearLayoutWidths(cardInnerW, recEnabled)
         layoutInnerW = cardInnerW
     end
     local topLayoutMode = "row"
     local storageW = recColW > 0 and recColW or (layoutInnerW or cardInnerW)
     local paperLeft = CARD_PAD
 
-    local panelTopY = -(CARD_PAD + 6)
+    local panelTopY = -CARD_PAD
     local SECTION_GAP = GEAR_LAYOUT.SECTION_GAP or 16
     local modelBoost = math.max(0, math.min(MAX_PAPER_MODEL_BOOST, paperColW - GEAR_PAPER_COL_FIXED_W))
 
     local contentBandMinH = math.max(paperdollNaturalH, GEAR_LAYOUT.CONTENT_BAND_MIN_H or 360)
     local mfHostEarly = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-    local panelH = ResolveGearTabPanelHeight(mfHostEarly, yOffset, contentBandMinH, paperdollNaturalH)
+    local panelH = PD.ResolveGearTabPanelHeight(mfHostEarly, yOffset, contentBandMinH, paperdollNaturalH)
     local contentBandH = panelH
-    paperBottomBandH = select(1, ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH))
+    paperBottomBandH = select(1, PD.ComputeGearPaperBottomBandHeights(primaryRows, secondaryRows, crestCount, subHdr, statRowH, crestRowH))
     local paperTopZoneH = math.max(slotsOnlyH, contentBandH - paperBottomBandH)
 
     local gearHosts = {
@@ -2941,8 +2971,8 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     }
     card._wnGearHeroRibbon = nil
 
-    EnsureGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
-    RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
+    PD.EnsureGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
+    PD.RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
     local leftCol = gearHosts.leftColHost
     local paperTop = gearHosts.paperTopHost
     local paperBottom = gearHosts.paperBottomHost
@@ -2976,7 +3006,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     gearHosts.paperChrome = paperChrome
 
     if paperBottom then
-        local bandPanel = PaintGearPaperBottomBand(
+        local bandPanel = PD.PaintGearPaperBottomBand(
             paperBottom, paperColW, paperBottomBandH,
             charData, isCurrentChar, currencies, charKey, accent,
             primaryRows, secondaryRows
@@ -2986,7 +3016,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     end
 
     local recScroll, recContent, scroll, storageContentW = nil, nil, nil, nil
-    local storagePad = 8
+    local storagePad = CARD_PAD
     -- Title only (no subtitle): tighter header so the recommendations table gains viewport height.
     local storageHeaderH = GEAR_LAYOUT.STORAGE_PANEL_HDR or 36
     local storageBarW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
@@ -3011,7 +3041,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                                 local slotDef = SLOT_BY_ID and SLOT_BY_ID[slotID]
                                 storageRows[#storageRows + 1] = {
                                     slotID = slotID,
-                                    slotName = (slotDef and slotDef.label) or GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
+                                    slotName = (slotDef and slotDef.label) or PD.GetLocalizedText("GEAR_SLOT_FALLBACK_FORMAT", "Slot %d"):format(tonumber(slotID) or 0),
                                     currentIlvl = currentDisplay,
                                     targetIlvl = target,
                                     itemLink = best.itemLink,
@@ -3034,7 +3064,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
 
         -- ── RIGHT COLUMN: Gear upgrade recommendations (full height, aligned with paperdoll) ──
         local storageParent = gearHosts.rightColHost or card
-        local storagePanel = CreateGearSubpanel(storageParent, storageW, contentBandH, accent)
+        local storagePanel = PD.CreateGearSubpanel(storageParent, storageW, contentBandH, accent)
         storagePanel:ClearAllPoints()
         storagePanel:SetPoint("TOPLEFT", storageParent, "TOPLEFT", 0, 0)
         storagePanel:SetPoint("BOTTOMRIGHT", storageParent, "BOTTOMRIGHT", 0, 0)
@@ -3051,7 +3081,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             math.min(1, accent[2] * 1.12),
             math.min(1, accent[3] * 1.12),
         }
-        local storageHdrText = GetLocalizedText("GEAR_RECOMMENDED_TITLE", "Recommended")
+        local storageHdrText = PD.GetLocalizedText("GEAR_RECOMMENDED_TITLE", "Recommended")
         local storageHdr = gearChrome and gearChrome.CreateSectionHeader
             and gearChrome.CreateSectionHeader(storagePanel, storageHdrText, accent, {
                 fontRole = "gearStorageCardTitle",
@@ -3103,22 +3133,23 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             if scroll.SetFrameLevel and storagePanel.GetFrameLevel then
                 scroll:SetFrameLevel(storagePanel:GetFrameLevel() + 2)
             end
-            sbCol = ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory:CreateScrollBarColumn(storagePanel, storageBarW, storagePad, storagePad)
+            sbCol = ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn
+                and ns.UI.Factory:CreateScrollBarColumn(storagePanel, storageBarW, storageHeaderH, storagePad)
             if sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+                scroll.ScrollBar._wnOwningScrollFrame = scroll
                 ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, sbCol, 0)
             end
             scroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
-            -- Hide the scrollbar column entirely when no overflow, and let scroll area reclaim its width.
             if rowsOverflow then
-                scroll:SetPoint("BOTTOMRIGHT", -storageBarW, storagePad)
+                scroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageBarW, storagePad)
                 if sbCol and sbCol.Show then sbCol:Show() end
             else
-                scroll:SetPoint("BOTTOMRIGHT", -storagePad, storagePad)
+                scroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storagePad, storagePad)
                 if sbCol and sbCol.Hide then sbCol:Hide() end
             end
             local contentW = rowsOverflow
                 and math.max(120, storageW - storagePad * 2 - storageBarW)
-                or  math.max(120, storageW - storagePad * 2)
+                or math.max(120, storageW - storagePad * 2)
             storageContentW = contentW
             local contentH = math.max(#storageRows * rowH + storageHdrScroll, viewportH)
             local content = GearFact:CreateContainer(scroll, contentW, contentH, false)
@@ -3133,10 +3164,10 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                 empty:SetJustifyH("CENTER")
                 empty:SetJustifyV("MIDDLE")
                 if storageScanPending then
-                    empty:SetText(GetLocalizedText("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
+                    empty:SetText(PD.GetLocalizedText("GEAR_STORAGE_SCANNING", "Scanning storage for upgrades..."))
                     ns.UI_SetTextColorRole(empty, "Muted")
                 else
-                    empty:SetText(GetLocalizedText("GEAR_STORAGE_EMPTY", "No transferable stash upgrade beats your equipped items for these slots."))
+                    empty:SetText(PD.GetLocalizedText("GEAR_STORAGE_EMPTY", "No transferable stash upgrade beats your equipped items for these slots."))
                     ns.UI_SetTextColorRole(empty, "Dim")
                 end
             end
@@ -3164,13 +3195,13 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             end
         end
         gearHosts.storagePanel = storagePanel
-        RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
+        PD.RelayoutGearCardColumnHosts(card, gearHosts, panelTopY, recEnabled)
     end
 
     -- Paperdoll slots + model in top band; stats/currencies sit in paperBottomHost below.
     local paperParent = paperTop or leftCol or card
-    local paperBaseX = ComputeGearPaperdollBaseX(paperColW, MODEL_W + modelBoost)
-    DrawPaperDollInCard(paperParent, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true,
+    local paperBaseX = PD.ComputeGearPaperdollBaseX(paperColW, MODEL_W + modelBoost)
+    PD.DrawPaperDollInCard(paperParent, charData or {}, gearData, upgradeInfo, currencyAmounts, isCurrentChar == true,
         paperBaseX, charKey, 0, slotsOnlyH, paperTopZoneH,
         {
             cardRef = card,
@@ -3290,7 +3321,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
                         for si = inspectIdx, endIdx do
                             local sb = slotList[si]
                             if sb and sb._needsDeferredInspect then
-                                GearSlotApplyDeferredEnchantGemInspect(sb)
+                                PD.GearSlotApplyDeferredEnchantGemInspect(sb)
                             end
                         end
                         inspectIdx = endIdx + 1
@@ -3399,9 +3430,9 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
         }
         local layoutSync = card._wnGearViewportLayout
         if card._gearSlotInspectList and #card._gearSlotInspectList > 0 then
-            EnforceGearTopRowNoOverlap(card, layoutSync, mfDraw)
-            RelayoutGearPaperdollInCard(card, layoutSync)
-            RelayoutGearCardColumnHosts(card, layoutSync, panelTopY, recEnabled)
+            PD.EnforceGearTopRowNoOverlap(card, layoutSync, mfDraw)
+            PD.RelayoutGearPaperdollInCard(card, layoutSync)
+            PD.RelayoutGearCardColumnHosts(card, layoutSync, panelTopY, recEnabled)
             if layoutSync.topRowStackExtraH and layoutSync.topRowStackExtraH > 0 then
                 cardH = cardH + layoutSync.topRowStackExtraH
             end
@@ -3412,7 +3443,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
             for si = 1, #slotList do
                 local sb = slotList[si]
                 if sb and sb._needsDeferredInspect and sb._gearInspectSt and not sb._gearInspectSt.ready then
-                    GearSlotApplyDeferredEnchantGemInspect(sb)
+                    PD.GearSlotApplyDeferredEnchantGemInspect(sb)
                 end
             end
         end
@@ -3420,7 +3451,7 @@ local function DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInf
     return yOffset - cardH - 12, cardH
 end
 
-local function SyncGearStorageRecHostFromLayout(mf, layout)
+function PD.SyncGearStorageRecHostFromLayout(mf, layout)
     if not mf or not layout then return end
     local host = mf._gearStorageRecHost
     if not host then return end
@@ -3467,16 +3498,16 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
         end
     end
     if parent and layout.scrollYOffset ~= nil then
-        AnchorGearCardFillWidth(card, parent, layout.scrollYOffset, mf)
+        PD.AnchorGearCardFillWidth(card, parent, layout.scrollYOffset, mf)
     end
     -- Prefer live viewport width during corner-drag (scrollChild width may stay frozen/wide).
     local layoutInnerFromViewport = nil
     if contentWidth and contentWidth > 0 then
-        layoutInnerFromViewport = ResolveGearTabCardInnerWidth(contentWidth)
+        layoutInnerFromViewport = PD.ResolveGearTabCardInnerWidth(contentWidth)
     end
-    layout.cardInnerW = layoutInnerFromViewport or GetGearCardInnerWidthFromCard(card)
+    layout.cardInnerW = layoutInnerFromViewport or PD.GetGearCardInnerWidthFromCard(card)
     if layout.cardInnerW < 1 and parentW and parentW > 0 then
-        layout.cardInnerW = ResolveGearTabCardInnerWidth(parentW)
+        layout.cardInnerW = PD.ResolveGearTabCardInnerWidth(parentW)
     end
     local recEnabled = WarbandNexus:IsGearStorageRecommendationsEnabled()
     if layout.cardInnerW and layout.cardInnerW > 0 then
@@ -3488,7 +3519,7 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
             _, paperColW, recColW, layoutInnerW = ns.GearUI_ComputeTopRowLayout(cardInnerW, nil)
             if not recEnabled then recColW = 0 end
         else
-            paperColW, recColW = ComputeGearLayoutWidths(cardInnerW, recEnabled)
+            paperColW, recColW = PD.ComputeGearLayoutWidths(cardInnerW, recEnabled)
             layoutInnerW = cardInnerW
         end
         layout.paperColW = math.max(GEAR_PAPER_COL_FIXED_W, paperColW or 0)
@@ -3508,7 +3539,7 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
     local bottomBand = layout.paperBottomBandH or 0
 
     if not chromeOnly then
-        panelH = ResolveGearTabPanelHeight(mf, layout.scrollYOffset or 0, contentBandMinH, paperdollNaturalH)
+        panelH = PD.ResolveGearTabPanelHeight(mf, layout.scrollYOffset or 0, contentBandMinH, paperdollNaturalH)
         layout.panelH = panelH
         layout.contentBandH = panelH
         layout.topZoneH = panelH
@@ -3516,9 +3547,9 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
         layout.paperZoneH = layout.paperTopZoneH
     end
 
-    EnforceGearTopRowNoOverlap(card, layout, mf)
-    RelayoutGearPaperdollInCard(card, layout)
-    local measuredStorageW = RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
+    PD.EnforceGearTopRowNoOverlap(card, layout, mf)
+    PD.RelayoutGearPaperdollInCard(card, layout)
+    local measuredStorageW = PD.RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if measuredStorageW and measuredStorageW > 0 then
         layout.storageW = measuredStorageW
     end
@@ -3534,16 +3565,16 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
         elseif ns._gearPortraitPanel and ns._gearPortraitPanel.IsShown and ns._gearPortraitPanel:IsShown() then
             modelHost = ns._gearPortraitPanel
         end
-        AnchorGearPaperChromeBehindModel(layout.paperChrome, modelHost, card)
+        PD.AnchorGearPaperChromeBehindModel(layout.paperChrome, modelHost, card)
     end
     if layout.paperBottomBandH and layout.paperBottomBandH > 0 then
-        RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
+        PD.RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     end
     if not chromeOnly or not heightNear(card:GetHeight(), cardH) then
         card:SetHeight(cardH)
     end
     if not chromeOnly then
-        SyncGearStorageRecHostFromLayout(mf, layout)
+        PD.SyncGearStorageRecHostFromLayout(mf, layout)
     end
 
     local recContent = layout.recContent
@@ -3604,7 +3635,7 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
     return true
 end
 
-local function BuildLiveEquippedSlotSnapshot(slotID)
+function PD.BuildLiveEquippedSlotSnapshot(slotID)
     if not slotID or not GetInventoryItemLink then return nil end
     local itemLink = GetInventoryItemLink("player", slotID)
     if not itemLink or (issecretvalue and issecretvalue(itemLink)) then return nil end
@@ -3655,13 +3686,13 @@ local function BuildLiveEquippedSlotSnapshot(slotID)
     }
 end
 
-local function GearSlotHasInspectableItemLink(slotRef)
+function PD.GearSlotHasInspectableItemLink(slotRef)
     if not slotRef or not slotRef.itemLink or slotRef.itemLink == "" then return false end
     if issecretvalue and issecretvalue(slotRef.itemLink) then return true end
     return true
 end
 
-local function GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, notUpgradeable)
+function PD.GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText, notUpgradeable)
     if not sb then return false end
     local prev = sb._slotDataRef
     local newLink = slotData and slotData.itemLink
@@ -3684,7 +3715,7 @@ local function GearSlotPaperdollVisualEquals(sb, slotData, canUpgrade, trackText
 
     if not linkEmpty(newLink) and newLink == prevLink then
         local nsig = ""
-        local okSig, _ent, sig = pcall(ComputeGearSocketLayout, newLink, sb._slotID, sb._gearIsCurrentChar == true)
+        local okSig, _ent, sig = pcall(PD.ComputeGearSocketLayout, newLink, sb._slotID, sb._gearIsCurrentChar == true)
         if okSig and type(sig) == "string" then nsig = sig end
         local osig = (sb._gearInspectSt and sb._gearInspectSt.socketSig) or ""
         if nsig ~= osig then return false end
@@ -3745,14 +3776,14 @@ P.MODEL_W = MODEL_W
 P.GEAR_PAPER_COL_W = GEAR_PAPER_COL_W
 P.GEAR_PAPER_COL_FIXED_W = GEAR_PAPER_COL_FIXED_W
 
-ns.GearUI_PaperdollColumnWidth = GearPaperdollColumnWidth
-ns.GearUI_GetGearTabMinCardInnerW_Paperdoll = GetGearTabMinCardInnerW
-ns.GearUI_DrawPaperDollCard = DrawPaperDollCard
-ns.GearUI_GetSlotTrackText = GetSlotTrackText
-ns.GearUI_GearSlotApplyDeferredEnchantGemInspect = GearSlotApplyDeferredEnchantGemInspect
-ns.GearUI_GearSlotPaperdollVisualEquals = GearSlotPaperdollVisualEquals
-ns.GearUI_BuildLiveEquippedSlotSnapshot = BuildLiveEquippedSlotSnapshot
-ns.GearUI_GearSlotHasInspectableItemLink = GearSlotHasInspectableItemLink
+ns.GearUI_PaperdollColumnWidth = PD.GearPaperdollColumnWidth
+ns.GearUI_GetGearTabMinCardInnerW_Paperdoll = PD.GetGearTabMinCardInnerW
+ns.GearUI_DrawPaperDollCard = PD.DrawPaperDollCard
+ns.GearUI_GetSlotTrackText = PD.GetSlotTrackText
+ns.GearUI_GearSlotApplyDeferredEnchantGemInspect = PD.GearSlotApplyDeferredEnchantGemInspect
+ns.GearUI_GearSlotPaperdollVisualEquals = PD.GearSlotPaperdollVisualEquals
+ns.GearUI_BuildLiveEquippedSlotSnapshot = PD.BuildLiveEquippedSlotSnapshot
+ns.GearUI_GearSlotHasInspectableItemLink = PD.GearSlotHasInspectableItemLink
 
 function ns.GearUI_Paperdoll.RefreshTheme()
     local C = COLORS or ns.UI_COLORS or {}
@@ -3764,10 +3795,10 @@ function ns.GearUI_Paperdoll.RefreshTheme()
     end
 
     if ns._gearPortraitPanel then
-        ApplyGearModelViewportFill(ns._gearPortraitPanel)
+        PD.ApplyGearModelViewportFill(ns._gearPortraitPanel)
     end
     if ns._gearNoPreviewFrame then
-        ApplyGearModelViewportFill(ns._gearNoPreviewFrame)
+        PD.ApplyGearModelViewportFill(ns._gearNoPreviewFrame)
         local portrait = ns._gearNoPreviewFrame
         if portrait._pill and portrait._pill.SetBackdropColor then
             local pillBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
@@ -3814,7 +3845,12 @@ function ns.GearUI_Paperdoll.RefreshTheme()
         for j = 1, #inspectList do
             local btn = inspectList[j]
             if btn and btn._gearSlotBg then
-                btn._gearSlotBg:SetColorTexture(slotBg[1], slotBg[2], slotBg[3], slotBg[4] or 0.9)
+                if btn._wnClassicGearSlotPlain then
+                    btn._gearSlotBg:Hide()
+                else
+                    btn._gearSlotBg:Show()
+                    btn._gearSlotBg:SetColorTexture(slotBg[1], slotBg[2], slotBg[3], slotBg[4] or 0.9)
+                end
             end
             if btn and btn.ilvlLabel and ns.UI_ApplyOverlayLabelShadow then
                 ns.UI_ApplyOverlayLabelShadow(btn.ilvlLabel)

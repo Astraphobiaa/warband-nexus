@@ -686,7 +686,8 @@ function ReputationCache:_ProcessSnapshotFaction(index, targetSnapshot, targetNa
     targetSnapshot = targetSnapshot or self._snapshot
     targetNameToID = targetNameToID or self._nameToID
     
-    local data = C_Reputation.GetFactionDataByIndex(index)
+    local okData, data = pcall(C_Reputation.GetFactionDataByIndex, index)
+    if not okData then data = nil end
     if not data or not data.factionID or data.factionID <= 0 then return end
     
     local fid = data.factionID
@@ -1091,7 +1092,8 @@ function ReputationCache:RegisterEventListeners()
             end
             local numFactions = C_Reputation.GetNumFactions() or 0
             for i = 1, numFactions do
-                local data = C_Reputation.GetFactionDataByIndex(i)
+                local okData, data = pcall(C_Reputation.GetFactionDataByIndex, i)
+                if not okData then data = nil end
                 local safeName = data and data.name
                 if issecretvalue and safeName and issecretvalue(safeName) then safeName = nil end
                 -- Exclude headers (they share names with actual factions, e.g. "Guild")
@@ -2273,7 +2275,8 @@ local function WalkFactionsForCompanion()
     for i = 1, numFactions do
         local fid, fname
         if C_Reputation.GetFactionDataByIndex then
-            local d = C_Reputation.GetFactionDataByIndex(i)
+            local okD, d = pcall(C_Reputation.GetFactionDataByIndex, i)
+            if not okD then d = nil end
             if d then
                 fid, fname = d.factionID, d.name
             end

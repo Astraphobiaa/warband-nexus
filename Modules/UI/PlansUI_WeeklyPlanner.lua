@@ -151,8 +151,10 @@ function M.ShowDailyPlanDialog(editPlan)
 
     local iconContainer = Factory:CreateContainer(charFrame, 32, 32)
     iconContainer:SetPoint("LEFT", 10, 0)
-    if ApplyVisuals and classColors then
-        ApplyVisuals(iconContainer, COLORS.bgCard, {classColors.r, classColors.g, classColors.b, 1})
+    if ns.UI_ApplyIconWellChrome then
+        ns.UI_ApplyIconWellChrome(iconContainer)
+    elseif ApplyVisuals and classColors then
+        ApplyVisuals(iconContainer, COLORS.bgCard, { classColors.r, classColors.g, classColors.b, 1 })
     end
     local charIconFrame = CreateIcon and CreateIcon(iconContainer, raceAtlas, 26, true, nil, true)
     if charIconFrame then
@@ -491,7 +493,7 @@ function M.ShowDailyPlanDialog(editPlan)
         if isEdit then
             if WarbandNexus:UpdateDailyPlanTracking(editPlan, selectedQuestTypes, keysCopy) then
                 dialog.Close()
-                WarbandNexus:SendMessage(E and E.UI_MAIN_REFRESH_REQUESTED or "WN_UI_MAIN_REFRESH_REQUESTED", { tab = "plans", skipCooldown = true })
+                WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "plans", skipCooldown = true })
             end
         else
             local plan = WarbandNexus:CreateDailyPlan(currentName, currentRealm, selectedQuestTypes, keysCopy)

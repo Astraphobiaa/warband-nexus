@@ -848,7 +848,7 @@ function M.CreateModelViewer(parent, width, height)
     local iconBorder = Factory:CreateContainer(textOverlay, collectionsDetailIcon, collectionsDetailIcon, true)
     iconBorder:SetPoint("TOPLEFT", textOverlay, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
     if M.ApplyCollectionsIconBorder then
-        M.ApplyCollectionsIconBorder(iconBorder, 0.7)
+        M.ApplyCollectionsIconBorder(iconBorder, 0.7, { detailWell = true })
     elseif ApplyVisuals then
         local bg, edge = M.CollectionsIconBorderColors(0.7)
         ApplyVisuals(iconBorder, bg, edge)
@@ -1807,7 +1807,7 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
         local detailIconBorder = Factory.GetCollectionsDetailIconBorderColor and Factory:GetCollectionsDetailIconBorderColor()
         if M.ApplyCollectionsIconBorder then
-            M.ApplyCollectionsIconBorder(iconBorder, detailIconBorder and detailIconBorder[4] or 0.75)
+            M.ApplyCollectionsIconBorder(iconBorder, detailIconBorder and detailIconBorder[4] or 0.75, { detailWell = true })
         elseif ApplyVisuals then
             local bg, edge = M.CollectionsIconBorderColors(detailIconBorder and detailIconBorder[4] or 0.75)
             ApplyVisuals(iconBorder, bg, edge)

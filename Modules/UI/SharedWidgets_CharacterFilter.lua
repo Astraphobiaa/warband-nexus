@@ -32,6 +32,32 @@ local function MenuShellBorder()
     return { c[1] * 0.6, c[2] * 0.6, c[3] * 0.6, 0.8 }
 end
 
+local function UsesClassicFilterChrome()
+    return ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+end
+
+--- Filter host button: UIPanelButtonTemplate in Classic — skip stacked ApplyVisuals borders.
+local function ApplyFilterHostButtonChrome(btn, hover)
+    if UsesClassicFilterChrome() then
+        return
+    end
+    if not ns.UI_ApplyVisuals then return end
+    local bg = hover and ChromeHoverBackdrop() or ChromeBackdrop()
+    local ac = ns.UI_COLORS and ns.UI_COLORS.accent or { 0.5, 0.5, 0.5 }
+    local borderA = hover and 0.8 or 0.6
+    ns.UI_ApplyVisuals(btn, bg, { ac[1], ac[2], ac[3], borderA })
+end
+
+--- Flyout menu shell: CreateContainer(true) already applies classic card chrome once.
+local function ApplyFlyoutMenuChrome(menu)
+    if UsesClassicFilterChrome() then
+        return
+    end
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(menu, MenuShellBackdrop(), MenuShellBorder())
+    end
+end
+
 local function MutedIconVertex()
     if ns.UI_IsLightMode and ns.UI_IsLightMode() then
         return 0.42, 0.42, 0.46, 1
@@ -81,9 +107,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     local btnWidth = 90
     local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
 
-    if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(btn, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
-    end
+    ApplyFilterHostButtonChrome(btn, false)
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(14, 14)
@@ -102,9 +126,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     btn:SetScript("OnEnter", function(self)
         icon:SetVertexColor(1, 1, 1)
         ns.UI_SetTextColorRole(text, "Bright")
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, ChromeHoverBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
-        end
+        ApplyFilterHostButtonChrome(self, true)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText((ns.L and ns.L["SORT_BY_LABEL"]) or "Sort By:")
         GameTooltip:Show()
@@ -113,9 +135,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         local mr, mg, mb, ma = MutedIconVertex()
         icon:SetVertexColor(mr, mg, mb, ma)
         ns.UI_SetTextColorRole(text, "Bright")
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
-        end
+        ApplyFilterHostButtonChrome(self, false)
         GameTooltip:Hide()
     end)
 
@@ -158,9 +178,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         menu:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
         menu:SetClampedToScreen(true)
         menu:SetWidth(menuWidth)
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(menu, MenuShellBackdrop(), MenuShellBorder())
-        end
+        ApplyFlyoutMenuChrome(menu)
         activeSortDropdownMenu = menu
 
         local currentKey = ResolveSortMenuCurrentKey(dbSortTable, sortOptions)
@@ -311,9 +329,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     local buttonHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
     local btnWidth = ns.UI_GetTitleToolbarPresetWidth and ns.UI_GetTitleToolbarPresetWidth("filter") or 96
     local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
-    if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(btn, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
-    end
+    ApplyFilterHostButtonChrome(btn, false)
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(14, 14)
     icon:SetAtlas("uitools-icon-filter")
@@ -358,9 +374,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         sub:SetFrameLevel((anchorMenu and anchorMenu:GetFrameLevel() or 300) + 5)
         sub:SetPoint("TOPLEFT", anchorMenu, "TOPRIGHT", 4, anchorYOffset or 0)
         sub:SetClampedToScreen(true)
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(sub, MenuShellBackdrop(), {ns.UI_COLORS.accent[1] * 0.55, ns.UI_COLORS.accent[2] * 0.55, ns.UI_COLORS.accent[3] * 0.55, 0.85})
-        end
+        ApplyFlyoutMenuChrome(sub)
         btn._wnAdvSub = sub
         local bw = mw - sideMargin * 2
         for i = 1, #rows do
@@ -399,9 +413,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
     btn:SetScript("OnEnter", function(self)
         icon:SetVertexColor(1, 1, 1)
         ns.UI_SetTextColorRole(text, "Bright")
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, ChromeHoverBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
-        end
+        ApplyFilterHostButtonChrome(self, true)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText((ns.L and ns.L["FILTER_MENU_TOOLTIP"]) or "Sort and filter which sections are visible.", 1, 1, 1)
         GameTooltip:Show()
@@ -410,9 +422,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         local mr, mg, mb, ma = MutedIconVertex()
         icon:SetVertexColor(mr, mg, mb, ma)
         ns.UI_SetTextColorRole(text, "Bright")
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, ChromeBackdrop(), {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
-        end
+        ApplyFilterHostButtonChrome(self, false)
         GameTooltip:Hide()
     end)
 
@@ -441,9 +451,7 @@ local function CreateCharacterTabAdvancedFilterButton(parent, opts)
         root:SetFrameLevel(300)
         root:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
         root:SetClampedToScreen(true)
-        if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(root, MenuShellBackdrop(), MenuShellBorder())
-        end
+        ApplyFlyoutMenuChrome(root)
         activeSortDropdownMenu = root
         btn._wnAdvRoot = root
 
@@ -583,9 +591,7 @@ local function WnShowLabeledPickMenu(anchorFrame, rows, onDone)
     menu:SetFrameLevel(320)
     menu:SetPoint("TOPLEFT", anchorFrame, "BOTTOMRIGHT", 4, -2)
     menu:SetClampedToScreen(true)
-    if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(menu, MenuShellBackdrop(), {ns.UI_COLORS.accent[1] * 0.55, ns.UI_COLORS.accent[2] * 0.55, ns.UI_COLORS.accent[3] * 0.55, 0.85})
-    end
+    ApplyFlyoutMenuChrome(menu)
     local bw = mw - sideMargin * 2
     local y = 4
     for i = 1, #rows do

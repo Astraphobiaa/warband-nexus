@@ -33,6 +33,10 @@ local PixelSnap = ns.PixelSnap
 local ResetPixelScale = ns.ResetPixelScale
 assert(GetPixelScale and PixelSnap, "SharedWidgets: SharedWidgets_Pixel must load first")
 
+-- Theme color/backdrop getters live on one table to stay under the Lua 5.1
+-- 200-locals-per-chunk ceiling (WN-CODE-lua-local-limit).
+local ThemeAPI = {}
+
 -- COLOR CONSTANTS
 
 -- Calculate all theme variations from a master color
@@ -166,7 +170,7 @@ local COLORS = {
     white = {1, 1, 1, 1},
 }
 
--- Light/dark appearance (profile.themeMode): same surface/text KEYS, swapped values.
+-- Light/dark/classic appearance (profile.themeMode): same surface/text KEYS, swapped values.
 -- Live refresh: `ns.UI_RefreshColors` updates BORDER_REGISTRY, nav chrome, open main tabs,
 -- tooltips, and floating windows. Money/quality |cff escapes keep their colors (v1 limitation).
 local SURFACE_VARIANTS = {
@@ -208,25 +212,89 @@ local SURFACE_VARIANTS = {
         textMuted = {0.38, 0.38, 0.42, 1},
         textDim = {0.50, 0.50, 0.54, 1},
     },
+    classic = ns.UI_CLASSIC_SURFACE_VARIANT or {
+        bg = { 0.065, 0.065, 0.075, 1 },
+        surfaceViewport = { 0.075, 0.075, 0.085, 1 },
+        bgLight = { 0.085, 0.085, 0.095, 1 },
+        bgCard = { 0.095, 0.095, 0.105, 1 },
+        surfaceHeaderChrome = { 0.080, 0.080, 0.090, 1 },
+        surfaceRowEven = { 0.088, 0.088, 0.098, 0.96 },
+        surfaceRowOdd = { 0.072, 0.072, 0.082, 0.96 },
+        borderLight = { 0.55, 0.48, 0.35, 1 },
+        tabInactive = { 0.055, 0.055, 0.065, 1 },
+        tabActive = { 0.095, 0.095, 0.110, 0.98 },
+        tabHover = { 0.105, 0.105, 0.120, 0.98 },
+        gold = { 1.00, 0.82, 0.00, 1 },
+        green = { 0.35, 0.85, 0.35, 1 },
+        textBright = { 1.00, 0.97, 0.85, 1 },
+        textNormal = { 0.92, 0.88, 0.78, 1 },
+        textMuted = { 0.78, 0.72, 0.62, 1 },
+        textDim = { 0.62, 0.58, 0.50, 1 },
+    },
 }
 
 local function TextLuminance(r, g, b)
     return 0.299 * r + 0.587 * g + 0.114 * b
 end
 
-local function GetThemeMode()
+--- UI chrome family: Modern (custom WN chrome) vs Classic (Blizzard templates).
+---@return "modern"|"classic"
+local function GetUiTheme()
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-    if db and db.themeMode == "light" then
-        return "light"
+    if not db then
+        return "modern"
+    end
+    if db.uiTheme == "classic" then
+        return "classic"
+    end
+    if db.uiTheme == "modern" then
+        return "modern"
+    end
+    -- Legacy: themeMode held "classic" before uiTheme split.
+    if db.themeMode == "classic" then
+        return "classic"
+    end
+    return "modern"
+end
+ns.UI_GetUiTheme = GetUiTheme
+
+local function IsModernUiTheme()
+    return GetUiTheme() == "modern"
+end
+ns.UI_IsModernUiTheme = IsModernUiTheme
+
+--- Modern-only surface palette key ("dark" | "light").
+---@return "dark"|"light"
+local function GetModernColorMode()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    if db then
+        if db.modernColorMode == "light" or db.themeMode == "light" then
+            return "light"
+        end
     end
     return "dark"
+end
+ns.UI_GetModernColorMode = GetModernColorMode
+
+--- Surface variant key for COLORS / SURFACE_VARIANTS (includes classic when active).
+local function GetThemeMode()
+    if GetUiTheme() == "classic" then
+        return "classic"
+    end
+    return GetModernColorMode()
 end
 ns.UI_GetThemeMode = GetThemeMode
 
 local function IsLightModeEnabled()
-    return GetThemeMode() == "light"
+    return GetUiTheme() == "modern" and GetModernColorMode() == "light"
 end
 ns.UI_IsLightMode = IsLightModeEnabled
+
+local function IsClassicModeEnabled()
+    return GetUiTheme() == "classic"
+end
+ns.UI_IsClassicMode = IsClassicModeEnabled
+ns.UI_ShouldUseBlizzardChrome = IsClassicModeEnabled
 
 --- Achromatic theme ink (Bright–Dim roles): no WoW OUTLINE in light mode.
 ---@param r number|nil
@@ -292,27 +360,31 @@ ns.UI_AdjustRGBForLightOutline = AdjustRGBForLightOutline
 
 --- Accent title ink with outline-safe tuning.
 ---@return number r, number g, number b, number a
-local function GetAccentTextRGBA()
+function ThemeAPI.GetAccentTextRGBA()
     local ac = COLORS.accent or { 0.45, 0.35, 0.72, 1 }
     local r, g, b = AdjustRGBForLightOutline(ac[1], ac[2], ac[3])
     return r, g, b, ac[4] or 1
 end
-ns.UI_GetAccentTextRGBA = GetAccentTextRGBA
+ns.UI_GetAccentTextRGBA = ThemeAPI.GetAccentTextRGBA
 
---- Role RGBA at call time (COLORS rows are outline-adjusted in UpdateColorsFromTheme).
+--- Role RGBA at call time (COLORS rows are outline-adjusted in ThemeAPI.UpdateColorsFromTheme).
 ---@param role string|nil
 ---@return number r, number g, number b, number a
-local function ResolveTextRoleRGBA(role)
+function ThemeAPI.ResolveTextRoleRGBA(role)
     role = role or "Normal"
     local c = COLORS["text" .. role] or COLORS.textNormal
     return c[1], c[2], c[3], c[4] or 1
 end
-ns.UI_ResolveTextRoleRGBA = ResolveTextRoleRGBA
+ns.UI_ResolveTextRoleRGBA = ThemeAPI.ResolveTextRoleRGBA
 
 --- Nav rail shell fill — dark: original `bg` tier; light: viewport tier for contrast with content.
 ---@return table rgba
-local function GetNavRailSurfaceBackdrop()
+function ThemeAPI.GetNavRailSurfaceBackdrop()
     local c = COLORS
+    if IsClassicModeEnabled() then
+        local row = c.surfaceRowOdd or c.bgLight or c.bg
+        return { row[1], row[2], row[3], row[4] or 0.96 }
+    end
     if IsLightModeEnabled() then
         local shell = c.bg or c.surfaceViewport or c.bgLight
         return { shell[1], shell[2], shell[3], shell[4] or 0.99 }
@@ -320,11 +392,11 @@ local function GetNavRailSurfaceBackdrop()
     local bg = c.bg or { 0.042, 0.042, 0.055, 0.98 }
     return { bg[1], bg[2], bg[3], bg[4] or 0.98 }
 end
-ns.UI_GetNavRailSurfaceBackdrop = GetNavRailSurfaceBackdrop
+ns.UI_GetNavRailSurfaceBackdrop = ThemeAPI.GetNavRailSurfaceBackdrop
 
 --- Flat nav-rail idle backdrop (settings + main shell category buttons).
 ---@return table rgba
-local function GetNavRailIdleBackdrop()
+function ThemeAPI.GetNavRailIdleBackdrop()
     local c = COLORS
     if IsLightModeEnabled() then
         local row = c.surfaceRowOdd or c.bgLight or c.bg or { 0.91, 0.91, 0.92, 1 }
@@ -333,28 +405,32 @@ local function GetNavRailIdleBackdrop()
     local row = c.surfaceRowOdd or c.surfaceViewport or c.bg or { 0.15, 0.15, 0.174, 1 }
     return { row[1], row[2], row[3], 0.55 }
 end
-ns.UI_GetNavRailIdleBackdrop = GetNavRailIdleBackdrop
+ns.UI_GetNavRailIdleBackdrop = ThemeAPI.GetNavRailIdleBackdrop
 
 --- Theme accent border RGBA — same strength in light and dark (no borderLight dilution).
 ---@param alpha number|nil
 ---@return table rgba
-local function GetAccentBorderRGBA(alpha)
+function ThemeAPI.GetAccentBorderRGBA(alpha)
     local ac = COLORS.accent or { 0.40, 0.20, 0.58, 1 }
     return { ac[1], ac[2], ac[3], alpha or 0.8 }
 end
-ns.UI_GetAccentBorderRGBA = GetAccentBorderRGBA
+ns.UI_GetAccentBorderRGBA = ThemeAPI.GetAccentBorderRGBA
 
 --- Nav rail divider / footer rule — full theme accent (no grey dilution).
 ---@return table rgba
-local function GetNavRailDividerColor()
-    return GetAccentBorderRGBA(1)
+function ThemeAPI.GetNavRailDividerColor()
+    return ThemeAPI.GetAccentBorderRGBA(1)
 end
-ns.UI_GetNavRailDividerColor = GetNavRailDividerColor
+ns.UI_GetNavRailDividerColor = ThemeAPI.GetNavRailDividerColor
 
 --- Main window title bar — dark: original accentDark header; light: elevated surface chrome.
 ---@return table rgba
-local function GetMainHeaderChromeColor()
+function ThemeAPI.GetMainHeaderChromeColor()
     local c = COLORS
+    if IsClassicModeEnabled() then
+        -- Title band sits inside dialog chrome — no separate floating accentDark bar.
+        return { 0, 0, 0, 0 }
+    end
     if IsLightModeEnabled() then
         local surf = c.surfaceHeaderChrome or c.bgLight or c.bg
         return { surf[1], surf[2], surf[3], surf[4] or 0.97 }
@@ -362,51 +438,57 @@ local function GetMainHeaderChromeColor()
     local ad = c.accentDark or { 0.28, 0.14, 0.41, 1 }
     return { ad[1], ad[2], ad[3], 1 }
 end
-ns.UI_GetMainHeaderChromeColor = GetMainHeaderChromeColor
+ns.UI_GetMainHeaderChromeColor = ThemeAPI.GetMainHeaderChromeColor
 
 --- Main window title bar border — theme accent (class color or profile accent).
 ---@return table rgba
-local function GetMainHeaderBorderColor()
-    return GetAccentBorderRGBA(0.8)
+function ThemeAPI.GetMainHeaderBorderColor()
+    return ThemeAPI.GetAccentBorderRGBA(0.8)
 end
-ns.UI_GetMainHeaderBorderColor = GetMainHeaderBorderColor
+ns.UI_GetMainHeaderBorderColor = ThemeAPI.GetMainHeaderBorderColor
 
 --- Floating window title band (To-Do List, Recipe Companion, Profession Info).
 ---@return table rgba
-local function GetFloatingWindowHeaderBackdrop()
-    return GetMainHeaderChromeColor()
+function ThemeAPI.GetFloatingWindowHeaderBackdrop()
+    return ThemeAPI.GetMainHeaderChromeColor()
 end
-ns.UI_GetFloatingWindowHeaderBackdrop = GetFloatingWindowHeaderBackdrop
+ns.UI_GetFloatingWindowHeaderBackdrop = ThemeAPI.GetFloatingWindowHeaderBackdrop
 
 ---@return table rgba
-local function GetFloatingWindowHeaderBorder()
-    return GetMainHeaderBorderColor()
+function ThemeAPI.GetFloatingWindowHeaderBorder()
+    return ThemeAPI.GetMainHeaderBorderColor()
 end
-ns.UI_GetFloatingWindowHeaderBorder = GetFloatingWindowHeaderBorder
+ns.UI_GetFloatingWindowHeaderBorder = ThemeAPI.GetFloatingWindowHeaderBorder
 
 --- Paint a companion / tracker header with theme-aware chrome.
 ---@param header Frame|nil
 function ns.UI_ApplyFloatingWindowHeaderChrome(header)
-    if not header or not ApplyVisuals then return end
-    local bg = GetFloatingWindowHeaderBackdrop()
-    local border = GetFloatingWindowHeaderBorder()
+    if not header then return end
+    if IsClassicModeEnabled() and ns.UI_ApplyClassicInteriorFlatFill then
+        ns.UI_ApplyClassicInteriorFlatFill(header, { 0, 0, 0, 0 })
+        return
+    end
+    if not ApplyVisuals then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(header) then return end
+    local bg = ThemeAPI.GetFloatingWindowHeaderBackdrop()
+    local border = ThemeAPI.GetFloatingWindowHeaderBorder()
     ApplyVisuals(header, bg, border)
 end
 
 --- Footer hairline above version strip.
 ---@return table rgba
-local function GetFooterDividerColor()
-    local div = GetNavRailDividerColor()
+function ThemeAPI.GetFooterDividerColor()
+    local div = ThemeAPI.GetNavRailDividerColor()
     return { div[1], div[2], div[3], 0.28 }
 end
-ns.UI_GetFooterDividerColor = GetFooterDividerColor
+ns.UI_GetFooterDividerColor = ThemeAPI.GetFooterDividerColor
 
 --- Blend two RGBA tables (t toward `b`).
 ---@param a table rgba
 ---@param b table rgba
 ---@param t number 0..1
 ---@return table rgba
-local function BlendColors(a, b, t)
+function ThemeAPI.BlendColors(a, b, t)
     local inv = 1 - t
     return {
         a[1] * inv + b[1] * t,
@@ -415,64 +497,64 @@ local function BlendColors(a, b, t)
         (a[4] or 1) * inv + (b[4] or 1) * t,
     }
 end
-ns.UI_BlendColors = BlendColors
+ns.UI_BlendColors = ThemeAPI.BlendColors
 
 --- Active rail tab backdrop alpha multiplier on accent RGB (dark mode only).
 ---@return number
-local function GetNavRailActiveBgAlpha()
+function ThemeAPI.GetNavRailActiveBgAlpha()
     return 0.38
 end
-ns.UI_GetNavRailActiveBgAlpha = GetNavRailActiveBgAlpha
+ns.UI_GetNavRailActiveBgAlpha = ThemeAPI.GetNavRailActiveBgAlpha
 
 --- Active flat-rail tab fill — accent-tinted wash (light + dark).
 ---@return table rgba
-local function GetNavRailActiveBackdrop()
+function ThemeAPI.GetNavRailActiveBackdrop()
     local ac = COLORS.accent or { 0.40, 0.20, 0.58, 1 }
     if IsLightModeEnabled() then
         local base = COLORS.tabActive or COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
-        local tint = BlendColors(base, ac, 0.32)
+        local tint = ThemeAPI.BlendColors(base, ac, 0.32)
         return { tint[1], tint[2], tint[3], tint[4] or 0.98 }
     end
-    local railA = GetNavRailActiveBgAlpha()
+    local railA = ThemeAPI.GetNavRailActiveBgAlpha()
     return { ac[1] * railA, ac[2] * railA, ac[3] * railA, 0.98 }
 end
-ns.UI_GetNavRailActiveBackdrop = GetNavRailActiveBackdrop
+ns.UI_GetNavRailActiveBackdrop = ThemeAPI.GetNavRailActiveBackdrop
 
 --- Horizontal tab strip inactive fill (non-rail layout).
 ---@return table rgba
-local function GetNavTabInactiveBackdrop()
+function ThemeAPI.GetNavTabInactiveBackdrop()
     local c = COLORS
     local row = c.surfaceRowOdd or c.bgLight or c.bg
     return { row[1], row[2], row[3], row[4] or 1 }
 end
-ns.UI_GetNavTabInactiveBackdrop = GetNavTabInactiveBackdrop
+ns.UI_GetNavTabInactiveBackdrop = ThemeAPI.GetNavTabInactiveBackdrop
 
 --- Muted nav icon vertex for idle flat-rail buttons (dark mode only; light uses full-color atlas).
 ---@return number r, number g, number b, number a
-local function GetNavRailIconIdleVertex()
+function ThemeAPI.GetNavRailIconIdleVertex()
     return 0.72, 0.74, 0.78, 1
 end
-ns.UI_GetNavRailIconIdleVertex = GetNavRailIconIdleVertex
+ns.UI_GetNavRailIconIdleVertex = ThemeAPI.GetNavRailIconIdleVertex
 
 --- Muted nav icon vertex for horizontal inactive tabs.
 ---@return number r, number g, number b, number a
-local function GetNavTabIconMutedVertex()
+function ThemeAPI.GetNavTabIconMutedVertex()
     if IsLightModeEnabled() then
         return 0.44, 0.44, 0.48, 1
     end
     return 0.66, 0.68, 0.72, 0.92
 end
-ns.UI_GetNavTabIconMutedVertex = GetNavTabIconMutedVertex
+ns.UI_GetNavTabIconMutedVertex = ThemeAPI.GetNavTabIconMutedVertex
 
 --- Active nav-rail icon vertex (dark mode: white on accent wash; light: full-color atlas).
 ---@return number r, number g, number b, number a
-local function GetNavRailIconActiveVertex()
+function ThemeAPI.GetNavRailIconActiveVertex()
     if IsLightModeEnabled() then
         return 1, 1, 1, 1
     end
     return 1, 1, 1, 1
 end
-ns.UI_GetNavRailIconActiveVertex = GetNavRailIconActiveVertex
+ns.UI_GetNavRailIconActiveVertex = ThemeAPI.GetNavRailIconActiveVertex
 
 --- Nav rail / horizontal tab icon — full-color atlas; no desaturate or monochrome tint.
 ---@param tex Texture|nil
@@ -495,9 +577,9 @@ function ns.UI_ApplyNavTabIconStyle(tex, isActive, opts)
     if isActive then
         r, g, b, a = 1, 1, 1, 1
     elseif opts.rail or tex._wnNavRailIcon then
-        r, g, b, a = GetNavRailIconIdleVertex()
+        r, g, b, a = ThemeAPI.GetNavRailIconIdleVertex()
     else
-        r, g, b, a = GetNavTabIconMutedVertex()
+        r, g, b, a = ThemeAPI.GetNavTabIconMutedVertex()
     end
     tex:SetVertexColor(r, g, b, a)
 end
@@ -533,34 +615,16 @@ end
 
 --- Settings dropdown / control chrome idle fill.
 ---@return table rgba
-local function GetControlChromeBackdrop()
+function ThemeAPI.GetControlChromeBackdrop()
     local c = COLORS
     local bg = c.bgCard or c.bgLight or c.bg
     return { bg[1], bg[2], bg[3], bg[4] or 1 }
 end
-ns.UI_GetControlChromeBackdrop = GetControlChromeBackdrop
-
---- Item / plan icon well (light: visible stone tray; dark: near-black inset).
----@return table rgba
-local function GetIconWellBackdrop()
-    if IsLightModeEnabled() then
-        -- Darker inset tray so item art reads on stone cards (well ~= card fill).
-        return { 0.66, 0.65, 0.63, 1 }
-    end
-    return { 0.05, 0.05, 0.07, 0.95 }
-end
-ns.UI_GetIconWellBackdrop = GetIconWellBackdrop
-
---- Border stroke for icon wells.
----@return table rgba
-local function GetIconWellBorder()
-    return GetAccentBorderRGBA(0.6)
-end
-ns.UI_GetIconWellBorder = GetIconWellBorder
+ns.UI_GetControlChromeBackdrop = ThemeAPI.GetControlChromeBackdrop
 
 --- Progress bar empty track (light cream cards need a darker trough).
 ---@return table rgba
-local function GetProgressBarTrackBackdrop()
+function ThemeAPI.GetProgressBarTrackBackdrop()
     if IsLightModeEnabled() then
         local odd = COLORS.surfaceRowOdd or { 0.78, 0.76, 0.72, 1 }
         return { odd[1], odd[2], odd[3], 0.98 }
@@ -568,70 +632,74 @@ local function GetProgressBarTrackBackdrop()
     local odd = COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
     return { odd[1], odd[2], odd[3], (odd[4] or 1) * 0.55 }
 end
-ns.UI_GetProgressBarTrackBackdrop = GetProgressBarTrackBackdrop
+ns.UI_GetProgressBarTrackBackdrop = ThemeAPI.GetProgressBarTrackBackdrop
 
 --- Plan / panel card border in light mode (warm stroke + accent hint).
 ---@return table rgba
-local function GetPanelCardBorder()
-    return GetAccentBorderRGBA(0.8)
+function ThemeAPI.GetPanelCardBorder()
+    return ThemeAPI.GetAccentBorderRGBA(0.8)
 end
-ns.UI_GetPanelCardBorder = GetPanelCardBorder
+ns.UI_GetPanelCardBorder = ThemeAPI.GetPanelCardBorder
 
 --- Tracking status chip on main header (after control chrome helpers — Lua 5.1 forward ref).
 ---@return table rgba bg, table rgba border
-local function GetTrackingChipBackdrop()
-    local bg = GetControlChromeBackdrop()
-    local border = GetNavRailDividerColor()
+function ThemeAPI.GetTrackingChipBackdrop()
+    local bg = ThemeAPI.GetControlChromeBackdrop()
+    local border = ThemeAPI.GetNavRailDividerColor()
     return bg, border
 end
-ns.UI_GetTrackingChipBackdrop = GetTrackingChipBackdrop
+ns.UI_GetTrackingChipBackdrop = ThemeAPI.GetTrackingChipBackdrop
 
 --- Row / list hover highlight for `Factory:ApplyHighlight` (theme-aware defaults).
 ---@return table rgb, number alpha
-local function GetRowHoverHighlight()
+function ThemeAPI.GetRowHoverHighlight()
     if IsLightModeEnabled() then
         local base = COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
         local ac = COLORS.accent or { 0.4, 0.2, 0.58 }
-        local tint = BlendColors(base, ac, 0.28)
+        local tint = ThemeAPI.BlendColors(base, ac, 0.28)
         return { tint[1], tint[2], tint[3] }, 0.20
+    end
+    if IsClassicModeEnabled() then
+        local gold = COLORS.gold or { 1, 0.82, 0 }
+        return { gold[1], gold[2], gold[3] }, 0.12
     end
     return { 0.4, 0.6, 0.9 }, 0.15
 end
-ns.UI_GetRowHoverHighlight = GetRowHoverHighlight
+ns.UI_GetRowHoverHighlight = ThemeAPI.GetRowHoverHighlight
 
 --- Selected / online row wash (collection selBg, logged-in character row).
 ---@return table rgba
-local function GetRowSelectionTint()
+function ThemeAPI.GetRowSelectionTint()
     local ac = COLORS.accent or { 0.4, 0.2, 0.58, 1 }
     if IsLightModeEnabled() then
         local base = COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
-        return BlendColors(base, ac, 0.30)
+        return ThemeAPI.BlendColors(base, ac, 0.30)
     end
     return { ac[1] * 0.22, ac[2] * 0.22, ac[3] * 0.22, 1 }
 end
-ns.UI_GetRowSelectionTint = GetRowSelectionTint
+ns.UI_GetRowSelectionTint = ThemeAPI.GetRowSelectionTint
 
 --- Settings dropdown / control chrome hover fill.
 ---@return table rgba
-local function GetControlChromeHoverBackdrop()
+function ThemeAPI.GetControlChromeHoverBackdrop()
     local c = COLORS
     if IsLightModeEnabled() then
         local base = c.surfaceRowEven or c.bgLight or c.bg
         local ac = c.accent or { 0.4, 0.2, 0.58 }
-        return BlendColors(base, ac, 0.10)
+        return ThemeAPI.BlendColors(base, ac, 0.10)
     end
     local bg = c.surfaceRowEven or c.bgLight or c.bg
     return { bg[1], bg[2], bg[3], bg[4] or 1 }
 end
-ns.UI_GetControlChromeHoverBackdrop = GetControlChromeHoverBackdrop
+ns.UI_GetControlChromeHoverBackdrop = ThemeAPI.GetControlChromeHoverBackdrop
 
 --- Dropdown menu row idle fill.
 ---@return table rgba
-local function GetDropdownRowBackdrop(isCurrent)
+function ThemeAPI.GetDropdownRowBackdrop(isCurrent)
     local c = COLORS
     if isCurrent then
         if IsLightModeEnabled() then
-            return GetRowSelectionTint()
+            return ThemeAPI.GetRowSelectionTint()
         end
         local row = c.surfaceRowEven or c.bgLight or c.bg
         return { row[1], row[2], row[3], row[4] or 1 }
@@ -639,30 +707,30 @@ local function GetDropdownRowBackdrop(isCurrent)
     local row = c.surfaceRowOdd or c.bg or { 0.07, 0.07, 0.09, 1 }
     return { row[1], row[2], row[3], row[4] or 1 }
 end
-ns.UI_GetDropdownRowBackdrop = GetDropdownRowBackdrop
+ns.UI_GetDropdownRowBackdrop = ThemeAPI.GetDropdownRowBackdrop
 
 --- Floating dropdown menu shell (Settings dropdown popups).
 ---@return table rgba
-local function GetDropdownMenuBackdrop()
+function ThemeAPI.GetDropdownMenuBackdrop()
     local c = COLORS
     local bg = c.bg or { 0.042, 0.042, 0.055, 0.98 }
     return { bg[1], bg[2], bg[3], bg[4] or 0.98 }
 end
-ns.UI_GetDropdownMenuBackdrop = GetDropdownMenuBackdrop
+ns.UI_GetDropdownMenuBackdrop = ThemeAPI.GetDropdownMenuBackdrop
 
 --- Nested card / detail panel inside a settings section.
 ---@return table rgba
-local function GetNestedCardBackdrop()
+function ThemeAPI.GetNestedCardBackdrop()
     local c = COLORS
     local card = c.bgCard or c.bgLight or c.bg
     return { card[1], card[2], card[3], (card[4] or 1) * 0.92 }
 end
-ns.UI_GetNestedCardBackdrop = GetNestedCardBackdrop
+ns.UI_GetNestedCardBackdrop = ThemeAPI.GetNestedCardBackdrop
 
 --- Accent-tinted control fill (keybind capture, selected anchor chip).
 ---@return table rgba
-local function GetAccentListeningBackdrop()
-    local chrome = GetControlChromeHoverBackdrop()
+function ThemeAPI.GetAccentListeningBackdrop()
+    local chrome = ThemeAPI.GetControlChromeHoverBackdrop()
     local ac = COLORS.accent or { 0.6, 0.4, 1 }
     local mix = IsLightModeEnabled() and 0.22 or 0.35
     return {
@@ -672,40 +740,40 @@ local function GetAccentListeningBackdrop()
         chrome[4] or 1,
     }
 end
-ns.UI_GetAccentListeningBackdrop = GetAccentListeningBackdrop
+ns.UI_GetAccentListeningBackdrop = ThemeAPI.GetAccentListeningBackdrop
 
 --- Floating window / popup shell fill (Vault, EA menus, changelog card fallback).
 ---@return table rgba
-local function GetExternalShellBackdrop()
+function ThemeAPI.GetExternalShellBackdrop()
     local c = COLORS
     local bg = c.bg or { 0.042, 0.042, 0.055, 0.98 }
     return { bg[1], bg[2], bg[3], bg[4] or 0.98 }
 end
-ns.UI_GetExternalShellBackdrop = GetExternalShellBackdrop
+ns.UI_GetExternalShellBackdrop = ThemeAPI.GetExternalShellBackdrop
 
 --- Modal scrim behind popups (lighter in light mode).
 ---@return table rgba
-local function GetOverlayDimColor()
+function ThemeAPI.GetOverlayDimColor()
     if IsLightModeEnabled() then
         return { 0.12, 0.12, 0.14, 0.42 }
     end
     return { 0, 0, 0, 0.7 }
 end
-ns.UI_GetOverlayDimColor = GetOverlayDimColor
+ns.UI_GetOverlayDimColor = ThemeAPI.GetOverlayDimColor
 
 --- Small chrome buttons (close, compact actions).
 ---@return table rgba
-local function GetCloseButtonBackdrop()
+function ThemeAPI.GetCloseButtonBackdrop()
     local c = COLORS
     local row = c.surfaceRowEven or c.bgCard or c.bgLight or c.bg
     return { row[1], row[2], row[3], (row[4] or 1) * 0.92 }
 end
-ns.UI_GetCloseButtonBackdrop = GetCloseButtonBackdrop
+ns.UI_GetCloseButtonBackdrop = ThemeAPI.GetCloseButtonBackdrop
 
 --- Semantic positive choice card (tracking yes / tracked).
 ---@param hover boolean|nil
 ---@return table rgba bg, table rgba border
-local function GetSemanticPositiveCard(hover)
+function ThemeAPI.GetSemanticPositiveCard(hover)
     if IsLightModeEnabled() then
         if hover then
             return { 0.72, 0.92, 0.78, 1 }, { 0.28, 0.62, 0.38, 1 }
@@ -717,12 +785,12 @@ local function GetSemanticPositiveCard(hover)
     end
     return { 0.1, 0.3, 0.2, 1 }, { 0.2, 0.6, 0.3, 1 }
 end
-ns.UI_GetSemanticPositiveCard = GetSemanticPositiveCard
+ns.UI_GetSemanticPositiveCard = ThemeAPI.GetSemanticPositiveCard
 
 --- Semantic negative choice card (tracking no / untracked).
 ---@param hover boolean|nil
 ---@return table rgba bg, table rgba border
-local function GetSemanticNegativeCard(hover)
+function ThemeAPI.GetSemanticNegativeCard(hover)
     if IsLightModeEnabled() then
         if hover then
             return { 0.94, 0.78, 0.78, 1 }, { 0.72, 0.28, 0.28, 1 }
@@ -734,14 +802,16 @@ local function GetSemanticNegativeCard(hover)
     end
     return { 0.3, 0.1, 0.1, 1 }, { 0.8, 0.2, 0.2, 1 }
 end
-ns.UI_GetSemanticNegativeCard = GetSemanticNegativeCard
+ns.UI_GetSemanticNegativeCard = ThemeAPI.GetSemanticNegativeCard
 
 -- Update COLORS in-place from theme (zero allocation)
-local function UpdateColorsFromTheme()
+function ThemeAPI.UpdateColorsFromTheme()
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
     local themeFromDb = GetThemeColors()
     local theme = themeFromDb
-    if db and db.useClassColorAccent then
+    if IsClassicModeEnabled() then
+        theme = ns.UI_CLASSIC_ACCENT_THEME or themeFromDb
+    elseif db and db.useClassColorAccent then
         local r, g, b = ns.ResolveAccentColor(themeFromDb.accent)
         theme = CalculateThemeColors(r, g, b)
     end
@@ -753,7 +823,7 @@ local function UpdateColorsFromTheme()
 
     -- Surface/text variant swap (in-place so cached references stay live)
     local variantKey = GetThemeMode()
-    local variant = SURFACE_VARIANTS[variantKey]
+    local variant = SURFACE_VARIANTS[variantKey] or SURFACE_VARIANTS.dark
     for key, src in pairs(variant) do
         local dst = COLORS[key]
         if dst then
@@ -775,7 +845,7 @@ local function UpdateColorsFromTheme()
     end
 end
 
--- Role-colored FontStrings (live refresh via `RefreshRoleTextColors` / `UI_RefreshColors`).
+-- Role-colored FontStrings (live refresh via `ThemeAPI.RefreshRoleTextColors` / `UI_RefreshColors`).
 ns.TEXT_COLOR_REGISTRY = ns.TEXT_COLOR_REGISTRY or {}
 local TEXT_COLOR_REGISTRY = ns.TEXT_COLOR_REGISTRY
 
@@ -786,7 +856,7 @@ local TEXT_COLOR_REGISTRY = ns.TEXT_COLOR_REGISTRY
 ---@param alpha number|nil
 function ns.UI_SetTextColorRole(fs, role, alpha)
     if not fs or not fs.SetTextColor then return end
-    local r, g, b, a = ResolveTextRoleRGBA(role)
+    local r, g, b, a = ThemeAPI.ResolveTextRoleRGBA(role)
     fs._wnTextRole = role
     fs._wnTextRoleAlpha = alpha
     fs._wnColoredInk = false
@@ -860,7 +930,7 @@ end
 ---@param fs FontString|EditBox|nil
 ---@param text string|nil
 ---@return boolean
-local function FontStringRequiresColoredOutline(fs, text)
+function ThemeAPI.FontStringRequiresColoredOutline(fs, text)
     if not fs then return false end
     if not IsLightModeEnabled() then return false end
     if fs._colorType == "accent" then return true end
@@ -881,7 +951,7 @@ local function FontStringRequiresColoredOutline(fs, text)
     end
     return false
 end
-ns.UI_FontStringRequiresColoredOutline = FontStringRequiresColoredOutline
+ns.UI_FontStringRequiresColoredOutline = ThemeAPI.FontStringRequiresColoredOutline
 
 --- Recompute `_wnColoredInk` and refresh SetFont flags (light mode outline gate).
 ---@param fs FontString|EditBox|nil
@@ -892,7 +962,7 @@ function ns.UI_SyncFontStringInkOutline(fs, text)
         return
     end
     fs._wnInkSyncLock = true
-    fs._wnColoredInk = FontStringRequiresColoredOutline(fs, text) == true
+    fs._wnColoredInk = ThemeAPI.FontStringRequiresColoredOutline(fs, text) == true
     if FontManager and FontManager.RefreshInkAwareFont then
         FontManager:RefreshInkAwareFont(fs)
     end
@@ -914,7 +984,7 @@ function ns.UI_SetFontStringText(fs, text)
     fs:SetText(text or "")
 end
 
-local function RefreshRoleTextColors()
+function ThemeAPI.RefreshRoleTextColors()
     for i = #TEXT_COLOR_REGISTRY, 1, -1 do
         local fs = TEXT_COLOR_REGISTRY[i]
         if not fs or not fs.SetTextColor then
@@ -924,7 +994,7 @@ local function RefreshRoleTextColors()
         end
     end
 end
-ns.UI_RefreshRoleTextColors = RefreshRoleTextColors
+ns.UI_RefreshRoleTextColors = ThemeAPI.RefreshRoleTextColors
 
 --- Main nav / settings category label font — ink-aware outline (light: none on role ink).
 ---@param fs FontString
@@ -962,24 +1032,24 @@ end
 
 --- Theme-aware semantic gold RGBA (money amounts, iLvl labels in light mode).
 ---@return number r, number g, number b, number a
-local function GetSemanticGoldColor()
+function ThemeAPI.GetSemanticGoldColor()
     local g = COLORS.gold
     local r, gr, b = AdjustRGBForLightOutline(g[1], g[2], g[3])
     return r, gr, b, g[4] or 1
 end
-ns.UI_GetSemanticGoldColor = GetSemanticGoldColor
+ns.UI_GetSemanticGoldColor = ThemeAPI.GetSemanticGoldColor
 
 --- `|cffrrggbb` prefix for inline gold stat text (theme/light-mode aware).
 ---@return string
-local function GetSemanticGoldHex()
-    local r, g, b = GetSemanticGoldColor()
+function ThemeAPI.GetSemanticGoldHex()
+    local r, g, b = ThemeAPI.GetSemanticGoldColor()
     return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
 end
-ns.UI_GetSemanticGoldHex = GetSemanticGoldHex
+ns.UI_GetSemanticGoldHex = ThemeAPI.GetSemanticGoldHex
 
 --- Theme-aware semantic green RGBA (upgrade arrows, recommendation deltas).
 ---@return number r, number g, number b, number a
-local function GetSemanticGreenColor()
+function ThemeAPI.GetSemanticGreenColor()
     if IsLightModeEnabled() then
         local g = COLORS.green or { 0.55, 0.88, 0.45, 1 }
         return g[1], g[2], g[3], g[4] or 1
@@ -987,74 +1057,74 @@ local function GetSemanticGreenColor()
     local g = COLORS.green or { 0.30, 0.90, 0.30, 1 }
     return g[1], g[2], g[3], g[4] or 1
 end
-ns.UI_GetSemanticGreenColor = GetSemanticGreenColor
+ns.UI_GetSemanticGreenColor = ThemeAPI.GetSemanticGreenColor
 
 --- `|cffrrggbb` for semantic green (inline |cff tokens).
 ---@return string
-local function GetSemanticGreenHex()
-    local r, g, b = GetSemanticGreenColor()
+function ThemeAPI.GetSemanticGreenHex()
+    local r, g, b = ThemeAPI.GetSemanticGreenColor()
     return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
 end
-ns.UI_GetSemanticGreenHex = GetSemanticGreenHex
+ns.UI_GetSemanticGreenHex = ThemeAPI.GetSemanticGreenHex
 
 --- Slightly brighter green for target values (still readable on light surfaces).
 ---@return string
-local function GetSemanticGreenBrightHex()
-    local r, g, b = GetSemanticGreenColor()
+function ThemeAPI.GetSemanticGreenBrightHex()
+    local r, g, b = ThemeAPI.GetSemanticGreenColor()
     if IsLightModeEnabled() then
         return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
     end
     return format("|cff%02x%02x%02x", math.min(255, (r + 0.35) * 255), math.min(255, (g + 0.08) * 255), math.min(255, (b + 0.35) * 255))
 end
-ns.UI_GetSemanticGreenBrightHex = GetSemanticGreenBrightHex
+ns.UI_GetSemanticGreenBrightHex = ThemeAPI.GetSemanticGreenBrightHex
 
 --- Completed / collected plan card border (semantic positive).
 ---@return table rgba
-local function GetSemanticCompletedBorder()
-    local _, border = GetSemanticPositiveCard(false)
+function ThemeAPI.GetSemanticCompletedBorder()
+    local _, border = ThemeAPI.GetSemanticPositiveCard(false)
     return border
 end
-ns.UI_GetSemanticCompletedBorder = GetSemanticCompletedBorder
+ns.UI_GetSemanticCompletedBorder = ThemeAPI.GetSemanticCompletedBorder
 
 --- `|cffrrggbb` prefix for a text role ("Bright" | "Normal" | "Muted" | "Dim").
 ---@param role string
 ---@return string
-local function GetTextRoleHex(role)
-    local r, g, b = ResolveTextRoleRGBA(role)
+function ThemeAPI.GetTextRoleHex(role)
+    local r, g, b = ThemeAPI.ResolveTextRoleRGBA(role)
     return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
 end
-ns.UI_GetTextRoleHex = GetTextRoleHex
+ns.UI_GetTextRoleHex = ThemeAPI.GetTextRoleHex
 
 --- Alias for primary label markup (`|cff` prefix).
 ---@return string
-local function GetBrightHex()
-    return GetTextRoleHex("Bright")
+function ThemeAPI.GetBrightHex()
+    return ThemeAPI.GetTextRoleHex("Bright")
 end
-ns.UI_GetBrightHex = GetBrightHex
+ns.UI_GetBrightHex = ThemeAPI.GetBrightHex
 
 --- Border stroke for ApplyVisuals / BORDER_REGISTRY (theme border ladder).
 ---@return table rgba
-local function GetBorderStrokeColor()
+function ThemeAPI.GetBorderStrokeColor()
     return COLORS.border or COLORS.borderLight
 end
-ns.UI_GetBorderStrokeColor = GetBorderStrokeColor
+ns.UI_GetBorderStrokeColor = ThemeAPI.GetBorderStrokeColor
 
 --- Six-digit RRGGBB for `|cff` concatenation (no prefix).
 ---@param role string
 ---@return string
-local function GetTextRoleHexRaw(role)
-    local r, g, b = ResolveTextRoleRGBA(role)
+function ThemeAPI.GetTextRoleHexRaw(role)
+    local r, g, b = ThemeAPI.ResolveTextRoleRGBA(role)
     return format("%02x%02x%02x", r * 255, g * 255, b * 255)
 end
-ns.UI_GetTextRoleHexRaw = GetTextRoleHexRaw
+ns.UI_GetTextRoleHexRaw = ThemeAPI.GetTextRoleHexRaw
 
 --- Live RGBA for a text role (tooltip lines, GameTooltip hints).
 ---@param role string
 ---@return number r, number g, number b, number a
-local function GetTextRoleRGB(role)
-    return ResolveTextRoleRGBA(role)
+function ThemeAPI.GetTextRoleRGB(role)
+    return ThemeAPI.ResolveTextRoleRGBA(role)
 end
-ns.UI_GetTextRoleRGB = GetTextRoleRGB
+ns.UI_GetTextRoleRGB = ThemeAPI.GetTextRoleRGB
 
 --- GameTooltip line — Blizzard tooltip keeps dark chrome; white/grey ink (not theme role ladder).
 ---@param tooltip GameTooltip
@@ -1087,44 +1157,44 @@ end
 
 --- Tooltip card shell — matches elevated tab cards (`bgCard` + accent border via ApplyVisuals).
 ---@return table rgba bg, table rgba border
-local function GetTooltipShellBackdrop()
+function ThemeAPI.GetTooltipShellBackdrop()
     local c = COLORS
     local bg = c.bgCard or c.bgLight or c.bg
-    local border = GetAccentBorderRGBA(0.55)
+    local border = ThemeAPI.GetAccentBorderRGBA(0.55)
     return { bg[1], bg[2], bg[3], bg[4] or 0.98 }, border
 end
-ns.UI_GetTooltipShellBackdrop = GetTooltipShellBackdrop
+ns.UI_GetTooltipShellBackdrop = ThemeAPI.GetTooltipShellBackdrop
 
 --- Custom tooltip title (achievement/plan names): semantic gold in light, WoW gold in dark.
 ---@return number r, number g, number b, number a
-local function GetTooltipTitleColor()
+function ThemeAPI.GetTooltipTitleColor()
     if IsLightModeEnabled() then
-        return GetSemanticGoldColor()
+        return ThemeAPI.GetSemanticGoldColor()
     end
     return 1, 0.82, 0, 1
 end
-ns.UI_GetTooltipTitleColor = GetTooltipTitleColor
+ns.UI_GetTooltipTitleColor = ThemeAPI.GetTooltipTitleColor
 
 --- Tooltip label column (Points:, Source:, etc.).
 ---@return number r, number g, number b, number a
-local function GetTooltipLabelColor()
-    return GetTextRoleRGB("Muted")
+function ThemeAPI.GetTooltipLabelColor()
+    return ThemeAPI.GetTextRoleRGB("Muted")
 end
-ns.UI_GetTooltipLabelColor = GetTooltipLabelColor
+ns.UI_GetTooltipLabelColor = ThemeAPI.GetTooltipLabelColor
 
 --- Tooltip body / description lines.
 ---@return number r, number g, number b, number a
-local function GetTooltipBodyColor()
-    return GetTextRoleRGB("Normal")
+function ThemeAPI.GetTooltipBodyColor()
+    return ThemeAPI.GetTextRoleRGB("Normal")
 end
-ns.UI_GetTooltipBodyColor = GetTooltipBodyColor
+ns.UI_GetTooltipBodyColor = ThemeAPI.GetTooltipBodyColor
 
 --- Tooltip secondary note lines.
 ---@return number r, number g, number b, number a
-local function GetTooltipDescColor()
-    return GetTextRoleRGB("Muted")
+function ThemeAPI.GetTooltipDescColor()
+    return ThemeAPI.GetTextRoleRGB("Muted")
 end
-ns.UI_GetTooltipDescColor = GetTooltipDescColor
+ns.UI_GetTooltipDescColor = ThemeAPI.GetTooltipDescColor
 
 --- Remap Blizzard GameTooltip / C_TooltipInfo line RGB for custom tooltip surfaces (light mode only).
 --- Preserves saturated quality/stat hues; near-white/grey/gold become theme text roles.
@@ -1132,7 +1202,7 @@ ns.UI_GetTooltipDescColor = GetTooltipDescColor
 ---@param g number|nil
 ---@param b number|nil
 ---@return number r, number g, number b
-local function RemapGameTooltipLineColor(r, g, b)
+function ThemeAPI.RemapGameTooltipLineColor(r, g, b)
     if not IsLightModeEnabled() then
         return tonumber(r) or 1, tonumber(g) or 1, tonumber(b) or 1
     end
@@ -1144,130 +1214,156 @@ local function RemapGameTooltipLineColor(r, g, b)
 
     if lum >= 0.78 and sat < 0.18 then
         if lum >= 0.88 then
-            return GetTextRoleRGB("Bright")
+            return ThemeAPI.GetTextRoleRGB("Bright")
         end
-        return GetTextRoleRGB("Muted")
+        return ThemeAPI.GetTextRoleRGB("Muted")
     end
 
     if r >= 0.72 and g >= 0.58 and b <= 0.48 and r >= g and g >= b then
-        return GetSemanticGoldColor()
+        return ThemeAPI.GetSemanticGoldColor()
     end
 
     if lum >= 0.45 and lum < 0.78 and sat < 0.12 then
-        return GetTextRoleRGB("Dim")
+        return ThemeAPI.GetTextRoleRGB("Dim")
     end
 
     return r, g, b
 end
-ns.UI_RemapGameTooltipLineColor = RemapGameTooltipLineColor
+ns.UI_RemapGameTooltipLineColor = ThemeAPI.RemapGameTooltipLineColor
 
 --- Stack/count column on item and storage rows (yellow in dark; amber on light).
 ---@return string `|cffrrggbb` prefix (no closing `|r`)
-local function GetStackCountHex()
+function ThemeAPI.GetStackCountHex()
     if IsLightModeEnabled() then
-        local r, g, b = GetSemanticGoldColor()
+        local r, g, b = ThemeAPI.GetSemanticGoldColor()
         return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
     end
     return "|cffffcc00"
 end
-ns.UI_GetStackCountHex = GetStackCountHex
+ns.UI_GetStackCountHex = ThemeAPI.GetStackCountHex
 
 ---@param count number|nil
 ---@return string
-local function FormatStackCountMarkup(count)
+function ThemeAPI.FormatStackCountMarkup(count)
     local n = count or 1
     local formatted = (ns.UI_FormatNumber and ns.UI_FormatNumber(n)) or tostring(n)
-    return GetStackCountHex() .. formatted .. "|r"
+    return ThemeAPI.GetStackCountHex() .. formatted .. "|r"
 end
-ns.UI_FormatStackCountMarkup = FormatStackCountMarkup
+ns.UI_FormatStackCountMarkup = ThemeAPI.FormatStackCountMarkup
 
 --- Secondary info lines (item ID, source hints) — theme-aware blue.
 ---@return number r, number g, number b, number a
-local function GetSemanticInfoColor()
+function ThemeAPI.GetSemanticInfoColor()
     if IsLightModeEnabled() then
         local r, g, b = AdjustRGBForLightOutline(0.08, 0.34, 0.58)
         return r, g, b, 1
     end
     return 0.4, 0.8, 1, 1
 end
-ns.UI_GetSemanticInfoColor = GetSemanticInfoColor
+ns.UI_GetSemanticInfoColor = ThemeAPI.GetSemanticInfoColor
 
 --- `|cffrrggbb` prefix for semantic info / source labels.
 ---@return string
-local function GetSemanticInfoHex()
-    local r, g, b = GetSemanticInfoColor()
+function ThemeAPI.GetSemanticInfoHex()
+    local r, g, b = ThemeAPI.GetSemanticInfoColor()
     return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
 end
-ns.UI_GetSemanticInfoHex = GetSemanticInfoHex
+ns.UI_GetSemanticInfoHex = ThemeAPI.GetSemanticInfoHex
 
 --- Collection stat accent — battle pets (theme-aware magenta).
 ---@return number r, number g, number b, number a
-local function GetSemanticPetColor()
+function ThemeAPI.GetSemanticPetColor()
     if IsLightModeEnabled() then
         local r, g, b = AdjustRGBForLightOutline(0.62, 0.14, 0.42)
         return r, g, b, 1
     end
     return 1, 0.41, 0.71, 1
 end
-ns.UI_GetSemanticPetColor = GetSemanticPetColor
+ns.UI_GetSemanticPetColor = ThemeAPI.GetSemanticPetColor
 
 ---@return string
-local function GetSemanticPetHex()
-    local r, g, b = GetSemanticPetColor()
+function ThemeAPI.GetSemanticPetHex()
+    local r, g, b = ThemeAPI.GetSemanticPetColor()
     return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
 end
-ns.UI_GetSemanticPetHex = GetSemanticPetHex
+ns.UI_GetSemanticPetHex = ThemeAPI.GetSemanticPetHex
 
 --- Collection stat accent — toys (theme-aware purple).
 ---@return number r, number g, number b, number a
-local function GetSemanticToyColor()
+function ThemeAPI.GetSemanticToyColor()
     if IsLightModeEnabled() then
         local r, g, b = AdjustRGBForLightOutline(0.48, 0.18, 0.58)
         return r, g, b, 1
     end
     return 1, 0.4, 1, 1
 end
-ns.UI_GetSemanticToyColor = GetSemanticToyColor
+ns.UI_GetSemanticToyColor = ThemeAPI.GetSemanticToyColor
 
 ---@return string
-local function GetSemanticToyHex()
-    local r, g, b = GetSemanticToyColor()
+function ThemeAPI.GetSemanticToyHex()
+    local r, g, b = ThemeAPI.GetSemanticToyColor()
     return format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
 end
-ns.UI_GetSemanticToyHex = GetSemanticToyHex
+ns.UI_GetSemanticToyHex = ThemeAPI.GetSemanticToyHex
 
 --- Section / collapsible header accent border (border ladder + subtle accent, not full chroma wash).
 ---@return number r, number g, number b, number a
-local function GetSectionHeaderBorderRGBA()
+function ThemeAPI.GetSectionHeaderBorderRGBA()
     local ac = COLORS.accent or { 0.4, 0.2, 0.58 }
     return ac[1], ac[2], ac[3], 0.45
 end
-ns.UI_GetSectionHeaderBorderRGBA = GetSectionHeaderBorderRGBA
+ns.UI_GetSectionHeaderBorderRGBA = ThemeAPI.GetSectionHeaderBorderRGBA
 
 --- Horizontal sub-tab strip: inactive border RGBA (theme accent stroke).
 ---@param accent table|nil rgb triple
 ---@return number r, number g, number b, number a
-local function GetSubTabInactiveBorderRGBA(accent)
+function ThemeAPI.GetSubTabInactiveBorderRGBA(accent)
     local ac = accent or COLORS.accent or { 0.40, 0.20, 0.58 }
     local a = IsLightModeEnabled() and 0.85 or 0.65
     return ac[1], ac[2], ac[3], a
 end
-ns.UI_GetSubTabInactiveBorderRGBA = GetSubTabInactiveBorderRGBA
+ns.UI_GetSubTabInactiveBorderRGBA = ThemeAPI.GetSubTabInactiveBorderRGBA
 
 --- Search / filter / stats strip chrome: transparent fill + accent border only.
 ---@return table rgba bg, table rgba border
-local function GetSearchBoxChromeColors()
+function ThemeAPI.GetSearchBoxChromeColors()
     local ac = COLORS.accent or { 0.40, 0.20, 0.58 }
-    local br, bgr, bb, ba = GetSubTabInactiveBorderRGBA(ac)
+    local br, bgr, bb, ba = ThemeAPI.GetSubTabInactiveBorderRGBA(ac)
     return { 0, 0, 0, 0 }, { br, bgr, bb, ba }
 end
-ns.UI_GetSearchBoxChromeColors = GetSearchBoxChromeColors
+ns.UI_GetSearchBoxChromeColors = ThemeAPI.GetSearchBoxChromeColors
 
 --- Apply search/stats toolbar chrome with live theme refresh hooks (border accent only).
 ---@param frame Frame
-local function ApplySearchBoxChrome(frame)
+---@param opts table|nil `{ editBoxHost = true }` classic: transparent shell when child uses InputBoxTemplate
+function ThemeAPI.ApplySearchBoxChrome(frame, opts)
     if not frame then return end
+    if type(opts) == "table" and opts.editBoxHost then
+        frame._wnSearchEditBoxHost = true
+    end
     frame._wnSearchChromeBorderOnly = true
+    if IsClassicModeEnabled() then
+        if frame._wnSearchEditBoxHost and ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(frame)
+        elseif ns.UI_ApplyClassicPaneBackdrop then
+            local bg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.surfaceHeaderChrome)
+                or (COLORS and (COLORS.surfaceHeaderChrome or COLORS.bgCard))
+            ns.UI_ApplyClassicPaneBackdrop(frame, bg)
+        elseif ns.UI_ApplyClassicThinBorderChrome then
+            local bg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.surfaceHeaderChrome)
+                or (COLORS and (COLORS.surfaceHeaderChrome or COLORS.bgCard))
+            ns.UI_ApplyClassicThinBorderChrome(frame, bg)
+        elseif ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(frame)
+        end
+        if not frame._borderRegistered and ns.BORDER_REGISTRY then
+            frame._borderRegistered = true
+            table.insert(ns.BORDER_REGISTRY, frame)
+        end
+        frame._borderType = "border"
+        frame._bgType = "searchChrome"
+        return
+    end
     if ns.UI_ApplyAccentControlChrome then
         ns.UI_ApplyAccentControlChrome(frame, {
             edgeSize = 2,
@@ -1276,7 +1372,7 @@ local function ApplySearchBoxChrome(frame)
         })
         frame._bgAlpha = 0
     elseif ApplyVisuals then
-        local bg, border = GetSearchBoxChromeColors()
+        local bg, border = ThemeAPI.GetSearchBoxChromeColors()
         ApplyVisuals(frame, bg, border)
         frame._borderType = "accent"
         frame._bgType = "searchChrome"
@@ -1284,47 +1380,47 @@ local function ApplySearchBoxChrome(frame)
         frame._bgAlpha = 0
     end
 end
-ns.UI_ApplySearchBoxChrome = ApplySearchBoxChrome
+ns.UI_ApplySearchBoxChrome = ThemeAPI.ApplySearchBoxChrome
 
 --- Horizontal sub-tab strip: active fill RGBA.
 ---@param accent table|nil rgb triple
 ---@return number r, number g, number b, number a
-local function GetSubTabActiveBackdropRGBA(accent)
+function ThemeAPI.GetSubTabActiveBackdropRGBA(accent)
     local a = accent or COLORS.accent
     if IsLightModeEnabled() then
         local base = COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
-        local tint = BlendColors(base, a, 0.20)
+        local tint = ThemeAPI.BlendColors(base, a, 0.20)
         return tint[1], tint[2], tint[3], tint[4] or 0.98
     end
     return a[1] * 0.3, a[2] * 0.3, a[3] * 0.3, 1
 end
-ns.UI_GetSubTabActiveBackdropRGBA = GetSubTabActiveBackdropRGBA
+ns.UI_GetSubTabActiveBackdropRGBA = ThemeAPI.GetSubTabActiveBackdropRGBA
 
 --- Semantic negative (withdraw, deficits) — darker on light surfaces.
 ---@return number r, number g, number b, number a
-local function GetSemanticRedColor()
+function ThemeAPI.GetSemanticRedColor()
     if IsLightModeEnabled() then
         return 0.78, 0.18, 0.18, 1
     end
     local r = COLORS.red
     return r[1], r[2], r[3], r[4] or 1
 end
-ns.UI_GetSemanticRedColor = GetSemanticRedColor
+ns.UI_GetSemanticRedColor = ThemeAPI.GetSemanticRedColor
 
 --- Semantic caution / withdraw-orange (money log withdraw column).
 ---@return number r, number g, number b, number a
-local function GetSemanticOrangeColor()
+function ThemeAPI.GetSemanticOrangeColor()
     if IsLightModeEnabled() then
         return 0.72, 0.38, 0.06, 1
     end
     return 1, 0.65, 0.25, 1
 end
-ns.UI_GetSemanticOrangeColor = GetSemanticOrangeColor
+ns.UI_GetSemanticOrangeColor = ThemeAPI.GetSemanticOrangeColor
 
 --- Items tab stats bar segment colors (semantic by sub-tab; readable in light mode).
 ---@param context string "warband" | "guild" | "inventory" | "personal"
 ---@return string six-digit RRGGBB (no `|cff`)
-local function GetItemsContextStatHex(context)
+function ThemeAPI.GetItemsContextStatHex(context)
     if IsLightModeEnabled() then
         local ac = COLORS.accent or { 0.45, 0.35, 0.72 }
         return format("%02x%02x%02x", ac[1] * 255, ac[2] * 255, ac[3] * 255)
@@ -1336,25 +1432,25 @@ local function GetItemsContextStatHex(context)
     end
     return "ffffff"
 end
-ns.UI_GetItemsContextStatHex = GetItemsContextStatHex
+ns.UI_GetItemsContextStatHex = ThemeAPI.GetItemsContextStatHex
 
 --- Floating toast / dialog text shadow (lighter in light mode).
 ---@param strength number|nil multiplier on alpha (default 1)
 ---@return number r, number g, number b, number a
-local function GetTextShadowRGBA(strength)
+function ThemeAPI.GetTextShadowRGBA(strength)
     local s = strength or 1
     if IsLightModeEnabled() then
         return 0.15, 0.15, 0.18, 0.28 * s
     end
     return 0, 0, 0, 0.9 * s
 end
-ns.UI_GetTextShadowRGBA = GetTextShadowRGBA
+ns.UI_GetTextShadowRGBA = ThemeAPI.GetTextShadowRGBA
 
 -- Apply theme colors on initial load
-UpdateColorsFromTheme()
+ThemeAPI.UpdateColorsFromTheme()
 
 --- Wire semantic aliases to live color rows (called after any in-place COLORS mutation).
-local function SyncSemanticColorAliases()
+function ThemeAPI.SyncSemanticColorAliases()
     COLORS.surface = COLORS.bg
     COLORS.surfaceElevated = COLORS.bgLight
     COLORS.surfaceCard = COLORS.bgCard
@@ -1373,13 +1469,13 @@ local function SyncSemanticColorAliases()
     end
 end
 
-local function SyncThemeSurfaceColors()
-    UpdateColorsFromTheme()
-    SyncSemanticColorAliases()
+function ThemeAPI.SyncThemeSurfaceColors()
+    ThemeAPI.UpdateColorsFromTheme()
+    ThemeAPI.SyncSemanticColorAliases()
 end
-ns.UI_SyncThemeSurfaceColors = SyncThemeSurfaceColors
+ns.UI_SyncThemeSurfaceColors = ThemeAPI.SyncThemeSurfaceColors
 
-SyncSemanticColorAliases()
+ThemeAPI.SyncSemanticColorAliases()
 ns.UI_COLORS = COLORS -- Export immediately
 
 --- Canonical main window tab sequence (indexed hot paths avoid pairs() on nav refresh).
@@ -1391,6 +1487,7 @@ ns.UI_MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
     "currency",
     "reputations",
     "pve",
+    "pvp",
     "professions",
     "collections",
     "plans",
@@ -1417,14 +1514,14 @@ ns.PLAN_UI_COLORS = {
     incompleteRgb = {1, 1, 1},
 }
 
-local function SyncPlanUIColors()
+function ThemeAPI.SyncPlanUIColors()
     local p = ns.PLAN_UI_COLORS
     if not p then return end
-    local brightHex = GetTextRoleHex("Bright")
-    local mutedHex = GetTextRoleHex("Muted")
-    local dimHex = GetTextRoleHex("Dim")
+    local brightHex = ThemeAPI.GetTextRoleHex("Bright")
+    local mutedHex = ThemeAPI.GetTextRoleHex("Muted")
+    local dimHex = ThemeAPI.GetTextRoleHex("Dim")
     local goldHex = ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex() or "|cffffcc00"
-    local greenHex = ns.UI_RGBToHex and ns.UI_RGBToHex(GetSemanticGreenColor()) or "|cff44ff44"
+    local greenHex = ns.UI_RGBToHex and ns.UI_RGBToHex(ThemeAPI.GetSemanticGreenColor()) or "|cff44ff44"
     p.title = brightHex
     p.incomplete = brightHex
     p.body = brightHex
@@ -1447,7 +1544,7 @@ local function SyncPlanUIColors()
         p.incompleteRgb = { 1, 1, 1 }
     end
 end
-SyncPlanUIColors()
+ThemeAPI.SyncPlanUIColors()
 
 --- Live plan card markup color (`ns.PLAN_UI_COLORS` key).
 ---@param key string
@@ -1554,7 +1651,7 @@ local UI_SPACING = {
     --- Max width for "Bag N" / "Tab N" / localized bank strings; name column ends at `LEFT` of this.
     LIST_ROW_LOCATION_MAX_WIDTH = 120,
     
-    --- Row striping (synced from COLORS.surfaceRow* in SyncSemanticColorAliases).
+    --- Row striping (synced from COLORS.surfaceRow* in ThemeAPI.SyncSemanticColorAliases).
     ROW_COLOR_EVEN = {0.112, 0.112, 0.138, 0.96},
     ROW_COLOR_ODD = {0.090, 0.090, 0.112, 0.96},
     
@@ -1687,9 +1784,19 @@ local UI_SPACING = {
     MAIN_SHELL = {
         HEADER_BAR_HEIGHT = 40, -- also Characters tab stacked Total Gold / Token text column (`CharactersTotalGoldTokenStackTextHeight`)
         NAV_BAR_HEIGHT = 36, -- also Plans Tracker top chrome (`HEADER_HEIGHT` in `PlansTrackerWindow.lua`)
-        --- Inset from root shell edge to body chrome (`CreateMainWindow`). Horizontal 0 = no side gutters on `BackdropTemplate`-less fill.
+        --- Inset from root shell edge to interior chrome (`CreateMainWindow` / `UI_ApplyMainShellLayout`).
+        --- Dark/light: 0 full-bleed. Classic layout uses `UI_GetMainShellFrameInsets()` dialog tile insets instead.
         FRAME_CONTENT_INSET = 0,
         FRAME_CONTENT_INSET_BOTTOM = 4,
+        INTERIOR_INSET_LEFT = 0,
+        INTERIOR_INSET_RIGHT = 0,
+        INTERIOR_INSET_TOP = 0,
+        INTERIOR_INSET_BOTTOM = 4,
+        --- Classic Blizzard dialog backdrop tile insets (same values as `UI_CLASSIC_DIALOG_BACKDROP.insets`; used by classic layout via `UI_GetMainShellFrameInsets`).
+        CLASSIC_DIALOG_INSET_LEFT = 11,
+        CLASSIC_DIALOG_INSET_RIGHT = 12,
+        CLASSIC_DIALOG_INSET_TOP = 12,
+        CLASSIC_DIALOG_INSET_BOTTOM = 11,
         --- Corner resize grip (main window bottom-right; sits above footer chrome).
         RESIZE_GRIP_SIZE = 18,
         RESIZE_GRIP_INSET_X = 4,
@@ -1716,7 +1823,7 @@ local UI_SPACING = {
         NAV_RAIL_WIDTH_MAX = 192,
         NAV_RAIL_CONTENT_GAP = 10,
         NAV_RAIL_PAD = 6,
-        NAV_RAIL_TOP_INSET = 8,
+        NAV_RAIL_TOP_INSET = 0,
         NAV_RAIL_TAB_V_GAP = 4,
         NAV_RAIL_TAB_HEIGHT = 38,
         NAV_RAIL_LABEL_PAD_H = 6,
@@ -1746,6 +1853,7 @@ local UI_SPACING = {
         CONTENT_PAD_X = 12,
         CONTENT_PAD_TOP = 0,
         CONTENT_GAP_ABOVE_FOOTER = 0,
+        FOOTER_HEIGHT = 26,
         FOOTER_BOTTOM_OFFSET = 4,
         CONTENT_SECTION_GAP = 12,
         SURFACE_HAIRLINE_ALPHA = 0.40,
@@ -1833,6 +1941,13 @@ function ns.UI_GetVerticalScrollbarLaneReserve()
     local col = (type(h.scrollbarColumnWidth) == "number" and h.scrollbarColumnWidth > 0) and h.scrollbarColumnWidth or 26
     local gap = (type(h.scrollGap) == "number" and h.scrollGap >= 0) and h.scrollGap or 2
     return col + gap
+end
+
+--- Main / settings nav rail tab button height (single source for UIPanelButtonTemplate rows).
+---@return number
+function ns.UI_GetNavRailTabHeight()
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    return shell.NAV_RAIL_TAB_HEIGHT or 38
 end
 
 -- PACKAGED UI ICONS (Media/*.tga — vertex-tinted stroke art)
@@ -2218,6 +2333,10 @@ ns.UI_PLANS_CARD_METRICS = {
     todoBottomPad = 8,
     todoMetaRightReserve = 88,
     todoChevronInset = 6,
+    --- Classic To-Do: dialog insets shift icon/action alignment vs modern accent cards.
+    classicTodoIconLeft = 10,
+    classicTodoIconRowTop = 6,
+    classicTodoIconTexInset = 3,
     --- Browse mounts/pets/etc. grid: same icon/badge feel as To-Do; fixed card height for two-column grid
     browseCardHeight = PlansMetric(126),
     --- Vertical gap between To-Do List cards (Currency/Reputation row-gap parity).
@@ -2230,6 +2349,16 @@ ns.UI_PLANS_CARD_METRICS = {
     browseRightRailW = PlansMetric(52),
     plansChevronSize = PlansMetric(18),
 }
+
+--- To-Do row icon anchor overrides (Classic dialog chrome needs tighter inset).
+---@return number iconLeft, number iconTopNeg
+function ns.UI_PlansTodoIconAnchors()
+    local PCM = ns.UI_PLANS_CARD_METRICS or {}
+    if IsClassicModeEnabled() then
+        return PCM.classicTodoIconLeft or 10, -(PCM.classicTodoIconRowTop or 6)
+    end
+    return 8, -(PCM.todoIconRowTop or 8)
+end
 
 --- Horizontal inset for To-Do tab search bar and card grids (must match).
 function ns.UI_PlansContentPadH()
@@ -2462,10 +2591,10 @@ local function ResolveRegistryBackdrop(frame, accentDarkColor, bgColor)
     if bgType == "searchChrome" then
         return 0, 0, 0, 0
     elseif bgType == "controlChrome" then
-        local c = GetControlChromeBackdrop()
+        local c = ThemeAPI.GetControlChromeBackdrop()
         return c[1], c[2], c[3], c[4] or bgAlpha
     elseif bgType == "controlChromeHover" then
-        local c = GetControlChromeHoverBackdrop()
+        local c = ThemeAPI.GetControlChromeHoverBackdrop()
         return c[1], c[2], c[3], c[4] or bgAlpha
     elseif bgType == "externalShell" and ns.UI_GetExternalShellBackdrop then
         local c = ns.UI_GetExternalShellBackdrop()
@@ -2479,12 +2608,45 @@ local function ResolveRegistryBackdrop(frame, accentDarkColor, bgColor)
     return bgColor[1], bgColor[2], bgColor[3], bgAlpha
 end
 
+local SHELL_BG_OPACITY_MIN = 0.2
+local SHELL_BG_OPACITY_MAX = 1.0
+
+local function GetShellBackgroundOpacity()
+    local addon = _G.WarbandNexus or ns.WarbandNexus
+    local raw = addon and addon.db and addon.db.profile and addon.db.profile.shellBackgroundOpacity
+    if type(raw) ~= "number" then
+        return SHELL_BG_OPACITY_MAX
+    end
+    return math.max(SHELL_BG_OPACITY_MIN, math.min(SHELL_BG_OPACITY_MAX, raw))
+end
+
+--- Flat shell fill alpha from the opacity slider (0.2-1.0). At 100% the fill is fully opaque.
+---@return number
+local function ResolveShellBackgroundFillAlpha()
+    return GetShellBackgroundOpacity()
+end
+
+--- Anchor flat shell fill inside classic dialog insets (no bleed under border tile).
+---@param frame Frame
+---@param tex Texture
+local function SyncMainShellFlatFillAnchors(frame, tex)
+    if not frame or not tex then return end
+    tex:ClearAllPoints()
+    if IsClassicModeEnabled() and ns.UI_GetMainShellFrameInsets then
+        local insetL, insetR, insetT, insetB = ns.UI_GetMainShellFrameInsets()
+        tex:SetPoint("TOPLEFT", frame, "TOPLEFT", insetL, -insetT)
+        tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -insetR, insetB)
+    else
+        tex:SetAllPoints(frame)
+    end
+end
+
 -- Refresh COLORS table from database (in-place, zero allocation)
 local function RefreshColors()
     -- Update theme-derived colors in-place
-    UpdateColorsFromTheme()
-    SyncSemanticColorAliases()
-    SyncPlanUIColors()
+    ThemeAPI.UpdateColorsFromTheme()
+    ThemeAPI.SyncSemanticColorAliases()
+    ThemeAPI.SyncPlanUIColors()
     if ns.VaultButton and ns.VaultButton.SyncEasyAccessThemeInk then
         ns.VaultButton.SyncEasyAccessThemeInk()
     end
@@ -2493,11 +2655,23 @@ local function RefreshColors()
 
     local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
     local sc = mf and mf.scrollChild
-    if sc and ns.UI_EnsureScrollChildViewportFill then
-        ns.UI_EnsureScrollChildViewportFill(sc)
-    end
-    if sc and ns.UI_RefreshScrollAnnexLayout then
-        ns.UI_RefreshScrollAnnexLayout(sc)
+    if sc and not IsClassicModeEnabled() then
+        if ns.UI_EnsureScrollChildViewportFill then
+            ns.UI_EnsureScrollChildViewportFill(sc)
+        end
+        if ns.UI_RefreshScrollAnnexLayout then
+            ns.UI_RefreshScrollAnnexLayout(sc)
+        end
+    elseif sc and IsClassicModeEnabled() then
+        if sc._wnViewportCanvasFill and sc._wnViewportCanvasFill.Hide then
+            sc._wnViewportCanvasFill:Hide()
+        end
+        if sc._wnScrollBottomFill and sc._wnScrollBottomFill.Hide then
+            sc._wnScrollBottomFill:Hide()
+        end
+        if sc._wnResultsAnnexSheet and sc._wnResultsAnnexSheet.Hide then
+            sc._wnResultsAnnexSheet:Hide()
+        end
     end
     
     -- Safety check (use namespace reference)
@@ -2508,7 +2682,7 @@ local function RefreshColors()
     
     local accentColor = COLORS.accent
     local accentDarkColor = COLORS.accentDark
-    local borderColor = GetBorderStrokeColor()
+    local borderColor = ThemeAPI.GetBorderStrokeColor()
     local bgColor = COLORS.bg
     local updated = 0
     
@@ -2518,12 +2692,29 @@ local function RefreshColors()
         
         if not frame then
             table.remove(ns.BORDER_REGISTRY, i)
+        elseif frame._wnBlizzardChrome and IsClassicModeEnabled() then
+            if frame._wnClassicThinBorder and frame.SetBackdropColor and frame._wnThinBorderBg then
+                local b = frame._wnThinBorderBg
+                frame:SetBackdropColor(b[1], b[2], b[3], b[4] or 1)
+                local bc = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.border)
+                    or COLORS.borderLight or borderColor
+                if frame.SetBackdropBorderColor and bc then
+                    frame:SetBackdropBorderColor(bc[1], bc[2], bc[3], 1)
+                end
+            elseif frame._wnSectionHeaderPanelBg and frame.SetBackdropColor then
+                local b = frame._wnSectionHeaderPanelBg
+                frame:SetBackdropColor(b[1], b[2], b[3], b[4] or 1)
+                if frame.SetBackdropBorderColor then
+                    frame:SetBackdropBorderColor(1, 1, 1, 1)
+                end
+            end
+            updated = updated + 1
         elseif frame.BorderTop then
             -- 4-texture border (includes main shell accent frame).
             local targetColor
             local alpha = frame._borderAlpha or 0.6
             if frame._borderType == "sectionHeader" then
-                local sr, sg, sb, sa = GetSectionHeaderBorderRGBA()
+                local sr, sg, sb, sa = ThemeAPI.GetSectionHeaderBorderRGBA()
                 targetColor = { sr, sg, sb }
                 alpha = sa or alpha
             else
@@ -2538,7 +2729,8 @@ local function RefreshColors()
             if frame._wnShellFill then
                 local shellBg = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
                     or bgColor
-                frame._wnShellFill:SetColorTexture(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+                local fillAlpha = ResolveShellBackgroundFillAlpha()
+                frame._wnShellFill:SetColorTexture(shellBg[1], shellBg[2], shellBg[3], fillAlpha)
             end
 
             if frame._wnViewportAtlasUnderlay and ns.UI_RefreshViewportAtlasUnderlayTint then
@@ -2564,6 +2756,9 @@ local function RefreshColors()
 
             updated = updated + 1
         elseif frame._wnMainShellBackdrop and frame.SetBackdropBorderColor and frame.SetBackdropColor then
+            if frame._wnBlizzardChrome and IsClassicModeEnabled() then
+                updated = updated + 1
+            else
             -- Native BackdropTemplate shell (WarbandNexus root): tinted border + bg, no BorderTop quartet.
             local targetColor = (frame._borderType == "accent") and accentColor or borderColor
             local alpha = frame._borderAlpha or 0.9
@@ -2589,6 +2784,7 @@ local function RefreshColors()
             end
 
             updated = updated + 1
+            end
         elseif not frame.BorderTop then
             table.remove(ns.BORDER_REGISTRY, i)
         end
@@ -2598,7 +2794,7 @@ local function RefreshColors()
         local itemsHdr = WarbandNexus.UI.mainFrame._itemsFixedHeaderCache
         if itemsHdr and ns.UI_ApplySearchBoxChrome then
             if itemsHdr.searchBox then
-                ns.UI_ApplySearchBoxChrome(itemsHdr.searchBox.searchFrame or itemsHdr.searchBox)
+                ns.UI_ApplySearchBoxChrome(itemsHdr.searchBox.searchFrame or itemsHdr.searchBox, { editBoxHost = true })
             end
             if itemsHdr.statsBar then
                 ns.UI_ApplySearchBoxChrome(itemsHdr.statsBar)
@@ -2900,13 +3096,19 @@ ns.UI_RefreshAccentStripes = RefreshAccentStripes
 ---@param opts table|nil `{ edgeSize, borderAlpha, showRail, railWidth, bg }`
 function ns.UI_ApplyAccentControlChrome(frame, opts)
     if not frame then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then
+        return
+    end
+    if IsClassicModeEnabled() then
+        return
+    end
     opts = type(opts) == "table" and opts or {}
     local ac = COLORS.accent or { 0.40, 0.20, 0.58 }
     local ar, ag, ab, aa
     if opts.bg then
         ar, ag, ab, aa = opts.bg[1], opts.bg[2], opts.bg[3], opts.bg[4] or 1
     else
-        ar, ag, ab, aa = GetSubTabActiveBackdropRGBA(ac)
+        ar, ag, ab, aa = ThemeAPI.GetSubTabActiveBackdropRGBA(ac)
     end
     local edge = opts.edgeSize or 2
     local borderA = opts.borderAlpha or 0.72
@@ -2959,6 +3161,22 @@ local MAIN_SHELL_BORDER_QUARTET_KEYS = { "BorderTop", "BorderBottom", "BorderLef
 -- Border sits INSIDE the frame, on top of backdrop, below content
 local function ApplyVisuals(frame, bgColor, borderColor)
     if not frame then return end
+
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then
+        return
+    end
+
+    -- Classic mode: 1px stroke (modern ApplyVisuals quartet parity) — not dialog-box on short frames.
+    if IsClassicModeEnabled() and ns.UI_ApplyClassicThinBorderChrome then
+        ns.UI_ApplyClassicThinBorderChrome(frame, bgColor)
+        if not frame._borderRegistered and ns.BORDER_REGISTRY then
+            frame._borderRegistered = true
+            table.insert(ns.BORDER_REGISTRY, frame)
+        end
+        frame._borderType = "border"
+        frame._bgType = "bg"
+        return
+    end
     
     -- Ensure registry exists (defensive, use namespace)
     if not ns.BORDER_REGISTRY then
@@ -3171,12 +3389,41 @@ local function HideFrameBorderQuartet(frame)
     end
 end
 
+--- Classic chrome opt-out: SharedWidgets_ClassicTheme.lua owns the canonical implementation.
+if not ns.UI_CanApplyCustomChrome then
+    function ns.UI_CanApplyCustomChrome(frame)
+        if not frame then return false end
+        if frame._wnBlizzardButton or frame._wnBlizzardChrome or frame._wnBlizzardScroll
+            or frame._wnBlizzardEditBox or frame._wnBlizzardSlider or frame._wnClassicIconWell then
+            return false
+        end
+        if frame._wnSkipCustomChrome then
+            return false
+        end
+        return true
+    end
+end
+
 --- Flat panel: WHITE8x8 fill only, no nested border textures.
 ---@param frame Frame
 ---@param bgColor table|nil
 ---@param opts table|nil `{ surfaceTier, bgType }`
 local function ApplyBorderlessSurface(frame, bgColor, opts)
     if not frame then return end
+
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then
+        return
+    end
+
+    if IsClassicModeEnabled() and ns.UI_ApplyClassicInteriorFlatFill then
+        ns.UI_ApplyClassicInteriorFlatFill(frame, bgColor or { 0, 0, 0, 0 })
+        if not frame._borderRegistered and ns.BORDER_REGISTRY then
+            frame._borderRegistered = true
+            table.insert(ns.BORDER_REGISTRY, frame)
+        end
+        return
+    end
+
     if not frame.SetBackdrop then
         Mixin(frame, BackdropTemplateMixin)
     end
@@ -3233,29 +3480,79 @@ end
 --- Root shell only (`WarbandNexusFrame`): full-bleed color fill — no `BackdropTemplate` / backdrop insets (avoids side gutters).
 local function ApplyMainWindowShellFill(frame, bgColor, borderColor)
     if not frame then return end
-    local c = bgColor or (COLORS and COLORS.bg) or { 0.042, 0.042, 0.055, 0.98 }
+
+    if IsClassicModeEnabled() and ns.UI_ApplyBlizzardDialogBackdrop then
+        local c = bgColor
+            or (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+            or (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bg)
+            or (COLORS and COLORS.bg)
+            or { 0.065, 0.065, 0.075, 1 }
+        local fillAlpha = ResolveShellBackgroundFillAlpha()
+        local tex = frame._wnShellFill
+        if not tex then
+            tex = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+            frame._wnShellFill = tex
+        end
+        SyncMainShellFlatFillAnchors(frame, tex)
+        tex:SetColorTexture(c[1], c[2], c[3], fillAlpha)
+        tex:Show()
+
+        local chrome = frame._wnClassicShellChrome
+        if not chrome then
+            chrome = CreateFrame("Frame", nil, frame)
+            frame._wnClassicShellChrome = chrome
+            chrome:SetAllPoints()
+            chrome:SetFrameLevel(math.max(1, (frame:GetFrameLevel() or 0) + 1))
+        end
+        chrome:Show()
+        -- Border chrome only: Blizzard dialog bg tile is semi-transparent; flat fill carries opacity.
+        ns.UI_ApplyBlizzardDialogBackdrop(chrome, { 1, 1, 1, 0 })
+        if frame._wnShellBorderOverlay and frame._wnShellBorderOverlay.Hide then
+            frame._wnShellBorderOverlay:Hide()
+        end
+        if frame.SetBackdrop then
+            pcall(frame.SetBackdrop, frame, nil)
+        end
+        frame._bgType = "bg"
+        frame._bgAlpha = fillAlpha
+        frame._wnMainShellBackdrop = true
+        frame._wnBorderlessSurface = true
+        if not frame._borderRegistered and ns.BORDER_REGISTRY then
+            frame._borderRegistered = true
+            table.insert(ns.BORDER_REGISTRY, frame)
+        end
+        return
+    end
+
+    if frame._wnClassicShellChrome and frame._wnClassicShellChrome.Hide then
+        frame._wnClassicShellChrome:Hide()
+    end
+
+    local c = bgColor or (COLORS and COLORS.bg) or { 0.042, 0.042, 0.055, 1 }
+    local fillAlpha = ResolveShellBackgroundFillAlpha()
     local tex = frame._wnShellFill
     if not tex then
         tex = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
         frame._wnShellFill = tex
-        tex:SetAllPoints()
     end
-    tex:SetColorTexture(c[1], c[2], c[3], c[4] or 0.98)
+    SyncMainShellFlatFillAnchors(frame, tex)
+    tex:SetColorTexture(c[1], c[2], c[3], fillAlpha)
     tex:Show()
     if frame.SetBackdrop then
         pcall(frame.SetBackdrop, frame, nil)
     end
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
     local borderA = shell.MAIN_SHELL_FRAME_BORDER_ALPHA or 1
-    local border = borderColor or GetAccentBorderRGBA(borderA)
+    local border = borderColor or ThemeAPI.GetAccentBorderRGBA(borderA)
     HideFrameBorderQuartet(frame)
     EnsureShellBorderOverlay(frame, border)
     frame._wnMainShellBackdrop = true
     frame._wnBorderlessSurface = true
     frame._bgType = "bg"
-    frame._bgAlpha = c[4] or 0.98
+    frame._bgAlpha = fillAlpha
 end
 
+ns.UI_GetShellBackgroundOpacity = GetShellBackgroundOpacity
 ns.UI_ApplyMainWindowShellBorderQuartet = ApplyMainWindowShellBorderQuartet
 
 --- Legacy name: routes to flat fill (no `BackdropTemplate`).
@@ -3302,36 +3599,74 @@ local function SubTabHoverBackdrop()
     return SubTabIdleBackdrop()
 end
 
---- Apply idle/active chrome for horizontal sub-tab buttons (theme-aware light/dark).
+--- Apply idle/active chrome for horizontal sub-tab buttons (theme-aware light/dark/classic).
 function ns.UI_ApplySubTabButtonVisuals(btn, isActive, accent)
     if not btn then return end
     local acc = accent or COLORS.accent or { 0.40, 0.20, 0.58 }
+    if btn._wnBlizzardButton then
+        if ns.UI_NormalizeBlizzardButtonChrome then
+            ns.UI_NormalizeBlizzardButtonChrome(btn)
+        elseif ns.UI_ApplyClassicNavTabActiveState then
+            ns.UI_ApplyClassicNavTabActiveState(btn, isActive)
+        end
+        if btn.activeBar and btn.activeBar.Hide then
+            btn.activeBar:Hide()
+        end
+        if btn._text then
+            if isActive then
+                if ns.UI_GetSemanticGoldColor then
+                    local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+                    btn._text:SetTextColor(gr, gg, gb)
+                else
+                    ns.UI_SetTextColorRole(btn._text, "Bright")
+                end
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(btn._text, true)
+                end
+            elseif btn.IsEnabled and btn:IsEnabled() then
+                ns.UI_SetTextColorRole(btn._text, "Muted")
+                if ns.UI_SetNavLabelFontStyle then
+                    ns.UI_SetNavLabelFontStyle(btn._text, false)
+                end
+            else
+                ns.UI_SetTextColorRole(btn._text, "Dim")
+            end
+        end
+        return
+    end
+    local canCustom = not ns.UI_CanApplyCustomChrome or ns.UI_CanApplyCustomChrome(btn)
     local updateBorder = ns.UI_UpdateBorderColor
     if isActive then
         local ar, ag, ab, aa
-        if GetSubTabActiveBackdropRGBA then
-            ar, ag, ab, aa = GetSubTabActiveBackdropRGBA(acc)
+        if ThemeAPI.GetSubTabActiveBackdropRGBA then
+            ar, ag, ab, aa = ThemeAPI.GetSubTabActiveBackdropRGBA(acc)
         else
             ar, ag, ab, aa = acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1
         end
-        ApplyVisuals(btn, { ar, ag, ab, aa }, { acc[1], acc[2], acc[3], 1 })
+        if canCustom and ApplyVisuals then
+            ApplyVisuals(btn, { ar, ag, ab, aa }, { acc[1], acc[2], acc[3], 1 })
+        end
         if btn._text then
             ns.UI_SetTextColorRole(btn._text, "Bright")
             if ns.UI_SetNavLabelFontStyle then
                 ns.UI_SetNavLabelFontStyle(btn._text, true)
             end
         end
-        if updateBorder then updateBorder(btn, { acc[1], acc[2], acc[3], 1 }) end
-        if btn.SetBackdropColor then btn:SetBackdropColor(ar, ag, ab, aa) end
+        if canCustom then
+            if updateBorder then updateBorder(btn, { acc[1], acc[2], acc[3], 1 }) end
+            if btn.SetBackdropColor then btn:SetBackdropColor(ar, ag, ab, aa) end
+        end
     else
         local idle = SubTabIdleBackdrop()
         local br, bgr, bbb, bba
-        if GetSubTabInactiveBorderRGBA then
-            br, bgr, bbb, bba = GetSubTabInactiveBorderRGBA(acc)
+        if ThemeAPI.GetSubTabInactiveBorderRGBA then
+            br, bgr, bbb, bba = ThemeAPI.GetSubTabInactiveBorderRGBA(acc)
         else
             br, bgr, bbb, bba = acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 0.6
         end
-        ApplyVisuals(btn, idle, { br, bgr, bbb, bba })
+        if canCustom and ApplyVisuals then
+            ApplyVisuals(btn, idle, { br, bgr, bbb, bba })
+        end
         if btn._text then
             if btn.IsEnabled and btn:IsEnabled() then
                 ns.UI_SetTextColorRole(btn._text, "Muted")
@@ -3342,8 +3677,10 @@ function ns.UI_ApplySubTabButtonVisuals(btn, isActive, accent)
                 ns.UI_SetTextColorRole(btn._text, "Dim")
             end
         end
-        if updateBorder then updateBorder(btn, { br, bgr, bbb, bba }) end
-        if btn.SetBackdropColor then btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1) end
+        if canCustom then
+            if updateBorder then updateBorder(btn, { br, bgr, bbb, bba }) end
+            if btn.SetBackdropColor then btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1) end
+        end
     end
 end
 
@@ -3425,11 +3762,19 @@ function ns.UI_CreateSubTabBar(parent, opts)
             currentRow = currentRow + 1
         end
 
-        local btn = Factory:CreateButton(barHost, btnWidth, btnHeight)
+        local btn
+        if IsClassicModeEnabled() then
+            btn = CreateFrame("Button", nil, barHost, "UIPanelButtonTemplate")
+            btn:SetSize(btnWidth, btnHeight)
+            btn._wnBlizzardButton = true
+        else
+            btn = Factory:CreateButton(barHost, btnWidth, btnHeight)
+        end
+        if not btn then return nil end
         btn:SetPoint("TOPLEFT", barHost, "TOPLEFT", xPos, -(currentRow * (btnHeight + L.btnSpacing)))
         btn._tabKey = tabKey
 
-        if Factory.ApplyHighlight then
+        if not btn._wnBlizzardButton and Factory.ApplyHighlight then
             Factory:ApplyHighlight(btn)
         end
 
@@ -3440,6 +3785,9 @@ function ns.UI_CreateSubTabBar(parent, opts)
         activeBar:SetColorTexture(accent[1], accent[2], accent[3], 1)
         activeBar:SetAlpha(isActive and 1 or 0)
         btn.activeBar = activeBar
+        if btn._wnBlizzardButton then
+            activeBar:Hide()
+        end
 
         local btnIcon = btn:CreateTexture(nil, "ARTWORK")
         ns.UI_ApplySubTabIcon(btnIcon, tabInfo)
@@ -3461,32 +3809,34 @@ function ns.UI_CreateSubTabBar(parent, opts)
             if opts.onSelect then opts.onSelect(tabKey) end
         end)
 
-        local updateBorder = ns.UI_UpdateBorderColor
-        if updateBorder then
-            btn:SetScript("OnEnter", function(self)
-                if self._active then return end
-                updateBorder(self, { accent[1] * 1.2, accent[2] * 1.2, accent[3] * 1.2, 0.9 })
-            end)
-            btn:SetScript("OnLeave", function(self)
-                if self._active then return end
-                local br, bgr, bbb, bba = GetSubTabInactiveBorderRGBA(accent)
-                updateBorder(self, { br, bgr, bbb, bba })
-            end)
-        else
-            btn:SetScript("OnEnter", function(self)
-                if self._active then return end
-                if self.SetBackdropColor then
-                    local hover = SubTabHoverBackdrop()
-                    self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 0.95)
-                end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                if self._active then return end
-                if self.SetBackdropColor then
-                    local idle = SubTabIdleBackdrop()
-                    self:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
-                end
-            end)
+        if not btn._wnBlizzardButton then
+            local updateBorder = ns.UI_UpdateBorderColor
+            if updateBorder then
+                btn:SetScript("OnEnter", function(self)
+                    if self._active then return end
+                    updateBorder(self, { accent[1] * 1.2, accent[2] * 1.2, accent[3] * 1.2, 0.9 })
+                end)
+                btn:SetScript("OnLeave", function(self)
+                    if self._active then return end
+                    local br, bgr, bbb, bba = ThemeAPI.GetSubTabInactiveBorderRGBA(accent)
+                    updateBorder(self, { br, bgr, bbb, bba })
+                end)
+            else
+                btn:SetScript("OnEnter", function(self)
+                    if self._active then return end
+                    if self.SetBackdropColor then
+                        local hover = SubTabHoverBackdrop()
+                        self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 0.95)
+                    end
+                end)
+                btn:SetScript("OnLeave", function(self)
+                    if self._active then return end
+                    if self.SetBackdropColor then
+                        local idle = SubTabIdleBackdrop()
+                        self:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
+                    end
+                end)
+            end
         end
 
         if tabInfo.disabled then
@@ -3509,7 +3859,13 @@ function ns.UI_CreateSubTabBar(parent, opts)
         for k, btn in pairs(buttons) do
             local active = (k == key)
             btn._active = active
-            if btn.activeBar then btn.activeBar:SetAlpha(active and 1 or 0) end
+            if btn.activeBar then
+                if btn._wnBlizzardButton then
+                    btn.activeBar:Hide()
+                else
+                    btn.activeBar:SetAlpha(active and 1 or 0)
+                end
+            end
             ns.UI_ApplySubTabButtonVisuals(btn, active, accent)
         end
     end
@@ -3764,6 +4120,7 @@ end
 --- Rail tab active / idle visuals (subtle outer glow on selected tab).
 function ns.UI_ApplyRailTabActiveVisuals(btn, isActive, accentColor)
     if not btn or not btn._wnRailTextMode then return end
+    if btn._wnBlizzardButton then return end
     local ac = accentColor or (COLORS and COLORS.accent) or { 0.6, 0.4, 1 }
     local glow = btn._wnRailActiveGlow
     local glowInner = btn._wnRailActiveGlowInner
@@ -4007,9 +4364,26 @@ end
 
 --- Raised surface + accent border (Plans / To-Do card parity via `ApplyVisuals`).
 local function ApplyStandardCardElevatedChrome(frame)
-    if not frame or not COLORS or not ApplyVisuals then return end
+    if not frame or not COLORS then return end
+    if IsClassicModeEnabled() then
+        if ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(frame)
+        elseif ns.UI_ApplyBlizzardPanelBackdrop then
+            local cardBg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
+            ns.UI_ApplyBlizzardPanelBackdrop(frame, cardBg)
+        end
+        frame._wnBorderlessSurface = nil
+        if frame._wnCardTopHighlight and frame._wnCardTopHighlight.Hide then
+            frame._wnCardTopHighlight:Hide()
+        end
+        if frame._wnCardBottomShade and frame._wnCardBottomShade.Hide then
+            frame._wnCardBottomShade:Hide()
+        end
+        return
+    end
+    if not ApplyVisuals then return end
     local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
-    ApplyVisuals(frame, bg, GetAccentBorderRGBA(0.55))
+    ApplyVisuals(frame, bg, ThemeAPI.GetAccentBorderRGBA(0.55))
     frame._wnBorderlessSurface = nil
     if frame._wnCardTopHighlight and frame._wnCardTopHighlight.Hide then
         frame._wnCardTopHighlight:Hide()
@@ -4021,10 +4395,24 @@ end
 
 --- Tab title row (fixedHeader): viewport fill in light + accent border (dark: elevated card).
 local function ApplyStandardTitleCardChrome(frame)
-    if not frame or not COLORS or not ApplyVisuals then return end
+    if not frame or not COLORS then return end
+    if IsClassicModeEnabled() then
+        if ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(frame)
+        end
+        frame._wnBorderlessSurface = nil
+        if frame._wnCardTopHighlight and frame._wnCardTopHighlight.Hide then
+            frame._wnCardTopHighlight:Hide()
+        end
+        if frame._wnCardBottomShade and frame._wnCardBottomShade.Hide then
+            frame._wnCardBottomShade:Hide()
+        end
+        return
+    end
+    if not ApplyVisuals then return end
     if IsLightModeEnabled() then
         local bg = COLORS.surfaceViewport or COLORS.bg
-        ApplyVisuals(frame, bg, GetAccentBorderRGBA(0.55))
+        ApplyVisuals(frame, bg, ThemeAPI.GetAccentBorderRGBA(0.55))
     else
         ApplyStandardCardElevatedChrome(frame)
         return
@@ -4041,14 +4429,35 @@ ns.UI_ApplyStandardTitleCardChrome = ApplyStandardTitleCardChrome
 
 ns.UI_ApplyStandardCardElevatedChrome = ApplyStandardCardElevatedChrome
 
+--- Custom tooltip card shell — always paints a visible backdrop (classic panel or elevated card).
+---@param frame Frame|nil
+local function ApplyTooltipShellChrome(frame)
+    if not frame then return end
+    local bg, border = ThemeAPI.GetTooltipShellBackdrop()
+    if IsClassicModeEnabled() and ns.UI_ApplyClassicCardPanelChrome then
+        ns.UI_ApplyClassicCardPanelChrome(frame)
+        frame._wnBorderlessSurface = nil
+        return
+    end
+    if ApplyVisuals then
+        ApplyVisuals(frame, bg, border)
+        frame._wnBorderlessSurface = nil
+    end
+end
+ns.UI_ApplyTooltipShellChrome = ApplyTooltipShellChrome
+
 --- Apply detail container styling (bg + accent border) using the shared 4-texture border system.
 --- Use for Collections right panel (viewer/detail), or any "detail" panel that should match.
 function ns.UI_ApplyDetailContainerVisuals(frame)
     if not frame then return end
+    if IsClassicModeEnabled() and ns.UI_ApplyClassicCardPanelChrome then
+        ns.UI_ApplyClassicCardPanelChrome(frame)
+        return
+    end
     local colors = GetColors and GetColors() or COLORS or ns.UI_COLORS
     if not colors or not colors.accent then return end
     local bg = colors.bgCard or colors.bgLight or colors.bg
-    ApplyVisuals(frame, { bg[1], bg[2], bg[3], (bg[4] or 1) * 0.95 }, GetAccentBorderRGBA(0.55))
+    ApplyVisuals(frame, { bg[1], bg[2], bg[3], (bg[4] or 1) * 0.95 }, ThemeAPI.GetAccentBorderRGBA(0.55))
 end
 
 -- ResetPixelScale on UI_SCALE_CHANGED is handled by EventManager.OnUIScaleChanged
@@ -4132,6 +4541,13 @@ end
 --- Use when list height is intrinsic but the scroll viewport is taller (avoids a dead strip above the footer).
 function ns.UI_AnnexResultsToScrollBottom(resultsContainer, scrollParent, sideMargin, bottomInset)
     if not resultsContainer or not scrollParent then return end
+    if IsClassicModeEnabled() then
+        local annex = scrollParent._wnResultsAnnexSheet
+        if annex and annex.Hide then
+            annex:Hide()
+        end
+        return
+    end
     local mf = WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame
     if mf and mf.currentTab == "items" then return end
     sideMargin = sideMargin or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
@@ -4166,6 +4582,12 @@ end
 function ns.UI_EnsureScrollChildViewportFill(scrollChild)
     if not scrollChild then return end
     local fill = scrollChild._wnViewportCanvasFill
+    if IsClassicModeEnabled() or (ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()) then
+        if fill and fill.Hide then
+            fill:Hide()
+        end
+        return
+    end
     if not fill then
         fill = scrollChild:CreateTexture(nil, "BACKGROUND", nil, -8)
         scrollChild._wnViewportCanvasFill = fill
@@ -4216,6 +4638,10 @@ end
 --- Tint annex sheet to match viewport (visible on OLED).
 function ns.UI_RefreshScrollAnnexChrome(annex)
     if not annex or not annex._wnAnnexTex then return end
+    if IsClassicModeEnabled() then
+        annex:Hide()
+        return
+    end
     local c = ResolveSurfaceTierColor("viewport")
     annex._wnAnnexTex:SetColorTexture(c[1], c[2], c[3], c[4] or 0.98)
 end
@@ -4223,6 +4649,13 @@ end
 --- Re-anchor annex after PopulateContent sets scrollChild height.
 function ns.UI_RefreshScrollAnnexLayout(scrollParent)
     if not scrollParent then return end
+    if IsClassicModeEnabled() then
+        local annex = scrollParent._wnResultsAnnexSheet
+        if annex and annex.Hide then
+            annex:Hide()
+        end
+        return
+    end
     local annex = scrollParent._wnResultsAnnexSheet
     local anchor = annex and annex._wnAnnexAnchorFrame
     if not annex or not anchor or not annex:IsShown() then return end
@@ -4377,7 +4810,12 @@ local function CreateCard(parent, height)
     
     card:SetHeight(height or 100)
     
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if IsClassicModeEnabled() and ns.UI_ApplyClassicCardPanelChrome then
+        ns.UI_ApplyClassicCardPanelChrome(card)
+    elseif IsClassicModeEnabled() and ns.UI_ApplyBlizzardPanelBackdrop then
+        local cardBg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
+        ns.UI_ApplyBlizzardPanelBackdrop(card, cardBg)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(card)
     elseif ApplyVisuals then
         local ac = COLORS.accent
@@ -4417,7 +4855,7 @@ local function ForwardMouseWheelToScrollAncestor(frame, delta)
             local maxScroll = ancestor:GetVerticalScrollRange() or 0
             local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
             newScroll = PixelSnap(newScroll)
-            ancestor:SetVerticalScroll(newScroll)
+            pcall(ancestor.SetVerticalScroll, ancestor, newScroll)
             return
         end
         ancestor = ancestor:GetParent()
@@ -4459,6 +4897,7 @@ local TAB_HEADER_ICONS = {
     reputations = "MajorFactions_MapIcons_Centaur64",
     reputation = "MajorFactions_MapIcons_Centaur64",
     pve = "Tormentors-Boss",
+    pvp = "questlog-questtypeicon-pvp",
     stats = "racing",
     statistics = "racing",
     collections = "dragon-rostrum",
@@ -4477,6 +4916,7 @@ local TAB_NAV_TEXTURE_FALLBACK = {
     currency = "Interface\\Icons\\INV_Misc_Coin_02",
     reputations = "Interface\\Icons\\Achievement_Reputation_01",
     pve = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+    pvp = "Interface\\Icons\\Achievement_PVP_A_A",
     professions = "Interface\\Icons\\Trade_Engineering",
     collections = "Interface\\Icons\\INV_Misc_Head_Dragon_Nexus",
     plans = "Interface\\Icons\\INV_Misc_Map_01",
@@ -4692,8 +5132,20 @@ function ns.UI_ConfigureMainScrollViewportForTab(mainFrame, tab)
     if not mainFrame then return end
     local vp = mainFrame.viewportBorder
     local sc = mainFrame.scrollChild
-    local borderless = (tab == "items" or tab == "gear")
     if not vp then return end
+
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        vp:SetBackdropColor(0, 0, 0, 0)
+        if vp._wnViewportAtlasUnderlay and vp._wnViewportAtlasUnderlay.Hide then
+            vp._wnViewportAtlasUnderlay:Hide()
+        end
+        if sc and sc._wnViewportCanvasFill and sc._wnViewportCanvasFill.Hide then
+            sc._wnViewportCanvasFill:Hide()
+        end
+        return
+    end
+
+    local borderless = (tab == "items" or tab == "gear")
 
     if borderless then
         vp:SetBackdropColor(0, 0, 0, 0)
@@ -4727,6 +5179,12 @@ end
 --- Accent rule under title icon + text block.
 local function ApplyTitleCardUnderline(titleCard, leftAnchor, rightAnchor, sp)
     if not titleCard or not leftAnchor or not rightAnchor then return end
+    if IsClassicModeEnabled() then
+        if titleCard._wnTitleUnderline and titleCard._wnTitleUnderline.Hide then
+            titleCard._wnTitleUnderline:Hide()
+        end
+        return
+    end
     sp = sp or UI_SPACING or {}
     local ac = COLORS and COLORS.accent or { 0.5, 0.4, 0.7 }
     local ruleA = sp.TITLE_CARD_UNDERLINE_ALPHA or 0.5
@@ -5148,11 +5606,19 @@ end
     @return button - Created button
 ]]
 local function CreateThemedButton(parent, text, width)
+    if IsClassicModeEnabled() then
+        local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        btn:SetSize(width or 100, UI_CONSTANTS.BUTTON_HEIGHT)
+        btn:SetText(text or "")
+        btn._wnBlizzardButton = true
+        return btn
+    end
+
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(width or 100, UI_CONSTANTS.BUTTON_HEIGHT)
 
-    local idleBg = GetControlChromeBackdrop()
-    ApplyVisuals(btn, idleBg, GetAccentBorderRGBA(0.6))
+    local idleBg = ThemeAPI.GetControlChromeBackdrop()
+    ApplyVisuals(btn, idleBg, ThemeAPI.GetAccentBorderRGBA(0.6))
 
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(btn)
@@ -5165,10 +5631,10 @@ local function CreateThemedButton(parent, text, width)
     ns.UI_SetTextColorRole(btnText, "Bright")
 
     btn:SetScript("OnEnter", function(self)
-        ApplyVisuals(self, GetControlChromeHoverBackdrop(), GetAccentBorderRGBA(0.8))
+        ApplyVisuals(self, ThemeAPI.GetControlChromeHoverBackdrop(), ThemeAPI.GetAccentBorderRGBA(0.8))
     end)
     btn:SetScript("OnLeave", function(self)
-        ApplyVisuals(self, GetControlChromeBackdrop(), GetAccentBorderRGBA(0.6))
+        ApplyVisuals(self, ThemeAPI.GetControlChromeBackdrop(), ThemeAPI.GetAccentBorderRGBA(0.6))
     end)
 
     local textWidth = btnText:GetStringWidth() or 0
@@ -5229,7 +5695,7 @@ local function ApplyToggleVisuals(frame)
     frame:SetSize(TOGGLE_SIZE, TOGGLE_SIZE)
     local ac = COLORS and COLORS.accent or { 0.5, 0.5, 0.5 }
     local borderCol = { ac[1], ac[2], ac[3], 0.8 }
-    local toggleBg = GetControlChromeBackdrop()
+    local toggleBg = ThemeAPI.GetControlChromeBackdrop()
     ApplyVisuals(frame, toggleBg, borderCol)
     -- ApplyVisuals heuristic can classify dark accents as "border"; toggles must always track accent refresh.
     frame._borderType = "accent"
@@ -5294,6 +5760,18 @@ local function CreateThemedCheckbox(parent, initialState)
         return nil
     end
 
+    if IsClassicModeEnabled() then
+        local checkbox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+        checkbox:SetSize(24, 24)
+        if initialState then
+            checkbox:SetChecked(true)
+        else
+            checkbox:SetChecked(false)
+        end
+        checkbox._wnBlizzardCheckbox = true
+        return checkbox
+    end
+
     local checkbox = CreateFrame("CheckButton", nil, parent)
     -- Strip inherited CheckButton artwork (Midnight often paints default checked atlas → magenta/purple over custom dot).
     pcall(function()
@@ -5342,6 +5820,25 @@ local function CreateThemedRadioButton(parent, isSelected)
             DebugPrint("WarbandNexus DEBUG: CreateThemedRadioButton called with nil parent!")
         end
         return nil
+    end
+
+    if IsClassicModeEnabled() then
+        local radioButton = CreateFrame("CheckButton", nil, parent, "UIRadioButtonTemplate")
+        -- Indicator only: the option row button owns the click; keep template art untouched.
+        radioButton:EnableMouse(false)
+        radioButton:SetChecked(isSelected and true or false)
+        if radioButton.text then
+            radioButton.text:SetText("")
+        end
+        radioButton._wnSkipCustomChrome = true
+        -- innerDot/checkTexture proxy keeps the Frame+dot caller API (SetShown/Show/Hide).
+        local dot = {}
+        dot.SetShown = function(_, shown) radioButton:SetChecked(shown and true or false) end
+        dot.Show = function() radioButton:SetChecked(true) end
+        dot.Hide = function() radioButton:SetChecked(false) end
+        radioButton.innerDot = dot
+        radioButton.checkTexture = dot
+        return radioButton
     end
 
     local radioButton = CreateFrame("Frame", nil, parent)
@@ -5773,12 +6270,15 @@ local function CreateSection(parent, title, width)
     local section = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     section:SetSize(width or 640, 1)  -- Height will be calculated
     
-    -- Use ApplyVisuals for centralized border management
     local surf = COLORS.surfaceElevated or COLORS.bgLight
-    ApplyVisuals(section, {surf[1], surf[2], surf[3], 0.35}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-
-    if ns.UI_ApplySectionChromeUnderlay then
-        ns.UI_ApplySectionChromeUnderlay(section)
+    if IsClassicModeEnabled() and ns.UI_ApplyClassicCardPanelChrome then
+        ns.UI_ApplyClassicCardPanelChrome(section)
+        section._wnSettingsSectionCard = true
+    else
+        ApplyVisuals(section, { surf[1], surf[2], surf[3], 0.35 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+        if ns.UI_ApplySectionChromeUnderlay then
+            ns.UI_ApplySectionChromeUnderlay(section)
+        end
     end
     
     -- Title (if provided) - inside card
@@ -5941,9 +6441,9 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     description:SetPoint("TOP", title, "BOTTOM", 0, -16)
     description:SetWidth(380)
     description:SetJustifyH("CENTER")
-    local settingsStr = GetTextRoleHex("Bright") .. ((ns.L and ns.L["BTN_SETTINGS"]) or SETTINGS or "Settings") .. "|r"
+    local settingsStr = ThemeAPI.GetTextRoleHex("Bright") .. ((ns.L and ns.L["BTN_SETTINGS"]) or SETTINGS or "Settings") .. "|r"
     local moduleStr = "|cff" .. hexColor .. moduleName .. "|r"
-    local mutedHex = GetTextRoleHex("Muted")
+    local mutedHex = ThemeAPI.GetTextRoleHex("Muted")
     description:SetText(
         mutedHex .. format((ns.L and ns.L["MODULE_DISABLED_DESC_FORMAT"]) or "Enable it in %s to use %s.", settingsStr, moduleStr) .. "|r"
     )
@@ -6238,7 +6738,7 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     local FontManager = ns.FontManager
     local errorText = FontManager:CreateFontString(errorCard, UIFontRole("errorCardBody"), "OVERLAY")
     errorText:SetPoint("LEFT", warningIconFrame, "RIGHT", 10, 0)
-    local warnR, warnG, warnB, warnA = GetSemanticGoldColor()
+    local warnR, warnG, warnB, warnA = ThemeAPI.GetSemanticGoldColor()
     errorText:SetTextColor(warnR, warnG, warnB, warnA)
     errorText:SetText(ns.UI_GetSemanticGoldHex() .. errorMessage .. "|r")
     

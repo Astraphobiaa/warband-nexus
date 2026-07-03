@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Profession Info Window
     Read-only detail window showing profession data for any character from DB.
     No API calls â€” all data comes from db.global.characters[charKey].
@@ -1011,7 +1011,9 @@ local function CreateInfoFrame()
         frame:SetFrameLevel(120)
     end
 
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if ns.UI_ApplyFloatingWindowShellChrome then
+        ns.UI_ApplyFloatingWindowShellChrome(frame)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     elseif ApplyVisuals then
         ApplyVisuals(frame, {0.03, 0.03, 0.05, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
@@ -1217,7 +1219,9 @@ ns.ProfessionInfoWindow = ns.ProfessionInfoWindow or {}
 function ns.ProfessionInfoWindow.RefreshTheme()
     local frame = infoFrame
     if not frame or not frame:IsShown() then return end
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if ns.UI_ApplyFloatingWindowShellChrome then
+        ns.UI_ApplyFloatingWindowShellChrome(frame)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     end
     local header = frame._profInfoHeaderShell

@@ -110,7 +110,18 @@ function M.ApplyTheme()
     end
     -- tableFrame / chrome / optionsFrame border colors auto-update via ns.BORDER_REGISTRY
     if S.separator then
-        S.separator:SetColorTexture(accent[1], accent[2], accent[3], 0.55)
+        if S.separator._wnClassicRailDivider and S.separator.Hide then
+            if M.VBIsClassicChrome and M.VBIsClassicChrome() then
+                S.separator:Show()
+            else
+                S.separator:Hide()
+            end
+        elseif S.separator.SetColorTexture then
+            S.separator:SetColorTexture(accent[1], accent[2], accent[3], 0.55)
+        end
+    end
+    if S.headerBg and M.VBApplyEasyAccessHeader then
+        M.VBApplyEasyAccessHeader(S.headerBg)
     end
     if S.optionsFrame then
         if S.optionsFrame.columnLabel then
@@ -196,16 +207,10 @@ function M.BuildTableFrame()
     f:SetFrameLevel(200)
     f:SetMovable(true)
     f:EnableMouse(true)
-    if ns.UI_ApplyStandardCardElevatedChrome then
-        ns.UI_ApplyStandardCardElevatedChrome(f)
-    elseif ApplyVisuals then
-        ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
-    else
-        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-        local shell = GetShellBackdrop()
-        f:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 0.98)
-    end
+    M.VBApplyEasyAccessShell(f)
     f:Hide()
+
+    local inset = VBGetFrameContentInset()
 
     -- ===== CHROME HEADER (matches main window) =====
     local chrome = VF:CreateContainer(f, 32, 32, false)
@@ -218,9 +223,7 @@ function M.BuildTableFrame()
         local point, _, relativePoint, x, y = f:GetPoint()
         SaveTablePos(point, relativePoint, x, y)
     end)
-    if ApplyVisuals then
-        ApplyVisuals(chrome, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
-    end
+    M.VBApplyEasyAccessHeader(chrome)
     S.headerBg = chrome  -- repurposed for theme refresh
 
     local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
@@ -242,25 +245,28 @@ function M.BuildTableFrame()
 
     -- Close button (atlas style, matches main window)
     local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
-    local closeBtn = VF:CreateButton(chrome, 28, 28, true)
-    closeBtn:SetPoint("RIGHT", -8, 0)
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
-    end
-    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    closeBtn:SetScript("OnClick", HideTable)
-    closeBtn:SetScript("OnEnter", function()
-        closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ApplyVisuals then ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
-    end)
-    closeBtn:SetScript("OnLeave", function()
+    local closeBtn = M.VBCreateEasyAccessCloseButton(chrome, HideTable)
+    if not closeBtn then
+        closeBtn = VF:CreateButton(chrome, 28, 28, true)
+        closeBtn:SetPoint("RIGHT", -8, 0)
+        if ApplyVisuals then
+            ApplyVisuals(closeBtn, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
+        end
+        local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+        closeIcon:SetSize(16, 16)
+        closeIcon:SetPoint("CENTER")
+        closeIcon:SetAtlas("uitools-icon-close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then ApplyVisuals(closeBtn, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
-    end)
+        closeBtn:SetScript("OnClick", HideTable)
+        closeBtn:SetScript("OnEnter", function()
+            closeIcon:SetVertexColor(1, 0.2, 0.2)
+            if ApplyVisuals then ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
+        end)
+        closeBtn:SetScript("OnLeave", function()
+            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            if ApplyVisuals then ApplyVisuals(closeBtn, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
+        end)
+    end
 
     -- Settings (gear) button — opens options frame
     local settingsBtn = VF:CreateButton(chrome, 28, 28, true)
@@ -271,20 +277,12 @@ function M.BuildTableFrame()
 
     -- Column header row
     local headerY = -(chromeBandH + 6)
-    local hRow = VF:CreateContainer(f, tableW - FRAME_PAD * 2, HEADER_H, false)
-    hRow:SetPoint("TOPLEFT", f, "TOPLEFT", FRAME_PAD, headerY)
-    if ApplyVisuals then
-        local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-            or COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bg
-        local br = COLORS.border or accent
-        ApplyVisuals(hRow, hdr, { br[1], br[2], br[3], 0.6 })
-    else
-        local hBg = hRow:CreateTexture(nil, "BACKGROUND")
-        hBg:SetAllPoints()
-        local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-            or COLORS.surfaceHeaderChrome or { 0.08, 0.08, 0.10, 1 }
-        hBg:SetColorTexture(hdr[1], hdr[2], hdr[3], hdr[4] or 1)
-    end
+    local hRow = VF:CreateContainer(f, tableW - inset * 2, HEADER_H, false)
+    hRow:SetPoint("TOPLEFT", f, "TOPLEFT", inset, headerY)
+    local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+        or COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bg
+    local br = COLORS.border or accent
+    M.VBApplyEasyAccessListHeader(hRow, hdr, { br[1], br[2], br[3], 0.6 })
 
     -- Header cells
     function M.HCell(text, x, w, isIcon, iconTex, tooltipTitle, tooltipText, tooltipKind, tooltipID)
@@ -362,18 +360,15 @@ function M.BuildTableFrame()
     end
 
     -- Separator
-    local sep = f:CreateTexture(nil, "BORDER")
-    sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT",  f, "TOPLEFT",  FRAME_PAD,  headerY - HEADER_H)
-    sep:SetPoint("TOPRIGHT", f, "TOPRIGHT", -FRAME_PAD, headerY - HEADER_H)
-    sep:SetColorTexture(accent[1], accent[2], accent[3], 0.55)
+    local sep = M.VBCreateEasyAccessSeparator(f, inset, inset, headerY - HEADER_H)
     S.separator = sep
 
     -- Scroll (factory-styled scrollbar; matches Saved Instances / main UI)
     local scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT",     f, "TOPLEFT",     FRAME_PAD, headerY - HEADER_H - 2)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -FRAME_PAD, FRAME_PAD)
-    local content = VF:CreateContainer(scroll, tableW - FRAME_PAD * 2, 8, false)
+    scroll:SetPoint("TOPLEFT",     f, "TOPLEFT",     inset, headerY - HEADER_H - 2)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -inset, inset)
+    local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2)
+    local content = VF:CreateContainer(scroll, scrollInnerW, 8, false)
     scroll:SetScrollChild(content)
 
     f:EnableMouseWheel(true)
@@ -415,7 +410,9 @@ local RefreshTable = function()
 
     if #list == 0 then
         S.tableFrame:SetSize(tableW, VBGetChromeBandHeight() + HEADER_H + 80)
-        content:SetSize(tableW - FRAME_PAD*2, 40)
+        local inset = VBGetFrameContentInset()
+        local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2)
+        content:SetSize(scrollInnerW, 40)
         local msg = VBFontString(content, "body")
         msg:SetPoint("CENTER", content, "CENTER")
         ns.UI_SetTextColorRole(msg, "Dim")
@@ -442,7 +439,7 @@ local RefreshTable = function()
     local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
 
     for i, e in ipairs(list) do
-        local row = VF:CreateContainer(content, tableW - FRAME_PAD * 2, ROW_H, false)
+        local row = VF:CreateContainer(content, M.VBGetEasyAccessScrollChildWidth(tableW - VBGetFrameContentInset() * 2), ROW_H, false)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i-1)*ROW_H)
         row:EnableMouse(true)
 
@@ -649,11 +646,12 @@ local RefreshTable = function()
     local visRows  = math.min(#list, MAX_ROWS)
     local contentH = #list * ROW_H
     local viewH    = visRows * ROW_H
-    local totalH   = VBGetChromeBandHeight() + 6 + HEADER_H + 2 + viewH + FRAME_PAD
+    local inset = VBGetFrameContentInset()
+    local totalH   = VBGetChromeBandHeight() + 6 + HEADER_H + 2 + viewH + inset
 
     S.tableFrame:SetSize(tableW, totalH)
     S.tableScroll:SetVerticalScroll(0)
-    content:SetWidth(tableW - FRAME_PAD * 2)
+    content:SetWidth(M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2))
     VBSyncVaultTableScrollBar(list, content, contentH)
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()

@@ -71,6 +71,9 @@ local function RefreshScrollChromeHost(host)
 end
 
 function ns.UI_RefreshScrollChrome()
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        return
+    end
     for i = #SCROLL_CHROME_REGISTRY, 1, -1 do
         local host = SCROLL_CHROME_REGISTRY[i]
         if not host then
@@ -144,6 +147,11 @@ end
 ]]
 function ns.UI.Factory:ApplyHighlight(frame, color, alpha)
     if not frame or not frame.SetHighlightTexture then return end
+
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        frame:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        return
+    end
 
     if not color then
         if ns.UI_GetRowHoverHighlight then
@@ -576,6 +584,31 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     if not parent then
         DebugPrint("|cffff4444[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
         return nil
+    end
+
+    -- Classic: stock UIPanelScrollFrameTemplate + default scroll bar (no custom chrome).
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        template = template or "UIPanelScrollFrameTemplate"
+        local scrollFrame = CreateFrame("ScrollFrame", nil, parent, template)
+        scrollFrame._wnBlizzardScroll = true
+        local scrollBar = scrollFrame.ScrollBar
+        if scrollBar then
+            scrollBar._wnBlizzardChrome = true
+            scrollBar._wnOwningScrollFrame = scrollFrame
+            local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+            local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
+            local barWidth = layout.SCROLL_BAR_WIDTH or 16
+            if scrollBar.ScrollUpButton then
+                scrollBar.ScrollUpButton:Show()
+                scrollBar.ScrollUpButton:SetSize(btnSize, btnSize)
+            end
+            if scrollBar.ScrollDownButton then
+                scrollBar.ScrollDownButton:Show()
+                scrollBar.ScrollDownButton:SetSize(btnSize, btnSize)
+            end
+            scrollBar:SetWidth(barWidth)
+        end
+        return scrollFrame
     end
     
     -- Default to UIPanelScrollFrameTemplate if no template provided
@@ -1173,10 +1206,62 @@ end
 --- Ensures Button (top) | Bar | Button (bottom) with same dimensions everywhere (SCROLL_BAR_BUTTON_SIZE, SCROLL_BAR_WIDTH).
 function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, inset)
     if not scrollBar or not scrollBarContainer then return end
+    local useBlizzardChrome = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+    local isBlizzardBar = useBlizzardChrome or scrollBar._wnBlizzardChrome
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
     local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
     local barWidth = layout.SCROLL_BAR_WIDTH or 16
-    local gap = (inset == nil) and 2 or inset
+
+    local upBtn = scrollBar.ScrollUpBtn or scrollBar.ScrollUpButton
+    local downBtn = scrollBar.ScrollDownBtn or scrollBar.ScrollDownButton
+
+    -- Blizzard SecureScrollTemplates require ScrollBar to remain a child of the ScrollFrame.
+    -- Anchor into the external column without reparenting (SetParent breaks SetValue).
+    if isBlizzardBar then
+        local scrollFrame = scrollBar._wnOwningScrollFrame
+        if not scrollFrame then
+            local parent = scrollBar:GetParent()
+            if parent and parent.GetVerticalScrollRange then
+                scrollFrame = parent
+            end
+        end
+        if scrollFrame and scrollBar:GetParent() ~= scrollFrame then
+            scrollBar:SetParent(scrollFrame)
+        end
+        if upBtn and upBtn:GetParent() ~= scrollBar then
+            upBtn:SetParent(scrollBar)
+        end
+        if downBtn and downBtn:GetParent() ~= scrollBar then
+            downBtn:SetParent(scrollBar)
+        end
+        if upBtn then
+            upBtn:ClearAllPoints()
+            upBtn:SetSize(btnSize, btnSize)
+            upBtn:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
+            upBtn:Show()
+        end
+        if downBtn then
+            downBtn:ClearAllPoints()
+            downBtn:SetSize(btnSize, btnSize)
+            downBtn:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
+            downBtn:Show()
+        end
+        scrollBar:ClearAllPoints()
+        if upBtn and downBtn then
+            scrollBar:SetPoint("TOP", upBtn, "BOTTOM", 0, 0)
+            scrollBar:SetPoint("BOTTOM", downBtn, "TOP", 0, 0)
+        else
+            scrollBar:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
+            scrollBar:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
+        end
+        scrollBar:SetWidth(barWidth)
+        scrollBar:SetPoint("RIGHT", scrollBarContainer, "RIGHT", 0, 0)
+        scrollBar:Show()
+        if scrollBar.Thumb and scrollBar.Thumb.SetWidth then
+            scrollBar.Thumb:SetWidth(math.max(2, barWidth - 2))
+        end
+        return
+    end
 
     local containerLevel = scrollBarContainer:GetFrameLevel()
     scrollBar:SetParent(scrollBarContainer)
@@ -1184,26 +1269,26 @@ function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContaine
     scrollBar:Show()
 
     -- Buttons fully inside container (no -gap/+gap) so they are never clipped by adjacent panels
-    if scrollBar.ScrollUpBtn then
-        scrollBar.ScrollUpBtn:SetParent(scrollBarContainer)
-        scrollBar.ScrollUpBtn:SetFrameLevel(containerLevel + 3)
-        scrollBar.ScrollUpBtn:ClearAllPoints()
-        scrollBar.ScrollUpBtn:SetSize(btnSize, btnSize)
-        scrollBar.ScrollUpBtn:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
-        scrollBar.ScrollUpBtn:Show()
+    if upBtn then
+        upBtn:SetParent(scrollBarContainer)
+        upBtn:SetFrameLevel(containerLevel + 3)
+        upBtn:ClearAllPoints()
+        upBtn:SetSize(btnSize, btnSize)
+        upBtn:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
+        upBtn:Show()
     end
-    if scrollBar.ScrollDownBtn then
-        scrollBar.ScrollDownBtn:SetParent(scrollBarContainer)
-        scrollBar.ScrollDownBtn:SetFrameLevel(containerLevel + 3)
-        scrollBar.ScrollDownBtn:ClearAllPoints()
-        scrollBar.ScrollDownBtn:SetSize(btnSize, btnSize)
-        scrollBar.ScrollDownBtn:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
-        scrollBar.ScrollDownBtn:Show()
+    if downBtn then
+        downBtn:SetParent(scrollBarContainer)
+        downBtn:SetFrameLevel(containerLevel + 3)
+        downBtn:ClearAllPoints()
+        downBtn:SetSize(btnSize, btnSize)
+        downBtn:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
+        downBtn:Show()
     end
     scrollBar:ClearAllPoints()
-    if scrollBar.ScrollUpBtn and scrollBar.ScrollDownBtn then
-        scrollBar:SetPoint("TOP", scrollBar.ScrollUpBtn, "BOTTOM", 0, 0)
-        scrollBar:SetPoint("BOTTOM", scrollBar.ScrollDownBtn, "TOP", 0, 0)
+    if upBtn and downBtn then
+        scrollBar:SetPoint("TOP", upBtn, "BOTTOM", 0, 0)
+        scrollBar:SetPoint("BOTTOM", downBtn, "TOP", 0, 0)
     else
         scrollBar:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
         scrollBar:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
@@ -1323,6 +1408,9 @@ end
 function ns.UI.Factory:CreateHorizontalScrollBar(scrollFrame, parent, customStyle)
     if not scrollFrame or not parent then return nil end
     if customStyle == false then return nil end
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        return nil
+    end
 
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
     local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
@@ -1626,6 +1714,15 @@ end
 ---@return Frame container
 function ns.UI.Factory:CreateContainer(parent, width, height, withBorder, globalName)
     if not parent then return nil end
+
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        local container = CreateFrame("Frame", globalName, parent, withBorder and "BackdropTemplate" or nil)
+        container:SetSize(width or 100, height or 100)
+        if withBorder and ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(container)
+        end
+        return container
+    end
     
     local container = CreateFrame("Frame", globalName, parent)
     container:SetSize(width or 100, height or 100)
@@ -1658,6 +1755,30 @@ end
 function ns.UI.Factory:CreateThemedSlider(parent, opts)
     if not parent then return nil end
     opts = opts or {}
+
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+        slider:SetOrientation("HORIZONTAL")
+        slider:SetHeight(opts.height or 20)
+        slider:SetMinMaxValues(opts.min or 0, opts.max or 1)
+        slider:SetValueStep(opts.step or 0.1)
+        slider:SetObeyStepOnDrag(true)
+        if opts.value ~= nil then slider:SetValue(opts.value) end
+        if opts.onChange then
+            slider:SetScript("OnValueChanged", function(self, value)
+                local step = opts.step or 0.1
+                value = math.floor(value / step + 0.5) * step
+                if math.abs(self:GetValue() - value) > 0.001 then
+                    self:SetValue(value)
+                    return
+                end
+                opts.onChange(value)
+            end)
+        end
+        slider._wnBlizzardSlider = true
+        return slider
+    end
+
     local slider = CreateFrame("Slider", nil, parent, "BackdropTemplate")
     slider:SetOrientation("HORIZONTAL")
     slider:SetHeight(opts.height or 20)
@@ -1713,6 +1834,16 @@ end
 ---@return EditBox editbox
 function ns.UI.Factory:CreateEditBox(parent)
     if not parent then return nil end
+
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+        editBox:SetAutoFocus(false)
+        editBox:SetMaxLetters(256)
+        editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        editBox._wnBlizzardEditBox = true
+        return editBox
+    end
     
     local editBox = CreateFrame("EditBox", nil, parent)
     editBox:SetAutoFocus(false)
@@ -1742,6 +1873,9 @@ function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     if not row then return end
     local tier = (rowIndex % 2 == 0) and "rowEven" or "rowOdd"
     local bgColor = ResolveSurfaceTierColor(tier)
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        bgColor = { bgColor[1], bgColor[2], bgColor[3], (bgColor[4] or 1) * 0.22 }
+    end
     if not row.bg then
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
@@ -1813,7 +1947,21 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     local sp = UI_SPACING
     local h = height or sp.SECTION_COLLAPSE_HEADER_HEIGHT or sp.HEADER_HEIGHT
     local indent = leftIndent or 0
-    local header = CreateFrame("Button", nil, parent)
+    local isClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    local header
+    if isClassic then
+        header = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        header._wnBlizzardButton = true
+        header._wnClassicCollapsibleHeader = true
+        if header.SetText then
+            header:SetText("")
+        end
+        if ns.UI_NormalizeBlizzardButtonChrome then
+            ns.UI_NormalizeBlizzardButtonChrome(header)
+        end
+    else
+        header = CreateFrame("Button", nil, parent)
+    end
     header:SetHeight(h)
     header:SetPoint("TOPLEFT", indent, -yOffset)
     header:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
@@ -1830,11 +1978,18 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
         sbr, sbg, sbb = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
         sba = 0.45
     end
-    ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, { sbr, sbg, sbb, sba })
-    header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
-
-    if ns.UI_ApplySectionChromeUnderlay then
-        ns.UI_ApplySectionChromeUnderlay(header)
+    if isClassic and not header._wnBlizzardButton and ns.UI_ApplyClassicListHeaderChrome then
+        ns.UI_ApplyClassicListHeaderChrome(header, { surf[1], surf[2], surf[3], 1 })
+        header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
+    elseif isClassic and not header._wnBlizzardButton and ns.UI_ApplyClassicCardPanelChrome then
+        ns.UI_ApplyClassicCardPanelChrome(header)
+        header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
+    elseif not isClassic then
+        ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, { sbr, sbg, sbb, sba })
+        header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
+        if ns.UI_ApplySectionChromeUnderlay then
+            ns.UI_ApplySectionChromeUnderlay(header)
+        end
     end
 
     -- Collapse/expand chevron (same control as tab section headers)
@@ -1867,10 +2022,25 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:SetScript("OnClick", onToggle)
     collapseBtn:SetScript("OnClick", onToggle)
 
-    -- Hover highlight (token-driven base from `surfaceElevated`)
+    -- Hover highlight (token-driven base from `surfaceElevated`; classic UIPanelButtonTemplate uses native hover)
     header:SetScript("OnEnter", function()
-        if header.SetBackdropColor and header._wnSectionHeaderBaseBg then
-            local b = header._wnSectionHeaderBaseBg
+        if header._wnBlizzardButton then return end
+        if not header.SetBackdropColor then return end
+        local b = header._wnSectionHeaderBaseBg or header._wnThinBorderBg or header._wnPaneBackdropBg
+        if not b then return end
+        if isClassic then
+            header:SetBackdropColor(
+                math.min(1, b[1] * 1.08),
+                math.min(1, b[2] * 1.08),
+                math.min(1, b[3] * 1.08),
+                b[4] or 1
+            )
+            return
+        end
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetControlChromeHoverBackdrop then
+            local h = ns.UI_GetControlChromeHoverBackdrop()
+            header:SetBackdropColor(h[1], h[2], h[3], h[4] or 1)
+        else
             header:SetBackdropColor(
                 math.min(1, b[1] * 1.12),
                 math.min(1, b[2] * 1.12),
@@ -1880,8 +2050,10 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
         end
     end)
     header:SetScript("OnLeave", function()
-        if header.SetBackdropColor and header._wnSectionHeaderBaseBg then
-            local b = header._wnSectionHeaderBaseBg
+        if header._wnBlizzardButton then return end
+        if not header.SetBackdropColor then return end
+        local b = header._wnSectionHeaderBaseBg or header._wnThinBorderBg or header._wnPaneBackdropBg
+        if b then
             header:SetBackdropColor(b[1], b[2], b[3], b[4] or 1)
         end
     end)
@@ -1984,18 +2156,26 @@ function ns.UI.Factory:CreateCollectionListRow(parent, height)
 
     local iconBorder = self:CreateContainer(row, iconSize, iconSize, true)
     if iconBorder then
-        local shellBg = ResolveIconShellBackdrop()
-        local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
-        if ApplyVisuals then
-            ApplyVisuals(iconBorder, shellBg, { bc[1], bc[2], bc[3], 0.72 })
+        if ns.UI_ApplyListRowIconChrome then
+            ns.UI_ApplyListRowIconChrome(iconBorder)
+        else
+            local shellBg = ResolveIconShellBackdrop()
+            local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
+            if ApplyVisuals then
+                ApplyVisuals(iconBorder, shellBg, { bc[1], bc[2], bc[3], 0.72 })
+            end
         end
         iconBorder:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
         row._iconBorder = iconBorder
     end
     local iconHost = row._iconBorder or row
     local icon = iconHost:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", iconHost, "TOPLEFT", 1, -1)
-    icon:SetPoint("BOTTOMRIGHT", iconHost, "BOTTOMRIGHT", -1, 1)
+    if iconBorder and iconBorder._wnListRowBareIcon then
+        icon:SetAllPoints(iconHost)
+    else
+        icon:SetPoint("TOPLEFT", iconHost, "TOPLEFT", 1, -1)
+        icon:SetPoint("BOTTOMRIGHT", iconHost, "BOTTOMRIGHT", -1, 1)
+    end
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     row.icon = icon
 

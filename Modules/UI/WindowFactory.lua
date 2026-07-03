@@ -131,12 +131,27 @@ local function CreateExternalWindow(config)
         dialog:SetFrameLevel(200)
     end
     
-    -- Shell: same full-bleed fill + accent border quartet as WarbandNexusFrame (no elevated card double-border).
+    -- Shell: full Blizzard dialog in classic; modern full-bleed fill + accent border quartet.
     local shellBg = COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
-    if ApplyMainWindowShellFill then
+    local useClassicShell = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    if useClassicShell and ns.UI_ApplyBlizzardDialogBackdrop then
+        local classicBg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bg)
+            or shellBg
+        ns.UI_ApplyBlizzardDialogBackdrop(dialog, classicBg)
+    elseif ApplyMainWindowShellFill then
         ApplyMainWindowShellFill(dialog, shellBg)
     elseif ApplyVisuals then
         ApplyVisuals(dialog, shellBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+    end
+
+    local sideInset, topInset, bottomInset = 0, 0, 0
+    if useClassicShell then
+        local bd = ns.UI_CLASSIC_DIALOG_BACKDROP and ns.UI_CLASSIC_DIALOG_BACKDROP.insets
+        if bd then
+            sideInset = bd.left or 11
+            topInset = bd.top or 12
+            bottomInset = bd.bottom or 11
+        end
     end
     
     dialog:EnableMouse(true)
@@ -146,14 +161,16 @@ local function CreateExternalWindow(config)
     local header = CreateFrame("Frame", nil, dialog)
     header:SetHeight(extDlgHeaderH)
     header:ClearAllPoints()
-    header:SetPoint("TOPLEFT", dialog, "TOPLEFT", 0, 0)
-    header:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", 0, 0)
+    header:SetPoint("TOPLEFT", dialog, "TOPLEFT", sideInset, -topInset)
+    header:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -sideInset, -topInset)
     header:SetFrameLevel(dialog:GetFrameLevel() + 10)
     dialog._wnExternalHeader = header
 
     local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
         or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
-    if ApplyVisuals then
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicInteriorFlatFill then
+        ns.UI_ApplyClassicInteriorFlatFill(header, { 0, 0, 0, 0 })
+    elseif ApplyVisuals and (not ns.UI_CanApplyCustomChrome or ns.UI_CanApplyCustomChrome(header)) then
         local headerBg = (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
             or (COLORS.accentDark and { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 })
             or COLORS.bgCard
@@ -191,37 +208,44 @@ local function CreateExternalWindow(config)
         titleText:SetText(ThemeTextHex("Bright") .. config.title .. "|r")
     end
     
-    -- Close button (SharedWidgets CreateButton + atlas icon)
-    local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
-    local closeBtn = CreateButton(header, 28, 28, closeBg, headerBorder, false)
-    if not closeBtn then AbortIncompleteExternalWindow() return nil end
-    closeBtn:SetPoint("RIGHT", -8, 0)
-    
-    -- Close icon using WoW atlas
-    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    
-    -- Hover effects
-    closeBtn:SetScript("OnEnter", function()
-        closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ApplyVisuals then
-            local negBg, negBorder = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(true)
-            if negBg and negBorder then
-                ApplyVisuals(closeBtn, negBg, negBorder)
-            end
-        end
-    end)
-    
-    closeBtn:SetScript("OnLeave", function()
+    -- Close button (Blizzard template in classic; custom chrome otherwise)
+    local closeBtn
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        closeBtn = CreateFrame("Button", nil, header, "UIPanelCloseButton")
+        closeBtn:SetPoint("TOPRIGHT", header, "TOPRIGHT", -2, -2)
+    else
+        local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+        closeBtn = CreateButton(header, 28, 28, closeBg, headerBorder, false)
+        if not closeBtn then AbortIncompleteExternalWindow() return nil end
+        closeBtn:SetPoint("RIGHT", -8, 0)
+
+        -- Close icon using WoW atlas
+        local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+        closeIcon:SetSize(16, 16)
+        closeIcon:SetPoint("CENTER")
+        closeIcon:SetAtlas("uitools-icon-close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then
-            local idle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or closeBg
-            ApplyVisuals(closeBtn, idle, headerBorder)
-        end
-    end)
+
+        -- Hover effects
+        closeBtn:SetScript("OnEnter", function()
+            closeIcon:SetVertexColor(1, 0.2, 0.2)
+            if ApplyVisuals then
+                local negBg, negBorder = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(true)
+                if negBg and negBorder then
+                    ApplyVisuals(closeBtn, negBg, negBorder)
+                end
+            end
+        end)
+
+        closeBtn:SetScript("OnLeave", function()
+            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            if ApplyVisuals then
+                local idle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or closeBg
+                ApplyVisuals(closeBtn, idle, headerBorder)
+            end
+        end)
+    end
+    if not closeBtn then AbortIncompleteExternalWindow() return nil end
     
     -- Close function (onClose called once here only; OnHide must not call it again)
     local function CloseDialog()
@@ -250,13 +274,17 @@ local function CreateExternalWindow(config)
     local contentFrame = Factory:CreateContainer(dialog, math.max(1, width), extContentBodyH, false)
     if not contentFrame then AbortIncompleteExternalWindow() return nil end
     contentFrame:ClearAllPoints()
-    contentFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 0, -extDlgHeaderH)
-    contentFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", 0, 0)
+    contentFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", sideInset, -(extDlgHeaderH + topInset))
+    contentFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -sideInset, bottomInset)
     local viewportBg = COLORS.surfaceViewport or COLORS.bg
     local contentFill = contentFrame:CreateTexture(nil, "BACKGROUND")
     contentFill:SetDrawLayer("BACKGROUND", -8)
     contentFill:SetAllPoints()
-    contentFill:SetColorTexture(viewportBg[1], viewportBg[2], viewportBg[3], viewportBg[4] or 0.98)
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        contentFill:Hide()
+    else
+        contentFill:SetColorTexture(viewportBg[1], viewportBg[2], viewportBg[3], viewportBg[4] or 0.98)
+    end
     dialog._wnExternalContentFill = contentFill
     
     -- Click-outside overlay (released in CloseDialog to avoid frame buildup)

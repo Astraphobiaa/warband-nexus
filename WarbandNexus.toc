@@ -74,6 +74,7 @@ Modules\ReputationCacheService.lua
 Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua
 Modules\PvECacheService_VaultSelfTest.lua
+Modules\PvPService.lua
 Modules\ItemsCacheService.lua
 Modules\ItemsCacheService_BagPerf.lua
 Modules\ItemsCacheService_PerfStress.lua
@@ -133,6 +134,7 @@ Modules\UI\ColumnOrderHelpers.lua
 Modules\UI\AchievementCriteriaHelpers.lua
 Modules\UI\SharedWidgets_Pixel.lua
 Modules\UI\SharedWidgets_CharRow.lua
+Modules\UI\SharedWidgets_ClassicTheme.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\SharedWidgets_Icons.lua
 Modules\UI\SharedWidgets_Collapsible.lua
@@ -179,6 +181,7 @@ Modules\UI\ItemsUI.lua
 Modules\UI\PvECharacterListRowChrome.lua
 Modules\UI\PvEUI_VaultGrid.lua
 Modules\UI\PvEUI.lua
+Modules\UI\PvPUI.lua
 Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua

@@ -1097,7 +1097,7 @@ function M.DrawToysContent(contentFrame)
         local iconBorder = Factory:CreateContainer(headerRow, DETAIL_ICON_SIZE, DETAIL_ICON_SIZE, true)
         iconBorder:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, 0)
         if M.ApplyCollectionsIconBorder then
-            M.ApplyCollectionsIconBorder(iconBorder, 0.7)
+            M.ApplyCollectionsIconBorder(iconBorder, 0.7, { detailWell = true })
         elseif ApplyVisuals then
             local bg, edge = M.CollectionsIconBorderColors(0.7)
             ApplyVisuals(iconBorder, bg, edge)

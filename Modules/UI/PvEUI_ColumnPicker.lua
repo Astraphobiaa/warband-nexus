@@ -13,6 +13,13 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local HideTooltip = ns.UI_HideTooltip
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 
+--- Skip ApplyVisuals on Blizzard template widgets (classic dropdown guards).
+local function ApplyPvEChrome(frame, bg, border)
+    if not frame or not ApplyVisuals then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
+    ApplyVisuals(frame, bg, border)
+end
+
 local function ControlChromeBackdrop()
     if ns.UI_GetControlChromeBackdrop then
         return ns.UI_GetControlChromeBackdrop()
@@ -147,8 +154,8 @@ local function PvE_GetOrCreateColumnPickerMenu()
     m:SetFrameStrata(PVE_COLUMN_PICKER_STRATA)
     m:SetFrameLevel(PVE_COLUMN_PICKER_MENU_LEVEL)
     m:EnableMouse(true)
-    if ApplyVisuals then
-        ApplyVisuals(m, ControlChromeBackdrop(), { accent[1], accent[2], accent[3], 1 })
+    if ApplyPvEChrome then
+        ApplyPvEChrome(m, ControlChromeBackdrop(), { accent[1], accent[2], accent[3], 1 })
     end
     m:Hide()
     WarbandNexus._wnPvEColumnPickerMenu = m
@@ -338,8 +345,8 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     end
 
     local resetOrderBtn = Factory:CreateButton(scrollChild, btnWidth - 28, ROW - 2, false)
-    if resetOrderBtn and ApplyVisuals then
-        ApplyVisuals(resetOrderBtn, ControlChromeHoverBackdrop(), { accent[1], accent[2], accent[3], 0.5 })
+    if resetOrderBtn and ApplyPvEChrome then
+        ApplyPvEChrome(resetOrderBtn, ControlChromeHoverBackdrop(), { accent[1], accent[2], accent[3], 0.5 })
     end
     if resetOrderBtn then
         resetOrderBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
@@ -359,8 +366,8 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
     end
 
     local resetBtn = Factory:CreateButton(scrollChild, btnWidth - 28, ROW - 2, false)
-    if resetBtn and ApplyVisuals then
-        ApplyVisuals(resetBtn, ControlChromeHoverBackdrop(), { accent[1], accent[2], accent[3], 0.5 })
+    if resetBtn and ApplyPvEChrome then
+        ApplyPvEChrome(resetBtn, ControlChromeHoverBackdrop(), { accent[1], accent[2], accent[3], 0.5 })
     end
     if resetBtn then
         resetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, y - 4)
@@ -422,8 +429,8 @@ local function PvE_RefreshCurrencyDisplayToggleChrome(toggleBtn, toggleLbl)
     local active = (ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop())
         or ControlChromeHoverBackdrop()
     local border = { accent[1], accent[2], accent[3], 0.6 }
-    if toggleBtn and ApplyVisuals then
-        ApplyVisuals(toggleBtn, active, border)
+    if toggleBtn and ApplyPvEChrome then
+        ApplyPvEChrome(toggleBtn, active, border)
     end
     if toggleLbl and toggleLbl.SetText then
         if mode == "weekly" then

@@ -467,6 +467,10 @@ function FontManager:GetAAFlags(category, opts)
         end
         return ""
     end
+    -- Classic mode: same outline policy as dark (default WoW font edge, not light soft shadow).
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        return flags
+    end
     return flags
 end
 

@@ -204,12 +204,12 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
     filterLabel:SetText((L and L["CUSTOM_HEADER_PICKER_FILTER_LABEL"]) or "Search")
     ns.UI_SetTextColorRole(filterLabel, "Normal")
 
-    local filterBg = Factory:CreateContainer(root, 100, filterAreaH - 6, true)
+    local filterBg = Factory:CreateContainer(root, 100, filterAreaH - 6, false)
     filterBg:SetPoint("TOPLEFT", filterLabel, "BOTTOMLEFT", 0, -4)
     filterBg:SetPoint("TOPRIGHT", root, "TOPRIGHT", -8, -16)
     if ApplyVisuals then
         if ns.UI_ApplySearchBoxChrome then
-            ns.UI_ApplySearchBoxChrome(filterBg)
+            ns.UI_ApplySearchBoxChrome(filterBg, { editBoxHost = true })
         else
             local filterChromeBg, filterChromeBorder = RosterPickerChrome()
             ApplyVisuals(filterBg, filterChromeBg, filterChromeBorder)

@@ -336,7 +336,15 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local tabButtons = {}
     local function setTabVisuals(btn, selected)
+        if not btn then return end
+        if btn._wnBlizzardButton then
+            if ns.UI_ApplyClassicNavTabActiveState then
+                ns.UI_ApplyClassicNavTabActiveState(btn, selected)
+            end
+            return
+        end
         if not ApplyVisuals then return end
+        if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(btn) then return end
         if selected then
             ApplyVisuals(btn, ControlChromeHoverBg(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
         else

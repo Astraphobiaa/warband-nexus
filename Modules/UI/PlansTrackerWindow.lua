@@ -26,6 +26,29 @@ end
 -- Unique AceEvent handler identity for PlansTrackerWindow
 local PlansTrackerEvents = {}
 local ApplyVisuals = ns.UI_ApplyVisuals
+
+--- Skip ApplyVisuals on Blizzard template widgets (classic tracker dropdown guards).
+---@param tier string|nil "card" | "row" | "icon" | "popup" | "bar" — classic routing only
+local function ApplyTrackerChrome(frame, bg, border, tier)
+    if not frame then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if tier == "card" and ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(frame)
+        elseif tier == "row" and ns.UI_ApplyClassicThinBorderChrome then
+            ns.UI_ApplyClassicThinBorderChrome(frame, bg)
+        elseif tier == "icon" and ns.UI_ApplyClassicIconWellChrome then
+            ns.UI_ApplyClassicIconWellChrome(frame, bg)
+        elseif tier == "popup" and ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(frame)
+        elseif ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(frame)
+        end
+        return
+    end
+    if not ApplyVisuals then return end
+    ApplyVisuals(frame, bg, border)
+end
 local CreateIcon = ns.UI_CreateIcon
 local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
     local fn = ns.UI_CreateExpandableRow
@@ -934,8 +957,8 @@ local function CreateTrackerFullWidthPlanCard(scrollChild, plan, width)
         card = CreateFrame("Frame", nil, scrollChild)
         card:SetSize(width, cardH)
     end
-    if ApplyVisuals then
-        ApplyVisuals(card, GetCardColors().bg, GetCardColors().border)
+    if ApplyTrackerChrome then
+        ApplyTrackerChrome(card, GetCardColors().bg, GetCardColors().border, "card")
     end
     AddTrackerCardAccent(card)
     if plan.type == "weekly_vault" and PCF and PCF.CreateWeeklyVaultCard then
@@ -1208,12 +1231,12 @@ local function RefreshTrackerContentImmediate()
                 end
             end)
             if row then
-            if ApplyVisuals then
-                ApplyVisuals(row, GetCardColors().bg, GetCardColors().border)
+            if ApplyTrackerChrome then
+                ApplyTrackerChrome(row, GetCardColors().bg, GetCardColors().border, "row")
             end
             AddTrackerCardAccent(row)
-            if row.iconFrame and ApplyVisuals then
-                ApplyVisuals(row.iconFrame, GetIconWellBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+            if row.iconFrame and ApplyTrackerChrome then
+                ApplyTrackerChrome(row.iconFrame, GetIconWellBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }, "icon")
             end
 
             local rightOffset = 6
@@ -1329,6 +1352,9 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     end
     bar:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + PADDING))
     bar:SetPoint("TOPRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, -(HEADER_HEIGHT + PADDING))
+    if ApplyTrackerChrome then
+        ApplyTrackerChrome(bar, nil, nil, "bar")
+    end
 
     -- Plan count label (right side of bar) — dropdown fills remaining width
     local countLabel = FontManager:CreateFontString(bar, "small", "OVERLAY")
@@ -1341,10 +1367,14 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     dropdown:SetPoint("LEFT", bar, "LEFT", 0, 0)
     dropdown:SetPoint("RIGHT", countLabel, "LEFT", -8, 0)
     dropdown:SetHeight(26)
-    if ApplyVisuals then
-        local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetCardColors().bg
-        local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.7
-        ApplyVisuals(dropdown, shell, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, ba })
+    if ApplyTrackerChrome then
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicThinBorderChrome then
+            ns.UI_ApplyClassicThinBorderChrome(dropdown, GetControlChromeBackdrop())
+        else
+            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetCardColors().bg
+            local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.7
+            ApplyTrackerChrome(dropdown, shell, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, ba })
+        end
     end
 
     -- Value text
@@ -1510,6 +1540,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     -- Hover on dropdown button
     dropdown:SetScript("OnEnter", function()
         arrow:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then return end
         if ApplyVisuals then
             local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
             ApplyVisuals(dropdown, hoverBg, { COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 0.8 })
@@ -1517,6 +1548,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     end)
     dropdown:SetScript("OnLeave", function()
         arrow:SetVertexColor(COLORS.textMuted[1], COLORS.textMuted[2], COLORS.textMuted[3])
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then return end
         if ApplyVisuals then
             local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetControlChromeBackdrop()
             local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.6
@@ -1571,12 +1603,14 @@ function WarbandNexus:CreatePlansTrackerWindow()
         frame:SetFrameLevel(120)
     end
 
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if ns.UI_ApplyFloatingWindowShellChrome then
+        ns.UI_ApplyFloatingWindowShellChrome(frame)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
-    elseif ApplyVisuals then
+    elseif ApplyTrackerChrome then
         local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetCardColors().bg
         local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.7
-        ApplyVisuals(frame, shell, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], ba })
+        ApplyTrackerChrome(frame, shell, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], ba })
     end
     frame:SetAlpha(math.max(0.2, math.min(1.0, db and db.opacity or 1.0)))
 
@@ -1608,11 +1642,11 @@ function WarbandNexus:CreatePlansTrackerWindow()
             SavePosition(frame)
         end)
     end
-    if ApplyVisuals then
+    if ApplyTrackerChrome then
         if ns.UI_ApplyFloatingWindowHeaderChrome then
             ns.UI_ApplyFloatingWindowHeaderChrome(header)
         else
-            ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
+            ApplyTrackerChrome(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
                 { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
         end
     end
@@ -1752,9 +1786,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
         popup:SetPoint("TOPRIGHT", gearBtn, "BOTTOMRIGHT", 0, -4)
         popup:SetFrameStrata(frame:GetFrameStrata())
         popup:SetFrameLevel(frame:GetFrameLevel() + 50)
-        if ApplyVisuals then
+        if ApplyTrackerChrome then
             local popupBg = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetControlChromeBackdrop()
-            ApplyVisuals(popup, popupBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            ApplyTrackerChrome(popup, popupBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }, "popup")
         end
 
         local label = FontManager:CreateFontString(popup, "small", "OVERLAY")
@@ -1840,6 +1874,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
     contentArea:SetPoint("TOPLEFT", 0, -scrollTopOffset)
     contentArea:SetPoint("BOTTOMRIGHT", 0, TRACKER_RESIZE_STRIP)
     frame.contentArea = contentArea
+    if ApplyTrackerChrome then
+        ApplyTrackerChrome(contentArea, nil, nil, "bar")
+    end
 
     -- â”€â”€ Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) â”€â”€
     local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
@@ -2080,7 +2117,9 @@ function ns.PlansTrackerWindow.RefreshTheme()
     end
     local frame = GetTrackerFrame()
     if not frame then return end
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if ns.UI_ApplyFloatingWindowShellChrome then
+        ns.UI_ApplyFloatingWindowShellChrome(frame)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     end
     if frame._plansTrackerHeaderShell and ApplyVisuals and COLORS.accent then
@@ -2091,6 +2130,15 @@ function ns.PlansTrackerWindow.RefreshTheme()
                 { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
                 { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
         end
+    end
+    if frame.categoryBar and ApplyTrackerChrome then
+        ApplyTrackerChrome(frame.categoryBar, nil, nil, "bar")
+    end
+    if frame.contentArea and ApplyTrackerChrome then
+        ApplyTrackerChrome(frame.contentArea, nil, nil, "bar")
+    end
+    if frame.categoryDropdown and ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicThinBorderChrome then
+        ns.UI_ApplyClassicThinBorderChrome(frame.categoryDropdown, GetControlChromeBackdrop())
     end
     if frame._applyHeaderChromeIdle then
         frame._applyHeaderChromeIdle()

@@ -83,6 +83,16 @@ local function ResolveSectionPresetChrome(preset)
     return headerBg, br, bg, bb, ba, sr, sg, sb, sa
 end
 
+local function UseClassicSectionChrome()
+    return ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+end
+
+--- Classic list-header fill — neutral surface, not accent preset washes.
+local function ResolveClassicSectionHeaderBg()
+    local surf = COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bgCard or COLORS.bg
+    return { surf[1], surf[2], surf[3], surf[4] or 1 }
+end
+
 local function ResolveSurfaceTierColor(tier)
     if ns.UI_ResolveSurfaceTierColor then
         return ns.UI_ResolveSurfaceTierColor(tier)
@@ -192,7 +202,21 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local sideInset = (UI_SPACING and UI_SPACING.SIDE_MARGIN) or (UI_LAYOUT and UI_LAYOUT.SIDE_MARGIN) or 12
     local useFullParentWidth = visualOpts and visualOpts.useFullParentWidth == true
     local stackWidth = visualOpts and tonumber(visualOpts.sectionStackWidth)
-    local header = CreateFrame("Button", nil, parent)
+    local useClassicPanel = UseClassicSectionChrome()
+    local header
+    if useClassicPanel and not suppressSectionChrome then
+        header = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        header._wnBlizzardButton = true
+        header._wnClassicCollapsibleHeader = true
+        if header.SetText then
+            header:SetText("")
+        end
+        if ns.UI_NormalizeBlizzardButtonChrome then
+            ns.UI_NormalizeBlizzardButtonChrome(header)
+        end
+    else
+        header = CreateFrame("Button", nil, parent)
+    end
     local headerW
     if stackWidth and stackWidth > 0 then
         headerW = math.max(1, stackWidth - indent)
@@ -215,31 +239,51 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local chevLeft = (ly and ly.SECTION_HEADER_COLLAPSE_CHEVRON_LEFT) or 12
     local catIconGap = (ly and ly.SECTION_HEADER_CATEGORY_ICON_GAP) or 8
     local titleAfterIcon = (ly and ly.SECTION_HEADER_TITLE_AFTER_ICON) or 12
+    if useClassicPanel then
+        chevLeft = chevLeft + 2
+        catIconGap = catIconGap + 2
+    end
 
     if not suppressSectionChrome then
-        ApplyVisuals(header, headerBg, { br, bg, bb, ba })
+        if useClassicPanel then
+            if not header._wnBlizzardButton then
+                local classicBg = ResolveClassicSectionHeaderBg()
+                if ns.UI_ApplyClassicListHeaderChrome then
+                    ns.UI_ApplyClassicListHeaderChrome(header, classicBg)
+                elseif ns.UI_ApplyClassicPaneBackdrop then
+                    ns.UI_ApplyClassicPaneBackdrop(header, classicBg)
+                elseif ns.UI_ApplyClassicThinBorderChrome then
+                    ns.UI_ApplyClassicThinBorderChrome(header, classicBg)
+                end
+                header._wnSectionHeaderBaseBg = classicBg
+            end
+            header._wnSectionStripe = nil
+            if header._wnSectionRowJoin then header._wnSectionRowJoin:Hide() end
+        else
+            ApplyVisuals(header, headerBg, { br, bg, bb, ba })
 
-        local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
-        stripe:SetSize(stripeW, math.max(4, sectionH - stripeVInset - stripeVInset))
-        stripe:SetPoint("LEFT", 4, 0)
-        stripe:SetColorTexture(sr, sg, sb, sa)
-        header._wnSectionStripe = stripe
-        if ns.UI_RegisterAccentStripe then
-            ns.UI_RegisterAccentStripe(stripe)
+            local stripe = header:CreateTexture(nil, "ARTWORK", nil, 2)
+            stripe:SetSize(stripeW, math.max(4, sectionH - stripeVInset - stripeVInset))
+            stripe:SetPoint("LEFT", 4, 0)
+            stripe:SetColorTexture(sr, sg, sb, sa)
+            header._wnSectionStripe = stripe
+            if ns.UI_RegisterAccentStripe then
+                ns.UI_RegisterAccentStripe(stripe)
+            end
+            if header._wnHairlinebottom and header._wnHairlinebottom.Hide then
+                header._wnHairlinebottom:Hide()
+            end
+            -- Soft join into first row (same accent; lower alpha than header border).
+            if not header._wnSectionRowJoin then
+                local join = header:CreateTexture(nil, "BORDER", nil, 1)
+                join:SetHeight(1)
+                join:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", stripeW + 8, 1)
+                join:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 1)
+                header._wnSectionRowJoin = join
+            end
+            header._wnSectionRowJoin:SetColorTexture(br, bg, bb, 0.28)
+            header._wnSectionRowJoin:Show()
         end
-        if header._wnHairlinebottom and header._wnHairlinebottom.Hide then
-            header._wnHairlinebottom:Hide()
-        end
-        -- Soft join into first row (same accent; lower alpha than header border).
-        if not header._wnSectionRowJoin then
-            local join = header:CreateTexture(nil, "BORDER", nil, 1)
-            join:SetHeight(1)
-            join:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", stripeW + 8, 1)
-            join:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 1)
-            header._wnSectionRowJoin = join
-        end
-        header._wnSectionRowJoin:SetColorTexture(br, bg, bb, 0.28)
-        header._wnSectionRowJoin:Show()
     else
         header._wnSectionStripe = nil
         if header._wnSectionRowJoin then header._wnSectionRowJoin:Hide() end
@@ -387,8 +431,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         end
     end)
     
-    -- Apply highlight effect
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+    -- Apply highlight effect (skip on UIPanelButtonTemplate — template owns hover art)
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight and not header._wnBlizzardButton then
         ns.UI.Factory:ApplyHighlight(header)
     end
 

@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Tooltip Factory
     UI frame creation for custom tooltips
     
@@ -151,7 +151,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame:Hide()
     
     -- Phase 2: elevated surface + atlas underlay + accent inset border (parity with tab cards).
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if ns.UI_ApplyTooltipShellChrome then
+        ns.UI_ApplyTooltipShellChrome(frame)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     else
         local bg, border = { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98 },
@@ -1213,7 +1215,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.UpdateTheme = function(self)
         COLORS = BootstrapTooltipColors()
 
-        if ns.UI_ApplyStandardCardElevatedChrome then
+        if ns.UI_ApplyTooltipShellChrome then
+            ns.UI_ApplyTooltipShellChrome(self)
+        elseif ns.UI_ApplyStandardCardElevatedChrome then
             ns.UI_ApplyStandardCardElevatedChrome(self)
         else
             local bg, border = { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98 },

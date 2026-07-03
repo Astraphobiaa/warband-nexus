@@ -46,6 +46,12 @@ end
 local ROW_CLASS_GRADIENT_WIDTH_FRAC = 0.175
 local function ApplyCharacterRowClassGradientAccent(row, classFile, gradientWidthPx, gradientStartPx)
     if not row then return end
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if row._wnClassGradientTex then
+            row._wnClassGradientTex:Hide()
+        end
+        return
+    end
     local cc = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
     if not cc then
         if row._wnClassGradientTex then
@@ -366,6 +372,9 @@ function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     if not row then return end
     local tier = (rowIndex % 2 == 0) and "rowEven" or "rowOdd"
     local bgColor = ResolveSurfaceTierColor(tier)
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        bgColor = { bgColor[1], bgColor[2], bgColor[3], (bgColor[4] or 1) * 0.22 }
+    end
     if not row.bg then
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
@@ -437,7 +446,21 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     local sp = UI_SPACING
     local h = height or sp.SECTION_COLLAPSE_HEADER_HEIGHT or sp.HEADER_HEIGHT
     local indent = leftIndent or 0
-    local header = CreateFrame("Button", nil, parent)
+    local isClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    local header
+    if isClassic then
+        header = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        header._wnBlizzardButton = true
+        header._wnClassicCollapsibleHeader = true
+        if header.SetText then
+            header:SetText("")
+        end
+        if ns.UI_NormalizeBlizzardButtonChrome then
+            ns.UI_NormalizeBlizzardButtonChrome(header)
+        end
+    else
+        header = CreateFrame("Button", nil, parent)
+    end
     header:SetHeight(h)
     header:SetPoint("TOPLEFT", indent, -yOffset)
     header:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
@@ -445,13 +468,20 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:SetFrameLevel((parent:GetFrameLevel() or 0) + 10)
     header:Show()
 
-    local surf = COLORS.surfaceElevated or COLORS.bgLight
-    -- Opaque background (1.0) so row text does not show through behind header
-    ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-    header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
+    local surf = COLORS.surfaceHeaderChrome or COLORS.surfaceElevated or COLORS.bgLight
+    if isClassic and not header._wnBlizzardButton and ns.UI_ApplyClassicListHeaderChrome then
+        ns.UI_ApplyClassicListHeaderChrome(header, { surf[1], surf[2], surf[3], 1 })
+        header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
+    elseif isClassic and not header._wnBlizzardButton and ns.UI_ApplyClassicCardPanelChrome then
+        ns.UI_ApplyClassicCardPanelChrome(header)
+        header._wnSectionHeaderBaseBg = { surf[1], surf[2], surf[3], 1 }
+    elseif not isClassic then
+        ApplyVisuals(header, {surf[1], surf[2], surf[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        header._wnSectionHeaderBaseBg = {surf[1], surf[2], surf[3], 1}
 
-    if ns.UI_ApplySectionChromeUnderlay then
-        ns.UI_ApplySectionChromeUnderlay(header)
+        if ns.UI_ApplySectionChromeUnderlay then
+            ns.UI_ApplySectionChromeUnderlay(header)
+        end
     end
 
     -- Collapse/expand chevron (same control as tab section headers)
@@ -484,26 +514,38 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     header:SetScript("OnClick", onToggle)
     collapseBtn:SetScript("OnClick", onToggle)
 
-    -- Hover highlight (token-driven base from `surfaceElevated`)
+    -- Hover highlight (token-driven base from `surfaceElevated`; classic UIPanelButtonTemplate uses native hover)
     header:SetScript("OnEnter", function()
-        if header.SetBackdropColor and header._wnSectionHeaderBaseBg then
-            local b = header._wnSectionHeaderBaseBg
-            if ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetControlChromeHoverBackdrop then
-                local h = ns.UI_GetControlChromeHoverBackdrop()
-                header:SetBackdropColor(h[1], h[2], h[3], h[4] or 1)
-            else
-                header:SetBackdropColor(
-                    math.min(1, b[1] * 1.12),
-                    math.min(1, b[2] * 1.12),
-                    math.min(1, b[3] * 1.12),
-                    b[4] or 1
-                )
-            end
+        if header._wnBlizzardButton then return end
+        if not header.SetBackdropColor then return end
+        local b = header._wnSectionHeaderBaseBg or header._wnThinBorderBg or header._wnPaneBackdropBg
+        if not b then return end
+        if isClassic then
+            header:SetBackdropColor(
+                math.min(1, b[1] * 1.08),
+                math.min(1, b[2] * 1.08),
+                math.min(1, b[3] * 1.08),
+                b[4] or 1
+            )
+            return
+        end
+        if ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetControlChromeHoverBackdrop then
+            local h = ns.UI_GetControlChromeHoverBackdrop()
+            header:SetBackdropColor(h[1], h[2], h[3], h[4] or 1)
+        else
+            header:SetBackdropColor(
+                math.min(1, b[1] * 1.12),
+                math.min(1, b[2] * 1.12),
+                math.min(1, b[3] * 1.12),
+                b[4] or 1
+            )
         end
     end)
     header:SetScript("OnLeave", function()
-        if header.SetBackdropColor and header._wnSectionHeaderBaseBg then
-            local b = header._wnSectionHeaderBaseBg
+        if header._wnBlizzardButton then return end
+        if not header.SetBackdropColor then return end
+        local b = header._wnSectionHeaderBaseBg or header._wnThinBorderBg or header._wnPaneBackdropBg
+        if b then
             header:SetBackdropColor(b[1], b[2], b[3], b[4] or 1)
         end
     end)

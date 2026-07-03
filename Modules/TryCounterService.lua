@@ -5449,7 +5449,7 @@ Fns.ClassifyLootSession = function(source, isFromItem)
         local anyGameObject, anyMob = false, false
         for i = 1, #lootSession.sourceGUIDs do
             local guid = lootSession.sourceGUIDs[i]
-            if type(guid) == "string" then
+            if type(guid) == "string" and not (issecretvalue and issecretvalue(guid)) then
                 if guid:match("^GameObject") then anyGameObject = true end
                 if guid:match("^Creature") or guid:match("^Vehicle") then anyMob = true end
             end
@@ -5866,8 +5866,11 @@ function Fns.ResolveFromGUIDs(ctx, sourceGUIDs, addon)
     local allProcessed = true
     for i = 1, #sourceGUIDs do
         local srcGUID = sourceGUIDs[i]
-        if srcGUID:match("^GameObject") then ctx.sourceIsGameObject = true end
-        if processedGUIDs[srcGUID] then
+        if type(srcGUID) ~= "string" or (issecretvalue and issecretvalue(srcGUID)) then
+            srcGUID = nil
+        end
+        if srcGUID and srcGUID:match("^GameObject") then ctx.sourceIsGameObject = true end
+        if srcGUID and processedGUIDs[srcGUID] then
             -- already handled
         else
             allProcessed = false
@@ -5889,7 +5892,11 @@ function Fns.ResolveFromGUIDs(ctx, sourceGUIDs, addon)
     -- Keep first unprocessed GUID for housekeeping even when no drop table matched
     for i = 1, #sourceGUIDs do
         local srcGUID = sourceGUIDs[i]
-        if not processedGUIDs[srcGUID] then ctx.dedupGUID = srcGUID; break end
+        if type(srcGUID) == "string" and not (issecretvalue and issecretvalue(srcGUID))
+            and not processedGUIDs[srcGUID] then
+            ctx.dedupGUID = srcGUID
+            break
+        end
     end
     return nil
 end

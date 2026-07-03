@@ -36,11 +36,13 @@ local ProfUI = ns.ProfessionsUI
 ProfUI.CHUNK_SIZE = 3
 ProfUI.CHUNK_MIN_CHARS = 0
 
+local PUI = {} -- file-internal helper table (WN-CODE-lua-local-limit: keep top-level locals < 120)
+
 local Utilities = ns.Utilities
 local function SafeLower(s)
     return Utilities and Utilities.SafeLower and Utilities:SafeLower(s) or ""
 end
-local function CompareCharNameLower(a, b)
+function PUI.CompareCharNameLower(a, b)
     return SafeLower(a.name) < SafeLower(b.name)
 end
 local issecretvalue = issecretvalue
@@ -64,27 +66,45 @@ local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateIcon = ns.UI_CreateIcon
 local FormatNumber = ns.UI_FormatNumber
 local GetAccentHexColor = ns.UI_GetAccentHexColor
-local function ChromeBackdrop()
+function PUI.ChromeBackdrop()
     return (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
         or COLORS.bgCard or COLORS.bgLight or COLORS.bg
 end
-local function ChromeBorder(alpha)
+function PUI.ChromeBorder(alpha)
     alpha = alpha or 0.6
     return { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], alpha }
 end
-local function MenuShellBackdrop()
+function PUI.MenuShellBackdrop()
     local row = COLORS.surfaceRowOdd or COLORS.bg
     return { row[1], row[2], row[3], row[4] or 0.98 }
 end
-local function MenuShellBorder()
+function PUI.MenuShellBorder()
     local br = COLORS.accent
     return { br[1] * 0.6, br[2] * 0.6, br[3] * 0.6, 0.8 }
 end
+--- Skip custom ApplyVisuals on Blizzard template widgets (classic UIPanelButtonTemplate, etc.).
+function PUI.ApplyProfChrome(frame, bg, border)
+    if not frame or not ApplyVisuals then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
+    ApplyVisuals(frame, bg, border)
+end
+local PROFESSION_PANEL_BTN_H = 22
+function PUI.ProfUseBlizzardChrome()
+    return ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+end
+function PUI.SetProfessionPanelButtonLabel(btn, text)
+    if not btn then return end
+    if btn._wnBlizzardButton then
+        if btn.SetText then btn:SetText(text or "") end
+    elseif btn.label then
+        btn.label:SetText(text or "")
+    end
+end
 --- Full `|cffrrggbb` prefix from theme text roles (do not prepend another `|cff`).
-local function TextRoleMarkup(role)
+function PUI.TextRoleMarkup(role)
     return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex(role)) or (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee"
 end
-local function ProgressRgb(kind)
+function PUI.ProgressRgb(kind)
     if kind == "complete" then
         if ns.UI_IsLightMode and ns.UI_IsLightMode() then
             return 0.22, 0.55, 0.32
@@ -98,7 +118,7 @@ local function ProgressRgb(kind)
     local c = COLORS.textBright
     return c[1], c[2], c[3]
 end
-local function MutedIconVertex()
+function PUI.MutedIconVertex()
     if ns.UI_GetNavTabIconMutedVertex then
         return ns.UI_GetNavTabIconMutedVertex()
     end
@@ -130,8 +150,8 @@ local profEquipResolveCache = nil
 local EQUIP_CACHE_MISS = {}
 
 -- Layout
-local function GetLayout() return ns.UI_LAYOUT or {} end
-local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
+function PUI.GetLayout() return ns.UI_LAYOUT or {} end
+local SIDE_MARGIN = PUI.GetLayout().SIDE_MARGIN or 10
 
 local GetCharKey = ns.UI_GetCharKey
 
@@ -147,7 +167,7 @@ local EXPANSION_ORDER = {
 
 -- Extracts the base expansion key from an expansion-qualified name.
 -- e.g. "Midnight Tailoring" â†’ "Midnight", "Khaz Algar Alchemy" â†’ "Khaz Algar"
-local function ExtractExpansionKey(expName)
+function PUI.ExtractExpansionKey(expName)
     if not expName or expName == "" then return nil end
     if issecretvalue and issecretvalue(expName) then return nil end
     for ei = 1, #EXPANSION_ORDER do
@@ -160,7 +180,7 @@ end
 -- Builds expansion filter options dynamically from all characters' discovered expansion data.
 -- Always "All" first, then discovered expansions sorted newestâ†’oldest.
 -- Falls back to "Midnight" when no expansion data has been collected yet.
-local function BuildDynamicExpansionOptions()
+function PUI.BuildDynamicExpansionOptions()
     local seen = {}
     local keys = {}
     local db = WarbandNexus and WarbandNexus.db
@@ -171,7 +191,7 @@ local function BuildDynamicExpansionOptions()
                     if type(expList) == "table" then
                         for exi = 1, #expList do
                             local exp = expList[exi]
-                            local key = exp.name and ExtractExpansionKey(exp.name)
+                            local key = exp.name and PUI.ExtractExpansionKey(exp.name)
                             if key and not seen[key] then
                                 seen[key] = true
                                 keys[#keys + 1] = key
@@ -271,7 +291,7 @@ local STATIC_COLUMN_ORDER = {
 }
 local columnOrder = STATIC_COLUMN_ORDER
 
-local function EnsureProfessionColumnOrder(profile)
+function PUI.EnsureProfessionColumnOrder(profile)
     if not profile or not ColumnOrder then return PROF_TOGGLEABLE_DEFAULT_ORDER end
     if type(profile.professionColumnOrder) ~= "table" then
         profile.professionColumnOrder = {}
@@ -290,12 +310,12 @@ local function EnsureProfessionColumnOrder(profile)
     return profile.professionColumnOrder
 end
 
-local function SyncProfessionColumnOrder(profile)
+function PUI.SyncProfessionColumnOrder(profile)
     if not ColumnOrder then
         columnOrder = STATIC_COLUMN_ORDER
         return columnOrder
     end
-    local middle = EnsureProfessionColumnOrder(profile)
+    local middle = PUI.EnsureProfessionColumnOrder(profile)
     local full = {}
     for pi = 1, #PROF_IDENTITY_PREFIX do full[#full + 1] = PROF_IDENTITY_PREFIX[pi] end
     for mi = 1, #middle do full[#full + 1] = middle[mi] end
@@ -337,7 +357,7 @@ local MIDNIGHT_MOXIE_CURRENCY = {
     [2918] = 3266,  -- Tailoring
 }
 
-local function IsMidnightSkillLineID(skillLineID)
+function PUI.IsMidnightSkillLineID(skillLineID)
     return type(skillLineID) == "number" and MIDNIGHT_MOXIE_CURRENCY[skillLineID] ~= nil
 end
 
@@ -365,8 +385,8 @@ local COLUMN_DEFAULT_VISIBLE = {
     cooldowns = false,
 }
 
-local function GetToggleableColumnsInPickerOrder(profile)
-    local order = EnsureProfessionColumnOrder(profile)
+function PUI.GetToggleableColumnsInPickerOrder(profile)
+    local order = PUI.EnsureProfessionColumnOrder(profile)
     local byKey = {}
     for tci = 1, #TOGGLEABLE_COLUMNS do
         byKey[TOGGLEABLE_COLUMNS[tci].key] = TOGGLEABLE_COLUMNS[tci]
@@ -380,7 +400,7 @@ local function GetToggleableColumnsInPickerOrder(profile)
 end
 
 --- Merge toggleable keys + defaults; migrate legacy tool/acc* slots to `equipment`.
-local function EnsureProfessionVisibleColumns(profile)
+function PUI.EnsureProfessionVisibleColumns(profile)
     if not profile then return nil end
     profile.professionVisibleColumns = profile.professionVisibleColumns or {}
     local vis = profile.professionVisibleColumns
@@ -398,13 +418,13 @@ local function EnsureProfessionVisibleColumns(profile)
     return vis
 end
 
-local function IsColumnVisible(key)
+function PUI.IsColumnVisible(key)
     local profile = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
     if not profile then
         local def = COLUMN_DEFAULT_VISIBLE[key]
         return def == nil
     end
-    local vis = EnsureProfessionVisibleColumns(profile)
+    local vis = PUI.EnsureProfessionVisibleColumns(profile)
     if not vis then
         local def = COLUMN_DEFAULT_VISIBLE[key]
         return def == nil
@@ -412,7 +432,7 @@ local function IsColumnVisible(key)
     return vis[key] ~= false
 end
 
-local function RequestProfessionColumnsRefresh()
+function PUI.RequestProfessionColumnsRefresh()
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, {
         tab = "professions",
         skipCooldown = true,
@@ -420,20 +440,20 @@ local function RequestProfessionColumnsRefresh()
     })
 end
 
-local function ProfColumnPickerHide()
+function PUI.ProfColumnPickerHide()
     local menu = WarbandNexus._wnProfColumnPickerMenu
     if menu then menu:Hide() end
     local catcher = WarbandNexus._wnProfColumnPickerCatcher
     if catcher then catcher:Hide() end
 end
 
-local function ProfColumnPickerPositionMenu(menu, anchorBtn)
+function PUI.ProfColumnPickerPositionMenu(menu, anchorBtn)
     if not menu or not anchorBtn then return end
     menu:ClearAllPoints()
     menu:SetPoint("TOPLEFT", anchorBtn, "BOTTOMLEFT", 0, -4)
 end
 
-local function ProfColumnPickerShowCatcher(menu)
+function PUI.ProfColumnPickerShowCatcher(menu)
     local catcher = WarbandNexus._wnProfColumnPickerCatcher
     if not catcher then
         local FactDd = ns.UI and ns.UI.Factory
@@ -463,17 +483,17 @@ local function ProfColumnPickerShowCatcher(menu)
     catcher:Show()
 end
 
-local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
+function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
     if not menu or not anchorBtn then return end
     local profile = WarbandNexus.db and WarbandNexus.db.profile
     if not profile then return end
-    local vis = EnsureProfessionVisibleColumns(profile)
+    local vis = PUI.EnsureProfessionVisibleColumns(profile)
     if not vis then return end
 
-    local ROW_H = (GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (GetLayout().ROW_HEIGHT) or 26
+    local ROW_H = (PUI.GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (PUI.GetLayout().ROW_HEIGHT) or 26
     local PAD = 6
     local FactDd = ns.UI and ns.UI.Factory
-    local pickerCols, colOrder = GetToggleableColumnsInPickerOrder(profile)
+    local pickerCols, colOrder = PUI.GetToggleableColumnsInPickerOrder(profile)
     local contentH = #pickerCols * ROW_H + PAD * 2 + ROW_H + ROW_H
     menu:SetSize(228, contentH)
 
@@ -485,24 +505,24 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
     end
 
     local function RepopulatePickerAfterOrderChange()
-        RequestProfessionColumnsRefresh()
+        PUI.RequestProfessionColumnsRefresh()
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
                 local picker = WarbandNexus._wnProfColumnPickerMenu
                 local anchor = WarbandNexus._wnProfColumnPickerAnchorBtn
                 local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
                 if not picker or not anchor or not mf or mf.currentTab ~= "professions" then
-                    ProfColumnPickerHide()
+                    PUI.ProfColumnPickerHide()
                     return
                 end
                 if not anchor.GetTop or not anchor:GetTop() then
-                    ProfColumnPickerHide()
+                    PUI.ProfColumnPickerHide()
                     return
                 end
-                ProfColumnPickerPopulateMenu(picker, anchor)
-                ProfColumnPickerPositionMenu(picker, anchor)
+                PUI.ProfColumnPickerPopulateMenu(picker, anchor)
+                PUI.ProfColumnPickerPositionMenu(picker, anchor)
                 picker:Show()
-                ProfColumnPickerShowCatcher(picker)
+                PUI.ProfColumnPickerShowCatcher(picker)
             end)
         end
     end
@@ -510,7 +530,7 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
     local yOff = -PAD
     for tci = 1, #pickerCols do
         local tc = pickerCols[tci]
-        local isVisible = IsColumnVisible(tc.key)
+        local isVisible = PUI.IsColumnVisible(tc.key)
         local checkRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 216, ROW_H, true)
         if not checkRow then
             checkRow = CreateFrame("Button", nil, menu)
@@ -523,11 +543,11 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
         checkTex:SetPoint("LEFT", 4, 0)
         if isVisible then
             checkTex:SetAtlas("common-icon-checkmark")
-            local gr, gg, gb = ProgressRgb("complete")
+            local gr, gg, gb = PUI.ProgressRgb("complete")
             checkTex:SetVertexColor(gr, gg, gb, 1)
         else
             checkTex:SetAtlas("common-icon-redx")
-            local mr, mg, mb, ma = MutedIconVertex()
+            local mr, mg, mb, ma = PUI.MutedIconVertex()
             checkTex:SetVertexColor(mr, mg, mb, ma)
         end
 
@@ -539,7 +559,7 @@ local function ProfColumnPickerPopulateMenu(menu, anchorBtn)
 
         local capturedKey = tc.key
         checkRow:SetScript("OnClick", function()
-            vis[capturedKey] = not IsColumnVisible(capturedKey)
+            vis[capturedKey] = not PUI.IsColumnVisible(capturedKey)
             RepopulatePickerAfterOrderChange()
         end)
         checkRow:SetScript("OnEnter", function(f) f:SetAlpha(0.8) end)
@@ -604,11 +624,17 @@ function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
         menu = FactDd and FactDd:CreateContainer(UIParent, 228, 80, false)
         if not menu then
             menu = CreateFrame("Frame", "WarbandNexusProfColumnPickerMenu", UIParent, "BackdropTemplate")
-            menu:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-            local shell = MenuShellBackdrop()
-            menu:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 1)
-        elseif ApplyVisuals then
-            ApplyVisuals(menu, MenuShellBackdrop(), MenuShellBorder())
+            if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+                if ns.UI_ApplyBlizzardPanelBackdrop then
+                    ns.UI_ApplyBlizzardPanelBackdrop(menu, PUI.MenuShellBackdrop())
+                end
+            else
+                menu:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+                local shell = PUI.MenuShellBackdrop()
+                menu:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 1)
+            end
+        elseif PUI.ApplyProfChrome then
+            PUI.ApplyProfChrome(menu, PUI.MenuShellBackdrop(), PUI.MenuShellBorder())
         end
         menu:SetFrameStrata("FULLSCREEN_DIALOG")
         menu:SetFrameLevel(120)
@@ -626,16 +652,16 @@ function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
         end
     end
     if WarbandNexus.db and WarbandNexus.db.profile then
-        EnsureProfessionVisibleColumns(WarbandNexus.db.profile)
+        PUI.EnsureProfessionVisibleColumns(WarbandNexus.db.profile)
     end
-    ProfColumnPickerPopulateMenu(menu, anchorBtn)
-    ProfColumnPickerPositionMenu(menu, anchorBtn)
+    PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
+    PUI.ProfColumnPickerPositionMenu(menu, anchorBtn)
     menu:Show()
-    ProfColumnPickerShowCatcher(menu)
+    PUI.ProfColumnPickerShowCatcher(menu)
 end
 
 function WarbandNexus:HideProfessionColumnPicker()
-    ProfColumnPickerHide()
+    PUI.ProfColumnPickerHide()
 end
 
 -- Text columns scale with effective font size; icon/bar/button columns stay fixed
@@ -649,7 +675,7 @@ local SCALABLE_COLUMNS = {
 -- Called every time the professions tab is drawn or the window is resized so that
 -- the scrollChild is always wide enough to show all visible columns without clipping.
 function ns.ComputeProfessionsGridWidth()
-    SyncProfessionColumnOrder(WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile)
+    PUI.SyncProfessionColumnOrder(WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile)
     local fontScale = 1.0
     if FontManager and FontManager.GetFontSize then
         local actualSize = FontManager:GetFontSize(DATA_FONT)
@@ -661,7 +687,7 @@ function ns.ComputeProfessionsGridWidth()
     local total = 0
     for ki = 1, #columnOrder do
         local k = columnOrder[ki]
-        if IsColumnVisible(k) then
+        if PUI.IsColumnVisible(k) then
             local w = COLUMNS[k].width
             if SCALABLE_COLUMNS[k] then
                 w = w * fontScale
@@ -681,7 +707,7 @@ local cachedRowWidth = nil
 --   1) Font-based:  actualFontSize / 12  (keeps text from overflowing when fonts grow)
 --   2) Width-based:  available row width / base total  (distributes extra space to text columns)
 -- This eliminates truncation at any resolution / UI-scale combination.
-local function GetColumnScaleFactor()
+function PUI.GetColumnScaleFactor()
     local fontScale = 1.0
     if FontManager and FontManager.GetFontSize then
         local actualSize = FontManager:GetFontSize(DATA_FONT)
@@ -695,7 +721,7 @@ local function GetColumnScaleFactor()
         local scalableBase = 0
         for ki = 1, #columnOrder do
             local k = columnOrder[ki]
-            if IsColumnVisible(k) then
+            if PUI.IsColumnVisible(k) then
                 baseTotal = baseTotal + COLUMNS[k].width + COLUMNS[k].spacing
                 if SCALABLE_COLUMNS[k] then
                     scalableBase = scalableBase + COLUMNS[k].width
@@ -715,22 +741,22 @@ local function GetColumnScaleFactor()
     return fontScale
 end
 
-local function ColWidth(key)
-    if not IsColumnVisible(key) then return 0 end
+function PUI.ColWidth(key)
+    if not PUI.IsColumnVisible(key) then return 0 end
     local base = COLUMNS[key] and COLUMNS[key].width or 60
     if SCALABLE_COLUMNS[key] then
-        return base * GetColumnScaleFactor()
+        return base * PUI.GetColumnScaleFactor()
     end
     return base
 end
 
-local function ColOffset(key)
+function PUI.ColOffset(key)
     local offset = LEFT_PAD
-    local scaleFactor = GetColumnScaleFactor()
+    local scaleFactor = PUI.GetColumnScaleFactor()
     for ki = 1, #columnOrder do
         local k = columnOrder[ki]
         if k == key then return offset end
-        if IsColumnVisible(k) then
+        if PUI.IsColumnVisible(k) then
             local w = COLUMNS[k].width
             if SCALABLE_COLUMNS[k] then
                 w = w * scaleFactor
@@ -742,12 +768,12 @@ local function ColOffset(key)
 end
 
 --- Horizontal center of a column (for CENTER anchors / header alignment).
-local function ColCenterX(key)
-    return ColOffset(key) + ColWidth(key) / 2
+function PUI.ColCenterX(key)
+    return PUI.ColOffset(key) + PUI.ColWidth(key) / 2
 end
 
 --- Center X of gaps in the profession data grid only (after Profession column â€” not identity/open).
-local function BuildProfessionColumnDividerXs()
+function PUI.BuildProfessionColumnDividerXs()
     local xs = {}
     local inDataGrid = false
     for ki = 1, #columnOrder - 1 do
@@ -755,12 +781,12 @@ local function BuildProfessionColumnDividerXs()
         if k == "profName" then
             inDataGrid = true
         end
-        if not inDataGrid or not IsColumnVisible(k) then
+        if not inDataGrid or not PUI.IsColumnVisible(k) then
             -- identity columns: no per-column dividers
         else
             local hasNextVisible = false
             for kj = ki + 1, #columnOrder do
-                if IsColumnVisible(columnOrder[kj]) then
+                if PUI.IsColumnVisible(columnOrder[kj]) then
                     hasNextVisible = true
                     break
                 end
@@ -768,7 +794,7 @@ local function BuildProfessionColumnDividerXs()
             if hasNextVisible then
                 local nextKey
                 for kj = ki + 1, #columnOrder do
-                    if IsColumnVisible(columnOrder[kj]) then
+                    if PUI.IsColumnVisible(columnOrder[kj]) then
                         nextKey = columnOrder[kj]
                         break
                     end
@@ -776,7 +802,7 @@ local function BuildProfessionColumnDividerXs()
                 -- No rule before the info (?) column â€” too tight against the button.
                 if nextKey ~= "info" then
                     local spacing = (COLUMNS[k] and COLUMNS[k].spacing) or COL_SPACING
-                    xs[#xs + 1] = ColOffset(k) + ColWidth(k) + spacing * 0.5
+                    xs[#xs + 1] = PUI.ColOffset(k) + PUI.ColWidth(k) + spacing * 0.5
                 end
             end
         end
@@ -784,41 +810,41 @@ local function BuildProfessionColumnDividerXs()
     return xs
 end
 
-local function ApplyProfessionColumnDividers(parent, height)
+function PUI.ApplyProfessionColumnDividers(parent, height)
     if SyncGridColumnDividers and parent then
-        SyncGridColumnDividers(parent, BuildProfessionColumnDividerXs(), height)
+        SyncGridColumnDividers(parent, PUI.BuildProfessionColumnDividerXs(), height)
     end
 end
 
 --- Uniform tint width for every row (fav + class + name + open); avoids per-name width gaps when scrolling horizontally.
-local function GetProfessionIdentityGradientEnd()
-    if IsColumnVisible("profIcon") then
-        return ColOffset("profIcon")
+function PUI.GetProfessionIdentityGradientEnd()
+    if PUI.IsColumnVisible("profIcon") then
+        return PUI.ColOffset("profIcon")
     end
-    if IsColumnVisible("open") then
-        return ColOffset("open") + ColWidth("open")
+    if PUI.IsColumnVisible("open") then
+        return PUI.ColOffset("open") + PUI.ColWidth("open")
     end
-    if IsColumnVisible("name") then
-        return ColOffset("name") + ColWidth("name")
+    if PUI.IsColumnVisible("name") then
+        return PUI.ColOffset("name") + PUI.ColWidth("name")
     end
-    return ColOffset("classIcon") + ColWidth("classIcon")
+    return PUI.ColOffset("classIcon") + PUI.ColWidth("classIcon")
 end
 
 --- Anchor a cell to its column: LEFT edge or horizontal CENTER on the row midline.
-local function AnchorCellInColumn(frame, colKey, row, centerY, hAlign)
+function PUI.AnchorCellInColumn(frame, colKey, row, centerY, hAlign)
     if not frame or not colKey or not row then return end
-    local w = ColWidth(colKey)
+    local w = PUI.ColWidth(colKey)
     if w <= 0 then return end
     frame:ClearAllPoints()
     if hAlign == "CENTER" then
-        frame:SetPoint("CENTER", row, "LEFT", ColCenterX(colKey), centerY)
+        frame:SetPoint("CENTER", row, "LEFT", PUI.ColCenterX(colKey), centerY)
     else
-        frame:SetPoint("LEFT", row, "LEFT", ColOffset(colKey), centerY)
+        frame:SetPoint("LEFT", row, "LEFT", PUI.ColOffset(colKey), centerY)
     end
 end
 
 --- Plain header text (no |c escapes â€” they wrap as stray "|..." in narrow columns).
-local function StripProfHeaderDisplayText(text)
+function PUI.StripProfHeaderDisplayText(text)
     if type(text) ~= "string" then return "" end
     return text
         :gsub("|c%x%x%x%x%x%x%x%x", "")
@@ -828,7 +854,7 @@ local function StripProfHeaderDisplayText(text)
         :gsub("%s+$", "")
 end
 
-local function ApplyProfColumnHeaderLabel(lbl, displayText, highlighted)
+function PUI.ApplyProfColumnHeaderLabel(lbl, displayText, highlighted)
     if not lbl then return end
     if lbl.SetWordWrap then lbl:SetWordWrap(false) end
     if lbl.SetMaxLines then lbl:SetMaxLines(1) end
@@ -843,7 +869,7 @@ end
 
 local ToggleColumnSort
 
-local function BindProfColumnHeaderTooltip(frame, tooltipTitle)
+function PUI.BindProfColumnHeaderTooltip(frame, tooltipTitle)
     if not frame or not tooltipTitle or tooltipTitle == "" then return end
     frame:EnableMouse(true)
     frame:SetScript("OnEnter", function(self)
@@ -856,7 +882,7 @@ local function BindProfColumnHeaderTooltip(frame, tooltipTitle)
     end)
 end
 
-local function ProfessionHeaderIconIsDrawn(iconTex)
+function PUI.ProfessionHeaderIconIsDrawn(iconTex)
     if not iconTex then return false end
     if iconTex.GetAtlas then
         local atlas = iconTex:GetAtlas()
@@ -869,7 +895,7 @@ local function ProfessionHeaderIconIsDrawn(iconTex)
     return false
 end
 
-local function TryApplyProfessionHeaderAtlas(iconTex, atlasName)
+function PUI.TryApplyProfessionHeaderAtlas(iconTex, atlasName)
     if not iconTex or not iconTex.SetAtlas or not atlasName or atlasName == "" then return false end
     iconTex:SetTexture(nil)
     local modes = { false, true }
@@ -881,7 +907,7 @@ local function TryApplyProfessionHeaderAtlas(iconTex, atlasName)
     for ni = 1, #tryNames do
         local name = tryNames[ni]
         for mi = 1, #modes do
-            if pcall(iconTex.SetAtlas, iconTex, name, modes[mi]) and ProfessionHeaderIconIsDrawn(iconTex) then
+            if pcall(iconTex.SetAtlas, iconTex, name, modes[mi]) and PUI.ProfessionHeaderIconIsDrawn(iconTex) then
                 iconTex:SetSize(PROF_COL_ICON_SIZE, PROF_COL_ICON_SIZE)
                 if ns.UI_EnsureTextureFullColor then
                     ns.UI_EnsureTextureFullColor(iconTex)
@@ -897,7 +923,7 @@ local function TryApplyProfessionHeaderAtlas(iconTex, atlasName)
     return false
 end
 
-local function ApplyProfessionHeaderFileIcon(iconTex, path)
+function PUI.ApplyProfessionHeaderFileIcon(iconTex, path)
     if not iconTex or not path or path == "" then return false end
     iconTex:SetTexture(nil)
     if not pcall(iconTex.SetTexture, iconTex, path) then return false end
@@ -908,10 +934,10 @@ local function ApplyProfessionHeaderFileIcon(iconTex, path)
         iconTex:SetVertexColor(1, 1, 1, 1)
     end
     iconTex:Show()
-    return ProfessionHeaderIconIsDrawn(iconTex)
+    return PUI.ProfessionHeaderIconIsDrawn(iconTex)
 end
 
-local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
+function PUI.ApplyProfessionHeaderIconTexture(iconTex, iconDef)
     if not iconTex or not iconDef then return end
     iconTex:Hide()
     iconTex:SetTexture(nil)
@@ -930,10 +956,10 @@ local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
         end
     end
     for pi = 1, #paths do
-        if ApplyProfessionHeaderFileIcon(iconTex, paths[pi]) then return end
+        if PUI.ApplyProfessionHeaderFileIcon(iconTex, paths[pi]) then return end
     end
     if iconDef.icon and iconDef.iconIsAtlas == false then
-        if ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon) then return end
+        if PUI.ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon) then return end
     end
     if iconTex.SetAtlas and (iconDef.iconIsAtlas or type(iconDef.iconAtlases) == "table") then
         local candidates = iconDef.iconAtlases
@@ -942,21 +968,21 @@ local function ApplyProfessionHeaderIconTexture(iconTex, iconDef)
         end
         if type(candidates) == "table" then
             for ci = 1, #candidates do
-                if TryApplyProfessionHeaderAtlas(iconTex, candidates[ci]) then
+                if PUI.TryApplyProfessionHeaderAtlas(iconTex, candidates[ci]) then
                     return
                 end
             end
         end
     elseif iconDef.icon then
-        if ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon) then return end
+        if PUI.ApplyProfessionHeaderFileIcon(iconTex, iconDef.icon) then return end
     end
     if iconDef.iconFallback then
-        ApplyProfessionHeaderFileIcon(iconTex, iconDef.iconFallback)
+        PUI.ApplyProfessionHeaderFileIcon(iconTex, iconDef.iconFallback)
     end
 end
 
-local function BuildProfCompactHeaderLabel(col, displayText)
-    local mutedMarkup = TextRoleMarkup("Muted")
+function PUI.BuildProfCompactHeaderLabel(col, displayText)
+    local mutedMarkup = PUI.TextRoleMarkup("Muted")
     if type(displayText) ~= "string" or displayText == "" then return "", mutedHex end
     local shortByCol = {
         profName = (ns.L and ns.L["GROUP_PROFESSION"]) or "Profession",
@@ -989,7 +1015,7 @@ local profColHeaderLabels = {}
 local profColHeaderHits = {}
 
 --- PopulateContent parks scrollChild children in recycleBin; reattach when Professions redraws.
-local function ReattachProfessionColumnHeaderBar(colHeaderBar, parent)
+function PUI.ReattachProfessionColumnHeaderBar(colHeaderBar, parent)
     if not colHeaderBar or not parent then return end
     if colHeaderBar:GetParent() ~= parent then
         colHeaderBar:SetParent(parent)
@@ -1020,7 +1046,7 @@ function ns.UI_HideProfessionColumnHeaderStrip(scrollChild)
     end
 end
 
-local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compactLabel, compactHex, colWidth)
+function PUI.ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compactLabel, compactHex, colWidth)
     if not colHeaderBar or not hitFrame or not compactLabel or compactLabel == "" then return nil end
     local fs = profColHeaderLabels[colKey]
     if not fs then
@@ -1034,7 +1060,7 @@ local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compact
     fs:SetWidth(math.max(24, colWidth - 4))
     fs:SetJustifyH("CENTER")
     fs:SetWordWrap(false)
-    fs:SetText((compactHex or TextRoleMarkup("Muted")) .. compactLabel .. "|r")
+    fs:SetText((compactHex or PUI.TextRoleMarkup("Muted")) .. compactLabel .. "|r")
     if ns.UI_IsLightMode and ns.UI_IsLightMode() then
         fs:SetShadowOffset(0, 0)
         fs:SetShadowColor(0, 0, 0, 0)
@@ -1046,7 +1072,7 @@ local function ProfAcquireColHeaderLabel(colHeaderBar, colKey, hitFrame, compact
 end
 
 --- Icon + compact label (PvE column header parity); full locale title on hover.
-local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef, hdef, sortState, tooltipTitle, accentR, accentG, accentB, FactHdr)
+function PUI.PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef, hdef, sortState, tooltipTitle, accentR, accentG, accentB, FactHdr)
     if not colHeaderBar or not iconDef or w <= 0 then return end
     local hitW, hitH = PROF_COL_ICON_SIZE + 4, PROF_COL_ICON_SIZE + 4
     local sortable = hdef and hdef.sortable
@@ -1082,7 +1108,7 @@ local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef,
         FactHdr:ApplyIconOnlyButtonChrome(hitBtn)
     end
     hitBtn:ClearAllPoints()
-    hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col) + (w - hitW) * 0.5, 6)
+    hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", PUI.ColOffset(col) + (w - hitW) * 0.5, 6)
     hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 2)
 
     local iconTex = hitBtn._wnHeaderIconTex
@@ -1092,12 +1118,12 @@ local function PaintProfessionCompactColumnHeader(colHeaderBar, col, w, iconDef,
         iconTex:SetPoint("CENTER", hitBtn, "CENTER", 0, 0)
         hitBtn._wnHeaderIconTex = iconTex
     end
-    ApplyProfessionHeaderIconTexture(iconTex, iconDef)
-    BindProfColumnHeaderTooltip(hitBtn, tooltipTitle)
+    PUI.ApplyProfessionHeaderIconTexture(iconTex, iconDef)
+    PUI.BindProfColumnHeaderTooltip(hitBtn, tooltipTitle)
 
-    local compactLabel, compactHex = BuildProfCompactHeaderLabel(col, tooltipTitle)
+    local compactLabel, compactHex = PUI.BuildProfCompactHeaderLabel(col, tooltipTitle)
     if compactLabel ~= "" then
-        ProfAcquireColHeaderLabel(colHeaderBar, col, hitBtn, compactLabel, compactHex, w)
+        PUI.ProfAcquireColHeaderLabel(colHeaderBar, col, hitBtn, compactLabel, compactHex, w)
     end
 
     if not hdef or not hdef.sortable then
@@ -1151,7 +1177,7 @@ end
 local PROF_TEXT_SORT_ARROW_SIZE = 11
 
 --- Pooled text sort header (Character column); avoids per-draw Button/FontString allocation.
-local function PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hdef, sortState, displayText, accentR, accentG, accentB, FactHdr)
+function PUI.PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hdef, sortState, displayText, accentR, accentG, accentB, FactHdr)
     if not colHeaderBar or not hdef or w <= 0 then return end
     local isSorted = sortState and sortState.col == col
     local hitBtn = profColHeaderHits[col]
@@ -1176,9 +1202,9 @@ local function PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hde
         hitBtn:Show()
     end
     if (hdef.align or "CENTER") == "CENTER" then
-        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+        hitBtn:SetPoint("CENTER", colHeaderBar, "LEFT", PUI.ColCenterX(col), 0)
     else
-        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+        hitBtn:SetPoint("LEFT", colHeaderBar, "LEFT", PUI.ColOffset(col), 0)
     end
     hitBtn:SetFrameLevel(colHeaderBar:GetFrameLevel() + 1)
 
@@ -1196,7 +1222,7 @@ local function PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hde
     end
 
     local lbl = hitBtn._wnHeaderLabel
-    ApplyProfColumnHeaderLabel(lbl, displayText, false)
+    PUI.ApplyProfColumnHeaderLabel(lbl, displayText, false)
     local function SetHeaderLabelArrowInset(showArrow)
         lbl:ClearAllPoints()
         lbl:SetPoint("LEFT", hitBtn, "LEFT", 2, 0)
@@ -1210,7 +1236,7 @@ local function PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hde
         ToggleColumnSort(capturedCol)
     end)
     hitBtn:SetScript("OnEnter", function()
-        ApplyProfColumnHeaderLabel(lbl, displayText, true)
+        PUI.ApplyProfColumnHeaderLabel(lbl, displayText, true)
         SetHeaderLabelArrowInset(true)
         if ShowTooltip and displayText ~= "" then
             ShowTooltip(hitBtn, { type = "custom", title = displayText, lines = {} })
@@ -1222,7 +1248,7 @@ local function PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hde
         end
     end)
     hitBtn:SetScript("OnLeave", function()
-        ApplyProfColumnHeaderLabel(lbl, displayText, false)
+        PUI.ApplyProfColumnHeaderLabel(lbl, displayText, false)
         SetHeaderLabelArrowInset(isSorted)
         if HideTooltip then HideTooltip() end
         if not isSorted then
@@ -1232,7 +1258,7 @@ local function PaintProfessionTextSortableColumnHeader(colHeaderBar, col, w, hde
 end
 
 --- Pooled static text header (non-icon, non-sortable columns).
-local function PaintProfessionTextStaticColumnHeader(colHeaderBar, col, w, hdef, displayText, FactHdr)
+function PUI.PaintProfessionTextStaticColumnHeader(colHeaderBar, col, w, hdef, displayText, FactHdr)
     if not colHeaderBar or not hdef or w <= 0 then return end
     local clipKey = col .. "_clip"
     local clip = profColHeaderHits[clipKey]
@@ -1254,15 +1280,15 @@ local function PaintProfessionTextStaticColumnHeader(colHeaderBar, col, w, hdef,
         clip:Show()
     end
     if (hdef.align or "CENTER") == "CENTER" then
-        clip:SetPoint("CENTER", colHeaderBar, "LEFT", ColCenterX(col), 0)
+        clip:SetPoint("CENTER", colHeaderBar, "LEFT", PUI.ColCenterX(col), 0)
     else
-        clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", ColOffset(col), 0)
+        clip:SetPoint("TOPLEFT", colHeaderBar, "TOPLEFT", PUI.ColOffset(col), 0)
     end
     local lbl = clip._wnHeaderLabel
-    ApplyProfColumnHeaderLabel(lbl, displayText, false)
+    PUI.ApplyProfColumnHeaderLabel(lbl, displayText, false)
     lbl:SetPoint("TOPLEFT", clip, "TOPLEFT", 1, 0)
     lbl:SetPoint("BOTTOMRIGHT", clip, "BOTTOMRIGHT", -1, 0)
-    BindProfColumnHeaderTooltip(clip, displayText)
+    PUI.BindProfColumnHeaderTooltip(clip, displayText)
 end
 
 -- Column header definitions â€” alignment matches each column's data alignment
@@ -1327,12 +1353,12 @@ local HEADER_DEFS = {
 -- COLUMN SORT STATE & COMPARATORS
 -- Stored in db.profile.professionColumnSort = { col = "skill", dir = "asc"|"desc" }
 
-local function GetColumnSortState()
+function PUI.GetColumnSortState()
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
     return db and db.professionColumnSort
 end
 
-local function SetColumnSortState(col, dir)
+function PUI.SetColumnSortState(col, dir)
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile then return end
     if not col then
         WarbandNexus.db.profile.professionColumnSort = nil
@@ -1348,15 +1374,15 @@ ToggleColumnSort = function(col)
             ns.CharacterService:SetTabSortKey(profile, "professions", "manual")
         end
     end
-    local state = GetColumnSortState()
+    local state = PUI.GetColumnSortState()
     if state and state.col == col then
         if state.dir == "asc" then
-            SetColumnSortState(col, "desc")
+            PUI.SetColumnSortState(col, "desc")
         else
-            SetColumnSortState(nil)
+            PUI.SetColumnSortState(nil)
         end
     else
-        SetColumnSortState(col, "asc")
+        PUI.SetColumnSortState(col, "asc")
     end
     WarbandNexus:SendMessage(E.UI_MAIN_REFRESH_REQUESTED, { tab = "professions", skipCooldown = true })
 end
@@ -1367,11 +1393,11 @@ local BAR_HEIGHT = 16
 local BAR_BORDER = 1
 
 --- TOPLEFT Y for concentration bar so its vertical center matches profession line centerY.
-local function ColBarTopY(centerY)
+function PUI.ColBarTopY(centerY)
     return centerY + (BAR_HEIGHT / 2) - (ROW_HEIGHT / 2)
 end
 
-local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth, current, maximum)
+function PUI.UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth, current, maximum)
     current = current or 0
     maximum = maximum or 0
     local bar = parent[barKey]
@@ -1439,7 +1465,7 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
     if not maximum or maximum <= 0 then
         bar.fill:SetWidth(0.001)
         bar.fill:Hide()
-        bar.valueText:SetText(TextRoleMarkup("Bright") .. "--|r")
+        bar.valueText:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
         bar:Show()
         return bar
     end
@@ -1452,16 +1478,16 @@ local function UpdateConcentrationBar(parent, barKey, xOffset, yOffset, barWidth
     bar.fill:Show()
 
     if current >= maximum then
-        local gr, gg, gb = ProgressRgb("complete")
+        local gr, gg, gb = PUI.ProgressRgb("complete")
         bar.fill:SetVertexColor(gr, gg, gb, 1)
     elseif progress >= 0.5 then
-        local yr, yg, yb = ProgressRgb("partial")
+        local yr, yg, yb = PUI.ProgressRgb("partial")
         bar.fill:SetVertexColor(yr, yg, yb, 1)
     else
         bar.fill:SetVertexColor(0.9, 0.45, 0.2, 1)
     end
 
-    local br, bg, bb = ProgressRgb("neutral")
+    local br, bg, bb = PUI.ProgressRgb("neutral")
     bar.valueText:SetText(format("|cff%02x%02x%02x%d / %d|r", br * 255, bg * 255, bb * 255, current, maximum))
     bar:Show()
     return bar
@@ -1469,14 +1495,14 @@ end
 
 -- EVENT REGISTRATION
 
-local function InvalidateProfessionsTradeSessionCaches()
+function PUI.InvalidateProfessionsTradeSessionCaches()
     wipe(profSessionIconBySkillLine)
     wipe(profSessionRecipeMapByCharKey)
 end
 
-ProfUI.InvalidateTradeSessionCaches = InvalidateProfessionsTradeSessionCaches
+ProfUI.InvalidateTradeSessionCaches = PUI.InvalidateProfessionsTradeSessionCaches
 
-local function RegisterProfessionEvents(parent)
+function PUI.RegisterProfessionEvents(parent)
     if parent.professionUpdateHandler then return end
     parent.professionUpdateHandler = true
     -- WN_CHARACTER_UPDATED + profession WN_* tab refresh: UI_RefreshRouter (storm debounce, dataType filter).
@@ -1485,13 +1511,13 @@ end
 
 -- CHARACTER SORTING (mirrors CharactersUI)
 
-local function SortCharacters(list, orderKey)
+function PUI.SortCharacters(list, orderKey)
     local CS = ns.CharacterService
     local profile = WarbandNexus.db and WarbandNexus.db.profile
     if CS and CS.SortCharacterRosterList then
         return CS:SortCharacterRosterList(list, profile, orderKey, {
             tabId = "professions",
-            compareNameFn = CompareCharNameLower,
+            compareNameFn = PUI.CompareCharNameLower,
             isLoggedInFn = function(char)
                 return CS:IsLoggedInCharacterRow(WarbandNexus, GetCharKey(char))
             end,
@@ -1500,12 +1526,12 @@ local function SortCharacters(list, orderKey)
     end
     table.sort(list, function(a, b)
         if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-        return CompareCharNameLower(a, b)
+        return PUI.CompareCharNameLower(a, b)
     end)
     return list
 end
 
-local function CategorizeCharacters(characters)
+function PUI.CategorizeCharacters(characters)
     local favorites, regular, untracked = {}, {}, {}
     local profile = WarbandNexus.db and WarbandNexus.db.profile
     if profile and ns.CharacterService and ns.CharacterService.EnsureCustomCharacterSectionsProfile then
@@ -1543,18 +1569,18 @@ local function CategorizeCharacters(characters)
             end
         end
     end
-    favorites = SortCharacters(favorites, "favorites")
+    favorites = PUI.SortCharacters(favorites, "favorites")
     for gi = 1, #customGroupsOrdered do
         local gid = customGroupsOrdered[gi].id
         local list = groupedById[gid]
         if list and #list > 0 then
             local lk = (ns.CharacterService and ns.CharacterService.GetCustomGroupListKey
                 and ns.CharacterService:GetCustomGroupListKey(gid)) or ("group_" .. tostring(gid))
-            SortCharacters(list, lk)
+            PUI.SortCharacters(list, lk)
         end
     end
-    regular = SortCharacters(regular, "regular")
-    untracked = SortCharacters(untracked, "untracked")
+    regular = PUI.SortCharacters(regular, "regular")
+    untracked = PUI.SortCharacters(untracked, "untracked")
     return favorites, groupedById, customGroupsOrdered, regular, untracked
 end
 
@@ -1570,17 +1596,17 @@ end
 
 -- EXPANSION FILTER HELPERS (strict: only selected expansion's data)
 
-local function GetExpansionFilter()
+function PUI.GetExpansionFilter()
     return "Midnight"
 end
 
-local function ExpansionNameMatchesFilter(expansionName, filterKey)
+function PUI.ExpansionNameMatchesFilter(expansionName, filterKey)
     if not expansionName or expansionName == "" then return false end
     if filterKey == "All" then return true end
     if issecretvalue and issecretvalue(expansionName) then return false end
     -- Match by prefix (e.g. "Midnight Tailoring" vs "Midnight") or by extracted key
     if expansionName == filterKey or expansionName:sub(1, #filterKey) == filterKey then return true end
-    local key = ExtractExpansionKey(expansionName)
+    local key = PUI.ExtractExpansionKey(expansionName)
     return key and key == filterKey
 end
 
@@ -1590,7 +1616,7 @@ end
 -- 1) Skill line with concrete profession payload (weekly/recipes/knowledge/concentration)
 -- 2) Highest max skill line
 -- 3) First available skill line
-local function GetBestAvailableSkillLineID(char, expansions)
+function PUI.GetBestAvailableSkillLineID(char, expansions)
     if not expansions or #expansions == 0 then return nil end
 
     local bestBySkill = nil
@@ -1631,8 +1657,8 @@ end
 ---@param char table
 ---@param profName string
 ---@return number|nil skillLineID or nil
-local function GetSkillLineIDForFilter(char, profName)
-    local filter = GetExpansionFilter()
+function PUI.GetSkillLineIDForFilter(char, profName)
+    local filter = PUI.GetExpansionFilter()
     local expansions = char.professionExpansions and char.professionExpansions[profName]
 
     -- Primary: professionExpansions has guaranteed expansion-qualified names
@@ -1644,18 +1670,18 @@ local function GetSkillLineIDForFilter(char, profName)
             if filter == "Midnight" then
                 for exi = 1, #expansions do
                     local exp = expansions[exi]
-                    if exp and exp.skillLineID and IsMidnightSkillLineID(exp.skillLineID) then
+                    if exp and exp.skillLineID and PUI.IsMidnightSkillLineID(exp.skillLineID) then
                         return exp.skillLineID
                     end
                 end
             end
             for exi = 1, #expansions do
                 local exp = expansions[exi]
-                if exp.name and exp.skillLineID and ExpansionNameMatchesFilter(exp.name, filter) then
+                if exp.name and exp.skillLineID and PUI.ExpansionNameMatchesFilter(exp.name, filter) then
                     return exp.skillLineID
                 end
             end
-            return GetBestAvailableSkillLineID(char, expansions)
+            return PUI.GetBestAvailableSkillLineID(char, expansions)
         end
     end
 
@@ -1666,28 +1692,28 @@ end
 
 ---Returns skill level for the expansion that matches the current expansion filter.
 ---When filter is "All", returns first expansion with skill; otherwise the matching expansion.
-local function GetCurrentExpansionSkill(char, profName)
+function PUI.GetCurrentExpansionSkill(char, profName)
     local expansions = char.professionExpansions and char.professionExpansions[profName]
     if not expansions or #expansions == 0 then return nil, nil, nil end
-    local filter = GetExpansionFilter()
+    local filter = PUI.GetExpansionFilter()
     if filter ~= "All" then
         if filter == "Midnight" then
             for i = 1, #expansions do
                 local exp = expansions[i]
-                if exp and exp.skillLineID and IsMidnightSkillLineID(exp.skillLineID) then
+                if exp and exp.skillLineID and PUI.IsMidnightSkillLineID(exp.skillLineID) then
                     return exp.skillLevel or 0, exp.maxSkillLevel or 0, exp.name
                 end
             end
         end
         for i = 1, #expansions do
             local exp = expansions[i]
-            if exp and exp.name and ExpansionNameMatchesFilter(exp.name, filter) then
+            if exp and exp.name and PUI.ExpansionNameMatchesFilter(exp.name, filter) then
                 return exp.skillLevel or 0, exp.maxSkillLevel or 0, exp.name
             end
         end
         -- If strict filter match is unavailable, keep overview populated with
         -- the most meaningful known skill line for this profession.
-        local fallbackSkillLine = GetBestAvailableSkillLineID(char, expansions)
+        local fallbackSkillLine = PUI.GetBestAvailableSkillLineID(char, expansions)
         if fallbackSkillLine then
             for i = 1, #expansions do
                 local exp = expansions[i]
@@ -1708,55 +1734,55 @@ local function GetCurrentExpansionSkill(char, profName)
     return first.skillLevel or 0, first.maxSkillLevel or 0, first.name
 end
 
-local function FormatValueMax(current, maximum, color)
-    if not current or not maximum or maximum <= 0 then return TextRoleMarkup("Bright") .. "--|r" end
+function PUI.FormatValueMax(current, maximum, color)
+    if not current or not maximum or maximum <= 0 then return PUI.TextRoleMarkup("Bright") .. "--|r" end
     return format("|cff%02x%02x%02x%d|r %s/|r |cff%02x%02x%02x%d|r",
         color[1]*255, color[2]*255, color[3]*255, current,
-        TextRoleMarkup("Bright"),
+        PUI.TextRoleMarkup("Bright"),
         color[1]*255, color[2]*255, color[3]*255, maximum)
 end
 
-local function FormatSkill(curSkill, maxSkill)
-    if not curSkill or not maxSkill or maxSkill <= 0 then return TextRoleMarkup("Bright") .. "--|r" end
+function PUI.FormatSkill(curSkill, maxSkill)
+    if not curSkill or not maxSkill or maxSkill <= 0 then return PUI.TextRoleMarkup("Bright") .. "--|r" end
     local r, g, b
     if curSkill >= maxSkill then
-        r, g, b = ProgressRgb("complete")
+        r, g, b = PUI.ProgressRgb("complete")
     elseif curSkill > 0 then
-        r, g, b = ProgressRgb("partial")
+        r, g, b = PUI.ProgressRgb("partial")
     else
-        r, g, b = ProgressRgb("neutral")
+        r, g, b = PUI.ProgressRgb("neutral")
     end
-    return FormatValueMax(curSkill, maxSkill, { r, g, b })
+    return PUI.FormatValueMax(curSkill, maxSkill, { r, g, b })
 end
 
 ---Format knowledge as "Current / Max". Current = spent + unspent; Max = maxPoints from spec tree.
-local function FormatKnowledge(kd)
-    if not kd then return TextRoleMarkup("Bright") .. "--|r" end
+function PUI.FormatKnowledge(kd)
+    if not kd then return PUI.TextRoleMarkup("Bright") .. "--|r" end
     local spent = kd.spentPoints or 0
     local maxPts = kd.maxPoints or 0
     local unspent = kd.unspentPoints or 0
     local current = spent + unspent
-    if current <= 0 and (not maxPts or maxPts <= 0) then return TextRoleMarkup("Bright") .. "--|r" end
+    if current <= 0 and (not maxPts or maxPts <= 0) then return PUI.TextRoleMarkup("Bright") .. "--|r" end
     local displayMax = (maxPts and maxPts > 0) and maxPts or nil
     local r, g, b
     if unspent > 0 then
-        r, g, b = ProgressRgb("partial")
+        r, g, b = PUI.ProgressRgb("partial")
     elseif displayMax and current >= displayMax then
-        r, g, b = ProgressRgb("complete")
+        r, g, b = PUI.ProgressRgb("complete")
     else
-        r, g, b = ProgressRgb("neutral")
+        r, g, b = PUI.ProgressRgb("neutral")
     end
     local color = { r, g, b }
     if displayMax then
-        return FormatValueMax(current, displayMax, color)
+        return PUI.FormatValueMax(current, displayMax, color)
     end
     return format("|cff%02x%02x%02x%d|r %s/|r %s--|r",
         color[1]*255, color[2]*255, color[3]*255, current,
-        TextRoleMarkup("Bright"), TextRoleMarkup("Dim"))
+        PUI.TextRoleMarkup("Bright"), PUI.TextRoleMarkup("Dim"))
 end
 
 --- True when char.professions[1|2] has a learned primary profession (matches DrawProfessionLine / DataService).
-local function CharacterHasPrimaryProfession(char)
+function PUI.CharacterHasPrimaryProfession(char)
     if not char or not char.professions then return false end
     for pi = 1, 2 do
         local prof = char.professions[pi]
@@ -1777,14 +1803,14 @@ local function CharacterHasPrimaryProfession(char)
 end
 
 --- Count roster entries with saved primary profession slots (subtitle / empty-state hints).
-local function CountCharsWithProfessionData(charLists)
+function PUI.CountCharsWithProfessionData(charLists)
     local n = 0
     if not charLists then return n end
     for li = 1, #charLists do
         local list = charLists[li]
         if list then
             for ci = 1, #list do
-                if CharacterHasPrimaryProfession(list[ci]) then
+                if PUI.CharacterHasPrimaryProfession(list[ci]) then
                     n = n + 1
                 end
             end
@@ -1794,7 +1820,7 @@ local function CountCharsWithProfessionData(charLists)
 end
 
 --- First-visit defaults: match Characters tab (Favorites + Characters open; Untracked closed).
-local function EnsureProfessionsSectionExpandDefaults(profile)
+function PUI.EnsureProfessionsSectionExpandDefaults(profile)
     if not profile then return end
     if not profile.ui then profile.ui = {} end
     if profile.ui.profFavoritesExpanded == nil then
@@ -1809,7 +1835,7 @@ local function EnsureProfessionsSectionExpandDefaults(profile)
 end
 
 --- True when at least one Professions tab section will paint character rows this draw.
-local function AnyProfessionsSectionExpanded(profile, customGroupsOrdered)
+function PUI.AnyProfessionsSectionExpanded(profile, customGroupsOrdered)
     if not profile then return false end
     local ui = profile.ui or {}
     if ui.profFavoritesExpanded ~= false then return true end
@@ -1825,7 +1851,7 @@ local function AnyProfessionsSectionExpanded(profile, customGroupsOrdered)
     return false
 end
 
-local function ProfessionSlotCanOpen(isCurrent, prof)
+function PUI.ProfessionSlotCanOpen(isCurrent, prof)
     if not isCurrent or not prof then return false end
     local nm = prof.name
     if nm and nm ~= "" then
@@ -1837,8 +1863,8 @@ local function ProfessionSlotCanOpen(isCurrent, prof)
     return (prof.skillLine or prof.skillLineID) and true or false
 end
 
-local function BuildProfessionOpenTooltip(isCurrent, prof)
-    if not prof or not ProfessionSlotCanOpen(isCurrent, prof) then
+function PUI.BuildProfessionOpenTooltip(isCurrent, prof)
+    if not prof or not PUI.ProfessionSlotCanOpen(isCurrent, prof) then
         if prof and prof.name and prof.name ~= "" and not isCurrent then
             return (ns.L and ns.L["GEAR_NO_PREVIEW_HINT"]) or "Log in on this character to refresh the appearance preview."
         end
@@ -1852,18 +1878,18 @@ local function BuildProfessionOpenTooltip(isCurrent, prof)
     return base
 end
 
-local function ResolveOpenTradeSkillID(prof)
+function PUI.ResolveOpenTradeSkillID(prof)
     if not prof then return nil end
     if prof.skillLine and prof.skillLine > 0 then return prof.skillLine end
     if prof.skillLineID and prof.skillLineID > 0 then return prof.skillLineID end
     return nil
 end
 
-local function IsSameProfessionWindowOpen(prof)
+function PUI.IsSameProfessionWindowOpen(prof)
     if not prof or not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady then return false end
     local readyOk, ready = pcall(C_TradeSkillUI.IsTradeSkillReady)
     if not readyOk or not ready then return false end
-    local targetID = ResolveOpenTradeSkillID(prof)
+    local targetID = PUI.ResolveOpenTradeSkillID(prof)
     if not targetID or not C_TradeSkillUI.GetProfessionChildSkillLineID then return false end
     local slOk, openID = pcall(C_TradeSkillUI.GetProfessionChildSkillLineID)
     if not slOk or not openID or openID <= 0 then return false end
@@ -1883,9 +1909,9 @@ local function IsSameProfessionWindowOpen(prof)
     return false
 end
 
-local function OpenProfessionSlot(prof)
+function PUI.OpenProfessionSlot(prof)
     if InCombatLockdown() or not prof then return end
-    if IsSameProfessionWindowOpen(prof) then return end
+    if PUI.IsSameProfessionWindowOpen(prof) then return end
     if C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill then
         if prof.skillLine then
             C_TradeSkillUI.OpenTradeSkill(prof.skillLine)
@@ -1899,14 +1925,20 @@ local function OpenProfessionSlot(prof)
     end
 end
 
-local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
+function PUI.SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
     if not btn then return end
     btn:Show()
     btn:EnableMouse(true)
-    if btn.label then
-        btn.label:SetText((ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open")
-    end
-    if enabled then
+    local openText = (ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open"
+    PUI.SetProfessionPanelButtonLabel(btn, openText)
+    if btn._wnBlizzardButton then
+        if enabled then
+            btn:Enable()
+        else
+            btn:Disable()
+        end
+        btn:SetAlpha(1)
+    elseif enabled then
         btn:Enable()
         btn:SetAlpha(1)
         if btn.label then ns.UI_SetTextColorRole(btn.label, "Bright") end
@@ -1922,31 +1954,37 @@ local function SetProfessionOpenButtonState(btn, enabled, tooltipTitle)
     btn:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
 end
 
-local function WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCurrent)
+function PUI.WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCurrent)
     local p = "l" .. lineIndex
     local FactRow = ns.UI and ns.UI.Factory
+    local useBlizz = PUI.ProfUseBlizzardChrome()
+    local btnH = useBlizz and PROFESSION_PANEL_BTN_H or 18
     if not row[p .. "Btn"] then
-        local btn = FactRow and FactRow:CreateButton(row, ColWidth("open"), 18, true)
+        local btn = FactRow and FactRow:CreateButton(row, PUI.ColWidth("open"), btnH, not useBlizz)
         if not btn then
             btn = CreateFrame("Button", nil, row)
-            btn:SetSize(ColWidth("open"), 18)
+            btn:SetSize(PUI.ColWidth("open"), btnH)
         end
-        if ApplyVisuals then
-            ApplyVisuals(btn, ChromeBackdrop(), ChromeBorder(0.5))
+        if useBlizz then
+            PUI.SetProfessionPanelButtonLabel(btn, (ns.L and ns.L["PROF_OPEN_RECIPE"]) or "Open")
+        else
+            if PUI.ApplyProfChrome then
+                PUI.ApplyProfChrome(btn, PUI.ChromeBackdrop(), PUI.ChromeBorder(0.5))
+            end
+            btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
+            btn.label:SetPoint("CENTER", 0, 0)
         end
-        btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
-        btn.label:SetPoint("CENTER", 0, 0)
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(btn) end
         row[p .. "Btn"] = btn
     end
     local btn = row[p .. "Btn"]
-    AnchorCellInColumn(btn, "open", row, centerY, "CENTER")
-    local canOpen = ProfessionSlotCanOpen(isCurrent, prof)
-    SetProfessionOpenButtonState(btn, canOpen, BuildProfessionOpenTooltip(isCurrent, prof))
+    PUI.AnchorCellInColumn(btn, "open", row, centerY, "CENTER")
+    local canOpen = PUI.ProfessionSlotCanOpen(isCurrent, prof)
+    PUI.SetProfessionOpenButtonState(btn, canOpen, PUI.BuildProfessionOpenTooltip(isCurrent, prof))
     if canOpen then
         local capturedProf = prof
         btn:SetScript("OnClick", function()
-            OpenProfessionSlot(capturedProf)
+            PUI.OpenProfessionSlot(capturedProf)
         end)
     else
         btn:SetScript("OnClick", nil)
@@ -1954,26 +1992,26 @@ local function WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCur
     btn:Show()
 end
 
-local function FormatProgressPair(entry)
-    if not entry then return TextRoleMarkup("Bright") .. "--|r" end
+function PUI.FormatProgressPair(entry)
+    if not entry then return PUI.TextRoleMarkup("Bright") .. "--|r" end
     local current = tonumber(entry.current or 0) or 0
     local total = tonumber(entry.total or 0) or 0
-    if total <= 0 then return TextRoleMarkup("Bright") .. "--|r" end
+    if total <= 0 then return PUI.TextRoleMarkup("Bright") .. "--|r" end
     if current > total then current = total end
     local kind = (current >= total) and "complete" or "neutral"
-    local r, g, b = ProgressRgb(kind)
+    local r, g, b = PUI.ProgressRgb(kind)
     return format("|cff%02x%02x%02x%d / %d|r", r * 255, g * 255, b * 255, current, total)
 end
 
 -- COLUMN SORT: FLAT LIST BUILDER & COMPARATOR
--- Placed after all helper functions to ensure GetExpansionFilter,
--- GetSkillLineIDForFilter, GetCurrentExpansionSkill are in scope.
+-- Placed after all helper functions to ensure PUI.GetExpansionFilter,
+-- PUI.GetSkillLineIDForFilter, PUI.GetCurrentExpansionSkill are in scope.
 
 -- Extracts the best (max across both professions) sortable numeric value for a character.
-local function GetCharSortValue(char, col)
+function PUI.GetCharSortValue(char, col)
     if col == "name" then return nil end
 
-    local filter = GetExpansionFilter()
+    local filter = PUI.GetExpansionFilter()
     local bestVal = -999999999
     local CONC_PER_SEC = 10 / 3600
 
@@ -1988,7 +2026,7 @@ local function GetCharSortValue(char, col)
         local profName = prof and prof.name
         if profName then
             local val = -1
-            local slID = GetSkillLineIDForFilter(char, profName)
+            local slID = PUI.GetSkillLineIDForFilter(char, profName)
 
             if col == "profName" then
                 if issecretvalue and issecretvalue(profName) then
@@ -1997,7 +2035,7 @@ local function GetCharSortValue(char, col)
                     val = profName:lower():byte() or 0
                 end
             elseif col == "skill" then
-                local cs, ms = GetCurrentExpansionSkill(char, profName)
+                local cs, ms = PUI.GetCurrentExpansionSkill(char, profName)
                 cs = cs or 0; ms = ms or 0
                 val = ms > 0 and (cs / ms) or -1
             elseif col == "conc" or col == "recharge" then
@@ -2081,8 +2119,8 @@ end
 
 -- Returns a character comparator for sorting within sections by column header.
 -- pcall-protected so table.sort never aborts on data edge cases.
-local function GetColumnSortCharComparator()
-    local state = GetColumnSortState()
+function PUI.GetColumnSortCharComparator()
+    local state = PUI.GetColumnSortState()
     if not state or not state.col then return nil end
 
     local col = state.col
@@ -2098,14 +2136,14 @@ local function GetColumnSortCharComparator()
             return false
         end
 
-        local valA = (a._wnProfSortKey ~= nil) and a._wnProfSortKey or GetCharSortValue(a, col) or -999999999
-        local valB = (b._wnProfSortKey ~= nil) and b._wnProfSortKey or GetCharSortValue(b, col) or -999999999
+        local valA = (a._wnProfSortKey ~= nil) and a._wnProfSortKey or PUI.GetCharSortValue(a, col) or -999999999
+        local valB = (b._wnProfSortKey ~= nil) and b._wnProfSortKey or PUI.GetCharSortValue(b, col) or -999999999
 
         if valA ~= valB then
             if isAsc then return valA < valB else return valA > valB end
         end
         if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-        return CompareCharNameLower(a, b)
+        return PUI.CompareCharNameLower(a, b)
     end
 
     return function(a, b)
@@ -2124,7 +2162,7 @@ local PROF_STRETCH_RELAYOUT_OPTS = {
     sideMargin = 0,
 }
 
-local function ProfessionStretchRelayoutOpts(scrollChild)
+function PUI.ProfessionStretchRelayoutOpts(scrollChild)
     local opts = PROF_STRETCH_RELAYOUT_OPTS
     if scrollChild and scrollChild._wnProfSectionContents then
         opts = {
@@ -2138,14 +2176,14 @@ local function ProfessionStretchRelayoutOpts(scrollChild)
     return opts
 end
 
-local function RefreshVisibleProfessionRowGradients(scrollChild)
+function PUI.RefreshVisibleProfessionRowGradients(scrollChild)
     if scrollChild and scrollChild._wnProfNestedRows and ns.UI_RefreshRegisteredRowGradients then
         ns.UI_RefreshRegisteredRowGradients(scrollChild._wnProfNestedRows)
     end
 end
 
 --- Re-anchor section bodies under headers without inflating collapsed sections (stretch helper used full _wnSectionFullH).
-local function RelayoutProfessionSectionBodies(scrollChild)
+function PUI.RelayoutProfessionSectionBodies(scrollChild)
     local sections = scrollChild and scrollChild._wnProfSectionContents
     if not sections then return end
     for si = 1, #sections do
@@ -2167,7 +2205,7 @@ local function RelayoutProfessionSectionBodies(scrollChild)
     end
 end
 
-local function RelayoutProfessionRowWidths(scrollChild)
+function PUI.RelayoutProfessionRowWidths(scrollChild)
     if not scrollChild then return end
     local bodyW = scrollChild._wnProfStackWidth or scrollChild._wnProfBodyWidth
     local rows = scrollChild._wnProfNestedRows
@@ -2208,13 +2246,13 @@ local function RelayoutProfessionRowWidths(scrollChild)
             end
         end
     end
-    RelayoutProfessionSectionBodies(scrollChild)
+    PUI.RelayoutProfessionSectionBodies(scrollChild)
     -- Do NOT call _wnProfRelayoutSectionStack here: UI_SyncMainTabScrollChrome -> SetHorizontalScroll
     -- re-enters UI_RelayoutProfessionRowWidths and causes stack overflow (UI.lua h-scroll hook).
 end
-ns.UI_RelayoutProfessionRowWidths = RelayoutProfessionRowWidths
+ns.UI_RelayoutProfessionRowWidths = PUI.RelayoutProfessionRowWidths
 
-local function ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyWidth)
+function PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyWidth)
     local w = tonumber(bodyWidth) or 0
     if mf and mf.scroll and mf.scroll.GetWidth then
         local sw = mf.scroll:GetWidth()
@@ -2235,12 +2273,12 @@ local function ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyWidt
 end
 
 --- Inner stack width after symmetric tab side insets (header/sections anchor at contentSide).
-local function ProfessionStackBodyWidth(scrollPaintW, contentSide)
+function PUI.ProfessionStackBodyWidth(scrollPaintW, contentSide)
     local side = contentSide or SIDE_MARGIN
     return math.max(1, (tonumber(scrollPaintW) or 1) - 2 * side)
 end
 
-local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
+function PUI.EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
     if not mf or not scrollChild then return end
     local clip = mf.columnHeaderClip
     if clip then
@@ -2249,11 +2287,11 @@ local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
     end
     local colHeaderRow = scrollChild._wnProfColHeaderRow
     if not colHeaderRow then return end
-    ReattachProfessionColumnHeaderBar(colHeaderRow, scrollChild)
+    PUI.ReattachProfessionColumnHeaderBar(colHeaderRow, scrollChild)
     local stackW = bodyWidth or scrollChild._wnProfStackWidth or scrollChild._wnProfBodyWidth
     local side = scrollChild._wnProfContentSide or SIDE_MARGIN
-    local paintW = ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, stackW)
-    local barW = ProfessionStackBodyWidth(paintW, side)
+    local paintW = PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, stackW)
+    local barW = PUI.ProfessionStackBodyWidth(paintW, side)
     local scrollTopY = (ns.UI_GetTabColumnHeaderScrollTop and ns.UI_GetTabColumnHeaderScrollTop()) or 0
     colHeaderRow:ClearAllPoints()
     colHeaderRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", side, -scrollTopY)
@@ -2263,7 +2301,7 @@ local function EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyWidth)
 end
 
 --- Live viewport resize: stretch rows + gradients only (no PopulateContent mid-drag).
-local function ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
+function PUI.ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
     local side = (scrollChild and scrollChild._wnProfContentSide)
         or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin())
         or SIDE_MARGIN
@@ -2273,33 +2311,33 @@ local function ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
     return nil
 end
 
-local function ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
+function PUI.ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
     if not mf or mf.currentTab ~= "professions" or not scrollChild then return end
-    local bodyW = ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
+    local bodyW = PUI.ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
     local paintW
     if bodyW and bodyW > 0 then
         cachedRowWidth = bodyW
         scrollChild._wnProfBodyWidth = bodyW
-        paintW = ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyW)
+        paintW = PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyW)
         local side = scrollChild._wnProfContentSide or SIDE_MARGIN
-        scrollChild._wnProfStackWidth = ProfessionStackBodyWidth(paintW, side)
+        scrollChild._wnProfStackWidth = PUI.ProfessionStackBodyWidth(paintW, side)
     elseif mf and ns.UI_GetMainTabViewportWidth then
         local vp = ns.UI_GetMainTabViewportWidth(mf)
         if vp and vp > 0 then
             cachedRowWidth = vp
-            paintW = ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, vp)
+            paintW = PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, vp)
             local side = scrollChild._wnProfContentSide or SIDE_MARGIN
-            scrollChild._wnProfStackWidth = ProfessionStackBodyWidth(paintW, side)
+            scrollChild._wnProfStackWidth = PUI.ProfessionStackBodyWidth(paintW, side)
         end
     end
-    EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyW)
-    RelayoutProfessionRowWidths(scrollChild)
+    PUI.EnsureProfessionColumnHeaderStrip(mf, scrollChild, bodyW)
+    PUI.RelayoutProfessionRowWidths(scrollChild)
     if scrollChild._wnProfRelayoutSectionStack then
         scrollChild._wnProfRelayoutSectionStack()
     end
 end
 
-local function DebounceProfessionRowGradientRefresh(mf)
+function PUI.DebounceProfessionRowGradientRefresh(mf)
     if not mf or mf.currentTab ~= "professions" then return end
     local sc = mf.scrollChild
     if not sc then return end
@@ -2310,22 +2348,22 @@ local function DebounceProfessionRowGradientRefresh(mf)
         sc._wnProfGradScrollTimer = C_Timer.After(0.05, function()
             sc._wnProfGradScrollTimer = nil
             if mf.currentTab == "professions" then
-                RelayoutProfessionRowWidths(sc)
-                RefreshVisibleProfessionRowGradients(sc)
+                PUI.RelayoutProfessionRowWidths(sc)
+                PUI.RefreshVisibleProfessionRowGradients(sc)
             end
         end)
     else
-        RefreshVisibleProfessionRowGradients(sc)
+        PUI.RefreshVisibleProfessionRowGradients(sc)
     end
 end
 
-local function EnsureProfessionRowGradientScrollHook(mf)
+function PUI.EnsureProfessionRowGradientScrollHook(mf)
     if not mf or not mf.scroll or mf.scroll._wnProfGradScrollHook then return end
     mf.scroll._wnProfGradScrollHook = true
     -- ScrollFrame exposes OnVerticalScroll, not OnScroll (see UI.lua main scroll setup).
     local ok = pcall(function()
         mf.scroll:HookScript("OnVerticalScroll", function()
-            DebounceProfessionRowGradientRefresh(mf)
+            PUI.DebounceProfessionRowGradientRefresh(mf)
         end)
     end)
     if not ok and IsDebugModeEnabled and IsDebugModeEnabled() then
@@ -2333,7 +2371,7 @@ local function EnsureProfessionRowGradientScrollHook(mf)
     end
 end
 
-ns.UI_DebounceProfessionRowGradientRefresh = DebounceProfessionRowGradientRefresh
+ns.UI_DebounceProfessionRowGradientRefresh = PUI.DebounceProfessionRowGradientRefresh
 
 function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, currentPlayerKey)
     local row = AcquireProfessionRow(parent)
@@ -2363,7 +2401,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
 
     -- FAVORITE ICON (own column, left of class icon)
     -- Visual star size = column width * 0.65, matching CreateFavoriteButton in Characters tab
-    local favColW = ColWidth("favIcon")
+    local favColW = PUI.ColWidth("favIcon")
     local favIconSize = favColW * 0.65
     if not row.favIcon then
         row.favIcon = row:CreateTexture(nil, "OVERLAY")
@@ -2373,7 +2411,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     end
     row.favIcon:SetSize(favIconSize, favIconSize)
     row.favIcon:ClearAllPoints()
-    row.favIcon:SetPoint("CENTER", row, "LEFT", ColCenterX("favIcon"), 0)
+    row.favIcon:SetPoint("CENTER", row, "LEFT", PUI.ColCenterX("favIcon"), 0)
     if isFavorite then
         row.favIcon:Show()
     else
@@ -2381,8 +2419,8 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     end
 
     -- CLASS ICON (vertically centered in row, same size as Characters tab)
-    local classSize = ColWidth("classIcon")
-    local classCenterX = ColCenterX("classIcon")
+    local classSize = PUI.ColWidth("classIcon")
+    local classCenterX = PUI.ColCenterX("classIcon")
     if not row.classIcon then
         local CreateClassIcon = ns.UI_CreateClassIcon
         if CreateClassIcon and char.classFile then
@@ -2404,8 +2442,8 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     end
 
     -- NAME COLUMN (name + realm stacked; block vertically centered in row)
-    local nameX = ColOffset("name")
-    local nameW = ColWidth("name")
+    local nameX = PUI.ColOffset("name")
+    local nameW = PUI.ColWidth("name")
 
     if not row.nameText then
         row.nameText = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
@@ -2448,7 +2486,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     -- Class tint: fixed width through identity strip (fav/class/name/open), same for every row.
     local function ApplyProfessionRowClassGradient()
         if not ns.UI_ApplyCharacterRowClassGradientAccent then return end
-        local gradientEnd = GetProfessionIdentityGradientEnd()
+        local gradientEnd = PUI.GetProfessionIdentityGradientEnd()
         local rowW = row:GetWidth() or row._wnRowPaintWidth or width
         if rowW and rowW >= 2 and gradientEnd > rowW - 2 then
             gradientEnd = rowW - 2
@@ -2474,7 +2512,7 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
         row._wnProfMidRule:Hide()
     end
 
-    ApplyProfessionColumnDividers(row, ROW_HEIGHT)
+    PUI.ApplyProfessionColumnDividers(row, ROW_HEIGHT)
 
     -- Row hover
     row:SetScript("OnEnter", function(self) self:SetAlpha(0.9) end)
@@ -2489,18 +2527,18 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
         currentPlayerKey = currentPlayerKey,
     }
 
-    return yOffset + ROW_HEIGHT + (GetLayout().betweenRows or 0), row
+    return yOffset + ROW_HEIGHT + (PUI.GetLayout().betweenRows or 0), row
 end
 
 -- COLUMN TOOLTIP HIT-FRAME HELPER
 -- Creates an invisible button over a column area for mouse-over tooltips.
 -- Reuses frames across redraws via row[key].
 
-local function AcquireColumnHitFrame(row, key, colKey, centerY)
+function PUI.AcquireColumnHitFrame(row, key, colKey, centerY)
     local FactHit = ns.UI and ns.UI.Factory
     local frame = row[key]
     if not frame then
-        local colW = ColWidth(colKey)
+        local colW = PUI.ColWidth(colKey)
         if FactHit and FactHit.CreateButton then
             frame = FactHit:CreateButton(row, colW, PROF_BAND_HEIGHT, true)
         end
@@ -2512,9 +2550,9 @@ local function AcquireColumnHitFrame(row, key, colKey, centerY)
         frame:EnableMouse(true)
         row[key] = frame
     end
-    frame:SetSize(ColWidth(colKey), PROF_BAND_HEIGHT)
+    frame:SetSize(PUI.ColWidth(colKey), PROF_BAND_HEIGHT)
     frame:ClearAllPoints()
-    frame:SetPoint("LEFT", row, "LEFT", ColOffset(colKey), centerY)
+    frame:SetPoint("LEFT", row, "LEFT", PUI.ColOffset(colKey), centerY)
     frame:SetScript("OnEnter", nil)
     frame:SetScript("OnLeave", nil)
     frame:Show()
@@ -2528,7 +2566,7 @@ local SLOT_DISPLAY_NAMES = {
     accessory2 = "Accessory 2",
 }
 
-local function SetEquipCell(cell, eqData, slotKey)
+function PUI.SetEquipCell(cell, eqData, slotKey)
     local item = eqData and eqData[slotKey]
     if item and item.icon then
         cell.icon:SetTexture(item.icon)
@@ -2571,7 +2609,7 @@ local function SetEquipCell(cell, eqData, slotKey)
 end
 
 --- Resolve professionEquipment row for char+profName; caches pairs(eqByProf) fallback per draw.
-local function ResolveProfessionEquipmentData(charKey, profName)
+function PUI.ResolveProfessionEquipmentData(charKey, profName)
     if not charKey or not profName or profName == "" then return nil end
     if issecretvalue and issecretvalue(profName) then return nil end
     local charData = ns.db and ns.db.global and ns.db.global.characters and ns.db.global.characters[charKey]
@@ -2620,7 +2658,7 @@ end
 -- Profession icon column: resolve stored icon, skillLineID API, or fallback (missing DB icon / bad fileID).
 local PROF_ICON_FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark"
 
-local function ResolveProfessionIconForDisplay(prof)
+function PUI.ResolveProfessionIconForDisplay(prof)
     if not prof then return nil end
     local ic = prof.icon
     if ic and not (issecretvalue and issecretvalue(ic)) then
@@ -2662,7 +2700,7 @@ local function ResolveProfessionIconForDisplay(prof)
 end
 
 --- "All" expansion mode: build professionName -> recipe entry once per character per tab draw (was pairs(char.recipes) per profession line).
-local function GetRecipeDataForProfessionAllMode(char, profName)
+function PUI.GetRecipeDataForProfessionAllMode(char, profName)
     if not char or not char.recipes or not profName then return nil end
     local ck = GetCharKey(char)
     if not ck then return nil end
@@ -2679,7 +2717,7 @@ local function GetRecipeDataForProfessionAllMode(char, profName)
     return m[profName]
 end
 
-local function SetProfessionLineIconTexture(tex, prof, isEmptySlot)
+function PUI.SetProfessionLineIconTexture(tex, prof, isEmptySlot)
     if not tex then return end
     if tex.SetDesaturated then tex:SetDesaturated(false) end
     if isEmptySlot then
@@ -2690,7 +2728,7 @@ local function SetProfessionLineIconTexture(tex, prof, isEmptySlot)
         return
     end
     tex:SetVertexColor(1, 1, 1, 1)
-    local resolved = ResolveProfessionIconForDisplay(prof)
+    local resolved = PUI.ResolveProfessionIconForDisplay(prof)
     local applied = false
     if resolved then
         local ok = pcall(function()
@@ -2722,9 +2760,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local FactRow = ns.UI and ns.UI.Factory
     local charKey = GetCharKey(char)
 
-    WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCurrent == true)
+    PUI.WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCurrent == true)
 
-    local iconSize = ColWidth("profIcon")
+    local iconSize = PUI.ColWidth("profIcon")
 
     -- ICON
     if not row[p.."Icon"] then
@@ -2732,7 +2770,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Icon"]:EnableMouse(true)
         row[p.."Icon"].icon = row[p.."Icon"].texture
     end
-    AnchorCellInColumn(row[p.."Icon"], "profIcon", row, centerY, "CENTER")
+    PUI.AnchorCellInColumn(row[p.."Icon"], "profIcon", row, centerY, "CENTER")
 
     -- NAME
     if not row[p.."Name"] then
@@ -2741,43 +2779,43 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Name"]:SetWordWrap(false)
         row[p.."Name"]:SetMaxLines(1)
     end
-    row[p.."Name"]:SetWidth(ColWidth("profName"))
-    AnchorCellInColumn(row[p.."Name"], "profName", row, centerY, "LEFT")
+    row[p.."Name"]:SetWidth(PUI.ColWidth("profName"))
+    PUI.AnchorCellInColumn(row[p.."Name"], "profName", row, centerY, "LEFT")
     if row[p.."Name"].SetJustifyV then row[p.."Name"]:SetJustifyV("MIDDLE") end
 
     -- SKILL
-    local skillVisible = IsColumnVisible("skill")
+    local skillVisible = PUI.IsColumnVisible("skill")
     if not row[p.."Skill"] then
         row[p.."Skill"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Skill"]:SetJustifyH("CENTER")
         row[p.."Skill"]:SetMaxLines(1)
     end
     if skillVisible then
-        row[p.."Skill"]:SetWidth(ColWidth("skill"))
-        AnchorCellInColumn(row[p.."Skill"], "skill", row, centerY, "CENTER")
+        row[p.."Skill"]:SetWidth(PUI.ColWidth("skill"))
+        PUI.AnchorCellInColumn(row[p.."Skill"], "skill", row, centerY, "CENTER")
         row[p.."Skill"]:Show()
     else
         row[p.."Skill"]:Hide()
     end
 
     -- RECHARGE (timer text, right of bar)
-    local rechargeVisible = IsColumnVisible("recharge")
+    local rechargeVisible = PUI.IsColumnVisible("recharge")
     if not row[p.."Recharge"] then
         row[p.."Recharge"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Recharge"]:SetJustifyH("CENTER")
         row[p.."Recharge"]:SetMaxLines(1)
     end
     if rechargeVisible then
-        row[p.."Recharge"]:SetWidth(ColWidth("recharge"))
-        AnchorCellInColumn(row[p.."Recharge"], "recharge", row, centerY, "CENTER")
+        row[p.."Recharge"]:SetWidth(PUI.ColWidth("recharge"))
+        PUI.AnchorCellInColumn(row[p.."Recharge"], "recharge", row, centerY, "CENTER")
         row[p.."Recharge"]:Show()
     else
         row[p.."Recharge"]:Hide()
     end
 
     -- KNOWLEDGE (text + optional unspent warning triangle)
-    local knowVisible = IsColumnVisible("knowledge")
-    local knowW = ColWidth("knowledge")
+    local knowVisible = PUI.IsColumnVisible("knowledge")
+    local knowW = PUI.ColWidth("knowledge")
     if not row[p.."Know"] then
         row[p.."Know"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Know"]:SetJustifyH("CENTER")
@@ -2798,10 +2836,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     end
     if knowVisible then
         row[p.."Know"]:SetWidth(knowW - 16)
-        AnchorCellInColumn(row[p.."Know"], "knowledge", row, centerY, "CENTER")
+        PUI.AnchorCellInColumn(row[p.."Know"], "knowledge", row, centerY, "CENTER")
         row[p.."Know"]:Show()
         row[p.."KnowWarn"]:ClearAllPoints()
-        row[p.."KnowWarn"]:SetPoint("CENTER", row, "LEFT", ColCenterX("knowledge") + (knowW / 2) - 10, centerY)
+        row[p.."KnowWarn"]:SetPoint("CENTER", row, "LEFT", PUI.ColCenterX("knowledge") + (knowW / 2) - 10, centerY)
     else
         row[p.."Know"]:Hide()
         row[p.."KnowWarn"]:Hide()
@@ -2814,9 +2852,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             row[key]:SetJustifyH("CENTER")
             row[key]:SetMaxLines(1)
         end
-        if IsColumnVisible(colKey) then
-            row[key]:SetWidth(ColWidth(colKey))
-            AnchorCellInColumn(row[key], colKey, row, centerY, "CENTER")
+        if PUI.IsColumnVisible(colKey) then
+            row[key]:SetWidth(PUI.ColWidth(colKey))
+            PUI.AnchorCellInColumn(row[key], colKey, row, centerY, "CENTER")
             row[key]:Show()
         else
             row[key]:Hide()
@@ -2838,9 +2876,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     -- EQUIPMENT ICONS (tool + acc1 + acc2 in single "equipment" column)
     local EQUIP_ICON_SIZE = 22
     local EQUIP_ICON_GAP = 4
-    local equipVisible = IsColumnVisible("equipment")
-    local equipX = ColOffset("equipment")
-    local equipW = ColWidth("equipment")
+    local equipVisible = PUI.IsColumnVisible("equipment")
+    local equipX = PUI.ColOffset("equipment")
+    local equipW = PUI.ColWidth("equipment")
 
     local function EnsureEquipIcon(fieldKey, iconIndex)
         local key = p .. fieldKey
@@ -2876,64 +2914,75 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local acc2Cell = EnsureEquipIcon("Acc2", 3)
 
     -- COLUMN HIT-FRAMES (interactive tooltips for skill + cooldowns + recharge)
-    local skillHit = AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)
+    local skillHit = PUI.AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)
     if skillVisible then skillHit:Show() else skillHit:Hide() end
-    local cdHit = AcquireColumnHitFrame(row, p.."CdHit", "cooldowns", centerY)
-    if IsColumnVisible("cooldowns") then cdHit:Show() else cdHit:Hide() end
-    local rechargeHit = AcquireColumnHitFrame(row, p.."RechargeHit", "recharge", centerY)
+    local cdHit = PUI.AcquireColumnHitFrame(row, p.."CdHit", "cooldowns", centerY)
+    if PUI.IsColumnVisible("cooldowns") then cdHit:Show() else cdHit:Hide() end
+    local rechargeHit = PUI.AcquireColumnHitFrame(row, p.."RechargeHit", "recharge", centerY)
     if rechargeVisible then rechargeHit:Show() else rechargeHit:Hide() end
 
     -- INFO BUTTON (read-only detail window)
     if not row[p.."InfoBtn"] then
-        local ibtn = FactRow and FactRow:CreateButton(row, ColWidth("info"), 18, true)
+        local useBlizz = PUI.ProfUseBlizzardChrome()
+        local btnH = useBlizz and PROFESSION_PANEL_BTN_H or 18
+        local ibtn = FactRow and FactRow:CreateButton(row, PUI.ColWidth("info"), btnH, not useBlizz)
         if not ibtn then
             ibtn = CreateFrame("Button", nil, row)
-            ibtn:SetSize(ColWidth("info"), 18)
+            ibtn:SetSize(PUI.ColWidth("info"), btnH)
         end
-        if ApplyVisuals then
-            ApplyVisuals(ibtn, ChromeBackdrop(), ChromeBorder(0.4))
+        if useBlizz then
+            ibtn:SetText("?")
+        else
+            if PUI.ApplyProfChrome then
+                PUI.ApplyProfChrome(ibtn, PUI.ChromeBackdrop(), PUI.ChromeBorder(0.4))
+            end
+            local iicon = ibtn:CreateTexture(nil, "ARTWORK")
+            iicon:SetSize(14, 14)
+            iicon:SetPoint("CENTER", 0, 0)
+            if not (iicon.SetAtlas and (pcall(iicon.SetAtlas, iicon, "QuestTurnin", false) or pcall(iicon.SetAtlas, iicon, "QuestTurnin", true))) then
+                iicon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+                iicon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+            ibtn.iconTex = iicon
         end
-        local iicon = ibtn:CreateTexture(nil, "ARTWORK")
-        iicon:SetSize(14, 14)
-        iicon:SetPoint("CENTER", 0, 0)
-        if not (iicon.SetAtlas and (pcall(iicon.SetAtlas, iicon, "QuestTurnin", false) or pcall(iicon.SetAtlas, iicon, "QuestTurnin", true))) then
-            iicon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
-            iicon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
-        ibtn.iconTex = iicon
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(ibtn) end
         row[p.."InfoBtn"] = ibtn
     end
-    AnchorCellInColumn(row[p.."InfoBtn"], "info", row, centerY, "CENTER")
+    if row[p.."InfoBtn"] and row[p.."InfoBtn"].iconTex and PUI.ProfUseBlizzardChrome() then
+        row[p.."InfoBtn"].iconTex:Hide()
+    elseif row[p.."InfoBtn"] and row[p.."InfoBtn"].iconTex and not PUI.ProfUseBlizzardChrome() then
+        row[p.."InfoBtn"].iconTex:Show()
+    end
+    PUI.AnchorCellInColumn(row[p.."InfoBtn"], "info", row, centerY, "CENTER")
 
     if prof and prof.name then
         if row[p .. "EquipEmpty"] then row[p .. "EquipEmpty"]:Hide() end
         local profName = prof.name
 
         -- Icon (resolve fileID/path; refresh from skillLineID when DB icon missing)
-        SetProfessionLineIconTexture(row[p.."Icon"].icon, prof, false)
+        PUI.SetProfessionLineIconTexture(row[p.."Icon"].icon, prof, false)
         row[p.."Icon"]:Show()
 
         -- Name (secondary profession line slightly muted for hierarchy)
         local nameRole = (lineIndex == 2) and "Muted" or "Bright"
-        row[p.."Name"]:SetText(TextRoleMarkup(nameRole) .. profName .. "|r")
+        row[p.."Name"]:SetText(PUI.TextRoleMarkup(nameRole) .. profName .. "|r")
 
         -- Skill: use expansion-specific data from professionExpansions.
         -- Fall back to base prof.skill when expansion rows are missing (alts not scanned this expansion).
-        local curSkill, maxSkill = GetCurrentExpansionSkill(char, profName)
+        local curSkill, maxSkill = PUI.GetCurrentExpansionSkill(char, profName)
         if curSkill and maxSkill then
-            row[p.."Skill"]:SetText(FormatSkill(curSkill, maxSkill))
+            row[p.."Skill"]:SetText(PUI.FormatSkill(curSkill, maxSkill))
         elseif prof.skill and prof.maxSkill and (prof.maxSkill or 0) > 0 then
-            row[p.."Skill"]:SetText(FormatSkill(prof.skill, prof.maxSkill))
+            row[p.."Skill"]:SetText(PUI.FormatSkill(prof.skill, prof.maxSkill))
         else
-            row[p.."Skill"]:SetText(TextRoleMarkup("Bright") .. "--|r")
+            row[p.."Skill"]:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
         end
 
         -- Concentration: keyed by skillLineID (expansion-specific).
         -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
-        local slID = GetSkillLineIDForFilter(char, profName)
+        local slID = PUI.GetSkillLineIDForFilter(char, profName)
         local concData = slID and char.concentration and char.concentration[slID]
-        if not concData and GetExpansionFilter() == "All" then
+        if not concData and PUI.GetExpansionFilter() == "All" then
             concData = char.concentration and char.concentration[profName]
         end
         local concCurrent, concMax = 0, 0
@@ -2948,20 +2997,20 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 end
             end
             if concCurrent >= concMax then
-                local gr, gg, gb = ProgressRgb("complete")
+                local gr, gg, gb = PUI.ProgressRgb("complete")
                 rechargeStr = format("|cff%02x%02x%02x%s|r", gr * 255, gg * 255, gb * 255,
                     ((ns.L and ns.L["FULL"]) or "Full"))
             elseif WarbandNexus.GetConcentrationTimeToFull then
                 local tsOk, ts = pcall(WarbandNexus.GetConcentrationTimeToFull, WarbandNexus, concData)
                 if tsOk and ts and ts ~= "" and ts ~= "Full" then
-                    rechargeStr = TextRoleMarkup("Bright") .. ts .. "|r"
+                    rechargeStr = PUI.TextRoleMarkup("Bright") .. ts .. "|r"
                 end
             end
         end
-        local concVisible = IsColumnVisible("conc")
-        local concX = ColOffset("conc")
+        local concVisible = PUI.IsColumnVisible("conc")
+        local concX = PUI.ColOffset("conc")
         if concVisible then
-            UpdateConcentrationBar(row, p.."ConcBar", concX, ColBarTopY(centerY), ColWidth("conc"), concCurrent, concMax)
+            PUI.UpdateConcentrationBar(row, p.."ConcBar", concX, PUI.ColBarTopY(centerY), PUI.ColWidth("conc"), concCurrent, concMax)
         elseif row[p.."ConcBar"] then
             row[p.."ConcBar"]:Hide()
         end
@@ -2998,10 +3047,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         -- Knowledge: keyed by skillLineID (expansion-specific). Always show Current / Max.
         -- String-key legacy fallback only in "All" mode to prevent cross-expansion data bleed.
         local kd = slID and char.knowledgeData and char.knowledgeData[slID]
-        if not kd and GetExpansionFilter() == "All" then
+        if not kd and PUI.GetExpansionFilter() == "All" then
             kd = char.knowledgeData and char.knowledgeData[profName]
         end
-        if knowVisible then row[p.."Know"]:SetText(FormatKnowledge(kd)) end
+        if knowVisible then row[p.."Know"]:SetText(PUI.FormatKnowledge(kd)) end
         local unspent = (kd and kd.unspentPoints) and kd.unspentPoints or 0
         if knowVisible and unspent > 0 then
             row[p.."KnowWarn"]:Show()
@@ -3025,8 +3074,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
 
         -- Recipes summary: keyed by skillLineID; in All mode fallback to matching profession name.
         local recipeData = slID and char.recipes and char.recipes[slID]
-        if not recipeData and GetExpansionFilter() == "All" and char.recipes then
-            recipeData = GetRecipeDataForProfessionAllMode(char, profName)
+        if not recipeData and PUI.GetExpansionFilter() == "All" and char.recipes then
+            recipeData = PUI.GetRecipeDataForProfessionAllMode(char, profName)
         end
         local progressData = nil
         if slID and char.professionData and char.professionData.bySkillLine and char.professionData.bySkillLine[slID] then
@@ -3042,8 +3091,8 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             and not (issecretvalue and issecretvalue(recipeExpName))
             and recipeExpName:find("Midnight", 1, true)
         local isMidnightRecipeData =
-            (slID and IsMidnightSkillLineID(slID))
-            or (recipeData and recipeData.skillLineID and IsMidnightSkillLineID(recipeData.skillLineID))
+            (slID and PUI.IsMidnightSkillLineID(slID))
+            or (recipeData and recipeData.skillLineID and PUI.IsMidnightSkillLineID(recipeData.skillLineID))
             or recipeExpMidnight
         local firstCraftProgress = progressData and progressData.firstCraft
         if isMidnightRecipeData then
@@ -3069,27 +3118,27 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
 
         -- Recipes: known / total (Midnight only to avoid mixing expansions).
         if isMidnightRecipeData and recipeData.knownCount ~= nil and recipeData.totalCount and recipeData.totalCount > 0 then
-            recipesText:SetText(FormatProgressPair({ current = recipeData.knownCount, total = recipeData.totalCount }))
+            recipesText:SetText(PUI.FormatProgressPair({ current = recipeData.knownCount, total = recipeData.totalCount }))
         else
-            recipesText:SetText(TextRoleMarkup("Bright") .. "--|r")
+            recipesText:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
         end
 
-        firstCraftText:SetText(FormatProgressPair(firstCraftProgress))
-        uniquesText:SetText(FormatProgressPair(progressData and progressData.uniques))
-        treatiseText:SetText(FormatProgressPair(progressData and progressData.treatise))
-        weeklyQuestText:SetText(FormatProgressPair(progressData and progressData.weeklyQuest))
-        treasureText:SetText(FormatProgressPair(progressData and progressData.treasure))
-        gatheringText:SetText(FormatProgressPair(progressData and progressData.gathering))
-        catchUpText:SetText(FormatProgressPair(progressData and progressData.catchUp))
+        firstCraftText:SetText(PUI.FormatProgressPair(firstCraftProgress))
+        uniquesText:SetText(PUI.FormatProgressPair(progressData and progressData.uniques))
+        treatiseText:SetText(PUI.FormatProgressPair(progressData and progressData.treatise))
+        weeklyQuestText:SetText(PUI.FormatProgressPair(progressData and progressData.weeklyQuest))
+        treasureText:SetText(PUI.FormatProgressPair(progressData and progressData.treasure))
+        gatheringText:SetText(PUI.FormatProgressPair(progressData and progressData.gathering))
+        catchUpText:SetText(PUI.FormatProgressPair(progressData and progressData.catchUp))
 
         -- Moxie: Artisan Moxie currency for this profession (Midnight; from DB/currency cache).
         local moxieCurrencyID = slID and MIDNIGHT_MOXIE_CURRENCY[slID]
         if charKey and moxieCurrencyID and WarbandNexus.GetCurrencyData then
             local moxieData = WarbandNexus:GetCurrencyData(moxieCurrencyID, charKey)
             local qty = (moxieData and (moxieData.quantity or moxieData.value)) or 0
-            moxieText:SetText(qty > 0 and format("%s%d|r", TextRoleMarkup("Bright"), qty) or TextRoleMarkup("Bright") .. "--|r")
+            moxieText:SetText(qty > 0 and format("%s%d|r", PUI.TextRoleMarkup("Bright"), qty) or PUI.TextRoleMarkup("Bright") .. "--|r")
         else
-            moxieText:SetText(TextRoleMarkup("Bright") .. "--|r")
+            moxieText:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
         end
 
         -- COOLDOWNS: count of ready / total recipes with cooldowns for this profession's skillLineID.
@@ -3110,15 +3159,15 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         if cdTotal > 0 then
             local cr, cg, cb
             if cdReady == cdTotal then
-                cr, cg, cb = ProgressRgb("complete")
+                cr, cg, cb = PUI.ProgressRgb("complete")
             elseif cdReady > 0 then
-                cr, cg, cb = ProgressRgb("partial")
+                cr, cg, cb = PUI.ProgressRgb("partial")
             else
                 cr, cg, cb = 1, 0.27, 0.27
             end
             cooldownsText:SetText(format("|cff%02x%02x%02x%d / %d|r", cr * 255, cg * 255, cb * 255, cdReady, cdTotal))
         else
-            cooldownsText:SetText(TextRoleMarkup("Bright") .. "--|r")
+            cooldownsText:SetText(PUI.TextRoleMarkup("Bright") .. "--|r")
         end
 
         -- Cooldown tooltip: show individual recipe cooldowns when hovering.
@@ -3163,11 +3212,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
 
         local eqData
         if charKey then
-            eqData = ResolveProfessionEquipmentData(charKey, profName)
+            eqData = PUI.ResolveProfessionEquipmentData(charKey, profName)
         end
-        SetEquipCell(toolCell, eqData, "tool")
-        SetEquipCell(acc1Cell, eqData, "accessory1")
-        SetEquipCell(acc2Cell, eqData, "accessory2")
+        PUI.SetEquipCell(toolCell, eqData, "tool")
+        PUI.SetEquipCell(acc1Cell, eqData, "accessory1")
+        PUI.SetEquipCell(acc2Cell, eqData, "accessory2")
 
         skillHit:SetScript("OnEnter", function(self)
             local lines = {}
@@ -3199,10 +3248,13 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             row[p.."Icon"].knowledgeBadge:Hide()
         end
 
-        -- Info button: always enabled â€” shows read-only DB data for any character
+        -- Info button: always enabled — shows read-only DB data for any character
         local infoBtn = row[p.."InfoBtn"]
         local infoProfSlot = prof
         local infoCharKey = GetCharKey(char)
+        if infoBtn._wnBlizzardButton and infoBtn.SetText then
+            infoBtn:SetText("?")
+        end
         infoBtn:Enable()
         infoBtn:SetAlpha(1)
         infoBtn:SetScript("OnClick", function()
@@ -3294,7 +3346,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 local eqHint = (ns.L and ns.L["PROF_EQUIPMENT_HINT"]) or "Open profession (K) on this character to scan equipment."
                 lines[#lines+1] = {
                     left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment",
-                    right = eqData and "--" or TextRoleMarkup("Dim") .. eqHint .. "|r",
+                    right = eqData and "--" or PUI.TextRoleMarkup("Dim") .. eqHint .. "|r",
                     leftColor = { COLORS.textMuted[1], COLORS.textMuted[2], COLORS.textMuted[3] },
                     rightColor = { COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3] },
                 }
@@ -3304,28 +3356,28 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Icon"]:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
     else
         -- Empty slot: dim placeholders; consistent gray "No Profession" + question-mark icon (symmetry with filled rows).
-        local emptyCell = TextRoleMarkup("Dim") .. "--|r"
+        local emptyCell = PUI.TextRoleMarkup("Dim") .. "--|r"
         row[p.."Icon"]:Show()
-        SetProfessionLineIconTexture(row[p.."Icon"].icon, nil, true)
+        PUI.SetProfessionLineIconTexture(row[p.."Icon"].icon, nil, true)
         local emptyLabel = (ns.L and ns.L["NO_PROFESSION"]) or "No Profession"
-        row[p.."Name"]:SetText(TextRoleMarkup("Dim") .. emptyLabel .. "|r")
+        row[p.."Name"]:SetText(PUI.TextRoleMarkup("Dim") .. emptyLabel .. "|r")
         if skillVisible then row[p.."Skill"]:SetText(emptyCell) end
         if rechargeVisible then row[p.."Recharge"]:SetText(emptyCell) end
         if knowVisible then row[p.."Know"]:SetText(emptyCell) end
         if row[p.."KnowWarn"] then row[p.."KnowWarn"]:Hide() end
-        if IsColumnVisible("recipes") then recipesText:SetText(emptyCell) end
-        if IsColumnVisible("firstCraft") then firstCraftText:SetText(emptyCell) end
-        if IsColumnVisible("uniques") then uniquesText:SetText(emptyCell) end
-        if IsColumnVisible("treatise") then treatiseText:SetText(emptyCell) end
-        if IsColumnVisible("weeklyQuest") then weeklyQuestText:SetText(emptyCell) end
-        if IsColumnVisible("treasure") then treasureText:SetText(emptyCell) end
-        if IsColumnVisible("gathering") then gatheringText:SetText(emptyCell) end
-        if IsColumnVisible("catchUp") then catchUpText:SetText(emptyCell) end
-        if IsColumnVisible("moxie") then moxieText:SetText(emptyCell) end
-        if IsColumnVisible("cooldowns") then cooldownsText:SetText(emptyCell) end
-        SetEquipCell(toolCell, nil, "tool")
-        SetEquipCell(acc1Cell, nil, "accessory1")
-        SetEquipCell(acc2Cell, nil, "accessory2")
+        if PUI.IsColumnVisible("recipes") then recipesText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("firstCraft") then firstCraftText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("uniques") then uniquesText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("treatise") then treatiseText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("weeklyQuest") then weeklyQuestText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("treasure") then treasureText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("gathering") then gatheringText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("catchUp") then catchUpText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("moxie") then moxieText:SetText(emptyCell) end
+        if PUI.IsColumnVisible("cooldowns") then cooldownsText:SetText(emptyCell) end
+        PUI.SetEquipCell(toolCell, nil, "tool")
+        PUI.SetEquipCell(acc1Cell, nil, "accessory1")
+        PUI.SetEquipCell(acc2Cell, nil, "accessory2")
         if equipVisible then
             local eqEmptyKey = p .. "EquipEmpty"
             if not row[eqEmptyKey] then
@@ -3335,15 +3387,15 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             end
             row[eqEmptyKey]:SetWidth(equipW)
             row[eqEmptyKey]:ClearAllPoints()
-            row[eqEmptyKey]:SetPoint("CENTER", row, "LEFT", ColCenterX("equipment"), centerY)
+            row[eqEmptyKey]:SetPoint("CENTER", row, "LEFT", PUI.ColCenterX("equipment"), centerY)
             row[eqEmptyKey]:SetText(emptyCell)
             row[eqEmptyKey]:Show()
         elseif row[p .. "EquipEmpty"] then
             row[p .. "EquipEmpty"]:Hide()
         end
         if row[p.."InfoBtn"] then row[p.."InfoBtn"]:Hide() end
-        local concX = ColOffset("conc")
-        UpdateConcentrationBar(row, p.."ConcBar", concX, ColBarTopY(centerY), ColWidth("conc"), 0, 0)
+        local concX = PUI.ColOffset("conc")
+        PUI.UpdateConcentrationBar(row, p.."ConcBar", concX, PUI.ColBarTopY(centerY), PUI.ColWidth("conc"), 0, 0)
         if row[p.."ConcBar"] then row[p.."ConcBar"]:Hide() end
         if row[p.."Icon"].knowledgeBadge then row[p.."Icon"].knowledgeBadge:Hide() end
         row[p.."Icon"]:SetScript("OnEnter", nil)
@@ -3361,67 +3413,67 @@ end
 do
     local c = {}
     ProfUI._drawChunk = c
-    c.ChromeBackdrop = ChromeBackdrop
-    c.ChromeBorder = ChromeBorder
-    c.TextRoleMarkup = TextRoleMarkup
-    c.TextRoleHex = TextRoleMarkup
-    c.ApplyProfColumnHeaderLabel = ApplyProfColumnHeaderLabel
-    c.ApplyProfessionColumnDividers = ApplyProfessionColumnDividers
+    c.ChromeBackdrop = PUI.ChromeBackdrop
+    c.ChromeBorder = PUI.ChromeBorder
+    c.TextRoleMarkup = PUI.TextRoleMarkup
+    c.TextRoleHex = PUI.TextRoleMarkup
+    c.ApplyProfColumnHeaderLabel = PUI.ApplyProfColumnHeaderLabel
+    c.ApplyProfessionColumnDividers = PUI.ApplyProfessionColumnDividers
     c.ApplyVisuals = ApplyVisuals
-    c.BindProfColumnHeaderTooltip = BindProfColumnHeaderTooltip
+    c.BindProfColumnHeaderTooltip = PUI.BindProfColumnHeaderTooltip
     c.BuildCollapsibleSectionOpts = BuildCollapsibleSectionOpts
     c.COLORS = COLORS
     c.COLUMNS = COLUMNS
     c.COLUMN_HEADER_HEIGHT = COLUMN_HEADER_HEIGHT
     c.COLUMN_HEADER_PAD = COLUMN_HEADER_PAD
-    c.CategorizeCharacters = CategorizeCharacters
-    c.ColCenterX = ColCenterX
-    c.ColOffset = ColOffset
-    c.ColWidth = ColWidth
-    c.CountCharsWithProfessionData = CountCharsWithProfessionData
+    c.CategorizeCharacters = PUI.CategorizeCharacters
+    c.ColCenterX = PUI.ColCenterX
+    c.ColOffset = PUI.ColOffset
+    c.ColWidth = PUI.ColWidth
+    c.CountCharsWithProfessionData = PUI.CountCharsWithProfessionData
     c.CreateCollapsibleHeader = CreateCollapsibleHeader
     c.DATA_FONT = DATA_FONT
     c.E = E
-    c.EnsureProfessionColumnHeaderStrip = EnsureProfessionColumnHeaderStrip
-    c.EnsureProfessionRowGradientScrollHook = EnsureProfessionRowGradientScrollHook
-    c.EnsureProfessionsSectionExpandDefaults = EnsureProfessionsSectionExpandDefaults
-    c.AnyProfessionsSectionExpanded = AnyProfessionsSectionExpanded
+    c.EnsureProfessionColumnHeaderStrip = PUI.EnsureProfessionColumnHeaderStrip
+    c.EnsureProfessionRowGradientScrollHook = PUI.EnsureProfessionRowGradientScrollHook
+    c.EnsureProfessionsSectionExpandDefaults = PUI.EnsureProfessionsSectionExpandDefaults
+    c.AnyProfessionsSectionExpanded = PUI.AnyProfessionsSectionExpanded
     c.FontManager = FontManager
     c.FormatNumber = FormatNumber
     c.GetAccentHexColor = GetAccentHexColor
-    c.GetCharSortValue = GetCharSortValue
-    c.GetColumnSortCharComparator = GetColumnSortCharComparator
-    c.GetColumnSortState = GetColumnSortState
-    c.GetLayout = GetLayout
+    c.GetCharSortValue = PUI.GetCharSortValue
+    c.GetColumnSortCharComparator = PUI.GetColumnSortCharComparator
+    c.GetColumnSortState = PUI.GetColumnSortState
+    c.GetLayout = PUI.GetLayout
     c.HEADER_DEFS = HEADER_DEFS
     c.HideEmptyStateCard = HideEmptyStateCard
     c.HideTooltip = HideTooltip
-    c.IsColumnVisible = IsColumnVisible
+    c.IsColumnVisible = PUI.IsColumnVisible
     c.PROF_COLUMN_HEADER_FONT = PROF_COLUMN_HEADER_FONT
     c.PROF_HEADER_ICON_BY_COL = PROF_HEADER_ICON_BY_COL
-    c.PaintProfessionCompactColumnHeader = PaintProfessionCompactColumnHeader
-    c.PaintProfessionTextSortableColumnHeader = PaintProfessionTextSortableColumnHeader
-    c.PaintProfessionTextStaticColumnHeader = PaintProfessionTextStaticColumnHeader
+    c.PaintProfessionCompactColumnHeader = PUI.PaintProfessionCompactColumnHeader
+    c.PaintProfessionTextSortableColumnHeader = PUI.PaintProfessionTextSortableColumnHeader
+    c.PaintProfessionTextStaticColumnHeader = PUI.PaintProfessionTextStaticColumnHeader
     c.profColHeaderHits = profColHeaderHits
     c.profColHeaderLabels = profColHeaderLabels
-    c.ProfColumnPickerHide = ProfColumnPickerHide
-    c.ProfColumnPickerPopulateMenu = ProfColumnPickerPopulateMenu
-    c.ProfColumnPickerPositionMenu = ProfColumnPickerPositionMenu
-    c.ProfColumnPickerShowCatcher = ProfColumnPickerShowCatcher
+    c.ProfColumnPickerHide = PUI.ProfColumnPickerHide
+    c.ProfColumnPickerPopulateMenu = PUI.ProfColumnPickerPopulateMenu
+    c.ProfColumnPickerPositionMenu = PUI.ProfColumnPickerPositionMenu
+    c.ProfColumnPickerShowCatcher = PUI.ProfColumnPickerShowCatcher
     c.ProfUI = ProfUI
-    c.ProfessionStackBodyWidth = ProfessionStackBodyWidth
-    c.ReattachProfessionColumnHeaderBar = ReattachProfessionColumnHeaderBar
-    c.RefreshVisibleProfessionRowGradients = RefreshVisibleProfessionRowGradients
+    c.ProfessionStackBodyWidth = PUI.ProfessionStackBodyWidth
+    c.ReattachProfessionColumnHeaderBar = PUI.ReattachProfessionColumnHeaderBar
+    c.RefreshVisibleProfessionRowGradients = PUI.RefreshVisibleProfessionRowGradients
     c.ROW_HEIGHT = ROW_HEIGHT
-    c.RegisterProfessionEvents = RegisterProfessionEvents
-    c.RelayoutProfessionRowWidths = RelayoutProfessionRowWidths
+    c.RegisterProfessionEvents = PUI.RegisterProfessionEvents
+    c.RelayoutProfessionRowWidths = PUI.RelayoutProfessionRowWidths
     c.ReleaseAllPooledChildren = ReleaseAllPooledChildren
     c.ReleaseProfessionRow = ReleaseProfessionRow
-    c.ResolveProfessionColumnHeaderInnerWidth = ResolveProfessionColumnHeaderInnerWidth
+    c.ResolveProfessionColumnHeaderInnerWidth = PUI.ResolveProfessionColumnHeaderInnerWidth
     c.SIDE_MARGIN = SIDE_MARGIN
     c.ShowTooltip = ShowTooltip
-    c.StripProfHeaderDisplayText = StripProfHeaderDisplayText
-    c.SyncProfessionColumnOrder = SyncProfessionColumnOrder
+    c.StripProfHeaderDisplayText = PUI.StripProfHeaderDisplayText
+    c.SyncProfessionColumnOrder = PUI.SyncProfessionColumnOrder
     c.ToggleColumnSort = ToggleColumnSort
     c.Utilities = Utilities
     c.WarbandNexus = WarbandNexus
@@ -3458,7 +3510,7 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
     end
     local chunkSize = ProfUI.CHUNK_SIZE or 3
     local rowIndex = ctx.rowIndex or 0
-    local rowStride = ROW_HEIGHT + ((GetLayout().betweenRows) or 0)
+    local rowStride = ROW_HEIGHT + ((PUI.GetLayout().betweenRows) or 0)
     local idx = 1
 
     local function finalizeSectionHeights()
@@ -3575,7 +3627,7 @@ end
 --- Tab switch (AbortTabOperations): clear session profession caches so GUID/API-heavy maps are not retained across tabs.
 function WarbandNexus:AbortProfessionsTabWork()
     ProfUI.AbortChunkedRowPaint()
-    InvalidateProfessionsTradeSessionCaches()
+    PUI.InvalidateProfessionsTradeSessionCaches()
 end
 
 -- Session profession caches: register invalidation at load so data updates clear stale API/icon maps
@@ -3584,10 +3636,10 @@ do
     local Constants = ns.Constants
     local ev = Constants and Constants.EVENTS
     if ev then
-        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.RECIPE_DATA_UPDATED, InvalidateProfessionsTradeSessionCaches)
-        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.PROFESSION_DATA_UPDATED, InvalidateProfessionsTradeSessionCaches)
-        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.PROFESSION_EQUIPMENT_UPDATED, InvalidateProfessionsTradeSessionCaches)
-        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.CRAFTING_ORDERS_UPDATED, InvalidateProfessionsTradeSessionCaches)
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.RECIPE_DATA_UPDATED, PUI.InvalidateProfessionsTradeSessionCaches)
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.PROFESSION_DATA_UPDATED, PUI.InvalidateProfessionsTradeSessionCaches)
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.PROFESSION_EQUIPMENT_UPDATED, PUI.InvalidateProfessionsTradeSessionCaches)
+        WarbandNexus.RegisterMessage(ProfessionsUIEvents, ev.CRAFTING_ORDERS_UPDATED, PUI.InvalidateProfessionsTradeSessionCaches)
     end
 end
 
@@ -3596,27 +3648,27 @@ if ns.UI_RegisterTabViewportResize then
         mode = ns.UI_VIEWPORT_RESIZE_MODE and ns.UI_VIEWPORT_RESIZE_MODE.STRETCH_ROWS,
         tabKey = "professions",
         onLive = function(scrollChild, contentWidth, mf)
-            ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
+            PUI.ScheduleProfessionViewportRelayout(mf, scrollChild, contentWidth)
         end,
-        stretch = ProfessionStretchRelayoutOpts,
+        stretch = PUI.ProfessionStretchRelayoutOpts,
         refreshHeader = true,
         onCommit = function(scrollChild, contentWidth, mf)
-            local bodyW = ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
+            local bodyW = PUI.ProfessionsBodyWidthFromViewport(contentWidth, scrollChild)
             local paintW
             if bodyW and bodyW > 0 then
                 cachedRowWidth = bodyW
                 scrollChild._wnProfBodyWidth = bodyW
-                paintW = ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyW)
+                paintW = PUI.ResolveProfessionColumnHeaderInnerWidth(mf, scrollChild, bodyW)
                 local side = scrollChild._wnProfContentSide or SIDE_MARGIN
-                scrollChild._wnProfStackWidth = ProfessionStackBodyWidth(paintW, side)
+                scrollChild._wnProfStackWidth = PUI.ProfessionStackBodyWidth(paintW, side)
             end
-            EnsureProfessionColumnHeaderStrip(mf, scrollChild or mf.scrollChild, bodyW)
-            RelayoutProfessionRowWidths(scrollChild or mf.scrollChild)
+            PUI.EnsureProfessionColumnHeaderStrip(mf, scrollChild or mf.scrollChild, bodyW)
+            PUI.RelayoutProfessionRowWidths(scrollChild or mf.scrollChild)
             local sc = scrollChild or mf.scrollChild
             if sc and sc._wnProfRelayoutSectionStack then
                 sc._wnProfRelayoutSectionStack()
             end
-            EnsureProfessionRowGradientScrollHook(mf)
+            PUI.EnsureProfessionRowGradientScrollHook(mf)
             return true
         end,
     })

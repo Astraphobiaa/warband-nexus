@@ -482,9 +482,9 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     card.isExpanded = ns.expandedCards[cardKey] or false
     card.expandedContent = nil
     
-    -- Apply visuals (accent border for My Plans cards)
+    -- Apply visuals (accent border for My Plans cards; CreateCard already applied classic card panel)
     local COLORS = ns.UI_COLORS or { accent = { 0.5, 0.4, 0.7 } }
-    if ApplyVisuals then
+    if ApplyVisuals and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
         local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
             or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
         ApplyVisuals(card, COLORS.bgCard, borderColor)
@@ -500,7 +500,9 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     iconBorder:EnableMouse(false)
     card.iconBorder = iconBorder
-    if ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
+    if ns.UI_ApplyIconWellChrome then
+        ns.UI_ApplyIconWellChrome(iconBorder)
+    elseif ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
         local ib = ns.UI_GetIconWellBackdrop()
         local br = ns.UI_GetIconWellBorder()
         ApplyVisuals(iconBorder, ib, br)
@@ -2317,7 +2319,9 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
-    if ns.UI_ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
+    if ns.UI_ApplyIconWellChrome then
+        ns.UI_ApplyIconWellChrome(iconBorder)
+    elseif ns.UI_ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
         ns.UI_ApplyVisuals(iconBorder, ns.UI_GetIconWellBackdrop(), ns.UI_GetIconWellBorder())
     end
     
@@ -2468,7 +2472,9 @@ function PlanCardFactory:CreateDailyQuestCard(card, plan)
     
     local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
-    if ns.UI_ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
+    if ns.UI_ApplyIconWellChrome then
+        ns.UI_ApplyIconWellChrome(iconBorder)
+    elseif ns.UI_ApplyVisuals and ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBorder then
         ns.UI_ApplyVisuals(iconBorder, ns.UI_GetIconWellBackdrop(), ns.UI_GetIconWellBorder())
     end
     

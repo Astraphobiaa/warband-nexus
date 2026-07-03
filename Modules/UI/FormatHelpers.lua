@@ -324,7 +324,7 @@ function ns.UI_SetPvECurrencyDisplayMode(mode)
         ns.RefreshVaultShiftAwareDisplays()
     end
     if WN.SendMessage then
-        WN:SendMessage("WN_UI_MAIN_REFRESH_REQUESTED", { tab = "pve", skipCooldown = true })
+        WN:SendMessage(ns.Constants.EVENTS.UI_MAIN_REFRESH_REQUESTED, { tab = "pve", skipCooldown = true })
     end
 end
 

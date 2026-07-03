@@ -22,6 +22,76 @@ local GetColors = function() return ns.UI_COLORS end
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
+--- Item / plan icon well (light: visible stone tray; dark: near-black inset).
+---@return table rgba
+local function GetIconWellBackdrop()
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        local card = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bgCard)
+            or (COLORS and COLORS.bgCard)
+        if card then
+            return { card[1], card[2], card[3], card[4] or 1 }
+        end
+        return { 0.08, 0.08, 0.09, 1 }
+    end
+    if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+        return { 0.66, 0.65, 0.63, 1 }
+    end
+    return { 0.05, 0.05, 0.07, 0.95 }
+end
+ns.UI_GetIconWellBackdrop = GetIconWellBackdrop
+
+--- Border stroke for icon wells.
+---@return table rgba
+local function GetIconWellBorder()
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        local bc = ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.border
+        if bc then
+            return { bc[1], bc[2], bc[3], 1 }
+        end
+        return { 0.55, 0.48, 0.35, 1 }
+    end
+    if ns.UI_GetAccentBorderRGBA then
+        return ns.UI_GetAccentBorderRGBA(0.6)
+    end
+    local ac = COLORS and COLORS.accent
+    if ac then
+        return { ac[1], ac[2], ac[3], 0.6 }
+    end
+    return { 0.6, 0.4, 1, 0.6 }
+end
+ns.UI_GetIconWellBorder = GetIconWellBorder
+
+--- Item/plan icon well chrome (thin 1px in Classic; accent stroke in Modern).
+---@param frame Frame|nil
+local function ApplyIconWellChrome(frame)
+    if not frame then return end
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicIconWellChrome then
+        ns.UI_ApplyClassicIconWellChrome(frame, GetIconWellBackdrop())
+        return
+    end
+    if ApplyVisuals then
+        ApplyVisuals(frame, GetIconWellBackdrop(), GetIconWellBorder())
+    end
+end
+ns.UI_ApplyIconWellChrome = ApplyIconWellChrome
+
+--- Collections list / Recent column row icons: Classic = bare icon (no well); Modern = icon well stroke.
+---@param frame Frame|nil
+local function ApplyListRowIconChrome(frame)
+    if not frame then return end
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(frame)
+        elseif ns.UI_ApplyClassicInteriorFlatFill then
+            ns.UI_ApplyClassicInteriorFlatFill(frame, { 0, 0, 0, 0 })
+        end
+        frame._wnListRowBareIcon = true
+        return
+    end
+    ApplyIconWellChrome(frame)
+end
+ns.UI_ApplyListRowIconChrome = ApplyListRowIconChrome
+
 local function UIFontRole(roleKey)
     return FontManager:GetFontRole(roleKey)
 end
@@ -211,29 +281,43 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
     
     -- Apply pixel-perfect border (unless noBorder is true)
     if not noBorder then
-        local iconBg = { 0.05, 0.05, 0.07, 0.95 }
-        local iconBorder = borderColor
-        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-            if ns.UI_GetIconWellBackdrop then
-                local bg = ns.UI_GetIconWellBackdrop()
-                iconBg = { bg[1], bg[2], bg[3], bg[4] or 1 }
+        if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+            and ns.UI_ApplyClassicIconWellChrome then
+            local iconBg = (ns.UI_GetIconWellBackdrop and ns.UI_GetIconWellBackdrop())
+                or (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bgCard)
+                or { 0.08, 0.08, 0.09, 1 }
+            ns.UI_ApplyClassicIconWellChrome(frame, iconBg)
+        else
+            local iconBg = { 0.05, 0.05, 0.07, 0.95 }
+            local iconBorder = borderColor
+            if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+                if ns.UI_GetIconWellBackdrop then
+                    local bg = ns.UI_GetIconWellBackdrop()
+                    iconBg = { bg[1], bg[2], bg[3], bg[4] or 1 }
+                end
+                if ns.UI_GetIconWellBorder then
+                    iconBorder = ns.UI_GetIconWellBorder()
+                end
             end
-            if ns.UI_GetIconWellBorder then
-                iconBorder = ns.UI_GetIconWellBorder()
-            end
+            ApplyVisuals(frame, iconBg, iconBorder)
         end
-        ApplyVisuals(frame, iconBg, iconBorder)
     end
     
     -- Icon texture (square fit inside frame; atlas keeps native UV)
     local tex = frame:CreateTexture(nil, "ARTWORK")
+    local inset
     if noBorder then
-        local inset = math.max(1, (GetPixelScale and GetPixelScale() or 1) * 2)
+        inset = math.max(1, (GetPixelScale and GetPixelScale() or 1) * 2)
+    elseif frame._wnClassicIconWell then
+        inset = 3
+    else
+        -- Inset by 2 physical pixels to prevent texture bleeding into border
+        inset = GetPixelScale() * 2
+    end
+    if noBorder then
         tex:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
         tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
     else
-        -- Inset by 2 physical pixels to prevent texture bleeding into border
-        local inset = GetPixelScale() * 2
         tex:SetPoint("TOPLEFT", inset, -inset)
         tex:SetPoint("BOTTOMRIGHT", -inset, inset)
     end
@@ -386,6 +470,28 @@ end
 ]]
 local function CreateButton(parent, width, height, bgColor, borderColor, noBorder)
     if not parent then return nil end
+
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        if noBorder then
+            local button = CreateFrame("Button", nil, parent)
+            if width and height then
+                button:SetSize(width, height)
+            end
+            button:EnableMouse(true)
+            button._wnSkipCustomChrome = true
+            if button.SetBackdrop then
+                pcall(button.SetBackdrop, button, nil)
+            end
+            return button
+        end
+        local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        if width and height then
+            button:SetSize(width, height)
+        end
+        button:EnableMouse(true)
+        button._wnBlizzardButton = true
+        return button
+    end
 
     if not bgColor then
         if ns.UI_GetControlChromeBackdrop then

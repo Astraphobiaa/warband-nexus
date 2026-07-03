@@ -24,50 +24,61 @@ local function ResolveAccent(accent)
 end
 
 --- Raised sub-card with accent top edge (paperdoll viewport, recommendations).
+--- opts.borderless (classic): transparent host — no nested dialog-box on stats/currency bands.
 ---@param frame Frame
 ---@param accent table|nil
-function Chrome.ApplySubpanel(frame, accent)
+---@param opts table|nil
+function Chrome.ApplySubpanel(frame, accent, opts)
     if not frame then return end
-    if ns.UI_ApplyStandardCardElevatedChrome then
-        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    opts = opts or {}
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        if opts.borderless and ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(frame)
+        elseif ns.UI_ApplyBlizzardPanelBackdrop then
+            ns.UI_ApplyBlizzardPanelBackdrop(frame)
+        end
+        if frame._wnGearTopHighlight then
+            frame._wnGearTopHighlight:Hide()
+        end
+        return
+    end
+    local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
+        or COLORS.bgCard or COLORS.bg or { 0.10, 0.10, 0.12, 0.98 }
+    if frame.SetBackdrop then
+        frame:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            tile = true,
+            tileSize = 8,
+        })
+        frame:SetBackdropColor(bg[1], bg[2], bg[3], (bg[4] or 1) * 0.92)
     elseif ns.UI_ApplyVisuals then
-        local ac = ResolveAccent(accent)
-        local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
-            or COLORS.bgCard or COLORS.bg or { 0.10, 0.10, 0.12, 0.98 }
-        ns.UI_ApplyVisuals(frame, bg, { ac[1], ac[2], ac[3], 0.55 })
+        ns.UI_ApplyVisuals(frame, bg, { 0, 0, 0, 0 })
     end
-    if not frame._wnGearTopHighlight then
-        frame._wnGearTopHighlight = frame:CreateTexture(nil, "BORDER")
+    if frame._wnGearTopHighlight then
+        frame._wnGearTopHighlight:Hide()
     end
-    local hi = frame._wnGearTopHighlight
-    local ac = ResolveAccent(accent)
-    hi:ClearAllPoints()
-    hi:SetHeight(1)
-    hi:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
-    hi:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -1)
-    hi:SetColorTexture(ac[1], ac[2], ac[3], 0.42)
-    hi:Show()
 end
 
 --- Inset viewport behind the 3D model / portrait.
 ---@param frame Frame
 ---@param accent table|nil
 function Chrome.ApplyPaperdollViewport(frame, accent)
-    if not frame or not frame.SetBackdrop then return end
-    local ac = ResolveAccent(accent)
+    if not frame then return end
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        if ns.UI_ApplyBlizzardPanelBackdrop then
+            ns.UI_ApplyBlizzardPanelBackdrop(frame)
+        end
+        return
+    end
+    if not frame.SetBackdrop then return end
     local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
         or COLORS.surfaceViewport or COLORS.bgCard or COLORS.bg or { 0.035, 0.035, 0.048, 0.98 }
     frame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
         tile = true,
         tileSize = 8,
-        edgeSize = 1,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
     })
     frame:SetBackdropColor(bg[1], bg[2], bg[3], 0.94)
-    local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.55
-    frame:SetBackdropBorderColor(ac[1] * 0.35, ac[2] * 0.35, ac[3] * 0.35, borderA)
 end
 
 --- Left accent bar + title (replaces centered section titles).
@@ -90,6 +101,15 @@ function Chrome.CreateSectionHeader(parent, titleText, accent, opts)
         and GearFact:CreateContainer(parent, 100, h, false)
         or CreateFrame("Frame", nil, parent)
     host:SetHeight(h)
+
+    local useClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    if useClassic and not opts.plainHost and ns.UI_ApplyClassicListHeaderChrome then
+        local hdrBg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.surfaceHeaderChrome)
+            or (ns.UI_COLORS and (ns.UI_COLORS.surfaceHeaderChrome or ns.UI_COLORS.bgCard))
+            or { 0.08, 0.08, 0.09, 1 }
+        ns.UI_ApplyClassicListHeaderChrome(host, hdrBg)
+        hideAccentBar = true
+    end
 
     local bar = host:CreateTexture(nil, "ARTWORK")
     local titleAnchor = host
@@ -194,8 +214,9 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
         if name ~= "" then
             nameFs:SetText("|cff" .. classHex .. name .. "|r")
         else
-            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "888888"
-            nameFs:SetText("|cff" .. dimHex .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
+            -- UI_GetTextRoleHex returns the full "|cff..." escape.
+            local dimHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim")) or "|cff888888"
+            nameFs:SetText(dimHex .. ((ns.L and ns.L["GEAR_SECTION_CHARACTER"]) or "Character") .. "|r")
         end
     end
 
@@ -221,7 +242,11 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
             or CreateFrame("Frame", nil, host, "BackdropTemplate")
         pill:SetSize(pillW, pillH)
         pill:SetPoint("RIGHT", host, "RIGHT", -pad, 0)
-        if pill.SetBackdrop then
+        if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+            if ns.UI_ApplyBlizzardPanelBackdrop then
+                ns.UI_ApplyBlizzardPanelBackdrop(pill)
+            end
+        elseif pill.SetBackdrop then
             pill:SetBackdrop({
                 bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
                 edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -241,9 +266,10 @@ function Chrome.CreateCharacterRibbon(parent, charData, accent, opts)
             ilvlFs:SetJustifyH("CENTER")
             local ilvlStr = format("%.2f", avgIlvl)
             local ilvlLabel = (ns.L and ns.L["ILVL_SHORT_LABEL"]) or "iLvl"
-            local brightHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "ffffff"
-            local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "aaaaaa"
-            ilvlFs:SetText("|cff" .. brightHex .. ilvlStr .. "|r |cff" .. mutedHex .. ilvlLabel .. "|r")
+            -- UI_GetTextRoleHex returns the full "|cff..." escape.
+            local brightHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffffffff"
+            local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
+            ilvlFs:SetText(brightHex .. ilvlStr .. "|r " .. mutedHex .. ilvlLabel .. "|r")
         end
         host._wnIlvlPill = pill
     end
@@ -268,6 +294,12 @@ end
 ---@param paintFn function|nil existing column painter
 function Chrome.PaintStorageTableHeaderShell(parent, contentW, accent, paintFn)
     if not parent then return end
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        if type(paintFn) == "function" then
+            paintFn(parent, contentW)
+        end
+        return
+    end
     local L = ns.GEAR_LAYOUT or {}
     local hdrH = ns.GearUI_STORAGE_REC_TABLE_HDR or L.STORAGE_TABLE_HDR_H or 22
     local ac = ResolveAccent(accent)
@@ -281,6 +313,26 @@ function Chrome.PaintStorageTableHeaderShell(parent, contentW, accent, paintFn)
     if type(paintFn) == "function" then
         paintFn(parent, contentW)
     end
+end
+
+--- Gear paperdoll slot buttons: Classic uses Blizzard plain icon cells (no WN rim / icon-well).
+---@param btn Button|nil
+---@param borderFrame Frame|nil
+---@param bgTex Texture|nil
+function Chrome.ApplyGearSlotPlainChrome(btn, borderFrame, bgTex)
+    if borderFrame then
+        if borderFrame.SetBackdrop then
+            pcall(borderFrame.SetBackdrop, borderFrame, nil)
+        end
+        borderFrame:Hide()
+    end
+    if bgTex and bgTex.Hide then
+        bgTex:Hide()
+    end
+    if btn then
+        btn._wnGearSlotPlain = true
+    end
+    return true
 end
 
 --- Re-apply paperdoll viewport chrome on persistent hosts (theme / light-mode refresh).

@@ -742,24 +742,10 @@ function WarbandNexus:DrawProfessionsTab(parent)
         return estY + 24
     end
 
+    -- Collapsed-state hint removed: sections keep whatever expand state the user
+    -- left them in, with no notice row and no stack push-down.
     if parent._wnProfCollapsedHint then
         parent._wnProfCollapsedHint:Hide()
-    end
-    if profDataCharCount > 0 and not AnyProfessionsSectionExpanded(self.db.profile, customGroupsOrdered) then
-        local hintY = yOffset
-        if not parent._wnProfCollapsedHint then
-            parent._wnProfCollapsedHint = FontManager:CreateFontString(parent, DATA_FONT, "OVERLAY")
-            parent._wnProfCollapsedHint._wnEphemeralScrollOverlay = true
-        end
-        local hint = parent._wnProfCollapsedHint
-        hint:Show()
-        hint:SetPoint("TOPLEFT", contentSide + 12, -hintY - 8)
-        hint:SetWidth(stackWidth - 24)
-        hint:SetJustifyH("LEFT")
-        hint:SetText(TextRoleHex("Muted") .. ((ns.L and ns.L["PROF_SECTIONS_COLLAPSED_HINT"])
-            or "All profession sections are collapsed. Click Favorites, Characters, or a roster group header to expand and view profession details.") .. "|r")
-        yOffset = hintY + 36
-        parent._wnProfSectionStackTopY = yOffset
     end
 
     local mfRef = WarbandNexus.UI and WarbandNexus.UI.mainFrame

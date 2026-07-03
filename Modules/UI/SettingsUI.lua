@@ -16,6 +16,14 @@ local LDBI = LibStub("LibDBIcon-1.0", true)
 -- Import SharedWidgets
 local COLORS = ns.UI_COLORS or {accent = {0.40, 0.20, 0.58, 1}, accentDark = {0.28, 0.14, 0.41, 1}, border = {0.20, 0.20, 0.25, 1}, bg = {0.04, 0.04, 0.05, 0.98}, bgCard = {0.04, 0.04, 0.05, 0.98}, textBright = {1,1,1,1}, textNormal = {0.85,0.85,0.85,1}, textDim = {0.55,0.55,0.55,1}, white = {1,1,1,1}}
 local ApplyVisuals = ns.UI_ApplyVisuals
+
+--- Skip ApplyVisuals on Blizzard template widgets (classic UIPanelButtonTemplate, etc.).
+local function ApplySettingsChrome(frame, bg, border)
+    if not frame or not ApplyVisuals then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
+    ApplyVisuals(frame, bg, border)
+end
+-- Tab chrome: route all panel/card fills through ApplySettingsChrome (not raw ApplyVisuals).
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateSection = ns.UI_CreateSection
 
@@ -126,17 +134,26 @@ local function FinalizeSettingsSectionHeight(section, contentHeight, hasTitle)
 end
 
 ---Lead copy above a panel card (panel description from SettingsUI shell).
+---FontStrings are Regions, not Frames: BuildSettings' GetChildren() sweep never
+---collects them, so this MUST reuse one cached instance per parent — creating a
+---fresh one each rebuild leaves stale copies painted over the new layout.
 local function AppendSettingsPanelIntro(parent, panelId, width, yOffset, sideInset)
     local SUI = ns.SettingsUI
     local desc = SUI and SUI.PanelDescription and SUI.PanelDescription(panelId)
     if not desc or desc == "" then return yOffset end
-    local fs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    local fs = parent._wnSettingsIntroFs
+    if not fs then
+        fs = FontManager:CreateFontString(parent, "body", "OVERLAY")
+        parent._wnSettingsIntroFs = fs
+    end
+    fs:ClearAllPoints()
     fs:SetPoint("TOPLEFT", parent, "TOPLEFT", sideInset, yOffset)
     fs:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -sideInset, yOffset)
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(true)
     fs:SetText(desc)
     ns.UI_SetTextColorRole(fs, "Dim")
+    fs:Show()
     local sh = (fs.GetStringHeight and fs:GetStringHeight()) or 36
     return yOffset - math.max(18, sh) - SETTINGS_PANEL_INTRO_GAP
 end
@@ -159,8 +176,20 @@ local function AppendSettingsGroupDivider(parent, width, yOffset)
     local bar = ns.UI.Factory:CreateContainer(parent, width, 2, false)
     if bar then
         bar:SetPoint("TOPLEFT", 0, yOffset)
-        if ApplyVisuals then
-            ApplyVisuals(bar,
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+            -- A backdrop border on a 2px frame renders as a smeared band in
+            -- classic; paint a single flat line instead.
+            if bar.SetBackdrop then pcall(bar.SetBackdrop, bar, nil) end
+            if not bar._wnClassicDividerTex then
+                bar._wnClassicDividerTex = bar:CreateTexture(nil, "ARTWORK")
+                bar._wnClassicDividerTex:SetAllPoints()
+            end
+            local bc = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.border)
+                or { 0.55, 0.48, 0.35 }
+            bar._wnClassicDividerTex:SetColorTexture(bc[1], bc[2], bc[3], 0.35)
+            bar:SetHeight(1)
+        else
+            ApplySettingsChrome(bar,
                 { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.22 },
                 { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.10 })
         end
@@ -635,27 +664,42 @@ local function IsThemePresetSelected(presetColor)
 end
 
 local function ApplyThemePresetButtonChrome(entry, isSelected)
-    if not entry or not entry.button or not ApplyVisuals then return end
+    if not entry or not entry.button then return end
     local btnColor = entry.color
-    local bg
-    if isSelected then
-        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-            local ta = (ns.UI_COLORS or COLORS).tabActive
-            if ta then
-                bg = { ta[1], ta[2], ta[3], ta[4] or 0.98 }
-            else
-                bg = SettingsControlChromeHover()
-            end
-        else
-            bg = (ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop()) or SettingsControlChromeHover()
+    local btn = entry.button
+    if btn._wnBlizzardButton then
+        if ns.UI_ApplyClassicNavTabActiveState then
+            ns.UI_ApplyClassicNavTabActiveState(btn, isSelected)
         end
     else
-        bg = SettingsControlChrome()
+        local bg
+        if isSelected then
+            if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+                local ta = (ns.UI_COLORS or COLORS).tabActive
+                if ta then
+                    bg = { ta[1], ta[2], ta[3], ta[4] or 0.98 }
+                else
+                    bg = SettingsControlChromeHover()
+                end
+            else
+                bg = (ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop()) or SettingsControlChromeHover()
+            end
+        else
+            bg = SettingsControlChrome()
+        end
+        local borderA = isSelected and 1.0 or 0.8
+        ApplySettingsChrome(btn, bg, { btnColor[1], btnColor[2], btnColor[3], borderA })
     end
-    local borderA = isSelected and 1.0 or 0.8
-    ApplyVisuals(entry.button, bg, { btnColor[1], btnColor[2], btnColor[3], borderA })
     if entry.text then
-        entry.text:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
+        if isSelected and btn._wnBlizzardButton then
+            local gr, gg, gb = btnColor[1], btnColor[2], btnColor[3]
+            if ns.UI_GetSemanticGoldColor then
+                gr, gg, gb = ns.UI_GetSemanticGoldColor()
+            end
+            entry.text:SetTextColor(gr, gg, gb)
+        else
+            entry.text:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
+        end
     end
 end
 
@@ -694,8 +738,8 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         local isPreset = presetRegistry ~= nil
         local isSelected = isPreset and IsThemePresetSelected(btnColor)
 
-        if not isPreset and ApplyVisuals then
-            ApplyVisuals(button, SettingsControlChrome(), { btnColor[1], btnColor[2], btnColor[3], 0.8 })
+        if not isPreset then
+            ApplySettingsChrome(button, SettingsControlChrome(), { btnColor[1], btnColor[2], btnColor[3], 0.8 })
         end
         
         -- Button text
@@ -718,10 +762,12 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         
         -- Hover effects
         button:SetScript("OnEnter", function(self)
-            if ApplyVisuals then
-                ApplyVisuals(button, SettingsControlChromeHover(), {btnColor[1], btnColor[2], btnColor[3], 1})
+            if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(button) then
+                ns.UI_SetTextColorRole(buttonText, "Bright")
+            else
+                ApplySettingsChrome(button, SettingsControlChromeHover(), { btnColor[1], btnColor[2], btnColor[3], 1 })
+                ns.UI_SetTextColorRole(buttonText, "Bright")
             end
-            ns.UI_SetTextColorRole(buttonText, "Bright")
             
             if btnData.tooltip then
                 Settings_ShowWrappedTooltip(self, btnData.tooltip)
@@ -731,10 +777,10 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         button:SetScript("OnLeave", function(self)
             if isPreset then
                 ApplyThemePresetButtonChrome({ button = button, text = buttonText, color = btnColor }, IsThemePresetSelected(btnColor))
-            elseif ApplyVisuals then
-                ApplyVisuals(button, SettingsControlChrome(), { btnColor[1], btnColor[2], btnColor[3], 0.8 })
+            else
+                ApplySettingsChrome(button, SettingsControlChrome(), { btnColor[1], btnColor[2], btnColor[3], 0.8 })
+                buttonText:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
             end
-            buttonText:SetTextColor(btnColor[1], btnColor[2], btnColor[3])
             GameTooltip:Hide()
         end)
         
@@ -788,22 +834,21 @@ end
 local settingsAccentChrome = {}
 
 local function ApplySettingsAccentChromeIdle(btn)
-    if not btn or not ApplyVisuals then return end
+    if not btn then return end
     local C = ns.UI_COLORS or COLORS
     local a = C.accent or COLORS.accent
     local bg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.08, 0.08, 0.10, 1 }
     local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.55 or 0.75
-    ApplyVisuals(btn, bg, { a[1], a[2], a[3], borderA })
+    ApplySettingsChrome(btn, bg, { a[1], a[2], a[3], borderA })
 end
 
 local function WireSettingsAccentButtonHover(btn)
     if not btn then return end
     btn:SetScript("OnEnter", function(self)
-        if not ApplyVisuals then return end
         local C = ns.UI_COLORS or COLORS
         local a = C.accent or COLORS.accent
         local hover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.12, 0.14, 1 }
-        ApplyVisuals(self, hover, { a[1], a[2], a[3], 1 })
+        ApplySettingsChrome(self, hover, { a[1], a[2], a[3], 1 })
     end)
     btn:SetScript("OnLeave", function(self)
         ApplySettingsAccentChromeIdle(self)
@@ -1017,9 +1062,9 @@ local function CreateDropdownWidget(parent, option, yOffset)
                 menu:SetFrameStrata("FULLSCREEN_DIALOG")
                 menu:SetFrameLevel(300)
                 menu:SetClampedToScreen(true)
-                if ApplyVisuals then
+                if ApplySettingsChrome then
                     local menuBg = SettingsDropdownMenuBg()
-                    ApplyVisuals(menu, menuBg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+                    ApplySettingsChrome(menu, menuBg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
                 end
             end
             dropdown._dropdownMenu = menu
@@ -1078,8 +1123,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
                 or (isCurrent and { 0.12, 0.12, 0.16, 1 } or { 0.07, 0.07, 0.09, 1 })
             local borderColor = isCurrent and {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8} or {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4}
             
-            if ApplyVisuals then
-                ApplyVisuals(btn, bgColor, borderColor)
+            if ApplySettingsChrome then
+                ApplySettingsChrome(btn, bgColor, borderColor)
             end
             
             local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
@@ -1398,6 +1443,12 @@ local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOf
     local row = ns.UI.Factory:CreateContainer(parent, innerWidth, rowH, false)
     if not row then return yOffset, nil end
     row:SetPoint("TOPLEFT", 0, rowTop)
+    local useClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    if useClassic and ns.UI_ApplyClassicListHeaderChrome then
+        local hdrBg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.surfaceHeaderChrome)
+            or (COLORS.surfaceHeaderChrome or COLORS.bgCard)
+        ns.UI_ApplyClassicListHeaderChrome(row, { hdrBg[1], hdrBg[2], hdrBg[3], hdrBg[4] or 1 })
+    end
     local barW = 3
     local accentBar = row:CreateTexture(nil, "ARTWORK")
     accentBar:SetSize(barW, rowH - 8)
@@ -1409,9 +1460,17 @@ local function AppendSettingsSubSectionHeader(parent, titleText, innerWidth, yOf
     elseif ns.UI_IsLightMode and ns.UI_IsLightMode() then
         barA = opts.subtitleBright and 0.62 or 0.48
     end
-    accentBar:SetColorTexture(ac[1], ac[2], ac[3], barA)
+    if useClassic then
+        accentBar:Hide()
+    else
+        accentBar:SetColorTexture(ac[1], ac[2], ac[3], barA)
+    end
     local titleFs = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
-    titleFs:SetPoint("LEFT", accentBar, "RIGHT", 10, 0)
+    if useClassic then
+        titleFs:SetPoint("LEFT", row, "LEFT", 10, 0)
+    else
+        titleFs:SetPoint("LEFT", accentBar, "RIGHT", 10, 0)
+    end
     titleFs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     titleFs:SetJustifyH("LEFT")
     titleFs:SetWordWrap(false)
@@ -1434,6 +1493,10 @@ end
 ---opts.blockTrailingGap: optional px between stacked flat blocks (default 0 — avoid cumulative dead space).
 local function StackSettingsSubPanel(hostContent, panelWidth, stackY, buildInner, opts)
     opts = opts or {}
+    -- Classic: CreateSection already provides one dialog-box border; inner bordered panels stack corners.
+    if not opts.flat and ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        opts.flat = true
+    end
     if opts.flat then
         local anchor = ns.UI.Factory and ns.UI.Factory.CreateContainer and ns.UI.Factory:CreateContainer(hostContent, panelWidth, 1, false)
         if not anchor then
@@ -1473,12 +1536,16 @@ local function RefreshSubtitles()
     for sli = 1, #sliderElements do
         local slider = sliderElements[sli]
         if slider and slider:IsShown() then
-            local thumb = slider:GetThumbTexture()
-            if thumb then
-                thumb:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-            end
-            if slider.SetBackdropBorderColor then
-                slider:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            if slider._wnBlizzardSlider then
+                -- Classic OptionsSliderTemplate: skip custom border tint.
+            else
+                local thumb = slider:GetThumbTexture()
+                if thumb then
+                    thumb:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+                end
+                if slider.SetBackdropBorderColor then
+                    slider:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+                end
             end
         end
     end
@@ -1496,6 +1563,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     for _, child in pairs({parent:GetChildren()}) do
         child:Hide()
         if bin then child:SetParent(bin) else child:SetParent(nil) end
+    end
+    -- Region-level leftovers (GetChildren only returns Frames).
+    if parent._wnSettingsIntroFs then
+        parent._wnSettingsIntroFs:Hide()
     end
     
     -- Clear tracking tables
@@ -1732,7 +1803,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local keybindBtn = ns.UI.Factory:CreateButton(inner, 168, SETTINGS_BTN_H, false)
         settingsKeybindButton = keybindBtn
         keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", hdrGap, 0)
-    if ApplyVisuals then
+    if ApplySettingsChrome then
         ApplySettingsAccentChromeIdle(keybindBtn)
     end
     WireSettingsAccentButtonHover(keybindBtn)
@@ -1787,9 +1858,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         end
         keybindBtnText:SetText((ns.L and ns.L["KEYBINDING_PRESS_KEY"]) or "Press a key...")
         keybindBtnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-        if ApplyVisuals then
+        if ApplySettingsChrome then
             local listenBg = ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop() or SettingsControlChromeHover()
-            ApplyVisuals(keybindBtn, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
+            ApplySettingsChrome(keybindBtn, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
         end
     end
     settingsKeybindStopListening = StopListening
@@ -1883,9 +1954,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         -- Clear binding button
         local clearBtn = ns.UI.Factory:CreateButton(inner, SETTINGS_BTN_H, SETTINGS_BTN_H, false)
         clearBtn:SetPoint("LEFT", keybindBtn, "RIGHT", hdrGap, 0)
-        if ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+        if ApplySettingsChrome and ns.UI_GetSemanticNegativeCard then
             local negBg, negBorder = ns.UI_GetSemanticNegativeCard(false)
-            ApplyVisuals(clearBtn, negBg, negBorder)
+            ApplySettingsChrome(clearBtn, negBg, negBorder)
         end
 
         local clearIcon = clearBtn:CreateTexture(nil, "ARTWORK")
@@ -2691,10 +2762,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         ApplySettingsAccentChromeIdle(addTcChatBtn)
         RegisterSettingsAccentChrome(addTcChatBtn)
         addTcChatBtn:SetScript("OnEnter", function(self)
-            if ApplyVisuals then
+            if ApplySettingsChrome then
                 local C = ns.UI_COLORS or COLORS
                 local a = C.accent or COLORS.accent
-                ApplyVisuals(self, SettingsControlChromeHover(), { a[1], a[2], a[3], 1 })
+                ApplySettingsChrome(self, SettingsControlChromeHover(), { a[1], a[2], a[3], 1 })
             end
             Settings_ShowWrappedTooltip(self, (ns.L and ns.L["TRYCOUNTER_CHAT_ADD_TO_TAB_TOOLTIP"])
                 or "Select the chat tab you want, then click. Use with “Warband Nexus (separate filter)” mode so try lines are not tied to Loot.")
@@ -2938,7 +3009,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         if not dlg then return end
         dlg:SetFrameStrata("DIALOG")
         dlg:SetFrameLevel(2100)
-        if ApplyVisuals then ApplyVisuals(dlg, SettingsDialogShellBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.88 }) end
+        if ApplySettingsChrome then ApplySettingsChrome(dlg, SettingsDialogShellBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.88 }) end
         WarbandNexus._notifCoordDialog = dlg
 
         local cy = -14
@@ -2960,9 +3031,11 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local function UpdateAnchorButtonVisuals()
             for ap, btn in pairs(anchorBtns) do
                 local sel = (dlg.selectedAnchor == ap)
-                if sel then
+                if btn._wnBlizzardButton and ns.UI_ApplyClassicNavTabActiveState then
+                    ns.UI_ApplyClassicNavTabActiveState(btn, sel)
+                elseif sel then
                     local listenBg = ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop() or SettingsControlChromeHover()
-                    if ApplyVisuals then ApplyVisuals(btn, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.95 }) end
+                    ApplySettingsChrome(btn, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.95 })
                 else
                     ApplySettingsAccentChromeIdle(btn)
                 end
@@ -3203,9 +3276,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         holder:EnableMouse(true)
         holder:RegisterForDrag("LeftButton")
         holder:SetClampedToScreen(true)
-        if ApplyVisuals and ns.UI_GetSemanticPositiveCard then
+        if ApplySettingsChrome and ns.UI_GetSemanticPositiveCard then
             local posBg, posBorder = ns.UI_GetSemanticPositiveCard(false)
-            ApplyVisuals(holder, posBg, posBorder)
+            ApplySettingsChrome(holder, posBg, posBorder)
         end
         local ghostText = FontManager:CreateFontString(holder, "body", "OVERLAY")
         ghostText:SetPoint("CENTER")
@@ -3267,17 +3340,17 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         holder:EnableMouse(true)
         holder:RegisterForDrag("LeftButton")
         holder:SetClampedToScreen(true)
-        if ApplyVisuals then
+        if ApplySettingsChrome then
             local shellBg = SettingsDialogShellBg()
-            ApplyVisuals(holder, shellBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.85 })
+            ApplySettingsChrome(holder, shellBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.85 })
         end
 
         local topPane = ns.UI.Factory:CreateContainer(holder, 400, 88, true)
         if topPane then
             topPane:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
-            if ApplyVisuals and ns.UI_GetSemanticPositiveCard then
+            if ApplySettingsChrome and ns.UI_GetSemanticPositiveCard then
                 local posBg, posBorder = ns.UI_GetSemanticPositiveCard(false)
-                ApplyVisuals(topPane, posBg, posBorder)
+                ApplySettingsChrome(topPane, posBg, posBorder)
             end
             local ghostText = FontManager:CreateFontString(topPane, "body", "OVERLAY")
             ghostText:SetPoint("CENTER")
@@ -3287,9 +3360,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local botPane = ns.UI.Factory:CreateContainer(holder, 400, 88, true)
         if botPane then
             botPane:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -(88 + 10))
-            if ApplyVisuals then
+            if ApplySettingsChrome then
                 local listenBg = ns.UI_GetAccentListeningBackdrop and ns.UI_GetAccentListeningBackdrop() or SettingsControlChromeHover()
-                ApplyVisuals(botPane, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85 })
+                ApplySettingsChrome(botPane, listenBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85 })
             end
             local ghostCriteriaText = FontManager:CreateFontString(botPane, "body", "OVERLAY")
             ghostCriteriaText:SetPoint("CENTER")
@@ -3519,22 +3592,47 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = cy - GetHeaderToolbarGap()
 
         cy = CreateDropdownWidget(inner, {
-            name = (ns.L and ns.L["THEME_MODE"]) or "Light / Dark",
-            desc = (ns.L and ns.L["THEME_MODE_TOOLTIP"]) or "Choose a dark or light UI palette for panels, lists, and text.",
+            name = (ns.L and ns.L["UI_CHROME"]) or "UI Style",
+            desc = (ns.L and ns.L["UI_CHROME_TOOLTIP"]) or "Modern uses Warband Nexus custom chrome. Classic uses default Blizzard UI buttons and frames.",
             stackBelowLabel = true,
-            valueOrder = { "dark", "light" },
+            valueOrder = { "modern", "classic" },
             values = {
-                dark = (ns.L and ns.L["THEME_MODE_DARK"]) or "Dark",
-                light = (ns.L and ns.L["THEME_MODE_LIGHT"]) or "Light",
+                modern = (ns.L and ns.L["UI_CHROME_MODERN"]) or "Modern",
+                classic = (ns.L and ns.L["UI_CHROME_CLASSIC"]) or "Classic",
             },
             get = function()
-                local mode = WarbandNexus.db.profile.themeMode
-                if mode == "light" then return "light" end
-                return "dark"
+                local p = WarbandNexus.db.profile
+                if p.uiTheme == "classic" or p.themeMode == "classic" then
+                    return "classic"
+                end
+                return "modern"
             end,
             set = function(_, value)
-                if value ~= "light" then value = "dark" end
-                WarbandNexus.db.profile.themeMode = value
+                local p = WarbandNexus.db.profile
+                local wasClassic = (p.uiTheme == "classic" or p.themeMode == "classic")
+                if value == "classic" then
+                    if p.uiTheme ~= "classic" and p.themeMode ~= "classic" then
+                        local modernMode = (p.modernColorMode == "light" or p.themeMode == "light") and "light" or "dark"
+                        p.modernColorMode = modernMode
+                    end
+                    p.uiTheme = "classic"
+                    if p.themeMode == "classic" then
+                        p.themeMode = p.modernColorMode or "dark"
+                    end
+                else
+                    p.uiTheme = "modern"
+                    local restore = (p.modernColorMode == "light") and "light" or "dark"
+                    p.themeMode = restore
+                    p.modernColorMode = restore
+                end
+                local isClassic = (p.uiTheme == "classic")
+                if wasClassic ~= isClassic then
+                    -- Classic chrome is baked in at widget-creation time across the
+                    -- whole UI; a live toggle leaves mixed chrome. Reload rebuilds
+                    -- cleanly (SavedVariables are flushed by the reload itself).
+                    if C_UI and C_UI.Reload then C_UI.Reload() else ReloadUI() end
+                    return
+                end
                 if WarbandNexus.RefreshTheme then
                     WarbandNexus:RefreshTheme()
                 elseif ns.UI_RefreshColors then
@@ -3543,6 +3641,81 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 RefreshSubtitles()
             end,
         }, cy)
+
+        local profileClassicChrome = function()
+            local p = WarbandNexus.db.profile
+            return p.uiTheme == "classic" or p.themeMode == "classic"
+        end
+
+        if not profileClassicChrome() then
+        cy = CreateDropdownWidget(inner, {
+            name = (ns.L and ns.L["THEME_MODE"]) or "Appearance",
+            desc = (ns.L and ns.L["THEME_MODE_TOOLTIP"]) or "Dark or light surfaces for Modern UI only.",
+            stackBelowLabel = true,
+            valueOrder = { "dark", "light" },
+            values = {
+                dark = (ns.L and ns.L["THEME_MODE_DARK"]) or "Dark",
+                light = (ns.L and ns.L["THEME_MODE_LIGHT"]) or "Light",
+            },
+            get = function()
+                local p = WarbandNexus.db.profile
+                if p.modernColorMode == "light" or p.themeMode == "light" then
+                    return "light"
+                end
+                return "dark"
+            end,
+            set = function(_, value)
+                if value ~= "light" then value = "dark" end
+                local p = WarbandNexus.db.profile
+                p.uiTheme = "modern"
+                p.themeMode = value
+                p.modernColorMode = value
+                if WarbandNexus.RefreshTheme then
+                    WarbandNexus:RefreshTheme()
+                elseif ns.UI_RefreshColors then
+                    ns.UI_RefreshColors()
+                end
+                RefreshSubtitles()
+            end,
+        }, cy)
+        else
+            local hintFs = FontManager:CreateFontString(inner, "body", "OVERLAY")
+            hintFs:SetPoint("TOPLEFT", 0, cy)
+            hintFs:SetWidth(iw)
+            hintFs:SetJustifyH("LEFT")
+            hintFs:SetWordWrap(true)
+            hintFs:SetText((ns.L and ns.L["THEME_MODE_TOOLTIP"]) or "Dark or light surfaces when UI Style is Modern. Classic uses Blizzard default chrome only.")
+            ns.UI_SetTextColorRole(hintFs, "Muted")
+            cy = cy - math.max(18, hintFs:GetStringHeight()) - GetHeaderToolbarGap()
+        end
+
+        cy = CreateSliderWidget(inner, {
+            name = (ns.L and ns.L["SHELL_BACKGROUND_OPACITY"]) or "Window Background Opacity",
+            desc = (ns.L and ns.L["SHELL_BACKGROUND_OPACITY_DESC"]) or "Adjust how solid the main addon window background appears (Classic UI).",
+            min = 0.2,
+            max = 1.0,
+            step = 0.05,
+            get = function()
+                if ns.UI_GetShellBackgroundOpacity then
+                    return ns.UI_GetShellBackgroundOpacity()
+                end
+                return WarbandNexus.db.profile.shellBackgroundOpacity or 1.0
+            end,
+            set = function(_, value)
+                value = math.floor(value * 20 + 0.5) / 20
+                WarbandNexus.db.profile.shellBackgroundOpacity = value
+                if WarbandNexus.mainFrame and ns.UI_RefreshMainShellChrome then
+                    ns.UI_RefreshMainShellChrome(WarbandNexus.mainFrame)
+                end
+                if WarbandNexus.RefreshTheme then
+                    WarbandNexus:RefreshTheme()
+                elseif ns.UI_RefreshColors then
+                    ns.UI_RefreshColors()
+                end
+                RefreshSubtitles()
+            end,
+            valueFormat = function(v) return string.format("%d%%", v * 100) end,
+        }, cy, sliderElements)
 
         cy = cy - GetHeaderToolbarGap()
 
@@ -3556,7 +3729,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         colorPickerBtn:SetPoint("TOPLEFT", 0, cy)
     colorPickerBtn:Enable()
     
-    if ApplyVisuals then
+    if ApplySettingsChrome then
         ApplySettingsAccentChromeIdle(colorPickerBtn)
     end
     WireSettingsAccentButtonHover(colorPickerBtn)
@@ -3665,8 +3838,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
         -- Hover effects
         colorPickerBtn:SetScript("OnEnter", function(self)
-            if ApplyVisuals then
-                ApplyVisuals(colorPickerBtn, SettingsControlChromeHover(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
+            if ApplySettingsChrome then
+                ApplySettingsChrome(colorPickerBtn, SettingsControlChromeHover(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
             end
             ns.UI_SetTextColorRole(btnText, "Bright")
 
@@ -4052,8 +4225,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     
     -- Detail card (subtle background panel for selected item info)
     local detailCard = ns.UI.Factory:CreateContainer(trackSection.content, trackContentWidth, 80, true)
-    if detailCard and ApplyVisuals then
-        ApplyVisuals(detailCard, SettingsNestedCardBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.5 })
+    if detailCard and ApplySettingsChrome then
+        ApplySettingsChrome(detailCard, SettingsNestedCardBg(), { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.5 })
     end
     
     -- Detail card children (created once, updated on selection)
@@ -4318,7 +4491,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         itemIDBox:SetTextInsets(10, 10, 0, 0)
         itemIDBox:SetMaxLetters(20)
         itemIDBox:SetNumeric(false)
-        if ApplyVisuals then
+        if ApplySettingsChrome then
             ApplySettingsAccentChromeIdle(itemIDBox)
         end
         WireSettingsAccentButtonHover(itemIDBox)
@@ -4340,8 +4513,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     lookupBtn:SetSize(lookupBtnWidth, SETTINGS_COMPACT_BTN_H)
     lookupBtn:SetPoint("LEFT", itemIDBox, "RIGHT", inlineGap, 0)
     local lookupBtnColor = { 0.20, 0.50, 0.70 }
-    if ApplyVisuals then
-        ApplyVisuals(lookupBtn, SettingsControlChrome(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
+    if ApplySettingsChrome then
+        ApplySettingsChrome(lookupBtn, SettingsControlChrome(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
     end
     local lookupBtnText = FontManager:CreateFontString(lookupBtn, "body", "OVERLAY")
     lookupBtnText:SetPoint("CENTER")
@@ -4369,15 +4542,15 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         end)
     end)
     lookupBtn:SetScript("OnEnter", function(self)
-        if ApplyVisuals then
-            ApplyVisuals(lookupBtn, SettingsControlChromeHover(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 1})
+        if ApplySettingsChrome then
+            ApplySettingsChrome(lookupBtn, SettingsControlChromeHover(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 1})
         end
         ns.UI_SetTextColorRole(lookupBtnText, "Bright")
         Settings_ShowWrappedTooltip(self, (ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.")
     end)
     lookupBtn:SetScript("OnLeave", function()
-        if ApplyVisuals then
-            ApplyVisuals(lookupBtn, SettingsControlChrome(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
+        if ApplySettingsChrome then
+            ApplySettingsChrome(lookupBtn, SettingsControlChrome(), {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
         end
         lookupBtnText:SetTextColor(lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3])
         GameTooltip:Hide()
@@ -4656,10 +4829,13 @@ function WarbandNexus:DrawSettingsTab(parent)
 
     local navBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop())
         or COLORS.surfaceViewport or COLORS.bg or { 0.04, 0.04, 0.05, 0.98 }
-    if ns.UI_ApplyBorderlessSurface then
+    local useClassicNav = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    if useClassicNav and ns.UI_ApplyClassicTransparentInterior then
+        ns.UI_ApplyClassicTransparentInterior(navCol)
+    elseif ns.UI_ApplyBorderlessSurface then
         ns.UI_ApplyBorderlessSurface(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { surfaceTier = "surfaceViewport" })
-    elseif ApplyVisuals then
-        ApplyVisuals(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35 })
+    elseif ApplySettingsChrome then
+        ApplySettingsChrome(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35 })
         if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(navCol) end
     end
     local navDivider = navCol:CreateTexture(nil, "ARTWORK")
@@ -4669,10 +4845,38 @@ function WarbandNexus:DrawSettingsTab(parent)
     navDivider:SetWidth(1)
     navDivider:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
     navDivider:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
+    navCol._wnSettingsNavDivider = navDivider
+    local navDividerClassic
+    if ns.UI_CreateClassicVerticalRailDivider then
+        navDividerClassic = ns.UI_CreateClassicVerticalRailDivider(navCol)
+        navDividerClassic:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
+        navDividerClassic:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
+        navCol._wnClassicNavDivider = navDividerClassic
+    end
+    if useClassicNav then
+        navDivider:Hide()
+        if navDividerClassic then navDividerClassic:Show() end
+    else
+        navDivider:Show()
+        if navDividerClassic then navDividerClassic:Hide() end
+    end
+
+    if useClassicNav and ns.UI_CreateClassicHorizontalRailDivider then
+        local bodyTopBorder = ns.UI_CreateClassicHorizontalRailDivider(bodyRow)
+        bodyTopBorder:SetPoint("TOPLEFT", bodyRow, "TOPLEFT", 0, 0)
+        bodyTopBorder:SetPoint("TOPRIGHT", bodyRow, "TOPRIGHT", 0, 0)
+        bodyRow._wnClassicTopBorder = bodyTopBorder
+    end
 
     host:SetPoint("TOPLEFT", navCol, "TOPRIGHT", navGap, 0)
     host:SetPoint("TOPRIGHT", bodyRow, "TOPRIGHT", 0, 0)
     host:SetPoint("BOTTOMRIGHT", bodyRow, "BOTTOMRIGHT", 0, 0)
+    if useClassicNav then
+        if ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(bodyRow)
+            ns.UI_ApplyClassicTransparentInterior(host)
+        end
+    end
 
     local navH = 0
     if SUI and SUI.BuildCategoryNav then
@@ -4696,6 +4900,8 @@ function WarbandNexus:DrawSettingsTab(parent)
 
     if mf then
         mf._wnSettingsNavCol = navCol
+        mf._wnSettingsBodyRow = bodyRow
+        mf._wnSettingsHost = host
     end
 
     parent:SetHeight(math.abs(startY) + rowH + ((ns.UI_GetTabScrollContentBottomPad and ns.UI_GetTabScrollContentBottomPad()) or 12))

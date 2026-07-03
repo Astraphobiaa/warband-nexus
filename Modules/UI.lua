@@ -92,6 +92,7 @@ local MAIN_TAB_ORDER = ns.UI_MAIN_TAB_ORDER or {
     "currency",
     "reputations",
     "pve",
+    "pvp",
     "professions",
     "collections",
     "plans",
@@ -159,24 +160,58 @@ local function RefreshMainShellChrome(mainFrame)
         or C.surfaceHeaderChrome or C.bgLight
     local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
         or { accent[1], accent[2], accent[3], 0.8 }
-    if mainFrame.header and ApplyVisuals then
-        ApplyVisuals(mainFrame.header, headerBg, headerBorder)
+    local isClassicChrome = (ns.UI_IsClassicMode and ns.UI_IsClassicMode())
+        or (ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome())
+    if mainFrame.header then
+        if isClassicChrome and ns.UI_ApplyClassicInteriorFlatFill then
+            ns.UI_ApplyClassicInteriorFlatFill(mainFrame.header, { 0, 0, 0, 0 })
+        elseif ApplyVisuals then
+            ApplyVisuals(mainFrame.header, headerBg, headerBorder)
+        end
     end
     local railBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop()) or shellBg
-    if mainFrame.navRail and ns.UI_ApplyBorderlessSurface then
-        local railOpts = { bgType = "bg" }
-        ns.UI_ApplyBorderlessSurface(mainFrame.navRail, railBg, railOpts)
+    if mainFrame.navRail then
+        if isClassicChrome and ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(mainFrame.navRail)
+        elseif ns.UI_ApplyBorderlessSurface then
+            local railOpts = { bgType = "bg" }
+            ns.UI_ApplyBorderlessSurface(mainFrame.navRail, railBg, railOpts)
+        end
     end
     local divColor = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
         or headerBorder
     if mainFrame._wnNavRailDivider then
-        mainFrame._wnNavRailDivider:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+        if isClassicChrome then
+            mainFrame._wnNavRailDivider:Hide()
+        else
+            mainFrame._wnNavRailDivider:Show()
+            local divColor = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
+                or headerBorder
+            mainFrame._wnNavRailDivider:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+        end
+    end
+    if mainFrame._wnNavRailDividerClassic then
+        if isClassicChrome then
+            mainFrame._wnNavRailDividerClassic:Show()
+        else
+            mainFrame._wnNavRailDividerClassic:Hide()
+        end
     end
     if mainFrame._wnNavRailFooterSep then
-        mainFrame._wnNavRailFooterSep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+        if isClassicChrome then
+            mainFrame._wnNavRailFooterSep:Hide()
+        else
+            mainFrame._wnNavRailFooterSep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+            mainFrame._wnNavRailFooterSep:Show()
+        end
     end
     if mainFrame._wnNavRailSettingsAboutSep then
-        mainFrame._wnNavRailSettingsAboutSep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+        if isClassicChrome then
+            mainFrame._wnNavRailSettingsAboutSep:Hide()
+        else
+            mainFrame._wnNavRailSettingsAboutSep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+            mainFrame._wnNavRailSettingsAboutSep:Show()
+        end
     end
     if mainFrame.tabButtons then
         for _, btn in pairs(mainFrame.tabButtons) do
@@ -186,11 +221,41 @@ local function RefreshMainShellChrome(mainFrame)
             end
         end
     end
-    if mainFrame.content and mainFrame.content.SetBackdropColor then
-        mainFrame.content:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
-    end
-    if mainFrame.viewportBorder and mainFrame.viewportBorder.SetBackdropColor then
-        mainFrame.viewportBorder:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+    if isClassicChrome then
+        if mainFrame.content and mainFrame.content.SetBackdropColor then
+            mainFrame.content:SetBackdropColor(0, 0, 0, 0)
+        end
+        if mainFrame.viewportBorder then
+            if mainFrame.viewportBorder.SetBackdropColor then
+                mainFrame.viewportBorder:SetBackdropColor(0, 0, 0, 0)
+            end
+            local underlay = mainFrame.viewportBorder._wnViewportAtlasUnderlay
+            if underlay and underlay.Hide then
+                underlay:Hide()
+            end
+        end
+        local sc = mainFrame.scrollChild
+        if sc then
+            if sc._wnViewportCanvasFill and sc._wnViewportCanvasFill.Hide then
+                sc._wnViewportCanvasFill:Hide()
+            end
+            if sc._wnScrollBottomFill and sc._wnScrollBottomFill.Hide then
+                sc._wnScrollBottomFill:Hide()
+            end
+            if sc._wnResultsAnnexSheet and sc._wnResultsAnnexSheet.Hide then
+                sc._wnResultsAnnexSheet:Hide()
+            end
+        end
+        if ns.UI_SyncMainScrollBarColumns then
+            ns.UI_SyncMainScrollBarColumns(mainFrame)
+        end
+    else
+        if mainFrame.content and mainFrame.content.SetBackdropColor then
+            mainFrame.content:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+        end
+        if mainFrame.viewportBorder and mainFrame.viewportBorder.SetBackdropColor then
+            mainFrame.viewportBorder:SetBackdropColor(shellBg[1], shellBg[2], shellBg[3], shellBg[4] or 0.98)
+        end
     end
     if mainFrame.footerTop then
         local footDiv = (ns.UI_GetFooterDividerColor and ns.UI_GetFooterDividerColor()) or divColor
@@ -202,42 +267,127 @@ local function RefreshMainShellChrome(mainFrame)
     if mainFrame.footerVersionText then
         ns.UI_SetTextColorRole(mainFrame.footerVersionText, "Muted", 0.95)
     end
-    if mainFrame.trackingChip and ApplyVisuals then
-        local chipBg, chipBorder
-        if ns.UI_GetTrackingChipBackdrop then
-            chipBg, chipBorder = ns.UI_GetTrackingChipBackdrop()
-        else
-            chipBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or C.bgCard
-            chipBorder = divColor
-        end
-        ApplyVisuals(mainFrame.trackingChip, chipBg, chipBorder)
+    if mainFrame.trackingIconBack and mainFrame.trackingIconBack.SetBackdrop then
+        pcall(mainFrame.trackingIconBack.SetBackdrop, mainFrame.trackingIconBack, nil)
     end
     local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()
     local utilBorder = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or headerBorder
     if closeIdle and ns.UI_ApplyVisuals then
-        if mainFrame.closeBtn then
+        if mainFrame.closeBtn and ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(mainFrame.closeBtn) then
             ns.UI_ApplyVisuals(mainFrame.closeBtn, closeIdle, utilBorder)
         end
-        if mainFrame.reloadDebugBtn then
+        if mainFrame.reloadDebugBtn and ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(mainFrame.reloadDebugBtn) then
             local hover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or closeIdle
             ns.UI_ApplyVisuals(mainFrame.reloadDebugBtn, hover, utilBorder)
         end
-        if mainFrame.patreonBtn then
+        if mainFrame.patreonBtn and ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(mainFrame.patreonBtn) then
             ns.UI_ApplyVisuals(mainFrame.patreonBtn, closeIdle, utilBorder)
         end
-        if mainFrame.discordBtn then
+        if mainFrame.discordBtn and ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(mainFrame.discordBtn) then
             ns.UI_ApplyVisuals(mainFrame.discordBtn, closeIdle, utilBorder)
         end
+    end
+    if ns.UI_ApplyMainShellLayout then
+        ns.UI_ApplyMainShellLayout(mainFrame)
     end
 end
 ns.UI_RefreshMainShellChrome = RefreshMainShellChrome
 
+local ApplyMainNavGoldenShellLayout
+
+--- Anchor header / nav / content / footer to MAIN_SHELL interior rect (all theme modes).
+local function ApplyMainShellLayout(f)
+    if not f then return end
+    local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
+    local insetL, insetR, insetT, insetB = 0, 0, 0, 0
+    if ns.UI_GetMainShellFrameInsets then
+        insetL, insetR, insetT, insetB = ns.UI_GetMainShellFrameInsets()
+    else
+        insetL = shell.FRAME_CONTENT_INSET or 0
+        insetR = insetL
+        insetT = insetL
+        insetB = shell.FRAME_CONTENT_INSET_BOTTOM or insetL
+    end
+    f._wnShellInsetL = insetL
+    f._wnShellInsetR = insetR
+    f._wnShellInsetT = insetT
+    f._wnShellInsetB = insetB
+
+    local headerNavGap = shell.HEADER_TO_NAV_GAP or 4
+    local isClassicShellLayout = (ns.UI_IsClassicMode and ns.UI_IsClassicMode())
+        or (ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome())
+    if isClassicShellLayout then
+        headerNavGap = 0
+    end
+    local MAIN_FOOTER_H = shell.FOOTER_HEIGHT or 26
+    local FOOTER_BOTTOM_OFFSET = shell.FOOTER_BOTTOM_OFFSET or 4
+    local CONTENT_GAP_ABOVE_FOOTER = shell.CONTENT_GAP_ABOVE_FOOTER or 0
+    local contentBottomOffset = FOOTER_BOTTOM_OFFSET + MAIN_FOOTER_H + CONTENT_GAP_ABOVE_FOOTER + insetB
+    f._wnContentBottomOffset = contentBottomOffset
+
+    if f.header then
+        f.header:ClearAllPoints()
+        f.header:SetPoint("TOPLEFT", f, "TOPLEFT", insetL, -insetT)
+        f.header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -insetR, -insetT)
+    end
+
+    local RAIL_CONTENT_GAP = shell.NAV_RAIL_CONTENT_GAP or 10
+    local bodyBandAnchor = f.header or f
+    local bodyBandGap = -headerNavGap
+    if f._wnMainNavLayout == "rail" and f.navRail then
+        f.navRail:ClearAllPoints()
+        f.navRail:SetPoint("TOPLEFT", bodyBandAnchor, "BOTTOMLEFT", 0, bodyBandGap)
+        f.navRail:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", insetL, contentBottomOffset)
+        ApplyMainNavGoldenShellLayout(f)
+    elseif f.nav and f._wnMainNavLayout ~= "rail" then
+        f.nav:ClearAllPoints()
+        f.nav:SetPoint("TOPLEFT", bodyBandAnchor, "BOTTOMLEFT", 0, bodyBandGap)
+        f.nav:SetPoint("TOPRIGHT", bodyBandAnchor, "BOTTOMRIGHT", 0, bodyBandGap)
+    end
+
+    if f.content then
+        f.content:ClearAllPoints()
+        if f._wnMainNavLayout == "rail" and f.navRail then
+            f.content:SetPoint("TOPLEFT", f.navRail, "TOPRIGHT", RAIL_CONTENT_GAP, 0)
+            f.content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -insetR, contentBottomOffset)
+        elseif f.nav then
+            local bodyPad = shell.CONTENT_PAD_X or 8
+            f.content:SetPoint("TOPLEFT", f.nav, "BOTTOMLEFT", bodyPad, -bodyPad)
+            f.content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -insetR - bodyPad, contentBottomOffset)
+        end
+    end
+
+    if f.footerBar then
+        local footerLaneReserve = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+            or (((ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26) + 2)
+        f.footerBar:ClearAllPoints()
+        f.footerBar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", insetL + 8, insetB + (FOOTER_BOTTOM_OFFSET or 4))
+        f.footerBar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(insetR + footerLaneReserve), insetB + (FOOTER_BOTTOM_OFFSET or 4))
+    end
+
+    if f.resizeGrip then
+        local gripInsetX = shell.RESIZE_GRIP_INSET_X or 4
+        local gripInsetY = shell.RESIZE_GRIP_INSET_Y or 4
+        f.resizeGrip:ClearAllPoints()
+        f.resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(insetR + gripInsetX), insetB + gripInsetY)
+    end
+end
+ns.UI_ApplyMainShellLayout = ApplyMainShellLayout
+---@deprecated use UI_ApplyMainShellLayout
+ns.UI_ApplyMainShellInsetLayout = ApplyMainShellLayout
+
 --- Golden-ratio rail width + strip/button sync (text rail below header).
-local function ApplyMainNavGoldenShellLayout(f)
+function ApplyMainNavGoldenShellLayout(f)
     if not f or f._wnMainNavLayout ~= "rail" or not f.navRail then return end
     local shell = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL) or {}
-    local inset = shell.FRAME_CONTENT_INSET or 6
-    local innerW = math.max(360, (f:GetWidth() or 800) - inset * 2)
+    local insetL, insetR = 0, 0
+    if ns.UI_GetMainShellFrameInsets then
+        insetL, insetR = ns.UI_GetMainShellFrameInsets()
+    else
+        local inset = shell.FRAME_CONTENT_INSET or 6
+        insetL, insetR = inset, inset
+    end
+    local innerW = math.max(360, (f:GetWidth() or 800) - insetL - insetR)
     local railW = (ns.UI_ComputeGoldenRailWidth and ns.UI_ComputeGoldenRailWidth(innerW, shell))
         or shell.NAV_RAIL_WIDTH or 168
     f.navRail:SetWidth(railW)
@@ -976,6 +1126,9 @@ function WarbandNexus:UI_ClampMainFrameResizeBoundsFromProfile()
     local nw = math.min(maxW, math.max(minW, cw))
     local nh = math.min(maxH, math.max(minH, ch))
     mf:SetSize(nw, nh)
+    if ns.UI_ApplyMainShellLayout then
+        ns.UI_ApplyMainShellLayout(mf)
+    end
     UpdateScrollLayout(mf)
     ApplyMainNavGoldenShellLayout(mf)
     RefreshFixedHeaderChrome(mf)
@@ -1241,7 +1394,10 @@ ns.UI_GetExpandedGroups = function() return expandedGroups end
 
 --- Reset collapsible section trees to default collapsed at login (session persistence until logout).
 function ns.UI_ResetSessionSectionExpandState()
-    wipe(expandedGroups)
+    -- Section expand/collapse states persist per profile: whatever the user
+    -- left open stays open across sessions. Only the transient "expand all"
+    -- sweep flags reset here; the Bank aggregate tree stays session-only
+    -- (derived search view, keys change between sessions).
     local addon = WarbandNexus
     if not addon then return end
     addon.itemsExpandAllActive = false
@@ -1254,24 +1410,10 @@ function ns.UI_ResetSessionSectionExpandState()
     end
     local p = addon.db and addon.db.profile
     if p then
-        p.currencyExpandOverride = "all_collapsed"
-        p.currencyExpanded = {}
-        p.reputationExpandOverride = "all_collapsed"
-        p.reputationExpanded = {}
-        p.characterGroupExpanded = {}
-        if not p.ui then p.ui = {} end
-        p.ui.profFavoritesExpanded = false
-        p.ui.profCharactersExpanded = false
-        p.ui.profUntrackedExpanded = false
-        p.ui.pveFavoritesExpanded = false
-        p.ui.pveCharactersExpanded = false
-    end
-    if ns.PvE_ResetSessionExpandState then
-        ns.PvE_ResetSessionExpandState()
-    end
-    local coll = ns.CollectionsUI
-    if coll and coll.ResetSessionCollapsedHeaders then
-        coll.ResetSessionCollapsedHeaders()
+        -- Attach the group expand table to the profile so To-Do / Items group
+        -- headers keep their state across reloads and sessions.
+        p.expandedGroups = p.expandedGroups or {}
+        expandedGroups = p.expandedGroups
     end
 end
 ns.UI_ResetSessionSectionExpandState = ns.UI_ResetSessionSectionExpandState
@@ -1591,6 +1733,9 @@ local function UpdateTabVisibility(f)
     local sepColor = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
         or (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.4, 1, sepA }
 
+    local useClassicRail = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+    local railTabH = (ns.UI_GetNavRailTabHeight and ns.UI_GetNavRailTabHeight()) or (shell.NAV_RAIL_TAB_HEIGHT or 38)
+
     local prevBtn = nil
     local railHost = (f._wnMainNavLayout == "rail") and (f.navRailStrip or f.navRail)
 
@@ -1601,11 +1746,24 @@ local function UpdateTabVisibility(f)
             local show = IsTabModuleEnabled(key)
             btn:SetShown(show)
             if btn._wnRailSepAbove then
-                btn._wnRailSepAbove:SetShown(show and prevBtn ~= nil)
+                if useClassicRail then
+                    btn._wnRailSepAbove:Hide()
+                else
+                    btn._wnRailSepAbove:SetShown(show and prevBtn ~= nil)
+                end
             end
             if show then
                 if railHost then
                     if prevBtn then
+                        if useClassicRail then
+                            btn:ClearAllPoints()
+                            btn:SetPoint("TOP", prevBtn, "BOTTOM", 0, -vGap)
+                            btn:SetPoint("LEFT", railHost, "LEFT", 0, 0)
+                            btn:SetPoint("RIGHT", railHost, "RIGHT", 0, 0)
+                            if btn._wnBlizzardButton then
+                                btn:SetHeight(railTabH)
+                            end
+                        else
                         local sep = btn._wnRailSepAbove
                         if not sep then
                             sep = railHost:CreateTexture(nil, "ARTWORK")
@@ -1621,8 +1779,17 @@ local function UpdateTabVisibility(f)
                         sep:SetPoint("TOP", prevBtn, "BOTTOM", 0, -gapAbove)
                         sep:Show()
                         btn:SetPoint("TOP", sep, "BOTTOM", 0, -gapBelow)
+                        end
                     else
+                        btn:ClearAllPoints()
                         btn:SetPoint("TOP", railHost, "TOP", 0, -topInset)
+                        if useClassicRail then
+                            btn:SetPoint("LEFT", railHost, "LEFT", 0, 0)
+                            btn:SetPoint("RIGHT", railHost, "RIGHT", 0, 0)
+                            if btn._wnBlizzardButton then
+                                btn:SetHeight(railTabH)
+                            end
+                        end
                     end
                 else
                     local strip = f.tabNavStrip or f.nav
@@ -1663,10 +1830,12 @@ local function UpdateTabButtonStates(f)
                         ns.UI_SetNavLabelFontStyle(btn.label, true)
                     end
                 end
-                if btn.activeBar then btn.activeBar:SetAlpha(1) end
+                if btn.activeBar and not btn._wnBlizzardButton then btn.activeBar:SetAlpha(1) end
+                if ns.UI_ApplyClassicNavTabActiveState then ns.UI_ApplyClassicNavTabActiveState(btn, true) end
                 if btn.tabIcon and ns.UI_ApplyNavTabIconStyle then
                     ns.UI_ApplyNavTabIconStyle(btn.tabIcon, true, { packaged = btn.tabIcon._wnNavPackagedIcon, rail = btn._wnRailTextMode })
                 end
+                if not btn._wnBlizzardButton then
                 if UpdateBorderColor and not railFlat then
                     UpdateBorderColor(btn, { accentColor[1], accentColor[2], accentColor[3], 1 })
                 elseif railFlat and ns.UI_HideFrameBorderQuartet then
@@ -1686,6 +1855,7 @@ local function UpdateTabButtonStates(f)
                         btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
                     end
                 end
+                end
                 if ns.UI_ApplyRailTabActiveVisuals then
                     ns.UI_ApplyRailTabActiveVisuals(btn, true, accentColor)
                 end
@@ -1701,10 +1871,12 @@ local function UpdateTabButtonStates(f)
                         ns.UI_SetNavLabelFontStyle(btn.label, false)
                     end
                 end
-                if btn.activeBar then btn.activeBar:SetAlpha(0) end
+                if btn.activeBar and not btn._wnBlizzardButton then btn.activeBar:SetAlpha(0) end
+                if ns.UI_ApplyClassicNavTabActiveState then ns.UI_ApplyClassicNavTabActiveState(btn, false) end
                 if btn.tabIcon and ns.UI_ApplyNavTabIconStyle then
                     ns.UI_ApplyNavTabIconStyle(btn.tabIcon, false, { packaged = btn.tabIcon._wnNavPackagedIcon, rail = btn._wnRailTextMode })
                 end
+                if not btn._wnBlizzardButton then
                 if UpdateBorderColor and not railFlat then
                     UpdateBorderColor(btn, { accentColor[1], accentColor[2], accentColor[3], 0.6 })
                 elseif railFlat and ns.UI_HideFrameBorderQuartet then
@@ -1718,6 +1890,7 @@ local function UpdateTabButtonStates(f)
                         local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
                         btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
                     end
+                end
                 end
                 if ns.UI_ApplyRailTabActiveVisuals then
                     ns.UI_ApplyRailTabActiveVisuals(btn, false, accentColor)
@@ -1739,10 +1912,12 @@ local function UpdateTabButtonStates(f)
                     ns.UI_SetNavLabelFontStyle(settingsBtn.label, true)
                 end
             end
-            if settingsBtn.activeBar then settingsBtn.activeBar:SetAlpha(1) end
+            if settingsBtn.activeBar and not settingsBtn._wnBlizzardButton then settingsBtn.activeBar:SetAlpha(1) end
+            if ns.UI_ApplyClassicNavTabActiveState then ns.UI_ApplyClassicNavTabActiveState(settingsBtn, true) end
             if settingsBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
                 ns.UI_ApplyNavTabIconStyle(settingsBtn.tabIcon, true, { packaged = settingsBtn.tabIcon._wnNavPackagedIcon, rail = settingsBtn._wnRailTextMode })
             end
+            if not settingsBtn._wnBlizzardButton then
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(settingsBtn)
             end
@@ -1755,6 +1930,7 @@ local function UpdateTabButtonStates(f)
                         or shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.38
                     settingsBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
                 end
+            end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
                 ns.UI_ApplyRailTabActiveVisuals(settingsBtn, true, accentColor)
@@ -1771,10 +1947,12 @@ local function UpdateTabButtonStates(f)
                     ns.UI_SetNavLabelFontStyle(settingsBtn.label, false)
                 end
             end
-            if settingsBtn.activeBar then settingsBtn.activeBar:SetAlpha(0) end
+            if settingsBtn.activeBar and not settingsBtn._wnBlizzardButton then settingsBtn.activeBar:SetAlpha(0) end
+            if ns.UI_ApplyClassicNavTabActiveState then ns.UI_ApplyClassicNavTabActiveState(settingsBtn, false) end
             if settingsBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
                 ns.UI_ApplyNavTabIconStyle(settingsBtn.tabIcon, false, { packaged = settingsBtn.tabIcon._wnNavPackagedIcon, rail = settingsBtn._wnRailTextMode })
             end
+            if not settingsBtn._wnBlizzardButton then
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(settingsBtn)
             end
@@ -1786,6 +1964,7 @@ local function UpdateTabButtonStates(f)
                     local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
                     settingsBtn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
                 end
+            end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
                 ns.UI_ApplyRailTabActiveVisuals(settingsBtn, false, accentColor)
@@ -1806,10 +1985,12 @@ local function UpdateTabButtonStates(f)
                     ns.UI_SetNavLabelFontStyle(aboutBtn.label, true)
                 end
             end
-            if aboutBtn.activeBar then aboutBtn.activeBar:SetAlpha(1) end
+            if aboutBtn.activeBar and not aboutBtn._wnBlizzardButton then aboutBtn.activeBar:SetAlpha(1) end
+            if ns.UI_ApplyClassicNavTabActiveState then ns.UI_ApplyClassicNavTabActiveState(aboutBtn, true) end
             if aboutBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
                 ns.UI_ApplyNavTabIconStyle(aboutBtn.tabIcon, true, { packaged = aboutBtn.tabIcon._wnNavPackagedIcon, rail = aboutBtn._wnRailTextMode })
             end
+            if not aboutBtn._wnBlizzardButton then
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(aboutBtn)
             end
@@ -1822,6 +2003,7 @@ local function UpdateTabButtonStates(f)
                         or shell.NAV_RAIL_ACTIVE_BG_ALPHA or 0.38
                     aboutBtn:SetBackdropColor(accentColor[1] * railA, accentColor[2] * railA, accentColor[3] * railA, 0.98)
                 end
+            end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
                 ns.UI_ApplyRailTabActiveVisuals(aboutBtn, true, accentColor)
@@ -1838,10 +2020,12 @@ local function UpdateTabButtonStates(f)
                     ns.UI_SetNavLabelFontStyle(aboutBtn.label, false)
                 end
             end
-            if aboutBtn.activeBar then aboutBtn.activeBar:SetAlpha(0) end
+            if aboutBtn.activeBar and not aboutBtn._wnBlizzardButton then aboutBtn.activeBar:SetAlpha(0) end
+            if ns.UI_ApplyClassicNavTabActiveState then ns.UI_ApplyClassicNavTabActiveState(aboutBtn, false) end
             if aboutBtn.tabIcon and ns.UI_ApplyNavTabIconStyle then
                 ns.UI_ApplyNavTabIconStyle(aboutBtn.tabIcon, false, { packaged = aboutBtn.tabIcon._wnNavPackagedIcon, rail = aboutBtn._wnRailTextMode })
             end
+            if not aboutBtn._wnBlizzardButton then
             if railFlat and ns.UI_HideFrameBorderQuartet then
                 ns.UI_HideFrameBorderQuartet(aboutBtn)
             end
@@ -1853,6 +2037,7 @@ local function UpdateTabButtonStates(f)
                     local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
                     aboutBtn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
                 end
+            end
             end
             if ns.UI_ApplyRailTabActiveVisuals then
                 ns.UI_ApplyRailTabActiveVisuals(aboutBtn, false, accentColor)
@@ -1989,6 +2174,9 @@ function WarbandNexus:CreateMainWindow()
     
     -- OnSizeChanged: shell + tab live relayout via LayoutCoordinator (commit on resize mouse-up).
     f:SetScript("OnSizeChanged", function(self, width, height)
+        if ns.UI_ApplyMainShellLayout then
+            ns.UI_ApplyMainShellLayout(self)
+        end
         local LC = ns.UI_LayoutCoordinator
         if LC and LC.OnMainFrameResizeLive then
             LC:OnMainFrameResizeLive(self, width, height)
@@ -2076,10 +2264,13 @@ function WarbandNexus:CreateMainWindow()
     end)
 
     local MAIN_SHELL_LAYOUT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
-    local frameChromeInset = MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET or 0
-    local frameChromeInsetBottom = MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET_BOTTOM
-        or MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET
-        or 0
+    local shellInsetL, shellInsetR = 0, 0
+    if ns.UI_GetMainShellFrameInsets then
+        shellInsetL, shellInsetR = ns.UI_GetMainShellFrameInsets()
+    else
+        shellInsetL = MAIN_SHELL_LAYOUT.FRAME_CONTENT_INSET or 0
+        shellInsetR = shellInsetL
+    end
     local headerNavGap = MAIN_SHELL_LAYOUT.HEADER_TO_NAV_GAP or 4
     local headerUtilityRight = MAIN_SHELL_LAYOUT.HEADER_UTILITY_CLUSTER_RIGHT_INSET or 18
 
@@ -2103,13 +2294,17 @@ function WarbandNexus:CreateMainWindow()
         SaveWindowGeometry(f)
     end)
     
-    -- Apply header visuals (dark: accentDark bar — original; light: surface chrome)
-    if ApplyVisuals then
+    -- Apply header visuals (dark: accentDark bar — original; light: surface chrome; classic: transparent band inside dialog)
+    do
         local headerBg = (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
             or { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 }
         local headerBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
             or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
-        ApplyVisuals(header, headerBg, headerBorder)
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicInteriorFlatFill then
+            ns.UI_ApplyClassicInteriorFlatFill(header, { 0, 0, 0, 0 })
+        elseif ApplyVisuals then
+            ApplyVisuals(header, headerBg, headerBorder)
+        end
     end
 
     -- Addon `Media` branding (see `ns.UI_ApplyMainWindowTitleIcon`). `SetFrameLevel` exists on Frame only, not Texture;
@@ -2130,47 +2325,69 @@ function WarbandNexus:CreateMainWindow()
     ns.UI_SetTextColorRole(title, "Bright") -- Always white
     f.title = title  -- Store reference
     
-    -- Close button (Factory pattern with atlas icon)
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -headerUtilityRight, 0)
-    
-    -- Apply custom visuals
-    if ns.UI_ApplyVisuals then
-        local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
-        ns.UI_ApplyVisuals(closeBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+    -- Close button (Blizzard UIPanelCloseButton in classic; custom chrome otherwise)
+    local function BuildCloseButton()
+        if f.closeBtn then
+            f.closeBtn:Hide()
+            f.closeBtn:ClearAllPoints()
+            f.closeBtn:SetParent(nil)
+            f.closeBtn = nil
+        end
+        local closeBtn
+        if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+            closeBtn = CreateFrame("Button", nil, header, "UIPanelCloseButton")
+            closeBtn:SetPoint("TOPRIGHT", header, "TOPRIGHT", -headerUtilityRight, -2)
+            closeBtn._wnBlizzardButton = true
+        else
+            closeBtn = CreateFrame("Button", nil, header)
+            closeBtn:SetSize(28, 28)
+            closeBtn:SetPoint("RIGHT", -headerUtilityRight, 0)
+
+            if ns.UI_ApplyVisuals then
+                local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+                ns.UI_ApplyVisuals(closeBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            end
+
+            local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+            closeIcon:SetSize(16, 16)
+            closeIcon:SetPoint("CENTER")
+            closeIcon:SetAtlas("uitools-icon-close")
+            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+
+            closeBtn:SetScript("OnEnter", function(self)
+                closeIcon:SetVertexColor(1, 0.2, 0.2)
+                if ns.UI_ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+                    local bg, border = ns.UI_GetSemanticNegativeCard(true)
+                    ns.UI_ApplyVisuals(closeBtn, bg, border)
+                end
+            end)
+
+            closeBtn:SetScript("OnLeave", function(self)
+                closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+                if ns.UI_ApplyVisuals then
+                    local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
+                    ns.UI_ApplyVisuals(closeBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+                end
+            end)
+        end
+
+        closeBtn:SetScript("OnClick", function() f:Hide() end)
+        f.closeBtn = closeBtn
+        if f.reloadDebugBtn then
+            f.reloadDebugBtn:ClearAllPoints()
+            f.reloadDebugBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+        end
     end
-    
-    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
-
-    closeBtn:SetScript("OnEnter", function(self)
-        closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ns.UI_ApplyVisuals and ns.UI_GetSemanticNegativeCard then
-            local bg, border = ns.UI_GetSemanticNegativeCard(true)
-            ns.UI_ApplyVisuals(closeBtn, bg, border)
-        end
-    end)
-    
-    closeBtn:SetScript("OnLeave", function(self)
-        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ns.UI_ApplyVisuals then
-            local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
-            ns.UI_ApplyVisuals(closeBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
-        end
-    end)
-    f.closeBtn = closeBtn
+    BuildCloseButton()
+    f._wnRebuildCloseButton = BuildCloseButton
+    local closeBtn = f.closeBtn
 
     -- Debug-only: quick /reload (WoW has no Lua hot-reload; saves typing during addon dev)
     local reloadDebugBtn = CreateFrame("Button", nil, header)
     reloadDebugBtn:SetSize(28, 28)
     reloadDebugBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
-    if ns.UI_ApplyVisuals then
+    reloadDebugBtn._wnSkipCustomChrome = true
+    if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(reloadDebugBtn) and ns.UI_ApplyVisuals then
         local chromeHover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.14, 0.18, 0.92 }
         ns.UI_ApplyVisuals(reloadDebugBtn, chromeHover, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
     end
@@ -2208,7 +2425,7 @@ function WarbandNexus:CreateMainWindow()
         else
             reloadIcon:SetVertexColor(1, 1, 1)
         end
-        if ns.UI_ApplyVisuals then
+        if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(self) and ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self, {0.18, 0.22, 0.28, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
         end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -2222,7 +2439,7 @@ function WarbandNexus:CreateMainWindow()
         else
             reloadIcon:SetVertexColor(0.75, 0.92, 1)
         end
-        if ns.UI_ApplyVisuals then
+        if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(self) and ns.UI_ApplyVisuals then
             local chromeHover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or { 0.12, 0.14, 0.18, 0.92 }
             ns.UI_ApplyVisuals(self, chromeHover, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.75 })
         end
@@ -2237,7 +2454,8 @@ function WarbandNexus:CreateMainWindow()
     local patreonBtn = CreateFrame("Button", nil, header)
     patreonBtn:SetSize(30, 30)
     patreonBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
-    if ns.UI_ApplyVisuals then
+    patreonBtn._wnSkipCustomChrome = true
+    if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(patreonBtn) and ns.UI_ApplyVisuals then
         local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
         ns.UI_ApplyVisuals(patreonBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
@@ -2255,15 +2473,9 @@ function WarbandNexus:CreateMainWindow()
     patreonCopyFrame:SetPoint("TOPRIGHT", patreonBtn, "BOTTOMRIGHT", 0, -4)
     patreonCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     patreonCopyFrame:SetFrameLevel(500)
-    patreonCopyFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    local patreonCopyBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.08, 0.08, 0.10, 0.95 }
-    patreonCopyFrame:SetBackdropColor(patreonCopyBg[1], patreonCopyBg[2], patreonCopyBg[3], patreonCopyBg[4] or 0.95)
-    patreonCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    if ns.UI_ApplyHeaderCopyUrlShell then
+        ns.UI_ApplyHeaderCopyUrlShell(patreonCopyFrame)
+    end
     patreonCopyFrame:Hide()
     patreonCopyBox = CreateFrame("EditBox", nil, patreonCopyFrame)
     patreonCopyBox:SetPoint("TOPLEFT", 6, -4)
@@ -2321,7 +2533,8 @@ function WarbandNexus:CreateMainWindow()
     f.discordBtn = discordBtn
     discordBtn:SetSize(30, 30)
     discordBtn:SetPoint("RIGHT", patreonBtn, "LEFT", -6, 0)
-    if ns.UI_ApplyVisuals then
+    discordBtn._wnSkipCustomChrome = true
+    if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(discordBtn) and ns.UI_ApplyVisuals then
         local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
         ns.UI_ApplyVisuals(discordBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
     end
@@ -2339,15 +2552,9 @@ function WarbandNexus:CreateMainWindow()
     discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
     discordCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     discordCopyFrame:SetFrameLevel(500)
-    discordCopyFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    local discordCopyBg = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop() or { 0.08, 0.08, 0.10, 0.95 }
-    discordCopyFrame:SetBackdropColor(discordCopyBg[1], discordCopyBg[2], discordCopyBg[3], discordCopyBg[4] or 0.95)
-    discordCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    if ns.UI_ApplyHeaderCopyUrlShell then
+        ns.UI_ApplyHeaderCopyUrlShell(discordCopyFrame)
+    end
     discordCopyFrame:Hide()
     discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
     discordCopyBox:SetPoint("TOPLEFT", 6, -4)
@@ -2401,24 +2608,14 @@ function WarbandNexus:CreateMainWindow()
     end)
 
     -- Tracking status: compact chip (accent rail + icon + single-line label), immediately left of Discord
-    local trackingChip = CreateFrame("Frame", nil, header, "BackdropTemplate")
+    local trackingChip = CreateFrame("Frame", nil, header)
     trackingChip:SetHeight(30)
     trackingChip:SetPoint("RIGHT", discordBtn, "LEFT", -8, 0)
-    if ApplyVisuals then
-        local chipBg, chipBorder
-        if ns.UI_GetTrackingChipBackdrop then
-            chipBg, chipBorder = ns.UI_GetTrackingChipBackdrop()
-        else
-            chipBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 0.92 }
-            chipBorder = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.24 }
-        end
-        ApplyVisuals(trackingChip, chipBg, chipBorder)
-    end
 
     local trackingAccent = trackingChip:CreateTexture(nil, "ARTWORK", nil, 1)
     trackingAccent:SetWidth(3)
-    trackingAccent:SetPoint("TOPLEFT", trackingChip, "TOPLEFT", 0, -1)
-    trackingAccent:SetPoint("BOTTOMLEFT", trackingChip, "BOTTOMLEFT", 0, 1)
+    trackingAccent:SetPoint("TOPLEFT", trackingChip, "TOPLEFT", 0, 0)
+    trackingAccent:SetPoint("BOTTOMLEFT", trackingChip, "BOTTOMLEFT", 0, 0)
     trackingAccent:SetColorTexture(0.22, 0.9, 0.42, 1)
     f.trackingStatusAccent = trackingAccent
 
@@ -2431,15 +2628,10 @@ function WarbandNexus:CreateMainWindow()
     f.statusBadge = trackingStatusBtn
     f.trackingChip = trackingChip
 
-    local iconBack = CreateFrame("Frame", nil, trackingChip, "BackdropTemplate")
+    local iconBack = CreateFrame("Frame", nil, trackingChip)
     iconBack:SetSize(20, 20)
     iconBack:SetPoint("LEFT", trackingAccent, "RIGHT", 6, 0)
-    iconBack:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-    do
-        local iconBackBg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
-            or { 0.12, 0.12, 0.15, 0.5 }
-        iconBack:SetBackdropColor(iconBackBg[1], iconBackBg[2], iconBackBg[3], (iconBackBg[4] or 1) * 0.55)
-    end
+    f.trackingIconBack = iconBack
 
     local trackingIcon = iconBack:CreateTexture(nil, "ARTWORK")
     trackingIcon:SetSize(14, 14)
@@ -2467,6 +2659,7 @@ function WarbandNexus:CreateMainWindow()
     title:SetPoint("RIGHT", trackingChip, "LEFT", -12, 0)
     title:SetJustifyH("LEFT")
     if title.SetWordWrap then title:SetWordWrap(false) end
+
     if ns.WindowManager then
         ns.WindowManager:Register(f, ns.WindowManager.PRIORITY.MAIN, function()
             if WarbandNexus.HideMainWindow then
@@ -2479,12 +2672,6 @@ function WarbandNexus:CreateMainWindow()
         ns.WindowManager:InstallESCHandler(f)
     end
     
-    -- Footer gutter (above bottom chrome strip): must exist before rail height + content anchors.
-    local MAIN_FOOTER_H = 26
-    local FOOTER_BOTTOM_OFFSET = MAIN_SHELL_LAYOUT.FOOTER_BOTTOM_OFFSET or 4
-    local CONTENT_GAP_ABOVE_FOOTER = MAIN_SHELL_LAYOUT.CONTENT_GAP_ABOVE_FOOTER or 0
-    local CONTENT_BOTTOM_OFFSET = FOOTER_BOTTOM_OFFSET + MAIN_FOOTER_H + CONTENT_GAP_ABOVE_FOOTER
-
     local function GetProfileMainNavLayout()
         local p = WarbandNexus.db and WarbandNexus.db.profile
         local v = p and p.mainNavLayout
@@ -2496,11 +2683,12 @@ function WarbandNexus:CreateMainWindow()
 
     local navLayoutMode = GetProfileMainNavLayout()
     f._wnMainNavLayout = navLayoutMode
-    local frameInnerW = math.max(360, (f:GetWidth() or 800) - frameChromeInset * 2)
+    local frameInnerW = math.max(360, (f:GetWidth() or 800) - shellInsetL - shellInsetR)
     local railW = (navLayoutMode == "rail" and ns.UI_ComputeGoldenRailWidth)
         and ns.UI_ComputeGoldenRailWidth(frameInnerW, MAIN_SHELL_LAYOUT)
         or (MAIN_SHELL_LAYOUT.NAV_RAIL_WIDTH or 168)
-    local RAIL_TAB_H = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_HEIGHT or 34
+    local RAIL_TAB_H = (ns.UI_GetNavRailTabHeight and ns.UI_GetNavRailTabHeight())
+        or MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_HEIGHT or 38
     local RAIL_TOP_INSET = MAIN_SHELL_LAYOUT.NAV_RAIL_TOP_INSET or 8
     local RAIL_TAB_V_GAP = MAIN_SHELL_LAYOUT.NAV_RAIL_TAB_V_GAP or 3
     local RAIL_CONTENT_GAP = MAIN_SHELL_LAYOUT.NAV_RAIL_CONTENT_GAP or 10
@@ -2511,20 +2699,17 @@ function WarbandNexus:CreateMainWindow()
     local navRail = nil
     local navRailScroll = nil
     local navRailStrip = nil
-    -- Full-width title bar at the top of the shell (above rail + content). Top Y = 0 avoids a dead band above the header.
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", frameChromeInset, 0)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -frameChromeInset, 0)
 
     if navLayoutMode == "rail" then
         navRail = CreateFrame("Frame", nil, f)
         navRail:SetWidth(railW)
-        navRail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -headerNavGap)
-        navRail:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, CONTENT_BOTTOM_OFFSET)
         do
             local railBg = (ns.UI_GetNavRailSurfaceBackdrop and ns.UI_GetNavRailSurfaceBackdrop())
                 or (ns.UI_COLORS and ns.UI_COLORS.surfaceViewport)
                 or { 0.13, 0.13, 0.155, 0.98 }
-            if ns.UI_ApplyBorderlessSurface then
+            if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicTransparentInterior then
+                ns.UI_ApplyClassicTransparentInterior(navRail)
+            elseif ns.UI_ApplyBorderlessSurface then
                 local railOpts = { bgType = "bg" }
                 ns.UI_ApplyBorderlessSurface(navRail, { railBg[1], railBg[2], railBg[3], railBg[4] or 0.98 }, railOpts)
             elseif ApplyVisuals then
@@ -2536,9 +2721,21 @@ function WarbandNexus:CreateMainWindow()
         local div = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
         railDivider:SetColorTexture(div[1], div[2], div[3], div[4] or 1)
         railDivider:SetWidth(1)
-        railDivider:SetPoint("TOPRIGHT", navRail, "TOPRIGHT", 0, -4)
-        railDivider:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 4)
+        railDivider:SetPoint("TOPRIGHT", navRail, "TOPRIGHT", 0, 0)
+        railDivider:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 0)
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+            railDivider:Hide()
+        end
         f._wnNavRailDivider = railDivider
+        if ns.UI_CreateClassicVerticalRailDivider then
+            local railDividerClassic = ns.UI_CreateClassicVerticalRailDivider(navRail)
+            railDividerClassic:SetPoint("TOPRIGHT", navRail, "TOPRIGHT", 0, 0)
+            railDividerClassic:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 0)
+            if not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
+                railDividerClassic:Hide()
+            end
+            f._wnNavRailDividerClassic = railDividerClassic
+        end
         f.navRail = navRail
         f._wnGoldenRailWidth = railW
         if navRail.SetClipsChildren then
@@ -2564,10 +2761,13 @@ function WarbandNexus:CreateMainWindow()
         railFooterSep:SetPoint("TOPRIGHT", navRailFooter, "TOPRIGHT", -railPad, 0)
         local sepDiv = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
         railFooterSep:SetColorTexture(sepDiv[1], sepDiv[2], sepDiv[3], sepDiv[4] or 1)
+        if isClassicShell and railFooterSep.Hide then
+            railFooterSep:Hide()
+        end
         f._wnNavRailFooterSep = railFooterSep
 
         navRailScroll = CreateFrame("ScrollFrame", nil, navRail)
-        navRailScroll:SetPoint("TOPLEFT", navRail, "TOPLEFT", railPad, -railPad)
+        navRailScroll:SetPoint("TOPLEFT", navRail, "TOPLEFT", railPad, 0)
         navRailScroll:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", -railPad, railPad + railFooterH)
         navRailScroll:EnableMouseWheel(true)
         navRailScroll:SetScript("OnMouseWheel", function(scrollSelf, delta)
@@ -2883,7 +3083,13 @@ function WarbandNexus:CreateMainWindow()
     
         local function CreateTabButton(parent, text, key)
         -- Main nav tabs: icon + label (`rail` and `top`).
-        local btn = CreateFrame("Button", nil, parent)
+        local useClassicTab = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+        local btn = useClassicTab
+            and CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+            or CreateFrame("Button", nil, parent)
+        if useClassicTab then
+            btn._wnBlizzardButton = true
+        end
         local shellIco = MAIN_SHELL_LAYOUT
         local iconSz = railLayout and (shellIco.RAIL_TAB_ICON_SIZE or 22) or (shellIco.TAB_ICON_SIZE or 18)
         local iconInsetL = railLayout and RAIL_ICON_INSET or (shellIco.TAB_ICON_LEFT_INSET or 8)
@@ -2893,41 +3099,48 @@ function WarbandNexus:CreateMainWindow()
 
         if railLayout then
             btn:SetSize(railInnerBtnW, RAIL_TAB_H)
+            if useClassicTab then
+                btn:SetHeight(RAIL_TAB_H)
+            end
         else
             btn:SetSize(DEFAULT_TAB_WIDTH, TAB_HEIGHT)
         end
         btn.key = key
         btn._wnRailTextMode = railLayout or nil
 
-        -- Background (rail: flat; top: standard chrome)
-        if railLayout then
-            if ns.UI_ApplyBorderlessSurface then
-                local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
-                ns.UI_ApplyBorderlessSurface(btn, idle)
+        -- Background (rail: flat; top: standard chrome). Classic: UIPanelButtonTemplate only.
+        if not useClassicTab then
+            if railLayout then
+                if ns.UI_ApplyBorderlessSurface then
+                    local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+                    ns.UI_ApplyBorderlessSurface(btn, idle)
+                elseif ApplyVisuals then
+                    local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
+                    ApplyVisuals(btn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.1 })
+                    if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(btn) end
+                end
             elseif ApplyVisuals then
-                local idle = ns.UI_GetNavRailIdleBackdrop and ns.UI_GetNavRailIdleBackdrop() or { 0.08, 0.08, 0.10, 0.45 }
-                ApplyVisuals(btn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.1 })
-                if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(btn) end
+                local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
+                ApplyVisuals(btn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
             end
-        elseif ApplyVisuals then
-            local idle = ns.UI_GetNavTabInactiveBackdrop and ns.UI_GetNavTabInactiveBackdrop() or { 0.12, 0.12, 0.15, 1 }
-            ApplyVisuals(btn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+
+            -- Apply highlight effect (safe check for Factory)
+            if ns.UI_ApplyNavButtonHighlight then
+                ns.UI_ApplyNavButtonHighlight(btn)
+            elseif ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+                ns.UI.Factory:ApplyHighlight(btn)
+            end
         end
         
-        -- Apply highlight effect (safe check for Factory)
-        if ns.UI_ApplyNavButtonHighlight then
-            ns.UI_ApplyNavButtonHighlight(btn)
-        elseif ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-            ns.UI.Factory:ApplyHighlight(btn)
-        end
-        
-        -- Active indicator strip: bottom (`top`) or leading edge (`rail`)
+        -- Active indicator strip: bottom (`top`) or leading edge (`rail`); hidden for Blizzard template tabs.
         local accentColorLine = COLORS.accent
         local activeBar = btn:CreateTexture(nil, "OVERLAY")
         activeBar:SetColorTexture(accentColorLine[1], accentColorLine[2], accentColorLine[3], 1)
         activeBar:SetAlpha(0)
         btn.activeBar = activeBar
-        if railLayout then
+        if useClassicTab then
+            activeBar:Hide()
+        elseif railLayout then
             activeBar:SetWidth(3)
             activeBar:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, -3)
             activeBar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 3)
@@ -3022,6 +3235,7 @@ function WarbandNexus:CreateMainWindow()
         currency    = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies",
         reputations = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations",
         pve         = (ns.L and ns.L["TAB_PVE"]) or "PvE",
+        pvp         = (ns.L and ns.L["TAB_PVP"]) or "PvP",
         professions = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions",
         collections = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections",
         plans       = (ns.L and ns.L["TAB_PLANS"]) or "To-Do",
@@ -3029,7 +3243,7 @@ function WarbandNexus:CreateMainWindow()
         about       = (ns.L and ns.L["SETTINGS_PANEL_ABOUT"]) or "About",
     }
     
-    -- Create tabs: horizontal strip (`top`) or compact vertical rail (`rail` + vertical scroll).
+    local function BuildMainNavTabStrip()
     local navHostForTabs = (navLayoutMode == "rail" and navRailStrip) or f.tabNavStrip or nav
     local prevBtn = nil
     for i = 1, #MAIN_TAB_ORDER do
@@ -3059,6 +3273,7 @@ function WarbandNexus:CreateMainWindow()
         local sepGap = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_SEP_GAP or 4
         local settingsBottomPad = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_BOTTOM_PAD or RAIL_PAD
         local footerBtnGap = MAIN_SHELL_LAYOUT.NAV_RAIL_FOOTER_BTN_GAP or 4
+        local footerClassic = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
         local settingsBtn = CreateTabButton(f.navRailFooter, settingsLabel, "settings")
         settingsBtn:ClearAllPoints()
         settingsBtn:SetPoint("TOPLEFT", f.navRailFooter, "TOPLEFT", RAIL_PAD, -(sepH + sepGap))
@@ -3086,14 +3301,22 @@ function WarbandNexus:CreateMainWindow()
                 or (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.6, 0.4, 1, 1 }
             settingsAboutSep:SetColorTexture(sepCol[1], sepCol[2], sepCol[3], sepCol[4] or 1)
         end
+        if footerClassic then
+            settingsAboutSep:Hide()
+        end
         f._wnNavRailSettingsAboutSep = settingsAboutSep
 
         local aboutLabel = TAB_LABELS.about
         local aboutTooltip = (ns.L and ns.L["SETTINGS_PANEL_ABOUT_DESC"]) or "Credits, contributors, and a guide to every tab."
         local aboutBtn = CreateTabButton(f.navRailFooter, aboutLabel, "about")
         aboutBtn:ClearAllPoints()
-        aboutBtn:SetPoint("TOPLEFT", settingsAboutSep, "BOTTOMLEFT", 0, -gapBelow)
-        aboutBtn:SetPoint("TOPRIGHT", settingsAboutSep, "BOTTOMRIGHT", 0, 0)
+        if footerClassic then
+            aboutBtn:SetPoint("TOPLEFT", settingsBtn, "BOTTOMLEFT", 0, -footerBtnGap)
+            aboutBtn:SetPoint("TOPRIGHT", settingsBtn, "BOTTOMRIGHT", 0, 0)
+        else
+            aboutBtn:SetPoint("TOPLEFT", settingsAboutSep, "BOTTOMLEFT", 0, -gapBelow)
+            aboutBtn:SetPoint("TOPRIGHT", settingsAboutSep, "BOTTOMRIGHT", 0, 0)
+        end
         aboutBtn:SetHeight(RAIL_TAB_H)
         f.navAboutBtn = aboutBtn
         f.tabButtons.about = aboutBtn
@@ -3118,7 +3341,50 @@ function WarbandNexus:CreateMainWindow()
         end)
         WireMainNavTabButtonUX(settingsBtn, settingsTooltip, nil)
     end
-    
+    end
+
+    local function DestroyMainNavTabStrip()
+        if f.tabButtons then
+            for _, btn in pairs(f.tabButtons) do
+                if btn then
+                    btn:Hide()
+                    btn:ClearAllPoints()
+                    btn:SetParent(nil)
+                end
+            end
+        end
+        f.tabButtons = {}
+        f.navSettingsBtn = nil
+        f.navAboutBtn = nil
+        if f._wnNavRailSettingsAboutSep then
+            f._wnNavRailSettingsAboutSep:Hide()
+            f._wnNavRailSettingsAboutSep = nil
+        end
+    end
+
+    BuildMainNavTabStrip()
+    f._wnRebuildNavButtons = function()
+        local activeTab = f.currentTab
+        DestroyMainNavTabStrip()
+        BuildMainNavTabStrip()
+        f.currentTab = activeTab
+        UpdateTabVisibility(f)
+        if railLayout then
+            ApplyMainNavGoldenShellLayout(f)
+            RefreshMainNavRailStrip(f)
+        else
+            RefreshMainNavTabStrip(f)
+        end
+        if ns.UI_UpdateMainFrameTabButtonStates then
+            ns.UI_UpdateMainFrameTabButtonStates(f)
+        end
+    end
+    ns.UI_RebuildMainNavButtons = function(mainFrame)
+        if mainFrame and mainFrame._wnRebuildNavButtons then
+            mainFrame._wnRebuildNavButtons()
+        end
+    end
+
     UpdateTabVisibility(f)
     if railLayout then
         ApplyMainNavGoldenShellLayout(f)
@@ -3151,32 +3417,31 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
-    -- Footer strip (text + version): MAIN_FOOTER_H + CONTENT_BOTTOM_OFFSET defined above rail shell.
+    -- Footer strip (text + version); shell layout via ApplyMainShellLayout.
 
     -- Factory candidate: `Factory:CreateContainer` — inherits `BackdropTemplate` mixin immediately below for panel BG tint.
     local content = CreateFrame("Frame", nil, f)
-    if navLayoutMode == "rail" and navRail then
-        content:SetPoint("TOPLEFT", navRail, "TOPRIGHT", RAIL_CONTENT_GAP, 0)
-        content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, CONTENT_BOTTOM_OFFSET)
-    else
-        content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
-        content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, CONTENT_BOTTOM_OFFSET)
-    end
     f.content = content
     if content.SetClipsChildren then
         content:SetClipsChildren(true)
     end
 
+    local isClassicShell = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+
     -- Background only on content (no border); border will be on viewport frame so scrollbars sit outside it
     if not content.SetBackdrop then
         Mixin(content, BackdropTemplateMixin)
     end
-    content:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-    do
-        local bc = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
-            or (ns.UI_COLORS and ns.UI_COLORS.bg)
-            or { 0.042, 0.042, 0.055, 0.98 }
-        content:SetBackdropColor(bc[1], bc[2], bc[3], bc[4] or 0.98)
+    if isClassicShell and ns.UI_ApplyClassicTransparentInterior then
+        ns.UI_ApplyClassicTransparentInterior(content)
+    else
+        content:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+        do
+            local bc = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+                or (ns.UI_COLORS and ns.UI_COLORS.bg)
+                or { 0.042, 0.042, 0.055, 0.98 }
+            content:SetBackdropColor(bc[1], bc[2], bc[3], bc[4] or 0.98)
+        end
     end
 
     -- Scroll layout: MAIN_SCROLL tokens + scrollbar column (WN-UI-layout: reserve v-bar column).
@@ -3206,15 +3471,19 @@ function WarbandNexus:CreateMainWindow()
     if not viewportBorder.SetBackdrop then
         Mixin(viewportBorder, BackdropTemplateMixin)
     end
-    viewportBorder:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-    do
-        local vp = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
-            or (ns.UI_COLORS and ns.UI_COLORS.bg)
-            or { 0.042, 0.042, 0.055, 0.98 }
-        viewportBorder:SetBackdropColor(vp[1], vp[2], vp[3], vp[4] or 0.98)
-    end
-    if ns.UI_ApplyViewportAtlasUnderlay then
-        ns.UI_ApplyViewportAtlasUnderlay(viewportBorder)
+    if isClassicShell and ns.UI_ApplyClassicTransparentInterior then
+        ns.UI_ApplyClassicTransparentInterior(viewportBorder)
+    else
+        viewportBorder:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+        do
+            local vp = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+                or (ns.UI_COLORS and ns.UI_COLORS.bg)
+                or { 0.042, 0.042, 0.055, 0.98 }
+            viewportBorder:SetBackdropColor(vp[1], vp[2], vp[3], vp[4] or 0.98)
+        end
+        if ns.UI_ApplyViewportAtlasUnderlay then
+            ns.UI_ApplyViewportAtlasUnderlay(viewportBorder)
+        end
     end
     if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(viewportBorder) end
     f.viewportBorder = viewportBorder
@@ -3670,11 +3939,7 @@ function WarbandNexus:CreateMainWindow()
     do
         -- Factory candidate: `Factory:CreateContainer` — thin footer lane (scrollbar reserve on right edge).
         local footerBar = CreateFrame("Frame", nil, f)
-        footerBar:SetHeight(MAIN_FOOTER_H)
-        local footerLaneReserve = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
-            or (((ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26) + 2)
-        footerBar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 5)
-        footerBar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -footerLaneReserve, 5)
+        footerBar:SetHeight(MAIN_SHELL_LAYOUT.FOOTER_HEIGHT or 26)
         footerBar:SetFrameLevel((f:GetFrameLevel() or 0) + 4)
         footerBar:EnableMouse(false)
         f.footerBar = footerBar
@@ -3724,14 +3989,12 @@ function WarbandNexus:CreateMainWindow()
         if f.resizeGrip then
             local grip = f.resizeGrip
             local gripSize = MAIN_SHELL_LAYOUT.RESIZE_GRIP_SIZE or 18
-            local gripInsetX = MAIN_SHELL_LAYOUT.RESIZE_GRIP_INSET_X or 4
-            local gripInsetY = MAIN_SHELL_LAYOUT.RESIZE_GRIP_INSET_Y or 4
             grip:SetSize(gripSize, gripSize)
-            grip:ClearAllPoints()
-            grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -gripInsetX, gripInsetY)
             grip:SetFrameLevel((f:GetFrameLevel() or 0) + (MAIN_SHELL_LAYOUT.RESIZE_GRIP_FRAMELEVEL_BOOST or 80))
         end
     end
+
+    ApplyMainShellLayout(f)
     
     ns._wnMainWindowVisible = f:IsShown()
 
@@ -4060,6 +4323,8 @@ local function PopulateContentBody(self, forceRepaint)
         height = self:DrawItemList(scrollChild)
     elseif tab == "pve" then
         height = self:DrawPvEProgress(scrollChild)
+    elseif tab == "pvp" then
+        height = self:DrawPvPTab(scrollChild)
     elseif tab == "reputations" then
         height = self:DrawReputationTab(scrollChild)
     elseif tab == "stats" then
@@ -4146,14 +4411,16 @@ local function PopulateContentBody(self, forceRepaint)
     if tab == "gear" and ns.GearUI_RelayoutGearTabViewportFill then
         ns.GearUI_RelayoutGearTabViewportFill(mainFrame)
     end
-    if tab ~= "items" and tab ~= "gear" and ns.UI_EnsureScrollChildViewportFill then
+    local isClassicTab = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    if not isClassicTab and tab ~= "items" and tab ~= "gear" and ns.UI_EnsureScrollChildViewportFill then
         ns.UI_EnsureScrollChildViewportFill(scrollChild)
     end
-    if tab ~= "items" and tab ~= "gear" and ns.UI_RefreshScrollAnnexLayout then
+    if not isClassicTab and tab ~= "items" and tab ~= "gear" and ns.UI_RefreshScrollAnnexLayout then
         ns.UI_RefreshScrollAnnexLayout(scrollChild)
     end
 
     -- When content is shorter than the viewport, paint a viewport-tone band below short content.
+    if not isClassicTab then
     do
         local fill = scrollChild._wnScrollBottomFill
         if not fill then
@@ -4182,6 +4449,9 @@ local function PopulateContentBody(self, forceRepaint)
             fill:ClearAllPoints()
             fill:Hide()
         end
+    end
+    elseif scrollChild._wnScrollBottomFill and scrollChild._wnScrollBottomFill.Hide then
+        scrollChild._wnScrollBottomFill:Hide()
     end
 
     -- After content height changes, clamp vertical scroll (avoids empty band when range shrinks or layout jumps)
@@ -4447,6 +4717,17 @@ function WarbandNexus:UpdateStatus()
     end
 
     local function StatusAccentRGB(kind)
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+            local classicGreen = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.green)
+                or (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.green)
+                or { 0.35, 0.85, 0.35 }
+            local classicGold = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.accent)
+                or { 0.85, 0.68, 0.20 }
+            if kind == "positive" then
+                return classicGreen[1], classicGreen[2], classicGreen[3]
+            end
+            return classicGold[1], classicGold[2], classicGold[3]
+        end
         if ns.UI_IsLightMode and ns.UI_IsLightMode() then
             if kind == "positive" then
                 return ns.UI_GetSemanticGreenColor and ns.UI_GetSemanticGreenColor() or 0.14, 0.52, 0.24

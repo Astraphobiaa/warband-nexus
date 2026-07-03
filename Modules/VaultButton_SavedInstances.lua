@@ -240,11 +240,7 @@ function M.BuildSavedInstancesFrame()
         f:SetMinResize(560, 420)
     end
     f:EnableMouse(true)
-    if ns.UI_ApplyStandardCardElevatedChrome then
-        ns.UI_ApplyStandardCardElevatedChrome(f)
-    elseif ApplyVisuals then
-        ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
-    end
+    M.VBApplyEasyAccessShell(f)
     f:Hide()
     f:SetScript("OnShow", function()
         StartSavedInstancesLiveRefresh()
@@ -261,9 +257,7 @@ function M.BuildSavedInstancesFrame()
     chrome:RegisterForDrag("LeftButton")
     chrome:SetScript("OnDragStart", function() f:StartMoving() end)
     chrome:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
-    if ApplyVisuals then
-        ApplyVisuals(chrome, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
-    end
+    M.VBApplyEasyAccessHeader(chrome)
 
     local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
     titleIcon:SetSize(24, 24)
@@ -280,31 +274,34 @@ function M.BuildSavedInstancesFrame()
     title:SetText((ns.L and ns.L["SAVED_INSTANCES_TITLE"]) or "Saved Instances")
     ns.UI_SetTextColorRole(title, "Bright")
 
-    local close = VF:CreateButton(chrome, 28, 28, true)
-    close:SetPoint("RIGHT", -8, 0)
-    local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
-    if ApplyVisuals then
-        ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
-    end
-    local closeIcon = close:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    close:SetScript("OnClick", function() f:Hide() end)
-    close:SetScript("OnEnter", function()
-        closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ApplyVisuals and ns.UI_GetSemanticNegativeCard then
-            local bg, br = ns.UI_GetSemanticNegativeCard(true)
-            ApplyVisuals(close, bg, br)
-        elseif ApplyVisuals then
-            ApplyVisuals(close, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+    local close = M.VBCreateEasyAccessCloseButton(chrome, function() f:Hide() end)
+    if not close then
+        close = VF:CreateButton(chrome, 28, 28, true)
+        close:SetPoint("RIGHT", -8, 0)
+        local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
+        if ApplyVisuals then
+            ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
         end
-    end)
-    close:SetScript("OnLeave", function()
+        local closeIcon = close:CreateTexture(nil, "ARTWORK")
+        closeIcon:SetSize(16, 16)
+        closeIcon:SetPoint("CENTER")
+        closeIcon:SetAtlas("uitools-icon-close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
-    end)
+        close:SetScript("OnClick", function() f:Hide() end)
+        close:SetScript("OnEnter", function()
+            closeIcon:SetVertexColor(1, 0.2, 0.2)
+            if ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+                local bg, br = ns.UI_GetSemanticNegativeCard(true)
+                ApplyVisuals(close, bg, br)
+            elseif ApplyVisuals then
+                ApplyVisuals(close, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+            end
+        end)
+        close:SetScript("OnLeave", function()
+            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            if ApplyVisuals then ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
+        end)
+    end
 
     -- Filter / search bar
     local lay = VBGetSavedInstancesLayout()
@@ -316,11 +313,9 @@ function M.BuildSavedInstancesFrame()
     filterRow:SetHeight(SAVED_FILTER_H)
     filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY)
     filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.pad, filterY)
-    if ApplyVisuals then
-        local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-            or COLORS.bgCard or COLORS.bgLight or COLORS.bg
-        ApplyVisuals(filterRow, hdr, { accent[1], accent[2], accent[3], 0.4 })
-    end
+    local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+        or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+    M.VBApplyEasyAccessListHeader(filterRow, hdr, { accent[1], accent[2], accent[3], 0.4 })
 
     S.savedFilters = { lfr = true, normal = true, heroic = true, mythic = true }
     S.savedFilterButtons = {}
@@ -375,11 +370,12 @@ function M.BuildSavedInstancesFrame()
     ns.UI_SetTextColorRole(summary, "Muted")
     f.summary = summary
 
-    -- Scroll body — same anchors as Vault Tracker table (symmetric FRAME_PAD; bar inside scroll frame).
+    -- Scroll body — symmetric dialog insets; scroll child width reserves UIPanelScrollFrame bar lane.
     local scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
     scroll:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY - SAVED_FILTER_H - 2)
     scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -lay.pad, lay.pad)
-    local content = VF:CreateContainer(scroll, math.max(320, SAVED_FRAME_W - lay.pad * 2), 1, false)
+    local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(SAVED_FRAME_W - lay.pad * 2)
+    local content = VF:CreateContainer(scroll, math.max(320, scrollInnerW), 1, false)
     scroll:SetScrollChild(content)
 
     local resizeGrip = CreateFrame("Button", nil, f)
@@ -457,7 +453,14 @@ function M.BuildLockoutRow(parent, char, encounters, group, totalW)
     row:EnableMouse(true)
     local rowBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("rowOdd"))
         or { 0.06, 0.06, 0.09, 0.95 }
-    if ApplyVisuals then
+    if M.VBIsClassicChrome and M.VBIsClassicChrome() then
+        if ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(row)
+        end
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(rowBg[1], rowBg[2], rowBg[3], rowBg[4] or 0.95)
+    elseif ApplyVisuals then
         ApplyVisuals(row, rowBg, {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.28})
     else
         local bg = row:CreateTexture(nil, "BACKGROUND")

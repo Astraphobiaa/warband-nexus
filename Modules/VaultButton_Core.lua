@@ -117,9 +117,92 @@ function M.VBFontString(parent, role, drawLayer)
 end
 
 --- Matches `MAIN_SHELL` in Modules/UI/SharedWidgets.lua (`ns.UI_LAYOUT` is nil until that file loads; safe at runtime when frames build).
+--- Classic: dialog backdrop tile insets (`UI_GetMainShellFrameInsets`).
 function M.VBGetFrameContentInset()
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() and ns.UI_GetMainShellFrameInsets then
+        local left = ns.UI_GetMainShellFrameInsets()
+        if left and left > 0 then
+            return left
+        end
+    end
     local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
     return ms.FRAME_CONTENT_INSET or 2
+end
+
+function M.VBIsClassicChrome()
+    return ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+end
+
+function M.VBApplyEasyAccessShell(frame)
+    if not frame then return end
+    if ns.UI_ApplyFloatingWindowShellChrome then
+        ns.UI_ApplyFloatingWindowShellChrome(frame)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    end
+end
+
+function M.VBApplyEasyAccessHeader(header)
+    if not header then return end
+    if ns.UI_ApplyFloatingWindowHeaderChrome then
+        ns.UI_ApplyFloatingWindowHeaderChrome(header)
+    end
+end
+
+--- Column header / filter strip inside easy-access dialogs (classic: thin list header, not nested dialog box).
+function M.VBApplyEasyAccessListHeader(row, modernBg, modernBorder)
+    if not row then return false end
+    if M.VBIsClassicChrome() then
+        if ns.UI_ApplyClassicListHeaderChrome then
+            ns.UI_ApplyClassicListHeaderChrome(row)
+        elseif ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(row)
+        end
+        return true
+    end
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    if ApplyVisuals and modernBg then
+        ApplyVisuals(row, modernBg, modernBorder or modernBg)
+    end
+    return false
+end
+
+--- Scroll child width inside UIPanelScrollFrameTemplate (bar lives in the scroll frame lane).
+function M.VBGetEasyAccessScrollChildWidth(viewportW)
+    local w = viewportW or 0
+    if w <= 0 then return 320 end
+    local sb = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+    return math.max(120, w - sb)
+end
+
+--- Horizontal rule below chrome/header row (classic gold dialog strip vs modern accent hairline).
+function M.VBCreateEasyAccessSeparator(parent, leftPad, rightPad, y)
+    if M.VBIsClassicChrome() and ns.UI_CreateClassicHorizontalRailDivider then
+        local sep = ns.UI_CreateClassicHorizontalRailDivider(parent)
+        sep:SetHeight(8)
+        sep:ClearAllPoints()
+        sep:SetPoint("TOPLEFT", parent, "TOPLEFT", leftPad or 0, y or 0)
+        sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(rightPad or 0), y or 0)
+        return sep
+    end
+    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.40, 0.20, 0.58 }
+    local sep = parent:CreateTexture(nil, "BORDER")
+    sep:SetHeight(1)
+    sep:SetPoint("TOPLEFT", parent, "TOPLEFT", leftPad or 0, y or 0)
+    sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(rightPad or 0), y or 0)
+    sep:SetColorTexture(accent[1], accent[2], accent[3], 0.55)
+    return sep
+end
+
+--- Classic UIPanelCloseButton on chrome band; modern callers keep custom close buttons.
+function M.VBCreateEasyAccessCloseButton(chrome, onClick)
+    if not chrome or not M.VBIsClassicChrome() then return nil end
+    local close = CreateFrame("Button", nil, chrome, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", chrome, "TOPRIGHT", -2, -2)
+    if onClick then
+        close:SetScript("OnClick", onClick)
+    end
+    return close
 end
 
 --- Aligns draggable chrome band height with main window header (`HEADER_BAR_HEIGHT`; fallback preserves legacy CHROME_H).
@@ -148,10 +231,11 @@ function M.VBAnchorFullWidthRowBelowChrome(row, rootFrame, chromeBandHeight, bel
 end
 
 --- Saved Instances body insets — mirror Vault Tracker table (`FRAME_PAD` on all sides, scroll bar inside scroll frame).
-M.SAVED_INSTANCES_LAYOUT_VERSION = 2
+M.SAVED_INSTANCES_LAYOUT_VERSION = 3
 function M.VBGetSavedInstancesLayout()
+    local inset = VBGetFrameContentInset()
     return {
-        pad = FRAME_PAD,
+        pad = inset,
         filterBelowChrome = 4,
         contentTopGap = FRAME_PAD,
         contentBottomPad = FRAME_PAD,

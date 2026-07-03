@@ -711,19 +711,19 @@ function WarbandNexus:RefreshVaultEasyAccessTheme()
     if M.ApplyTheme then
         M.ApplyTheme()
     end
-    local refreshChrome = ns.UI_ApplyStandardCardElevatedChrome
-    if not refreshChrome then return end
+    local refreshShell = M.VBApplyEasyAccessShell or ns.UI_ApplyFloatingWindowShellChrome or ns.UI_ApplyStandardCardElevatedChrome
+    if not refreshShell then return end
     if S.tableFrame and S.tableFrame:IsShown() then
-        refreshChrome(S.tableFrame)
+        refreshShell(S.tableFrame)
     end
     if S.optionsFrame and S.optionsFrame:IsShown() then
-        refreshChrome(S.optionsFrame)
+        refreshShell(S.optionsFrame)
     end
     if S.menuFrame and S.menuFrame:IsShown() then
-        refreshChrome(S.menuFrame)
+        refreshShell(S.menuFrame)
     end
     if S.savedFrame and S.savedFrame:IsShown() then
-        refreshChrome(S.savedFrame)
+        refreshShell(S.savedFrame)
     end
 end
 

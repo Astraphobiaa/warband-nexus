@@ -83,7 +83,8 @@ local function CreateDetailsFrame(row, parentFrame, options)
             or (ns.UI_GetSemanticGoldHex and ns.UI_GetSemanticGoldHex())
             or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted"))
             or "|cffaaaaaa"
-        local bodyCol = P.body or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
+        local bodyCol = (ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.body)
+            or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
         infoText:SetText(labelCol .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r " .. bodyCol .. data.information .. "|r")
         infoText:SetWordWrap(true)
         infoText:SetNonSpaceWrap(false)
@@ -298,6 +299,8 @@ local function DestroyRowDetailsFrame(row)
         row.detailsFrame = nil
     end
     row._fullDetailsH = nil
+    row._detailsBuiltFor = nil
+    row._detailsBuiltW = nil
 end
 
 local function SafeOnExpandPopulate(data, row)
@@ -310,9 +313,19 @@ end
 local function BuildRowDetailsFrame(row)
     local data = row.data
     if not data then return 0 end
+    -- Reuse: same data table at the same row width → the parked frame tree is
+    -- still valid. Every rebuild permanently leaks the old subtree into the
+    -- recycle bin (frames are never GC'd), so skip rebuilds whenever possible.
+    local buildW = math.floor(row:GetWidth() or 0)
+    if row.detailsFrame and row._detailsBuiltFor == data
+        and row._detailsBuiltW == buildW and row._fullDetailsH then
+        return row._fullDetailsH
+    end
     DestroyRowDetailsFrame(row)
     SafeOnExpandPopulate(data, row)
     row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
+    row._detailsBuiltFor = data
+    row._detailsBuiltW = buildW
     if not row.detailsFrame then
         row._fullDetailsH = 0
         return 0
@@ -374,12 +387,17 @@ end
 --- Fixed To-Do header: title (large), points under title (achievements), summaries under icon.
 local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     local PCM = ns.UI_PLANS_CARD_METRICS or {}
-    local ICON_LEFT = 8
+    local ICON_LEFT, iconTop
+    if ns.UI_PlansTodoIconAnchors then
+        ICON_LEFT, iconTop = ns.UI_PlansTodoIconAnchors()
+    else
+        ICON_LEFT = 8
+        iconTop = -(tonumber(PCM.todoIconRowTop) or 8)
+    end
     local ICON_SIZE = tonumber(data.iconSize) or PCM.todoUnifiedIconSize or PCM.todoIconSize or 40
     local titleInset = data.titleRightInset or 90
     local FactEr = ns.UI and ns.UI.Factory
     local TYPE_BADGE_SIZE = data.typeBadgeSize or PCM.todoTypeBadgeSize or 24
-    local iconTop = -(tonumber(PCM.todoIconRowTop) or 8)
     local metaGap = tonumber(PCM.todoMetaGap) or 6
     local titleGap = tonumber(PCM.todoTitleGap) or 6
     local summaryGap = tonumber(PCM.todoSummaryGap) or 4
@@ -594,13 +612,23 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     -- Single unified backdrop on the row itself, not on header/details separately. This way the
     -- collapsed and expanded states share one continuous border (no double-line at the seam).
     if ApplyVisuals then
-        local borderColor = {
-            COLORS.accent[1] * 0.8,
-            COLORS.accent[2] * 0.8,
-            COLORS.accent[3] * 0.8,
-            0.4
-        }
-        ApplyVisuals(row, row.bgColor, borderColor)
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+            -- Classic: same dialog-box card panel as the Weekly Progress card
+            -- (UI_CreateCard classic branch) so all To-Do cards read alike.
+            if ns.UI_ApplyClassicCardPanelChrome then
+                ns.UI_ApplyClassicCardPanelChrome(row)
+            elseif ns.UI_ApplyClassicThinBorderChrome then
+                ns.UI_ApplyClassicThinBorderChrome(row)
+            end
+        else
+            local borderColor = {
+                COLORS.accent[1] * 0.8,
+                COLORS.accent[2] * 0.8,
+                COLORS.accent[3] * 0.8,
+                0.4
+            }
+            ApplyVisuals(row, row.bgColor, borderColor)
+        end
     end
 
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then

@@ -132,7 +132,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     container.searchFrame = container
     
     if ns.UI_ApplySearchBoxChrome then
-        ns.UI_ApplySearchBoxChrome(container)
+        ns.UI_ApplySearchBoxChrome(container, { editBoxHost = true })
     else
         local searchBg, searchBorder = ns.UI_GetSearchBoxChromeColors and ns.UI_GetSearchBoxChromeColors()
         if not searchBg then
@@ -144,20 +144,36 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
         ApplyVisuals(container, searchBg, searchBorder)
     end
     
-    local searchBox = CreateFrame("EditBox", nil, container)
-    searchBox:SetPoint("LEFT", 12, 0)
-    searchBox:SetPoint("RIGHT", -10, 0)
-    searchBox:SetHeight(20)
-    
-    local searchRole = FontManager:GetFontRole("searchEditBoxBody")
-    FontManager:RegisterManagedEditBox(searchBox, searchRole)
-    FontManager:ApplyFontToEditBox(searchBox, searchRole)
+    local searchBox
+    if Factory and Factory.CreateEditBox then
+        searchBox = Factory:CreateEditBox(container)
+    else
+        searchBox = CreateFrame("EditBox", nil, container)
+    end
+
+    if searchBox._wnBlizzardEditBox then
+        searchBox:ClearAllPoints()
+        searchBox:SetPoint("TOPLEFT", container, "TOPLEFT", 4, -4)
+        searchBox:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -4, 4)
+    else
+        searchBox:SetPoint("LEFT", 12, 0)
+        searchBox:SetPoint("RIGHT", -10, 0)
+        searchBox:SetHeight(20)
+    end
+
+    if not (searchBox._wnBlizzardEditBox) then
+        local searchRole = FontManager:GetFontRole("searchEditBoxBody")
+        FontManager:RegisterManagedEditBox(searchBox, searchRole)
+        FontManager:ApplyFontToEditBox(searchBox, searchRole)
+    end
     if ns.UI_GetTextRoleRGB then
         local tr, tg, tb, ta = ns.UI_GetTextRoleRGB("Bright")
         searchBox:SetTextColor(tr, tg, tb, ta)
     end
-    
-    searchBox:SetAutoFocus(false)
+
+    if not searchBox._wnBlizzardEditBox then
+        searchBox:SetAutoFocus(false)
+    end
     searchBox:SetMaxLetters(50)
     
     if initialText and initialText ~= "" then
@@ -165,7 +181,11 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     end
     
     local placeholderText = FontManager:CreateFontString(searchBox, FontManager:GetFontRole("searchPlaceholder"), "ARTWORK")
-    placeholderText:SetPoint("LEFT", 0, 0)
+    if searchBox._wnBlizzardEditBox then
+        placeholderText:SetPoint("LEFT", searchBox, "LEFT", 8, 0)
+    else
+        placeholderText:SetPoint("LEFT", 0, 0)
+    end
     placeholderText:SetText(placeholder or "Search...")
     if registryKey == "collections" then
         ns.UI_SetTextColorRole(placeholderText, "Bright")

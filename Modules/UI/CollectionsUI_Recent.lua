@@ -188,7 +188,12 @@ function M.RecentPickForType(db, typ, qlower, maxN)
 end
 
 function M.ApplyRecentRowIconChrome(row)
-    if not row or not row._iconBorder or not ApplyVisuals then return end
+    if not row or not row._iconBorder then return end
+    if ns.UI_ApplyListRowIconChrome then
+        ns.UI_ApplyListRowIconChrome(row._iconBorder)
+        return
+    end
+    if not ApplyVisuals then return end
     local bc = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
     ApplyVisuals(
         row._iconBorder,
@@ -489,16 +494,17 @@ function M.DrawRecentContent(contentFrame)
             gridCol * (cardW + gap),
             -(inset + gridRow * (cardH + gap))
         )
-        if ApplyVisuals then
+        if ApplyVisuals and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
             local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
             ApplyVisuals(card, { bg[1], bg[2], bg[3], 0.96 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
         end
         card:Show()
 
+        local useClassicRecent = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
         local headerIconBorder = COLORS.border or COLORS.accent or { 0.5, 0.4, 0.7 }
         local iconFr = CreateIcon(card, iconTex, RECENT_CARD_ICON, iconIsAtlas, {
             headerIconBorder[1], headerIconBorder[2], headerIconBorder[3], RECENT_ROW_ICON_BORDER_ALPHA,
-        }, false)
+        }, useClassicRecent)
         local headerMidY = -(RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON * 0.5)
         if iconFr then
             iconFr:SetPoint("CENTER", card, "TOPLEFT", RECENT_CARD_HEADER_PAD + RECENT_CARD_ICON * 0.5, headerMidY)

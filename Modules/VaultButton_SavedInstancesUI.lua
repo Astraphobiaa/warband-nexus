@@ -31,7 +31,18 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     header:SetSize(totalW, 30)
     header:EnableMouse(true)
 
-    if ApplyVisuals then
+    if M.VBIsClassicChrome and M.VBIsClassicChrome() then
+        if ns.UI_ApplyClassicListHeaderChrome then
+            ns.UI_ApplyClassicListHeaderChrome(header)
+        elseif ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(header)
+        end
+        local hdrBg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.surfaceHeaderChrome)
+            or { 0.08, 0.08, 0.09, 1 }
+        local fill = header:CreateTexture(nil, "BACKGROUND")
+        fill:SetAllPoints()
+        fill:SetColorTexture(hdrBg[1], hdrBg[2], hdrBg[3], hdrBg[4] or 1)
+    elseif ApplyVisuals then
         ApplyVisuals(header, {diffInfo.color[1] * 0.18, diffInfo.color[2] * 0.18, diffInfo.color[3] * 0.18, 1},
             {diffInfo.color[1], diffInfo.color[2], diffInfo.color[3], 0.85})
     end
@@ -407,7 +418,7 @@ local RefreshSavedInstances = function()
 
     local lay = (S.savedFrame and S.savedFrame._savedLayout) or VBGetSavedInstancesLayout()
     local viewportW = (S.savedScroll and S.savedScroll.GetWidth and S.savedScroll:GetWidth()) or SAVED_FRAME_W
-    local contentW = math.max(320, viewportW)
+    local contentW = M.VBGetEasyAccessScrollChildWidth(viewportW)
     content:SetWidth(contentW)
 
     if #filtered == 0 then

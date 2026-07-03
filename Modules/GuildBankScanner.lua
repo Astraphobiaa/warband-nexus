@@ -257,7 +257,17 @@ function WarbandNexus:ScanGuildBank()
                     end
                     slotID = slotID + 1
                     if slotID > MAX_GUILDBANK_SLOTS_PER_TAB then
-                        tabData.items = tabItemsBuilding
+                        -- The client returns nil item links for tabs whose contents
+                        -- were never queried from the server this session. Wiping the
+                        -- cache on such an all-empty read erases valid data scanned
+                        -- earlier. Trust an all-empty tab only after the open-time
+                        -- QueryGuildBankTab responses have had time to arrive.
+                        local sawData = next(tabItemsBuilding) ~= nil
+                        local hadCache = tabData.items and next(tabData.items) ~= nil
+                        local emptyTrusted = (GetTime() - (self._guildBankOpenScanAt or 0)) >= 2
+                        if sawData or emptyTrusted or not hadCache then
+                            tabData.items = tabItemsBuilding
+                        end
                         tabItemsBuilding = nil
                         tabIndex = tabIndex + 1
                         slotID = 0

@@ -107,7 +107,13 @@ local function SetSectionHeaderCount(fs, count, role)
     ns.UI_SetTextColorRole(fs, role or "Muted")
     fs:SetText(FormatNumber(count or 0))
 end
---- When `UI_CreateThemedButton` is missing, prefer Factory + ApplyVisuals; else legacy panel textures.
+--- Delete-confirm dialog buttons: Factory + guarded chrome; classic skips custom hover backdrops.
+local function ApplyCharDialogChrome(frame, bg, border)
+    if not frame or not ApplyVisuals then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
+    ApplyVisuals(frame, bg, border)
+end
+--- When `UI_CreateThemedButton` is missing, prefer Factory + ApplyCharDialogChrome; else legacy panel textures.
 local function CreateCharacterDeleteDialogButton(parent, label, width, destructive)
     local themed = ns.UI_CreateThemedButton
     if themed then
@@ -119,11 +125,11 @@ local function CreateCharacterDeleteDialogButton(parent, label, width, destructi
     local btnH = 36
     if Factory and Factory.CreateButton then
         local btn = Factory:CreateButton(parent, width, btnH, false)
-        if ApplyVisuals then
+        if ApplyCharDialogChrome and (not ns.UI_CanApplyCustomChrome or ns.UI_CanApplyCustomChrome(btn)) then
             if destructive then
-                ApplyVisuals(btn, { 0.22, 0.06, 0.07, 1 }, { 0.75, 0.18, 0.2, 1 })
+                ApplyCharDialogChrome(btn, { 0.22, 0.06, 0.07, 1 }, { 0.75, 0.18, 0.2, 1 })
             else
-                ApplyVisuals(btn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+                ApplyCharDialogChrome(btn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
             end
         end
         if Factory.ApplyHighlight then
@@ -133,20 +139,20 @@ local function CreateCharacterDeleteDialogButton(parent, label, width, destructi
         btnText:SetPoint("CENTER")
         btnText:SetText(label)
         btn.text = btnText
-        if ApplyVisuals then
+        if ApplyCharDialogChrome and (not ns.UI_CanApplyCustomChrome or ns.UI_CanApplyCustomChrome(btn)) then
             if destructive then
                 btn:SetScript("OnEnter", function(self)
-                    ApplyVisuals(self, { 0.55, 0.1, 0.12, 1 }, { 0.95, 0.25, 0.28, 1 })
+                    ApplyCharDialogChrome(self, { 0.55, 0.1, 0.12, 1 }, { 0.95, 0.25, 0.28, 1 })
                 end)
                 btn:SetScript("OnLeave", function(self)
-                    ApplyVisuals(self, { 0.22, 0.06, 0.07, 1 }, { 0.75, 0.18, 0.2, 1 })
+                    ApplyCharDialogChrome(self, { 0.22, 0.06, 0.07, 1 }, { 0.75, 0.18, 0.2, 1 })
                 end)
             else
                 btn:SetScript("OnEnter", function(self)
-                    ApplyVisuals(self, { ar * 0.7, ag * 0.7, ab * 0.7, 1 }, { ar, ag, ab, 1 })
+                    ApplyCharDialogChrome(self, { ar * 0.7, ag * 0.7, ab * 0.7, 1 }, { ar, ag, ab, 1 })
                 end)
                 btn:SetScript("OnLeave", function(self)
-                    ApplyVisuals(self, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
+                    ApplyCharDialogChrome(self, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
                 end)
             end
         end
@@ -925,7 +931,7 @@ function WarbandNexus:DrawCharacterList(parent)
             -- Visible entry for custom sections: same footprint as Filter, left of it.
             local secQuick = titleCard._wnCharCustomSectionBtn
             if not secQuick and ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
-                secQuick = ns.UI.Factory:CreateButton(titleCard, sectionToolbarBtnSize, sectionToolbarBtnSize, false)
+                secQuick = ns.UI.Factory:CreateButton(titleCard, sectionToolbarBtnSize, sectionToolbarBtnSize, true)
                 titleCard._wnCharCustomSectionBtn = secQuick
                 secQuick:SetFrameLevel(titleCard:GetFrameLevel() + 6)
                 if secQuick.RegisterForClicks then

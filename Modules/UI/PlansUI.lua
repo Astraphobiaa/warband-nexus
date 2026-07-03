@@ -100,6 +100,44 @@ local ResolvePlansEmptyStateKey = ns.UI_ResolvePlansEmptyStateKey
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
+--- Skip custom ApplyVisuals on Blizzard template widgets (classic plan editor guards).
+--- opts: listHeader | cardPanel | rowTransparent | iconWell | thin (classic routing)
+local function ApplyPlansChrome(frame, bg, border, opts)
+    if not frame then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
+    opts = type(opts) == "table" and opts or {}
+
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if opts.listHeader and ns.UI_ApplyClassicListHeaderChrome then
+            ns.UI_ApplyClassicListHeaderChrome(frame, bg)
+            return
+        end
+        if opts.cardPanel or frame._wnClassicCard then
+            if not frame._wnClassicCard and ns.UI_ApplyClassicCardPanelChrome then
+                ns.UI_ApplyClassicCardPanelChrome(frame)
+            end
+            return
+        end
+        if opts.rowTransparent then
+            if ns.UI_ApplyClassicInteriorFlatFill then
+                ns.UI_ApplyClassicInteriorFlatFill(frame, { 0, 0, 0, 0 })
+            end
+            return
+        end
+        if opts.iconWell and ns.UI_ApplyIconWellChrome then
+            ns.UI_ApplyIconWellChrome(frame)
+            return
+        end
+        if ns.UI_ApplyClassicThinBorderChrome then
+            ns.UI_ApplyClassicThinBorderChrome(frame, bg)
+            return
+        end
+        return
+    end
+
+    if not ApplyVisuals then return end
+    ApplyVisuals(frame, bg, border)
+end
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -809,7 +847,7 @@ function WarbandNexus:DrawPlansTab(parent)
 
         -- Checkbox (using shared widget) - Next to Add Quest button
         local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
-        if checkbox and checkbox.innerDot then
+        if checkbox and checkbox.innerDot and not checkbox._wnBlizzardCheckbox then
             checkbox.innerDot:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         end
         if not checkbox then
@@ -931,7 +969,7 @@ function WarbandNexus:DrawPlansTab(parent)
         local plannedCheckbox, plannedLabel
         plannedCheckbox = CreateThemedCheckbox(titleCard, showPlanned)
         if plannedCheckbox then
-            if plannedCheckbox.innerDot then
+            if plannedCheckbox.innerDot and not plannedCheckbox._wnBlizzardCheckbox then
                 plannedCheckbox.innerDot:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             end
             if ns.UI_AnchorTitleCardToolbarControl then
@@ -1407,7 +1445,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     -- Persistent across repaints (same pattern as the Characters gold trio):
     -- the bar + its children used to be recreated and binned on every Plans paint.
     local padH = PlansContentPadH()
-    local resetBarH = 30
+    -- Classic pane backdrop (tooltip border) needs extra height or the border
+    -- art squeezes the 16px icon + label rows.
+    local resetBarH = (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) and 36 or 30
     local resetBar = parent._wnPlansResetBar
     local resetTimeText
     if resetBar then
@@ -1441,9 +1481,9 @@ function WarbandNexus:DrawDailyTasksView(parent, yOffset, width, plans)
     resetBar:ClearAllPoints()
     resetBar:SetPoint("TOPLEFT", padH, -yOffset)
     resetBar:SetPoint("TOPRIGHT", -padH, -yOffset)
-    if ApplyVisuals then
+    if ApplyPlansChrome then
         local bg = COLORS.bgCard or COLORS.bgLight or COLORS.bg
-        ApplyVisuals(resetBar, bg, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7})
+        ApplyPlansChrome(resetBar, bg, nil, { listHeader = true })
     end
     do
         local ok, seconds = pcall(function()
@@ -2195,10 +2235,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card._layoutInfo.yPos = yPos
             
             -- Apply accent border (My Plans cards)
-            if ApplyVisuals then
+            if ApplyPlansChrome then
                 local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
                     or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
-                ApplyVisuals(card, COLORS.bgCard, borderColor)
+                ApplyPlansChrome(card, COLORS.bgCard, borderColor, { cardPanel = true })
             end
             
             -- Create weekly vault content via factory
@@ -2225,10 +2265,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card._layoutInfo.isFullWidth = true
             card._layoutInfo.yPos = yPos
             
-            if ApplyVisuals then
+            if ApplyPlansChrome then
                 local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
                     or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
-                ApplyVisuals(card, COLORS.bgCard, borderColor)
+                ApplyPlansChrome(card, COLORS.bgCard, borderColor, { cardPanel = true })
             end
             
             PlanCardFactory:CreateDailyQuestCard(card, plan)
@@ -2401,9 +2441,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 CardLayoutManager:UpdateCardHeight(row, row:GetHeight())
             end
 
-            if ApplyVisuals then
+            if ApplyPlansChrome then
                 local borderColor = { COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4 }
-                ApplyVisuals(row, COLORS.bgCard, borderColor)
+                ApplyPlansChrome(row, COLORS.bgCard, borderColor, { rowTransparent = true })
             end
 
             -- Header right rail: Tries + actions vertically centered on the portrait icon.
@@ -2528,6 +2568,15 @@ function WarbandNexus:ShowCustomPlanDialog()
         self.addCustomBtn:SetAlpha(0.5)
     end
 
+    local PAD = 12
+    local DIALOG_W = 480
+    local DIALOG_H = 520
+    local classicBd = ns.UI_CLASSIC_DIALOG_BACKDROP and ns.UI_CLASSIC_DIALOG_BACKDROP.insets
+    local shellInset = (ns.UI_IsClassicMode and ns.UI_IsClassicMode() and classicBd and classicBd.left) or 0
+    local CONTENT_W = math.max(280, DIALOG_W - (shellInset * 2) - (PAD * 2))
+    local INPUT_H = 35
+    local CHAR_HDR_H = 45
+
     -- Get character info
     local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
     local currentRealm = SafeRealmName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
@@ -2540,8 +2589,8 @@ function WarbandNexus:ShowCustomPlanDialog()
         title = (ns.L and ns.L["CREATE_CUSTOM_PLAN"]) or "Create Custom Plan",
         icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
         iconIsAtlas = true,
-        width = 450,
-        height = 500,  -- Title + description + reset cycle + duration + infinite option
+        width = DIALOG_W,
+        height = DIALOG_H,
         onClose = function()
             -- Re-enable Add Custom button
             if WarbandNexus.addCustomBtn then
@@ -2561,8 +2610,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     end
     
     -- Character section with icon (using Factory pattern)
-    local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 420, 45)
-    charFrame:SetPoint("TOP", 0, -15)
+    local charFrame = ns.UI.Factory:CreateContainer(contentFrame, CONTENT_W, CHAR_HDR_H, false)
+    charFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD)
     
     -- Get race-gender info
     local _, englishRace = UnitRace("player")
@@ -2573,13 +2622,9 @@ function WarbandNexus:ShowCustomPlanDialog()
     local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
     iconContainer:SetPoint("LEFT", 12, 0)
     
-    -- Apply border with class color
-    if ApplyVisuals then
-        if classColors then
-            ApplyVisuals(iconContainer, COLORS.bgCard, {classColors.r, classColors.g, classColors.b, 1})
-        else
-            ApplyVisuals(iconContainer, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
-        end
+    -- Apply border with class color (thin icon well in classic)
+    if ApplyPlansChrome then
+        ApplyPlansChrome(iconContainer, COLORS.bgCard, nil, { iconWell = true })
     end
     
     -- Character race icon (using atlas)
@@ -2602,21 +2647,21 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Title label
     local titleLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    titleLabel:SetPoint("TOPLEFT", 12, -75)
+    titleLabel:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 14))
     local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
     titleLabel:SetText(mutedHex .. ((ns.L and ns.L["TITLE_LABEL"]) or "Title:") .. "|r")
     
     -- Title input container (using Factory pattern)
-    local titleInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)
-    titleInputBg:SetPoint("TOPLEFT", 12, -97)
+    local titleInputBg = ns.UI.Factory:CreateContainer(contentFrame, CONTENT_W, INPUT_H)
+    titleInputBg:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 36))
     
     -- Apply border to input
-    if ApplyVisuals then
-        ApplyVisuals(titleInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    if ApplyPlansChrome then
+        ApplyPlansChrome(titleInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
     local titleInput = ns.UI.Factory:CreateEditBox(titleInputBg)
-    titleInput:SetSize(395, 30)
+    titleInput:SetSize(math.max(120, CONTENT_W - 16), INPUT_H - 4)
     titleInput:SetPoint("LEFT", 8, 0)
     ns.UI_SetTextColorRole(titleInput, "Bright")
     titleInput:SetAutoFocus(false)
@@ -2640,20 +2685,20 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     -- Description label
     local descLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
-    descLabel:SetPoint("TOPLEFT", 12, -145)
+    descLabel:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 84))
     descLabel:SetText(mutedHex .. NormalizeColonLabelSpacing((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
     
     -- Description input container (scrollable, single line) (using Factory pattern)
-    local descInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)  -- Reduced height for single line
-    descInputBg:SetPoint("TOPLEFT", 12, -167)
+    local descInputBg = ns.UI.Factory:CreateContainer(contentFrame, CONTENT_W, INPUT_H)
+    descInputBg:SetPoint("TOPLEFT", PAD, -(PAD + CHAR_HDR_H + 106))
     
     -- Apply border to input
-    if ApplyVisuals then
-        ApplyVisuals(descInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    if ApplyPlansChrome then
+        ApplyPlansChrome(descInputBg, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
     local descInput = ns.UI.Factory:CreateEditBox(descInputBg)
-    descInput:SetSize(395, 30)
+    descInput:SetSize(math.max(120, CONTENT_W - 16), INPUT_H - 4)
     descInput:SetPoint("LEFT", 8, 0)
     ns.UI_SetTextColorRole(descInput, "Bright")
     descInput:SetAutoFocus(false)
@@ -2750,7 +2795,14 @@ function WarbandNexus:ShowCustomPlanDialog()
     local function CreateResetToggle(parent, label, value, xOffset)
         local btn = PlanDlgF and PlanDlgF:CreateButton(parent, 120, 28, false)
         if btn then btn._wnPlanDlgFactoryToggle = true end
-        if not btn then
+        local useClassic = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+        if not btn and useClassic then
+            btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+            btn:SetSize(120, 28)
+            btn:SetText("")
+            btn._wnBlizzardButton = true
+            btn._wnPlanDlgFactoryToggle = true
+        elseif not btn and not useClassic then
             btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
             btn:SetBackdrop({
                 bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -2760,8 +2812,8 @@ function WarbandNexus:ShowCustomPlanDialog()
             })
             btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
             btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
-        elseif ApplyVisuals then
-            ApplyVisuals(btn, { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1 },
+        elseif btn and ApplyPlansChrome then
+            ApplyPlansChrome(btn, { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1 },
                 { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
         end
         btn:SetPoint("TOPLEFT", xOffset, -237)
@@ -2799,7 +2851,14 @@ function WarbandNexus:ShowCustomPlanDialog()
     local minusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
     if minusBtn then minusBtn._wnPlanDlgDurStepper = true end
     local chromeBg = ControlChromeBackdrop()
-    if not minusBtn then
+    local planDlgClassic = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+    if not minusBtn and planDlgClassic then
+        minusBtn = CreateFrame("Button", nil, durationRow, "UIPanelButtonTemplate")
+        minusBtn:SetSize(28, 28)
+        minusBtn:SetText("-")
+        minusBtn._wnBlizzardButton = true
+        minusBtn._wnPlanDlgDurStepper = true
+    elseif not minusBtn and not planDlgClassic then
         minusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
         minusBtn:SetBackdrop({
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -2809,14 +2868,18 @@ function WarbandNexus:ShowCustomPlanDialog()
         })
         minusBtn:SetBackdropColor(chromeBg[1], chromeBg[2], chromeBg[3], chromeBg[4] or 1)
         minusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
-    elseif ApplyVisuals then
-        ApplyVisuals(minusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+    elseif minusBtn and ApplyPlansChrome then
+        ApplyPlansChrome(minusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end
     minusBtn:SetPoint("TOPLEFT", 160, -2)
-    local minusText = FontManager:CreateFontString(minusBtn, "title", "OVERLAY")
-    minusText:SetPoint("CENTER", 0, 1)
-    minusText:SetText("-")
-    ns.UI_SetTextColorRole(minusText, "Bright")
+    if minusBtn._wnBlizzardButton then
+        minusBtn:SetText("-")
+    else
+        local minusText = FontManager:CreateFontString(minusBtn, "title", "OVERLAY")
+        minusText:SetPoint("CENTER", 0, 1)
+        minusText:SetText("-")
+        ns.UI_SetTextColorRole(minusText, "Bright")
+    end
     
     -- Count display
     local countDisplay = FontManager:CreateFontString(durationRow, "title", "OVERLAY")
@@ -2827,7 +2890,13 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     local plusBtn = PlanDlgF and PlanDlgF:CreateButton(durationRow, 28, 28, false)
     if plusBtn then plusBtn._wnPlanDlgDurStepper = true end
-    if not plusBtn then
+    if not plusBtn and planDlgClassic then
+        plusBtn = CreateFrame("Button", nil, durationRow, "UIPanelButtonTemplate")
+        plusBtn:SetSize(28, 28)
+        plusBtn:SetText("+")
+        plusBtn._wnBlizzardButton = true
+        plusBtn._wnPlanDlgDurStepper = true
+    elseif not plusBtn and not planDlgClassic then
         plusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
         plusBtn:SetBackdrop({
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -2837,14 +2906,18 @@ function WarbandNexus:ShowCustomPlanDialog()
         })
         plusBtn:SetBackdropColor(chromeBg[1], chromeBg[2], chromeBg[3], chromeBg[4] or 1)
         plusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
-    elseif ApplyVisuals then
-        ApplyVisuals(plusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+    elseif plusBtn and ApplyPlansChrome then
+        ApplyPlansChrome(plusBtn, chromeBg, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
     end
     plusBtn:SetPoint("TOPLEFT", countDisplay, "TOPRIGHT", 12, 0)
-    local plusText = FontManager:CreateFontString(plusBtn, "title", "OVERLAY")
-    plusText:SetPoint("CENTER", 0, 1)
-    plusText:SetText("+")
-    ns.UI_SetTextColorRole(plusText, "Bright")
+    if plusBtn._wnBlizzardButton then
+        plusBtn:SetText("+")
+    else
+        local plusText = FontManager:CreateFontString(plusBtn, "title", "OVERLAY")
+        plusText:SetPoint("CENTER", 0, 1)
+        plusText:SetText("+")
+        ns.UI_SetTextColorRole(plusText, "Bright")
+    end
     
     -- Update duration display
     local function UpdateDurationDisplay()
@@ -2945,24 +3018,39 @@ function WarbandNexus:ShowCustomPlanDialog()
     local function UpdateResetButtons()
         for bi = 1, #resetButtons do
             local btn = resetButtons[bi]
-            if btn._wnPlanDlgFactoryToggle and ApplyVisuals then
-                if btn.value == selectedResetType then
-                    ApplyVisuals(btn,
+            local isSel = (btn.value == selectedResetType)
+            if btn._wnPlanDlgFactoryToggle and btn._wnBlizzardButton then
+                if ns.UI_ApplyClassicNavTabActiveState then
+                    ns.UI_ApplyClassicNavTabActiveState(btn, isSel)
+                end
+                if isSel then
+                    if ns.UI_GetSemanticGoldColor then
+                        local gr, gg, gb = ns.UI_GetSemanticGoldColor()
+                        btn.label:SetTextColor(gr, gg, gb)
+                    else
+                        ns.UI_SetTextColorRole(btn.label, "Bright")
+                    end
+                else
+                    ns.UI_SetTextColorRole(btn.label, "Muted")
+                end
+            elseif btn._wnPlanDlgFactoryToggle and ApplyPlansChrome then
+                if isSel then
+                    ApplyPlansChrome(btn,
                         { COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1 },
                         { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 })
                 else
-                    ApplyVisuals(btn,
+                    ApplyPlansChrome(btn,
                         { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1 },
                         { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
                 end
-                btn.label:SetTextColor((btn.value == selectedResetType) and 1 or 0.7,
-                    (btn.value == selectedResetType) and 1 or 0.7,
-                    (btn.value == selectedResetType) and 1 or 0.7)
-            elseif btn.value == selectedResetType then
+                btn.label:SetTextColor(isSel and 1 or 0.7,
+                    isSel and 1 or 0.7,
+                    isSel and 1 or 0.7)
+            elseif isSel and btn.SetBackdropColor and not planDlgClassic then
                 btn:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
                 btn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
                 ns.UI_SetTextColorRole(btn.label, "Bright")
-            else
+            elseif btn.SetBackdropColor and not planDlgClassic then
                 btn:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 1)
                 btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
                 ns.UI_SetTextColorRole(btn.label, "Muted")
@@ -3000,11 +3088,13 @@ function WarbandNexus:ShowCustomPlanDialog()
             UpdateResetButtons()
         end)
         btn:SetScript("OnEnter", function(self)
+            if self._wnBlizzardButton then return end
             if self.value ~= selectedResetType then
                 PlanDlgPulseBorder(self, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
             end
         end)
         btn:SetScript("OnLeave", function(self)
+            if self._wnBlizzardButton then return end
             if self.value ~= selectedResetType then
                 PlanDlgPulseBorder(self, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
             end
@@ -3147,9 +3237,14 @@ end
 
 function WarbandNexus:ShowWeeklyPlanDialog()
     local COLORS = ns.UI_COLORS
+    local PAD = 14
     local VAULT_DLG_W = 640
     local VAULT_DLG_H_HAS = 280
     local VAULT_DLG_H_NEW = 468
+    local classicBd = ns.UI_CLASSIC_DIALOG_BACKDROP and ns.UI_CLASSIC_DIALOG_BACKDROP.insets
+    local shellInset = (ns.UI_IsClassicMode and ns.UI_IsClassicMode() and classicBd and classicBd.left) or 0
+    local CONTENT_W = math.max(320, VAULT_DLG_W - (shellInset * 2) - (PAD * 2))
+    local CHAR_HDR_H = 48
 
     -- Get current character info
     local currentName = SafePlayerName() or ((ns.L and ns.L["UNKNOWN"]) or "?")
@@ -3173,13 +3268,13 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     end
     
     -- Content area starts at top of content frame
-    local contentY = -12
+    local contentY = -PAD
     
     -- Show existing plan message or creation form
     if existingPlan then
         -- Character already has a weekly plan
         local warningIconFrame3 = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther", 48, false, nil, true)
-        warningIconFrame3:SetPoint("TOP", 0, contentY)
+        warningIconFrame3:SetPoint("TOP", contentFrame, "TOP", 0, contentY)
         warningIconFrame3:Show()
         local warningIcon = warningIconFrame3.texture
         
@@ -3189,7 +3284,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         
         local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
-        infoText:SetWidth(VAULT_DLG_W - 48)
+        infoText:SetWidth(CONTENT_W)
         infoText:SetWordWrap(true)
         infoText:SetJustifyH("CENTER")
         local descText = (ns.L and ns.L["WEEKLY_PLAN_EXISTS_DESC"] and format(ns.L["WEEKLY_PLAN_EXISTS_DESC"], currentName .. "-" .. currentRealm)) or (currentName .. "-" .. currentRealm .. " already has an active weekly vault plan. You can find it in the 'My Plans' category.")
@@ -3207,10 +3302,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     else
         -- Create new weekly plan form
         
-        -- Same horizontal band as the three vault cards (content inset 8+8, row padding 20+20).
-        local charBarW = VAULT_DLG_W - 16 - 40
-        local charFrame = ns.UI.Factory:CreateContainer(contentFrame, charBarW, 48)
-        charFrame:SetPoint("TOP", 0, -14)
+        -- Same horizontal band as the three vault cards (symmetric content pad).
+        local charBarW = CONTENT_W
+        local charFrame = ns.UI.Factory:CreateContainer(contentFrame, charBarW, CHAR_HDR_H, false)
+        charFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, -PAD)
         
         -- Character race and class info
         local _, currentClass = UnitClass("player")
@@ -3223,13 +3318,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
         iconContainer:SetPoint("LEFT", 0, 0)  -- Start from left edge
         
-        -- Apply border with class color
-        if ApplyVisuals then
-            if classColors then
-                ApplyVisuals(iconContainer, COLORS.bgCard, {classColors.r, classColors.g, classColors.b, 1})
-            else
-                ApplyVisuals(iconContainer, COLORS.bgCard, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
-            end
+        -- Apply thin icon well (classic) / accent border (modern)
+        if ApplyPlansChrome then
+            ApplyPlansChrome(iconContainer, COLORS.bgCard, nil, { iconWell = true })
         end
         
         -- Character race icon (using atlas)
@@ -3274,9 +3365,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             ns.UI_SetTextColorRole(progressHeader, "Bright")
             progressHeader:SetText((ns.L and ns.L["CURRENT_PROGRESS"]) or "Current Progress")
 
-            -- Card row: three equal columns; width from dialog shell (content not always laid out yet).
-            local contentW = math.max(120, VAULT_DLG_W - 16)
-            local rowSidePad = 20
+            -- Card row: three equal columns; width from content column budget.
+            local contentW = CONTENT_W
+            local rowSidePad = 0
             local colSpacing = 16
             local usable = contentW - 2 * rowSidePad
             local colWidth = math.floor((usable - 2 * colSpacing) / 3)
@@ -3404,21 +3495,21 @@ function WarbandNexus:ShowWeeklyPlanDialog()
 
                 local function refreshThisColumn()
                     if fullyComplete then
-                        if ApplyVisuals then
-                            ApplyVisuals(col, disabledBg, disabledBorder)
+                        if ApplyPlansChrome then
+                            ApplyPlansChrome(col, disabledBg, disabledBorder, { cardPanel = true })
                         end
                         col:SetAlpha(0.42)
                         clickPad:Hide()
                     elseif selectedSlots[slotKey] then
-                        if ApplyVisuals then
-                            ApplyVisuals(col, baseBg, accentBorder)
+                        if ApplyPlansChrome then
+                            ApplyPlansChrome(col, baseBg, accentBorder, { cardPanel = true })
                         end
                         col:SetAlpha(1)
                         clickPad:Show()
                         clickPad:EnableMouse(true)
                     else
-                        if ApplyVisuals then
-                            ApplyVisuals(col, unselBg, unselectedBorder)
+                        if ApplyPlansChrome then
+                            ApplyPlansChrome(col, unselBg, unselectedBorder, { cardPanel = true })
                         end
                         col:SetAlpha(0.58)
                         clickPad:Show()

@@ -1,8 +1,8 @@
 ﻿--[[
     Warband Nexus - Items tab (Bags / Bank: virtual list; Warband: Personal + Warband tree; Guild: guild > category tree).
 
-    WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton` with guarded fallbacks when
-    Factory is unavailable (plain `BackdropTemplate` buttons + ApplyVisuals); item rows/storage use pooled factories elsewhere.
+    WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton`; classic mode uses shared
+    `UI_ApplySubTabButtonVisuals` (classic UIPanelButtonTemplate — no LockHighlight tint). Fallback path uses BackdropTemplate only when Factory missing.
     WN_PERF: Virtual lists where applicable (`VirtualListModule`); `DrawStorageResults` uses generation tokens +
     `C_Timer.After` chunk pumps for personal char sections, warband type headers, and leaf rows (`Stor_*` profiler slices).
 ]]
@@ -53,7 +53,6 @@ local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateStatsBar = ns.UI_CreateStatsBar
 local CreateResultsContainer = ns.UI_CreateResultsContainer
-local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local FormatNumber = ns.UI_FormatNumber
 local NormalizeColonLabelSpacing = ns.UI_NormalizeColonLabelSpacing
@@ -230,72 +229,11 @@ local function ItemsBankSubTabIconApply(tex, tabInfo)
     tex:SetSize(sz, sz)
 end
 
-local function ItemsSubTabIdleBackdrop()
-    if ns.UI_GetNavTabInactiveBackdrop then
-        return ns.UI_GetNavTabInactiveBackdrop()
-    end
-    local row = COLORS.surfaceRowOdd or COLORS.bgLight or COLORS.bg
-    return { row[1], row[2], row[3], row[4] or 1 }
-end
-
-local function ItemsSubTabHoverBackdrop()
-    if ns.UI_GetControlChromeHoverBackdrop then
-        return ns.UI_GetControlChromeHoverBackdrop()
-    end
-    return ItemsSubTabIdleBackdrop()
-end
-
 local function ItemsDimMarkup(text)
     return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888") .. text .. "|r"
 end
 
-local function ApplyItemsSubTabButtonVisuals(btn, isActive, accent)
-    if not btn then return end
-    local acc = accent or COLORS.accent
-    if isActive then
-        local ar, ag, ab, aa
-        if ns.UI_GetSubTabActiveBackdropRGBA then
-            ar, ag, ab, aa = ns.UI_GetSubTabActiveBackdropRGBA(acc)
-        elseif ns.UI_IsLightMode and ns.UI_IsLightMode() and ns.UI_GetNavRailActiveBackdrop then
-            local ta = ns.UI_GetNavRailActiveBackdrop()
-            ar, ag, ab, aa = ta[1], ta[2], ta[3], ta[4] or 0.98
-        else
-            ar, ag, ab, aa = acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1
-        end
-        if ApplyVisuals then
-            ApplyVisuals(btn, { ar, ag, ab, aa }, { acc[1], acc[2], acc[3], 1 })
-        end
-        if btn._text then
-            ns.UI_SetTextColorRole(btn._text, "Bright")
-            if ns.UI_SetNavLabelFontStyle then
-                ns.UI_SetNavLabelFontStyle(btn._text, true)
-            end
-        end
-        if UpdateBorderColor then UpdateBorderColor(btn, { acc[1], acc[2], acc[3], 1 }) end
-        if btn.SetBackdropColor then btn:SetBackdropColor(ar, ag, ab, aa) end
-    else
-        local idle = ItemsSubTabIdleBackdrop()
-        local br, bgr, bbb, bba
-        if ns.UI_GetSubTabInactiveBorderRGBA then
-            br, bgr, bbb, bba = ns.UI_GetSubTabInactiveBorderRGBA(acc)
-        else
-            br, bgr, bbb, bba = acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 0.6
-        end
-        if ApplyVisuals then
-            ApplyVisuals(btn, idle, { br, bgr, bbb, bba })
-        end
-        if btn._text and btn:IsEnabled() then
-            ns.UI_SetTextColorRole(btn._text, "Muted")
-            if ns.UI_SetNavLabelFontStyle then
-                ns.UI_SetNavLabelFontStyle(btn._text, false)
-            end
-        elseif btn._text then
-            ns.UI_SetTextColorRole(btn._text, "Dim")
-        end
-        if UpdateBorderColor then UpdateBorderColor(btn, { br, bgr, bbb, bba }) end
-        if btn.SetBackdropColor then btn:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1) end
-    end
-end
+local ApplyItemsSubTabButtonVisuals = ns.UI_ApplySubTabButtonVisuals
 
 local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accentColor, sideMargin)
     sideMargin = sideMargin or (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or SIDE_MARGIN
@@ -341,7 +279,14 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
     for i = 1, #tabDefs do
         local tabInfo = tabDefs[i]
         local btnWidth = btnWidths[i]
-        local btn = Factory and Factory.CreateButton and Factory:CreateButton(btnArea, btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT, false)
+        local btn
+        if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+            btn = CreateFrame("Button", nil, btnArea, "UIPanelButtonTemplate")
+            btn:SetSize(btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT)
+            btn._wnBlizzardButton = true
+        else
+            btn = Factory and Factory.CreateButton and Factory:CreateButton(btnArea, btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT, false)
+        end
         if not btn then
             btn = CreateFrame("Button", nil, btnArea, "BackdropTemplate")
             btn:SetSize(btnWidth, ITEMS_BANK_SUBTAB_BTN_HEIGHT)
@@ -349,16 +294,6 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         btn:SetPoint("TOPLEFT", btnArea, "TOPLEFT", xPos, 0)
         btn._tabKey = tabInfo.key
 
-        if ApplyVisuals then
-            local idle = ItemsSubTabIdleBackdrop()
-            local br, bgr, bbb, bba
-            if ns.UI_GetSubTabInactiveBorderRGBA then
-                br, bgr, bbb, bba = ns.UI_GetSubTabInactiveBorderRGBA(acc)
-            else
-                br, bgr, bbb, bba = acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 0.6
-            end
-            ApplyVisuals(btn, idle, { br, bgr, bbb, bba })
-        end
         if Factory and Factory.ApplyHighlight then
             Factory:ApplyHighlight(btn)
         end
@@ -370,6 +305,9 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         activeBarTex:SetColorTexture(acc[1], acc[2], acc[3], 1)
         activeBarTex:SetAlpha(0)
         btn.activeBar = activeBarTex
+        if btn._wnBlizzardButton then
+            activeBarTex:Hide()
+        end
 
         local btnIcon = btn:CreateTexture(nil, "ARTWORK")
         ItemsBankSubTabIconApply(btnIcon, tabInfo)
@@ -402,30 +340,32 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
             end
         end)
 
-        if UpdateBorderColor then
-            btn:SetScript("OnEnter", function(self)
-                if self._active then return end
-                UpdateBorderColor(self, {acc[1] * 1.2, acc[2] * 1.2, acc[3] * 1.2, 0.9})
-            end)
-            btn:SetScript("OnLeave", function(self)
-                if self._active then return end
-                UpdateBorderColor(self, {acc[1], acc[2], acc[3], 0.6})
-            end)
-        else
-            btn:SetScript("OnEnter", function(self)
-                if self._active then return end
-                if self.SetBackdropColor then
-                    local hover = ItemsSubTabHoverBackdrop()
-                    self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 0.95)
-                end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                if self._active then return end
-                if self.SetBackdropColor then
-                    local idle = ItemsSubTabIdleBackdrop()
-                    self:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
-                end
-            end)
+        if not btn._wnBlizzardButton then
+            if UpdateBorderColor then
+                btn:SetScript("OnEnter", function(self)
+                    if self._active then return end
+                    UpdateBorderColor(self, {acc[1] * 1.2, acc[2] * 1.2, acc[3] * 1.2, 0.9})
+                end)
+                btn:SetScript("OnLeave", function(self)
+                    if self._active then return end
+                    UpdateBorderColor(self, {acc[1], acc[2], acc[3], 0.6})
+                end)
+            else
+                btn:SetScript("OnEnter", function(self)
+                    if self._active then return end
+                    if self.SetBackdropColor and ns.UI_GetControlChromeHoverBackdrop then
+                        local hover = ns.UI_GetControlChromeHoverBackdrop()
+                        self:SetBackdropColor(hover[1], hover[2], hover[3], hover[4] or 0.95)
+                    end
+                end)
+                btn:SetScript("OnLeave", function(self)
+                    if self._active then return end
+                    if self.SetBackdropColor and ns.UI_GetNavTabInactiveBackdrop then
+                        local idle = ns.UI_GetNavTabInactiveBackdrop()
+                        self:SetBackdropColor(idle[1], idle[2], idle[3], idle[4] or 1)
+                    end
+                end)
+            end
         end
 
         buttons[tabInfo.key] = btn
@@ -444,11 +384,23 @@ local function CreateItemsBankSubTabBar(headerParent, yOffset, currentKey, accen
         for k, btn in pairs(buttons) do
             if k == key then
                 btn._active = true
-                if btn.activeBar then btn.activeBar:SetAlpha(1) end
+                if btn.activeBar then
+                    if btn._wnBlizzardButton then
+                        btn.activeBar:Hide()
+                    else
+                        btn.activeBar:SetAlpha(1)
+                    end
+                end
                 ApplyItemsSubTabButtonVisuals(btn, true, acc2)
             else
                 btn._active = false
-                if btn.activeBar then btn.activeBar:SetAlpha(0) end
+                if btn.activeBar then
+                    if btn._wnBlizzardButton then
+                        btn.activeBar:Hide()
+                    else
+                        btn.activeBar:SetAlpha(0)
+                    end
+                end
                 ApplyItemsSubTabButtonVisuals(btn, false, acc2)
             end
         end
@@ -3418,7 +3370,7 @@ local function RepositionItemsFixedHeader(mf, hdrCache, headerParent, chrome, he
     searchBox:SetPoint("TOPRIGHT", -contentSide, -headerYOffset)
     searchBox:Show()
     if ns.UI_ApplySearchBoxChrome then
-        ns.UI_ApplySearchBoxChrome(searchBox.searchFrame or searchBox)
+        ns.UI_ApplySearchBoxChrome(searchBox.searchFrame or searchBox, { editBoxHost = true })
     end
     local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
     if searchBox.SetHeight then

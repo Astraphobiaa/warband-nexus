@@ -320,6 +320,7 @@ function MigrationService:RunMigrations(db)
 
     self:MigrateThemeColors(db)
     self:MigrateThemeMode(db)
+    self:MigrateUiThemeSplit(db)
     self:MigrateReputationMetadata(db)
     self:MigrateReputationToV2(db)
     self:MigrateGenderField(db)
@@ -536,14 +537,14 @@ function MigrationService:MigrateThemeColors(db)
     end
 end
 
---- Collapse legacy lightMode / highContrast booleans into profile.themeMode ("dark" | "light").
+--- Collapse legacy lightMode / highContrast booleans into profile.themeMode ("dark" | "light" | "classic").
 function MigrationService:MigrateThemeMode(db)
     if not db or not db.profile or db.profile.themeModeMigratedV1 then
         return
     end
 
     local p = db.profile
-    if p.themeMode ~= "light" and p.themeMode ~= "dark" then
+    if p.themeMode ~= "light" and p.themeMode ~= "dark" and p.themeMode ~= "classic" then
         if p.lightMode == true then
             p.themeMode = "light"
         else
@@ -553,6 +554,35 @@ function MigrationService:MigrateThemeMode(db)
     p.lightMode = nil
     p.highContrast = nil
     p.themeModeMigratedV1 = true
+end
+
+--- Split legacy themeMode "classic" into uiTheme + modern-only themeMode (dark|light).
+function MigrationService:MigrateUiThemeSplit(db)
+    if not db or not db.profile or db.profile.uiThemeMigratedV2 then
+        return
+    end
+
+    local p = db.profile
+    if p.themeMode == "classic" then
+        p.uiTheme = "classic"
+        if p.modernColorMode ~= "light" and p.modernColorMode ~= "dark" then
+            p.modernColorMode = "dark"
+        end
+        p.themeMode = p.modernColorMode
+    else
+        p.uiTheme = "modern"
+        if p.themeMode == "light" then
+            p.modernColorMode = "light"
+            p.themeMode = "light"
+        else
+            p.modernColorMode = p.modernColorMode or "dark"
+            if p.modernColorMode ~= "light" then
+                p.modernColorMode = "dark"
+            end
+            p.themeMode = p.modernColorMode
+        end
+    end
+    p.uiThemeMigratedV2 = true
 end
 
 --[[

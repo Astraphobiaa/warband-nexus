@@ -894,7 +894,9 @@ local function CreateCompanionWindow()
     frame:SetClampedToScreen(true)
     frame:Hide()
 
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if ns.UI_ApplyFloatingWindowShellChrome then
+        ns.UI_ApplyFloatingWindowShellChrome(frame)
+    elseif ns.UI_ApplyStandardCardElevatedChrome then
         ns.UI_ApplyStandardCardElevatedChrome(frame)
     elseif ApplyVisuals then
         ApplyVisuals(frame, (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or ChromeBackdrop(), ChromeBorder(0.7))
@@ -1182,7 +1184,9 @@ ns.RecipeCompanionWindow = {
         end
         local frame = companionFrame
         if not frame then return end
-        if ns.UI_ApplyStandardCardElevatedChrome then
+        if ns.UI_ApplyFloatingWindowShellChrome then
+            ns.UI_ApplyFloatingWindowShellChrome(frame)
+        elseif ns.UI_ApplyStandardCardElevatedChrome then
             ns.UI_ApplyStandardCardElevatedChrome(frame)
         end
         local hdr = frame._rcHeader

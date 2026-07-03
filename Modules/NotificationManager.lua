@@ -1731,12 +1731,13 @@ function WarbandNexus:HasUnclaimedVaultRewards()
     if not C_WeeklyRewards or not C_WeeklyRewards.HasAvailableRewards then
         return false
     end
-    if not C_WeeklyRewards.HasAvailableRewards() then
+    local okHas, hasAvail = pcall(C_WeeklyRewards.HasAvailableRewards)
+    if not okHas or not hasAvail then
         return false
     end
     if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
-        local isCurrent = C_WeeklyRewards.AreRewardsForCurrentRewardPeriod()
-        if not isCurrent then
+        local okCur, isCurrent = pcall(C_WeeklyRewards.AreRewardsForCurrentRewardPeriod)
+        if not okCur or not isCurrent then
             return false
         end
     end
@@ -1799,9 +1800,16 @@ function WarbandNexus:CheckNotificationsOnLogin()
                 return
             end
             local hasRewards = ns.WeeklyVaultHasPendingRewards and ns.WeeklyVaultHasPendingRewards()
-                or (C_WeeklyRewards.HasAvailableRewards and C_WeeklyRewards.HasAvailableRewards())
+            if not hasRewards and C_WeeklyRewards.HasAvailableRewards then
+                local okHas, v = pcall(C_WeeklyRewards.HasAvailableRewards)
+                hasRewards = okHas and v or false
+            end
             local canClaim = ns.WeeklyVaultCanClaimAtLocation and ns.WeeklyVaultCanClaimAtLocation()
-            local activities = (C_WeeklyRewards.GetActivities and C_WeeklyRewards.GetActivities()) or nil
+            local activities
+            if C_WeeklyRewards.GetActivities then
+                local okAct, v = pcall(C_WeeklyRewards.GetActivities)
+                activities = okAct and v or nil
+            end
             local activityCount = activities and #activities or 0
             local secsUntilReset = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset()) or nil
             DebugVerbosePrint(string.format("|cff00ccff[Vault]|r pending=%s | canClaimAtLocation=%s | activities=%s | secsUntilReset=%s",

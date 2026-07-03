@@ -106,10 +106,16 @@ local function EnsureGearContentVeil(scrollChild, mf, gen)
         if host and host.Hide then host:Hide() end
         host = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
         host._wnKeepOnTabSwitch = true
-        host:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
         local veilBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
             or COLORS.surfaceViewport or COLORS.bg or { 0.05, 0.05, 0.07, 0.94 }
-        host:SetBackdropColor(veilBg[1], veilBg[2], veilBg[3], (veilBg[4] or 1) * 0.94)
+        if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+            if ns.UI_ApplyBlizzardPanelBackdrop then
+                ns.UI_ApplyBlizzardPanelBackdrop(host, { veilBg[1], veilBg[2], veilBg[3], (veilBg[4] or 1) * 0.94 })
+            end
+        else
+            host:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+            host:SetBackdropColor(veilBg[1], veilBg[2], veilBg[3], (veilBg[4] or 1) * 0.94)
+        end
         host:SetFrameStrata("HIGH")
         host:SetFrameLevel(500)
         host:EnableMouse(true)
@@ -1817,6 +1823,10 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     if rowsOverflow then
         recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageBarW, storagePad)
         if sbCol and sbCol.Show then sbCol:Show() end
+        if sbCol and recScroll.ScrollBar and ns.UI and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+            recScroll.ScrollBar._wnOwningScrollFrame = recScroll
+            ns.UI.Factory:PositionScrollBarInContainer(recScroll.ScrollBar, sbCol, 0)
+        end
     else
         recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storagePad, storagePad)
         if sbCol and sbCol.Hide then sbCol:Hide() end
@@ -2246,41 +2256,44 @@ local gearHideFilterBtn    = nil
 local gearCharDropdownEntryPool = {}
 local gearAccentChrome = {}
 
-local function GearControlBorderAlpha()
-    return (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.55 or 0.75
-end
-
-local function GearMenuBorderAlpha()
-    return (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.55 or 0.8
-end
-
 local function ApplyGearControlChromeIdle(btn)
     if not btn then return end
-    local C = COLORS or ns.UI_COLORS or {}
-    local a = C.accent or { 0.5, 0.3, 0.8 }
+    if btn._wnBlizzardButton then return end
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(btn) then return end
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        if btn.SetBackdrop then
+            pcall(btn.SetBackdrop, btn, nil)
+        end
+        return
+    end
     local bg = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
         or COLORS.bgCard or COLORS.bgLight or COLORS.bg
+    local border = (ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor())
+        or COLORS.border or COLORS.borderLight or { 0.35, 0.35, 0.38, 1 }
+    local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.38 or 0.45
     if ApplyVisuals then
-        ApplyVisuals(btn, bg, { a[1], a[2], a[3], GearControlBorderAlpha() })
+        ApplyVisuals(btn, bg, { border[1], border[2], border[3], borderA })
     elseif btn.SetBackdropColor then
         btn:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
         if btn.SetBackdropBorderColor then
-            btn:SetBackdropBorderColor(a[1] * 0.6, a[2] * 0.6, a[3] * 0.6, GearMenuBorderAlpha())
+            btn:SetBackdropBorderColor(border[1], border[2], border[3], borderA)
         end
     end
 end
 
 local function WireGearControlChromeHover(btn)
     if not btn then return end
+    if btn._wnBlizzardButton then return end
     btn:SetScript("OnEnter", function(self)
-        local C = COLORS or ns.UI_COLORS or {}
-        local a = C.accent or { 0.5, 0.3, 0.8 }
+        if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(self) then return end
         local hover = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop())
             or COLORS.surfaceRowEven or COLORS.bgLight or COLORS.bg
+        local border = (ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor())
+            or COLORS.border or COLORS.borderLight or { 0.35, 0.35, 0.38, 1 }
         if ApplyVisuals then
-            ApplyVisuals(self, hover, { a[1], a[2], a[3], 1 })
+            ApplyVisuals(self, hover, { border[1], border[2], border[3], 0.55 })
         elseif self.SetBackdropBorderColor then
-            self:SetBackdropBorderColor(a[1], a[2], a[3], 1)
+            self:SetBackdropBorderColor(border[1], border[2], border[3], 0.55)
         end
     end)
     btn:SetScript("OnLeave", function(self)
@@ -2296,16 +2309,27 @@ end
 
 local function ApplyGearDropdownMenuChrome(menu)
     if not menu then return end
-    local C = COLORS or ns.UI_COLORS or {}
-    local a = C.accent or { 0.5, 0.3, 0.8 }
-    local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop())
+    if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(menu) then return end
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        if ns.UI_ApplyBlizzardPanelBackdrop then
+            local panelBg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bgCard)
+                or { 0, 0, 0, 0.85 }
+            ns.UI_ApplyBlizzardPanelBackdrop(menu, panelBg)
+        end
+        return
+    end
+    local shell = (ns.UI_GetDropdownMenuBackdrop and ns.UI_GetDropdownMenuBackdrop())
+        or (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop())
         or COLORS.bg or COLORS.bgCard
+    local border = (ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor())
+        or COLORS.border or COLORS.borderLight or { 0.35, 0.35, 0.38, 1 }
+    local borderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.45 or 0.55
     if ApplyVisuals then
-        ApplyVisuals(menu, shell, { a[1], a[2], a[3], GearMenuBorderAlpha() })
+        ApplyVisuals(menu, shell, { border[1], border[2], border[3], borderA })
     elseif menu.SetBackdropColor then
         menu:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 0.98)
         if menu.SetBackdropBorderColor then
-            menu:SetBackdropBorderColor(a[1] * 0.5, a[2] * 0.5, a[3] * 0.5, GearMenuBorderAlpha())
+            menu:SetBackdropBorderColor(border[1], border[2], border[3], borderA)
         end
     end
 end
@@ -2454,21 +2478,29 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
     local btn = gearCharSelectorBtn
     if not btn then
-        btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        local useBlizzardBtn = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+        if useBlizzardBtn then
+            btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+            btn._wnBlizzardButton = true
+        else
+            btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetBackdrop({
+                bgFile   = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+                insets   = { left = 0, right = 0, top = 0, bottom = 0 },
+            })
+        end
         btn:SetHeight(GEAR_CHAR_SELECTOR_HEIGHT)
-        btn:SetBackdrop({
-            bgFile   = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1,
-            insets   = { left = 0, right = 0, top = 0, bottom = 0 },
-        })
 
         EnsureGearSelectorColumnLabels(btn)
 
-        local arrow = btn:CreateTexture(nil, "ARTWORK")
-        arrow:SetSize(12, 12)
-        arrow:SetPoint("RIGHT", -5, 0)
-        arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+        if not useBlizzardBtn then
+            local arrow = btn:CreateTexture(nil, "ARTWORK")
+            arrow:SetSize(12, 12)
+            arrow:SetPoint("RIGHT", -5, 0)
+            arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+        end
 
         local hi = btn:CreateTexture(nil, "HIGHLIGHT")
         hi:SetAllPoints()
@@ -2486,8 +2518,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
     btn:ClearAllPoints()
     btn:SetHeight(GEAR_CHAR_SELECTOR_HEIGHT)
     btn:SetWidth(GEAR_CHAR_SELECTOR_WIDTH)
-    -- Vertically centered like Characters/Storage/PvE header sort controls (RIGHT, -20, 0).
-    btn:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
     ApplyGearControlChromeIdle(btn)
 
     local function SetLabelToChar(charKey)
@@ -2547,8 +2577,8 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
 
     -- Dropdown: reuse singleton menu and bg to avoid frame buildup
     btn:SetScript("OnClick", function(self)
-        local list = GetTrackedCharacters()
-        if #list == 0 then return end
+        local fullList = GetTrackedCharacters()
+        if #fullList == 0 then return end
 
         local menu = gearCharDropdownMenu
         local bg   = gearCharDropdownBg
@@ -2558,12 +2588,6 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             menu:SetFrameStrata("FULLSCREEN_DIALOG")
             menu:SetFrameLevel(500)
             menu:SetWidth(GEAR_CHAR_SELECTOR_WIDTH)
-            menu:SetBackdrop({
-                bgFile   = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                edgeSize = 1,
-                insets   = { left = 0, right = 0, top = 0, bottom = 0 },
-            })
             ApplyGearDropdownMenuChrome(menu)
             gearCharDropdownMenu = menu
         end
@@ -2580,18 +2604,96 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
         end
 
         local ENTRY_H = GEAR_CHAR_DROPDOWN_ENTRY_H
-        local rowCount = #list
         menu:ClearAllPoints()
         local btnW = math.max(1, math.floor(self:GetWidth() + 0.5))
         menu:SetWidth(btnW)
         menu:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
         ApplyGearDropdownMenuChrome(menu)
 
-        local scroll, scrollChild = GearFact:ApplyDropdownScrollLayout(menu, rowCount, ENTRY_H)
-        menu._charScroll = scroll
-        menu._charScrollChild = scrollChild
+        -- Search header: only when the roster exceeds the visible row cap.
+        local maxVisible = (GearFact.GetDropdownLayout and GearFact:GetDropdownLayout().maxVisibleRows) or 6
+        local searchH = 0
+        if #fullList > maxVisible and ns.UI_CreateSearchBox then
+            if not menu._charSearchBox then
+                local sb, clearFn = ns.UI_CreateSearchBox(menu, btnW - 16,
+                    (ns.L and ns.L["SEARCH_PLACEHOLDER"]) or "Search...",
+                    function(txt)
+                        if menu._charFilterApply then menu._charFilterApply(txt) end
+                    end, 0.15)
+                sb:ClearAllPoints()
+                sb:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -6)
+                sb:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -8, -6)
+                menu._charSearchBox = sb
+                menu._charSearchClear = clearFn
+            end
+            menu._charSearchBox:Show()
+            searchH = (menu._charSearchBox:GetHeight() or 26) + 12
+        elseif menu._charSearchBox then
+            menu._charSearchBox:Hide()
+        end
+
+        -- List host under the search header; the shared dropdown scroll layout
+        -- sizes this host, and the menu adds the search header on top.
+        local listHost = menu._charListHost
+        if not listHost then
+            listHost = CreateFrame("Frame", nil, menu)
+            menu._charListHost = listHost
+            -- ESC close (EnsureDropdownEscClose) hides the host, not the menu shell.
+            listHost:SetScript("OnHide", function()
+                if menu:IsShown() then menu:Hide() end
+                if gearCharDropdownBg then gearCharDropdownBg:Hide() end
+            end)
+        end
+        listHost:ClearAllPoints()
+        listHost:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -searchH)
+        listHost:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, -searchH)
+        listHost:Show()
 
         local selKey = selectedCharKey or GetSelectedCharKey()
+
+        local PopulateDropdownRows -- (list) defined below; fills pooled entries
+        local function ApplyLayoutAndPopulate(list)
+            local scroll, scrollChild, _, hostH = GearFact:ApplyDropdownScrollLayout(listHost, #list, ENTRY_H)
+            menu:SetHeight((hostH or listHost:GetHeight() or 0) + searchH)
+            menu._charScroll = scroll
+            menu._charScrollChild = scrollChild
+            menu._charCurrentList = list
+            PopulateDropdownRows(list)
+            if #list > 0 then
+                RefreshSelectorColumns(list)
+            end
+            if menu._charNoMatchFs then
+                menu._charNoMatchFs:SetShown(#list == 0)
+            elseif #list == 0 and FontManager and FontManager.CreateFontString then
+                local fs = FontManager:CreateFontString(listHost, "body", "OVERLAY")
+                fs:SetPoint("CENTER", listHost, "CENTER", 0, 0)
+                fs:SetText((ns.L and ns.L["NO_RESULTS"]) or "No results")
+                ns.UI_SetTextColorRole(fs, "Muted")
+                menu._charNoMatchFs = fs
+            end
+        end
+
+        menu._charFilterApply = function(txt)
+            if not menu:IsShown() then return end
+            txt = tostring(txt or ""):lower()
+            local list
+            if txt == "" then
+                list = fullList
+            else
+                list = {}
+                for fi = 1, #fullList do
+                    local d = fullList[fi].data or {}
+                    local blob = ((d.name or "") .. " " .. (d.realm or "")):lower()
+                    if blob:find(txt, 1, true) then
+                        list[#list + 1] = fullList[fi]
+                    end
+                end
+            end
+            ApplyLayoutAndPopulate(list)
+        end
+
+        function PopulateDropdownRows(list)
+        local scrollChild = menu._charScrollChild
 
         -- Hide excess pooled entries, reuse or create as needed
         for pi = #list + 1, #gearCharDropdownEntryPool do
@@ -2672,27 +2774,19 @@ local function CreateCharacterSelector(parent, currentCharKey, yOffset)
             entryBtn:Show()
             entryY = entryY - ENTRY_H
         end
-
-        GearFact:ApplyDropdownScrollLayout(menu, rowCount, ENTRY_H)
-        scroll = menu._charScroll
-        scrollChild = menu._charScrollChild
-
-        local function SyncDropdownScroll()
-            if not menu or not menu:IsShown() or not scroll or not scrollChild then return end
-            GearFact:ApplyDropdownScrollLayout(menu, rowCount, ENTRY_H)
-            scroll = menu._charScroll
-            scrollChild = menu._charScrollChild
-        end
+        end -- PopulateDropdownRows
 
         local function RelayoutColumnsAfterSize()
-            SyncDropdownScroll()
-            RefreshSelectorColumns(list)
+            if not menu or not menu:IsShown() then return end
+            ApplyLayoutAndPopulate(menu._charCurrentList or fullList)
             SetLabelToChar(selKey)
         end
 
+        -- Fresh open always starts unfiltered.
+        if menu._charSearchClear then menu._charSearchClear(false) end
         bg:Show()
         menu:Show()
-        RelayoutColumnsAfterSize()
+        ApplyLayoutAndPopulate(fullList)
         C_Timer.After(0, RelayoutColumnsAfterSize)
     end)
 

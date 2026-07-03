@@ -91,15 +91,7 @@ function M.BuildOptionsFrame()
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
     f:SetMovable(true)
-    if ns.UI_ApplyStandardCardElevatedChrome then
-        ns.UI_ApplyStandardCardElevatedChrome(f)
-    elseif ApplyVisuals then
-        ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
-    else
-        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-        local shell = GetShellBackdrop()
-        f:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 0.98)
-    end
+    M.VBApplyEasyAccessShell(f)
     f:Hide()
 
     -- Chrome header
@@ -109,9 +101,7 @@ function M.BuildOptionsFrame()
     chrome:RegisterForDrag("LeftButton")
     chrome:SetScript("OnDragStart", function() f:StartMoving() end)
     chrome:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
-    if ApplyVisuals then
-        ApplyVisuals(chrome, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
-    end
+    M.VBApplyEasyAccessHeader(chrome)
 
     local titleIcon = chrome:CreateTexture(nil, "ARTWORK")
     titleIcon:SetSize(24, 24)
@@ -130,26 +120,29 @@ function M.BuildOptionsFrame()
     ns.UI_SetTextColorRole(title, "Bright")
     f.title = title
 
-    local close = VF:CreateButton(chrome, 28, 28, true)
-    close:SetPoint("RIGHT", -8, 0)
-    local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
-    if ApplyVisuals then
-        ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
-    end
-    local closeIcon = close:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    close:SetScript("OnClick", function() f:Hide() end)
-    close:SetScript("OnEnter", function()
-        closeIcon:SetVertexColor(1, 0.2, 0.2)
-        if ApplyVisuals then ApplyVisuals(close, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
-    end)
-    close:SetScript("OnLeave", function()
+    local close = M.VBCreateEasyAccessCloseButton(chrome, function() f:Hide() end)
+    if not close then
+        close = VF:CreateButton(chrome, 28, 28, true)
+        close:SetPoint("RIGHT", -8, 0)
+        local closeBtnBg = (ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()) or { 0.15, 0.15, 0.15, 0.9 }
+        if ApplyVisuals then
+            ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8})
+        end
+        local closeIcon = close:CreateTexture(nil, "ARTWORK")
+        closeIcon:SetSize(16, 16)
+        closeIcon:SetPoint("CENTER")
+        closeIcon:SetAtlas("uitools-icon-close")
         closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
-    end)
+        close:SetScript("OnClick", function() f:Hide() end)
+        close:SetScript("OnEnter", function()
+            closeIcon:SetVertexColor(1, 0.2, 0.2)
+            if ApplyVisuals then ApplyVisuals(close, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1}) end
+        end)
+        close:SetScript("OnLeave", function()
+            closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+            if ApplyVisuals then ApplyVisuals(close, closeBtnBg, {accent[1], accent[2], accent[3], 0.8}) end
+        end)
+    end
 
     CreateMenuCheckbox(f, "Show Realm Names", -52,
         function() return GetSettings().showRealmName == true end,

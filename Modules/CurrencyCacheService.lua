@@ -96,7 +96,8 @@ end
 local function ShouldIgnoreCurrencyEvent(currencyID, currencyData, apiInfo)
     if not currencyID or currencyID == 0 then return true end
     if not apiInfo and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-        apiInfo = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+        local okInfo, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+        apiInfo = okInfo and info or nil
     end
     if apiInfo and apiInfo.isHeader == true then return true end
     local nm = (currencyData and currencyData.name) or ""

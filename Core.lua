@@ -228,7 +228,10 @@ local defaults = {
         },
         -- When true, UI accent (and derived tab/border tones) follows the logged-in character's class color; falls back to themeColors.accent if class is unavailable.
         useClassColorAccent = false,
-        themeMode = "dark",  -- "dark" | "light" — surface/text palette (Settings > Theme)
+        uiTheme = "modern",  -- "modern" | "classic" — UI chrome family (Settings > Theme)
+        themeMode = "dark",  -- "dark" | "light" — Modern surface palette only
+        modernColorMode = "dark",  -- last Modern dark/light choice (restored when leaving Classic)
+        shellBackgroundOpacity = 1.0,  -- Main window shell fill alpha (0.2-1.0; Settings > Theme)
         showItemCount = true, -- legacy fallback when showTooltipItemCount is nil
         showTooltipItemCount = true,
         showTooltipItemID = true,
@@ -457,6 +460,12 @@ local defaults = {
         -- Per-character PvE progress
         -- Structure: { [charKey] = { greatVault, lockouts, mythicPlus } }
         pveProgress = {},
+
+        -- Per-character PvP progress and match history (PvPService)
+        -- pvpProgress: { [charKey] = { brackets, honor, lastUpdated } }
+        -- pvpMatches:  { [charKey] = { lifetime, session, recent } }
+        pvpProgress = {},
+        pvpMatches = {},
         
         -- ========== ITEMS STORAGE (v2) ==========
         -- Compressed item data for reduced file size
@@ -782,7 +791,8 @@ function WarbandNexus:OnInitialize()
     self:ResetStorageTreeExpandState()
 end
 
---- Collapsible section trees (Bank, Currency, Reputation, PvE, Professions, Collections, To-Do): collapsed at login.
+--- Collapsible section trees: expand state persists per profile; login only
+--- clears transient expand-all flags and attaches the profile-backed store.
 function WarbandNexus:OnPlayerLoginSectionExpandReset()
     if ns.UI_ResetSessionSectionExpandState then
         ns.UI_ResetSessionSectionExpandState()
@@ -794,6 +804,16 @@ end
 function WarbandNexus:ApplyToggleKeybind()
     local btn = _G["WarbandNexusToggleButton"]
     if not btn then return end
+
+    -- Override bindings are protected in combat: ClearOverrideBindings /
+    -- SetOverrideBindingClick would be blocked and taint the binding system
+    -- (action bars stop updating for the rest of the fight). Defer to
+    -- OnCombatEnd instead.
+    if InCombatLockdown() then
+        self._pendingToggleKeybindApply = true
+        return
+    end
+    self._pendingToggleKeybindApply = nil
 
     ClearOverrideBindings(btn)
 
@@ -825,6 +845,7 @@ function WarbandNexus:OnEnable()
     if ns.UI_RefreshColors then
         ns.UI_RefreshColors()
     end
+    ns._wnThemeWasClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
 
     -- If schema reset is pending, block all initialization and ask user to reload.
     -- Taint: ReloadUI() is protected; addon code is tainted (timers, events, OnUpdate).
@@ -1123,15 +1144,34 @@ end
     Refresh theme colors in real-time
 ]]
 function WarbandNexus:RefreshTheme()
+    local wasClassic = ns._wnThemeWasClassic
+    local isClassic = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    local chromeKindChanged = (wasClassic ~= isClassic)
+    ns._wnThemeWasClassic = isClassic
+
+    local mf = _G.WarbandNexusFrame
+    if chromeKindChanged and mf then
+        if mf._wnRebuildCloseButton then
+            mf._wnRebuildCloseButton()
+        end
+        if mf._wnRebuildNavButtons then
+            mf._wnRebuildNavButtons()
+        end
+        if ns.UI_RefreshMainShellChrome then
+            ns.UI_RefreshMainShellChrome(mf)
+        end
+    end
+
     -- Refresh colors (handled by SharedWidgets.RefreshColors)
     if ns.UI_RefreshColors then
         ns.UI_RefreshColors()
     end
-    
-    -- Refresh embedded settings tab when active
-    local mf = _G.WarbandNexusFrame
-    if mf and mf:IsShown() and mf.currentTab == "settings" and WarbandNexus.PopulateContent then
-        WarbandNexus:PopulateContent()
+
+    -- Full content rebuild when widget class changes (Blizzard vs custom nav/cards).
+    if mf and mf:IsShown() and WarbandNexus.PopulateContent then
+        if chromeKindChanged or (mf.currentTab == "settings") then
+            WarbandNexus:PopulateContent(true)
+        end
     end
 end
 
@@ -1321,6 +1361,20 @@ function WarbandNexus:OnGuildBankOpened()
     end
     self.guildBankIsOpen = true
     self._guildBankOpenScanAt = GetTime()
+
+    -- Item APIs only return data for tabs whose contents were queried from the
+    -- server this session; without this, tabs the user never clicks scan empty
+    -- and their cached items are lost. Each response fires
+    -- GUILDBANKBAGSLOTS_CHANGED, which re-triggers the debounced rescan.
+    if QueryGuildBankTab and GetNumGuildBankTabs then
+        local okN, n = pcall(GetNumGuildBankTabs)
+        for i = 1, (okN and n) or 0 do
+            local okInfo, _, _, isViewable = pcall(GetGuildBankTabInfo, i)
+            if okInfo and isViewable then
+                pcall(QueryGuildBankTab, i)
+            end
+        end
+    end
 
     -- Scan guild bank
     if self.ScanGuildBank then
@@ -1669,6 +1723,11 @@ end
     Restores windows that were hidden by combat.
 ]]
 function WarbandNexus:OnCombatEnd()
+    -- Keybind apply requested during combat was deferred (protected calls).
+    if self._pendingToggleKeybindApply and self.ApplyToggleKeybind then
+        self:ApplyToggleKeybind()
+    end
+
     local hidden = self._windowsHiddenByCombat
     if hidden then
         -- Restore main frame

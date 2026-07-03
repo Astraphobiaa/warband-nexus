@@ -96,11 +96,15 @@ function ns.UI_CreateTitleToolbarTextButton(parent, opts)
     local btn = Factory:CreateButton(parent, width, btnH, opts.noBorder == true)
     if not btn then return nil end
 
-    if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(btn, ChromeBackdrop(), AccentBorderRGBA(0.6))
-    end
-    if Factory.ApplyHighlight then
-        Factory:ApplyHighlight(btn)
+    local useBlizzardBtn = btn._wnBlizzardButton == true
+
+    if not useBlizzardBtn then
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(btn, ChromeBackdrop(), AccentBorderRGBA(0.6))
+        end
+        if Factory.ApplyHighlight then
+            Factory:ApplyHighlight(btn)
+        end
     end
 
     local labelText = opts.text
@@ -109,21 +113,31 @@ function ns.UI_CreateTitleToolbarTextButton(parent, opts)
     end
     labelText = labelText or ""
 
-    local fs = FontManager:CreateFontString(btn, "body", "OVERLAY")
-    fs:SetPoint("CENTER", 0, 0)
-    fs:SetJustifyH("CENTER")
-    fs:SetWordWrap(false)
-    fs:SetText(labelText)
-    if ns.UI_SetTextColorRole then
-        ns.UI_SetTextColorRole(fs, "Bright")
+    local fs
+    if useBlizzardBtn then
+        btn:SetText(labelText)
+    else
+        fs = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        fs:SetPoint("CENTER", 0, 0)
+        fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(false)
+        fs:SetText(labelText)
+        if ns.UI_SetTextColorRole then
+            ns.UI_SetTextColorRole(fs, "Bright")
+        end
+        btn._toolbarLabel = fs
     end
-    btn._toolbarLabel = fs
 
     if opts.autoWidth then
         local padH = opts.padH or 12
         if C_Timer and C_Timer.After then
             C_Timer.After(0, function()
-                if fs and btn and fs.GetStringWidth and fs:GetStringWidth() > 0 then
+                if useBlizzardBtn and btn and btn.GetFontString then
+                    local bfs = btn:GetFontString()
+                    if bfs and bfs.GetStringWidth and bfs:GetStringWidth() > 0 then
+                        btn:SetWidth(bfs:GetStringWidth() + padH * 2)
+                    end
+                elseif fs and btn and fs.GetStringWidth and fs:GetStringWidth() > 0 then
                     btn:SetWidth(fs:GetStringWidth() + padH * 2)
                 end
             end)

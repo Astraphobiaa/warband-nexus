@@ -109,6 +109,8 @@ local Constants = {
         UI_DEBUG_HEADER_SYNC = "WN_UI_DEBUG_HEADER_SYNC",
         MONEY_UPDATED = "WN_MONEY_UPDATED",
         PVE_UPDATED = "WN_PVE_UPDATED",
+        --- PvP progress / match history written (PvPService); listener in PvPUI.lua.
+        PVP_UPDATED = "WN_PVP_UPDATED",
         CURRENCY_UPDATED = "WN_CURRENCY_UPDATED",
         CURRENCIES_UPDATED = "WN_CURRENCIES_UPDATED",
         CURRENCY_LOADING_STARTED = "WN_CURRENCY_LOADING_STARTED",

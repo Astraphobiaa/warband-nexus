@@ -563,8 +563,18 @@ function M.CollectionsIconBorderColors(edgeAlpha)
     return { bg[1], bg[2], bg[3], bg[4] or 0.96 }, { bc[1], bc[2], bc[3], edgeAlpha }
 end
 
-function M.ApplyCollectionsIconBorder(frame, edgeAlpha)
-    if not frame or not ApplyVisuals then return end
+function M.ApplyCollectionsIconBorder(frame, edgeAlpha, opts)
+    if not frame then return end
+    opts = type(opts) == "table" and opts or {}
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if opts.detailWell and ns.UI_ApplyIconWellChrome then
+            ns.UI_ApplyIconWellChrome(frame)
+        elseif ns.UI_ApplyListRowIconChrome then
+            ns.UI_ApplyListRowIconChrome(frame)
+        end
+        return
+    end
+    if not ApplyVisuals then return end
     local bg, edge = M.CollectionsIconBorderColors(edgeAlpha)
     ApplyVisuals(frame, bg, edge)
 end

@@ -72,22 +72,19 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
         tinsert(inspectRoot._gearSlotInspectList, btn)
     end
 
-    -- Outer border frame (quality color rim)
+    -- Plain icon cell (no rim / dark fill — both Modern and Classic)
     local borderFrame = CreateFrame("Frame", nil, btn, "BackdropTemplate")
     borderFrame:SetAllPoints()
-    borderFrame:SetBackdrop({
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets   = { left = 0, right = 0, top = 0, bottom = 0 },
-    })
+    if ns.GearUI_Chrome and ns.GearUI_Chrome.ApplyGearSlotPlainChrome then
+        ns.GearUI_Chrome.ApplyGearSlotPlainChrome(btn, borderFrame, nil)
+    else
+        borderFrame:Hide()
+    end
     btn.borderFrame = borderFrame
 
-    -- Dark background
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    local slotBg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
-        or COLORS.surfaceViewport or { 0.05, 0.05, 0.07, 0.9 }
-    bg:SetColorTexture(slotBg[1], slotBg[2], slotBg[3], slotBg[4] or 0.9)
+    bg:Hide()
     btn._gearSlotBg = bg
 
     -- Item / empty slot texture
@@ -132,11 +129,6 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
                 tex:SetTexCoord(0, 1, 0, 1)
             end
 
-            -- Quality border color
-            local q = data.quality or 0
-            local r, g, b = GetItemQualityColor(q)
-            borderFrame:SetBackdropBorderColor(r or 0.4, g or 0.4, b or 0.4, 1)
-
             -- ilvl label (only when slot has an item link and valid ilvl)
             if btn.ilvlLabel and data.itemLink and data.itemLevel and data.itemLevel > 0 then
                 btn.ilvlLabel:SetText(tostring(math.floor(tonumber(data.itemLevel) or 0)))
@@ -155,10 +147,6 @@ function ns.GearUI_Paperdoll.CreateSlotButton(parent, slotID, slotData, x, y, ha
             -- Empty slot
             tex:SetTexture(EMPTY_SLOT_TEXTURE[slotID] or SLOT_FALLBACK_TEXTURE)
             tex:SetTexCoord(0, 1, 0, 1)
-            local accent = COLORS and COLORS.accent or { 0.5, 0.3, 0.8 }
-            local border = COLORS and COLORS.border or accent
-            local emptyBorderA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.45 or 0.5
-            borderFrame:SetBackdropBorderColor(border[1] * 0.55, border[2] * 0.55, border[3] * 0.55, emptyBorderA)
             if btn.ilvlLabel then btn.ilvlLabel:Hide() end
             GearSlotClearPaperdollOverlays(btn)
         end

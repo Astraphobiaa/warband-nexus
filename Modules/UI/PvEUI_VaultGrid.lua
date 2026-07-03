@@ -28,6 +28,37 @@ local function SafeVaultNumber(v, default)
     return tonumber(v) or default
 end
 
+local function IsClassicVaultSlotChrome()
+    return ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+end
+
+local function EnsureVaultSlotClassicPanel(slotFrame)
+    if not IsClassicVaultSlotChrome() or not slotFrame or slotFrame._wnVaultClassicPanel then return end
+    if BackdropTemplateMixin and not slotFrame.SetBackdrop then
+        Mixin(slotFrame, BackdropTemplateMixin)
+    end
+    if ns.UI_ApplyBlizzardPanelBackdrop then
+        local panelBg = (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bgCard)
+            or { 0, 0, 0, 0.85 }
+        ns.UI_ApplyBlizzardPanelBackdrop(slotFrame, panelBg)
+        slotFrame._wnVaultClassicPanel = true
+        if slotFrame.bg and slotFrame.bg.Hide then
+            slotFrame.bg:Hide()
+        end
+    end
+end
+
+local function SetVaultSlotFill(slotFrame, r, g, b, a)
+    if not slotFrame then return end
+    if IsClassicVaultSlotChrome() and slotFrame.SetBackdropColor then
+        EnsureVaultSlotClassicPanel(slotFrame)
+        slotFrame:SetBackdropColor(r, g, b, a or 1)
+    elseif slotFrame.bg then
+        if slotFrame.bg.Show then slotFrame.bg:Show() end
+        slotFrame.bg:SetColorTexture(r, g, b, a or 1)
+    end
+end
+
 local function SafeStorageKey(s)
     if not s or s == "" then return nil end
     if issecretvalue and issecretvalue(s) then return nil end
@@ -876,9 +907,9 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 slotFrame.bg:SetAllPoints()
             end
             if compactSlotStyle then
-                slotFrame.bg:SetColorTexture(slotCompact[1], slotCompact[2], slotCompact[3], slotCompact[4] or 0.82)
+                SetVaultSlotFill(slotFrame, slotCompact[1], slotCompact[2], slotCompact[3], slotCompact[4] or 0.82)
             else
-                slotFrame.bg:SetColorTexture(slotIdle[1], slotIdle[2], slotIdle[3], slotIdle[4] or 0.95)
+                SetVaultSlotFill(slotFrame, slotIdle[1], slotIdle[2], slotIdle[3], slotIdle[4] or 0.95)
             end
 
             -- Left-side state stripe (slimmer in compact tracker layout)
@@ -902,10 +933,12 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                     hlTex:SetColorTexture(1, 1, 1, 0.07)
                     slotFrame:SetHighlightTexture(hlTex)
                 else
-                    if ApplyVisuals then
+                    if not IsClassicVaultSlotChrome() and ApplyVisuals then
                         ApplyVisuals(slotFrame,
                             {ac[1] * 0.14, ac[2] * 0.14, ac[3] * 0.18, 1},
                             {ac[1] * 0.70, ac[2] * 0.70, ac[3] * 0.70, 0.70})
+                    elseif IsClassicVaultSlotChrome() then
+                        EnsureVaultSlotClassicPanel(slotFrame)
                     end
                     local hl = slotFrame:CreateTexture(nil, "HIGHLIGHT")
                     hl:SetAllPoints()
@@ -925,10 +958,10 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 -- State: completed — green tint (softer in compact tracker style)
                 if compactSlotStyle then
                     slotFrame.stripe:SetColorTexture(0.20, 0.62, 0.26, 0.65)
-                    slotFrame.bg:SetColorTexture(0.07, 0.14, 0.09, 0.88)
+                    SetVaultSlotFill(slotFrame, 0.07, 0.14, 0.09, 0.88)
                 else
                     slotFrame.stripe:SetColorTexture(0.20, 0.75, 0.20, 0.90)
-                    slotFrame.bg:SetColorTexture(0.04, 0.10, 0.04, 0.95)
+                    SetVaultSlotFill(slotFrame, 0.04, 0.10, 0.04, 0.95)
                 end
 
                 local displayText = GetVaultActivityDisplayText(activity, dataKey)
@@ -1056,10 +1089,10 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 -- State: in-progress — amber tint
                 if compactSlotStyle then
                     slotFrame.stripe:SetColorTexture(0.55, 0.42, 0.14, 0.58)
-                    slotFrame.bg:SetColorTexture(0.11, 0.09, 0.05, 0.86)
+                    SetVaultSlotFill(slotFrame, 0.11, 0.09, 0.05, 0.86)
                 else
                     slotFrame.stripe:SetColorTexture(0.85, 0.60, 0.10, 0.85)
-                    slotFrame.bg:SetColorTexture(0.10, 0.08, 0.02, 0.95)
+                    SetVaultSlotFill(slotFrame, 0.10, 0.08, 0.02, 0.95)
                 end
 
                 local progressText = FontManager:CreateFontString(slotFrame, slotFontKey, "OVERLAY")
@@ -1176,7 +1209,7 @@ function WarbandNexus:PaintPvEVaultGridOnCard(vaultCard, opt)
                 -- State: no data — dim stripe / neutral cell
                 if compactSlotStyle then
                     slotFrame.stripe:SetColorTexture(0.16, 0.16, 0.20, 0.42)
-                    slotFrame.bg:SetColorTexture(slotCompact[1], slotCompact[2], slotCompact[3], (slotCompact[4] or 0.82) * 0.92)
+                    SetVaultSlotFill(slotFrame, slotCompact[1], slotCompact[2], slotCompact[3], (slotCompact[4] or 0.82) * 0.92)
                 else
                     slotFrame.stripe:SetColorTexture(borderC[1], borderC[2], borderC[3], 0.60)
                 end
