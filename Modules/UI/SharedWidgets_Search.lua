@@ -31,6 +31,20 @@ local function SearchMutedHex()
     return (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cff888888"
 end
 
+local function ResolveSurfaceTierColor(tier)
+    if ns.UI_ResolveSurfaceTierColor then
+        return ns.UI_ResolveSurfaceTierColor(tier)
+    end
+    local C = COLORS or {}
+    if tier == "rowEven" then
+        return C.surfaceRowEven or (UI_SPACING and UI_SPACING.ROW_COLOR_EVEN) or { 0.112, 0.112, 0.138, 0.96 }
+    end
+    if tier == "rowOdd" then
+        return C.surfaceRowOdd or (UI_SPACING and UI_SPACING.ROW_COLOR_ODD) or { 0.090, 0.090, 0.112, 0.96 }
+    end
+    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
+end
+
 local function RosterPickerChrome()
     if ns.UI_GetSearchBoxChromeColors then
         return ns.UI_GetSearchBoxChromeColors()
@@ -44,19 +58,6 @@ local function RosterSectionBarChrome()
     local c = COLORS
     local bg = c.surfaceRowOdd or c.bgLight or c.bg or { 0.09, 0.09, 0.11, 0.9 }
     return { bg[1], bg[2], bg[3], bg[4] or 0.9 }, { 0, 0, 0, 0 }
-end
-
-local function ResolveSurfaceTierColor(tier)
-    if ns.UI_ResolveSurfaceTierColor then
-        return ns.UI_ResolveSurfaceTierColor(tier)
-    end
-    local C = COLORS or {}
-    if tier == "rowEven" then
-        return C.surfaceRowEven or (UI_SPACING and UI_SPACING.ROW_COLOR_EVEN) or { 0.112, 0.112, 0.138, 0.96 }
-    elseif tier == "rowOdd" then
-        return C.surfaceRowOdd or (UI_SPACING and UI_SPACING.ROW_COLOR_ODD) or { 0.090, 0.090, 0.112, 0.96 }
-    end
-    return C.bg or { 0.065, 0.065, 0.082, 0.98 }
 end
 
 local function WnFormatRealmDisplay(raw)

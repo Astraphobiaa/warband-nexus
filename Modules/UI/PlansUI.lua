@@ -107,30 +107,31 @@ local function ApplyPlansChrome(frame, bg, border, opts)
     if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
     opts = type(opts) == "table" and opts or {}
 
-    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
-        if opts.listHeader and ns.UI_ApplyClassicListHeaderChrome then
-            ns.UI_ApplyClassicListHeaderChrome(frame, bg)
-            return
-        end
-        if opts.cardPanel or frame._wnClassicCard then
-            if not frame._wnClassicCard and ns.UI_ApplyClassicCardPanelChrome then
-                ns.UI_ApplyClassicCardPanelChrome(frame)
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI.Factory and ns.UI.Factory.ApplyBorder then
+        local tier = "thin"
+        if opts.listHeader then
+            if ns.UI_ApplyClassicListHeaderChrome then
+                ns.UI_ApplyClassicListHeaderChrome(frame, bg)
+                return
             end
-            return
+            tier = "panel"
+        elseif opts.cardPanel or frame._wnClassicCard then
+            tier = "card"
+        elseif opts.rowTransparent then
+            tier = "none"
+        elseif opts.iconWell then
+            tier = "iconWell"
         end
-        if opts.rowTransparent then
-            if ns.UI_ApplyClassicInteriorFlatFill then
-                ns.UI_ApplyClassicInteriorFlatFill(frame, { 0, 0, 0, 0 })
+        if tier == "card" and not frame._wnClassicCard then
+            ns.UI.Factory:ApplyBorder(frame, { tier = tier })
+        elseif tier == "iconWell" then
+            if ns.UI_ApplyIconWellChrome then
+                ns.UI_ApplyIconWellChrome(frame)
+            else
+                ns.UI.Factory:ApplyBorder(frame, { tier = tier, bgColor = bg })
             end
-            return
-        end
-        if opts.iconWell and ns.UI_ApplyIconWellChrome then
-            ns.UI_ApplyIconWellChrome(frame)
-            return
-        end
-        if ns.UI_ApplyClassicThinBorderChrome then
-            ns.UI_ApplyClassicThinBorderChrome(frame, bg)
-            return
+        else
+            ns.UI.Factory:ApplyBorder(frame, { tier = tier, bgColor = bg })
         end
         return
     end
@@ -2376,7 +2377,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local typeBadgeSz = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize())
                 or (PCM and PCM.todoTypeBadgeSize) or 24
             local ACTION_SIZE, ACTION_GAP = typeBadgeSz, 4
-            local titleRightInset = 6 + ACTION_SIZE + ACTION_GAP
+            local ACTION_EDGE = (ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+                and (PCM and PCM.classicTodoActionRightInset) or 10) or 6
+            local titleRightInset = ACTION_EDGE + ACTION_SIZE + ACTION_GAP
             if plan.type == "achievement" and plan.achievementID then
                 titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
             end
@@ -2390,15 +2393,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 titleRightInset = titleRightInset + ((PCM and PCM.todoMetaRightReserve) or 76)
             end
 
-            local hasPtsRow = plan.type == "achievement" and (tonumber(achievementPoints) or 0) > 0
-            local summarySlotLines = math.max(#summaryLines, (PCM and PCM.todoUnifiedSlotLines) or 2)
-            if #summaryLines == 0 then
-                summarySlotLines = (PCM and PCM.todoUnifiedSlotLines) or 2
-            end
-            local collapsedH = ns.UI_PlansTodoCollapsedHeight and ns.UI_PlansTodoCollapsedHeight(summarySlotLines) or todoHeaderH
-            if hasPtsRow and PCM then
-                collapsedH = collapsedH + (PCM.todoPointsRowH or 14) + (PCM.todoSummaryGap or 4)
-            end
+            -- One grid height for all unified cards (reserve points + summary slots so mounts align with achievements).
+            local collapsedH = (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true))
+                or todoHeaderH
             local rowData = {
                 todoUnifiedHeader = true,
                 summaryInHeader = true,
@@ -2447,7 +2444,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
 
             -- Header right rail: Tries + actions vertically centered on the portrait icon.
-            local rightOffset = 6
+            local rightOffset = ACTION_EDGE
             row._todoActionControls = {}
             row._todoActionOffsets = {}
             local function registerActionControl(ctrl, w)

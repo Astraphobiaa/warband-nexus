@@ -146,8 +146,7 @@ function M.RefreshMenuVaultSummary(menuFrame)
 end
 
 function M.CreateMenuItem(parent, opts, y)
-    local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(parent:GetWidth() - 8, 30)
+    local btn = M.VBButton(parent, math.max(1, parent:GetWidth() - 8), 30, true)
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, y)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
@@ -273,7 +272,7 @@ function M.BuildMenu()
     local summaryH = GetMenuSummaryHeight()
     local H = headerH + summaryH + (#items * (rowH + 2)) + pad + 2
 
-    local f = CreateFrame("Frame", "WarbandNexusVaultMenu", UIParent, "BackdropTemplate")
+    local f = M.VBContainer(UIParent, W, H, false, "WarbandNexusVaultMenu")
     AddEscCloseFrame("WarbandNexusVaultMenu")
     if ns.UI_RegisterScaledFrame then
         ns.UI_RegisterScaledFrame(f)
@@ -294,9 +293,8 @@ function M.BuildMenu()
     f.leftClickAction = GetSettings().leftClickAction
 
     -- Header bar (matches main chrome style)
-    local header = CreateFrame("Frame", nil, f)
     local menuInset = VBGetFrameContentInset()
-    header:SetHeight(headerH)
+    local header = M.VBContainer(f, 1, headerH, false)
     header:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -menuInset)
     header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -menuInset)
     if ApplyVisuals then
@@ -345,8 +343,7 @@ function M.BuildMenu()
     f.eaSummarySep = nil
     f.eaSummaryRows = {}
     if summaryH > 0 then
-        local summaryPanel = CreateFrame("Frame", nil, f)
-        summaryPanel:SetHeight(summaryH)
+        local summaryPanel = M.VBContainer(f, 1, summaryH, false)
         summaryPanel:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -(headerH + 4))
         summaryPanel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -(headerH + 4))
         if ApplyVisuals then

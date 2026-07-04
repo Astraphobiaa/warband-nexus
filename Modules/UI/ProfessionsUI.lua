@@ -22,9 +22,8 @@
     All data uses "body" font (12px); frozen column headers use subtitle for readability.
     Consistent 8px spacing between all data columns; subtle vertical rules in each gap (header + rows).
 
-    WN_FACTORY: Columns dropdown shell uses Factory + ApplyVisuals (accent rim); pooled profession
-    rows are created via FramePoolFactory (Factory bootstrap Button). Tooltip/equipment hit cells
-    already prefer Factory helpers with CreateFrame fallback.
+    WN_FACTORY: Columns dropdown shell + picker rows use Factory CreateContainer/CreateButton
+    (PvEUI_ColumnPicker parity). Pooled profession rows via FramePoolFactory.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -440,6 +439,43 @@ function PUI.RequestProfessionColumnsRefresh()
     })
 end
 
+local PROF_COLUMN_PICKER_STRATA = "FULLSCREEN_DIALOG"
+local PROF_COLUMN_PICKER_MENU_LEVEL = 120
+local PROF_COLUMN_PICKER_CATCHER_LEVEL = 119
+
+local function ProfColumnPickerFactory()
+    local Factory = ns.UI and ns.UI.Factory
+    assert(Factory and Factory.CreateContainer and Factory.CreateButton,
+        "ProfessionsUI column picker requires UI.Factory")
+    return Factory
+end
+
+local function Prof_GetOrCreateColumnPickerMenu()
+    local Factory = ProfColumnPickerFactory()
+    local menu = WarbandNexus._wnProfColumnPickerMenu
+    if menu then return menu end
+    menu = Factory:CreateContainer(UIParent, 228, 80, false)
+    assert(menu, "ProfColumnPicker menu CreateContainer failed")
+    if PUI.ApplyProfChrome then
+        PUI.ApplyProfChrome(menu, PUI.MenuShellBackdrop(), PUI.MenuShellBorder())
+    end
+    menu:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
+    menu:SetFrameLevel(PROF_COLUMN_PICKER_MENU_LEVEL)
+    menu:SetClampedToScreen(true)
+    menu:EnableMouse(true)
+    menu:EnableMouseWheel(true)
+    menu:SetScript("OnMouseWheel", function() end)
+    menu:SetScript("OnHide", function()
+        local catcher = WarbandNexus._wnProfColumnPickerCatcher
+        if catcher then catcher:Hide() end
+    end)
+    WarbandNexus._wnProfColumnPickerMenu = menu
+    if Factory.EnsureDropdownEscClose then
+        Factory:EnsureDropdownEscClose(menu)
+    end
+    return menu
+end
+
 function PUI.ProfColumnPickerHide()
     local menu = WarbandNexus._wnProfColumnPickerMenu
     if menu then menu:Hide() end
@@ -454,19 +490,18 @@ function PUI.ProfColumnPickerPositionMenu(menu, anchorBtn)
 end
 
 function PUI.ProfColumnPickerShowCatcher(menu)
+    local Factory = ProfColumnPickerFactory()
     local catcher = WarbandNexus._wnProfColumnPickerCatcher
     if not catcher then
-        local FactDd = ns.UI and ns.UI.Factory
-        catcher = FactDd and FactDd:CreateContainer(UIParent, 1, 1, false)
-        if not catcher then
-            catcher = CreateFrame("Button", "WarbandNexusProfColumnPickerCatcher", UIParent)
-        end
+        catcher = Factory:CreateButton(UIParent, 1, 1, true)
+        assert(catcher, "ProfColumnPicker catcher CreateButton failed")
         catcher:SetAllPoints(UIParent)
-        catcher:SetFrameStrata("FULLSCREEN_DIALOG")
-        catcher:SetFrameLevel(math.max(1, (menu:GetFrameLevel() or 100) - 1))
+        catcher:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
+        catcher:SetAlpha(0)
         catcher:EnableMouse(true)
-        catcher:Hide()
-        catcher:SetScript("OnMouseDown", function()
+        catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        if catcher.SetPropagateMouseClicks then catcher:SetPropagateMouseClicks(false) end
+        catcher:SetScript("OnClick", function()
             if not menu:IsShown() then
                 catcher:Hide()
                 return
@@ -479,8 +514,12 @@ function PUI.ProfColumnPickerShowCatcher(menu)
         end)
         WarbandNexus._wnProfColumnPickerCatcher = catcher
     end
-    catcher:SetFrameLevel(math.max(1, (menu:GetFrameLevel() or 100) - 1))
+    catcher:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
+    catcher:SetFrameLevel(PROF_COLUMN_PICKER_CATCHER_LEVEL)
     catcher:Show()
+    menu:SetFrameStrata(PROF_COLUMN_PICKER_STRATA)
+    menu:SetFrameLevel(PROF_COLUMN_PICKER_MENU_LEVEL)
+    menu:Raise()
 end
 
 function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
@@ -492,7 +531,7 @@ function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
 
     local ROW_H = (PUI.GetLayout().DROPDOWN_MENU_ROW_HEIGHT) or (PUI.GetLayout().ROW_HEIGHT) or 26
     local PAD = 6
-    local FactDd = ns.UI and ns.UI.Factory
+    local Factory = ProfColumnPickerFactory()
     local pickerCols, colOrder = PUI.GetToggleableColumnsInPickerOrder(profile)
     local contentH = #pickerCols * ROW_H + PAD * 2 + ROW_H + ROW_H
     menu:SetSize(228, contentH)
@@ -531,11 +570,8 @@ function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
     for tci = 1, #pickerCols do
         local tc = pickerCols[tci]
         local isVisible = PUI.IsColumnVisible(tc.key)
-        local checkRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 216, ROW_H, true)
-        if not checkRow then
-            checkRow = CreateFrame("Button", nil, menu)
-            checkRow:SetSize(216, ROW_H)
-        end
+        local checkRow = Factory:CreateButton(menu, 216, ROW_H, true)
+        assert(checkRow, "ProfColumnPicker toggle row CreateButton failed")
         checkRow:SetPoint("TOPLEFT", PAD, yOff)
 
         local checkTex = checkRow:CreateTexture(nil, "ARTWORK")
@@ -573,11 +609,8 @@ function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
         yOff = yOff - ROW_H
     end
 
-    local resetOrderRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 216, ROW_H, true)
-    if not resetOrderRow then
-        resetOrderRow = CreateFrame("Button", nil, menu)
-        resetOrderRow:SetSize(216, ROW_H)
-    end
+    local resetOrderRow = Factory:CreateButton(menu, 216, ROW_H, true)
+    assert(resetOrderRow, "ProfColumnPicker reset order row CreateButton failed")
     resetOrderRow:SetPoint("TOPLEFT", PAD, yOff)
     local resetOrderLbl = FontManager:CreateFontString(resetOrderRow, "small", "OVERLAY")
     resetOrderLbl:SetPoint("CENTER", 0, 0)
@@ -594,11 +627,8 @@ function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
     resetOrderRow:Show()
     yOff = yOff - ROW_H
 
-    local resetRow = FactDd and FactDd.CreateButton and FactDd:CreateButton(menu, 216, ROW_H, true)
-    if not resetRow then
-        resetRow = CreateFrame("Button", nil, menu)
-        resetRow:SetSize(216, ROW_H)
-    end
+    local resetRow = Factory:CreateButton(menu, 216, ROW_H, true)
+    assert(resetRow, "ProfColumnPicker show-all row CreateButton failed")
     resetRow:SetPoint("TOPLEFT", PAD, yOff)
     local resetLbl = FontManager:CreateFontString(resetRow, "small", "OVERLAY")
     resetLbl:SetPoint("CENTER", 0, 0)
@@ -618,39 +648,7 @@ end
 function WarbandNexus:ShowProfessionColumnPicker(anchorBtn)
     if not anchorBtn then return end
     WarbandNexus._wnProfColumnPickerAnchorBtn = anchorBtn
-    local FactDd = ns.UI and ns.UI.Factory
-    local menu = WarbandNexus._wnProfColumnPickerMenu
-    if not menu then
-        menu = FactDd and FactDd:CreateContainer(UIParent, 228, 80, false)
-        if not menu then
-            menu = CreateFrame("Frame", "WarbandNexusProfColumnPickerMenu", UIParent, "BackdropTemplate")
-            if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
-                if ns.UI_ApplyBlizzardPanelBackdrop then
-                    ns.UI_ApplyBlizzardPanelBackdrop(menu, PUI.MenuShellBackdrop())
-                end
-            else
-                menu:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-                local shell = PUI.MenuShellBackdrop()
-                menu:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 1)
-            end
-        elseif PUI.ApplyProfChrome then
-            PUI.ApplyProfChrome(menu, PUI.MenuShellBackdrop(), PUI.MenuShellBorder())
-        end
-        menu:SetFrameStrata("FULLSCREEN_DIALOG")
-        menu:SetFrameLevel(120)
-        menu:SetClampedToScreen(true)
-        menu:EnableMouse(true)
-        menu:EnableMouseWheel(true)
-        menu:SetScript("OnMouseWheel", function() end)
-        menu:SetScript("OnHide", function()
-            local catcher = WarbandNexus._wnProfColumnPickerCatcher
-            if catcher then catcher:Hide() end
-        end)
-        WarbandNexus._wnProfColumnPickerMenu = menu
-        if FactDd and FactDd.EnsureDropdownEscClose then
-            FactDd:EnsureDropdownEscClose(menu)
-        end
-    end
+    local menu = Prof_GetOrCreateColumnPickerMenu()
     if WarbandNexus.db and WarbandNexus.db.profile then
         PUI.EnsureProfessionVisibleColumns(WarbandNexus.db.profile)
     end
@@ -1974,7 +1972,13 @@ function PUI.WireProfessionLineOpenButton(row, prof, lineIndex, centerY, isCurre
             btn.label = FontManager:CreateFontString(btn, "small", "OVERLAY")
             btn.label:SetPoint("CENTER", 0, 0)
         end
-        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then ns.UI.Factory:ApplyHighlight(btn) end
+        if btn._wnBlizzardButton then
+            if ns.UI_NormalizeBlizzardButtonChrome then
+                ns.UI_NormalizeBlizzardButtonChrome(btn)
+            end
+        elseif ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(btn)
+        end
         row[p .. "Btn"] = btn
     end
     local btn = row[p .. "Btn"]

@@ -148,8 +148,40 @@ end
 function ns.UI.Factory:ApplyHighlight(frame, color, alpha)
     if not frame or not frame.SetHighlightTexture then return end
 
+    -- UIPanelButtonTemplate (and other Blizzard chrome): native template hover only — no WHITE8x8 wash.
+    if frame._wnBlizzardButton or (ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame)) then
+        if ns.UI_NormalizeBlizzardButtonChrome then
+            ns.UI_NormalizeBlizzardButtonChrome(frame)
+        end
+        return
+    end
+
     if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
-        frame:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        -- Subtle white wash (QuestTitleHighlight ADD was too harsh on plan cards and settings rows).
+        frame:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
+        local color, alpha
+        if ns.UI_GetRowHoverHighlight then
+            color, alpha = ns.UI_GetRowHoverHighlight()
+        else
+            color, alpha = { 1, 1, 1 }, 0.06
+        end
+        alpha = alpha or 0.06
+        local hlClassic = frame:GetHighlightTexture()
+        if hlClassic then
+            hlClassic:SetBlendMode("BLEND")
+            hlClassic:SetVertexColor(color[1], color[2], color[3], alpha)
+            hlClassic:SetDrawLayer("HIGHLIGHT")
+            hlClassic:SetSnapToPixelGrid(true)
+            hlClassic:SetTexelSnappingBias(0)
+        end
+        ns.HIGHLIGHT_REGISTRY = ns.HIGHLIGHT_REGISTRY or {}
+        if not frame._wnHighlightRegistered then
+            frame._wnHighlightRegistered = true
+            table.insert(ns.HIGHLIGHT_REGISTRY, frame)
+        end
+        frame._wnHighlightColor = nil
+        frame._wnHighlightAlpha = alpha
+        frame._wnHighlightCustom = false
         return
     end
 
@@ -194,12 +226,17 @@ local function RefreshRegisteredHighlights()
         local frame = reg[i]
         if not frame or not frame.SetHighlightTexture then
             table.remove(reg, i)
+        elseif frame._wnBlizzardButton or (ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame)) then
+            if ns.UI_NormalizeBlizzardButtonChrome then
+                ns.UI_NormalizeBlizzardButtonChrome(frame)
+            end
+            table.remove(reg, i)
         else
-        if frame._wnHighlightCustom then
-            Factory:ApplyHighlight(frame, frame._wnHighlightColor, frame._wnHighlightAlpha)
-        else
-            Factory:ApplyHighlight(frame)
-        end
+            if frame._wnHighlightCustom then
+                Factory:ApplyHighlight(frame, frame._wnHighlightColor, frame._wnHighlightAlpha)
+            else
+                Factory:ApplyHighlight(frame)
+            end
         end
     end
 end
@@ -1748,6 +1785,33 @@ function ns.UI.Factory:ApplyIconOnlyButtonChrome(btn)
     pcall(btn.SetBackdrop, btn, nil)
 end
 
+--- Snap slider raw value to step/min/max without re-entering OnValueChanged mid-drag.
+local function SnapThemedSliderValue(raw, opts)
+    local step = opts.step or 0.1
+    local minV = opts.min or 0
+    local maxV = opts.max or 1
+    local v = math.floor((raw or minV) / step + 0.5) * step
+    if v < minV then v = minV end
+    if v > maxV then v = maxV end
+    return v
+end
+
+--- Wire onChange without SetValue feedback during thumb drag (click-only worked; drag broke).
+local function AttachThemedSliderOnChange(slider, opts)
+    if not slider or not opts or not opts.onChange then return end
+    slider:SetScript("OnValueChanged", function(self, value, userInput)
+        if userInput == false then return end
+        opts.onChange(SnapThemedSliderValue(value, opts))
+    end)
+    slider:SetScript("OnMouseUp", function(self)
+        local snapped = SnapThemedSliderValue(self:GetValue(), opts)
+        if math.abs(self:GetValue() - snapped) > 0.0001 then
+            self:SetValue(snapped)
+        end
+        opts.onChange(snapped)
+    end)
+end
+
 --- Create a themed horizontal slider (accent-colored thumb + border).
 --- Single source of truth for slider styling; SettingsUI and tracker popups both use this
 --- so the look stays consistent and we don't reinvent the widget for each call site.
@@ -1763,18 +1827,9 @@ function ns.UI.Factory:CreateThemedSlider(parent, opts)
         slider:SetMinMaxValues(opts.min or 0, opts.max or 1)
         slider:SetValueStep(opts.step or 0.1)
         slider:SetObeyStepOnDrag(true)
+        slider:EnableMouse(true)
         if opts.value ~= nil then slider:SetValue(opts.value) end
-        if opts.onChange then
-            slider:SetScript("OnValueChanged", function(self, value)
-                local step = opts.step or 0.1
-                value = math.floor(value / step + 0.5) * step
-                if math.abs(self:GetValue() - value) > 0.001 then
-                    self:SetValue(value)
-                    return
-                end
-                opts.onChange(value)
-            end)
-        end
+        AttachThemedSliderOnChange(slider, opts)
         slider._wnBlizzardSlider = true
         return slider
     end
@@ -1785,6 +1840,7 @@ function ns.UI.Factory:CreateThemedSlider(parent, opts)
     slider:SetMinMaxValues(opts.min or 0, opts.max or 1)
     slider:SetValueStep(opts.step or 0.1)
     slider:SetObeyStepOnDrag(true)
+    slider:EnableMouse(true)
 
     if slider.SetBackdrop then
         slider:SetBackdrop({
@@ -1814,18 +1870,7 @@ function ns.UI.Factory:CreateThemedSlider(parent, opts)
     slider:SetThumbTexture(thumb)
 
     if opts.value ~= nil then slider:SetValue(opts.value) end
-
-    if opts.onChange then
-        slider:SetScript("OnValueChanged", function(self, value)
-            local step = opts.step or 0.1
-            value = math.floor(value / step + 0.5) * step
-            if math.abs(self:GetValue() - value) > 0.001 then
-                self:SetValue(value)
-                return
-            end
-            opts.onChange(value)
-        end)
-    end
+    AttachThemedSliderOnChange(slider, opts)
 
     return slider
 end

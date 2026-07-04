@@ -20,6 +20,11 @@ local Utilities = ns.Utilities
 local FontManager = ns.FontManager  -- Centralized font management
 local ApplyVisuals = ns.UI_ApplyVisuals
 local ToastFactory = ns.NotificationToastFactory
+
+local function NMToastLayer(parent, width, height)
+    assert(ToastFactory and ToastFactory.CreateToastLayer, "NotificationManager requires NotificationToastFactory")
+    return ToastFactory:CreateToastLayer(parent, width, height)
+end
 local NP = ns.NotificationPresentation
 assert(NP, "NotificationManager: load NotificationManager_Presentation.lua first")
 local ToastFx = ns.NotificationToastFx
@@ -165,7 +170,7 @@ local function NM_PlayToastSunGlow(toastHost, toastWidth, toastHeight)
     local washPeak = NM_SUN_WASH_PEAK * sunScaleMult
     local corePeak = math.min(1, NM_SUN_CORE_PEAK * sunScaleMult)
 
-    local fxRoot = CreateFrame("Frame", nil, toastHost)
+    local fxRoot = NMToastLayer(toastHost, toastWidth, toastHeight)
     fxRoot:SetFrameLevel(3)
     fxRoot:SetAllPoints(toastHost)
     fxRoot:SetClipsChildren(true)
@@ -179,8 +184,7 @@ local function NM_PlayToastSunGlow(toastHost, toastWidth, toastHeight)
     wash:SetVertexColor(NM_SUN_WASH_RGB[1], NM_SUN_WASH_RGB[2], NM_SUN_WASH_RGB[3], 1)
 
     local sunSize = math.floor(math.max(toastWidth, toastHeight) * 1.25)
-    local sunHost = CreateFrame("Frame", nil, fxRoot)
-    sunHost:SetSize(sunSize, sunSize)
+    local sunHost = NMToastLayer(fxRoot, sunSize, sunSize)
     sunHost:SetPoint("CENTER", fxRoot, "CENTER", 0, 0)
 
     local sunHalo = sunHost:CreateTexture(nil, "BACKGROUND", nil, -1)
@@ -270,7 +274,7 @@ local function NM_PlayToastSweepShine(toastHost, toastWidth, toastHeight)
         return
     end
 
-    local clipFrame = CreateFrame("Frame", nil, toastHost)
+    local clipFrame = NMToastLayer(toastHost, toastWidth, toastHeight)
     clipFrame:SetFrameLevel(4)
     clipFrame:SetAllPoints(toastHost)
     clipFrame:SetClipsChildren(true)
@@ -279,7 +283,7 @@ local function NM_PlayToastSweepShine(toastHost, toastWidth, toastHeight)
 
     local shineH = toastHeight
     local shineW = math.max(72, math.floor(toastWidth * NM_SHEEN_WIDTH_RATIO))
-    local shineHost = CreateFrame("Frame", nil, clipFrame)
+    local shineHost = NMToastLayer(clipFrame, toastWidth, toastHeight)
     shineHost:SetSize(shineW, shineH)
     shineHost:SetPoint("LEFT", clipFrame, "LEFT", -shineW, 0)
 
@@ -1081,9 +1085,7 @@ function WarbandNexus:ShowModalNotification(config)
             iconTexture = AS.CRITERIA_TOAST_FALLBACK_ICON
         end
         local iconLaneWidth = ICON_SLOT_WIDTH_COMPACT
-        local compactPopup = (ToastFactory and ToastFactory.CreateToastHost)
-            and ToastFactory:CreateToastHost(UIParent, popupWidthCompact, COMPACT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
-            or CreateFrame("Frame", nil, UIParent)
+        local compactPopup = ToastFactory:CreateToastHost(UIParent, popupWidthCompact, COMPACT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
         compactPopup:SetSize(popupWidthCompact, COMPACT_HEIGHT)
         compactPopup.currentYOffset = yOffset
         compactPopup.achievementID = config.achievementID
@@ -1097,11 +1099,11 @@ function WarbandNexus:ShowModalNotification(config)
         end
         
         -- Layer 0: effects (glow lines) behind the black frame
-        local effectsFrameCompact = CreateFrame("Frame", nil, compactPopup)
+        local effectsFrameCompact = NMToastLayer(compactPopup, popupWidthCompact, COMPACT_HEIGHT)
         effectsFrameCompact:SetFrameLevel(0)
         effectsFrameCompact:SetAllPoints(compactPopup)
         -- Layer 1: black background on top of effects
-        local backdropFrameCompact = CreateFrame("Frame", nil, compactPopup, "BackdropTemplate")
+        local backdropFrameCompact = NMToastLayer(compactPopup, popupWidthCompact, COMPACT_HEIGHT)
         backdropFrameCompact:SetFrameLevel(1)
         backdropFrameCompact:SetAllPoints(compactPopup)
         backdropFrameCompact:EnableMouse(false)
@@ -1116,9 +1118,8 @@ function WarbandNexus:ShowModalNotification(config)
         ToastChrome.ApplyCompactBackdropChrome(backdropFrameCompact, titleColor, 0.38)
         
         -- Layer 2: icon slot (always reserved so stacked toasts share one left gutter)
-        local iconSlotCompact = CreateFrame("Frame", nil, compactPopup)
+        local iconSlotCompact = NMToastLayer(compactPopup, iconLaneWidth, COMPACT_HEIGHT)
         iconSlotCompact:SetFrameLevel(2)
-        iconSlotCompact:SetSize(iconLaneWidth, COMPACT_HEIGHT)
         iconSlotCompact:SetPoint("LEFT", compactPopup, "LEFT", laneIconLeadingPad, 0)
 
         local iconCompact
@@ -1149,7 +1150,7 @@ function WarbandNexus:ShowModalNotification(config)
         end
         
         -- Content frame (right): text only
-        local contentFrameCompact = CreateFrame("Frame", nil, compactPopup)
+        local contentFrameCompact = NMToastLayer(compactPopup, 1, COMPACT_HEIGHT)
         contentFrameCompact:SetFrameLevel(2)
         contentFrameCompact:SetPoint("TOP", compactPopup, "TOP", 0, 0)
         contentFrameCompact:SetPoint("BOTTOM", compactPopup, "BOTTOM", 0, 0)
@@ -1197,7 +1198,7 @@ function WarbandNexus:ShowModalNotification(config)
         local useTwoLineCard = headerSafe and headerSafe ~= ""
         local categoryFirstLayout = useTwoLineCard
         local titleLine, headerLine
-        local textGroup = CreateFrame("Frame", nil, contentFrameCompact)
+        local textGroup = NMToastLayer(contentFrameCompact, textUseW, stackH)
         textGroup:SetFrameLevel(1)
         textGroup:SetPoint("TOPLEFT", contentFrameCompact, "TOPLEFT", 0, 0)
         textGroup:SetPoint("BOTTOMRIGHT", contentFrameCompact, "BOTTOMRIGHT", 0, 0)
@@ -1377,9 +1378,7 @@ function WarbandNexus:ShowModalNotification(config)
     local ICON_SLOT_WIDTH = AS.ALERT_ICON_SLOT_FULL
     local contentFrameWidth = popupWidthFull - ICON_SLOT_WIDTH
     
-    local popup = (ToastFactory and ToastFactory.CreateToastHost)
-        and ToastFactory:CreateToastHost(UIParent, popupWidthFull, AS.ALERT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
-        or CreateFrame("Frame", nil, UIParent)
+    local popup = ToastFactory:CreateToastHost(UIParent, popupWidthFull, AS.ALERT_HEIGHT, { strata = "HIGH", frameLevel = 1000 })
     popup:SetSize(popupWidthFull, AS.ALERT_HEIGHT)
     popup:SetMouseClickEnabled(true)
     if ns.UI_ApplyAddonUIScale then
@@ -1387,12 +1386,12 @@ function WarbandNexus:ShowModalNotification(config)
     end
     
     -- Layer 0: glow / edge effects (behind backdrop)
-    local effectsFrame = CreateFrame("Frame", nil, popup)
+    local effectsFrame = NMToastLayer(popup, popupWidthFull, AS.ALERT_HEIGHT)
     effectsFrame:SetFrameLevel(0)
     effectsFrame:SetAllPoints(popup)
     
     -- Layer 1: single black background (drawn on top of effects)
-    local backdropFrame = CreateFrame("Frame", nil, popup, "BackdropTemplate")
+    local backdropFrame = NMToastLayer(popup, popupWidthFull, AS.ALERT_HEIGHT)
     backdropFrame:SetFrameLevel(1)
     backdropFrame:SetAllPoints(popup)
     backdropFrame:EnableMouse(false)
@@ -1407,9 +1406,8 @@ function WarbandNexus:ShowModalNotification(config)
     backdropFrame:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     
     -- Layer 2: icon slot (icon + bling only)
-    local iconSlot = CreateFrame("Frame", nil, popup)
+    local iconSlot = NMToastLayer(popup, ICON_SLOT_WIDTH, AS.ALERT_HEIGHT)
     iconSlot:SetFrameLevel(2)
-    iconSlot:SetSize(ICON_SLOT_WIDTH, AS.ALERT_HEIGHT)
     iconSlot:SetPoint("LEFT", popup, "LEFT", 0, 0)
     
     local iconSize = AS.ALERT_ICON_SIZE_FULL
@@ -1438,7 +1436,7 @@ function WarbandNexus:ShowModalNotification(config)
     iconBling:SetBlendMode("BLEND")
     
     -- Layer 2: content frame (text only)
-    local contentFrame = CreateFrame("Frame", nil, popup)
+    local contentFrame = NMToastLayer(popup, contentFrameWidth, AS.ALERT_HEIGHT)
     contentFrame:SetFrameLevel(2)
     contentFrame:SetSize(contentFrameWidth, AS.ALERT_HEIGHT)
     contentFrame:SetPoint("LEFT", popup, "LEFT", ICON_SLOT_WIDTH, 0)

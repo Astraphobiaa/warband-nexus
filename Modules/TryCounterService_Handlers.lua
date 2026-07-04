@@ -60,6 +60,11 @@ end
 function WarbandNexus:OnTryCounterEncounterStart(event, encounterID, encounterName, difficultyID, groupSize)
     if not Fns.IsAutoTryCounterEnabled() then return end
 
+    if #RT.pendingIncrementAnnounces > 0 then
+        Fns.CancelIncrementAnnounceFlush()
+        Fns.FlushDeferredTryCounterIncrementAnnounces()
+    end
+
     -- Filter secrets: partial capture is still useful (e.g. have difficultyID + name but not ID).
     local safeEncID = (type(encounterID) == "number" and not (issecretvalue and issecretvalue(encounterID))) and encounterID or nil
     local safeName  = (type(encounterName) == "string" and encounterName ~= ""
@@ -276,6 +281,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     -- Create synthetic kill entries for eligible encounter NPCs only.
     local addedCount = 0
     local statRefreshScheduled = false
+    local lootlessMissNpcID = nil
     local safeDiffID = difficultyID
     if issecretvalue and safeDiffID and issecretvalue(safeDiffID) then safeDiffID = nil end
     for i = 1, #npcIDs do
@@ -284,6 +290,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                 if Fns.IsRaidOrDungeonInstance() and Fns.NpcEntryHasStatisticIds(RT.npcDropDB[npcID]) then
                     Fns.MarkNpcForRuntimeStatReseed(npcID, safeDiffID)
                     statRefreshScheduled = true
+                elseif Fns.IsRaidOrDungeonInstance() and not lootlessMissNpcID
+                    and not Fns.NpcEntryHasStatisticIds(RT.npcDropDB[npcID]) then
+                    lootlessMissNpcID = npcID
                 end
                 local syntheticGUID
             if useNameFallback then
@@ -310,6 +319,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     -- Raid/dungeon + statisticIds: read GetStatistic on boss death (loot optional / delayed).
     if statRefreshScheduled and Fns.ScheduleEncounterStatisticsRefresh then
         Fns.ScheduleEncounterStatisticsRefresh()
+    end
+    if lootlessMissNpcID and Fns.ScheduleEncounterLootlessMissFallback then
+        Fns.ScheduleEncounterLootlessMissFallback(lootlessMissNpcID, safeDiffID, encounterKey)
     end
     
     -- DEFERRED RETRY: If a chest was opened BEFORE this encounter ended (RP/cinematic timing),
@@ -353,6 +365,10 @@ function WarbandNexus:OnTryCounterLootReady(autoloot)
     -- A second LOOT_READY while the frame is open must not clear RT.lootSession.opened; otherwise
     -- LOOT_CLOSED treats the session as "OPENED missed" and runs the closed route again (duplicate flow logs / work).
     if not RT.lootSession.opened then
+        if #RT.pendingIncrementAnnounces > 0 then
+            Fns.CancelIncrementAnnounceFlush()
+            Fns.FlushDeferredTryCounterIncrementAnnounces()
+        end
         Fns.ResetLootSession()
     end
     RT.lootReady.numLoot = (GetNumLootItems and GetNumLootItems()) or 0
@@ -411,7 +427,7 @@ function WarbandNexus:OnTryCounterLootClosed()
         end
     end
 
-    Fns.FlushDeferredTryCounterIncrementAnnounces()
+    Fns.ScheduleIncrementAnnounceFlushAfterLoot(RT.CHAT_LOOT_DEBOUNCE)
 
     -- Full cleanup: wipe both session and ready state so nothing bleeds into next loot event.
     Fns.ResetLootSession()
@@ -530,6 +546,10 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     end
     if type(message) ~= "string" then return end
 
+    if #RT.pendingIncrementAnnounces > 0 then
+        Fns.BumpIncrementAnnounceFlushAfterLootChat()
+    end
+
     -- Only process self-loot
     local playerName = UnitName("player")
     if not playerName or (issecretvalue and issecretvalue(playerName)) then return end
@@ -644,7 +664,10 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     end
                     if itemMatches then break end
                 end
-                if itemMatches then
+                local encTtl = RT.ENCOUNTER_OBJECT_TTL or 300
+                local encFresh = killData.isEncounter and killData.time
+                    and (now - killData.time) <= encTtl
+                if itemMatches or encFresh then
                     local diff = killData.difficultyID
                     if issecretvalue and diff and issecretvalue(diff) then diff = nil end
                     if Fns.ProcessChatLootEncounterForNpc(self, itemID, killData.npcID, diff, now, guid) then

@@ -27,7 +27,7 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     local FontManager = ns.FontManager
     local diffInfo = GetDiffInfo(group.difficulty)
 
-    local header = CreateFrame("Button", nil, parent)
+    local header = M.VBButton(parent, 1, M.HEADER_H or 24, true)
     header:SetSize(totalW, 30)
     header:EnableMouse(true)
 
@@ -249,7 +249,7 @@ function M.BuildInstanceCard(parent, group, cardSize)
         end
     end
 
-    local card = CreateFrame("Button", nil, parent)
+    local card = M.VBButton(parent, 1, rowH, true)
     card:SetSize(cardSize, cardSize)
     card:EnableMouse(true)
     if ApplyVisuals then

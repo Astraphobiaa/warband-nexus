@@ -311,7 +311,7 @@ local Constants = {
     -- PvE tab — Trovehunter's Bounty column uses IsQuestFlaggedCompleted on a hidden tracking quest (per-char snapshot in cache).
     -- 86371 = weekly Trovehunter's Bounty loot/claim flag (TWW/Midnight). Confirmed in community tooling, e.g.
     --   github.com/BejayGE/BountifulDelvesHunter-Midnight (delverBountyQ = IsQuestFlaggedCompleted(86371)).
-    -- Do NOT OR in 92600 (Cracked Keystone) or 81514 (Bountiful Delves weekly) here — those are different quests and would
+    -- Do NOT OR in 92600 (Cracked Keystone) or 93909 (Midnight: Delves weekly) here — those are different quests and would
     -- show "bounty done" when only the keystone / coffer weekly was completed.
     PVE_BOUNTIFUL_WEEKLY_QUEST_IDS = {
         86371,

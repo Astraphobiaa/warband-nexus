@@ -83,7 +83,7 @@ function M.BuildOptionsFrame()
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
     local VF = ns.UI.Factory
 
-    local f = CreateFrame("Frame", "WarbandNexusVaultButtonOptions", UIParent, "BackdropTemplate")
+    local f = M.VBContainer(UIParent, 1, 1, false, "WarbandNexusVaultButtonOptions")
     AddEscCloseFrame("WarbandNexusVaultButtonOptions")
     f:SetSize(286, 372)
     f:SetFrameStrata("DIALOG")

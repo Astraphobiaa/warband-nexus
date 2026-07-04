@@ -216,6 +216,227 @@ local function IsQuestDone(questID)
     return false
 end
 
+-- Per-character weekly completion (Weekly Progress plans are per alt).
+-- Persisted in plan.charWeeklyProgress (resets each weekly reset). Warband/account weeklies
+-- rely on QUEST_TURNED_IN + in-log only; character weeklies also seed from IsQuestFlaggedCompleted
+-- while that alt is logged in (then persisted so other tabs stay accurate).
+local WEEK_SECONDS = 7 * 24 * 60 * 60
+
+local function GetWeekStartEpoch()
+    if not (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) then return nil end
+    local ok, secs = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
+    secs = ok and tonumber(secs) or nil
+    if not secs or secs <= 0 or secs > WEEK_SECONDS then return nil end
+    return time() + secs - WEEK_SECONDS
+end
+
+local function ResolvePlanCharKey(plan)
+    if not plan or not ns.Utilities or not ns.Utilities.GetCharacterKey then return nil end
+    local pk = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
+    if pk and ns.Utilities.GetCanonicalCharacterKey then
+        pk = ns.Utilities:GetCanonicalCharacterKey(pk) or pk
+    end
+    return pk
+end
+
+local function IsPlanForLoggedInCharacter(plan)
+    if not plan or not ns.Utilities then return false end
+    local planKey = ResolvePlanCharKey(plan)
+    local cur = (ns.Utilities.GetCharacterStorageKey and ns.Utilities:GetCharacterStorageKey(WarbandNexus))
+        or (ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey())
+    if cur and ns.Utilities.GetCanonicalCharacterKey then
+        cur = ns.Utilities:GetCanonicalCharacterKey(cur) or cur
+    end
+    return planKey and cur and planKey == cur
+end
+
+local function EnsurePlanCharWeeklyProgress(plan)
+    if not plan then return nil end
+    if type(plan.charWeeklyProgress) ~= "table" then
+        plan.charWeeklyProgress = { weekStart = 0, questIDs = {} }
+    end
+    local bucket = plan.charWeeklyProgress
+    if type(bucket.questIDs) ~= "table" then
+        bucket.questIDs = {}
+    end
+    local weekStart = GetWeekStartEpoch()
+    if weekStart and bucket.weekStart ~= weekStart then
+        bucket.weekStart = weekStart
+        wipe(bucket.questIDs)
+    end
+    return bucket
+end
+
+local function MarkQuestRecordedForPlan(plan, questID)
+    if not plan or not questID then return end
+    local bucket = EnsurePlanCharWeeklyProgress(plan)
+    bucket.questIDs[questID] = true
+    local known = KNOWN_QUEST_LOOKUP[questID]
+    if known then
+        if known.questID then
+            bucket.questIDs[known.questID] = true
+        end
+        if known.alternateIDs then
+            for ai = 1, #known.alternateIDs do
+                bucket.questIDs[known.alternateIDs[ai]] = true
+            end
+        end
+    end
+end
+
+local function IsQuestRecordedForPlan(plan, questID)
+    if not plan or not questID then return false end
+    local bucket = EnsurePlanCharWeeklyProgress(plan)
+    if bucket.questIDs[questID] then return true end
+    local known = KNOWN_QUEST_LOOKUP[questID]
+    if known and known.alternateIDs then
+        for ai = 1, #known.alternateIDs do
+            if bucket.questIDs[known.alternateIDs[ai]] then return true end
+        end
+    end
+    return false
+end
+
+local function IsQuestLiveCompleteInLog(questID)
+    if not questID or not C_QuestLog or not C_QuestLog.GetLogIndexForQuestID then return false end
+    local ok, logIndex = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
+    if not ok or not logIndex or logIndex <= 0 then return false end
+    if C_QuestLog.IsComplete then
+        local ok2, done = pcall(C_QuestLog.IsComplete, questID)
+        if ok2 and done == true then return true end
+    end
+    if C_QuestLog.ReadyForTurnIn then
+        local ok3, done = pcall(C_QuestLog.ReadyForTurnIn, questID)
+        if ok3 and done == true then return true end
+    end
+    return false
+end
+
+--- True when Blizzard marks the quest complete for the **logged-in** character this week.
+--- Do not use for account/warband weeklies — IsQuestFlaggedCompleted reflects warband lockout.
+local function IsWarbandScopedQuest(questID)
+    if not questID or not C_QuestLog or not C_QuestLog.IsAccountQuest then return false end
+    local ok, isAccount = pcall(C_QuestLog.IsAccountQuest, questID)
+    return ok and isAccount == true
+end
+
+local function IsQuestFlaggedCompleteForSession(questID)
+    if not questID or not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return false end
+    if IsWarbandScopedQuest(questID) then return false end
+    local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, questID)
+    return ok and done == true
+end
+
+local function IsQuestLiveCompleteForSession(questID)
+    if IsQuestLiveCompleteInLog(questID) then return true end
+    if IsQuestFlaggedCompleteForSession(questID) then return true end
+    return false
+end
+
+--- Seed plan.charWeeklyProgress from this character's completed-quest cache (current week/weeklies).
+local function BackfillPlanWeeklyFromCompletedLog(plan)
+    if not plan or not IsPlanForLoggedInCharacter(plan) then return end
+    if not C_QuestLog or not C_QuestLog.GetAllCompletedQuestIDs then return end
+    local ok, completed = pcall(C_QuestLog.GetAllCompletedQuestIDs)
+    if not ok or type(completed) ~= "table" then return end
+    for i = 1, #completed do
+        local qid = completed[i]
+        if type(qid) == "number" and qid > 0 and KNOWN_QUEST_LOOKUP[qid] then
+            MarkQuestRecordedForPlan(plan, qid)
+        end
+    end
+end
+
+--- Catalog / weekly / event rows: completion for this plan's character only.
+local function IsCatalogQuestCompleteForPlan(plan, questID, known)
+    if not plan or not questID then return false end
+    if IsQuestRecordedForPlan(plan, questID) then return true end
+    if known and known.alternateIDs then
+        for ai = 1, #known.alternateIDs do
+            if IsQuestRecordedForPlan(plan, known.alternateIDs[ai]) then return true end
+        end
+    end
+    if not IsPlanForLoggedInCharacter(plan) then
+        return false
+    end
+    if IsQuestLiveCompleteForSession(questID) then
+        MarkQuestRecordedForPlan(plan, questID)
+        return true
+    end
+    if known and known.alternateIDs then
+        for ai = 1, #known.alternateIDs do
+            local altID = known.alternateIDs[ai]
+            if IsQuestLiveCompleteForSession(altID) then
+                MarkQuestRecordedForPlan(plan, questID)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local PLAN_SCOPED_CATEGORIES = {
+    weeklyQuests = true,
+    events = true,
+}
+
+local function ApplyPlanScopedCompletion(plan, quests)
+    if not plan or not quests then return end
+    for ci = 1, #QUEST_CATEGORIES do
+        local catKey = QUEST_CATEGORIES[ci].key
+        if PLAN_SCOPED_CATEGORIES[catKey] then
+            local list = quests[catKey]
+            if list then
+                for i = 1, #list do
+                    local q = list[i]
+                    if q and q.questID then
+                        local known = KNOWN_QUEST_LOOKUP[q.questID]
+                        q.isComplete = IsCatalogQuestCompleteForPlan(plan, q.questID, known)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function PostProcessEventGroups(quests)
+    local eventList = quests and quests.events
+    if not eventList or #eventList == 0 then return end
+    local groupSubs = {}
+    local groupMains = {}
+    for i = 1, #eventList do
+        local q = eventList[i]
+        local grp = q.eventGroup
+        if grp then
+            if q.isSubQuest then
+                if not groupSubs[grp] then groupSubs[grp] = {} end
+                groupSubs[grp][#groupSubs[grp] + 1] = q
+            else
+                if not groupMains[grp] then groupMains[grp] = {} end
+                groupMains[grp][#groupMains[grp] + 1] = q
+            end
+        end
+    end
+    for _, mains in pairs(groupMains) do
+        local grp = mains[1] and mains[1].eventGroup
+        local subs = grp and groupSubs[grp]
+        local allSubsDone = false
+        if subs and #subs > 0 then
+            allSubsDone = true
+            for i = 1, #subs do
+                if not subs[i].isComplete then
+                    allSubsDone = false
+                    break
+                end
+            end
+        end
+        for i = 1, #mains do
+            -- Main event may complete via its own turn-in OR when all sub-objectives are done.
+            mains[i].isComplete = mains[i].isComplete or allSubsDone
+        end
+    end
+end
+
 -- When a WQ/daily vanishes from map APIs after turn-in, keep a "ghost" row until this time().
 -- timeLeft on quest rows is in MINUTES (C_TaskQuest.GetQuestTimeLeftMinutes).
 local function ComputeWQGhostExpiryFromSnapshot(q)
@@ -241,14 +462,17 @@ end
     - We already marked isComplete (QUEST_TURNED_IN) and ghost timer not expired.
     Drop ghosts only after wqGhostExpiresAt (remaining WQ window when last seen / at completion).
 ]]
-local function ShouldMergeVanishedDynamic(catKey, oldQ, newIDs)
+local function ShouldMergeVanishedDynamic(plan, catKey, oldQ, newIDs)
     if not oldQ or not oldQ.questID or newIDs[oldQ.questID] then
         return false
     end
     if ShouldDropExpiredWQGhost(oldQ) then
         return false
     end
-    local done = CheckSingleQuestDone(oldQ.questID)
+    local done = IsQuestRecordedForPlan(plan, oldQ.questID)
+    if not done and IsPlanForLoggedInCharacter(plan) then
+        done = CheckSingleQuestDone(oldQ.questID)
+    end
     if done then
         if not oldQ.isComplete then
             oldQ.isComplete = true
@@ -732,41 +956,7 @@ function WarbandNexus:ScanMidnightQuests()
     end
 
     -- Post-process events: main event isComplete derived from sub-quest completion
-    do
-        local eventList = quests.events
-        if eventList and #eventList > 0 then
-            local groupSubs = {}
-            local groupMains = {}
-            for i = 1, #eventList do
-                local q = eventList[i]
-                local grp = q.eventGroup
-                if grp then
-                    if q.isSubQuest then
-                        if not groupSubs[grp] then groupSubs[grp] = {} end
-                        groupSubs[grp][#groupSubs[grp] + 1] = q
-                    else
-                        if not groupMains[grp] then groupMains[grp] = {} end
-                        groupMains[grp][#groupMains[grp] + 1] = q
-                    end
-                end
-            end
-            for grp, mains in pairs(groupMains) do
-                local subs = groupSubs[grp]
-                if subs and #subs > 0 then
-                    local allSubsDone = true
-                    for i = 1, #subs do
-                        if not subs[i].isComplete then
-                            allSubsDone = false
-                            break
-                        end
-                    end
-                    for i = 1, #mains do
-                        mains[i].isComplete = allSubsDone
-                    end
-                end
-            end
-        end
-    end
+    PostProcessEventGroups(quests)
 
     -- Sort each category
     for ci = 1, #QUEST_CATEGORIES do
@@ -880,9 +1070,11 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, questTypes,
         createdDate    = time(),
         lastUpdate     = time(),
         quests         = quests,
+        charWeeklyProgress = { weekStart = GetWeekStartEpoch() or 0, questIDs = {} },
     }
 
     self.db.global.plans[#self.db.global.plans + 1] = plan
+    self:UpdateDailyPlanProgress(plan, true)
     self:SendMessage(E.PLANS_UPDATED, {
         action   = "daily_plan_created",
         planID   = planID,
@@ -930,7 +1122,7 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
                 for i = 1, #oldList do
                     local oldQ = oldList[i]
                     if oldQ and oldQ.questID and not newIDs[oldQ.questID] then
-                        if ShouldMergeVanishedDynamic(catKey, oldQ, newIDs) then
+                        if ShouldMergeVanishedDynamic(plan, catKey, oldQ, newIDs) then
                             newList[#newList + 1] = oldQ
                             newIDs[oldQ.questID] = true
                         end
@@ -965,6 +1157,12 @@ function WarbandNexus:UpdateDailyPlanProgress(plan, skipNotifications)
             end
         end
     end
+
+    if IsPlanForLoggedInCharacter(plan) then
+        BackfillPlanWeeklyFromCompletedLog(plan)
+    end
+    ApplyPlanScopedCompletion(plan, newQuests)
+    PostProcessEventGroups(newQuests)
 
     plan.quests = newQuests
     plan.lastUpdate = time()
@@ -1090,6 +1288,10 @@ function WarbandNexus:OnDailyQuestCompleted(event, questID)
         for pi = 1, #dailyList do
             local plan = dailyList[pi]
             local completedCategory, completedTitle
+
+            if questID then
+                MarkQuestRecordedForPlan(plan, questID)
+            end
 
             -- Immediately mark the quest complete in current plan data
             -- (WQs/Prey hunts may vanish from the API before the rescan runs)

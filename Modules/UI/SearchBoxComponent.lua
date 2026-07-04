@@ -1,7 +1,7 @@
 --[[
     Search box with icon, placeholder, debounced callback, and SearchStateManager registry.
 
-    WN_FACTORY: Outer shell uses `Factory:CreateContainer` when available (`ApplyVisuals` on same frame); EditBox stays a native widget.
+    WN_FACTORY: Outer shell + EditBox via `Factory:CreateContainer` / `Factory:CreateEditBox` (SharedWidgets load order).
     Debounce SEARCH_DEBOUNCE_SEC (default 0.45s); focus lost flushes pending; ESC clears filter.
 ]]
 
@@ -122,17 +122,16 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
     local initialText = initialValue or ""
 
     local Factory = ns.UI and ns.UI.Factory
+    assert(Factory and Factory.CreateContainer and Factory.CreateEditBox, "SearchBoxComponent requires UI.Factory")
     local searchH = (ns.UI_CONSTANTS and ns.UI_CONSTANTS.SEARCH_BOX_HEIGHT) or 32
 
-    local container = Factory and Factory.CreateContainer and Factory:CreateContainer(parent, width, searchH, false)
-    if not container then
-        container = CreateFrame("Frame", nil, parent)
-        container:SetSize(width, searchH)
-    end
+    local container = Factory:CreateContainer(parent, width, searchH, false)
     container.searchFrame = container
     
     if ns.UI_ApplySearchBoxChrome then
         ns.UI_ApplySearchBoxChrome(container, { editBoxHost = true })
+    elseif ns.UI.Factory and ns.UI.Factory.ApplyToolbarChrome then
+        ns.UI.Factory:ApplyToolbarChrome(container, { editBoxHost = true })
     else
         local searchBg, searchBorder = ns.UI_GetSearchBoxChromeColors and ns.UI_GetSearchBoxChromeColors()
         if not searchBg then
@@ -144,12 +143,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, deboun
         ApplyVisuals(container, searchBg, searchBorder)
     end
     
-    local searchBox
-    if Factory and Factory.CreateEditBox then
-        searchBox = Factory:CreateEditBox(container)
-    else
-        searchBox = CreateFrame("EditBox", nil, container)
-    end
+    local searchBox = Factory:CreateEditBox(container)
 
     if searchBox._wnBlizzardEditBox then
         searchBox:ClearAllPoints()

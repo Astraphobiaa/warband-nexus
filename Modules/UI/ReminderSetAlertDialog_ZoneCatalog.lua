@@ -39,7 +39,7 @@ function Z.Install(ctx)
         return fallback or key or ""
     end
         local bgCardColCatalog = COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
-        f.zoneCatalogCard = CreateFrame("Frame", nil, f.panelZone)
+        f.zoneCatalogCard = H.Container(f.panelZone, 1, 1, false)
         f.zoneCatalogCard:SetPoint("TOPLEFT", f.locationCard, "BOTTOMLEFT", 0, -8)
         f.zoneCatalogCard:SetPoint("BOTTOMRIGHT", f.panelZone, "BOTTOMRIGHT", 0, 0)
         f.zoneCatalogCard:SetClipsChildren(true)
@@ -74,15 +74,14 @@ function Z.Install(ctx)
         local expInnerW = RD.expColW
         local expPanelOuterW = expInnerW + 4
 
-        local mapsBody = CreateFrame("Frame", nil, f.zoneCatalogCard)
+        local mapsBody = H.Container(f.zoneCatalogCard, 1, 1, false)
         mapsBody:SetPoint("TOPLEFT", zoneCatHint, "BOTTOMLEFT", 0, -8)
         mapsBody:SetPoint("BOTTOMRIGHT", f.zoneCatalogCard, "BOTTOMRIGHT", -cardPad, zcPad)
         f.zoneMapsBody = mapsBody
 
-        local colHeadRow = CreateFrame("Frame", nil, mapsBody)
+        local colHeadRow = H.Container(mapsBody, 1, 18, false)
         colHeadRow:SetPoint("TOPLEFT", mapsBody, "TOPLEFT", 0, 0)
         colHeadRow:SetPoint("TOPRIGHT", mapsBody, "TOPRIGHT", 0, 0)
-        colHeadRow:SetHeight(18)
         f.zoneColHeadRow = colHeadRow
 
         local expHead = FontManager:CreateFontString(colHeadRow, "subtitle", "OVERLAY")
@@ -101,13 +100,12 @@ function Z.Install(ctx)
         mapsHead:SetText((L and L["REMINDER_ZONE_CATALOG_MAPS_LABEL"]) or "Maps")
         f.mapsHead = mapsHead
 
-        local zonePickSplit = CreateFrame("Frame", nil, mapsBody)
+        local zonePickSplit = H.Container(mapsBody, 1, 1, false)
         zonePickSplit:SetPoint("TOPLEFT", colHeadRow, "BOTTOMLEFT", 0, -8)
         zonePickSplit:SetPoint("BOTTOMRIGHT", mapsBody, "BOTTOMRIGHT", 0, 0)
         f.zonePickSplit = zonePickSplit
 
-        local expPanel = CreateFrame("Frame", nil, zonePickSplit)
-        expPanel:SetWidth(expPanelOuterW)
+        local expPanel = H.Container(zonePickSplit, expPanelOuterW, 1, false)
         expPanel:SetPoint("TOPLEFT", zonePickSplit, "TOPLEFT", 0, 0)
         expPanel:SetPoint("BOTTOMLEFT", zonePickSplit, "BOTTOMLEFT", 0, 0)
         if expPanel.SetClipsChildren then
@@ -115,7 +113,7 @@ function Z.Install(ctx)
         end
         f.zoneExpPanel = expPanel
 
-        local expListHost = CreateFrame("Frame", nil, expPanel)
+        local expListHost = H.Container(expPanel, 1, 1, false)
         expListHost:SetPoint("TOPLEFT", expPanel, "TOPLEFT", 0, 0)
         expListHost:SetPoint("BOTTOMRIGHT", expPanel, "BOTTOMRIGHT", 0, 0)
         if expListHost.SetClipsChildren then
@@ -123,14 +121,18 @@ function Z.Install(ctx)
         end
         f.zoneExpScrollChild = expListHost
 
-        local splitLine = zonePickSplit:CreateTexture(nil, "ARTWORK")
-        splitLine:SetWidth(1)
-        splitLine:SetColorTexture(borderCol[1], borderCol[2], borderCol[3], 0.45)
-        splitLine:SetPoint("TOPLEFT", expPanel, "TOPRIGHT", math.floor(splitGap * 0.5), 0)
-        splitLine:SetPoint("BOTTOMLEFT", expPanel, "BOTTOMRIGHT", math.ceil(splitGap * 0.5), 0)
+        local splitLine = Factory and Factory.CreateThemeDivider and Factory:CreateThemeDivider(zonePickSplit, {
+            orientation = "vertical",
+            variant = "section",
+            thickness = 1,
+        })
+        if splitLine then
+            splitLine:SetPoint("TOPLEFT", expPanel, "TOPRIGHT", math.floor(splitGap * 0.5), 0)
+            splitLine:SetPoint("BOTTOMLEFT", expPanel, "BOTTOMRIGHT", math.ceil(splitGap * 0.5), 0)
+        end
         f.zoneSplitLine = splitLine
 
-        local mapsPanel = CreateFrame("Frame", nil, zonePickSplit)
+        local mapsPanel = H.Container(zonePickSplit, 1, 1, false)
         mapsPanel:SetPoint("TOPLEFT", zonePickSplit, "TOPLEFT", expPanelOuterW + splitGap, 0)
         mapsPanel:SetPoint("BOTTOMRIGHT", zonePickSplit, "BOTTOMRIGHT", 0, 0)
         if mapsPanel.SetClipsChildren then
@@ -141,10 +143,9 @@ function Z.Install(ctx)
         end
         f.zoneMapsPanel = mapsPanel
 
-        local mapsListColHead = CreateFrame("Frame", nil, mapsPanel)
+        local mapsListColHead = H.Container(mapsPanel, 1, 16, false)
         mapsListColHead:SetPoint("TOPLEFT", mapsPanel, "TOPLEFT", 0, 0)
         mapsListColHead:SetPoint("TOPRIGHT", mapsPanel, "TOPRIGHT", 0, 0)
-        mapsListColHead:SetHeight(16)
         f.mapsListColHead = mapsListColHead
 
         local tagColHead = FontManager:CreateFontString(mapsListColHead, "small", "OVERLAY")
@@ -174,10 +175,8 @@ function Z.Install(ctx)
             mapsBarCol:SetPoint("BOTTOMRIGHT", mapsPanel, "BOTTOMRIGHT", 0, 0)
         end
 
-        local zScroll = Factory:CreateScrollFrame(mapsPanel, "UIPanelScrollFrameTemplate", true)
-        if not zScroll then
-            zScroll = CreateFrame("ScrollFrame", nil, mapsPanel, "UIPanelScrollFrameTemplate")
-        end
+        local zScroll = H.ScrollFrame(mapsPanel)
+        assert(zScroll, "ReminderSetAlertDialog zone catalog scroll requires Factory")
         zScroll:SetPoint("TOPLEFT", mapsListColHead, "BOTTOMLEFT", 0, -4)
         if mapsBarCol then
             zScroll:SetPoint("BOTTOMRIGHT", mapsBarCol, "BOTTOMLEFT", -4, 0)
@@ -197,42 +196,35 @@ function Z.Install(ctx)
         if catalogDef and catalogDef.sections and #catalogDef.sections > 0 then
             for ei = 1, #catalogDef.sections do
                 local sec = catalogDef.sections[ei]
-                local eb = Factory:CreateButton(expListHost, expInnerW, expBtnH, false)
-                if not eb then
-                    eb = CreateFrame("Button", nil, expListHost, "BackdropTemplate")
-                    eb:SetSize(expInnerW, expBtnH)
-                    if ApplyVisuals then
-                        local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
-                        ApplyVisuals(eb, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
+                local eb = H.Button(expListHost, expInnerW, expBtnH, false)
+                if eb then
+                    if ei == 1 then
+                        eb:SetPoint("TOPLEFT", expListHost, "TOPLEFT", 0, 0)
+                    else
+                        eb:SetPoint("TOPLEFT", f._catalogExpBtns[ei - 1], "BOTTOMLEFT", 0, -expBtnGap)
                     end
+                    eb:SetSize(expInnerW, expBtnH)
+                    local ebTxt = FontManager:CreateFontString(eb, "small", "OVERLAY")
+                    ebTxt:SetPoint("LEFT", eb, "LEFT", 8, 0)
+                    ebTxt:SetPoint("RIGHT", eb, "RIGHT", -8, 0)
+                    ebTxt:SetJustifyH("LEFT")
+                    ebTxt:SetMaxLines(2)
+                    ebTxt:SetWordWrap(true)
+                    local lk = sec.localeKey or ""
+                    ebTxt:SetText((L and lk ~= "" and L[lk]) or lk or "?")
+                    eb:SetScript("OnClick", function()
+                        f._catalogExpansionIdx = ei
+                        f:RefreshZoneCatalogRows()
+                    end)
+                    f._catalogExpBtns[ei] = eb
                 end
-                if ei == 1 then
-                    eb:SetPoint("TOPLEFT", expListHost, "TOPLEFT", 0, 0)
-                else
-                    eb:SetPoint("TOPLEFT", f._catalogExpBtns[ei - 1], "BOTTOMLEFT", 0, -expBtnGap)
-                end
-                eb:SetSize(expInnerW, expBtnH)
-                local ebTxt = FontManager:CreateFontString(eb, "small", "OVERLAY")
-                ebTxt:SetPoint("LEFT", eb, "LEFT", 8, 0)
-                ebTxt:SetPoint("RIGHT", eb, "RIGHT", -8, 0)
-                ebTxt:SetJustifyH("LEFT")
-                ebTxt:SetMaxLines(2)
-                ebTxt:SetWordWrap(true)
-                local lk = sec.localeKey or ""
-                ebTxt:SetText((L and lk ~= "" and L[lk]) or lk or "?")
-                eb:SetScript("OnClick", function()
-                    f._catalogExpansionIdx = ei
-                    f:RefreshZoneCatalogRows()
-                end)
-                f._catalogExpBtns[ei] = eb
             end
             local totalExpH = #catalogDef.sections * (expBtnH + expBtnGap) - expBtnGap
             expListHost:SetHeight(math.max(totalExpH, 40))
         end
 
-        local zChild = CreateFrame("Frame", nil, zScroll)
         local zListInitialW = math.max(200, innerW - cardPad * 2 - expPanelOuterW - splitGap - zbScrollW - 16)
-        zChild:SetWidth(zListInitialW)
+        local zChild = H.Container(zScroll, zListInitialW, 1, false)
         zScroll:SetScrollChild(zChild)
         f.zoneCatalogScroll = zScroll
         f.zoneCatalogScrollChild = zChild
@@ -344,7 +336,7 @@ function Z.Install(ctx)
             local zChild = self.zoneCatalogScrollChild
             if not zChild then return nil end
 
-            local row = CreateFrame("Frame", nil, zChild)
+            local row = H.Container(zChild, zChild:GetWidth(), ROW_H, false)
             row:SetHeight(ROW_H)
             row:SetWidth(zChild:GetWidth())
             if row.SetClipsChildren then
@@ -367,15 +359,8 @@ function Z.Install(ctx)
             row.labelFs:SetWordWrap(false)
             row.labelFs:SetMaxLines(1)
 
-            local addB = Factory:CreateButton(row, ADD_BTN_W, 22, false)
-            if not addB then
-                addB = CreateFrame("Button", nil, row, "BackdropTemplate")
-                addB:SetSize(ADD_BTN_W, 22)
-                if ApplyVisuals then
-                    local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
-                    ApplyVisuals(addB, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
-                end
-            end
+            local addB = H.Button(row, ADD_BTN_W, 22, false)
+            if not addB then return nil end
             addB:SetPoint("RIGHT", row, "RIGHT", -6, 0)
             local addTxt = FontManager:CreateFontString(addB, "small", "OVERLAY")
             addTxt:SetPoint("CENTER")

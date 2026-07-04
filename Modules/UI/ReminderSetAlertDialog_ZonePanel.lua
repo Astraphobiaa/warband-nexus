@@ -38,14 +38,13 @@ function ZP.Install(ctx)
     local B = ns.ReminderServiceBridge
     local SafeUIMapDisplayName = B and B.SafeUIMapDisplayName
     local ManualRowTagText = H and H.ManualRowTagText
-        local locationCard = CreateFrame("Frame", nil, f.panelZone)
+        local locationCard = H.Container(f.panelZone, 1, RD.locationBaseH, false)
         locationCard:SetPoint("TOPLEFT", f.panelZone, "TOPLEFT", 0, 0)
         locationCard:SetPoint("TOPRIGHT", f.panelZone, "TOPRIGHT", 0, 0)
-        locationCard:SetHeight(RD.locationBaseH)
         StyleCard(locationCard)
         f.locationCard = locationCard
 
-        local locInner = CreateFrame("Frame", nil, locationCard)
+        local locInner = H.Container(locationCard, 1, 1, false)
         locInner:SetPoint("TOPLEFT", locationCard, "TOPLEFT", cardPad, -cardPad)
         locInner:SetPoint("BOTTOMRIGHT", locationCard, "BOTTOMRIGHT", -cardPad, cardPad)
         f.locationInner = locInner
@@ -102,14 +101,13 @@ function ZP.Install(ctx)
         f.zoneMutexTipHost = CreateMutexTipHost(locInner, zoneCheck, zoneLabel)
         f:RaiseMutexTipHost(f.zoneMutexTipHost)
 
-        f.selectedZonesBlock = CreateFrame("Frame", nil, locInner)
+        f.selectedZonesBlock = H.Container(locInner, 1, 1, false)
         f.selectedZonesBlock:SetPoint("TOPLEFT", zoneCheck, "BOTTOMLEFT", 0, -10)
         f.selectedZonesBlock:SetPoint("TOPRIGHT", locInner, "TOPRIGHT", 0, -10)
 
-        local selectedToolbar = CreateFrame("Frame", nil, f.selectedZonesBlock)
+        local selectedToolbar = H.Container(f.selectedZonesBlock, 1, 28, false)
         selectedToolbar:SetPoint("TOPLEFT", f.selectedZonesBlock, "TOPLEFT", 0, 0)
         selectedToolbar:SetPoint("TOPRIGHT", f.selectedZonesBlock, "TOPRIGHT", 0, 0)
-        selectedToolbar:SetHeight(28)
         f.selectedToolbar = selectedToolbar
 
         f.mapsManualTitle = FontManager:CreateFontString(selectedToolbar, "subtitle", "OVERLAY")
@@ -122,62 +120,30 @@ function ZP.Install(ctx)
             0
         ))
 
-        local mapIdRow = CreateFrame("Frame", nil, selectedToolbar)
+        local mapIdRow = H.Container(selectedToolbar, 220, 28, false)
         mapIdRow:SetPoint("RIGHT", selectedToolbar, "RIGHT", 0, 0)
-        mapIdRow:SetSize(220, 28)
+
         f.mapIdRow = mapIdRow
 
-        local mapGetIdBtn = Factory:CreateButton(mapIdRow, 72, 26, false)
-        if not mapGetIdBtn then
-            mapGetIdBtn = CreateFrame("Button", nil, mapIdRow, "BackdropTemplate")
-            mapGetIdBtn:SetSize(72, 26)
-            if ApplyVisuals then
-                local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
-                ApplyVisuals(mapGetIdBtn, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45 })
-            end
-        end
+        local mapGetIdBtn = H.Button(mapIdRow, 72, 26, false)
+        assert(mapGetIdBtn, "ReminderSetAlertDialog mapGetIdBtn requires Factory")
         mapGetIdBtn:SetPoint("LEFT", mapIdRow, "LEFT", 0, 0)
         local mapGetIdTxt = FontManager:CreateFontString(mapGetIdBtn, "small", "OVERLAY")
         mapGetIdTxt:SetPoint("CENTER")
         mapGetIdTxt:SetText((L and L["REMINDER_ZONE_GET_ID"]) or "Get ID")
         f.mapGetIdBtn = mapGetIdBtn
 
-        local mapEditBg = Factory:CreateContainer(mapIdRow, 120, 28)
-        if not mapEditBg then
-            mapEditBg = CreateFrame("Frame", nil, mapIdRow)
-            mapEditBg:SetHeight(28)
-        end
+        local mapEditBg = H.Container(mapIdRow, 120, 26, false)
         mapEditBg:SetPoint("LEFT", mapGetIdBtn, "RIGHT", 6, 0)
         mapEditBg:SetPoint("RIGHT", mapIdRow, "RIGHT", 0, 0)
-        mapEditBg:SetHeight(26)
         if ApplyVisuals then
             local chrome = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or COLORS.bgCard
             ApplyVisuals(mapEditBg, chrome, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
         end
         mapEditBg:EnableMouse(true)
 
-        local mapEdit = Factory:CreateEditBox(mapEditBg)
-        if not mapEdit then
-            mapEdit = CreateFrame("EditBox", nil, mapEditBg, "BackdropTemplate")
-            mapEdit:SetPoint("LEFT", mapEditBg, "LEFT", 4, 0)
-            mapEdit:SetPoint("RIGHT", mapEditBg, "RIGHT", -4, 0)
-            mapEdit:SetHeight(22)
-            mapEdit:SetBackdrop({
-                bgFile = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                tile = false,
-                edgeSize = 1,
-                insets = { left = 2, right = 2, top = 2, bottom = 2 },
-            })
-            mapEdit:SetBackdropColor(0.06, 0.06, 0.08, 1)
-            mapEdit:SetBackdropBorderColor(borderCol[1], borderCol[2], borderCol[3], 0.8)
-            mapEdit:SetFontObject(GameFontHighlightSmall)
-            mapEdit:SetTextInsets(6, 6, 1, 1)
-            if FontManager and FontManager.ApplyFontToEditBox then
-                FontManager:ApplyFontToEditBox(mapEdit, "small")
-                FontManager:RegisterManagedEditBox(mapEdit, "small")
-            end
-        end
+        local mapEdit = H.EditBox(mapEditBg)
+        assert(mapEdit, "ReminderSetAlertDialog mapEdit requires Factory")
         mapEdit:SetPoint("LEFT", mapEditBg, "LEFT", 6, 0)
         mapEdit:SetPoint("RIGHT", mapEditBg, "RIGHT", -6, 0)
         mapEdit:SetHeight(22)
@@ -214,10 +180,12 @@ function ZP.Install(ctx)
             or (L and L["REMINDER_ZONE_MANUAL_EMPTY"])
             or "No zones selected. Add from the browser below or enter a map ID.")
 
-        f.mapsManualRowsHost = CreateFrame("Frame", nil, f.selectedZonesBlock)
+        f.mapsManualRowsHost = H.Container(f.selectedZonesBlock, 1, 1, false)
         f.mapsManualRowsHost:SetPoint("TOPLEFT", selectedToolbar, "BOTTOMLEFT", 0, -4)
         f.mapsManualRowsHost:SetPoint("TOPRIGHT", f.selectedZonesBlock, "TOPRIGHT", 0, -4)
-        f.mapsManualRowsHost:SetClipsChildren(true)
+        if f.mapsManualRowsHost.SetClipsChildren then
+            f.mapsManualRowsHost:SetClipsChildren(true)
+        end
 
         local MAN_ROW_H = 26
         local MAN_TAG_W = 54
@@ -230,8 +198,7 @@ function ZP.Install(ctx)
 
         f._manualMapRows = {}
         for mri = 1, MAX_MANUAL_MAP_ROWS do
-            local row = CreateFrame("Frame", nil, f.mapsManualRowsHost)
-            row:SetHeight(MAN_ROW_H)
+            local row = H.Container(f.mapsManualRowsHost, 1, MAN_ROW_H, false)
             row:Hide()
 
             row.tagFs = FontManager:CreateFontString(row, "small", "OVERLAY")
@@ -239,11 +206,8 @@ function ZP.Install(ctx)
             row.tagFs:SetPoint("LEFT", row, "LEFT", mmPad, 0)
             row.tagFs:SetJustifyH("CENTER")
 
-            row.rmBtn = Factory:CreateButton(row, MAN_RM_W, 22, false)
-            if not row.rmBtn then
-                row.rmBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
-                row.rmBtn:SetSize(MAN_RM_W, 22)
-            end
+            row.rmBtn = H.Button(row, MAN_RM_W, 22, false)
+            assert(row.rmBtn, "ReminderSetAlertDialog manual row remove requires Factory")
             row.rmBtn:SetPoint("RIGHT", row, "RIGHT", -mmPad, 0)
             if ApplyVisuals then
                 ApplyVisuals(row.rmBtn, { 0.22, 0.1, 0.1, 1 }, { 0.75, 0.28, 0.28, 0.85 })

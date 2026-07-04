@@ -236,13 +236,8 @@ local function NM_CreateWhatsNewDismiss()
 end
 
 local function NM_CreateWhatsNewCloseIcon(parent, onDismiss, popupLevel, ar, ag, ab)
-    local btn
-    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
-        btn = ns.UI.Factory:CreateButton(parent, 28, 28, false)
-    else
-        btn = CreateFrame("Button", nil, parent)
-        btn:SetSize(28, 28)
-    end
+    local btn = ns.UI.Factory:CreateButton(parent, 28, 28, false)
+    assert(btn, "What's New close button requires UI.Factory")
     btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -10)
     btn:SetFrameLevel((popupLevel or parent:GetFrameLevel() or 0) + 50)
     if ApplyVisuals then
@@ -275,15 +270,22 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     local changelogScrollBottom = 72
     local dismiss = NM_CreateWhatsNewDismiss()
 
-    local host = CreateFrame("Frame", "WarbandNexusUpdateBackdrop", UIParent)
-    host:SetFrameStrata("DIALOG")
-    host:SetFrameLevel(200)
+    local ToastFactory = ns.NotificationToastFactory
+    assert(ToastFactory and ToastFactory.CreateToastHost, "What's New requires NotificationToastFactory")
+    assert(ns.UI and ns.UI.Factory, "What's New requires UI.Factory")
+
+    -- Global name via CreateFrame (Frame has no SetName API — only AceGUI widgets do).
+    local host = ToastFactory:CreateToastHost(UIParent, UIParent:GetWidth() or 1, UIParent:GetHeight() or 1, {
+        strata = "DIALOG",
+        frameLevel = 200,
+        enableMouse = false,
+        globalName = "WarbandNexusUpdateBackdrop",
+    })
     host:SetAllPoints()
-    host:EnableMouse(false)
     host:EnableKeyboard(true)
     host:SetPropagateKeyboardInput(false)
 
-    local scrim = CreateFrame("Frame", nil, host)
+    local scrim = ToastFactory:CreateToastLayer(host, 1, 1)
     scrim:SetAllPoints()
     scrim:SetFrameLevel(host:GetFrameLevel())
     scrim:EnableMouse(true)
@@ -298,8 +300,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     scrimBg:SetColorTexture(dim[1], dim[2], dim[3], dim[4] or 1)
     host._wnDimTexture = scrimBg
 
-    local popup = CreateFrame("Frame", nil, host, "BackdropTemplate")
-    popup:SetSize(600, 550)
+    local popup = ns.UI.Factory:CreateContainer(host, 600, 550, false)
+    assert(popup, "What's New popup requires UI.Factory")
     popup:SetPoint("CENTER", 0, 50)
     popup:SetFrameLevel(host:GetFrameLevel() + 20)
     popup:EnableMouse(true)
@@ -353,11 +355,15 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     end
     
     -- Separator line
-    local separator = popup:CreateTexture(nil, "ARTWORK")
-    separator:SetHeight(1)
-    separator:SetPoint("TOPLEFT", changelogSidePad, -140)
-    separator:SetPoint("TOPRIGHT", -changelogSidePad, -140)
-    separator:SetColorTexture(ar, ag, ab, 0.6)
+    local separator = ns.UI.Factory:CreateThemeDivider(popup, {
+        orientation = "horizontal",
+        variant = "section",
+        thickness = 1,
+    })
+    if separator then
+        separator:SetPoint("TOPLEFT", changelogSidePad, -140)
+        separator:SetPoint("TOPRIGHT", -changelogSidePad, -140)
+    end
     
     if FontManager and FontManager.CreateFontString then
         local whatsNewLabel = FontManager:CreateFontString(popup, "title", "OVERLAY")
@@ -384,69 +390,32 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     }
     
     local scrollFrame, scrollChild
-    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and FontManager and FontManager.CreateFontString then
-        scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetFrameLevel(popup:GetFrameLevel() + 5)
-        scrollFrame:SetPoint("TOPLEFT", changelogSidePad, -changelogScrollTop)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -changelogRightInset, changelogScrollBottom)
-        if ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
-            local chgSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-            local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, chgSbColW, changelogScrollTop, changelogScrollBottom)
-            scrollBarColumn:SetFrameLevel(popup:GetFrameLevel() + 6)
-            ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
-        end
-        if ns.UI.Factory.CreateContainer then
-            scrollChild = ns.UI.Factory:CreateContainer(scrollFrame, CONTENT_WIDTH, 8, false)
-        end
-        if not scrollChild then
-            scrollChild = CreateFrame("Frame", nil, scrollFrame)
-        end
-        scrollChild:SetWidth(CONTENT_WIDTH)
-        scrollFrame:SetScrollChild(scrollChild)
-        NM_ScheduleChangelogPopulate(scrollChild, scrollFrame, changelogData, geometry)
-    else
-        -- Fallback: simple non-scrolling text block so popup never breaks
-        scrollChild = CreateFrame("Frame", nil, popup)
-        scrollChild:SetPoint("TOPLEFT", changelogSidePad, -changelogScrollTop)
-        scrollChild:SetPoint("BOTTOMRIGHT", -changelogSidePad, changelogScrollBottom)
-        scrollFrame = nil
-        local fallbackText
-        if FontManager and FontManager.CreateFontString then
-            fallbackText = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-        else
-            fallbackText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        end
-        fallbackText:SetPoint("TOPLEFT", TEXT_PAD, 0)
-        fallbackText:SetWidth(TEXT_WIDTH)
-        fallbackText:SetJustifyH("LEFT")
-        fallbackText:SetWordWrap(true)
-        fallbackText:SetText((changelogData.changes and table.concat(changelogData.changes, "\n")) or "")
-        ns.UI_SetTextColorRole(fallbackText, "Bright")
-        scrollChild:SetScript("OnSizeChanged", function()
-            fallbackText:SetWidth(scrollChild:GetWidth() - (TEXT_PAD * 2))
-        end)
+    assert(
+        ns.UI.Factory.CreateScrollFrame and FontManager and FontManager.CreateFontString,
+        "What's New scroll requires UI.Factory + FontManager"
+    )
+    scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
+    scrollFrame:SetFrameLevel(popup:GetFrameLevel() + 5)
+    scrollFrame:SetPoint("TOPLEFT", changelogSidePad, -changelogScrollTop)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -changelogRightInset, changelogScrollBottom)
+    if ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
+        local chgSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, chgSbColW, changelogScrollTop, changelogScrollBottom)
+        scrollBarColumn:SetFrameLevel(popup:GetFrameLevel() + 6)
+        ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
+    scrollChild = ns.UI.Factory:CreateContainer(scrollFrame, CONTENT_WIDTH, 8, false)
+    assert(scrollChild, "What's New scroll child requires UI.Factory")
+    scrollChild:SetWidth(CONTENT_WIDTH)
+    scrollFrame:SetScrollChild(scrollChild)
+    NM_ScheduleChangelogPopulate(scrollChild, scrollFrame, changelogData, geometry)
     
     -- Close button (Factory rim + accent fill; preserves hover brighten via ApplyVisuals)
-    local closeBtn
-    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
-        closeBtn = ns.UI.Factory:CreateButton(popup, 120, 35, false)
-        if ApplyVisuals then
-            local idle = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
-            ApplyVisuals(closeBtn, idle or { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
-        end
-    end
-    if not closeBtn then
-        closeBtn = CreateFrame("Button", nil, popup, "BackdropTemplate")
-        closeBtn:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = false,
-            edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 },
-        })
-        closeBtn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
-        closeBtn:SetBackdropBorderColor(ar, ag, ab, 1)
+    local closeBtn = ns.UI.Factory:CreateButton(popup, 120, 35, false)
+    assert(closeBtn, "What's New close button requires UI.Factory")
+    if ApplyVisuals then
+        local idle = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
+        ApplyVisuals(closeBtn, idle or { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
     end
     closeBtn:SetFrameLevel(popup:GetFrameLevel() + 40)
     closeBtn:SetPoint("BOTTOM", 0, changelogCloseBottom)

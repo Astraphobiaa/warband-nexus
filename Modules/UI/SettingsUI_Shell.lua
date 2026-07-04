@@ -239,6 +239,9 @@ local function CreateSettingsNavButton(parent, panelId, label, btnW, rowH)
         btn:SetHeight(tabH)
         btn:SetText("")
         btn._wnBlizzardButton = true
+        if ns.UI_NormalizeBlizzardButtonChrome then
+            ns.UI_NormalizeBlizzardButtonChrome(btn)
+        end
     else
         btn = CreateFrame("Button", nil, parent)
         btn:SetSize(btnW, rowH)
@@ -352,29 +355,31 @@ function M.BuildCategoryNav(parent, width, activeId, onSelect)
 
         if prevBtn then
             local sep = btn._wnRailSepAbove
-            if not sep then
-                sep = parent:CreateTexture(nil, "ARTWORK")
+            if not sep and ns.UI.Factory and ns.UI.Factory.CreateRailTabSeparator then
+                sep = ns.UI.Factory:CreateRailTabSeparator(parent, { height = sepH })
                 btn._wnRailSepAbove = sep
             end
-            local div = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or ac
-            sep:SetColorTexture(div[1], div[2], div[3], div[4] or 1)
-            sep:SetHeight(sepH)
-            sep:ClearAllPoints()
-            sep:SetPoint("LEFT", parent, "LEFT", pad, 0)
-            sep:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
             local gapAbove = math.floor(vGap * 0.5)
             local gapBelow = vGap - gapAbove
             if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
-                sep:Hide()
+                if sep and sep.Hide then sep:Hide() end
                 btn:ClearAllPoints()
                 btn:SetPoint("TOP", prevBtn, "BOTTOM", 0, -(gapAbove + sepH + gapBelow))
                 btn:SetPoint("LEFT", parent, "LEFT", pad, 0)
                 btn:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
-            else
+            elseif sep then
+                sep:ClearAllPoints()
+                sep:SetPoint("LEFT", parent, "LEFT", pad, 0)
+                sep:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
                 sep:SetPoint("TOP", prevBtn, "BOTTOM", 0, -gapAbove)
                 sep:Show()
                 btn:ClearAllPoints()
                 btn:SetPoint("TOP", sep, "BOTTOM", 0, -gapBelow)
+                btn:SetPoint("LEFT", parent, "LEFT", pad, 0)
+                btn:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
+            else
+                btn:ClearAllPoints()
+                btn:SetPoint("TOP", prevBtn, "BOTTOM", 0, -vGap)
                 btn:SetPoint("LEFT", parent, "LEFT", pad, 0)
                 btn:SetPoint("RIGHT", parent, "RIGHT", -pad, 0)
             end
@@ -444,37 +449,23 @@ function M.RefreshThemeChrome()
     end
     local navDivider = navCol._wnSettingsNavDivider
     if navDivider then
-        if useClassic then
-            navDivider:Hide()
-        else
-            navDivider:Show()
-            local divNav = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
-                or (ns.UI_COLORS and ns.UI_COLORS.borderLight)
-            if divNav and navDivider.SetColorTexture then
-                navDivider:SetColorTexture(divNav[1], divNav[2], divNav[3], divNav[4] or 1)
-            end
+        if ns.UI.Factory and ns.UI.Factory.RefreshThemeDivider then
+            ns.UI.Factory:RefreshThemeDivider(navDivider)
         end
-    end
-    local navDividerClassic = navCol._wnClassicNavDivider
-    if navDividerClassic then
-        if useClassic then
-            navDividerClassic:Show()
-        else
-            navDividerClassic:Hide()
+        if navDivider.Show then
+            navDivider:Show()
         end
     end
     local bodyRow = mf and mf._wnSettingsBodyRow
     if bodyRow and bodyRow._wnClassicTopBorder then
-        if useClassic then
-            bodyRow._wnClassicTopBorder:Show()
-        else
-            bodyRow._wnClassicTopBorder:Hide()
-        end
+        bodyRow._wnClassicTopBorder:Hide()
     end
     if useClassic and ns.UI_ApplyClassicTransparentInterior then
         if bodyRow then ns.UI_ApplyClassicTransparentInterior(bodyRow) end
         local host = mf and mf._wnSettingsHost
         if host then ns.UI_ApplyClassicTransparentInterior(host) end
+        local navCol = mf and mf._wnSettingsNavCol
+        if navCol then ns.UI_ApplyClassicTransparentInterior(navCol) end
     end
     M.ApplyCategoryNavStates(navCol, M.GetActivePanel())
 end

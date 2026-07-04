@@ -61,3 +61,22 @@ function H.ManualRowTagText(mapID)
     local Lz = ns.L
     return (Lz and Lz["REMINDER_ZONE_CAT_TAG_ZONE"]) or "[Z]"
 end
+
+--- Factory layout hosts (Reminder dialog family).
+function H.Container(parent, width, height, withBorder, globalName)
+    local Factory = ns.UI and ns.UI.Factory
+    assert(Factory and Factory.CreateContainer, "ReminderSetAlertDialog requires UI.Factory")
+    return Factory:CreateContainer(parent, width or 1, height or 1, withBorder == true, globalName)
+end
+
+function H.Button(parent, width, height, noBorder)
+    return ns.UI.Factory:CreateButton(parent, width, height, noBorder == true)
+end
+
+function H.ScrollFrame(parent)
+    return ns.UI.Factory:CreateScrollFrame(parent, "UIPanelScrollFrameTemplate", false)
+end
+
+function H.EditBox(parent)
+    return ns.UI.Factory:CreateEditBox(parent)
+end

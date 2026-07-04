@@ -9,7 +9,7 @@
 
 If you are not sure which tag applies, use the **"When you want X, tag Y"** table at the bottom â€” it maps common requests to the right tags. Tagging is a hint, not a contract: the agent will still confirm the correct layer before editing.
 
-Counts (Lines / Locals / Health) were measured for v3.2.3 and drift over time â€” the tags and roles are the stable part.
+Counts (Lines / Locals / Health) were measured **2026-07-03** (ops split PR) and drift over time â€” the tags and roles are the stable part.
 
 ---
 
@@ -87,10 +87,12 @@ Counts (Lines / Locals / Health) were measured for v3.2.3 and drift over time â€
 | `Modules/DataService_Compression.lua` | **SERVICE:Data_Compression** | Compression helpers (LibDeflate) for stored data â€” split from DataService. | 117 | 4 | OK |
 | `Modules/DataService_RosterHelpers.lua` | **SERVICE:Data_Roster** | Roster cache signature and safe money/storage row helpers â€” split from DataService. | 339 | 17 | OK |
 | `Modules/CommandService.lua` | **SERVICE:Commands** | All `/wn` slash-command routing. | 1009 | 13 | OK |
-| `Modules/CollectionService.lua` | **SERVICE:Collection** | Mount/pet/toy ownership cache + real-time "you just collected X" detection. | 5995 | 89 | HOT |
+| `Modules/CollectionService.lua` | **SERVICE:Collection** | Mount/pet/toy cache entry; store/events in satellites. | 5125 | 87 | HOT |
 | `Modules/CollectionService_Materialize.lua` | **SERVICE:Collection_Materialize** | Chunked pet/toy journal loading â€” split from CollectionService. | 348 | 12 | OK |
 | `Modules/CollectionService_NotifyDedup.lua` | **SERVICE:Collection_NotifyDedup** | Prevents duplicate "collected!" notifications (ring buffer + DB layers). | 332 | 33 | OK |
 | `Modules/CollectionService_Scan.lua` | **SERVICE:Collection_Scan** | Bag/loot scanning that detects newly obtained collectibles. | 433 | 14 | OK |
+| `Modules/CollectionService_Store.lua` | **SERVICE:Collection_Store** | `SaveCollectionStore`, owned cache build, deferred persist. | 314 | 17 | OK |
+| `Modules/CollectionService_Events.lua` | **SERVICE:Collection_Events** | `NEW_*` handlers + `WN_COLLECTIBLE_OBTAINED` listener. | 617 | 18 | OK |
 | `Modules/CollectionRules.lua` | **SERVICE:CollectionRules** | Per-type rules: is this collected, can this character collect it. | 364 | 7 | OK |
 | `Modules/ReputationScanner.lua` | **SERVICE:Reputation_Scanner** | Raw reputation reads from the WoW API (no transforms). | 352 | 9 | OK |
 | `Modules/ReputationProcessor.lua` | **SERVICE:Reputation_Processor** | Normalizes scanner output into UI-ready standing/progress records. | 690 | 5 | OK |
@@ -99,16 +101,18 @@ Counts (Lines / Locals / Health) were measured for v3.2.3 and drift over time â€
 | `Modules/TooltipService_GameTooltip.lua` | **SERVICE:Tooltip_GameTooltip** | Injects WN lines (owned-by, try counts, concentration) into Blizzard's game tooltip. | 1936 | 55 | OK |
 | `Modules/GuildBankScanner.lua` | **SERVICE:GuildBank** | Scans and caches guild bank contents. | 704 | 19 | OK |
 | `Modules/VaultScanner.lua` | **SERVICE:VaultScanner** | Event-driven Great Vault data requests at login. | 345 | 9 | OK |
-| `Modules/TryCounterService.lua` | **SERVICE:TryCounter** | Counts your kill/loot attempts for mount/pet drops (the "tries" numbers). | 8564 | 185 | HOT |
+| `Modules/TryCounterService.lua` | **SERVICE:TryCounter** | Try Counter entry + IIFE runtime; loot/stats in satellites. | 6828 | 177 | HOT |
 | `Modules/TryCounterService_Shared.lua` | **SERVICE:TryCounter_Shared** | Try Counter shared constants and chat helpers. | 69 | 5 | OK |
 | `Modules/TryCounterService_Events.lua` | **SERVICE:TryCounter_Events** | Try Counter event tables. | 67 | 2 | OK |
 | `Modules/TryCounterService_Process.lua` | **SERVICE:TryCounter_Process** | Loot-routing pipeline constants (skip/container/fishing/NPC). | 51 | 2 | OK |
+| `Modules/TryCounterService_Loot.lua` | **SERVICE:TryCounter_Loot** | NPC/container/fishing loot pipeline + drop resolvers. | 1048 | 36 | OK |
+| `Modules/TryCounterService_Stats.lua` | **SERVICE:TryCounter_Stats** | Statistics sync, miss reseed, encounter-end stat paths. | 819 | 35 | OK |
 | `Modules/TryCounterService_Handlers.lua` | **SERVICE:TryCounter_Handlers** | Encounter-end and loot event handlers for the Try Counter. | 709 | 22 | OK |
 | `Modules/ReminderService.lua` | **SERVICE:Reminder** | Time- and location-based reminders for To-Do plans (login, reset, zone-enter triggers). | 1895 | 94 | OK |
-| `Modules/GearService.lua` | **SERVICE:Gear** | Scans equipped gear, computes upgrade-track analysis and cross-character storage finds. | 2973 | 129 | WATCH |
+| `Modules/GearService.lua` | **SERVICE:Gear** | Equipped gear scan, upgrade tracks; `ns.GearService.storageFindingsCache` owner. | 2977 | 129 | WATCH |
 | `Modules/GearService_Slots.lua` | **SERVICE:Gear_Slots** | Paper-doll slot tables (which slot is which). | 82 | 6 | OK |
 | `Modules/GearService_UpgradeTracks.lua` | **SERVICE:Gear_UpgradeTracks** | Midnight upgrade-track item-level tables and crest currency map. | 58 | 7 | OK |
-| `Modules/GearService_StorageFind.lua` | **SERVICE:Gear_StorageFind** | Finds gear upgrades sitting in your bags/banks across characters. | 1756 | 54 | OK |
+| `Modules/GearService_StorageFind.lua` | **SERVICE:Gear_StorageFind** | Cross-character bag/bank upgrade finder (reads shared cache on `ns.GearService`). | 1759 | 53 | OK |
 | `Modules/GoldManagementService.lua` | **SERVICE:GoldManagement** | Watches deposit/withdraw targets against the Warband bank and notifies. | 118 | 8 | OK |
 | `Modules/CharacterBankMoneyLogService.lua` | **SERVICE:MoneyLog** | Records every character-to-Warband-bank gold transaction. | 388 | 21 | OK |
 | `Modules/MailSnapshotService.lua` | **SERVICE:MailSnapshot** | Captures each character's inbox summary (sender, subject, gold, items). | 895 | 59 | OK |
@@ -156,7 +160,9 @@ Counts (Lines / Locals / Health) were measured for v3.2.3 and drift over time â€
 
 | File | Tag | One-line role | Lines | Locals | Health |
 |---|---|---|---|---|---|
-| `Modules/UI.lua` | **UI-SHELL:Main** | The main window: shell, navigation, tab switching, debounced repaint. | 5238 | 93 | HOT |
+| `Modules/UI.lua` | **UI-SHELL:Main** | Main window coordinator: nav helpers, `ns.UIShell` bind, tab stubs. | 2825 | 93 | WATCH |
+| `Modules/UI/UI_MainShell.lua` | **UI-SHELL:MainShell** | `CreateMainWindow` chrome (nav, scroll host, message wiring). | 2053 | 54 | WATCH |
+| `Modules/UI/UI_TabHost.lua` | **UI-SHELL:TabHost** | `PopulateContent` body + debounced tab repaint dispatch. | 555 | 51 | OK |
 | `Modules/UI/UI_RefreshRouter.lua` | **UI-SHELL:RefreshRouter** | Listens to every `WN_*` data message and decides which tab repaints. | 754 | 1 | OK |
 | `Modules/UI/LayoutCoordinator.lua` | **UI-SHELL:Layout** | Main-window resize/reposition pipeline shared by all tabs. | 436 | 17 | OK |
 | `Modules/UI/WindowFactory.lua` | **UI-SHELL:WindowFactory** | Builder for every external dialog/popup (draggable header, ESC close). | 695 | 18 | OK |
@@ -169,8 +175,11 @@ Counts (Lines / Locals / Health) were measured for v3.2.3 and drift over time â€
 |---|---|---|---|---|---|
 | `Modules/UI/CharactersUI.lua` | **UI-TAB:Characters** | Characters tab: roster list with gold, level, mail, last seen. | 3680 | 93 | WATCH |
 | `Modules/UI/CurrencyUI.lua` | **UI-TAB:Currency** | Currency tab: all currencies across characters, Blizzard header tree. | 1555 | 55 | OK |
-| `Modules/UI/ItemsUI.lua` | **UI-TAB:Storage** | Storage tab: bags / bank / Warband bank / guild bank item browser. | 4409 | 131 | HOT |
-| `Modules/UI/PvEUI.lua` | **UI-TAB:PvE** | PvE tab: Great Vault, Mythic+, raid lockouts per character. | 4972 | 138 | HOT |
+| `Modules/UI/ItemsUI.lua` | **UI-TAB:Storage** | Storage tab entry: bag sub-tabs, events, orchestration. | 2253 | 126 | WATCH |
+| `Modules/UI/ItemsUI_StorageDraw.lua` | **UI-SAT:Items_StorageDraw** | Storage aggregate tree (`DrawStorageResults` + chunk pumps). | 2172 | 17 | WATCH |
+| `Modules/UI/PvEUI.lua` | **UI-TAB:PvE** | PvE tab entry: column layout, vault header, `EnsurePvEDrawLibs`. | 2807 | 133 | WATCH |
+| `Modules/UI/PvEUI_CharList.lua` | **UI-SAT:PvE_CharList** | PvE character row pool acquire/release. | 48 | 5 | OK |
+| `Modules/UI/PvEUI_BodyPaint.lua` | **UI-SAT:PvE_BodyPaint** | Deferred vault/lockout body paint + chunked row pump. | 2150 | 7 | WATCH |
 | `Modules/UI/ReputationUI.lua` | **UI-TAB:Reputation** | Reputation tab: progress bars, Renown, Paragon across characters. | 2660 | 82 | WATCH |
 | `Modules/UI/StatisticsUI.lua` | **UI-TAB:Statistics** | Statistics tab: account-wide gold, collections, playtime numbers. | 1237 | 66 | OK |
 | `Modules/UI/CollectionsUI.lua` | **UI-TAB:Collections** | Collections tab entry point (draw + message listeners); heavy lifting in its satellites. | 720 | 34 | OK |
@@ -247,7 +256,9 @@ Counts (Lines / Locals / Health) were measured for v3.2.3 and drift over time â€
 
 | File | Tag | One-line role | Lines | Locals | Health |
 |---|---|---|---|---|---|
-| `Modules/UI/SharedWidgets.lua` | **WIDGET:SharedWidgets** | The heart of the UI: colors, themes, layout constants, core widget helpers. | 6847 | 198 | HOT |
+| `Modules/UI/SharedWidgets.lua` | **WIDGET:SharedWidgets** | Widget glue + exports; theme/layout in satellites. | 5042 | 117 | HOT |
+| `Modules/UI/SharedWidgets_Theme.lua` | **WIDGET:Theme** | `SURFACE_VARIANTS`, `COLORS`, `UI_RefreshColors`, theme registry. | 1546 | 23 | OK |
+| `Modules/UI/SharedWidgets_Layout.lua` | **WIDGET:Layout** | `UI_SPACING` / `UI_LAYOUT` constants. | 357 | 2 | OK |
 | `Modules/UI/SharedWidgets_Pixel.lua` | **WIDGET:Pixel** | Pixel-perfect scale helpers. | 137 | 10 | OK |
 | `Modules/UI/SharedWidgets_CharRow.lua` | **WIDGET:CharRow** | Character row column layout (Characters/PvE lists). | 254 | 17 | OK |
 | `Modules/UI/SharedWidgets_ClassicTheme.lua` | **WIDGET:ClassicTheme** | The Classic theme: literal Blizzard-style chrome. | 555 | 7 | OK |

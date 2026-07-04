@@ -9,6 +9,21 @@ local issecretvalue = issecretvalue
 
 ns.CharacterTrackingDialog = ns.CharacterTrackingDialog or {}
 
+local function Factory()
+    return ns.UI and ns.UI.Factory
+end
+
+local function ShellContainer(parent, width, height, withBorder, globalName)
+    local F = Factory()
+    assert(F and F.CreateContainer, "CharacterTrackingDialog requires UI.Factory")
+    return F:CreateContainer(parent, width or 1, height or 1, withBorder == true, globalName)
+end
+
+local function ShellButton(parent, width, height, noBorder)
+    local F = Factory()
+    return F:CreateButton(parent, width, height, noBorder == true)
+end
+
 local function AccentHex()
     if ns.UI_GetAccentHexColor then
         return "|cff" .. ns.UI_GetAccentHexColor()
@@ -39,35 +54,30 @@ local function GetDialogShellBg()
     return c and c.bg or { 0.05, 0.05, 0.07, 1 }
 end
 
-local function ApplyPositiveCard(frame, hover)
+local function ApplyChoiceCardChrome(frame, positive, hover)
     local bg, border
-    if ns.UI_GetSemanticPositiveCard then
-        bg, border = ns.UI_GetSemanticPositiveCard(hover)
+    if positive then
+        if ns.UI_GetSemanticPositiveCard then
+            bg, border = ns.UI_GetSemanticPositiveCard(hover)
+        else
+            bg = hover and { 0.15, 0.4, 0.25, 1 } or { 0.1, 0.3, 0.2, 1 }
+            border = hover and { 0.3, 0.8, 0.4, 1 } or { 0.2, 0.6, 0.3, 1 }
+        end
     else
-        bg = hover and { 0.15, 0.4, 0.25, 1 } or { 0.1, 0.3, 0.2, 1 }
-        border = hover and { 0.3, 0.8, 0.4, 1 } or { 0.2, 0.6, 0.3, 1 }
+        if ns.UI_GetSemanticNegativeCard then
+            bg, border = ns.UI_GetSemanticNegativeCard(hover)
+        else
+            bg = hover and { 0.4, 0.15, 0.15, 1 } or { 0.3, 0.1, 0.1, 1 }
+            border = hover and { 1, 0.3, 0.3, 1 } or { 0.8, 0.2, 0.2, 1 }
+        end
     end
-    if frame.SetBackdropColor then
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(frame, bg, border)
+    elseif frame.SetBackdropColor then
         frame:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-    end
-    if frame.SetBackdropBorderColor then
-        frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
-    end
-end
-
-local function ApplyNegativeCard(frame, hover)
-    local bg, border
-    if ns.UI_GetSemanticNegativeCard then
-        bg, border = ns.UI_GetSemanticNegativeCard(hover)
-    else
-        bg = hover and { 0.4, 0.15, 0.15, 1 } or { 0.3, 0.1, 0.1, 1 }
-        border = hover and { 1, 0.3, 0.3, 1 } or { 0.8, 0.2, 0.2, 1 }
-    end
-    if frame.SetBackdropColor then
-        frame:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-    end
-    if frame.SetBackdropBorderColor then
-        frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
+        if frame.SetBackdropBorderColor and border then
+            frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
+        end
     end
 end
 
@@ -85,59 +95,43 @@ function ns.CharacterTrackingDialog.RefreshTheme()
 end
 
 function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
-    -- If dialog already exists and is visible, don't create a new one
     if addon.trackingDialog and addon.trackingDialog:IsVisible() then
         return
     end
-    
-    -- Clean up old StaticPopup if it exists (legacy system)
+
     StaticPopupDialogs["WARBANDNEXUS_ADD_CHARACTER"] = nil
-    
-    -- Create custom dialog frame
-    local dialog = CreateFrame("Frame", "WarbandNexusTrackingDialog", UIParent, "BackdropTemplate")
-    dialog:SetSize(480, 210)  -- Compact size
+
+    local dialog = ShellContainer(UIParent, 480, 210, false, "WarbandNexusTrackingDialog")
     dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")  -- Above everything
-    dialog:SetFrameLevel(500)  -- Very high level
-    
-    -- Backdrop (FULLY OPAQUE - solid background)
-    dialog:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",  -- Solid white texture
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 }
-    })
-    dialog:SetBackdropColor(GetDialogShellBg()[1], GetDialogShellBg()[2], GetDialogShellBg()[3], 1)
-    local accentColor = ns.UI_COLORS and ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
-    dialog:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:SetFrameLevel(500)
+
+    if ns.UI_ApplyMainWindowShellFill then
+        ns.UI_ApplyMainWindowShellFill(dialog)
+    elseif ns.UI_ApplyVisuals then
+        local accentColor = ns.UI_COLORS and ns.UI_COLORS.accent or { 0.40, 0.20, 0.58 }
+        ns.UI_ApplyVisuals(dialog, GetDialogShellBg(), { accentColor[1], accentColor[2], accentColor[3], 1 })
+    end
+    local accentColor = ns.UI_COLORS and ns.UI_COLORS.accent or { 0.40, 0.20, 0.58 }
     dialog._wnAccent = accentColor
-    
-    -- Make draggable
+
     dialog:SetMovable(true)
     dialog:EnableMouse(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
-    
-    -- NO CLOSE BUTTON - User must make a choice
-    
-    -- Title (Centered)
+
     local titleText = ns.FontManager:CreateFontString(dialog, "header", "OVERLAY")
     titleText:SetPoint("TOP", 0, -20)
     titleText:SetText(AccentHex() .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r")
-    
-    -- Main question
+
     local questionText = ns.FontManager:CreateFontString(dialog, "body", "OVERLAY")
     questionText:SetPoint("TOP", titleText, "BOTTOM", 0, -16)
     questionText:SetWidth(460)
     questionText:SetJustifyH("CENTER")
     questionText:SetText((ns.L and ns.L["TRACK_CHARACTER_QUESTION"]) or "Do you want to track this character?")
     ns.UI_SetTextColorRole(questionText, "Normal")
-    
-    -- Character name with class color
-    -- charKey may be a player GUID (storage key): prefer row / live APIs for display, not key parsing.
+
     local charName, charRealmRaw = nil, nil
     local row = addon.db.global.characters and charKey and addon.db.global.characters[charKey]
     if type(row) == "table" then
@@ -150,7 +144,6 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
             charRealmRaw = r
         end
     end
-    -- Avoid parsing storage GUID as Name-Realm (WoW player GUIDs look like Player-<realmId>-...).
     local guidLike = charKey and type(charKey) == "string" and not (issecretvalue and issecretvalue(charKey))
         and charKey:match("^Player%-%d+%-") ~= nil
     if not charName and charKey and not guidLike and not (issecretvalue and issecretvalue(charKey)) then
@@ -180,43 +173,31 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     if charRealm and issecretvalue and issecretvalue(charRealm) then
         charRealm = ""
     end
-    
-    -- Class color from roster (classFile / classID / localized class → Blizzard token)
-    local classColor = "|cffffcc00"  -- Default gold when unknown
+
+    local classColor = "|cffffcc00"
     if charName and not (issecretvalue and issecretvalue(charName)) and ns.UI_GetClassColorHexForWarbandCharacter then
         local hex = ns.UI_GetClassColorHexForWarbandCharacter(charName)
         if hex and hex ~= "|cffaaaaaa" then
             classColor = hex
         end
     end
-    
+
     local charNameText = ns.FontManager:CreateFontString(dialog, "header", "OVERLAY")
     charNameText:SetPoint("TOP", questionText, "BOTTOM", 0, -8)
     charNameText:SetText(classColor .. charName .. " - " .. charRealm .. "|r")
-    
-    -- Option boxes container
+
     local optionsY = -20
-    
-    -- Tracked option (LEFT) - now a BUTTON
-    local trackedFrame = CreateFrame("Button", nil, dialog, "BackdropTemplate")
-    trackedFrame:SetSize(200, 75)  -- Compact size
+
+    local trackedFrame = ShellButton(dialog, 200, 75, false)
     trackedFrame:SetPoint("TOP", charNameText, "BOTTOM", -110, optionsY)
-    trackedFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 2,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
     trackedFrame._wnPositiveCard = true
-    ApplyPositiveCard(trackedFrame, false)
-    
-    -- Hover effect for Tracked card
+    ApplyChoiceCardChrome(trackedFrame, true, false)
+
     trackedFrame:SetScript("OnEnter", function(self)
-        ApplyPositiveCard(self, true)
+        ApplyChoiceCardChrome(self, true, true)
     end)
     trackedFrame:SetScript("OnLeave", function(self)
-        ApplyPositiveCard(self, false)
+        ApplyChoiceCardChrome(self, true, false)
     end)
     trackedFrame:SetScript("OnClick", function()
         if InCombatLockdown() then return end
@@ -226,37 +207,27 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
         dialog:Hide()
         if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
     end)
-    
+
     local trackedTitle = ns.FontManager:CreateFontString(trackedFrame, "header", "OVERLAY")
     trackedTitle:SetPoint("TOP", 0, -12)
     trackedTitle:SetText("|cff00ff00" .. ((ns.L and ns.L["TRACKED_LABEL"]) or "Tracked") .. "|r")
-    
+
     local trackedDesc = ns.FontManager:CreateFontString(trackedFrame, "body", "OVERLAY")
     trackedDesc:SetPoint("TOP", trackedTitle, "BOTTOM", 0, -5)
     trackedDesc:SetWidth(185)
     trackedDesc:SetJustifyH("CENTER")
     trackedDesc:SetText("|cff88ff88" .. ((ns.L and ns.L["TRACKED_DETAILED_LINE1"]) or "Full detailed data") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["TRACKED_DETAILED_LINE2"]) or "All features enabled") .. "|r")
-    
-    -- Untracked option (RIGHT) - now a BUTTON
-    local untrackedFrame = CreateFrame("Button", nil, dialog, "BackdropTemplate")
-    untrackedFrame:SetSize(200, 75)  -- Compact size
+
+    local untrackedFrame = ShellButton(dialog, 200, 75, false)
     untrackedFrame:SetPoint("TOP", charNameText, "BOTTOM", 110, optionsY)
-    untrackedFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 2,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
     untrackedFrame._wnNegativeCard = true
-    ApplyNegativeCard(untrackedFrame, false)
-    
-    -- Hover effect for Untracked card
+    ApplyChoiceCardChrome(untrackedFrame, false, false)
+
     untrackedFrame:SetScript("OnEnter", function(self)
-        ApplyNegativeCard(self, true)
+        ApplyChoiceCardChrome(self, false, true)
     end)
     untrackedFrame:SetScript("OnLeave", function(self)
-        ApplyNegativeCard(self, false)
+        ApplyChoiceCardChrome(self, false, false)
     end)
     untrackedFrame:SetScript("OnClick", function()
         if InCombatLockdown() then return end
@@ -266,18 +237,17 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
         dialog:Hide()
         if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
     end)
-    
+
     local untrackedTitle = ns.FontManager:CreateFontString(untrackedFrame, "header", "OVERLAY")
     untrackedTitle:SetPoint("TOP", 0, -12)
     untrackedTitle:SetText("|cffff4444" .. ((ns.L and ns.L["UNTRACKED_LABEL"]) or "Untracked") .. "|r")
-    
+
     local untrackedDesc = ns.FontManager:CreateFontString(untrackedFrame, "body", "OVERLAY")
     untrackedDesc:SetPoint("TOP", untrackedTitle, "BOTTOM", 0, -5)
     untrackedDesc:SetWidth(185)
     untrackedDesc:SetJustifyH("CENTER")
     untrackedDesc:SetText("|cffff8888" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n" .. ThemeTextHex("Bright") .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
-    
-    -- ESC-to-close (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
+
     if not InCombatLockdown() then
         dialog:EnableKeyboard(true)
         dialog:SetPropagateKeyboardInput(true)
@@ -285,7 +255,6 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     dialog:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
             if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-            -- Treat ESC as "don't track" so state is consistent and user can enable later from Characters tab
             if ns.CharacterService then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
             end
@@ -295,7 +264,6 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
         end
     end)
 
-    -- OnHide cleanup: clear addon reference so dialog can be shown again (e.g. next login or Track from Characters tab)
     dialog:SetScript("OnHide", function(self)
         self:SetScript("OnHide", nil)
         if ns.UI_UnregisterScaledFrame then
@@ -307,14 +275,16 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
         end
         _G["WarbandNexusTrackingDialog"] = nil
     end)
-    
+
     dialog._wnRefreshTheme = function()
-        local shell = GetDialogShellBg()
-        dialog:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 1)
-        local ac = ns.UI_COLORS and ns.UI_COLORS.accent or accentColor
-        dialog:SetBackdropBorderColor(ac[1], ac[2], ac[3], 1)
-        ApplyPositiveCard(trackedFrame, false)
-        ApplyNegativeCard(untrackedFrame, false)
+        if ns.UI_ApplyMainWindowShellFill then
+            ns.UI_ApplyMainWindowShellFill(dialog)
+        elseif ns.UI_ApplyVisuals then
+            local ac = ns.UI_COLORS and ns.UI_COLORS.accent or accentColor
+            ns.UI_ApplyVisuals(dialog, GetDialogShellBg(), { ac[1], ac[2], ac[3], 1 })
+        end
+        ApplyChoiceCardChrome(trackedFrame, true, false)
+        ApplyChoiceCardChrome(untrackedFrame, false, false)
     end
 
     if ns.UI_RegisterScaledFrame then
@@ -322,80 +292,53 @@ function ns.CharacterTrackingDialog.ShowInitial(addon, charKey)
     elseif ns.UI_ApplyAddonUIScale then
         ns.UI_ApplyAddonUIScale(dialog)
     end
-    
-    -- Show dialog
+
     dialog:Show()
-    
-    -- Store reference to prevent garbage collection
     addon.trackingDialog = dialog
 end
 
 function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableTracking)
-    -- If dialog already exists and is visible, don't create a new one
     if addon.trackingChangeDialog and addon.trackingChangeDialog:IsVisible() then
         return
     end
-    
-    -- Create confirmation dialog (standardized custom UI: ApplyVisuals + compact buttons, no icons)
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    local UpdateBorderColor = ns.UI_UpdateBorderColor
-    local COLORS = ns.UI_COLORS and ns.UI_COLORS.accent and ns.UI_COLORS or { accent = { 0.4, 0.2, 0.58 } }
-    local accent = COLORS.accent
-    
-    local dialog = CreateFrame("Frame", "WarbandNexusTrackingChangeDialog", UIParent, "BackdropTemplate")
-    dialog:SetSize(320, 140)
-    dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-    dialog:SetFrameLevel(500)
-    
-    if ApplyVisuals then
-        ApplyVisuals(dialog, GetDialogShellBg(), { accent[1], accent[2], accent[3], 0.9 })
-    else
-        dialog:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1, insets = { left = 2, right = 2, top = 2, bottom = 2 } })
-        local shell = GetDialogShellBg()
-        dialog:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 1)
-        dialog:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1)
+
+    local CreateExternalWindow = ns.UI_CreateExternalWindow
+    local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or { 0.4, 0.2, 0.58 }
+
+    local dialog, contentFrame, header
+    if CreateExternalWindow then
+        dialog, contentFrame, header = CreateExternalWindow({
+            name = "TrackingChangeDialog",
+            title = (ns.L and ns.L["CONFIRM_ACTION"]) or "Confirm Action",
+            icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+            width = 320,
+            height = 160,
+            preventDuplicates = true,
+        })
     end
-    
+
+    if not dialog or not contentFrame then
+        dialog = ShellContainer(UIParent, 320, 140, false, "WarbandNexusTrackingChangeDialog")
+        dialog:SetPoint("CENTER")
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        dialog:SetFrameLevel(500)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(dialog, GetDialogShellBg(), { accent[1], accent[2], accent[3], 0.9 })
+        end
+        contentFrame = ShellContainer(dialog, 300, 100, false)
+        contentFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 10, -36)
+        contentFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -10, 10)
+    end
+
     dialog:SetMovable(true)
     dialog:EnableMouse(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
-    
-    -- Close button (standardized: small, accent border, X icon)
-    local closeBtn = CreateFrame("Button", nil, dialog)
-    closeBtn:SetSize(22, 22)
-    closeBtn:SetPoint("TOPRIGHT", -6, -6)
-    if ApplyVisuals then
-        local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
-        ApplyVisuals(closeBtn, closeBg, { accent[1], accent[2], accent[3], 0.8 })
-    end
-    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeIcon:SetSize(12, 12)
-    closeIcon:SetPoint("CENTER")
-    closeIcon:SetAtlas("uitools-icon-close")
-    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
-    closeBtn:SetScript("OnClick", function()
-        dialog:Hide()
-        if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
-    end)
-    closeBtn:SetScript("OnEnter", function(self)
-        if closeIcon then closeIcon:SetVertexColor(1, 0.2, 0.2) end
-    end)
-    closeBtn:SetScript("OnLeave", function(self)
-        if closeIcon then closeIcon:SetVertexColor(0.9, 0.3, 0.3) end
-    end)
-    
-    -- Title
-    local titleText = ns.FontManager:CreateFontString(dialog, "header", "OVERLAY")
-    titleText:SetPoint("TOP", 0, -16)
-    titleText:SetText(AccentHex() .. ((ns.L and ns.L["CONFIRM_ACTION"]) or "Confirm Action") .. "|r")
-    
-    -- Question text
-    local questionText = ns.FontManager:CreateFontString(dialog, "body", "OVERLAY")
-    questionText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
-    questionText:SetWidth(320)
+
+    local questionText = ns.FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+    questionText:SetPoint("TOP", contentFrame, "TOP", 0, -8)
+    questionText:SetWidth(300)
     questionText:SetJustifyH("CENTER")
     if enableTracking then
         questionText:SetText(string.format(
@@ -408,38 +351,14 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
             SemanticGoldHex() .. charName .. "|r"
         ))
     end
-    
-    -- Compact buttons (no icons): Confirm (green), Cancel (red)
-    -- Anchored to dialog BOTTOM for symmetric positioning regardless of content
-    local btnW, btnH, btnMarginBottom, gap = 100, 28, 16, 16
-    
-    -- Confirm (left) - anchored to dialog bottom-left area
-    local yesCard = CreateFrame("Button", nil, dialog, "BackdropTemplate")
-    yesCard:SetSize(btnW, btnH)
+
+    local btnW, btnH, btnMarginBottom, gap = 100, 28, 8, 16
+
+    local yesCard = ShellButton(dialog, btnW, btnH, false)
     yesCard:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -(gap / 2), btnMarginBottom)
-    if ApplyVisuals then
-        local posBg, posBorder = ns.UI_GetSemanticPositiveCard and ns.UI_GetSemanticPositiveCard(false)
-            or { 0.1, 0.28, 0.18, 1 }, { 0.25, 0.65, 0.35, 1 }
-        ApplyVisuals(yesCard, posBg, posBorder)
-    else
-        yesCard:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1, insets = { left = 0, right = 0, top = 0, bottom = 0 } })
-        yesCard:SetBackdropColor(0.1, 0.3, 0.2, 1)
-        yesCard:SetBackdropBorderColor(0.2, 0.6, 0.3, 1)
-    end
-    yesCard:SetScript("OnEnter", function(self)
-        local bg, border = ns.UI_GetSemanticPositiveCard and ns.UI_GetSemanticPositiveCard(true)
-        if bg and self.SetBackdropColor then
-            self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-        end
-        if border and UpdateBorderColor then UpdateBorderColor(self, border) end
-    end)
-    yesCard:SetScript("OnLeave", function(self)
-        local bg, border = ns.UI_GetSemanticPositiveCard and ns.UI_GetSemanticPositiveCard(false)
-        if bg and self.SetBackdropColor then
-            self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-        end
-        if border and UpdateBorderColor then UpdateBorderColor(self, border) end
-    end)
+    ApplyChoiceCardChrome(yesCard, true, false)
+    yesCard:SetScript("OnEnter", function(self) ApplyChoiceCardChrome(self, true, true) end)
+    yesCard:SetScript("OnLeave", function(self) ApplyChoiceCardChrome(self, true, false) end)
     yesCard:SetScript("OnClick", function()
         if InCombatLockdown() then return end
         if ns.CharacterService then
@@ -451,34 +370,12 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     local yesText = ns.FontManager:CreateFontString(yesCard, "body", "OVERLAY")
     yesText:SetPoint("CENTER")
     yesText:SetText("|cff90ff90" .. ((ns.L and ns.L["CONFIRM"]) or "Confirm") .. "|r")
-    
-    -- Cancel (right) - anchored to dialog bottom-right area
-    local noCard = CreateFrame("Button", nil, dialog, "BackdropTemplate")
-    noCard:SetSize(btnW, btnH)
+
+    local noCard = ShellButton(dialog, btnW, btnH, false)
     noCard:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", (gap / 2), btnMarginBottom)
-    if ApplyVisuals then
-        local negBg, negBorder = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(false)
-            or { 0.28, 0.1, 0.1, 1 }, { 0.75, 0.22, 0.22, 1 }
-        ApplyVisuals(noCard, negBg, negBorder)
-    else
-        noCard:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1, insets = { left = 0, right = 0, top = 0, bottom = 0 } })
-        noCard:SetBackdropColor(0.3, 0.1, 0.1, 1)
-        noCard:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
-    end
-    noCard:SetScript("OnEnter", function(self)
-        local bg, border = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(true)
-        if bg and self.SetBackdropColor then
-            self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-        end
-        if border and UpdateBorderColor then UpdateBorderColor(self, border) end
-    end)
-    noCard:SetScript("OnLeave", function(self)
-        local bg, border = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(false)
-        if bg and self.SetBackdropColor then
-            self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-        end
-        if border and UpdateBorderColor then UpdateBorderColor(self, border) end
-    end)
+    ApplyChoiceCardChrome(noCard, false, false)
+    noCard:SetScript("OnEnter", function(self) ApplyChoiceCardChrome(self, false, true) end)
+    noCard:SetScript("OnLeave", function(self) ApplyChoiceCardChrome(self, false, false) end)
     noCard:SetScript("OnClick", function()
         dialog:Hide()
         if ns.UI_RecycleBin then dialog:SetParent(ns.UI_RecycleBin) else dialog:SetParent(nil) end
@@ -486,8 +383,7 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     local noText = ns.FontManager:CreateFontString(noCard, "body", "OVERLAY")
     noText:SetPoint("CENTER")
     noText:SetText("|cffff8080" .. (CANCEL or "Cancel") .. "|r")
-    
-    -- ESC-to-close (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
+
     if not InCombatLockdown() then
         dialog:EnableKeyboard(true)
         dialog:SetPropagateKeyboardInput(true)
@@ -501,7 +397,6 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
         end
     end)
 
-    -- OnHide cleanup
     dialog:SetScript("OnHide", function(self)
         self:SetScript("OnHide", nil)
         if ns.UI_UnregisterScaledFrame then
@@ -509,26 +404,18 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
         end
         if ns.UI_RecycleBin then self:SetParent(ns.UI_RecycleBin) else self:SetParent(nil) end
         _G["WarbandNexusTrackingChangeDialog"] = nil
+        addon.trackingChangeDialog = nil
     end)
-    
+
     dialog._wnRefreshTheme = function()
-        if ApplyVisuals then
-            ApplyVisuals(dialog, GetDialogShellBg(), { accent[1], accent[2], accent[3], 0.9 })
-        else
-            local shell = GetDialogShellBg()
-            dialog:SetBackdropColor(shell[1], shell[2], shell[3], shell[4] or 1)
+        if ns.UI_ApplyMainWindowShellFill and dialog._wnExternalShell then
+            ns.UI_ApplyMainWindowShellFill(dialog)
+        elseif ns.UI_ApplyVisuals then
             local ac = ns.UI_COLORS and ns.UI_COLORS.accent or accent
-            dialog:SetBackdropBorderColor(ac[1], ac[2], ac[3], 1)
+            ns.UI_ApplyVisuals(dialog, GetDialogShellBg(), { ac[1], ac[2], ac[3], 0.9 })
         end
-        local closeBg = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop()
-        if closeBg and ApplyVisuals then
-            local ac = ns.UI_COLORS and ns.UI_COLORS.accent or accent
-            ApplyVisuals(closeBtn, closeBg, { ac[1], ac[2], ac[3], 0.8 })
-        end
-        local posBg, posBorder = ns.UI_GetSemanticPositiveCard and ns.UI_GetSemanticPositiveCard(false)
-        if posBg and ApplyVisuals then ApplyVisuals(yesCard, posBg, posBorder) end
-        local negBg, negBorder = ns.UI_GetSemanticNegativeCard and ns.UI_GetSemanticNegativeCard(false)
-        if negBg and ApplyVisuals then ApplyVisuals(noCard, negBg, negBorder) end
+        ApplyChoiceCardChrome(yesCard, true, false)
+        ApplyChoiceCardChrome(noCard, false, false)
     end
 
     if ns.UI_RegisterScaledFrame then
@@ -536,11 +423,8 @@ function ns.CharacterTrackingDialog.ShowChange(addon, charKey, charName, enableT
     elseif ns.UI_ApplyAddonUIScale then
         ns.UI_ApplyAddonUIScale(dialog)
     end
-    
-    -- Show dialog
+
     dialog:Show()
-    
-    -- Store reference
     addon.trackingChangeDialog = dialog
 end
 

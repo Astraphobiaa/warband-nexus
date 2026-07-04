@@ -36,6 +36,11 @@ local debugprofilestop = debugprofilestop
 
 local GearFact = ns.UI.Factory
 
+local function PaperdollLayoutHost(parent, width, height)
+    assert(GearFact and GearFact.CreateContainer, "GearUI_Paperdoll layout requires UI.Factory")
+    return GearFact:CreateContainer(parent, width or 1, height or 1, false)
+end
+
 function PD.GearTabL(key, fallback)
     local v = ns.L and ns.L[key]
     if type(v) == "string" and v ~= "" and v ~= key then
@@ -162,8 +167,7 @@ local GEAR_MODEL_VIEWPORT_BACKDROP = {
 }
 
 function PD.CreateGearSubpanel(parent, width, height, accent, opts)
-    local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    f:SetSize(width or 100, height or 100)
+    local f = PaperdollLayoutHost(parent, width or 100, height or 100)
     if ns.GearUI_Chrome and ns.GearUI_Chrome.ApplySubpanel then
         ns.GearUI_Chrome.ApplySubpanel(f, accent, opts)
     elseif ns.UI_ApplyStandardCardElevatedChrome then
@@ -267,7 +271,7 @@ end
 function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     if not card or not layout then return end
     if not layout.bodyHost then
-        local body = CreateFrame("Frame", nil, card)
+        local body = PaperdollLayoutHost(card, 1, 1)
         if body.SetClipsChildren then body:SetClipsChildren(false) end
         layout.bodyHost = body
     end
@@ -279,7 +283,7 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     end
 
     if not layout.topHost then
-        local top = CreateFrame("Frame", nil, layout.bodyHost)
+        local top = PaperdollLayoutHost(layout.bodyHost, 1, 1)
         if top.SetClipsChildren then top:SetClipsChildren(false) end
         layout.topHost = top
     end
@@ -290,7 +294,7 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     end
 
     if not layout.leftColHost then
-        local left = CreateFrame("Frame", nil, layout.topHost)
+        local left = PaperdollLayoutHost(layout.topHost, 1, 1)
         -- Track labels + outer gem/enchant column extend past slot bounds; must not clip.
         if left.SetClipsChildren then left:SetClipsChildren(false) end
         layout.leftColHost = left
@@ -302,7 +306,7 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     end
 
     if not layout.paperTopHost then
-        local paperTop = CreateFrame("Frame", nil, layout.leftColHost)
+        local paperTop = PaperdollLayoutHost(layout.leftColHost, 1, 1)
         if paperTop.SetClipsChildren then paperTop:SetClipsChildren(false) end
         layout.paperTopHost = paperTop
     end
@@ -310,7 +314,7 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     layout.paperTopHost:Show()
 
     if not layout.paperBottomHost then
-        local paperBottom = CreateFrame("Frame", nil, layout.leftColHost)
+        local paperBottom = PaperdollLayoutHost(layout.leftColHost, 1, 1)
         if paperBottom.SetClipsChildren then paperBottom:SetClipsChildren(false) end
         layout.paperBottomHost = paperBottom
     end
@@ -318,7 +322,7 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     layout.paperBottomHost:Show()
 
     if not layout.centerGapHost then
-        local center = CreateFrame("Frame", nil, layout.topHost)
+        local center = PaperdollLayoutHost(layout.topHost, 1, 1)
         center:EnableMouse(false)
         if center.SetClipsChildren then center:SetClipsChildren(true) end
         layout.centerGapHost = center
@@ -326,7 +330,7 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     layout.centerGapHost:SetParent(layout.topHost)
 
     if not layout.rightColHost then
-        local right = CreateFrame("Frame", nil, layout.topHost)
+        local right = PaperdollLayoutHost(layout.topHost, 1, 1)
         if right.SetClipsChildren then right:SetClipsChildren(true) end
         layout.rightColHost = right
     end
@@ -335,7 +339,7 @@ function PD.EnsureGearCardColumnHosts(card, layout, panelTopY, recEnabled)
 
     if recEnabled then
         if not layout.bottomColHost then
-            local bottom = CreateFrame("Frame", nil, layout.bodyHost)
+            local bottom = PaperdollLayoutHost(layout.bodyHost, 1, 1)
             if bottom.SetClipsChildren then bottom:SetClipsChildren(true) end
             layout.bottomColHost = bottom
         end
@@ -1828,8 +1832,7 @@ function PD.PaintGearViewportIdentity(viewportHost, charData, accent)
     end
     local avgIlvl = PD.SafeGearStatNumber(charData and charData.itemLevel) or 0
 
-    local bar = CreateFrame("Frame", nil, viewportHost)
-    bar:SetHeight(GEAR_VIEWPORT_IDENTITY_H)
+    local bar = PaperdollLayoutHost(viewportHost, 1, GEAR_VIEWPORT_IDENTITY_H)
     bar:SetPoint("TOPLEFT", viewportHost, "TOPLEFT", pad, -pad)
     bar:SetPoint("TOPRIGHT", viewportHost, "TOPRIGHT", -pad, -pad)
     bar:EnableMouse(false)
@@ -1917,27 +1920,31 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     local innerStatColW = math.max(120, math.floor((innerBandW - splitGap) * 0.5 + 0.5))
     local innerCurrColW = math.max(120, innerBandW - splitGap - innerStatColW)
 
-    local statCol = CreateFrame("Frame", nil, bandPanel)
-    statCol:SetSize(innerStatColW, innerBandH)
+    local statCol = PaperdollLayoutHost(bandPanel, innerStatColW, innerBandH)
     statCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset, -bandInset)
     statCol:EnableMouse(false)
     if statCol.SetClipsChildren then statCol:SetClipsChildren(true) end
 
-    local currCol = CreateFrame("Frame", nil, bandPanel)
+    local currCol = PaperdollLayoutHost(bandPanel, innerCurrColW, innerBandH)
     currCol:SetPoint("TOPLEFT", bandPanel, "TOPLEFT", bandInset + innerStatColW + splitGap, -bandInset)
     currCol:SetPoint("TOPRIGHT", bandPanel, "TOPRIGHT", -bandInset, -bandInset)
     currCol:SetPoint("BOTTOM", bandPanel, "BOTTOM", bandInset, bandInset)
     currCol:EnableMouse(false)
     if currCol.SetClipsChildren then currCol:SetClipsChildren(true) end
 
-    local midDiv = bandPanel:CreateTexture(nil, "ARTWORK")
-    midDiv:SetColorTexture(accent[1] * 0.22, accent[2] * 0.22, accent[3] * 0.22, 0.5)
-    midDiv:SetWidth(1)
-    midDiv:SetPoint("TOP", bandPanel, "TOP", 0, -(bandInset + subHdr - 4))
-    midDiv:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, bandInset + 6)
-    midDiv:SetPoint("LEFT", statCol, "RIGHT", math.floor(splitGap * 0.5 + 0.5), 0)
-    if classicBand then
-        midDiv:Hide()
+    local Factory = ns.UI and ns.UI.Factory
+    local midDiv = Factory and Factory.CreateThemeDivider and Factory:CreateThemeDivider(bandPanel, {
+        orientation = "vertical",
+        variant = "section",
+        thickness = 1,
+    })
+    if midDiv then
+        midDiv:SetPoint("TOP", bandPanel, "TOP", 0, -(bandInset + subHdr - 4))
+        midDiv:SetPoint("BOTTOM", bandPanel, "BOTTOM", 0, bandInset + 6)
+        midDiv:SetPoint("LEFT", statCol, "RIGHT", math.floor(splitGap * 0.5 + 0.5), 0)
+        if classicBand then
+            midDiv:Hide()
+        end
     end
 
     local statInnerW = math.max(1, innerStatColW - statPad * 2)
@@ -2242,7 +2249,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     local function AcquireGearPortraitPanel()
         local pan = ns._gearPortraitPanel
         if not pan then
-            pan = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
+            pan = PaperdollLayoutHost(scrollParent, modelW, MODEL_H)
             local rimInsetPan = GearGetFrameContentInset()
             local tex = pan:CreateTexture(nil, "ARTWORK", nil, 1)
             tex:SetPoint("TOPLEFT", pan, "TOPLEFT", rimInsetPan, -rimInsetPan)
@@ -2299,7 +2306,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     local function BuildModelClip(widgetType)
         -- Clip frame: holds background + 3D model + interaction layer. SetClipsChildren
         -- prevents the model from drawing over neighbouring cards/scroll edges.
-        local clip = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
+        local clip = PaperdollLayoutHost(scrollParent, modelW, MODEL_H)
         if clip.SetClipsChildren then clip:SetClipsChildren(true) end
         PD.ApplyGearModelViewportFill(clip)
         clip.isPersistentRowElement = true
@@ -2571,7 +2578,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     if not centerRef then
         local portrait = ns._gearNoPreviewFrame
         if not portrait then
-            portrait = CreateFrame("Frame", nil, scrollParent, "BackdropTemplate")
+            portrait = PaperdollLayoutHost(scrollParent, modelW, MODEL_H)
             portrait.isPersistentRowElement = true
             ns._gearNoPreviewFrame = portrait
 
@@ -2628,8 +2635,7 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
             portrait._meta = meta
 
             -- Item level pill: small framed bg with bold ilvl text.
-            local pill = CreateFrame("Frame", nil, portrait, "BackdropTemplate")
-            pill:SetSize(78, 22)
+            local pill = PaperdollLayoutHost(portrait, 78, 22)
             pill:SetPoint("TOP", meta, "BOTTOM", 0, -10)
             if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
                 if ns.UI_ApplyBlizzardPanelBackdrop then
@@ -2758,8 +2764,10 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     -- Border around model/portrait (singleton — reused across refreshes)
     local modelBorder = ns._gearModelBorder
     if not modelBorder then
-        modelBorder = CreateFrame("Frame", nil, card, "BackdropTemplate")
-        modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        modelBorder = PaperdollLayoutHost(card, 1, 1)
+        if modelBorder.SetBackdrop then
+            modelBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        end
         modelBorder.isPersistentRowElement = true
         ns._gearModelBorder = modelBorder
     end
@@ -2843,13 +2851,12 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
     if opts and opts.deferCenter then
         local ph = ns._gearPaperdollCenterPlaceholder
         if not ph then
-            ph = CreateFrame("Frame", nil, card, "BackdropTemplate")
+            ph = PaperdollLayoutHost(card, modelW, MODEL_H)
             ph.isPersistentRowElement = true
             ns._gearPaperdollCenterPlaceholder = ph
         end
         ph:SetParent(card)
         ph:ClearAllPoints()
-        ph:SetSize(modelW, MODEL_H)
         ph:SetPoint("TOPLEFT", paperParent, "TOPLEFT", modelX, modelTopY)
         PD.ApplyGearModelViewportFill(ph)
         ph:SetFrameLevel((card:GetFrameLevel() or 2) + 3)
@@ -2982,18 +2989,17 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
     local colDiv
     if bodyHost then
-        colDiv = bodyHost:CreateTexture(nil, "ARTWORK")
-        colDiv:SetColorTexture(accent[1] * 0.18, accent[2] * 0.18, accent[3] * 0.18, 0.40)
-        colDiv:SetWidth(1)
-        gearHosts.colDivider = colDiv
-        local stackDiv = bodyHost:CreateTexture(nil, "ARTWORK")
-        stackDiv:SetColorTexture(accent[1] * 0.28, accent[2] * 0.28, accent[3] * 0.28, 0.55)
-        stackDiv:SetHeight(1)
-        stackDiv:Hide()
-        gearHosts.topStackDivider = stackDiv
+        local Factory = ns.UI and ns.UI.Factory
+        if Factory and Factory.CreateThemeDivider then
+            colDiv = Factory:CreateThemeDivider(bodyHost, { orientation = "vertical", variant = "section", thickness = 1 })
+            gearHosts.colDivider = colDiv
+            local stackDiv = Factory:CreateThemeDivider(bodyHost, { orientation = "horizontal", variant = "section", thickness = 1 })
+            stackDiv:Hide()
+            gearHosts.topStackDivider = stackDiv
+        end
     end
 
-    local paperChrome = CreateFrame("Frame", nil, horizParent, "BackdropTemplate")
+    local paperChrome = PaperdollLayoutHost(horizParent, 1, 1)
     paperChrome:Hide()
     if gearChrome and gearChrome.ApplyPaperdollViewport then
         gearChrome.ApplyPaperdollViewport(paperChrome, accent)
@@ -3103,8 +3109,7 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             end
             storageHdr:Show()
         elseif FontManager then
-            storageHdr = CreateFrame("Frame", nil, storagePanel)
-            storageHdr:SetHeight(storageHeaderH)
+            storageHdr = PaperdollLayoutHost(storagePanel, 1, storageHeaderH)
             storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, 0)
             storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -storagePad, 0)
             local fs = FontManager:CreateFontString(storageHdr, GFR("gearStorageCardTitle"), "OVERLAY")
@@ -3115,11 +3120,16 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
                 fs:SetText(storageHdrText)
                 fs:SetTextColor(recTitleColor[1], recTitleColor[2], recTitleColor[3])
             end
-            local rule = storageHdr:CreateTexture(nil, "ARTWORK")
-            rule:SetHeight(1)
-            rule:SetPoint("BOTTOMLEFT", storageHdr, "BOTTOMLEFT", 0, 2)
-            rule:SetPoint("BOTTOMRIGHT", storageHdr, "BOTTOMRIGHT", 0, 2)
-            rule:SetColorTexture(accent[1] * 0.45, accent[2] * 0.45, accent[3] * 0.45, 0.65)
+            local ruleFactory = ns.UI and ns.UI.Factory
+            local rule = ruleFactory and ruleFactory.CreateThemeDivider and ruleFactory:CreateThemeDivider(storageHdr, {
+                orientation = "horizontal",
+                variant = "section",
+                thickness = 1,
+            })
+            if rule then
+                rule:SetPoint("BOTTOMLEFT", storageHdr, "BOTTOMLEFT", 0, 2)
+                rule:SetPoint("BOTTOMRIGHT", storageHdr, "BOTTOMRIGHT", 0, 2)
+            end
         end
         gearHosts.storageRecTitle = storageHdr
 

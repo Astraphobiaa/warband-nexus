@@ -169,12 +169,18 @@ end
 
 --- Optional 2px accent rail on the left edge of tracker cards
 local function AddTrackerCardAccent(card)
-    if not card or not COLORS or not COLORS.accent then return end
-    local strip = card:CreateTexture(nil, "BORDER", nil, 1)
-    strip:SetWidth(2)
-    strip:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -1)
-    strip:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 0, 1)
-    strip:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.45)
+    if not card then return end
+    local Factory = ns.UI and ns.UI.Factory
+    if not Factory or not Factory.CreateThemeDivider then return end
+    local strip = Factory:CreateThemeDivider(card, {
+        orientation = "vertical",
+        variant = "rail",
+        thickness = 2,
+    })
+    if strip then
+        strip:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -1)
+        strip:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 0, 1)
+    end
 end
 
 -- â”€â”€ Refresh debounce â”€â”€

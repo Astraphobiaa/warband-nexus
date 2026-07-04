@@ -8,8 +8,7 @@ ns.ReminderSetAlertDialog = ns.ReminderSetAlertDialog or {}
 --[[ WN_FACTORY: Loads after SharedWidgets / WindowFactory in `WarbandNexus.toc`.
      `Factory` is resolved inside `Show` on first build (runtime).
 
-     Remaining intentional raw `CreateFrame`: modal root `f`, header chrome, ScrollFrame ScrollChild scaffold,
-     nested grid/card layout Frames, Blizzard `EditBox` fallback, UIPanelScrollFrameTemplate-backed inner scroll hosts.
+     Remaining intentional raw `CreateFrame`: none — modal shell + hosts via `H.Container` / Factory scroll/edit.
 ]]
 
 local reminderDialog = nil
@@ -88,7 +87,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local controlChrome = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop())
             or COLORS.bgCard or { 0.08, 0.08, 0.10, 1 }
 
-        local f = CreateFrame("Frame", "WarbandNexus_ReminderDialog", UIParent, "BackdropTemplate")
+        local f = H.Container(UIParent, dialogW, dialogH, false, "WarbandNexus_ReminderDialog")
         f:SetSize(dialogW, dialogH)
         f:SetPoint("CENTER")
         f:EnableMouse(true)
@@ -122,7 +121,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local rdShell = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
         local rdInset = rdShell.FRAME_CONTENT_INSET or 2
         local rdHdrH = rdShell.HEADER_BAR_HEIGHT or 40
-        local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        local header = H.Container(f, 1, rdHdrH, false)
         header:SetHeight(rdHdrH)
         header:SetPoint("TOPLEFT", rdInset, -rdInset)
         header:SetPoint("TOPRIGHT", -rdInset, -rdInset)
@@ -168,7 +167,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             ns.WindowManager:InstallDragHandler(header, f)
         end
 
-        local planRow = CreateFrame("Frame", nil, f)
+        local planRow = H.Container(f, 1, 1, false)
         planRow:SetPoint("TOPLEFT", header, "BOTTOMLEFT", sideInset, -10)
         planRow:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -sideInset, -10)
         planRow:SetHeight(34)
@@ -182,7 +181,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
         f.planHornIcon = hornIcon
 
-        local planTypeBadge = CreateFrame("Frame", nil, planRow)
+        local planTypeBadge = H.Container(planRow, 1, 1, false)
         planTypeBadge:SetSize(22, 22)
         planTypeBadge:SetPoint("LEFT", hornIcon or planRow, hornIcon and "RIGHT" or "LEFT", hornIcon and 8 or 0, 0)
         local planTypeTex = planTypeBadge:CreateTexture(nil, "OVERLAY")
@@ -209,7 +208,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         planPointsFs:Hide()
         f.planPointsFs = planPointsFs
 
-        local bodyHost = CreateFrame("Frame", nil, f)
+        local bodyHost = H.Container(f, 1, 1, false)
         bodyHost:SetPoint("TOPLEFT", planRow, "BOTTOMLEFT", 0, -8)
         bodyHost:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -sideInset, footerH)
         f.reminderBodyHost = bodyHost
@@ -221,7 +220,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local innerW = math.max(120, dialogW - sideInset * 2 - 8)
         local tabBarH = 32
-        local tabBar = CreateFrame("Frame", nil, bodyHost)
+        local tabBar = H.Container(bodyHost, 1, 1, false)
         tabBar:SetPoint("TOPLEFT", bodyHost, "TOPLEFT", 0, 0)
         tabBar:SetPoint("TOPRIGHT", bodyHost, "TOPRIGHT", 0, 0)
         tabBar:SetHeight(tabBarH)
@@ -262,10 +261,6 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         for ti = 1, #alertTabDefs do
             (function(tabDef, tabIdx)
                 local tb = Factory:CreateButton(tabBar, 120, tabBarH - 4, false)
-                if not tb then
-                    tb = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
-                    tb:SetSize(120, tabBarH - 4)
-                end
                 tb.labelFs = FontManager:CreateFontString(tb, "small", "OVERLAY")
                 tb.labelFs:SetPoint("CENTER")
                 tb.labelFs:SetText((L and L[tabDef.labelKey]) or tabDef.fallback)
@@ -280,14 +275,14 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         LayoutAlertTabButtons()
         f.LayoutAlertTabButtons = LayoutAlertTabButtons
 
-        local contentHost = CreateFrame("Frame", nil, bodyHost)
+        local contentHost = H.Container(bodyHost, 1, 1, false)
         contentHost:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -6)
         contentHost:SetPoint("BOTTOMRIGHT", bodyHost, "BOTTOMRIGHT", 0, 0)
         contentHost:SetClipsChildren(true)
         f.contentHost = contentHost
 
         local function MakeTabPanel(name)
-            local panel = CreateFrame("Frame", nil, contentHost)
+            local panel = H.Container(contentHost, 1, 1, false)
             panel:SetPoint("TOPLEFT", contentHost, "TOPLEFT", 0, 0)
             panel:SetPoint("BOTTOMRIGHT", contentHost, "BOTTOMRIGHT", 0, 0)
             panel:SetClipsChildren(true)
@@ -418,7 +413,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local function CreateMutexTipHost(parent, leftWidget, rightWidget)
             if not parent or not leftWidget or not rightWidget then return nil end
-            local host = CreateFrame("Frame", nil, parent)
+            local host = H.Container(parent, 1, 1, false)
             host:SetPoint("TOPLEFT", leftWidget, "TOPLEFT", -4, 4)
             host:SetPoint("BOTTOMRIGHT", rightWidget, "BOTTOMRIGHT", 4, -4)
             host:Hide()
@@ -504,14 +499,14 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
             end
         end
 
-        local whenCard = CreateFrame("Frame", nil, f.panelSchedule)
+        local whenCard = H.Container(f.panelSchedule, 1, 1, false)
         whenCard:SetPoint("TOPLEFT", f.panelSchedule, "TOPLEFT", 0, 0)
         whenCard:SetPoint("TOPRIGHT", f.panelSchedule, "TOPRIGHT", 0, 0)
         whenCard:SetHeight(RD.whenCardH)
         StyleCard(whenCard)
         f.whenCard = whenCard
 
-        local whenInner = CreateFrame("Frame", nil, whenCard)
+        local whenInner = H.Container(whenCard, 1, 1, false)
         whenInner:SetPoint("TOPLEFT", whenCard, "TOPLEFT", cardPad, -cardPad)
         whenInner:SetPoint("BOTTOMRIGHT", whenCard, "BOTTOMRIGHT", -cardPad, cardPad)
 
@@ -522,7 +517,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         secSchedule:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         secSchedule:SetText((L and L["SET_ALERT_SECTION_SCHEDULE"]) or "Login & Resets")
 
-        local whenOptsRow = CreateFrame("Frame", nil, whenInner)
+        local whenOptsRow = H.Container(whenInner, 1, 1, false)
         whenOptsRow:SetPoint("TOPLEFT", secSchedule, "BOTTOMLEFT", 0, -8)
         whenOptsRow:SetPoint("TOPRIGHT", secSchedule, "BOTTOMRIGHT", 0, -8)
         whenOptsRow:SetPoint("BOTTOMLEFT", whenInner, "BOTTOMLEFT", 0, 0)
@@ -532,7 +527,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
 
         local whenOptCols = {}
         for wi = 1, 3 do
-            whenOptCols[wi] = CreateFrame("Frame", nil, whenOptsRow)
+            whenOptCols[wi] = H.Container(whenOptsRow, 1, 1, false)
         end
 
         local function LayoutWhenOptsRow()
@@ -578,27 +573,14 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         f.daysBeforeCheck = CreateThemedCheckbox(daysCol, false)
         f.daysBeforeCheck:SetPoint("LEFT", daysCol, "LEFT", 0, 0)
 
-        local daysEditBg = Factory:CreateContainer(daysCol, 40, 24)
-        if not daysEditBg then
-            daysEditBg = CreateFrame("Frame", nil, daysCol)
-            daysEditBg:SetSize(40, 24)
-        end
+        local daysEditBg = H.Container(daysCol, 40, 24, false)
         daysEditBg:SetPoint("LEFT", f.daysBeforeCheck, "RIGHT", 6, 0)
         if ApplyVisuals then
             ApplyVisuals(daysEditBg, controlChrome, { borderCol[1], borderCol[2], borderCol[3], borderCol[4] })
         end
         daysEditBg:EnableMouse(true)
 
-        local daysBeforeEdit = Factory:CreateEditBox(daysEditBg)
-        if not daysBeforeEdit then
-            daysBeforeEdit = CreateFrame("EditBox", nil, daysEditBg, "BackdropTemplate")
-            daysBeforeEdit:SetFontObject(GameFontHighlightSmall)
-            daysBeforeEdit:SetTextInsets(4, 4, 1, 1)
-            if FontManager and FontManager.ApplyFontToEditBox then
-                FontManager:ApplyFontToEditBox(daysBeforeEdit, "small")
-                FontManager:RegisterManagedEditBox(daysBeforeEdit, "small")
-            end
-        end
+        local daysBeforeEdit = H.EditBox(daysEditBg)
         daysBeforeEdit:SetPoint("LEFT", daysEditBg, "LEFT", 4, 0)
         daysBeforeEdit:SetPoint("RIGHT", daysEditBg, "RIGHT", -4, 0)
         daysBeforeEdit:SetHeight(20)
@@ -830,8 +812,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         local btnW, btnH = 128, 32
         local btnGap = 10
 
-        local saveBtn = Factory:CreateButton(f, btnW, btnH, false)
-            or CreateFrame("Button", nil, f, "BackdropTemplate")
+        local saveBtn = H.Button(f, btnW, btnH, false)
         saveBtn:SetSize(btnW, btnH)
         saveBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -btnGap * 0.5, 12)
         local saveTxt = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
@@ -845,8 +826,7 @@ function ns.ReminderSetAlertDialog.Show(addon, planID)
         end
         f.saveBtn = saveBtn
 
-        local removeBtn = Factory:CreateButton(f, btnW, btnH, false)
-            or CreateFrame("Button", nil, f, "BackdropTemplate")
+        local removeBtn = H.Button(f, btnW, btnH, false)
         removeBtn:SetSize(btnW, btnH)
         removeBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", btnGap * 0.5, 12)
         local removeTxt = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")

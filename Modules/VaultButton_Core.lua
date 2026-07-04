@@ -25,7 +25,25 @@ setfenv(1, VB__setfenv())
      Intentionally raw CreateFrame highlights: vault root dialogs (BackdropTemplate + global names),
      Blizzard `CheckButton` fallback when themed checkbox is absent, event coalescing frames,
      resize grip (Blizzard size grabber textures), Saved group header as full-surface `Button`,
-     lockout row inner highlights, main floating vault `WarbandNexusVaultButton`.]]
+     lockout row inner highlights,      main floating vault `WarbandNexusVaultButton` (global name; Factory CreateButton has no name param).]]
+
+function M.VBFactory()
+    local F = ns.UI and ns.UI.Factory
+    assert(F and F.CreateContainer and F.CreateButton, "VaultButton requires UI.Factory")
+    return F
+end
+
+function M.VBContainer(parent, width, height, withBorder, globalName)
+    local c = M.VBFactory():CreateContainer(parent, width or 1, height or 1, withBorder == true, globalName)
+    assert(c, "VaultButton VBContainer failed")
+    return c
+end
+
+function M.VBButton(parent, width, height, noBorder)
+    local b = M.VBFactory():CreateButton(parent, width or 1, height or 1, noBorder == true)
+    assert(b, "VaultButton VBButton failed")
+    return b
+end
 
 -- Constants
 M.BUTTON_SIZE = 60  -- Easy Access floater; was 48 (+25%)

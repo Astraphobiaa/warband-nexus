@@ -174,21 +174,46 @@ def main() -> int:
     else:
         warnings.append("scripts/check_locale_quality.py missing — skip transliteration audit")
 
+    split_script = ROOT / "scripts" / "check_split_wiring.py"
+    if split_script.is_file():
+        import subprocess
+
+        proc = subprocess.run(
+            [sys.executable, str(split_script)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if proc.returncode != 0:
+            for line in (proc.stdout + proc.stderr).splitlines():
+                line = line.strip()
+                if line.startswith("ERROR:"):
+                    errors.append(f"split wiring: {line[6:].strip()}")
+            if not any("split wiring" in e for e in errors):
+                errors.append("split wiring check failed (scripts/check_split_wiring.py)")
+    else:
+        warnings.append("scripts/check_split_wiring.py missing — skip module split audit")
+
     _report(errors, warnings)
     return 1 if errors else 0
 
 
 def _report(errors: list[str], warnings: list[str]) -> None:
+    def _out(text: str) -> None:
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        print(text.encode(enc, errors="replace").decode(enc, errors="replace"))
+
     if warnings:
-        print("\nWarnings:")
+        _out("\nWarnings:")
         for w in warnings:
-            print(f"  WARN: {w}")
+            _out(f"  WARN: {w}")
     if errors:
-        print("\nPreflight FAILED:")
+        _out("\nPreflight FAILED:")
         for e in errors:
-            print(f"  ERROR: {e}")
+            _out(f"  ERROR: {e}")
     else:
-        print("\nPreflight OK — locale parity, version sync, and changelog keys passed.")
+        _out("\nPreflight OK - locale parity, version sync, and changelog keys passed.")
 
 
 if __name__ == "__main__":

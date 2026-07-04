@@ -225,7 +225,7 @@ function M.BuildSavedInstancesFrame()
     local accentDark = COLORS.accentDark or {0.28, 0.14, 0.41}
     local VF = ns.UI.Factory
 
-    local f = CreateFrame("Frame", "WarbandNexusSavedInstances", UIParent, "BackdropTemplate")
+    local f = M.VBContainer(UIParent, 1, 1, false, "WarbandNexusSavedInstances")
     AddEscCloseFrame("WarbandNexusSavedInstances")
     f:SetSize(SAVED_FRAME_W, 480)
     f:SetClampedToScreen(true)
@@ -309,7 +309,7 @@ function M.BuildSavedInstancesFrame()
     f._savedLayoutVersion = lay.layoutVersion
 
     local filterY = -(chromeBandH + lay.filterBelowChrome)
-    local filterRow = CreateFrame("Frame", nil, f)
+    local filterRow = M.VBContainer(f, 1, 1, false)
     filterRow:SetHeight(SAVED_FILTER_H)
     filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY)
     filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.pad, filterY)
@@ -328,7 +328,7 @@ function M.BuildSavedInstancesFrame()
     local fx = lay.pad
     for _, fb in ipairs(filterBtns) do
         local di = GetDiffInfo(fb.diff)
-        local b = CreateFrame("Button", nil, filterRow)
+        local b = M.VBButton(filterRow, 1, 22, true)
         b:SetSize(fb.key == "lfr" and 38 or 28, 22)
         b:SetPoint("LEFT", fx, 0)
         if ApplyVisuals then

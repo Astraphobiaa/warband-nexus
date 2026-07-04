@@ -566,12 +566,36 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     resetLabel:SetText((ns.L and ns.L["MONEY_LOGS_RESET"]) or "Reset")
     ns.UI_SetTextColorRole(resetLabel, "Bright")
 
+    local function clearScrollHost(scroll, scrollChild)
+        if not scrollChild then return end
+        if ns.UI_ReleaseAllPooledChildren then
+            ns.UI_ReleaseAllPooledChildren(scrollChild)
+        end
+        local kids = { scrollChild:GetChildren() }
+        local bin = ns.UI_RecycleBin
+        for i = 1, #kids do
+            local kid = kids[i]
+            kid:Hide()
+            if bin then
+                kid:SetParent(bin)
+            else
+                kid:SetParent(nil)
+            end
+        end
+        scrollChild:SetHeight(1)
+        if scroll then
+            if scroll.SetVerticalScroll then
+                scroll:SetVerticalScroll(0)
+            end
+            if scroll.UpdateScrollChildRect then
+                scroll:UpdateScrollChildRect()
+            end
+        end
+    end
+
     local function populateLogScroll(filter)
         if not logScroll or not logScrollChild then return end
-        local kids = { logScrollChild:GetChildren() }
-        local bin = ns.UI_RecycleBin
-        for i = 1, #kids do kids[i]:Hide(); if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end end
-        logScrollChild:SetHeight(1)
+        clearScrollHost(logScroll, logScrollChild)
 
         local entries = getFilteredEntries(filter)
         if #entries == 0 then
@@ -698,10 +722,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
 
     local function populateContribScroll()
         if not contribScroll or not contribScrollChild then return end
-        local kids = { contribScrollChild:GetChildren() }
-        local bin = ns.UI_RecycleBin
-        for i = 1, #kids do kids[i]:Hide(); if bin then kids[i]:SetParent(bin) else kids[i]:SetParent(nil) end end
-        contribScrollChild:SetHeight(1)
+        clearScrollHost(contribScroll, contribScrollChild)
 
         local summaryData = getSummary()
         if #summaryData == 0 then
@@ -800,15 +821,24 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         for idx = 1, #TAB_DEFS do
             setTabVisuals(tabButtons[idx], TAB_DEFS[idx].key == tabKey)
         end
-        if tabKey == "contributions" then
+        local isContrib = (tabKey == "contributions")
+        if isContrib then
+            clearScrollHost(logScroll, logScrollChild)
             logPanel:Hide()
             contribPanel:Show()
+            if contribPanel.SetFrameLevel and logPanel.GetFrameLevel then
+                contribPanel:SetFrameLevel(logPanel:GetFrameLevel() + 2)
+            end
             PositionMoneyLogScrollBar(contribPanel)
             populateContribScroll()
             RefreshMoneyLogScrollChrome(contribScroll)
         else
+            clearScrollHost(contribScroll, contribScrollChild)
             contribPanel:Hide()
             logPanel:Show()
+            if logPanel.SetFrameLevel and contribPanel.GetFrameLevel then
+                logPanel:SetFrameLevel(contribPanel:GetFrameLevel() + 2)
+            end
             PositionMoneyLogScrollBar(logFooter)
             populateLogScroll(tabKey)
             RefreshMoneyLogScrollChrome(logScroll)

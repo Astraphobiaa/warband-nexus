@@ -91,7 +91,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         title = L["GOLD_MANAGEMENT_TITLE"] or "Gold Manager",
         icon = "Interface\\Icons\\INV_Misc_Coin_01",
         width = 440,
-        height = 320,
+        height = 352,
         preventDuplicates = true,
         onClose = function()
             -- Settings are already written to the correct DB table (profile or char)
@@ -415,11 +415,17 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
     profileInfo:SetJustifyH("LEFT")
     
     -- Vertical separator
-    local sep = summaryCard:CreateTexture(nil, "ARTWORK")
-    sep:SetSize(1, 1)
-    sep:SetPoint("TOP", summaryCard, "TOP", 0, -SUMMARY_PAD)
-    sep:SetPoint("BOTTOM", summaryCard, "BOTTOM", 0, SUMMARY_PAD)
-    sep:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+    local Factory = ns.UI and ns.UI.Factory
+    local sep = Factory and Factory.CreateThemeDivider and Factory:CreateThemeDivider(summaryCard, {
+        orientation = "vertical",
+        variant = "section",
+        thickness = 1,
+    })
+    if sep then
+        sep:SetPoint("TOP", summaryCard, "TOP", 0, -SUMMARY_PAD)
+        sep:SetPoint("BOTTOM", summaryCard, "BOTTOM", 0, SUMMARY_PAD)
+        sep:SetPoint("CENTER", summaryCard, "CENTER", 0, 0)
+    end
     
     -- Character column (right)
     local charTitle = FontManager:CreateFontString(rightCol, "small", "OVERLAY")
@@ -447,7 +453,7 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
         local extDlgHeaderH = mainShellLayout.HEADER_BAR_HEIGHT
             or mainShellLayout.EXTERNAL_DIALOG_HEADER_HEIGHT
             or 40
-        local bodyH = yOffset + summaryCard:GetHeight() + PADDING
+        local bodyH = yOffset + summaryCard:GetHeight() + PADDING + 12
         dialog:SetHeight(extDlgHeaderH + bodyH)
     end
     
@@ -536,8 +542,8 @@ function WarbandNexus:ShowGoldManagementPopup(anchorFrame)
                 or { COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1 }
             ApplyVisuals(inputBox, chrome, { ac[1], ac[2], ac[3], 0.6 })
         end
-        if sep then
-            sep:SetColorTexture(ac[1], ac[2], ac[3], 0.3)
+        if sep and sep.Show then
+            sep:Show()
         end
         if updateSummary then updateSummary() end
     end

@@ -8,7 +8,6 @@ local M = ns.CollectionsUI
 assert(M and M.state, "CollectionsUI_Shared.lua must load first")
 
 local WarbandNexus = M.WarbandNexus
-local collectionsState = M.state
 local LAYOUT = M.LAYOUT
 local COLORS = M.COLORS or ns.UI_COLORS
 local format = string.format

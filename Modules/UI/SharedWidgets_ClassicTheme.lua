@@ -308,6 +308,63 @@ function ns.UI_ApplyClassicCardPanelChrome(frame)
     ns.UI_ApplyBlizzardCardBackdrop(frame, cardBg)
 end
 
+local function GetClassicCardPanelBg()
+    return (ns.UI_CLASSIC_SURFACE_VARIANT and ns.UI_CLASSIC_SURFACE_VARIANT.bgCard)
+        or (ns.UI_COLORS and (ns.UI_COLORS.bgCard or ns.UI_COLORS.bgLight or ns.UI_COLORS.bg))
+        or { 0.095, 0.095, 0.105, 1 }
+end
+
+--- Opaque fill inside dialog-box insets (tile is semi-transparent; see ApplyMainWindowShellFill).
+---@param frame Frame|nil
+---@param bgColor table|nil rgba; alpha forced to 1 for readable panels
+function ns.UI_ApplyClassicCardInteriorOpaqueFill(frame, bgColor)
+    if not frame then return end
+    local c = bgColor or GetClassicCardPanelBg()
+    local insetL, insetR, insetT, insetB = 8, 8, 8, 8
+    if ns.UI_CLASSIC_CARD_BACKDROP and ns.UI_CLASSIC_CARD_BACKDROP.insets then
+        local ins = ns.UI_CLASSIC_CARD_BACKDROP.insets
+        insetL = ins.left or 8
+        insetR = ins.right or 8
+        insetT = ins.top or 8
+        insetB = ins.bottom or 8
+    end
+    local tex = frame._wnShellFill
+    if not tex then
+        tex = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+        frame._wnShellFill = tex
+    end
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", frame, "TOPLEFT", insetL, -insetT)
+    tex:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -insetR, insetB)
+    tex:SetColorTexture(c[1], c[2], c[3], 1)
+    tex:Show()
+    frame._wnClassicOpaqueCardFill = true
+end
+
+--- Settings Appearance card parity: dialog border + fully opaque interior (ignores shell opacity slider).
+---@param frame Frame|nil
+---@param bgColor table|nil
+function ns.UI_ApplyClassicOpaqueCardSurface(frame, bgColor)
+    if not frame then return end
+    local cardBg = bgColor or GetClassicCardPanelBg()
+    if ns.UI_ApplyClassicCardPanelChrome then
+        ns.UI_ApplyClassicCardPanelChrome(frame)
+    end
+    ns.UI_ApplyClassicCardInteriorOpaqueFill(frame, cardBg)
+    frame._wnClassicOpaqueCard = true
+    frame._wnBorderlessSurface = false
+end
+
+--- Flat opaque panel (nav / content bed) without nested dialog-box corners.
+---@param frame Frame|nil
+---@param bgColor table|nil
+function ns.UI_ApplyClassicOpaquePanelFill(frame, bgColor)
+    if not frame then return end
+    local c = bgColor or GetClassicCardPanelBg()
+    ns.UI_ApplyClassicInteriorFlatFill(frame, { c[1], c[2], c[3], 1 })
+    frame._wnClassicOpaquePanel = true
+end
+
 --- Apply nested dialog-box bordered panel (classic parity for modern ApplyVisuals / CreateCard borders).
 ---@param frame Frame
 ---@param bgColor table|nil
@@ -510,7 +567,7 @@ end
 
 --- Thin dialog-border strip (transparent interior) for classic rail separators.
 ---@param frame Frame
-local function ApplyClassicRailDividerBackdrop(frame)
+function ns.UI_ApplyClassicRailDividerBackdrop(frame)
     if not frame or not EnsureBackdropMixin(frame) then return end
     frame:SetBackdrop(ns.UI_CLASSIC_CARD_BACKDROP)
     frame:SetBackdropColor(0, 0, 0, 0)
@@ -518,26 +575,26 @@ local function ApplyClassicRailDividerBackdrop(frame)
     frame._wnClassicRailDivider = true
 end
 
---- Vertical separator between main nav rail and viewport, or settings nav and content.
+local ApplyClassicRailDividerBackdrop = ns.UI_ApplyClassicRailDividerBackdrop
+
+--- Vertical separator between main nav rail and viewport (dialog-box border strip).
 ---@param parent Frame
 ---@return Frame|nil
 function ns.UI_CreateClassicVerticalRailDivider(parent)
-    if not parent then return nil end
-    local divider = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    divider:SetWidth(8)
-    ApplyClassicRailDividerBackdrop(divider)
-    return divider
+    if ns.UI_CreateThemeDivider then
+        return ns.UI_CreateThemeDivider(parent, { orientation = "vertical", variant = "rail" })
+    end
+    return nil
 end
 
 --- Horizontal separator above settings dual-rail body (below title card).
 ---@param parent Frame
 ---@return Frame|nil
 function ns.UI_CreateClassicHorizontalRailDivider(parent)
-    if not parent then return nil end
-    local divider = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    divider:SetHeight(8)
-    ApplyClassicRailDividerBackdrop(divider)
-    return divider
+    if ns.UI_CreateThemeDivider then
+        return ns.UI_CreateThemeDivider(parent, { orientation = "horizontal", variant = "rail" })
+    end
+    return nil
 end
 ---@param frame Frame
 function ns.UI_StripCustomChromeForBlizzard(frame)

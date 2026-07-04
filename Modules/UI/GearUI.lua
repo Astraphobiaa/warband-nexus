@@ -1248,12 +1248,16 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
     local hdrBg = hdr:CreateTexture(nil, "BACKGROUND")
     hdrBg:SetAllPoints()
     hdrBg:SetColorTexture(hdrChrome[1], hdrChrome[2], hdrChrome[3], hdrChrome[4] or 0.92)
-    local rule = hdr:CreateTexture(nil, "ARTWORK")
-    rule:SetHeight(1)
-    rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 0)
-    rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
-    local ruleA = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.35 or 0.55
-    rule:SetColorTexture(accent[1] * 0.28, accent[2] * 0.28, accent[3] * 0.28, ruleA)
+    local hdrFactory = ns.UI and ns.UI.Factory
+    local rule = hdrFactory and hdrFactory.CreateThemeDivider and hdrFactory:CreateThemeDivider(hdr, {
+        orientation = "horizontal",
+        variant = "section",
+        thickness = 1,
+    })
+    if rule then
+        rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 0)
+        rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
+    end
     local colInset = 2
     local function colFs(text, leftX, width, justify)
         local fs = FontManager:CreateFontString(hdr, GFR("gearStorageHdr"), "OVERLAY")

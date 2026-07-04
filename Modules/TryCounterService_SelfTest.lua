@@ -63,9 +63,16 @@ end
 
 local function withRestoredState(fn)
     local snap = snapshotState()
+    local dedupSnap = Fns.SnapshotTryCounterSelfTestDedupState and Fns.SnapshotTryCounterSelfTestDedupState()
     Fns.ClearDeferredLootSession()
     if Fns.ClearTryCounterTransientKillMarks then
         Fns.ClearTryCounterTransientKillMarks()
+    end
+    if Fns.ClearTryCounterSelfTestDedupState then
+        Fns.ClearTryCounterSelfTestDedupState()
+    end
+    if Fns.ClearTryCounterGatherCastGuard then
+        Fns.ClearTryCounterGatherCastGuard()
     end
     if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
         Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
@@ -74,8 +81,14 @@ local function withRestoredState(fn)
     V.lastTryCountSourceTime = 0
     local ok, err = pcall(fn)
     restoreState(snap)
+    if Fns.RestoreTryCounterSelfTestDedupState and dedupSnap then
+        Fns.RestoreTryCounterSelfTestDedupState(dedupSnap)
+    end
     if Fns.ClearTryCounterTransientKillMarks then
         Fns.ClearTryCounterTransientKillMarks()
+    end
+    if Fns.ClearTryCounterGatherCastGuard then
+        Fns.ClearTryCounterGatherCastGuard()
     end
     if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
         Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
@@ -85,12 +98,14 @@ end
 
 local function runSelfTestHarness(WN, title, fn)
     local pass, fail, warn = 0, 0, 0
+    local failedLabels = {}
     local function linePass(label)
         pass = pass + 1
         WN:Print("|cff00ff00[WN-TC-Test] PASS|r " .. label)
     end
     local function lineFail(label, err)
         fail = fail + 1
+        failedLabels[#failedLabels + 1] = { label = label, err = err }
         local tail = err and (": " .. tostring(err)) or ""
         WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
     end
@@ -108,11 +123,20 @@ local function runSelfTestHarness(WN, title, fn)
     if Fns.ClearTryCounterTransientKillMarks then
         Fns.ClearTryCounterTransientKillMarks()
     end
+    if Fns.ClearTryCounterGatherCastGuard then
+        Fns.ClearTryCounterGatherCastGuard()
+    end
     WN:Print("|cff9370DB[WN-TC-Test]|r " .. title)
     fn(section, probe, lineWarn)
     if fail == 0 then
         WN:Print(format("|cff00ff00[WN-TC-Test] OK|r %d passed, %d warnings.", pass, warn))
     else
+        WN:Print("|cffff0000[WN-TC-Test]|r Failed checks (recap):")
+        for i = 1, #failedLabels do
+            local entry = failedLabels[i]
+            local tail = entry.err and (": " .. tostring(entry.err)) or ""
+            WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. entry.label .. tail)
+        end
         WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d warnings.", pass, fail, warn))
     end
 end
@@ -120,6 +144,7 @@ end
 function WarbandNexus:RunTryCounterSelfTest()
     local WN = self
     local pass, fail, warn = 0, 0, 0
+    local failedLabels = {}
     local samples = Fns.GetSelfTestSampleIds and Fns.GetSelfTestSampleIds() or {}
 
     local function linePass(label)
@@ -128,6 +153,7 @@ function WarbandNexus:RunTryCounterSelfTest()
     end
     local function lineFail(label, err)
         fail = fail + 1
+        failedLabels[#failedLabels + 1] = { label = label, err = err }
         local tail = err and (": " .. tostring(err)) or ""
         WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. label .. tail)
     end
@@ -143,7 +169,11 @@ function WarbandNexus:RunTryCounterSelfTest()
         if ok then linePass(label) else lineFail(label, err) end
     end
     local function requireFn(name)
-        if type(WN[name]) == "function" then
+        local fn = WN[name]
+        if type(fn) ~= "function" and Fns then
+            fn = Fns[name]
+        end
+        if type(fn) == "function" then
             linePass(name .. " registered")
         else
             lineFail(name .. " missing")
@@ -154,9 +184,16 @@ function WarbandNexus:RunTryCounterSelfTest()
         WN:Print("|cffff0000[WN-TC-Test]|r DB not ready — aborting.")
         return
     end
+    if not Fns.EnsureTryCounterRuntimeDbLoaded or not Fns.EnsureTryCounterRuntimeDbLoaded() then
+        WN:Print("|cffff0000[WN-TC-Test]|r CollectibleSourceDB not loaded — aborting.")
+        return
+    end
 
     if Fns.ClearTryCounterTransientKillMarks then
         Fns.ClearTryCounterTransientKillMarks()
+    end
+    if Fns.ClearTryCounterGatherCastGuard then
+        Fns.ClearTryCounterGatherCastGuard()
     end
 
     local mechID = samples.mechanicaItemID or 234741
@@ -164,6 +201,9 @@ function WarbandNexus:RunTryCounterSelfTest()
     local savedMechCount = WN:GetTryCount("item", mechID)
     if Fns.SetTryCounterSelfTestSyncMiss then
         Fns.SetTryCounterSelfTestSyncMiss(true)
+    end
+    if RT.tryCounterSelfTest then
+        RT.tryCounterSelfTest.bypassAutoGate = true
     end
 
     WN:Print("|cff9370DB[WN-TC-Test]|r Full regression (handlers + loot routes)...")
@@ -188,7 +228,16 @@ function WarbandNexus:RunTryCounterSelfTest()
     requireFn("OnTryCounterEncounterStart")
     requireFn("OnTryCounterEncounterEnd")
     requireFn("OnTryCounterBossKill")
-    requireFn("OnTryCounterChatMsgCurrency")
+    requireFn("NpcDropEntryContainsAnyItemSet")
+    requireFn("ScheduleEncounterLootlessMissFallback")
+    requireFn("ForceTryCounterStatisticsSync")
+    requireFn("EnsureTryCounterRuntimeDbLoaded")
+    requireFn("ApplyEarlyLootAttemptIncrement")
+    requireFn("IsLootSessionActiveForIncrementAnnounce")
+    requireFn("ScheduleIncrementAnnounceFlushAfterLoot")
+    requireFn("ShouldSkipLateLootOpenedRoute")
+    requireFn("NotifyLootTryOutcomeCommitted")
+    requireFn("CancelEncounterLootlessMissFallback")
 
     local evList = TC.TRYCOUNTER_EVENTS or {}
     local hasMountEv, hasPetEv, hasLootEv = false, false, false
@@ -213,6 +262,26 @@ function WarbandNexus:RunTryCounterSelfTest()
     else
         lineWarn("Try Counter module disabled (Settings > Modules)")
     end
+
+    section("Loot pipeline helpers")
+    probe("NpcDropEntryContainsAnyItemSet", function()
+        local drops = { { type = "item", itemID = FAKE_ITEM_ID } }
+        if not Fns.NpcDropEntryContainsAnyItemSet(drops, { [FAKE_ITEM_ID] = true }) then
+            error("expected true for matching item")
+        end
+        if Fns.NpcDropEntryContainsAnyItemSet(drops, { [99999999] = true }) then
+            error("expected false for non-matching item")
+        end
+    end)
+    probe("ResolveFromEncounterCache (no crash outside instance)", function()
+        local ctx = {}
+        Fns.ResolveFromEncounterCache(ctx, false)
+        if ctx.drops then error("expected no drops outside instance") end
+    end)
+    probe("ScheduleEncounterLootlessMissFallback (nil-safe no-op)", function()
+        Fns.ScheduleEncounterLootlessMissFallback(nil, nil, nil)
+        Fns.ScheduleEncounterLootlessMissFallback(0, 16, "tc_self_test_enc")
+    end)
 
     -- ── Nil / bogus handler tolerance ─────────────────────────────────
     section("Handler nil safety")
@@ -247,13 +316,36 @@ function WarbandNexus:RunTryCounterSelfTest()
             error("expected false outside raid/dungeon")
         end
     end)
-    probe("ProcessMissedDrops noop for stat-only in raid sim", function()
-        if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
-            Fns.SetTryCounterSelfTestSlotOutcomeEnv({
-                instance = { instanceType = "raid", difficulty = 16 },
-            })
-        end
+    probe("FilterDropsByDifficulty Mythic in scenario when diff nil", function()
         withRestoredState(function()
+            Fns.SetTryCounterSelfTestSlotOutcomeEnv({ instance = { instanceType = "scenario" } })
+            local fakeID = TC.SELF_TEST_FAKE_ITEM_ID or 987654321
+            local drops = {
+                { type = "mount", itemID = fakeID, name = "TC Scenario Mythic", dropDifficulty = "Mythic", repeatable = true },
+            }
+            local trackable = Fns.FilterDropsByDifficulty(drops, nil)
+            if #trackable ~= 1 then
+                error("expected 1 trackable Mythic drop in scenario, got " .. tostring(#trackable))
+            end
+            Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+        end)
+    end)
+    probe("IsRaidOrDungeonInstance true for scenario megadungeon sim", function()
+        withRestoredState(function()
+            Fns.SetTryCounterSelfTestSlotOutcomeEnv({ instance = { instanceType = "scenario" } })
+            if not Fns.IsRaidOrDungeonInstance() then
+                error("expected scenario to count as raid/dungeon instance")
+            end
+            Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+        end)
+    end)
+    probe("ProcessMissedDrops noop for stat-only in raid sim", function()
+        withRestoredState(function()
+            if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                Fns.SetTryCounterSelfTestSlotOutcomeEnv({
+                    instance = { instanceType = "raid", difficulty = 16 },
+                })
+            end
             local drop = { type = "mount", itemID = 1, name = "TC Stat Gate" }
             local old = WN:GetTryCount("mount", 1) or 0
             Fns.ProcessMissedDrops({ drop }, { 15176 }, { sync = true })
@@ -261,9 +353,29 @@ function WarbandNexus:RunTryCounterSelfTest()
                 error("loot miss must not increment stat-only raid drops")
             end
         end)
-        if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
-            Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
-        end
+    end)
+    probe("StageDeferred: no early increment in stat raid sim", function()
+        withRestoredState(function()
+            if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                Fns.SetTryCounterSelfTestSlotOutcomeEnv({
+                    instance = { instanceType = "raid", difficulty = 16 },
+                })
+            end
+            local drop = { type = "mount", itemID = 1, name = "TC Stat Gate" }
+            local old = WN:GetTryCount("mount", 1) or 0
+            Fns.StageDeferredLootSession({
+                kind = "npc",
+                trackable = { drop },
+                drops = { statisticIds = { 15176 } },
+            })
+            if RT.pendingLootSessionFinalize and RT.pendingLootSessionFinalize.earlyMissApplied then
+                error("stat raid must not early-increment")
+            end
+            if (WN:GetTryCount("mount", 1) or 0) ~= old then
+                error("stat raid stage must not bump count")
+            end
+            Fns.ClearDeferredLootSession()
+        end)
     end)
     probe("RunStatisticsOnlyMissReseed no manual +1 when stat unchanged", function()
         withRestoredState(function()
@@ -351,6 +463,65 @@ function WarbandNexus:RunTryCounterSelfTest()
 
     -- ── Deferred session finalize (miss / obtain) ─────────────────────
     section("Deferred loot session outcomes")
+    probe("StageDeferred: earlyMissApplied +1 before finalize (npc)", function()
+        withRestoredState(function()
+            local drop = fakeDrop()
+            local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            Fns.StageDeferredLootSession({
+                kind = "npc",
+                trackable = { drop },
+            })
+            if not RT.pendingLootSessionFinalize then
+                error("expected pending session")
+            end
+            if not RT.pendingLootSessionFinalize.earlyMissApplied then
+                error("expected earlyMissApplied at loot open")
+            end
+            if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
+                error("expected +1 at loot open")
+            end
+            RT.lootSession.numLoot = 0
+            wipe(RT.lootSession.slotData)
+            Fns.FinalizeDeferredLootSessionOutcome(WN)
+            if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
+                error("finalize must not double-increment")
+            end
+            WN:SetTryCount("item", FAKE_ITEM_ID, old)
+        end)
+    end)
+    probe("Finalize npc: early miss announces at close (no double chat)", function()
+        withRestoredState(function()
+            local drop = fakeDrop()
+            local old = WN:GetTryCount("item", FAKE_ITEM_ID)
+            Fns.StageDeferredLootSession({
+                kind = "npc",
+                trackable = { drop },
+            })
+            if not RT.pendingLootSessionFinalize or not RT.pendingLootSessionFinalize.earlyMissApplied then
+                error("expected earlyMissApplied before finalize")
+            end
+            RT.lootSession.numLoot = 0
+            wipe(RT.lootSession.slotData)
+            RT.lootSession.opened = true
+            local captured
+            local origTryChat = TC.TryChat
+            TC.TryChat = function(msg)
+                if type(msg) == "string" and msg:find("attempt", 1, true) then
+                    captured = msg
+                end
+            end
+            Fns.FinalizeDeferredLootSessionOutcome(WN)
+            Fns.FlushDeferredTryCounterIncrementAnnounces()
+            TC.TryChat = origTryChat
+            if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
+                error("expected single early increment count")
+            end
+            if not captured then
+                error("expected increment announce after early miss finalize")
+            end
+            WN:SetTryCount("item", FAKE_ITEM_ID, old)
+        end)
+    end)
     probe("Finalize npc: miss +1 (fake item)", function()
         withRestoredState(function()
             local drop = fakeDrop()
@@ -484,6 +655,64 @@ function WarbandNexus:RunTryCounterSelfTest()
             Fns.ClearDeferredLootSession()
         end)
     end)
+    probe("ProcessNPCLoot closed: single increment without open defer", function()
+        withRestoredState(function()
+            -- Cartel rare without lockout_quest; distinct GUID from Nitro opened probe above.
+            local npcID = samples.closedRouteRareNpcID or 234480
+            local npcGUID = samples.closedRouteRareNpcGUID or "Creature-0-0-0-0-234480-000000000000"
+            local drops, matchNpc = Fns.MatchGuidExact(npcGUID)
+            if not drops or matchNpc ~= npcID then
+                error("closed-route NPC not in runtime npcDropDB")
+            end
+            local drop = drops[1]
+            local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+            if not tryKey then return end
+            local old = WN:GetTryCount(tcType, tryKey) or 0
+            Fns.ResetLootSession()
+            RT.lootSession.sourceGUIDs = { npcGUID }
+            RT.lootSession.numLoot = 0
+            wipe(RT.lootSession.slotData)
+            RT.lootSession.opened = false
+            WN:ProcessNPCLoot("closed")
+            if (WN:GetTryCount(tcType, tryKey) or 0) ~= old + 1 then
+                error("expected single closed-route increment")
+            end
+            WN:SetTryCount(tcType, tryKey, old)
+        end)
+    end)
+    probe("Late LOOT_OPENED after closed route: no second increment", function()
+        withRestoredState(function()
+            local npcID = samples.closedRouteRareNpcID or 234480
+            local npcGUID = samples.closedRouteRareNpcGUID or "Creature-0-0-0-0-234480-000000000000"
+            local drops, matchNpc = Fns.MatchGuidExact(npcGUID)
+            if not drops or matchNpc ~= npcID then
+                error("closed-route NPC not in runtime npcDropDB")
+            end
+            local drop = drops[1]
+            local tcType, tryKey = Fns.GetTryCountTypeAndKey(drop)
+            if not tryKey then return end
+            local old = WN:GetTryCount(tcType, tryKey) or 0
+            Fns.ResetLootSession()
+            RT.lootSession.sourceGUIDs = { npcGUID }
+            RT.lootSession.numLoot = 0
+            wipe(RT.lootSession.slotData)
+            RT.lootSession.opened = false
+            WN:ProcessNPCLoot("closed")
+            local afterClosed = WN:GetTryCount(tcType, tryKey) or 0
+            if afterClosed ~= old + 1 then
+                error("expected closed-route increment")
+            end
+            if not Fns.ShouldSkipLateLootOpenedRoute(false) then
+                error("expected ShouldSkipLateLootOpenedRoute after closed route")
+            end
+            RT.lootSession.opened = false
+            WN:OnTryCounterLootOpened("LOOT_OPENED", true, false)
+            if (WN:GetTryCount(tcType, tryKey) or 0) ~= afterClosed then
+                error("late LOOT_OPENED must not increment again")
+            end
+            WN:SetTryCount(tcType, tryKey, old)
+        end)
+    end)
     if samples.containerID then
         probe("ProcessContainerLoot: defers on opened", function()
             withRestoredState(function()
@@ -500,6 +729,10 @@ function WarbandNexus:RunTryCounterSelfTest()
     end
     probe("Currency fallback: tracked dumpster miss (fake via mechanica restore)", function()
         withRestoredState(function()
+            Fns.ResetLootSession()
+            if Fns.ClearTryCounterTransientKillMarks then
+                Fns.ClearTryCounterTransientKillMarks()
+            end
             local mechID = samples.mechanicaItemID or 234741
             local old = WN:GetTryCount("item", mechID)
             V.lastTrackedObjectInteractID = samples.objectID or 469857
@@ -547,6 +780,9 @@ function WarbandNexus:RunTryCounterSelfTest()
     if Fns.SetTryCounterSelfTestSyncMiss then
         Fns.SetTryCounterSelfTestSyncMiss(false)
     end
+    if RT.tryCounterSelfTest then
+        RT.tryCounterSelfTest.bypassAutoGate = false
+    end
     if Fns.FlushDeferredTryCounterIncrementAnnounces then
         Fns.FlushDeferredTryCounterIncrementAnnounces()
     end
@@ -558,6 +794,12 @@ function WarbandNexus:RunTryCounterSelfTest()
             "|cff00ff00[WN-TC-Test] OK|r %d passed, %d warnings. Routes: object, rare, container, fishing, raid, encounter, chat.",
             pass, warn))
     else
+        WN:Print("|cffff0000[WN-TC-Test]|r Failed checks (recap):")
+        for i = 1, #failedLabels do
+            local entry = failedLabels[i]
+            local tail = entry.err and (": " .. tostring(entry.err)) or ""
+            WN:Print("|cffff0000[WN-TC-Test] FAIL|r " .. entry.label .. tail)
+        end
         WN:Print(format("|cffff0000[WN-TC-Test] FAILED|r %d passed, %d failed, %d warnings.", pass, fail, warn))
     end
 end
@@ -567,6 +809,10 @@ function WarbandNexus:RunTryCounterSylvanasSelfTest()
     local WN = self
     if not Fns.EnsureDB() then
         WN:Print("|cffff0000[WN-TC-Test]|r DB not ready — aborting.")
+        return
+    end
+    if not Fns.EnsureTryCounterRuntimeDbLoaded or not Fns.EnsureTryCounterRuntimeDbLoaded() then
+        WN:Print("|cffff0000[WN-TC-Test]|r CollectibleSourceDB not loaded — aborting.")
         return
     end
     local savedFake = WN:GetTryCount("item", FAKE_ITEM_ID)

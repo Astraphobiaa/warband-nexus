@@ -908,7 +908,9 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
     local iconIsAtlas = (item.iconAtlas ~= nil)
     local ACTION_SIZE = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or ((PCM and PCM.todoTypeBadgeSize) or 24)
     local ACTION_GAP = 4
-    local titleRightInset = 6 + ACTION_SIZE + ACTION_GAP
+    local ACTION_EDGE = (ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+        and (PCM and PCM.classicTodoActionRightInset) or 10) or 6
+    local titleRightInset = ACTION_EDGE + ACTION_SIZE + ACTION_GAP
     if not item.isPlanned and not isCompletedCard then
         titleRightInset = titleRightInset + ACTION_SIZE + ACTION_GAP
     end
@@ -983,7 +985,7 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         ApplyVisuals(row, COLORS.bgCard, borderColor)
     end
 
-    local rightOffset = 6
+    local rightOffset = ACTION_EDGE
     row._todoActionControls = {}
     row._todoActionOffsets = {}
     local function anchorAction(control, w)

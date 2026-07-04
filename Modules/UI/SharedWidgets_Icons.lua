@@ -434,6 +434,31 @@ local function CreateStatusBar(parent, width, height, bgColor, borderColor, noBo
     borderColor = borderColor or {0, 0, 0, 1}
     noBorder = (noBorder == true)
 
+    -- Classic theme: FrameXML-style bar (UI-StatusBar fill + thin stroke track),
+    -- never the 32px dialog-box border that ApplyVisuals would route to.
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome() then
+        local bar = CreateFrame("StatusBar", nil, parent, "BackdropTemplate")
+        bar:SetSize(width, height)
+        if not noBorder and ns.UI_ApplyClassicThinBorderChrome then
+            ns.UI_ApplyClassicThinBorderChrome(bar, { 0.03, 0.03, 0.04, 0.9 })
+        elseif bar.SetBackdrop then
+            bar:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+            bar:SetBackdropColor(0.03, 0.03, 0.04, 0.9)
+        end
+        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        local fillTex = bar:GetStatusBarTexture()
+        if fillTex then
+            fillTex:SetDrawLayer("ARTWORK", 0)
+            if fillTex.SetHorizTile then
+                fillTex:SetHorizTile(false)
+            end
+        end
+        bar:SetMinMaxValues(0, 1)
+        bar:SetValue(0)
+        bar._wnBlizzardChrome = true
+        return bar
+    end
+
     local frame = CreateFrame("StatusBar", nil, parent, noBorder and "BackdropTemplate" or nil)
     frame:SetSize(width, height)
 
@@ -490,6 +515,9 @@ local function CreateButton(parent, width, height, bgColor, borderColor, noBorde
         end
         button:EnableMouse(true)
         button._wnBlizzardButton = true
+        if ns.UI_NormalizeBlizzardButtonChrome then
+            ns.UI_NormalizeBlizzardButtonChrome(button)
+        end
         return button
     end
 

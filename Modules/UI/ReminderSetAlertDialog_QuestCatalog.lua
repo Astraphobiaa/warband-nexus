@@ -153,7 +153,7 @@ function Q.Install(ctx)
             end
         end
 
-        local questTrackCard = CreateFrame("Frame", nil, f.panelQuests)
+        local questTrackCard = H.Container(f.panelQuests, 1, 1, false)
         questTrackCard:SetPoint("TOPLEFT", f.panelQuests, "TOPLEFT", 0, 0)
         questTrackCard:SetPoint("TOPRIGHT", f.panelQuests, "TOPRIGHT", 0, 0)
         questTrackCard:SetHeight(RD.questTrackBaseH)
@@ -161,7 +161,7 @@ function Q.Install(ctx)
         f.questTrackCard = questTrackCard
         f.questEventsCard = questTrackCard
 
-        local trackInner = CreateFrame("Frame", nil, questTrackCard)
+        local trackInner = H.Container(questTrackCard, 1, 1, false)
         trackInner:SetPoint("TOPLEFT", questTrackCard, "TOPLEFT", cardPad, -cardPad)
         trackInner:SetPoint("BOTTOMRIGHT", questTrackCard, "BOTTOMRIGHT", -cardPad, cardPad)
         f.questEventsInner = trackInner
@@ -220,7 +220,7 @@ function Q.Install(ctx)
         f.questMutexTipHost = CreateMutexTipHost(trackInner, questTrackCheck, questTrackLabel)
         f:RaiseMutexTipHost(f.questMutexTipHost)
 
-        f.selectedQuestsBlock = CreateFrame("Frame", nil, trackInner)
+        f.selectedQuestsBlock = H.Container(trackInner, 1, 1, false)
         f.selectedQuestsBlock:SetPoint("TOPLEFT", questTrackCheck, "BOTTOMLEFT", 0, -10)
         f.selectedQuestsBlock:SetPoint("TOPRIGHT", trackInner, "TOPRIGHT", 0, -10)
         f.selectedQuestsBlock:SetHeight(36)
@@ -243,7 +243,7 @@ function Q.Install(ctx)
         f.questSelectedEmpty:SetText((L and L["REMINDER_QUEST_SELECTED_EMPTY"])
             or "No quests or events selected. Check the list below.")
 
-        f.questPickerCard = CreateFrame("Frame", nil, f.panelQuests)
+        f.questPickerCard = H.Container(f.panelQuests, 1, 1, false)
         f.questPickerCard:SetPoint("TOPLEFT", questTrackCard, "BOTTOMLEFT", 0, -8)
         f.questPickerCard:SetPoint("BOTTOMRIGHT", f.panelQuests, "BOTTOMRIGHT", 0, 0)
         f.questPickerCard:SetClipsChildren(true)
@@ -368,14 +368,14 @@ function Q.Install(ctx)
         local typeInnerW = RD.expColW
         local typePanelOuterW = typeInnerW + 4
 
-        local questMapsBody = CreateFrame("Frame", nil, f.questPickerCard)
+        local questMapsBody = H.Container(f.questPickerCard, 1, 1, false)
         questMapsBody:SetPoint("TOPLEFT", questPickerHint, "BOTTOMLEFT", 0, -8)
         questMapsBody:SetPoint("BOTTOMRIGHT", f.questPickerCard, "BOTTOMRIGHT", -cardPad, questPickerPad)
         f.questMapsBody = questMapsBody
         f.questListArea = questMapsBody
         f.questListSection = questMapsBody
 
-        local questColHeadRow = CreateFrame("Frame", nil, questMapsBody)
+        local questColHeadRow = H.Container(questMapsBody, 1, 1, false)
         questColHeadRow:SetPoint("TOPLEFT", questMapsBody, "TOPLEFT", 0, 0)
         questColHeadRow:SetPoint("TOPRIGHT", questMapsBody, "TOPRIGHT", 0, 0)
         questColHeadRow:SetHeight(18)
@@ -399,12 +399,12 @@ function Q.Install(ctx)
         f.questListHead = questListHead
         f.questEntriesHead = questListHead
 
-        local questPickSplit = CreateFrame("Frame", nil, questMapsBody)
+        local questPickSplit = H.Container(questMapsBody, 1, 1, false)
         questPickSplit:SetPoint("TOPLEFT", questColHeadRow, "BOTTOMLEFT", 0, -8)
         questPickSplit:SetPoint("BOTTOMRIGHT", questMapsBody, "BOTTOMRIGHT", 0, 0)
         f.questPickSplit = questPickSplit
 
-        local typePanel = CreateFrame("Frame", nil, questPickSplit)
+        local typePanel = H.Container(questPickSplit, 1, 1, false)
         typePanel:SetWidth(typePanelOuterW)
         typePanel:SetPoint("TOPLEFT", questPickSplit, "TOPLEFT", 0, 0)
         typePanel:SetPoint("BOTTOMLEFT", questPickSplit, "BOTTOMLEFT", 0, 0)
@@ -413,7 +413,7 @@ function Q.Install(ctx)
         end
         f.questTypePanel = typePanel
 
-        local typeListHost = CreateFrame("Frame", nil, typePanel)
+        local typeListHost = H.Container(typePanel, 1, 1, false)
         typeListHost:SetPoint("TOPLEFT", typePanel, "TOPLEFT", 0, 0)
         typeListHost:SetPoint("BOTTOMRIGHT", typePanel, "BOTTOMRIGHT", 0, 0)
         if typeListHost.SetClipsChildren then
@@ -429,7 +429,7 @@ function Q.Install(ctx)
         questSplitLine:SetPoint("BOTTOMLEFT", typePanel, "BOTTOMRIGHT", math.ceil(qcSplitGap * 0.5), 0)
         f.questSplitLine = questSplitLine
 
-        local entriesPanel = CreateFrame("Frame", nil, questPickSplit)
+        local entriesPanel = H.Container(questPickSplit, 1, 1, false)
         entriesPanel:SetPoint("TOPLEFT", questPickSplit, "TOPLEFT", typePanelOuterW + qcSplitGap, 0)
         entriesPanel:SetPoint("BOTTOMRIGHT", questPickSplit, "BOTTOMRIGHT", 0, 0)
         if entriesPanel.SetClipsChildren then
@@ -448,15 +448,8 @@ function Q.Install(ctx)
             local sections = questPickerDef.GetTypeSections()
             for si = 1, #sections do
                 (function(sec, secIdx)
-                    local sb = Factory:CreateButton(typeListHost, typeInnerW, questSecBtnH, false)
-                    if not sb then
-                        sb = CreateFrame("Button", nil, typeListHost, "BackdropTemplate")
-                        sb:SetSize(typeInnerW, questSecBtnH)
-                        if ApplyVisuals then
-                            local idle = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.12, 0.12, 0.15, 1 }
-                            ApplyVisuals(sb, idle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.35 })
-                        end
-                    end
+                    local sb = H.Button(typeListHost, typeInnerW, questSecBtnH, false)
+                    if not sb then return end
                     if secIdx == 1 then
                         sb:SetPoint("TOPLEFT", typeListHost, "TOPLEFT", 0, 0)
                     else
@@ -487,7 +480,7 @@ function Q.Install(ctx)
         local questTagColW = RD.tagColW
         local questListHdrH = 16
 
-        local questEntriesListColHead = CreateFrame("Frame", nil, entriesPanel)
+        local questEntriesListColHead = H.Container(entriesPanel, 1, 1, false)
         questEntriesListColHead:SetPoint("TOPLEFT", entriesPanel, "TOPLEFT", 0, 0)
         questEntriesListColHead:SetPoint("TOPRIGHT", entriesPanel, "TOPRIGHT", 0, 0)
         questEntriesListColHead:SetHeight(questListHdrH)
@@ -525,10 +518,8 @@ function Q.Install(ctx)
             entriesBarCol:SetPoint("BOTTOMRIGHT", entriesPanel, "BOTTOMRIGHT", 0, 0)
         end
 
-        local questListScroll = Factory:CreateScrollFrame(entriesPanel, "UIPanelScrollFrameTemplate", true)
-        if not questListScroll then
-            questListScroll = CreateFrame("ScrollFrame", nil, entriesPanel, "UIPanelScrollFrameTemplate")
-        end
+        local questListScroll = H.ScrollFrame(entriesPanel)
+        assert(questListScroll, "ReminderSetAlertDialog quest list scroll requires Factory")
         questListScroll:SetPoint("TOPLEFT", questEntriesListColHead, "BOTTOMLEFT", 0, -4)
         if entriesBarCol then
             questListScroll:SetPoint("BOTTOMRIGHT", entriesBarCol, "BOTTOMLEFT", -4, 0)
@@ -539,9 +530,8 @@ function Q.Install(ctx)
             questListScroll:SetPoint("BOTTOMRIGHT", entriesPanel, "BOTTOMRIGHT", 0, 0)
         end
 
-        local questListChild = CreateFrame("Frame", nil, questListScroll)
         local qListInitialW = math.max(200, innerW - cardPad * 2 - typePanelOuterW - qcSplitGap - qcScrollW - 16)
-        questListChild:SetWidth(qListInitialW)
+        local questListChild = H.Container(questListScroll, qListInitialW, 1, false)
         questListScroll:SetScrollChild(questListChild)
         f._questCatalogLayout = {
             scrollBarW = qcScrollW,
@@ -598,7 +588,7 @@ function Q.Install(ctx)
             local questListChild = self.questCatalogScrollChild
             if not questListChild then return nil end
 
-            local row = CreateFrame("Frame", nil, questListChild)
+            local row = H.Container(questListChild, qListInitialW, LIST_ROW_H, false)
             row:SetHeight(LIST_ROW_H)
             row._poolIndex = poolIdx
             row.headerBar = row:CreateTexture(nil, "BACKGROUND")

@@ -19,9 +19,15 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 
 --- Skip ApplyVisuals on Blizzard template widgets (classic UIPanelButtonTemplate, etc.).
 local function ApplySettingsChrome(frame, bg, border)
-    if not frame or not ApplyVisuals then return end
+    if not frame then return end
     if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
-    ApplyVisuals(frame, bg, border)
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI.Factory and ns.UI.Factory.ApplyBorder then
+        ns.UI.Factory:ApplyBorder(frame, { tier = "thin", bgColor = bg })
+        return
+    end
+    if ApplyVisuals then
+        ApplyVisuals(frame, bg, border)
+    end
 end
 -- Tab chrome: route all panel/card fills through ApplySettingsChrome (not raw ApplyVisuals).
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -77,6 +83,28 @@ local SETTINGS_CARD_CONTENT_BOTTOM_PAD = 0
 local SETTINGS_COMPACT_BTN_H = 30
 -- Minimum block height for notification anchor summary (two logical lines)
 local SETTINGS_ANCHOR_DESC_MIN_HEIGHT = 44
+-- Embedded settings host insets (single source for DrawSettingsTab + BuildSettings)
+local SETTINGS_SECTION_CARD_PAD_X = UI_SPACING.SECTION_CARD_PADDING_X or 15
+local SETTINGS_LAYOUT = {
+    HOST_SIDE_INSET = UI_SPACING.SETTINGS_HOST_SIDE_INSET or 10,
+    HOST_TOP_INSET = UI_SPACING.SETTINGS_HOST_TOP_INSET or (UI_SPACING.TOP_MARGIN or 8),
+    SECTION_CARD_PAD_X = SETTINGS_SECTION_CARD_PAD_X,
+}
+
+local function GetSettingsSectionCardWidth(containerWidth, sideInset)
+    local w = containerWidth or 640
+    sideInset = sideInset or 0
+    if sideInset > 0 then
+        w = w - (2 * sideInset)
+    end
+    return math.max(200, w)
+end
+
+local function GetSettingsSectionContentWidth(cardWidth)
+    local px = SETTINGS_LAYOUT.SECTION_CARD_PAD_X
+    return math.max(120, (cardWidth or 640) - (2 * px))
+end
+
 local function GetHeaderToolbarGap()
     local L = ns.UI_LAYOUT or UI_SPACING
     return (L and L.HEADER_TOOLBAR_CONTROL_GAP) or UI_SPACING.AFTER_ELEMENT or 8
@@ -137,7 +165,13 @@ end
 ---FontStrings are Regions, not Frames: BuildSettings' GetChildren() sweep never
 ---collects them, so this MUST reuse one cached instance per parent — creating a
 ---fresh one each rebuild leaves stale copies painted over the new layout.
-local function AppendSettingsPanelIntro(parent, panelId, width, yOffset, sideInset)
+local function AppendSettingsPanelIntro(parent, panelId, width, yOffset, sideInset, skipIntro)
+    if skipIntro then
+        if parent._wnSettingsIntroFs then
+            parent._wnSettingsIntroFs:Hide()
+        end
+        return yOffset
+    end
     local SUI = ns.SettingsUI
     local desc = SUI and SUI.PanelDescription and SUI.PanelDescription(panelId)
     if not desc or desc == "" then return yOffset end
@@ -170,25 +204,24 @@ end
 local SETTINGS_SCROLL_INSET_TOP = UI_SPACING.SCROLL_CONTENT_TOP_PADDING or UI_SPACING.TOP_MARGIN
 local SETTINGS_SCROLL_INSET_BOTTOM = UI_SPACING.SCROLL_CONTENT_BOTTOM_PADDING or UI_SPACING.TOP_MARGIN
 
----Thin horizontal rule between logical settings groups (Factory container + ApplyVisuals).
+---Thin horizontal rule between logical settings groups (Factory theme divider).
 local function AppendSettingsGroupDivider(parent, width, yOffset)
     yOffset = yOffset - SETTINGS_DIVIDER_PAD
-    local bar = ns.UI.Factory:CreateContainer(parent, width, 2, false)
-    if bar then
-        bar:SetPoint("TOPLEFT", 0, yOffset)
-        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
-            -- A backdrop border on a 2px frame renders as a smeared band in
-            -- classic; paint a single flat line instead.
-            if bar.SetBackdrop then pcall(bar.SetBackdrop, bar, nil) end
-            if not bar._wnClassicDividerTex then
-                bar._wnClassicDividerTex = bar:CreateTexture(nil, "ARTWORK")
-                bar._wnClassicDividerTex:SetAllPoints()
-            end
-            local bc = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.border)
-                or { 0.55, 0.48, 0.35 }
-            bar._wnClassicDividerTex:SetColorTexture(bc[1], bc[2], bc[3], 0.35)
-            bar:SetHeight(1)
-        else
+    local bar
+    if ns.UI.Factory and ns.UI.Factory.CreateThemeDivider then
+        bar = ns.UI.Factory:CreateThemeDivider(parent, {
+            orientation = "horizontal",
+            variant = "section",
+            thickness = 2,
+        })
+        if bar then
+            bar:SetWidth(width)
+            bar:SetPoint("TOPLEFT", 0, yOffset)
+        end
+    else
+        bar = ns.UI.Factory:CreateContainer(parent, width, 2, false)
+        if bar then
+            bar:SetPoint("TOPLEFT", 0, yOffset)
             ApplySettingsChrome(bar,
                 { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.22 },
                 { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.10 })
@@ -1553,10 +1586,130 @@ local function RefreshSubtitles()
     RefreshThemeWarningText()
 end
 
+-- BuildSettings closes over 60+ chunk locals if helpers are referenced directly; route via _H + in-function unpack (Lua 5.1 upvalue cap).
+do
+    local SUI = ns.SettingsUI or {}
+    ns.SettingsUI = SUI
+    SUI._H = {
+        wipe = wipe,
+        WarbandNexus = WarbandNexus,
+        ADDON_NAME = ADDON_NAME,
+        LDBI = LDBI,
+        COLORS = COLORS,
+        FontManager = FontManager,
+        ns = ns,
+        issecretvalue = issecretvalue,
+        SettingsKeybind = SettingsKeybind,
+        SETTINGS_LAYOUT = SETTINGS_LAYOUT,
+        SETTINGS_SECTION_GAP = SETTINGS_SECTION_GAP,
+        SETTINGS_SCROLL_INSET_BOTTOM = SETTINGS_SCROLL_INSET_BOTTOM,
+        SETTINGS_BTN_H = SETTINGS_BTN_H,
+        SETTINGS_COMPACT_BTN_H = SETTINGS_COMPACT_BTN_H,
+        SETTINGS_CHECKBOX_GRID_INDENT = SETTINGS_CHECKBOX_GRID_INDENT,
+        SETTINGS_ANCHOR_DESC_MIN_HEIGHT = SETTINGS_ANCHOR_DESC_MIN_HEIGHT,
+        SETTINGS_CARD_OUTER_BOTTOM_PAD = SETTINGS_CARD_OUTER_BOTTOM_PAD,
+        CONTENT_PADDING_TOP = CONTENT_PADDING_TOP,
+        UI_SPACING = UI_SPACING,
+        GetSettingsSectionCardWidth = GetSettingsSectionCardWidth,
+        GetSettingsSectionContentWidth = GetSettingsSectionContentWidth,
+        GetHeaderToolbarGap = GetHeaderToolbarGap,
+        AppendSettingsPanelIntro = AppendSettingsPanelIntro,
+        AppendSettingsSubSectionHeader = AppendSettingsSubSectionHeader,
+        StackSettingsSubPanel = StackSettingsSubPanel,
+        CreateSection = CreateSection,
+        CreateCheckboxGrid = CreateCheckboxGrid,
+        CreateDropdownWidget = CreateDropdownWidget,
+        CreateSliderWidget = CreateSliderWidget,
+        CreateInputWidget = CreateInputWidget,
+        CreateButtonGrid = CreateButtonGrid,
+        CreateSettingsDropdownPair = CreateSettingsDropdownPair,
+        CreateThemedCheckbox = CreateThemedCheckbox,
+        FinalizeSettingsSectionHeight = FinalizeSettingsSectionHeight,
+        SettingsMeasuredSectionContentHeight = SettingsMeasuredSectionContentHeight,
+        AdvancePastWrappedFontString = AdvancePastWrappedFontString,
+        MakeLauncherLeftClickCheckboxOption = MakeLauncherLeftClickCheckboxOption,
+        WireLauncherLeftClickCheckbox = WireLauncherLeftClickCheckbox,
+        SyncSettingsCheckboxChecked = SyncSettingsCheckboxChecked,
+        RefreshSubtitles = RefreshSubtitles,
+        ApplySettingsChrome = ApplySettingsChrome,
+        ApplySettingsAccentChromeIdle = ApplySettingsAccentChromeIdle,
+        WireSettingsAccentButtonHover = WireSettingsAccentButtonHover,
+        RegisterSettingsAccentChrome = RegisterSettingsAccentChrome,
+        SettingsControlChrome = SettingsControlChrome,
+        SettingsControlChromeHover = SettingsControlChromeHover,
+        SettingsNestedCardBg = SettingsNestedCardBg,
+        SettingsDialogShellBg = SettingsDialogShellBg,
+        Settings_ShowWrappedTooltip = Settings_ShowWrappedTooltip,
+        SetCheckboxDisabled = SetCheckboxDisabled,
+        FormatFontScaleWarningText = FormatFontScaleWarningText,
+        subtitleElements = subtitleElements,
+        sliderElements = sliderElements,
+        settingsAccentChrome = settingsAccentChrome,
+        themePresetButtons = themePresetButtons,
+    }
+end
+
 ---@param parent Frame
 ---@param containerWidth number|nil
 ---@param layoutOpts table|nil `{ startYOffset, sideInset }` for embedded main-window tab
 local function BuildSettings(parent, containerWidth, layoutOpts)
+    local H = ns.SettingsUI._H
+    local wipe = H.wipe
+    local WarbandNexus = H.WarbandNexus
+    local ADDON_NAME = H.ADDON_NAME
+    local LDBI = H.LDBI
+    local COLORS = H.COLORS
+    local FontManager = H.FontManager
+    local ns = H.ns
+    local issecretvalue = H.issecretvalue
+    local SettingsKeybind = H.SettingsKeybind
+    local SETTINGS_LAYOUT = H.SETTINGS_LAYOUT
+    local SETTINGS_SECTION_GAP = H.SETTINGS_SECTION_GAP
+    local SETTINGS_SCROLL_INSET_BOTTOM = H.SETTINGS_SCROLL_INSET_BOTTOM
+    local SETTINGS_BTN_H = H.SETTINGS_BTN_H
+    local SETTINGS_COMPACT_BTN_H = H.SETTINGS_COMPACT_BTN_H
+    local SETTINGS_CHECKBOX_GRID_INDENT = H.SETTINGS_CHECKBOX_GRID_INDENT
+    local SETTINGS_ANCHOR_DESC_MIN_HEIGHT = H.SETTINGS_ANCHOR_DESC_MIN_HEIGHT
+    local SETTINGS_CARD_OUTER_BOTTOM_PAD = H.SETTINGS_CARD_OUTER_BOTTOM_PAD
+    local CONTENT_PADDING_TOP = H.CONTENT_PADDING_TOP
+    local UI_SPACING = H.UI_SPACING
+    local GetSettingsSectionCardWidth = H.GetSettingsSectionCardWidth
+    local GetSettingsSectionContentWidth = H.GetSettingsSectionContentWidth
+    local GetHeaderToolbarGap = H.GetHeaderToolbarGap
+    local AppendSettingsPanelIntro = H.AppendSettingsPanelIntro
+    local AppendSettingsSubSectionHeader = H.AppendSettingsSubSectionHeader
+    local StackSettingsSubPanel = H.StackSettingsSubPanel
+    local CreateSection = H.CreateSection
+    local CreateCheckboxGrid = H.CreateCheckboxGrid
+    local CreateDropdownWidget = H.CreateDropdownWidget
+    local CreateSliderWidget = H.CreateSliderWidget
+    local CreateInputWidget = H.CreateInputWidget
+    local CreateButtonGrid = H.CreateButtonGrid
+    local CreateSettingsDropdownPair = H.CreateSettingsDropdownPair
+    local CreateThemedCheckbox = H.CreateThemedCheckbox
+    local FinalizeSettingsSectionHeight = H.FinalizeSettingsSectionHeight
+    local SettingsMeasuredSectionContentHeight = H.SettingsMeasuredSectionContentHeight
+    local AdvancePastWrappedFontString = H.AdvancePastWrappedFontString
+    local MakeLauncherLeftClickCheckboxOption = H.MakeLauncherLeftClickCheckboxOption
+    local WireLauncherLeftClickCheckbox = H.WireLauncherLeftClickCheckbox
+    local SyncSettingsCheckboxChecked = H.SyncSettingsCheckboxChecked
+    local RefreshSubtitles = H.RefreshSubtitles
+    local ApplySettingsChrome = H.ApplySettingsChrome
+    local ApplySettingsAccentChromeIdle = H.ApplySettingsAccentChromeIdle
+    local WireSettingsAccentButtonHover = H.WireSettingsAccentButtonHover
+    local RegisterSettingsAccentChrome = H.RegisterSettingsAccentChrome
+    local SettingsControlChrome = H.SettingsControlChrome
+    local SettingsControlChromeHover = H.SettingsControlChromeHover
+    local SettingsNestedCardBg = H.SettingsNestedCardBg
+    local SettingsDialogShellBg = H.SettingsDialogShellBg
+    local Settings_ShowWrappedTooltip = H.Settings_ShowWrappedTooltip
+    local SetCheckboxDisabled = H.SetCheckboxDisabled
+    local FormatFontScaleWarningText = H.FormatFontScaleWarningText
+    local subtitleElements = H.subtitleElements
+    local sliderElements = H.sliderElements
+    local settingsAccentChrome = H.settingsAccentChrome
+    local themePresetButtons = H.themePresetButtons
+
     layoutOpts = layoutOpts or {}
     -- Clear existing
     local bin = ns.UI_RecycleBin
@@ -1577,14 +1730,16 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     themeWarningText = nil
     themeAaHintText = nil
     
-    local sideInset = layoutOpts.sideInset or 0
-    -- Ensure we have a valid width (body already inset when sideInset > 0)
-    local effectiveWidth = containerWidth or parent:GetWidth() or 640
-    if sideInset > 0 then
-        effectiveWidth = math.max(200, effectiveWidth - (sideInset * 2))
+    local sideInset = layoutOpts.sideInset
+    if sideInset == nil then
+        sideInset = SETTINGS_LAYOUT.HOST_SIDE_INSET
     end
-    
-    local yOffset = layoutOpts.startYOffset or 0
+    local effectiveWidth = GetSettingsSectionCardWidth(containerWidth or parent:GetWidth(), sideInset)
+    local yOffset = layoutOpts.startYOffset
+    if yOffset == nil then
+        yOffset = -SETTINGS_LAYOUT.HOST_TOP_INSET
+    end
+    local skipPanelIntro = layoutOpts.skipPanelIntro == true
     local function Want(panelId)
         return ns.SettingsUI and ns.SettingsUI.PanelActive(layoutOpts, panelId)
     end
@@ -1596,7 +1751,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     if Want("general") then
     -- GENERAL SETTINGS
-    yOffset = AppendSettingsPanelIntro(parent, "general", effectiveWidth, yOffset, sideInset)
+    yOffset = AppendSettingsPanelIntro(parent, "general", effectiveWidth, yOffset, sideInset, skipPanelIntro)
     local generalSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(generalSection, yOffset)
     
@@ -1668,7 +1823,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         },
     }
 
-    local generalContentW = effectiveWidth - 30
+    local generalContentW = GetSettingsSectionContentWidth(effectiveWidth)
     local generalStackY = 0
     generalStackY = StackSettingsSubPanel(generalSection.content, generalContentW, 0, function(inner, iw)
         local hdrGap = GetHeaderToolbarGap()
@@ -1735,7 +1890,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_HEADER"]) or "Minimap Left Click",
             iw, cy, {})
-        cy = cy - GetHeaderToolbarGap()
         local minimapLeftClickYOffset
         local minimapLeftClickWidgets
         minimapLeftClickYOffset, minimapLeftClickWidgets = CreateCheckboxGrid(inner, minimapLeftClickOptions, cy, iw)
@@ -1769,7 +1923,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & Scaling",
             iw, cy, {})
-        cy = cy - hdrGap
 
         -- Current Language (label + tooltip)
         local langLabel = FontManager:CreateFontString(inner, "body", "OVERLAY")
@@ -2049,6 +2202,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             effectiveWidth = effectiveWidth,
             yOffset = yOffset,
             sideInset = sideInset,
+            skipPanelIntro = skipPanelIntro,
             helpers = {
                 AppendSettingsPanelIntro = AppendSettingsPanelIntro,
                 CreateSection = CreateSection,
@@ -2060,6 +2214,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
                 SettingsMeasuredSectionContentHeight = SettingsMeasuredSectionContentHeight,
                 FinalizeSettingsSectionHeight = FinalizeSettingsSectionHeight,
                 SETTINGS_SECTION_GAP = SETTINGS_SECTION_GAP,
+                GetSettingsSectionContentWidth = GetSettingsSectionContentWidth,
+                SETTINGS_LAYOUT = SETTINGS_LAYOUT,
             },
         })
     end -- modules panel
@@ -2067,7 +2223,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     if Want("access") then
     -- EASY ACCESS (floating shortcut)
-    yOffset = AppendSettingsPanelIntro(parent, "access", effectiveWidth, yOffset, sideInset)
+    yOffset = AppendSettingsPanelIntro(parent, "access", effectiveWidth, yOffset, sideInset, skipPanelIntro)
     local vaultSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(vaultSection, yOffset)
 
@@ -2180,7 +2336,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         },
     }
 
-    local vaultContentW = effectiveWidth - 30
+    local vaultContentW = GetSettingsSectionContentWidth(effectiveWidth)
     local vaultStackY = 0
     local leftClickWidgets
 
@@ -2212,7 +2368,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["CONFIG_VAULT_LEFT_CLICK_HEADER"]) or "Left Click",
             iw, cy, {})
-        cy = cy - GetHeaderToolbarGap()
         local leftClickYOffset
         leftClickYOffset, leftClickWidgets = CreateCheckboxGrid(inner, leftClickOptions, cy, iw)
 
@@ -2304,16 +2459,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     if Want("filters") then
     -- TAB FILTERING
-    yOffset = AppendSettingsPanelIntro(parent, "filters", effectiveWidth, yOffset, sideInset)
+    yOffset = AppendSettingsPanelIntro(parent, "filters", effectiveWidth, yOffset, sideInset, skipPanelIntro)
     local tabSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(tabSection, yOffset)
-    
-    local tabGridYOffset = 0
-    local tabInnerW = effectiveWidth - 30
-
-    tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
-        (ns.L and ns.L["SETTINGS_SECTION_TAB_WARBAND"]) or "Warband Bank",
-        tabInnerW, tabGridYOffset, { skipGapBefore = true })
 
     local warbandOptions = {}
     local tabFmt = (ns.L and ns.L["TAB_FORMAT"]) or "Tab %d"
@@ -2327,12 +2475,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             set = function(value) WarbandNexus.db.profile.ignoredTabs[i] = value end,
         })
     end
-    
-    tabGridYOffset = CreateCheckboxGrid(tabSection.content, warbandOptions, tabGridYOffset, tabInnerW)
-
-    tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
-        (ns.L and ns.L["SETTINGS_SECTION_TAB_PERSONAL_BANK"]) or "Personal Bank",
-        tabInnerW, tabGridYOffset)
 
     local personalBankOptions = {}
     local bankLbl = (ns.L and ns.L["BANK_LABEL"]) or "Bank"
@@ -2361,12 +2503,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             end,
         })
     end
-    
-    tabGridYOffset = CreateCheckboxGrid(tabSection.content, personalBankOptions, tabGridYOffset, tabInnerW)
-
-    tabGridYOffset = AppendSettingsSubSectionHeader(tabSection.content,
-        (ns.L and ns.L["SETTINGS_SECTION_TAB_INVENTORY"]) or "Inventory",
-        tabInnerW, tabGridYOffset)
 
     local inventoryOptions = {}
     local backpackLabel = (ns.L and ns.L["BACKPACK_LABEL"]) or "Backpack"
@@ -2396,20 +2532,38 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             end,
         })
     end
-    
-    tabGridYOffset = CreateCheckboxGrid(tabSection.content, inventoryOptions, tabGridYOffset, tabInnerW)
 
-    -- Calculate section height
-    local contentHeight = SettingsMeasuredSectionContentHeight(tabGridYOffset)
+    local tabInnerW = GetSettingsSectionContentWidth(effectiveWidth)
+    local tabStackY = 0
+    tabStackY = StackSettingsSubPanel(tabSection.content, tabInnerW, 0, function(inner, iw)
+        local cy = 0
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_TAB_WARBAND"]) or "Warband Bank",
+            iw, cy, { skipGapBefore = true })
+        cy = CreateCheckboxGrid(inner, warbandOptions, cy, iw)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_TAB_PERSONAL_BANK"]) or "Personal Bank",
+            iw, cy)
+        cy = CreateCheckboxGrid(inner, personalBankOptions, cy, iw)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_TAB_INVENTORY"]) or "Inventory",
+            iw, cy)
+        cy = CreateCheckboxGrid(inner, inventoryOptions, cy, iw)
+        return cy
+    end, { flat = true, noTrailingGap = true })
+
+    local contentHeight = SettingsMeasuredSectionContentHeight(tabStackY)
     FinalizeSettingsSectionHeight(tabSection, contentHeight, false)
-    
+
     -- Move to next section
     yOffset = yOffset - tabSection:GetHeight() - SETTINGS_SECTION_GAP
     end -- filters panel
 
     if Want("notifications") then
     -- NOTIFICATIONS
-    yOffset = AppendSettingsPanelIntro(parent, "notifications", effectiveWidth, yOffset, sideInset)
+    yOffset = AppendSettingsPanelIntro(parent, "notifications", effectiveWidth, yOffset, sideInset, skipPanelIntro)
     local notifSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(notifSection, yOffset)
 
@@ -2677,7 +2831,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         },
     }
 
-    local notifInnerW = effectiveWidth - 30
+    local notifInnerW = GetSettingsSectionContentWidth(effectiveWidth)
     local notifStackY = 0
     local notifWidgets = {}
     local notifGridOptsWithRegistry = {}
@@ -3576,11 +3730,11 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     if Want("appearance") then
     -- THEME & APPEARANCE
-    yOffset = AppendSettingsPanelIntro(parent, "appearance", effectiveWidth, yOffset, sideInset)
+    yOffset = AppendSettingsPanelIntro(parent, "appearance", effectiveWidth, yOffset, sideInset, skipPanelIntro)
     local themeSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(themeSection, yOffset)
 
-    local themeContentW = effectiveWidth - 30
+    local themeContentW = GetSettingsSectionContentWidth(effectiveWidth)
     local themeStackY = 0
     local warningText  -- typography panel (slider callback)
 
@@ -3589,7 +3743,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_APPEARANCE"]) or "Appearance",
             iw, cy, { skipGapBefore = true, subtitleBright = true })
-        cy = cy - GetHeaderToolbarGap()
 
         cy = CreateDropdownWidget(inner, {
             name = (ns.L and ns.L["UI_CHROME"]) or "UI Style",
@@ -3717,12 +3870,9 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             valueFormat = function(v) return string.format("%d%%", v * 100) end,
         }, cy, sliderElements)
 
-        cy = cy - GetHeaderToolbarGap()
-
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_COLORS"]) or "Colors & Accent",
             iw, cy, { subtitleBright = true })
-        cy = cy - GetHeaderToolbarGap()
 
         local pickerH = math.max(SETTINGS_BTN_H + 6, 38)
         local colorPickerBtn = ns.UI.Factory:CreateButton(inner, math.min(280, iw), pickerH, false)
@@ -3966,7 +4116,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_THEME_TYPOGRAPHY"]) or "Fonts & Readability",
             iw, cy, { subtitleBright = true })
-        cy = cy - GetHeaderToolbarGap()
 
         local fontFamilyOpt = {
         name = (ns.L and ns.L["FONT_FAMILY"]) or "Font Family",
@@ -4119,14 +4268,14 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     if Want("advanced") then
     -- TRACK ITEM DB
-    yOffset = AppendSettingsPanelIntro(parent, "advanced", effectiveWidth, yOffset, sideInset)
+    yOffset = AppendSettingsPanelIntro(parent, "advanced", effectiveWidth, yOffset, sideInset, skipPanelIntro)
     local trackSection = CreateSection(parent, (ns.L and ns.L["TRACK_ITEM_DB"]) or "Track Item DB", effectiveWidth)
     AnchorSectionTop(trackSection, yOffset)
     
     -- Collapsible: arrow + title aligned with other sections (15px left padding, same as CreateSection)
     local COLLAPSED_HEIGHT = CONTENT_PADDING_TOP  -- title bar only
     local trackIsCollapsed = true  -- default collapsed
-    local HEADER_LEFT_INDENT = 15
+    local HEADER_LEFT_INDENT = SETTINGS_LAYOUT.SECTION_CARD_PAD_X
     local ARROW_TITLE_GAP = 6
     
     local trackChevronBtn = ns.UI_CreateCollapseExpandControl(trackSection, not trackIsCollapsed, { enableMouse = false })
@@ -4146,7 +4295,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     end
     
     local trackYOffset = 0
-    local trackContentWidth = effectiveWidth - 30
+    local trackContentWidth = GetSettingsSectionContentWidth(effectiveWidth)
     
     -- SUB-PANEL: Item Tracking
     
@@ -4396,11 +4545,18 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     -- SUB-PANEL: Custom Entries
     
     -- Divider line
-    local trackDivider2 = trackSection.content:CreateTexture(nil, "OVERLAY")
-    trackDivider2:SetPoint("TOPLEFT", 0, trackYOffset)
-    trackDivider2:SetPoint("RIGHT", trackSection.content, "RIGHT", 0, 0)
-    trackDivider2:SetHeight(1)
-    trackDivider2:SetColorTexture(0.30, 0.30, 0.35, 0.5)
+    local trackDivider2
+    if ns.UI.Factory and ns.UI.Factory.CreateThemeDivider then
+        trackDivider2 = ns.UI.Factory:CreateThemeDivider(trackSection.content, {
+            orientation = "horizontal",
+            variant = "section",
+            thickness = 2,
+        })
+        if trackDivider2 then
+            trackDivider2:SetPoint("TOPLEFT", 0, trackYOffset)
+            trackDivider2:SetPoint("RIGHT", trackSection.content, "RIGHT", 0, 0)
+        end
+    end
     trackYOffset = trackYOffset - 12
     
     -- Sub-header
@@ -4719,7 +4875,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         },
     }
 
-    local advInnerW = effectiveWidth - 30
+    local advInnerW = GetSettingsSectionContentWidth(effectiveWidth)
     local advGridYOffset = CreateCheckboxGrid(advSection.content, debugOptions, 0, advInnerW)
 
     -- Calculate section height
@@ -4741,8 +4897,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         -- Reposition Advanced section
         local advY = trackSectionYBase - trackSection:GetHeight() - SETTINGS_SECTION_GAP
         advSection:ClearAllPoints()
-        advSection:SetPoint("TOPLEFT", 0, advY)
-        advSection:SetPoint("TOPRIGHT", 0, advY)
+        AnchorSectionTop(advSection, advY)
         -- Recalculate total parent height
         local totalY = math.abs(advY) + advSection:GetHeight() + SETTINGS_SCROLL_INSET_BOTTOM
         parent:SetHeight(totalY)
@@ -4800,6 +4955,19 @@ function WarbandNexus:DrawSettingsTab(parent)
             elseif mf and mf.fixedHeader then
                 mf.fixedHeader:SetHeight((chrome.yOffset or 0) + (titleCard:GetHeight() or 64) + 8)
             end
+            if ns.UI_CreateThemeDivider and chrome.headerParent
+                and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
+                local titleSep = ns.UI_CreateThemeDivider(chrome.headerParent, {
+                    orientation = "horizontal",
+                    variant = "rail",
+                })
+                if titleSep then
+                    titleSep:ClearAllPoints()
+                    titleSep:SetPoint("TOPLEFT", titleCard, "BOTTOMLEFT", 0, -4)
+                    titleSep:SetPoint("TOPRIGHT", titleCard, "BOTTOMRIGHT", 0, -4)
+                    mf._wnSettingsTitleRailSep = titleSep
+                end
+            end
         end
     end
 
@@ -4838,35 +5006,15 @@ function WarbandNexus:DrawSettingsTab(parent)
         ApplySettingsChrome(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35 })
         if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(navCol) end
     end
-    local navDivider = navCol:CreateTexture(nil, "ARTWORK")
-    local divNav = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor())
-        or { COLORS.borderLight[1], COLORS.borderLight[2], COLORS.borderLight[3], 0.35 }
-    navDivider:SetColorTexture(divNav[1], divNav[2], divNav[3], divNav[4] or 1)
-    navDivider:SetWidth(1)
-    navDivider:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
-    navDivider:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
+    local navDivider
+    if not useClassicNav and ns.UI.Factory and ns.UI.Factory.CreateThemeDivider then
+        navDivider = ns.UI.Factory:CreateThemeDivider(navCol, { orientation = "vertical", variant = "rail" })
+        if navDivider then
+            navDivider:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
+            navDivider:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
+        end
+    end
     navCol._wnSettingsNavDivider = navDivider
-    local navDividerClassic
-    if ns.UI_CreateClassicVerticalRailDivider then
-        navDividerClassic = ns.UI_CreateClassicVerticalRailDivider(navCol)
-        navDividerClassic:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
-        navDividerClassic:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
-        navCol._wnClassicNavDivider = navDividerClassic
-    end
-    if useClassicNav then
-        navDivider:Hide()
-        if navDividerClassic then navDividerClassic:Show() end
-    else
-        navDivider:Show()
-        if navDividerClassic then navDividerClassic:Hide() end
-    end
-
-    if useClassicNav and ns.UI_CreateClassicHorizontalRailDivider then
-        local bodyTopBorder = ns.UI_CreateClassicHorizontalRailDivider(bodyRow)
-        bodyTopBorder:SetPoint("TOPLEFT", bodyRow, "TOPLEFT", 0, 0)
-        bodyTopBorder:SetPoint("TOPRIGHT", bodyRow, "TOPRIGHT", 0, 0)
-        bodyRow._wnClassicTopBorder = bodyTopBorder
-    end
 
     host:SetPoint("TOPLEFT", navCol, "TOPRIGHT", navGap, 0)
     host:SetPoint("TOPRIGHT", bodyRow, "TOPRIGHT", 0, 0)
@@ -4891,7 +5039,12 @@ function WarbandNexus:DrawSettingsTab(parent)
     end
 
     local hostW = math.max(240, (bodyRow:GetWidth() or w) - navW - navGap)
-    BuildSettings(host, hostW, { startYOffset = 0, sideInset = 10, panel = activePanel })
+    BuildSettings(host, hostW, {
+        startYOffset = -SETTINGS_LAYOUT.HOST_TOP_INSET,
+        sideInset = SETTINGS_LAYOUT.HOST_SIDE_INSET,
+        panel = activePanel,
+        skipPanelIntro = true,
+    })
     local hostH = host:GetHeight() or 0
     local rowH = math.max(navH, hostH, 120)
     bodyRow:SetHeight(rowH)

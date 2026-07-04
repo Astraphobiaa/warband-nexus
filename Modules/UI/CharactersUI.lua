@@ -132,7 +132,11 @@ local function CreateCharacterDeleteDialogButton(parent, label, width, destructi
                 ApplyCharDialogChrome(btn, { ar * 0.5, ag * 0.5, ab * 0.5, 1 }, { ar, ag, ab, 1 })
             end
         end
-        if Factory.ApplyHighlight then
+        if btn._wnBlizzardButton then
+            if ns.UI_NormalizeBlizzardButtonChrome then
+                ns.UI_NormalizeBlizzardButtonChrome(btn)
+            end
+        elseif Factory.ApplyHighlight then
             Factory:ApplyHighlight(btn)
         end
         local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")

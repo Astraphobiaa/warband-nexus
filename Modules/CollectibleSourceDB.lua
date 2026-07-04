@@ -95,6 +95,50 @@ local _wicksLeadDarkness = {
     { type = "mount", itemID = 225548, name = "Wick's Lead" },
 }
 
+-- Stonevault final boss (Malfunctioning Mechsuit -> Stonevault Mechsuit quest mount)
+local _stonevaultMechsuit = {
+    { type = "item", itemID = 226683, name = "Malfunctioning Mechsuit", repeatable = false,
+      questStarters = {
+          { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
+      },
+      tryCountReflectsTo = { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
+    },
+}
+
+-- Operation: Mechagon (Mythic megadungeon) — HK-8 mount; no dedicated Mythic HK-8 kill statistic in DB2.
+local _mechagonPeacekeeper = {
+    { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
+}
+
+-- Dawn of the Infinite (Mythic megadungeon) — Deios mount; no DotI Mythic Deios kill statistic in DB2.
+local _quantumCourser = {
+    { type = "mount", itemID = 208216, name = "Reins of the Quantum Courser" },
+}
+
+-- Return to Karazhan secret boss (loot-miss only; no per-boss kill statistic).
+local _smolderingEmberWyrm = {
+    { type = "mount", itemID = 142552, name = "Smoldering Ember Wyrm" },
+}
+
+-- BfA Mythic dungeon mount bosses (Statistics-backed kill counters).
+local _sharkbaitCrackers = {
+    { type = "mount", itemID = 159842, name = "Sharkbait's Favorite Crackers" },
+}
+local _underrotCrawg = {
+    { type = "mount", itemID = 160829, name = "Underrot Crawg Harness" },
+}
+local _mummifiedRaptor = {
+    { type = "mount", itemID = 159921, name = "Mummified Raptor Skull" },
+}
+
+-- Shadowlands Mythic dungeon mount bosses (Statistics-backed kill counters).
+local _marrowfang = {
+    { type = "mount", itemID = 181819, name = "Marrowfang's Reins" },
+}
+local _cartelGlider = {
+    { type = "mount", itemID = 186638, name = "Cartel Master's Gearglider" },
+}
+
 -- TWW 11.1 "Undermine" Miscellaneous Mechanica - shared drop table
 -- Currency item used to purchase mounts (25 each) and pets from vendors in Undermine
 local _miscMechanica = {
@@ -851,14 +895,45 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter", encounterID = 1799, npcIDs = { 91331 } },              -- Archimonde
         -- Legion
         { sourceType = "encounter", encounterID = 1960, npcIDs = { 114262 } },             -- Attumen (Return to Karazhan)
+        { sourceType = "instance_boss", npcID = 114895,  -- Nightbane (Return to Karazhan Mythic)
+          drops = _smolderingEmberWyrm,
+          dropDifficulty = "Mythic",
+        },
         { sourceType = "encounter", encounterID = 2031, npcIDs = { 114895 } },             -- Nightbane (Return to Karazhan)
         { sourceType = "encounter", encounterID = 1866, npcIDs = { 105503, 104154, 111022 } }, -- Gul'dan
         { sourceType = "encounter", encounterID = 2037, npcIDs = { 115767 } },             -- Mistress Sassz'ine
         { sourceType = "encounter", encounterID = 2074, npcIDs = { 126915, 126916 } },     -- Felhounds of Sargeras
         { sourceType = "encounter", encounterID = 2092, npcIDs = { 130352 } },             -- Argus the Unmaker
         -- Battle for Azeroth
+        { sourceType = "instance_boss", npcID = 155157,  -- HK-8 (Operation: Mechagon Mythic megadungeon)
+          drops = _mechagonPeacekeeper,
+          dropDifficulty = "Mythic",
+        },
+        { sourceType = "instance_boss", npcID = 150190,  -- HK-8 alternate creature template
+          drops = _mechagonPeacekeeper,
+          dropDifficulty = "Mythic",
+        },
         { sourceType = "encounter", encounterID = 2291, npcIDs = { 155157, 150190 } },     -- HK-8 Aerial Oppression Unit
+        { sourceType = "instance_boss", npcID = 198933,  -- Chrono-Lord Deios (Dawn of the Infinite Mythic)
+          drops = _quantumCourser,
+          dropDifficulty = "Mythic",
+        },
         { sourceType = "encounter", encounterID = 2673, npcIDs = { 198933 } },             -- Chrono-Lord Deios (Dawn of the Infinite)
+        { sourceType = "instance_boss", npcID = 126983,  -- Harlan Sweete (Freehold Mythic)
+          drops = _sharkbaitCrackers,
+          statisticIds = { 12752 },
+          dropDifficulty = "Mythic",
+        },
+        { sourceType = "instance_boss", npcID = 133007,  -- Unbound Abomination (The Underrot Mythic)
+          drops = _underrotCrawg,
+          statisticIds = { 12745 },
+          dropDifficulty = "Mythic",
+        },
+        { sourceType = "instance_boss", npcID = 136160,  -- King Dazar (Kings' Rest Mythic)
+          drops = _mummifiedRaptor,
+          statisticIds = { 12763 },
+          dropDifficulty = "Mythic",
+        },
         { sourceType = "encounter", encounterID = 2096, npcIDs = { 126983 } },             -- Harlan Sweete
         { sourceType = "encounter", encounterID = 2123, npcIDs = { 133007 } },             -- Unbound Abomination
         { sourceType = "encounter", encounterID = 2143, npcIDs = { 136160 } },             -- King Dazar
@@ -866,6 +941,16 @@ ns.CollectibleSourceDB = {
         { sourceType = "encounter", encounterID = 2281, npcIDs = { 165396 } },             -- Lady Jaina Proudmoore
         { sourceType = "encounter", encounterID = 2344, npcIDs = { 158041 } },             -- N'Zoth the Corruptor
         { sourceType = "encounter", encounterID = 2390, npcIDs = { 162693 } },             -- Nalthor the Rimebinder
+        { sourceType = "instance_boss", npcID = 162693,  -- Nalthor the Rimebinder (Necrotic Wake Mythic)
+          drops = _marrowfang,
+          statisticIds = { 14404 },
+          dropDifficulty = "Mythic",
+        },
+        { sourceType = "instance_boss", npcID = 180863,  -- So'leah (Tazavesh Mythic)
+          drops = _cartelGlider,
+          statisticIds = { 15168 },
+          dropDifficulty = "Mythic",
+        },
         { sourceType = "encounter", encounterID = 2442, npcIDs = { 180863 } },             -- So'leah
         { sourceType = "encounter", encounterID = 2429, npcIDs = { 178738 } },             -- The Nine
         { sourceType = "encounter", encounterID = 2435, npcIDs = { 175732 } },             -- Sylvanas Windrunner
@@ -884,6 +969,11 @@ ns.CollectibleSourceDB = {
           dropDifficulty = "Mythic",
         },
         { sourceType = "encounter", encounterID = 2788, npcIDs = { 210798, 210797 } },     -- The Darkness (Darkflame Cleft)
+        { sourceType = "instance_boss", npcID = 213119,  -- Void Speaker Eirich (The Stonevault)
+          drops = _stonevaultMechsuit,
+          statisticIds = { 40722 },  -- Void Speaker Eirich kills (Mythic Stonevault); DB2 12.0.1
+          dropDifficulty = "Mythic",
+        },
         { sourceType = "encounter", encounterID = 2883, npcIDs = { 213119 } },             -- Void Speaker Eirich
         { sourceType = "encounter", encounterID = 2922, npcIDs = { 218370 } },             -- Queen Ansurek
         { sourceType = "encounter", encounterID = 3016, npcIDs = { 241526 } },             -- Chrome King Gallywix
@@ -1133,9 +1223,6 @@ ns.CollectibleSourceDB = {
         -- LEGION
 
         -- Dungeon Bosses
-        [114895] = { -- Nightbane (Return to Karazhan Mythic)
-            { type = "mount", itemID = 142552, name = "Smoldering Ember Wyrm" },
-        },
         [114262] = { -- Attumen the Huntsman (Return to Karazhan)
             { type = "mount", itemID = 142236, name = "Midnight's Eternal Reins" },
         },
@@ -1165,20 +1252,23 @@ ns.CollectibleSourceDB = {
 
         -- Raid Bosses [Verified]
         [105503] = { -- Gul'dan (The Nighthold) - ALL DIFFICULTIES
-            { type = "mount", itemID = 137574, name = "Living Infernal Core" }, -- N/H/M (<1% drop)
-            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
-            statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
+            { type = "mount", itemID = 137574, name = "Living Infernal Core",
+              statisticIds = { 10978, 10979, 10980 } },  -- Gul'dan kills (N, H, M)
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic",
+              statisticIds = { 10980 } },  -- Gul'dan kills (M only); Hellfire is Mythic-only
             -- NOTE: Living Infernal Core drops on N/H/M, Fiendish Hellfire Core is Mythic-only
         },
         [104154] = { -- Gul'dan (The Nighthold - normal form) [Verified]
-            { type = "mount", itemID = 137574, name = "Living Infernal Core" },
-            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
-            statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
+            { type = "mount", itemID = 137574, name = "Living Infernal Core",
+              statisticIds = { 10978, 10979, 10980 } },
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic",
+              statisticIds = { 10980 } },
         },
         [111022] = { -- The Demon Within (The Nighthold - Mythic phase) [Verified]
-            { type = "mount", itemID = 137574, name = "Living Infernal Core" },
-            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
-            statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
+            { type = "mount", itemID = 137574, name = "Living Infernal Core",
+              statisticIds = { 10978, 10979, 10980 } },
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic",
+              statisticIds = { 10980 } },
         },
         [115767] = { -- Mistress Sassz'ine (Tomb of Sargeras)
             { type = "mount", itemID = 143643, name = "Abyss Worm" },
@@ -1415,35 +1505,6 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 174842, name = "Slightly Damp Pile of Fur" },
         },
 
-        -- Dungeon Bosses [Verified]
-        [126983] = { -- Harlan Sweete (Freehold Mythic)
-            { type = "mount", itemID = 159842, name = "Sharkbait's Favorite Crackers" },
-            statisticIds = { 12752 },  -- Harlan Sweete kills (Mythic)
-            dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only parrot mount from BfA dungeon
-        },
-        [133007] = { -- Unbound Abomination (The Underrot Mythic)
-            { type = "mount", itemID = 160829, name = "Underrot Crawg Harness" },
-            statisticIds = { 12745 },  -- Unbound Abomination kills (Mythic)
-            dropDifficulty = "Mythic",
-        },
-        [136160] = { -- King Dazar (Kings' Rest Mythic)
-            { type = "mount", itemID = 159921, name = "Mummified Raptor Skull" },
-            statisticIds = { 12763 },  -- King Dazar kills (Mythic)
-            dropDifficulty = "Mythic",
-        },
-        [155157] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - main encounter)
-            { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
-            dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only mount; encounter 2291 used for fallback.
-            -- DB2: only HK-8 kills (Heroic Junkyard)=14057; King Mechagon kills (Mythic)=13620 is final boss, not HK-8.
-            -- No dedicated Mythic HK-8 kill statistic — loot-miss path only.
-        },
-        [150190] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - alt ID)
-            { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
-            dropDifficulty = "Mythic",
-        },
-
         -- Raid Bosses [Verified]
         -- Jaina: Glacial Tidestorm is Mythic-only (never LFR). G.M.O.D. was moved to Jaina for LFR only (Feb 2019 hotfix).
         [165396] = { -- Lady Jaina Proudmoore (Battle of Dazar'alor)
@@ -1583,18 +1644,6 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 187676, name = "Deepstar Polyp" },
         },
 
-        -- Dungeon Bosses
-        [162693] = { -- Nalthor the Rimebinder (The Necrotic Wake Mythic)
-            { type = "mount", itemID = 181819, name = "Marrowfang's Reins" },
-            statisticIds = { 14404 },  -- Nalthor kills (Mythic)
-            dropDifficulty = "Mythic",
-        },
-        [180863] = { -- So'leah (Tazavesh Mythic)
-            { type = "mount", itemID = 186638, name = "Cartel Master's Gearglider" },
-            statisticIds = { 15168 },  -- So'leah kills (Mythic)
-            dropDifficulty = "Mythic",
-        },
-
         -- Raid Bosses [Verified]
         [178738] = { -- The Nine (Sanctum of Domination) - ALL DIFFICULTIES
             { type = "mount", itemID = 186656, name = "Sanctum Gloomcharger's Reins" },
@@ -1700,15 +1749,6 @@ ns.CollectibleSourceDB = {
         },
 
         -- Dungeon Bosses [Verified]
-        [198933] = { -- Chrono-Lord Deios (Dawn of the Infinite Mythic)
-            { type = "mount", itemID = 208216, name = "Reins of the Quantum Courser" },
-            dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only mount from Dragonflight megadungeon (10.1.5)
-            -- When used, teaches a random mount from past dungeon content
-            -- No "Deios kills (Mythic Dawn of the Infinite)" statistic in DB2 12.0.1 (only Uldaman 16095-16097).
-            -- Try count uses loot miss / ENCOUNTER_END path, not GetStatistic seed.
-        },
-
         -- THE WAR WITHIN
 
         -- Hallowfall
@@ -1750,18 +1790,6 @@ ns.CollectibleSourceDB = {
         [219263] = _cracklingShard, -- Warphorn (Isle of Dorn) ~1%
         [219262] = _cracklingShard, -- Springbubble (Isle of Dorn) ~1%
         [219278] = _cracklingShard, -- Shallowshell the Clacker (Isle of Dorn) ~1%
-
-        -- No statisticIds: DB2 has Void Speaker Eirich (Mythic Stonevault)=40722, not 20500 (20500 is unrelated).
-        -- Merged seed still mismatched journal tryKeys / read 0 in testing — keep loot-miss + tryCountReflectsTo.
-        [213119] = { -- Void Speaker Eirich (The Stonevault Mythic/M+) [Verified]
-            { type = "item", itemID = 226683, name = "Malfunctioning Mechsuit", repeatable = false,
-              questStarters = {
-                  { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
-              },
-              tryCountReflectsTo = { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
-            },
-            dropDifficulty = "Mythic",
-        },
 
         -- 11.1 - Undermine
         [234621] = { -- Gallagio Garbage (Undermine) [Verified] â€” no loot lockout, repeatable

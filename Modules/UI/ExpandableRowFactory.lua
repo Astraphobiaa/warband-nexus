@@ -58,15 +58,6 @@ local function CreateDetailsFrame(row, parentFrame, options)
     detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, 0)
     detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, 0)
 
-    -- Single-border layout: the row owns the backdrop, so the details panel inherits the
-    -- same frame and only paints a thin divider line at the seam between header and body.
-    local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
-    divider:SetTexture("Interface\\Buttons\\WHITE8X8")
-    divider:SetHeight(1)
-    divider:SetPoint("TOPLEFT", 0, 0)
-    divider:SetPoint("TOPRIGHT", 0, 0)
-    divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
-    
     local yOffset = -8
     local leftMargin = 12   -- Left-anchored for Description/Requirements to maximize space
     local rightMargin = 16
@@ -394,8 +385,11 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
         ICON_LEFT = 8
         iconTop = -(tonumber(PCM.todoIconRowTop) or 8)
     end
-    local ICON_SIZE = tonumber(data.iconSize) or PCM.todoUnifiedIconSize or PCM.todoIconSize or 40
     local titleInset = data.titleRightInset or 90
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        titleInset = math.max(titleInset, (PCM.classicTodoActionRightInset or 10) + 40)
+    end
+    local ICON_SIZE = tonumber(data.iconSize) or PCM.todoUnifiedIconSize or PCM.todoIconSize or 40
     local FactEr = ns.UI and ns.UI.Factory
     local TYPE_BADGE_SIZE = data.typeBadgeSize or PCM.todoTypeBadgeSize or 24
     local metaGap = tonumber(PCM.todoMetaGap) or 6
@@ -429,7 +423,8 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     local function AnchorBadgeOnIcon(badge, icon)
         if not badge or not icon then return end
         badge:SetPoint("LEFT", icon, "RIGHT", metaGap, 0)
-        badge:SetPoint("CENTER", icon, "CENTER", 0, 0)
+        badge:SetPoint("TOP", icon, "TOP", 0, 0)
+        badge:SetPoint("BOTTOM", icon, "BOTTOM", 0, 0)
     end
 
     local titleAnchor = iconFrame or headerFrame
@@ -631,7 +626,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         end
     end
 
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+    -- Unified To-Do cards: no row hover wash (tooltip + actions suffice; full-card highlight was too loud).
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight and not data.todoUnifiedHeader then
         ns.UI.Factory:ApplyHighlight(headerFrame)
     end
     

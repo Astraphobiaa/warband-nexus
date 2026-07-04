@@ -31,18 +31,19 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
         return yOffset
     end
 
-    yOffset = AppendSettingsPanelIntro(parent, "modules", effectiveWidth, yOffset, sideInset)
+    yOffset = AppendSettingsPanelIntro(parent, "modules", effectiveWidth, yOffset, sideInset, ctx.skipPanelIntro)
     local moduleSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(moduleSection, yOffset)
 
-    local moduleContentW = effectiveWidth - 30
+    local GetSettingsSectionContentWidth = H.GetSettingsSectionContentWidth
+    local moduleContentW = GetSettingsSectionContentWidth and GetSettingsSectionContentWidth(effectiveWidth)
+        or (effectiveWidth - 30)
     local moduleStackY = 0
     moduleStackY = StackSettingsSubPanel(moduleSection.content, moduleContentW, moduleStackY, function(inner, iw)
         local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_MODULES_LIST"]) or "Enabled modules",
             iw, cy, { skipGapBefore = true })
-        cy = cy - GetHeaderToolbarGap()
 
         local moduleOptions = {
             {

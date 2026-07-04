@@ -403,6 +403,48 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("|cffff6600Usage:|r /wn vault test | simulate ready | claim | clear")
         return
 
+    elseif cmd == "pvp" then
+        local _, subCmd = addon:GetArgs(input, 2)
+        local subLower = SafeSlashLower(subCmd)
+        if subLower == "test" then
+            if addon.RunPvPSelfTest then
+                addon:RunPvPSelfTest()
+            else
+                addon:Print("|cffff6600[WN]|r PvP self-test not loaded.")
+            end
+            return
+        elseif subLower == "status" or subLower == "diag" then
+            if ns.PvPService and ns.PvPService.PrintDiagnostics then
+                ns.PvPService:PrintDiagnostics(addon)
+            else
+                addon:Print("|cffff6600[WN]|r PvPService not loaded.")
+            end
+            return
+        elseif subLower == "inject" then
+            if ns.PvPService and ns.PvPService.InjectSelfTestMatch then
+                ns.PvPService:ClearSelfTestMatches(true)
+                local entry = ns.PvPService:InjectSelfTestMatch({ mode = "2v2", outcome = "win", ratingChange = 18 })
+                if entry then
+                    addon:Print("|cff00ccff[WN-PvP]|r Injected self-test match — open PvP tab Recent Matches.")
+                    addon:Print("|cff888888Clear with |r|cff00ccff/wn pvp clear|r")
+                else
+                    addon:Print("|cffff6600[WN-PvP]|r Inject failed (no char key?).")
+                end
+            end
+            return
+        elseif subLower == "clear" then
+            if ns.PvPService and ns.PvPService.ClearSelfTestMatches then
+                local n = ns.PvPService:ClearSelfTestMatches(false)
+                addon:Print(string.format("|cff00ccff[WN-PvP]|r Removed %d self-test match row(s).", n))
+            end
+            return
+        end
+        addon:Print("|cff00ccff/wn pvp test|r — API/DB/UI pipeline smoke test")
+        addon:Print("|cff00ccff/wn pvp status|r — Live API vs DB snapshot + filter counts")
+        addon:Print("|cff00ccff/wn pvp inject|r — Add tagged row for Recent Matches UI QA")
+        addon:Print("|cff00ccff/wn pvp clear|r — Remove injected self-test rows")
+        return
+
     elseif cmd == "charkeys" or cmd == "charkey" then
         local DS = ns.DebugService
         if DS and DS.PrintCharacterKeyDiagnostics then

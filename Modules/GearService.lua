@@ -2938,6 +2938,9 @@ end
 
 -- Bind storage-find satellite deps (GearService_StorageFind.lua loads after this file).
 ns.GearService = ns.GearService or {}
+ns.GearService.storageFindingsCache = ns.GearService.storageFindingsCache or {
+    canonKey = nil, invEpoch = nil, equipSig = nil, findings = nil, logicVer = nil,
+}
 local GearSlots = ns.GearServiceSlots or {}
 ns.GearService._storageFindDeps = {
     GEAR_SLOTS = GearSlots.GEAR_SLOTS,

@@ -4,7 +4,29 @@
 
 **Gate:** `themeMode == "classic"` → `ns.UI_IsClassicMode()` / `ns.UI_ShouldUseBlizzardChrome()` (defined in `SharedWidgets_ClassicTheme.lua`, re-exported from `SharedWidgets.lua` after load).
 
-**Audit date:** 2026-07-02
+**Audit date:** 2026-07-03 (Factory Chrome primitives — dividers, ApplyBorder, widget facades)
+
+---
+
+## Factory Chrome primitives (`SharedWidgets_Factory_Chrome.lua`)
+
+Loaded after `SharedWidgets_ClassicTheme.lua` + `SharedWidgets.lua`, before `SharedWidgets_Factory.lua`.
+
+| API | Classic | Modern | Registry |
+|-----|---------|--------|------------|
+| `Factory:CreateThemeDivider` | Dialog-box rail strip (`UI_ApplyClassicRailDividerBackdrop`) or pane for `section` | `ApplyVisuals` quartet on thin container | `DIVIDER_REGISTRY` → `UI_RefreshThemeDividers` |
+| `Factory:ApplyBorder` | `shell` / `card` / `panel` / `thin` / `iconWell` / `none` classic helpers | Elevated card / ApplyVisuals | via existing border refresh |
+| `Factory:ApplyToolbarChrome` | Transparent edit host or classic pane | `UI_ApplySearchBoxChrome` / accent strip | `BORDER_REGISTRY` |
+| `Factory:CreateSearchBox` | Delegates `ns.UI_CreateSearchBox` | Same | — |
+| `Factory:CreateRadioButton` | `UIRadioButtonTemplate` via `UI_CreateThemedRadioButton` | Custom toggle dot | — |
+| `Factory:CreateNavTabButton` | `UI.lua` registers `NavTabBuilder` | Same | — |
+| `Factory:CreateProgressBar` | Delegates `UI_CreateStatusBar` | Same | — |
+| `Factory:CreateListRow` | Delegates pooled `Acquire*Row` | Same | — |
+| `Factory:CreateRailTabSeparator` | `nil` (gap-only) | `CreateThemeDivider` section | `DIVIDER_REGISTRY` |
+
+**Migrated call sites (Phase 1):** main nav rail right edge (`UI.lua`), footer/settings-about seps, settings nav right edge, settings group dividers, settings category nav seps, vault button horizontal sep (via legacy shims → Factory).
+
+**Governance:** `python scripts/check_ui_chrome_bypass.py` flags ad-hoc `SetColorTexture` divider textures outside allowlisted Factory files.
 
 ---
 
@@ -120,7 +142,9 @@ Main shell **dialog box** (`UI-DialogBox-*`), **close button** (`UIPanelCloseBut
 
 ---
 
-## Grep notes (2026-07-02)
+## Grep notes (2026-07-03)
+
+Run `python scripts/check_ui_chrome_bypass.py` — remaining tab-file flat dividers (Characters, Gear, Items, PvP, trackers) are **P2 follow-up**; main shell + Settings rail edges are migrated to `CreateThemeDivider`.
 
 ### `UI_ShouldUseBlizzardChrome` / `UI_IsClassicMode` under `Modules/UI/**`
 

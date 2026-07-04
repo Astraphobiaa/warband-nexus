@@ -260,7 +260,10 @@ end
 
 -- Fixed slot order for FindGearStorageUpgrades cache keys (pairs() on slots is undefined order).
 local GEAR_STORAGE_SIG_SLOTS = {1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
-local gearStorageFindingsCache = { canonKey = nil, invEpoch = nil, equipSig = nil, findings = nil, logicVer = nil }
+ns.GearService = ns.GearService or {}
+ns.GearService.storageFindingsCache = ns.GearService.storageFindingsCache or {
+    canonKey = nil, invEpoch = nil, equipSig = nil, findings = nil, logicVer = nil,
+}
 
 -- Narrow refresh (ITEM_METADATA / GET_ITEM_INFO) used to Invalidate+ScheduleResolve immediately after a
 -- yielded Find commit, producing duplicate full scans with identical Reject/add lines. We record the last
@@ -455,7 +458,7 @@ end
 --- Does not run the cross-character scan.
 ---@param selectedCharKey string
 ---@return table|nil findings
----@return boolean cached True when findings came from gearStorageFindingsCache
+---@return boolean cached True when findings came from ns.GearService.storageFindingsCache
 function WarbandNexus:GetGearStorageFindingsIfCached(selectedCharKey)
     if not selectedCharKey then return nil, false end
     local getCanonicalKey = (ns.Utilities and ns.Utilities.GetCanonicalCharacterKey) and function(k)
@@ -465,7 +468,7 @@ function WarbandNexus:GetGearStorageFindingsIfCached(selectedCharKey)
     local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
     local invEpoch = ns._gearStorageInvGen or 0
     local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings
         and (c.logicVer or 0) == GEAR_STORAGE_FINDINGS_LOGIC_VER then
         local _, fc = GearStorageFindingsCount(c.findings)
@@ -487,7 +490,7 @@ function WarbandNexus:GetGearStorageFindingsCommitted(selectedCharKey)
         return ns.Utilities:GetCanonicalCharacterKey(k)
     end or function(k) return k end
     local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if c.canonKey == canonKey and c.findings and (c.logicVer or 0) == GEAR_STORAGE_FINDINGS_LOGIC_VER then
         return c.findings, true
     end
@@ -503,7 +506,7 @@ function WarbandNexus:RefreshGearStorageCacheEquipSigForCanon(selectedCharKey)
         return ns.Utilities:GetCanonicalCharacterKey(k)
     end or function(k) return k end
     local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if c.canonKey ~= canonKey or not c.findings then
         return false
     end
@@ -526,7 +529,7 @@ function WarbandNexus:GetGearStorageFindingsIfEquipSigMatch(selectedCharKey)
     local canonKey = getCanonicalKey(selectedCharKey) or selectedCharKey
     local equippedMap = BuildEquippedIlvlMap(selectedCharKey)
     local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if c.canonKey ~= canonKey or c.equipSig ~= equipSig or not c.findings
         or (c.logicVer or 0) ~= GEAR_STORAGE_FINDINGS_LOGIC_VER then
         return nil, false
@@ -551,7 +554,7 @@ function WarbandNexus:ShouldSkipGearStorageNarrowInvalidateForRapidRescan(canonK
         return ns.Utilities:GetCanonicalCharacterKey(k) or k
     end or function(k) return k end
     local canon = getCanonicalKey(canonKey) or canonKey
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if not c or c.canonKey ~= canon or not c.findings then return false end
     local invNow = ns._gearStorageInvGen or 0
     if c.invEpoch == nil or c.invEpoch ~= invNow then return false end
@@ -581,7 +584,7 @@ end
 ---@return boolean
 function WarbandNexus:InvalidateGearStorageFindingsCacheImmediate(canonKey)
     if not canonKey then return false end
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if c then
         if c.canonKey == canonKey or not c.canonKey then
             c.canonKey = nil
@@ -614,7 +617,7 @@ function WarbandNexus:TryCoalesceGearStorageFullFind(selectedCharKey)
 
     local equippedMap = BuildEquippedIlvlMap(canonKey)
     local equipSig = BuildGearStorageScanCacheSignature(canonKey, equippedMap)
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if not c or c.canonKey ~= canonKey or not c.findings or c.equipSig ~= equipSig then return nil end
 
     local tNow = GetTime()
@@ -628,7 +631,7 @@ end
 local _gearStorageDedupeTokenBuf = {}
 
 function WarbandNexus:GetGearStorageFindingsDedupeToken()
-    local c = gearStorageFindingsCache
+    local c = ns.GearService.storageFindingsCache
     if not c or not c.findings then return "0" end
     local buf = _gearStorageDedupeTokenBuf
     wipe(buf)
@@ -891,7 +894,7 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
     local invEpoch = ns._gearStorageInvGen or 0
     local equipSig = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMap)
     do
-        local c = gearStorageFindingsCache
+        local c = ns.GearService.storageFindingsCache
         if c.canonKey == canonKey and c.invEpoch == invEpoch and c.equipSig == equipSig and c.findings
             and (c.logicVer or 0) == GEAR_STORAGE_FINDINGS_LOGIC_VER then
             local fs, fc = GearStorageFindingsCount(c.findings)
@@ -1569,29 +1572,29 @@ function WarbandNexus:FindGearStorageUpgrades(selectedCharKey)
                 :format(tostring(canonKey), fs, fc, addedCount))
         end
         ns._gearStorageDeferInvalidateCanon = canonKey
-        if gearStorageFindingsCache.canonKey == canonKey then
-            gearStorageFindingsCache.findings = nil
-            gearStorageFindingsCache.invEpoch = nil
+        if ns.GearService.storageFindingsCache.canonKey == canonKey then
+            ns.GearService.storageFindingsCache.findings = nil
+            ns.GearService.storageFindingsCache.invEpoch = nil
         end
         return findings
     end
     local equipSigCommit = BuildGearStorageScanCacheSignature(selectedCharKey, equippedMapCommit)
-    gearStorageFindingsCache.canonKey = canonKey
-    gearStorageFindingsCache.equipSig = equipSigCommit
-    gearStorageFindingsCache.findings = findings
-    gearStorageFindingsCache.logicVer = GEAR_STORAGE_FINDINGS_LOGIC_VER
+    ns.GearService.storageFindingsCache.canonKey = canonKey
+    ns.GearService.storageFindingsCache.equipSig = equipSigCommit
+    ns.GearService.storageFindingsCache.findings = findings
+    ns.GearService.storageFindingsCache.logicVer = GEAR_STORAGE_FINDINGS_LOGIC_VER
     -- Align cache epoch to the latest scan generation. Item-info batches and metadata
     -- hooks can bump `ns._gearStorageInvGen` while a yielded Find runs; using only the
     -- epoch captured at scan start forces redundant FULLFIND in RedrawGearStorageRecommendationsOnly.
-    gearStorageFindingsCache.invEpoch = ns._gearStorageInvGen or 0
+    ns.GearService.storageFindingsCache.invEpoch = ns._gearStorageInvGen or 0
     ns._gearStorageFindingsCleanToken = ns._gearStorageFindingsDirtyToken or 0
 
     WarbandNexus:GearStorageTrace("Find committed canon=" .. tostring(canonKey)
-        .. " candidatesAdded=" .. tostring(addedCount) .. " invEpoch=" .. tostring(gearStorageFindingsCache.invEpoch))
+        .. " candidatesAdded=" .. tostring(addedCount) .. " invEpoch=" .. tostring(ns.GearService.storageFindingsCache.invEpoch))
     do
         local fs, fc = GearStorageFindingsCount(findings)
         WarbandNexus:GearStoragePanelDebug(("Find COMMIT OK canon=%s findingsSlots=%d candidates=%d added=%d rejectTotal=%d invEpoch=%s")
-            :format(tostring(canonKey), fs, fc, addedCount, rSum, tostring(gearStorageFindingsCache.invEpoch)))
+            :format(tostring(canonKey), fs, fc, addedCount, rSum, tostring(ns.GearService.storageFindingsCache.invEpoch)))
     end
 
     return findings

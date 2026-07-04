@@ -11,22 +11,16 @@ ns.NotificationToastFactory = NotificationToastFactory
 ---@param parent Frame|nil
 ---@param width number
 ---@param height number
----@param options table|nil { strata?, frameLevel?, clampToScreen?, enableMouse? }
+---@param options table|nil { strata?, frameLevel?, clampToScreen?, enableMouse?, globalName? }
 ---@return Frame
 function NotificationToastFactory:CreateToastHost(parent, width, height, options)
     options = options or {}
     parent = parent or UIParent
     local Factory = ns.UI and ns.UI.Factory
-    local host
-    if Factory and Factory.CreateContainer then
-        host = Factory:CreateContainer(parent, width, height, false)
-    end
-    if not host then
-        host = CreateFrame("Frame", nil, parent)
-        host:SetSize(width or 100, height or 100)
-    else
-        host:SetSize(width, height)
-    end
+    assert(Factory and Factory.CreateContainer, "NotificationToastFactory requires UI.Factory")
+    local host = Factory:CreateContainer(parent, width, height, false, options.globalName)
+    assert(host, "CreateToastHost failed")
+    host:SetSize(width, height)
     host:SetFrameStrata(options.strata or "HIGH")
     host:SetFrameLevel(options.frameLevel or 1000)
     if options.clampToScreen ~= false then
@@ -38,6 +32,19 @@ function NotificationToastFactory:CreateToastHost(parent, width, height, options
         host:EnableMouse(true)
     end
     return host
+end
+
+--- Layout/effects layer inside a toast host (Factory container; no ad-hoc CreateFrame in feature UI).
+---@param parent Frame
+---@param width number|nil
+---@param height number|nil
+---@return Frame
+function NotificationToastFactory:CreateToastLayer(parent, width, height)
+    local Factory = ns.UI and ns.UI.Factory
+    assert(Factory and Factory.CreateContainer, "NotificationToastFactory requires UI.Factory")
+    local layer = Factory:CreateContainer(parent, width or 1, height or 1, false)
+    assert(layer, "CreateToastLayer failed")
+    return layer
 end
 
 ---Single compact-toast text layout: category top-right, title/detail left column (icon gutter + pad).

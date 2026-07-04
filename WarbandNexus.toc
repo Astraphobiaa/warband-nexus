@@ -68,6 +68,8 @@ Modules\CollectionService_Materialize.lua
 Modules\CollectionService_NotifyDedup.lua
 Modules\CollectionService_Scan.lua
 Modules\CollectionService.lua
+Modules\CollectionService_Store.lua
+Modules\CollectionService_Events.lua
 Modules\ReputationScanner.lua
 Modules\ReputationProcessor.lua
 Modules\ReputationCacheService.lua
@@ -75,6 +77,7 @@ Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua
 Modules\PvECacheService_VaultSelfTest.lua
 Modules\PvPService.lua
+Modules\PvPService_SelfTest.lua
 Modules\ItemsCacheService.lua
 Modules\ItemsCacheService_BagPerf.lua
 Modules\ItemsCacheService_PerfStress.lua
@@ -105,6 +108,8 @@ Modules\TryCounterService_Shared.lua
 Modules\TryCounterService_Events.lua
 Modules\TryCounterService_Process.lua
 Modules\TryCounterService.lua
+Modules\TryCounterService_Loot.lua
+Modules\TryCounterService_Stats.lua
 Modules\TryCounterService_Handlers.lua
 Modules\TryCounterService_SelfTest.lua
 Modules\Data\MidnightQuestCatalog.lua
@@ -135,9 +140,12 @@ Modules\UI\AchievementCriteriaHelpers.lua
 Modules\UI\SharedWidgets_Pixel.lua
 Modules\UI\SharedWidgets_CharRow.lua
 Modules\UI\SharedWidgets_ClassicTheme.lua
+Modules\UI\SharedWidgets_Theme.lua
+Modules\UI\SharedWidgets_Layout.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\SharedWidgets_Icons.lua
 Modules\UI\SharedWidgets_Collapsible.lua
+Modules\UI\SharedWidgets_Factory_Chrome.lua
 Modules\UI\SharedWidgets_Factory.lua
 Modules\UI\SharedWidgets_RowPool.lua
 Modules\UI\SharedWidgets_Search.lua
@@ -178,9 +186,12 @@ Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\StorageSectionLayout.lua
 Modules\UI\ItemsUI.lua
+Modules\UI\ItemsUI_StorageDraw.lua
 Modules\UI\PvECharacterListRowChrome.lua
 Modules\UI\PvEUI_VaultGrid.lua
 Modules\UI\PvEUI.lua
+Modules\UI\PvEUI_CharList.lua
+Modules\UI\PvEUI_BodyPaint.lua
 Modules\UI\PvPUI.lua
 Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
@@ -212,6 +223,8 @@ Modules\UI\GoldManagementPopup.lua
 Modules\UI\CharacterBankMoneyLogPopup.lua
 Modules\UI\UI_RefreshRouter.lua
 Modules\UI.lua
+Modules\UI\UI_MainShell.lua
+Modules\UI\UI_TabHost.lua
 
 # Gold Management (MUST load after UI modules)
 Modules\GoldManagementService.lua
