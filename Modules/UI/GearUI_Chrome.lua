@@ -23,6 +23,39 @@ local function ResolveAccent(accent)
     return accent or COLORS.accent or { 0.55, 0.45, 0.78 }
 end
 
+local function ResolveModernGearPanelBorder(accent)
+    if ns.UI_GetAccentBorderRGBA then
+        return ns.UI_GetAccentBorderRGBA(0.55)
+    end
+    local ac = ResolveAccent(accent)
+    return { ac[1], ac[2], ac[3], 0.55 }
+end
+
+--- Modern: accent stroke parity with Classic `UI_ApplyBlizzardPanelBackdrop` on the same hosts.
+local function ApplyModernGearBorderedSurface(frame, surfaceTier, accent, bgAlphaScale)
+    if not frame then return end
+    local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor(surfaceTier or "card"))
+        or COLORS.bgCard or COLORS.bg or { 0.10, 0.10, 0.12, 0.98 }
+    local alpha = (bg[4] or 1) * (bgAlphaScale or 1)
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(frame, { bg[1], bg[2], bg[3], alpha }, ResolveModernGearPanelBorder(accent))
+        frame._wnBorderlessSurface = nil
+        return
+    end
+    if not frame.SetBackdrop then return end
+    frame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        tile = true,
+        tileSize = 8,
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    frame:SetBackdropColor(bg[1], bg[2], bg[3], alpha)
+    local bdr = ResolveModernGearPanelBorder(accent)
+    frame:SetBackdropBorderColor(bdr[1], bdr[2], bdr[3], bdr[4] or 0.55)
+end
+
 --- Raised sub-card with accent top edge (paperdoll viewport, recommendations).
 --- opts.borderless (classic): transparent host — no nested dialog-box on stats/currency bands.
 ---@param frame Frame
@@ -42,17 +75,10 @@ function Chrome.ApplySubpanel(frame, accent, opts)
         end
         return
     end
-    local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("card"))
-        or COLORS.bgCard or COLORS.bg or { 0.10, 0.10, 0.12, 0.98 }
-    if frame.SetBackdrop then
-        frame:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            tile = true,
-            tileSize = 8,
-        })
-        frame:SetBackdropColor(bg[1], bg[2], bg[3], (bg[4] or 1) * 0.92)
-    elseif ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(frame, bg, { 0, 0, 0, 0 })
+    if ns.UI_ApplyStandardCardElevatedChrome then
+        ns.UI_ApplyStandardCardElevatedChrome(frame)
+    else
+        ApplyModernGearBorderedSurface(frame, "card", accent, 0.92)
     end
     if frame._wnGearTopHighlight then
         frame._wnGearTopHighlight:Hide()
@@ -70,15 +96,7 @@ function Chrome.ApplyPaperdollViewport(frame, accent)
         end
         return
     end
-    if not frame.SetBackdrop then return end
-    local bg = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
-        or COLORS.surfaceViewport or COLORS.bgCard or COLORS.bg or { 0.035, 0.035, 0.048, 0.98 }
-    frame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        tile = true,
-        tileSize = 8,
-    })
-    frame:SetBackdropColor(bg[1], bg[2], bg[3], 0.94)
+    ApplyModernGearBorderedSurface(frame, "viewport", accent, 0.94)
 end
 
 --- Left accent bar + title (replaces centered section titles).
@@ -335,12 +353,20 @@ function Chrome.ApplyGearSlotPlainChrome(btn, borderFrame, bgTex)
     return true
 end
 
---- Re-apply paperdoll viewport chrome on persistent hosts (theme / light-mode refresh).
+--- Re-apply gear sub-panel chrome on persistent hosts (theme / light-mode refresh).
 function Chrome.RefreshTheme()
     local mf = ns.WarbandNexus and ns.WarbandNexus.UI and ns.WarbandNexus.UI.mainFrame
     local card = mf and mf._gearPaperdollCard
     local layout = card and card._wnGearViewportLayout
-    if layout and layout.paperChrome and Chrome.ApplyPaperdollViewport then
-        Chrome.ApplyPaperdollViewport(layout.paperChrome, COLORS.accent)
+    if not layout then return end
+    local accent = COLORS.accent
+    if layout.paperChrome and Chrome.ApplyPaperdollViewport then
+        Chrome.ApplyPaperdollViewport(layout.paperChrome, accent)
+    end
+    if layout.storagePanel and Chrome.ApplySubpanel then
+        Chrome.ApplySubpanel(layout.storagePanel, accent)
+    end
+    if layout.statPanel and Chrome.ApplySubpanel then
+        Chrome.ApplySubpanel(layout.statPanel, accent)
     end
 end
