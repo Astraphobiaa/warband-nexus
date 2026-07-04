@@ -1042,6 +1042,7 @@ local function PvEUI_DrawPvEProgressBody(self, parent, L, opts)
 
     local totalLHBox = { v = yOffset }
     -- Same vertical rhythm as Characters virtual rows: `betweenRows` (often 0) after each 46px row.
+    local PVE_CHAR_ROW_HEADER_H = 46
     local PVE_CHAR_ROW_GAP = L.GetLayout().betweenRows or 0
     local scrollFrameRef = parent:GetParent()
 
