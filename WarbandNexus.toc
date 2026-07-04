@@ -193,6 +193,7 @@ Modules\UI\PvEUI.lua
 Modules\UI\PvEUI_CharList.lua
 Modules\UI\PvEUI_BodyPaint.lua
 Modules\UI\PvPUI.lua
+Modules\UI\PvPUI_Draw.lua
 Modules\UI\PvEUI_ColumnPicker.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
