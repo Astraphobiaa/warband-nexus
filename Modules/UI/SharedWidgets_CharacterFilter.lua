@@ -765,5 +765,20 @@ function ns.UI_BuildCharacterSortOptions()
     return out
 end
 
+--- PvP Warband Overview: roster sort modes + best rated bracket.
+function ns.UI_BuildPvpOverviewSortOptions()
+    local out = {}
+    out[#out + 1] = { key = "pvpRating", label = SortOptionLabel("SORT_MODE_PVP_RATING", "Rating (Highest)") }
+    out[#out + 1] = { key = "default", label = SortOptionLabel("SORT_MODE_DEFAULT", "Default Order") }
+    out[#out + 1] = { key = "manual", label = SortOptionLabel("SORT_MODE_MANUAL", "Manual (Custom Order)") }
+    out[#out + 1] = { key = "name", label = SortOptionLabel("SORT_MODE_NAME", "Name (A-Z)") }
+    out[#out + 1] = { key = "class", label = SortOptionLabel("SORT_MODE_CLASS", "Class (A-Z)") }
+    out[#out + 1] = { key = "level", label = SortOptionLabel("SORT_MODE_LEVEL", "Level (Highest)") }
+    out[#out + 1] = { key = "ilvl", label = SortOptionLabel("SORT_MODE_ILVL", "Item Level (Highest)") }
+    out[#out + 1] = { key = "gold", label = SortOptionLabel("SORT_MODE_GOLD", "Gold (Highest)") }
+    out[#out + 1] = { key = "realm", label = SortOptionLabel("SORT_MODE_REALM", "Realm (A-Z)") }
+    return out
+end
+
 ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown
 ns.UI_CreateCharacterTabAdvancedFilterButton = CreateCharacterTabAdvancedFilterButton

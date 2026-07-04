@@ -299,6 +299,10 @@ local defaults = {
         pveSectionFilter = {
             sectionKey = "all",
         },
+        -- PvP tab: section visibility (Favorites / custom groups / Characters).
+        pvpSectionFilter = {
+            sectionKey = "all",
+        },
         -- Legacy single gold-highlight id (migrated into characterFavoriteCustomGroupIds on load).
         characterFavoriteCustomGroupId = nil,
         -- Custom section gold bar highlights: any number of group ids may be set ([groupId] = true).
@@ -333,6 +337,10 @@ local defaults = {
         -- PvE list sorting preferences
         pveSort = {
             key = "default",
+            ascending = true,
+        },
+        pvpSort = {
+            key = "pvpRating",
             ascending = true,
         },
         -- PvE currency columns: "current" (owned) or "weekly" (earn progress); Shift inverts while held.

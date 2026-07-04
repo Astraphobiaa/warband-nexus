@@ -1050,6 +1050,11 @@ local function ComputeScrollChildWidth(frame)
     elseif tab == "stats" and ns.ComputeStatisticsMinScrollWidth then
         local stW = ns.ComputeStatisticsMinScrollWidth()
         if stW > 0 then w = math.max(w, stW) end
+    elseif tab == "pvp" then
+        local painted = frame._pvpMinScrollWidth
+        if type(painted) == "number" and painted > 0 then
+            w = math.max(w, painted)
+        end
     end
     return w
 end

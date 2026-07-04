@@ -48,6 +48,23 @@ local RECENT_KILL_TTL = TC.RECENT_KILL_TTL or 15
 local PROCESSED_GUID_TTL = TC.PROCESSED_GUID_TTL or 300
 local MERGED_LOOT_TRY_DEDUP_TTL = TC.MERGED_LOOT_TRY_DEDUP_TTL or 600
 local CLEANUP_INTERVAL = TC.CLEANUP_INTERVAL or 60
+local GUID_PARSE_CACHE_MAX = TC.GUID_PARSE_CACHE_MAX or 512
+
+local function TrimGuidParseCachesIfOversized()
+    local function trim(cache)
+        if not cache then return end
+        local n = 0
+        for _ in pairs(cache) do
+            n = n + 1
+            if n > GUID_PARSE_CACHE_MAX then
+                wipe(cache)
+                return
+            end
+        end
+    end
+    trim(guidNpcIDCache)
+    trim(guidObjectIDCache)
+end
 local ENCOUNTER_OBJECT_TTL = TC.ENCOUNTER_OBJECT_TTL or 300
 local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 1193
 local RAID_MYTHIC_DIFFICULTY_ID = TC.RAID_MYTHIC_DIFFICULTY_ID or 16
@@ -6420,6 +6437,7 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Periodic cleanup of stale GUIDs and kills (every 60s, batched)
     C_Timer.NewTicker(CLEANUP_INTERVAL, function()
+        TrimGuidParseCachesIfOversized()
         if not next(processedGUIDs) and not next(recentKills) and not next(mergedLootTryCountedAt) then
             return
         end

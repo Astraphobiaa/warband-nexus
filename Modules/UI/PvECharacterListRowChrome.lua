@@ -51,11 +51,14 @@ local function PvE_GetChevronPrefixPx()
     return chevLeft + chevSz + 4
 end
 
---- Shared identity layout: Professions fav/class/name rhythm + chevron + PvE level/iLvl.
+--- Shared identity layout: Professions fav/class/name rhythm + optional chevron + PvE level/iLvl.
 local _pveIdentityLayoutByNameW = {}
-local function PvE_BuildIdentityLayout(nameW)
+--- @param chevronPrefixPx number|nil 0 = no expand chevron (PvP overview); nil = Professions/PvE default.
+local function PvE_BuildIdentityLayout(nameW, chevronPrefixPx)
     local nwKey = math.max(PVE_NAME_COL_MIN_W, tonumber(nameW) or PVE_NAME_COL_MIN_W)
-    local cached = _pveIdentityLayoutByNameW[nwKey]
+    local chevKey = (chevronPrefixPx == nil) and "default" or tostring(chevronPrefixPx)
+    local cacheKey = nwKey .. ":" .. chevKey
+    local cached = _pveIdentityLayoutByNameW[cacheKey]
     if cached then return cached end
     local crc = ns.UI_CHAR_ROW_COLUMNS or {}
     local nw = math.max(PVE_NAME_COL_MIN_W, crc.name and crc.name.width or 100, tonumber(nameW) or 100)
@@ -63,7 +66,9 @@ local function PvE_BuildIdentityLayout(nameW)
     local levelTot = crc.level and crc.level.total or 97
     local ilvlW = crc.itemLevel and crc.itemLevel.width or 75
 
-    local base = PVE_LEFT_PAD + PvE_GetChevronPrefixPx()
+    local chevron = chevronPrefixPx
+    if chevron == nil then chevron = PvE_GetChevronPrefixPx() end
+    local base = PVE_LEFT_PAD + chevron
     local nameLeft = base + PVE_FAV_COL_W + PVE_COL_GAP + PVE_CLASS_COL_W + PVE_COL_GAP
     local levelLeft = nameLeft + nw + PVE_LEVEL_AFTER_NAME_GAP
     local ilvlLeft = levelLeft + levelTot
@@ -81,13 +86,18 @@ local function PvE_BuildIdentityLayout(nameW)
         inlineStart = ilvlLeft + ilvlW + PVE_ILVL_TO_INLINE_GAP,
         identityGradientEnd = nameLeft + nw,
     }
-    _pveIdentityLayoutByNameW[nwKey] = layout
+    _pveIdentityLayoutByNameW[cacheKey] = layout
     return layout
 end
 
 --- Pixels from row inner left (0) to the first inline PvE column.
-function ns.PvE_ComputeInlineColumnsStartPx(nameW)
-    return PvE_BuildIdentityLayout(nameW).inlineStart
+function ns.PvE_ComputeInlineColumnsStartPx(nameW, chevronPrefixPx)
+    return PvE_BuildIdentityLayout(nameW, chevronPrefixPx).inlineStart
+end
+
+--- Identity strip layout (chevronPrefixPx = 0 for PvP overview rows without expand chevron).
+function ns.PvE_GetIdentityLayout(nameW, chevronPrefixPx)
+    return PvE_BuildIdentityLayout(nameW, chevronPrefixPx)
 end
 
 --- Scroll/min-width prefix through identity + iLvl (same start as inline grid).
@@ -108,7 +118,11 @@ function ns.PvEUI_ApplyCharacterListRowChrome(addon, charHeader, char, opts)
     local isFavorite = opts.isFavorite == true
     local isOnline = opts.isCurrentChar == true
     local nameColW = math.max(PVE_NAME_COL_MIN_W, tonumber(opts.nameWidth) or PVE_NAME_COL_MIN_W)
-    local layout = PvE_BuildIdentityLayout(nameColW)
+    local chevronPx = opts.chevronPrefixPx
+    if chevronPx == nil and opts.skipChevronPrefix then
+        chevronPx = 0
+    end
+    local layout = PvE_BuildIdentityLayout(nameColW, chevronPx)
 
     if charHeader._wnSectionStripe then
         charHeader._wnSectionStripe:Hide()

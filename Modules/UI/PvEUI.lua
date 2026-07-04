@@ -1393,6 +1393,8 @@ local function BuildPvEInlineColumnDividerXs(startX, columns, gapAfterIndex)
     return xs
 end
 
+ns.BuildPvEInlineColumnDividerXs = BuildPvEInlineColumnDividerXs
+
 -- Toolbar controls: PvEUI_ColumnPicker.lua (Columns, Hide, Current toggle)
 local function GetTrovehunterBountyColumnIcon()
     local Constants = ns.Constants
@@ -2330,16 +2332,26 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
         end
     end
 
-    scrollParent._pveSectionShellOrder = scrollParent._pveSectionShellOrder or {}
+    local tabPrefix = (opts and opts.tabPrefix) or "pve"
+    local refreshTab = (opts and opts.refreshTab) or tabPrefix
+    local shellOrderField = "_" .. tabPrefix .. "SectionShellOrder"
+    local shellRegistry = opts.sectionShellRegistry
+    if not shellRegistry then
+        _pveDrawPool.sectionShells = _pveDrawPool.sectionShells or {}
+        shellRegistry = _pveDrawPool.sectionShells
+    end
+
+    scrollParent[shellOrderField] = scrollParent[shellOrderField] or {}
+    local shellOrder = scrollParent[shellOrderField]
     local shellOrderDup = false
-    for soi = 1, #scrollParent._pveSectionShellOrder do
-        if scrollParent._pveSectionShellOrder[soi] == expandKey then
+    for soi = 1, #shellOrder do
+        if shellOrder[soi] == expandKey then
             shellOrderDup = true
             break
         end
     end
     if not shellOrderDup then
-        scrollParent._pveSectionShellOrder[#scrollParent._pveSectionShellOrder + 1] = expandKey
+        shellOrder[#shellOrder + 1] = expandKey
     end
 
     local header, grpExpandIcon, hdrIcon, grpHeaderText = CreateCollapsibleHeader(
@@ -2399,7 +2411,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
             iconFrame = hdrIcon,
             headerText = grpHeaderText,
             includeAddButton = false,
-            refreshTab = "pve",
+            refreshTab = refreshTab,
             allowSectionHighlightToggle = false,
         })
     else
@@ -2432,8 +2444,7 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
     sectionContent._pveRunningH = 0
     header._wnKeepOnTabSwitch = true
     sectionContent._wnKeepOnTabSwitch = true
-    _pveDrawPool.sectionShells = _pveDrawPool.sectionShells or {}
-    _pveDrawPool.sectionShells[expandKey] = { header = header, body = sectionContent }
+    shellRegistry[expandKey] = { header = header, body = sectionContent }
 
     if isExpanded then
         sectionContent:Show()
@@ -2445,6 +2456,8 @@ local function PvEUI_CreatePvETabSectionShell(addon, scrollParent, profile, opts
 
     return sectionContent
 end
+
+ns.PvEUI.CreateTabSectionShell = PvEUI_CreatePvETabSectionShell
 
 -- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
 

@@ -508,6 +508,7 @@ function PvPService:GetWarbandOverview()
                 class = char.class,
                 classFile = char.classFile,
                 level = char.level,
+                itemLevel = char.itemLevel or 0,
                 isCurrent = (charKey == currentKey),
                 honorLevel = honor and SafeNum(honor.level) or nil,
                 brackets = brackets,
@@ -519,11 +520,6 @@ function PvPService:GetWarbandOverview()
         end
     end
 
-    table.sort(rows, function(a, b)
-        if a.isCurrent ~= b.isCurrent then return a.isCurrent end
-        if a.bestRating ~= b.bestRating then return a.bestRating > b.bestRating end
-        return tostring(a.name or "") < tostring(b.name or "")
-    end)
     return rows, seasonNumber
 end
 
@@ -613,8 +609,39 @@ function PvPService:InjectSelfTestMatch(opts)
     for i = #matches.recent, RECENT_MATCH_CAP + 1, -1 do
         table.remove(matches.recent, i)
     end
-    EmitUpdated()
+    if not opts.skipEmit then EmitUpdated() end
     return entry
+end
+
+---Insert one self-test row per rated bracket (2v2, 3v3, RBG, shuffle, blitz) for Recent Matches UI QA.
+function PvPService:InjectSelfTestMatchSuite()
+    self:ClearSelfTestMatches(true)
+    local now = time()
+    local specs = {
+        { mode = "2v2", outcome = "win", ratingChange = 18, mapName = "WN Test - Nagrand Arena", duration = 542 },
+        { mode = "3v3", outcome = "loss", ratingChange = -22, mapName = "WN Test - Ruins of Lordaeron", duration = 618 },
+        { mode = "rbg", outcome = "win", ratingChange = 12, mapName = "WN Test - Warsong Gulch", duration = 891 },
+        { mode = "shuffle", outcome = "loss", ratingChange = -15, mapName = "WN Test - Solo Shuffle", duration = 704 },
+        { mode = "blitz", outcome = "draw", ratingChange = 0, mapName = "WN Test - Deepwind Gorge", duration = 456 },
+    }
+    local inserted = {}
+    for i = 1, #specs do
+        local s = specs[i]
+        local entry = self:InjectSelfTestMatch({
+            mode = s.mode,
+            outcome = s.outcome,
+            ratingChange = s.ratingChange,
+            mapName = s.mapName,
+            duration = s.duration,
+            endedAt = now - (i - 1) * 3600,
+            skipEmit = true,
+        })
+        if entry then
+            inserted[#inserted + 1] = entry
+        end
+    end
+    EmitUpdated()
+    return inserted
 end
 
 ---Remove self-test rows and roll back their session/lifetime aggregate bumps.

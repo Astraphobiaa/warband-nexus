@@ -31,6 +31,8 @@ local HEADER_BLOCK_H = 30 -- card title row height inside a card
 local SECTION_GAP = 10
 local CARD_GAP = 10
 local BAR_H = 16
+local TITLE_ICON_SIZE = 20
+local TITLE_ICON_GAP = 6
 
 local BRACKET_LABELS = {
     ["2v2"] = "2v2",
@@ -58,17 +60,22 @@ local RECENT_FILTER_PAD_H = 8
 local RECENT_SUBBAR_LAYOUT_KEY = 1
 local RECENT_LIST_DIVIDER_H = 1
 local RECENT_FOOTER_H = 36
+local RECENT_MATCHES_COLLAPSED = 20
+local RECENT_OUTCOME_STRIPE_W = 3
+local RECENT_OUTCOME_STRIPE_GAP = 5
+local RECENT_OUTCOME_STRIPE_INSET = 2
 local PROGRESS_CARD_MIN_W = 160
 
 local function BuildRecentColumns(innerW)
     local gap = 6
+    local stripeReserve = RECENT_OUTCOME_STRIPE_W + RECENT_OUTCOME_STRIPE_GAP
     local wOutcome = math.max(56, math.floor(innerW * 0.13))
     local wMode = math.max(64, math.floor(innerW * 0.14))
     local wDelta = math.max(44, math.floor(innerW * 0.09))
     local wDur = math.max(44, math.floor(innerW * 0.08))
     local wAgo = math.max(40, math.floor(innerW * 0.08))
     local wMap = math.max(80, innerW - (wOutcome + wMode + wDelta + wDur + wAgo + gap * 5))
-    local x = 0
+    local x = stripeReserve
     local cols = {}
     local function add(w, justify)
         cols[#cols + 1] = { x = x, w = w, justify = justify or "LEFT" }
@@ -176,17 +183,30 @@ local function EnsureCardTitle(bundle, key, card, text)
     return fs
 end
 
+local function GetPvPProgressBarChrome()
+    local track = (ns.UI_ResolveSurfaceTierColor and ns.UI_ResolveSurfaceTierColor("viewport"))
+        or COLORS.surfaceViewport or { 0.05, 0.05, 0.07, 0.95 }
+    local border = (ns.UI_GetAccentBorderRGBA and ns.UI_GetAccentBorderRGBA(0.5))
+        or (ns.UI_GetBorderStrokeColor and ns.UI_GetBorderStrokeColor())
+        or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 }
+    return track, border
+end
+
 -- Label + status bar + right-aligned "cur / max" value line.
 --- opts.uncapped: show progress bar track with no cap; max slot uses L["PVP_INFINITY"].
 local function EnsureBarRow(bundle, key, card, y, labelText, cur, maxV, barColor, opts)
     opts = type(opts) == "table" and opts or {}
+    local trackBg, borderCol = GetPvPProgressBarChrome()
     local row = bundle[key]
     if not row then
         row = {}
         row.label = FontManager:CreateFontString(card, "body", "OVERLAY")
         row.value = FontManager:CreateFontString(card, "body", "OVERLAY")
-        row.bar = ns.UI_CreateStatusBar and ns.UI_CreateStatusBar(card, 200, BAR_H)
+        row.bar = ns.UI_CreateStatusBar
+            and ns.UI_CreateStatusBar(card, 200, BAR_H, trackBg, borderCol)
         bundle[key] = row
+    elseif row.bar and ns.UI_ApplyVisuals and not row.bar._wnBlizzardChrome then
+        ns.UI_ApplyVisuals(row.bar, trackBg, borderCol)
     end
     row.label:ClearAllPoints()
     row.label:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD, -y)
@@ -244,12 +264,25 @@ local function EnsureRowCells(bundle, listKey, rowIdx, card, cols, extraTopOffse
         bundle[listKey][rowIdx] = cells
     end
     local rowY = CARD_PAD + HEADER_BLOCK_H + (extraTopOffset or 0) + (rowIdx - 1) * ROW_H
+    local rowCenterY = -rowY - (ROW_H * 0.5)
     for c = 1, #cols do
         local fs = cells[c]
         fs:ClearAllPoints()
-        fs:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD + cols[c].x, -rowY)
-        fs:SetWidth(cols[c].w)
-        fs:SetJustifyH(cols[c].justify or "LEFT")
+        local colLeft = CARD_PAD + cols[c].x
+        local colW = cols[c].w
+        local justify = cols[c].justify or "LEFT"
+        if justify == "RIGHT" then
+            fs:SetPoint("RIGHT", card, "TOPLEFT", colLeft + colW, rowCenterY)
+        elseif justify == "CENTER" then
+            fs:SetPoint("CENTER", card, "TOPLEFT", colLeft + colW * 0.5, rowCenterY)
+        else
+            fs:SetPoint("LEFT", card, "TOPLEFT", colLeft, rowCenterY)
+        end
+        fs:SetWidth(colW)
+        fs:SetJustifyH(justify)
+        if fs.SetJustifyV then
+            fs:SetJustifyV("MIDDLE")
+        end
         -- Single-line cells: long headers/values truncate instead of wrapping into the next row
         fs:SetWordWrap(false)
         fs:SetMaxLines(1)
@@ -321,57 +354,241 @@ end
 
 local ROSTER_BRACKET_ORDER = { "2v2", "3v3", "rbg", "shuffle", "blitz" }
 local ROSTER_BRACKET_HEADERS = { "2v2", "3v3", "RBG", "SS", "BL" }
-local ROSTER_VISIBLE_ROWS = 10
-local ROSTER_TOGGLE_H = 28
-local ROSTER_BOTTOM_PAD = 10
-local ROSTER_COL_GAP = 8
-local ROSTER_COL_WIDTH_PAD = 6
-local ROSTER_COL_MIN_W = 32
-local ROSTER_RATING_COL_W = 58
-local ROSTER_CURRENCY_COL_MIN = 64
-local ROSTER_WEEKLY_COL_MIN = 96
-local ROSTER_HDR_ICON_SIZE = 22
-local ROSTER_HDR_ROW_H = 48
-local ROSTER_IDENTITY_GAP = 0
 local ROSTER_HONOR_CURRENCY_ID = 1792
 local ROSTER_CONQUEST_CURRENCY_ID = 1602
 
 local ROSTER_STAT_HEADER_ICONS = {
+    honor = {
+        currencyID = ROSTER_HONOR_CURRENCY_ID,
+        iconPaths = {
+            "Interface\\Icons\\PVPCurrency-Honor-Alliance",
+            "Interface\\Icons\\PVPCurrency-Honor-Horde",
+        },
+        iconFallback = "Interface\\Icons\\PVPCurrency-Honor-Alliance",
+    },
+    conquest = {
+        currencyID = ROSTER_CONQUEST_CURRENCY_ID,
+        iconPaths = {
+            "Interface\\Icons\\PVPCurrency-Conquest-Alliance",
+            "Interface\\Icons\\PVPCurrency-Conquest-Horde",
+        },
+        iconFallback = "Interface\\Icons\\PVPCurrency-Conquest-Alliance",
+    },
     ["2v2"] = {
         iconAtlases = { "pvpqueue-sidebar-icon-arena-2v2", "PVPMatchmaking-Ico-2v2" },
+        iconIsAtlas = true,
         iconFallback = "Interface\\Icons\\Achievement_PVP_A_02",
+        headerIconSize = 16,
     },
     ["3v3"] = {
         iconAtlases = { "pvpqueue-sidebar-icon-arena-3v3", "PVPMatchmaking-Ico-3v3" },
+        iconIsAtlas = true,
         iconFallback = "Interface\\Icons\\Achievement_PVP_A_03",
+        headerIconSize = 18,
     },
     rbg = {
-        iconAtlases = { "pvpqueue-sidebar-icon-standard", "pvpqueue-sidebar-icon-battleground" },
+        iconAtlases = { "pvpqueue-sidebar-icon-ratedbattlegroup", "PVPMatchmaking-Ico-RatedBattleground", "pvpqueue-sidebar-icon-battleground" },
+        iconIsAtlas = true,
         iconFallback = "Interface\\Icons\\Achievement_PVP_H_13",
+        headerIconSize = 20,
     },
     shuffle = {
-        iconAtlases = { "pvpqueue-sidebar-icon-shuffle" },
+        iconAtlases = { "pvpqueue-sidebar-icon-shuffle", "PVPMatchmaking-Ico-Shuffle" },
+        iconIsAtlas = true,
         iconFallback = "Interface\\Icons\\Achievement_PVP_G_03",
+        headerIconSize = 22,
     },
     blitz = {
-        iconAtlases = { "pvpqueue-sidebar-icon-battleground" },
+        iconAtlases = { "pvpqueue-sidebar-icon-solorbg", "PVPMatchmaking-Ico-SoloRBG", "pvpmatchmaking-icon-solorbg" },
+        iconIsAtlas = true,
         iconFallback = "Interface\\Icons\\Achievement_PVP_G_01",
+        headerIconSize = 24,
     },
     weekly = {
+        iconPaths = { "Interface\\Icons\\INV_Scroll_03" },
         iconAtlases = { "questlog-questtypeicon-weekly", "questlog-questtypeicon-daily" },
         iconIsAtlas = true,
         iconFallback = "Interface\\Icons\\INV_Scroll_03",
     },
 }
 
-local _pvpRosterCurrencyIconCache = {}
+local PROGRESS_TITLE_ICONS = {
+    level = {
+        iconAtlases = { "honorsystem-icon-prestige-11", "honorsystem-icon-honorlevel", "pvpqueue-sidebar-honorlevel" },
+        iconIsAtlas = true,
+        iconFallback = "Interface\\Icons\\Achievement_PVP_A_01",
+    },
+    honor = { currencyID = ROSTER_HONOR_CURRENCY_ID },
+    conquest = { currencyID = ROSTER_CONQUEST_CURRENCY_ID },
+}
+
+local function GetRosterCurrencyIconDef(currencyID)
+    if not currencyID or not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyInfo then return nil end
+    local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+    if ok and info and info.iconFileID then
+        return { icon = info.iconFileID, iconIsAtlas = false }
+    end
+    return nil
+end
+
+local function RosterHeaderIconIsDrawn(iconTex)
+    if not iconTex then return false end
+    if iconTex.GetAtlas then
+        local atlas = iconTex:GetAtlas()
+        if atlas and atlas ~= "" then return true end
+    end
+    if iconTex.GetTexture and iconTex:GetTexture() then return true end
+    return false
+end
+
+local function TryRosterHeaderFileIcon(iconTex, path, size)
+    if not iconTex or not path or path == "" or not iconTex.SetTexture then return false end
+    if iconTex.SetAtlas then pcall(iconTex.SetAtlas, iconTex, nil) end
+    iconTex:SetTexture(nil)
+    if not pcall(iconTex.SetTexture, iconTex, path) then return false end
+    iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    iconTex:SetSize(size or TITLE_ICON_SIZE, size or TITLE_ICON_SIZE)
+    if ns.UI_EnsureTextureFullColor then
+        ns.UI_EnsureTextureFullColor(iconTex)
+    else
+        iconTex:SetVertexColor(1, 1, 1, 1)
+    end
+    iconTex:Show()
+    return RosterHeaderIconIsDrawn(iconTex)
+end
+
+local function TryRosterHeaderAtlas(iconTex, atlasName, size)
+    if not iconTex or not iconTex.SetAtlas or not atlasName or atlasName == "" then return false end
+    iconTex:SetTexture(nil)
+    local modes = { false, true }
+    for mi = 1, #modes do
+        if pcall(iconTex.SetAtlas, iconTex, atlasName, modes[mi]) and RosterHeaderIconIsDrawn(iconTex) then
+            iconTex:SetSize(size or TITLE_ICON_SIZE, size or TITLE_ICON_SIZE)
+            if ns.UI_EnsureTextureFullColor then
+                ns.UI_EnsureTextureFullColor(iconTex)
+            else
+                iconTex:SetVertexColor(1, 1, 1, 1)
+            end
+            iconTex:Show()
+            return true
+        end
+        iconTex:SetTexture(nil)
+    end
+    return false
+end
+
+local function ApplyRosterHeaderIconTexture(iconTex, iconDef, iconSize)
+    if not iconTex or not iconDef then return end
+    local size = iconSize or TITLE_ICON_SIZE
+    iconTex:Hide()
+    iconTex:SetTexture(nil)
+
+    local PUI = ns.ProfessionsUI
+    if PUI and PUI.ApplyProfessionHeaderIconTexture then
+        PUI.ApplyProfessionHeaderIconTexture(iconTex, iconDef)
+        if PUI.ProfessionHeaderIconIsDrawn and PUI.ProfessionHeaderIconIsDrawn(iconTex) then
+            iconTex:SetSize(size, size)
+            return
+        end
+        iconTex:Hide()
+        iconTex:SetTexture(nil)
+    end
+
+    if iconDef.icon and iconDef.iconIsAtlas == false and type(iconDef.icon) == "number" then
+        iconTex:SetTexture(iconDef.icon)
+        iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        iconTex:SetSize(size, size)
+        if ns.UI_EnsureTextureFullColor then ns.UI_EnsureTextureFullColor(iconTex) end
+        iconTex:Show()
+        if RosterHeaderIconIsDrawn(iconTex) then return end
+    end
+
+    local paths = iconDef.iconPaths
+    if type(paths) == "table" then
+        for pi = 1, #paths do
+            if TryRosterHeaderFileIcon(iconTex, paths[pi], size) then return end
+        end
+    end
+    if iconDef.iconFallback and TryRosterHeaderFileIcon(iconTex, iconDef.iconFallback, size) then return end
+
+    local atlases = iconDef.iconAtlases
+    if type(atlases) == "table" then
+        for ai = 1, #atlases do
+            if TryRosterHeaderAtlas(iconTex, atlases[ai], size) then return end
+        end
+    end
+    if type(iconDef.icon) == "string" and TryRosterHeaderFileIcon(iconTex, iconDef.icon, size) then return end
+end
+
+local function ResolveProgressTitleIconDef(iconDef)
+    if not iconDef then return nil end
+    if iconDef.currencyID then
+        return GetRosterCurrencyIconDef(iconDef.currencyID)
+    end
+    return iconDef
+end
+
+--- Card title with optional left icon (progress cards, rated bracket cards).
+local function EnsureCardTitleWithIcon(bundle, titleKey, iconKey, card, text, iconDef)
+    local fs = bundle[titleKey]
+    if not fs then
+        fs = FontManager:CreateFontString(card, "title", "OVERLAY")
+        bundle[titleKey] = fs
+    end
+    fs:SetParent(card)
+    local resolved = ResolveProgressTitleIconDef(iconDef)
+    local iconTex = bundle[iconKey]
+    if resolved then
+        if not iconTex then
+            iconTex = card:CreateTexture(nil, "ARTWORK")
+            bundle[iconKey] = iconTex
+        end
+        iconTex:SetParent(card)
+        iconTex:SetSize(TITLE_ICON_SIZE, TITLE_ICON_SIZE)
+        iconTex:ClearAllPoints()
+        iconTex:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD, -(CARD_PAD + 1))
+        ApplyRosterHeaderIconTexture(iconTex, resolved)
+        iconTex:Show()
+        fs:ClearAllPoints()
+        fs:SetPoint("LEFT", iconTex, "RIGHT", TITLE_ICON_GAP, 0)
+        fs:SetPoint("TOP", iconTex, "TOP", 0, 0)
+        fs:SetPoint("RIGHT", card, "RIGHT", -CARD_PAD, 0)
+        fs:SetJustifyH("LEFT")
+    else
+        if iconTex then iconTex:Hide() end
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD, -CARD_PAD)
+    end
+    fs:SetText(text)
+    ns.UI_SetTextColorRole(fs, "Bright")
+    fs:Show()
+    return fs
+end
 
 local function RosterHonorHeaderLabel()
     return (HONOR) or "Honor"
 end
 
+local function RosterBracketHeaderLabel(bkey)
+    if bkey == "shuffle" then
+        return (L and L["PVP_HEADER_SHUFFLE"]) or "Shuffle"
+    elseif bkey == "blitz" then
+        return (L and L["PVP_MODE_BLITZ"]) or "Blitz"
+    end
+    for i = 1, #ROSTER_BRACKET_ORDER do
+        if ROSTER_BRACKET_ORDER[i] == bkey then
+            return ROSTER_BRACKET_HEADERS[i] or bkey
+        end
+    end
+    return bkey
+end
+
 local function RosterConquestHeaderLabel()
     return (L and L["PVP_CONQUEST"]) or "Conquest"
+end
+
+local function RosterRealmHeaderLabel()
+    return (L and L["CUSTOM_HEADER_COL_REALM"]) or "Realm"
 end
 
 local function RosterCurrencyQuantity(charKey, currencyID)
@@ -391,312 +608,7 @@ local function FormatRosterCurrencyQty(qty)
     if qty >= 1e4 then return string.format("%.1fK", qty / 1e3) end
     return tostring(math.floor(qty + 0.5))
 end
-
-local function RosterWeeklyColIndex()
-    return 4 + #ROSTER_BRACKET_ORDER + 1
-end
-
-local ROSTER_NAME_PAD = 4
-local ROSTER_IDENTITY_MAX_NAME = 128
-
-local function RosterUseModernHeaders()
-    return not (ns.UI_IsClassicMode and ns.UI_IsClassicMode())
-end
-
-local function RosterHeaderRowHeight()
-    return RosterUseModernHeaders() and ROSTER_HDR_ROW_H or ROW_H
-end
-
-local function GetRosterCurrencyIconDef(currencyID)
-    if not currencyID then return nil end
-    local hit = _pvpRosterCurrencyIconCache[currencyID]
-    if hit ~= nil then
-        if hit == false then return nil end
-        return hit
-    end
-    local iconFileID
-    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-        local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
-        if ok and info and info.iconFileID then
-            iconFileID = info.iconFileID
-        end
-    end
-    if not iconFileID then
-        _pvpRosterCurrencyIconCache[currencyID] = false
-        return nil
-    end
-    local def = { icon = iconFileID, iconIsAtlas = false }
-    _pvpRosterCurrencyIconCache[currencyID] = def
-    return def
-end
-
-local function HideRosterModernHeaders(bundle)
-    if not bundle then return end
-    if bundle.rosterHdrHits then
-        for _, hit in pairs(bundle.rosterHdrHits) do
-            if hit and hit.Hide then hit:Hide() end
-        end
-    end
-    if bundle.rosterHdrCompactLabels then
-        for _, fs in pairs(bundle.rosterHdrCompactLabels) do
-            if fs and fs.Hide then fs:Hide() end
-        end
-    end
-end
-
-local function ApplyRosterHeaderIconTexture(iconTex, iconDef)
-    if not iconTex or not iconDef then return end
-    local PUI = ns.ProfessionsUI
-    if PUI and PUI.ApplyProfessionHeaderIconTexture then
-        PUI.ApplyProfessionHeaderIconTexture(iconTex, iconDef)
-        return
-    end
-    iconTex:Hide()
-    if iconDef.icon and iconTex.SetTexture then
-        iconTex:SetTexture(iconDef.icon)
-        iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        if ns.UI_EnsureTextureFullColor then ns.UI_EnsureTextureFullColor(iconTex) end
-        iconTex:Show()
-    end
-end
-
-local function PaintRosterModernStatHeader(bundle, card, colKey, col, iconDef, compactLabel, tooltipTitle, hdrExtra)
-    if not bundle or not card or not col then return end
-    bundle.rosterHdrHits = bundle.rosterHdrHits or {}
-    bundle.rosterHdrCompactLabels = bundle.rosterHdrCompactLabels or {}
-
-    local hitW, hitH = ROSTER_HDR_ICON_SIZE + 4, ROSTER_HDR_ICON_SIZE + 4
-    local hit = bundle.rosterHdrHits[colKey]
-    if not hit then
-        local FactHdr = ns.UI and ns.UI.Factory
-        hit = FactHdr and FactHdr:CreateContainer(card, hitW, hitH, false)
-        if not hit then
-            hit = CreateFrame("Frame", nil, card)
-            hit:SetSize(hitW, hitH)
-        end
-        local iconTex = hit:CreateTexture(nil, "ARTWORK")
-        iconTex:SetSize(ROSTER_HDR_ICON_SIZE, ROSTER_HDR_ICON_SIZE)
-        iconTex:SetPoint("CENTER")
-        hit._wnHeaderIconTex = iconTex
-        bundle.rosterHdrHits[colKey] = hit
-    end
-    hit:SetParent(card)
-    hit:SetSize(hitW, hitH)
-    hit:Show()
-    hit:ClearAllPoints()
-    local bandTop = CARD_PAD + HEADER_BLOCK_H + (hdrExtra or 0)
-    local centerX = CARD_PAD + col.x + col.w * 0.5
-    hit:SetPoint("TOP", card, "TOPLEFT", centerX, -(bandTop + 6))
-
-    local iconTex = hit._wnHeaderIconTex
-    if iconTex then
-        if iconDef then
-            ApplyRosterHeaderIconTexture(iconTex, iconDef)
-            iconTex:Show()
-        else
-            iconTex:Hide()
-        end
-    end
-
-    if compactLabel and compactLabel ~= "" then
-        local fs = bundle.rosterHdrCompactLabels[colKey]
-        if not fs then
-            fs = FontManager:CreateFontString(card, "small", "OVERLAY")
-            bundle.rosterHdrCompactLabels[colKey] = fs
-        else
-            fs:SetParent(card)
-            fs:Show()
-        end
-        fs:ClearAllPoints()
-        fs:SetPoint("TOP", hit, "BOTTOM", 0, 0)
-        fs:SetWidth(math.max(24, col.w - 4))
-        fs:SetJustifyH("CENTER")
-        fs:SetWordWrap(false)
-        local hex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
-        fs:SetText(hex .. compactLabel .. "|r")
-        if ns.UI_IsLightMode and ns.UI_IsLightMode() then
-            fs:SetShadowOffset(0, 0)
-        else
-            fs:SetShadowOffset(1, -1)
-            fs:SetShadowColor(0, 0, 0, 0.9)
-        end
-    end
-
-    if hit.EnableMouse then hit:EnableMouse(true) end
-    if tooltipTitle and tooltipTitle ~= "" and GameTooltip then
-        hit:SetScript("OnEnter", function(owner)
-            GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-            local tr, tg, tb = 1, 1, 1
-            if ns.UI_GetTooltipTitleColor then
-                tr, tg, tb = ns.UI_GetTooltipTitleColor()
-            end
-            GameTooltip:SetText(tooltipTitle, tr, tg, tb)
-            GameTooltip:Show()
-        end)
-        hit:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-    else
-        hit:SetScript("OnEnter", nil)
-        hit:SetScript("OnLeave", nil)
-    end
-end
-
-local function PaintRosterColumnHeaders(bundle, card, cols, hdrExtra, muted)
-    if not RosterUseModernHeaders() then
-        HideRosterModernHeaders(bundle)
-        return
-    end
-    HideRosterModernHeaders(bundle)
-
-    local honorDef = GetRosterCurrencyIconDef(ROSTER_HONOR_CURRENCY_ID)
-    local conqDef = GetRosterCurrencyIconDef(ROSTER_CONQUEST_CURRENCY_ID)
-    PaintRosterModernStatHeader(bundle, card, "honor", cols[3], honorDef, "Hon",
-        RosterHonorHeaderLabel(), hdrExtra)
-    PaintRosterModernStatHeader(bundle, card, "conquest", cols[4], conqDef, "Conq",
-        RosterConquestHeaderLabel(), hdrExtra)
-
-    for bi = 1, #ROSTER_BRACKET_ORDER do
-        local bkey = ROSTER_BRACKET_ORDER[bi]
-        PaintRosterModernStatHeader(bundle, card, bkey, cols[4 + bi],
-            ROSTER_STAT_HEADER_ICONS[bkey], ROSTER_BRACKET_HEADERS[bi],
-            BRACKET_LABELS[bkey] or bkey, hdrExtra)
-    end
-
-    local weeklyIdx = RosterWeeklyColIndex()
-    PaintRosterModernStatHeader(bundle, card, "weekly", cols[weeklyIdx],
-        ROSTER_STAT_HEADER_ICONS.weekly, "W/P",
-        (L and L["PVP_WEEKLY"]) or "Weekly W/P", hdrExtra)
-end
-
--- Identity left; stat columns packed flush to content right (natural widths, centered text).
-local function BuildRosterColumns(innerW, wName, wRealm, wHonor, wConquest, wWeekly, wBracket)
-    local wRating = math.max(ROSTER_RATING_COL_W, tonumber(wBracket) or ROSTER_RATING_COL_W)
-    wName = math.max(48, tonumber(wName) or 72)
-    wRealm = math.max(56, tonumber(wRealm) or 80)
-    wHonor = math.max(ROSTER_CURRENCY_COL_MIN, tonumber(wHonor) or ROSTER_CURRENCY_COL_MIN)
-    wConquest = math.max(ROSTER_CURRENCY_COL_MIN, tonumber(wConquest) or ROSTER_CURRENCY_COL_MIN)
-    wWeekly = math.max(ROSTER_WEEKLY_COL_MIN, tonumber(wWeekly) or ROSTER_WEEKLY_COL_MIN)
-    local bracketCount = #ROSTER_BRACKET_ORDER
-
-    local statWs = { wHonor, wConquest }
-    for _ = 1, bracketCount do
-        statWs[#statWs + 1] = wRating
-    end
-    statWs[#statWs + 1] = wWeekly
-
-    local cols = {}
-    cols[1] = { x = 0, w = wName, justify = "LEFT" }
-    cols[2] = { x = wName + ROSTER_IDENTITY_GAP, w = wRealm, justify = "LEFT" }
-
-    local xCur = innerW
-    local statCols = {}
-    for i = #statWs, 1, -1 do
-        xCur = xCur - statWs[i]
-        statCols[i] = { x = xCur, w = statWs[i], justify = "CENTER" }
-        if i > 1 then
-            xCur = xCur - ROSTER_COL_GAP
-        end
-    end
-    for i = 1, #statWs do
-        cols[#cols + 1] = statCols[i]
-    end
-    return cols
-end
-
-local function EnsureRosterRowCells(bundle, listKey, rowIdx, card, cols, extraTopOffset)
-    bundle[listKey] = bundle[listKey] or {}
-    local cells = bundle[listKey][rowIdx]
-    if not cells then
-        cells = {}
-        for c = 1, #cols do
-            cells[c] = FontManager:CreateFontString(card, "body", "OVERLAY")
-        end
-        bundle[listKey][rowIdx] = cells
-    end
-    local rowY = CARD_PAD + HEADER_BLOCK_H + (extraTopOffset or 0) + (rowIdx - 1) * ROW_H
-    for c = 1, #cols do
-        local fs = cells[c]
-        local col = cols[c]
-        fs:ClearAllPoints()
-        fs:SetWidth(col.w)
-        fs:SetJustifyH(col.justify or "LEFT")
-        fs:SetWordWrap(false)
-        fs:SetMaxLines(1)
-        local leftX = CARD_PAD + (col.x or 0)
-        if col.justify == "CENTER" then
-            fs:SetPoint("TOP", card, "TOPLEFT", leftX + col.w * 0.5, -rowY)
-        else
-            fs:SetPoint("TOPLEFT", card, "TOPLEFT", leftX, -rowY)
-        end
-        fs:Show()
-    end
-    return cells
-end
-
-local function ClassColorHex(classFile)
-    local cc = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
-    if cc then
-        return string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255)
-    end
-    return "|cffffffff"
-end
-
-local function RosterRealmHeaderLabel()
-    return (L and L["CUSTOM_HEADER_COL_REALM"]) or "Realm"
-end
-
-local function MeasureRosterColumnWidths(measureFs, rosterRows)
-    local maxName = 0
-    local maxRealm = 0
-    for i = 1, #rosterRows do
-        local r = rosterRows[i]
-        local nameStr = tostring(r.name or "?")
-        if issecretvalue and issecretvalue(nameStr) then
-            nameStr = "?"
-        end
-        measureFs:SetText(nameStr)
-        maxName = math.max(maxName, measureFs:GetStringWidth() or 0)
-        local realmStr = (ns.Utilities and ns.Utilities.FormatRealmName)
-            and ns.Utilities:FormatRealmName(r.realm) or (r.realm or "")
-        if realmStr ~= "" and issecretvalue and issecretvalue(realmStr) then
-            realmStr = ""
-        end
-        if realmStr ~= "" then
-            measureFs:SetText(realmStr)
-            maxRealm = math.max(maxRealm, measureFs:GetStringWidth() or 0)
-        end
-    end
-    measureFs:SetText((L and L["PVP_COL_CHARACTER"]) or "Character")
-    maxName = math.max(maxName, measureFs:GetStringWidth() or 0)
-    measureFs:SetText(RosterRealmHeaderLabel())
-    maxRealm = math.max(maxRealm, measureFs:GetStringWidth() or 0)
-    measureFs:SetText(RosterHonorHeaderLabel())
-    local wHonor = math.ceil((measureFs:GetStringWidth() or 0) + ROSTER_COL_WIDTH_PAD * 2)
-    measureFs:SetText(RosterConquestHeaderLabel())
-    local wConquest = math.ceil((measureFs:GetStringWidth() or 0) + ROSTER_COL_WIDTH_PAD * 2)
-    measureFs:SetText((L and L["PVP_WEEKLY"]) or "Weekly W/P")
-    local wWeekly = math.ceil((measureFs:GetStringWidth() or 0) + ROSTER_COL_WIDTH_PAD * 2)
-    local wBracket = ROSTER_RATING_COL_W
-    for bi = 1, #ROSTER_BRACKET_HEADERS do
-        measureFs:SetText(ROSTER_BRACKET_HEADERS[bi])
-        wBracket = math.max(wBracket, math.ceil((measureFs:GetStringWidth() or 0) + ROSTER_COL_WIDTH_PAD * 2))
-    end
-    if RosterUseModernHeaders() then
-        local iconFloor = ROSTER_HDR_ICON_SIZE + ROSTER_COL_WIDTH_PAD * 2
-        wHonor = math.max(wHonor, iconFloor, ROSTER_CURRENCY_COL_MIN)
-        wConquest = math.max(wConquest, iconFloor, ROSTER_CURRENCY_COL_MIN)
-        wWeekly = math.max(wWeekly, iconFloor, ROSTER_WEEKLY_COL_MIN)
-        wBracket = math.max(wBracket, iconFloor, ROSTER_RATING_COL_W)
-    end
-    wHonor = math.max(wHonor, ROSTER_CURRENCY_COL_MIN)
-    wConquest = math.max(wConquest, ROSTER_CURRENCY_COL_MIN)
-    wWeekly = math.max(wWeekly, ROSTER_WEEKLY_COL_MIN)
-    wBracket = math.max(wBracket, ROSTER_RATING_COL_W)
-    local wName = math.min(math.ceil(maxName + ROSTER_NAME_PAD * 2), ROSTER_IDENTITY_MAX_NAME)
-    local wRealm = math.ceil(maxRealm + ROSTER_NAME_PAD * 2)
-    return wName, wRealm, wHonor, wConquest, wWeekly, wBracket
-end
+-- Warband overview grid: Modules/UI/PvPUI_Overview.lua
 
 local function TogglePvPRosterExpanded()
     if not ns._pvpExpandedStates then
@@ -710,26 +622,6 @@ local function TogglePvPRosterExpanded()
             skipCooldown = true,
         })
     end
-end
-
--- Selection tint behind the logged-in character's roster row.
-local function EnsureRosterRowHighlight(bundle, card, rowY, show)
-    local tex = bundle.rosterCurrentTint
-    if not tex then
-        tex = card:CreateTexture(nil, "BACKGROUND")
-        bundle.rosterCurrentTint = tex
-    end
-    if not show then
-        tex:Hide()
-        return
-    end
-    local tint = (ns.UI_GetRowSelectionTint and ns.UI_GetRowSelectionTint()) or { 0.3, 0.25, 0.4, 0.35 }
-    tex:SetColorTexture(tint[1], tint[2], tint[3], tint[4] or 0.35)
-    tex:ClearAllPoints()
-    tex:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_PAD - 4, -(rowY - 3))
-    tex:SetPoint("TOPRIGHT", card, "TOPRIGHT", -(CARD_PAD - 4), -(rowY - 3))
-    tex:SetHeight(ROW_H)
-    tex:Show()
 end
 
 -- MATCH DETAIL TOOLTIP (Recent Matches row hover; data from entry.score)
@@ -838,6 +730,64 @@ local function HideRecentHitsFrom(bundle, fromIdx)
     end
 end
 
+local function OutcomeStripeColor(outcome)
+    if outcome == "win" then
+        if ns.UI_GetSemanticGreenColor then
+            return ns.UI_GetSemanticGreenColor()
+        end
+        return 0.3, 0.9, 0.3, 1
+    elseif outcome == "loss" then
+        if ns.UI_GetSemanticRedColor then
+            return ns.UI_GetSemanticRedColor()
+        end
+        return 0.78, 0.18, 0.18, 1
+    end
+    if ns.UI_GetTextRoleRGB then
+        return ns.UI_GetTextRoleRGB("Dim")
+    end
+    return 0.45, 0.45, 0.45, 1
+end
+
+-- Win/loss stripe at row start (Statistics class-color bar pattern).
+local function EnsureRecentOutcomeStripe(bundle, idx, card, rowY, outcome)
+    bundle.recentStripes = bundle.recentStripes or {}
+    local stripe = bundle.recentStripes[idx]
+    if not stripe then
+        stripe = card:CreateTexture(nil, "ARTWORK")
+        bundle.recentStripes[idx] = stripe
+    end
+    stripe:SetParent(card)
+    local barH = ROW_H - 4
+    stripe:SetSize(RECENT_OUTCOME_STRIPE_W, barH)
+    stripe:ClearAllPoints()
+    local rowCenterY = -rowY - (ROW_H * 0.5)
+    stripe:SetPoint("LEFT", card, "TOPLEFT", CARD_PAD + RECENT_OUTCOME_STRIPE_INSET, rowCenterY)
+    local cr, cg, cb, ca = OutcomeStripeColor(outcome)
+    stripe:SetColorTexture(cr, cg, cb, ca or 1)
+    stripe:Show()
+    return stripe
+end
+
+local function HideRecentOutcomeStripesFrom(bundle, fromIdx)
+    local stripes = bundle.recentStripes
+    if not stripes then return end
+    for i = fromIdx, #stripes do
+        if stripes[i] then
+            stripes[i]:Hide()
+        end
+    end
+end
+
+local function ResolveRosterStatHeaderIcon(key)
+    local statIcons = ROSTER_STAT_HEADER_ICONS[key]
+    if not statIcons then return nil end
+    if statIcons.currencyID then
+        local cur = GetRosterCurrencyIconDef(statIcons.currencyID)
+        if cur then return cur end
+    end
+    return statIcons
+end
+
 -- Export helpers/constants for PvPUI_Draw.lua (M.DrawTab uses M.* only → one upvalue).
 M.CARD_PAD = CARD_PAD
 M.ROW_H = ROW_H
@@ -854,16 +804,12 @@ M.RECENT_FILTER_PAD_H = RECENT_FILTER_PAD_H
 M.RECENT_SUBBAR_LAYOUT_KEY = RECENT_SUBBAR_LAYOUT_KEY
 M.RECENT_LIST_DIVIDER_H = RECENT_LIST_DIVIDER_H
 M.RECENT_FOOTER_H = RECENT_FOOTER_H
+M.RECENT_MATCHES_COLLAPSED = RECENT_MATCHES_COLLAPSED
 M.PROGRESS_CARD_MIN_W = PROGRESS_CARD_MIN_W
 M.RATED_CARD_STAT_H = RATED_CARD_STAT_H
 M.RATED_CARD_MIN_W = RATED_CARD_MIN_W
 M.ROSTER_BRACKET_ORDER = ROSTER_BRACKET_ORDER
 M.ROSTER_BRACKET_HEADERS = ROSTER_BRACKET_HEADERS
-M.ROSTER_VISIBLE_ROWS = ROSTER_VISIBLE_ROWS
-M.ROSTER_TOGGLE_H = ROSTER_TOGGLE_H
-M.ROSTER_BOTTOM_PAD = ROSTER_BOTTOM_PAD
-M.ROSTER_COL_GAP = ROSTER_COL_GAP
-M.ROSTER_IDENTITY_GAP = ROSTER_IDENTITY_GAP
 M.ROSTER_HONOR_CURRENCY_ID = ROSTER_HONOR_CURRENCY_ID
 M.ROSTER_CONQUEST_CURRENCY_ID = ROSTER_CONQUEST_CURRENCY_ID
 M.RecentFilterLabel = RecentFilterLabel
@@ -876,6 +822,10 @@ M.FormatTimeLeft = FormatTimeLeft
 M.FormatTimeAgo = FormatTimeAgo
 M.EnsureCard = EnsureCard
 M.EnsureCardTitle = EnsureCardTitle
+M.EnsureCardTitleWithIcon = EnsureCardTitleWithIcon
+M.PROGRESS_TITLE_ICONS = PROGRESS_TITLE_ICONS
+M.ROSTER_STAT_HEADER_ICONS = ROSTER_STAT_HEADER_ICONS
+M.ResolveRosterStatHeaderIcon = ResolveRosterStatHeaderIcon
 M.EnsureBarRow = EnsureBarRow
 M.EnsureRowCells = EnsureRowCells
 M.HideRowsFrom = HideRowsFrom
@@ -883,28 +833,20 @@ M.EnsureBracketCard = EnsureBracketCard
 M.EnsureBracketStatRow = EnsureBracketStatRow
 M.EnsureListDivider = EnsureListDivider
 M.RosterHonorHeaderLabel = RosterHonorHeaderLabel
+M.RosterBracketHeaderLabel = RosterBracketHeaderLabel
 M.RosterConquestHeaderLabel = RosterConquestHeaderLabel
 M.RosterCurrencyQuantity = RosterCurrencyQuantity
 M.FormatRosterCurrencyQty = FormatRosterCurrencyQty
-M.RosterWeeklyColIndex = RosterWeeklyColIndex
-M.ROSTER_COL_WIDTH_PAD = ROSTER_COL_WIDTH_PAD
-M.ROSTER_RATING_COL_W = ROSTER_RATING_COL_W
-M.RosterUseModernHeaders = RosterUseModernHeaders
-M.RosterHeaderRowHeight = RosterHeaderRowHeight
-M.PaintRosterColumnHeaders = PaintRosterColumnHeaders
-M.HideRosterModernHeaders = HideRosterModernHeaders
-M.BuildRosterColumns = BuildRosterColumns
-M.EnsureRosterRowCells = EnsureRosterRowCells
-M.ClassColorHex = ClassColorHex
 M.RosterRealmHeaderLabel = RosterRealmHeaderLabel
-M.MeasureRosterColumnWidths = MeasureRosterColumnWidths
+M.ApplyRosterHeaderIconTexture = ApplyRosterHeaderIconTexture
 M.TogglePvPRosterExpanded = TogglePvPRosterExpanded
-M.EnsureRosterRowHighlight = EnsureRosterRowHighlight
 M.FormatBigNumber = FormatBigNumber
 M.MatchHasTooltipData = MatchHasTooltipData
 M.ShowMatchTooltip = ShowMatchTooltip
 M.EnsureRecentHitFrame = EnsureRecentHitFrame
 M.HideRecentHitsFrom = HideRecentHitsFrom
+M.EnsureRecentOutcomeStripe = EnsureRecentOutcomeStripe
+M.HideRecentOutcomeStripesFrom = HideRecentOutcomeStripesFrom
 
 -- DrawPvPTab lives in PvPUI_Draw.lua (WarbandNexus:DrawPvPTab facade there).
 

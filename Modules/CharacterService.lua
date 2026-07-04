@@ -1088,6 +1088,10 @@ function CharacterService:RemoveCustomCharacterSection(addon, groupId)
     if pveSf and pveSf.sectionKey == lk then
         pveSf.sectionKey = "all"
     end
+    local pvpSf = profile.pvpSectionFilter
+    if pvpSf and pvpSf.sectionKey == lk then
+        pvpSf.sectionKey = "all"
+    end
     if addon.SendMessage then
         addon:SendMessage(E.CHARACTER_UPDATED, { charKey = nil, dataType = "customSections" })
     end
@@ -1148,6 +1152,7 @@ CharacterService.VALID_CHARACTER_SORT_KEYS = {
     ilvl = true,
     gold = true,
     realm = true,
+    pvpRating = true,
 }
 
 local function CharSortSafeLower(s)
@@ -1227,6 +1232,11 @@ function CharacterService:CompareCharactersBySortKey(a, b, sortKey, opts)
             return ra < rb
         end
         return compareName(a, b)
+    elseif sortKey == "pvpRating" then
+        if (a.bestRating or 0) ~= (b.bestRating or 0) then
+            return (a.bestRating or 0) > (b.bestRating or 0)
+        end
+        return compareName(a, b)
     elseif sortKey == "default" then
         local isLoggedIn = opts.isLoggedInFn
         if isLoggedIn then
@@ -1253,6 +1263,7 @@ CharacterService.TAB_SORT_DB_KEYS = {
     characters = "characterSort",
     professions = "professionSort",
     pve = "pveSort",
+    pvp = "pvpSort",
     storage = "storageSort",
 }
 

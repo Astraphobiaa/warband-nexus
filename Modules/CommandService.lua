@@ -421,7 +421,18 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             return
         elseif subLower == "inject" then
-            if ns.PvPService and ns.PvPService.InjectSelfTestMatch then
+            if ns.PvPService and ns.PvPService.InjectSelfTestMatchSuite then
+                local entries = ns.PvPService:InjectSelfTestMatchSuite()
+                local n = entries and #entries or 0
+                if n > 0 then
+                    addon:Print(string.format(
+                        "|cff00ccff[WN-PvP]|r Injected %d self-test match(es) (2v2, 3v3, RBG, Shuffle, Blitz) — open PvP tab Recent Matches.",
+                        n))
+                    addon:Print("|cff888888Clear with |r|cff00ccff/wn pvp clear|r")
+                else
+                    addon:Print("|cffff6600[WN-PvP]|r Inject failed (no char key?).")
+                end
+            elseif ns.PvPService and ns.PvPService.InjectSelfTestMatch then
                 ns.PvPService:ClearSelfTestMatches(true)
                 local entry = ns.PvPService:InjectSelfTestMatch({ mode = "2v2", outcome = "win", ratingChange = 18 })
                 if entry then
@@ -441,7 +452,7 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         addon:Print("|cff00ccff/wn pvp test|r — API/DB/UI pipeline smoke test")
         addon:Print("|cff00ccff/wn pvp status|r — Live API vs DB snapshot + filter counts")
-        addon:Print("|cff00ccff/wn pvp inject|r — Add tagged row for Recent Matches UI QA")
+        addon:Print("|cff00ccff/wn pvp inject|r — Add self-test rows (2v2, 3v3, RBG, Shuffle, Blitz) for Recent Matches QA")
         addon:Print("|cff00ccff/wn pvp clear|r — Remove injected self-test rows")
         return
 

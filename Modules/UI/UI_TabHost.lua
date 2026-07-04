@@ -184,6 +184,7 @@ local function PopulateContentBody(self, forceRepaint)
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_teardownUI")
     mainFrame._pveMinScrollWidth = nil
+    mainFrame._pvpMinScrollWidth = nil
     -- Clear fixed header area and reset to minimal height
     local fixedHeader = mainFrame.fixedHeader
     if fixedHeader then
