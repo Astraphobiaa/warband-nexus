@@ -199,8 +199,8 @@ local _voidstormRareMounts = {
 -- Sub-zones (Silvermoon 2393, Isle of Quel'Danas 2424, The Den 2576, Atal'Aman 2536, Arcantina 2541)
 -- are reached automatically by CollectFishingDropsForZone()'s parent-map-chain walker.
 -- NOTE: Patient Treasure chests that spawn while fishing are world objects (GameObject), NOT fishing loot.
--- The addon's ClassifyLootSession skips GameObject-only sources that lack a bobber/pool, so Patient
--- Treasure opens never route to ProcessFishingLoot. This is expected — only bobber/pool catches count.
+-- ClassifyLootSession skips GameObject-only sources without IsFishingLoot(); ProcessFishingLoot requires
+-- API/bobber/cast evidence so mob loot and containers in Midnight zones do not inflate Nether-Warped Egg tries.
 local _netherWarpedEgg = {
     { type = "item", itemID = 268730, name = "Nether-Warped Egg",
       yields = {

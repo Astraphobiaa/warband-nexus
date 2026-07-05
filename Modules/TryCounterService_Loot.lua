@@ -974,13 +974,13 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
 end
 
 ---Process loot from fishing.
----Algorithm (source-agnostic): one loot open in a trackable zone = one attempt.
----We do NOT care what dropped (common/rare); we only check: is the trackable drop (e.g. Nether-Warped Egg) in the loot?
----If yes → reset try count; if no → increment. So every fishing LOOT_OPENED in zone is counted.
+---Requires fishing evidence (IsFishingLoot API, known bobber, or recent fishing cast).
+---One confirmed fishing loot open in a trackable zone = one attempt for zone fishing drops.
 function WarbandNexus:ProcessFishingLoot(lootRouteSource)
     lootRouteSource = lootRouteSource or "opened"
     -- Gathering/profession loot windows must never count zone fishing tries (e.g. herb in Voidstorm).
     if V.isProfessionLooting then return end
+    if not Fns.LootSessionHasFishingEvidence(RT.lootSession.sourceGUIDs) then return end
     local drops, inInstance = Fns.CollectFishingDropsForZone()
     if inInstance then return end
     if #drops == 0 then

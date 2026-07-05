@@ -24,6 +24,8 @@ local tinsert = table.insert
 -- Supersede in-flight chunked scans (new ScanGuildBank or close invalidates via guildBankIsOpen check)
 local guildBankScanGeneration = 0
 local MAX_GUILDBANK_SLOTS_PER_TAB = 98
+local GUILD_BANK_EMPTY_TAB_TRUST_SEC = 3
+local GUILD_BANK_SETTLE_SCAN_DELAYS = { 0.5, 2.0, 4.5 }
 local activeScanCtx = nil
 local liveOpenGuildSummary = nil -- { guildName, items = { [itemID]=stackCount }, gen=N }
 
@@ -63,6 +65,94 @@ function WarbandNexus:CountViewableGuildBankTabs(numTabs)
         end
     end
     return count
+end
+
+local function MaybeAnnounceGuildBankScanComplete(self, itemCount)
+    if not self or self._guildBankScanAnnouncedThisOpen then return end
+    if not itemCount or itemCount <= 0 then return end
+    self._guildBankScanAnnouncedThisOpen = true
+    local fmt = (L and L["GUILD_BANK_SCAN_COMPLETE"]) or "Guild Bank scanned: %d items. WN Search tooltips updated."
+    self:Print(string.format(fmt, itemCount))
+end
+
+--- Query every viewable guild bank tab from the server (async; GUILDBANKBAGSLOTS_CHANGED follows).
+function WarbandNexus:QueryAllViewableGuildBankTabs()
+    if not QueryGuildBankTab or not GetNumGuildBankTabs then return end
+    local okN, n = pcall(GetNumGuildBankTabs)
+    for i = 1, (okN and n) or 0 do
+        local okInfo, _, _, isViewable = pcall(GetGuildBankTabInfo, i)
+        if okInfo and isViewable then
+            pcall(QueryGuildBankTab, i)
+        end
+    end
+end
+
+--- Debounced rescan while the guild bank frame is open (AceTimer on WarbandNexus).
+function WarbandNexus:RequestGuildBankRescan(delaySec)
+    delaySec = delaySec or 1.0
+    if not self.guildBankIsOpen then return end
+    if self._guildBankRescanTimer then
+        self:CancelTimer(self._guildBankRescanTimer)
+        self._guildBankRescanTimer = nil
+    end
+    if self.ScheduleTimer and self.ThrottledGuildBankScan then
+        self._guildBankRescanTimer = self:ScheduleTimer("ThrottledGuildBankScan", delaySec)
+    end
+end
+
+--- Staged scans after open so late QueryGuildBankTab payloads still land in cache/tooltips.
+function WarbandNexus:ScheduleGuildBankSettleScans()
+    self:CancelGuildBankSettleScans()
+    local gen = (self._guildBankOpenGen or 0) + 1
+    self._guildBankOpenGen = gen
+    if not C_Timer or not C_Timer.After then return end
+    for i = 1, #GUILD_BANK_SETTLE_SCAN_DELAYS do
+        local delay = GUILD_BANK_SETTLE_SCAN_DELAYS[i]
+        C_Timer.After(delay, function()
+            if not WarbandNexus or not WarbandNexus.guildBankIsOpen then return end
+            if WarbandNexus._guildBankOpenGen ~= gen then return end
+            if WarbandNexus.ScanGuildBank then
+                WarbandNexus:ScanGuildBank()
+            end
+        end)
+    end
+end
+
+function WarbandNexus:CancelGuildBankSettleScans()
+    self._guildBankOpenGen = (self._guildBankOpenGen or 0) + 1
+end
+
+--- After a tab query is issued (open, tab click, or GUILDBANK_UPDATE_TABS follow-up).
+function WarbandNexus:OnGuildBankTabQueried(tabIndex)
+    if not self.guildBankIsOpen then return end
+    tabIndex = tonumber(tabIndex)
+    if not tabIndex or tabIndex < 1 then return end
+    if self.InvalidateLiveOpenGuildBankSummary then
+        self:InvalidateLiveOpenGuildBankSummary()
+    end
+    self:RequestGuildBankRescan(0.35)
+end
+
+--- hooksecurefunc QueryGuildBankTab once Blizzard APIs are available (Midnight uses mixins, not GuildBankTab_OnClick).
+function WarbandNexus:HookGuildBankTabSelection()
+    if self._guildBankQueryHooked then return end
+    if type(hooksecurefunc) ~= "function" or type(QueryGuildBankTab) ~= "function" then
+        return
+    end
+    hooksecurefunc("QueryGuildBankTab", function(tabIndex)
+        if not WarbandNexus or not WarbandNexus.OnGuildBankTabQueried then return end
+        WarbandNexus:OnGuildBankTabQueried(tabIndex)
+    end)
+    self._guildBankQueryHooked = true
+end
+
+--- GUILDBANK_UPDATE_TABS: server finished hydrating a tab query.
+function WarbandNexus:OnGuildBankTabsUpdated()
+    if not self.guildBankIsOpen then return end
+    if self.InvalidateLiveOpenGuildBankSummary then
+        self:InvalidateLiveOpenGuildBankSummary()
+    end
+    self:RequestGuildBankRescan(0.25)
 end
 
 -- Scan Guild Bank (frame-budgeted).
@@ -173,6 +263,7 @@ function WarbandNexus:ScanGuildBank()
             guildData.goldLastUpdated = time()
         end
         DebugVerbosePrint("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. recomputedItems .. " items in " .. recomputedUsed .. " slots")
+        MaybeAnnounceGuildBankScanComplete(self, recomputedItems)
         ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
         if self.InvalidateGuildItemSummary then
             self:InvalidateGuildItemSummary()
@@ -264,7 +355,7 @@ function WarbandNexus:ScanGuildBank()
                         -- QueryGuildBankTab responses have had time to arrive.
                         local sawData = next(tabItemsBuilding) ~= nil
                         local hadCache = tabData.items and next(tabData.items) ~= nil
-                        local emptyTrusted = (GetTime() - (self._guildBankOpenScanAt or 0)) >= 2
+                        local emptyTrusted = (GetTime() - (self._guildBankOpenScanAt or 0)) >= GUILD_BANK_EMPTY_TAB_TRUST_SEC
                         if sawData or emptyTrusted or not hadCache then
                             tabData.items = tabItemsBuilding
                         end

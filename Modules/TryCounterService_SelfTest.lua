@@ -434,6 +434,32 @@ function WarbandNexus:RunTryCounterSelfTest()
             end
         end)
     end)
+    probe("LootSourcesLookLikeFishingOnly: known bobber", function()
+        local bobberGUID = "Creature-0-0-0-0-124736-000000000000"
+        if not Fns.LootSourcesLookLikeFishingOnly({ bobberGUID }) then
+            error("expected true for known bobber GUID")
+        end
+    end)
+    probe("LootSourcesLookLikeFishingOnly: unknown mob + GO not fishing", function()
+        local mobGUID = "Creature-0-0-0-0-999001-000000000000"
+        local goGUID = "GameObject-0-0-0-0-888888-000000000000"
+        if Fns.LootSourcesLookLikeFishingOnly({ mobGUID, goGUID }) then
+            error("expected false for unknown creature + GameObject")
+        end
+    end)
+    probe("Classify: tracked rare NPC in fishable zone -> npc (not fishing)", function()
+        withRestoredState(function()
+            Fns.ResetLootSession()
+            RT.lootSession.sourceGUIDs = { samples.rareNpcGUID or "Creature-0-0-0-0-230995-000000000000" }
+            local route = Fns.ClassifyLootSession("opened")
+            if route == "fishing" then
+                error("tracked rare mob must not route to fishing")
+            end
+            if route ~= "npc" then
+                error("expected npc route, got " .. tostring(route))
+            end
+        end)
+    end)
 
     -- ── GUID / DB resolution ──────────────────────────────────────────
     section("Source DB match (object / rare / raid)")

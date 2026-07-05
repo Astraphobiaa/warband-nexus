@@ -1054,6 +1054,10 @@ function WarbandNexus:OnEnable()
     -- Guild Bank events (GUILDBANKFRAME_OPENED broken since 10.0, use alternative)
     -- GUILDBANKBAGSLOTS_CHANGED fires when guild bank opens/changes
     self:RegisterEvent("GUILDBANKBAGSLOTS_CHANGED", "OnGuildBankUpdate")
+    self:RegisterEvent("GUILDBANK_UPDATE_TABS", "OnGuildBankTabsUpdated")
+    if self.HookGuildBankTabSelection then
+        self:HookGuildBankTabSelection()
+    end
     
     -- Hook Guild Bank UI load (Utilities: nil-safe C_AddOns.IsAddOnLoaded)
     local Util = ns.Utilities
@@ -1327,6 +1331,9 @@ function WarbandNexus:HookGuildBankUI()
         
         self.guildBankHooked = true
     end
+    if self.HookGuildBankTabSelection then
+        self:HookGuildBankTabSelection()
+    end
 end
 
 --- ADDON_LOADED handler for Guild Bank UI
@@ -1353,12 +1360,12 @@ function WarbandNexus:OnGuildBankUpdate()
         if self._guildBankOpenScanAt and (GetTime() - self._guildBankOpenScanAt) < 0.5 then
             return
         end
-        -- Debounce re-scan to batch rapid changes (2.5s window)
+        -- Debounce re-scan to batch rapid changes (1.0s window)
         if self._guildBankRescanTimer then
             self:CancelTimer(self._guildBankRescanTimer)
             self._guildBankRescanTimer = nil
         end
-        self._guildBankRescanTimer = self:ScheduleTimer("ThrottledGuildBankScan", 2.5)
+        self._guildBankRescanTimer = self:ScheduleTimer("ThrottledGuildBankScan", 1.0)
     end
 end
 
@@ -1369,12 +1376,15 @@ function WarbandNexus:OnGuildBankOpened()
     end
     self.guildBankIsOpen = true
     self._guildBankOpenScanAt = GetTime()
+    self._guildBankScanAnnouncedThisOpen = false
 
     -- Item APIs only return data for tabs whose contents were queried from the
     -- server this session; without this, tabs the user never clicks scan empty
     -- and their cached items are lost. Each response fires
-    -- GUILDBANKBAGSLOTS_CHANGED, which re-triggers the debounced rescan.
-    if QueryGuildBankTab and GetNumGuildBankTabs then
+    -- GUILDBANKBAGSLOTS_CHANGED / GUILDBANK_UPDATE_TABS, which re-triggers rescan.
+    if self.QueryAllViewableGuildBankTabs then
+        self:QueryAllViewableGuildBankTabs()
+    elseif QueryGuildBankTab and GetNumGuildBankTabs then
         local okN, n = pcall(GetNumGuildBankTabs)
         for i = 1, (okN and n) or 0 do
             local okInfo, _, _, isViewable = pcall(GetGuildBankTabInfo, i)
@@ -1382,6 +1392,13 @@ function WarbandNexus:OnGuildBankOpened()
                 pcall(QueryGuildBankTab, i)
             end
         end
+    end
+
+    if self.HookGuildBankTabSelection then
+        self:HookGuildBankTabSelection()
+    end
+    if self.ScheduleGuildBankSettleScans then
+        self:ScheduleGuildBankSettleScans()
     end
 
     -- Scan guild bank
@@ -1425,6 +1442,10 @@ function WarbandNexus:OnGuildBankClosed()
     if hadPendingRescan and self.ThrottledGuildBankScan then
         self:ThrottledGuildBankScan()
     end
+    if self.CancelGuildBankSettleScans then
+        self:CancelGuildBankSettleScans()
+    end
+    self._guildBankScanAnnouncedThisOpen = nil
     self.guildBankIsOpen = false
     if self.InvalidateLiveOpenGuildBankSummary then
         self:InvalidateLiveOpenGuildBankSummary()

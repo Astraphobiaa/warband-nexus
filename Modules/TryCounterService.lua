@@ -424,7 +424,61 @@ function Fns.LootSourcesLookLikeFishingOnly(sourceGUIDs)
     if unknownCreatureTemplates > 0 and not knownBobber and not hasGameObject then
         return false
     end
-    return true
+    -- Creature+GameObject without a known bobber is often mob loot near a world object (Midnight false tries).
+    return false
+end
+
+function Fns.LootSessionHasKnownBobber(sourceGUIDs)
+    for i = 1, #(sourceGUIDs or {}) do
+        local g = sourceGUIDs[i]
+        if type(g) == "string" and not (issecretvalue and issecretvalue(g)) then
+            local nid = Fns.GetNPCIDFromGUID(g)
+            if Fns.IsFishingBobberNpcId(nid) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+--- Mob corpses that must block fishing classification (unknown lone creature may be an unlearned bobber).
+function Fns.LootSessionHasBlockingMobCorpseForFishing(sourceGUIDs)
+    if not sourceGUIDs or #sourceGUIDs == 0 then return false end
+    local nonBobberCreatures = 0
+    local hasGameObject = false
+    for i = 1, #sourceGUIDs do
+        local g = sourceGUIDs[i]
+        if type(g) ~= "string" or (issecretvalue and issecretvalue(g)) then
+            return false
+        end
+        if g:match("^GameObject") then
+            hasGameObject = true
+        elseif Fns.UnitGuidLooksLikeMobCorpse(g) then
+            local nid = Fns.GetNPCIDFromGUID(g)
+            if Fns.IsFishingBobberNpcId(nid) then
+                -- known bobber — not a blocking corpse
+            elseif nid and (tryCounterNpcEligible[nid] or npcDropDB[nid]) then
+                return true
+            else
+                nonBobberCreatures = nonBobberCreatures + 1
+            end
+        end
+    end
+    if nonBobberCreatures > 1 then return true end
+    if nonBobberCreatures == 1 and hasGameObject then return true end
+    return false
+end
+
+function Fns.LootSessionHasFishingEvidence(sourceGUIDs)
+    if V.isProfessionLooting then return false end
+    if Fns.SafeIsFishingLoot() then return true end
+    if Fns.LootSessionHasKnownBobber(sourceGUIDs) then return true end
+    local now = GetTime()
+    local castTTL = TC.FISHING_CAST_CONTEXT_TTL or 35
+    if fishingCtx.active and fishingCtx.castTime and (now - fishingCtx.castTime) <= castTTL then
+        return true
+    end
+    return false
 end
 
 -- Pickpocket spell IDs (Rogue): opens loot window on a mob WITHOUT killing it.
@@ -5508,7 +5562,7 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     -- 2. CONTAINER: isFromItem flag (Blizzard API) or recent tracked container use
     local safeIsFromItem = isFromItem
     if issecretvalue and safeIsFromItem and issecretvalue(safeIsFromItem) then safeIsFromItem = nil end
-    if not safeIsFromItem and source ~= "opened" then
+    if not safeIsFromItem then
         safeIsFromItem = V.lastContainerItemID and containerDropDB[V.lastContainerItemID] and (now - V.lastContainerItemTime) < 3
     end
     if safeIsFromItem then return "container" end
@@ -5547,31 +5601,12 @@ Fns.ClassifyLootSession = function(source, isFromItem)
     local sourceCompatible = fishingContextFresh and Fns.IsFishingSourceCompatible(lootSession.sourceGUIDs)
 
     if fishingLootAPI or fishingFromSourcesOnly then
-        -- Any real tracked mob corpse in loot must use NPC path, not fishing.
-        -- When fishingFromSourcesOnly, unknown bobber NPC ids are not in FISHING_BOBBER_NPC_IDS yet —
-        -- LootSessionHasAnyMobCorpseSources would falsely block; only DB/eligible NPCs count as corpses.
-        local corpseInSources
-        if fishingFromSourcesOnly then
-            corpseInSources = false
-            for i = 1, #lootSession.sourceGUIDs do
-                local g = lootSession.sourceGUIDs[i]
-                if Fns.UnitGuidLooksLikeMobCorpse(g) then
-                    local nid = Fns.GetNPCIDFromGUID(g)
-                    if nid and not Fns.IsFishingBobberNpcId(nid)
-                        and (tryCounterNpcEligible[nid] or npcDropDB[nid]) then
-                        corpseInSources = true
-                        break
-                    end
-                end
-            end
-        else
-            corpseInSources = Fns.LootSessionHasAnyMobCorpseSources(lootSession.sourceGUIDs)
-        end
+        local corpseInSources = Fns.LootSessionHasBlockingMobCorpseForFishing(lootSession.sourceGUIDs)
         local corpseFromUnits = Fns.LootSessionHasMobLootContext()
         -- When the client reports fishing loot (API or LOOT_READY snapshot), trust it over unit
         -- frames — target/mouseover often stays on a nearby corpse while reeling in.
         local corpsePresent = fishingLootAPI and corpseInSources
-            or (not fishingLootAPI and (corpseInSources or (not fishingFromSourcesOnly and corpseFromUnits)))
+            or (not fishingLootAPI and (corpseInSources or corpseFromUnits))
         if not corpsePresent then return "fishing" end
     end
     -- Clear stale fishing context when source GUIDs point to a tracked NPC/object
