@@ -33,6 +33,8 @@
     Mainline (Midnight): ChatFrameMixin:SystemEventHandler calls
     ChatFrameUtil.DisplayTimePlayed → AddMessage — not _G.ChatFrame_DisplayTimePlayed.
     We wrap ChatFrameUtil.DisplayTimePlayed; legacy globals kept when present.
+    Rewrap captures the Blizzard fn once (never third-party hook chains) to avoid
+    TIME_PLAYED_MSG infinite recursion / "script ran too long" with chat addons.
 
     Chattynator TIME_PLAYED: Chattynator.API.FilterTimePlayed when hiding played time.
 
@@ -588,6 +590,27 @@ end
 -- INSTALL (once)
 
 local playedTimeRewrapScheduled = false
+local playedTimeDisplayDepth = 0
+
+---Addons that may replace chat globals; rewrap restores our wrapper without re-chaining hooks.
+local PLAYED_TIME_REWRAP_ADDONS = {
+    Blizzard_ChatFrameBase = true,
+    Blizzard_ChatFrame = true,
+    Chattynator = true,
+}
+
+---Store the first-seen Blizzard implementation once. Never set "underlying" to `cur` on rewrap:
+---other chat addons hook DisplayTimePlayed by calling the previous function (often our wrapper),
+---which caused infinite tail recursion and "script ran too long" on TIME_PLAYED_MSG.
+---@param storageKey string
+---@param cur function|nil
+---@param ourWrapper function|nil
+local function CapturePlayedTimeOriginalOnce(storageKey, cur, ourWrapper)
+    if WarbandNexus[storageKey] then return end
+    if type(cur) ~= "function" then return end
+    if ourWrapper and cur == ourWrapper then return end
+    WarbandNexus[storageKey] = cur
+end
 
 local function SchedulePlayedTimeDisplayRewrap()
     if playedTimeRewrapScheduled then return end
@@ -669,22 +692,21 @@ function WarbandNexus:RewrapChatFrameUtil_DisplayTimePlayed()
     local util = _G.ChatFrameUtil
     if type(util) ~= "table" or type(util.DisplayTimePlayed) ~= "function" then return end
     local cur = util.DisplayTimePlayed
-    if self._wnChatFrameUtilDisplayWrapper and cur == self._wnChatFrameUtilDisplayWrapper then
-        return
-    end
-    self._wnChatFrameUtilDisplayUnderlying = cur
+    CapturePlayedTimeOriginalOnce("_wnBlizzardDisplayTimePlayed", cur, self._wnChatFrameUtilDisplayWrapper)
     if not self._wnChatFrameUtilDisplayWrapper then
         self._wnChatFrameUtilDisplayWrapper = function(chatFrame, totalTime, levelTime)
-            if ShouldHidePlayedTimeInChat() then
-                return
-            end
-            local under = WarbandNexus._wnChatFrameUtilDisplayUnderlying
-            if type(under) == "function" then
-                return under(chatFrame, totalTime, levelTime)
-            end
+            if playedTimeDisplayDepth > 0 then return end
+            if ShouldHidePlayedTimeInChat() then return end
+            local under = WarbandNexus._wnBlizzardDisplayTimePlayed
+            if type(under) ~= "function" then return end
+            playedTimeDisplayDepth = playedTimeDisplayDepth + 1
+            under(chatFrame, totalTime, levelTime)
+            playedTimeDisplayDepth = playedTimeDisplayDepth - 1
         end
     end
-    util.DisplayTimePlayed = self._wnChatFrameUtilDisplayWrapper
+    if cur ~= self._wnChatFrameUtilDisplayWrapper then
+        util.DisplayTimePlayed = self._wnChatFrameUtilDisplayWrapper
+    end
 end
 
 ---Legacy global (some clients / forks); Mainline mixin calls ChatFrameUtil.DisplayTimePlayed instead.
@@ -693,10 +715,7 @@ function WarbandNexus:RewrapChatFrame_SystemEventHandler()
     if not self._playedTimeDisplayHookInstalled then return end
     local cur = _G.ChatFrame_SystemEventHandler
     if type(cur) ~= "function" then return end
-    if self._wnSystemEventWrapper and cur == self._wnSystemEventWrapper then
-        return
-    end
-    self._wnSystemEventUnderlying = cur
+    CapturePlayedTimeOriginalOnce("_wnBlizzardSystemEventHandler", cur, self._wnSystemEventWrapper)
     if not self._wnSystemEventWrapper then
         self._wnSystemEventWrapper = function(chatFrame, event, ...)
             local ev = event
@@ -706,13 +725,15 @@ function WarbandNexus:RewrapChatFrame_SystemEventHandler()
             if ev == "TIME_PLAYED_MSG" and ShouldHidePlayedTimeInChat() then
                 return true
             end
-            local under = WarbandNexus._wnSystemEventUnderlying
+            local under = WarbandNexus._wnBlizzardSystemEventHandler
             if type(under) == "function" then
                 return under(chatFrame, event, ...)
             end
         end
     end
-    _G.ChatFrame_SystemEventHandler = self._wnSystemEventWrapper
+    if cur ~= self._wnSystemEventWrapper then
+        _G.ChatFrame_SystemEventHandler = self._wnSystemEventWrapper
+    end
 end
 
 ---Fallback: direct calls to ChatFrame_DisplayTimePlayed (bypassing system handler).
@@ -720,22 +741,21 @@ function WarbandNexus:RewrapChatFrame_DisplayTimePlayed()
     if not self._playedTimeDisplayHookInstalled then return end
     local cur = _G.ChatFrame_DisplayTimePlayed
     if type(cur) ~= "function" then return end
-    if self._wnPlayedTimeWrapper and cur == self._wnPlayedTimeWrapper then
-        return
-    end
-    self._wnPlayedTimeUnderlying = cur
+    CapturePlayedTimeOriginalOnce("_wnBlizzardChatFrameDisplayTimePlayed", cur, self._wnPlayedTimeWrapper)
     if not self._wnPlayedTimeWrapper then
         self._wnPlayedTimeWrapper = function(cfSelf, totalTime, levelTime)
-            if ShouldHidePlayedTimeInChat() then
-                return
-            end
-            local under = WarbandNexus._wnPlayedTimeUnderlying
-            if type(under) == "function" then
-                return under(cfSelf, totalTime, levelTime)
-            end
+            if playedTimeDisplayDepth > 0 then return end
+            if ShouldHidePlayedTimeInChat() then return end
+            local under = WarbandNexus._wnBlizzardChatFrameDisplayTimePlayed
+            if type(under) ~= "function" then return end
+            playedTimeDisplayDepth = playedTimeDisplayDepth + 1
+            under(cfSelf, totalTime, levelTime)
+            playedTimeDisplayDepth = playedTimeDisplayDepth - 1
         end
     end
-    _G.ChatFrame_DisplayTimePlayed = self._wnPlayedTimeWrapper
+    if cur ~= self._wnPlayedTimeWrapper then
+        _G.ChatFrame_DisplayTimePlayed = self._wnPlayedTimeWrapper
+    end
 end
 
 function WarbandNexus:RewrapPlayedTimeChatHooks()
@@ -765,7 +785,9 @@ function WarbandNexus:InstallPlayedTimeDisplayHook()
                         WarbandNexus:SyncChattynatorPlayedTimeFilter()
                     end
                 end
-                SchedulePlayedTimeDisplayRewrap()
+                if addOnName == ADDON_NAME or (addOnName and PLAYED_TIME_REWRAP_ADDONS[addOnName]) then
+                    SchedulePlayedTimeDisplayRewrap()
+                end
             elseif event == "PLAYER_ENTERING_WORLD" then
                 SchedulePlayedTimeDisplayRewrap()
                 if WarbandNexus.SyncChattynatorPlayedTimeFilter then
