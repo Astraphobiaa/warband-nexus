@@ -320,7 +320,8 @@ local ACHIEVEMENT_STORE_MIN_TRUST = 250
 
 local function IsCategoryScanMarkedComplete(category)
     local sc = collectionStore.scanCompleted
-    return sc and sc[category] ~= nil
+    local tbl = collectionStore[category]
+    return sc and sc[category] ~= nil and type(tbl) == "table" and next(tbl) ~= nil
 end
 
 local function MarkCategoryScanComplete(category)
@@ -329,6 +330,12 @@ local function MarkCategoryScanComplete(category)
         collectionStore.scanCompleted = {}
     end
     collectionStore.scanCompleted[category] = time()
+end
+
+local function ClearCategoryScanComplete(category)
+    if collectionStore.scanCompleted and category then
+        collectionStore.scanCompleted[category] = nil
+    end
 end
 
 local function CategoryNeedsInitialScan(category)
@@ -3403,8 +3410,24 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                 end
                 ns[retryKey] = nil
             end
-            if collectionType == "illusion" or collectionType == "title" then
-                MarkCategoryScanComplete(collectionType)
+            if retryTypes[collectionType] then
+                -- Toy/title/illusion APIs should not be empty once Blizzard data is hydrated.
+                -- Preserve the existing store and leave the category retryable instead of
+                -- persisting a transient zero-result scan as authoritative completion.
+                ClearCategoryScanComplete(collectionType)
+                ns.PlansLoadingState[collectionType].isLoading = false
+                ns.PlansLoadingState[collectionType].loadingProgress = 0
+                ns.PlansLoadingState[collectionType].currentStage = "Waiting for data..."
+                SendCollectionScanProgress(self, collectionType, 0, 0, 0)
+                InvokeScanCompleteCallback(collectionType, collectionStore[collectionType] or results)
+                if Constants and Constants.EVENTS then
+                    self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, {
+                        category = collectionType,
+                        results = collectionStore[collectionType] or results,
+                        retryableEmptyScan = true,
+                    })
+                end
+                return
             end
             if collectionStore[collectionType] ~= nil then
                 collectionStore[collectionType] = results
