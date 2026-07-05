@@ -1147,20 +1147,30 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
+L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
 
 Ajouté :
-- À propos : section Supporters Patreon (merci, Melissa CD !).
+- Onglet JcJ : progression des brackets, honneur, conquête et historique des matchs pour votre bataillon.
+- Paramètres : style d'interface Classique avec boutons, cadres et barres de défilement Blizzard par défaut.
 
 Mis à jour :
-- Infobulles d'objets : meilleur timing de rafraîchissement des comptages de stockage pendant le scan des sacs.
+- Thème Classique : listes transparentes et flèches de défilement Blizzard (plus de fond gris derrière les listes).
+- Équipement : paperdoll et panneau de réserve retravaillés, surtout en interface Classique.
+- Vue d'ensemble JcJ : disposition des colonnes et ordre des brackets améliorés.
+- Mini-fenêtres (To-Do, Coffre, Instances enregistrées) : refonte du layout avec colonnes de défilement symétriques.
+- Métiers : mise en page et lignes d'équipement améliorées pour Classique et Moderne.
+- Paramètres : style d'interface (Moderne vs Classique) séparé du mode clair/sombre.
+- Banque de guilde : fin de scan avec nombre d'objets et actualisation des infobulles WN Search.
+- Recommandations de réserve : comparaison d'ilvl plus fiable lors des déplacements entre sacs et emplacements.
 
 Corrigé :
-- To-Do Illusions : la navigation ne reste plus bloquée sur « Scanning Illusions » pendant le chargement des données de collection.
-- Métiers : l'onglet se rafraîchit correctement à l'ouverture ou la mise à jour de la fenêtre de métier.
-- Métiers : correction d'une double inscription d'événements provoquant des rafraîchissements en trop.
-- Fenêtre principale : le pool de lignes ne laisse plus d'entrées obsolètes après des changements d'onglet rapides.
-- Rappels de zone : meilleure gestion des rappels de expéditions mondiales.
+- Tracker To-Do : le layout et la barre de défilement ne chevauchent plus les lignes de plans.
+- Onglet PvE : la grille de personnages se redessine correctement après changement de colonne ou d'onglet.
+- Banque de guilde : ouverture avec scan complet atomique (évite les instantanés vides).
+- Collections : nouvel essai des scans vides une fois les API chargées.
+- Intégrations chat : limitation lors des pics de messages.
+- Scan banque de guilde : limitation pour réduire les scans répétés à l'ouverture.
+- Try Counter : meilleure détection et suivi de l'œuf maudit Netherwarped.
 
 CurseForge: Warband Nexus]=]
 

@@ -1148,20 +1148,30 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
+L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
 
 Adicionado:
-- Sobre: seção Patreon Supporters (obrigado, Melissa CD!).
+- Aba JxJ: progresso de brackets, honra, conquista e histórico de partidas da sua banda guerreira.
+- Configurações: estilo de interface Clássica com botões, molduras e barras de rolagem Blizzard padrão.
 
 Atualizado:
-- Tooltips de itens: melhor intervalo de atualização das contagens de armazenamento ao escanear bolsas.
+- Tema Clássico: listas transparentes e setas de rolagem Blizzard (sem fundo cinza atrás das listas de personagens).
+- Equipamento: paperdoll e painel de armazenamento renovados, especialmente na interface Clássica.
+- Visão geral JxJ: layout de colunas e ordem de brackets ajustados.
+- Mini janelas (To-Do, Cofre, Instâncias salvas): reformulação com faixas de scroll simétricas.
+- Profissões: layout e linhas de equipamento melhorados para Clássica e Moderna.
+- Configurações: estilo de interface (Moderna vs Clássica) separado do modo claro/escuro.
+- Banco da guilda: conclusão do scan informa quantidade de itens e atualiza tooltips WN Search.
+- Recomendações de armazenamento: comparação de ilvl mais confiável ao mover itens entre bolsas e slots.
 
 Corrigido:
-- To-Do Ilusões: a navegação não fica mais presa em «Scanning Illusions» enquanto os dados de coleção carregam.
-- Profissões: a aba atualiza corretamente ao abrir ou atualizar a janela de profissão.
-- Profissões: corrigido registro duplicado de eventos que causava atualizações extras.
-- Janela principal: o pool de linhas não deixa mais entradas obsoletas após trocas rápidas de aba.
-- Lembretes de zona: melhor tratamento de lembretes de missões mundiais.
+- Rastreador To-Do: layout e barra de rolagem não sobrepõem mais linhas de planos.
+- Aba PvE: grade de personagens redesenha corretamente após mudar colunas ou abas.
+- Banco da guilda: abrir o banco confirma scan completo atomicamente (evita instantâneos vazios).
+- Coleções: nova tentativa de scans vazios quando as APIs terminam de carregar.
+- Integrações de chat: limitadas quando o volume de mensagens sobrecarregaria o processamento.
+- Scan do banco da guilda: limitado para reduzir scans repetidos ao abrir o banco.
+- Try Counter: melhor detecção e contagem do Netherwarped Cursed Egg.
 
 CurseForge: Warband Nexus]=]
 

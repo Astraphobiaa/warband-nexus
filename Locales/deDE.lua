@@ -1147,20 +1147,30 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
+L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
 
 Hinzugefügt:
-- Info: Abschnitt Patreon-Unterstützer (Danke, Melissa CD!).
+- PvP-Tab: Bewertungs-Fortschritt, Ehre, Eroberung und letzte Matches für deine Kriegsmeute.
+- Einstellungen: Classic-UI-Stil mit Blizzard-Standardbuttons, -rahmen und -scrollleisten.
 
 Aktualisiert:
-- Gegenstands-Tooltips: verbessertes Timing für Lagerzähler-Aktualisierung beim Taschen-Scan.
+- Classic-Thema: transparente Listenflächen und Blizzard-Scrollpfeile (keine graue Fläche hinter Charakterlisten).
+- Ausrüstung: überarbeitetes Paperdoll und Tresor-Panel, besonders im Classic-UI.
+- PvP-Übersicht: Spaltenlayout und Bracket-Reihenfolge für bessere Lesbarkeit.
+- Mini-Fenster (To-Do, Tresor, Gespeicherte Instanzen): Layout-Überarbeitung mit symmetrischen Scroll-Spalten.
+- Berufe: Layout und Ausrüstungszeilen für Classic- und Modern-UI verbessert.
+- Einstellungen: UI-Stil (Modern vs. Classic) von Hell/Dunkel getrennt.
+- Gildenbank: Scan-Abschluss meldet Itemanzahl und aktualisiert WN-Such-Tooltips.
+- Ausrüstungs-Tresor-Empfehlungen: zuverlässigere ilvl-Vergleiche beim Verschieben zwischen Taschen und Slots.
 
 Behoben:
-- To-Do Illusionen: „Scanning Illusions“ hängt nicht mehr beim Laden der Sammlungsdaten.
-- Berufe: Tab aktualisiert sich korrekt beim Öffnen oder Aktualisieren des Berufsfensters.
-- Berufe: doppelte Event-Registrierung behoben (keine Doppel-Aktualisierungen mehr).
-- Hauptfenster: Zeilen-Pool hinterlässt nach schnellem Tab-Wechsel keine veralteten Einträge.
-- Zonen-Erinnerungen: Weltquest-Erinnerungen verbessert.
+- To-Do-Tracker: Layout und Scrollleiste überdecken Planzeilen nicht mehr.
+- PvE-Tab: Charaktergitter aktualisiert sich korrekt nach Spalten- oder Tab-Wechsel.
+- Gildenbank: Öffnen führt einen vollständigen Scan atomisch aus (keine leeren Zwischenstände).
+- Sammlungen: leere Scans werden wiederholt, sobald die APIs fertig geladen sind.
+- Chat-Integrationen: gedrosselt bei hohem Nachrichtenaufkommen.
+- Gildenbank-Scan: gedrosselt, um wiederholtes Scannen beim Öffnen zu reduzieren.
+- Try Counter: verbesserte Erkennung und Zählung für Netherwarped Cursed Egg.
 
 CurseForge: Warband Nexus]=]
 

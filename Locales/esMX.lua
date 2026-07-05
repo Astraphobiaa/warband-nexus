@@ -1148,20 +1148,30 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
+L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
 
 Añadido:
-- Acerca de: sección Patreon Supporters (¡gracias, Melissa CD!).
+- Pestaña JcJ: progreso de brackets, honor, conquista e historial de partidas de tu banda guerrera.
+- Ajustes: estilo de interfaz Clásica con botones, marcos y barras de desplazamiento Blizzard por defecto.
 
 Actualizado:
-- Tooltips de objetos: mejor intervalo de actualización de recuentos de almacén al escanear bolsas.
+- Tema Clásico: listas transparentes y flechas de desplazamiento Blizzard (sin fondo gris detrás de listas de personajes).
+- Equipo: paperdoll y panel de almacén renovados, especialmente en interfaz Clásica.
+- Vista general JcJ: diseño de columnas y orden de brackets mejorados.
+- Mini ventanas (To-Do, Bóveda, Instancias guardadas): rediseño con carriles de scroll simétricos.
+- Profesiones: diseño y filas de equipo mejorados para interfaz Clásica y Moderna.
+- Ajustes: estilo de interfaz (Moderna vs Clásica) separado del modo claro/oscuro.
+- Banco de hermandad: al completar el escaneo informa cantidad de objetos y actualiza tooltips WN Search.
+- Recomendaciones de almacén: comparación de ilvl más fiable al mover objetos entre bolsas y ranuras.
 
 Corregido:
-- To-Do Ilusiones: la vista ya no se queda en «Scanning Illusions» mientras cargan los datos de colección.
-- Profesiones: la pestaña se actualiza correctamente al abrir o actualizar la ventana de profesión.
-- Profesiones: corregido el registro duplicado de eventos que causaba actualizaciones extra.
-- Ventana principal: el pool de filas ya no deja entradas obsoletas tras cambios rápidos de pestaña.
-- Recordatorios de zona: mejor manejo de recordatorios de misiones de mundo.
+- Rastreador To-Do: el diseño y la barra de desplazamiento ya no solapan filas de planes.
+- Pestaña PvE: la cuadrícula de personajes se redibuja correctamente tras cambiar columnas o pestañas.
+- Banco de hermandad: abrir el banco confirma un escaneo completo atómicamente (evita instantáneas vacías).
+- Colecciones: reintento de escaneos vacíos cuando las API terminan de cargar.
+- Integraciones de chat: limitadas cuando el volumen de mensajes sobrecargaría el procesamiento.
+- Escaneo del banco de hermandad: limitado para reducir escaneos repetidos al abrir el banco.
+- Try Counter: mejor detección y seguimiento del huevo maldito Netherwarped.
 
 CurseForge: Warband Nexus]=]
 

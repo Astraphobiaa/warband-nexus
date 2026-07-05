@@ -1148,20 +1148,30 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V323"] = [=[v3.2.3 (2026-07-02)
+L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
 
 Aggiunto:
-- Informazioni: sezione Patreon Supporters (grazie, Melissa CD!).
+- Scheda PvP: progresso bracket, onore, conquista e cronologia partite per la tua banda guerriera.
+- Impostazioni: stile interfaccia Classica con pulsanti, cornici e barre di scorrimento Blizzard predefiniti.
 
 Aggiornato:
-- Tooltip oggetti: migliorato l'intervallo di aggiornamento dei conteggi deposito durante la scansione delle sacche.
+- Tema Classico: liste trasparenti e frecce di scorrimento Blizzard (niente sfondo grigio dietro le liste personaggi).
+- Equipaggiamento: paperdoll e pannello deposito rinnovati, soprattutto in interfaccia Classica.
+- Panoramica PvP: layout colonne e ordine bracket ottimizzati.
+- Mini finestre (To-Do, Forziere, Istanze salvate): rifacimento layout con corsie scroll simmetriche.
+- Professioni: layout e righe equipaggiamento migliorati per Classica e Moderna.
+- Impostazioni: stile interfaccia (Moderna vs Classica) separato da modalità chiara/scura.
+- Banca di gilda: completamento scansione con conteggio oggetti e aggiornamento tooltip WN Search.
+- Raccomandazioni deposito: confronto ilvl più affidabile spostando oggetti tra sacche e slot.
 
 Corretto:
-- To-Do Illusioni: la navigazione non resta più bloccata su «Scanning Illusions» durante il caricamento dei dati di collezione.
-- Professioni: la scheda si aggiorna correttamente all'apertura o aggiornamento della finestra professione.
-- Professioni: corretta registrazione eventi duplicata che causava aggiornamenti extra.
-- Finestra principale: il pool righe non lascia più voci obsolete dopo rapidi cambi scheda.
-- Promemoria zona: gestione migliorata dei promemoria missioni mondiali.
+- Tracker To-Do: layout e barra di scorrimento non sovrappongono più le righe dei piani.
+- Scheda PvE: griglia personaggi si ridisegna correttamente dopo cambio colonne o scheda.
+- Banca di gilda: apertura con scansione completa atomica (evita snapshot vuoti).
+- Collezioni: nuovo tentativo scan vuoti quando le API hanno finito di caricare.
+- Integrazioni chat: limitate quando il volume messaggi sovraccaricherebbe l'elaborazione.
+- Scansione banca di gilda: limitata per ridurre scansioni ripetute all'apertura.
+- Try Counter: miglior rilevamento e conteggio Netherwarped Cursed Egg.
 
 CurseForge: Warband Nexus]=]
 
