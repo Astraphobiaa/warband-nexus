@@ -327,8 +327,11 @@ local UI_SPACING = {
         --- Floating To-Do List tracker title band (compact; not main-shell NAV_BAR_HEIGHT).
         PLANS_TRACKER_HEADER_HEIGHT = 28,
         --- Scroll viewport rim: keep first/last cards off content-area top/bottom edges.
-        PLANS_TRACKER_VIEWPORT_PAD_TOP = 10,
-        PLANS_TRACKER_VIEWPORT_PAD_BOTTOM = 10,
+        PLANS_TRACKER_VIEWPORT_PAD_TOP = 16,
+        PLANS_TRACKER_VIEWPORT_PAD_BOTTOM = 16,
+        --- Inside scroll child (clip rect): extra breathing room when scrolled to ends.
+        PLANS_TRACKER_SCROLL_CONTENT_PAD_TOP = 10,
+        PLANS_TRACKER_SCROLL_CONTENT_PAD_BOTTOM = 10,
         --- Root shell: flat fill only (no tooltip 9-slice edge).
         MAIN_FRAME_BACKDROP = {
             bgFile = "Interface\\Buttons\\WHITE8x8",

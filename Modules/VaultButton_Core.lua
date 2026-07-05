@@ -338,6 +338,74 @@ M.EASY_ACCESS_ROW_BELOW_CHROME = 6
 M.EASY_ACCESS_SCROLL_TOP_GAP = 2
 M.EASY_ACCESS_ROW_INNER_PAD = 8
 
+--- Right-click Easy Access shortcut menu (VaultButton.lua BuildMenu).
+M.EA_MENU_LAYOUT_VERSION = 3
+M.EA_MENU_WIDTH = 232
+M.EA_MENU_HEADER_H = 26
+M.EA_MENU_ROW_H = 30
+M.EA_MENU_ROW_GAP = 4
+M.EA_MENU_SECTION_GAP = 6
+M.EA_MENU_ICON_SIZE = 20
+M.EA_MENU_ICON_LABEL_GAP = 6
+M.EA_MENU_SUMMARY_TITLE_H = 16
+M.EA_MENU_SUMMARY_TITLE_TOP = 8
+M.EA_MENU_SUMMARY_LINE_H = 14
+M.EA_MENU_SUMMARY_MAX_LINES = 8
+M.EA_MENU_SUMMARY_HEIGHT_SCALE = 1.10
+
+function M.VBGetEasyAccessMenuLayout()
+    local inset = VBGetFrameContentInset()
+    local innerPad = M.EASY_ACCESS_ROW_INNER_PAD or 8
+    return {
+        version = M.EA_MENU_LAYOUT_VERSION,
+        width = M.EA_MENU_WIDTH,
+        inset = inset,
+        innerPad = innerPad,
+        contentPadH = inset + innerPad,
+        headerH = M.EA_MENU_HEADER_H,
+        rowH = M.EA_MENU_ROW_H,
+        rowGap = M.EA_MENU_ROW_GAP,
+        sectionGap = M.EA_MENU_SECTION_GAP,
+        bottomPad = inset,
+        summaryInnerPad = innerPad,
+        summaryTitleTop = M.EA_MENU_SUMMARY_TITLE_TOP,
+        summaryTitleH = M.EA_MENU_SUMMARY_TITLE_H,
+        summaryLineH = M.EA_MENU_SUMMARY_LINE_H,
+        iconSize = M.EA_MENU_ICON_SIZE,
+        iconLabelGap = M.EA_MENU_ICON_LABEL_GAP,
+    }
+end
+
+function M.VBComputeEasyAccessMenuHeight(lay, itemCount, summaryH)
+    if not lay then return 120 end
+    itemCount = itemCount or 0
+    summaryH = summaryH or 0
+    local sectionGaps = lay.sectionGap
+    if summaryH > 0 then
+        sectionGaps = lay.sectionGap * 2
+    end
+    local listH = 0
+    if itemCount > 0 then
+        listH = (itemCount * lay.rowH) + math.max(0, itemCount - 1) * lay.rowGap
+    end
+    return lay.inset + lay.headerH + sectionGaps + summaryH + listH + lay.bottomPad
+end
+
+function M.VBGetEasyAccessMenuSummaryHeight(lineCount)
+    if not lineCount or lineCount <= 1 then
+        return 0
+    end
+    local lay = M.VBGetEasyAccessMenuLayout()
+    local bodyLines = math.max(0, lineCount - 1)
+    local base = lay.summaryTitleTop + lay.summaryTitleH + lay.sectionGap
+        + (bodyLines * lay.summaryLineH) + lay.summaryInnerPad
+    local scale = M.EA_MENU_SUMMARY_HEIGHT_SCALE or 1
+    if scale <= 1 then
+        return base
+    end
+    return math.ceil(base * scale)
+end
+
 function M.VBGetEasyAccessBodyLayout()
     local inset = VBGetFrameContentInset()
     return {

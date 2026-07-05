@@ -17,10 +17,7 @@ end
 setfenv(1, VB__setfenv())
 --[[ Entry chunk: bare names resolve via M (see VaultButton_Core.lua). Use M.EA_CAT_TIP etc. for shared tables. ]]
 
--- Easy Access shortcut menu
-local MENU_SUMMARY_LINE_H = 14
-local MENU_SUMMARY_PAD_TOP = 22
-local MENU_SUMMARY_MAX_LINES = 8
+-- Easy Access shortcut menu (layout: M.VBGetEasyAccessMenuLayout in VaultButton_Core.lua)
 
 function M.CountMenuSummaryLines()
     local n = 1
@@ -37,10 +34,7 @@ function M.CountMenuSummaryLines()
 end
 
 function M.GetMenuSummaryHeight()
-    if CountMenuSummaryLines() <= 1 then
-        return 0
-    end
-    return MENU_SUMMARY_PAD_TOP + CountMenuSummaryLines() * MENU_SUMMARY_LINE_H
+    return VBGetEasyAccessMenuSummaryHeight(CountMenuSummaryLines())
 end
 
 function M.RefreshMenuVaultSummary(menuFrame)
@@ -58,11 +52,9 @@ function M.RefreshMenuVaultSummary(menuFrame)
         menuFrame.eaSummarySep:SetShown(summaryH > 0)
     end
     if menuFrame.menuItems then
-        local headerH = 26
-        local rowH = 30
-        local pad = 6
+        local lay = menuFrame._eaMenuLayout or VBGetEasyAccessMenuLayout()
         local itemCount = #menuFrame.menuItems
-        menuFrame:SetHeight(headerH + summaryH + (itemCount * (rowH + 2)) + pad + 2)
+        menuFrame:SetHeight(VBComputeEasyAccessMenuHeight(lay, itemCount, summaryH))
     end
     if summaryH <= 0 then
         return
@@ -146,8 +138,10 @@ function M.RefreshMenuVaultSummary(menuFrame)
 end
 
 function M.CreateMenuItem(parent, opts, y)
-    local btn = M.VBButton(parent, math.max(1, parent:GetWidth() - 8), 30, true)
-    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, y)
+    local lay = parent._eaMenuLayout or VBGetEasyAccessMenuLayout()
+    local btnW = math.max(1, (parent:GetWidth() or lay.width) - (lay.contentPadH * 2))
+    local btn = M.VBButton(parent, btnW, lay.rowH, true)
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", lay.contentPadH, y)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
     local hl = btn:CreateTexture(nil, "HIGHLIGHT")
@@ -159,11 +153,12 @@ function M.CreateMenuItem(parent, opts, y)
         hl:SetColorTexture(accent[1], accent[2], accent[3], 0.25)
     end
 
-    local MENU_ICON_SIZE = 20
-    if opts.iconAtlas or opts.icon then
+    local MENU_ICON_SIZE = lay.iconSize or 20
+    local hasIcon = opts.iconAtlas or opts.icon
+    if hasIcon then
         local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetSize(MENU_ICON_SIZE, MENU_ICON_SIZE)
-        icon:SetPoint("LEFT", 6, 0)
+        icon:SetPoint("LEFT", lay.innerPad, 0)
         if opts.iconAtlas and icon.SetAtlas then
             icon:SetTexture(nil)
             local ok = pcall(icon.SetAtlas, icon, opts.iconAtlas, false)
@@ -184,7 +179,11 @@ function M.CreateMenuItem(parent, opts, y)
     else
         label = VBFontString(btn, "body")
     end
-    label:SetPoint("LEFT", 32, 0)
+    local labelLeft = lay.innerPad
+    if hasIcon then
+        labelLeft = lay.innerPad + MENU_ICON_SIZE + (lay.iconLabelGap or 6)
+    end
+    label:SetPoint("LEFT", labelLeft, 0)
     label:SetText(opts.label)
     ns.UI_SetTextColorRole(label, "Bright")
 
@@ -192,7 +191,7 @@ function M.CreateMenuItem(parent, opts, y)
     local STAR_SIZE = 18
     local star = btn:CreateTexture(nil, "OVERLAY")
     star:SetSize(STAR_SIZE, STAR_SIZE)
-    star:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+    star:SetPoint("RIGHT", btn, "RIGHT", -lay.innerPad, 0)
     star:Hide()
     if star.SetAtlas then
         local ok = pcall(star.SetAtlas, star, "PetJournal-FavoritesIcon", false)
@@ -233,7 +232,13 @@ function M.CreateMenuItem(parent, opts, y)
 end
 
 function M.BuildMenu()
-    if S.menuFrame then return end
+    if S.menuFrame and (S.menuFrame._eaMenuLayoutVersion or 0) >= M.EA_MENU_LAYOUT_VERSION then
+        return
+    end
+    if S.menuFrame then
+        S.menuFrame:Hide()
+        S.menuFrame = nil
+    end
     local ApplyVisuals = ns.UI_ApplyVisuals
     local COLORS = ns.UI_COLORS or {}
     local accent = COLORS.accent or {0.40, 0.20, 0.58}
@@ -269,21 +274,20 @@ function M.BuildMenu()
         end
     end
 
-    local W = 230
-    local rowH = 30
-    local headerH = 26
-    local pad = 6
+    local lay = VBGetEasyAccessMenuLayout()
     local summaryH = GetMenuSummaryHeight()
-    local H = headerH + summaryH + (#items * (rowH + 2)) + pad + 2
+    local H = VBComputeEasyAccessMenuHeight(lay, #items, summaryH)
 
-    local f = M.VBContainer(UIParent, W, H, false, "WarbandNexusVaultMenu")
+    local f = M.VBContainer(UIParent, lay.width, H, false, "WarbandNexusVaultMenu")
     AddEscCloseFrame("WarbandNexusVaultMenu")
     if ns.UI_RegisterScaledFrame then
         ns.UI_RegisterScaledFrame(f)
     elseif ns.UI_ApplyAddonUIScale then
         ns.UI_ApplyAddonUIScale(f)
     end
-    f:SetSize(W, H)
+    f:SetSize(lay.width, H)
+    f._eaMenuLayout = lay
+    f._eaMenuLayoutVersion = lay.version
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(220)
     f:SetClampedToScreen(true)
@@ -300,11 +304,10 @@ function M.BuildMenu()
     f:Hide()
     f.leftClickAction = GetSettings().leftClickAction
 
-    -- Header bar (matches main chrome style)
-    local menuInset = VBGetFrameContentInset()
-    local header = M.VBContainer(f, 1, headerH, false)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -menuInset)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -menuInset)
+    -- Header band (symmetric shell inset)
+    local header = M.VBContainer(f, 1, lay.headerH, false)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", lay.inset, -lay.inset)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.inset, -lay.inset)
     if M.VBApplyEasyAccessHeader then
         M.VBApplyEasyAccessHeader(header)
     elseif ns.UI_ApplyFloatingWindowHeaderChrome then
@@ -332,7 +335,7 @@ function M.BuildMenu()
 
     local headerIcon = header:CreateTexture(nil, "ARTWORK")
     headerIcon:SetSize(16, 16)
-    headerIcon:SetPoint("LEFT", 8, 0)
+    headerIcon:SetPoint("LEFT", lay.innerPad, 0)
     headerIcon:SetTexture(ICON_TEXTURE)
     if not headerIcon:GetTexture() then
         headerIcon:SetTexture(ICON_FALLBACK)
@@ -355,9 +358,10 @@ function M.BuildMenu()
     f.eaSummarySep = nil
     f.eaSummaryRows = {}
     if summaryH > 0 then
+        local summaryTopY = -(lay.inset + lay.headerH + lay.sectionGap)
         local summaryPanel = M.VBContainer(f, 1, summaryH, false)
-        summaryPanel:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -(headerH + 4))
-        summaryPanel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -(headerH + 4))
+        summaryPanel:SetPoint("TOPLEFT", f, "TOPLEFT", lay.inset, summaryTopY)
+        summaryPanel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.inset, summaryTopY)
         if M.VBIsClassicChrome and M.VBIsClassicChrome() then
             if ns.UI_ApplyClassicCardPanelChrome then
                 ns.UI_ApplyClassicCardPanelChrome(summaryPanel)
@@ -367,42 +371,48 @@ function M.BuildMenu()
         end
         f.eaSummaryPanel = summaryPanel
         local summaryTitle = VBFontString(summaryPanel, "body")
-        summaryTitle:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", 8, -4)
-        summaryTitle:SetPoint("TOPRIGHT", summaryPanel, "TOPRIGHT", -8, -4)
+        summaryTitle:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", lay.summaryInnerPad, -lay.summaryTitleTop)
+        summaryTitle:SetPoint("TOPRIGHT", summaryPanel, "TOPRIGHT", -lay.summaryInnerPad, -lay.summaryTitleTop)
         summaryTitle:SetJustifyH("LEFT")
-        summaryTitle:SetHeight(16)
+        summaryTitle:SetHeight(lay.summaryTitleH)
         f.eaSummaryRows.title = summaryTitle
-        local summaryLineY = -MENU_SUMMARY_PAD_TOP
-        for si = 1, MENU_SUMMARY_MAX_LINES - 1 do
+        local bodyTop = lay.summaryTitleTop + lay.summaryTitleH + lay.sectionGap
+        for si = 1, M.EA_MENU_SUMMARY_MAX_LINES - 1 do
             local lineFS = VBFontString(summaryPanel, "small")
-            lineFS:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", 8, summaryLineY)
-            lineFS:SetPoint("TOPRIGHT", summaryPanel, "TOPRIGHT", -8, summaryLineY)
+            local lineY = -(bodyTop + (si - 1) * lay.summaryLineH)
+            lineFS:SetPoint("TOPLEFT", summaryPanel, "TOPLEFT", lay.summaryInnerPad, lineY)
+            lineFS:SetPoint("TOPRIGHT", summaryPanel, "TOPRIGHT", -lay.summaryInnerPad, lineY)
             lineFS:SetJustifyH("LEFT")
-            lineFS:SetHeight(MENU_SUMMARY_LINE_H)
+            lineFS:SetHeight(lay.summaryLineH)
             f.eaSummaryRows[si + 1] = lineFS
-            summaryLineY = summaryLineY - MENU_SUMMARY_LINE_H
         end
 
-        local summarySep = f:CreateTexture(nil, "BORDER")
-        summarySep:SetHeight(1)
-        summarySep:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -(headerH + summaryH + 4))
-        summarySep:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -(headerH + summaryH + 4))
-        if M.VBIsClassicChrome and M.VBIsClassicChrome() then
-            local bc = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.border) or { 0.55, 0.48, 0.35, 1 }
-            summarySep:SetColorTexture(bc[1], bc[2], bc[3], 0.65)
+        local sepY = summaryTopY - summaryH
+        if M.VBCreateEasyAccessSeparator then
+            f.eaSummarySep = M.VBCreateEasyAccessSeparator(f, lay.inset, lay.inset, sepY)
         else
-            summarySep:SetColorTexture(accent[1], accent[2], accent[3], 0.45)
+            local summarySep = f:CreateTexture(nil, "BORDER")
+            summarySep:SetHeight(1)
+            summarySep:SetPoint("TOPLEFT", f, "TOPLEFT", lay.inset, sepY)
+            summarySep:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.inset, sepY)
+            if M.VBIsClassicChrome and M.VBIsClassicChrome() then
+                local bc = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.border) or { 0.55, 0.48, 0.35, 1 }
+                summarySep:SetColorTexture(bc[1], bc[2], bc[3], 0.65)
+            else
+                summarySep:SetColorTexture(accent[1], accent[2], accent[3], 0.45)
+            end
+            f.eaSummarySep = summarySep
         end
-        f.eaSummarySep = summarySep
     end
     RefreshMenuVaultSummary(f)
 
-    local y = -(headerH + summaryH + 8)
+    local listTopY = -(lay.inset + lay.headerH + lay.sectionGap + summaryH + (summaryH > 0 and lay.sectionGap or 0))
     f.menuItems = {}
+    local rowY = listTopY
     for _, opt in ipairs(items) do
-        local row = CreateMenuItem(f, opt, y)
+        local row = CreateMenuItem(f, opt, rowY)
         table.insert(f.menuItems, row)
-        y = y - (rowH + 2)
+        rowY = rowY - (lay.rowH + lay.rowGap)
     end
 
     -- Auto-hide on focus loss: close when mouse leaves and not over a child (OnUpdate only while menu is shown).

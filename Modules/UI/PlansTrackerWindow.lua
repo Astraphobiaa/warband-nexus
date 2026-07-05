@@ -62,10 +62,8 @@ local function ApplyTrackerChrome(frame, bg, border, tier)
     if not frame then return end
     if ns.UI_CanApplyCustomChrome and not ns.UI_CanApplyCustomChrome(frame) then return end
     if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
-        if tier == "card" and ns.UI_ApplyClassicCardPanelChrome then
+        if (tier == "card" or tier == "row") and ns.UI_ApplyClassicCardPanelChrome then
             ns.UI_ApplyClassicCardPanelChrome(frame)
-        elseif tier == "row" and ns.UI_ApplyClassicThinBorderChrome then
-            ns.UI_ApplyClassicThinBorderChrome(frame, bg)
         elseif tier == "icon" and ns.UI_ApplyClassicIconWellChrome then
             ns.UI_ApplyClassicIconWellChrome(frame, bg)
         elseif tier == "popup" and ns.UI_ApplyClassicCardPanelChrome then
@@ -123,7 +121,7 @@ local MAIN_SHELL_PT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
 local CATEGORY_BAR_HEIGHT = MAIN_SHELL_PT.TAB_HEIGHT or 34
 
 -- Tracker header metrics (must be above helpers that read these locals — Lua 5.1 forward-ref)
-local PLAN_TRACKER_LAYOUT_VERSION = 14
+local PLAN_TRACKER_LAYOUT_VERSION = 17
 local TRACKER_HEADER_ICON = 20
 local TRACKER_HEADER_BTN = 22
 local TRACKER_HEADER_BTN_GAP = 4
@@ -378,16 +376,13 @@ local function GetTrackerContentColumnWidth(frame)
         or (VB and VB.VBGetEasyAccessBodyLayout and VB.VBGetEasyAccessBodyLayout())
     local inset = (bodyLay and bodyLay.inset) or PADDING
     local sbLane = (bodyLay and bodyLay.sbLane) or TRACK_SCROLL_RIGHT_RESERVE
-    local rowPad = GetTrackerRowInnerPad(frame)
     local frameW = frame:GetWidth() or 380
-    return math.max(frameW - (inset * 2) - sbLane - rowPad, 200)
+    return math.max(frameW - (inset * 2) - sbLane, 200)
 end
 
---- Card width inside scroll child (symmetric horizontal inset).
+--- Card width inside scroll child (full bleed; horizontal pad lives on viewport shell only).
 local function GetTrackerCardWidth(frame)
-    local colW = GetTrackerContentColumnWidth(frame)
-    local pad = GetTrackerRowInnerPad(frame)
-    return math.max(colW - (pad * 2), 120)
+    return GetTrackerContentColumnWidth(frame)
 end
 
 local function GetTrackerListWidth(frame)
@@ -398,20 +393,57 @@ local function GetContentWidth(frame)
     return GetTrackerCardWidth(frame)
 end
 
+local function GetTrackerClassicViewportInnerInset()
+    if not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
+        return 0
+    end
+    local bd = ns.UI_CLASSIC_CARD_BACKDROP
+    if bd and bd.insets and bd.insets.left then
+        return bd.insets.left
+    end
+    return 8
+end
+
 local function GetTrackerViewportLayout(eaLay)
     eaLay = eaLay or {}
     local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
     local pcm = ns.UI_PLANS_CARD_METRICS or {}
     local defaultGap = pcm.todoListCardGap or PADDING or 10
     local padH = math.max(eaLay.rowInnerPad or PADDING, 4)
-    local padTop = ms.PLANS_TRACKER_VIEWPORT_PAD_TOP or defaultGap
-    local padBottom = ms.PLANS_TRACKER_VIEWPORT_PAD_BOTTOM or defaultGap
+    local shellPadTop = ms.PLANS_TRACKER_VIEWPORT_PAD_TOP or defaultGap
+    local shellPadBottom = ms.PLANS_TRACKER_VIEWPORT_PAD_BOTTOM or defaultGap
+    local padTop = ms.PLANS_TRACKER_SCROLL_CONTENT_PAD_TOP or shellPadTop
+    local padBottom = ms.PLANS_TRACKER_SCROLL_CONTENT_PAD_BOTTOM or shellPadBottom
     return {
         padH = padH,
         padTop = padTop,
         padBottom = padBottom,
-        padV = math.max(padTop, padBottom),
+        shellPadTop = shellPadTop,
+        shellPadBottom = shellPadBottom,
+        padV = math.max(shellPadTop, shellPadBottom),
+        classicInnerInset = GetTrackerClassicViewportInnerInset(),
     }
+end
+
+local function ApplyTrackerViewportScrollInsets(frame)
+    local shell = frame and frame.contentViewportShell
+    if not shell then return end
+    local inset = (frame._plansViewportLayout and frame._plansViewportLayout.classicInnerInset)
+        or GetTrackerClassicViewportInnerInset()
+    local scrollHost = frame.contentScrollHost
+    local scrollFrame = frame.contentScrollFrame
+    local sbLane = TRACK_SCROLL_RIGHT_RESERVE
+    -- Scroll bar lane is reserved inside VBCreateEasyAccessScrollBody; do not shrink host again.
+    if scrollHost then
+        scrollHost:ClearAllPoints()
+        scrollHost:SetPoint("TOPLEFT", shell, "TOPLEFT", inset, -inset)
+        scrollHost:SetPoint("BOTTOMRIGHT", shell, "BOTTOMRIGHT", -inset, inset)
+    elseif scrollFrame then
+        scrollFrame:ClearAllPoints()
+        scrollFrame:SetPoint("TOPLEFT", shell, "TOPLEFT", inset, -inset)
+        scrollFrame:SetPoint("TOPRIGHT", shell, "TOPRIGHT", -(inset + sbLane), -inset)
+        scrollFrame:SetPoint("BOTTOMLEFT", shell, "BOTTOMLEFT", inset, inset)
+    end
 end
 
 local function ApplyTrackerViewportShellInsets(frame)
@@ -422,8 +454,8 @@ local function ApplyTrackerViewportShellInsets(frame)
     local vpLay = GetTrackerViewportLayout(eaLay)
     frame._plansViewportLayout = vpLay
     shell:ClearAllPoints()
-    shell:SetPoint("TOPLEFT", contentArea, "TOPLEFT", vpLay.padH, -vpLay.padTop)
-    shell:SetPoint("BOTTOMRIGHT", contentArea, "BOTTOMRIGHT", -vpLay.padH, vpLay.padBottom)
+    shell:SetPoint("TOPLEFT", contentArea, "TOPLEFT", vpLay.padH, -vpLay.shellPadTop)
+    shell:SetPoint("BOTTOMRIGHT", contentArea, "BOTTOMRIGHT", -vpLay.padH, vpLay.shellPadBottom)
 end
 
 local function ApplyTrackerViewportShellChrome(shell)
@@ -434,19 +466,28 @@ local function ApplyTrackerViewportShellChrome(shell)
     if shell._trackerViewportBottomEdge and shell._trackerViewportBottomEdge.Hide then
         shell._trackerViewportBottomEdge:Hide()
     end
-    if not IsTrackerViewportDebug() then
-        ApplyTrackerViewportTransparent(shell)
+    if IsTrackerViewportDebug() then
+        local c = ns.UI_COLORS or COLORS
+        local vp = c.surfaceViewport or c.bgCard or c.bg
+        local cc = GetCardColors()
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+            ApplyTrackerChrome(shell, vp, nil, "row")
+        else
+            ApplyTrackerChrome(shell, vp, cc.border)
+        end
+        shell:EnableMouse(false)
         return
     end
-    local c = ns.UI_COLORS or COLORS
-    local vp = c.surfaceViewport or c.bgCard or c.bg
-    local cc = GetCardColors()
     if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
-        ApplyTrackerChrome(shell, vp, nil, "row")
-    else
-        ApplyTrackerChrome(shell, vp, cc.border)
+        if ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(shell)
+        elseif ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(shell)
+        end
+        shell:EnableMouse(false)
+        return
     end
-    shell:EnableMouse(false)
+    ApplyTrackerViewportTransparent(shell)
 end
 
 local function SyncTrackerViewportChrome(frame)
@@ -458,6 +499,7 @@ local function SyncTrackerViewportChrome(frame)
     if frame.contentViewportShell then
         ApplyTrackerViewportShellChrome(frame.contentViewportShell)
     end
+    ApplyTrackerViewportScrollInsets(frame)
     if frame.contentScrollHost then
         ApplyTrackerViewportTransparent(frame.contentScrollHost)
     end
@@ -1311,20 +1353,25 @@ local function RepositionTrackerRows()
     local frame = GetTrackerFrame()
     local scrollChild = frame and frame.contentScrollChild
     if not scrollChild then return 0 end
-    local rowPadH = GetTrackerRowInnerPad(frame)
+    local cardW = GetTrackerCardWidth(frame)
+    local rowPadH = 0
     local vpLay = (frame and frame._plansViewportLayout)
         or GetTrackerViewportLayout(frame and frame._plansBodyLay)
-    local padBottom = (vpLay and vpLay.padBottom) or rowPadH
-    local y = rowPadH
+    local padTop = (vpLay and vpLay.padTop) or GetTrackerRowInnerPad(frame)
+    local padBottom = (vpLay and vpLay.padBottom) or GetTrackerRowInnerPad(frame)
+    local y = padTop
     for i = 1, #trackerRowOrder do
         local r = trackerRowOrder[i]
         if r and r:IsShown() then
+            if cardW and cardW > 0 and r.SetWidth then
+                r:SetWidth(cardW)
+            end
             r:ClearAllPoints()
             r:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowPadH, -y)
             y = y + (r:GetHeight() or 0) + LIST_GAP_DEFAULT
         end
     end
-    if y > rowPadH then
+    if y > padTop then
         y = y - LIST_GAP_DEFAULT
     end
     y = y + padBottom
@@ -2364,6 +2411,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     frame.contentScrollFrame = scrollFrame
     frame.contentScrollChild = scrollChild
     frame.contentScrollBarColumn = barColumn
+    ApplyTrackerViewportScrollInsets(frame)
     SyncTrackerScrollBar(frame)
 
     -- Resize grip: window shell corner (not inside scroll content).
@@ -2404,6 +2452,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
                 end
                 RefreshTrackerContent()
             end)
+        else
+            RepositionTrackerRows()
         end
     end
 
