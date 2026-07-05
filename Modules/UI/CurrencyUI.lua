@@ -1283,12 +1283,19 @@ local function ApplyCurrencyResultsHeight(mainFrame, scrollChild, resultsContain
 
     local Factory = ns.UI.Factory
     resultsContainer:SetHeight(targetResultsH)
+    if ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, 8 + (listHeight or 0))
+        return
+    end
     scrollChild:SetHeight(targetScrollChildH)
     if Factory and Factory.UpdateScrollBarVisibility then
         Factory:UpdateScrollBarVisibility(mainFrame.scroll)
     end
     if Factory and Factory.UpdateHorizontalScrollBarVisibility then
         Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+    end
+    if Factory and Factory.DeferScrollBarVisibility then
+        Factory:DeferScrollBarVisibility(mainFrame.scroll)
     end
 end
 

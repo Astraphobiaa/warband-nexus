@@ -80,7 +80,14 @@ local function SyncAchievementBrowseScrollChildHeight(state)
                 scrollFrame:SetVerticalScroll(maxScroll)
             end
         end
-        if Factory and Factory.UpdateScrollBarVisibility then
+        if state.achievementListScrollBarContainer and Factory.EnsureScrollBarColumnSync then
+            local colW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 22
+            local gap = (ns.CollectionsUI and ns.CollectionsUI.SCROLLBAR_SIDE_GAP) or 4
+            Factory:EnsureScrollBarColumnSync(scrollFrame, state.achievementListScrollBarContainer, { width = colW, gap = gap })
+        end
+        if Factory.DeferScrollBarVisibility then
+            Factory:DeferScrollBarVisibility(scrollFrame)
+        elseif Factory.UpdateScrollBarVisibility then
             Factory:UpdateScrollBarVisibility(scrollFrame)
         end
     end

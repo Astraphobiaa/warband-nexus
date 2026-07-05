@@ -1516,12 +1516,18 @@ function ns.UIShell.CreateMainWindow(self)
     f.scroll = scroll
 
     -- Vertical bar column: outside viewport border, same vertical range as scroll; button-to-button alignment
-    local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(content, SCROLL_COLUMN_W, SCROLL_INSET_TOP, SCROLL_INSET_BOTTOM)
+    local scrollBarColumn = ns.UI.Factory.CreateBareScrollBarColumn and ns.UI.Factory:CreateBareScrollBarColumn(content, SCROLL_COLUMN_W)
+        or ns.UI.Factory:CreateScrollBarColumn(content, SCROLL_COLUMN_W, 0, 0)
     scrollBarColumn:SetFrameLevel(viewportBorder:GetFrameLevel() + 2)
     f.scrollBarColumn = scrollBarColumn
-    if scroll.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
+    if ns.UI.Factory.EnsureScrollBarColumnSync then
+        ns.UI.Factory:EnsureScrollBarColumnSync(scroll, scrollBarColumn, { width = SCROLL_COLUMN_W, gap = SCROLL_GAP })
+    elseif scroll.ScrollBar and ns.UI.Factory.SyncScrollBarColumnToViewport then
+        ns.UI.Factory:SyncScrollBarColumnToViewport(scroll, scrollBarColumn, { width = SCROLL_COLUMN_W, gap = SCROLL_GAP })
+    elseif scroll.ScrollBar and ns.UI.Factory.PositionScrollBarInContainer then
         ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
     end
+    scroll._wnKeepScrollLane = true
 
     -- Factory candidate: scroll child is a dumb host; only bottom-fill band (`scrollChild._wnScrollBottomFill`) matters for Factory parity.
     local scrollChild = CreateFrame("Frame", nil, scroll)

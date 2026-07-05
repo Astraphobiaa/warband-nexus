@@ -470,6 +470,17 @@ local function PopulateContentBody(self, forceRepaint)
     if ns.UI.Factory.UpdateHorizontalScrollBarVisibility then
         ns.UI.Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
     end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if not mainFrame or not mainFrame.scroll then return end
+            if ns.UI_SyncMainScrollBarColumns then
+                ns.UI_SyncMainScrollBarColumns(mainFrame)
+            end
+            if ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+                ns.UI.Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+            end
+        end)
+    end
     
     -- Tab switch: open at top; restore prior scroll offset for Settings when returning.
     if mainFrame.isMainTabSwitch and mainFrame.scroll then

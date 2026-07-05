@@ -2292,6 +2292,10 @@ local function ApplyReputationResultsHeight(mainFrame, scrollChild, resultsConta
 
     local Factory = ns.UI.Factory
     resultsContainer:SetHeight(targetResultsH)
+    if ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, 8 + (listHeight or 0))
+        return
+    end
     scrollChild:SetHeight(targetScrollChildH)
     if Factory and Factory.UpdateScrollBarVisibility then
         Factory:UpdateScrollBarVisibility(mainFrame.scroll)

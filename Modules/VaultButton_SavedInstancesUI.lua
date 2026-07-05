@@ -27,8 +27,9 @@ function M.BuildGroupHeader(parent, group, totalW, collapsed)
     local FontManager = ns.FontManager
     local diffInfo = GetDiffInfo(group.difficulty)
 
+    local w = tonumber(totalW) or (parent.GetWidth and parent:GetWidth()) or 200
     local header = M.VBButton(parent, 1, M.HEADER_H or 24, true)
-    header:SetSize(totalW, 30)
+    header:SetSize(math.max(1, w), M.HEADER_H or 30)
     header:EnableMouse(true)
 
     if M.VBIsClassicChrome and M.VBIsClassicChrome() then
@@ -418,8 +419,14 @@ local RefreshSavedInstances = function()
 
     local lay = (S.savedFrame and S.savedFrame._savedLayout) or VBGetSavedInstancesLayout()
     local viewportW = (S.savedScroll and S.savedScroll.GetWidth and S.savedScroll:GetWidth()) or SAVED_FRAME_W
-    local contentW = M.VBGetEasyAccessScrollChildWidth(viewportW)
-    content:SetWidth(contentW)
+    content:SetWidth(M.VBGetEasyAccessScrollChildWidth(viewportW, false))
+
+    local barCol = S.savedFrame and S.savedFrame.barColumn
+    if S.savedScroll and barCol and ns.UI_EnsureScrollBarColumnSync then
+        ns.UI_EnsureScrollBarColumnSync(S.savedScroll, barCol, S.savedScroll._wnBarColumnSyncOpts)
+    elseif S.savedScroll and barCol and ns.UI_SyncScrollBarColumnToViewport then
+        ns.UI_SyncScrollBarColumnToViewport(S.savedScroll, barCol, S.savedScroll._wnBarColumnSyncOpts)
+    end
 
     if #filtered == 0 then
         local FontManager = ns.FontManager
@@ -458,6 +465,7 @@ local RefreshSavedInstances = function()
 
 local GROUP_GAP = lay.contentTopGap
 local ROW_GAP = 3
+    local contentW = math.max(120, content:GetWidth() or M.VBGetEasyAccessScrollChildWidth(viewportW, false) or 200)
     local rowW = contentW
     local y = lay.contentTopGap
     local prevScroll = (S.savedScroll and S.savedScroll.GetVerticalScroll and S.savedScroll:GetVerticalScroll()) or 0

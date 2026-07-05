@@ -215,6 +215,7 @@ function M.BuildSavedInstancesFrame()
         ReleaseSavedInstanceRows()
         S.savedFrame:Hide()
         S.savedFrame = nil
+        S.savedScrollHost = nil
         S.savedScroll = nil
         S.savedContent = nil
     end
@@ -311,8 +312,7 @@ function M.BuildSavedInstancesFrame()
     local filterY = -(chromeBandH + lay.filterBelowChrome)
     local filterRow = M.VBContainer(f, 1, 1, false)
     filterRow:SetHeight(SAVED_FILTER_H)
-    filterRow:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY)
-    filterRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -lay.pad, filterY)
+    M.VBAnchorFullWidthRowBelowChrome(filterRow, f, chromeBandH, lay.filterBelowChrome)
     local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
         or COLORS.bgCard or COLORS.bgLight or COLORS.bg
     M.VBApplyEasyAccessListHeader(filterRow, hdr, { accent[1], accent[2], accent[3], 0.4 })
@@ -325,7 +325,7 @@ function M.BuildSavedInstancesFrame()
         { key = "heroic",  label = "H",   diff = 15 },
         { key = "mythic",  label = "M",   diff = 16 },
     }
-    local fx = lay.pad
+    local fx = lay.rowInnerPad
     for _, fb in ipairs(filterBtns) do
         local di = GetDiffInfo(fb.diff)
         local b = M.VBButton(filterRow, 1, 22, true)
@@ -366,21 +366,29 @@ function M.BuildSavedInstancesFrame()
     else
         summary = VBFontString(filterRow, "small")
     end
-    summary:SetPoint("RIGHT", filterRow, "RIGHT", -lay.pad, 0)
+    summary:SetPoint("RIGHT", filterRow, "RIGHT", -lay.rowInnerPad, 0)
     ns.UI_SetTextColorRole(summary, "Muted")
     f.summary = summary
 
-    -- Scroll body — symmetric dialog insets; scroll child width reserves UIPanelScrollFrame bar lane.
-    local scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", lay.pad, filterY - SAVED_FILTER_H - 2)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -lay.pad, lay.pad)
-    local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(SAVED_FRAME_W - lay.pad * 2)
-    local content = VF:CreateContainer(scroll, math.max(320, scrollInnerW), 1, false)
-    scroll:SetScrollChild(content)
+    -- Scroll body — reserved bar column inside dialog insets (Collections / Money Log pattern).
+    local scrollHost, scroll, content, barColumn = M.VBCreateEasyAccessScrollBody(f, {
+        topY = filterY - SAVED_FILTER_H - lay.scrollTopGap,
+        padLeft = lay.pad,
+        padRight = lay.pad,
+        bottom = lay.contentBottomPad,
+        viewportW = SAVED_FRAME_W - lay.pad * 2,
+        keepScrollLane = true,
+    })
+    f.barColumn = barColumn
 
+    local sbLane = lay.sbLane or (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
     local resizeGrip = CreateFrame("Button", nil, f)
     resizeGrip:SetSize(16, 16)
-    resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -lay.pad, lay.pad)
+    if scrollHost then
+        resizeGrip:SetPoint("BOTTOMRIGHT", scrollHost, "BOTTOMRIGHT", -sbLane + 2, 2)
+    else
+        resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -lay.pad, lay.pad)
+    end
     resizeGrip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizeGrip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
@@ -413,6 +421,7 @@ function M.BuildSavedInstancesFrame()
     end)
 
     S.savedFrame = f
+    S.savedScrollHost = scrollHost
     S.savedScroll = scroll
     S.savedContent = content
 end

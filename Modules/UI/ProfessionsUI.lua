@@ -3575,6 +3575,9 @@ function ProfUI.RunChunkedRowPaint(addon, parent, queue, drawGen, ctx)
                 parent._wnProfRelayoutSectionStack()
             end
             if ctx.onComplete then ctx.onComplete() end
+            if mf and mf.scroll and ns.UI.Factory and ns.UI.Factory.DeferScrollBarVisibility then
+                ns.UI.Factory:DeferScrollBarVisibility(mf.scroll)
+            end
             return
         end
 

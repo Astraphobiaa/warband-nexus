@@ -2149,4 +2149,5 @@ function ns.PvEUI.RunDeferredBodyPaint()
 end
 
 ns.PvEUI = ns.PvEUI or {}
+ns.PvEUI.PvEStackBodyWidth = PvEStackBodyWidth
 ns.PvEUI.PvEUI_DrawPvEProgressBody = PvEUI_DrawPvEProgressBody

@@ -207,27 +207,17 @@ function M.DrawMountsContent(contentFrame)
         M.state.mountListScrollChild = scrollChild
 
         -- SCROLLBAR RESERVE: visible between list and 3D view (equal gap).
-        local scrollBarContainer = M.EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP)
+        local scrollBarContainer = M.EnsureListScrollBarContainer(nil, contentFrame, scrollFrame, scrollBarColumnWidth, SCROLLBAR_SIDE_GAP)
         M.state.mountListScrollBarContainer = scrollBarContainer
-
-        local scrollBar = scrollFrame.ScrollBar
-        if scrollBar then
-            Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
-        end
     else
         M.state.mountListContainer:SetSize(listContentWidth, innerCh)
         M.state.mountListScrollBarContainer = M.EnsureListScrollBarContainer(
             M.state.mountListScrollBarContainer,
             contentFrame,
-            M.state.mountListContainer,
+            M.state.mountListScrollFrame,
             scrollBarColumnWidth,
-            innerCh,
             SCROLLBAR_SIDE_GAP
         )
-        local scrollBar = M.state.mountListScrollFrame and M.state.mountListScrollFrame.ScrollBar
-        if scrollBar then
-            Factory:PositionScrollBarInContainer(scrollBar, M.state.mountListScrollBarContainer, CONTAINER_INSET)
-        end
     end
     M.state.mountListScrollChild:SetWidth(listContentWidth - (CONTAINER_INSET * 2))
 
@@ -604,27 +594,17 @@ function M.DrawPetsContent(contentFrame)
         local scrollChild = M.CreateStandardScrollChild(scrollFrame, listContentWidth - (CONTAINER_INSET * 2))
         M.state.petListScrollChild = scrollChild
 
-        local scrollBarContainer = M.EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP)
+        local scrollBarContainer = M.EnsureListScrollBarContainer(nil, contentFrame, scrollFrame, scrollBarColumnWidth, SCROLLBAR_SIDE_GAP)
         M.state.petListScrollBarContainer = scrollBarContainer
-
-        local scrollBar = scrollFrame.ScrollBar
-        if scrollBar then
-            Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
-        end
     else
         M.state.petListContainer:SetSize(listContentWidth, innerCh)
         M.state.petListScrollBarContainer = M.EnsureListScrollBarContainer(
             M.state.petListScrollBarContainer,
             contentFrame,
-            M.state.petListContainer,
+            M.state.petListScrollFrame,
             scrollBarColumnWidth,
-            innerCh,
             SCROLLBAR_SIDE_GAP
         )
-        local scrollBar = M.state.petListScrollFrame and M.state.petListScrollFrame.ScrollBar
-        if scrollBar then
-            Factory:PositionScrollBarInContainer(scrollBar, M.state.petListScrollBarContainer, CONTAINER_INSET)
-        end
     end
     M.state.petListScrollChild:SetWidth(listContentWidth - (CONTAINER_INSET * 2))
 
@@ -995,27 +975,17 @@ function M.DrawToysContent(contentFrame)
         local scrollChild = M.CreateStandardScrollChild(scrollFrame, listContentWidth - (CONTAINER_INSET * 2))
         M.state.toyListScrollChild = scrollChild
 
-        local scrollBarContainer = M.EnsureListScrollBarContainer(nil, contentFrame, listContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP)
+        local scrollBarContainer = M.EnsureListScrollBarContainer(nil, contentFrame, scrollFrame, scrollBarColumnWidth, SCROLLBAR_SIDE_GAP)
         M.state.toyListScrollBarContainer = scrollBarContainer
-
-        local scrollBar = scrollFrame.ScrollBar
-        if scrollBar then
-            Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, CONTAINER_INSET)
-        end
     else
         M.state.toyListContainer:SetSize(listContentWidth, innerCh)
         M.state.toyListScrollBarContainer = M.EnsureListScrollBarContainer(
             M.state.toyListScrollBarContainer,
             contentFrame,
-            M.state.toyListContainer,
+            M.state.toyListScrollFrame,
             scrollBarColumnWidth,
-            innerCh,
             SCROLLBAR_SIDE_GAP
         )
-        local scrollBar = M.state.toyListScrollFrame and M.state.toyListScrollFrame.ScrollBar
-        if scrollBar then
-            Factory:PositionScrollBarInContainer(scrollBar, M.state.toyListScrollBarContainer, CONTAINER_INSET)
-        end
     end
     M.state.toyListScrollChild:SetWidth(listContentWidth - (CONTAINER_INSET * 2))
 
@@ -1064,23 +1034,24 @@ function M.DrawToysContent(contentFrame)
             M.state.toyDetailEmptyOverlay = emptyOverlay
         end
 
-        M.state.toyDetailScrollBarContainer = M.EnsureDetailScrollBarContainer(
-            M.state.toyDetailScrollBarContainer,
-            detailContainer,
-            SCROLLBAR_GAP,
-            CONTAINER_INSET
-        )
+        local detailSbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+            or (scrollBarColumnWidth + SCROLLBAR_SIDE_GAP)
         local scroll = Factory:CreateScrollFrame(detailContainer, "UIPanelScrollFrameTemplate", true)
-        scroll:SetPoint("TOPLEFT", detailContainer, "TOPLEFT", CONTAINER_INSET, -(CONTAINER_INSET + DETAIL_SCROLLBAR_VERTICAL_INSET))
-        scroll:SetPoint("BOTTOMRIGHT", M.state.toyDetailScrollBarContainer, "BOTTOMLEFT", -CONTAINER_INSET, 0)
+        scroll:SetPoint("TOPLEFT", detailContainer, "TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
+        scroll:SetPoint("BOTTOMRIGHT", detailContainer, "BOTTOMRIGHT", -detailSbLane, CONTAINER_INSET)
         M.EnableStandardScrollWheel(scroll)
         M.state._toyDetailScroll = scroll
 
+        M.state.toyDetailScrollBarContainer = M.EnsureDetailScrollBarContainer(
+            M.state.toyDetailScrollBarContainer,
+            detailContainer,
+            scroll,
+            scrollBarColumnWidth,
+            SCROLLBAR_SIDE_GAP
+        )
+
         local scrollChild = M.CreateStandardScrollChild(scroll, detailWidth - (CONTAINER_INSET * 2) - SCROLLBAR_GAP, 1)
         M.state._toyDetailScrollChild = scrollChild
-        if scroll.ScrollBar then
-            Factory:PositionScrollBarInContainer(scroll.ScrollBar, M.state.toyDetailScrollBarContainer, CONTAINER_INSET)
-        end
 
         -- Header row: same right column as Mounts/Pets (Wowhead + Add + try, try at Add width).
         local CDL = ns.CollectionsDetailHeaderLayout or {}
@@ -1181,19 +1152,14 @@ function M.DrawToysContent(contentFrame)
         end
         M.state.toyDetailContainer:SetPoint("BOTTOMRIGHT", rightCol, "BOTTOMRIGHT", 0, 0)
         M.ApplyDetailAccentVisuals(M.state.toyDetailContainer)
-        M.state.toyDetailScrollBarContainer = M.EnsureDetailScrollBarContainer(
-            M.state.toyDetailScrollBarContainer,
-            M.state.toyDetailContainer,
-            SCROLLBAR_GAP,
-            CONTAINER_INSET
-        )
         if M.state._toyDetailScroll then
-            M.state._toyDetailScroll:ClearAllPoints()
-            M.state._toyDetailScroll:SetPoint("TOPLEFT", M.state.toyDetailContainer, "TOPLEFT", CONTAINER_INSET, -(CONTAINER_INSET + DETAIL_SCROLLBAR_VERTICAL_INSET))
-            M.state._toyDetailScroll:SetPoint("BOTTOMRIGHT", M.state.toyDetailScrollBarContainer, "BOTTOMLEFT", -CONTAINER_INSET, 0)
-            if M.state._toyDetailScroll.ScrollBar then
-                Factory:PositionScrollBarInContainer(M.state._toyDetailScroll.ScrollBar, M.state.toyDetailScrollBarContainer, CONTAINER_INSET)
-            end
+            M.state.toyDetailScrollBarContainer = M.EnsureDetailScrollBarContainer(
+                M.state.toyDetailScrollBarContainer,
+                M.state.toyDetailContainer,
+                M.state._toyDetailScroll,
+                scrollBarColumnWidth,
+                SCROLLBAR_SIDE_GAP
+            )
         end
         if M.state._toyDetailScrollChild then
             M.state._toyDetailScrollChild:SetWidth(detailWidth - (CONTAINER_INSET * 2) - SCROLLBAR_GAP)
@@ -1527,7 +1493,7 @@ function M.DrawAchievementsContent(contentFrame)
         local scrollChild = M.CreateStandardScrollChild(scrollFrame, listContentWidth - (CONTAINER_INSET * 2))
         M.state.achievementListScrollChild = scrollChild
         M.state.achievementListScrollBarContainer = M.EnsureListScrollBarContainer(
-            nil, contentFrame, achListContainer, scrollBarColumnWidth, innerCh, SCROLLBAR_SIDE_GAP
+            nil, contentFrame, scrollFrame, scrollBarColumnWidth, SCROLLBAR_SIDE_GAP
         )
     end
     achListContainer = M.state.achievementListContainer
@@ -1537,15 +1503,13 @@ function M.DrawAchievementsContent(contentFrame)
     M.state.achievementListScrollBarContainer = M.EnsureListScrollBarContainer(
         M.state.achievementListScrollBarContainer,
         contentFrame,
-        achListContainer,
+        M.state.achievementListScrollFrame,
         scrollBarColumnWidth,
-        innerCh,
         SCROLLBAR_SIDE_GAP
     )
     M.state.achievementListScrollBarContainer:Show()
     local achScrollBar = M.state.achievementListScrollFrame and M.state.achievementListScrollFrame.ScrollBar
-    if achScrollBar and M.state.achievementListScrollBarContainer then
-        Factory:PositionScrollBarInContainer(achScrollBar, M.state.achievementListScrollBarContainer, CONTAINER_INSET)
+    if achScrollBar then
         achScrollBar:Show()
         if achScrollBar.ScrollUpBtn then achScrollBar.ScrollUpBtn:Show() end
         if achScrollBar.ScrollDownBtn then achScrollBar.ScrollDownBtn:Show() end
@@ -1624,21 +1588,21 @@ function M.DrawAchievementsContent(contentFrame)
         end
         M.ApplyDetailAccentVisuals(M.state.achievementDetailContainer)
         M.state.achievementDetailPanel:SetSize(detailWidth - (CONTAINER_INSET * 2), detailH - (CONTAINER_INSET * 2))
-        if M.state.achievementDetailPanel._scrollBarContainer then
+        if M.state.achievementDetailPanel._scrollBarContainer and M.state.achievementDetailPanel.scrollFrame then
             M.state.achievementDetailPanel._scrollBarContainer = M.EnsureDetailScrollBarContainer(
                 M.state.achievementDetailPanel._scrollBarContainer,
                 M.state.achievementDetailPanel,
-                SCROLLBAR_GAP,
-                CONTAINER_INSET
+                M.state.achievementDetailPanel.scrollFrame,
+                scrollBarColumnWidth,
+                SCROLLBAR_SIDE_GAP
             )
         end
-        if M.state.achievementDetailPanel.scrollFrame and M.state.achievementDetailPanel._scrollBarContainer then
+        if M.state.achievementDetailPanel.scrollFrame then
+            local achDetailLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
+                or (scrollBarColumnWidth + SCROLLBAR_SIDE_GAP)
             M.state.achievementDetailPanel.scrollFrame:ClearAllPoints()
             M.state.achievementDetailPanel.scrollFrame:SetPoint("TOPLEFT", M.state.achievementDetailPanel, "TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
-            M.state.achievementDetailPanel.scrollFrame:SetPoint("BOTTOMRIGHT", M.state.achievementDetailPanel._scrollBarContainer, "BOTTOMLEFT", -CONTAINER_INSET, 0)
-            if M.state.achievementDetailPanel.scrollFrame.ScrollBar then
-                Factory:PositionScrollBarInContainer(M.state.achievementDetailPanel.scrollFrame.ScrollBar, M.state.achievementDetailPanel._scrollBarContainer, CONTAINER_INSET)
-            end
+            M.state.achievementDetailPanel.scrollFrame:SetPoint("BOTTOMRIGHT", M.state.achievementDetailPanel, "BOTTOMRIGHT", -achDetailLane, CONTAINER_INSET)
         end
         local achChild = M.state.achievementDetailPanel.scrollFrame and M.state.achievementDetailPanel.scrollFrame:GetScrollChild()
         if achChild then

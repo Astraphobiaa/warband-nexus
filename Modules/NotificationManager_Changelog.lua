@@ -398,9 +398,16 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     scrollFrame:SetFrameLevel(popup:GetFrameLevel() + 5)
     scrollFrame:SetPoint("TOPLEFT", changelogSidePad, -changelogScrollTop)
     scrollFrame:SetPoint("BOTTOMRIGHT", -changelogRightInset, changelogScrollBottom)
-    if ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
+    if ns.UI.Factory.EnsureScrollBarColumnSync and scrollFrame.ScrollBar then
         local chgSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, chgSbColW, changelogScrollTop, changelogScrollBottom)
+        local scrollBarColumn = ns.UI.Factory:CreateBareScrollBarColumn(popup, chgSbColW)
+        if scrollBarColumn then
+            scrollBarColumn:SetFrameLevel(popup:GetFrameLevel() + 6)
+            ns.UI.Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = chgSbColW, gap = 2 })
+        end
+    elseif ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
+        local chgSbColW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(popup, chgSbColW, 0, 0)
         scrollBarColumn:SetFrameLevel(popup:GetFrameLevel() + 6)
         ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end

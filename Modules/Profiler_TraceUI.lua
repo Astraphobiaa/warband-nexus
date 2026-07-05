@@ -731,9 +731,24 @@ function Profiler:EnsureTraceWindow()
 
     local scrollLaneReserve = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
         or ((ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26) + 2
-    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
-    scroll:SetPoint("BOTTOMRIGHT", -scrollLaneReserve, 12)
+    local sbW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+    local VF = ns.UI and ns.UI.Factory
+    local scroll, barCol
+    if VF and VF.CreateScrollFrame then
+        scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
+        scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
+        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -scrollLaneReserve, 12)
+        barCol = VF.CreateBareScrollBarColumn and VF:CreateBareScrollBarColumn(f, sbW)
+        if barCol and VF.EnsureScrollBarColumnSync then
+            VF:EnsureScrollBarColumnSync(scroll, barCol, { width = sbW, gap = 2 })
+        elseif barCol and VF.SyncScrollBarColumnToViewport then
+            VF:SyncScrollBarColumnToViewport(scroll, barCol, { width = sbW, gap = 2 })
+        end
+    else
+        scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
+        scroll:SetPoint("BOTTOMRIGHT", -scrollLaneReserve, 12)
+    end
 
     local content = CreateFrame("Frame", nil, scroll)
     content:SetWidth(660)

@@ -360,13 +360,18 @@ function Chrome.RefreshTheme()
     local layout = card and card._wnGearViewportLayout
     if not layout then return end
     local accent = COLORS.accent
+    local classicOpts = (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) and { borderless = true } or nil
     if layout.paperChrome and Chrome.ApplyPaperdollViewport then
-        Chrome.ApplyPaperdollViewport(layout.paperChrome, accent)
+        if classicOpts and ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(layout.paperChrome)
+        else
+            Chrome.ApplyPaperdollViewport(layout.paperChrome, accent)
+        end
     end
     if layout.storagePanel and Chrome.ApplySubpanel then
-        Chrome.ApplySubpanel(layout.storagePanel, accent)
+        Chrome.ApplySubpanel(layout.storagePanel, accent, classicOpts)
     end
     if layout.statPanel and Chrome.ApplySubpanel then
-        Chrome.ApplySubpanel(layout.statPanel, accent)
+        Chrome.ApplySubpanel(layout.statPanel, accent, classicOpts)
     end
 end

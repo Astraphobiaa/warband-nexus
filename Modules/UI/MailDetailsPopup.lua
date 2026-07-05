@@ -583,19 +583,24 @@ function WarbandNexus:ShowMailDetailsPopup(char)
 
     local scrollBottom = footerReserved > 0 and footerReserved or LAYOUT.PAD
 
-    local scrollBarColumn = Factory:CreateScrollBarColumn(contentFrame, SCROLLBAR_COL_W, scrollTop, scrollBottom)
+    local scrollBarColumn = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(contentFrame, SCROLLBAR_COL_W)
+        or Factory:CreateScrollBarColumn(contentFrame, SCROLLBAR_COL_W, 0, 0)
     local scroll = Factory:CreateScrollFrame(contentFrame, "UIPanelScrollFrameTemplate", true)
     if not scroll or not scrollBarColumn then return end
 
     scroll:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", LAYOUT.PAD, -scrollTop)
-    scroll:SetPoint("BOTTOMRIGHT", scrollBarColumn, "BOTTOMLEFT", -scrollGap, 0)
+    scroll:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -(LAYOUT.PAD + SCROLLBAR_LANE), scrollBottom)
     if scroll.SetClipsChildren then
         scroll:SetClipsChildren(true)
     end
     if ns.UI_EnableStandardScrollWheel then
         ns.UI_EnableStandardScrollWheel(scroll)
     end
-    if scroll.ScrollBar and Factory.PositionScrollBarInContainer then
+    if Factory.EnsureScrollBarColumnSync then
+        Factory:EnsureScrollBarColumnSync(scroll, scrollBarColumn, { width = SCROLLBAR_COL_W, gap = scrollGap })
+    elseif Factory.SyncScrollBarColumnToViewport then
+        Factory:SyncScrollBarColumnToViewport(scroll, scrollBarColumn, { width = SCROLLBAR_COL_W, gap = scrollGap })
+    elseif scroll.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
     end
 

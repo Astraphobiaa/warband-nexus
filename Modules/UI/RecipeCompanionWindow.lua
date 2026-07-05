@@ -969,8 +969,14 @@ local function CreateCompanionWindow()
     scrollFrame:EnableMouseWheel(true)
     frame.contentScrollFrame = scrollFrame
 
-    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, RC_SB_COL_W, PADDING, PADDING)
-    if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+    local scrollBarColumn = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(contentArea, RC_SB_COL_W)
+        or Factory:CreateScrollBarColumn(contentArea, RC_SB_COL_W, 0, 0)
+    frame.contentScrollBarColumn = scrollBarColumn
+    if Factory.EnsureScrollBarColumnSync then
+        Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = RC_SB_COL_W, gap = 2 })
+    elseif Factory.SyncScrollBarColumnToViewport then
+        Factory:SyncScrollBarColumnToViewport(scrollFrame, scrollBarColumn, { width = RC_SB_COL_W, gap = 2 })
+    elseif scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
     if Factory.UpdateScrollBarVisibility then

@@ -75,6 +75,7 @@ local function PlanTryCountSuffix(count)
     local labelHex = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex()) or "|cffaaddff"
     return labelHex .. triesLabel .. ":|r " .. PlanBrightHex() .. tostring(count) .. "|r"
 end
+ns.UI_FormatPlanTryCountSuffix = PlanTryCountSuffix
 
 local function PlanGreenRgb()
     local P = ns.PLAN_UI_COLORS
@@ -115,10 +116,10 @@ local function ApplyPlansChrome(frame, bg, border, opts)
                 return
             end
             tier = "panel"
-        elseif opts.cardPanel or frame._wnClassicCard then
-            tier = "card"
         elseif opts.rowTransparent then
             tier = "none"
+        elseif opts.cardPanel or frame._wnClassicCard then
+            tier = "card"
         elseif opts.iconWell then
             tier = "iconWell"
         end
@@ -2438,10 +2439,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 CardLayoutManager:UpdateCardHeight(row, row:GetHeight())
             end
 
-            if ApplyPlansChrome then
-                local borderColor = { COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4 }
-                ApplyPlansChrome(row, COLORS.bgCard, borderColor, { rowTransparent = true })
-            end
+            -- Row chrome: ExpandableRowFactory owns classic dialog-box / modern accent borders.
 
             -- Header right rail: Tries + actions vertically centered on the portrait icon.
             local rightOffset = ACTION_EDGE

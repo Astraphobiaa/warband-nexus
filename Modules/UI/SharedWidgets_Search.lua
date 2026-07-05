@@ -227,12 +227,16 @@ function ns.UI_CreateCustomHeaderRosterPicker(parent, width, addon, profile, cha
     listHost:SetPoint("TOPLEFT", filterBg, "BOTTOMLEFT", 0, -itemPad)
     listHost:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", -4, 4)
 
+    local sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (scrollBarW + 2)
     local scrollFrame = Factory:CreateScrollFrame(listHost, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", listHost, "TOPLEFT", 0, 0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", listHost, "BOTTOMRIGHT", -scrollBarW, 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", listHost, "BOTTOMRIGHT", -sbLane, 0)
     scrollFrame:EnableMouseWheel(true)
-    local scrollBarColumn = Factory:CreateScrollBarColumn(listHost, scrollBarW, 0, 0)
-    if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+    local scrollBarColumn = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(listHost, scrollBarW)
+        or Factory:CreateScrollBarColumn(listHost, scrollBarW, 0, 0)
+    if Factory.EnsureScrollBarColumnSync then
+        Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = scrollBarW, gap = 2 })
+    elseif scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
 

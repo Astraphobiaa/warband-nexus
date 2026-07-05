@@ -153,7 +153,11 @@ function M.CreateMenuItem(parent, opts, y)
     local hl = btn:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
     local accent = (ns.UI_COLORS and ns.UI_COLORS.accent) or {0.40, 0.20, 0.58}
-    hl:SetColorTexture(accent[1], accent[2], accent[3], 0.25)
+    if M.VBIsClassicChrome and M.VBIsClassicChrome() then
+        hl:SetColorTexture(1, 1, 1, 0.10)
+    else
+        hl:SetColorTexture(accent[1], accent[2], accent[3], 0.25)
+    end
 
     local MENU_ICON_SIZE = 20
     if opts.iconAtlas or opts.icon then
@@ -284,7 +288,11 @@ function M.BuildMenu()
     f:SetFrameLevel(220)
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
-    if ns.UI_ApplyStandardCardElevatedChrome then
+    if M.VBApplyEasyAccessShell then
+        M.VBApplyEasyAccessShell(f)
+    elseif ns.UI_ApplyFloatingWindowShellChrome then
+        ns.UI_ApplyFloatingWindowShellChrome(f)
+    elseif ns.UI_ApplyStandardCardElevatedChrome and not (M.VBIsClassicChrome and M.VBIsClassicChrome()) then
         ns.UI_ApplyStandardCardElevatedChrome(f)
     elseif ApplyVisuals then
         ApplyVisuals(f, GetShellBackdrop(), {accent[1], accent[2], accent[3], 1})
@@ -297,7 +305,11 @@ function M.BuildMenu()
     local header = M.VBContainer(f, 1, headerH, false)
     header:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -menuInset)
     header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -menuInset)
-    if ApplyVisuals then
+    if M.VBApplyEasyAccessHeader then
+        M.VBApplyEasyAccessHeader(header)
+    elseif ns.UI_ApplyFloatingWindowHeaderChrome then
+        ns.UI_ApplyFloatingWindowHeaderChrome(header)
+    elseif ApplyVisuals then
         ApplyVisuals(header, {accentDark[1], accentDark[2], accentDark[3], 1}, {accent[1], accent[2], accent[3], 0.8})
     end
     header:EnableMouse(true)
@@ -346,7 +358,11 @@ function M.BuildMenu()
         local summaryPanel = M.VBContainer(f, 1, summaryH, false)
         summaryPanel:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -(headerH + 4))
         summaryPanel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -(headerH + 4))
-        if ApplyVisuals then
+        if M.VBIsClassicChrome and M.VBIsClassicChrome() then
+            if ns.UI_ApplyClassicCardPanelChrome then
+                ns.UI_ApplyClassicCardPanelChrome(summaryPanel)
+            end
+        elseif ApplyVisuals then
             ApplyVisuals(summaryPanel, { (COLORS.bgCard or COLORS.bgLight or COLORS.bg)[1], (COLORS.bgCard or COLORS.bgLight or COLORS.bg)[2], (COLORS.bgCard or COLORS.bgLight or COLORS.bg)[3], 0.95 }, {accent[1], accent[2], accent[3], 0.35})
         end
         f.eaSummaryPanel = summaryPanel
@@ -371,7 +387,12 @@ function M.BuildMenu()
         summarySep:SetHeight(1)
         summarySep:SetPoint("TOPLEFT", f, "TOPLEFT", menuInset, -(headerH + summaryH + 4))
         summarySep:SetPoint("TOPRIGHT", f, "TOPRIGHT", -menuInset, -(headerH + summaryH + 4))
-        summarySep:SetColorTexture(accent[1], accent[2], accent[3], 0.45)
+        if M.VBIsClassicChrome and M.VBIsClassicChrome() then
+            local bc = (ns.UI_CLASSIC_ACCENT_THEME and ns.UI_CLASSIC_ACCENT_THEME.border) or { 0.55, 0.48, 0.35, 1 }
+            summarySep:SetColorTexture(bc[1], bc[2], bc[3], 0.65)
+        else
+            summarySep:SetColorTexture(accent[1], accent[2], accent[3], 0.45)
+        end
         f.eaSummarySep = summarySep
     end
     RefreshMenuVaultSummary(f)
@@ -549,6 +570,7 @@ function M.BuildButton()
     badgeBg:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 4, 4)
     badgeBg:SetColorTexture(0.15, 0.75, 0.25, 1.0)
     badgeBg:Hide()
+    badgeBg:EnableMouse(true)
     S.badgeBg = badgeBg
 
     local badge = VBFontString(btn, "small")
@@ -558,6 +580,7 @@ function M.BuildButton()
     badge:SetJustifyV("MIDDLE")
     ns.UI_SetTextColorRole(badge, "Bright")
     badge:Hide()
+    badge:EnableMouse(true)
     S.badge = badge
 
     local dragged = false
@@ -571,6 +594,26 @@ function M.BuildButton()
         self._hoverPoll = (self._hoverPoll or 0) + elapsed
         if self._hoverPoll < 0.1 then return end
         self._hoverPoll = 0
+        local overBadge = false
+        if S.badgeBg and S.badgeBg:IsShown() then
+            overBadge = S.badgeBg:IsMouseOver() or (S.badge and S.badge:IsMouseOver())
+        end
+        if overBadge then
+            if not self._hoveringBadge then
+                self._hoveringBadge = true
+                self._hovering = false
+                WNTooltipHide()
+                if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+                if M.ShowBadgeTooltip then
+                    M.ShowBadgeTooltip(S.badgeBg)
+                end
+            end
+            return
+        elseif self._hoveringBadge then
+            self._hoveringBadge = false
+            WNTooltipHide()
+            if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+        end
         local over = self:IsMouseOver() and self:IsVisible()
         -- Suppress tooltip while the context menu is open to prevent overlap
         local menuOpen = S.menuFrame and S.menuFrame:IsShown()
@@ -708,6 +751,11 @@ function WarbandNexus:RefreshVaultEasyAccessTheme()
     if M.ApplyTheme then
         M.ApplyTheme()
     end
+    -- Rebuild quick menu on next open so shell/header/summary pick up classic vs modern chrome.
+    if S.menuFrame then
+        S.menuFrame:Hide()
+        S.menuFrame = nil
+    end
     local refreshShell = M.VBApplyEasyAccessShell or ns.UI_ApplyFloatingWindowShellChrome or ns.UI_ApplyStandardCardElevatedChrome
     if not refreshShell then return end
     if S.tableFrame and S.tableFrame:IsShown() then
@@ -715,9 +763,6 @@ function WarbandNexus:RefreshVaultEasyAccessTheme()
     end
     if S.optionsFrame and S.optionsFrame:IsShown() then
         refreshShell(S.optionsFrame)
-    end
-    if S.menuFrame and S.menuFrame:IsShown() then
-        refreshShell(S.menuFrame)
     end
     if S.savedFrame and S.savedFrame:IsShown() then
         refreshShell(S.savedFrame)

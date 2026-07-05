@@ -1249,14 +1249,16 @@ local function PaintGearStorageRecColumnHeader(parent, contentW)
     hdrBg:SetAllPoints()
     hdrBg:SetColorTexture(hdrChrome[1], hdrChrome[2], hdrChrome[3], hdrChrome[4] or 0.92)
     local hdrFactory = ns.UI and ns.UI.Factory
-    local rule = hdrFactory and hdrFactory.CreateThemeDivider and hdrFactory:CreateThemeDivider(hdr, {
-        orientation = "horizontal",
-        variant = "section",
-        thickness = 1,
-    })
-    if rule then
-        rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 0)
-        rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
+    if not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
+        local rule = hdrFactory and hdrFactory.CreateThemeDivider and hdrFactory:CreateThemeDivider(hdr, {
+            orientation = "horizontal",
+            variant = "section",
+            thickness = 1,
+        })
+        if rule then
+            rule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", lay.pad, 0)
+            rule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -lay.pad, 0)
+        end
     end
     local colInset = 2
     local function colFs(text, leftX, width, justify)
@@ -1781,11 +1783,10 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     local storagePanelH = (storagePanel.GetHeight and storagePanel:GetHeight()) or 0
     local viewportH = math.max(storagePanelH - storageHeaderH - storagePad - 10, 1)
     local hdrExtra = (#rows > 0) and GEAR_STORAGE_REC_TABLE_HDR or 0
+    local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
     local rowsOverflow = (#rows * rowH + hdrExtra) > viewportH
 
-    local contentW = rowsOverflow
-        and math.max(120, storageW - storagePad * 2 - storageBarW)
-        or math.max(120, storageW - storagePad * 2)
+    local contentW = math.max(120, storageW - storagePad * 2 - storageLane)
 
     local paintTok = (self.GetGearStorageFindingsDedupeToken and self:GetGearStorageFindingsDedupeToken()) or "0"
     paintTok = paintTok .. ":" .. tostring(#rows) .. ":" .. (rowsOverflow and "1" or "0") .. ":" .. tostring(math.floor(contentW + 0.5))
@@ -1824,16 +1825,14 @@ function WarbandNexus:RedrawGearStorageRecommendationsOnly(expectedCanonKey, exp
     stStart("Gear_StorageRec_paint")
     recScroll:ClearAllPoints()
     recScroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
-    if rowsOverflow then
-        recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageBarW, storagePad)
-        if sbCol and sbCol.Show then sbCol:Show() end
-        if sbCol and recScroll.ScrollBar and ns.UI and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
-            recScroll.ScrollBar._wnOwningScrollFrame = recScroll
-            ns.UI.Factory:PositionScrollBarInContainer(recScroll.ScrollBar, sbCol, 0)
-        end
-    else
-        recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storagePad, storagePad)
-        if sbCol and sbCol.Hide then sbCol:Hide() end
+    recScroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageLane, storagePad)
+    recScroll._wnKeepScrollLane = true
+    if sbCol and sbCol.Show then sbCol:Show() end
+    if sbCol and recScroll and ns.UI and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
+        ns.UI.Factory:EnsureScrollBarColumnSync(recScroll, sbCol, { width = storageBarW, gap = 2 })
+    elseif sbCol and recScroll.ScrollBar and ns.UI and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+        recScroll.ScrollBar._wnOwningScrollFrame = recScroll
+        ns.UI.Factory:PositionScrollBarInContainer(recScroll.ScrollBar, sbCol, 0)
     end
 
     ClearGearRecScrollContent(recContent)

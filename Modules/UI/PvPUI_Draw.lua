@@ -585,7 +585,11 @@ function M.DrawTab(parent)
         end
     end
 
-    return yOffset + 20
+    local bodyY = yOffset + 20
+    if mf and M.ns.UI_SyncMainTabScrollChrome then
+        M.ns.UI_SyncMainTabScrollChrome(mf, parent, bodyY)
+    end
+    return bodyY
 end
 
 function ns.WarbandNexus:DrawPvPTab(parent)

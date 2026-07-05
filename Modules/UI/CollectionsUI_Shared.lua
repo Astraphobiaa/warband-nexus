@@ -686,34 +686,54 @@ function M.CreateStandardScrollChild(scrollFrame, width, height)
     return scrollChild
 end
 
-function M.EnsureListScrollBarContainer(existingContainer, parent, anchorFrame, columnWidth, height, sideGap)
+function M.EnsureListScrollBarContainer(existingContainer, parent, scrollFrame, columnWidth, sideGap)
+    sideGap = sideGap or 0
     local container = existingContainer
     if not container then
-        container = Factory:CreateContainer(parent, columnWidth, height, false)
+        if Factory.CreateBareScrollBarColumn then
+            container = Factory:CreateBareScrollBarColumn(parent, columnWidth)
+        else
+            container = Factory:CreateScrollBarColumn(parent, columnWidth, 0, 0)
+        end
     end
-    container:SetSize(columnWidth, height)
-    container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", sideGap or 0, 0)
-    container:SetFrameLevel((anchorFrame and anchorFrame:GetFrameLevel() or 0) + 4)
+    if not container then return nil end
+    if scrollFrame and Factory.EnsureScrollBarColumnSync then
+        Factory:EnsureScrollBarColumnSync(scrollFrame, container, { width = columnWidth, gap = sideGap })
+    elseif scrollFrame and Factory.SyncScrollBarColumnToViewport then
+        Factory:SyncScrollBarColumnToViewport(scrollFrame, container, { width = columnWidth, gap = sideGap })
+        if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+            Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, container, 0)
+        end
+    end
+    container:SetFrameLevel((scrollFrame and scrollFrame:GetFrameLevel() or parent:GetFrameLevel() or 0) + 4)
     container:SetClipsChildren(false)
     container:Show()
     return container
 end
 
--- Details scrollbar: top/bottom inset (smaller = longer scrollbar, extends up/down)
+-- Details scrollbar: synced to detail scroll viewport (not parent chrome insets).
 local DETAIL_SCROLLBAR_VERTICAL_INSET = 4
 
-function M.EnsureDetailScrollBarContainer(existingContainer, parent, columnWidth, inset, verticalInset)
-    verticalInset = verticalInset or DETAIL_SCROLLBAR_VERTICAL_INSET
+function M.EnsureDetailScrollBarContainer(existingContainer, parent, scrollFrame, columnWidth, gap)
+    gap = gap or DETAIL_SCROLLBAR_VERTICAL_INSET
     local container = existingContainer
     if not container then
-        container = Factory:CreateContainer(parent, columnWidth, 1, false)
+        if Factory.CreateBareScrollBarColumn then
+            container = Factory:CreateBareScrollBarColumn(parent, columnWidth)
+        else
+            container = Factory:CreateScrollBarColumn(parent, columnWidth, 0, 0)
+        end
     end
-    container:ClearAllPoints()
-    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -inset, -verticalInset)
-    container:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -inset, verticalInset)
-    container:SetWidth(columnWidth)
-    container:SetFrameLevel((parent and parent:GetFrameLevel() or 0) + 4)
+    if not container then return nil end
+    if scrollFrame and Factory.EnsureScrollBarColumnSync then
+        Factory:EnsureScrollBarColumnSync(scrollFrame, container, { width = columnWidth, gap = gap })
+    elseif scrollFrame and Factory.SyncScrollBarColumnToViewport then
+        Factory:SyncScrollBarColumnToViewport(scrollFrame, container, { width = columnWidth, gap = gap })
+        if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+            Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, container, 0)
+        end
+    end
+    container:SetFrameLevel((scrollFrame and scrollFrame:GetFrameLevel() or parent:GetFrameLevel() or 0) + 4)
     container:SetClipsChildren(false)
     container:Show()
     return container

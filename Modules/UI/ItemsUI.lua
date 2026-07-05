@@ -726,6 +726,10 @@ end
 --- Match RedrawItemsResultsOnly: keep scrollChild height and scrollbars aligned after Warband-only redraws.
 local function SyncItemsTabScrollChrome(mf, scrollChild, contentHeight)
     if not mf or not scrollChild then return end
+    if ns.UI_SyncMainTabScrollChrome then
+        ns.UI_SyncMainTabScrollChrome(mf, scrollChild, 8 + (contentHeight or 0))
+        return
+    end
     local CONTENT_BOTTOM_PADDING = 8
     local tabBodyHeight = 8 + (contentHeight or 0)
     if mf.scroll then

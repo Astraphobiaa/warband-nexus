@@ -59,6 +59,7 @@ local RebuildTableFrame = function()
         S.tableFrame:Hide()
         S.tableFrame = nil
         S.tableScroll = nil
+        S.tableScrollHost = nil
         S.tableContent = nil
         S.title = nil
         S.headerBg = nil
@@ -210,7 +211,8 @@ function M.BuildTableFrame()
     M.VBApplyEasyAccessShell(f)
     f:Hide()
 
-    local inset = VBGetFrameContentInset()
+    local lay = M.VBGetEasyAccessBodyLayout()
+    local inset = lay.inset
 
     -- ===== CHROME HEADER (matches main window) =====
     local chrome = VF:CreateContainer(f, 32, 32, false)
@@ -275,10 +277,10 @@ function M.BuildTableFrame()
     settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     settingsBtn:SetScript("OnClick", function() ToggleOptionsFrame(f, "RIGHT") end)
 
-    -- Column header row
-    local headerY = -(chromeBandH + 6)
-    local hRow = VF:CreateContainer(f, tableW - inset * 2, HEADER_H, false)
-    hRow:SetPoint("TOPLEFT", f, "TOPLEFT", inset, headerY)
+    -- Column header row (full width between shell insets)
+    local headerY = -(chromeBandH + lay.rowBelowChrome)
+    local hRow = VF:CreateContainer(f, 1, HEADER_H, false)
+    M.VBAnchorFullWidthRowBelowChrome(hRow, f, chromeBandH, lay.rowBelowChrome)
     local hdr = ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()
         or COLORS.surfaceHeaderChrome or COLORS.bgLight or COLORS.bg
     local br = COLORS.border or accent
@@ -363,24 +365,28 @@ function M.BuildTableFrame()
     local sep = M.VBCreateEasyAccessSeparator(f, inset, inset, headerY - HEADER_H)
     S.separator = sep
 
-    -- Scroll (factory-styled scrollbar; matches Saved Instances / main UI)
-    local scroll = VF:CreateScrollFrame(f, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT",     f, "TOPLEFT",     inset, headerY - HEADER_H - 2)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -inset, inset)
-    local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2)
-    local content = VF:CreateContainer(scroll, scrollInnerW, 8, false)
-    scroll:SetScrollChild(content)
+    -- Scroll — bar column inside dialog chrome (matches Saved Instances / Plans Tracker).
+    local scrollHost, scroll, content = M.VBCreateEasyAccessScrollBody(f, {
+        topY = headerY - HEADER_H - lay.scrollTopGap,
+        padLeft = inset,
+        padRight = inset,
+        bottom = lay.bottomPad,
+        viewportW = tableW - inset * 2,
+    })
 
     f:EnableMouseWheel(true)
-    f:SetScript("OnMouseWheel", function(self, delta)
-        local cur = scroll:GetVerticalScroll() or 0
-        local maxY = math.max(0, (content:GetHeight() or 0) - (scroll:GetHeight() or 0))
-        scroll:SetVerticalScroll(math.min(maxY, math.max(0, cur - delta * ROW_H * 2)))
-    end)
+    if scroll and content then
+        f:SetScript("OnMouseWheel", function(self, delta)
+            local cur = scroll:GetVerticalScroll() or 0
+            local maxY = math.max(0, (content:GetHeight() or 0) - (scroll:GetHeight() or 0))
+            scroll:SetVerticalScroll(math.min(maxY, math.max(0, cur - delta * ROW_H * 2)))
+        end)
+    end
 
-    S.tableFrame   = f
-    S.tableScroll  = scroll
-    S.tableContent = content
+    S.tableFrame       = f
+    S.tableScrollHost  = scrollHost
+    S.tableScroll      = scroll
+    S.tableContent     = content
     ApplyTheme()
 end
 
@@ -409,9 +415,10 @@ local RefreshTable = function()
     S.rows = {}
 
     if #list == 0 then
-        S.tableFrame:SetSize(tableW, VBGetChromeBandHeight() + HEADER_H + 80)
-        local inset = VBGetFrameContentInset()
-        local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2)
+        local emptyLay = M.VBGetEasyAccessBodyLayout()
+        S.tableFrame:SetSize(tableW, VBGetChromeBandHeight() + emptyLay.rowBelowChrome + HEADER_H + emptyLay.scrollTopGap + 80 + emptyLay.bottomPad)
+        local inset = emptyLay.inset
+        local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2, true)
         content:SetSize(scrollInnerW, 40)
         local msg = VBFontString(content, "body")
         msg:SetPoint("CENTER", content, "CENTER")
@@ -439,7 +446,7 @@ local RefreshTable = function()
     local mutedHex = (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Muted")) or "|cffaaaaaa"
 
     for i, e in ipairs(list) do
-        local row = VF:CreateContainer(content, M.VBGetEasyAccessScrollChildWidth(tableW - VBGetFrameContentInset() * 2), ROW_H, false)
+        local row = VF:CreateContainer(content, M.VBGetEasyAccessScrollChildWidth(tableW - VBGetFrameContentInset() * 2, true), ROW_H, false)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i-1)*ROW_H)
         row:EnableMouse(true)
 
@@ -646,12 +653,12 @@ local RefreshTable = function()
     local visRows  = math.min(#list, MAX_ROWS)
     local contentH = #list * ROW_H
     local viewH    = visRows * ROW_H
-    local inset = VBGetFrameContentInset()
-    local totalH   = VBGetChromeBandHeight() + 6 + HEADER_H + 2 + viewH + inset
+    local bodyLay = M.VBGetEasyAccessBodyLayout()
+    local totalH = VBGetChromeBandHeight() + bodyLay.rowBelowChrome + HEADER_H + bodyLay.scrollTopGap + viewH + bodyLay.bottomPad
 
     S.tableFrame:SetSize(tableW, totalH)
     S.tableScroll:SetVerticalScroll(0)
-    content:SetWidth(M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2))
+    content:SetWidth(M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2, true))
     VBSyncVaultTableScrollBar(list, content, contentH)
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()

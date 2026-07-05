@@ -377,6 +377,10 @@ local function ApplyMainShellLayout(f)
         f.resizeGrip:ClearAllPoints()
         f.resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(insetR + gripInsetX), insetB + gripInsetY)
     end
+
+    if f.scroll and ns.UI_SyncMainScrollBarColumns then
+        ns.UI_SyncMainScrollBarColumns(f)
+    end
 end
 ns.UI_ApplyMainShellLayout = ApplyMainShellLayout
 ---@deprecated use UI_ApplyMainShellLayout

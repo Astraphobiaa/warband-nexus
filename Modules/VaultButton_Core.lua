@@ -185,12 +185,97 @@ function M.VBApplyEasyAccessListHeader(row, modernBg, modernBorder)
     return false
 end
 
---- Scroll child width inside UIPanelScrollFrameTemplate (bar lives in the scroll frame lane).
-function M.VBGetEasyAccessScrollChildWidth(viewportW)
-    local w = viewportW or 0
+--- Scroll child width for easy-access list | scrollbar column layouts.
+---@param width number scroll viewport width, or scroll-host width when fromHost is true
+---@param fromHost boolean|nil when true, width is the host frame (subtract sb lane once)
+function M.VBGetEasyAccessScrollChildWidth(width, fromHost)
+    local w = width or 0
     if w <= 0 then return 320 end
-    local sb = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
-    return math.max(120, w - sb)
+    if fromHost then
+        local sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
+        return math.max(120, w - sbLane)
+    end
+    return math.max(120, w)
+end
+
+--- Scroll host + factory bar column (Saved Instances / Vault Tracker; bar stays inside dialog chrome).
+---@return Frame|nil scrollHost, ScrollFrame|nil scroll, Frame|nil content, Frame|nil barColumn
+function M.VBCreateEasyAccessScrollBody(parent, opts)
+    opts = opts or {}
+    local VF = ns.UI and ns.UI.Factory
+    if not VF or not VF.CreateScrollFrame then return nil, nil, nil, nil end
+
+    local padL = opts.padLeft or opts.pad or 0
+    local padR = opts.padRight or opts.pad or 0
+    local padB = opts.bottom or opts.pad or 0
+    local topY = opts.topY or opts.top or 0
+    local sbW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 26
+    local sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
+
+    local scrollHost = VF:CreateContainer(parent, 1, 1, false)
+    if not scrollHost then return nil, nil, nil, nil end
+    scrollHost:ClearAllPoints()
+    scrollHost:SetPoint("TOPLEFT", parent, "TOPLEFT", padL, topY)
+    scrollHost:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -padR, padB)
+
+    local barColumn = VF.CreateBareScrollBarColumn and VF:CreateBareScrollBarColumn(scrollHost, sbW)
+        or VF:CreateScrollBarColumn(scrollHost, sbW, 0, 0)
+
+    local scroll = VF:CreateScrollFrame(scrollHost, "UIPanelScrollFrameTemplate", true)
+    scroll:SetPoint("TOPLEFT", scrollHost, "TOPLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", scrollHost, "BOTTOMRIGHT", -sbLane, 0)
+    if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
+
+    local scrollGap = math.max(0, sbLane - sbW)
+    local barSyncOpts = { width = sbW, gap = scrollGap }
+
+    if not scroll._vbEaWidthHook then
+        scroll._vbEaWidthHook = true
+        local prevOnSize = scroll:GetScript("OnSizeChanged")
+        scroll:SetScript("OnSizeChanged", function(frame, w, h)
+            if prevOnSize then prevOnSize(frame, w, h) end
+            local child = frame:GetScrollChild()
+            if child and w and w > 0 then
+                child:SetWidth(M.VBGetEasyAccessScrollChildWidth(w, false))
+            end
+        end)
+    end
+
+    if VF.EnsureScrollBarColumnSync and barColumn then
+        VF:EnsureScrollBarColumnSync(scroll, barColumn, barSyncOpts)
+    elseif VF.SyncScrollBarColumnToViewport and barColumn then
+        VF:SyncScrollBarColumnToViewport(scroll, barColumn, barSyncOpts)
+    elseif VF.WireScrollBarColumnLayout and barColumn then
+        VF:WireScrollBarColumnLayout(scroll, scrollHost, barColumn, { menuEdge = 0, scrollGap = 0 })
+        if scroll.ScrollBar and VF.PositionScrollBarInContainer then
+            VF:PositionScrollBarInContainer(scroll.ScrollBar, barColumn, 0)
+        end
+    end
+
+    if opts.keepScrollLane then
+        scroll._wnKeepScrollLane = true
+    end
+
+    local hostW = opts.viewportW
+    if not hostW or hostW <= 0 then
+        hostW = scrollHost:GetWidth() or 320
+    end
+    local scrollInnerW = M.VBGetEasyAccessScrollChildWidth(hostW, true)
+    local content = VF:CreateContainer(scroll, math.max(120, scrollInnerW), 1, false)
+    scroll:SetScrollChild(content)
+
+    if ns.UI_EnableStandardScrollWheel then
+        ns.UI_EnableStandardScrollWheel(scroll)
+    end
+    if ns.UI_WireScrollChildMouseWheel then
+        ns.UI_WireScrollChildMouseWheel(scroll, content)
+    end
+
+    if scroll._wnKeepScrollLane and VF.UpdateScrollBarVisibility then
+        VF:UpdateScrollBarVisibility(scroll)
+    end
+
+    return scrollHost, scroll, content, barColumn
 end
 
 --- Horizontal rule below chrome/header row (classic gold dialog strip vs modern accent hairline).
@@ -248,15 +333,35 @@ function M.VBAnchorFullWidthRowBelowChrome(row, rootFrame, chromeBandHeight, bel
     row:SetPoint("TOPRIGHT", rootFrame, "TOPRIGHT", -inset, y)
 end
 
---- Saved Instances body insets — mirror Vault Tracker table (`FRAME_PAD` on all sides, scroll bar inside scroll frame).
-M.SAVED_INSTANCES_LAYOUT_VERSION = 3
-function M.VBGetSavedInstancesLayout()
+--- Shared body rhythm for Vault Tracker, Saved Instances, and Plans Tracker (Easy Access family).
+M.EASY_ACCESS_ROW_BELOW_CHROME = 6
+M.EASY_ACCESS_SCROLL_TOP_GAP = 2
+M.EASY_ACCESS_ROW_INNER_PAD = 8
+
+function M.VBGetEasyAccessBodyLayout()
     local inset = VBGetFrameContentInset()
     return {
-        pad = inset,
-        filterBelowChrome = 4,
+        inset = inset,
+        rowBelowChrome = M.EASY_ACCESS_ROW_BELOW_CHROME,
+        scrollTopGap = M.EASY_ACCESS_SCROLL_TOP_GAP,
+        rowInnerPad = M.EASY_ACCESS_ROW_INNER_PAD,
+        bottomPad = inset,
+        sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28,
+    }
+end
+
+--- Saved Instances body insets — mirror Vault Tracker table (shell inset + scroll bar column inside host).
+M.SAVED_INSTANCES_LAYOUT_VERSION = 4
+function M.VBGetSavedInstancesLayout()
+    local body = M.VBGetEasyAccessBodyLayout()
+    return {
+        pad = body.inset,
+        filterBelowChrome = body.rowBelowChrome,
         contentTopGap = FRAME_PAD,
-        contentBottomPad = FRAME_PAD,
+        contentBottomPad = body.bottomPad,
+        rowInnerPad = body.rowInnerPad,
+        scrollTopGap = body.scrollTopGap,
+        sbLane = body.sbLane,
         layoutVersion = SAVED_INSTANCES_LAYOUT_VERSION,
     }
 end
@@ -667,7 +772,8 @@ function M.GetTableWidth()
     if columns.voidcore ~= false then optionalWidth = optionalWidth + COL_VOIDCORE end
     if columns.manaflux == true then optionalWidth = optionalWidth + COL_MANAFLUX end
     if columns.gildedStash == true then optionalWidth = optionalWidth + COL_STASH end
-    return FRAME_PAD*2 + COL_NAME + COL_ILVL + categoryWidth + optionalWidth + COL_STATUS + 10
+    local inset = VBGetFrameContentInset()
+    return inset * 2 + COL_NAME + COL_ILVL + categoryWidth + optionalWidth + COL_STATUS
 end
 
 function M.GetPveCache()

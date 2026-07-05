@@ -346,11 +346,15 @@ function WarbandNexus:ShowInfoDialog()
     end
     scrollFrame:SetParent(dialog)
     scrollFrame:SetFrameLevel(dialog:GetFrameLevel() + 1)
+    local infoSbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (infoSbColW + 2)
     scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, infoScrollTopY)
-    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -(infoSbColW + 8), 8)
+    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -(8 + infoSbLane), 8)
 
-    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer then
-        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(dialog, infoSbColW, infoSbColTopInset, 24)
+    if ns.UI.Factory and ns.UI.Factory.CreateBareScrollBarColumn and ns.UI.Factory.EnsureScrollBarColumnSync then
+        local scrollBarColumn = ns.UI.Factory:CreateBareScrollBarColumn(dialog, infoSbColW)
+        ns.UI.Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = infoSbColW, gap = 2 })
+    elseif ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn and ns.UI.Factory.PositionScrollBarInContainer then
+        local scrollBarColumn = ns.UI.Factory:CreateScrollBarColumn(dialog, infoSbColW, 0, 0)
         if scrollFrame.ScrollBar then
             ns.UI.Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end

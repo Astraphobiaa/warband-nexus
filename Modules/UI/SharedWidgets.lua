@@ -2209,6 +2209,32 @@ function ns.UI_CommitTabFixedHeader(mainFrame, yOffset)
     return yOffset or 0
 end
 
+--- Debug tint overlays for scroll viewport / bar column (toggle: `/wn debug on`).
+---@param scrollFrame ScrollFrame|nil
+---@param barColumn Frame|nil
+---@param viewportBorder Frame|nil optional main-shell viewport rim
+function ns.UI_ApplyScrollLayoutDebugChrome(scrollFrame, barColumn, viewportBorder)
+    local enabled = ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()
+    local function ensureBg(frame, key, r, g, b, a)
+        if not frame then return end
+        local tex = frame[key]
+        if not enabled then
+            if tex and tex.Hide then tex:Hide() end
+            return
+        end
+        if not tex then
+            tex = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+            tex:SetAllPoints(frame)
+            frame[key] = tex
+        end
+        tex:SetColorTexture(r, g, b, a)
+        tex:Show()
+    end
+    ensureBg(viewportBorder, "_wnDebugViewportRimBg", 0.95, 0.45, 0.08, 0.12)
+    ensureBg(scrollFrame, "_wnDebugScrollViewportBg", 0.12, 0.38, 0.92, 0.20)
+    ensureBg(barColumn, "_wnDebugBarColumnBg", 0.12, 0.78, 0.28, 0.38)
+end
+
 --- Re-anchor main-window scrollbar lanes (matches CreateMainWindow in Modules/UI.lua).
 function ns.UI_SyncMainScrollBarColumns(mainFrame)
     if not mainFrame or not mainFrame.scroll then return end
@@ -2221,20 +2247,16 @@ function ns.UI_SyncMainScrollBarColumns(mainFrame)
     local hints = ns.UI_GetMainScrollLayoutHints and ns.UI_GetMainScrollLayoutHints() or {}
     local colW = (col.GetWidth and col:GetWidth()) or hints.scrollbarColumnWidth or 26
     local scrollGap = hints.scrollGap or ms.SCROLL_GAP or 2
-    local scrollInsetTop = ms.CONTENT_PAD_TOP or layout.SCROLL_CONTENT_TOP_PADDING or 10
-    local hBarBottom = hints.horizontalLaneBottomOffset or ms.H_BAR_BOTTOM_OFFSET or 6
-    local scrollInsetBottom = hBarBottom + colW + scrollGap
     local scrollInsetLeft = hints.scrollInsetLeft or ms.SCROLL_INSET_LEFT or 4
     local scrollInsetRight = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve())
         or (colW + scrollGap)
+    local hBarBottom = hints.horizontalLaneBottomOffset or ms.H_BAR_BOTTOM_OFFSET or 6
     local hRowH = colW
 
-    col:ClearAllPoints()
-    col:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -scrollInsetTop)
-    col:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, scrollInsetBottom)
-    col:SetWidth(colW)
-    if mainFrame.scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
-        ns.UI.Factory:PositionScrollBarInContainer(mainFrame.scroll.ScrollBar, col, 0)
+    if ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
+        ns.UI.Factory:EnsureScrollBarColumnSync(mainFrame.scroll, col, { width = colW, gap = scrollGap })
+    elseif ns.UI.Factory and ns.UI.Factory.SyncScrollBarColumnToViewport then
+        ns.UI.Factory:SyncScrollBarColumnToViewport(mainFrame.scroll, col, { width = colW, gap = scrollGap })
     end
 
     local hCont = mainFrame.hScrollContainer
@@ -2247,6 +2269,27 @@ function ns.UI_SyncMainScrollBarColumns(mainFrame)
         if mainFrame.hScroll and mainFrame.hScroll.PositionInContainer then
             mainFrame.hScroll:PositionInContainer(hCont, 0)
         end
+    end
+
+    if ns.UI.Factory and ns.UI.Factory.DeferScrollBarVisibility and mainFrame.scroll then
+        ns.UI.Factory:DeferScrollBarVisibility(mainFrame.scroll)
+    end
+    if ns.UI_ApplyScrollLayoutDebugChrome then
+        ns.UI_ApplyScrollLayoutDebugChrome(mainFrame.scroll, col, mainFrame.viewportBorder)
+    end
+end
+
+--- Canonical: bar column outside scroll viewport (Button | track | Button full viewport height).
+function ns.UI_SyncScrollBarColumnToViewport(scrollFrame, barColumn, opts)
+    if ns.UI.Factory and ns.UI.Factory.SyncScrollBarColumnToViewport then
+        ns.UI.Factory:SyncScrollBarColumnToViewport(scrollFrame, barColumn, opts)
+    end
+end
+
+--- Sync bar column to scroll viewport and install OnSizeChanged resize hook (chains prior handler).
+function ns.UI_EnsureScrollBarColumnSync(scrollFrame, barColumn, opts)
+    if ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
+        ns.UI.Factory:EnsureScrollBarColumnSync(scrollFrame, barColumn, opts)
     end
 end
 
@@ -2807,12 +2850,18 @@ function ns.UI_SyncMainTabScrollChrome(mainFrame, scrollChild, tabBodyHeight)
         end
     end
     scrollChild:SetHeight(math.max(bodyH + bottomPad, viewportH))
+    if ns.UI_SyncMainScrollBarColumns then
+        ns.UI_SyncMainScrollBarColumns(mainFrame)
+    end
     local Factory = ns.UI and ns.UI.Factory
     if Factory and Factory.UpdateScrollBarVisibility then
         Factory:UpdateScrollBarVisibility(mainFrame.scroll)
     end
     if Factory and Factory.UpdateHorizontalScrollBarVisibility then
         Factory:UpdateHorizontalScrollBarVisibility(mainFrame.scroll)
+    end
+    if Factory and Factory.DeferScrollBarVisibility then
+        Factory:DeferScrollBarVisibility(mainFrame.scroll)
     end
     local sc = mainFrame.scroll
     if sc and sc.GetVerticalScrollRange and sc.GetVerticalScroll and sc.SetVerticalScroll then

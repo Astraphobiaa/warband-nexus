@@ -169,23 +169,19 @@ function Z.Install(ctx)
         ns.UI_SetTextColorRole(nameColHead, "Dim")
         nameColHead:SetText((L and L["REMINDER_ZONE_CATALOG_COL_MAP"]) or "Map")
 
-        local mapsBarCol = Factory:CreateScrollBarColumn(mapsPanel, zbScrollW, 0, 0)
-        if mapsBarCol then
-            mapsBarCol:SetPoint("TOPRIGHT", mapsPanel, "TOPRIGHT", 0, 0)
-            mapsBarCol:SetPoint("BOTTOMRIGHT", mapsPanel, "BOTTOMRIGHT", 0, 0)
-        end
-
         local zScroll = H.ScrollFrame(mapsPanel)
         assert(zScroll, "ReminderSetAlertDialog zone catalog scroll requires Factory")
         zScroll:SetPoint("TOPLEFT", mapsListColHead, "BOTTOMLEFT", 0, -4)
-        if mapsBarCol then
-            zScroll:SetPoint("BOTTOMRIGHT", mapsBarCol, "BOTTOMLEFT", -4, 0)
-            if zScroll.ScrollBar then
-                Factory:PositionScrollBarInContainer(zScroll.ScrollBar, mapsBarCol, 0)
-            end
-        else
-            zScroll:SetPoint("BOTTOMRIGHT", mapsPanel, "BOTTOMRIGHT", 0, 0)
+        local zbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (zbScrollW + 4)
+        zScroll:SetPoint("BOTTOMRIGHT", mapsPanel, "BOTTOMRIGHT", -zbLane, 0)
+        local mapsBarCol = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(mapsPanel, zbScrollW)
+            or Factory:CreateScrollBarColumn(mapsPanel, zbScrollW, 0, 0)
+        if Factory.EnsureScrollBarColumnSync and mapsBarCol then
+            Factory:EnsureScrollBarColumnSync(zScroll, mapsBarCol, { width = zbScrollW, gap = 4 })
+        elseif mapsBarCol and zScroll.ScrollBar and Factory.PositionScrollBarInContainer then
+            Factory:PositionScrollBarInContainer(zScroll.ScrollBar, mapsBarCol, 0)
         end
+        f.mapsBarCol = mapsBarCol
 
         f._catalogExpBtns = {}
         f._catalogExpansionIdx = 1

@@ -654,6 +654,10 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             if ns.UI_EnsureMainScrollLayout then
                 ns.UI_EnsureMainScrollLayout()
             end
+            if st._achUseOuterScroll and mf and ns.UI_SyncMainTabScrollChrome and mf.scrollChild then
+                local endY = (yOffset or 0) + (st._achFlatListTotalHeight or totalPrev or 1) + innerPad
+                ns.UI_SyncMainTabScrollChrome(mf, mf.scrollChild, endY)
+            end
         end,
     }
 
@@ -668,6 +672,9 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
     end
     if ns.UI_EnsureMainScrollLayout then
         ns.UI_EnsureMainScrollLayout()
+    end
+    if st._achUseOuterScroll and mf and ns.UI_SyncMainTabScrollChrome and mf.scrollChild then
+        ns.UI_SyncMainTabScrollChrome(mf, mf.scrollChild, (yOffset or 0) + totalHNow + innerPad)
     end
 
     local totalH = totalHNow
@@ -893,8 +900,9 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         and self:ShouldShowTryCountInUI(category, item.id) and self.GetTryCount then
         local count = self:GetTryCount(category, item.id) or 0
         local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-        trySuffix = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r "
-            .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex() or "|cffeeeeee") .. tostring(count) .. "|r"
+        trySuffix = ns.UI_FormatPlanTryCountSuffix and ns.UI_FormatPlanTryCountSuffix(count)
+            or ((ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff") .. triesLabel .. ":|r "
+                .. ((ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee") .. tostring(count) .. "|r")
     end
 
     local summaryLines = ns.UI_BuildBrowseTodoSummaryLines and ns.UI_BuildBrowseTodoSummaryLines(item, category, sources, { maxLines = 2 }) or {}
@@ -975,7 +983,9 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         CardLayoutManager:UpdateCardHeight(row, row:GetHeight())
     end
 
-    if ApplyVisuals then
+    if not (row._wnBlizzardChrome or row._wnClassicCard)
+        and ApplyVisuals
+        and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
         local borderColor
         if item.isCollected or item.isPlanned then
             borderColor = GetCompletedBorderColor()
@@ -1031,7 +1041,9 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
                     type = category,
                 }
                 self:AddPlan(planData)
-                if ApplyVisuals then
+                if ApplyVisuals
+                    and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode())
+                    and not (row._wnBlizzardChrome or row._wnClassicCard) then
                     ApplyVisuals(row, COLORS.bgCard, GetCompletedBorderColor())
                 end
                 btn:Hide()

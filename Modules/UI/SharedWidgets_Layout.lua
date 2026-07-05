@@ -324,6 +324,11 @@ local UI_SPACING = {
         TRY_COUNT_POPUP_HEADER_HEIGHT = 32,
         --- `RecipeCompanionWindow`: draggable title band (narrower than `HEADER_BAR_HEIGHT`).
         RECIPE_COMPANION_HEADER_HEIGHT = 32,
+        --- Floating To-Do List tracker title band (compact; not main-shell NAV_BAR_HEIGHT).
+        PLANS_TRACKER_HEADER_HEIGHT = 28,
+        --- Scroll viewport rim: keep first/last cards off content-area top/bottom edges.
+        PLANS_TRACKER_VIEWPORT_PAD_TOP = 10,
+        PLANS_TRACKER_VIEWPORT_PAD_BOTTOM = 10,
         --- Root shell: flat fill only (no tooltip 9-slice edge).
         MAIN_FRAME_BACKDROP = {
             bgFile = "Interface\\Buttons\\WHITE8x8",

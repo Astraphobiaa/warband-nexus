@@ -1093,9 +1093,15 @@ local function CreateInfoFrame()
     end
     scrollFrame:SetScrollChild(scrollChild)
 
-    if factory and factory.CreateScrollBarColumn and factory.PositionScrollBarInContainer and scrollFrame.ScrollBar then
-        local scrollBarColumn = factory:CreateScrollBarColumn(frame, PROF_SB_COL_W, HEADER_HEIGHT + PROF_EDGE_PAD, PROF_EDGE_PAD)
-        if scrollBarColumn then
+    if factory and scrollFrame.ScrollBar then
+        local scrollBarColumn = factory.CreateBareScrollBarColumn and factory:CreateBareScrollBarColumn(frame, PROF_SB_COL_W)
+            or factory:CreateScrollBarColumn(frame, PROF_SB_COL_W, 0, 0)
+        frame.scrollBarColumn = scrollBarColumn
+        if scrollBarColumn and factory.EnsureScrollBarColumnSync then
+            factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = PROF_SB_COL_W, gap = 2 })
+        elseif scrollBarColumn and factory.SyncScrollBarColumnToViewport then
+            factory:SyncScrollBarColumnToViewport(scrollFrame, scrollBarColumn, { width = PROF_SB_COL_W, gap = 2 })
+        elseif scrollBarColumn and factory.PositionScrollBarInContainer then
             factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end
     end

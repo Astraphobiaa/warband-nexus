@@ -2084,6 +2084,7 @@ function WarbandNexus:ParseMultipleSources(sourceText)
             cost = nil,
             npc = nil,
             quest = nil,
+            achievement = nil,
             faction = nil,
             renown = nil,
         }
@@ -2131,6 +2132,7 @@ function WarbandNexus:ParseMultipleSources(sourceText)
         local renownKey = (L and L["SOURCE_TYPE_RENOWN"]) or "Renown"
         local friendKey = (L and L["PARSE_FRIENDSHIP"]) or "Friendship"
         local questKey = BATTLE_PET_SOURCE_2 or "Quest"
+        local achievementKey = BATTLE_PET_SOURCE_6 or (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or "Achievement"
         local npcKey = (L and L["PARSE_NPC"]) or "NPC"
         
         local function extractField(text, keyword)
@@ -2158,6 +2160,7 @@ function WarbandNexus:ParseMultipleSources(sourceText)
         singleSource.cost = extractField(sourceText, costKey)
         singleSource.npc = extractField(sourceText, dropKey)
         singleSource.quest = extractField(sourceText, questKey)
+        singleSource.achievement = extractField(sourceText, achievementKey)
         singleSource.faction = extractField(sourceText, factionKey) or extractField(sourceText, repKey)
         
         -- Extract renown/friendship levels (using localized keywords)

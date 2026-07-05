@@ -1630,17 +1630,19 @@ function M.CreateAchievementDetailPanel(parent, width, height, onSelectAchieveme
     local panel = CreateFrame("Frame", nil, parent)
     panel:SetSize(width, height)
 
-    panel._scrollBarContainer = M.EnsureDetailScrollBarContainer(panel._scrollBarContainer, panel, SCROLLBAR_GAP, CONTAINER_INSET)
+    local colW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or SCROLLBAR_GAP
+    local sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (colW + 2)
+    local sideGap = 2
+
     local scroll = Factory:CreateScrollFrame(panel, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTAINER_INSET, -(CONTAINER_INSET + DETAIL_SCROLLBAR_VERTICAL_INSET))
-    scroll:SetPoint("BOTTOMRIGHT", panel._scrollBarContainer, "BOTTOMLEFT", -CONTAINER_INSET, 0)
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -sbLane, CONTAINER_INSET)
     M.EnableStandardScrollWheel(scroll)
     panel.scrollFrame = scroll
 
+    panel._scrollBarContainer = M.EnsureDetailScrollBarContainer(panel._scrollBarContainer, panel, scroll, colW, sideGap)
+
     local child = M.CreateStandardScrollChild(scroll, width - (CONTAINER_INSET * 2) - SCROLLBAR_GAP, 1)
-    if scroll.ScrollBar then
-        Factory:PositionScrollBarInContainer(scroll.ScrollBar, panel._scrollBarContainer, CONTAINER_INSET)
-    end
 
     local content = child
     local lastAnchor = content

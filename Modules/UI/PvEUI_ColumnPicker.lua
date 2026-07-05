@@ -202,20 +202,27 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
         if bin then children[i]:SetParent(bin) else children[i]:SetParent(nil) end
     end
 
+    local sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (scrollBarW + 2)
     local scrollFrame = Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", menuPad, -menuPad)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -scrollBarW, menuPad)
+    scrollFrame:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -sbLane, menuPad)
     scrollFrame:EnableMouseWheel(true)
 
-    local scrollBarColumn = Factory:CreateScrollBarColumn(menu, scrollBarW, menuPad, menuPad)
-    if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+    local scrollBarColumn = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(menu, scrollBarW)
+        or Factory:CreateScrollBarColumn(menu, scrollBarW, 0, 0)
+    if Factory.EnsureScrollBarColumnSync then
+        Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, {
+            width = scrollBarW,
+            gap = math.max(0, sbLane - scrollBarW),
+        })
+    elseif scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
     end
     if Factory.WireScrollBarColumnLayout then
         Factory:WireScrollBarColumnLayout(scrollFrame, menu, scrollBarColumn, { menuEdge = menuPad })
     end
 
-    local btnWidth = menuW - menuPad * 2 - scrollBarW
+    local btnWidth = menuW - menuPad * 2 - sbLane
     local scrollChild
     if Factory and Factory.CreateContainer then
         scrollChild = Factory:CreateContainer(scrollFrame, btnWidth, contentH, false)

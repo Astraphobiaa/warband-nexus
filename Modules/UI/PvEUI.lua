@@ -2781,7 +2781,9 @@ if ns.UI_LayoutCoordinator then
             local bodyW = math.max(200, contentWidth - contentSide * 2)
             local minW = scrollChild._pveMinScrollWidth or scrollChild:GetWidth() or 0
             local gridW = math.max(minW, contentWidth)
-            local stackW = math.max(PvEStackBodyWidth(gridW, contentSide), bodyW)
+            local stackFn = ns.PvEUI and ns.PvEUI.PvEStackBodyWidth
+            local stackFromFn = stackFn and stackFn(gridW, contentSide) or math.max(1, gridW - 2 * contentSide)
+            local stackW = math.max(stackFromFn, bodyW)
             scrollChild:SetWidth(gridW)
             scrollChild._wnPveStackWidth = stackW
             mf._pveMinScrollWidth = gridW

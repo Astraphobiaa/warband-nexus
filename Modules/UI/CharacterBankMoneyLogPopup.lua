@@ -404,26 +404,33 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
     local LOG_FOOTER_H = 36
     local SCROLL_HEADER_GAP = 4
 
-    -- Shared bar column: tab row through active panel bottom (Collections list-column pattern).
-    local scrollBarColumn = Factory and Factory.CreateContainer and Factory:CreateContainer(contentFrame, SCROLLBAR_COL_W, 1, false)
+    -- Shared bar column synced to whichever tab scroll is active (list | bar | table pattern).
+    local scrollBarColumn = Factory and Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(contentFrame, SCROLLBAR_COL_W)
+        or (Factory and Factory.CreateContainer and Factory:CreateContainer(contentFrame, SCROLLBAR_COL_W, 1, false))
     if scrollBarColumn then
         scrollBarColumn:SetFrameLevel((contentFrame:GetFrameLevel() or 0) + 8)
     end
 
-    local function PositionMoneyLogScrollBar(bottomFrame)
-        if not scrollBarColumn or not bottomFrame then return end
-        scrollBarColumn:ClearAllPoints()
-        scrollBarColumn:SetPoint("TOPRIGHT", tabBar, "TOPRIGHT", SCROLLBAR_LANE, 0)
-        scrollBarColumn:SetPoint("BOTTOMRIGHT", bottomFrame, "BOTTOMRIGHT", SCROLLBAR_LANE, 0)
-        scrollBarColumn:SetWidth(SCROLLBAR_COL_W)
+    local activeMoneyLogScroll
+
+    local function SyncMoneyLogScrollBar(scroll)
+        if not scrollBarColumn or not scroll then return end
+        activeMoneyLogScroll = scroll
+        if Factory.EnsureScrollBarColumnSync then
+            Factory:EnsureScrollBarColumnSync(scroll, scrollBarColumn, { width = SCROLLBAR_COL_W, gap = SCROLL_GAP })
+        elseif Factory.SyncScrollBarColumnToViewport then
+            Factory:SyncScrollBarColumnToViewport(scroll, scrollBarColumn, { width = SCROLLBAR_COL_W, gap = SCROLL_GAP })
+            if scroll.ScrollBar and Factory.PositionScrollBarInContainer then
+                Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
+            end
+        end
         scrollBarColumn:Show()
     end
 
     local function RefreshMoneyLogScrollChrome(scroll)
+        scroll = scroll or activeMoneyLogScroll
         if not scroll then return end
-        if scroll.ScrollBar and scrollBarColumn and Factory.PositionScrollBarInContainer then
-            Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
-        end
+        SyncMoneyLogScrollBar(scroll)
         if Factory and Factory.UpdateScrollBarVisibility then
             Factory:UpdateScrollBarVisibility(scroll)
         end
@@ -441,7 +448,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         end
 
         scroll:SetPoint("TOPLEFT", headerRow, "BOTTOMLEFT", 0, -SCROLL_HEADER_GAP)
-        scroll:SetPoint("BOTTOMRIGHT", bottomFrame, "TOPRIGHT", -SCROLL_GAP, 0)
+        scroll:SetPoint("BOTTOMRIGHT", bottomFrame, "TOPRIGHT", -(SCROLLBAR_LANE + SCROLL_GAP), 0)
         if scroll.SetClipsChildren then
             scroll:SetClipsChildren(true)
         end
@@ -829,8 +836,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             if contribPanel.SetFrameLevel and logPanel.GetFrameLevel then
                 contribPanel:SetFrameLevel(logPanel:GetFrameLevel() + 2)
             end
-            PositionMoneyLogScrollBar(contribPanel)
             populateContribScroll()
+            SyncMoneyLogScrollBar(contribScroll)
             RefreshMoneyLogScrollChrome(contribScroll)
         else
             clearScrollHost(contribScroll, contribScrollChild)
@@ -839,8 +846,8 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
             if logPanel.SetFrameLevel and contribPanel.GetFrameLevel then
                 logPanel:SetFrameLevel(contribPanel:GetFrameLevel() + 2)
             end
-            PositionMoneyLogScrollBar(logFooter)
             populateLogScroll(tabKey)
+            SyncMoneyLogScrollBar(logScroll)
             RefreshMoneyLogScrollChrome(logScroll)
         end
     end
@@ -866,7 +873,7 @@ function WarbandNexus:ShowCharacterBankMoneyLogPopup()
         C_Timer.After(0, function()
             if not dialog or not dialog.IsShown or not dialog:IsShown() then return end
             local isContrib = dialog._moneyLogTab == "contributions"
-            PositionMoneyLogScrollBar(isContrib and contribPanel or logFooter)
+            SyncMoneyLogScrollBar(isContrib and contribScroll or logScroll)
             RefreshMoneyLogScrollChrome(isContrib and contribScroll or logScroll)
         end)
     end

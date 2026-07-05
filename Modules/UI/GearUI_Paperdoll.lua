@@ -1908,7 +1908,7 @@ function PD.PaintGearPaperBottomBand(bottomHost, paperColW, bandH, charData, isC
     local crestCurrencies, goldCurrency = PD.BuildGearPaperCrestRows(currencies, charKey, isCurrentChar)
 
     local classicBand = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
-    local bandPanel = PD.CreateGearSubpanel(bottomHost, paperColW, bandH, accent)
+    local bandPanel = PD.CreateGearSubpanel(bottomHost, paperColW, bandH, accent, classicBand and { borderless = true } or nil)
     bandPanel:SetAllPoints(bottomHost)
 
     local bandInset = 0
@@ -2988,7 +2988,8 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     local horizParent = paperTop or leftCol or card
 
     local colDiv
-    if bodyHost then
+    local classicGear = ns.UI_IsClassicMode and ns.UI_IsClassicMode()
+    if bodyHost and not classicGear then
         local Factory = ns.UI and ns.UI.Factory
         if Factory and Factory.CreateThemeDivider then
             colDiv = Factory:CreateThemeDivider(bodyHost, { orientation = "vertical", variant = "section", thickness = 1 })
@@ -3002,7 +3003,11 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
     local paperChrome = PaperdollLayoutHost(horizParent, 1, 1)
     paperChrome:Hide()
     if gearChrome and gearChrome.ApplyPaperdollViewport then
-        gearChrome.ApplyPaperdollViewport(paperChrome, accent)
+        if classicGear and ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(paperChrome)
+        else
+            gearChrome.ApplyPaperdollViewport(paperChrome, accent)
+        end
     elseif paperChrome.SetBackdrop then
         pcall(paperChrome.SetBackdrop, paperChrome, nil)
     end
@@ -3070,7 +3075,7 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
 
         -- ── RIGHT COLUMN: Gear upgrade recommendations (full height, aligned with paperdoll) ──
         local storageParent = gearHosts.rightColHost or card
-        local storagePanel = PD.CreateGearSubpanel(storageParent, storageW, contentBandH, accent)
+        local storagePanel = PD.CreateGearSubpanel(storageParent, storageW, contentBandH, accent, classicGear and { borderless = true } or nil)
         storagePanel:ClearAllPoints()
         storagePanel:SetPoint("TOPLEFT", storageParent, "TOPLEFT", 0, 0)
         storagePanel:SetPoint("BOTTOMRIGHT", storageParent, "BOTTOMRIGHT", 0, 0)
@@ -3092,14 +3097,16 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
             and gearChrome.CreateSectionHeader(storagePanel, storageHdrText, accent, {
                 fontRole = "gearStorageCardTitle",
                 hideAccentBar = true,
-                underlineHeader = true,
+                underlineHeader = not classicGear,
+                plainHost = classicGear,
                 titleColor = recTitleColor,
                 height = storageHeaderH,
             })
         if storageHdr then
             storageHdr:ClearAllPoints()
+            local storageLaneHdr = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
             storageHdr:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, 0)
-            storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -storagePad, 0)
+            storageHdr:SetPoint("TOPRIGHT", storagePanel, "TOPRIGHT", -(storagePad + storageLaneHdr), 0)
             if storageHdr.GetHeight then
                 local hh = storageHdr:GetHeight()
                 if hh and hh > 0 then storageHeaderH = hh end
@@ -3121,14 +3128,16 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
                 fs:SetTextColor(recTitleColor[1], recTitleColor[2], recTitleColor[3])
             end
             local ruleFactory = ns.UI and ns.UI.Factory
-            local rule = ruleFactory and ruleFactory.CreateThemeDivider and ruleFactory:CreateThemeDivider(storageHdr, {
-                orientation = "horizontal",
-                variant = "section",
-                thickness = 1,
-            })
-            if rule then
-                rule:SetPoint("BOTTOMLEFT", storageHdr, "BOTTOMLEFT", 0, 2)
-                rule:SetPoint("BOTTOMRIGHT", storageHdr, "BOTTOMRIGHT", 0, 2)
+            if not classicGear then
+                local rule = ruleFactory and ruleFactory.CreateThemeDivider and ruleFactory:CreateThemeDivider(storageHdr, {
+                    orientation = "horizontal",
+                    variant = "section",
+                    thickness = 1,
+                })
+                if rule then
+                    rule:SetPoint("BOTTOMLEFT", storageHdr, "BOTTOMLEFT", 0, 2)
+                    rule:SetPoint("BOTTOMRIGHT", storageHdr, "BOTTOMRIGHT", 0, 2)
+                end
             end
         end
         gearHosts.storageRecTitle = storageHdr
@@ -3136,30 +3145,29 @@ function PD.DrawPaperDollCard(parent, yOffset, charData, gearData, upgradeInfo, 
         local viewportH = storagePanelH - storageHeaderH - storagePad - 10
         scroll = ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and ns.UI.Factory:CreateScrollFrame(storagePanel, "UIPanelScrollFrameTemplate", true)
         local sbCol
-        -- Pre-compute overflow so we can decide whether to reserve space for the scrollbar column at all.
         local storageHdrScroll = (#storageRows > 0) and ns.GearUI_STORAGE_REC_TABLE_HDR or 0
-        local rowsOverflow = (#storageRows * rowH + storageHdrScroll) > viewportH
+        local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
         if scroll then
             if scroll.SetFrameLevel and storagePanel.GetFrameLevel then
                 scroll:SetFrameLevel(storagePanel:GetFrameLevel() + 2)
             end
-            sbCol = ns.UI.Factory and ns.UI.Factory.CreateScrollBarColumn
-                and ns.UI.Factory:CreateScrollBarColumn(storagePanel, storageBarW, storageHeaderH, storagePad)
-            if sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+            sbCol = ns.UI.Factory and ns.UI.Factory.CreateBareScrollBarColumn
+                and ns.UI.Factory:CreateBareScrollBarColumn(storagePanel, storageBarW)
+            scroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
+            scroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageLane, storagePad)
+            scroll._wnKeepScrollLane = true
+            if sbCol and scroll.ScrollBar then
+                scroll.ScrollBar._wnOwningScrollFrame = scroll
+            end
+            if sbCol and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
+                ns.UI.Factory:EnsureScrollBarColumnSync(scroll, sbCol, { width = storageBarW, gap = 2 })
+                sbCol:Show()
+            elseif sbCol and scroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
                 scroll.ScrollBar._wnOwningScrollFrame = scroll
                 ns.UI.Factory:PositionScrollBarInContainer(scroll.ScrollBar, sbCol, 0)
+                sbCol:Show()
             end
-            scroll:SetPoint("TOPLEFT", storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
-            if rowsOverflow then
-                scroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storageBarW, storagePad)
-                if sbCol and sbCol.Show then sbCol:Show() end
-            else
-                scroll:SetPoint("BOTTOMRIGHT", storagePanel, "BOTTOMRIGHT", -storagePad, storagePad)
-                if sbCol and sbCol.Hide then sbCol:Hide() end
-            end
-            local contentW = rowsOverflow
-                and math.max(120, storageW - storagePad * 2 - storageBarW)
-                or math.max(120, storageW - storagePad * 2)
+            local contentW = math.max(120, storageW - storagePad * 2 - storageLane)
             storageContentW = contentW
             local contentH = math.max(#storageRows * rowH + storageHdrScroll, viewportH)
             local content = GearFact:CreateContainer(scroll, contentW, contentH, false)
@@ -3591,23 +3599,16 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
     if not chromeOnly and recContent and layout.storageW and ns.GearUI_RelayoutStorageRecColumns then
         local storagePad = layout.storagePad or 8
         local storageBarW = layout.storageBarW or 0
-        local storagePanelH = (layout.storagePanel and layout.storagePanel.GetHeight)
-            and layout.storagePanel:GetHeight() or 0
-        local storageHeaderH = layout.storageHeaderH or 30
-        local rowH = layout.rowH or 34
-        local storageRowCount = layout.storageRowCount or 0
-        local hdrExtra = (storageRowCount > 0) and (ns.GearUI_STORAGE_REC_TABLE_HDR or 0) or 0
-        local rowsOverflow = (storageRowCount * rowH + hdrExtra) > math.max(
-            storagePanelH - storageHeaderH - storagePad - 10, 1)
-        local contentW = rowsOverflow
-            and math.max(120, layout.storageW - storagePad * 2 - storageBarW)
-            or math.max(120, layout.storageW - storagePad * 2)
+        local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
+        local contentW = math.max(120, layout.storageW - storagePad * 2 - storageLane)
         ns.GearUI_RelayoutStorageRecColumns(recContent, contentW)
     end
 
     if not chromeOnly and recContent and layout.storagePanel then
         local storageHeaderH = layout.storageHeaderH or 30
         local storagePad = layout.storagePad or 8
+        local storageBarW = layout.storageBarW or 0
+        local storageLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (storageBarW + 2)
         local rowH = layout.rowH or 34
         local storagePanelH = (layout.storagePanel and layout.storagePanel.GetHeight)
             and layout.storagePanel:GetHeight() or panelH
@@ -3616,8 +3617,25 @@ function ns.GearUI_RelayoutGearTabViewportFill(mf, contentWidth, opts)
             and (ns.GearUI_STORAGE_REC_TABLE_HDR or 0) or 0
         recContent:SetHeight(math.max((layout.storageRowCount or 0) * rowH + storageHdrScroll, math.max(newViewportH, 40)))
         local recScroll = layout.recScroll
+        local sbCol = layout.sbCol
+        if recScroll and layout.storagePanel then
+            recScroll:ClearAllPoints()
+            recScroll:SetPoint("TOPLEFT", layout.storagePanel, "TOPLEFT", storagePad, -storageHeaderH)
+            recScroll:SetPoint("BOTTOMRIGHT", layout.storagePanel, "BOTTOMRIGHT", -storageLane, storagePad)
+            recScroll._wnKeepScrollLane = true
+            if sbCol and sbCol.Show then sbCol:Show() end
+            if sbCol and ns.UI.Factory and ns.UI.Factory.EnsureScrollBarColumnSync then
+                ns.UI.Factory:EnsureScrollBarColumnSync(recScroll, sbCol, { width = storageBarW, gap = 2 })
+            elseif sbCol and recScroll.ScrollBar and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+                recScroll.ScrollBar._wnOwningScrollFrame = recScroll
+                ns.UI.Factory:PositionScrollBarInContainer(recScroll.ScrollBar, sbCol, 0)
+            end
+        end
         if recScroll and ns.UI and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
             ns.UI.Factory:UpdateScrollBarVisibility(recScroll)
+        end
+        if recScroll and ns.UI.Factory and ns.UI.Factory.DeferScrollBarVisibility then
+            ns.UI.Factory:DeferScrollBarVisibility(recScroll)
         end
     end
 

@@ -504,7 +504,14 @@ local function CreateButton(parent, width, height, bgColor, borderColor, noBorde
             end
             button:EnableMouse(true)
             button._wnSkipCustomChrome = true
-            if button.SetBackdrop then
+            local w = tonumber(width) or 0
+            local h = tonumber(height) or 0
+            local compactIcon = (w <= 0 or w <= 36) and (h <= 0 or h <= 36)
+            if compactIcon and ns.UI_ApplyClassicIconWellChrome then
+                ns.UI_ApplyClassicIconWellChrome(button)
+            elseif ns.UI_ApplyClassicTransparentInterior then
+                ns.UI_ApplyClassicTransparentInterior(button)
+            elseif button.SetBackdrop then
                 pcall(button.SetBackdrop, button, nil)
             end
             return button

@@ -512,23 +512,19 @@ function Q.Install(ctx)
         f.questEntriesTitleHead = questTitleColHead
         f.questEntriesEntryHead = questTitleColHead
 
-        local entriesBarCol = Factory:CreateScrollBarColumn(entriesPanel, qcScrollW, 0, 0)
-        if entriesBarCol then
-            entriesBarCol:SetPoint("TOPRIGHT", entriesPanel, "TOPRIGHT", 0, 0)
-            entriesBarCol:SetPoint("BOTTOMRIGHT", entriesPanel, "BOTTOMRIGHT", 0, 0)
-        end
-
         local questListScroll = H.ScrollFrame(entriesPanel)
         assert(questListScroll, "ReminderSetAlertDialog quest list scroll requires Factory")
         questListScroll:SetPoint("TOPLEFT", questEntriesListColHead, "BOTTOMLEFT", 0, -4)
-        if entriesBarCol then
-            questListScroll:SetPoint("BOTTOMRIGHT", entriesBarCol, "BOTTOMLEFT", -4, 0)
-            if questListScroll.ScrollBar then
-                Factory:PositionScrollBarInContainer(questListScroll.ScrollBar, entriesBarCol, 0)
-            end
-        else
-            questListScroll:SetPoint("BOTTOMRIGHT", entriesPanel, "BOTTOMRIGHT", 0, 0)
+        local qcLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or (qcScrollW + 4)
+        questListScroll:SetPoint("BOTTOMRIGHT", entriesPanel, "BOTTOMRIGHT", -qcLane, 0)
+        local entriesBarCol = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(entriesPanel, qcScrollW)
+            or Factory:CreateScrollBarColumn(entriesPanel, qcScrollW, 0, 0)
+        if Factory.EnsureScrollBarColumnSync and entriesBarCol then
+            Factory:EnsureScrollBarColumnSync(questListScroll, entriesBarCol, { width = qcScrollW, gap = 4 })
+        elseif entriesBarCol and questListScroll.ScrollBar and Factory.PositionScrollBarInContainer then
+            Factory:PositionScrollBarInContainer(questListScroll.ScrollBar, entriesBarCol, 0)
         end
+        f.questEntriesBarCol = entriesBarCol
 
         local qListInitialW = math.max(200, innerW - cardPad * 2 - typePanelOuterW - qcSplitGap - qcScrollW - 16)
         local questListChild = H.Container(questListScroll, qListInitialW, 1, false)

@@ -27,6 +27,35 @@ end
 local PlansTrackerEvents = {}
 local ApplyVisuals = ns.UI_ApplyVisuals
 
+local TRACKER_VIEWPORT_TRANSPARENT = { 0, 0, 0, 0 }
+
+--- Scroll/viewport stack: invisible unless `/wn debug on` (avoids ApplyVisuals(nil,nil) white backdrop).
+local function ApplyTrackerViewportTransparent(frame)
+    if not frame then return end
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if ns.UI_ApplyClassicTransparentInterior then
+            ns.UI_ApplyClassicTransparentInterior(frame)
+        end
+        return
+    end
+    if ns.UI_ApplyBorderlessSurface then
+        ns.UI_ApplyBorderlessSurface(frame, TRACKER_VIEWPORT_TRANSPARENT, { bgType = "searchChrome" })
+    elseif ApplyVisuals then
+        ApplyVisuals(frame, TRACKER_VIEWPORT_TRANSPARENT, TRACKER_VIEWPORT_TRANSPARENT)
+        if ns.UI_HideFrameBorderQuartet then
+            ns.UI_HideFrameBorderQuartet(frame)
+        end
+        frame._bgType = "searchChrome"
+    end
+    if frame._wnViewportAtlasUnderlay and frame._wnViewportAtlasUnderlay.Hide then
+        frame._wnViewportAtlasUnderlay:Hide()
+    end
+end
+
+local function IsTrackerViewportDebug()
+    return ns.IsDebugModeEnabled and ns.IsDebugModeEnabled()
+end
+
 --- Skip ApplyVisuals on Blizzard template widgets (classic tracker dropdown guards).
 ---@param tier string|nil "card" | "row" | "icon" | "popup" | "bar" — classic routing only
 local function ApplyTrackerChrome(frame, bg, border, tier)
@@ -47,6 +76,10 @@ local function ApplyTrackerChrome(frame, bg, border, tier)
         return
     end
     if not ApplyVisuals then return end
+    if not bg and not border then
+        ApplyTrackerViewportTransparent(frame)
+        return
+    end
     ApplyVisuals(frame, bg, border)
 end
 local CreateIcon = ns.UI_CreateIcon
@@ -87,8 +120,66 @@ local UI_SPACING = ns.UI_SPACING or {
 -- â”€â”€ Layout constants (tracker chrome aligns with main shell: NAV_BAR_HEIGHT + TAB_HEIGHT) â”€â”€
 local PADDING = UI_SPACING.TOP_MARGIN
 local MAIN_SHELL_PT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
-local HEADER_HEIGHT = MAIN_SHELL_PT.NAV_BAR_HEIGHT or 36
 local CATEGORY_BAR_HEIGHT = MAIN_SHELL_PT.TAB_HEIGHT or 34
+
+-- Tracker header metrics (must be above helpers that read these locals — Lua 5.1 forward-ref)
+local PLAN_TRACKER_LAYOUT_VERSION = 14
+local TRACKER_HEADER_ICON = 20
+local TRACKER_HEADER_BTN = 22
+local TRACKER_HEADER_BTN_GAP = 4
+local TRACKER_HEADER_ICON_LEFT = 12
+local TRACKER_COLLAPSED_MIN_WIDTH = 220
+local TRACKER_ROW_BELOW_CHROME = 10
+local TRACKER_CATEGORY_TO_CONTENT_GAP = 10
+
+local function GetPlansTrackerHeaderHeight()
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.PLANS_TRACKER_HEADER_HEIGHT or 28
+end
+
+local function GetPlansTrackerUtilityBtnSize()
+    return TRACKER_HEADER_BTN
+end
+
+local function GetPlansTrackerCloseBtnWidth()
+    return TRACKER_HEADER_BTN
+end
+
+local function CanApplyTrackerHeaderButtonChrome(btn)
+    return btn and (not ns.UI_CanApplyCustomChrome or ns.UI_CanApplyCustomChrome(btn))
+end
+
+local function CreateTrackerHeaderIconButton(parent, size)
+    size = size or TRACKER_HEADER_BTN or 22
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(size, size)
+    btn:EnableMouse(true)
+    btn._wnSkipCustomChrome = true
+    if btn.SetBackdrop then
+        pcall(btn.SetBackdrop, btn, nil)
+    end
+    if not (ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()) then
+        if ns.UI and ns.UI.Factory and ns.UI.Factory.ApplyIconOnlyButtonChrome then
+            ns.UI.Factory:ApplyIconOnlyButtonChrome(btn)
+        end
+    elseif ns.UI_ApplyClassicIconWellChrome then
+        ns.UI_ApplyClassicIconWellChrome(btn)
+    end
+    return btn
+end
+
+local function ComputeTrackerCollapsedWidth(titleText, utilityBtnSize, closeBtnW, gap, frameInset, utilityRight)
+    local titleW = 72
+    if titleText and titleText.GetStringWidth then
+        local tw = titleText:GetStringWidth()
+        if tw and tw > 0 then
+            titleW = tw
+        end
+    end
+    local inner = TRACKER_HEADER_ICON_LEFT + TRACKER_HEADER_ICON + 8 + titleW + 10
+        + utilityBtnSize + gap + utilityBtnSize + gap + closeBtnW + utilityRight
+    return math.max(TRACKER_COLLAPSED_MIN_WIDTH, inner + (frameInset * 2))
+end
 local CARD_HEIGHT = 48         -- Minimum collapsed achievement header (ExpandableRow); standard cards use dynamic height
 local CARD_MARGIN = 8          -- Vertical gap between cards / rows (no overlap)
 local MIN_GRID_CARD_H = 54     -- Minimum height for standard grid cards (icon + wrapped text)
@@ -97,8 +188,8 @@ local MIN_WIDTH = 300
 local MIN_HEIGHT = 240
 local MAX_WIDTH = 600
 local MAX_HEIGHT = 800
--- Strip at bottom for resize grip (scrollbar/content never draws under it)
-local TRACKER_RESIZE_STRIP = 20
+-- Bump when scroll/shell layout changes so stale floating windows rebuild on /reload or reopen.
+-- PLAN_TRACKER_LAYOUT_VERSION + TRACKER_HEADER_* live above header helpers (Lua 5.1 forward-ref).
 
 -- Fallback icons by plan type (ensures every card type has a visible icon)
 local PLAN_TYPE_FALLBACK_ICONS = {
@@ -167,19 +258,18 @@ local function GetIconWellBackdrop()
     return { 0.05, 0.05, 0.07, 0.95 }
 end
 
---- Optional 2px accent rail on the left edge of tracker cards
-local function AddTrackerCardAccent(card)
-    if not card then return end
-    local Factory = ns.UI and ns.UI.Factory
-    if not Factory or not Factory.CreateThemeDivider then return end
-    local strip = Factory:CreateThemeDivider(card, {
-        orientation = "vertical",
-        variant = "rail",
-        thickness = 2,
-    })
-    if strip then
-        strip:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -1)
-        strip:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 0, 1)
+--- Category filter: neutral chrome (no gold thin-border accent on the All control).
+local function ApplyTrackerDropdownChrome(dropdown)
+    if not dropdown then return end
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if ns.UI_ApplyClassicPaneBackdrop then
+            ns.UI_ApplyClassicPaneBackdrop(dropdown, GetControlChromeBackdrop())
+        elseif ns.UI_ApplyClassicInteriorFlatFill then
+            ns.UI_ApplyClassicInteriorFlatFill(dropdown, GetControlChromeBackdrop())
+        end
+    else
+        local shell = (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or GetControlChromeBackdrop()
+        ApplyTrackerChrome(dropdown, shell, nil)
     end
 end
 
@@ -191,6 +281,18 @@ local pendingRefresh = false
 -- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 local function GetTrackerFrame()
     return _G.WarbandNexus_PlansTracker
+end
+
+local function DestroyStaleTrackerFrame()
+    local frame = GetTrackerFrame()
+    if not frame then return end
+    if (frame._plansTrackerLayoutVersion or 0) >= PLAN_TRACKER_LAYOUT_VERSION then return end
+    frame:Hide()
+    if frame._plansUpdatedHandler and WarbandNexus and WarbandNexus.UnregisterMessage then
+        WarbandNexus.UnregisterMessage(PlansTrackerEvents, E.PLANS_UPDATED)
+    end
+    frame:SetParent(nil)
+    _G.WarbandNexus_PlansTracker = nil
 end
 
 local function GetDB()
@@ -213,8 +315,10 @@ local function SavePosition(frame)
     db.relativePoint = relativePoint
     db.x = x
     db.y = y
-    db.width = frame:GetWidth()
-    db.height = frame:GetHeight()
+    if not db.collapsed then
+        db.width = frame:GetWidth()
+        db.height = frame:GetHeight()
+    end
 end
 
 local function RestorePosition(frame)
@@ -251,20 +355,171 @@ local function GetAchievementRequirementsText(achievementID)
 end
 
 -- Content helpers
----- List width shared by category bar, dropdown, and plan cards (matches scroll viewport).
-local function GetTrackerListWidth(frame)
+local function GetTrackerRowInnerPad(frame)
+    return (frame and frame._plansRowInnerPad) or PADDING
+end
+
+--- Scroll viewport width (list + scrollbar lane already reserved on the host).
+local function GetTrackerContentColumnWidth(frame)
     if not frame then return 200 end
     local sf = frame.contentScrollFrame
     if sf then
         local w = sf:GetWidth()
-        if w and w > 0 then return w end
+        if w and w > 0 then
+            local VB = ns.VaultButton
+            if VB and VB.VBGetEasyAccessScrollChildWidth then
+                return VB.VBGetEasyAccessScrollChildWidth(w, false)
+            end
+            return math.max(w, 120)
+        end
     end
-    return math.max((frame:GetWidth() or 380) - PADDING - TRACK_SCROLL_RIGHT_RESERVE, 200)
+    local VB = ns.VaultButton
+    local bodyLay = (frame and frame._plansBodyLay)
+        or (VB and VB.VBGetEasyAccessBodyLayout and VB.VBGetEasyAccessBodyLayout())
+    local inset = (bodyLay and bodyLay.inset) or PADDING
+    local sbLane = (bodyLay and bodyLay.sbLane) or TRACK_SCROLL_RIGHT_RESERVE
+    local rowPad = GetTrackerRowInnerPad(frame)
+    local frameW = frame:GetWidth() or 380
+    return math.max(frameW - (inset * 2) - sbLane - rowPad, 200)
 end
 
---- Content width: derived from scrollFrame (already accounts for scrollbar gap)
+--- Card width inside scroll child (symmetric horizontal inset).
+local function GetTrackerCardWidth(frame)
+    local colW = GetTrackerContentColumnWidth(frame)
+    local pad = GetTrackerRowInnerPad(frame)
+    return math.max(colW - (pad * 2), 120)
+end
+
+local function GetTrackerListWidth(frame)
+    return GetTrackerCardWidth(frame)
+end
+
 local function GetContentWidth(frame)
-    return GetTrackerListWidth(frame)
+    return GetTrackerCardWidth(frame)
+end
+
+local function GetTrackerViewportLayout(eaLay)
+    eaLay = eaLay or {}
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    local pcm = ns.UI_PLANS_CARD_METRICS or {}
+    local defaultGap = pcm.todoListCardGap or PADDING or 10
+    local padH = math.max(eaLay.rowInnerPad or PADDING, 4)
+    local padTop = ms.PLANS_TRACKER_VIEWPORT_PAD_TOP or defaultGap
+    local padBottom = ms.PLANS_TRACKER_VIEWPORT_PAD_BOTTOM or defaultGap
+    return {
+        padH = padH,
+        padTop = padTop,
+        padBottom = padBottom,
+        padV = math.max(padTop, padBottom),
+    }
+end
+
+local function ApplyTrackerViewportShellInsets(frame)
+    local shell = frame and frame.contentViewportShell
+    local contentArea = frame and frame.contentArea
+    if not shell or not contentArea then return end
+    local eaLay = frame._plansBodyLay
+    local vpLay = GetTrackerViewportLayout(eaLay)
+    frame._plansViewportLayout = vpLay
+    shell:ClearAllPoints()
+    shell:SetPoint("TOPLEFT", contentArea, "TOPLEFT", vpLay.padH, -vpLay.padTop)
+    shell:SetPoint("BOTTOMRIGHT", contentArea, "BOTTOMRIGHT", -vpLay.padH, vpLay.padBottom)
+end
+
+local function ApplyTrackerViewportShellChrome(shell)
+    if not shell then return end
+    if shell._trackerViewportTopEdge and shell._trackerViewportTopEdge.Hide then
+        shell._trackerViewportTopEdge:Hide()
+    end
+    if shell._trackerViewportBottomEdge and shell._trackerViewportBottomEdge.Hide then
+        shell._trackerViewportBottomEdge:Hide()
+    end
+    if not IsTrackerViewportDebug() then
+        ApplyTrackerViewportTransparent(shell)
+        return
+    end
+    local c = ns.UI_COLORS or COLORS
+    local vp = c.surfaceViewport or c.bgCard or c.bg
+    local cc = GetCardColors()
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        ApplyTrackerChrome(shell, vp, nil, "row")
+    else
+        ApplyTrackerChrome(shell, vp, cc.border)
+    end
+    shell:EnableMouse(false)
+end
+
+local function SyncTrackerViewportChrome(frame)
+    if not frame then return end
+    if frame.contentArea then
+        ApplyTrackerViewportTransparent(frame.contentArea)
+    end
+    ApplyTrackerViewportShellInsets(frame)
+    if frame.contentViewportShell then
+        ApplyTrackerViewportShellChrome(frame.contentViewportShell)
+    end
+    if frame.contentScrollHost then
+        ApplyTrackerViewportTransparent(frame.contentScrollHost)
+    end
+    if frame.contentScrollChild then
+        ApplyTrackerViewportTransparent(frame.contentScrollChild)
+    end
+end
+
+local function EnsureTrackerViewportShell(frame)
+    local shell = frame and frame.contentViewportShell
+    if not shell then return end
+    local scrollFrame = frame.contentScrollFrame
+    local scrollHost = frame.contentScrollHost
+    if scrollHost and scrollFrame and scrollFrame:GetFrameLevel() <= shell:GetFrameLevel() then
+        scrollHost:SetFrameLevel(shell:GetFrameLevel() + 1)
+        scrollFrame:SetFrameLevel(shell:GetFrameLevel() + 2)
+    end
+    local barCol = frame.contentScrollBarColumn
+    if barCol and scrollFrame and barCol:GetFrameLevel() <= scrollFrame:GetFrameLevel() then
+        barCol:SetFrameLevel(scrollFrame:GetFrameLevel() + 2)
+    end
+    SyncTrackerViewportChrome(frame)
+end
+
+local function SyncTrackerScrollBar(frame)
+    local sf = frame and frame.contentScrollFrame
+    if not sf then return end
+    local barCol = frame.contentScrollBarColumn
+    local syncOpts = sf._wnBarColumnSyncOpts or { width = TRACK_SB_COL_W, gap = 2 }
+    if barCol and ns.UI_EnsureScrollBarColumnSync then
+        ns.UI_EnsureScrollBarColumnSync(sf, barCol, syncOpts)
+    elseif barCol and ns.UI_SyncScrollBarColumnToViewport then
+        ns.UI_SyncScrollBarColumnToViewport(sf, barCol, syncOpts)
+    elseif sf.ScrollBar and barCol and Factory and Factory.PositionScrollBarInContainer then
+        Factory:PositionScrollBarInContainer(sf.ScrollBar, barCol, 0, sf)
+    end
+    if barCol and sf:GetFrameLevel() and barCol:GetFrameLevel() < sf:GetFrameLevel() + 2 then
+        barCol:SetFrameLevel(sf:GetFrameLevel() + 4)
+    end
+    if sf.UpdateScrollChildRect then
+        sf:UpdateScrollChildRect()
+    end
+    EnsureTrackerViewportShell(frame)
+    if ns.UI_ApplyScrollLayoutDebugChrome and frame.contentViewportShell then
+        ns.UI_ApplyScrollLayoutDebugChrome(sf, barCol, frame.contentViewportShell)
+    end
+    if Factory and Factory.SyncScrollBarThumb then
+        Factory:SyncScrollBarThumb(sf)
+    end
+    local function tick()
+        if not sf or not sf.GetScrollChild then return end
+        if sf.UpdateScrollBarVisibility then
+            sf:UpdateScrollBarVisibility()
+        elseif Factory and Factory.UpdateScrollBarVisibility then
+            Factory:UpdateScrollBarVisibility(sf)
+        end
+    end
+    tick()
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, tick)
+        C_Timer.After(0.05, tick)
+    end
 end
 
 local function IsNonSecretNonEmptyString(s)
@@ -356,21 +611,104 @@ local function GetAchievementDescriptionForRow(plan)
     return ""
 end
 
+--- Resolve mount/pet ids from journal APIs when plan rows only stored item/species placeholders.
+local function EnsureTrackerPlanIdentity(plan)
+    if not plan or not WarbandNexus then return end
+    if plan.type == "mount" and (not plan.mountID or plan.mountID <= 0) then
+        if plan.itemID and C_MountJournal and C_MountJournal.GetMountFromItem then
+            local ok, mid = pcall(C_MountJournal.GetMountFromItem, plan.itemID)
+            if ok and type(mid) == "number" and mid > 0
+                and not (issecretvalue and issecretvalue(mid)) then
+                plan.mountID = mid
+            end
+        end
+        if (not plan.mountID or plan.mountID <= 0) and WarbandNexus.GetPlanCollectibleID then
+            local mid = WarbandNexus:GetPlanCollectibleID(plan)
+            if type(mid) == "number" and mid > 0 then
+                plan.mountID = mid
+            end
+        end
+    elseif plan.type == "pet" and (not plan.speciesID or plan.speciesID <= 0) and WarbandNexus.GetPlanCollectibleID then
+        local sid = WarbandNexus:GetPlanCollectibleID(plan)
+        if type(sid) == "number" and sid > 0 then
+            plan.speciesID = sid
+        end
+    end
+end
+
+--- One criteria/summary line for raw journal source text (no "Source:" before "Achievement:").
+local function FormatPlanSourceCriteriaText(rawText)
+    if not IsNonSecretNonEmptyString(rawText) then return nil end
+    local src = rawText
+    if WarbandNexus and WarbandNexus.CleanSourceText then
+        src = WarbandNexus:CleanSourceText(src)
+    end
+    if not IsNonSecretNonEmptyString(src) then return nil end
+    src = src:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    if src == "" then return nil end
+
+    local labCol = PCol("label")
+    local body = PCol("body")
+    local szMd = (ns.UI_PLAN_SOURCE_ICON_MD) or math.floor(14 * 1.3 + 0.5)
+    local IconMk = ns.UI_PlanSourceIconMarkup
+    local sourceType, sourceDetail = src:match("^([^:]+:%s*)(.*)$")
+    if sourceType and sourceDetail and sourceDetail ~= "" then
+        local icon = ""
+        if IconMk and not (issecretvalue and issecretvalue(sourceType)) then
+            local sl = string.lower(sourceType)
+            if sl:match("quest") then
+                icon = IconMk("quest", szMd) .. " "
+            elseif sl:match("drop") or sl:match("loot") then
+                icon = IconMk("loot", szMd) .. " "
+            elseif sl:match("location") or sl:match("zone") then
+                icon = IconMk("location", szMd) .. " "
+            else
+                icon = IconMk("class", szMd) .. " "
+            end
+        end
+        local normType = ns.UI_NormalizeColonLabelSpacing and ns.UI_NormalizeColonLabelSpacing(sourceType) or sourceType
+        return icon .. labCol .. normType .. "|r" .. body .. sourceDetail .. "|r"
+    end
+    local srcLab = ns.UI_NormalizeColonLabelSpacing((ns.L and ns.L["SOURCE_LABEL"]) or "Source:")
+    local icon = (IconMk and IconMk("class", szMd)) or ""
+    return icon .. labCol .. srcLab .. "|r " .. body .. src .. "|r"
+end
+ns.UI_FormatPlanSourceCriteriaText = FormatPlanSourceCriteriaText
+
+local function ResolveTrackerPlanDisplaySource(plan)
+    if not plan then return nil end
+    EnsureTrackerPlanIdentity(plan)
+    local planSource = plan.source
+    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(planSource)
+        and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+        local resolved = WarbandNexus:GetPlanDisplaySource(plan)
+        if IsNonSecretNonEmptyString(resolved) then
+            plan.source = resolved
+            return resolved
+        end
+    end
+    if IsNonSecretNonEmptyString(planSource) then
+        return planSource
+    end
+    if WarbandNexus and WarbandNexus.GetPlanDisplaySource then
+        local resolved = WarbandNexus:GetPlanDisplaySource(plan)
+        if IsNonSecretNonEmptyString(resolved) then
+            plan.source = resolved
+            return resolved
+        end
+    end
+    return nil
+end
+
 --- Resolve parsed sources for a plan using the central WarbandNexus:ParseMultipleSources helper.
 --- Mirrors PlanCardFactory:CreateSourceInfo's data path so tracker rows show the same Drop/Vendor/Quest/Zone breakdown.
 ---@param plan table
 ---@return table list of { vendor, npc, quest, zone, cost }
 local function ResolveTrackerPlanSources(plan)
     if not plan then return {} end
+    EnsureTrackerPlanIdentity(plan)
     -- Mount/Pet: resolve placeholder source from API for parity with main UI.
-    local planSource = plan.source
-    if (plan.type == "mount" or plan.type == "pet") and IsPlaceholderSourceText(planSource) and WarbandNexus and WarbandNexus.GetPlanDisplaySource then
-        local resolved = WarbandNexus:GetPlanDisplaySource(plan)
-        if IsNonSecretNonEmptyString(resolved) then
-            plan.source = resolved
-            planSource = resolved
-        end
-    end
+    local planSource = ResolveTrackerPlanDisplaySource(plan)
     -- Toy reliability filter (same as main UI).
     if plan.type == "toy" and plan.itemID and WarbandNexus and WarbandNexus.ResolveCollectionMetadata then
         local function reliable(s)
@@ -466,7 +804,14 @@ local function BuildPlanCriteriaItems(plan)
     local items = {}
     local sources = ResolveTrackerPlanSources(plan)
     local first = sources and sources[1]
-    if not first then return items end
+    if not first then
+        local displaySrc = ResolveTrackerPlanDisplaySource(plan)
+        local formatted = FormatPlanSourceCriteriaText(displaySrc)
+        if formatted then
+            items[#items + 1] = { text = formatted }
+        end
+        return items
+    end
     local L = ns.L
     local labCol = PCol("label")
     local body = PCol("body")
@@ -487,6 +832,12 @@ local function BuildPlanCriteriaItems(plan)
         row(lootMk14, "DROP_LABEL", "Drop:", first.npc)
     elseif first.quest then
         row(questMk14, "QUEST_LABEL", "Quest:", first.quest)
+    elseif first.achievement then
+        local achLabel = ns.UI_NormalizeColonLabelSpacing(
+            (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement")
+        items[#items + 1] = {
+            text = classMk14 .. " " .. labCol .. achLabel .. "|r " .. body .. tostring(first.achievement) .. "|r",
+        }
     end
     if first.zone then
         local zoneSuffix = ""
@@ -498,6 +849,13 @@ local function BuildPlanCriteriaItems(plan)
         end
         row(locMk14, "LOCATION_LABEL", "Location:", first.zone .. zoneSuffix)
     end
+    if #items == 0 then
+        local displaySrc = ResolveTrackerPlanDisplaySource(plan)
+        local formatted = FormatPlanSourceCriteriaText(displaySrc)
+        if formatted then
+            items[#items + 1] = { text = formatted }
+        end
+    end
     return items
 end
 ns.UI_BuildPlanCriteriaItems = BuildPlanCriteriaItems
@@ -506,7 +864,13 @@ ns.UI_BuildPlanCriteriaItems = BuildPlanCriteriaItems
 function ns.UI_BuildPlanCriteriaItemsAll(plan)
     local items = {}
     local sources = ResolveTrackerPlanSources(plan)
-    if not sources or #sources == 0 then return items end
+    if not sources or #sources == 0 then
+        local formatted = FormatPlanSourceCriteriaText(ResolveTrackerPlanDisplaySource(plan))
+        if formatted then
+            items[#items + 1] = { text = formatted }
+        end
+        return items
+    end
     local L = ns.L
     local labCol = PCol("label")
     local body = PCol("body")
@@ -529,6 +893,12 @@ function ns.UI_BuildPlanCriteriaItemsAll(plan)
             row(lootMk14, "DROP_LABEL", "Drop:", src.npc)
         elseif src.quest then
             row(questMk14, "QUEST_LABEL", "Quest:", src.quest)
+        elseif src.achievement then
+            local achLabel = ns.UI_NormalizeColonLabelSpacing(
+                (L and L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement")
+            items[#items + 1] = {
+                text = classMk14 .. " " .. labCol .. achLabel .. "|r " .. body .. tostring(src.achievement) .. "|r",
+            }
         end
         if src.zone then
             local zoneSuffix = ""
@@ -686,8 +1056,10 @@ function ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources)
     end
     if #items == 0 and category ~= "title" and item.source and item.source ~= "" then
         if not (issecretvalue and issecretvalue(item.source)) then
-            local srcLab = ns.UI_NormalizeColonLabelSpacing((L and L["SOURCE_LABEL"]) or "Source:")
-            items[#items + 1] = { text = labCol .. srcLab .. "|r " .. body .. tostring(item.source) .. "|r" }
+            local formatted = FormatPlanSourceCriteriaText(item.source)
+            if formatted then
+                items[#items + 1] = { text = formatted }
+            end
         end
     end
     return items
@@ -936,21 +1308,28 @@ local LIST_GAP_DEFAULT = 8
 --- their CURRENT GetHeight(). Cheap (O(n) y-anchor updates, no frame creation), called per
 --- animation frame so the surrounding rows breathe with the toggling one.
 local function RepositionTrackerRows()
-    local y = 0
+    local frame = GetTrackerFrame()
+    local scrollChild = frame and frame.contentScrollChild
+    if not scrollChild then return 0 end
+    local rowPadH = GetTrackerRowInnerPad(frame)
+    local vpLay = (frame and frame._plansViewportLayout)
+        or GetTrackerViewportLayout(frame and frame._plansBodyLay)
+    local padBottom = (vpLay and vpLay.padBottom) or rowPadH
+    local y = rowPadH
     for i = 1, #trackerRowOrder do
         local r = trackerRowOrder[i]
         if r and r:IsShown() then
             r:ClearAllPoints()
-            r:SetPoint("TOPLEFT", 0, -y)
+            r:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowPadH, -y)
             y = y + (r:GetHeight() or 0) + LIST_GAP_DEFAULT
         end
     end
-    local frame = GetTrackerFrame()
-    if frame and frame.contentScrollChild then
-        local scrollFrame = frame.contentScrollFrame
-        local viewportHeight = (scrollFrame and scrollFrame.GetHeight and scrollFrame:GetHeight()) or 1
-        frame.contentScrollChild:SetHeight(math.max(y, viewportHeight))
+    if y > rowPadH then
+        y = y - LIST_GAP_DEFAULT
     end
+    y = y + padBottom
+    scrollChild:SetHeight(math.max(y, 1))
+    SyncTrackerScrollBar(frame)
     return y
 end
 
@@ -966,7 +1345,6 @@ local function CreateTrackerFullWidthPlanCard(scrollChild, plan, width)
     if ApplyTrackerChrome then
         ApplyTrackerChrome(card, GetCardColors().bg, GetCardColors().border, "card")
     end
-    AddTrackerCardAccent(card)
     if plan.type == "weekly_vault" and PCF and PCF.CreateWeeklyVaultCard then
         local progress = WarbandNexus.GetResolvedPlanProgress and WarbandNexus:GetResolvedPlanProgress(plan)
         PCF:CreateWeeklyVaultCard(card, plan, progress, nil)
@@ -990,9 +1368,9 @@ local function RefreshTrackerContentImmediate()
     end
 
     local scrollChild = frame.contentScrollChild
-    local contentWidth = GetContentWidth(frame)
-    scrollChild:SetWidth(contentWidth)
-    local width = contentWidth
+    local cardWidth = GetTrackerCardWidth(frame)
+    scrollChild:SetWidth(GetTrackerContentColumnWidth(frame))
+    local width = cardWidth
 
     -- Reset the ordered row tracker; the loop below appends each row as it's created.
     wipe(trackerRowOrder)
@@ -1120,10 +1498,16 @@ local function RefreshTrackerContentImmediate()
             if collectibleID and WarbandNexus.ShouldShowTryCountInUI and WarbandNexus:ShouldShowTryCountInUI(plan.type, collectibleID)
                 and WarbandNexus.GetTryCount then
                 local count = WarbandNexus:GetTryCount(plan.type, collectibleID) or 0
-                trySuffix = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff")
-                    .. ((ns.L and ns.L["TRIES"]) or "Tries") .. ":|r "
-                    .. (ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright")) or "|cffeeeeee"
-                    .. tostring(count) .. "|r"
+                if ns.UI_FormatPlanTryCountSuffix then
+                    trySuffix = ns.UI_FormatPlanTryCountSuffix(count)
+                else
+                    trySuffix = (ns.UI_GetSemanticInfoHex and ns.UI_GetSemanticInfoHex() or "|cffaaddff")
+                        .. ((ns.L and ns.L["TRIES"]) or "Tries") .. ":|r "
+                        .. ((ns.UI_GetBrightHex and ns.UI_GetBrightHex())
+                            or (ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Bright"))
+                            or "|cffeeeeee")
+                        .. tostring(count) .. "|r"
+                end
             end
 
             local allSourceItems = ns.UI_BuildPlanCriteriaItemsAll and ns.UI_BuildPlanCriteriaItemsAll(plan) or BuildPlanCriteriaItems(plan)
@@ -1214,6 +1598,7 @@ local function RefreshTrackerContentImmediate()
                 iconIsAtlas = iconIsAtlas,
                 iconSize = (PCM and PCM.todoUnifiedIconSize) or 40,
                 typeAtlas = (plan.type ~= "achievement") and typeAtlas or nil,
+                typeBadgeSize = (PCM and PCM.todoTypeBadgeSize) or 24,
                 achievementPoints = achievementPoints,
                 title = resolvedName,
                 summaryLines = summaryLines,
@@ -1237,13 +1622,7 @@ local function RefreshTrackerContentImmediate()
                 end
             end)
             if row then
-            if ApplyTrackerChrome then
-                ApplyTrackerChrome(row, GetCardColors().bg, GetCardColors().border, "row")
-            end
-            AddTrackerCardAccent(row)
-            if row.iconFrame and ApplyTrackerChrome then
-                ApplyTrackerChrome(row.iconFrame, GetIconWellBackdrop(), { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }, "icon")
-            end
+            -- ExpandableRowFactory paints unified To-Do card chrome; do not stack row/icon borders (PlansUI parity).
 
             local rightOffset = 6
             row._todoActionControls = {}
@@ -1318,18 +1697,7 @@ local function RefreshTrackerContentImmediate()
         end
     end
 
-    local scrollFrame = frame and frame.contentScrollFrame
-    if scrollFrame then
-        if scrollFrame.UpdateScrollChildRect then
-            scrollFrame:UpdateScrollChildRect()
-        end
-        -- Update scrollbar visibility (show only when content overflows)
-        if scrollFrame.UpdateScrollBarVisibility then
-            scrollFrame:UpdateScrollBarVisibility()
-        elseif Factory.UpdateScrollBarVisibility then
-            Factory:UpdateScrollBarVisibility(scrollFrame)
-        end
-    end
+    SyncTrackerScrollBar(frame)
 end
 
 --- Debounced refresh: batches rapid calls into a single frame-deferred refresh
@@ -1350,53 +1718,57 @@ end
 -- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 local activeDropdownMenu = nil
 
-local function CreateThemedCategoryDropdown(parent, onCategorySelected)
+local function CreateThemedCategoryDropdown(parent, onCategorySelected, opts)
+    opts = opts or {}
+    local VB = ns.VaultButton
+    local bodyLay = opts.bodyLay
+    if not bodyLay and VB and VB.VBGetEasyAccessBodyLayout then
+        bodyLay = VB.VBGetEasyAccessBodyLayout()
+    end
+    bodyLay = bodyLay or { inset = PADDING, rowBelowChrome = 6 }
+    local inset = bodyLay.inset or PADDING
+    local sbLane = bodyLay.sbLane or TRACK_SCROLL_RIGHT_RESERVE
+    local rowInnerPad = bodyLay.rowInnerPad or PADDING
+    local chromeBandH = opts.chromeBandH
+    chromeBandH = chromeBandH or GetPlansTrackerHeaderHeight()
+    local rowY = -(chromeBandH + TRACKER_ROW_BELOW_CHROME)
+
     local bar = Factory and Factory:CreateContainer(parent, 420, CATEGORY_BAR_HEIGHT, false)
     if not bar then
         bar = CreateFrame("Frame", nil, parent)
         bar:SetHeight(CATEGORY_BAR_HEIGHT)
     end
-    bar:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + PADDING))
-    bar:SetPoint("TOPRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, -(HEADER_HEIGHT + PADDING))
+    bar:SetPoint("TOPLEFT", parent, "TOPLEFT", inset + rowInnerPad, rowY)
+    bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(inset + sbLane), rowY)
     if ApplyTrackerChrome then
         ApplyTrackerChrome(bar, nil, nil, "bar")
     end
 
     -- Plan count label (right side of bar) — dropdown fills remaining width
     local countLabel = FontManager:CreateFontString(bar, "small", "OVERLAY")
-    countLabel:SetPoint("RIGHT", -4, 0)
+    countLabel:SetPoint("RIGHT", -rowInnerPad, 0)
+    countLabel:SetPoint("TOP", bar, "TOP", 0, 0)
+    countLabel:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
     countLabel:SetJustifyH("RIGHT")
     bar.countLabel = countLabel
 
     -- Dropdown button spans full bar width (same as plan cards below)
     local dropdown = Factory:CreateButton(bar, 120, 26, false)
-    dropdown:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    dropdown:SetPoint("LEFT", bar, "LEFT", rowInnerPad, 0)
     dropdown:SetPoint("RIGHT", countLabel, "LEFT", -8, 0)
+    dropdown:SetPoint("TOP", bar, "TOP", 0, 0)
+    dropdown:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
     dropdown:SetHeight(26)
-    if ApplyTrackerChrome then
-        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicThinBorderChrome then
-            ns.UI_ApplyClassicThinBorderChrome(dropdown, GetControlChromeBackdrop())
-        else
-            local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetCardColors().bg
-            local ba = (ns.UI_IsLightMode and ns.UI_IsLightMode()) and 0.65 or 0.7
-            ApplyTrackerChrome(dropdown, shell, { COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, ba })
-        end
-    end
+    ApplyTrackerDropdownChrome(dropdown)
 
     -- Value text
     local valueText = FontManager:CreateFontString(dropdown, "body", "OVERLAY")
     valueText:SetPoint("LEFT", 10, 0)
-    valueText:SetPoint("RIGHT", -24, 0)
+    valueText:SetPoint("RIGHT", -10, 0)
+    valueText:SetPoint("TOP", dropdown, "TOP", 0, 0)
+    valueText:SetPoint("BOTTOM", dropdown, "BOTTOM", 0, 0)
     valueText:SetJustifyH("LEFT")
     valueText:SetText((ns.L and ns.L["CATEGORY_ALL"]) or "All")
-
-    -- Arrow icon
-    local arrow = dropdown:CreateTexture(nil, "ARTWORK")
-    arrow:SetSize(12, 12)
-    arrow:SetPoint("RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
-    arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
-    arrow:SetTexCoord(0, 1, 0, 1)
-    arrow:SetVertexColor(COLORS.textMuted[1], COLORS.textMuted[2], COLORS.textMuted[3])
 
     local function UpdateLabel(key)
         local label = (ns.L and ns.L["CATEGORY_ALL"]) or "All"
@@ -1450,12 +1822,12 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         local scrollFrame, scrollChild = ns.UI_ApplyDropdownScrollLayout(menu, itemCount, itemHeight)
         if scrollFrame then
             scrollFrame:EnableMouseWheel(true)
-            scrollFrame:SetScript("OnMouseWheel", function(sf, delta)
-                local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 16
-                local cur = sf:GetVerticalScroll()
-                local maxS = sf:GetVerticalScrollRange()
-                sf:SetVerticalScroll(math.max(0, math.min(cur - (delta * step), maxS)))
-            end)
+            if ns.UI_EnableStandardScrollWheel then
+                ns.UI_EnableStandardScrollWheel(scrollFrame)
+            end
+            if scrollChild and ns.UI_WireScrollChildMouseWheel then
+                ns.UI_WireScrollChildMouseWheel(scrollFrame, scrollChild)
+            end
         end
 
         if scrollChild then
@@ -1545,7 +1917,6 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
     -- Hover on dropdown button
     dropdown:SetScript("OnEnter", function()
-        arrow:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
         if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then return end
         if ApplyVisuals then
             local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
@@ -1553,7 +1924,6 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         end
     end)
     dropdown:SetScript("OnLeave", function()
-        arrow:SetVertexColor(COLORS.textMuted[1], COLORS.textMuted[2], COLORS.textMuted[3])
         if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then return end
         if ApplyVisuals then
             local shell = (ns.UI_GetExternalShellBackdrop and ns.UI_GetExternalShellBackdrop()) or GetControlChromeBackdrop()
@@ -1572,6 +1942,7 @@ end
 -- Window creation
 -- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function WarbandNexus:CreatePlansTrackerWindow()
+    DestroyStaleTrackerFrame()
     local frame = GetTrackerFrame()
     if frame then
         frame:Show()
@@ -1593,6 +1964,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     if not Factory or not Factory.CreateContainer then return end
     frame = Factory:CreateContainer(UIParent, w, h, false, "WarbandNexus_PlansTracker")
     if not frame then return end
+    frame._plansTrackerLayoutVersion = PLAN_TRACKER_LAYOUT_VERSION
     frame:EnableMouse(true)
     frame:SetMovable(true)
     frame:SetResizable(true)
@@ -1626,11 +1998,24 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ns.UI_ApplyAddonUIScale(frame)
     end
 
-    -- â”€â”€ Header (compact, draggable; Factory shell, width follows frame) â”€â”€
-    local header = Factory:CreateContainer(frame, math.max(1, w), HEADER_HEIGHT, false)
+    -- Header (compact, draggable; shell inset matches Vault Tracker / Saved Instances)
+    local VB = ns.VaultButton
+    local eaLay = (VB and VB.VBGetEasyAccessBodyLayout and VB.VBGetEasyAccessBodyLayout())
+        or { inset = PADDING, rowBelowChrome = 6, scrollTopGap = 2, bottomPad = PADDING, sbLane = TRACK_SCROLL_RIGHT_RESERVE, rowInnerPad = PADDING }
+    local shellInset = eaLay.inset or PADDING
+    local rowInnerPad = eaLay.rowInnerPad or PADDING
+    frame._plansRowInnerPad = rowInnerPad
+    frame._plansBodyLay = eaLay
+
+    local header = Factory:CreateContainer(frame, math.max(1, w), GetPlansTrackerHeaderHeight(), false)
     if not header then return end
     frame._plansTrackerHeaderShell = header
-    header:SetPoint("TOPLEFT", 0, 0)
+    local frameInset = (VB and VB.VBGetFrameContentInset and VB.VBGetFrameContentInset()) or shellInset
+    local chromeBandH = GetPlansTrackerHeaderHeight()
+    header:SetHeight(chromeBandH)
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", frameInset, -frameInset)
+    header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -frameInset, -frameInset)
+    frame._plansChromeBandH = chromeBandH
     header:EnableMouse(true)
     if ns.WindowManager and ns.WindowManager.InstallDragHandler then
         ns.WindowManager:InstallDragHandler(header, frame, function()
@@ -1658,15 +2043,25 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end
     header:SetFrameLevel(frame:GetFrameLevel() + 10)
 
-    -- Header icon (matches main window addon icon proportions)
-    local hIcon = header:CreateTexture(nil, "ARTWORK")
-    hIcon:SetSize(22, 22)
-    hIcon:SetPoint("LEFT", PADDING + 2, 0)
-    hIcon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
-    if not hIcon:GetTexture() then
-        hIcon:SetTexture("Interface\\Icons\\INV_Inscription_Scroll")
+    local headerUtilityRight = math.max(shellInset, 8)
+
+    -- Header icon holder (same rhythm as UI_MainShell: LEFT anchor y=0 centers on band)
+    local iconHolder = CreateFrame("Frame", nil, header)
+    iconHolder:SetSize(TRACKER_HEADER_ICON, TRACKER_HEADER_ICON)
+    iconHolder:SetPoint("LEFT", header, "LEFT", TRACKER_HEADER_ICON_LEFT, 0)
+    iconHolder:SetFrameLevel(header:GetFrameLevel() + 8)
+    local hIcon = iconHolder:CreateTexture(nil, "OVERLAY", nil, 1)
+    hIcon:SetAllPoints(iconHolder)
+    if ns.UI_ApplyMainWindowTitleIcon then
+        ns.UI_ApplyMainWindowTitleIcon(hIcon)
+    else
+        hIcon:SetTexture(ns.WARBAND_ADDON_MEDIA_ICON or "Interface\\AddOns\\WarbandNexus\\Media\\icon.tga")
+        if not hIcon:GetTexture() then
+            hIcon:SetTexture("Interface\\Icons\\INV_Inscription_Scroll")
+        end
+        hIcon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
     end
-    hIcon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+    frame._plansTrackerIconHolder = iconHolder
 
     -- Title (uses windowChromeTitle role like the main shell)
     local titleText
@@ -1675,46 +2070,51 @@ function WarbandNexus:CreatePlansTrackerWindow()
     else
         titleText = FontManager:CreateFontString(header, "body", "OVERLAY")
     end
-    titleText:SetPoint("LEFT", hIcon, "RIGHT", 8, 0)
+    titleText:SetPoint("LEFT", iconHolder, "RIGHT", 8, 0)
     local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "To-Do List"
     titleText:SetText(collectionPlansLabel)
     ns.UI_SetTextColorRole(titleText, "Bright")
+    frame._plansTrackerTitle = titleText
 
-    -- Close button (Factory)
-    local closeBtn = Factory:CreateButton(header, 22, 22, true)
-    closeBtn:SetPoint("RIGHT", -PADDING, 0)
+    local utilityBtnSize = GetPlansTrackerUtilityBtnSize()
+    local closeBtnW = GetPlansTrackerCloseBtnWidth()
+
+    -- Close button (compact icon well; same size as gear/collapse in classic + modern)
+    local closeBtn
     local chromeBorder = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
-    if ApplyVisuals then
+    local closeR, closeG, closeB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 0.9, 0.3, 0.3
+    closeBtn = CreateTrackerHeaderIconButton(header, utilityBtnSize)
+    closeBtn:SetPoint("RIGHT", header, "RIGHT", -headerUtilityRight, 0)
+    if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals then
         ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local closeTex = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeTex:SetSize(12, 12)
+    closeTex:SetSize(14, 14)
     closeTex:SetPoint("CENTER")
     closeTex:SetAtlas("uitools-icon-close")
-    local closeR, closeG, closeB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 0.9, 0.3, 0.3
     closeTex:SetVertexColor(closeR, closeG, closeB)
-    closeBtn:SetFrameLevel(header:GetFrameLevel() + 5)
-    closeBtn:SetScript("OnClick", function() frame:Hide() end)
+    closeBtn._wnCloseTex = closeTex
     closeBtn:SetScript("OnEnter", function()
-        local hr, hg, hb = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 1, 0.15, 0.15
-        closeTex:SetVertexColor(hr, hg, hb)
-        if ApplyVisuals and ns.UI_GetSemanticNegativeCard then
+        closeTex:SetVertexColor(1, 0.15, 0.15)
+        if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals and ns.UI_GetSemanticNegativeCard then
             local bg, border = ns.UI_GetSemanticNegativeCard(true)
             ApplyVisuals(closeBtn, bg, border)
         end
     end)
     closeBtn:SetScript("OnLeave", function()
         closeTex:SetVertexColor(closeR, closeG, closeB)
-        if ApplyVisuals then
+        if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals then
             ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
     end)
+    closeBtn:SetScript("OnClick", function() frame:Hide() end)
+    closeBtn:SetFrameLevel(header:GetFrameLevel() + 5)
 
-    -- â”€â”€ Collapse/Expand toggle button â”€â”€
-    local collapseBtn = Factory:CreateButton(header, 22, 22, true)
-    collapseBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
+    -- Collapse/Expand toggle (icon-only; no panel chrome in classic)
+    local collapseBtn = CreateTrackerHeaderIconButton(header, utilityBtnSize)
+    collapseBtn:SetPoint("RIGHT", closeBtn, "LEFT", -TRACKER_HEADER_BTN_GAP, 0)
     collapseBtn:SetFrameLevel(header:GetFrameLevel() + 5)
-    if ApplyVisuals then
+    if CanApplyTrackerHeaderButtonChrome(collapseBtn) and ApplyVisuals then
         ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local collapseTex = collapseBtn:CreateTexture(nil, "ARTWORK")
@@ -1726,12 +2126,17 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local function ApplyCollapsedState(isCollapsed)
         local tdb = GetDB()
         if tdb then tdb.collapsed = isCollapsed end
+        local collapsedH = chromeBandH + (frameInset * 2)
         if isCollapsed then
+            if tdb and frame:GetWidth() and frame:GetWidth() > TRACKER_COLLAPSED_MIN_WIDTH then
+                tdb.width = frame:GetWidth()
+            end
             collapseTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
             frame.contentArea:Hide()
             if frame.categoryBar then frame.categoryBar:Hide() end
             frame:SetResizable(false)
-            frame:SetHeight(HEADER_HEIGHT)
+            frame:SetWidth(ComputeTrackerCollapsedWidth(titleText, utilityBtnSize, closeBtnW, TRACKER_HEADER_BTN_GAP, frameInset, headerUtilityRight))
+            frame:SetHeight(collapsedH)
             -- Grip would sit inside the title bar and cover collapse/close â€” hide when collapsed
             if frame.resizeGrip then frame.resizeGrip:Hide() end
         else
@@ -1740,6 +2145,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
             if frame.categoryBar then frame.categoryBar:Show() end
             frame:SetResizable(true)
             frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+            local savedW = tdb and tdb.width or 380
+            if savedW < MIN_WIDTH then savedW = 380 end
+            frame:SetWidth(savedW)
             local savedH = tdb and tdb.height or 420
             if savedH < MIN_HEIGHT then savedH = 420 end
             frame:SetHeight(savedH)
@@ -1755,23 +2163,23 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end)
     collapseBtn:SetScript("OnEnter", function()
         collapseTex:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
-        if ApplyVisuals then
+        if CanApplyTrackerHeaderButtonChrome(collapseBtn) and ApplyVisuals then
             local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
             ApplyVisuals(collapseBtn, hoverBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
     end)
     collapseBtn:SetScript("OnLeave", function()
         collapseTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
-        if ApplyVisuals then
+        if CanApplyTrackerHeaderButtonChrome(collapseBtn) and ApplyVisuals then
             ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
     end)
 
-    -- â”€â”€ Settings (gear) button + opacity popup â”€â”€
-    local gearBtn = Factory:CreateButton(header, 22, 22, true)
-    gearBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -4, 0)
+    -- Settings (gear) button + opacity popup
+    local gearBtn = CreateTrackerHeaderIconButton(header, utilityBtnSize)
+    gearBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -TRACKER_HEADER_BTN_GAP, 0)
     gearBtn:SetFrameLevel(header:GetFrameLevel() + 5)
-    if ApplyVisuals then
+    if CanApplyTrackerHeaderButtonChrome(gearBtn) and ApplyVisuals then
         ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local gearTex = gearBtn:CreateTexture(nil, "ARTWORK")
@@ -1780,6 +2188,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
     gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
     gearTex:SetTexCoord(0.06, 0.94, 0.06, 0.94)
     gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+
+    titleText:SetPoint("RIGHT", gearBtn, "LEFT", -10, 0)
+    titleText:SetWordWrap(false)
+    titleText:SetMaxLines(1)
 
     local settingsPopup
     local function BuildSettingsPopup()
@@ -1838,25 +2250,27 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end)
     gearBtn:SetScript("OnEnter", function()
         gearTex:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
-        if ApplyVisuals then
+        if CanApplyTrackerHeaderButtonChrome(gearBtn) and ApplyVisuals then
             local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
             ApplyVisuals(gearBtn, hoverBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
         end
     end)
     gearBtn:SetScript("OnLeave", function()
         gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
-        if ApplyVisuals then
+        if CanApplyTrackerHeaderButtonChrome(gearBtn) and ApplyVisuals then
             ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
     end)
 
     frame._applyHeaderChromeIdle = function()
-        if ApplyVisuals then
+        if closeBtn and CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals then
             ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
             ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
             ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
-        closeTex:SetVertexColor(closeR, closeG, closeB)
+        if closeBtn and closeBtn._wnCloseTex then
+            closeBtn._wnCloseTex:SetVertexColor(closeR, closeG, closeB)
+        end
         collapseTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
         gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
     end
@@ -1864,7 +2278,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- â”€â”€ Custom themed category dropdown â”€â”€
     local catBar, dropdown = CreateThemedCategoryDropdown(frame, function()
         RefreshTrackerContent()
-    end)
+    end, { chromeBandH = chromeBandH, bodyLay = eaLay })
     frame.categoryDropdown = dropdown
     frame.categoryBar = catBar
 
@@ -1872,50 +2286,87 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- Factory's CreateScrollFrame parents ScrollUpBtn/ScrollDownBtn to scrollFrame:GetParent()
     -- and anchors them to parent TOPRIGHT/BOTTOMRIGHT. We create an intermediate frame so
     -- the buttons anchor to the scroll region, not the whole window.
-    local scrollTopOffset = HEADER_HEIGHT + CATEGORY_BAR_HEIGHT + PADDING
-    local contentArea = Factory and Factory:CreateContainer(frame, math.max(1, w), math.max(1, h - scrollTopOffset - TRACKER_RESIZE_STRIP), false)
+    local scrollTopOffset = chromeBandH + TRACKER_ROW_BELOW_CHROME + CATEGORY_BAR_HEIGHT + TRACKER_CATEGORY_TO_CONTENT_GAP
+    local contentArea = Factory and Factory:CreateContainer(frame, math.max(1, w), math.max(1, h - scrollTopOffset - shellInset), false)
     if not contentArea then
         contentArea = CreateFrame("Frame", nil, frame)
     end
-    contentArea:SetPoint("TOPLEFT", 0, -scrollTopOffset)
-    contentArea:SetPoint("BOTTOMRIGHT", 0, TRACKER_RESIZE_STRIP)
+    contentArea:SetPoint("TOPLEFT", frame, "TOPLEFT", shellInset, -scrollTopOffset)
+    contentArea:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -shellInset, shellInset)
     frame.contentArea = contentArea
-    if ApplyTrackerChrome then
-        ApplyTrackerChrome(contentArea, nil, nil, "bar")
-    end
+    ApplyTrackerViewportTransparent(contentArea)
 
-    -- â”€â”€ Scroll frame (Collections pattern: bar column + PositionScrollBarInContainer) â”€â”€
-    local scrollFrame = Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
-    scrollFrame:SetPoint("TOPLEFT", contentArea, "TOPLEFT", PADDING, 0)
-    scrollFrame:SetPoint("TOPRIGHT", contentArea, "TOPRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, 0)
-    scrollFrame:SetPoint("BOTTOM", contentArea, "BOTTOM", 0, PADDING)
-    scrollFrame:EnableMouseWheel(true)
+    frame._plansBodyLay = eaLay
+    frame._plansViewportLayout = GetTrackerViewportLayout(eaLay)
+
+    local viewportShell = Factory and Factory:CreateContainer(contentArea, 1, 1, false)
+    if not viewportShell then
+        viewportShell = CreateFrame("Frame", nil, contentArea)
+        viewportShell:SetSize(1, 1)
+    end
+    frame.contentViewportShell = viewportShell
+    ApplyTrackerViewportShellInsets(frame)
+    ApplyTrackerViewportShellChrome(viewportShell)
+
+    local scrollHost, scrollFrame, scrollChild, barColumn
+    if VB and VB.VBCreateEasyAccessScrollBody then
+        scrollHost, scrollFrame, scrollChild, barColumn = VB.VBCreateEasyAccessScrollBody(viewportShell, {
+            topY = 0,
+            padLeft = 0,
+            padRight = 0,
+            bottom = 0,
+            keepScrollLane = true,
+        })
+    end
+    if not scrollFrame then
+        scrollFrame = Factory:CreateScrollFrame(viewportShell, "UIPanelScrollFrameTemplate", true)
+        scrollFrame:SetPoint("TOPLEFT", viewportShell, "TOPLEFT", 0, 0)
+        scrollFrame:SetPoint("TOPRIGHT", viewportShell, "TOPRIGHT", -TRACK_SCROLL_RIGHT_RESERVE, 0)
+        scrollFrame:SetPoint("BOTTOM", viewportShell, "BOTTOM", 0, 0)
+        scrollFrame:EnableMouseWheel(true)
+        local scrollBarColumn = Factory.CreateBareScrollBarColumn and Factory:CreateBareScrollBarColumn(viewportShell, TRACK_SB_COL_W)
+            or Factory:CreateScrollBarColumn(viewportShell, TRACK_SB_COL_W, 0, 0)
+        if Factory.EnsureScrollBarColumnSync then
+            Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = TRACK_SB_COL_W, gap = 2 })
+        elseif Factory.SyncScrollBarColumnToViewport then
+            Factory:SyncScrollBarColumnToViewport(scrollFrame, scrollBarColumn, { width = TRACK_SB_COL_W, gap = 2 })
+        elseif scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
+            Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
+        end
+        barColumn = scrollBarColumn
+        scrollChild = Factory:CreateContainer(scrollFrame, 1, 1, false)
+        if not scrollChild then
+            scrollChild = CreateFrame("Frame", nil, scrollFrame)
+            scrollChild:SetWidth(1)
+            scrollChild:SetHeight(1)
+        end
+        scrollFrame:SetScrollChild(scrollChild)
+        if ns.UI_EnableStandardScrollWheel then
+            ns.UI_EnableStandardScrollWheel(scrollFrame)
+        else
+            scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+                if ns.UI_ScrollFrameByMouseWheel then
+                    ns.UI_ScrollFrameByMouseWheel(self, delta)
+                end
+            end)
+        end
+    end
+    if scrollFrame and scrollChild and ns.UI_WireScrollChildMouseWheel then
+        ns.UI_WireScrollChildMouseWheel(scrollFrame, scrollChild)
+    end
+    if scrollHost and scrollFrame and ns.UI_ScrollFrameByMouseWheel then
+        scrollHost:EnableMouseWheel(true)
+        scrollHost:SetScript("OnMouseWheel", function(_, delta)
+            ns.UI_ScrollFrameByMouseWheel(scrollFrame, delta)
+        end)
+    end
+    frame.contentScrollHost = scrollHost
     frame.contentScrollFrame = scrollFrame
-
-    local scrollBarColumn = Factory:CreateScrollBarColumn(contentArea, TRACK_SB_COL_W, 0, PADDING)
-    if scrollFrame.ScrollBar and Factory.PositionScrollBarInContainer then
-        Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
-    end
-
-    local scrollChild = Factory:CreateContainer(scrollFrame, 1, 1, false)
-    if not scrollChild then
-        scrollChild = CreateFrame("Frame", nil, scrollFrame)
-        scrollChild:SetWidth(1)
-        scrollChild:SetHeight(1)
-    end
-    scrollFrame:SetScrollChild(scrollChild)
     frame.contentScrollChild = scrollChild
+    frame.contentScrollBarColumn = barColumn
+    SyncTrackerScrollBar(frame)
 
-    -- Mouse wheel scrolling
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 16
-        local current = self:GetVerticalScroll()
-        local maxScroll = self:GetVerticalScrollRange()
-        local newScroll = math.max(0, math.min(current - (delta * step), maxScroll))
-        self:SetVerticalScroll(newScroll)
-    end)
-
-    -- â”€â”€ Resize grip (bottom-right): above scroll/scrollbar, never under title bar when collapsed â”€â”€
+    -- Resize grip: window shell corner (not inside scroll content).
     local resizer = Factory and Factory.CreateButton and Factory:CreateButton(frame, 18, 18, true)
     if not resizer then
         resizer = CreateButton(frame, 18, 18, nil, nil, true)
@@ -1924,7 +2375,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         resizer = CreateFrame("Button", nil, frame)
         resizer:SetSize(18, 18)
     end
-    resizer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -3, 3)
+    resizer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -math.max(shellInset - 2, 4), math.max(shellInset - 2, 4))
     resizer:SetFrameStrata(frame:GetFrameStrata())
     resizer:SetFrameLevel(frame:GetFrameLevel() + 40)
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -1940,10 +2391,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
         if fr._plansTrackerHeaderShell then
             fr._plansTrackerHeaderShell:SetWidth(math.max(1, fr:GetWidth()))
         end
-        local sw = scrollFrame and scrollFrame:GetWidth() or nil
-        if sw and sw > 0 and scrollChild then
-            scrollChild:SetWidth(sw)
+        if scrollChild then
+            scrollChild:SetWidth(GetTrackerContentColumnWidth(fr))
         end
+        SyncTrackerScrollBar(fr)
         if rebuildCards then
             trackerResizeToken = trackerResizeToken + 1
             local token = trackerResizeToken
@@ -1960,6 +2411,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         frame:StopMovingOrSizing()
         SavePosition(frame)
         TrackerSatelliteLiveLayout(frame, false)
+        SyncTrackerScrollBar(frame)
         local LC = ns.UI_LayoutCoordinator
         if LC and LC.OnSatelliteMetricsChanged then
             LC:OnSatelliteMetricsChanged(frame, frame:GetWidth(), frame:GetHeight(), true)
@@ -2013,12 +2465,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
         -- Delay refresh to let layout settle
         C_Timer.After(0.05, function()
             if frame and frame:IsShown() then
-                local sf = frame.contentScrollFrame
-                if sf then
-                    local sw = sf:GetWidth()
-                    if sw and sw > 0 and frame.contentScrollChild then
-                        frame.contentScrollChild:SetWidth(sw)
-                    end
+                if frame.contentScrollChild then
+                    frame.contentScrollChild:SetWidth(GetTrackerContentColumnWidth(frame))
                 end
                 RefreshTrackerContentImmediate()
             end
@@ -2057,6 +2505,15 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
     end)
 
+    if E.UI_DEBUG_HEADER_SYNC then
+        WarbandNexus.RegisterMessage(PlansTrackerEvents, E.UI_DEBUG_HEADER_SYNC, function()
+            local f = GetTrackerFrame()
+            if not f then return end
+            SyncTrackerViewportChrome(f)
+            SyncTrackerScrollBar(f)
+        end)
+    end
+
     RestorePosition(frame)
     frame:Show()
     
@@ -2075,12 +2532,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
         pendingRefresh = false  -- Unblock debounced refreshes
         if frame and frame:IsShown() then
             -- Force scrollChild width from frame dimensions as fallback
-            local sf = frame.contentScrollFrame
-            if sf then
-                local sw = sf:GetWidth()
-                if sw and sw > 0 and frame.contentScrollChild then
-                    frame.contentScrollChild:SetWidth(sw)
-                end
+            if frame.contentScrollChild then
+                frame.contentScrollChild:SetWidth(GetTrackerContentColumnWidth(frame))
             end
             RefreshTrackerContentImmediate()
         end
@@ -2140,11 +2593,13 @@ function ns.PlansTrackerWindow.RefreshTheme()
     if frame.categoryBar and ApplyTrackerChrome then
         ApplyTrackerChrome(frame.categoryBar, nil, nil, "bar")
     end
-    if frame.contentArea and ApplyTrackerChrome then
-        ApplyTrackerChrome(frame.contentArea, nil, nil, "bar")
+    if frame.contentArea then
+        ApplyTrackerViewportTransparent(frame.contentArea)
     end
-    if frame.categoryDropdown and ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyClassicThinBorderChrome then
-        ns.UI_ApplyClassicThinBorderChrome(frame.categoryDropdown, GetControlChromeBackdrop())
+    SyncTrackerViewportChrome(frame)
+    SyncTrackerScrollBar(frame)
+    if frame.categoryDropdown then
+        ApplyTrackerDropdownChrome(frame.categoryDropdown)
     end
     if frame._applyHeaderChromeIdle then
         frame._applyHeaderChromeIdle()

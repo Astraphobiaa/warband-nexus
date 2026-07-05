@@ -461,8 +461,11 @@ function M.ShowDailyPlanDialog(editPlan)
     scrollFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", PAD, scrollTop)
     scrollFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -(PAD + sbReserve), FOOTER_H)
 
-    if Factory.CreateScrollBarColumn and Factory.PositionScrollBarInContainer then
-        local scrollBarColumn = Factory:CreateScrollBarColumn(contentFrame, scrollbarW, PAD + CHAR_HDR_H, FOOTER_H)
+    if Factory.CreateBareScrollBarColumn and Factory.EnsureScrollBarColumnSync then
+        local scrollBarColumn = Factory:CreateBareScrollBarColumn(contentFrame, scrollbarW)
+        Factory:EnsureScrollBarColumnSync(scrollFrame, scrollBarColumn, { width = scrollbarW, gap = 2 })
+    elseif Factory.CreateScrollBarColumn and Factory.PositionScrollBarInContainer then
+        local scrollBarColumn = Factory:CreateScrollBarColumn(contentFrame, scrollbarW, 0, 0)
         if scrollFrame.ScrollBar then
             Factory:PositionScrollBarInContainer(scrollFrame.ScrollBar, scrollBarColumn, 0)
         end

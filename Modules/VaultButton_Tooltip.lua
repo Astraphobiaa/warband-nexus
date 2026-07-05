@@ -35,6 +35,57 @@ local UpdateBadge = function()
     if S.tableFrame and S.tableFrame:IsShown() then RefreshTable() end
 end
 
+--- Warband-wide vault reward count badge (top-right of Easy Access button).
+function M.ShowBadgeTooltip(anchor)
+    if not anchor then return end
+    local count = CountReady()
+    local lines = {}
+    if count > 0 then
+        lines[#lines + 1] = {
+            text = EAL("EA_TOOLTIP_SUMMARY_READY_COUNT", "%d ready to claim", count),
+            color = { 0.35, 0.9, 0.4 },
+        }
+        local list = BuildCharList()
+        local shown = 0
+        for i = 1, #list do
+            local e = list[i]
+            if e.isReady and shown < 8 then
+                shown = shown + 1
+                lines[#lines + 1] = {
+                    left = FormatEasyAccessCharacterTitle(nil, e),
+                    right = EAL("EA_TOOLTIP_SUMMARY_CHAR_READY", "Ready to claim"),
+                    leftColor = M.EA_LABEL_COLOR,
+                    rightColor = { 0.35, 0.9, 0.4 },
+                }
+            end
+        end
+        if count > shown then
+            lines[#lines + 1] = {
+                text = EAL("EA_BADGE_TOOLTIP_MORE", "... and %d more", count - shown),
+                color = M.EA_FOOTER_COLOR,
+            }
+        end
+    else
+        lines[#lines + 1] = {
+            text = EAL("EA_BADGE_TOOLTIP_NONE", "No vault rewards ready to claim."),
+            color = M.EA_LABEL_COLOR,
+        }
+    end
+    lines[#lines + 1] = { type = "spacer", height = 4 }
+    lines[#lines + 1] = {
+        text = EAL("EA_BADGE_TOOLTIP_HINT", "Open Vault Tracker from the right-click menu for weekly progress."),
+        color = M.EA_FOOTER_COLOR,
+    }
+    WNTooltipShow(anchor, {
+        type = "custom",
+        title = EAL("EA_BADGE_TOOLTIP_TITLE", "Remaining vault rewards"),
+        icon = ICON_TEXTURE,
+        titleColor = M.EAAccentTitleColor(),
+        lines = lines,
+        maxWidth = 320,
+    })
+end
+
 -- Easy Access tooltip copy (clear text; table cells keep icons)
 
 function M.GetBountyColumnIcon()

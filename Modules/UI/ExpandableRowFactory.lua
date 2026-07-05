@@ -460,7 +460,8 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     if metaRightText then
         metaRightText:SetPoint("RIGHT", headerFrame, "RIGHT", -titleInset, 0)
         if iconFrame then
-            metaRightText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
+            metaRightText:SetPoint("TOP", iconFrame, "TOP", 0, 0)
+            metaRightText:SetPoint("BOTTOM", iconFrame, "BOTTOM", 0, 0)
         end
         titleText:SetPoint("RIGHT", metaRightText, "LEFT", -titleGap, 0)
     else
@@ -606,24 +607,20 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     
     -- Single unified backdrop on the row itself, not on header/details separately. This way the
     -- collapsed and expanded states share one continuous border (no double-line at the seam).
-    if ApplyVisuals then
-        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
-            -- Classic: same dialog-box card panel as the Weekly Progress card
-            -- (UI_CreateCard classic branch) so all To-Do cards read alike.
-            if ns.UI_ApplyClassicCardPanelChrome then
-                ns.UI_ApplyClassicCardPanelChrome(row)
-            elseif ns.UI_ApplyClassicThinBorderChrome then
-                ns.UI_ApplyClassicThinBorderChrome(row)
-            end
-        else
-            local borderColor = {
-                COLORS.accent[1] * 0.8,
-                COLORS.accent[2] * 0.8,
-                COLORS.accent[3] * 0.8,
-                0.4
-            }
-            ApplyVisuals(row, row.bgColor, borderColor)
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        if ns.UI_ApplyClassicCardPanelChrome then
+            ns.UI_ApplyClassicCardPanelChrome(row)
+        elseif ns.UI_ApplyClassicThinBorderChrome then
+            ns.UI_ApplyClassicThinBorderChrome(row)
         end
+    elseif ApplyVisuals then
+        local borderColor = {
+            COLORS.accent[1] * 0.8,
+            COLORS.accent[2] * 0.8,
+            COLORS.accent[3] * 0.8,
+            0.4
+        }
+        ApplyVisuals(row, row.bgColor, borderColor)
     end
 
     -- Unified To-Do cards: no row hover wash (tooltip + actions suffice; full-card highlight was too loud).

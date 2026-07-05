@@ -428,7 +428,7 @@ function M.CollectionVirtual_FillSimpleFlatRowScrollIndex(flatList, outFlatIdx, 
     return math.max(contentH + PADDING, 1)
 end
 
-local function CollectionVirtual_SyncListScrollChildHeight(scrollChild, scrollFrame, contentH)
+local function CollectionVirtual_SyncListScrollChildHeight(scrollChild, scrollFrame, contentH, barContainer)
     if scrollChild and contentH and contentH > 0 then
         scrollChild:SetHeight(contentH)
     end
@@ -441,7 +441,13 @@ local function CollectionVirtual_SyncListScrollChildHeight(scrollChild, scrollFr
                 scrollFrame:SetVerticalScroll(maxScroll)
             end
         end
-        if Factory and Factory.UpdateScrollBarVisibility then
+        if barContainer and Factory and Factory.EnsureScrollBarColumnSync then
+            local colW = (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth()) or 22
+            Factory:EnsureScrollBarColumnSync(scrollFrame, barContainer, { width = colW, gap = SCROLLBAR_SIDE_GAP or 4 })
+        end
+        if Factory and Factory.DeferScrollBarVisibility then
+            Factory:DeferScrollBarVisibility(scrollFrame)
+        elseif Factory and Factory.UpdateScrollBarVisibility then
             Factory:UpdateScrollBarVisibility(scrollFrame)
         end
     end
@@ -495,7 +501,8 @@ function M.CollectionVirtual_RefreshMountRowScrollIndex()
         state._mountRowScrollHeights or {}
     )
     state._mountFlatListTotalHeight = contentH
-    CollectionVirtual_SyncListScrollChildHeight(state.mountListScrollChild, state.mountListScrollFrame, contentH)
+    CollectionVirtual_SyncListScrollChildHeight(
+        state.mountListScrollChild, state.mountListScrollFrame, contentH, state.mountListScrollBarContainer)
 end
 
 function M.CollectionVirtual_RefreshPetRowScrollIndex()
@@ -510,7 +517,8 @@ function M.CollectionVirtual_RefreshPetRowScrollIndex()
         state._petRowScrollHeights or {}
     )
     state._petFlatListTotalHeight = contentH
-    CollectionVirtual_SyncListScrollChildHeight(state.petListScrollChild, state.petListScrollFrame, contentH)
+    CollectionVirtual_SyncListScrollChildHeight(
+        state.petListScrollChild, state.petListScrollFrame, contentH, state.petListScrollBarContainer)
 end
 
 function M.CollectionVirtual_RefreshToyRowScrollIndex()
@@ -525,7 +533,8 @@ function M.CollectionVirtual_RefreshToyRowScrollIndex()
         state._toyRowScrollHeights or {}
     )
     state._toyFlatListTotalHeight = contentH
-    CollectionVirtual_SyncListScrollChildHeight(state.toyListScrollChild, state.toyListScrollFrame, contentH)
+    CollectionVirtual_SyncListScrollChildHeight(
+        state.toyListScrollChild, state.toyListScrollFrame, contentH, state.toyListScrollBarContainer)
 end
 
 -- Forward declarations: scroll handlers schedule next-frame refresh via C_Timer.After(0).

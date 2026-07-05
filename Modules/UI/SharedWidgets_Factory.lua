@@ -607,6 +607,177 @@ local function DropdownScrollFrameNeedsScroll(scrollFrame, contentHeight, frameH
     return (contentHeight or 0) > (frameHeight or 0) + slack
 end
 
+local function ShowScrollBarChrome(bar, show)
+    if not bar then return end
+    local useCustomBtns = bar.ScrollUpBtn ~= nil or bar.ScrollDownBtn ~= nil
+    if show then
+        bar:Show()
+        if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
+        if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
+        if useCustomBtns then
+            if bar.ScrollUpButton then bar.ScrollUpButton:Hide() end
+            if bar.ScrollDownButton then bar.ScrollDownButton:Hide() end
+        else
+            if bar.ScrollUpButton then bar.ScrollUpButton:Show() end
+            if bar.ScrollDownButton then bar.ScrollDownButton:Show() end
+        end
+    else
+        bar:Hide()
+        if bar.ScrollUpBtn then bar.ScrollUpBtn:Hide() end
+        if bar.ScrollDownBtn then bar.ScrollDownBtn:Hide() end
+        if bar.ScrollUpButton then bar.ScrollUpButton:Hide() end
+        if bar.ScrollDownButton then bar.ScrollDownButton:Hide() end
+    end
+end
+
+--- True when scroll uses dropdown menu wire layout (scroll anchors TO bar column, not the reverse).
+local function UsesDropdownScrollWireLayout(scrollFrame)
+    return scrollFrame and scrollFrame._wnScrollAnchorTL and scrollFrame._wnScrollHost
+end
+
+--- Keep thumb position in sync when ScrollBar is reparented into an external column lane.
+function ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
+    if not scrollFrame then return end
+    local bar = scrollFrame.ScrollBar
+    if not bar or not bar.SetValue or not scrollFrame.GetVerticalScroll then return end
+    if scrollFrame.UpdateScrollChildRect then
+        scrollFrame:UpdateScrollChildRect()
+    end
+    local maxScroll = 0
+    if scrollFrame.GetVerticalScrollRange then
+        maxScroll = scrollFrame:GetVerticalScrollRange() or 0
+    end
+    if bar.SetMinMaxValues then
+        bar:SetMinMaxValues(0, maxScroll)
+    end
+    local y = scrollFrame:GetVerticalScroll() or 0
+    if y > maxScroll then
+        y = maxScroll
+        if scrollFrame.SetVerticalScroll then
+            scrollFrame:SetVerticalScroll(y)
+        end
+    end
+    bar:SetValue(y)
+end
+
+--- Attach UpdateScrollBarVisibility to any scroll frame (Classic + Modern + nested panes).
+function ns.UI.Factory:AttachScrollBarVisibility(scrollFrame)
+    if not scrollFrame or scrollFrame._wnBarVisibilityAttached then return end
+    scrollFrame._wnBarVisibilityAttached = true
+
+    scrollFrame.UpdateScrollBarVisibility = function(self)
+        if not self.ScrollBar then return end
+        local bar = self.ScrollBar
+        local scrollChild = self:GetScrollChild()
+        if not scrollChild then return end
+        local slack = GetDropdownScrollFitSlack()
+        local contentHeight = scrollChild:GetHeight() or 0
+        local frameHeight = self:GetHeight() or 0
+        local isDropdown = self._wnDropdownRowCount or self._wnDropdownViewportH
+        local needsScroll = DropdownScrollFrameNeedsScroll(self, contentHeight, frameHeight, slack)
+        local scrollRange = 0
+        if self.GetVerticalScrollRange then
+            scrollRange = self:GetVerticalScrollRange() or 0
+        end
+        if scrollRange > 0 then
+            needsScroll = true
+        end
+
+        if not needsScroll and isDropdown and scrollChild and frameHeight >= 2 then
+            if contentHeight > frameHeight and contentHeight <= frameHeight + slack then
+                scrollChild:SetHeight(frameHeight)
+                contentHeight = frameHeight
+            end
+        end
+
+        self._wnDropdownNeedsScroll = isDropdown and needsScroll or nil
+
+        local extCol = self._wnExternalBarColumn
+        local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self) or extCol ~= nil
+        local col = self._wnScrollBarColumn
+        local dropdownWire = UsesDropdownScrollWireLayout(self)
+        if extCol and not dropdownWire and ns.UI.Factory and ns.UI.Factory.SyncScrollBarColumnToViewport then
+            ns.UI.Factory:SyncScrollBarColumnToViewport(self, extCol, self._wnBarColumnSyncOpts)
+            if bar and bar._wnOwningScrollFrame == nil then
+                bar._wnOwningScrollFrame = self
+            end
+            if ns.UI.Factory.PositionScrollBarInContainer then
+                local inset = (self._wnBarColumnSyncOpts and self._wnBarColumnSyncOpts.inset) or 0
+                ns.UI.Factory:PositionScrollBarInContainer(bar, extCol, inset, self)
+            end
+            if needsScroll or self._wnKeepScrollLane then
+                extCol:Show()
+            elseif not (col and self._wnScrollHost) then
+                extCol:Hide()
+            end
+        end
+        local host = self._wnScrollHost
+        local tl = self._wnScrollAnchorTL
+        local brHidden = self._wnScrollAnchorBRHidden
+        local brShown = self._wnScrollAnchorBRShown
+
+        if col and host and tl and brHidden and brShown then
+            self:ClearAllPoints()
+            self:SetPoint(tl.a1 or "TOPLEFT", tl.frame, tl.a2 or "TOPLEFT", tl.x or 0, tl.y or 0)
+            local laneReserved = needsScroll or self._wnKeepScrollLane
+            if laneReserved then
+                col:Show()
+                self:SetPoint(brShown.a1 or "BOTTOMRIGHT", brShown.frame, brShown.a2 or "BOTTOMLEFT", brShown.x or -2, brShown.y or 0)
+                if self.ScrollBar and col and ns.UI.Factory and ns.UI.Factory.PositionScrollBarInContainer then
+                    ns.UI.Factory:PositionScrollBarInContainer(self.ScrollBar, col, 0, self)
+                end
+                if ns.UI.Factory and ns.UI.Factory.SyncScrollBarThumb then
+                    ns.UI.Factory:SyncScrollBarThumb(self)
+                end
+            else
+                col:Hide()
+                self:SetPoint(brHidden.a1 or "BOTTOMRIGHT", brHidden.frame, brHidden.a2 or "BOTTOMRIGHT", brHidden.x or 0, brHidden.y or 0)
+                if self.SetVerticalScroll then
+                    self:SetVerticalScroll(0)
+                end
+            end
+        end
+
+        if self.EnableMouseWheel then
+            if isDropdown then
+                self:EnableMouseWheel(needsScroll)
+            else
+                self:EnableMouseWheel(true)
+            end
+        end
+
+        if barInExternalContainer then
+            local showBar = needsScroll
+            if not showBar and self._wnKeepScrollLane and frameHeight >= 2 then
+                showBar = scrollRange > 0 or contentHeight > frameHeight
+            end
+            ShowScrollBarChrome(bar, showBar)
+            ns.UI.Factory:SyncScrollBarThumb(self)
+            return
+        end
+
+        ShowScrollBarChrome(bar, needsScroll)
+        ns.UI.Factory:SyncScrollBarThumb(self)
+    end
+end
+
+--- Post-layout visibility refresh (first-frame GetHeight() settle).
+function ns.UI.Factory:DeferScrollBarVisibility(scrollFrame)
+    if not scrollFrame then return end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if not scrollFrame then return end
+            if scrollFrame.UpdateScrollBarVisibility then
+                scrollFrame:UpdateScrollBarVisibility()
+            elseif ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+                ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+            end
+        end)
+    elseif scrollFrame.UpdateScrollBarVisibility then
+        scrollFrame:UpdateScrollBarVisibility()
+    end
+end
+
 -- FACTORY METHODS (Standardized Frame Creation)
 
 -- NOTE: CreateContainer implementation moved to line 4789 (Factory pattern wrapper)
@@ -632,6 +803,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         if scrollBar then
             scrollBar._wnBlizzardChrome = true
             scrollBar._wnOwningScrollFrame = scrollFrame
+            scrollBar._scrollFrame = scrollFrame
             local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
             local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
             local barWidth = layout.SCROLL_BAR_WIDTH or 16
@@ -644,6 +816,19 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
                 scrollBar.ScrollDownButton:SetSize(btnSize, btnSize)
             end
             scrollBar:SetWidth(barWidth)
+            if not scrollBar._wnBlizzardValueHook then
+                scrollBar._wnBlizzardValueHook = true
+                scrollBar:SetScript("OnValueChanged", function(self, value)
+                    local sf = self._scrollFrame or self._wnOwningScrollFrame
+                    if sf and sf.SetVerticalScroll then
+                        sf:SetVerticalScroll(value)
+                    end
+                end)
+            end
+        end
+        self:AttachScrollBarVisibility(scrollFrame)
+        if scrollFrame.EnableMouseWheel then
+            scrollFrame:EnableMouseWheel(true)
         end
         return scrollFrame
     end
@@ -656,6 +841,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     -- Apply modern custom scroll bar styling (default: true)
     if customStyle ~= false and scrollFrame.ScrollBar then
         local scrollBar = scrollFrame.ScrollBar
+        scrollBar._wnOwningScrollFrame = scrollFrame
         local function GetScrollStep()
             local addon = _G.WarbandNexus or ns.WarbandNexus
             local base = ns.UI_LAYOUT.SCROLL_BASE_STEP or 28
@@ -761,8 +947,9 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         local barWidth = UI_SPACING.SCROLL_BAR_WIDTH or 16
         -- Create scroll up button (top) — standard Button | Bar | Button layout
         if not scrollBar.ScrollUpBtn then
-            scrollBar.ScrollUpBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
+            scrollBar.ScrollUpBtn = CreateFrame("Button", nil, scrollBar)
             scrollBar.ScrollUpBtn:SetSize(btnSize, btnSize)
+            scrollBar.ScrollUpBtn:Hide()
             -- Position via PositionScrollBarInContainer(scrollBar, container, inset) only
 
             -- Background
@@ -831,6 +1018,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
                 local PS = ns.PixelSnap
                 if PS then val = PS(val) end
                 scrollFrame:SetVerticalScroll(val)
+                ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
             end)
             
             -- Hover effects
@@ -849,8 +1037,9 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         
         -- Create scroll down button (bottom)
         if not scrollBar.ScrollDownBtn then
-            scrollBar.ScrollDownBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
+            scrollBar.ScrollDownBtn = CreateFrame("Button", nil, scrollBar)
             scrollBar.ScrollDownBtn:SetSize(btnSize, btnSize)
+            scrollBar.ScrollDownBtn:Hide()
             -- Position via PositionScrollBarInContainer(scrollBar, container, inset) only
 
             -- Background
@@ -920,6 +1109,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
                 local PS = ns.PixelSnap
                 if PS then val = PS(val) end
                 scrollFrame:SetVerticalScroll(val)
+                ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
             end)
             
             -- Hover effects
@@ -960,82 +1150,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         self._scrollLogged = true
     end
     
-    -- Auto-hide scroll bar when content fits (call after content is populated).
-    -- When bar is in an external container (reparented), always show bar and buttons so the column does not flicker.
-    scrollFrame.UpdateScrollBarVisibility = function(self)
-        if not self.ScrollBar then return end
-        local bar = self.ScrollBar
-        local scrollChild = self:GetScrollChild()
-        if not scrollChild then return end
-        local slack = GetDropdownScrollFitSlack()
-        local contentHeight = scrollChild:GetHeight() or 0
-        local frameHeight = self:GetHeight() or 0
-        local isDropdown = self._wnDropdownRowCount or self._wnDropdownViewportH
-        local needsScroll = DropdownScrollFrameNeedsScroll(self, contentHeight, frameHeight, slack)
+    self:AttachScrollBarVisibility(scrollFrame)
 
-        if not needsScroll and isDropdown and scrollChild and frameHeight >= 2 then
-            if contentHeight > frameHeight and contentHeight <= frameHeight + slack then
-                scrollChild:SetHeight(frameHeight)
-                contentHeight = frameHeight
-            end
-        end
-
-        self._wnDropdownNeedsScroll = isDropdown and needsScroll or nil
-
-        local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self)
-        local col = self._wnScrollBarColumn
-        local host = self._wnScrollHost
-        local tl = self._wnScrollAnchorTL
-        local brHidden = self._wnScrollAnchorBRHidden
-        local brShown = self._wnScrollAnchorBRShown
-
-        if col and host and tl and brHidden and brShown then
-            self:ClearAllPoints()
-            self:SetPoint(tl.a1 or "TOPLEFT", tl.frame, tl.a2 or "TOPLEFT", tl.x or 0, tl.y or 0)
-            if needsScroll then
-                col:Show()
-                self:SetPoint(brShown.a1 or "BOTTOMRIGHT", brShown.frame, brShown.a2 or "BOTTOMLEFT", brShown.x or -2, brShown.y or 0)
-            else
-                col:Hide()
-                self:SetPoint(brHidden.a1 or "BOTTOMRIGHT", brHidden.frame, brHidden.a2 or "BOTTOMRIGHT", brHidden.x or 0, brHidden.y or 0)
-                if self.SetVerticalScroll then
-                    self:SetVerticalScroll(0)
-                end
-            end
-        end
-
-        if self.EnableMouseWheel then
-            if isDropdown then
-                self:EnableMouseWheel(needsScroll)
-            else
-                self:EnableMouseWheel(true)
-            end
-        end
-
-        if barInExternalContainer then
-            if needsScroll then
-                bar:Show()
-                if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
-                if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
-            else
-                bar:Hide()
-                if bar.ScrollUpBtn then bar.ScrollUpBtn:Hide() end
-                if bar.ScrollDownBtn then bar.ScrollDownBtn:Hide() end
-            end
-            return
-        end
-
-        if needsScroll then
-            bar:Show()
-            if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
-            if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
-        else
-            bar:Hide()
-            if bar.ScrollUpBtn then bar.ScrollUpBtn:Hide() end
-            if bar.ScrollDownBtn then bar.ScrollDownBtn:Hide() end
-        end
-    end
-    
     -- Smooth scroll: base step * speed multiplier from profile
     scrollFrame:EnableMouseWheel(true)
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
@@ -1074,6 +1190,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         local PS = ns.PixelSnap
         if PS then newScroll = PS(newScroll) end
         self:SetVerticalScroll(newScroll)
+        ns.UI.Factory:SyncScrollBarThumb(self)
     end)
     
     return scrollFrame
@@ -1221,68 +1338,248 @@ function ns.UI.Factory:ApplyDropdownScrollLayout(menu, rowCount, rowHeight, opts
 end
 
 --- Create a frame for the vertical scroll bar column (same pattern as Collections: list | bar column | details).
---- Caller anchors this to the right of the scroll content, then calls PositionScrollBarInContainer(scrollFrame.ScrollBar, container, inset).
+--- Prefer CreateBareScrollBarColumn + SyncScrollBarColumnToViewport / EnsureScrollBarColumnSync.
+--- topInset/bottomInset on parent is legacy — bar height must match scroll viewport via Sync*.
 ---@return Frame container The frame to pass to PositionScrollBarInContainer
+function ns.UI.Factory:CreateBareScrollBarColumn(parent, width)
+    if not parent then return nil end
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local w = width or layout.SCROLLBAR_COLUMN_WIDTH or 26
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetWidth(w)
+    container:SetFrameLevel((parent:GetFrameLevel() or 0) + 2)
+    container:SetClipsChildren(false)
+    container:Hide()
+    return container
+end
+
 function ns.UI.Factory:CreateScrollBarColumn(parent, width, topInset, bottomInset)
     if not parent then return nil end
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
     local w = width or layout.SCROLLBAR_COLUMN_WIDTH or 26
     local top = (topInset == nil) and 0 or topInset
     local bottom = (bottomInset == nil) and 0 or bottomInset
-    local container = CreateFrame("Frame", nil, parent)
+    local container = self:CreateBareScrollBarColumn(parent, w)
+    if not container then return nil end
     container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -top)
     container:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, bottom)
-    container:SetWidth(w)
-    container:SetFrameLevel((parent:GetFrameLevel() or 0) + 2)
-    container:SetClipsChildren(false)
     container:Show()
     return container
 end
 
+--- Anchor vertical scrollbar column outside the scroll viewport: same TOP/BOTTOM as scrollFrame, column to the right.
+--- Layout inside column: Up button | thumb track | down button (via PositionScrollBarInContainer).
+---@param scrollFrame ScrollFrame
+---@param barColumn Frame
+---@param table|nil opts { width, gap, inset }
+function ns.UI.Factory:SyncScrollBarColumnToViewport(scrollFrame, barColumn, opts)
+    if not scrollFrame or not barColumn then return end
+    if UsesDropdownScrollWireLayout(scrollFrame) then
+        if scrollFrame.ScrollBar then
+            self:PositionScrollBarInContainer(scrollFrame.ScrollBar, barColumn, (opts and opts.inset) or 0, scrollFrame)
+        end
+        self:SyncScrollBarThumb(scrollFrame)
+        return
+    end
+    opts = opts or {}
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local ms = layout.MAIN_SCROLL or {}
+    local colW = opts.width
+    if not colW or colW <= 0 then
+        colW = (barColumn.GetWidth and barColumn:GetWidth())
+            or (ns.UI_GetScrollbarColumnWidth and ns.UI_GetScrollbarColumnWidth())
+            or layout.SCROLLBAR_COLUMN_WIDTH or 26
+    end
+    local gap = opts.gap
+    if gap == nil then
+        gap = ms.SCROLL_GAP or layout.SCROLL_GAP or 2
+    end
+    local inset = opts.inset or 0
+
+    barColumn:ClearAllPoints()
+    barColumn:SetWidth(colW)
+    barColumn:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", gap, 0)
+    barColumn:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", gap, 0)
+    barColumn:Show()
+
+    scrollFrame._wnExternalBarColumn = barColumn
+    scrollFrame._wnBarColumnSyncOpts = opts
+
+    if scrollFrame.ScrollBar then
+        scrollFrame.ScrollBar._wnOwningScrollFrame = scrollFrame
+        self:PositionScrollBarInContainer(scrollFrame.ScrollBar, barColumn, inset, scrollFrame)
+    end
+    self:InstallExternalScrollBarRangeGuard(scrollFrame)
+    if ns.UI_ApplyScrollLayoutDebugChrome then
+        ns.UI_ApplyScrollLayoutDebugChrome(scrollFrame, barColumn)
+    end
+end
+
+--- Prevent UIPanelScrollFrameTemplate from re-anchoring ScrollBar on the viewport edge when using an external column.
+function ns.UI.Factory:InstallExternalScrollBarRangeGuard(scrollFrame)
+    if not scrollFrame or scrollFrame._wnExtBarRangeGuard then return end
+    scrollFrame._wnExtBarRangeGuard = true
+
+    local function ResyncExternalBarColumn(self)
+        local col = self._wnExternalBarColumn
+        local syncOpts = self._wnBarColumnSyncOpts
+        local factory = ns.UI and ns.UI.Factory
+        if UsesDropdownScrollWireLayout(self) then
+            local wireCol = self._wnScrollBarColumn
+            if self.ScrollBar and wireCol and factory and factory.PositionScrollBarInContainer then
+                factory:PositionScrollBarInContainer(self.ScrollBar, wireCol, 0, self)
+            end
+            if factory and factory.SyncScrollBarThumb then
+                factory:SyncScrollBarThumb(self)
+            end
+            if factory and factory.UpdateScrollBarVisibility then
+                factory:UpdateScrollBarVisibility(self)
+            end
+            return
+        end
+        if col and factory and factory.SyncScrollBarColumnToViewport then
+            factory:SyncScrollBarColumnToViewport(self, col, syncOpts)
+        end
+        if factory and factory.UpdateScrollBarVisibility then
+            factory:UpdateScrollBarVisibility(self)
+        end
+    end
+
+    scrollFrame:SetScript("OnScrollRangeChanged", function(self, xRange, yRange)
+        if yRange and yRange > 0 then
+            local cur = self:GetVerticalScroll() or 0
+            if cur > yRange then
+                self:SetVerticalScroll(yRange)
+            end
+        elseif self.SetVerticalScroll then
+            self:SetVerticalScroll(0)
+        end
+        ResyncExternalBarColumn(self)
+    end)
+
+    local prevOnShow = scrollFrame:GetScript("OnShow")
+    scrollFrame:SetScript("OnShow", function(self)
+        if prevOnShow then
+            prevOnShow(self)
+        end
+        ResyncExternalBarColumn(self)
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                if self and self.IsShown and self:IsShown() then
+                    ResyncExternalBarColumn(self)
+                end
+            end)
+        end
+    end)
+end
+
+--- One-shot sync + resize hook: bar column tracks scroll viewport (chains existing OnSizeChanged).
+---@param scrollFrame ScrollFrame
+---@param barColumn Frame
+---@param table|nil opts { width, gap, inset, onSizeChanged }
+function ns.UI.Factory:EnsureScrollBarColumnSync(scrollFrame, barColumn, opts)
+    if not scrollFrame or not barColumn then return end
+    opts = opts or {}
+    scrollFrame._wnBarColumnSyncOpts = opts
+    scrollFrame._wnExternalBarColumn = barColumn
+    self:SyncScrollBarColumnToViewport(scrollFrame, barColumn, opts)
+    self:InstallExternalScrollBarRangeGuard(scrollFrame)
+    if scrollFrame._wnBarColumnSyncInstalled then
+        return
+    end
+    scrollFrame._wnBarColumnSyncInstalled = true
+    local prevOnSize = scrollFrame._wnPrevOnSizeChanged
+    if prevOnSize == nil then
+        prevOnSize = scrollFrame:GetScript("OnSizeChanged")
+        scrollFrame._wnPrevOnSizeChanged = prevOnSize
+    end
+    scrollFrame:SetScript("OnSizeChanged", function(frame, w, h)
+        local col = frame._wnExternalBarColumn
+        local syncOpts = frame._wnBarColumnSyncOpts
+        local factory = ns.UI and ns.UI.Factory
+        if col and factory and factory.SyncScrollBarColumnToViewport then
+            factory:SyncScrollBarColumnToViewport(frame, col, syncOpts)
+        end
+        if prevOnSize then
+            prevOnSize(frame, w, h)
+        end
+        if col and factory and factory.SyncScrollBarColumnToViewport then
+            factory:SyncScrollBarColumnToViewport(frame, col, syncOpts)
+        end
+        if opts.onSizeChanged then
+            opts.onSizeChanged(frame, w, h)
+        end
+        if factory and factory.UpdateScrollBarVisibility then
+            factory:UpdateScrollBarVisibility(frame)
+        end
+    end)
+end
+
 --- Standard layout when scroll bar is placed in an external container (e.g. list | gap | scrollbar | gap | details).
 --- Ensures Button (top) | Bar | Button (bottom) with same dimensions everywhere (SCROLL_BAR_BUTTON_SIZE, SCROLL_BAR_WIDTH).
-function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, inset)
+--- Blizzard: ScrollBar stays on ScrollFrame, anchors into column. Modern: reparent into column + _scrollFrame OnValueChanged (CreateScrollFrame).
+function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, inset, scrollFrame)
     if not scrollBar or not scrollBarContainer then return end
     local useBlizzardChrome = ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
     local isBlizzardBar = useBlizzardChrome or scrollBar._wnBlizzardChrome
     local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
     local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
     local barWidth = layout.SCROLL_BAR_WIDTH or 16
+    local colW = (scrollBarContainer.GetWidth and scrollBarContainer:GetWidth()) or layout.SCROLLBAR_COLUMN_WIDTH or 26
+    local barPadX = math.max(0, math.floor((colW - barWidth) * 0.5))
 
-    local upBtn = scrollBar.ScrollUpBtn or scrollBar.ScrollUpButton
-    local downBtn = scrollBar.ScrollDownBtn or scrollBar.ScrollDownButton
-
-    -- Blizzard SecureScrollTemplates require ScrollBar to remain a child of the ScrollFrame.
-    -- Anchor into the external column without reparenting (SetParent breaks SetValue).
+    local upBtn, downBtn
     if isBlizzardBar then
-        local scrollFrame = scrollBar._wnOwningScrollFrame
-        if not scrollFrame then
-            local parent = scrollBar:GetParent()
-            if parent and parent.GetVerticalScrollRange then
-                scrollFrame = parent
-            end
+        upBtn = scrollBar.ScrollUpButton or scrollBar.ScrollUpBtn
+        downBtn = scrollBar.ScrollDownButton or scrollBar.ScrollDownBtn
+    else
+        upBtn = scrollBar.ScrollUpBtn
+        downBtn = scrollBar.ScrollDownBtn
+        if scrollBar.ScrollUpButton then scrollBar.ScrollUpButton:Hide() end
+        if scrollBar.ScrollDownButton then scrollBar.ScrollDownButton:Hide() end
+    end
+
+    scrollFrame = scrollFrame or scrollBar._wnOwningScrollFrame
+    if not scrollFrame then
+        local parent = scrollBar:GetParent()
+        if parent and parent.GetVerticalScrollRange then
+            scrollFrame = parent
         end
-        if scrollFrame and scrollBar:GetParent() ~= scrollFrame then
-            scrollBar:SetParent(scrollFrame)
+    end
+    if scrollFrame then
+        scrollBar._wnOwningScrollFrame = scrollFrame
+        if not scrollBar._scrollFrame then
+            scrollBar._scrollFrame = scrollFrame
         end
-        if upBtn and upBtn:GetParent() ~= scrollBar then
-            upBtn:SetParent(scrollBar)
-        end
-        if downBtn and downBtn:GetParent() ~= scrollBar then
-            downBtn:SetParent(scrollBar)
-        end
+    end
+
+    local containerLevel = scrollBarContainer:GetFrameLevel()
+
+    local function LayoutButtonsInColumn(buttonParent)
+        local btnPadX = math.max(0, math.floor((colW - btnSize) * 0.5))
         if upBtn then
+            if upBtn:GetParent() ~= buttonParent then
+                upBtn:SetParent(buttonParent)
+            end
+            upBtn:SetFrameLevel(buttonParent:GetFrameLevel() + 3)
             upBtn:ClearAllPoints()
             upBtn:SetSize(btnSize, btnSize)
-            upBtn:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
+            upBtn:SetPoint("TOPLEFT", scrollBarContainer, "TOPLEFT", btnPadX, 0)
             upBtn:Show()
         end
         if downBtn then
+            if downBtn:GetParent() ~= buttonParent then
+                downBtn:SetParent(buttonParent)
+            end
+            downBtn:SetFrameLevel(buttonParent:GetFrameLevel() + 3)
             downBtn:ClearAllPoints()
             downBtn:SetSize(btnSize, btnSize)
-            downBtn:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
+            downBtn:SetPoint("BOTTOMLEFT", scrollBarContainer, "BOTTOMLEFT", btnPadX, 0)
             downBtn:Show()
         end
+    end
+
+    local function LayoutTrackBetweenButtons()
         scrollBar:ClearAllPoints()
         if upBtn and downBtn then
             scrollBar:SetPoint("TOP", upBtn, "BOTTOM", 0, 0)
@@ -1292,47 +1589,48 @@ function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContaine
             scrollBar:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
         end
         scrollBar:SetWidth(barWidth)
-        scrollBar:SetPoint("RIGHT", scrollBarContainer, "RIGHT", 0, 0)
+        scrollBar:SetPoint("LEFT", scrollBarContainer, "LEFT", barPadX, 0)
+        scrollBar:SetPoint("RIGHT", scrollBarContainer, "RIGHT", -barPadX, 0)
         scrollBar:Show()
         if scrollBar.Thumb and scrollBar.Thumb.SetWidth then
             scrollBar.Thumb:SetWidth(math.max(2, barWidth - 2))
         end
+    end
+
+    -- Blizzard: keep SecureScroll up/down on ScrollBar, but reparent ScrollBar into the external
+    -- column lane. Leaving it on ScrollFrame clips bar/buttons when the viewport uses SetClipsChildren(true).
+    if isBlizzardBar then
+        if upBtn and upBtn:GetParent() ~= scrollBar then
+            upBtn:SetParent(scrollBar)
+        end
+        if downBtn and downBtn:GetParent() ~= scrollBar then
+            downBtn:SetParent(scrollBar)
+        end
+        scrollBar:SetParent(scrollBarContainer)
+        scrollBar:SetFrameLevel(containerLevel + 1)
+        if scrollFrame then
+            scrollBar._wnOwningScrollFrame = scrollFrame
+            scrollBar._scrollFrame = scrollFrame
+            if not scrollBar._wnBlizzardValueHook then
+                scrollBar._wnBlizzardValueHook = true
+                scrollBar:SetScript("OnValueChanged", function(self, value)
+                    local sf = self._scrollFrame or self._wnOwningScrollFrame
+                    if sf and sf.SetVerticalScroll then
+                        sf:SetVerticalScroll(value)
+                    end
+                end)
+            end
+        end
+        LayoutButtonsInColumn(scrollBar)
+        LayoutTrackBetweenButtons()
         return
     end
 
-    local containerLevel = scrollBarContainer:GetFrameLevel()
+    -- Modern custom chrome: reparent track + buttons into the external column lane.
     scrollBar:SetParent(scrollBarContainer)
     scrollBar:SetFrameLevel(containerLevel + 1)
-    scrollBar:Show()
-
-    -- Buttons fully inside container (no -gap/+gap) so they are never clipped by adjacent panels
-    if upBtn then
-        upBtn:SetParent(scrollBarContainer)
-        upBtn:SetFrameLevel(containerLevel + 3)
-        upBtn:ClearAllPoints()
-        upBtn:SetSize(btnSize, btnSize)
-        upBtn:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
-        upBtn:Show()
-    end
-    if downBtn then
-        downBtn:SetParent(scrollBarContainer)
-        downBtn:SetFrameLevel(containerLevel + 3)
-        downBtn:ClearAllPoints()
-        downBtn:SetSize(btnSize, btnSize)
-        downBtn:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
-        downBtn:Show()
-    end
-    scrollBar:ClearAllPoints()
-    if upBtn and downBtn then
-        scrollBar:SetPoint("TOP", upBtn, "BOTTOM", 0, 0)
-        scrollBar:SetPoint("BOTTOM", downBtn, "TOP", 0, 0)
-    else
-        scrollBar:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
-        scrollBar:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
-    end
-    -- Fixed width (never stretch): bar and buttons stay barWidth/btnSize so all windows look identical
-    scrollBar:SetWidth(barWidth)
-    scrollBar:SetPoint("CENTER", scrollBarContainer, "CENTER", 0, 0)
+    LayoutButtonsInColumn(scrollBarContainer)
+    LayoutTrackBetweenButtons()
 end
 
 ---Update scroll bar visibility based on content height (call after content changes)
@@ -1742,6 +2040,38 @@ function ns.UI_GetScrollStep()
     local base = (ns.UI_LAYOUT or {}).SCROLL_BASE_STEP or 28
     local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or (ns.UI_LAYOUT or {}).SCROLL_SPEED_DEFAULT or 1.0
     return math.floor(base * speed + 0.5)
+end
+
+--- Wheel scroll with thumb sync (external scrollbar column safe).
+function ns.UI_ScrollFrameByMouseWheel(scrollFrame, delta)
+    if not scrollFrame or not scrollFrame.SetVerticalScroll then return end
+    local step = ns.UI_GetScrollStep()
+    local cur = scrollFrame:GetVerticalScroll() or 0
+    local maxS = scrollFrame:GetVerticalScrollRange() or 0
+    local newScroll = math.max(0, math.min(cur - (delta * step), maxS))
+    local PS = ns.PixelSnap
+    if PS then newScroll = PS(newScroll) end
+    scrollFrame:SetVerticalScroll(newScroll)
+    if ns.UI.Factory and ns.UI.Factory.SyncScrollBarThumb then
+        ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
+    end
+end
+
+function ns.UI_EnableStandardScrollWheel(scrollFrame)
+    if not scrollFrame then return end
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        ns.UI_ScrollFrameByMouseWheel(self, delta)
+    end)
+end
+
+--- Forward wheel from scroll child (cards/rows) to the scroll frame.
+function ns.UI_WireScrollChildMouseWheel(scrollFrame, scrollChild)
+    if not scrollFrame or not scrollChild then return end
+    scrollChild:EnableMouseWheel(true)
+    scrollChild:SetScript("OnMouseWheel", function(_, delta)
+        ns.UI_ScrollFrameByMouseWheel(scrollFrame, delta)
+    end)
 end
 -- FACTORY PATTERN BRIDGE (ns.UI.Factory.* → Local Functions)
 -- Bridge ns.UI.Factory calls to internal functions
