@@ -50,6 +50,12 @@ local MERGED_LOOT_TRY_DEDUP_TTL = TC.MERGED_LOOT_TRY_DEDUP_TTL or 600
 local CLEANUP_INTERVAL = TC.CLEANUP_INTERVAL or 60
 local GUID_PARSE_CACHE_MAX = TC.GUID_PARSE_CACHE_MAX or 512
 
+-- Forward declaration: fishingCtx is defined (assigned) further below, but Fns helpers
+-- such as Fns.LootSessionHasFishingEvidence (defined earlier in this chunk) reference it.
+-- Lua 5.1 resolves upvalues by lexical position, so it must be declared before those callers
+-- or it falls back to a nil global (crash on fishing loot).
+local fishingCtx
+
 local function TrimGuidParseCachesIfOversized()
     local function trim(cache)
         if not cache then return end
@@ -594,7 +600,7 @@ V.lastDifficultySkipChatTime = 0
 local lastLockoutSkipChatKey = nil
 local lastLockoutSkipChatTime = 0
 local SKIP_CHAT_DEDUP_SEC = TC.SKIP_CHAT_DEDUP_SEC or 15
-local fishingCtx = {
+fishingCtx = {
     active = false,            -- set on fishing cast, cleared when fishing loot processed (or 30s timer)
     castTime = 0,              -- timestamp of last fishing cast
     lootWasFishing = false,    -- true after ProcessFishingLoot ran with trackable; LOOT_CLOSED only clears active then
