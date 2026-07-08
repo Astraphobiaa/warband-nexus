@@ -1148,30 +1148,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
-
-Aggiunto:
-- Scheda PvP: progresso bracket, onore, conquista e cronologia partite per la tua banda guerriera.
-- Impostazioni: stile interfaccia Classica con pulsanti, cornici e barre di scorrimento Blizzard predefiniti.
-
-Aggiornato:
-- Tema Classico: liste trasparenti e frecce di scorrimento Blizzard (niente sfondo grigio dietro le liste personaggi).
-- Equipaggiamento: paperdoll e pannello deposito rinnovati, soprattutto in interfaccia Classica.
-- Panoramica PvP: layout colonne e ordine bracket ottimizzati.
-- Mini finestre (To-Do, Forziere, Istanze salvate): rifacimento layout con corsie scroll simmetriche.
-- Professioni: layout e righe equipaggiamento migliorati per Classica e Moderna.
-- Impostazioni: stile interfaccia (Moderna vs Classica) separato da modalità chiara/scura.
-- Banca di gilda: completamento scansione con conteggio oggetti e aggiornamento tooltip WN Search.
-- Raccomandazioni deposito: confronto ilvl più affidabile spostando oggetti tra sacche e slot.
+L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
 
 Corretto:
-- Tracker To-Do: layout e barra di scorrimento non sovrappongono più le righe dei piani.
-- Scheda PvE: griglia personaggi si ridisegna correttamente dopo cambio colonne o scheda.
-- Banca di gilda: apertura con scansione completa atomica (evita snapshot vuoti).
-- Collezioni: nuovo tentativo scan vuoti quando le API hanno finito di caricare.
-- Integrazioni chat: limitate quando il volume messaggi sovraccaricherebbe l'elaborazione.
-- Scansione banca di gilda: limitata per ridurre scansioni ripetute all'apertura.
-- Try Counter: miglior rilevamento e conteggio Netherwarped Cursed Egg.
+- Notifiche: corretto un errore Lua che poteva impedire la comparsa dei popup di avviso (incluso il promemoria settimanale del Forziere).
+- Try Counter: corretti un errore e i tentativi non conteggiati durante il saccheggio nei dungeon Passi nel Tempo.
+- Try Counter: il bottino dei megadungeon solo mitici (Operation: Mechagon, Dawn of the Infinite) ora viene conteggiato quando la difficoltà è sconosciuta.
+- Try Counter: miglior rilevamento dei giochi della Fiera di Lunacupa.
 
 CurseForge: Warband Nexus]=]
 

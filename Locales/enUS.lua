@@ -1145,30 +1145,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
-
-Added:
-- PvP tab: rated bracket progress, honor, conquest, and recent match history across your warband.
-- Settings: Classic UI style option uses Blizzard default buttons, frames, and scrollbars.
-
-Updated:
-- Classic theme: transparent list hosts and Blizzard scroll arrows (no grey slab behind character lists).
-- Gear tab: refreshed paperdoll and stash panel chrome, especially in Classic UI.
-- PvP overview: warband column layout and bracket column order tuned for readability.
-- Mini tracker windows (To-Do, Vault, Saved Instances): layout overhaul with symmetric scroll lanes.
-- Professions tab: layout and equipment rows improved for Classic and Modern UI.
-- Settings: UI Style (Modern vs Classic) separated from dark/light color mode.
-- Guild bank: scan completion reports item count and refreshes WN Search tooltips.
-- Gear stash recommendations: more reliable ilvl comparison when items move between bags and slots.
+L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
 
 Fixed:
-- To-Do tracker: layout and scrollbar no longer overlap plan rows.
-- PvE tab: character grid redraws correctly after column or tab changes.
-- Guild bank: opening the bank commits a full scan atomically (avoids stale empty snapshots).
-- Collections: empty scans retry once collection APIs finish loading.
-- Chat integrations: throttled when message volume would overload processing.
-- Guild bank scanning: throttled to reduce repeated scan churn during open bank.
-- Try Counter: improved Netherwarped Cursed Egg drop detection and tracking.
+- Notifications: fixed a Lua error that could stop alert popups, including the weekly vault reminder, from appearing.
+- Try Counter: fixed an error and uncounted attempts when looting in Timewalking dungeons.
+- Try Counter: Mythic-only megadungeon drops (Operation: Mechagon, Dawn of the Infinite) now count when the difficulty is unknown.
+- Try Counter: improved Darkmoon Faire game detection.
 
 CurseForge: Warband Nexus]=]
 

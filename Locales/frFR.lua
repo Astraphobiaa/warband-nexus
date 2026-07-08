@@ -1147,30 +1147,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
-
-Ajouté :
-- Onglet JcJ : progression des brackets, honneur, conquête et historique des matchs pour votre bataillon.
-- Paramètres : style d'interface Classique avec boutons, cadres et barres de défilement Blizzard par défaut.
-
-Mis à jour :
-- Thème Classique : listes transparentes et flèches de défilement Blizzard (plus de fond gris derrière les listes).
-- Équipement : paperdoll et panneau de réserve retravaillés, surtout en interface Classique.
-- Vue d'ensemble JcJ : disposition des colonnes et ordre des brackets améliorés.
-- Mini-fenêtres (To-Do, Coffre, Instances enregistrées) : refonte du layout avec colonnes de défilement symétriques.
-- Métiers : mise en page et lignes d'équipement améliorées pour Classique et Moderne.
-- Paramètres : style d'interface (Moderne vs Classique) séparé du mode clair/sombre.
-- Banque de guilde : fin de scan avec nombre d'objets et actualisation des infobulles WN Search.
-- Recommandations de réserve : comparaison d'ilvl plus fiable lors des déplacements entre sacs et emplacements.
+L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
 
 Corrigé :
-- Tracker To-Do : le layout et la barre de défilement ne chevauchent plus les lignes de plans.
-- Onglet PvE : la grille de personnages se redessine correctement après changement de colonne ou d'onglet.
-- Banque de guilde : ouverture avec scan complet atomique (évite les instantanés vides).
-- Collections : nouvel essai des scans vides une fois les API chargées.
-- Intégrations chat : limitation lors des pics de messages.
-- Scan banque de guilde : limitation pour réduire les scans répétés à l'ouverture.
-- Try Counter : meilleure détection et suivi de l'œuf maudit Netherwarped.
+- Notifications : erreur Lua corrigée qui pouvait empêcher l'affichage des fenêtres d'alerte (dont le rappel hebdomadaire du Coffre).
+- Try Counter : erreur et tentatives non comptées lors du butin dans les donjons Marche du temps corrigées.
+- Try Counter : le butin des méga-donjons uniquement mythiques (Operation: Mechagon, Dawn of the Infinite) est désormais compté lorsque la difficulté est inconnue.
+- Try Counter : meilleure détection des jeux de la Foire de Sombrelune.
 
 CurseForge: Warband Nexus]=]
 

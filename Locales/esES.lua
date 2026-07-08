@@ -1148,30 +1148,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
-
-Añadido:
-- Pestaña JcJ: progreso de brackets, honor, conquista e historial de partidas de tu banda guerrera.
-- Ajustes: estilo de interfaz Clásica con botones, marcos y barras de desplazamiento Blizzard por defecto.
-
-Actualizado:
-- Tema Clásico: listas transparentes y flechas de desplazamiento Blizzard (sin fondo gris detrás de listas de personajes).
-- Equipo: paperdoll y panel de almacén renovados, especialmente en interfaz Clásica.
-- Vista general JcJ: diseño de columnas y orden de brackets mejorados.
-- Mini ventanas (To-Do, Bóveda, Instancias guardadas): rediseño con carriles de scroll simétricos.
-- Profesiones: diseño y filas de equipo mejorados para interfaz Clásica y Moderna.
-- Ajustes: estilo de interfaz (Moderna vs Clásica) separado del modo claro/oscuro.
-- Banco de hermandad: al completar el escaneo informa cantidad de objetos y actualiza tooltips WN Search.
-- Recomendaciones de almacén: comparación de ilvl más fiable al mover objetos entre bolsas y ranuras.
+L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
 
 Corregido:
-- Rastreador To-Do: el diseño y la barra de desplazamiento ya no solapan filas de planes.
-- Pestaña PvE: la cuadrícula de personajes se redibuja correctamente tras cambiar columnas o pestañas.
-- Banco de hermandad: abrir el banco confirma un escaneo completo atómicamente (evita instantáneas vacías).
-- Colecciones: reintento de escaneos vacíos cuando las API terminan de cargar.
-- Integraciones de chat: limitadas cuando el volumen de mensajes sobrecargaría el procesamiento.
-- Escaneo del banco de hermandad: limitado para reducir escaneos repetidos al abrir el banco.
-- Try Counter: mejor detección y seguimiento del huevo maldito Netherwarped.
+- Notificaciones: corregido un error de Lua que podía impedir que aparecieran las ventanas de alerta (incluido el recordatorio semanal de la Bóveda).
+- Try Counter: corregido un error e intentos no contados al saquear en mazmorras de Paseo Temporal.
+- Try Counter: el botín de megamazmorras solo míticas (Operation: Mechagon, Dawn of the Infinite) ahora se cuenta cuando la dificultad es desconocida.
+- Try Counter: mejor detección de los juegos de la Feria de la Luna Negra.
 
 CurseForge: Warband Nexus]=]
 

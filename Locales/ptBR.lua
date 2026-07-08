@@ -1148,30 +1148,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
-
-Adicionado:
-- Aba JxJ: progresso de brackets, honra, conquista e histórico de partidas da sua banda guerreira.
-- Configurações: estilo de interface Clássica com botões, molduras e barras de rolagem Blizzard padrão.
-
-Atualizado:
-- Tema Clássico: listas transparentes e setas de rolagem Blizzard (sem fundo cinza atrás das listas de personagens).
-- Equipamento: paperdoll e painel de armazenamento renovados, especialmente na interface Clássica.
-- Visão geral JxJ: layout de colunas e ordem de brackets ajustados.
-- Mini janelas (To-Do, Cofre, Instâncias salvas): reformulação com faixas de scroll simétricas.
-- Profissões: layout e linhas de equipamento melhorados para Clássica e Moderna.
-- Configurações: estilo de interface (Moderna vs Clássica) separado do modo claro/escuro.
-- Banco da guilda: conclusão do scan informa quantidade de itens e atualiza tooltips WN Search.
-- Recomendações de armazenamento: comparação de ilvl mais confiável ao mover itens entre bolsas e slots.
+L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
 
 Corrigido:
-- Rastreador To-Do: layout e barra de rolagem não sobrepõem mais linhas de planos.
-- Aba PvE: grade de personagens redesenha corretamente após mudar colunas ou abas.
-- Banco da guilda: abrir o banco confirma scan completo atomicamente (evita instantâneos vazios).
-- Coleções: nova tentativa de scans vazios quando as APIs terminam de carregar.
-- Integrações de chat: limitadas quando o volume de mensagens sobrecarregaria o processamento.
-- Scan do banco da guilda: limitado para reduzir scans repetidos ao abrir o banco.
-- Try Counter: melhor detecção e contagem do Netherwarped Cursed Egg.
+- Notificações: corrigido um erro de Lua que podia impedir a exibição dos pop-ups de alerta (incluindo o lembrete semanal do Cofre).
+- Try Counter: corrigido um erro e tentativas não contadas ao saquear em masmorras de Caminhada Temporal.
+- Try Counter: o loot de megamasmorras somente míticas (Operation: Mechagon, Dawn of the Infinite) agora é contado quando a dificuldade é desconhecida.
+- Try Counter: melhor detecção dos jogos da Feira da Lua Negra.
 
 CurseForge: Warband Nexus]=]
 

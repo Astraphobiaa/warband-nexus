@@ -1147,30 +1147,13 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V330"] = [=[v3.3.0 (2026-07-05)
-
-Hinzugefügt:
-- PvP-Tab: Bewertungs-Fortschritt, Ehre, Eroberung und letzte Matches für deine Kriegsmeute.
-- Einstellungen: Classic-UI-Stil mit Blizzard-Standardbuttons, -rahmen und -scrollleisten.
-
-Aktualisiert:
-- Classic-Thema: transparente Listenflächen und Blizzard-Scrollpfeile (keine graue Fläche hinter Charakterlisten).
-- Ausrüstung: überarbeitetes Paperdoll und Tresor-Panel, besonders im Classic-UI.
-- PvP-Übersicht: Spaltenlayout und Bracket-Reihenfolge für bessere Lesbarkeit.
-- Mini-Fenster (To-Do, Tresor, Gespeicherte Instanzen): Layout-Überarbeitung mit symmetrischen Scroll-Spalten.
-- Berufe: Layout und Ausrüstungszeilen für Classic- und Modern-UI verbessert.
-- Einstellungen: UI-Stil (Modern vs. Classic) von Hell/Dunkel getrennt.
-- Gildenbank: Scan-Abschluss meldet Itemanzahl und aktualisiert WN-Such-Tooltips.
-- Ausrüstungs-Tresor-Empfehlungen: zuverlässigere ilvl-Vergleiche beim Verschieben zwischen Taschen und Slots.
+L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
 
 Behoben:
-- To-Do-Tracker: Layout und Scrollleiste überdecken Planzeilen nicht mehr.
-- PvE-Tab: Charaktergitter aktualisiert sich korrekt nach Spalten- oder Tab-Wechsel.
-- Gildenbank: Öffnen führt einen vollständigen Scan atomisch aus (keine leeren Zwischenstände).
-- Sammlungen: leere Scans werden wiederholt, sobald die APIs fertig geladen sind.
-- Chat-Integrationen: gedrosselt bei hohem Nachrichtenaufkommen.
-- Gildenbank-Scan: gedrosselt, um wiederholtes Scannen beim Öffnen zu reduzieren.
-- Try Counter: verbesserte Erkennung und Zählung für Netherwarped Cursed Egg.
+- Benachrichtigungen: Lua-Fehler behoben, der Hinweis-Popups (einschließlich der wöchentlichen Tresor-Erinnerung) am Erscheinen hindern konnte.
+- Try Counter: Fehler und nicht gezählte Versuche beim Plündern in Zeitwanderungs-Dungeons behoben.
+- Try Counter: Beute aus rein mythischen Megadungeons (Operation: Mechagon, Dawn of the Infinite) wird jetzt gezählt, wenn der Schwierigkeitsgrad unbekannt ist.
+- Try Counter: verbesserte Erkennung der Dunkelmond-Jahrmarkt-Spiele.
 
 CurseForge: Warband Nexus]=]
 
