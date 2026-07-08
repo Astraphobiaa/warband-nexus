@@ -2042,7 +2042,8 @@ RT.zoneDropDB = zoneDropDB
 RT.processedGUIDs = processedGUIDs
 RT.fishingDropDB = fishingDropDB
 RT.recentKillByNpcID = recentKillByNpcID
-RT.DIFFICULTY_ID_TO_LABELS = DIFFICULTY_ID_TO_LABELS
+-- RT.DIFFICULTY_ID_TO_LABELS is bound after the table is defined below (Lua 5.1 forward-ref: the local
+-- does not exist at this line yet, so binding here would store nil and crash the difficulty-skip path).
 RT.SKIP_CHAT_DEDUP_SEC = SKIP_CHAT_DEDUP_SEC
 RT.ENCOUNTER_OBJECT_TTL = ENCOUNTER_OBJECT_TTL
 RT.LAST_LOOT_SOURCE_TTL = LAST_LOOT_SOURCE_TTL
@@ -2239,6 +2240,9 @@ local DIFFICULTY_ID_TO_LABELS = {
     [19]  = "Normal",   -- Event dungeon
     [232] = "Normal",   -- Event dungeon (alternate)
 }
+-- Bind onto RT here (not in the early RT.* block ~line 2045) so the satellite files
+-- (TryCounterService_Loot.lua difficulty-skip path) get the real table, not nil.
+RT.DIFFICULTY_ID_TO_LABELS = DIFFICULTY_ID_TO_LABELS
 
 function Fns.ResolveDifficultyLabel(difficultyID)
     if not difficultyID or type(difficultyID) ~= "number" then return nil end
