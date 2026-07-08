@@ -305,6 +305,16 @@ function WarbandNexus:RunTryCounterSelfTest()
     probe("CheckTargetDrops(no target)", function() WN:CheckTargetDrops() end)
 
     section("Statistics-only miss (raid/dungeon gate)")
+    probe("DIFFICULTY_ID_TO_LABELS bound on runtime (diff-skip guard)", function()
+        -- Regression: a Lua 5.1 forward-ref left RT.DIFFICULTY_ID_TO_LABELS nil, crashing the
+        -- difficulty-skip branch of ProcessNPCLoot (Timewalking Freehold, difficultyID 24).
+        if type(RT.DIFFICULTY_ID_TO_LABELS) ~= "table" then
+            error("RT.DIFFICULTY_ID_TO_LABELS is nil (forward-ref regression)")
+        end
+        if RT.DIFFICULTY_ID_TO_LABELS[24] ~= "Heroic" then
+            error("expected Timewalking dungeon (24) -> Heroic label")
+        end
+    end)
     probe("ShouldUseStatisticsOnlyMiss false without statisticIds", function()
         if Fns.ShouldUseStatisticsOnlyMiss({ fakeDrop() }, nil) then
             error("expected false without statisticIds")
@@ -530,15 +540,17 @@ function WarbandNexus:RunTryCounterSelfTest()
             wipe(RT.lootSession.slotData)
             RT.lootSession.opened = true
             local captured
-            local origTryChat = TC.TryChat
-            TC.TryChat = function(msg)
+            -- Product emits via Fns.TryChat (see TryCounterService.lua `Fns.TryChat = TC.TryChat`,
+            -- a one-time copy). Hook that exact slot, not TC.TryChat, or the announce slips past.
+            local origTryChat = Fns.TryChat
+            Fns.TryChat = function(msg)
                 if type(msg) == "string" and msg:find("attempt", 1, true) then
                     captured = msg
                 end
             end
             Fns.FinalizeDeferredLootSessionOutcome(WN)
             Fns.FlushDeferredTryCounterIncrementAnnounces()
-            TC.TryChat = origTryChat
+            Fns.TryChat = origTryChat
             if WN:GetTryCount("item", FAKE_ITEM_ID) ~= old + 1 then
                 error("expected single early increment count")
             end

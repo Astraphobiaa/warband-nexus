@@ -2429,7 +2429,12 @@ function Fns.FilterDropsByDifficulty(drops, encounterDiffID)
                 -- Fail-closed by default when difficulty is unknown (prevents Mythic mount +1 on Normal).
                 -- Exception: Mythic-only drops in scenario megadungeons (Mechagon, DotI) — no per-boss
                 -- kill statistic and GetInstanceInfo difficulty is often nil; these instances are Mythic-only.
-                local inInst, instType = Fns.GetTryCounterInstanceType and Fns.GetTryCounterInstanceType()
+                -- Multi-return trap: `X and X()` truncates to one value, dropping instType (Lua 5.1).
+                -- Guard the call separately so both returns survive.
+                local inInst, instType
+                if Fns.GetTryCounterInstanceType then
+                    inInst, instType = Fns.GetTryCounterInstanceType()
+                end
                 if inInst and instType == "scenario" and reqDiff == "Mythic" then
                     diffOk = true
                 else
