@@ -44,6 +44,11 @@ function NotificationToastFactory:CreateToastLayer(parent, width, height)
     assert(Factory and Factory.CreateContainer, "NotificationToastFactory requires UI.Factory")
     local layer = Factory:CreateContainer(parent, width or 1, height or 1, false)
     assert(layer, "CreateToastLayer failed")
+    -- Factory containers are plain Frames; Midnight 12.0.7 has no Frame:SetBackdrop.
+    -- Toast layers are used as backdrop shells, so retrofit BackdropTemplateMixin here.
+    if BackdropTemplateMixin and not layer.SetBackdrop then
+        Mixin(layer, BackdropTemplateMixin)
+    end
     return layer
 end
 
