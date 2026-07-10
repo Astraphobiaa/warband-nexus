@@ -309,7 +309,10 @@ function ns.UI_CreateTitleToolbarHideLevelButton(parent, opts)
             catcher:SetFrameLevel(5199)
             catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             catcher:SetScript("OnClick", function()
-                if menu and menu:IsShown() and not menu:IsMouseOver() and not btn:IsMouseOver() then
+                -- Catcher sits above the toolbar button, so it eats the second click before the button's
+                -- own toggle OnClick can fire. Close on any click outside the menu (button included) so
+                -- clicking Hide again closes it. Clicks inside the menu land on the higher-level rows.
+                if menu and menu:IsShown() and not menu:IsMouseOver() then
                     HideMenuClose()
                 end
             end)

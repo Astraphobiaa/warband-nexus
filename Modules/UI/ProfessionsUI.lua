@@ -602,8 +602,8 @@ function PUI.ProfColumnPickerPopulateMenu(menu, anchorBtn)
         checkRow:SetScript("OnLeave", function(f) f:SetAlpha(1) end)
         checkRow:Show()
 
-        if ColumnOrder and ColumnOrder.AttachPickerReorderButtons then
-            ColumnOrder.AttachPickerReorderButtons(checkRow, colOrder, capturedKey, RepopulatePickerAfterOrderChange)
+        if ColumnOrder and ColumnOrder.AttachPickerDragReorder then
+            ColumnOrder.AttachPickerDragReorder(checkRow, colOrder, capturedKey, RepopulatePickerAfterOrderChange, { label = tc.label })
         end
 
         yOff = yOff - ROW_H

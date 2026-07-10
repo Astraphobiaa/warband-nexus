@@ -641,7 +641,11 @@ function ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
     local bar = scrollFrame.ScrollBar
     if not bar or not bar.SetValue or not scrollFrame.GetVerticalScroll then return end
     if scrollFrame.UpdateScrollChildRect then
+        -- UpdateScrollChildRect can fire OnScrollRangeChanged synchronously; flag it so the
+        -- range handler skips re-anchoring self (SetPoint mid-rect-resolution = circular dep crash).
+        scrollFrame._wnInScrollChildRect = true
         scrollFrame:UpdateScrollChildRect()
+        scrollFrame._wnInScrollChildRect = nil
     end
     local maxScroll = 0
     if scrollFrame.GetVerticalScrollRange then
@@ -1246,6 +1250,15 @@ function ns.UI.Factory:WireScrollBarColumnLayout(scrollFrame, host, barColumn, o
     scrollFrame._wnScrollAnchorTL = { frame = host, a1 = "TOPLEFT", a2 = "TOPLEFT", x = edge, y = -edge }
     scrollFrame._wnScrollAnchorBRShown = { frame = barColumn, a1 = "BOTTOMRIGHT", a2 = "BOTTOMLEFT", x = -gap, y = edge }
     scrollFrame._wnScrollAnchorBRHidden = { frame = host, a1 = "BOTTOMRIGHT", a2 = "BOTTOMRIGHT", x = -edge, y = edge }
+
+    -- Dropdown-wire anchors scrollFrame.BOTTOMRIGHT -> barColumn.BOTTOMLEFT, so barColumn must depend on
+    -- host (not scrollFrame). A prior EnsureScrollBarColumnSync may have anchored it to scrollFrame's edge
+    -- (external-column mode); re-pin it to the host here or the two modes form a circular SetPoint dependency.
+    if barColumn.ClearAllPoints and barColumn.SetPoint then
+        barColumn:ClearAllPoints()
+        barColumn:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, -edge)
+        barColumn:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, edge)
+    end
 end
 
 --- Create or reuse scroll + scrollbar column on a dropdown menu host; sizes viewport to shared row cap.
@@ -1454,6 +1467,9 @@ function ns.UI.Factory:InstallExternalScrollBarRangeGuard(scrollFrame)
         elseif self.SetVerticalScroll then
             self:SetVerticalScroll(0)
         end
+        -- Skip re-anchor while inside our own UpdateScrollChildRect: SetPoint on self here would
+        -- anchor to a region WoW is still resolving from self. The originating caller finishes the sync.
+        if self._wnInScrollChildRect then return end
         ResyncExternalBarColumn(self)
     end)
 

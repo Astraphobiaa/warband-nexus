@@ -306,8 +306,8 @@ local function PvE_ColumnPickerPopulateMenu(menu, addon)
             if prevClick then prevClick(self, ...) end
             onToggle(self:GetChecked() and true or false)
         end)
-        if reorderKey and ColumnOrder and ColumnOrder.AttachPickerReorderButtons then
-            ColumnOrder.AttachPickerReorderButtons(rowHost, colOrder, reorderKey, RepopulatePvEColumnPicker)
+        if reorderKey and ColumnOrder and ColumnOrder.AttachPickerDragReorder then
+            ColumnOrder.AttachPickerDragReorder(rowHost, colOrder, reorderKey, RepopulatePvEColumnPicker, { label = labelText })
         end
         return y - ROW
     end

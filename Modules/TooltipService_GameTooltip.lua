@@ -49,6 +49,9 @@ end
 
 function GT.AdjustGameTooltipForOwner(tooltip, owner, anchor)
     if not IsUsableUIRegion(tooltip) or not IsUsableUIRegion(owner) then return false end
+    -- Never reposition a widget-carrying tooltip: SetPoint from insecure code taints its
+    -- secret-number widget layout (defensive; GT.IsBlizzardWidgetTooltip set in GT.Install).
+    if GT.IsBlizzardWidgetTooltip and GT.IsBlizzardWidgetTooltip(tooltip) then return false end
     if tooltip.GetOwner then
         local okOwner, currentOwner = pcall(tooltip.GetOwner, tooltip)
         if not okOwner or currentOwner ~= owner then return false end
@@ -709,30 +712,47 @@ function GT.BuildWNItemCountRows(itemID, isShift)
     local bankIcon = SafeAtlasMarkup("VignetteLoot", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
     local warbandIcon = SafeAtlasMarkup("warbands-icon", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
     local guildIcon = SafeAtlasMarkup(GUILD_VAULT_ICON_ATLAS, ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
-    local altGroupIcon = SafeAtlasMarkup("shop-icon-housing-characters-up", ITEM_COUNT_ICON_W, ITEM_COUNT_ICON_H)
 
     local liveChar, otherChars = SplitLiveAndAltCharacters(details.characters)
-    local altBagTotal, altBankTotal = SumAltCharacterCounts(otherChars)
     local guildTotal = SumGuildCounts(details.guilds)
 
-    local total = (details.warbandBank or 0) + guildTotal
-    if liveChar then
-        total = total + (liveChar.bagCount or 0) + (liveChar.bankCount or 0)
+    local altLabel = (ns.L and ns.L["TOOLTIP_ALT_CHARACTERS"]) or "Alt Characters"
+    local warbandLabel = (ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"
+    local guildLabel = (ns.L and ns.L["TOOLTIP_GUILD_BANK"]) or (ns.L and ns.L["TOOLTIP_GUILD_VAULT"]) or "Guild Bank"
+
+    -- Unified character list (live + alts), ranked by how much of the item each holds.
+    -- Non-shift shows only the top holders; Shift reveals the full roster.
+    local charRows = {}
+    local function AddCharRow(char, isLive)
+        if not char then return end
+        local bag = char.bagCount or 0
+        local bank = char.bankCount or 0
+        if bag <= 0 and bank <= 0 then return end
+        local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+        charRows[#charRows + 1] = {
+            label = isLive and ResolveLiveCharacterLabel(char) or (char.charName or altLabel),
+            bag = bag,
+            bank = bank,
+            count = bag + bank,
+            cr = cc.r, cg = cc.g, cb = cc.b,
+        }
     end
-    if isShift then
-        for i = 1, #otherChars do
-            local char = otherChars[i]
-            total = total + (char.bagCount or 0) + (char.bankCount or 0)
-        end
-    else
-        total = total + altBagTotal + altBankTotal
+    AddCharRow(liveChar, true)
+    for i = 1, #otherChars do
+        AddCharRow(otherChars[i], false)
+    end
+    table.sort(charRows, function(a, b)
+        if a.count ~= b.count then return a.count > b.count end
+        return (a.label or "") < (b.label or "")
+    end)
+
+    local total = (details.warbandBank or 0) + guildTotal
+    for i = 1, #charRows do
+        total = total + charRows[i].count
     end
     if total <= 0 then return nil, 0 end
 
     local rows = {}
-    local altLabel = (ns.L and ns.L["TOOLTIP_ALT_CHARACTERS"]) or "Alt Characters"
-    local warbandLabel = (ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"
-    local guildLabel = (ns.L and ns.L["TOOLTIP_GUILD_BANK"]) or (ns.L and ns.L["TOOLTIP_GUILD_VAULT"]) or "Guild Bank"
 
     local function pushRow(label, rightText, lr, lg, lb)
         if not rightText then return end
@@ -745,26 +765,13 @@ function GT.BuildWNItemCountRows(itemID, isShift)
         }
     end
 
-    if liveChar then
-        local right = FormatBagBankCountText(bagIcon, bankIcon, liveChar.bagCount, liveChar.bankCount)
-        local cc = RAID_CLASS_COLORS[liveChar.classFile] or { r = 1, g = 1, b = 1 }
-        pushRow(ResolveLiveCharacterLabel(liveChar), right, cc.r, cc.g, cc.b)
-    end
-
-    if isShift then
-        for i = 1, #otherChars do
-            local char = otherChars[i]
-            if (char.bagCount or 0) > 0 or (char.bankCount or 0) > 0 then
-                local right = FormatBagBankCountText(bagIcon, bankIcon, char.bagCount, char.bankCount)
-                local cc = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
-                local name = char.charName or altLabel
-                pushRow(name, right, cc.r, cc.g, cc.b)
-            end
-        end
-    elseif #otherChars > 0 and (altBagTotal > 0 or altBankTotal > 0) then
-        local right = FormatBagBankCountText(bagIcon, bankIcon, altBagTotal, altBankTotal)
-        local lr, lg, lb = ResolveBrightLabelRGB()
-        pushRow(FormatLeftLabelWithIcon(altGroupIcon, altLabel), right, lr, lg, lb)
+    -- Top holders shown by default; the rest fold behind Shift.
+    local TOP_CHARACTER_ROWS = 5
+    local shownChars = isShift and #charRows or math.min(TOP_CHARACTER_ROWS, #charRows)
+    for i = 1, shownChars do
+        local c = charRows[i]
+        local right = FormatBagBankCountText(bagIcon, bankIcon, c.bag, c.bank)
+        pushRow(c.label, right, c.cr, c.cg, c.cb)
     end
 
     if (details.warbandBank or 0) > 0 then
@@ -785,7 +792,7 @@ function GT.BuildWNItemCountRows(itemID, isShift)
         )
     end
 
-    if not isShift and #otherChars > 1 then
+    if not isShift and #charRows > TOP_CHARACTER_ROWS then
         rows[#rows + 1] = {
             hint = true,
             text = (ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list",
@@ -1912,12 +1919,17 @@ function GT.InstallGameTooltipOwnerHook(service, SafeDefer)
             if tooltip ~= GameTooltip then return end
             if not owner then return end
             if anchor == "ANCHOR_CURSOR" then return end
+            -- Never touch a widget-carrying tooltip (map POI / vignette / quest pin): its layout
+            -- compares secret numbers, and repositioning it from our (insecure) code taints that
+            -- secure layout, which later blows up in GameTooltip_ClearWidgetSet on hide.
+            if IsBlizzardWidgetTooltip(tooltip) then return end
             local okCheck, isWN = pcall(GT.IsWarbandNexusOwner, owner)
             if not okCheck or not isWN then return end
             local anch = anchor or "ANCHOR_AUTO"
-            local okAdjust, adjusted = pcall(GT.AdjustGameTooltipForOwner, tooltip, owner, anch)
-            if okAdjust and adjusted then return end
+            -- Always defer placement to a clean execution frame instead of repositioning the shared
+            -- GameTooltip synchronously inside Blizzard's secure SetOwner pipeline (avoids taint there).
             SafeDefer(function()
+                if IsBlizzardWidgetTooltip(GameTooltip) then return end
                 pcall(GT.AdjustGameTooltipForOwner, GameTooltip, owner, anch)
             end)
         end)
