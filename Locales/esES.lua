@@ -1148,13 +1148,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra los mensajes de tiempo total ju
 
 
 
-L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
+L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
+
+Añadido:
+- Menú de columnas: arrastra las filas para reordenar tus columnas; cada fila tiene ahora un asa de arrastre (se han quitado las flechas arriba/abajo).
+
+Actualizado:
+- Los tooltips de objeto ahora muestran los 5 personajes que más cantidad tienen; mantén Mayús para ver la lista completa.
 
 Corregido:
-- Notificaciones: corregido un error de Lua que podía impedir que aparecieran las ventanas de alerta (incluido el recordatorio semanal de la Bóveda).
-- Try Counter: corregido un error e intentos no contados al saquear en mazmorras de Paseo Temporal.
-- Try Counter: el botín de megamazmorras solo míticas (Operation: Mechagon, Dawn of the Infinite) ahora se cuenta cuando la dificultad es desconocida.
-- Try Counter: mejor detección de los juegos de la Feria de la Luna Negra.
+- Corregido un error de Lua que podía aparecer al abrir el menú de columnas.
+- El menú de filtro Ocultar ahora se cierra al volver a pulsar el botón Ocultar.
+- Corregido un error de Lua que podía ocurrir al pasar el ratón sobre puntos de interés en el mapa del mundo.
 
 CurseForge: Warband Nexus]=]
 

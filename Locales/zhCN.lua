@@ -1145,13 +1145,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
-L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
+L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
+
+新增:
+- 列菜单：拖动行即可重新排序列；每行现在都有拖动手柄（已移除上/下箭头）。
+
+更新:
+- 物品提示现在显示持有该物品最多的 5 个角色；按住 Shift 查看完整列表。
 
 修复:
-- 通知：修复可能导致提醒弹窗（包括每周宝库提醒）无法显示的 Lua 错误。
-- Try Counter：修复在时光漫游地下城拾取时的错误与未计数的尝试。
-- Try Counter：仅史诗难度的大型地下城（Operation: Mechagon、Dawn of the Infinite）掉落现在在难度未知时也会计数。
-- Try Counter：改进暗月马戏团游戏检测。
+- 修复打开列菜单时可能出现的 Lua 错误。
+- 隐藏筛选菜单现在在再次点击“隐藏”按钮时关闭。
+- 修复在世界地图上悬停兴趣点时可能发生的 Lua 错误。
 
 CurseForge: Warband Nexus]=]
 

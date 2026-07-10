@@ -1148,13 +1148,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtra i messaggi di tempo totale e te
 
 
 
-L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
+L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
+
+Aggiunto:
+- Menu delle colonne: trascina le righe per riordinare le colonne; ogni riga ora ha una maniglia di trascinamento (le frecce su/giù sono state rimosse).
+
+Aggiornato:
+- I tooltip degli oggetti ora mostrano i 5 personaggi che ne possiedono di più; tieni premuto Maiusc per l'elenco completo.
 
 Corretto:
-- Notifiche: corretto un errore Lua che poteva impedire la comparsa dei popup di avviso (incluso il promemoria settimanale del Forziere).
-- Try Counter: corretti un errore e i tentativi non conteggiati durante il saccheggio nei dungeon Passi nel Tempo.
-- Try Counter: il bottino dei megadungeon solo mitici (Operation: Mechagon, Dawn of the Infinite) ora viene conteggiato quando la difficoltà è sconosciuta.
-- Try Counter: miglior rilevamento dei giochi della Fiera di Lunacupa.
+- Corretto un errore Lua che poteva comparire all'apertura del menu delle colonne.
+- Il menu del filtro Nascondi ora si chiude quando fai di nuovo clic sul pulsante Nascondi.
+- Corretto un errore Lua che poteva verificarsi passando il mouse sui punti di interesse sulla mappa del mondo.
 
 CurseForge: Warband Nexus]=]
 

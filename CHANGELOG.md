@@ -1,8 +1,15 @@
-## v3.3.1 (2026-07-08)
+## v3.3.2 (2026-07-11)
+
+### Added
+
+- Columns menu: drag rows to reorder your columns; each row now has a drag handle (the up/down arrows were removed).
+
+### Updated
+
+- Item tooltips now show the 5 characters holding the most of an item; hold Shift for the full list.
 
 ### Fixed
 
-- Notifications: fixed a Lua error that could stop alert popups, including the weekly vault reminder, from appearing.
-- Try Counter: fixed an error and uncounted attempts when looting in Timewalking dungeons.
-- Try Counter: Mythic-only megadungeon drops (Operation: Mechagon, Dawn of the Infinite) now count when the difficulty is unknown.
-- Try Counter: improved Darkmoon Faire game detection.
+- Fixed a Lua error that could appear when opening the Columns menu.
+- The Hide filter menu now closes when you click the Hide button again.
+- Fixed a Lua error that could occur when hovering points of interest on the world map.

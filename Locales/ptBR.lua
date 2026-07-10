@@ -1148,13 +1148,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
-L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
+L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
+
+Adicionado:
+- Menu de colunas: arraste as linhas para reordenar suas colunas; cada linha agora tem uma alça de arrasto (as setas para cima/baixo foram removidas).
+
+Atualizado:
+- As dicas de item agora mostram os 5 personagens que mais possuem o item; segure Shift para ver a lista completa.
 
 Corrigido:
-- Notificações: corrigido um erro de Lua que podia impedir a exibição dos pop-ups de alerta (incluindo o lembrete semanal do Cofre).
-- Try Counter: corrigido um erro e tentativas não contadas ao saquear em masmorras de Caminhada Temporal.
-- Try Counter: o loot de megamasmorras somente míticas (Operation: Mechagon, Dawn of the Infinite) agora é contado quando a dificuldade é desconhecida.
-- Try Counter: melhor detecção dos jogos da Feira da Lua Negra.
+- Corrigido um erro de Lua que podia aparecer ao abrir o menu de colunas.
+- O menu de filtro Ocultar agora fecha ao clicar novamente no botão Ocultar.
+- Corrigido um erro de Lua que podia ocorrer ao passar o mouse sobre pontos de interesse no mapa do mundo.
 
 CurseForge: Warband Nexus]=]
 

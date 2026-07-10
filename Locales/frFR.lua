@@ -1147,13 +1147,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre les messages système de temps 
 
 
 
-L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
+L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
+
+Ajouté :
+- Menu des colonnes : glissez les lignes pour réordonner vos colonnes ; chaque ligne dispose désormais d'une poignée de glissement (les flèches haut/bas ont été retirées).
+
+Mis à jour :
+- Les infobulles d'objet affichent désormais les 5 personnages qui en possèdent le plus ; maintenez Maj pour la liste complète.
 
 Corrigé :
-- Notifications : erreur Lua corrigée qui pouvait empêcher l'affichage des fenêtres d'alerte (dont le rappel hebdomadaire du Coffre).
-- Try Counter : erreur et tentatives non comptées lors du butin dans les donjons Marche du temps corrigées.
-- Try Counter : le butin des méga-donjons uniquement mythiques (Operation: Mechagon, Dawn of the Infinite) est désormais compté lorsque la difficulté est inconnue.
-- Try Counter : meilleure détection des jeux de la Foire de Sombrelune.
+- Erreur Lua corrigée qui pouvait apparaître à l'ouverture du menu des colonnes.
+- Le menu de filtre Masquer se ferme désormais lorsque vous cliquez à nouveau sur le bouton Masquer.
+- Erreur Lua corrigée qui pouvait survenir en survolant des points d'intérêt sur la carte du monde.
 
 CurseForge: Warband Nexus]=]
 

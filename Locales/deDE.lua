@@ -1147,13 +1147,18 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Blendet Systemmeldungen zu Gesamtspiel
 
 
 
-L["CHANGELOG_V331"] = [=[v3.3.1 (2026-07-08)
+L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
+
+Hinzugefügt:
+- Spalten-Menü: Zeilen per Ziehen neu anordnen; jede Zeile hat jetzt einen Ziehgriff (die Hoch/Runter-Pfeile wurden entfernt).
+
+Aktualisiert:
+- Gegenstands-Tooltips zeigen jetzt die 5 Charaktere mit den meisten Exemplaren; halte Umschalt für die vollständige Liste.
 
 Behoben:
-- Benachrichtigungen: Lua-Fehler behoben, der Hinweis-Popups (einschließlich der wöchentlichen Tresor-Erinnerung) am Erscheinen hindern konnte.
-- Try Counter: Fehler und nicht gezählte Versuche beim Plündern in Zeitwanderungs-Dungeons behoben.
-- Try Counter: Beute aus rein mythischen Megadungeons (Operation: Mechagon, Dawn of the Infinite) wird jetzt gezählt, wenn der Schwierigkeitsgrad unbekannt ist.
-- Try Counter: verbesserte Erkennung der Dunkelmond-Jahrmarkt-Spiele.
+- Lua-Fehler behoben, der beim Öffnen des Spalten-Menüs auftreten konnte.
+- Das Ausblenden-Filtermenü schließt sich jetzt, wenn du erneut auf die Schaltfläche „Ausblenden“ klickst.
+- Lua-Fehler behoben, der beim Überfahren von Punkten von Interesse auf der Weltkarte auftreten konnte.
 
 CurseForge: Warband Nexus]=]
 
