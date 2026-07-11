@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Blizzard Collections loader + chunked pet/toy journal materialize.
     Split from CollectionService.lua (Lua 5.1 local limit).
     Loaded before Modules/CollectionService.lua.

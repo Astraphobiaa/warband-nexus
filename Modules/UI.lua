@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - UI Module
     Main window shell, tab routing, and debounced WN_* refresh listeners.
 ]]
