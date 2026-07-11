@@ -435,16 +435,11 @@ function WarbandNexus:GetLiveOpenGuildBankItemCountForTooltip(itemID)
     return summary.guildName, summary.items[itemID] or 0
 end
 
----Persist partial guild bank tab progress on PLAYER_LOGOUT.
+---Abort partial guild bank tab progress on PLAYER_LOGOUT.
 function WarbandNexus:FlushGuildBankScanOnLogout()
     if activeScanCtx and activeScanCtx.myGen == guildBankScanGeneration then
-        local ctx = activeScanCtx
-        if ctx.tabItemsBuilding and ctx.guildData and ctx.guildData.tabs and ctx.tabIndex then
-            local tabData = ctx.guildData.tabs[ctx.tabIndex]
-            if tabData then
-                tabData.items = ctx.tabItemsBuilding
-            end
-        end
+        -- A tab is only safe to replace after all 98 slots have been scanned.
+        -- Preserve the last completed cache rather than saving a truncated tab.
         guildBankScanGeneration = guildBankScanGeneration + 1
     end
     activeScanCtx = nil

@@ -1701,6 +1701,10 @@ function WarbandNexus:OnCombatStart()
     self._windowsHiddenByCombat = self._windowsHiddenByCombat or {}
     wipe(self._windowsHiddenByCombat)
 
+    if ns.UI_CloseOpenDropdownMenus then
+        ns.UI_CloseOpenDropdownMenus()
+    end
+
     -- Hide main UI during combat (taint protection)
     if self.mainFrame and self.mainFrame:IsShown() then
         self.mainFrame:Hide()
