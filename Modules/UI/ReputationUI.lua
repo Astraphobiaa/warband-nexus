@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Reputation Tab
     Display all reputations across characters with progress bars, Renown, and Paragon support
 

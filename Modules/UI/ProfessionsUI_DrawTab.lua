@@ -1,4 +1,4 @@
-﻿--[[ Warband Nexus - Professions tab draw (Lua 5.1 upvalue cap)
+--[[ Warband Nexus - Professions tab draw (Lua 5.1 upvalue cap)
      Loaded after ProfessionsUI.lua; resolves helpers via ProfUI._drawChunk. ]]
 
 local ADDON_NAME, ns = ...

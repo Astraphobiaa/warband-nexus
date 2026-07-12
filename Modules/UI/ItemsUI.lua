@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Items tab (Bags / Bank: virtual list; Warband: Personal + Warband tree; Guild: guild > category tree).
 
     WN_FACTORY: Bank sub-tab bar uses `Factory:CreateContainer` and `CreateButton`; classic mode uses shared

@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Reminder Set Alert quest/event picker (view layer).
     Split from ReminderSetAlertDialog.lua (Lua 5.1 local limit).
 ]]

@@ -1,4 +1,4 @@
-﻿--[[ To-Do plan reminder "Set Alert" dialog (view layer). Data entry points: ns.ReminderServiceBridge. ]]
+--[[ To-Do plan reminder "Set Alert" dialog (view layer). Data entry points: ns.ReminderServiceBridge. ]]
 
 local ADDON_NAME, ns = ...
 local issecretvalue = issecretvalue

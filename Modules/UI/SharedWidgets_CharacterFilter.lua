@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Character tab sort/filter flyouts and section pick menus.
     Split from SharedWidgets.lua to reduce main chunk size (Lua 5.1 local limit).
     Loaded from WarbandNexus.toc immediately after Modules/UI/SharedWidgets.lua.

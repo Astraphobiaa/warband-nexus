@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Plans Tab UI
     User-driven goal tracker for mounts, pets, and toys
 

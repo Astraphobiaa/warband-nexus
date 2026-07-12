@@ -120,6 +120,7 @@ local bagHashCache = {} -- [bagID] = hash
 -- Throttle timers
 local lastUpdateTime = {}
 local pendingUpdates = {}
+local bankScanSuppressedUpdates = {}
 
 -- DECOMPRESSED DATA SESSION CACHE
 -- Avoids repeated decompress+deserialize on every GetItemsData()/tooltip hover.
@@ -1416,6 +1417,7 @@ end
 ThrottledBagUpdate = function(bagID)
     -- Suppress during bank open deferred scans (OnBankOpened handles it)
     if bankScanInProgress then
+        bankScanSuppressedUpdates[bagID] = true
         return false
     end
     
@@ -1638,6 +1640,9 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
 
     local function finishBankScan(aborted)
         bankScanInProgress = false
+        if aborted then
+            wipe(bankScanSuppressedUpdates)
+        end
         if aborted and self.InvalidateLiveOpenWarbandBankSummary then
             self:InvalidateLiveOpenWarbandBankSummary()
         end
@@ -1670,6 +1675,27 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
             self.db.char.bags.usedSlots = #stagedBags
             self.db.char.bags.totalSlots = totalInventorySlots
             self.db.char.bags.lastScan = time()
+        end
+
+        local suppressedBagIDs = {}
+        for bagID, _ in pairs(bankScanSuppressedUpdates) do
+            suppressedBagIDs[#suppressedBagIDs + 1] = bagID
+        end
+        wipe(bankScanSuppressedUpdates)
+
+        -- BAG_UPDATE hashes are advanced before throttling; replay suppressed
+        -- bags after the staged commit so moves during the multi-frame scan
+        -- cannot persist mixed old/new snapshots.
+        for i = 1, #suppressedBagIDs do
+            local bagID = suppressedBagIDs[i]
+            local bagType = BAG_TYPE_LOOKUP[bagID]
+            if bagType == "inventory" then
+                self:UpdateSingleBag(charKey, bagID)
+            elseif bagType == "bank" and isBankOpen then
+                self:UpdateSingleBag(charKey, bagID)
+            elseif bagType == "warband" and isWarbandBankOpen then
+                self:UpdateSingleWarbandBag(bagID)
+            end
         end
     end
 
@@ -1751,6 +1777,7 @@ function WarbandNexus:OnBankOpened()
     isBankOpen = true
     isWarbandBankOpen = true
     bankScanInProgress = true  -- Suppress ThrottledBagUpdate while we do the full scan
+    wipe(bankScanSuppressedUpdates)
     
     local charKey = ResolveCurrentItemStorageKey()
     
@@ -1767,6 +1794,7 @@ function WarbandNexus:OnBankClosed()
     isBankOpen = false
     isWarbandBankOpen = false  -- Both tabs close together
     bankScanInProgress = false  -- Safety: ensure flag is cleared
+    wipe(bankScanSuppressedUpdates)
     WarbandNexus.bankIsOpen = false  -- Clear global flag for Gold Manager
     if self.InvalidateLiveOpenWarbandBankSummary then
         self:InvalidateLiveOpenWarbandBankSummary()

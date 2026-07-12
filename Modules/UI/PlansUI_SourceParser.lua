@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Plans browse source text parser (mount/pet/toy tooltips).
     Split from PlansUI.lua (Lua 5.1 local limit).
     Loaded before Modules/UI/PlansUI.lua.

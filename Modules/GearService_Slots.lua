@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Paper doll slot tables (Gear tab + storage matching).
     Split from GearService.lua (Lua 5.1 local limit).
     Loaded before Modules/GearService.lua.

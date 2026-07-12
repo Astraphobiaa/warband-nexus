@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Character roster cache sig + safe money + storage row helpers.
     Split from DataService.lua (Lua 5.1 local limit).
     Loaded before Modules/DataService.lua.
