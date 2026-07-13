@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Shared UI Widgets & Helpers
     Common UI components and utility functions used across all tabs.
 -- Satellite slices: SharedWidgets_Icons/Collapsible/Search/RowPool/Factory (ops-027–029); Pixel/CharRow load before this file.

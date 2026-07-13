@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Plan Card Factory
     Centralized factory for creating plan cards with unified structure
     Supports all plan types: Achievement, Mount, Pet, Toy, Illusion, Title, Weekly Vault, Daily Quest

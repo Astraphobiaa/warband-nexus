@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Midnight upgrade track ilvl tables + Dawncrest currency map.
     Split from GearService.lua (Lua 5.1 local limit).
     Loaded before Modules/GearService.lua.
