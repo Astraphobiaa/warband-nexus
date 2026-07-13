@@ -30,6 +30,10 @@ local function fakeItemLink()
     return "|Hitem:" .. tostring(FAKE_ITEM_ID) .. ":0|h[TC Self Test]|h|r"
 end
 
+local function fakeItemLinkFor(itemID, label)
+    return "|Hitem:" .. tostring(itemID) .. ":0|h[" .. (label or "TC Self Test") .. "]|h|r"
+end
+
 local function snapshotState()
     return {
         session = Fns.SnapshotLootSessionState(),
@@ -808,6 +812,64 @@ function WarbandNexus:RunTryCounterSelfTest()
     section("CHAT_MSG_LOOT paths")
     probe("CHAT: untracked junk item (early exit)", function()
         WN:OnTryCounterChatMsgLoot("CHAT_MSG_LOOT", "You receive loot: [Junk].", "Player", "")
+    end)
+    probe("CHAT: exact boss loot cancels lootless fallback", function()
+        withRestoredState(function()
+            local npcID = 987654
+            local chatItemID = 987654322
+            local oldDrops = RT.npcDropDB[npcID]
+            local oldNpcMap = RT.chatLootItemToNpc[chatItemID]
+            local oldTracked = RT.chatLootTrackedItems[chatItemID]
+            local oldRepeatable = RT.repeatableItemDrops[chatItemID]
+            local oldFakeCount = WN:GetTryCount("item", FAKE_ITEM_ID)
+            local oldChatCount = WN:GetTryCount("item", chatItemID)
+
+            local function restoreCustom()
+                RT.npcDropDB[npcID] = oldDrops
+                RT.chatLootItemToNpc[chatItemID] = oldNpcMap
+                RT.chatLootTrackedItems[chatItemID] = oldTracked
+                RT.repeatableItemDrops[chatItemID] = oldRepeatable
+                WN:SetTryCount("item", FAKE_ITEM_ID, oldFakeCount or 0)
+                WN:SetTryCount("item", chatItemID, oldChatCount or 0)
+                if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                    Fns.SetTryCounterSelfTestSlotOutcomeEnv(nil)
+                end
+            end
+
+            local ok, err = pcall(function()
+                if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
+                    Fns.SetTryCounterSelfTestSlotOutcomeEnv({
+                        instance = { instanceType = "raid", difficulty = 16 },
+                    })
+                end
+                RT.npcDropDB[npcID] = {
+                    { type = "item", itemID = chatItemID, repeatable = true, name = "TC Self Test Boss Loot" },
+                    fakeDrop(),
+                }
+                RT.chatLootItemToNpc[chatItemID] = npcID
+                RT.chatLootTrackedItems[chatItemID] = true
+                RT.repeatableItemDrops[chatItemID] = nil
+                V.lastTryCountSourceKey = nil
+                V.lastTryCountSourceTime = 0
+
+                Fns.ScheduleEncounterLootlessMissFallback(npcID, 16, "fallback_target_" .. tostring(npcID))
+                local scheduledSerial = RT.statState.encounterLootlessMissSerial or 0
+                local playerName = UnitName and UnitName("player") or "Player"
+                WN:OnTryCounterChatMsgLoot(
+                    "You receive loot: " .. fakeItemLinkFor(chatItemID, "TC Boss Loot"),
+                    playerName
+                )
+                if (RT.statState.encounterLootlessMissSerial or 0) <= scheduledSerial then
+                    error("expected chat fallback to cancel pending encounter lootless timer")
+                end
+                if V.lastTryCountSourceKey ~= ("npc_" .. tostring(npcID)) then
+                    error("expected npc source key after chat fallback")
+                end
+            end)
+
+            restoreCustom()
+            if not ok then error(err) end
+        end)
     end)
     probe("ShouldDeferLootOutcomeUntilClose(opened)", function()
         if Fns.ShouldDeferLootOutcomeUntilClose("opened") ~= true then error("expected true") end

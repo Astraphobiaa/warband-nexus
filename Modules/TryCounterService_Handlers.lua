@@ -469,8 +469,14 @@ local function ProcessChatLootEncounterForNpc(self, itemID, npcID, killDifficult
     if #trackable == 0 then return false end
 
     local encForKey = Fns.GetEncounterIDForNpcID(npcID)
-    V.lastTryCountSourceKey = encForKey and ("encounter_" .. tostring(encForKey)) or ("npc_" .. tostring(npcID))
+    local sourceKey = encForKey and ("encounter_" .. tostring(encForKey)) or ("npc_" .. tostring(npcID))
+    V.lastTryCountSourceKey = sourceKey
     V.lastTryCountSourceTime = now
+    if Fns.NotifyLootTryOutcomeCommitted then
+        Fns.NotifyLootTryOutcomeCommitted(sourceKey, npcID)
+    elseif Fns.CancelEncounterLootlessMissFallback then
+        Fns.CancelEncounterLootlessMissFallback()
+    end
 
     local foundDrop = nil
     local missed = {}
