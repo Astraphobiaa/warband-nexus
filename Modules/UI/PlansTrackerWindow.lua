@@ -540,7 +540,9 @@ local function SyncTrackerScrollBar(frame)
         barCol:SetFrameLevel(sf:GetFrameLevel() + 4)
     end
     if sf.UpdateScrollChildRect then
+        sf._wnInScrollChildRect = true
         sf:UpdateScrollChildRect()
+        sf._wnInScrollChildRect = nil
     end
     EnsureTrackerViewportShell(frame)
     if ns.UI_ApplyScrollLayoutDebugChrome and frame.contentViewportShell then
