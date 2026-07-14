@@ -190,12 +190,9 @@ function M.ApplyCategoryNavStates(parent, activeId)
                     ns.UI_HideFrameBorderQuartet(btn)
                 end
                 if btn.SetBackdropColor then
-                    local activeBg = ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop()
-                    if activeBg then
-                        btn:SetBackdropColor(activeBg[1], activeBg[2], activeBg[3], activeBg[4] or 0.98)
-                    else
-                        btn:SetBackdropColor(accentColor[1] * railActiveA, accentColor[2] * railActiveA, accentColor[3] * railActiveA, 0.98)
-                    end
+                    -- Match the MAIN nav rail's active fill (accent * 0.3) instead of the strong
+                    -- ~0.98 fill that read as a boxy highlight. The accent stripe still marks active.
+                    btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
                 end
                 if ns.UI_ApplyRailTabActiveVisuals then
                     ns.UI_ApplyRailTabActiveVisuals(btn, true, accentColor)

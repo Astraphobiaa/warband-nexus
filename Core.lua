@@ -22,10 +22,12 @@ ns.WarbandNexus = WarbandNexus
 -- Dev / slash: `_G.WarbandNexus` fallbacks (CharacterService, ChatIntegration, etc.). Gear storage session trace: `/run WarbandNexus:SetGearStorageTrace(true)` -> `/wn profiler trace` buffer (not default chat).
 _G.WarbandNexus = WarbandNexus
 
--- Localization
--- Note: Language override is applied in OnInitialize (after DB loads)
--- At this point, we use default game locale
-local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME)
+-- Localization. ns.L is built from the ns.LOCALES registry (every locale loads there,
+-- independent of the game client) so any language can be selected. enUS is the base;
+-- OnInitialize merges the chosen language over it after the DB loads. A missing key
+-- returns its own name (mimics AceLocale readmetasilent) so a typo never errors on concat.
+local L = (ns.LOCALES and ns.LOCALES.enUS) or {}
+setmetatable(L, { __index = function(_, key) return key end })
 ns.L = L
 
 -- Constants
@@ -110,6 +112,10 @@ local time = time
 local defaults = {
     profile = {
         enabled = true,
+        -- Interface language. "auto" (default) follows the WoW game client locale; any
+        -- locale code (enUS, deDE, ..., trTR) forces that language. All locales load into
+        -- ns.LOCALES and the chosen one is merged over the enUS base in OnInitialize.
+        languageOverride = "auto",
         minimap = {
             hide = false,
             minimapPos = 220,
@@ -613,7 +619,23 @@ function WarbandNexus:OnInitialize()
     
     -- Export db to namespace for FontManager and other modules
     ns.db = self.db
-    
+
+    -- Apply language selection (see defaults.profile.languageOverride). All locales live in
+    -- ns.LOCALES, loaded regardless of the game client. "auto" (or unset) follows the client
+    -- locale; any other value forces that language. The chosen table is merged over the enUS
+    -- base (L) with raw writes (zero-overhead lookups); untranslated keys fall back to English.
+    -- Switching requires /reload; the SettingsUI language dropdown reloads on change.
+    local langChoice = self.db.profile.languageOverride
+    if not langChoice or langChoice == "auto" then
+        langChoice = GetLocale() or "enUS"
+    end
+    local chosenLocale = ns.LOCALES and ns.LOCALES[langChoice]
+    if chosenLocale and chosenLocale ~= L then
+        for key, value in pairs(chosenLocale) do
+            L[key] = value
+        end
+    end
+
     -- Restore profiler measurement flags before session decompress so DB path can be timed.
     if ns.Profiler and ns.Profiler.ApplyPersistedSettings then
         ns.Profiler:ApplyPersistedSettings(self.db.profile)
@@ -997,9 +1019,13 @@ function WarbandNexus:OnEnable()
     -- Chat message notifications are handled by ChatMessageService.lua
     -- (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED listeners moved there for maintainability)
     
-    -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection
+    -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection.
+    -- Core is the SOLE AceEvent owner of PLAYER_ENTERING_WORLD / ADDON_LOADED on the addon
+    -- object (one handler per event per object) — late modules must use raw frames.
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
-    self:RegisterEvent("PLAYER_LOGIN", "OnPlayerLoginSectionExpandReset")
+    -- PLAYER_LOGIN has already fired by the time OnEnable runs (AceAddon enables on it),
+    -- so a registration here can never fire — run the session reset directly instead.
+    self:OnPlayerLoginSectionExpandReset()
     
     -- Initialize Chat Message Service (reputation/currency gain notifications)
     C_Timer.After(0.6, function()

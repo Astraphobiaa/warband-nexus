@@ -1202,7 +1202,19 @@ function WarbandNexus:InitializeDailyQuestManager()
 
     -- QUEST_TURNED_IN: dispatched by EventManager's consolidated handler (avoids AceEvent overwrite)
     self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnDailyQuestLogin")
+    -- PLAYER_ENTERING_WORLD: Core owns the AceEvent slot on the addon object (one handler
+    -- per event per object) — registering here silently replaced Core's OnPlayerEnteringWorld
+    -- for every zone/instance transition. Module-local raw frame is collision-free.
+    if not self._dailyQuestPEWFrame then
+        local pewFrame = CreateFrame("Frame")
+        pewFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        pewFrame:SetScript("OnEvent", function()
+            if WarbandNexus and WarbandNexus.OnDailyQuestLogin then
+                WarbandNexus:OnDailyQuestLogin()
+            end
+        end)
+        self._dailyQuestPEWFrame = pewFrame
+    end
 
     SyncDailyQuestPlanIndexes()
     WarbandNexus.RegisterMessage(DailyQuestManagerEvents, E.PLANS_UPDATED, function()

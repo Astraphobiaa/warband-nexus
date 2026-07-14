@@ -5,8 +5,12 @@
 local ADDON_NAME, ns = ...
 
 ---@class WarbandNexusLocale
-local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "enUS", true, true)
-if not L then return end
+-- All locales load into ns.LOCALES so any language can be selected regardless of the
+-- game client (WoW has no trTR client, and non-client AceLocale locales never load).
+-- enUS is the fallback base; Core.lua builds ns.L from this registry.
+ns.LOCALES = ns.LOCALES or {}
+ns.LOCALES.enUS = ns.LOCALES.enUS or {}
+local L = ns.LOCALES.enUS
 
 -- General
 L["ADDON_NAME"] = "Warband Nexus"
@@ -605,6 +609,10 @@ L["QUEST_LABEL"] = "Quest:"
 -- Settings
 L["CURRENT_LANGUAGE"] = "Current Language:"
 L["LANGUAGE_TOOLTIP"] = "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
+L["LANGUAGE_SELECT_LABEL"] = "Language"
+L["LANGUAGE_SELECT_DESC"] = "Choose the addon interface language. Auto follows your WoW game client. Some game terms stay in the client language."
+L["LANGUAGE_AUTO"] = "Auto (Game Client)"
+L["LANGUAGE_RELOAD_NOTICE"] = "Language change applies after a UI reload."
 L["NOTIFICATION_DURATION"] = "Notification Duration"
 L["NOTIFICATION_POSITION"] = "Notification Position"
 L["SET_POSITION"] = "Set Position"

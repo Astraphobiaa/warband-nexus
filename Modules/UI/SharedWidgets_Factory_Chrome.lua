@@ -334,7 +334,9 @@ function Factory:CreateRailTabSeparator(parent, opts)
     local sepH = opts.height or shell.NAV_RAIL_TAB_SEP_HEIGHT or 2
     local divider = Factory:CreateThemeDivider(parent, {
         orientation = "horizontal",
-        variant = opts.variant or "section",
+        -- "rail" => accent (theme) colour; "section" was a muted grey border. Thickness stays
+        -- thin via the explicit value below, so only the colour changes to the theme accent.
+        variant = opts.variant or "rail",
         thickness = math.max(2, sepH),
     })
     return divider

@@ -5,8 +5,10 @@
 local ADDON_NAME, ns = ...
 
 ---@class WarbandNexusLocale
-local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "koKR")
-if not L then return end
+-- Loaded into ns.LOCALES (see enUS.lua) so this language is selectable on any client.
+ns.LOCALES = ns.LOCALES or {}
+ns.LOCALES.koKR = ns.LOCALES.koKR or {}
+local L = ns.LOCALES.koKR
 
 -- General
 L["ADDON_NAME"] = "Warband Nexus"
@@ -605,6 +607,10 @@ L["QUEST_LABEL"] = "퀘스트:"
 -- Settings
 L["CURRENT_LANGUAGE"] = "현재 언어:"
 L["LANGUAGE_TOOLTIP"] = "애드온은 WoW 게임 클라이언트의 언어를 자동으로 사용합니다. 변경하려면 Battle.net 설정을 업데이트하세요."
+L["LANGUAGE_SELECT_LABEL"] = "언어"
+L["LANGUAGE_SELECT_DESC"] = "애드온 인터페이스 언어를 선택하세요. 자동은 WoW 게임 클라이언트를 따릅니다. 일부 게임 용어는 클라이언트 언어로 유지됩니다."
+L["LANGUAGE_AUTO"] = "자동 (게임 클라이언트)"
+L["LANGUAGE_RELOAD_NOTICE"] = "언어 변경은 UI 재불러오기 후 적용됩니다."
 L["NOTIFICATION_DURATION"] = "알림 지속 시간"
 L["NOTIFICATION_POSITION"] = "알림 위치"
 L["SET_POSITION"] = "위치 설정"

@@ -5,8 +5,10 @@
 local ADDON_NAME, ns = ...
 
 ---@class WarbandNexusLocale
-local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "ruRU")
-if not L then return end
+-- Loaded into ns.LOCALES (see enUS.lua) so this language is selectable on any client.
+ns.LOCALES = ns.LOCALES or {}
+ns.LOCALES.ruRU = ns.LOCALES.ruRU or {}
+local L = ns.LOCALES.ruRU
 
 -- General
 L["ADDON_NAME"] = "Warband Nexus"
@@ -606,6 +608,10 @@ L["QUEST_LABEL"] = "Задание:"
 -- Settings
 L["CURRENT_LANGUAGE"] = "Текущий язык:"
 L["LANGUAGE_TOOLTIP"] = "Аддон использует язык клиента WoW. Для смены измените настройки Battle.net."
+L["LANGUAGE_SELECT_LABEL"] = "Язык"
+L["LANGUAGE_SELECT_DESC"] = "Выберите язык интерфейса аддона. «Авто» использует язык клиента WoW. Некоторые игровые термины остаются на языке клиента."
+L["LANGUAGE_AUTO"] = "Авто (клиент игры)"
+L["LANGUAGE_RELOAD_NOTICE"] = "Смена языка применяется после перезагрузки интерфейса."
 L["NOTIFICATION_DURATION"] = "Длительность уведомления"
 L["NOTIFICATION_POSITION"] = "Позиция уведомлений"
 L["SET_POSITION"] = "Установить позицию"

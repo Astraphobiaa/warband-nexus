@@ -3550,7 +3550,13 @@ local function CreateStandardTabTitleCard(headerParent, opts)
     textContainer._wnTextStack = textStack
 
     local titleFs = FontManager:CreateFontString(textStack, UIFontRole("tabTitlePrimary"), "OVERLAY")
-    titleFs:SetText(opts.titleText or "")
+    -- Strip any embedded |cAARRGGBB..|r colour so every tab title renders in the card's white
+    -- ("Bright") colour. Several tabs wrap their title in the accent colour; user wants white titles.
+    local titleStr = opts.titleText or ""
+    if type(titleStr) == "string" then
+        titleStr = titleStr:gsub("|[cC]%x%x%x%x%x%x%x%x", ""):gsub("|[rR]", "")
+    end
+    titleFs:SetText(titleStr)
     titleFs:SetJustifyH("LEFT")
     ns.UI_SetTextColorRole(titleFs, "Bright")
 

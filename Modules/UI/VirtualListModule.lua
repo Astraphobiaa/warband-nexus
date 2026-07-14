@@ -654,6 +654,16 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
             container._vlm_visBufB = visB
         end
         local newVis = (oldVis == visA) and visB or visA
+        -- Recycle the two-paint-old entry tables before wiping: oldVis is the other buffer,
+        -- so nothing references these entries anymore. Keeps scroll paints allocation-free.
+        local visEntryPool = container._vlm_visEntryPool
+        if not visEntryPool then
+            visEntryPool = {}
+            container._vlm_visEntryPool = visEntryPool
+        end
+        for j = 1, #newVis do
+            visEntryPool[#visEntryPool + 1] = newVis[j]
+        end
         wipe(newVis)
 
         local fl = container._vlm_flatList or flatList
@@ -760,7 +770,19 @@ local function SetupVirtualList(mainFrame, container, containerTopOffset, flatLi
                             end
                             frame:Show()
 
-                            newVis[#newVis + 1] = { frame = frame, index = i }
+                            -- Entry tables are pooled (see recycle before tryPaint): this
+                            -- runs on every scroll paint — no fresh {} per visible row.
+                            local entry
+                            local entryPool = container._vlm_visEntryPool
+                            if entryPool and #entryPool > 0 then
+                                entry = entryPool[#entryPool]
+                                entryPool[#entryPool] = nil
+                            else
+                                entry = {}
+                            end
+                            entry.frame = frame
+                            entry.index = i
+                            newVis[#newVis + 1] = entry
                         end
                     end
                 elseif y > rx then

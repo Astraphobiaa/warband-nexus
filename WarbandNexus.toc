@@ -14,7 +14,10 @@
 # Libraries
 embeds.xml
 
-# Localization (Blizzard supported locales only - no trTR)
+# Localization
+# enUS..zhTW are AceLocale locales auto-selected by the game client.
+# trTR has no WoW client; it is a plain override table merged in Core.lua when
+# db.profile.languageOverride == "trTR". Must load before Core.lua.
 Locales\enUS.lua
 Locales\deDE.lua
 Locales\esES.lua
@@ -26,6 +29,7 @@ Locales\ptBR.lua
 Locales\ruRU.lua
 Locales\zhCN.lua
 Locales\zhTW.lua
+Locales\trTR.lua
 
 # Media: `Media/icon.tga` (addon list + chrome). UI stroke icons: Icon-*.tga + Icon-*.svg (todo, link, close, discord, donate, credits, tracking). Rebuild: python scripts/build_chrome_icons.py
 

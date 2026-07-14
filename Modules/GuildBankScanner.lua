@@ -76,6 +76,41 @@ local function MaybeAnnounceGuildBankScanComplete(self, itemCount)
 end
 
 --- Query every viewable guild bank tab from the server (async; GUILDBANKBAGSLOTS_CHANGED follows).
+--- Cold item cache during a scan persists name="Unknown"/quality 0; refill the stored slot
+--- entry asynchronously once item data arrives, then emit one coalesced ITEMS_UPDATED.
+function WarbandNexus:QueueGuildBankItemRefill(entry, itemID)
+    if not Item or not Item.CreateFromItemID then return end
+    local okItem, item = pcall(Item.CreateFromItemID, Item, itemID)
+    if not okItem or not item or (item.IsItemEmpty and item:IsItemEmpty()) then return end
+    item:ContinueOnItemLoad(function()
+        local ok, itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
+            _, _, itemTexture, _, classID, subclassID = pcall(C_Item.GetItemInfo, itemID)
+        if not ok or not itemName then return end
+        if issecretvalue and issecretvalue(itemName) then return end
+        entry.name = itemName
+        if itemQuality ~= nil then entry.quality = itemQuality end
+        entry.itemLevel = itemLevel or entry.itemLevel
+        entry.itemType = itemType or entry.itemType
+        entry.itemSubType = itemSubType or entry.itemSubType
+        entry.classID = classID or entry.classID
+        entry.subclassID = subclassID or entry.subclassID
+        if not entry.iconFileID then entry.iconFileID = itemTexture end
+        if self._guildBankRefillEmitQueued then return end
+        self._guildBankRefillEmitQueued = true
+        C_Timer.After(0.35, function()
+            self._guildBankRefillEmitQueued = nil
+            ns._gearStorageInvGen = (ns._gearStorageInvGen or 0) + 1
+            if self.InvalidateGuildItemSummary then
+                self:InvalidateGuildItemSummary()
+            end
+            InvalidateLiveOpenGuildBankSummary()
+            if self.SendMessage then
+                self:SendMessage(E.ITEMS_UPDATED)
+            end
+        end)
+    end)
+end
+
 function WarbandNexus:QueryAllViewableGuildBankTabs()
     if not QueryGuildBankTab or not GetNumGuildBankTabs then return end
     local okN, n = pcall(GetNumGuildBankTabs)
@@ -344,6 +379,11 @@ function WarbandNexus:ScanGuildBank()
                                 classID = classID or 0,
                                 subclassID = subclassID or 0
                             }
+                            -- Cold cache: GetItemInfo returned nil — refill async so the
+                            -- persisted entry doesn't keep "Unknown" until the next scan.
+                            if not itemName and self.QueueGuildBankItemRefill then
+                                self:QueueGuildBankItemRefill(tabItemsBuilding[slotID], itemID)
+                            end
                         end
                     end
                     slotID = slotID + 1

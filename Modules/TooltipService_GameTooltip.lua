@@ -463,6 +463,8 @@ end
 local function ResolveTooltipWidgetSetID(tooltip)
     if not tooltip then return nil end
     local widgetSetID = tooltip.widgetSetID
+    -- issecretvalue must run before any ==/~= on the value (secret numbers hard-error on compare).
+    if issecretvalue and issecretvalue(widgetSetID) then return widgetSetID end
     if widgetSetID == nil then
         local widgetContainer = tooltip.widgetContainer
         if widgetContainer then
@@ -477,17 +479,13 @@ end
 local function IsBlizzardWidgetTooltip(tooltip)
     if not tooltip then return false end
     local widgetSetID = ResolveTooltipWidgetSetID(tooltip)
-    if widgetSetID ~= nil then
-        if issecretvalue and issecretvalue(widgetSetID) then return true end
-        if widgetSetID ~= 0 then return true end
-    end
+    if issecretvalue and issecretvalue(widgetSetID) then return true end
+    if widgetSetID ~= nil and widgetSetID ~= 0 then return true end
     local widgetContainer = tooltip.widgetContainer
     if widgetContainer then
         local shown = widgetContainer.shownWidgetCount
-        if type(shown) == "number" and shown > 0
-            and not (issecretvalue and issecretvalue(shown)) then
-            return true
-        end
+        if issecretvalue and issecretvalue(shown) then return true end
+        if type(shown) == "number" and shown > 0 then return true end
     end
     return false
 end
@@ -503,13 +501,11 @@ local function WillTooltipUseWidgets(tooltip, data)
     if IsBlizzardWidgetTooltip(tooltip) then return true end
     if not data then return false end
     local ws = data.widgetSetID
-    if ws ~= nil then
-        if issecretvalue and issecretvalue(ws) then return true end
-        if ws ~= 0 then return true end
-    end
+    if issecretvalue and issecretvalue(ws) then return true end
+    if ws ~= nil and ws ~= 0 then return true end
     local tooltipType = data.type
-    if tooltipType == nil then return false end
     if issecretvalue and issecretvalue(tooltipType) then return true end
+    if tooltipType == nil then return false end
     local T = Enum and Enum.TooltipDataType
     if not T then return false end
     return tooltipType == T.MinimapMouseover
@@ -521,6 +517,10 @@ end
 local function RefreshGameTooltipLayout(tooltip)
     if not tooltip or not tooltip.Show then return end
     if tooltip.IsShown and not tooltip:IsShown() then return end
+    -- Re-check right before Show(): a widget set can mount between inject()'s guard and this
+    -- deferred call. Show() re-runs Blizzard's widget layout, and doing that under our taint
+    -- poisons fields (e.g. shownWidgetCount) that secure code re-reads on hide.
+    if IsBlizzardWidgetTooltip(tooltip) then return end
     -- Injection tokens prevent duplicate AddLine if Show retriggers post-call.
     tooltip:Show()
 end
@@ -851,8 +851,19 @@ end
 
 local function RefreshGameTooltipItemCountsOnShift(tooltip)
     if not tooltip or not tooltip.IsShown or not tooltip:IsShown() then return end
+    -- Widget-carrying tooltip (map POI / vignette / quest pin): never rebuild it from our
+    -- execution. A tainted re-layout writes widget fields (shownWidgetCount, widget frame
+    -- geometry) that Blizzard re-reads on hide and compares against secret numbers —
+    -- delayed LayoutFrame "compare a secret number value" blowup.
+    if IsBlizzardWidgetTooltip(tooltip) then return end
     ClearTooltipInjectionTokens(tooltip)
     local owner = tooltip.GetOwner and tooltip:GetOwner()
+    -- Re-driving the shared tooltip (owner OnEnter / SetHyperlink) is only safe for our own
+    -- frames. For Blizzard owners (bags, character sheet) the client re-drives the tooltip
+    -- itself on modifier changes, which re-fires our Item post-call securely — tokens are
+    -- already cleared above, so counts rebuild with the new Shift state.
+    local okWN, ownerIsWN = pcall(GT.IsWarbandNexusOwner, owner)
+    if not okWN or ownerIsWN ~= true then return end
     if owner and owner.GetScript then
         local onEnter = owner:GetScript("OnEnter")
         if onEnter then
@@ -1046,7 +1057,8 @@ function GT.InitializeGameTooltipHook(service)
         RunGameTooltipInjection(tooltip, data, function()
         if IsBlizzardWidgetTooltip(tooltip) then return end
         local itemID = ResolveItemTooltipID(data)
-        local dataInstanceID = data and data.dataInstanceID
+        -- dataInstanceID can be secret in Midnight — sanitize before `or`/tostring below.
+        local dataInstanceID = SafeTooltipNumber(data and data.dataInstanceID)
 
         -- WN Search counts per character (sync pre-Show; never call Show() here — retriggers rebuild loop)
         if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then

@@ -47,7 +47,8 @@ local function GetWarbandMoney()
         return 0
     end
     local ok, amount = pcall(C_Bank.FetchDepositedMoney, Enum.BankType.Account)
-    if ok and type(amount) == "number" then
+    -- issecretvalue before type/compare: secret numbers pass type() but throw on math.
+    if ok and not (issecretvalue and issecretvalue(amount)) and type(amount) == "number" then
         return amount
     end
     return 0
@@ -179,7 +180,10 @@ local function ProcessMoneyChange()
         return
     end
 
-    local charMoney = GetMoney() or 0
+    local charMoney = GetMoney()
+    -- GetMoney can be secret in some contexts; delta math on a secret throws. Skip the tick.
+    if issecretvalue and issecretvalue(charMoney) then return end
+    charMoney = charMoney or 0
     local warbandMoney = GetWarbandMoney()
 
     if type(WarbandNexus._moneyLogLastChar) ~= "number" or type(WarbandNexus._moneyLogLastWarband) ~= "number" then
@@ -277,7 +281,9 @@ function WarbandNexus:LogMoneyTransactionImmediate(txType, amountCopper, expecte
         SaveSnapshot(expectedCharMoney, expectedWarbandMoney)
     else
         C_Timer.After(0, function()
-            SaveSnapshot(GetMoney() or 0, GetWarbandMoney())
+            local money = GetMoney()
+            if issecretvalue and issecretvalue(money) then return end
+            SaveSnapshot(money or 0, GetWarbandMoney())
         end)
     end
 end
@@ -342,7 +348,9 @@ end
 
 function WarbandNexus:InitializeCharacterBankMoneyLogService()
     WarbandNexus.RegisterEvent(MoneyLogEvents, "BANKFRAME_OPENED", function()
-        SaveSnapshot(GetMoney() or 0, GetWarbandMoney())
+        local money = GetMoney()
+        if issecretvalue and issecretvalue(money) then return end
+        SaveSnapshot(money or 0, GetWarbandMoney())
     end)
 
     WarbandNexus.RegisterEvent(MoneyLogEvents, "BANKFRAME_CLOSED", function()
@@ -360,7 +368,9 @@ function WarbandNexus:InitializeCharacterBankMoneyLogService()
             C_Timer.After(FINAL_FLUSH_DELAY, function()
                 local charKey = GetCurrentCharKey()
                 if not charKey then return end
-                local charMoney = GetMoney() or 0
+                local charMoney = GetMoney()
+                if issecretvalue and issecretvalue(charMoney) then return end
+                charMoney = charMoney or 0
                 local warbandMoney = GetWarbandMoney()
                 local charDelta = charMoney - (lastChar or charMoney)
                 local warbandDelta = warbandMoney - (lastWarband or warbandMoney)

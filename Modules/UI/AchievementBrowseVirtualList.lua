@@ -864,18 +864,32 @@ function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
             end
         end
     end
+    -- Entry tables + the outer list are reused across refreshes (this runs per scroll
+    -- delta) — release frames, recycle entries into the pool, wipe in place.
     local visible = state._achVisibleRowFrames
+    local entryPool = state._achVisEntryPool
+    if not entryPool then
+        entryPool = {}
+        state._achVisEntryPool = entryPool
+    end
     if visible then
         for i = 1, #visible do
             local v = visible[i]
-            if v and v.frame then
-                v.frame:Hide()
-                v.frame:ClearAllPoints()
-                releaseRowFrame(v.frame)
+            if v then
+                if v.frame then
+                    v.frame:Hide()
+                    v.frame:ClearAllPoints()
+                    releaseRowFrame(v.frame)
+                end
+                v.frame = nil
+                entryPool[#entryPool + 1] = v
             end
         end
+        table.wipe(visible)
+    else
+        visible = {}
+        state._achVisibleRowFrames = visible
     end
-    state._achVisibleRowFrames = {}
 
     local cf = state._achListContentFrame
     local selectedID = state._achListSelectedID or (state.selectedAchievementID)
@@ -911,7 +925,16 @@ function ns.UI_AchievementBrowse_UpdateVisibleRange(opts)
                 if rowBottom > scrollTop and rowTop < bottom then
                 local frame = acquireRow(scrollChild, listWidth, it, selectedID, onSelect, redrawFn, cf)
                 if frame then
-                    state._achVisibleRowFrames[#state._achVisibleRowFrames + 1] = { frame = frame, flatIndex = i }
+                    local entry
+                    if #entryPool > 0 then
+                        entry = entryPool[#entryPool]
+                        entryPool[#entryPool] = nil
+                    else
+                        entry = {}
+                    end
+                    entry.frame = frame
+                    entry.flatIndex = i
+                    visible[#visible + 1] = entry
                 end
                 end
             end

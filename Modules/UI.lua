@@ -2532,11 +2532,27 @@ function WarbandNexus:ApplyUIScale(newScale)
     NormalizeFramePosition(mainFrame)
     SaveWindowGeometry(mainFrame)
 
-    local LC = ns.UI_LayoutCoordinator
-    if LC and LC.OnAddonUIScaleChanged then
-        LC:OnAddonUIScaleChanged(mainFrame)
-    elseif mainFrame:IsShown() then
-        self:PopulateContent()
+    -- The re-layout / content repopulate below is expensive. Dragging the UI Scale slider fires
+    -- ApplyUIScale on every step, and running the full rebuild each step flickers/corrupts the
+    -- view (it settles only on release). The live SetScale above already previews the new scale,
+    -- so debounce the heavy settle to run once ~0.15s after the slider stops moving.
+    local function SettleUIScale()
+        if not mainFrame then return end
+        local LC = ns.UI_LayoutCoordinator
+        if LC and LC.OnAddonUIScaleChanged then
+            LC:OnAddonUIScaleChanged(mainFrame)
+        elseif mainFrame:IsShown() then
+            self:PopulateContent()
+        end
+    end
+    if self.ScheduleTimer and self.CancelTimer then
+        if self._uiScaleSettleTimer then self:CancelTimer(self._uiScaleSettleTimer) end
+        self._uiScaleSettleTimer = self:ScheduleTimer(function()
+            self._uiScaleSettleTimer = nil
+            SettleUIScale()
+        end, 0.15)
+    else
+        SettleUIScale()
     end
 end
 

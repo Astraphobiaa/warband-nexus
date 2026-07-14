@@ -270,7 +270,8 @@ end
 ---Update character data in DB (called by event handlers)
 ---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
 ---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
-function WarbandNexus:UpdateCharacterCache(dataType)
+---@param value any|nil Optional event payload for dataType (e.g. new level from PLAYER_LEVEL_UP)
+function WarbandNexus:UpdateCharacterCache(dataType, value)
     local tableKey = ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
         and ns.CharacterService:ResolveCharactersTableKey(self)
     if not tableKey and ns.Utilities and ns.Utilities.GetCharacterStorageKey then
@@ -297,8 +298,17 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         charData.copper = copper
         
     elseif dataType == "level" then
-        local lv = UnitLevel("player")
-        if issecretvalue and lv and issecretvalue(lv) then return end
+        -- Prefer the event payload: while PLAYER_LEVEL_UP is in flight UnitLevel("player")
+        -- can still report the previous level (stale ding — e.g. 90 shown as 89).
+        local lv = value
+        if issecretvalue and issecretvalue(lv) then lv = nil end
+        lv = tonumber(lv)
+        if not lv or lv <= 0 then
+            lv = UnitLevel("player")
+            if issecretvalue and lv and issecretvalue(lv) then return end
+            lv = tonumber(lv)
+            if not lv or lv <= 0 then return end
+        end
         charData.level = lv
         
     elseif dataType == "spec" then
@@ -396,10 +406,21 @@ function WarbandNexus:RegisterCharacterCacheEvents()
         self:UpdateCharacterCache("gold")
     end)
     
-    -- Level changes
-    self:RegisterEvent("PLAYER_LEVEL_UP", function(event)
-        self:UpdateCharacterCache("level")
+    -- Level changes. PLAYER_LEVEL_UP payload arg1 is the new level (wiki-verified);
+    -- UnitLevel("player") may still return the old level inside this handler, so the
+    -- payload is threaded through to UpdateCharacterCache.
+    self:RegisterEvent("PLAYER_LEVEL_UP", function(event, newLevel)
+        self:UpdateCharacterCache("level", newLevel)
         self:UpdateCharacterCache("rested")
+    end)
+
+    -- PLAYER_LEVEL_CHANGED: oldLevel, newLevel, real (wiki-verified). Fires after the unit
+    -- level is committed and covers level changes PLAYER_LEVEL_UP misses. Only persist real
+    -- level changes — never timerunning/party-sync scaling (real == false).
+    self:RegisterEvent("PLAYER_LEVEL_CHANGED", function(event, oldLevel, newLevel, real)
+        if issecretvalue and (issecretvalue(real) or issecretvalue(newLevel)) then return end
+        if real ~= true then return end
+        self:UpdateCharacterCache("level", newLevel)
     end)
     
     -- Specialization changes
@@ -2434,7 +2455,7 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
                         end
                     end
                     
-                    self.db.char.personalBank.items[bagIndex][slotID] = {
+                    local slotEntry = {
                         itemID = itemInfo.itemID,
                         itemLink = itemInfo.hyperlink,
                         stackCount = itemInfo.stackCount or 1,
@@ -2448,6 +2469,12 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
                         subclassID = subclassID,
                         actualBagID = bagID, -- Store for item movement tracking
                     }
+                    self.db.char.personalBank.items[bagIndex][slotID] = slotEntry
+                    -- Cold cache: refill async so nil name/classID doesn't persist until
+                    -- the next bank visit (also recovers the skipped battle-pet branch).
+                    if not itemName and self.QueuePersonalBankItemRefill then
+                        self:QueuePersonalBankItemRefill(slotEntry, itemInfo.itemID)
+                    end
                 end
             end
         end  -- End shouldSkip check
@@ -2473,8 +2500,66 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
     if self.SendMessage then
         self:SendMessage(E.BAGS_UPDATED)
     end
-    
+
     return true
+end
+
+--- Cold item cache during a bank scan stores nil name/classID (and skips the battle-pet
+--- branch). Refill the stored slot entry once item data loads, re-persist the compressed
+--- itemStorage snapshot the UI reads, and emit one coalesced BAGS_UPDATED.
+function WarbandNexus:QueuePersonalBankItemRefill(entry, itemID)
+    if not Item or not Item.CreateFromItemID then return end
+    local okItem, item = pcall(Item.CreateFromItemID, Item, itemID)
+    if not okItem or not item or (item.IsItemEmpty and item:IsItemEmpty()) then return end
+    item:ContinueOnItemLoad(function()
+        local ok, itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
+            _, _, itemTexture, _, classID, subclassID = pcall(C_Item.GetItemInfo, itemID)
+        if not ok or not itemName then return end
+        if issecretvalue and issecretvalue(itemName) then return end
+        entry.name = itemName
+        entry.itemLevel = itemLevel or entry.itemLevel
+        entry.itemType = itemType or entry.itemType
+        entry.itemSubType = itemSubType or entry.itemSubType
+        entry.classID = classID or entry.classID
+        entry.subclassID = subclassID or entry.subclassID
+        if entry.quality == nil or entry.quality == 0 then
+            entry.quality = itemQuality or entry.quality or 0
+        end
+        if not entry.iconFileID then entry.iconFileID = itemTexture end
+        -- Battle pets (classID 17): the scan skipped pet-name/icon extraction while
+        -- classID was unknown — recover it from the stored hyperlink.
+        if classID == 17 then
+            local hp = entry.itemLink
+            if type(hp) == "string" and not (issecretvalue and issecretvalue(hp)) then
+                local petName = hp:match("%[(.-)%]")
+                if petName and petName ~= "" and petName ~= "Pet Cage" then
+                    entry.name = petName
+                end
+                local speciesID = tonumber(hp:match("|Hbattlepet:(%d+):"))
+                if speciesID and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
+                    local okPet, _, petIcon = pcall(C_PetJournal.GetPetInfoBySpeciesID, speciesID)
+                    if okPet and petIcon then entry.iconFileID = petIcon end
+                end
+            end
+        end
+        if self._personalBankRefillEmitQueued then return end
+        self._personalBankRefillEmitQueued = true
+        C_Timer.After(0.35, function()
+            self._personalBankRefillEmitQueued = nil
+            -- Re-persist the corrected snapshot (UI reads itemStorage, not db.char directly).
+            local key = (ns.CharacterService and ns.CharacterService.ResolveCharactersTableKey
+                    and ns.CharacterService:ResolveCharactersTableKey(self))
+                or (ns.Utilities and ns.Utilities.GetCharacterStorageKey
+                    and ns.Utilities:GetCharacterStorageKey(self))
+            if key and self.SaveItemsCompressed and self.db and self.db.char then
+                local arr = tableToItemArrayForStorage(self.db.char.personalBank and self.db.char.personalBank.items)
+                if arr then self:SaveItemsCompressed(key, "bank", arr) end
+            end
+            if self.SendMessage then
+                self:SendMessage(E.BAGS_UPDATED)
+            end
+        end)
+    end)
 end
 
 --- Flat list of Warband Bank items; optional groupByCategory buckets by category.

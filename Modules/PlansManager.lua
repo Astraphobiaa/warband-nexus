@@ -298,11 +298,12 @@ end
     Registers events to check for completed plans
 ]]
 function WarbandNexus:InitializePlanTracking()
-    -- /reload does not always fire PLAYER_LOGIN; reset deferred vault state whenever tracking inits.
+    -- PLAYER_LOGIN fires before this init runs, so an AceEvent registration here can never
+    -- fire — and it silently replaced Core's PLAYER_LOGIN handler (one handler per event per
+    -- object). The direct call below covers login, /reload, and re-init.
     if self.OnVaultPlanSessionReset then
         self:OnVaultPlanSessionReset()
     end
-    self:RegisterEvent("PLAYER_LOGIN", "OnVaultPlanSessionReset")
     -- Build O(1) lookup index
     self:InitializePlanCache()
     

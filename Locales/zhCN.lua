@@ -5,8 +5,10 @@
 local ADDON_NAME, ns = ...
 
 ---@class WarbandNexusLocale
-local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "zhCN")
-if not L then return end
+-- Loaded into ns.LOCALES (see enUS.lua) so this language is selectable on any client.
+ns.LOCALES = ns.LOCALES or {}
+ns.LOCALES.zhCN = ns.LOCALES.zhCN or {}
+local L = ns.LOCALES.zhCN
 
 -- General
 L["ADDON_NAME"] = "Warband Nexus"
@@ -605,6 +607,10 @@ L["QUEST_LABEL"] = "任务："
 -- Settings
 L["CURRENT_LANGUAGE"] = "当前语言："
 L["LANGUAGE_TOOLTIP"] = "插件自动使用你的 WoW 游戏客户端语言。要更改，请更新你的战网设置。"
+L["LANGUAGE_SELECT_LABEL"] = "语言"
+L["LANGUAGE_SELECT_DESC"] = "选择插件界面语言。自动将跟随你的 WoW 游戏客户端。部分游戏术语将保持客户端语言。"
+L["LANGUAGE_AUTO"] = "自动（游戏客户端）"
+L["LANGUAGE_RELOAD_NOTICE"] = "语言更改将在重载界面后生效。"
 L["NOTIFICATION_DURATION"] = "通知持续时间"
 L["NOTIFICATION_POSITION"] = "通知位置"
 L["SET_POSITION"] = "设置位置"

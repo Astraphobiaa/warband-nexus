@@ -1924,23 +1924,44 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & Scaling",
             iw, cy, {})
 
-        -- Current Language (label + tooltip)
-        local langLabel = FontManager:CreateFontString(inner, "body", "OVERLAY")
-        langLabel:SetPoint("TOPLEFT", 0, cy)
-        langLabel:SetWidth(iw)
-        langLabel:SetJustifyH("LEFT")
-        langLabel:SetWordWrap(true)
-        local currentLangLabel = (ns.L and ns.L["CURRENT_LANGUAGE"]) or "Current Language:"
-        langLabel:SetText(currentLangLabel .. " " .. (GetLocale() or "enUS"))
-        ns.UI_SetTextColorRole(langLabel, "Bright")
-
-        langLabel:SetScript("OnEnter", function(self)
-            local langTooltip = (ns.L and ns.L["LANGUAGE_TOOLTIP"]) or "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
-            Settings_ShowWrappedTooltip(self, langTooltip)
-        end)
-        langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-        cy = AdvancePastWrappedFontString(langLabel, cy, hdrGap)
+        -- Language selector. All locales load into ns.LOCALES regardless of the game client,
+        -- so any language is selectable; "auto" follows the game client locale (the default).
+        -- Untranslated keys and Blizzard game terms fall back to English (see Core.lua).
+        cy = CreateDropdownWidget(inner, {
+            name = (ns.L and ns.L["LANGUAGE_SELECT_LABEL"]) or "Language",
+            desc = (ns.L and ns.L["LANGUAGE_SELECT_DESC"]) or "Choose the addon interface language.",
+            stackBelowLabel = true,
+            -- Endonyms (native names, raw UTF-8) so each language is recognizable in any UI language.
+            valueOrder = { "auto", "enUS", "deDE", "esES", "esMX", "frFR", "itIT", "koKR", "ptBR", "ruRU", "trTR", "zhCN", "zhTW" },
+            values = {
+                auto = (ns.L and ns.L["LANGUAGE_AUTO"]) or "Auto (Game Client)",
+                enUS = "English",
+                deDE = "Deutsch",
+                esES = "Español (EU)",
+                esMX = "Español (MX)",
+                frFR = "Français",
+                itIT = "Italiano",
+                -- Korean/Chinese endonyms need CJK/Hangul glyphs the bundled Latin fonts lack
+                -- (they render as boxes under Noto Sans), so use Latin labels that render anywhere.
+                koKR = "Korean",
+                ptBR = "Português (BR)",
+                ruRU = "Русский",
+                trTR = "Türkçe",
+                zhCN = "Chinese (Simplified)",
+                zhTW = "Chinese (Traditional)",
+            },
+            get = function()
+                return WarbandNexus.db.profile.languageOverride or "auto"
+            end,
+            set = function(_, value)
+                local p = WarbandNexus.db.profile
+                if (p.languageOverride or "auto") == value then return end
+                p.languageOverride = value
+                -- Locale is merged at OnInitialize and baked into already-built frames;
+                -- a reload rebuilds the whole UI cleanly in the new language.
+                if C_UI and C_UI.Reload then C_UI.Reload() else ReloadUI() end
+            end,
+        }, cy)
 
         -- Keybinding row (fixed label column + controls)
         local labelColW = math.min(170, math.floor(iw * 0.34))
@@ -1955,7 +1976,16 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
         local keybindBtn = ns.UI.Factory:CreateButton(inner, 168, SETTINGS_BTN_H, false)
         settingsKeybindButton = keybindBtn
-        keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", hdrGap, 0)
+        -- Top-anchor the button at the row baseline (cy) so it doesn't ride ~19px above the row
+        -- (it was LEFT->label RIGHT, centering the tall button on the short label). Then vertically
+        -- centre the label text on the button so label + box + X sit on one symmetric line.
+        keybindBtn:SetPoint("TOPLEFT", inner, "TOPLEFT", labelColW + hdrGap, cy)
+        keybindLabel:ClearAllPoints()
+        keybindLabel:SetPoint("LEFT", inner, "LEFT", 0, 0)
+        keybindLabel:SetPoint("RIGHT", keybindBtn, "LEFT", -hdrGap, 0)
+        keybindLabel:SetPoint("TOP", keybindBtn, "TOP", 0, 0)
+        keybindLabel:SetPoint("BOTTOM", keybindBtn, "BOTTOM", 0, 0)
+        keybindLabel:SetJustifyV("MIDDLE")
     if ApplySettingsChrome then
         ApplySettingsAccentChromeIdle(keybindBtn)
     end
@@ -4938,7 +4968,8 @@ function WarbandNexus:DrawSettingsTab(parent)
         local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
         local titleCard = select(1, ns.UI_CreateStandardTabTitleCard(chrome.headerParent, {
             tabKey = "settings",
-            titleText = "|cff" .. hexColor .. tabTitle .. "|r",
+            -- Plain title: white via the card's "Bright" text role (user wants white, not accent).
+            titleText = tabTitle,
             subtitleText = panelSubtitle,
             showUnderline = false,
         }))
@@ -4955,18 +4986,9 @@ function WarbandNexus:DrawSettingsTab(parent)
             elseif mf and mf.fixedHeader then
                 mf.fixedHeader:SetHeight((chrome.yOffset or 0) + (titleCard:GetHeight() or 64) + 8)
             end
-            if ns.UI_CreateThemeDivider and chrome.headerParent
-                and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
-                local titleSep = ns.UI_CreateThemeDivider(chrome.headerParent, {
-                    orientation = "horizontal",
-                    variant = "rail",
-                })
-                if titleSep then
-                    titleSep:ClearAllPoints()
-                    titleSep:SetPoint("TOPLEFT", titleCard, "BOTTOMLEFT", 0, -4)
-                    titleSep:SetPoint("TOPRIGHT", titleCard, "BOTTOMRIGHT", 0, -4)
-                    mf._wnSettingsTitleRailSep = titleSep
-                end
+            -- Settings header divider removed (user: no box/line under the settings header).
+            if mf and mf._wnSettingsTitleRailSep and mf._wnSettingsTitleRailSep.Hide then
+                mf._wnSettingsTitleRailSep:Hide()
             end
         end
     end
@@ -5006,13 +5028,11 @@ function WarbandNexus:DrawSettingsTab(parent)
         ApplySettingsChrome(navCol, { navBg[1], navBg[2], navBg[3], 0.92 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.35 })
         if ns.UI_HideFrameBorderQuartet then ns.UI_HideFrameBorderQuartet(navCol) end
     end
+    -- Vertical rail divider removed (user: the orange rectangle next to the settings rail).
+    -- Left nil so RefreshThemeChrome's `if navDivider then` guard skips re-showing it.
     local navDivider
-    if not useClassicNav and ns.UI.Factory and ns.UI.Factory.CreateThemeDivider then
-        navDivider = ns.UI.Factory:CreateThemeDivider(navCol, { orientation = "vertical", variant = "rail" })
-        if navDivider then
-            navDivider:SetPoint("TOPRIGHT", navCol, "TOPRIGHT", 0, 0)
-            navDivider:SetPoint("BOTTOMRIGHT", navCol, "BOTTOMRIGHT", 0, 0)
-        end
+    if navCol._wnSettingsNavDivider and navCol._wnSettingsNavDivider.Hide then
+        navCol._wnSettingsNavDivider:Hide()
     end
     navCol._wnSettingsNavDivider = navDivider
 

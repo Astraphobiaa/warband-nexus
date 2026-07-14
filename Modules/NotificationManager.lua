@@ -1945,7 +1945,7 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage(E.VAULT_SLOT_COMPLETED, "OnVaultSlotCompleted")
     self:RegisterMessage(E.VAULT_PLAN_COMPLETED, "OnVaultPlanCompleted")
     self:RegisterMessage(E.QUEST_COMPLETED, "OnQuestCompleted")
-    -- WN_REPUTATION_GAINED is handled in Core.lua (chat notifications)
+    -- WN_REPUTATION_GAINED is handled in ChatMessageService.lua (chat notifications)
     self:RegisterMessage(E.VAULT_REWARD_AVAILABLE, "OnVaultRewardAvailable")
     -- Plan reminders: optional compact toast via WN_SHOW_REMINDER_TOAST (not Blizzard AddAlert hooks)
     
@@ -1964,28 +1964,34 @@ function WarbandNexus:InitializeNotificationListeners()
             ScheduleAlertSuppressionRetries(WarbandNexus)
         end
     end)
-    -- AceEvent: callback is (eventName, ...wowArgs); ADDON_LOADED's sole payload is the loaded addon name.
-    self:RegisterEvent("ADDON_LOADED", function(_, loadedAddon)
-        if IsAlertSourceAddOn(loadedAddon) then
-            if self.ApplyBlizzardAchievementAlertSuppression then
-                self:ApplyBlizzardAchievementAlertSuppression()
-                ScheduleAlertSuppressionRetries(self)
-            end
-        end
-    end)
-    self:RegisterEvent("PLAYER_LOGIN", function()
-        if self.ApplyBlizzardAchievementAlertSuppression then
-            self:ApplyBlizzardAchievementAlertSuppression()
-        end
-    end)
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
-        C_Timer.After(0, function()
-            if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
-                WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-                ScheduleAlertSuppressionRetries(WarbandNexus)
+    -- Blizzard event re-application uses a module-local raw frame, NOT AceEvent on the
+    -- addon object: Core owns ADDON_LOADED / PLAYER_ENTERING_WORLD there, and AceEvent
+    -- allows one handler per event per object — registering here silently replaced Core's
+    -- handlers (which killed the guild-bank UI hook installed via Core's OnAddonLoaded).
+    -- PLAYER_LOGIN is intentionally not watched: it fired before this init runs, and the
+    -- direct ApplyBlizzardAchievementAlertSuppression() calls above already cover login.
+    if not self._alertSuppressionEventFrame then
+        local suppressionFrame = CreateFrame("Frame")
+        suppressionFrame:RegisterEvent("ADDON_LOADED")
+        suppressionFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        suppressionFrame:SetScript("OnEvent", function(_, event, loadedAddon)
+            if event == "ADDON_LOADED" then
+                if IsAlertSourceAddOn(loadedAddon) and WarbandNexus
+                    and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                    ScheduleAlertSuppressionRetries(WarbandNexus)
+                end
+            else -- PLAYER_ENTERING_WORLD
+                C_Timer.After(0, function()
+                    if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                        WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                        ScheduleAlertSuppressionRetries(WarbandNexus)
+                    end
+                end)
             end
         end)
-    end)
+        self._alertSuppressionEventFrame = suppressionFrame
+    end
     self:RegisterEvent("CRITERIA_EARNED", "OnCriteriaEarned")
 end
 

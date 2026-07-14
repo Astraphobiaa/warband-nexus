@@ -185,9 +185,12 @@ function WarbandNexus:InitializeMinimapButton()
             UpdateTooltip(GameTooltip)
             GameTooltip:Show()
             
-            -- Poll Shift state on a dedicated frame for instant refresh
+            -- Refresh on Shift changes via MODIFIER_STATE_CHANGED (never OnUpdate polling
+            -- for event-available state). Tooltip is WN-owned here, so re-driving it is safe.
             shiftPollFrame._lastShift = IsShiftKeyDown()
-            shiftPollFrame:SetScript("OnUpdate", function(self)
+            shiftPollFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+            shiftPollFrame:SetScript("OnEvent", function(self, _, key)
+                if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
                 local now = IsShiftKeyDown()
                 if now ~= self._lastShift then
                     self._lastShift = now
@@ -198,10 +201,11 @@ function WarbandNexus:InitializeMinimapButton()
             end)
             shiftPollFrame:Show()
         end,
-        
+
         OnLeave = function(frame)
             shiftPollFrame:Hide()
-            shiftPollFrame:SetScript("OnUpdate", nil)
+            shiftPollFrame:UnregisterEvent("MODIFIER_STATE_CHANGED")
+            shiftPollFrame:SetScript("OnEvent", nil)
             GameTooltip:Hide()
         end,
     })

@@ -142,6 +142,8 @@ local PATH_TO_LSM_KEY = {
     ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
     ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
     ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ExpresswayTR.ttf"] = "Expressway TR",
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\NotoSans-Regular.ttf"] = "Noto Sans",
 }
 
 -- Fallback when LSM is not loaded (LSM key -> display name for dropdowns)
@@ -153,9 +155,13 @@ local FALLBACK_FONT_OPTIONS = {
     ["Action Man"] = "Action Man",
     ["Continuum Medium"] = "Continuum Medium",
     ["Expressway"] = "Expressway",
+    ["Expressway TR"] = "Expressway TR",
+    ["Noto Sans"] = "Noto Sans",
 }
 
 -- Reverse lookup: LSM key -> font path (used when LSM is not loaded to resolve keys)
+-- Noto Sans has full Turkish/Latin-Extended coverage (incl. U+0130 dotted capital I),
+-- used automatically for languages the default/user font can't render (see LOCALE_FONT).
 local LSM_KEY_TO_PATH = {
     ["Friz Quadrata TT"] = "Fonts\\FRIZQT__.TTF",
     ["Arial Narrow"] = "Fonts\\ARIALN.TTF",
@@ -164,6 +170,12 @@ local LSM_KEY_TO_PATH = {
     ["Action Man"] = "Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf",
     ["Continuum Medium"] = "Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf",
     ["Expressway"] = "Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf",
+    -- Expressway TR = Expressway patched with U+0130 (dotted capital İ). A NEW filename on purpose:
+    -- WoW caches loaded font files for the whole session, so overwriting Expressway.ttf needs a full
+    -- client restart. A fresh filename WoW hasn't loaded this session rasterizes on the next SetFont,
+    -- so İ appears after a plain /reload. Used for Turkish (see LOCALE_FONT).
+    ["Expressway TR"] = "Interface\\AddOns\\WarbandNexus\\Fonts\\ExpresswayTR.ttf",
+    ["Noto Sans"] = "Interface\\AddOns\\WarbandNexus\\Fonts\\NotoSans-Regular.ttf",
 }
 
 -- Register addon custom fonts with LSM (Latin-only; LSM filters by locale on Register)
@@ -171,6 +183,8 @@ if LSM and LSM.MediaType and LSM.LOCALE_BIT_western then
     LSM:Register("font", "Action Man", "Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf", LSM.LOCALE_BIT_western)
     LSM:Register("font", "Continuum Medium", "Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf", LSM.LOCALE_BIT_western)
     LSM:Register("font", "Expressway", "Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf", LSM.LOCALE_BIT_western)
+    LSM:Register("font", "Expressway TR", "Interface\\AddOns\\WarbandNexus\\Fonts\\ExpresswayTR.ttf", LSM.LOCALE_BIT_western)
+    LSM:Register("font", "Noto Sans", "Interface\\AddOns\\WarbandNexus\\Fonts\\NotoSans-Regular.ttf", LSM.LOCALE_BIT_western)
 end
 
 -- FONT PRELOADING (forces WoW to load .ttf files during loading screen)
@@ -501,6 +515,34 @@ local DEFAULT_PROFILE_FONT_PATH = "Interface\\AddOns\\WarbandNexus\\Fonts\\Expre
 local BUILTIN_FALLBACK_FONT_PATH = "Fonts\\FRIZQT__.TTF"
 local DEFAULT_LSM_KEY = "Expressway"
 
+-- Languages whose script the default/user font may not render. When such a language is
+-- the active interface language (db.profile.languageOverride) and the user has not chosen
+-- a non-default font, force this bundled font (LSM key). Extend for other scripts.
+-- Turkish uses "Expressway TR" = Expressway + the İ glyph, under a NEW filename so WoW rasterizes
+-- it fresh on /reload (overwriting Expressway.ttf would need a full client restart because WoW
+-- caches loaded fonts for the session). Same narrow metrics as Expressway → no truncation.
+local LOCALE_FONT = {
+    trTR = "Expressway TR",
+}
+
+-- Swap in the locale font when the active language needs it and the user kept the default
+-- font. Returns the bundled locale-font path directly (no fragile file-existence probe): when
+-- the file is installed WoW loads it; if it is missing, SafeSetFont's SetFont fails and falls
+-- back to Expressway (covers most Turkish letters). A runtime probe that cached a false result
+-- from an early call was preventing Noto Sans from ever being applied to the nav.
+local function ApplyLocaleFont(path, db)
+    local lang = ns and ns.db and ns.db.profile and ns.db.profile.languageOverride
+    if not lang or lang == "auto" then return path end
+    local wantKey = LOCALE_FONT[lang]
+    if not wantKey then return path end
+    local chosen = db and db.fontFace
+    if type(chosen) == "string" and chosen ~= "" and chosen ~= DEFAULT_LSM_KEY
+        and chosen ~= DEFAULT_PROFILE_FONT_PATH then
+        return path  -- respect an explicit non-default user font choice
+    end
+    return LSM_KEY_TO_PATH[wantKey] or path
+end
+
 -- Resolve DB fontFace (LSM key or legacy path) to file path; migrate path -> key in DB when possible
 local function ResolveFontFaceFromDB(db)
     if not db or type(db.fontFace) ~= "string" or db.fontFace == "" then
@@ -544,6 +586,7 @@ function FontManager:GetFontFace()
     local db = ns.db.profile and ns.db.profile.fonts
     if not db then return DEFAULT_PROFILE_FONT_PATH end
     local path = ResolveFontFaceFromDB(db)
+    path = ApplyLocaleFont(path, db)
     return path
 end
 
@@ -584,17 +627,23 @@ function FontManager:SafeSetFont(fontString, sizeCategory, opts)
     end)
     
     if not success or not ok then
-        -- Try preloaded FontObject
+        -- Primary font failed to load (e.g. a locale font that is not installed). Prefer the
+        -- bundled default (Expressway: broad Latin/Turkish coverage) over the WoW builtin, so
+        -- text never regresses to a glyph-less fallback. Try a preloaded object first.
+        local applied = false
         local preloaded = PRELOADED_FONTS[fontPath]
         if preloaded then
-            pcall(function()
+            applied = pcall(function()
                 fontString:SetFontObject(preloaded)
-                fontString:SetFont(fontPath, fontSize, flags)
-            end)
-        else
-            pcall(function()
-                fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, flags)
-            end)
+                ok = fontString:SetFont(fontPath, fontSize, flags)
+            end) and ok
+        end
+        if not applied then
+            local fbOk = false
+            pcall(function() fbOk = fontString:SetFont(DEFAULT_PROFILE_FONT_PATH, fontSize, flags) end)
+            if not fbOk then
+                pcall(function() fontString:SetFont(BUILTIN_FALLBACK_FONT_PATH, fontSize, flags) end)
+            end
         end
         FontManager:ApplyReadableEdge(fontString, sizeCategory or "body", flagOpts)
         return false
