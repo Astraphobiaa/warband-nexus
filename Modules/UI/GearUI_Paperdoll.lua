@@ -1552,6 +1552,17 @@ function PD.FormatSlotUpgradeCurrencySuffix(up, currencyAmounts)
     return " |cff" .. hex .. "(" .. format(fmt, haveGold, needGold) .. ")|r"
 end
 
+---Render "Myth 6/6", or "Myth+" once the item level passes the track's top tier.
+---A Nebulous Voidcore lifts gear above the cap (Myth 6/6 = 289 -> 298) without changing the
+---track, so printing the tier would show a 289 and a 298 item identically and hide the
+---upgrade. Defined above its callers: Lua 5.1 locals are not visible before their line.
+local function FormatTrackTier(englishTrack, localizedTrack, curT, maxT, itemLevel)
+    if ns.Gear_IsAboveTrackCap and ns.Gear_IsAboveTrackCap(englishTrack, itemLevel) then
+        return localizedTrack .. "+"
+    end
+    return localizedTrack .. " " .. tostring(curT) .. "/" .. tostring(maxT)
+end
+
 function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slotData)
     local up = upgradeInfo and (upgradeInfo[slotID] or upgradeInfo[tostring(slotID)])
     if not up and slotData and slotData.itemLink and not (issecretvalue and issecretvalue(slotData.itemLink)) then
@@ -1560,7 +1571,7 @@ function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slot
             if tn and tc and tm and tm > 0 then
                 local track = LocalizeUpgradeTrackName(tn)
                 if track and track ~= "" then
-                    return PD.FormatTrackMarkup(tn, track .. " " .. tostring(tc) .. "/" .. tostring(tm), quality)
+                    return PD.FormatTrackMarkup(tn, FormatTrackTier(tn, track, tc, tm, slotData.itemLevel), quality)
                 end
             end
         end
@@ -1582,45 +1593,37 @@ function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slot
         end
     end
 
-    -- Crafted items: show current tier + achievable recraft target
+    -- Crafted items: state what the item is, plus any achievable recraft target.
+    -- Crafted gear has no upgrade track -- its tooltip carries no "Upgrade Level" line at all,
+    -- so the old "Myth 5/5" label was WN inventing a track from the item level. It also read
+    -- as a broken scale next to real 6/6 tracks, because crafted caps at tier 5 (285) while
+    -- Blizzard's maxUpgrade=6 describes the dropped track. Show "Crafted <ilvl>" instead and
+    -- keep the recraft arrow, which is the part that actually drives a decision. The markup
+    -- colour still follows the ilvl bracket.
     if up.isCrafted then
         local currentEnglish = up.craftedTierName or up.trackName or "Crafted"
-        local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
-        -- Crafted gear caps at 5/6 on every tier (not only Myth) — see GearService.
-        if maxT > 5 then
-            maxT = 5
-            if curT > 5 then curT = 5 end
-        end
-        local currentTier = LocalizeUpgradeTrackName(currentEnglish)
+        local craftedWord = (ns.L and ns.L["GEAR_TRACK_CRAFTED_FALLBACK"]) or "Crafted"
+        local curIlvl = tonumber(up.currentIlvl) or 0
+        local craftedLabel = (curIlvl > 0) and (craftedWord .. " " .. tostring(curIlvl)) or craftedWord
         local range = currencyAmounts and ns.GearUI_GetCraftedIlvlRange and ns.GearUI_GetCraftedIlvlRange(up, currencyAmounts) or nil
         local canRecast = range and range.maxIlvl > (up.currentIlvl or 0)
             and (up.canAffordNext == true
                 or (currencyAmounts and ns.GearUI_CanAffordNextUpgrade and ns.GearUI_CanAffordNextUpgrade(up, currencyAmounts)))
-        if maxT > 0 and curT > 0 and currentTier then
-            if canRecast then
-                local bestEnglish = range.bestCrestName or ""
-                return PD.FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
-                    .. " → "
-                    .. PD.FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
-            end
-            return PD.FormatTrackMarkup(currentEnglish, currentTier .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
-        end
         if canRecast then
             local bestEnglish = range.bestCrestName or ""
-            return PD.FormatTrackMarkup(currentEnglish, currentTier or LocalizeUpgradeTrackName(currentEnglish), quality)
+            return PD.FormatTrackMarkup(currentEnglish, craftedLabel, quality)
                 .. " → "
                 .. PD.FormatTrackMarkup(bestEnglish, LocalizeUpgradeTrackName(bestEnglish) .. " " .. tostring(range.maxIlvl), quality)
         end
-        if currentTier and currentTier ~= "" then
-            return PD.FormatTrackMarkup(currentEnglish, currentTier, quality)
-        end
+        return PD.FormatTrackMarkup(currentEnglish, craftedLabel, quality)
     end
 
     local englishTrack = up.trackName
     local track = (englishTrack and englishTrack ~= "") and LocalizeUpgradeTrackName(englishTrack) or nil
     local curT, maxT = up.currUpgrade or 0, up.maxUpgrade or 0
     if maxT and maxT > 0 and track then
-        return PD.FormatTrackMarkup(englishTrack, track .. " " .. tostring(curT) .. "/" .. tostring(maxT), quality)
+        local ilvlForCap = up.currentIlvl or (slotData and slotData.itemLevel)
+        return PD.FormatTrackMarkup(englishTrack, FormatTrackTier(englishTrack, track, curT, maxT, ilvlForCap), quality)
     end
     if track and track ~= "" then return PD.FormatTrackMarkup(englishTrack, track, quality) end
     if slotData and slotData.upgradeTrack and not (issecretvalue and issecretvalue(slotData.upgradeTrack)) then

@@ -817,15 +817,32 @@ end
 
 local function InferUpgradeFromIlvl(itemLevel)
     local ilvl = tonumber(itemLevel)
-    if not ilvl or ilvl < 220 or ilvl > 289 then return nil, nil, nil end
+    if not ilvl or ilvl < 220 then return nil, nil, nil end
 
-    local bestTrack, bestTier, bestMax = nil, -1, 6
+    -- Above the top tier of the highest track the item is still on that track. A Nebulous
+    -- Voidcore adds item level past the Myth 6/6 cap (289 -> 298) without changing the track,
+    -- and there is nothing above Myth to confuse it with, so this is a deduction rather than
+    -- a guess. The old `ilvl > 289 -> nil` gate is why Voidcore'd weapons and trinkets showed
+    -- no rank at all while every item at or below 289 showed one.
+    local topTrack = TRACK_ORDER[#TRACK_ORDER]
+    local topTiers = topTrack and TRACK_ILVLS[topTrack]
+    if topTiers and #topTiers > 0 and ilvl > topTiers[#topTiers] then
+        return topTrack, #topTiers, #topTiers
+    end
+
+    -- An ilvl alone cannot identify a track: adjacent tracks overlap by two tiers, so 246 is
+    -- both Veteran 5/6 and Champion 1/6. Prefer the higher track, matching ILVL_TO_UPGRADE
+    -- below; TRACK_ORDER runs low->high so the last match wins. The old `tier > bestTier`
+    -- test kept the higher tier NUMBER, which is always the LOWER track, and rendered every
+    -- overlap two steps low (Champion 1/6 shown as Veteran 5/6).
+    -- This is still only a guess -- prefer ResolveTrackFromIlvlAndTier when a tier is known.
+    local bestTrack, bestTier, bestMax = nil, nil, 6
     for ti = 1, #TRACK_ORDER do
         local trackName = TRACK_ORDER[ti]
         local tiers = TRACK_ILVLS[trackName]
         if tiers then
             for tier = 1, #tiers do
-                if tiers[tier] == ilvl and tier > bestTier then
+                if tiers[tier] == ilvl then
                     bestTier = tier
                     bestTrack = trackName
                     bestMax = #tiers
@@ -849,6 +866,45 @@ local function InferUpgradeFromIlvl(itemLevel)
     end
     if nearest then return nearest[1], nearest[2], nearest[3] end
     return nil, nil, nil
+end
+
+---Pin the upgrade track from an item level plus its tooltip tier.
+---Unlike the ilvl-only guess above this never guesses: adjacent tracks overlap by two tiers,
+---but always at different tier numbers, so every (ilvl, tier) pair maps to exactly one track
+---(246+tier 1 = Champion, 246+tier 5 = Veteran). The tier comes from the tooltip's "x/y",
+---which needs no localization, so this works on every client and for crafted/PvP gear whose
+---line carries no track word. Returns nil when nothing matches -- callers must show unknown
+---rather than fall back to a wrong track.
+---@param ilvl number
+---@param tier number
+---@return string|nil trackName
+local function ResolveTrackFromIlvlAndTier(ilvl, tier)
+    ilvl, tier = tonumber(ilvl), tonumber(tier)
+    if not ilvl or not tier or tier < 1 then return nil end
+    local found = nil
+    for ti = 1, #TRACK_ORDER do
+        local trackName = TRACK_ORDER[ti]
+        local tiers = TRACK_ILVLS[trackName]
+        if tiers and tiers[tier] == ilvl then
+            if found then return nil end -- ambiguous; never guess
+            found = trackName
+        end
+    end
+    return found
+end
+
+---True when an item level sits above its track's top tier.
+---A Nebulous Voidcore pushes gear past the cap (Myth 6/6 = 289 -> 298) without changing the
+---track, so the tier alone cannot express it: a 289 and a 298 item would both render
+---"Myth 6/6", hiding the upgrade the player actually paid for. Callers render "Myth+".
+---@param trackName string|nil
+---@param itemLevel number|nil
+---@return boolean
+function ns.Gear_IsAboveTrackCap(trackName, itemLevel)
+    local tiers = trackName and TRACK_ILVLS[trackName]
+    local ilvl = tonumber(itemLevel)
+    if not tiers or not ilvl or #tiers == 0 then return false end
+    return ilvl > tiers[#tiers]
 end
 
 local function GetTierIlvlForTrack(trackName, tier)
@@ -980,6 +1036,14 @@ local function ResolveSlotUpgradeTrackAndTier(slot)
     if labelCur and labelMax and labelMax > 0 then
         apiCur = apiCur or labelCur
         apiMax = apiMax or labelMax
+    end
+
+    -- No track word on the tooltip (crafted, PvP, or a client whose line we cannot parse),
+    -- but we do have the tier. (ilvl, tier) identifies the track exactly, so resolve it here
+    -- instead of dropping through to InferUpgradeFromIlvl, whose ilvl-only guess picks the
+    -- wrong side of every overlap.
+    if not track and apiCur then
+        track = ResolveTrackFromIlvlAndTier(ilvl, apiCur)
     end
 
     if track then
@@ -1518,12 +1582,19 @@ local function GetEquipLoc(itemLink)
     return loc
 end
 
--- TOOLTIP UPGRADE SCAN  (Fallback when C_ItemUpgrade API is unavailable/empty)
+-- TOOLTIP UPGRADE SCAN  (authoritative source for track + tier)
 
 local function ScanUpgradeFromTooltip(slotID)
     if not C_TooltipInfo or not C_TooltipInfo.GetInventoryItem then return nil end
     local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotID)
     if not ok or not data or not data.lines then return nil end
+
+    -- Find the line by its structured type (Enum.TooltipDataLineType.ItemUpgradeLevel, 11.1.5+)
+    -- rather than by matching English text. The old "Upgrade Level: %s %d/%d" match failed on
+    -- non-English clients and, worse, on crafted and PvP gear: those use the trackless
+    -- ITEM_UPGRADE_TOOLTIP_FORMAT ("Upgrade Level: %d/%d"), whose line carries no track word,
+    -- so the match dropped the tier too and the caller fell back to an ilvl-only guess.
+    local upgradeLineType = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemUpgradeLevel
 
     local result = nil
     local isCrafted = false
@@ -1535,12 +1606,16 @@ local function ScanUpgradeFromTooltip(slotID)
             if issecretvalue and issecretvalue(text) then
                 -- skip secret lines
             else
-                if not result then
-                    local track, cur, max = text:match("Upgrade Level: (%a[%a ]*) (%d+)/(%d+)")
-                    if track and cur and max then
-                        track = track:match("^(.-)%s*$")
+                if not result and upgradeLineType and line.type == upgradeLineType then
+                    -- Digits need no localization. Never match a bare "x/y" without the line
+                    -- type gate above: "Durability 147 / 165" would collide.
+                    local cur, max = text:match("(%d+)%s*/%s*(%d+)")
+                    if cur and max then
+                        -- Track word is optional (absent on crafted/PvP, translated elsewhere).
+                        -- The caller pins it from (ilvl, tier) when this comes back nil.
+                        local track = text:match(":%s*(%a[%a ]-)%s+%d+%s*/")
                         result = {
-                            trackName   = track,
+                            trackName   = track and track:match("^(.-)%s*$") or nil,
                             currUpgrade = tonumber(cur),
                             maxUpgrade  = tonumber(max),
                         }
@@ -1581,8 +1656,14 @@ local function ScanSlotUpgradeData(slotEntry, slotID)
 
     pcall(function()
         local tooltipInfo = ScanUpgradeFromTooltip(slotID)
-        if tooltipInfo and tooltipInfo.trackName then
-            slotEntry.upgradeTrack = tooltipInfo.trackName
+        -- Do NOT gate this on trackName: crafted and PvP gear report "Upgrade Level: 1/6"
+        -- with no track word, and gating threw their tier away along with the missing name,
+        -- leaving ResolveSlotUpgradeTrackAndTier nothing but the ambiguous ilvl guess.
+        -- The tier alone is enough to pin the track later.
+        if tooltipInfo then
+            if tooltipInfo.trackName then
+                slotEntry.upgradeTrack = tooltipInfo.trackName
+            end
             if tooltipInfo.currUpgrade then
                 slotEntry.currUpgrade = tooltipInfo.currUpgrade
             end
@@ -2463,10 +2544,18 @@ function WarbandNexus:GetPersistedUpgradeInfo(charKey)
         end
 
         if slot.notUpgradeable then
+            -- Keep the track that was just resolved above. "Maxed out" and "unknown" are
+            -- different states: only canUpgrade should gate spending crests, but blanking
+            -- trackName/currUpgrade here erased the rank from the UI entirely. Voidcore
+            -- pushes gear past the Myth 6/6 cap (289 -> 298) and flips itemUpgradeable to
+            -- false, which is why 298 weapons and trinkets showed no rank at all while every
+            -- item at or below 289 showed one.
             upgrades[slotID] = {
                 canUpgrade = false, notUpgradeable = true,
                 currentIlvl = itemLevel, nextIlvl = itemLevel, maxIlvl = 0,
-                currUpgrade = 0, maxUpgrade = 0, trackName = "",
+                currUpgrade = tonumber(currUpgrade) or 0,
+                maxUpgrade = tonumber(maxUpgrade) or 0,
+                trackName = trackName or "",
                 currencyID = 0, crestCost = 0, moneyCost = 0,
                 watermarkIlvl = watermarks[slotID] or 0,
             }
