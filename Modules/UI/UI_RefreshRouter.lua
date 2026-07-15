@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Main shell WN_* message listeners (PopulateContent coalescing).
     Split from Modules/UI.lua CreateMainWindow closure.
     Loaded from WarbandNexus.toc immediately before Modules/UI.lua.

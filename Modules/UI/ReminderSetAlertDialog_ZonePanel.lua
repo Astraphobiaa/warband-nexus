@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Reminder Set Alert zone location + manual map list (view layer).
     Split from ReminderSetAlertDialog.lua (Lua 5.1 local limit).
 ]]

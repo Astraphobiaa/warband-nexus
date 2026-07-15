@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Collections Tab (entry: DrawCollectionsTab, listeners)
     Sub-modules: CollectionsUI_Shared, _Lists, _Model, _Recent, _Draw.
 ]]

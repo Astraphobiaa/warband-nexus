@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Character tracking confirmation dialogs (view layer).
     Split from CharacterService.lua; service calls ns.CharacterTrackingDialog.
     Loaded after SharedWidgets (Factory / ApplyVisuals at runtime).

@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Character Service
     Manages character tracking, favorites, and character-specific operations
     Extracted from Core.lua for proper separation of concerns
