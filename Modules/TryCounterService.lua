@@ -1529,6 +1529,45 @@ end
 
 -- PUBLIC API (manual get/set/increment - unchanged from before)
 
+---Resolve the quest-starter source itemID backing a mount, if any.
+---Extracted from GetTryCount so SetTryCount can align the exact same key set: the
+---quest-starter branch below reads keys (tryCounts.item[sourceItemID] and every mount key
+---in sourceItemToAllMountKeys) that ForEachTryCountAliasKey never visits.
+---@param id number mount id (mountID or itemID)
+---@return number|nil sourceItemID
+function Fns.ResolveQuestStarterSourceItemID(id)
+    local idNum = tonumber(id)
+    local sourceItemID = questStarterMountToSourceItemID[id] or (idNum and questStarterMountToSourceItemID[idNum])
+    -- Fast reverse lookup: resolvedIDsReverse maps mountID -> itemID (teach item); that itemID
+    -- may itself be a questStarterMountToSourceItemID key.
+    if not sourceItemID and idNum then
+        local itemIDForMount = resolvedIDsReverse[idNum]
+        if itemIDForMount then
+            sourceItemID = questStarterMountToSourceItemID[itemIDForMount]
+        end
+    end
+    -- Last-resort: scan via C_MountJournal.GetMountFromItem (costly; result is cached to avoid repeat).
+    if not sourceItemID and idNum then
+        local cached = mountJournalResolvedSourceCache[idNum]
+        if cached ~= nil then
+            sourceItemID = cached or nil
+        elseif C_MountJournal and C_MountJournal.GetMountFromItem then
+            for mountKey, srcID in pairs(questStarterMountToSourceItemID) do
+                if type(mountKey) == "number" and type(srcID) == "number" then
+                    local resolved = C_MountJournal.GetMountFromItem(mountKey)
+                    if resolved and not (issecretvalue and issecretvalue(resolved)) and tonumber(resolved) == idNum then
+                        sourceItemID = srcID
+                        mountJournalResolvedSourceCache[idNum] = srcID
+                        break
+                    end
+                end
+            end
+            if not sourceItemID then mountJournalResolvedSourceCache[idNum] = false end
+        end
+    end
+    return sourceItemID
+end
+
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number
 ---@return number count
@@ -1539,34 +1578,7 @@ function WarbandNexus:GetTryCount(collectibleType, id)
     if idNum then id = idNum end
     -- Quest Starter = Mount Item = Mount: try count = statistic + local stored
     if collectibleType == "mount" then
-        local sourceItemID = questStarterMountToSourceItemID[id] or (idNum and questStarterMountToSourceItemID[idNum])
-        -- Fast reverse lookup: resolvedIDsReverse maps mountID -> itemID (teach item); that itemID
-        -- may itself be a questStarterMountToSourceItemID key.
-        if not sourceItemID and idNum then
-            local itemIDForMount = resolvedIDsReverse[idNum]
-            if itemIDForMount then
-                sourceItemID = questStarterMountToSourceItemID[itemIDForMount]
-            end
-        end
-        -- Last-resort: scan via C_MountJournal.GetMountFromItem (costly; result is cached to avoid repeat).
-        if not sourceItemID and idNum then
-            local cached = mountJournalResolvedSourceCache[idNum]
-            if cached ~= nil then
-                sourceItemID = cached or nil
-            elseif C_MountJournal and C_MountJournal.GetMountFromItem then
-                for mountKey, srcID in pairs(questStarterMountToSourceItemID) do
-                    if type(mountKey) == "number" and type(srcID) == "number" then
-                        local resolved = C_MountJournal.GetMountFromItem(mountKey)
-                        if resolved and not (issecretvalue and issecretvalue(resolved)) and tonumber(resolved) == idNum then
-                            sourceItemID = srcID
-                            mountJournalResolvedSourceCache[idNum] = srcID
-                            break
-                        end
-                    end
-                end
-                if not sourceItemID then mountJournalResolvedSourceCache[idNum] = false end
-            end
-        end
+        local sourceItemID = Fns.ResolveQuestStarterSourceItemID(id)
         if sourceItemID then
             local itemCount = WarbandNexus.db.global.tryCounts.item and WarbandNexus.db.global.tryCounts.item[sourceItemID]
             local localStored = type(itemCount) == "number" and itemCount or 0
@@ -1641,15 +1653,53 @@ function Fns.MaxTryCountAliasKeys(collectibleType, id, primary)
     return best
 end
 
+---Set the stored attempt count, aligning every key GetTryCount can read back.
+---GetTryCount returns the MAX across all keys that can represent one collectible, so a
+---write that only touched the exact key was shadowed by a higher stale value: editing a
+---mount to 0 in the popup still read back the old count off the itemID key. ResetTryCount
+---already zeroes its alias keys for this reason; this mirrors that for explicit sets.
+---Other keys are only ever clamped DOWN to `count` and never created, so callers that pass
+---a value >= the current max (the statistics ratchet in TryCounterService_Stats) are
+---unaffected, while a deliberate sync-down now actually sticks.
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number
 ---@param count number
 function WarbandNexus:SetTryCount(collectibleType, id, count)
     if not VALID_TYPES[collectibleType] or not id then return end
     if not Fns.EnsureDB() then return end
+    local idNum = tonumber(id)
+    if idNum then id = idNum end
     count = tonumber(count)
     if not count or count < 0 then count = 0 end
-    WarbandNexus.db.global.tryCounts[collectibleType][id] = count
+    local tc = WarbandNexus.db.global.tryCounts
+    local tbl = tc[collectibleType]
+    tbl[id] = count
+
+    local function ClampOther(t, key)
+        if not t or key == nil then return end
+        if type(t[key]) == "number" and t[key] > count then t[key] = count end
+    end
+
+    -- Read branch 2: alias keys (mountID <-> itemID, pet itemID -> speciesID).
+    Fns.ForEachTryCountAliasKey(collectibleType, id, function(key)
+        if key ~= id then ClampOther(tbl, key) end
+    end)
+
+    -- Read branch 1: quest-starter mounts resolve to a different key set entirely and
+    -- return early in GetTryCount, so the alias pass above never covers them.
+    if collectibleType == "mount" then
+        local sourceItemID = Fns.ResolveQuestStarterSourceItemID(id)
+        if sourceItemID then
+            ClampOther(tc.item, sourceItemID) -- separate table: no key ~= id guard needed
+            local allKeys = sourceItemToAllMountKeys[sourceItemID]
+            if allKeys then
+                for i = 1, #allKeys do
+                    if allKeys[i] ~= id then ClampOther(tbl, allKeys[i]) end
+                end
+            end
+        end
+    end
+
     Fns.SchedulePlansTryCountUIUpdate()
 end
 

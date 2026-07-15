@@ -37,6 +37,9 @@ L["PVE_COLLAPSE_ALL_TOOLTIP"] = "Collapse all PvE sections and character rows."
 L["SETTINGS_SECTION_GENERAL_FEATURES"] = "Features"
 L["SETTINGS_SECTION_GENERAL_TOOLTIPS"] = "Item tooltips"
 L["SETTINGS_SECTION_GENERAL_CONTROLS"] = "Controls & Scaling"
+L["SETTINGS_SECTION_GENERAL_INTERFACE"] = "Interface"
+L["SETTINGS_SECTION_GENERAL_STARTUP"] = "Startup"
+L["SETTINGS_SECTION_MINIMAP_BUTTON"] = "Minimap Button"
 L["SETTINGS_SECTION_MODULES_LIST"] = "Enabled modules"
 L["SETTINGS_SECTION_MODULES_PROFESSION_TOOLS"] = "Profession tools"
 L["SETTINGS_SECTION_VAULT_GENERAL"] = "Shortcut behavior"
@@ -1064,8 +1067,8 @@ L["SETTINGS_PANEL_GENERAL"] = "General"
 L["SETTINGS_PANEL_GENERAL_DESC"] = "Display, shortcuts, keybinding, and window scaling."
 L["SETTINGS_PANEL_MODULES"] = "Modules"
 L["SETTINGS_PANEL_MODULES_DESC"] = "Turn data modules on or off and control which tabs appear."
-L["SETTINGS_PANEL_ACCESS"] = "Easy Access"
-L["SETTINGS_PANEL_ACCESS_DESC"] = "Floating shortcut button and quick-open actions."
+L["SETTINGS_PANEL_ACCESS"] = "Shortcuts"
+L["SETTINGS_PANEL_ACCESS_DESC"] = "Minimap button and the floating quick-access shortcut."
 L["SETTINGS_PANEL_FILTERS"] = "Tab filters"
 L["SETTINGS_PANEL_FILTERS_DESC"] = "Choose which main tabs show in the navigation."
 L["SETTINGS_PANEL_NOTIFICATIONS"] = "Notifications"
@@ -1143,8 +1146,7 @@ L["TRACK_USAGE"] = "Usage: enable | disable | status"
 L["CLICK_TO_COPY"] = "Click to copy invite link"
 
 L["WELCOME_MSG_FORMAT"] = "Welcome to Warband Nexus v%s"
-L["WELCOME_TYPE_CMD"] = "Please type"
-L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
+L["WELCOME_CMD_HINT"] = "Please type %s to open the interface."
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00What's New:|r a popup may appear above chat, or type |cffffff00/wn changelog|r."
 L["CHARACTER_LINK_HINT_CHAT"] = "Your saved data was kept. If something looks wrong in the panel, type |cffffff00/reload|r once."
 L["CONFIG_SHOW_LOGIN_CHAT"] = "Login message in chat"
@@ -1153,6 +1155,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
+L["CHANGELOG_V333"] = [=[v3.3.3 (2026-07-15)
+
+Added:
+- Turkish language support, with a language selector in Settings so you can pick any interface language regardless of your game client.
+
+Updated:
+- Settings reorganized: Language now sits at the top of General, and every minimap option moved into the renamed "Shortcuts" panel alongside Easy Access.
+- General settings are now grouped into Interface, Controls & Scaling, Item tooltips, and Startup.
+
+Fixed:
+- Editing an attempt count by hand now sticks; a mount's try count could previously snap back to the old value.
+- The welcome message now reads correctly in Korean.
+
+CurseForge: Warband Nexus]=]
 L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
 
 Added:

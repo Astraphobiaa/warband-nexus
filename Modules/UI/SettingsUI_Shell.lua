@@ -41,8 +41,8 @@ local PANEL_META = {
     access = {
         locale = "SETTINGS_PANEL_ACCESS",
         descLocale = "SETTINGS_PANEL_ACCESS_DESC",
-        fallback = "Easy Access",
-        descFallback = "Floating shortcut button and quick-open actions.",
+        fallback = "Shortcuts",
+        descFallback = "Minimap button and the floating quick-access shortcut.",
         iconKey = "pve",
     },
     filters = {

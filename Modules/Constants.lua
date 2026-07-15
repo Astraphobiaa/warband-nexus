@@ -14,9 +14,9 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.3.2",
+    ADDON_VERSION = "3.3.3",
     -- Shown next to version in the What's New / changelog popup title
-    ADDON_RELEASE_DATE = "2026-07-11",
+    ADDON_RELEASE_DATE = "2026-07-15",
 
     -- Single-roof version registry. Cache invalidation triggers ONLY when one of:
     --   1. Game build (select(4, GetBuildInfo())) changes — Blizzard API may have shifted shape.

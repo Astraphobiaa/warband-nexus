@@ -1755,7 +1755,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
     local generalSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(generalSection, yOffset)
     
-    -- General options: features (minimap, login stats) — item tooltips in separate subsection below
+    -- General "Startup" options (login stats). Minimap + Easy Access shortcuts now live
+    -- together in the "Shortcuts" (access) panel; item tooltips are a separate subsection below.
     local generalFeatureOptions = {
         {
             key = "requestPlayedTimeOnLogin",
@@ -1763,43 +1764,6 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             tooltip = (ns.L and ns.L["CONFIG_REQUEST_PLAYED_TIME_ON_LOGIN_DESC"]) or "When enabled, the addon requests /played data in the background to update statistics. Chat output from that request is suppressed. When disabled, no automatic request on login.",
             get = function() return WarbandNexus.db.profile.requestPlayedTimeOnLogin ~= false end,
             set = function(value) WarbandNexus.db.profile.requestPlayedTimeOnLogin = value end,
-        },
-        {
-            key = "minimapVisible",
-            label = (ns.L and ns.L["CONFIG_MINIMAP"]) or "Minimap Button",
-            tooltip = (ns.L and ns.L["CONFIG_MINIMAP_DESC"]) or "Show a button on the minimap for quick access.",
-            get = function() return not WarbandNexus.db.profile.minimap.hide end,
-            set = function(value)
-                if WarbandNexus.SetMinimapButtonVisible then
-                    WarbandNexus:SetMinimapButtonVisible(value)
-                else
-                    WarbandNexus.db.profile.minimap.hide = not value
-                end
-            end,
-        },
-        {
-            key = "minimapLock",
-            label = (ns.L and ns.L["LOCK_MINIMAP_ICON"]) or "Lock Minimap Button",
-            tooltip = (ns.L and ns.L["LOCK_MINIMAP_TOOLTIP"]) or "Lock the minimap button in place so it cannot be dragged",
-            get = function() return WarbandNexus.db.profile.minimap.lock end,
-            set = function(value)
-                WarbandNexus.db.profile.minimap.lock = value
-                -- Apply lock immediately via LDBI (only lock dragging, keep clicks enabled)
-                if LDBI then
-                    local button = LDBI:GetMinimapButton(ADDON_NAME)
-                    if button then
-                        if value then
-                            -- Lock position (disable dragging only)
-                            button:SetMovable(false)
-                            button:RegisterForDrag()  -- Clear drag registration
-                        else
-                            -- Unlock position (enable dragging)
-                            button:SetMovable(true)
-                            button:RegisterForDrag("LeftButton")
-                        end
-                    end
-                end
-            end,
         },
     }
 
@@ -1829,100 +1793,8 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
         local hdrGap = GetHeaderToolbarGap()
         local cy = 0
         cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_FEATURES"]) or "Features",
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_INTERFACE"]) or "Interface",
             iw, cy, { skipGapBefore = true })
-        cy = CreateCheckboxGrid(inner, generalFeatureOptions, cy, iw)
-
-        cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_TOOLTIPS"]) or "Item tooltips",
-            iw, cy, {})
-        cy = CreateCheckboxGrid(inner, tooltipOptions, cy, iw)
-
-        local VB = ns.VaultButton
-        local function GetMinimapClickSettings()
-            WarbandNexus.db.profile.minimap = WarbandNexus.db.profile.minimap or {}
-            local settings = WarbandNexus.db.profile.minimap
-            if settings.leftClickAction == nil then
-                settings.leftClickAction = "toggle"
-            end
-            if VB and VB.NormalizeMinimapLeftClickAction then
-                settings.leftClickAction = VB.NormalizeMinimapLeftClickAction(settings.leftClickAction)
-            elseif settings.leftClickAction ~= "toggle" then
-                settings.leftClickAction = "toggle"
-            end
-            return settings
-        end
-        local function IsMinimapLeftClickAction(action)
-            return GetMinimapClickSettings().leftClickAction == action
-        end
-        local function SetMinimapLeftClickAction(action, value)
-            local settings = GetMinimapClickSettings()
-            if value then
-                settings.leftClickAction = action
-            elseif settings.leftClickAction == action then
-                settings.leftClickAction = "toggle"
-            end
-        end
-        local minimapLeftClickOptions = {
-            {
-                key = "minimapLeftClickToggle",
-                label = (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE"]) or "Left Click: Toggle Window",
-                tooltip = (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE_DESC"]) or "Left-clicking the minimap button opens or closes the main window (previous default).",
-                get = function() return IsMinimapLeftClickAction("toggle") end,
-                set = function(value) SetMinimapLeftClickAction("toggle", value) end,
-            },
-        }
-        local leftClickOrder = (VB and VB.LAUNCHER_LEFT_CLICK_ORDER) or {}
-        local actionDefs = (VB and VB.LAUNCHER_ACTION_DEFS) or {}
-        for li = 1, #leftClickOrder do
-            local actionId = leftClickOrder[li]
-            local def = actionDefs[actionId]
-            if def and def.settingsLabelKey then
-                minimapLeftClickOptions[#minimapLeftClickOptions + 1] = MakeLauncherLeftClickCheckboxOption(
-                    "minimapLeftClick_",
-                    actionId,
-                    def,
-                    IsMinimapLeftClickAction,
-                    SetMinimapLeftClickAction
-                )
-            end
-        end
-        cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_HEADER"]) or "Minimap Left Click",
-            iw, cy, {})
-        local minimapLeftClickYOffset
-        local minimapLeftClickWidgets
-        minimapLeftClickYOffset, minimapLeftClickWidgets = CreateCheckboxGrid(inner, minimapLeftClickOptions, cy, iw)
-        local function SyncMinimapLeftClickWidgets()
-            if not minimapLeftClickWidgets then return end
-            for li = 1, #minimapLeftClickOptions do
-                local opt = minimapLeftClickOptions[li]
-                local widget = minimapLeftClickWidgets[opt.key]
-                if widget and widget.checkbox then
-                    local checked = opt.get and opt.get() or false
-                    SyncSettingsCheckboxChecked(widget.checkbox, checked)
-                end
-            end
-        end
-        for li = 1, #minimapLeftClickOptions do
-            local opt = minimapLeftClickOptions[li]
-            local widget = minimapLeftClickWidgets and minimapLeftClickWidgets[opt.key]
-            if widget and widget.checkbox then
-                if opt._wnActionId then
-                    WireLauncherLeftClickCheckbox(widget, opt._wnActionId, SetMinimapLeftClickAction, SyncMinimapLeftClickWidgets)
-                elseif opt.set then
-                    widget.checkbox:SetScript("OnClick", function(self)
-                        opt.set(self:GetChecked())
-                        SyncMinimapLeftClickWidgets()
-                    end)
-                end
-            end
-        end
-        cy = minimapLeftClickYOffset
-
-        cy = AppendSettingsSubSectionHeader(inner,
-            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & Scaling",
-            iw, cy, {})
 
         -- Language selector. All locales load into ns.LOCALES regardless of the game client,
         -- so any language is selectable; "auto" follows the game client locale (the default).
@@ -2164,6 +2036,10 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
         cy = cy - SETTINGS_BTN_H - hdrGap
 
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_CONTROLS"]) or "Controls & Scaling",
+            iw, cy, {})
+
         cy = CreateSliderWidget(inner, {
             name = (ns.L and ns.L["SCROLL_SPEED"]) or "Scroll Speed",
             desc = (ns.L and ns.L["SCROLL_SPEED_TOOLTIP"]) or "Multiplier for scroll speed (1.0x = 28 px per step)",
@@ -2216,6 +2092,16 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             },
         }, cy, iw, { maxColumns = 1 }))
 
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_TOOLTIPS"]) or "Item tooltips",
+            iw, cy, {})
+        cy = CreateCheckboxGrid(inner, tooltipOptions, cy, iw)
+
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_GENERAL_STARTUP"]) or "Startup",
+            iw, cy, {})
+        cy = CreateCheckboxGrid(inner, generalFeatureOptions, cy, iw)
+
         return cy
     end, { flat = true, noTrailingGap = true })
 
@@ -2252,7 +2138,7 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
 
     if Want("access") then
-    -- EASY ACCESS (floating shortcut)
+    -- SHORTCUTS (minimap button + Easy Access floating shortcut)
     yOffset = AppendSettingsPanelIntro(parent, "access", effectiveWidth, yOffset, sideInset, skipPanelIntro)
     local vaultSection = CreateSection(parent, nil, effectiveWidth)
     AnchorSectionTop(vaultSection, yOffset)
@@ -2390,9 +2276,133 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
 
     vaultStackY = StackSettingsSubPanel(vaultSection.content, vaultContentW, 0, function(inner, iw)
         local cy = 0
+
+        -- === Minimap Button (moved here from General so all launcher shortcuts live together) ===
+        local VBm = ns.VaultButton
+        local function GetMinimapClickSettings()
+            WarbandNexus.db.profile.minimap = WarbandNexus.db.profile.minimap or {}
+            local settings = WarbandNexus.db.profile.minimap
+            if settings.leftClickAction == nil then
+                settings.leftClickAction = "toggle"
+            end
+            if VBm and VBm.NormalizeMinimapLeftClickAction then
+                settings.leftClickAction = VBm.NormalizeMinimapLeftClickAction(settings.leftClickAction)
+            elseif settings.leftClickAction ~= "toggle" then
+                settings.leftClickAction = "toggle"
+            end
+            return settings
+        end
+        local function IsMinimapLeftClickAction(action)
+            return GetMinimapClickSettings().leftClickAction == action
+        end
+        local function SetMinimapLeftClickAction(action, value)
+            local settings = GetMinimapClickSettings()
+            if value then
+                settings.leftClickAction = action
+            elseif settings.leftClickAction == action then
+                settings.leftClickAction = "toggle"
+            end
+        end
+        local minimapVisibilityOptions = {
+            {
+                key = "minimapVisible",
+                label = (ns.L and ns.L["CONFIG_MINIMAP"]) or "Minimap Button",
+                tooltip = (ns.L and ns.L["CONFIG_MINIMAP_DESC"]) or "Show a button on the minimap for quick access.",
+                get = function() return not WarbandNexus.db.profile.minimap.hide end,
+                set = function(value)
+                    if WarbandNexus.SetMinimapButtonVisible then
+                        WarbandNexus:SetMinimapButtonVisible(value)
+                    else
+                        WarbandNexus.db.profile.minimap.hide = not value
+                    end
+                end,
+            },
+            {
+                key = "minimapLock",
+                label = (ns.L and ns.L["LOCK_MINIMAP_ICON"]) or "Lock Minimap Button",
+                tooltip = (ns.L and ns.L["LOCK_MINIMAP_TOOLTIP"]) or "Lock the minimap button in place so it cannot be dragged",
+                get = function() return WarbandNexus.db.profile.minimap.lock end,
+                set = function(value)
+                    WarbandNexus.db.profile.minimap.lock = value
+                    if LDBI then
+                        local button = LDBI:GetMinimapButton(ADDON_NAME)
+                        if button then
+                            if value then
+                                button:SetMovable(false)
+                                button:RegisterForDrag()
+                            else
+                                button:SetMovable(true)
+                                button:RegisterForDrag("LeftButton")
+                            end
+                        end
+                    end
+                end,
+            },
+        }
+        local minimapLeftClickOptions = {
+            {
+                key = "minimapLeftClickToggle",
+                label = (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE"]) or "Left Click: Toggle Window",
+                tooltip = (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_TOGGLE_DESC"]) or "Left-clicking the minimap button opens or closes the main window (previous default).",
+                get = function() return IsMinimapLeftClickAction("toggle") end,
+                set = function(value) SetMinimapLeftClickAction("toggle", value) end,
+            },
+        }
+        local mmLeftClickOrder = (VBm and VBm.LAUNCHER_LEFT_CLICK_ORDER) or {}
+        local mmActionDefs = (VBm and VBm.LAUNCHER_ACTION_DEFS) or {}
+        for li = 1, #mmLeftClickOrder do
+            local actionId = mmLeftClickOrder[li]
+            local def = mmActionDefs[actionId]
+            if def and def.settingsLabelKey then
+                minimapLeftClickOptions[#minimapLeftClickOptions + 1] = MakeLauncherLeftClickCheckboxOption(
+                    "minimapLeftClick_",
+                    actionId,
+                    def,
+                    IsMinimapLeftClickAction,
+                    SetMinimapLeftClickAction
+                )
+            end
+        end
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["SETTINGS_SECTION_MINIMAP_BUTTON"]) or "Minimap Button",
+            iw, cy, { skipGapBefore = true })
+        cy = CreateCheckboxGrid(inner, minimapVisibilityOptions, cy, iw)
+        cy = AppendSettingsSubSectionHeader(inner,
+            (ns.L and ns.L["CONFIG_MINIMAP_LEFT_CLICK_HEADER"]) or "Minimap Left Click",
+            iw, cy, { compact = true })
+        local minimapLeftClickYOffset, minimapLeftClickWidgets
+        minimapLeftClickYOffset, minimapLeftClickWidgets = CreateCheckboxGrid(inner, minimapLeftClickOptions, cy, iw)
+        local function SyncMinimapLeftClickWidgets()
+            if not minimapLeftClickWidgets then return end
+            for li = 1, #minimapLeftClickOptions do
+                local opt = minimapLeftClickOptions[li]
+                local widget = minimapLeftClickWidgets[opt.key]
+                if widget and widget.checkbox then
+                    local checked = opt.get and opt.get() or false
+                    SyncSettingsCheckboxChecked(widget.checkbox, checked)
+                end
+            end
+        end
+        for li = 1, #minimapLeftClickOptions do
+            local opt = minimapLeftClickOptions[li]
+            local widget = minimapLeftClickWidgets and minimapLeftClickWidgets[opt.key]
+            if widget and widget.checkbox then
+                if opt._wnActionId then
+                    WireLauncherLeftClickCheckbox(widget, opt._wnActionId, SetMinimapLeftClickAction, SyncMinimapLeftClickWidgets)
+                elseif opt.set then
+                    widget.checkbox:SetScript("OnClick", function(self)
+                        opt.set(self:GetChecked())
+                        SyncMinimapLeftClickWidgets()
+                    end)
+                end
+            end
+        end
+        cy = minimapLeftClickYOffset
+
+        -- === Easy Access floating button ===
         cy = AppendSettingsSubSectionHeader(inner,
             (ns.L and ns.L["SETTINGS_SECTION_VAULT_GENERAL"]) or "Shortcut behavior",
-            iw, cy, { skipGapBefore = true })
+            iw, cy, {})
         cy = CreateCheckboxGrid(inner, vaultOptions, cy, iw)
 
         cy = AppendSettingsSubSectionHeader(inner,

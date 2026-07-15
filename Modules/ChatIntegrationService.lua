@@ -812,9 +812,12 @@ function WarbandNexus:PrintSessionLoginChat()
     local L = ns.L
     local fmt = string.format
     local main = fmt((L and L["WELCOME_MSG_FORMAT"]) or "Welcome to Warband Nexus v%s", v)
-    local cmdHint = fmt("%s |cffffff00/wn|r %s",
-        (L and L["WELCOME_TYPE_CMD"]) or "Type",
-        (L and L["WELCOME_OPEN_INTERFACE"]) or "to open the interface.")
+    -- One format string with the command as a placeholder, not two sentence fragments
+    -- wrapped around a hardcoded /wn. Verb-final languages cannot put "type" before the
+    -- command, so the old concatenation produced word salad in trTR ("Lutfen yazin /wn
+    -- arayuzu acmak icin.") and koKR. Each locale now places %s itself.
+    local cmdHint = fmt((L and L["WELCOME_CMD_HINT"]) or "Please type %s to open the interface.",
+        "|cffffff00/wn|r")
     local line = "|cff9966ff[Warband Nexus]|r " .. main .. " " .. cmdHint
     if self.IsNewVersion and self:IsNewVersion() and notifs.showUpdateNotes then
         line = line .. " " .. ((L and L["WELCOME_NEW_VERSION_CHAT"]) or "|cffffff00What's New:|r popup may appear, or |cffffff00/wn changelog|r.")

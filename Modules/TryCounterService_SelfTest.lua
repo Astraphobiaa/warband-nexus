@@ -302,6 +302,42 @@ function WarbandNexus:RunTryCounterSelfTest()
         if WN:GetTryCount("item", FAKE_ITEM_ID) ~= 42 then error("roundtrip failed") end
         WN:SetTryCount("item", FAKE_ITEM_ID, old or 0)
     end)
+    probe("SetTryCount: alias key cannot shadow an explicit set (mount)", function()
+        -- Regression: GetTryCount maxes across alias keys (mountID <-> itemID) while SetTryCount
+        -- wrote only the exact key, so clearing a mount in the popup read the stale count back
+        -- ("set 0, still reads 47"). The fake-item roundtrip above cannot catch this: only
+        -- mount/pet resolve alias keys, so "item" never exercises the max-across-aliases path.
+        if not Fns.EnsureDB() then
+            lineWarn("tryCounts db unavailable — SetTryCount alias probe skipped")
+            return
+        end
+        -- Need a non quest-starter mount (that branch returns early on a different key set).
+        local mountID, itemID
+        if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountItemID then
+            local ids = C_MountJournal.GetMountIDs() or {}
+            for i = 1, #ids do
+                local ok, iid = pcall(C_MountJournal.GetMountItemID, ids[i])
+                if ok and type(iid) == "number" and iid > 0 and iid ~= ids[i]
+                    and not Fns.ResolveQuestStarterSourceItemID(ids[i]) then
+                    mountID, itemID = ids[i], iid
+                    break
+                end
+            end
+        end
+        if not mountID then
+            lineWarn("mount journal not ready — SetTryCount alias probe skipped")
+            return
+        end
+        local tbl = WN.db.global.tryCounts.mount
+        local oldM, oldI = tbl[mountID], tbl[itemID]
+        tbl[itemID] = 47 -- stale higher value parked on the alias key
+        WN:SetTryCount("mount", mountID, 0)
+        local readBack = WN:GetTryCount("mount", mountID)
+        tbl[mountID], tbl[itemID] = oldM, oldI -- restore before asserting
+        if readBack ~= 0 then
+            error(format("alias shadowed explicit set: expected 0, got %s", tostring(readBack)))
+        end
+    end)
     probe("CheckTargetDrops(no target)", function() WN:CheckTargetDrops() end)
 
     section("Statistics-only miss (raid/dungeon gate)")
@@ -544,7 +580,11 @@ function WarbandNexus:RunTryCounterSelfTest()
             -- a one-time copy). Hook that exact slot, not TC.TryChat, or the announce slips past.
             local origTryChat = Fns.TryChat
             Fns.TryChat = function(msg)
-                if type(msg) == "string" and msg:find("attempt", 1, true) then
+                -- Locale-independent on purpose: the hook is installed only around the
+                -- finalize+flush pair below, so any line emitted in that window IS the
+                -- increment announce. Matching the English word "attempt" failed on every
+                -- non-English locale (trTR prints "27 deneme, <item> icin").
+                if type(msg) == "string" and msg ~= "" then
                     captured = msg
                 end
             end

@@ -35,6 +35,9 @@ L["PVE_COLLAPSE_ALL_TOOLTIP"] = "Recolher todas as seções PvE e linhas de pers
 L["SETTINGS_SECTION_GENERAL_FEATURES"] = "Recursos"
 L["SETTINGS_SECTION_GENERAL_TOOLTIPS"] = "Dicas de itens"
 L["SETTINGS_SECTION_GENERAL_CONTROLS"] = "Controles e escala"
+L["SETTINGS_SECTION_GENERAL_INTERFACE"] = "Interface"
+L["SETTINGS_SECTION_GENERAL_STARTUP"] = "Inicialização"
+L["SETTINGS_SECTION_MINIMAP_BUTTON"] = "Botão do minimapa"
 L["SETTINGS_SECTION_MODULES_LIST"] = "Módulos ativados"
 L["SETTINGS_SECTION_MODULES_PROFESSION_TOOLS"] = "Ferramentas de profissões"
 L["SETTINGS_SECTION_VAULT_GENERAL"] = "Comportamento do atalho"
@@ -1063,8 +1066,8 @@ L["SETTINGS_PANEL_GENERAL"] = "Geral"
 L["SETTINGS_PANEL_GENERAL_DESC"] = "Tela, atalhos, tecla e escala da janela."
 L["SETTINGS_PANEL_MODULES"] = "Módulos"
 L["SETTINGS_PANEL_MODULES_DESC"] = "Ative ou desative módulos de dados e quais abas aparecem."
-L["SETTINGS_PANEL_ACCESS"] = "Acesso rápido"
-L["SETTINGS_PANEL_ACCESS_DESC"] = "Botão flutuante e ações de abertura rápida."
+L["SETTINGS_PANEL_ACCESS"] = "Atalhos"
+L["SETTINGS_PANEL_ACCESS_DESC"] = "Botão do minimapa e o atalho flutuante de acesso rápido."
 L["SETTINGS_PANEL_FILTERS"] = "Filtros de abas"
 L["SETTINGS_PANEL_FILTERS_DESC"] = "Escolha quais abas principais aparecem na navegação."
 L["SETTINGS_PANEL_NOTIFICATIONS"] = "Notificações"
@@ -1142,8 +1145,7 @@ L["TRACK_USAGE"] = "Uso: habilitar | desabilitar | status"
 L["CLICK_TO_COPY"] = "Clique para copiar o link do convite"
 
 L["WELCOME_MSG_FORMAT"] = "Bem-vindo ao Warband Nexus v%s"
-L["WELCOME_TYPE_CMD"] = "Por favor digite"
-L["WELCOME_OPEN_INTERFACE"] = "para abrir a interface."
+L["WELCOME_CMD_HINT"] = "Por favor digite %s para abrir a interface."
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00O que há de novo:|r um pop-up pode aparecer acima do bate-papo ou digite |cffffff00/wn changelog|r."
 L["CHARACTER_LINK_HINT_CHAT"] = "Seus dados salvos foram mantidos. Se algo parecer errado, digite |cffffff00/reload|r uma vez."
 L["CONFIG_SHOW_LOGIN_CHAT"] = "Mensagem de login no chat"
@@ -1154,6 +1156,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filtre as mensagens do sistema Tempo t
 
 
 
+L["CHANGELOG_V333"] = [=[v3.3.3 (2026-07-15)
+
+Added:
+- Turkish language support, with a language selector in Settings so you can pick any interface language regardless of your game client.
+
+Updated:
+- Settings reorganized: Language now sits at the top of General, and every minimap option moved into the renamed "Shortcuts" panel alongside Easy Access.
+- General settings are now grouped into Interface, Controls & Scaling, Item tooltips, and Startup.
+
+Fixed:
+- Editing an attempt count by hand now sticks; a mount's try count could previously snap back to the old value.
+- The welcome message now reads correctly in Korean.
+
+CurseForge: Warband Nexus]=]
 L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
 
 Adicionado:

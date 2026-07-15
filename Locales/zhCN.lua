@@ -35,6 +35,9 @@ L["PVE_COLLAPSE_ALL_TOOLTIP"] = "折叠所有 PvE 区块和角色行。"
 L["SETTINGS_SECTION_GENERAL_FEATURES"] = "功能"
 L["SETTINGS_SECTION_GENERAL_TOOLTIPS"] = "物品提示"
 L["SETTINGS_SECTION_GENERAL_CONTROLS"] = "控制与缩放"
+L["SETTINGS_SECTION_GENERAL_INTERFACE"] = "界面"
+L["SETTINGS_SECTION_GENERAL_STARTUP"] = "启动"
+L["SETTINGS_SECTION_MINIMAP_BUTTON"] = "小地图按钮"
 L["SETTINGS_SECTION_MODULES_LIST"] = "已启用模块"
 L["SETTINGS_SECTION_MODULES_PROFESSION_TOOLS"] = "专业技能工具"
 L["SETTINGS_SECTION_VAULT_GENERAL"] = "快捷按钮行为"
@@ -1062,8 +1065,8 @@ L["SETTINGS_PANEL_GENERAL"] = "常规"
 L["SETTINGS_PANEL_GENERAL_DESC"] = "显示、快捷方式、按键绑定和窗口缩放。"
 L["SETTINGS_PANEL_MODULES"] = "模块"
 L["SETTINGS_PANEL_MODULES_DESC"] = "开启或关闭数据模块，并控制显示的标签页。"
-L["SETTINGS_PANEL_ACCESS"] = "快捷访问"
-L["SETTINGS_PANEL_ACCESS_DESC"] = "浮动快捷按钮与快速打开操作。"
+L["SETTINGS_PANEL_ACCESS"] = "快捷方式"
+L["SETTINGS_PANEL_ACCESS_DESC"] = "小地图按钮和悬浮快速访问快捷方式。"
 L["SETTINGS_PANEL_FILTERS"] = "标签过滤"
 L["SETTINGS_PANEL_FILTERS_DESC"] = "选择主导航中显示哪些标签页。"
 L["SETTINGS_PANEL_NOTIFICATIONS"] = "通知"
@@ -1141,8 +1144,7 @@ L["TRACK_USAGE"] = "用法：启用 | 禁用 | 状态"
 L["CLICK_TO_COPY"] = "点击复制邀请链接"
 
 L["WELCOME_MSG_FORMAT"] = "欢迎使用 Warband Nexus v%s"
-L["WELCOME_TYPE_CMD"] = "请输入"
-L["WELCOME_OPEN_INTERFACE"] = "以打开界面。"
+L["WELCOME_CMD_HINT"] = "请输入 %s 以打开界面。"
 L["WELCOME_NEW_VERSION_CHAT"] = "|cffffff00更新内容：|r 可能会在聊天上方弹出窗口，或输入 |cffffff00/wn changelog|r。"
 L["CHARACTER_LINK_HINT_CHAT"] = "你的存档已保留。若界面显示异常，请输入 |cffffff00/reload|r 一次。"
 L["CONFIG_SHOW_LOGIN_CHAT"] = "在聊天中显示登录提示"
@@ -1151,6 +1153,20 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "在聊天中隐藏游戏时间"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "过滤“总游戏时间”和“本等级游戏时间”等系统消息。关闭本项可再次显示（包括 /played）。"
 
 
+L["CHANGELOG_V333"] = [=[v3.3.3 (2026-07-15)
+
+Added:
+- Turkish language support, with a language selector in Settings so you can pick any interface language regardless of your game client.
+
+Updated:
+- Settings reorganized: Language now sits at the top of General, and every minimap option moved into the renamed "Shortcuts" panel alongside Easy Access.
+- General settings are now grouped into Interface, Controls & Scaling, Item tooltips, and Startup.
+
+Fixed:
+- Editing an attempt count by hand now sticks; a mount's try count could previously snap back to the old value.
+- The welcome message now reads correctly in Korean.
+
+CurseForge: Warband Nexus]=]
 L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
 
 新增:
