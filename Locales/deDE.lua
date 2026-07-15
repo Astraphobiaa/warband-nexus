@@ -1173,20 +1173,6 @@ Fixed:
 - The welcome message now reads correctly in Korean.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
-
-Hinzugefügt:
-- Spalten-Menü: Zeilen per Ziehen neu anordnen; jede Zeile hat jetzt einen Ziehgriff (die Hoch/Runter-Pfeile wurden entfernt).
-
-Aktualisiert:
-- Gegenstands-Tooltips zeigen jetzt die 5 Charaktere mit den meisten Exemplaren; halte Umschalt für die vollständige Liste.
-
-Behoben:
-- Lua-Fehler behoben, der beim Öffnen des Spalten-Menüs auftreten konnte.
-- Das Ausblenden-Filtermenü schließt sich jetzt, wenn du erneut auf die Schaltfläche „Ausblenden“ klickst.
-- Lua-Fehler behoben, der beim Überfahren von Punkten von Interesse auf der Weltkarte auftreten konnte.
-
-CurseForge: Warband Nexus]=]
 
 
 

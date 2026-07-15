@@ -1171,20 +1171,6 @@ Fixed:
 - The welcome message now reads correctly in Korean.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
-
-新增:
-- 列菜单：拖动行即可重新排序列；每行现在都有拖动手柄（已移除上/下箭头）。
-
-更新:
-- 物品提示现在显示持有该物品最多的 5 个角色；按住 Shift 查看完整列表。
-
-修复:
-- 修复打开列菜单时可能出现的 Lua 错误。
-- 隐藏筛选菜单现在在再次点击“隐藏”按钮时关闭。
-- 修复在世界地图上悬停兴趣点时可能发生的 Lua 错误。
-
-CurseForge: Warband Nexus]=]
 
 
 

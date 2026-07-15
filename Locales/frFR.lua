@@ -1173,20 +1173,6 @@ Fixed:
 - The welcome message now reads correctly in Korean.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
-
-Ajouté :
-- Menu des colonnes : glissez les lignes pour réordonner vos colonnes ; chaque ligne dispose désormais d'une poignée de glissement (les flèches haut/bas ont été retirées).
-
-Mis à jour :
-- Les infobulles d'objet affichent désormais les 5 personnages qui en possèdent le plus ; maintenez Maj pour la liste complète.
-
-Corrigé :
-- Erreur Lua corrigée qui pouvait apparaître à l'ouverture du menu des colonnes.
-- Le menu de filtre Masquer se ferme désormais lorsque vous cliquez à nouveau sur le bouton Masquer.
-- Erreur Lua corrigée qui pouvait survenir en survolant des points d'intérêt sur la carte du monde.
-
-CurseForge: Warband Nexus]=]
 
 
 

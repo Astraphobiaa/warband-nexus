@@ -40,8 +40,14 @@ def extract_latest_changelog_section() -> tuple[str, str]:
     end = matches[1].start() if len(matches) > 1 else len(text)
     header = matches[0].group(1).strip()
     body = text[start:end].strip()
-    body = re.sub(r"^### ", "**", body, flags=re.MULTILINE)
-    body = re.sub(r"(?m)^\*\*(Fixed|Updated|Added)\*\*$", r"**\1:**", body)
+    # Drop the "## vX.Y.Z" line: it is already the embed title, and leaving it in made
+    # Discord render the version and the first section header as one run-on line.
+    body = re.sub(r"(?m)\A## v[^\n]*\n+", "", body)
+    # "### Added" -> "**Added:**" in ONE step. Turning the "### " prefix into "**" and then
+    # looking for "**Added**" never matched, because nothing had closed the bold. Discord got
+    # an unterminated "**Added", which bolds everything up to the next "**" and swallows the
+    # bullet list into the heading.
+    body = re.sub(r"(?m)^#{2,3} +(.+?)\s*$", r"**\1:**", body)
     return header, body
 
 

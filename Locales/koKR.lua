@@ -1173,20 +1173,6 @@ Fixed:
 - The welcome message now reads correctly in Korean.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
-
-추가:
-- 열 메뉴: 행을 드래그하여 열 순서를 변경할 수 있습니다. 각 행에 드래그 손잡이가 추가되었습니다(위/아래 화살표는 제거됨).
-
-업데이트:
-- 아이템 툴팁이 이제 해당 아이템을 가장 많이 보유한 캐릭터 5명을 표시합니다. 전체 목록은 Shift를 누르세요.
-
-수정:
-- 열 메뉴를 열 때 발생할 수 있던 Lua 오류 수정.
-- 숨기기 필터 메뉴가 이제 숨기기 버튼을 다시 클릭하면 닫힙니다.
-- 월드 지도에서 관심 지점 위에 마우스를 올릴 때 발생할 수 있던 Lua 오류 수정.
-
-CurseForge: Warband Nexus]=]
 
 
 

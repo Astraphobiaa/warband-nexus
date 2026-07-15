@@ -1174,20 +1174,6 @@ Fixed:
 - The welcome message now reads correctly in Korean.
 
 CurseForge: Warband Nexus]=]
-L["CHANGELOG_V332"] = [=[v3.3.2 (2026-07-11)
-
-Aggiunto:
-- Menu delle colonne: trascina le righe per riordinare le colonne; ogni riga ora ha una maniglia di trascinamento (le frecce su/giù sono state rimosse).
-
-Aggiornato:
-- I tooltip degli oggetti ora mostrano i 5 personaggi che ne possiedono di più; tieni premuto Maiusc per l'elenco completo.
-
-Corretto:
-- Corretto un errore Lua che poteva comparire all'apertura del menu delle colonne.
-- Il menu del filtro Nascondi ora si chiude quando fai di nuovo clic sul pulsante Nascondi.
-- Corretto un errore Lua che poteva verificarsi passando il mouse sui punti di interesse sulla mappa del mondo.
-
-CurseForge: Warband Nexus]=]
 
 
 
