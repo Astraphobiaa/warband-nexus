@@ -480,6 +480,32 @@ function WarbandNexus:RunTryCounterSelfTest()
             end
         end)
     end)
+    probe("Process: closed fishing route keeps LOOT_READY confirmation", function()
+        withRestoredState(function()
+            local originalEvidence = Fns.LootSessionHasFishingEvidence
+            local originalCollect = Fns.CollectFishingDropsForZone
+            local ok, err = pcall(function()
+                RT.lootReady.wasFishing = true
+                Fns.ResetLootSession()
+                RT.lootSession.sourceGUIDs = {}
+                if Fns.ClassifyLootSession("closed") ~= "fishing" then
+                    error("expected fishing route")
+                end
+                -- IsFishingLoot is no longer valid after LOOT_CLOSED. Processing must trust
+                -- the route lock instead of asking for transient evidence again.
+                Fns.LootSessionHasFishingEvidence = function()
+                    error("re-checked transient fishing evidence")
+                end
+                Fns.CollectFishingDropsForZone = function()
+                    return {}, false
+                end
+                WN:ProcessFishingLoot("closed")
+            end)
+            Fns.LootSessionHasFishingEvidence = originalEvidence
+            Fns.CollectFishingDropsForZone = originalCollect
+            if not ok then error(err) end
+        end)
+    end)
     probe("LootSourcesLookLikeFishingOnly: known bobber", function()
         local bobberGUID = "Creature-0-0-0-0-124736-000000000000"
         if not Fns.LootSourcesLookLikeFishingOnly({ bobberGUID }) then

@@ -973,14 +973,15 @@ function WarbandNexus:ProcessNPCLoot(lootRouteSource)
     })
 end
 
----Process loot from fishing.
----Requires fishing evidence (IsFishingLoot API, known bobber, or recent fishing cast).
+---Process loot already classified as fishing by ClassifyLootSession.
 ---One confirmed fishing loot open in a trackable zone = one attempt for zone fishing drops.
 function WarbandNexus:ProcessFishingLoot(lootRouteSource)
     lootRouteSource = lootRouteSource or "opened"
     -- Gathering/profession loot windows must never count zone fishing tries (e.g. herb in Voidstorm).
     if V.isProfessionLooting then return end
-    if not Fns.LootSessionHasFishingEvidence(RT.lootSession.sourceGUIDs) then return end
+    -- Do not re-check IsFishingLoot here. The closed route runs on the next frame, after
+    -- LOOT_CLOSED invalidates that API; ClassifyLootSession already locked this route using
+    -- the authoritative LOOT_READY snapshot or structural bobber/pool evidence.
     local drops, inInstance = Fns.CollectFishingDropsForZone()
     if inInstance then return end
     if #drops == 0 then
