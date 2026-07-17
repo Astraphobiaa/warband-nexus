@@ -1524,17 +1524,7 @@ function WarbandNexus:FlushItemsCacheOnLogout()
         bankScanInProgress = false
     end
     BumpGearStorageScanGenerationImmediate()
-    self:ProcessPendingBagUpdates()
-    local bagIDs = {}
-    for bagID, _ in pairs(pendingUpdates) do
-        bagIDs[#bagIDs + 1] = bagID
-    end
-    for i = 1, #bagIDs do
-        local bagID = bagIDs[i]
-        pendingUpdates[bagID] = nil
-        lastUpdateTime[bagID] = 0
-        ThrottledBagUpdate(bagID)
-    end
+    self:FlushPendingBagUpdatesNow(false)
     wipe(pendingUpdates)
     FlushPendingCompressWrites(true)
 end
