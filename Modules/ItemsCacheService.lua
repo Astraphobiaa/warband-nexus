@@ -1516,6 +1516,13 @@ function WarbandNexus:FlushItemsCacheOnLogout()
         sessionActivityPersistTimer:Cancel()
         sessionActivityPersistTimer = nil
     end
+    if bankScanInProgress then
+        -- PLAYER_LOGOUT can fire without BANKFRAME_CLOSED. Supersede the staged
+        -- callbacks and allow the immediate pending-update pass below to persist
+        -- live container state instead of re-suppressing and then wiping it.
+        bankOpenScanGeneration = bankOpenScanGeneration + 1
+        bankScanInProgress = false
+    end
     BumpGearStorageScanGenerationImmediate()
     self:ProcessPendingBagUpdates()
     local bagIDs = {}
@@ -3090,12 +3097,12 @@ function WarbandNexus:InitializeItemsCache()
 
     -- ── Event Ownership (single owner for all bag/bank events) ──
     -- AceBucket does not expose dirty bag IDs until its 0.5s window expires.
-    -- Track raw events during the staged bank scan so a commit/close cannot race
-    -- ahead of the bucket and lose the final container state.
+    -- Track raw events for the entire bank-open session so a commit/close cannot
+    -- race ahead of the bucket and lose the final container state.
     local bankScanBagUpdateTracker = CreateFrame("Frame")
     bankScanBagUpdateTracker:RegisterEvent("BAG_UPDATE")
     bankScanBagUpdateTracker:SetScript("OnEvent", function(_, _, bagID)
-        if bankScanInProgress and BAG_TYPE_LOOKUP[bagID] then
+        if (bankScanInProgress or isBankOpen or isWarbandBankOpen) and BAG_TYPE_LOOKUP[bagID] then
             pendingUpdates[bagID] = true
         end
     end)
