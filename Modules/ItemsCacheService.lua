@@ -120,6 +120,7 @@ local bagHashCache = {} -- [bagID] = hash
 -- Throttle timers
 local lastUpdateTime = {}
 local pendingUpdates = {}
+local bankSessionDirtyBags = {}
 
 -- DECOMPRESSED DATA SESSION CACHE
 -- Avoids repeated decompress+deserialize on every GetItemsData()/tooltip hover.
@@ -1479,14 +1480,22 @@ end
 ---Used after a staged scan commits or just before the bank closes.
 function WarbandNexus:FlushPendingBagUpdatesNow(sendMessage)
     local bagIDs = {}
+    local queued = {}
     for bagID, _ in pairs(pendingUpdates) do
         bagIDs[#bagIDs + 1] = bagID
+        queued[bagID] = true
+    end
+    for bagID, _ in pairs(bankSessionDirtyBags) do
+        if not queued[bagID] then
+            bagIDs[#bagIDs + 1] = bagID
+        end
     end
 
     local anyProcessed = false
     for i = 1, #bagIDs do
         local bagID = bagIDs[i]
         pendingUpdates[bagID] = nil
+        bankSessionDirtyBags[bagID] = nil
         lastUpdateTime[bagID] = 0
         -- Do not consume slot data captured by an earlier bucket callback. The
         -- player may have moved the item again before this immediate replay.
@@ -3093,7 +3102,9 @@ function WarbandNexus:InitializeItemsCache()
     bankScanBagUpdateTracker:RegisterEvent("BAG_UPDATE")
     bankScanBagUpdateTracker:SetScript("OnEvent", function(_, _, bagID)
         if (bankScanInProgress or isBankOpen or isWarbandBankOpen) and BAG_TYPE_LOOKUP[bagID] then
-            pendingUpdates[bagID] = true
+            -- Keep this separate from the throttle queue: an older bucket
+            -- callback may clear pendingUpdates after a newer raw event.
+            bankSessionDirtyBags[bagID] = true
         end
     end)
     self._bankScanBagUpdateTracker = bankScanBagUpdateTracker
