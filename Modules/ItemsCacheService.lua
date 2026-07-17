@@ -1488,6 +1488,9 @@ function WarbandNexus:FlushPendingBagUpdatesNow(sendMessage)
         local bagID = bagIDs[i]
         pendingUpdates[bagID] = nil
         lastUpdateTime[bagID] = 0
+        -- Do not consume slot data captured by an earlier bucket callback. The
+        -- player may have moved the item again before this immediate replay.
+        SeedBagHashForBag(bagID)
         if ThrottledBagUpdate(bagID) then
             anyProcessed = true
         end
@@ -3086,6 +3089,18 @@ function WarbandNexus:InitializeItemsCache()
     self._itemsCacheInitialized = true
 
     -- ── Event Ownership (single owner for all bag/bank events) ──
+    -- AceBucket does not expose dirty bag IDs until its 0.5s window expires.
+    -- Track raw events during the staged bank scan so a commit/close cannot race
+    -- ahead of the bucket and lose the final container state.
+    local bankScanBagUpdateTracker = CreateFrame("Frame")
+    bankScanBagUpdateTracker:RegisterEvent("BAG_UPDATE")
+    bankScanBagUpdateTracker:SetScript("OnEvent", function(_, _, bagID)
+        if bankScanInProgress and BAG_TYPE_LOOKUP[bagID] then
+            pendingUpdates[bagID] = true
+        end
+    end)
+    self._bankScanBagUpdateTracker = bankScanBagUpdateTracker
+
     WarbandNexus:RegisterBucketEvent("BAG_UPDATE", 0.5, "OnBagUpdate")
     WarbandNexus:RegisterBucketEvent("PLAYERBANKSLOTS_CHANGED", 0.5, "OnBagUpdate")
     WarbandNexus:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
