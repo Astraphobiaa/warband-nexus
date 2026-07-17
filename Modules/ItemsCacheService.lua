@@ -1414,8 +1414,11 @@ end
 ---Throttled bag update (prevents BAG_UPDATE spam)
 ---Returns true if the update was processed (or scheduled), false if suppressed.
 ThrottledBagUpdate = function(bagID)
-    -- Suppress during bank open deferred scans (OnBankOpened handles it)
+    -- The staged bank-open scan spans multiple frames. Remember updates that land
+    -- between container snapshots so they can be replayed against the committed
+    -- snapshot instead of persisting a mixed old/new view.
     if bankScanInProgress then
+        pendingUpdates[bagID] = true
         return false
     end
     
@@ -1470,6 +1473,31 @@ function WarbandNexus:ProcessPendingBagUpdates()
         local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
         self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = msgKey})
     end
+end
+
+---Immediately replay queued bag updates while bank APIs are still available.
+---Used after a staged scan commits or just before the bank closes.
+function WarbandNexus:FlushPendingBagUpdatesNow(sendMessage)
+    local bagIDs = {}
+    for bagID, _ in pairs(pendingUpdates) do
+        bagIDs[#bagIDs + 1] = bagID
+    end
+
+    local anyProcessed = false
+    for i = 1, #bagIDs do
+        local bagID = bagIDs[i]
+        pendingUpdates[bagID] = nil
+        lastUpdateTime[bagID] = 0
+        if ThrottledBagUpdate(bagID) then
+            anyProcessed = true
+        end
+    end
+
+    if sendMessage and anyProcessed then
+        local msgKey = CanonicalItemsMessageKey(ResolveCurrentItemStorageKey())
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "batch", charKey = msgKey })
+    end
+    return anyProcessed
 end
 
 ---Flush pending bag scans on PLAYER_LOGOUT (bypass throttle; no messages).
@@ -1685,6 +1713,7 @@ function WarbandNexus:RunBudgetedBankOpenScan(charKey)
         if wbIdx > #WARBAND_BAGS then
             commitStagedBankScan()
             finishBankScan(false)
+            self:FlushPendingBagUpdatesNow(false)
             self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, { type = "all", charKey = CanonicalItemsMessageKey(charKey) })
             return
         end
@@ -1764,9 +1793,13 @@ end
 function WarbandNexus:OnBankClosed()
     bankOpenScanGeneration = bankOpenScanGeneration + 1
     warbandBankScanGeneration = warbandBankScanGeneration + 1
+    bankScanInProgress = false
+    -- BAG_UPDATE events raised during the staged scan were intentionally
+    -- suppressed. Re-scan those containers before closing makes bank APIs
+    -- unavailable; otherwise the last move can remain missing or duplicated.
+    self:FlushPendingBagUpdatesNow(true)
     isBankOpen = false
     isWarbandBankOpen = false  -- Both tabs close together
-    bankScanInProgress = false  -- Safety: ensure flag is cleared
     WarbandNexus.bankIsOpen = false  -- Clear global flag for Gold Manager
     if self.InvalidateLiveOpenWarbandBankSummary then
         self:InvalidateLiveOpenWarbandBankSummary()
