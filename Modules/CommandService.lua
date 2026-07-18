@@ -159,10 +159,19 @@ function CommandService:HandleSlashCommand(addon, input)
         return
 
     elseif cmd == "reminder" then
-        local sub = addon:GetArgs(input, 2)
+        -- GetArgs(input, 2) returns (arg1, arg2, nextpos); arg1 is "reminder", so the
+        -- subcommand is the SECOND return. Capturing a single value took "reminder" and
+        -- matched nothing, so every /wn reminder call fell through to the help text.
+        local _, sub = addon:GetArgs(input, 2)
         if sub and issecretvalue and issecretvalue(sub) then sub = nil end
         sub = sub and sub:lower() or ""
-        if sub == "syncwq" or sub == "syncquestcatalog" or sub == "sync" then
+        if sub == "status" or sub == "check" or sub == "debug" then
+            if addon.PrintReminderDiagnostics then
+                addon:PrintReminderDiagnostics()
+            else
+                addon:Print("|cffff6600[WN]|r Reminder diagnostics not available.")
+            end
+        elseif sub == "syncwq" or sub == "syncquestcatalog" or sub == "sync" then
             if not addon.ScanMidnightQuests then
                 addon:Print("|cffff6600[WN]|r Midnight quest scan not available.")
                 return
@@ -200,6 +209,7 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             addon:Print(string.format("|cff00ccff[WN]|r Saved %d world quests to reminder catalog (account-wide). Reopen Set Alert to refresh.", n))
         else
+            addon:Print("|cff00ccff/wn reminder status|r — Show every enabled alert and whether it would fire right now.")
             addon:Print("|cff00ccff/wn reminder syncwq|r — Scan Midnight maps and save all seen world quests to the maintained catalog.")
         end
         return

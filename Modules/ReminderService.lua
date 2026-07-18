@@ -120,6 +120,9 @@ local function GetPlanReminderToastIcon(plan)
     return GetReminderToastIconTexture()
 end
 
+--- Set Alert save confirmation. Defined after SendPlanReminderToast; forward-declared for SetPlanReminder above it.
+local SendReminderConfiguredToast
+
 local TRIGGER_TYPES = {
     DAILY_LOGIN = "onDailyLogin",
     WEEKLY_RESET = "onWeeklyReset",
@@ -473,6 +476,38 @@ local function EnsureReminderField(plan)
     return plan.reminder
 end
 
+--- True when at least one trigger entry is enabled (an alert worth keeping).
+local function ReminderHasEnabledTrigger(r)
+    if not r then return false end
+    EnsureTriggersStructure(r)
+    local entries = r.triggers.entries
+    for i = 1, #entries do
+        local e = entries[i]
+        if e and e.enabled ~= false then return true end
+    end
+    return false
+end
+
+--- Shared save tail for SetPlanReminder. A save with nothing selected would otherwise leave an
+--- "enabled" reminder with zero triggers: a horn on the card that can never fire. Treat an empty
+--- save as clearing the alert so the invariant "enabled reminder => has a trigger" holds for every
+--- caller, then toast + emit the standard change message.
+local function FinalizeReminderSaveAndNotify(plan, planID)
+    local r = plan and plan.reminder
+    if not r then return end
+    if not ReminderHasEnabledTrigger(r) then
+        r.enabled = false
+        r.activeReminders = nil
+        r.lastShown = {}
+        local prof = WarbandNexus.db and WarbandNexus.db.profile
+        if prof and prof.plansReminderFocusPlanID == planID then
+            prof.plansReminderFocusPlanID = nil
+        end
+    end
+    if SendReminderConfiguredToast then SendReminderConfiguredToast(plan) end
+    WarbandNexus:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
+end
+
 -- PUBLIC API: SET / REMOVE / TOGGLE REMINDER
 
 function WarbandNexus:SetPlanReminder(planID, settings)
@@ -487,7 +522,7 @@ function WarbandNexus:SetPlanReminder(planID, settings)
         r.triggers.entries = settings.entries
         r._reminderTriggersV1 = true
         SyncLegacyFromTriggers(plan)
-        self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
+        FinalizeReminderSaveAndNotify(plan, planID)
         return true
     end
 
@@ -601,7 +636,7 @@ function WarbandNexus:SetPlanReminder(planID, settings)
     r._reminderTriggersV1 = true
     SyncLegacyFromTriggers(plan)
 
-    self:SendMessage(E.PLANS_UPDATED, { action = "reminder_changed", planID = planID })
+    FinalizeReminderSaveAndNotify(plan, planID)
     return true
 end
 
@@ -720,6 +755,80 @@ local function SendPlanReminderToast(plan, triggerLabel, fromLocation)
             toastData.action = safeMsg
         end
     end
+    WarbandNexus:SendMessage(E.SHOW_REMINDER_TOAST, { data = toastData })
+end
+
+--- Comma-joined short labels for every enabled trigger entry (nil when the reminder has none).
+local function BuildReminderTriggerSummary(r)
+    if not r then return nil end
+    EnsureTriggersStructure(r)
+    local L = ns.L
+    local chunks = {}
+    local entries = r.triggers.entries
+    for i = 1, #entries do
+        local e = entries[i]
+        if e and e.enabled ~= false then
+            if e.kind == KIND.DAILY_LOGIN then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_DAILY"]) or "Daily login"
+            elseif e.kind == KIND.WEEKLY_RESET then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_WEEKLY"]) or "Weekly reset"
+            elseif e.kind == KIND.MONTHLY_LOGIN then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_MONTHLY"]) or "Monthly login"
+            elseif e.kind == KIND.DAYS_BEFORE_RESET and type(e.days) == "table" then
+                for di = 1, #e.days do
+                    local d = tonumber(e.days[di])
+                    if d then
+                        chunks[#chunks + 1] = string.format(
+                            (L and L["REMINDER_SHORT_BEFORE_RESET"]) or "%dd before reset", d)
+                    end
+                end
+            elseif e.kind == KIND.ZONE_ENTER then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_ZONE"]) or "Zone enter"
+            elseif e.kind == KIND.INSTANCE_ENTER then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_INSTANCE"]) or "Instance"
+            elseif e.kind == KIND.WORLD_QUEST_ACTIVE then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_WORLD_QUEST"]) or "World Quests on map"
+            elseif e.kind == KIND.CONTENT_EVENT_ACTIVE then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_CONTENT_EVENT"]) or "Content Events on map"
+            elseif e.kind == KIND.WORLD_EVENT_ACTIVE then
+                chunks[#chunks + 1] = (L and L["REMINDER_SHORT_WORLD_EVENT"]) or "World events"
+            end
+        end
+    end
+    if #chunks == 0 then return nil end
+    return table.concat(chunks, ", ")
+end
+
+--- Confirmation toast after Set Alert saves, so an alert that stays silent until its next
+--- reset boundary still gives immediate feedback that it was stored.
+SendReminderConfiguredToast = function(plan)
+    local prof = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not prof or not prof.enabled or prof.showPlanReminderToast == false then return end
+    local L = ns.L
+    local r = plan and plan.reminder
+    local summary = ReminderHasEnabledTrigger(r) and BuildReminderTriggerSummary(r) or nil
+    local title, body
+    if r and r.enabled and summary then
+        title = (L and L["REMINDER_CONFIGURED_TITLE"]) or "Reminder saved"
+        body = string.format((L and L["REMINDER_CONFIGURED_BODY"]) or "Alerts: %s", summary)
+    else
+        -- Empty save was cleared by FinalizeReminderSaveAndNotify; say so instead of "saved".
+        title = (L and L["REMINDER_CLEARED_TITLE"]) or "Alert cleared"
+        body = (L and L["REMINDER_CONFIGURED_NONE"]) or "No alerts selected"
+    end
+    local toastData = {
+        compact = true,
+        planReminderToast = true,
+        criteriaTitle = title,
+        itemName = SafePlanToastTitle(plan),
+        icon = GetPlanReminderToastIcon(plan),
+        playSound = true,
+        autoDismiss = 3,
+        action = body,
+    }
+    local theme = ReminderToastThemeFields()
+    toastData.titleColor = theme.titleColor
+    toastData.progressGlow = theme.progressGlow
     WarbandNexus:SendMessage(E.SHOW_REMINDER_TOAST, { data = toastData })
 end
 
@@ -910,6 +1019,7 @@ local function CheckDailyLoginReminders()
         if not planList then return end
         for i = 1, #planList do
             local plan = planList[i]
+            if plan then EnsureReminderField(plan) end
             if plan and plan.reminder and plan.reminder.enabled and plan.reminder.onDailyLogin then
                 CleanStaleReminderKeys(plan)
                 if not plan.completed then
@@ -996,6 +1106,7 @@ local function CheckWeeklyResetReminders()
         if not planList then return end
         for i = 1, #planList do
             local plan = planList[i]
+            if plan then EnsureReminderField(plan) end
             if plan and plan.reminder and plan.reminder.enabled and plan.reminder.onWeeklyReset then
                 if not plan.completed then
                     plan.reminder.lastShown = plan.reminder.lastShown or {}
@@ -1024,11 +1135,21 @@ local function CheckDaysBeforeResetReminders()
     local settings = GetReminderSettings()
     if settings and not settings.enabled then return end
 
-    local resetTime = WarbandNexus:GetWeeklyResetTime()
-    if not resetTime then return end
-
-    local now = time()
-    local secondsUntilReset = resetTime - now
+    -- Prefer the raw countdown: it is region-correct and involves no clock, so a skewed or
+    -- foreign-timezone client cannot shift the threshold. Only fall back to an absolute
+    -- reset stamp when the API is unavailable, and then subtract the same (server) clock.
+    local secondsUntilReset
+    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+        local s = C_DateAndTime.GetSecondsUntilWeeklyReset()
+        if type(s) == "number" and s > 0 then
+            secondsUntilReset = s
+        end
+    end
+    if not secondsUntilReset then
+        local resetTime = WarbandNexus:GetWeeklyResetTime()
+        if not resetTime then return end
+        secondsUntilReset = resetTime - ((GetServerTime and GetServerTime()) or time())
+    end
     if secondsUntilReset <= 0 then return end
 
     local daysUntilReset = math.ceil(secondsUntilReset / 86400)
@@ -1039,6 +1160,7 @@ local function CheckDaysBeforeResetReminders()
         if not planList then return end
         for i = 1, #planList do
             local plan = planList[i]
+            if plan then EnsureReminderField(plan) end
             if plan and plan.reminder and plan.reminder.enabled then
                 local daysList = plan.reminder.daysBeforeReset
                 if daysList and #daysList > 0 and not plan.completed then
@@ -1609,6 +1731,17 @@ local reminderPlanRescheduleTimer = nil
 local REMINDER_PLAN_RESCHEDULE_DEBOUNCE = 0.25
 local OnLoginRemindersCheck
 local ScheduleCalendarResetReminderTimer
+local RunZoneOrInstanceChangedNow
+
+--- Drop the "already evaluated" memo for zone/map-quest/instance/world-event triggers.
+--- Those checks early-return while their stable key is unchanged, so a config change made
+--- without moving would otherwise never be evaluated until the next zone transition.
+local function ResetTriggerEvaluationMemo()
+    lastStableReminderZoneKey = nil
+    lastMapQuestReminderStable = nil
+    lastInstanceFingerprint = nil
+    lastWorldEventReminderKey = nil
+end
 
 local function RequestReminderScheduleCoalesced()
     if reminderPlanRescheduleTimer then
@@ -1619,8 +1752,14 @@ local function RequestReminderScheduleCoalesced()
         if ScheduleCalendarResetReminderTimer then
             ScheduleCalendarResetReminderTimer()
         end
+        ResetTriggerEvaluationMemo()
         if OnLoginRemindersCheck then
             OnLoginRemindersCheck()
+        end
+        -- Calendar pass alone never touches zone/instance/map-quest triggers; evaluate the
+        -- player's current location too so a freshly saved alert fires without a zone round-trip.
+        if RunZoneOrInstanceChangedNow then
+            RunZoneOrInstanceChangedNow()
         end
     end
     if not (C_Timer and C_Timer.NewTimer) then
@@ -1693,7 +1832,7 @@ ScheduleCalendarResetReminderTimer = function()
     end)
 end
 
-local function RunZoneOrInstanceChangedNow()
+RunZoneOrInstanceChangedNow = function()
     if SafeIsPlayerAirborneTransit() then
         zoneReminderDeferredTransit = true
         return
@@ -1862,6 +2001,116 @@ end
 --- (Previously returning false when hints were missing deadlocked the UI: zone off disables the map row.)
 local function ZoneTriggerAllowsConfigure(plan)
     return true
+end
+
+--- /wn reminder status — why each configured alert would or would not fire right now.
+--- Daily/weekly alerts stay deliberately silent until their next Blizzard reset boundary;
+--- this makes that anchor visible instead of looking like a dead trigger.
+function WarbandNexus:PrintReminderDiagnostics()
+    local db = self.db and self.db.global
+    if not db then
+        self:Print("|cffff6600[WN Reminder]|r database not ready.")
+        return
+    end
+
+    local rs = db.reminderSettings
+    local prof = self.db.profile and self.db.profile.notifications
+    self:Print(string.format("|cff00ccff[WN Reminder]|r service=%s throttleLocation=%s | toasts: enabled=%s showPlanReminderToast=%s",
+        tostring(rs and rs.enabled ~= false), tostring(rs and rs.throttleLocationReminders == true),
+        tostring(prof and prof.enabled == true), tostring(prof and prof.showPlanReminderToast ~= false)))
+
+    local rawMap = SafeGetRawPlayerUIMapID()
+    local union = GetCachedConfiguredZoneUnion()
+    local stable = rawMap and StableReminderZoneKey(rawMap, union) or nil
+    self:Print(string.format("  map=%s (%s) stableZoneKey=%s inInstance=%s",
+        tostring(rawMap), tostring(rawMap and SafeUIMapDisplayName(rawMap) or "?"),
+        tostring(stable), tostring(SafeIsInInstance())))
+
+    -- Same countdown source as CheckDaysBeforeResetReminders, so the dump cannot disagree with it.
+    local secsUntilReset = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset
+        and C_DateAndTime.GetSecondsUntilWeeklyReset() or nil
+    if type(secsUntilReset) ~= "number" or secsUntilReset <= 0 then
+        local resetTime = self.GetWeeklyResetTime and self:GetWeeklyResetTime() or nil
+        secsUntilReset = resetTime and (resetTime - ((GetServerTime and GetServerTime()) or time())) or nil
+    end
+    local daysUntilReset = secsUntilReset and math.ceil(secsUntilReset / 86400) or nil
+    self:Print(string.format("  daysUntilWeeklyReset=%s (%s left) region=%s",
+        tostring(daysUntilReset),
+        secsUntilReset and (math.floor(secsUntilReset / 3600) .. "h") or "?",
+        tostring(GetCVar and GetCVar("portal") or "?")))
+
+    local now = time()
+    local shown = 0
+
+    local function dumpList(planList, listLabel)
+        if not planList then return end
+        for i = 1, #planList do
+            local plan = planList[i]
+            EnsureReminderField(plan)
+            local r = plan.reminder
+            if r and r.enabled then
+                shown = shown + 1
+                self:Print(string.format("  |cffffd700%s|r [%s] completed=%s -> %s",
+                    SafePlanToastTitle(plan), listLabel, tostring(plan.completed == true),
+                    BuildReminderTriggerSummary(r) or "(no triggers)"))
+
+                if r.onDailyLogin then
+                    local lastAt = tonumber(r.lastDailyLoginReminderAt)
+                    local fires = (lastAt ~= nil and lastAt ~= 0)
+                        and self:HasDailyResetOccurredSince(lastAt) or false
+                    self:Print(string.format("      daily: anchor=%s firesNow=%s",
+                        (lastAt and lastAt ~= 0) and (math.floor((now - lastAt) / 60) .. "m ago") or "unanchored (arms at next daily reset)",
+                        tostring(fires)))
+                end
+
+                if r.onWeeklyReset then
+                    local lastW = tonumber(r.lastShown and r.lastShown["weekly_reset"])
+                    local fires = (lastW ~= nil and lastW ~= 0)
+                        and self:HasWeeklyResetOccurredSince(lastW) or false
+                    self:Print(string.format("      weekly: anchor=%s firesNow=%s",
+                        (lastW and lastW ~= 0) and (math.floor((now - lastW) / 3600) .. "h ago") or "unanchored (arms at next weekly reset)",
+                        tostring(fires)))
+                end
+
+                local dbr = r.daysBeforeReset
+                if dbr and #dbr > 0 and daysUntilReset then
+                    for di = 1, #dbr do
+                        local d = tonumber(dbr[di])
+                        if d then
+                            self:Print(string.format("      daysBefore: threshold=%d daysLeft=%d firesNow=%s",
+                                d, daysUntilReset, tostring(daysUntilReset <= d)))
+                        end
+                    end
+                end
+
+                if r.onZoneEnter then
+                    local ze = FindTriggerEntry(r, KIND.ZONE_ENTER)
+                    local maps = ze and CollectZoneMapIDsFromEntry(plan, ze) or {}
+                    local ids = {}
+                    for mid in pairs(maps) do ids[#ids + 1] = tostring(mid) end
+                    table.sort(ids)
+                    self:Print(string.format("      zone: maps=[%s] matchesCurrent=%s",
+                        table.concat(ids, ","),
+                        tostring(rawMap ~= nil and ZoneConfiguredMatchesCurrentMap(maps, rawMap) or false)))
+                end
+
+                local ie = FindTriggerEntry(r, KIND.INSTANCE_ENTER)
+                if ie and ie.enabled ~= false then
+                    local info = SafeGetInstanceInfo()
+                    self:Print(string.format("      instance: want=%s/%s current=%s/%s",
+                        tostring(ie.instanceID), tostring(ie.difficultyID or "any"),
+                        tostring(info and info.instanceID), tostring(info and info.difficultyID)))
+                end
+            end
+        end
+    end
+
+    dumpList(db.plans, "plans")
+    dumpList(db.customPlans, "custom")
+
+    if shown == 0 then
+        self:Print("  no plan has an enabled reminder.")
+    end
 end
 
 ns.ReminderServiceBridge = {

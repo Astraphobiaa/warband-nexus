@@ -640,14 +640,19 @@ function WarbandNexus:GetWeeklyResetTime()
         end
     end
     
-    -- Fallback: Region-based calculation
-    local currentTime = time()
-    local currentDate = date("*t", currentTime)
-    
+    -- Fallback: Region-based calculation.
+    -- Reset moments are fixed UTC instants per realm region, so every field below must be UTC:
+    -- date("*t") would yield the player's LOCAL wday/hour and compare them against UTC reset
+    -- hours, shifting the result by the client's UTC offset (and the wday near local midnight).
+    -- Server clock, matching the primary branch above and every caller (they subtract
+    -- GetServerTime from this result); time() would drift with the client's own clock.
+    local currentTime = (GetServerTime and GetServerTime()) or time()
+    local utcNow = date("!*t", currentTime)
+
     -- Detect region (portal = realm region)
     local region = GetCVar("portal") or "US"
-    
-    -- Region-specific reset times
+
+    -- Region-specific reset times (UTC)
     -- wday: 1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday
     local resetDay, resetHour
     if region == "EU" then
@@ -660,25 +665,21 @@ function WarbandNexus:GetWeeklyResetTime()
         resetDay = 3  -- Tuesday
         resetHour = 15  -- 15:00 UTC
     end
-    
-    -- Calculate days until next reset day
-    local dayOfWeek = currentDate.wday
-    local daysUntilReset = (resetDay - dayOfWeek + 7) % 7
-    
-    if daysUntilReset == 0 then
-        -- It's the reset day, check if reset has passed
-        if currentDate.hour >= resetHour then
-            daysUntilReset = 7  -- Next week
-        end
+
+    -- Seconds elapsed in the current UTC day, and the epoch of 00:00 UTC today.
+    local secondsIntoUtcDay = (utcNow.hour * 3600) + (utcNow.min * 60) + utcNow.sec
+    local utcMidnight = currentTime - secondsIntoUtcDay
+
+    -- Days until the next reset weekday, evaluated on the UTC calendar
+    local daysUntilReset = (resetDay - utcNow.wday + 7) % 7
+    if daysUntilReset == 0 and secondsIntoUtcDay >= (resetHour * 3600) then
+        daysUntilReset = 7  -- Today's reset already passed
     end
-    
-    -- Calculate next reset date
-    local resetDate = date("*t", currentTime + (daysUntilReset * 24 * 60 * 60))
-    resetDate.hour = resetHour
-    resetDate.min = 0
-    resetDate.sec = 0
-    
-    return time(resetDate)
+
+    -- Pure epoch arithmetic on purpose: time(table) would read the fields as LOCAL time and
+    -- need a UTC-offset correction, which is itself DST-dependent and drifts by an hour across
+    -- a transition. A UTC day is always exactly 86400s, so this needs neither offset nor isdst.
+    return utcMidnight + (daysUntilReset * 86400) + (resetHour * 3600)
 end
 
 function WarbandNexus:FormatTimeUntilReset(resetTime)
