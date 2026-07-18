@@ -626,7 +626,7 @@ end
 --[[
     Get next weekly reset time (region-aware)
     US/NA: Tuesday 15:00 UTC
-    EU: Wednesday 07:00 UTC
+    EU: Wednesday 04:00 UTC
     KR/TW/CN: Wednesday 15:00 UTC
     @return number - Unix timestamp of next reset
 ]]
@@ -637,6 +637,16 @@ function WarbandNexus:GetWeeklyResetTime()
         if secondsUntil and secondsUntil > 0 then
             local now = (GetServerTime and GetServerTime()) or time()
             return now + secondsUntil
+        end
+    end
+
+    -- Mainline also exposes the authoritative previous boundary. Prefer it over static
+    -- region data when the countdown is temporarily unavailable during login.
+    if C_DateAndTime and C_DateAndTime.GetWeeklyResetStartTime then
+        local ok, lastReset = pcall(C_DateAndTime.GetWeeklyResetStartTime)
+        lastReset = ok and tonumber(lastReset) or nil
+        if lastReset and lastReset > 0 then
+            return lastReset + (7 * 86400)
         end
     end
     
@@ -657,7 +667,7 @@ function WarbandNexus:GetWeeklyResetTime()
     local resetDay, resetHour
     if region == "EU" then
         resetDay = 4  -- Wednesday
-        resetHour = 7  -- 07:00 UTC
+        resetHour = 4  -- 04:00 UTC (05:00 CET)
     elseif region == "KR" or region == "TW" or region == "CN" then
         resetDay = 4  -- Wednesday
         resetHour = 15  -- 15:00 UTC
