@@ -740,6 +740,7 @@ local CURRENCY_ID_TO_TRACK = GT.CURRENCY_ID_TO_TRACK
 local function NormalizeUpgradeTrackName(raw)
     if not raw or raw == "" then return nil end
     if issecretvalue and issecretvalue(raw) then return nil end
+    if type(raw) ~= "string" then return nil end
     if TRACK_ILVLS[raw] then return raw end
     local firstWord = raw:match("^([%a]+)")
     if firstWord and TRACK_ILVLS[firstWord] then return firstWord end
@@ -954,6 +955,7 @@ end
 local function ParseUpgradeLabelString(raw)
     if not raw or raw == "" then return nil, nil, nil end
     if issecretvalue and issecretvalue(raw) then return nil, nil, nil end
+    if type(raw) ~= "string" then return nil, nil, nil end
     local trackPart, curS, maxS = raw:match("^([%a]+)%s+(%d+)/(%d+)")
     if trackPart then
         local track = NormalizeUpgradeTrackName(trackPart)
