@@ -1155,22 +1155,17 @@ L["CONFIG_HIDE_PLAYED_TIME_CHAT"] = "Hide Time Played in chat"
 L["CONFIG_HIDE_PLAYED_TIME_CHAT_DESC"] = "Filter out Total time played and Time played this level system messages. Turn off to show them again (including when you type /played)."
 
 
-L["CHANGELOG_V333"] = [=[v3.3.3 (2026-07-15)
-
-Added:
-- Turkish language support, with a language selector in Settings so you can pick any interface language regardless of your game client.
-
-Updated:
-- Settings reorganized: Language now sits at the top of General, and every minimap option moved into the renamed "Shortcuts" panel alongside Easy Access.
-- General settings are now grouped into Interface, Controls & Scaling, Item tooltips, and Startup.
+L["CHANGELOG_V334"] = [=[v3.3.4 (2026-07-19)
 
 Fixed:
-- Gear upgrade ranks no longer show two steps too low; a Champion 1/6 item read as Veteran 5/6 because both share item level 246.
-- Crafted gear now reads "Crafted 285" instead of an invented "Myth 5/5" rank; crafted items have no upgrade track, and the 5/5 scale clashed with real 6/6 tracks.
-- Gear lifted past its track cap with a Nebulous Voidcore now reads "Myth+" instead of showing no rank at all; "Myth 6/6" would have hidden it, since that rank means item level 289 while the item is 298.
-- Upgrade ranks now read from the tooltip on every locale, so non-English clients no longer fall back to guessing from item level.
-- Editing an attempt count by hand now sticks; a mount's try count could previously snap back to the old value.
-- The welcome message now reads correctly in Korean.
+- Gear tab: your weapons no longer overlap the Character Stats and Upgrade Currencies panel beneath the paperdoll.
+- The Characters tab no longer snaps back to the top when the list refreshes (for example when your gold or currencies change); your scroll position is kept.
+- Fixed a Gear tab error that could stop the tab from loading for characters carrying older saved upgrade-track data.
+- Collection views for Mounts, Pets, Toys, and Titles now redraw correctly when switching tabs, including the "Show completed" filter.
+- Reminders that could silently never fire now trigger reliably, covering daily, weekly, and days-before-reset alerts as well as zone, instance, and world-event triggers.
+- Zone, instance, and world-event reminders now update as soon as you change their settings, instead of waiting for a zone change.
+- Weekly reset timing is now timezone-correct, so "days before reset" counts down accurately regardless of your game client's region.
+- Saving a reminder now shows a confirmation, and clearing all of a reminder's triggers turns it off instead of leaving it enabled with nothing to fire.
 
 CurseForge: Warband Nexus]=]
 
