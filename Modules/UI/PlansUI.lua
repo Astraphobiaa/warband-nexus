@@ -497,6 +497,10 @@ end
 
 local function ReleasePlansScrollBody(parent)
     if not parent then return end
+    -- Stop the virtual browse grid from repainting into a torn-down body during the switch.
+    if ns._wnBrowseGridState then
+        ns._wnBrowseGridState.active = false
+    end
     TeardownPlansScrollChildBrowseArtifacts(parent)
     if HideAllPlansEmptyStateCards then
         HideAllPlansEmptyStateCards(parent)
@@ -508,7 +512,7 @@ local function ReleasePlansScrollBody(parent)
     local children = CollectScrollChildFrames(parent)
     for i = 1, #children do
         local child = children[i]
-        if child and child ~= parent.emptyStateContainer then
+        if child and child ~= parent.emptyStateContainer and not child._wnPlansBrowseKeep then
             if ReleasePooledRowsInSubtree then
                 ReleasePooledRowsInSubtree(child)
             end
@@ -517,10 +521,17 @@ local function ReleasePlansScrollBody(parent)
     for i = 1, #children do
         local child = children[i]
         if child and child ~= parent.emptyStateContainer then
-            child:Hide()
-            child:ClearAllPoints()
-            if recycleBin then
-                child:SetParent(recycleBin)
+            if child._wnPlansBrowseKeep then
+                -- Persistent browse host: HIDE it (so it doesn't bleed onto To-Do List / Weekly Progress /
+                -- other non-browse categories) but keep it parented + positioned, so its ~50 pooled cards are
+                -- never reparented (that reparent was the 6-7s freeze). DrawBrowser re-shows it on return.
+                child:Hide()
+            else
+                child:Hide()
+                child:ClearAllPoints()
+                if recycleBin then
+                    child:SetParent(recycleBin)
+                end
             end
         end
     end
@@ -729,6 +740,12 @@ function WarbandNexus:DrawPlansTab(parent)
 
     -- Default: To-Do List ("active"). Same session: remember last category until /reload.
     ResolvePlansCategoryFromSession()
+
+    -- Warm the browse card pool during idle so the first Mount/Pet/Toy/Title open is instant too
+    -- (no-op after the first schedule; skips itself if a browse grid is already live).
+    if ns.UI_SchedulePrewarmBrowseGrid then
+        ns.UI_SchedulePrewarmBrowseGrid()
+    end
 
     if currentCategory ~= "achievement" then
         ns._plansAchOuterVirtualState = nil
@@ -2070,6 +2087,20 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
+    -- To-Do List / Weekly Progress are not browse categories: hide the persistent browse grid host so its
+    -- cards don't bleed on top of this content. It stays parented (no reparent storm); DrawBrowser re-shows
+    -- it on return to a browse sub-tab. Also silence the virtual grid scroll hook.
+    if parent._wnPlansBrowsePersistent then
+        parent._wnPlansBrowsePersistent:Hide()
+    end
+    if ns._wnBrowseGridState then
+        ns._wnBrowseGridState.active = false
+    end
+    -- Hide the active-list virtual host up front so the daily_tasks (Weekly Progress) path never shows it;
+    -- the "active" (To-Do List) path re-shows it below after (re)building its virtual grid.
+    if parent._wnPlansActiveHost then
+        parent._wnPlansActiveHost:Hide()
+    end
 
     local plans
     if category == "daily_tasks" then
@@ -2208,78 +2239,72 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         parent:SetClipsChildren(false)
     end
 
-    for i = 1, #plans do
+    -- Chunked paint: render a few cards per frame so Show Completed (which can reveal a large completed
+    -- set) never blocks a single frame on the heavy backdrop first-render. Bounded continuation + a
+    -- generation guard, per the CLAUDE.md heavy-tab-first-paint rule (mirrors the old browse pump).
+    -- Create (once) + position the card for plan index `i` at explicit (cardX, cardY) inside `host`.
+    -- Returns the card. Virtualization owns positioning + recycle; no CardLayoutManager here.
+    local function renderActivePlanCard(i, host, cardX, cardY, onExpandReflow)
         local plan = plans[i]
         local progress = self:GetResolvedPlanProgress(plan)
-        
+        host = host or parent
+
         if plan.type == "weekly_vault" then
             local weeklyCardHeight = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, gridW)) or 174
 
             -- Create raw card (no base card - weekly vault is fully custom)
-            local card = CreateCard(parent, weeklyCardHeight)
+            local card = CreateCard(host, weeklyCardHeight)
             card:EnableMouse(true)
-            
-            -- Add to layout manager
-            local yPos = CardLayoutManager:AddCard(layoutManager, card, 0, weeklyCardHeight)
-            
-            -- Override positioning to make it full width
+
+            -- Full-width positioning at the virtual slot.
             card:ClearAllPoints()
-            card:SetPoint("TOPLEFT", gridPadH, -yPos)
-            card:SetPoint("TOPRIGHT", -gridPadH, -yPos)
-            
-            -- Update layout manager for full-width card
-            layoutManager.currentYOffsets[0] = yPos + weeklyCardHeight + cardSpacing
-            layoutManager.currentYOffsets[1] = yPos + weeklyCardHeight + cardSpacing
-            
-            -- Mark as full width
+            card:SetPoint("TOPLEFT", host, "TOPLEFT", gridPadH, -(cardY or 0))
+            card:SetPoint("TOPRIGHT", host, "TOPRIGHT", -gridPadH, -(cardY or 0))
+
             card._layoutInfo = card._layoutInfo or {}
             card._layoutInfo.isFullWidth = true
-            card._layoutInfo.yPos = yPos
-            
+            card._layoutInfo.yPos = cardY or 0
+
             -- Apply accent border (My Plans cards)
             if ApplyPlansChrome then
                 local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
                     or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
                 ApplyPlansChrome(card, COLORS.bgCard, borderColor, { cardPanel = true })
             end
-            
+
             -- Create weekly vault content via factory
             PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nil)
-            
+
             card:Show()
-        
+            return card
+
         elseif plan.type == "daily_quests" then
             local questCardHeight = (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, gridW)) or 174
 
-            local card = CreateCard(parent, questCardHeight)
+            local card = CreateCard(host, questCardHeight)
             card:EnableMouse(true)
-            
-            local yPos = CardLayoutManager:AddCard(layoutManager, card, 0, questCardHeight)
-            
+
             card:ClearAllPoints()
-            card:SetPoint("TOPLEFT", gridPadH, -yPos)
-            card:SetPoint("TOPRIGHT", -gridPadH, -yPos)
-            
-            layoutManager.currentYOffsets[0] = yPos + questCardHeight + cardSpacing
-            layoutManager.currentYOffsets[1] = yPos + questCardHeight + cardSpacing
-            
+            card:SetPoint("TOPLEFT", host, "TOPLEFT", gridPadH, -(cardY or 0))
+            card:SetPoint("TOPRIGHT", host, "TOPRIGHT", -gridPadH, -(cardY or 0))
+
             card._layoutInfo = card._layoutInfo or {}
             card._layoutInfo.isFullWidth = true
-            card._layoutInfo.yPos = yPos
-            
+            card._layoutInfo.yPos = cardY or 0
+
             if ApplyPlansChrome then
                 local borderColor = (ns.UI_GetPanelCardBorder and ns.UI_GetPanelCardBorder())
                     or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
                 ApplyPlansChrome(card, COLORS.bgCard, borderColor, { cardPanel = true })
             end
-            
+
             PlanCardFactory:CreateDailyQuestCard(card, plan)
-            
+
             card:Show()
-        
+            return card
+
         else
             local listCardWidth = cardWidth
-            local col = (regularCountBefore[i] or 0) % 2
             local planComplete = memoIsActivePlanComplete(plan)
 
             local PCF = ns.UI_PlanCardFactory
@@ -2419,25 +2444,25 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 criteriaShowHeader = criteriaHeader,
                 titleRightInset = titleRightInset,
                 onSectionResize = function(rowFrame, currentH)
-                    if CardLayoutManager and CardLayoutManager.UpdateCardHeight then
-                        CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
-                    end
-                    if ns.UI_SyncPlansScrollContentHeight then
-                        ns.UI_SyncPlansScrollContentHeight(parent)
+                    -- Expand/collapse changes this card's height → let virtualization reflow the flat rows
+                    -- below it and resize the host (replaces the old CardLayoutManager path).
+                    if onExpandReflow then
+                        onExpandReflow(rowFrame, currentH)
                     end
                 end,
                 onExpandPopulate = achievementOnExpandPopulate,
             }
 
-            local row = CreateExpandableRow(parent, listCardWidth, collapsedH, rowData, isExpanded, function(expanded)
+            local row = CreateExpandableRow(host, listCardWidth, collapsedH, rowData, isExpanded, function(expanded)
                 expandedPlans[plan.id] = expanded
+                if onExpandReflow then
+                    onExpandReflow(row, row and row.GetHeight and row:GetHeight() or collapsedH)
+                end
             end)
             if row then
             row:SetWidth(listCardWidth)
-            CardLayoutManager:AddCard(layoutManager, row, col, collapsedH)
-            if row.isExpanded then
-                CardLayoutManager:UpdateCardHeight(row, row:GetHeight())
-            end
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", host, "TOPLEFT", cardX or 0, -(cardY or 0))
 
             -- Row chrome: ExpandableRowFactory owns classic dialog-box / modern accent borders.
 
@@ -2527,20 +2552,241 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
 
             row:Show()
+            return row
             end
         end
     end
 
-    -- Sync row offsets after all cards are added (prevents gaps from mixed-height cards)
-    ReflowPlansCardLayout(layoutManager)
-    if ns.UI_SyncPlansScrollContentHeight then
-        ns.UI_SyncPlansScrollContentHeight(parent)
+    -- ── Variable-height flat-row VIRTUALIZATION ─────────────────────────────────────────────────────
+    -- Replaces the all-cards-in-one-frame render that froze a large Show Completed set. Only cards whose
+    -- flat rows intersect the viewport are created; each plan owns its card (created once, cached by
+    -- plan.id, shown/hidden as it scrolls) so expand state persists with no rebind. Expand/collapse and
+    -- data changes reflow row heights + re-window. Cards rebuild when the plan-data epoch bumps.
+    parent._plansCardLayoutManager = nil
+    parent._plansBrowseLayoutManager = nil
+
+    local mfActive = self.UI and self.UI.mainFrame
+    local ACTIVE_WIN_OVERSCAN = 1
+    local ACTIVE_CREATE_CHUNK = 2  -- new cards created per frame during first paint (keeps spikes small)
+    local colStride = cardWidth + cardSpacing
+    local collapsedRowH = (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)) or todoHeaderH
+
+    -- Persistent protected host (same keep contract as the browse grid: hidden-in-place within Plans,
+    -- detached/re-adopted across main-tab switches).
+    local host = parent._wnPlansActiveHost
+    if host and host:GetParent() ~= parent then host:SetParent(parent) end
+    if not host then
+        host = CreateFrame("Frame", nil, parent)
+        host._wnPlansBrowseKeep = true
+        host._wnKeepOnTabSwitch = true
+        parent._wnPlansActiveHost = host
+    end
+    host:ClearAllPoints()
+    host:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(yOffset or 0))
+    host:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -(yOffset or 0))
+    host:Show()
+
+    -- Bump a card epoch on plan/collection data changes so cached cards rebuild with fresh data. Pure UI
+    -- toggles (Show Completed) do NOT bump it → cards are reused across toggles.
+    if not ns._plansActiveEpochHooked and WarbandNexus.RegisterMessage and E then
+        ns._plansActiveEpochHooked = true
+        ns._plansActiveCardEpoch = ns._plansActiveCardEpoch or 1
+        local listeners = {}
+        ns._plansActiveEpochListeners = listeners
+        local function bumpEpoch() ns._plansActiveCardEpoch = (ns._plansActiveCardEpoch or 1) + 1 end
+        local evs = { E.PLANS_UPDATED, E.PLAN_COMPLETED, E.COLLECTION_UPDATED, E.COLLECTION_SCAN_COMPLETE }
+        for ei = 1, #evs do
+            if evs[ei] then WarbandNexus.RegisterMessage(listeners, evs[ei], bumpEpoch) end
+        end
+    end
+    local epoch = ns._plansActiveCardEpoch or 1
+
+    local cardCache = host._wnActiveCardCache
+    if not cardCache then cardCache = {}; host._wnActiveCardCache = cardCache end
+    local heightByPlanId = host._wnActiveHeightByPlanId
+    if not heightByPlanId then heightByPlanId = {}; host._wnActiveHeightByPlanId = heightByPlanId end
+
+    -- Prune cache entries for plans no longer present (removed / filtered out).
+    do
+        local present = {}
+        for i = 1, #plans do present[plans[i].id] = true end
+        for pid, card in pairs(cardCache) do
+            if not present[pid] then
+                if card then card:Hide(); card:ClearAllPoints() end
+                cardCache[pid] = nil
+                heightByPlanId[pid] = nil
+            end
+        end
     end
 
-    -- Get final Y offset from layout manager
-    local finalYOffset = CardLayoutManager:GetFinalYOffset(layoutManager)
-    
-    return finalYOffset
+    local function planCardHeight(plan)
+        if plan.type == "weekly_vault" or plan.type == "daily_quests" then
+            return (ns.UI_MeasureFullWidthPlanCardHeight and ns.UI_MeasureFullWidthPlanCardHeight(plan, gridW)) or 174
+        end
+        return heightByPlanId[plan.id] or collapsedRowH
+    end
+
+    local reflowFrom, updateVisible
+
+    local st = host._wnActiveVState or {}
+    host._wnActiveVState = st
+    ns._plansActiveGen = (ns._plansActiveGen or 0) + 1
+    st.gen = ns._plansActiveGen
+    st.host = host
+    st.yOffset = yOffset or 0
+
+    local function buildRows()
+        local rows = {}
+        local i = 1
+        local y = 0
+        while i <= #plans do
+            local plan = plans[i]
+            if plan.type == "weekly_vault" or plan.type == "daily_quests" then
+                local h = planCardHeight(plan)
+                rows[#rows + 1] = { y = y, height = h, slots = { { idx = i, plan = plan, x = gridPadH, full = true } } }
+                y = y + h + cardSpacing
+                i = i + 1
+            else
+                local slots = { { idx = i, plan = plan, x = gridPadH, full = false } }
+                local h = planCardHeight(plan)
+                local p2 = plans[i + 1]
+                if p2 and p2.type ~= "weekly_vault" and p2.type ~= "daily_quests" then
+                    slots[2] = { idx = i + 1, plan = p2, x = gridPadH + colStride, full = false }
+                    h = math.max(h, planCardHeight(p2))
+                    i = i + 2
+                else
+                    i = i + 1
+                end
+                rows[#rows + 1] = { y = y, height = h, slots = slots }
+                y = y + h + cardSpacing
+            end
+        end
+        st.rows = rows
+        local totalH = (#rows > 0) and (rows[#rows].y + rows[#rows].height + 10) or 20
+        st.totalH = totalH
+        host:SetHeight(math.max(totalH, 1))
+        if parent.SetHeight then parent:SetHeight(math.max((st.yOffset) + totalH + 20, 1)) end
+    end
+
+    local function buildSlotCard(slot, rowY)
+        local plan = slot.plan
+        local card = cardCache[plan.id]
+        if card and card._epoch ~= epoch then
+            card:Hide(); card:ClearAllPoints()
+            cardCache[plan.id] = nil
+            card = nil
+        end
+        if not card then
+            card = renderActivePlanCard(slot.idx, host, slot.x, rowY, function(_, currentH)
+                if plan.type ~= "weekly_vault" and plan.type ~= "daily_quests" and currentH and currentH > 0 then
+                    heightByPlanId[plan.id] = currentH
+                end
+                if reflowFrom then reflowFrom() end
+            end)
+            if card then card._epoch = epoch; cardCache[plan.id] = card end
+        else
+            if card:GetParent() ~= host then card:SetParent(host) end
+            card:ClearAllPoints()
+            if slot.full then
+                card:SetPoint("TOPLEFT", host, "TOPLEFT", gridPadH, -rowY)
+                card:SetPoint("TOPRIGHT", host, "TOPRIGHT", -gridPadH, -rowY)
+            else
+                card:SetPoint("TOPLEFT", host, "TOPLEFT", slot.x, -rowY)
+            end
+            card:Show()
+        end
+        return card
+    end
+
+    updateVisible = function()
+        if st.gen ~= ns._plansActiveGen then return end
+        local mf = self.UI and self.UI.mainFrame
+        if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return end
+        local scroll = mf.scroll
+        local scrollChild = mf.scrollChild
+        if not scroll or not scrollChild then return end
+        local rows = st.rows
+        if not rows then return end
+        local scrollTop = scroll:GetVerticalScroll() or 0
+        local viewH = scroll:GetHeight() or 0
+        local listTop = (ns.UI_ListTopOffsetDownFromScrollContent and ns.UI_ListTopOffsetDownFromScrollContent(host, scrollChild)) or (st.yOffset or 0)
+        local localTop = scrollTop - listTop
+        local localBottom = localTop + viewH
+        local overscanPx = ACTIVE_WIN_OVERSCAN * (collapsedRowH + cardSpacing)
+        local created = 0
+        local moreToCreate = false
+        local anyCreated = false
+        local visibleIds = st._visScratch or {}
+        wipe(visibleIds)
+        st._visScratch = visibleIds
+        for r = 1, #rows do
+            local row = rows[r]
+            if (row.y + row.height) > (localTop - overscanPx) and row.y < (localBottom + overscanPx) then
+                for s = 1, #row.slots do
+                    local slot = row.slots[s]
+                    visibleIds[slot.plan.id] = true
+                    local existing = cardCache[slot.plan.id]
+                    local needCreate = (not existing) or (existing._epoch ~= epoch)
+                    if needCreate and created >= ACTIVE_CREATE_CHUNK then
+                        moreToCreate = true
+                    else
+                        if needCreate then created = created + 1; anyCreated = true end
+                        buildSlotCard(slot, row.y)
+                    end
+                end
+            end
+        end
+        for pid, card in pairs(cardCache) do
+            if not visibleIds[pid] and card and card:IsShown() then card:Hide() end
+        end
+        if moreToCreate then
+            C_Timer.After(0, updateVisible)
+        else
+            if anyCreated then
+                -- Newly created cards may have rendered taller than collapsed (expanded achievement plans);
+                -- reconcile their true heights one frame later and reflow if the model was off.
+                C_Timer.After(0, function()
+                    if st.gen ~= ns._plansActiveGen then return end
+                    local changed = false
+                    for pid, card in pairs(cardCache) do
+                        if card and card:IsShown() and not (card._layoutInfo and card._layoutInfo.isFullWidth) then
+                            local h = card:GetHeight()
+                            if h and h > 1 and math.abs((heightByPlanId[pid] or collapsedRowH) - h) > 1.5 then
+                                heightByPlanId[pid] = h
+                                changed = true
+                            end
+                        end
+                    end
+                    if changed and reflowFrom then reflowFrom() end
+                end)
+            end
+            if ns.UI_EnsureMainScrollLayout then ns.UI_EnsureMainScrollLayout() end
+        end
+    end
+
+    reflowFrom = function()
+        buildRows()
+        updateVisible()
+    end
+
+    st.updateVisible = updateVisible
+    ns._plansActiveVState = st
+
+    -- Hook the outer scroll once → re-window the active list (gated by gen / active state).
+    if mfActive and mfActive.scroll and mfActive.scroll.HookScript and not ns._plansActiveScrollHooked then
+        ns._plansActiveScrollHooked = true
+        mfActive.scroll:HookScript("OnVerticalScroll", function()
+            local s = ns._plansActiveVState
+            if s and s.updateVisible and s.gen == ns._plansActiveGen then
+                s.updateVisible()
+            end
+        end)
+    end
+
+    buildRows()
+    updateVisible()
+
+    return (st.yOffset) + (st.totalH or 20) + 20
 end
 
 -- EVENT HANDLERS

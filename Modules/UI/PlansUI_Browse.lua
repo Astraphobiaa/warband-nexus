@@ -18,7 +18,6 @@ local COLORS = ns.UI_COLORS
 local CreateCard = ns.UI_CreateCard
 local CreateSearchBox = ns.UI_CreateSearchBox
 local CreateExpandableRow
-local CardLayoutManager = ns.UI_CardLayoutManager
 local FormatTextNumbers = ns.UI_FormatTextNumbers
 local PLAN_TYPES = ns.PLAN_TYPES
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -26,7 +25,6 @@ local CreateResultsContainer = ns.UI_CreateResultsContainer
 local DebugPrint = ns.DebugPrint
 local IsDebugModeEnabled = ns.IsDebugModeEnabled
 
-local ReflowPlansCardLayout
 local TeardownPlansAchievementBrowse
 local DetachOwnedPlansInnerScroll
 local ProfileBool
@@ -69,7 +67,6 @@ local function SchedulePlansVisibleSync(refreshFn)
 end
 
 function Browse.Install(addon, deps)
-    ReflowPlansCardLayout = deps.ReflowPlansCardLayout
     TeardownPlansAchievementBrowse = deps.TeardownPlansAchievementBrowse
     DetachOwnedPlansInnerScroll = deps.DetachOwnedPlansInnerScroll
     ProfileBool = deps.ProfileBool
@@ -173,11 +170,38 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
+    -- Browse is not the To-Do List: hide the active-list virtual host so its cards don't bleed underneath.
+    if parent._wnPlansActiveHost then
+        parent._wnPlansActiveHost:Hide()
+    end
 
     -- Use SharedWidgets search bar (like Items tab)
-    -- Create results container that can be refreshed independently
+    -- Persistent results container reused across sub-tab switches. Creating a fresh container per click
+    -- (and reparenting every card into it) was the reparent storm behind the 6-7s freeze. The virtual grid
+    -- keeps its pooled cards parented to this one container for the whole session.
     local padH = PlansContentPadH()
-    local resultsContainer = CreateResultsContainer(parent, yOffset + 40, padH)
+    local resultsContainer = parent._wnPlansBrowsePersistent
+    if resultsContainer and resultsContainer:GetParent() ~= parent then
+        resultsContainer:SetParent(parent)
+    end
+    if not resultsContainer then
+        resultsContainer = CreateResultsContainer(parent, yOffset + 40, padH)
+        if resultsContainer then
+            resultsContainer._wnPlansBrowseKeep = true
+            -- Canonical persistent-host contract (parity with Collections/Gear/PvE/Items): on a MAIN tab
+            -- switch the shell teardown detaches this (Hide + recycleBin) instead of running a wasteful
+            -- pool-drain DFS over its cards. DrawBrowser re-adopts it on return. `_wnPlansBrowseKeep` still
+            -- governs the within-Plans category-switch teardown + PrepareContainer protection.
+            resultsContainer._wnKeepOnTabSwitch = true
+            parent._wnPlansBrowsePersistent = resultsContainer
+        end
+    else
+        resultsContainer:ClearAllPoints()
+        resultsContainer:SetPoint("TOPLEFT", padH, -(yOffset + 40))
+        resultsContainer:SetPoint("TOPRIGHT", -padH, 0)
+        resultsContainer:SetHeight(1)
+        resultsContainer:Show()
+    end
     if resultsContainer then
         resultsContainer._plansBrowseTopInset = yOffset + 40
     end
@@ -686,7 +710,6 @@ end
 
 -- Phase 4.4: Performance limit for browse results rendering
 local MAX_BROWSE_RESULTS = 100
-local PLANS_BROWSE_CARD_CHUNK = 8
 -- Collected fetch for Plans browse: Show Completed filters collected rows by isPlanned. A low cap (e.g. 50)
 -- leaves tabs empty when the user's planned-completed entries are not among the first N collected (Achievements already used 99999).
 local COLLECTED_BROWSE_FETCH_LIMIT = 99999
@@ -694,59 +717,6 @@ local COLLECTED_BROWSE_FETCH_LIMIT = 99999
 local PLANS_BROWSE_STORE_CATEGORIES = {
     mount = true, pet = true, toy = true, achievement = true, illusion = true, title = true,
 }
-
-local function RunChunkedPlansBrowseCardPaint(opts)
-    local addon = opts.addon
-    local parent = opts.parent
-    local layoutManager = opts.layoutManager
-    local results = opts.results
-    local resultsToRender = opts.resultsToRender
-    local category = opts.category
-    local cardWidth = opts.cardWidth
-    local todoHeaderH = opts.todoHeaderH
-    local PCM = opts.PCM
-    local browseExpanded = opts.browseExpanded
-    local browserTryTypes = opts.browserTryTypes
-    local drawGen = opts.drawGen
-    local baseYOffset = opts.yOffset or 0
-    if not addon or not parent or not layoutManager or not results then return end
-
-    local idx = 1
-    local function pump()
-        if ns._plansBrowsePaintGen ~= drawGen then return end
-        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
-        if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return end
-        if not parent:GetParent() then return end
-
-        local limit = math.min(idx + PLANS_BROWSE_CARD_CHUNK - 1, resultsToRender)
-        for i = idx, limit do
-            local item = results[i]
-            item.category = category
-            addon:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, category, i, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
-        end
-        idx = limit + 1
-
-        if idx <= resultsToRender then
-            C_Timer.After(0, pump)
-            return
-        end
-
-        ReflowPlansCardLayout(layoutManager)
-        if ns.UI_SyncPlansScrollContentHeight then
-            ns.UI_SyncPlansScrollContentHeight(parent)
-        end
-        local yOff = CardLayoutManager and CardLayoutManager:GetFinalYOffset(layoutManager) or baseYOffset
-        local totalH = yOff + 10
-        if parent.SetHeight then
-            parent:SetHeight(math.max(totalH, 1))
-        end
-        if ns.UI_EnsureMainScrollLayout then
-            ns.UI_EnsureMainScrollLayout()
-        end
-    end
-
-    C_Timer.After(0, pump)
-end
 
 --- One EnsureCollectionData request per browse category until scan completes (stops PopulateContent loops).
 ns._plansBrowseCollectionEnsurePending = ns._plansBrowseCollectionEnsurePending or {}
@@ -858,42 +828,304 @@ local function DrawPlansBrowseEmptyCard(parent, yOffset, width, category, search
     return yOffset + 200
 end
 
+-- VIRTUAL 2-COLUMN GRID (Mounts / Pets / Toys / Illusions / Titles) ----------------------------------
+-- Only the cards inside the outer-scroll viewport are ever materialized. Cards live permanently in the
+-- persistent results container (`_wnPlansBrowsePersistent`) and are rebound (not reparented/recreated)
+-- as the window scrolls or the category changes — this is what makes sub-tab switching instant.
+
+--- Cross-category pool of unified browse cards. Grows only to the visible+overscan count (~1-2 dozen),
+--- never to the full result set, because the grid recycles by visible order.
+ns._wnBrowseRowPool = ns._wnBrowseRowPool or {}
+--- Single active grid descriptor (only one browse category is on screen at a time).
+ns._wnBrowseGridState = ns._wnBrowseGridState or {}
+
+local BROWSE_GRID_OVERSCAN_ROWS = 2
+
+--- Anchor the single browse action button (Add XOR Planned) at the card's right edge. Module-level so a
+--- reused Add button's onClick can re-anchor the Planned button without capturing per-render closures.
+local function AnchorBrowseAction(row, control)
+    if not row or not control or not row.headerFrame then return end
+    local edge = row._browseActionEdge or 6
+    local sz = row._browseActionSize or 24
+    control:ClearAllPoints()
+    if ns.UI_PlansAnchorHeaderAction then
+        ns.UI_PlansAnchorHeaderAction(control, row.headerFrame, edge, sz, 0, row.iconFrame)
+    else
+        control:SetPoint("RIGHT", row.headerFrame, "RIGHT", -edge, 0)
+    end
+    row._todoActionControls = { control }
+    row._todoActionOffsets = { edge }
+    if ns.UI_PlansSyncTitleRightInset then
+        ns.UI_PlansSyncTitleRightInset(row, edge + sz + (row._browseActionGap or 4))
+    end
+end
+
+--- Pixels from the outer scroll content top down to `listFrame` top, walking the TOP→TOP anchor chain.
+--- Works before layout settles (uses anchor offsets, not GetTop). Mirrors AchievementBrowseVirtualList.
+local function ListTopOffsetDownFromScrollContent(listFrame, scrollContent)
+    if not listFrame or not scrollContent then return nil end
+    local sum = 0
+    local f = listFrame
+    for _ = 1, 24 do
+        if f == scrollContent then return sum end
+        local p = f:GetParent()
+        if not p then return nil end
+        local delta = nil
+        local n = f.GetNumPoints and f:GetNumPoints() or 0
+        for i = 1, n do
+            local pt, rel, rp, _, yo = f:GetPoint(i)
+            if rel == p and rp and (rp == "TOPLEFT" or rp == "TOP") and pt and (pt == "TOPLEFT" or pt == "TOPRIGHT") then
+                delta = -(yo or 0)
+                break
+            end
+        end
+        if delta == nil then return nil end
+        sum = sum + delta
+        f = p
+    end
+    return nil
+end
+-- Shared with the active To-Do List virtualizer (PlansUI.lua).
+ns.UI_ListTopOffsetDownFromScrollContent = ListTopOffsetDownFromScrollContent
+
+--- Rebind only the cards whose grid rows intersect the viewport; hide the surplus. Cheap enough to run
+--- per scroll delta because the visible window is small and cards are reused (idempotent header rebind).
+function ns.UI_UpdateBrowseGridVisibleRange(force)
+    local st = ns._wnBrowseGridState
+    if not st or not st.active then return end
+    local host = st.host
+    if not host or not host.IsShown or not host:IsShown() then return end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf:IsShown() or mf.currentTab ~= "plans" then return end
+    if ns.PlansUI_GetCurrentCategory and ns.PlansUI_GetCurrentCategory() ~= st.category then return end
+    local scrollFrame = mf.scroll
+    local scrollContent = mf.scrollChild
+    if not scrollFrame or not scrollContent then return end
+    local stride = st.stride
+    if not stride or stride <= 0 then return end
+
+    local scrollTop = scrollFrame:GetVerticalScroll() or 0
+    local viewH = scrollFrame:GetHeight() or 0
+    local listTop = ListTopOffsetDownFromScrollContent(host, scrollContent)
+    if listTop == nil then listTop = st.listTopFallback or 0 end
+    st.listTopFallback = listTop
+
+    -- Row coordinates local to the grid area (below the optional truncation banner at st.top).
+    local localTop = scrollTop - listTop - (st.top or 0)
+    local localBottom = localTop + viewH
+    local totalRows = st.totalRows or 0
+    local firstRow = math.floor(localTop / stride) - BROWSE_GRID_OVERSCAN_ROWS
+    if firstRow < 0 then firstRow = 0 end
+    local lastRow = math.floor(localBottom / stride) + BROWSE_GRID_OVERSCAN_ROWS
+    if lastRow > totalRows - 1 then lastRow = totalRows - 1 end
+
+    if not force and st._firstRow == firstRow and st._lastRow == lastRow then return end
+    st._firstRow, st._lastRow = firstRow, lastRow
+
+    local pool = ns._wnBrowseRowPool
+    local results = st.results
+    local count = st.count or 0
+    local cols = st.cols or 2
+    local cardWidth = st.cardWidth
+    local colStride = st.colStride
+    local topInset = st.top or 0
+    local addon = WarbandNexus
+    local used = 0
+    for r = firstRow, lastRow do
+        for c = 0, cols - 1 do
+            local i = r * cols + c + 1
+            if i <= count then
+                local item = results[i]
+                if item then
+                    item.category = st.category
+                    used = used + 1
+                    local card = pool[used]
+                    card = addon:RenderPlansBrowseUnifiedRow(host, card, item, st.category, i, cardWidth,
+                        st.todoHeaderH, st.PCM, st.browseExpanded, st.browserTryTypes)
+                    pool[used] = card
+                    if card then
+                        card:ClearAllPoints()
+                        card:SetPoint("TOPLEFT", host, "TOPLEFT", c * colStride, -(topInset + r * stride))
+                        card:SetWidth(cardWidth)
+                        card:Show()
+                    end
+                end
+            end
+        end
+    end
+    st._usedCount = used
+    for k = used + 1, #pool do
+        local card = pool[k]
+        if card and card.IsShown and card:IsShown() then card:Hide() end
+    end
+end
+
+--- Hook the outer main-tab scroll once; it dispatches to the active grid. Gated by st.active so it is a
+--- no-op on non-grid categories / other tabs.
+local function EnsureBrowseGridScrollHook()
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf.scroll or not mf.scroll.HookScript then return end
+    if ns._wnBrowseGridScrollHooked then return end
+    ns._wnBrowseGridScrollHooked = true
+    mf.scroll:HookScript("OnVerticalScroll", function()
+        local st = ns._wnBrowseGridState
+        if st and st.active then
+            ns.UI_UpdateBrowseGridVisibleRange(false)
+        end
+    end)
+end
+
+-- PRE-WARM ------------------------------------------------------------------------------------------
+-- The freeze is the CLIENT first-render (~130ms/card) of the backdrop-heavy cards, paid the first time
+-- each frame is Shown. The virtual grid already caps that to the ~visible set, but the very first browse
+-- open of a session still pays it (~2s one-time hitch). Pre-warm pays it during idle instead: it Shows a
+-- pool of cards OFF UIParent bounds (invisible — no flicker) a few per frame, so the client renders them
+-- ahead of time. Once rendered, reusing them is provably freeze-free. Runs at most once per session.
+local PREWARM_TARGET = 20
+local PREWARM_PER_FRAME = 2
+
+--- Schedule pre-warm shortly after the Plans tab is populated (once). Safe to call from any category:
+--- if the user is already in a browse category the real draw warms the cards and this no-ops.
+function ns.UI_SchedulePrewarmBrowseGrid()
+    if ns._wnBrowsePrewarmDone or ns._wnBrowsePrewarmScheduled then return end
+    ns._wnBrowsePrewarmScheduled = true
+    C_Timer.After(0.6, function()
+        if ns.UI_PrewarmBrowseGrid then ns.UI_PrewarmBrowseGrid() end
+    end)
+end
+
+function ns.UI_PrewarmBrowseGrid()
+    if ns._wnBrowsePrewarmDone then return end
+    -- Never fight a live browse grid; the real draw is already warming the visible cards.
+    if ns._wnBrowseGridState and ns._wnBrowseGridState.active then
+        ns._wnBrowsePrewarmDone = true
+        return
+    end
+    local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+    if not mf or not mf.scrollChild then
+        ns._wnBrowsePrewarmScheduled = false  -- retry on the next Plans open
+        return
+    end
+    local parent = mf.scrollChild
+    local pool = ns._wnBrowseRowPool
+    if #pool >= PREWARM_TARGET then
+        ns._wnBrowsePrewarmDone = true
+        return
+    end
+    ns._wnBrowsePrewarmDone = true
+
+    local host = parent._wnPlansBrowsePersistent
+    if not host then
+        host = CreateResultsContainer(parent, 48, PlansContentPadH())
+        if not host then return end
+        host._wnPlansBrowseKeep = true
+        host._wnKeepOnTabSwitch = true  -- canonical persistent-host contract (see DrawBrowser)
+        parent._wnPlansBrowsePersistent = host
+    end
+
+    -- Park the host far off UIParent (still shown, so children render) while we warm the cards.
+    host:ClearAllPoints()
+    host:SetParent(UIParent)
+    host:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -6000, 0)
+    host:SetSize(420, PREWARM_TARGET * 100)
+    host:Show()
+
+    local PCM = ns.UI_PLANS_CARD_METRICS
+    local collapsedH = (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)) or 78
+    local sideMargin = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
+
+    local function parkHostBackHidden()
+        for i = 1, #pool do
+            local c = pool[i]
+            if c then c:Hide() end
+        end
+        host:Hide()
+        host:ClearAllPoints()
+        host:SetParent(parent)
+        host:SetPoint("TOPLEFT", sideMargin, -48)
+        host:SetPoint("TOPRIGHT", -sideMargin, 0)
+        host:SetHeight(1)
+    end
+
+    local function chunk()
+        -- If the user navigated into a live browse grid, DrawBrowser now owns the host — leave it alone.
+        if ns._wnBrowseGridState and ns._wnBrowseGridState.active then return end
+        for _ = 1, PREWARM_PER_FRAME do
+            if #pool >= PREWARM_TARGET then break end
+            local rowData = {
+                todoUnifiedHeader = true, summaryInHeader = true, canExpand = false,
+                icon = "Interface\\Icons\\INV_Misc_QuestionMark", iconIsAtlas = false,
+                iconSize = (PCM and PCM.todoUnifiedIconSize) or 40,
+                title = " ", summaryLines = {}, collapsedHeight = collapsedH,
+                criteriaData = {}, criteriaShowHeader = false, titleRightInset = 90,
+            }
+            local row = CreateExpandableRow(host, 200, collapsedH, rowData, false, function() end)
+            if not row then break end
+            row._wnPlansBrowseKeep = true
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -(#pool * (collapsedH + 8)))
+            row:Show()  -- forces the client first-render now (host is shown, just off-screen)
+            pool[#pool + 1] = row
+        end
+        if #pool < PREWARM_TARGET then
+            C_Timer.After(0, chunk)
+        else
+            -- One more frame so the final batch actually renders, then tuck the host away hidden.
+            C_Timer.After(0, function()
+                if ns._wnBrowseGridState and ns._wnBrowseGridState.active then return end
+                parkHostBackHidden()
+            end)
+        end
+    end
+    C_Timer.After(0, chunk)
+end
+
 --- Single browse card: To-Do unified expandable row (Mounts / Pets / Toys / Illusions / Titles).
-function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, category, gridIndex, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
-    if not item or not layoutManager or not parent then return end
+--- Acquires/rebinds `card` (create if nil) into `host` and returns it; positioning is done by the grid.
+function WarbandNexus:RenderPlansBrowseUnifiedRow(host, card, item, category, gridIndex, cardWidth, todoHeaderH, PCM, browseExpanded, browserTryTypes)
+    if not item or not host then return card end
     local PCF = ns.UI_PlanCardFactory
     local isCompletedCard = (item.isCollected == true)
     if isCompletedCard and item.isPlanned and item.id then
         ClearPlanReminderForBrowseItem(self, category, item.id)
     end
 
-    local sourceMissing = not item.source
-    if not sourceMissing and item.source then
-        if issecretvalue and issecretvalue(item.source) then
-            sourceMissing = true
-        elseif item.source == "" then
-            sourceMissing = true
-        end
-    end
-    if sourceMissing and item.id then
-        if category == "mount" and C_MountJournal and C_MountJournal.GetMountInfoExtraByID then
-            local ok, _, _, src = pcall(C_MountJournal.GetMountInfoExtraByID, item.id)
-            if ok and src and type(src) == "string" and not (issecretvalue and issecretvalue(src)) and src ~= "" then
-                item.source = src
-            end
-        elseif category == "pet" and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
-            local ok, _, _, _, _, src = pcall(C_PetJournal.GetPetInfoBySpeciesID, item.id)
-            if ok and src and type(src) == "string" and not (issecretvalue and issecretvalue(src)) and src ~= "" then
-                item.source = src
+    -- Per-item derived data (source resolution, parsed sources, summary lines) is item-intrinsic and
+    -- expensive; memoize it on the item so scroll rebinds don't recompute it each time a card re-enters
+    -- the viewport (that per-rebind string work was the scroll hitch). Planned/try state stays live below.
+    if not item._wnBrowseDerived then
+        local sourceMissing = not item.source
+        if not sourceMissing and item.source then
+            if issecretvalue and issecretvalue(item.source) then
+                sourceMissing = true
+            elseif item.source == "" then
+                sourceMissing = true
             end
         end
+        if sourceMissing and item.id then
+            if category == "mount" and C_MountJournal and C_MountJournal.GetMountInfoExtraByID then
+                local ok, _, _, src = pcall(C_MountJournal.GetMountInfoExtraByID, item.id)
+                if ok and src and type(src) == "string" and not (issecretvalue and issecretvalue(src)) and src ~= "" then
+                    item.source = src
+                end
+            elseif category == "pet" and C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID then
+                local ok, _, _, _, _, src = pcall(C_PetJournal.GetPetInfoBySpeciesID, item.id)
+                if ok and src and type(src) == "string" and not (issecretvalue and issecretvalue(src)) and src ~= "" then
+                    item.source = src
+                end
+            end
+        end
+        item._wnBrowseSources = self:ParseMultipleSources(item.source)
+        item._wnBrowseSummaryLines = ns.UI_BuildBrowseTodoSummaryLines
+            and ns.UI_BuildBrowseTodoSummaryLines(item, category, item._wnBrowseSources, { maxLines = 2 }) or {}
+        item._wnBrowseDerived = true
     end
+    local sources = item._wnBrowseSources
+    local summaryLines = item._wnBrowseSummaryLines
 
-    local sources = self:ParseMultipleSources(item.source)
     local expandKey = (category or "x") .. ":" .. tostring(item.id or gridIndex)
     local isExpanded = false
     browseExpanded[expandKey] = false
-    local col = (gridIndex - 1) % 2
 
     local trySuffix = ""
     if browserTryTypes[category] and item.id and self.ShouldShowTryCountInUI
@@ -905,8 +1137,6 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
                 .. ((ns.UI_GetBrightHex and ns.UI_GetBrightHex()) or "|cffeeeeee") .. tostring(count) .. "|r")
     end
 
-    local summaryLines = ns.UI_BuildBrowseTodoSummaryLines and ns.UI_BuildBrowseTodoSummaryLines(item, category, sources, { maxLines = 2 }) or {}
-    local allSourceItems = ns.UI_BuildBrowseSourceCriteriaItems and ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources) or {}
     local canExpand = false
 
     local typeAtlas = PCF and PCF.TYPE_ICONS and PCF.TYPE_ICONS[category]
@@ -940,16 +1170,12 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         summaryLines = summaryLines,
         metaRightText = (trySuffix ~= "") and trySuffix or nil,
         collapsedHeight = collapsedH,
-        criteriaData = isExpanded and allSourceItems or {},
+        criteriaData = {},
         criteriaShowHeader = false,
         titleRightInset = titleRightInset,
         onSectionResize = function(rowFrame, currentH)
-            if CardLayoutManager and CardLayoutManager.UpdateCardHeight then
-                CardLayoutManager:UpdateCardHeight(rowFrame, currentH)
-            end
-            if ns.UI_SyncPlansScrollContentHeight then
-                ns.UI_SyncPlansScrollContentHeight(parent)
-            end
+            -- Browse cards are canExpand=false (uniform height), so this never fires; kept as a harmless
+            -- no-op hook so shared header code has a valid callback.
         end,
         onExpandPopulate = function(data)
             local all = ns.UI_BuildBrowseSourceCriteriaItems and ns.UI_BuildBrowseSourceCriteriaItems(item, category, sources) or {}
@@ -967,22 +1193,27 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         end,
     }
 
-    local row = CreateExpandableRow(parent, cardWidth, collapsedH, rowData, isExpanded, function(expanded)
-        browseExpanded[expandKey] = expanded
-        if layoutManager and CardLayoutManager then
-            CardLayoutManager:RecalculateAllPositions(layoutManager)
-            if ns.UI_SyncPlansScrollContentHeight then
-                ns.UI_SyncPlansScrollContentHeight(parent)
-            end
+    -- POOLING: reuse a persistent card frame (cross-category). Reused cards keep their backdrop/border/icon
+    -- shell (the expensive-to-render frames) and only rebind header content — no CreateFrame, no SetParent.
+    local row = card
+    if row then
+        if row:GetParent() ~= host then
+            row:SetParent(host)
         end
-    end)
-    if not row then return end
-    row:SetWidth(cardWidth)
-    CardLayoutManager:AddCard(layoutManager, row, col, collapsedH)
-    if row.isExpanded then
-        CardLayoutManager:UpdateCardHeight(row, row:GetHeight())
+        ns.UI_RebindTodoBrowseRow(row, cardWidth, rowData)
+    else
+        row = CreateExpandableRow(host, cardWidth, collapsedH, rowData, isExpanded, function() end)
+        if not row then return nil end
     end
+    row:SetWidth(cardWidth)
+    row._wnPlansBrowseKeep = true  -- PrepareContainer hides these in place instead of reparenting them
+    row._browseExpandKey = expandKey
+    row._browseActionEdge = ACTION_EDGE
+    row._browseActionSize = ACTION_SIZE
+    row._browseActionGap = ACTION_GAP
 
+    -- Border reflects collected/planned state. ApplyVisuals is idempotent (reuses border textures via its
+    -- `if not frame.BorderTop` guard) so calling it per rebind never leaks.
     if not (row._wnBlizzardChrome or row._wnClassicCard)
         and ApplyVisuals
         and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
@@ -995,73 +1226,67 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         ApplyVisuals(row, COLORS.bgCard, borderColor)
     end
 
-    local rightOffset = ACTION_EDGE
+    -- Action button: exactly one of Add / Planned (or none for collected). Both button frames are cached on
+    -- the row and the right one is shown; the Add button reads row._browseCtx so a reused button always acts
+    -- on the current item. Reset both + any stale header script from the previous item first.
     row._todoActionControls = {}
     row._todoActionOffsets = {}
-    local function anchorAction(control, w)
-        if not control then return end
-        w = w or ACTION_SIZE
-        row._todoActionControls[#row._todoActionControls + 1] = control
-        row._todoActionOffsets[#row._todoActionOffsets + 1] = rightOffset
-        if ns.UI_PlansAnchorHeaderAction then
-            ns.UI_PlansAnchorHeaderAction(control, row.headerFrame, rightOffset, w, 0, row.iconFrame)
-        else
-            control:SetPoint("RIGHT", row.headerFrame, "RIGHT", -rightOffset, 0)
+    if row._browseAddBtn then row._browseAddBtn:Hide() end
+    if row._browsePlannedBtn then row._browsePlannedBtn:Hide() end
+    row.headerFrame:SetScript("OnMouseDown", nil)
+    row._browseCtx = { item = item, category = category }
+
+    local function EnsurePlannedBtn()
+        local btn = row._browsePlannedBtn
+        if not btn and PCF and PCF.CreateAddButton then
+            btn = PCF.CreateAddButton(row.headerFrame, {
+                buttonType = "card", iconOnly = true, plannedState = true,
+                width = ACTION_SIZE, height = ACTION_SIZE,
+            })
+            row._browsePlannedBtn = btn
         end
-        rightOffset = rightOffset + w + ACTION_GAP
+        return btn
     end
 
-    if item.isPlanned and PCF and PCF.CreateAddButton then
-        local plannedBtn = PCF.CreateAddButton(row.headerFrame, {
-            buttonType = "card",
-            iconOnly = true,
-            plannedState = true,
-            width = ACTION_SIZE,
-            height = ACTION_SIZE,
-        })
-        if plannedBtn then anchorAction(plannedBtn, ACTION_SIZE) end
+    if item.isPlanned then
+        local plannedBtn = EnsurePlannedBtn()
+        if plannedBtn then plannedBtn:Show(); AnchorBrowseAction(row, plannedBtn) end
     elseif not isCompletedCard and PCF and PCF.CreateAddButton then
-        local addBtn = PCF.CreateAddButton(row.headerFrame, {
-            buttonType = "card",
-            iconOnly = true,
-            width = ACTION_SIZE,
-            height = ACTION_SIZE,
-            onClick = function(btn)
-                local planData = {
-                    itemID = (category == "toy") and item.id or item.itemID,
-                    name = item.name,
-                    icon = item.icon,
-                    source = item.source,
-                    mountID = (category == "mount") and item.id or nil,
-                    speciesID = (category == "pet") and item.id or nil,
-                    achievementID = (category == "achievement") and item.id or nil,
-                    illusionID = (category == "illusion") and item.id or nil,
-                    titleID = (category == "title") and item.id or nil,
-                    rewardText = item.rewardText,
-                    type = category,
-                }
-                self:AddPlan(planData)
-                if ApplyVisuals
-                    and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode())
-                    and not (row._wnBlizzardChrome or row._wnClassicCard) then
-                    ApplyVisuals(row, COLORS.bgCard, GetCompletedBorderColor())
-                end
-                btn:Hide()
-                local plannedBtn = PCF.CreateAddButton(row.headerFrame, {
-                    buttonType = "card",
-                    iconOnly = true,
-                    plannedState = true,
-                    width = ACTION_SIZE,
-                    height = ACTION_SIZE,
-                })
-                if plannedBtn then anchorAction(plannedBtn, ACTION_SIZE) end
-            end,
-        })
-        if addBtn then anchorAction(addBtn, ACTION_SIZE) end
-    end
-
-    if ns.UI_PlansSyncTitleRightInset then
-        ns.UI_PlansSyncTitleRightInset(row, rightOffset)
+        local addBtn = row._browseAddBtn
+        if not addBtn then
+            addBtn = PCF.CreateAddButton(row.headerFrame, {
+                buttonType = "card", iconOnly = true,
+                width = ACTION_SIZE, height = ACTION_SIZE,
+                onClick = function(btn)
+                    local ctx = row._browseCtx
+                    if not ctx or not ctx.item then return end
+                    local it, cat = ctx.item, ctx.category
+                    self:AddPlan({
+                        itemID = (cat == "toy") and it.id or it.itemID,
+                        name = it.name,
+                        icon = it.icon,
+                        source = it.source,
+                        mountID = (cat == "mount") and it.id or nil,
+                        speciesID = (cat == "pet") and it.id or nil,
+                        achievementID = (cat == "achievement") and it.id or nil,
+                        illusionID = (cat == "illusion") and it.id or nil,
+                        titleID = (cat == "title") and it.id or nil,
+                        rewardText = it.rewardText,
+                        type = cat,
+                    })
+                    if ApplyVisuals
+                        and not (ns.UI_IsClassicMode and ns.UI_IsClassicMode())
+                        and not (row._wnBlizzardChrome or row._wnClassicCard) then
+                        ApplyVisuals(row, COLORS.bgCard, GetCompletedBorderColor())
+                    end
+                    btn:Hide()
+                    local pb = EnsurePlannedBtn()
+                    if pb then pb:Show(); AnchorBrowseAction(row, pb) end
+                end,
+            })
+            row._browseAddBtn = addBtn
+        end
+        if addBtn then addBtn:Show(); AnchorBrowseAction(row, addBtn) end
     end
 
     if category == "title" and item.sourceAchievement then
@@ -1091,10 +1316,15 @@ function WarbandNexus:RenderPlansBrowseUnifiedRow(parent, layoutManager, item, c
         end)
     end
 
-    row:Show()
+    return row
 end
 
 function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searchText)
+    -- Silence the virtual grid until (and unless) a grid category actually rebuilds it below. Non-grid
+    -- categories (achievement / recipe / loading / empty) must not leave the outer-scroll hook live.
+    if ns._wnBrowseGridState then
+        ns._wnBrowseGridState.active = false
+    end
     if category ~= "achievement" then
         TeardownPlansAchievementBrowse(parent)
         ns._plansAchOuterVirtualState = nil
@@ -1419,60 +1649,80 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         cardWidth = math.max(100, (gridW - cardSpacing) / 2)
     end
     local todoHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(gridW) or 78
-    local todoBadgeSz = (PCM and PCM.todoTypeBadgeSize) or 24
-    local ACTION_SIZE = (ns.UI_PlansHeaderActionSize and ns.UI_PlansHeaderActionSize()) or todoBadgeSz
-    local ACTION_GAP = 4
-    local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
-    layoutManager.padH = 0
-    parent._plansBrowseLayoutManager = layoutManager
+    parent._plansBrowseLayoutManager = nil
     parent._plansCardLayoutManager = nil
     if not ns._plansBrowseExpanded then ns._plansBrowseExpanded = {} end
     local browseExpanded = ns._plansBrowseExpanded
-    local PCF = ns.UI_PlanCardFactory
-    local typeNames = PCF and PCF.TYPE_NAMES
-    local typeIcons = PCF and PCF.TYPE_ICONS
-    local typeColors = PCF and PCF.TYPE_COLORS
     local browserTryTypes = { mount = true, pet = true, toy = true, illusion = true }
-    
-    -- Show truncation message if results were limited
+
+    -- Uniform 2-column grid metrics. Browse cards are canExpand=false, so every card is exactly `cardH`
+    -- tall — no per-card measurement, the grid is pure index math.
+    local cardH = (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)) or todoHeaderH
+    local stride = cardH + cardSpacing
+    local colStride = cardWidth + cardSpacing
+    local gridTop = yOffset
+
+    -- Truncation banner: persistent fontstring reused across draws (never leaks a frame per click).
     if totalResults > MAX_BROWSE_RESULTS then
-        local truncationMsg = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        truncationMsg:SetPoint("TOPLEFT", 0, -yOffset)
-        truncationMsg:SetPoint("TOPRIGHT", 0, -yOffset)
+        local truncationMsg = parent._wnBrowseTruncFS
+        if not truncationMsg then
+            truncationMsg = FontManager:CreateFontString(parent, "body", "OVERLAY")
+            truncationMsg._wnPlansBrowseKeep = true
+            parent._wnBrowseTruncFS = truncationMsg
+        end
+        truncationMsg:ClearAllPoints()
+        truncationMsg:SetPoint("TOPLEFT", 0, -gridTop)
+        truncationMsg:SetPoint("TOPRIGHT", 0, -gridTop)
         truncationMsg:SetJustifyH("CENTER")
         local showingFormat = (ns.L and ns.L["SHOWING_X_OF_Y"]) or "Showing %d of %d results"
         truncationMsg:SetText("|cff888888" .. format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
-        yOffset = yOffset + 24
+        truncationMsg:Show()
+        gridTop = gridTop + 24
+    elseif parent._wnBrowseTruncFS then
+        parent._wnBrowseTruncFS:Hide()
     end
 
-    ns._plansBrowsePaintGen = (ns._plansBrowsePaintGen or 0) + 1
-    local drawGen = ns._plansBrowsePaintGen
-    RunChunkedPlansBrowseCardPaint({
-        addon = self,
-        parent = parent,
-        layoutManager = layoutManager,
-        results = results,
-        resultsToRender = resultsToRender,
-        category = category,
-        cardWidth = cardWidth,
-        todoHeaderH = todoHeaderH,
-        PCM = PCM,
-        browseExpanded = browseExpanded,
-        browserTryTypes = browserTryTypes,
-        drawGen = drawGen,
-        yOffset = yOffset,
-    })
+    local totalRows = math.ceil(resultsToRender / 2)
+    local fullContentH = gridTop + totalRows * stride + 10
 
-    local estRows = math.ceil(resultsToRender / 2)
-    yOffset = yOffset + estRows * (todoHeaderH + cardSpacing) + 10
+    -- Publish the active grid descriptor; the scroll hook + this call paint only the visible window.
+    local st = ns._wnBrowseGridState
+    st.host = parent
+    st.results = results
+    st.count = resultsToRender
+    st.cols = 2
+    st.cardWidth = cardWidth
+    st.colStride = colStride
+    st.stride = stride
+    st.totalRows = totalRows
+    st.top = gridTop
+    st.category = category
+    st.todoHeaderH = todoHeaderH
+    st.PCM = PCM
+    st.browseExpanded = browseExpanded
+    st.browserTryTypes = browserTryTypes
+    st.listTopFallback = nil
+    st._firstRow, st._lastRow = nil, nil
+    st.active = true
+
+    -- Host sized to the full virtual height so the outer scrollbar spans every row.
+    if parent and parent.SetHeight then
+        parent:SetHeight(math.max(fullContentH, 1))
+    end
+
+    EnsureBrowseGridScrollHook()
+    ns.UI_UpdateBrowseGridVisibleRange(true)
+    -- Re-run once the main scroll layout settles (scroll offset / list top may shift after this returns).
+    C_Timer.After(0, function()
+        local s = ns._wnBrowseGridState
+        if s and s.active and s.category == category then
+            ns.UI_UpdateBrowseGridVisibleRange(true)
+        end
+    end)
 
     local searchId = "plans_" .. (category or "unknown"):lower()
     SearchStateManager:UpdateResults(searchId, #results)
 
-    local totalH = yOffset + 10
-    if parent and parent.SetHeight then
-        parent:SetHeight(math.max(totalH, 1))
-    end
-    return totalH
+    return fullContentH
 end
 

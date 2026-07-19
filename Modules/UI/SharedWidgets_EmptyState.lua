@@ -324,6 +324,9 @@ function ns.UI_IsProtectedResultsEmptyChild(child, container)
     if child == container.emptyStateContainer then return true end
     if child == container.plansAchBrowseRoot then return true end
     if child._wnExcludedFromStorageExtent then return true end
+    -- Plans To-Do virtual browse: pooled grid cards + the persistent host must be hidden in place, never
+    -- reparented to the recycle bin (reparenting the backdrop-heavy cards was the 6-7s freeze).
+    if child._wnPlansBrowseKeep then return true end
     if child == container["emptyStateCard_" .. SEARCH_EMPTY_TAB_KEY] then return true end
     return false
 end

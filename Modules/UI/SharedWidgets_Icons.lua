@@ -559,6 +559,14 @@ end
 
 -- Export factory functions to namespace
 ns.UI_CreateIcon = CreateIcon
+-- In-place icon retexture for pooled/reused icon frames (virtual browse grid). Retextures the
+-- ARTWORK texture created by CreateIcon (stored as frame.texture) without recreating the frame.
+ns.UI_ApplyIconTexture = ApplyIconTexture
+function ns.UI_RetextureIcon(iconFrame, texture, isAtlas)
+    if iconFrame and iconFrame.texture then
+        ApplyIconTexture(iconFrame.texture, texture, isAtlas)
+    end
+end
 ns.UI_CreateStatusBar = CreateStatusBar
 ns.UI_CreateButton = CreateButton
 ns.UI_CreateParagonIcon = CreateParagonIcon

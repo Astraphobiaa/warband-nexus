@@ -359,23 +359,11 @@ local function ApplyTypeAtlasTexture(tex, parent, atlas, size)
     return pcall(function() tex:SetAtlas(atlas, false) end)
 end
 
-local function CreateSquareTypeBadge(parent, atlas, badgeSize, FactEr)
-    badgeSize = badgeSize or 24
-    local frame = FactEr and FactEr:CreateContainer(parent, badgeSize, badgeSize, false)
-    if not frame then
-        frame = CreateFrame("Frame", nil, parent)
-        frame:SetSize(badgeSize, badgeSize)
-    end
-    local tex = frame:CreateTexture(nil, "ARTWORK")
-    if ApplyTypeAtlasTexture(tex, frame, atlas, badgeSize) then
-        frame:Show()
-        return frame
-    end
-    frame:Hide()
-    return nil
-end
-
 --- Fixed To-Do header: title (large), points under title (achievements), summaries under icon.
+--- Idempotent To-Do unified header. Get-or-create every sub-element on `row` and hide the ones the
+--- current `data` does not use, so a pooled/virtualized browse card can be rebound to a different item
+--- without leaking icon/badge/fontstring frames. First call (all row.* fields nil) behaves exactly like
+--- the original create-once path — every element is created and the hide-unused loops are no-ops.
 local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     local PCM = ns.UI_PLANS_CARD_METRICS or {}
     local ICON_LEFT, iconTop
@@ -411,51 +399,103 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     row._todoSummaryBandTopGap = tonumber(PCM.todoSummaryBandTopGap) or 6
     row._todoSummaryRightInset = summaryRight
 
-    local iconFrame
+    -- Icon: reuse row.iconFrame across rebinds (retexture in place); create only on first bind.
+    local iconFrame = row.iconFrame
     if data.icon then
-        iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, false)
-        iconFrame:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", ICON_LEFT, iconTop)
-        iconFrame:Show()
-        row.iconFrame = iconFrame
+        if not iconFrame then
+            iconFrame = CreateIcon(headerFrame, data.icon, ICON_SIZE, data.iconIsAtlas == true, nil, false)
+            row.iconFrame = iconFrame
+        elseif ns.UI_RetextureIcon then
+            ns.UI_RetextureIcon(iconFrame, data.icon, data.iconIsAtlas == true)
+        end
+        if iconFrame then
+            iconFrame:SetSize(ICON_SIZE, ICON_SIZE)
+            iconFrame:ClearAllPoints()
+            iconFrame:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", ICON_LEFT, iconTop)
+            iconFrame:Show()
+        end
+    elseif iconFrame then
+        iconFrame:Hide()
+        iconFrame = nil
     end
     row._todoSummaryAnchor = iconFrame or headerFrame
 
     local function AnchorBadgeOnIcon(badge, icon)
         if not badge or not icon then return end
+        badge:ClearAllPoints()
         badge:SetPoint("LEFT", icon, "RIGHT", metaGap, 0)
         badge:SetPoint("TOP", icon, "TOP", 0, 0)
         badge:SetPoint("BOTTOM", icon, "BOTTOM", 0, 0)
     end
 
+    -- Type badge (shield for achievements w/ points, else category atlas). Reuse row.typeBadge frame +
+    -- its texture; retexture per bind. Hidden when the current item needs no badge.
+    local function GetOrCreateTypeBadge(atlas)
+        local frame = row.typeBadge
+        if not frame then
+            frame = FactEr and FactEr:CreateContainer(headerFrame, TYPE_BADGE_SIZE, TYPE_BADGE_SIZE, false)
+            if not frame then
+                frame = CreateFrame("Frame", nil, headerFrame)
+            end
+            frame._wnBadgeTex = frame:CreateTexture(nil, "ARTWORK")
+            row.typeBadge = frame
+        end
+        frame:SetSize(TYPE_BADGE_SIZE, TYPE_BADGE_SIZE)
+        if ApplyTypeAtlasTexture(frame._wnBadgeTex, frame, atlas, TYPE_BADGE_SIZE) then
+            frame:Show()
+            return frame
+        end
+        frame:Hide()
+        return nil
+    end
+
     local titleAnchor = iconFrame or headerFrame
+    local usedBadge = false
     if hasPoints and iconFrame then
-        local shieldFrame = CreateSquareTypeBadge(headerFrame, "UI-Achievement-Shield-NoPoints", TYPE_BADGE_SIZE, FactEr)
+        local shieldFrame = GetOrCreateTypeBadge("UI-Achievement-Shield-NoPoints")
         if shieldFrame then
             AnchorBadgeOnIcon(shieldFrame, iconFrame)
-            row.typeBadge = shieldFrame
             titleAnchor = shieldFrame
+            usedBadge = true
         end
     elseif data.typeAtlas and iconFrame then
-        local typeBadgeFrame = CreateSquareTypeBadge(headerFrame, data.typeAtlas, TYPE_BADGE_SIZE, FactEr)
+        local typeBadgeFrame = GetOrCreateTypeBadge(data.typeAtlas)
         if typeBadgeFrame then
             AnchorBadgeOnIcon(typeBadgeFrame, iconFrame)
-            row.typeBadge = typeBadgeFrame
             titleAnchor = typeBadgeFrame
+            usedBadge = true
         end
+    end
+    if not usedBadge and row.typeBadge then
+        row.typeBadge:Hide()
     end
     row._todoTitleAnchor = titleAnchor
 
+    -- Meta-right text (e.g. try count). Reuse row.metaRightText; hide when the current item has none.
     local metaRightText
     if data.metaRightText and data.metaRightText ~= "" then
-        metaRightText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+        metaRightText = row.metaRightText
+        if not metaRightText then
+            metaRightText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+            row.metaRightText = metaRightText
+        end
+        metaRightText:ClearAllPoints()
         metaRightText:SetJustifyH("RIGHT")
         metaRightText:SetWordWrap(false)
         metaRightText:SetMaxLines(1)
         metaRightText:SetText(data.metaRightText)
-        row.metaRightText = metaRightText
+        metaRightText:Show()
+    elseif row.metaRightText then
+        row.metaRightText:Hide()
     end
 
-    local titleText = FontManager:CreateFontString(headerFrame, "title", "OVERLAY")
+    local titleText = row.titleText
+    if not titleText then
+        titleText = FontManager:CreateFontString(headerFrame, "title", "OVERLAY")
+        row.titleText = titleText
+    end
+    titleText:ClearAllPoints()
+    titleText:Show()
     titleText:SetPoint("LEFT", titleAnchor, "RIGHT", titleGap, 0)
     if metaRightText then
         metaRightText:SetPoint("RIGHT", headerFrame, "RIGHT", -titleInset, 0)
@@ -481,11 +521,16 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
     titleText:SetMaxLines(1)
     titleText:SetNonSpaceWrap(false)
     titleText:SetText(BrightMarkup(data.title or (ns.L and ns.L["UNKNOWN"]) or "Unknown"))
-    row.titleText = titleText
 
     if hasPoints then
         local pts = data.achievementPoints
-        local pointsText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+        local pointsText = row.pointsSubText
+        if not pointsText then
+            pointsText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+            row.pointsSubText = pointsText
+        end
+        pointsText:ClearAllPoints()
+        pointsText:Show()
         pointsText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -2)
         pointsText:SetPoint("RIGHT", titleText, "RIGHT", 0, 0)
         pointsText:SetJustifyH("LEFT")
@@ -497,7 +542,8 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
         else
             pointsText:SetText(GoldMarkup(tostring(tonumber(pts) or 0) .. " " .. ((ns.L and ns.L["POINTS_LABEL"]) or "Points")))
         end
-        row.pointsSubText = pointsText
+    elseif row.pointsSubText then
+        row.pointsSubText:Hide()
     end
     row._todoSummaryTopRef = iconFrame
 
@@ -506,13 +552,22 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
         summaryLines = { data.summaryLine }
     end
 
+    -- Summary lines: reuse the row.summaryTexts array; extras beyond the current line count are hidden.
+    row.summaryTexts = row.summaryTexts or {}
+    local usedSummary = 0
     if summaryLines and #summaryLines > 0 and iconFrame then
-        row.summaryTexts = {}
         local layout = ns.UI_PlansTodoSummaryLayout and ns.UI_PlansTodoSummaryLayout(rowHeight, #summaryLines, hasPoints)
         for li = 1, #summaryLines do
             local line = summaryLines[li]
             if line and line ~= "" then
-                local summaryText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+                usedSummary = usedSummary + 1
+                local summaryText = row.summaryTexts[usedSummary]
+                if not summaryText then
+                    summaryText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+                    row.summaryTexts[usedSummary] = summaryText
+                end
+                summaryText:ClearAllPoints()
+                summaryText:Show()
                 summaryText:SetJustifyH("LEFT")
                 summaryText:SetJustifyV("MIDDLE")
                 summaryText:SetWordWrap(false)
@@ -521,22 +576,46 @@ local function ApplyTodoUnifiedHeader(row, headerFrame, data, rowHeight)
                 summaryText:SetText(line)
                 summaryText:SetPoint("LEFT", row._todoSummaryAnchor, "LEFT", 0, 0)
                 if layout then
-                    local slotY = -(layout.startFromIconBottom + (li - 1) * (layout.lineH + layout.lineGap))
+                    local slotY = -(layout.startFromIconBottom + (usedSummary - 1) * (layout.lineH + layout.lineGap))
                     summaryText:SetPoint("TOPLEFT", iconFrame, "BOTTOMLEFT", 0, slotY)
                     summaryText:SetHeight(layout.lineH)
                 end
                 summaryText:SetPoint("RIGHT", headerFrame, "RIGHT", -summaryRight, 0)
-                row.summaryTexts[#row.summaryTexts + 1] = summaryText
-                if li == 1 then
+                if usedSummary == 1 then
                     row.summaryText = summaryText
                 end
             end
         end
     end
+    for li = usedSummary + 1, #row.summaryTexts do
+        if row.summaryTexts[li] then
+            row.summaryTexts[li]:Hide()
+        end
+    end
+    if usedSummary == 0 then
+        row.summaryText = nil
+    end
 
     headerFrame:SetHeight(rowHeight)
     row:SetHeight(rowHeight)
     row.SyncHeaderToTitle = function() end
+end
+
+--- Rebind a pooled To-Do browse card (created by CreateExpandableRow with todoUnifiedHeader=true) to a
+--- new item's data without recreating the expensive backdrop/icon shell. Re-runs the idempotent header
+--- apply and refreshes stored data. Border/action visuals are applied by the caller (PlansUI_Browse).
+function ns.UI_RebindTodoBrowseRow(row, width, data)
+    if not row or not row.headerFrame or not data then return end
+    row.data = data
+    if width then
+        row:SetWidth(width)
+        row.headerFrame:SetWidth(width)
+    end
+    local rowHeight = data.collapsedHeight or row.rowHeight
+        or (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(false))
+        or row:GetHeight()
+    row.rowHeight = rowHeight
+    ApplyTodoUnifiedHeader(row, row.headerFrame, data, rowHeight)
 end
 
 --[[
