@@ -548,11 +548,16 @@ function PD.RelayoutGearCardColumnHosts(card, layout, panelTopY, recEnabled)
     return storageW
 end
 
-function PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extraTopInset)
+---@param belowColumnH number|nil extra content that hangs below the slot columns (weapon row); kept inside the zone so it never overlaps the stats/currencies band below (issue #58)
+function PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, extraTopInset, belowColumnH)
     local rowStep = SLOT_SIZE + SLOT_GAP
     local columnH = (maxRows - 1) * rowStep + SLOT_SIZE
-    local zoneH = tonumber(paperZoneH) or columnH
-    local padTop = math.max(0, math.floor((zoneH - columnH) * 0.5 + 0.5))
+    -- Center the FULL paperdoll footprint (slot columns + weapon row) inside the zone.
+    -- Centering only columnH left padTop too large, so the weapon row spilled past the
+    -- zone bottom into the paperBottom stats/currencies band (overlap reported in #58).
+    local contentH = columnH + math.max(0, tonumber(belowColumnH) or 0)
+    local zoneH = tonumber(paperZoneH) or contentH
+    local padTop = math.max(0, math.floor((zoneH - contentH) * 0.5 + 0.5))
     return (tonumber(anchorY) or 0) - padTop - (tonumber(extraTopInset) or 0)
 end
 
@@ -610,7 +615,9 @@ function PD.RelayoutGearPaperdollInCard(card, layout)
     local rightSlots = { 10, 6, 7, 8, 11, 12, 13, 14 }
     local maxRows = math.max(#leftSlots, #rightSlots)
     local paperZoneH = layout.paperTopZoneH or layout.paperZoneH or paperBandH or paperdollNaturalH
-    local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
+    -- Weapon row hangs one rowStep + 8px below the slot columns (see bottomY below).
+    local weaponBelowColH = rowStep + 8
+    local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset, weaponBelowColH)
     local modelX = baseX + LEFT_PANEL_W + CENTER_GAP
     local modelTopY = startY
     layout.modelX = modelX
@@ -2175,7 +2182,9 @@ function PD.DrawPaperDollInCard(paperParent, charData, gearData, upgradeInfo, cu
         anchorY = 0
     end
     local paperZoneH = tonumber(paperBandH) or tonumber(paperdollNaturalH) or 0
-    local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset)
+    -- Weapon row hangs one rowStep + 8px below the slot columns (see bottomY below).
+    local weaponBelowColH = rowStep + 8
+    local startY = PD.ComputeGearPaperdollSlotStartY(paperZoneH, maxRows, anchorY, topInset, weaponBelowColH)
 
     -- Left column: 6 armor slots — text left of icon (Icon - Text), right-aligned text
     for i = 1, #leftSlots do
