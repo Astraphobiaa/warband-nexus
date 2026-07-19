@@ -2422,6 +2422,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- One grid height for all unified cards (reserve points + summary slots so mounts align with achievements).
             local collapsedH = (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true))
                 or todoHeaderH
+            -- Guard: CreateExpandableRow fires onSectionResize synchronously while applying the initial
+            -- expanded geometry (ExpandableRowFactory ApplyRowExpandedGeometry) BEFORE this card is cached.
+            -- Reflowing then re-enters buildSlotCard for the same uncached slot -> infinite recursion /
+            -- stack overflow. Suppress the construction-time resize; the post-create reconcile pass in
+            -- updateVisible already fixes the true expanded height. Only real (post-build) toggles reflow.
+            local rowBuilt = false
             local rowData = {
                 todoUnifiedHeader = true,
                 summaryInHeader = true,
@@ -2446,6 +2452,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 onSectionResize = function(rowFrame, currentH)
                     -- Expand/collapse changes this card's height → let virtualization reflow the flat rows
                     -- below it and resize the host (replaces the old CardLayoutManager path).
+                    -- Ignore the synchronous resize emitted during construction (before rowBuilt) — see guard note above.
+                    if not rowBuilt then return end
                     if onExpandReflow then
                         onExpandReflow(rowFrame, currentH)
                     end
@@ -2459,6 +2467,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     onExpandReflow(row, row and row.GetHeight and row:GetHeight() or collapsedH)
                 end
             end)
+            -- Row fully constructed: from here real user toggles are allowed to reflow.
+            rowBuilt = true
             if row then
             row:SetWidth(listCardWidth)
             row:ClearAllPoints()
