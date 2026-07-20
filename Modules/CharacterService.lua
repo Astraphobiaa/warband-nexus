@@ -102,7 +102,12 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     else
         entry.guid = nil
     end
-    
+
+    -- Row key just changed shape (guid gained/dropped, legacy slot collapsed) — drop the cached roster index.
+    if ns.Utilities and ns.Utilities.InvalidateCharacterKeyIndex then
+        ns.Utilities:InvalidateCharacterKeyIndex()
+    end
+
     -- HYBRID: Broadcast event for modules to react (event-driven component)
     addon:SendMessage(E.CHARACTER_TRACKING_CHANGED, {
         charKey = persistKey,

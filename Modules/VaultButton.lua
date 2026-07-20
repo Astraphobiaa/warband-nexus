@@ -699,12 +699,10 @@ end)
 -- the same frame) into a single redraw. Without this, each open Saved Instances toggle would
 -- rebuild its rows up to four times per cache wave.
 local pendingDataRefresh = false
+-- Badge recount walks every roster row against every pveCache bucket; running it once per message
+-- (CURRENCY_UPDATED fires on every gold change) stacked several full sweeps into one frame.
+-- The 0.1s coalesced pass below is the only badge update.
 function M.ScheduleDataRefresh()
-    if M.UpdateBadge then
-        M.UpdateBadge()
-    elseif UpdateBadge then
-        UpdateBadge()
-    end
     if pendingDataRefresh then return end
     pendingDataRefresh = true
     C_Timer.After(0.1, function()

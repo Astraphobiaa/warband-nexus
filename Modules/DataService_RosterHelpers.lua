@@ -28,6 +28,10 @@ end
 local function InvalidateGetAllCharactersCache()
     _allCharsRosterCache.sig = nil
     _allCharsRosterCache.list = nil
+    -- Roster rows moved/merged/dropped: Utilities' guid + Name-Realm resolution index must rebuild.
+    if ns.Utilities and ns.Utilities.InvalidateCharacterKeyIndex then
+        ns.Utilities:InvalidateCharacterKeyIndex()
+    end
 end
 
 --- GetMoney() may return a secret value (Midnight+); math.floor/tonumber on it throws.

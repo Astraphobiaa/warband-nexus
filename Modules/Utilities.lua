@@ -126,31 +126,64 @@ function Utilities:ResolveCharacterRowKey(charData)
     return self:GetCharacterKey(charData.name, charData.realm)
 end
 
---- Resolve any character key to the canonical **storage** key used for subsidiary tables (same rules as `ResolveCharacterRowKey`).
---- Use when passing a key from UI or stored data into services (currency, gear, PvE cache, etc.).
----@param charKey string Key from db.characters or UI (may be guid, Name-Realm, or spaced legacy)
----@return string Canonical storage key
-function Utilities:GetCanonicalCharacterKey(charKey)
-    if charKey == nil or charKey == "" then return charKey end
-    -- Never return a secret string: callers often do `GetCanonicalCharacterKey(k) or k` and would
-    -- reintroduce the secret for downstream strsplit / equality / table indexing (ADDON_ACTION_FORBIDDEN).
-    if issecretvalue and issecretvalue(charKey) then return nil end
-    local db = ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.global
-    local chars = db and db.characters
-    local charData = chars and chars[charKey]
-    if type(charData) == "table" then
-        return self:ResolveCharacterRowKey(charData)
+-- Roster resolution index: guid / Name-Realm -> canonical storage key.
+-- `GetCanonicalCharacterKey` is called O(rows x cache entries) per Vault badge sweep. Without an index
+-- every key that is not a live `characters` table index rescans the whole roster (untracked rows drop
+-- their `guid`, so their canonical key is Name-Realm while the row index stays a GUID) -> the scan runs
+-- rows x rows x lookups times per sweep and trips the "script ran too long" watchdog.
+local canonByGuid, canonByNameRealm
+local canonMemo, canonMemoCount = nil, 0
+local canonSource, canonBuiltAt = nil, 0
+local CANON_INDEX_TTL = 5 -- seconds; explicit invalidation covers roster writes, TTL is the safety net
+local CANON_MEMO_MAX = 500 -- inbound keys memoized per index generation (roster size is the practical bound)
+
+--- Drop the cached roster index. Call after adding, removing, or re-keying `db.global.characters` rows.
+function Utilities:InvalidateCharacterKeyIndex()
+    canonByGuid, canonByNameRealm = nil, nil
+    canonMemo, canonMemoCount = nil, 0
+    canonSource, canonBuiltAt = nil, 0
+end
+
+--- Build (or reuse) the roster index for `chars`. One O(rows) pass replaces the per-key linear scans.
+---@return table|nil byGuid
+---@return table|nil byNameRealm
+local function GetRosterIndex(self, chars)
+    if type(chars) ~= "table" then return nil, nil end
+    local now = (GetTime and GetTime()) or 0
+    if canonByGuid and canonSource == chars and (now - canonBuiltAt) < CANON_INDEX_TTL then
+        return canonByGuid, canonByNameRealm
     end
-    -- Stale selector/prefs may hold a guid string not yet loaded as an index (or typo): resolve via row.guid.
-    if type(charKey) == "string" and charKey:sub(1, 7) == "Player-" and chars then
-        for _, row in pairs(chars) do
-            if type(row) == "table" then
+    local byGuid, byNameRealm = {}, {}
+    for _, row in pairs(chars) do
+        if type(row) == "table" then
+            local rowKey = self:ResolveCharacterRowKey(row)
+            if rowKey then
                 local g = row.guid
-                if type(g) == "string" and g ~= "" and g == charKey and not (issecretvalue and issecretvalue(g)) then
-                    return self:ResolveCharacterRowKey(row)
+                if type(g) == "string" and g ~= "" and not (issecretvalue and issecretvalue(g)) then
+                    if byGuid[g] == nil then byGuid[g] = rowKey end
+                end
+                local rn, rr = row.name, row.realm
+                if rn and rr and not (issecretvalue and issecretvalue(rn)) and not (issecretvalue and issecretvalue(rr)) then
+                    local nr = self:GetCharacterKey(rn, rr)
+                    if nr and byNameRealm[nr] == nil then byNameRealm[nr] = rowKey end
                 end
             end
         end
+    end
+    canonByGuid, canonByNameRealm = byGuid, byNameRealm
+    canonMemo, canonMemoCount = {}, 0
+    canonSource, canonBuiltAt = chars, now
+    return byGuid, byNameRealm
+end
+
+--- Slow path of `GetCanonicalCharacterKey`: the inbound key is not a live `characters` index.
+--- Results are memoized by the caller for the lifetime of the roster index.
+local function ResolveNonIndexedCharacterKey(self, charKey, chars)
+    -- Stale selector/prefs may hold a guid string not yet loaded as an index (or typo): resolve via row.guid.
+    if type(charKey) == "string" and charKey:sub(1, 7) == "Player-" and chars then
+        local byGuid = GetRosterIndex(self, chars)
+        local hit = byGuid and byGuid[charKey]
+        if hit then return hit end
         return charKey
     end
     -- Live session: after guid migration, `Name-Realm` may not exist as a table index — map to storage key.
@@ -171,21 +204,48 @@ function Utilities:GetCanonicalCharacterKey(charKey)
     if name and realm and chars then
         local want = self:GetCharacterKey(name, realm)
         if want then
-            for _, row in pairs(chars) do
-                if type(row) == "table" then
-                    local rn, rr = row.name, row.realm
-                    if rn and rr and not (issecretvalue and issecretvalue(rn)) and not (issecretvalue and issecretvalue(rr)) then
-                        if self:GetCharacterKey(rn, rr) == want then
-                            return self:ResolveCharacterRowKey(row)
-                        end
-                    end
-                end
-            end
+            local _, byNameRealm = GetRosterIndex(self, chars)
+            local hit = byNameRealm and byNameRealm[want]
+            if hit then return hit end
+            return want
         end
         return self:GetCharacterKey(name, realm)
     end
 
-    return tostring(charKey):gsub("%s+", "")
+    -- gsub returns (string, count) — bind first, so callers never receive the stray second value.
+    local stripped = tostring(charKey):gsub("%s+", "")
+    return stripped
+end
+
+--- Resolve any character key to the canonical **storage** key used for subsidiary tables (same rules as `ResolveCharacterRowKey`).
+--- Use when passing a key from UI or stored data into services (currency, gear, PvE cache, etc.).
+---@param charKey string Key from db.characters or UI (may be guid, Name-Realm, or spaced legacy)
+---@return string Canonical storage key
+function Utilities:GetCanonicalCharacterKey(charKey)
+    if charKey == nil or charKey == "" then return charKey end
+    -- Never return a secret string: callers often do `GetCanonicalCharacterKey(k) or k` and would
+    -- reintroduce the secret for downstream strsplit / equality / table indexing (ADDON_ACTION_FORBIDDEN).
+    if issecretvalue and issecretvalue(charKey) then return nil end
+    local db = ns.WarbandNexus and ns.WarbandNexus.db and ns.WarbandNexus.db.global
+    local chars = db and db.characters
+    local charData = chars and chars[charKey]
+    if type(charData) == "table" then
+        return self:ResolveCharacterRowKey(charData)
+    end
+    if type(charKey) ~= "string" or type(chars) ~= "table" then
+        return ResolveNonIndexedCharacterKey(self, charKey, chars)
+    end
+    -- Untracked rows drop their `guid`, so their canonical key is Name-Realm while the row index stays a
+    -- GUID: every lookup lands here. Memoize per index generation so cache sweeps stay O(1) per key.
+    GetRosterIndex(self, chars)
+    local cached = canonMemo and canonMemo[charKey]
+    if cached ~= nil then return cached end
+    local resolved = ResolveNonIndexedCharacterKey(self, charKey, chars)
+    if resolved ~= nil and canonMemo and canonMemoCount < CANON_MEMO_MAX then
+        canonMemo[charKey] = resolved
+        canonMemoCount = canonMemoCount + 1
+    end
+    return resolved
 end
 
 --- Display-only: pretty-print API/normalized realm (e.g. "TwistingNether" -> "Twisting Nether").

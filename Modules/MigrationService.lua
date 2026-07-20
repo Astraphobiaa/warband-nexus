@@ -949,6 +949,11 @@ function MigrationService:ApplyCharacterKeyedStorageRenames(db, renames)
     local remapCount = 0
     for _ in pairs(renames) do remapCount = remapCount + 1 end
 
+    -- Roster row keys moved: Utilities' cached guid / Name-Realm resolution index is stale.
+    if ns.Utilities and ns.Utilities.InvalidateCharacterKeyIndex then
+        ns.Utilities:InvalidateCharacterKeyIndex()
+    end
+
     -- currencyData.currencies + totalEarned
     local cd = db.global.currencyData
     if cd then
