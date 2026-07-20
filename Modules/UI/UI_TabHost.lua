@@ -59,6 +59,11 @@ local function PopulateContentBody(self, forceRepaint)
     local mainFrame = S.getMainFrame()
     if not mainFrame then return end
 
+    -- Heal a guard stranded by an errored draw pass; scroll-reset suppression must not outlive it.
+    if mainFrame.scroll then
+        mainFrame.scroll._wnPopulateScrollGuard = nil
+    end
+
     local _wnProf = ns.Profiler
     if _wnProf then
         _wnProf._populateContentTab = mainFrame.currentTab
@@ -181,6 +186,14 @@ local function PopulateContentBody(self, forceRepaint)
     mainFrame._prevPopulatedTab = mainFrame.currentTab
 
     -- GearUI FinishGearOpenTrace emits one summary line (verbose phases gated in GearUI).
+
+    -- Teardown collapses scrollChild to 1px until post-layout re-expands it; a forced child-rect
+    -- update inside that window reports a ~0 scroll range. Factory handlers (OnScrollRangeChanged,
+    -- SyncScrollBarThumb) must not zero the user's offset from that transient state.
+    local scrollGuardFrame = mainFrame.scroll
+    if scrollGuardFrame then
+        scrollGuardFrame._wnPopulateScrollGuard = true
+    end
 
     _wnProfSliceStart(ns.Profiler.CAT.UI, "Pop_teardownUI")
     mainFrame._pveMinScrollWidth = nil
@@ -468,7 +481,10 @@ local function PopulateContentBody(self, forceRepaint)
             end
         end
     end
-    
+    if scrollGuardFrame then
+        scrollGuardFrame._wnPopulateScrollGuard = nil
+    end
+
     -- Update scroll bar visibility (hide if content fits)
     if ns.UI.Factory.UpdateScrollBarVisibility then
         ns.UI.Factory:UpdateScrollBarVisibility(mainFrame.scroll)
@@ -506,6 +522,10 @@ local function PopulateContentBody(self, forceRepaint)
             end
         end
     end
+    -- Consume the switch flag: it must affect exactly one populate. Guard-bailed switch finalizers
+    -- (superseded gen, window hidden mid-open) can strand it true, and then every data-driven
+    -- refresh (gold/currency/PvE on Characters) would reset the scroll to top.
+    mainFrame.isMainTabSwitch = false
 
     if mainFrame._virtualScrollUpdate then
         mainFrame._virtualScrollUpdate()

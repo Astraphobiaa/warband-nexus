@@ -638,6 +638,10 @@ end
 --- Keep thumb position in sync when ScrollBar is reparented into an external column lane.
 function ns.UI.Factory:SyncScrollBarThumb(scrollFrame)
     if not scrollFrame then return end
+    -- Populate teardown window: the child rect reads ~1px, so SetMinMaxValues would clamp the
+    -- slider to 0 and its OnValueChanged writes the zeroed offset back. Post-populate layout
+    -- passes re-sync the thumb once the real range is restored.
+    if scrollFrame._wnPopulateScrollGuard then return end
     local bar = scrollFrame.ScrollBar
     if not bar or not bar.SetValue or not scrollFrame.GetVerticalScroll then return end
     if scrollFrame.UpdateScrollChildRect then
@@ -1159,6 +1163,13 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     -- Smooth scroll: base step * speed multiplier from profile
     scrollFrame:EnableMouseWheel(true)
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        -- The cached range lags content rebuilds; clamp against the live range or a wheel tick
+        -- right after a repopulate pins the offset to a stale, too-small max (snap-to-top).
+        if self.UpdateScrollChildRect then
+            self._wnInScrollChildRect = true
+            self:UpdateScrollChildRect()
+            self._wnInScrollChildRect = nil
+        end
         local isDropdown = self._wnDropdownRowCount or self._wnDropdownViewportH
         local maxScroll = self:GetVerticalScrollRange()
         if isDropdown then
@@ -1459,17 +1470,20 @@ function ns.UI.Factory:InstallExternalScrollBarRangeGuard(scrollFrame)
     end
 
     scrollFrame:SetScript("OnScrollRangeChanged", function(self, xRange, yRange)
+        -- Skip entirely while inside our own UpdateScrollChildRect: SetPoint on self here would
+        -- anchor to a region WoW is still resolving from self, and the originating caller clamps
+        -- against the fresh range itself (offset writes below are side effects it owns).
+        if self._wnInScrollChildRect then return end
         if yRange and yRange > 0 then
             local cur = self:GetVerticalScroll() or 0
             if cur > yRange then
                 self:SetVerticalScroll(yRange)
             end
-        elseif self.SetVerticalScroll then
+        elseif not self._wnPopulateScrollGuard and self.SetVerticalScroll then
+            -- Populate teardown reports a transient ~0 range; zeroing there would discard a
+            -- still-valid offset that the same populate restores (Characters snap-to-top).
             self:SetVerticalScroll(0)
         end
-        -- Skip re-anchor while inside our own UpdateScrollChildRect: SetPoint on self here would
-        -- anchor to a region WoW is still resolving from self. The originating caller finishes the sync.
-        if self._wnInScrollChildRect then return end
         ResyncExternalBarColumn(self)
     end)
 
