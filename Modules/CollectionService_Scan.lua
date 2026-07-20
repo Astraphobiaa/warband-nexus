@@ -29,6 +29,7 @@ ns.CollectionScan = Scan
 local debugprofilestop = debugprofilestop
 
 Scan.previousBagContents = Scan.previousBagContents or {}
+Scan.previousBagNums = Scan.previousBagNums or {}
 Scan.isInitialized = Scan.isInitialized or false
 Scan.pendingRetryItems = Scan.pendingRetryItems or {}
 Scan.lastCollectibleScanTime = Scan.lastCollectibleScanTime or 0
@@ -40,41 +41,55 @@ local function IsCollectionsModuleEnabled()
     return db and db.modulesEnabled and db.modulesEnabled.collections ~= false
 end
 
-local function ScanBagsForNewCollectibles(specificBagIDs)
-    local previousBagContents = Scan.previousBagContents
-    local pendingRetryItems = Scan.pendingRetryItems
-    local currentBagContents = {}
-    local newCollectibles = {}
-    local itemsCacheSnaps = ns.ItemsCacheBagSnapshots
-    local snapNow = GetTime()
+-- Reusable scratch context so the per-slot scan helpers below are hoisted to
+-- file scope instead of being reallocated as closures on every
+-- ScanBagsForNewCollectibles call (hot path on BAG_UPDATE / CHAT_MSG_LOOT).
+local scanCtx = {}
 
-    local function FillBagSlotsFromItemsCache(bagID)
-        local snap = itemsCacheSnaps and itemsCacheSnaps[bagID]
-        if not snap or not snap.slots or (snapNow - (snap.at or 0)) > 0.65 then
-            return false
-        end
-        for slotKey, itemID in pairs(snap.slots) do
-            currentBagContents[slotKey] = itemID
-        end
-        return true
+-- SECURITY: container itemIDs can be secret values on addon-restricted maps
+-- (delves / dungeons / raids on Midnight 12.0+). We must not compare, index,
+-- or pass a secret to GetItemInfoInstant / CheckNewCollectible, so skip the
+-- slot entirely. Mirrors the CHAT_MSG_LOOT guards in InstallBagScanListener.
+local function FillBagSlotsFromItemsCache(bagID)
+    local snaps = scanCtx.itemsCacheSnaps
+    local snap = snaps and snaps[bagID]
+    if not snap or not snap.slots or (scanCtx.snapNow - (snap.at or 0)) > 0.65 then
+        return false
     end
+    local current = scanCtx.currentBagContents
+    local bagNums = scanCtx.currentBagNums
+    for slotKey, itemID in pairs(snap.slots) do
+        if not (issecretvalue and issecretvalue(itemID)) then
+            current[slotKey] = itemID
+            bagNums[slotKey] = bagID
+        end
+    end
+    return true
+end
 
-    local function ScanBagSlotsLive(bagID)
-        local numSlots = C_Container.GetContainerNumSlots(bagID)
-        if not numSlots then return end
-        for slotID = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-            if itemInfo and itemInfo.itemID then
-                local itemID = itemInfo.itemID
+local function ScanBagSlotsLive(bagID)
+    local numSlots = C_Container.GetContainerNumSlots(bagID)
+    if not numSlots then return end
+    local current = scanCtx.currentBagContents
+    local previous = scanCtx.previousBagContents
+    local pending = scanCtx.pendingRetryItems
+    local newCollectibles = scanCtx.newCollectibles
+    local bagNums = scanCtx.currentBagNums
+    for slotID = 1, numSlots do
+        local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+        if itemInfo and itemInfo.itemID then
+            local itemID = itemInfo.itemID
+            if not (issecretvalue and issecretvalue(itemID)) then
                 local slotKey = bagID .. "_" .. slotID
-                currentBagContents[slotKey] = itemID
-                if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
+                current[slotKey] = itemID
+                bagNums[slotKey] = bagID
+                if not previous[slotKey] or previous[slotKey] ~= itemID then
                     local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
                     if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
                         -- not a collectible
                     elseif not preClassID then
-                        if not pendingRetryItems[slotKey] then
-                            pendingRetryItems[slotKey] = {
+                        if not pending[slotKey] then
+                            pending[slotKey] = {
                                 itemID = itemID,
                                 hyperlink = itemInfo.hyperlink,
                                 retries = 0
@@ -105,20 +120,26 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
             end
         end
     end
+end
 
-    local function DiffBagSlotsFromItemsCache(bagID)
-        local snap = itemsCacheSnaps and itemsCacheSnaps[bagID]
-        if not snap or not snap.slots or (snapNow - (snap.at or 0)) > 0.65 then
-            return false
-        end
-        for slotKey, itemID in pairs(snap.slots) do
-            if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
+local function DiffBagSlotsFromItemsCache(bagID)
+    local snaps = scanCtx.itemsCacheSnaps
+    local snap = snaps and snaps[bagID]
+    if not snap or not snap.slots or (scanCtx.snapNow - (snap.at or 0)) > 0.65 then
+        return false
+    end
+    local previous = scanCtx.previousBagContents
+    local pending = scanCtx.pendingRetryItems
+    local newCollectibles = scanCtx.newCollectibles
+    for slotKey, itemID in pairs(snap.slots) do
+        if not (issecretvalue and issecretvalue(itemID)) then
+            if not previous[slotKey] or previous[slotKey] ~= itemID then
                 local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
                 if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
                     -- not a collectible
                 elseif not preClassID then
-                    if not pendingRetryItems[slotKey] then
-                        pendingRetryItems[slotKey] = {
+                    if not pending[slotKey] then
+                        pending[slotKey] = {
                             itemID = itemID,
                             hyperlink = nil,
                             retries = 0
@@ -139,8 +160,26 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
                 end
             end
         end
-        return true
     end
+    return true
+end
+
+local function ScanBagsForNewCollectibles(specificBagIDs)
+    local previousBagContents = Scan.previousBagContents
+    local previousBagNums = Scan.previousBagNums
+    local pendingRetryItems = Scan.pendingRetryItems
+    local currentBagContents = {}
+    local currentBagNums = {}
+    local newCollectibles = {}
+    local itemsCacheSnaps = ns.ItemsCacheBagSnapshots
+
+    scanCtx.previousBagContents = previousBagContents
+    scanCtx.pendingRetryItems = pendingRetryItems
+    scanCtx.currentBagContents = currentBagContents
+    scanCtx.currentBagNums = currentBagNums
+    scanCtx.newCollectibles = newCollectibles
+    scanCtx.itemsCacheSnaps = itemsCacheSnaps
+    scanCtx.snapNow = GetTime()
 
     if not Scan.isInitialized then
         for bagID = 0, 4 do
@@ -149,14 +188,19 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
                 for slotID = 1, numSlots do
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
                     if itemInfo and itemInfo.itemID then
-                        local slotKey = bagID .. "_" .. slotID
-                        currentBagContents[slotKey] = itemInfo.itemID
+                        local itemID = itemInfo.itemID
+                        if not (issecretvalue and issecretvalue(itemID)) then
+                            local slotKey = bagID .. "_" .. slotID
+                            currentBagContents[slotKey] = itemID
+                            currentBagNums[slotKey] = bagID
+                        end
                     end
                 end
             end
         end
 
         Scan.previousBagContents = currentBagContents
+        Scan.previousBagNums = currentBagNums
         Scan.isInitialized = true
 
         local itemCount = 0
@@ -207,14 +251,17 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
 
     if not scanAll then
         for slotKey, itemID in pairs(previousBagContents) do
-            local bagNum = tonumber(slotKey:match("^(%d+)"))
+            local bagNum = previousBagNums[slotKey]
+            if bagNum == nil then bagNum = tonumber(slotKey:match("^(%d+)")) end
             if bagNum and not specificBagIDs[bagNum] then
                 currentBagContents[slotKey] = itemID
+                currentBagNums[slotKey] = bagNum
             end
         end
     end
 
     Scan.previousBagContents = currentBagContents
+    Scan.previousBagNums = currentBagNums
 
     local itemCount = 0
     for _ in pairs(currentBagContents) do itemCount = itemCount + 1 end

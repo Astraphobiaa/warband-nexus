@@ -172,18 +172,9 @@ end
 function WarbandNexus:OnMoneyChanged()
     local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
 
-    -- Gold column on Characters tab: UpdateCharacterGold works for untracked too (DataService).
-    if self.UpdateCharacterGold then
-        self:UpdateCharacterGold()
-    end
-
-    if not tracked then
-        return
-    end
-
-    -- Tracked-only: session char gold + currency-tab style refresh coalescing
+    -- Cheap synchronous session snapshot (tracked only; no db.global write, no message fanout).
     -- GetMoney() may be a secret value (Midnight+); never persist opaque/compare without guard.
-    if self.db and self.db.char then
+    if tracked and self.db and self.db.char then
         local m = GetMoney()
         if m ~= nil and not (issecretvalue and issecretvalue(m)) then
             local n = tonumber(m)
@@ -193,12 +184,25 @@ function WarbandNexus:OnMoneyChanged()
         end
     end
 
+    -- Coalesce the heavy gold write + fanout. Selling a stack at a vendor or looting a chest full of
+    -- coins fires PLAYER_MONEY once per item/drop; running UpdateCharacterGold (character-key resolution
+    -- + db.global.characters write + roster cache invalidation + CHARACTER_UPDATED dispatch) on EVERY
+    -- tick was the merchant/delve lag spike. One trailing pass reads the final balance and emits once;
+    -- UpdateCharacterGold covers tracked and untracked alike. Logout still persists synchronously via
+    -- FlushDataServiceOnLogout -> UpdateCharacterGold, so a pending debounce never loses the final value.
     if not self.moneyRefreshPending then
         self.moneyRefreshPending = true
         C_Timer.After(0.05, function()
-            if WarbandNexus then
-                WarbandNexus.moneyRefreshPending = false
-                WarbandNexus:SendMessage(E.MONEY_UPDATED)
+            local addon = WarbandNexus
+            if not addon then return end
+            addon.moneyRefreshPending = false
+            -- Deferred out of the ErrorHandler SafeCall that wrapped the original synchronous call,
+            -- so guard it here; a gold-write fault must not surface as a Lua error mid-loot.
+            if addon.UpdateCharacterGold then
+                pcall(addon.UpdateCharacterGold, addon)  -- writes gold + emits CHARACTER_UPDATED{ dataType = "gold" }
+            end
+            if ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon) then
+                addon:SendMessage(E.MONEY_UPDATED)
             end
         end)
     end
