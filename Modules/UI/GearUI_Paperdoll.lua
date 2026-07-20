@@ -1633,7 +1633,10 @@ function PD.GetSlotTrackText(upgradeInfo, slotID, quality, currencyAmounts, slot
         return PD.FormatTrackMarkup(englishTrack, FormatTrackTier(englishTrack, track, curT, maxT, ilvlForCap), quality)
     end
     if track and track ~= "" then return PD.FormatTrackMarkup(englishTrack, track, quality) end
-    if slotData and slotData.upgradeTrack and not (issecretvalue and issecretvalue(slotData.upgradeTrack)) then
+    if slotData and slotData.upgradeTrack
+        and not (issecretvalue and issecretvalue(slotData.upgradeTrack))
+        and type(slotData.upgradeTrack) == "string"
+    then
         local raw = slotData.upgradeTrack
         local englishTrack = raw:match("^(%S+)") or raw
         local trackLbl = LocalizeUpgradeTrackName(englishTrack)
