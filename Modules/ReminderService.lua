@@ -1774,8 +1774,13 @@ local function RequestReminderScheduleCoalesced(planID)
         reminderPlanRescheduleTimer = nil
     end
     local function RunReminderSchedulePass()
-        local changedPlanIDs = pendingReminderLocationPlanIDs
-        pendingReminderLocationPlanIDs = {}
+        local changedPlanIDs
+        -- Leave IDs queued for an in-flight full pass. It will evaluate changed location
+        -- categories normally, then target only categories suppressed by stable-key memos.
+        if not zoneChangeTimer and not zoneReminderDeferredTransit then
+            changedPlanIDs = pendingReminderLocationPlanIDs
+            pendingReminderLocationPlanIDs = {}
+        end
         if ScheduleCalendarResetReminderTimer then
             ScheduleCalendarResetReminderTimer()
         end
@@ -1787,8 +1792,7 @@ local function RequestReminderScheduleCoalesced(planID)
         -- location memo or re-fire unrelated plans that the player has not re-entered.
         -- A real zone transition already covers every matching plan and must win over the
         -- narrower config-save pass, otherwise the target can fire twice or peers can be skipped.
-        if RunZoneOrInstanceChangedNow and next(changedPlanIDs)
-            and not zoneChangeTimer and not zoneReminderDeferredTransit then
+        if RunZoneOrInstanceChangedNow and changedPlanIDs and next(changedPlanIDs) then
             RunZoneOrInstanceChangedNow(changedPlanIDs)
         end
     end
@@ -1871,14 +1875,16 @@ RunZoneOrInstanceChangedNow = function(planIDFilter)
     end
     if not planIDFilter then
         zoneReminderDeferredTransit = false
-        -- A completed full location pass supersedes config-save work that is still queued.
-        -- Its timer may continue to run the cheap calendar reschedule, but has no location IDs.
-        pendingReminderLocationPlanIDs = {}
     end
 
     local P = ns.Profiler
     local traceT0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
     local mapID = SafeGetRawPlayerUIMapID()
+    local queuedPlanIDs = not planIDFilter and pendingReminderLocationPlanIDs or nil
+    local zoneMemoBefore = lastStableReminderZoneKey
+    local mapQuestMemoBefore = lastMapQuestReminderStable
+    local worldEventMemoBefore = lastWorldEventReminderKey
+    local instanceMemoBefore = lastInstanceFingerprint
     if mapID then
         CheckZoneReminders(mapID, planIDFilter)
         CheckMapQuestReminders(mapID, planIDFilter)
@@ -1887,6 +1893,25 @@ RunZoneOrInstanceChangedNow = function(planIDFilter)
         lastMapQuestReminderStable = nil
     end
     CheckInstanceReminders(planIDFilter)
+    if queuedPlanIDs and next(queuedPlanIDs) then
+        -- A full pass whose stable memo changed already evaluated every plan in that category.
+        -- For unchanged categories, run the narrowed pass so a same-subzone config save is not lost.
+        if mapID then
+            if zoneMemoBefore == lastStableReminderZoneKey then
+                CheckZoneReminders(mapID, queuedPlanIDs)
+            end
+            if mapQuestMemoBefore == lastMapQuestReminderStable then
+                CheckMapQuestReminders(mapID, queuedPlanIDs)
+            end
+        end
+        if worldEventMemoBefore == lastWorldEventReminderKey then
+            CheckWorldEventReminders(queuedPlanIDs)
+        end
+        if instanceMemoBefore == lastInstanceFingerprint then
+            CheckInstanceReminders(queuedPlanIDs)
+        end
+        pendingReminderLocationPlanIDs = {}
+    end
     if traceT0 and P and P.AppendTraceRow then
         local elapsed = debugprofilestop() - traceT0
         P:AppendTraceRow(
