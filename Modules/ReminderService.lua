@@ -451,9 +451,11 @@ local function GetReminderSettings()
     return WarbandNexus.db.global.reminderSettings
 end
 
-local function PlanAllowsLocationReminder(plan)
+local function PlanAllowsLocationReminder(plan, planIDFilter)
     if not plan then return false end
-    return true
+    if not planIDFilter then return true end
+    local planKey = PlanKeyForLoginBurst(plan)
+    return planKey ~= nil and planIDFilter[planKey] == true
 end
 
 local function EnsureReminderField(plan)
@@ -1379,11 +1381,13 @@ local lastMapQuestReminderStable = nil
 
 local lastWorldEventReminderKey = nil
 
-local function CheckWorldEventReminders()
+local function CheckWorldEventReminders(planIDFilter)
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
     local settings = GetReminderSettings()
     if settings and not settings.enabled then
-        lastWorldEventReminderKey = nil
+        if not planIDFilter then
+            lastWorldEventReminderKey = nil
+        end
         return
     end
     local HEC = ns.ReminderHolidayEventCatalog
@@ -1404,13 +1408,17 @@ local function CheckWorldEventReminders()
         end
     end
     if #activeNames == 0 then
-        lastWorldEventReminderKey = nil
+        if not planIDFilter then
+            lastWorldEventReminderKey = nil
+        end
         return
     end
     table.sort(activeNames)
     local stableKey = table.concat(activeNames, "|")
-    if stableKey == lastWorldEventReminderKey then return end
-    lastWorldEventReminderKey = stableKey
+    if not planIDFilter then
+        if stableKey == lastWorldEventReminderKey then return end
+        lastWorldEventReminderKey = stableKey
+    end
 
     local L = ns.L
     local labelBase = (L and L["REMINDER_WORLD_EVENT_ACTIVE"]) or "World event active - %s"
@@ -1426,7 +1434,7 @@ local function CheckWorldEventReminders()
             EnsureReminderField(plan)
             if not plan.reminder or not plan.reminder.enabled or plan.completed then
                 -- skip
-            elseif not PlanAllowsLocationReminder(plan) then
+            elseif not PlanAllowsLocationReminder(plan, planIDFilter) then
                 -- skip
             else
                 local weEntry = FindTriggerEntry(plan.reminder, KIND.WORLD_EVENT_ACTIVE)
@@ -1504,19 +1512,23 @@ local function HasCachedMapQuestReminders()
     return reminderLocationCache.hasMapQuestReminders == true
 end
 
-local function CheckMapQuestReminders(rawMapID)
+local function CheckMapQuestReminders(rawMapID, planIDFilter)
     if not rawMapID or rawMapID == 0 then return end
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
 
     local settings = GetReminderSettings()
     if settings and not settings.enabled then
-        lastMapQuestReminderStable = nil
+        if not planIDFilter then
+            lastMapQuestReminderStable = nil
+        end
         return
     end
 
     local db = WarbandNexus.db.global
     if not HasCachedMapQuestReminders() then
-        lastMapQuestReminderStable = nil
+        if not planIDFilter then
+            lastMapQuestReminderStable = nil
+        end
         return
     end
 
@@ -1528,8 +1540,14 @@ local function CheckMapQuestReminders(rawMapID)
     local configuredUnion = GetCachedConfiguredZoneUnion()
     local stable = StableReminderZoneKey(rawMapID, configuredUnion)
     if not stable then return end
-    if stable == lastMapQuestReminderStable then return end
-    lastMapQuestReminderStable = stable
+    if not planIDFilter then
+        if stable == lastMapQuestReminderStable then return end
+        lastMapQuestReminderStable = stable
+    else
+        -- The configured zone union can change the derived stable key while stationary.
+        -- Keep the memo aligned so the next subzone event does not re-fire every plan.
+        lastMapQuestReminderStable = stable
+    end
 
     local L = ns.L
     local displayZoneName = tostring(rawMapID)
@@ -1548,7 +1566,7 @@ local function CheckMapQuestReminders(rawMapID)
             EnsureReminderField(plan)
             if not plan.reminder or not plan.reminder.enabled or plan.completed then
                 -- skip
-            elseif not PlanAllowsLocationReminder(plan) then
+            elseif not PlanAllowsLocationReminder(plan, planIDFilter) then
                 -- skip
             else
                 local wqEntry = FindTriggerEntry(plan.reminder, KIND.WORLD_QUEST_ACTIVE)
@@ -1596,26 +1614,35 @@ local function CheckMapQuestReminders(rawMapID)
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
-local function CheckZoneReminders(rawMapID)
+local function CheckZoneReminders(rawMapID, planIDFilter)
     if not rawMapID or rawMapID == 0 then return end
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
 
     local settings = GetReminderSettings()
     if settings and not settings.enabled then
-        lastStableReminderZoneKey = nil
+        if not planIDFilter then
+            lastStableReminderZoneKey = nil
+        end
         return
     end
 
     local configuredUnion = GetCachedConfiguredZoneUnion()
     if not next(configuredUnion) then
-        lastStableReminderZoneKey = nil
+        if not planIDFilter then
+            lastStableReminderZoneKey = nil
+        end
         return
     end
 
     local stable = StableReminderZoneKey(rawMapID, configuredUnion)
     if not stable then return end
-    if stable == lastStableReminderZoneKey then return end
-    lastStableReminderZoneKey = stable
+    if not planIDFilter then
+        if stable == lastStableReminderZoneKey then return end
+        lastStableReminderZoneKey = stable
+    else
+        -- A config edit can change the union-derived key without a physical zone entry.
+        lastStableReminderZoneKey = stable
+    end
 
     local L = ns.L
     local displayZoneName = tostring(rawMapID)
@@ -1633,7 +1660,7 @@ local function CheckZoneReminders(rawMapID)
             local plan = planList[i]
             EnsureReminderField(plan)
             if plan.reminder and plan.reminder.enabled and plan.reminder.onZoneEnter then
-                if not PlanAllowsLocationReminder(plan) then
+                if not PlanAllowsLocationReminder(plan, planIDFilter) then
                     -- skip location triggers when focus is set to another plan
                 elseif not plan.completed then
                     local ze = FindTriggerEntry(plan.reminder, KIND.ZONE_ENTER)
@@ -1662,14 +1689,16 @@ local function CheckZoneReminders(rawMapID)
     processPlans(WarbandNexus.db.global.customPlans)
 end
 
-local function CheckInstanceReminders()
+local function CheckInstanceReminders(planIDFilter)
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
 
     local settings = GetReminderSettings()
     if settings and not settings.enabled then return end
 
     if not SafeIsInInstance() then
-        lastInstanceFingerprint = nil
+        if not planIDFilter then
+            lastInstanceFingerprint = nil
+        end
         return
     end
 
@@ -1677,8 +1706,10 @@ local function CheckInstanceReminders()
     if not info or not info.instanceID then return end
 
     local fingerprint = tostring(info.instanceID) .. "_" .. tostring(info.difficultyID or "any")
-    if fingerprint == lastInstanceFingerprint then return end
-    lastInstanceFingerprint = fingerprint
+    if not planIDFilter then
+        if fingerprint == lastInstanceFingerprint then return end
+        lastInstanceFingerprint = fingerprint
+    end
 
     local L = ns.L
     local displayName = info.name
@@ -1692,7 +1723,7 @@ local function CheckInstanceReminders()
             local plan = planList[i]
             EnsureReminderField(plan)
             if plan.reminder and plan.reminder.enabled and plan.reminder.onInstanceEnter then
-                if not PlanAllowsLocationReminder(plan) then
+                if not PlanAllowsLocationReminder(plan, planIDFilter) then
                     -- skip
                 elseif not plan.completed then
                     local ie = FindTriggerEntry(plan.reminder, KIND.INSTANCE_ENTER)
@@ -1727,39 +1758,42 @@ local zoneChangeTimer = nil
 local zoneReminderDeferredTransit = false
 local calendarResetReminderTimer = nil
 local reminderPlanRescheduleTimer = nil
+local pendingReminderLocationPlanIDs = {}
 --- Coalesce rapid reminder config writes (Set Alert toggles, bulk UI) per WN-PERF.
 local REMINDER_PLAN_RESCHEDULE_DEBOUNCE = 0.25
 local OnLoginRemindersCheck
 local ScheduleCalendarResetReminderTimer
 local RunZoneOrInstanceChangedNow
 
---- Drop the "already evaluated" memo for zone/map-quest/instance/world-event triggers.
---- Those checks early-return while their stable key is unchanged, so a config change made
---- without moving would otherwise never be evaluated until the next zone transition.
-local function ResetTriggerEvaluationMemo()
-    lastStableReminderZoneKey = nil
-    lastMapQuestReminderStable = nil
-    lastInstanceFingerprint = nil
-    lastWorldEventReminderKey = nil
-end
-
-local function RequestReminderScheduleCoalesced()
+local function RequestReminderScheduleCoalesced(planID)
+    if planID ~= nil then
+        pendingReminderLocationPlanIDs[tostring(planID)] = true
+    end
     if reminderPlanRescheduleTimer then
         reminderPlanRescheduleTimer:Cancel()
         reminderPlanRescheduleTimer = nil
     end
     local function RunReminderSchedulePass()
+        local changedPlanIDs
+        -- Leave IDs queued for an in-flight full pass. It will evaluate changed location
+        -- categories normally, then target only categories suppressed by stable-key memos.
+        if not zoneChangeTimer and not zoneReminderDeferredTransit then
+            changedPlanIDs = pendingReminderLocationPlanIDs
+            pendingReminderLocationPlanIDs = {}
+        end
         if ScheduleCalendarResetReminderTimer then
             ScheduleCalendarResetReminderTimer()
         end
-        ResetTriggerEvaluationMemo()
         if OnLoginRemindersCheck then
-            OnLoginRemindersCheck()
+            -- World events are location-like and are evaluated for changed plans below.
+            OnLoginRemindersCheck(false)
         end
-        -- Calendar pass alone never touches zone/instance/map-quest triggers; evaluate the
-        -- player's current location too so a freshly saved alert fires without a zone round-trip.
-        if RunZoneOrInstanceChangedNow then
-            RunZoneOrInstanceChangedNow()
+        -- Evaluate freshly saved location alerts immediately, but do not reset the global
+        -- location memo or re-fire unrelated plans that the player has not re-entered.
+        -- A real zone transition already covers every matching plan and must win over the
+        -- narrower config-save pass, otherwise the target can fire twice or peers can be skipped.
+        if RunZoneOrInstanceChangedNow and changedPlanIDs and next(changedPlanIDs) then
+            RunZoneOrInstanceChangedNow(changedPlanIDs)
         end
     end
     if not (C_Timer and C_Timer.NewTimer) then
@@ -1832,24 +1866,52 @@ ScheduleCalendarResetReminderTimer = function()
     end)
 end
 
-RunZoneOrInstanceChangedNow = function()
-    if SafeIsPlayerAirborneTransit() then
+RunZoneOrInstanceChangedNow = function(planIDFilter)
+    -- Full zone scans wait until transit ends. A config-save pass is already narrowed to
+    -- explicit plan IDs, so it is safe to evaluate immediately and cannot be stranded aloft.
+    if not planIDFilter and SafeIsPlayerAirborneTransit() then
         zoneReminderDeferredTransit = true
         return
     end
-    zoneReminderDeferredTransit = false
+    if not planIDFilter then
+        zoneReminderDeferredTransit = false
+    end
 
     local P = ns.Profiler
     local traceT0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
     local mapID = SafeGetRawPlayerUIMapID()
+    local queuedPlanIDs = not planIDFilter and pendingReminderLocationPlanIDs or nil
+    local zoneMemoBefore = lastStableReminderZoneKey
+    local mapQuestMemoBefore = lastMapQuestReminderStable
+    local worldEventMemoBefore = lastWorldEventReminderKey
+    local instanceMemoBefore = lastInstanceFingerprint
     if mapID then
-        CheckZoneReminders(mapID)
-        CheckMapQuestReminders(mapID)
-        CheckWorldEventReminders()
-    else
+        CheckZoneReminders(mapID, planIDFilter)
+        CheckMapQuestReminders(mapID, planIDFilter)
+        CheckWorldEventReminders(planIDFilter)
+    elseif not planIDFilter then
         lastMapQuestReminderStable = nil
     end
-    CheckInstanceReminders()
+    CheckInstanceReminders(planIDFilter)
+    if queuedPlanIDs and next(queuedPlanIDs) then
+        -- A full pass whose stable memo changed already evaluated every plan in that category.
+        -- For unchanged categories, run the narrowed pass so a same-subzone config save is not lost.
+        if mapID then
+            if zoneMemoBefore == lastStableReminderZoneKey then
+                CheckZoneReminders(mapID, queuedPlanIDs)
+            end
+            if mapQuestMemoBefore == lastMapQuestReminderStable then
+                CheckMapQuestReminders(mapID, queuedPlanIDs)
+            end
+        end
+        if worldEventMemoBefore == lastWorldEventReminderKey then
+            CheckWorldEventReminders(queuedPlanIDs)
+        end
+        if instanceMemoBefore == lastInstanceFingerprint then
+            CheckInstanceReminders(queuedPlanIDs)
+        end
+        pendingReminderLocationPlanIDs = {}
+    end
     if traceT0 and P and P.AppendTraceRow then
         local elapsed = debugprofilestop() - traceT0
         P:AppendTraceRow(
@@ -1884,13 +1946,15 @@ local function OnZoneOrInstanceChanged()
     end)
 end
 
-OnLoginRemindersCheck = function()
+OnLoginRemindersCheck = function(includeWorldEvents)
     BeginCalendarToastBatch()
     CheckDailyLoginReminders()
     CheckMonthlyLoginReminders()
     CheckWeeklyResetReminders()
     CheckDaysBeforeResetReminders()
-    CheckWorldEventReminders()
+    if includeWorldEvents ~= false then
+        CheckWorldEventReminders()
+    end
     FlushCalendarToastBatch()
 end
 
@@ -1903,6 +1967,7 @@ function WarbandNexus:InitializeReminderService()
         reminderPlanRescheduleTimer:Cancel()
         reminderPlanRescheduleTimer = nil
     end
+    pendingReminderLocationPlanIDs = {}
     CancelCalendarResetReminderTimer()
 
     self.db.global.reminderSettings = self.db.global.reminderSettings or {
@@ -1925,6 +1990,8 @@ function WarbandNexus:InitializeReminderService()
             if SafeIsPlayerAirborneTransit() then return end
             if zoneReminderDeferredTransit then
                 zoneReminderDeferredTransit = false
+                -- Preserve config IDs so same-stable categories suppressed by the full pass
+                -- can still receive their narrowed evaluation after landing.
                 OnZoneOrInstanceChanged()
             end
         end)
@@ -1961,8 +2028,11 @@ function WarbandNexus:InitializeReminderService()
             WarbandNexus.RegisterMessage(ReminderPlansMessageSink, E.PLANS_UPDATED, function(_, payload)
                 InvalidateReminderLocationCache()
                 local a = payload and payload.action
-                if a == "reminder_changed" or a == "reminder_dismissed" then
-                    RequestReminderScheduleCoalesced()
+                if a == "reminder_changed" then
+                    RequestReminderScheduleCoalesced(payload and payload.planID)
+                elseif a == "reminder_dismissed" and payload and payload.planID ~= nil then
+                    -- Do not let an already queued save pass immediately undo the dismissal.
+                    pendingReminderLocationPlanIDs[tostring(payload.planID)] = nil
                 end
             end)
         end
