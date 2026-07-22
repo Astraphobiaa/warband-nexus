@@ -1990,8 +1990,8 @@ function WarbandNexus:InitializeReminderService()
             if SafeIsPlayerAirborneTransit() then return end
             if zoneReminderDeferredTransit then
                 zoneReminderDeferredTransit = false
-                -- The full location pass includes any config changes queued in transit.
-                pendingReminderLocationPlanIDs = {}
+                -- Preserve config IDs so same-stable categories suppressed by the full pass
+                -- can still receive their narrowed evaluation after landing.
                 OnZoneOrInstanceChanged()
             end
         end)
