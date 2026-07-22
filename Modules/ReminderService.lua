@@ -1543,6 +1543,10 @@ local function CheckMapQuestReminders(rawMapID, planIDFilter)
     if not planIDFilter then
         if stable == lastMapQuestReminderStable then return end
         lastMapQuestReminderStable = stable
+    else
+        -- The configured zone union can change the derived stable key while stationary.
+        -- Keep the memo aligned so the next subzone event does not re-fire every plan.
+        lastMapQuestReminderStable = stable
     end
 
     local L = ns.L
@@ -1634,6 +1638,9 @@ local function CheckZoneReminders(rawMapID, planIDFilter)
     if not stable then return end
     if not planIDFilter then
         if stable == lastStableReminderZoneKey then return end
+        lastStableReminderZoneKey = stable
+    else
+        -- A config edit can change the union-derived key without a physical zone entry.
         lastStableReminderZoneKey = stable
     end
 
@@ -1752,6 +1759,7 @@ local zoneReminderDeferredTransit = false
 local calendarResetReminderTimer = nil
 local reminderPlanRescheduleTimer = nil
 local pendingReminderLocationPlanIDs = {}
+local reminderPlanRescheduleDeferredTransit = false
 --- Coalesce rapid reminder config writes (Set Alert toggles, bulk UI) per WN-PERF.
 local REMINDER_PLAN_RESCHEDULE_DEBOUNCE = 0.25
 local OnLoginRemindersCheck
@@ -1778,7 +1786,9 @@ local function RequestReminderScheduleCoalesced(planID)
         end
         -- Evaluate freshly saved location alerts immediately, but do not reset the global
         -- location memo or re-fire unrelated plans that the player has not re-entered.
-        if RunZoneOrInstanceChangedNow and next(changedPlanIDs) then
+        -- A real zone transition already covers every matching plan and must win over the
+        -- narrower config-save pass, otherwise the target can fire twice or peers can be skipped.
+        if RunZoneOrInstanceChangedNow and next(changedPlanIDs) and not zoneChangeTimer then
             RunZoneOrInstanceChangedNow(changedPlanIDs)
         end
     end
@@ -1854,10 +1864,21 @@ end
 
 RunZoneOrInstanceChangedNow = function(planIDFilter)
     if SafeIsPlayerAirborneTransit() then
-        zoneReminderDeferredTransit = true
+        if planIDFilter then
+            for planID in pairs(planIDFilter) do
+                pendingReminderLocationPlanIDs[planID] = true
+            end
+            reminderPlanRescheduleDeferredTransit = true
+        else
+            zoneReminderDeferredTransit = true
+        end
         return
     end
-    zoneReminderDeferredTransit = false
+    if planIDFilter then
+        reminderPlanRescheduleDeferredTransit = false
+    else
+        zoneReminderDeferredTransit = false
+    end
 
     local P = ns.Profiler
     local traceT0 = (P and P.enabled and P.eventTrace) and debugprofilestop() or nil
@@ -1926,6 +1947,7 @@ function WarbandNexus:InitializeReminderService()
         reminderPlanRescheduleTimer = nil
     end
     pendingReminderLocationPlanIDs = {}
+    reminderPlanRescheduleDeferredTransit = false
     CancelCalendarResetReminderTimer()
 
     self.db.global.reminderSettings = self.db.global.reminderSettings or {
@@ -1948,7 +1970,13 @@ function WarbandNexus:InitializeReminderService()
             if SafeIsPlayerAirborneTransit() then return end
             if zoneReminderDeferredTransit then
                 zoneReminderDeferredTransit = false
+                -- The full location pass includes any config changes queued in transit.
+                pendingReminderLocationPlanIDs = {}
+                reminderPlanRescheduleDeferredTransit = false
                 OnZoneOrInstanceChanged()
+            elseif reminderPlanRescheduleDeferredTransit then
+                reminderPlanRescheduleDeferredTransit = false
+                RequestReminderScheduleCoalesced()
             end
         end)
         local function OnPlayerEnteringWorldReminders()
@@ -1986,6 +2014,9 @@ function WarbandNexus:InitializeReminderService()
                 local a = payload and payload.action
                 if a == "reminder_changed" then
                     RequestReminderScheduleCoalesced(payload and payload.planID)
+                elseif a == "reminder_dismissed" and payload and payload.planID ~= nil then
+                    -- Do not let an already queued save pass immediately undo the dismissal.
+                    pendingReminderLocationPlanIDs[tostring(payload.planID)] = nil
                 end
             end)
         end
