@@ -101,6 +101,14 @@ local function GetMatchStore(charKey)
     return store
 end
 
+-- Untracked characters are Characters-tab only: never collect PvP progress, honor or match
+-- history for them. Resolved at call time and never cached at login -- IsCharacterTracked can
+-- return a false negative right after /reload while the realm name is still empty, and every
+-- caller below runs well after that window (T+5s seed, or a PvP/honor event).
+local function IsCurrentCharacterTracked()
+    return (ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)) == true
+end
+
 local function EmitUpdated()
     if WarbandNexus and WarbandNexus.SendMessage and ns.Constants and ns.Constants.EVENTS then
         WarbandNexus:SendMessage(ns.Constants.EVENTS.PVP_UPDATED)
@@ -135,6 +143,7 @@ end
 function PvPService:SnapshotRatedInfo(skipEmit)
     local charKey = GetCharKey()
     if not charKey then return end
+    if not IsCurrentCharacterTracked() then return end
     local store = GetProgressStore(charKey)
     if not store then return end
 
@@ -230,6 +239,7 @@ end
 function PvPService:SnapshotHonor(skipEmit)
     local charKey = GetCharKey()
     if not charKey then return end
+    if not IsCurrentCharacterTracked() then return end
     local store = GetProgressStore(charKey)
     if not store then return end
 
@@ -302,6 +312,7 @@ end
 function PvPService:OnMatchComplete(winner, duration)
     local charKey = GetCharKey()
     if not charKey then return end
+    if not IsCurrentCharacterTracked() then return end
     local matches = GetMatchStore(charKey)
     if not matches then return end
 
@@ -756,7 +767,9 @@ end
 
 local function OnLogin()
     local charKey = GetCharKey()
-    if charKey and not sessionStarted then
+    -- Tracked-only: GetMatchStore auto-creates the per-character row, so calling it for an
+    -- untracked character would seed db.global.pvpMatches[key] on every login.
+    if charKey and not sessionStarted and IsCurrentCharacterTracked() then
         sessionStarted = true
         local matches = GetMatchStore(charKey)
         if matches then

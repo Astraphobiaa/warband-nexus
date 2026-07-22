@@ -1042,11 +1042,14 @@ local function ComputeScrollChildWidth(frame)
             if pveW > 0 then w = math.max(w, pveW) end
         end
     elseif tab == "chars" then
+        -- DrawCharacterList stores the OUTER floor (row width + 2*side) here. Fallback before first
+        -- paint returns the INNER row minimum, so add the two side margins to match.
         local minW = frame._charsMinScrollWidth
         if (not minW or minW < 1) and ns.UI_ComputeCharactersMinScrollWidth then
             local addon = WarbandNexus
             local guildW = addon and addon._charListMaxGuildWidth
-            minW = ns.UI_ComputeCharactersMinScrollWidth(addon, guildW)
+            local side = (ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12
+            minW = ns.UI_ComputeCharactersMinScrollWidth(addon, guildW) + side * 2
         end
         if minW and minW > 0 then
             w = math.max(w, minW)

@@ -550,6 +550,18 @@ function WarbandNexus:ScanCurrentCharacterMailSnapshot(opts)
     local row = self.db.global.characters[tableKey]
     if not row then return false end
 
+    -- GUARD: untracked characters stay Characters-tab only. Never collect or persist the mail
+    -- DETAIL snapshot (row.mailSnapshot: sender, subject, gold, per-item links) for a character
+    -- the user chose not to track -- consistent with the fully-gated currency, reputation and
+    -- PvE collectors. Without this, every untracked mailbox visit wrote full mail detail into
+    -- SavedVariables.
+    -- NOT gated here on purpose: the lightweight row.hasMail boolean, which is Characters-tab
+    -- data (the envelope column in CharactersUI SetupCharacterMailColumn) and is maintained
+    -- separately by DataService:UpdateMailStatus.
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return false
+    end
+
     local hasPending = (HasNewMail and HasNewMail()) and true or false
 
     if not opts.forceInbox then

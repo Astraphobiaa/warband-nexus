@@ -121,11 +121,11 @@ local MAIN_SHELL_PT = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
 local CATEGORY_BAR_HEIGHT = MAIN_SHELL_PT.TAB_HEIGHT or 34
 
 -- Tracker header metrics (must be above helpers that read these locals — Lua 5.1 forward-ref)
-local PLAN_TRACKER_LAYOUT_VERSION = 17
-local TRACKER_HEADER_ICON = 20
-local TRACKER_HEADER_BTN = 22
-local TRACKER_HEADER_BTN_GAP = 4
-local TRACKER_HEADER_ICON_LEFT = 12
+local PLAN_TRACKER_LAYOUT_VERSION = 25
+local TRACKER_HEADER_ICON = 34          -- match main window title icon
+local TRACKER_HEADER_BTN = 28           -- match main window close/utility button size
+local TRACKER_HEADER_BTN_GAP = 6
+local TRACKER_HEADER_ICON_LEFT = 15     -- match main window icon inset
 local TRACKER_COLLAPSED_MIN_WIDTH = 220
 local TRACKER_ROW_BELOW_CHROME = 10
 local TRACKER_CATEGORY_TO_CONTENT_GAP = 10
@@ -147,20 +147,20 @@ local function CanApplyTrackerHeaderButtonChrome(btn)
     return btn and (not ns.UI_CanApplyCustomChrome or ns.UI_CanApplyCustomChrome(btn))
 end
 
+--- Header utility button, built exactly like the main window's close button (UI_MainShell.lua
+--- BuildCloseButton): a plain 28px button whose backdrop the caller applies.
+--- It must NOT set `_wnSkipCustomChrome` and must NOT have its backdrop stripped by
+--- ApplyIconOnlyButtonChrome -- either one makes UI_CanApplyCustomChrome return false, which
+--- silently turned every ApplyVisuals call on these buttons into dead code and left the close,
+--- collapse and gear buttons with no background at all.
 local function CreateTrackerHeaderIconButton(parent, size)
     size = size or TRACKER_HEADER_BTN or 22
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(size, size)
     btn:EnableMouse(true)
-    btn._wnSkipCustomChrome = true
-    if btn.SetBackdrop then
-        pcall(btn.SetBackdrop, btn, nil)
-    end
-    if not (ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()) then
-        if ns.UI and ns.UI.Factory and ns.UI.Factory.ApplyIconOnlyButtonChrome then
-            ns.UI.Factory:ApplyIconOnlyButtonChrome(btn)
-        end
-    elseif ns.UI_ApplyClassicIconWellChrome then
+    -- Classic/Blizzard chrome mode owns the look instead; it sets its own skip marker.
+    if ns.UI_ShouldUseBlizzardChrome and ns.UI_ShouldUseBlizzardChrome()
+        and ns.UI_ApplyClassicIconWellChrome then
         ns.UI_ApplyClassicIconWellChrome(btn)
     end
     return btn
@@ -245,6 +245,25 @@ end
 
 local function GetControlChromeBackdrop()
     return (ns.UI_GetControlChromeBackdrop and ns.UI_GetControlChromeBackdrop()) or { 0.08, 0.08, 0.10, 1 }
+end
+
+--- Border the main window puts on its header utility buttons when it builds them
+--- (UI_MainShell.lua BuildCloseButton: UI_GetCloseButtonBackdrop + accent @ 0.8). This is the
+--- pair actually visible on screen, so the tracker's close / collapse / gear use the same one.
+local function GetUtilityButtonBorder()
+    return { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+end
+
+--- Idle/hover tint for header utility icons -- the same helper the main window's utility buttons
+--- use, so the tracker's gear and chevron read identically instead of being hand-tinted.
+local function ApplyTrackerUtilityIconStyle(tex, isHover)
+    if not tex then return end
+    if ns.UI_ApplyHeaderUtilityIconStyle then
+        ns.UI_ApplyHeaderUtilityIconStyle(tex, isHover)
+    elseif tex.SetVertexColor then
+        local c = isHover and COLORS.textBright or COLORS.textNormal
+        tex:SetVertexColor(c[1], c[2], c[3])
+    end
 end
 
 local function GetIconWellBackdrop()
@@ -393,15 +412,17 @@ local function GetContentWidth(frame)
     return GetTrackerCardWidth(frame)
 end
 
-local function GetTrackerClassicViewportInnerInset()
-    if not (ns.UI_IsClassicMode and ns.UI_IsClassicMode()) then
-        return 0
+local function GetTrackerViewportInnerInset()
+    if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then
+        local bd = ns.UI_CLASSIC_CARD_BACKDROP
+        if bd and bd.insets and bd.insets.left then
+            return bd.insets.left
+        end
+        return 8
     end
-    local bd = ns.UI_CLASSIC_CARD_BACKDROP
-    if bd and bd.insets and bd.insets.left then
-        return bd.insets.left
-    end
-    return 8
+    -- Modern: keep scrolling cards / bar lane off the fixed viewport border stroke.
+    local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
+    return ms.PLANS_TRACKER_VIEWPORT_INNER_INSET or 5
 end
 
 local function GetTrackerViewportLayout(eaLay)
@@ -421,15 +442,15 @@ local function GetTrackerViewportLayout(eaLay)
         shellPadTop = shellPadTop,
         shellPadBottom = shellPadBottom,
         padV = math.max(shellPadTop, shellPadBottom),
-        classicInnerInset = GetTrackerClassicViewportInnerInset(),
+        innerInset = GetTrackerViewportInnerInset(),
     }
 end
 
 local function ApplyTrackerViewportScrollInsets(frame)
     local shell = frame and frame.contentViewportShell
     if not shell then return end
-    local inset = (frame._plansViewportLayout and frame._plansViewportLayout.classicInnerInset)
-        or GetTrackerClassicViewportInnerInset()
+    local inset = (frame._plansViewportLayout and frame._plansViewportLayout.innerInset)
+        or GetTrackerViewportInnerInset()
     local scrollHost = frame.contentScrollHost
     local scrollFrame = frame.contentScrollFrame
     local sbLane = TRACK_SCROLL_RIGHT_RESERVE
@@ -487,7 +508,13 @@ local function ApplyTrackerViewportShellChrome(shell)
         shell:EnableMouse(false)
         return
     end
-    ApplyTrackerViewportTransparent(shell)
+    -- Fixed viewport frame: static panel-tone fill + card-tone border stroke; cards scroll and
+    -- clip inside it (a bare clip line against the window backdrop read as "borders scrolling").
+    local vc = ns.UI_COLORS or COLORS
+    local vpBg = (ns.UI_GetMainPanelBackgroundColor and ns.UI_GetMainPanelBackgroundColor())
+        or (vc and (vc.surfaceViewport or vc.bg)) or { 0.042, 0.042, 0.055, 0.98 }
+    ApplyTrackerChrome(shell, vpBg, GetCardColors().border)
+    shell:EnableMouse(false)
 end
 
 local function SyncTrackerViewportChrome(frame)
@@ -1269,49 +1296,9 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
         lines[#lines + 1] = { left = reqLabel, right = plan.requirement, leftColor = { lblR, lblG, lblB }, rightColor = { reqR, reqG, reqB } }
     end
 
-    -- Achievement requirements (only when collapsed â€” expanded cards already show them)
-    if plan.type == "achievement" and plan.achievementID and not isExpanded then
-        local summary = ns.UI_SummarizeAchievementCriteria and ns.UI_SummarizeAchievementCriteria(plan.achievementID)
-        if summary and (summary.rawNumCriteria or 0) > 0 then
-            lines[#lines + 1] = { type = "spacer", height = 4 }
-            local criteriaLines = {}
-            local formatRowSuffix = ns.UI_FormatCriterionRowSuffix
-            if summary.criteria then
-                for i = 1, #summary.criteria do
-                    local row = summary.criteria[i]
-                    if row.hasName and row.name then
-                        local icon = row.completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                        local incRgb = PLAN_COLORS.incompleteRgb
-                        if not incRgb and ns.UI_GetTextRoleRGB then
-                            local ir, ig, ib = ns.UI_GetTextRoleRGB("Bright")
-                            incRgb = { ir, ig, ib }
-                        end
-                        local color = row.completed and (PLAN_COLORS.completedRgb or {0.27, 1, 0.27}) or (incRgb or {1, 1, 1})
-                        local progress = formatRowSuffix and formatRowSuffix(row, summary) or ""
-                        criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. row.name .. progress, color = color }
-                    end
-                end
-            end
-
-            local header = ns.UI_FormatAchievementProgressHeader and ns.UI_FormatAchievementProgressHeader(summary) or ""
-            lines[#lines + 1] = { text = header, color = { greenR, greenG, greenB } }
-
-            -- 3-column layout: group criteria into rows of 3
-            local cols = 3
-            for row = 1, math.ceil(#criteriaLines / cols) do
-                local startIdx = (row - 1) * cols + 1
-                local rowParts = {}
-                for c = 0, cols - 1 do
-                    local entry = criteriaLines[startIdx + c]
-                    if entry then
-                        local colorCode = format("|cff%02x%02x%02x", math.floor(entry.color[1]*255), math.floor(entry.color[2]*255), math.floor(entry.color[3]*255))
-                        rowParts[#rowParts + 1] = colorCode .. entry.text .. "|r"
-                    end
-                end
-                lines[#lines + 1] = { text = table.concat(rowParts, "  "), color = { brightR, brightG, brightB }, wrap = false }
-            end
-        end
-    end
+    -- Achievement criteria breakdown intentionally NOT listed here: the tooltip stays compact with
+    -- name + description (+ points/reward/source). The card already shows the "X of Y" progress summary,
+    -- and dumping every criterion (e.g. all 30 Prey targets) made the tooltip huge.
 
     -- Notes
     if plan.notes and plan.notes ~= "" then
@@ -1346,13 +1333,15 @@ local RefreshTrackerContent  -- forward declare so inner functions can reference
 local trackerRowOrder = {}
 local LIST_GAP_DEFAULT = 8
 
---- Reposition every tracked row by walking the ordered list and stacking them top-down using
---- their CURRENT GetHeight(). Cheap (O(n) y-anchor updates, no frame creation), called per
---- animation frame so the surrounding rows breathe with the toggling one.
-local function RepositionTrackerRows()
+--- Reposition every tracked row top-down using their CURRENT GetHeight() and set the scroll-child
+--- height. Cheap (O(n) y-anchor updates, no frame creation). Does NOT sync the scrollbar chrome —
+--- that resync (SyncTrackerScrollBar) is heavy, so live window resize must skip it per frame and the
+--- caller decides when to run it (RepositionTrackerRows does; the live-drag reflow does not).
+---@return number y, Frame|nil frame
+local function TrackerLayoutRowStack()
     local frame = GetTrackerFrame()
     local scrollChild = frame and frame.contentScrollChild
-    if not scrollChild then return 0 end
+    if not scrollChild then return 0, nil end
     local cardW = GetTrackerCardWidth(frame)
     local rowPadH = 0
     local vpLay = (frame and frame._plansViewportLayout)
@@ -1376,7 +1365,16 @@ local function RepositionTrackerRows()
     end
     y = y + padBottom
     scrollChild:SetHeight(math.max(y, 1))
-    SyncTrackerScrollBar(frame)
+    return y, frame
+end
+
+--- Row reflow + scrollbar-chrome resync. Also the `onSectionResize` callback (ignores its args), so
+--- do NOT add parameters. Never call this per live-resize frame — SyncTrackerScrollBar is the hot cost.
+local function RepositionTrackerRows()
+    local y, frame = TrackerLayoutRowStack()
+    if frame then
+        SyncTrackerScrollBar(frame)
+    end
     return y
 end
 
@@ -1735,8 +1733,9 @@ local function RefreshTrackerContentImmediate()
     local frame = GetTrackerFrame()
     if frame and frame.categoryBar and frame.categoryBar.countLabel then
         local plansFormat = (ns.L and ns.L["PLANS_COUNT_FORMAT"]) or "%d plans"
-        -- Extract suffix from format string (e.g., "%d plans" -> " plans")
-        local suffix = plansFormat:gsub("%%d%s*", "")
+        -- Keep one space between count and unit: "%d plans" -> "4/9 plans" (gsub'ing "%d%s*" glued them).
+        local suffix = plansFormat:gsub("%%d", ""):gsub("^%s+", "")
+        if suffix ~= "" then suffix = " " .. suffix end
         local countLabel = frame.categoryBar and frame.categoryBar.countLabel
         if countLabel then
             countLabel:SetText((ns.UI_GetTextRoleHex and ns.UI_GetTextRoleHex("Dim") or "|cff888888")
@@ -1774,7 +1773,6 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected, opts)
     end
     bodyLay = bodyLay or { inset = PADDING, rowBelowChrome = 6 }
     local inset = bodyLay.inset or PADDING
-    local sbLane = bodyLay.sbLane or TRACK_SCROLL_RIGHT_RESERVE
     local rowInnerPad = bodyLay.rowInnerPad or PADDING
     local chromeBandH = opts.chromeBandH
     chromeBandH = chromeBandH or GetPlansTrackerHeaderHeight()
@@ -1785,37 +1783,62 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected, opts)
         bar = CreateFrame("Frame", nil, parent)
         bar:SetHeight(CATEGORY_BAR_HEIGHT)
     end
+    -- Right edge matches the viewport frame below (bar lane is inside the frame, not beside it).
     bar:SetPoint("TOPLEFT", parent, "TOPLEFT", inset + rowInnerPad, rowY)
-    bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(inset + sbLane), rowY)
+    bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(inset + rowInnerPad), rowY)
     if ApplyTrackerChrome then
         ApplyTrackerChrome(bar, nil, nil, "bar")
     end
 
-    -- Plan count label (right side of bar) — dropdown fills remaining width
-    local countLabel = FontManager:CreateFontString(bar, "small", "OVERLAY")
-    countLabel:SetPoint("RIGHT", -rowInnerPad, 0)
-    countLabel:SetPoint("TOP", bar, "TOP", 0, 0)
-    countLabel:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
-    countLabel:SetJustifyH("RIGHT")
-    bar.countLabel = countLabel
-
-    -- Dropdown button spans full bar width (same as plan cards below)
+    -- One bordered control row: [ All ........ 4/4 plans v ] — filter label, plan count, and
+    -- chevron share the same chrome; edges line up with the card column below.
     local dropdown = Factory:CreateButton(bar, 120, 26, false)
-    dropdown:SetPoint("LEFT", bar, "LEFT", rowInnerPad, 0)
-    dropdown:SetPoint("RIGHT", countLabel, "LEFT", -8, 0)
+    dropdown:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    dropdown:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
     dropdown:SetPoint("TOP", bar, "TOP", 0, 0)
     dropdown:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
     dropdown:SetHeight(26)
     ApplyTrackerDropdownChrome(dropdown)
 
+    -- Dropdown affordance: monochrome chevron on the right edge (the control read as a dead box without it).
+    local ddChevron = dropdown:CreateTexture(nil, "OVERLAY")
+    ddChevron:SetSize(12, 12)
+    ddChevron:SetPoint("RIGHT", dropdown, "RIGHT", -10, 0)
+    do
+        local tn = COLORS.textNormal
+        if not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(ddChevron, "chevron_down", { vertexColor = { tn[1], tn[2], tn[3], 0.9 } })) then
+            ddChevron:Hide()
+        end
+    end
+
+    -- Plan count inside the control, left of the chevron (RefreshTrackerContentImmediate writes it).
+    local countLabel = FontManager:CreateFontString(dropdown, "small", "OVERLAY")
+    countLabel:SetPoint("RIGHT", ddChevron, "LEFT", -8, 0)
+    countLabel:SetPoint("TOP", dropdown, "TOP", 0, 0)
+    countLabel:SetPoint("BOTTOM", dropdown, "BOTTOM", 0, 0)
+    countLabel:SetJustifyH("RIGHT")
+    bar.countLabel = countLabel
+
     -- Value text
     local valueText = FontManager:CreateFontString(dropdown, "body", "OVERLAY")
     valueText:SetPoint("LEFT", 10, 0)
-    valueText:SetPoint("RIGHT", -10, 0)
+    valueText:SetPoint("RIGHT", countLabel, "LEFT", -8, 0)
     valueText:SetPoint("TOP", dropdown, "TOP", 0, 0)
     valueText:SetPoint("BOTTOM", dropdown, "BOTTOM", 0, 0)
     valueText:SetJustifyH("LEFT")
     valueText:SetText((ns.L and ns.L["CATEGORY_ALL"]) or "All")
+
+    -- Hover chrome (same pattern as tracker header buttons; classic keeps its pane fill).
+    dropdown:SetScript("OnEnter", function(self)
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() then return end
+        local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop())
+        if hoverBg then
+            ApplyTrackerChrome(self, hoverBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        end
+    end)
+    dropdown:SetScript("OnLeave", function(self)
+        ApplyTrackerDropdownChrome(self)
+    end)
 
     local function UpdateLabel(key)
         local label = (ns.L and ns.L["CATEGORY_ALL"]) or "All"
@@ -2060,8 +2083,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local frameInset = (VB and VB.VBGetFrameContentInset and VB.VBGetFrameContentInset()) or shellInset
     local chromeBandH = GetPlansTrackerHeaderHeight()
     header:SetHeight(chromeBandH)
-    header:SetPoint("TOPLEFT", frame, "TOPLEFT", frameInset, -frameInset)
-    header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -frameInset, -frameInset)
+    -- Full-width title band like the main window (its header anchors at frame inset 0): the accent band
+    -- spans edge to edge under the thin shell border, so there is no dark gap on the left/right/top.
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     frame._plansChromeBandH = chromeBandH
     header:EnableMouse(true)
     if ns.WindowManager and ns.WindowManager.InstallDragHandler then
@@ -2081,16 +2106,37 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end)
     end
     if ApplyTrackerChrome then
-        if ns.UI_ApplyFloatingWindowHeaderChrome then
+        -- Theme-accent title band: neutral floating-header chrome read as plain black here.
+        -- Dark = accentDark lifted toward accent; light = theme accent wash; classic keeps its dialog fill.
+        if ns.UI_IsClassicMode and ns.UI_IsClassicMode() and ns.UI_ApplyFloatingWindowHeaderChrome then
             ns.UI_ApplyFloatingWindowHeaderChrome(header)
         else
-            ApplyTrackerChrome(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
-                { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+            local hdrBorder = (ns.UI_GetMainHeaderBorderColor and ns.UI_GetMainHeaderBorderColor())
+                or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 }
+            local hdrBg
+            if ns.UI_IsLightMode and ns.UI_IsLightMode() then
+                hdrBg = (ns.UI_GetNavRailActiveBackdrop and ns.UI_GetNavRailActiveBackdrop())
+                    or (ns.UI_GetMainHeaderChromeColor and ns.UI_GetMainHeaderChromeColor())
+            else
+                local ad = COLORS.accentDark or { 0.28, 0.14, 0.41, 1 }
+                local ac = COLORS.accent or { 0.40, 0.20, 0.58, 1 }
+                local t = MAIN_SHELL_PT.PLANS_TRACKER_HEADER_ACCENT_BLEND or 0.30
+                hdrBg = ns.UI_BlendColors
+                    and ns.UI_BlendColors({ ad[1], ad[2], ad[3], 1 }, { ac[1], ac[2], ac[3], 1 }, t)
+                    or { ad[1], ad[2], ad[3], 1 }
+            end
+            if hdrBg then
+                ApplyTrackerChrome(header, hdrBg, hdrBorder)
+            elseif ns.UI_ApplyFloatingWindowHeaderChrome then
+                ns.UI_ApplyFloatingWindowHeaderChrome(header)
+            end
         end
     end
     header:SetFrameLevel(frame:GetFrameLevel() + 10)
 
-    local headerUtilityRight = math.max(shellInset, 8)
+    -- Match the main window utility cluster inset so the button column lines up the same way.
+    local headerUtilityRight = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL
+        and ns.UI_LAYOUT.MAIN_SHELL.HEADER_UTILITY_CLUSTER_RIGHT_INSET) or 18
 
     -- Header icon holder (same rhythm as UI_MainShell: LEFT anchor y=0 centers on band)
     local iconHolder = CreateFrame("Frame", nil, header)
@@ -2127,8 +2173,12 @@ function WarbandNexus:CreatePlansTrackerWindow()
     local closeBtnW = GetPlansTrackerCloseBtnWidth()
 
     -- Close button (compact icon well; same size as gear/collapse in classic + modern)
+    -- Header buttons match the addon-wide chrome standard: accent border at 0.8 (as the main window
+    -- and other floating windows use), close on the close backdrop, collapse/gear on control chrome.
     local closeBtn
-    local chromeBorder = { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 }
+    -- One chrome pair for all three header utility buttons (close / collapse / gear), matching the
+    -- main window exactly: UI_GetCloseButtonBackdrop + UI_GetNavRailDividerColor.
+    local chromeBorder = GetUtilityButtonBorder()
     local closeR, closeG, closeB = (ns.UI_GetSemanticRedColor and ns.UI_GetSemanticRedColor()) or 0.9, 0.3, 0.3
     closeBtn = CreateTrackerHeaderIconButton(header, utilityBtnSize)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -headerUtilityRight, 0)
@@ -2136,13 +2186,13 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ApplyVisuals(closeBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local closeTex = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeTex:SetSize(14, 14)
+    closeTex:SetSize(16, 16)
     closeTex:SetPoint("CENTER")
     closeTex:SetAtlas("uitools-icon-close")
     closeTex:SetVertexColor(closeR, closeG, closeB)
     closeBtn._wnCloseTex = closeTex
     closeBtn:SetScript("OnEnter", function()
-        closeTex:SetVertexColor(1, 0.15, 0.15)
+        closeTex:SetVertexColor(1, 0.2, 0.2)
         if CanApplyTrackerHeaderButtonChrome(closeBtn) and ApplyVisuals and ns.UI_GetSemanticNegativeCard then
             local bg, border = ns.UI_GetSemanticNegativeCard(true)
             ApplyVisuals(closeBtn, bg, border)
@@ -2165,10 +2215,21 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local collapseTex = collapseBtn:CreateTexture(nil, "ARTWORK")
-    collapseTex:SetSize(14, 14)
+    collapseTex:SetSize(16, 16)
     collapseTex:SetPoint("CENTER")
     frame.collapseBtn = collapseBtn
     frame.collapseTex = collapseTex
+
+    -- WN chevron set (matches card expand controls); glues atlas only as fallback.
+    local function SetCollapseChevron(isCollapsed)
+        local key = isCollapsed and "chevron_down" or "chevron_up"
+        if not (ns.UI_SetWnIconTexture and ns.UI_SetWnIconTexture(collapseTex, key)) then
+            collapseTex:SetAtlas(isCollapsed and "glues-characterSelect-icon-arrowDown-small-hover"
+                or "glues-characterSelect-icon-arrowUp-small-hover")
+        end
+        -- Tint through the shared header-utility helper, not a hand-picked text color.
+        ApplyTrackerUtilityIconStyle(collapseTex, false)
+    end
 
     local function ApplyCollapsedState(isCollapsed)
         local tdb = GetDB()
@@ -2178,7 +2239,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
             if tdb and frame:GetWidth() and frame:GetWidth() > TRACKER_COLLAPSED_MIN_WIDTH then
                 tdb.width = frame:GetWidth()
             end
-            collapseTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
+            SetCollapseChevron(true)
             frame.contentArea:Hide()
             if frame.categoryBar then frame.categoryBar:Hide() end
             frame:SetResizable(false)
@@ -2187,7 +2248,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
             -- Grip would sit inside the title bar and cover collapse/close â€” hide when collapsed
             if frame.resizeGrip then frame.resizeGrip:Hide() end
         else
-            collapseTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
+            SetCollapseChevron(false)
             frame.contentArea:Show()
             if frame.categoryBar then frame.categoryBar:Show() end
             frame:SetResizable(true)
@@ -2209,14 +2270,14 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ApplyCollapsedState(not isCollapsed)
     end)
     collapseBtn:SetScript("OnEnter", function()
-        collapseTex:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
+        ApplyTrackerUtilityIconStyle(collapseTex, true)
         if CanApplyTrackerHeaderButtonChrome(collapseBtn) and ApplyVisuals then
-            local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
-            ApplyVisuals(collapseBtn, hoverBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetChromeButtonBackdrop()
+            ApplyVisuals(collapseBtn, hoverBg, chromeBorder)
         end
     end)
     collapseBtn:SetScript("OnLeave", function()
-        collapseTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+        ApplyTrackerUtilityIconStyle(collapseTex, false)
         if CanApplyTrackerHeaderButtonChrome(collapseBtn) and ApplyVisuals then
             ApplyVisuals(collapseBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
@@ -2230,13 +2291,21 @@ function WarbandNexus:CreatePlansTrackerWindow()
         ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
     end
     local gearTex = gearBtn:CreateTexture(nil, "ARTWORK")
-    gearTex:SetSize(14, 14)
+    gearTex:SetSize(16, 16)
     gearTex:SetPoint("CENTER")
-    gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
-    gearTex:SetTexCoord(0.06, 0.94, 0.06, 0.94)
-    gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+    -- Same gear glyph the Vault Tracker header uses (VaultButton_Table.lua SetNormalAtlas
+    -- "mechagon-projects"). The old Trade_Engineering spell icon, desaturated, rendered as a
+    -- muddy blob that matched neither the chevron next to it nor the other windows.
+    if not (gearTex.SetAtlas and pcall(gearTex.SetAtlas, gearTex, "mechagon-projects", false)) then
+        gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
+        gearTex:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+        gearTex:SetDesaturated(true)
+    end
+    -- Idle tint on BOTH paths, same as the chevron beside it, so hover/leave stay symmetric.
+    ApplyTrackerUtilityIconStyle(gearTex, false)
 
     titleText:SetPoint("RIGHT", gearBtn, "LEFT", -10, 0)
+    titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
     titleText:SetMaxLines(1)
 
@@ -2296,14 +2365,14 @@ function WarbandNexus:CreatePlansTrackerWindow()
         if popup:IsShown() then popup:Hide() else popup:Show() end
     end)
     gearBtn:SetScript("OnEnter", function()
-        gearTex:SetVertexColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3])
+        ApplyTrackerUtilityIconStyle(gearTex, true)
         if CanApplyTrackerHeaderButtonChrome(gearBtn) and ApplyVisuals then
-            local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetControlChromeBackdrop()
-            ApplyVisuals(gearBtn, hoverBg, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+            local hoverBg = (ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop()) or GetChromeButtonBackdrop()
+            ApplyVisuals(gearBtn, hoverBg, chromeBorder)
         end
     end)
     gearBtn:SetScript("OnLeave", function()
-        gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+        ApplyTrackerUtilityIconStyle(gearTex, false)
         if CanApplyTrackerHeaderButtonChrome(gearBtn) and ApplyVisuals then
             ApplyVisuals(gearBtn, GetChromeButtonBackdrop(), chromeBorder)
         end
@@ -2318,8 +2387,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
         if closeBtn and closeBtn._wnCloseTex then
             closeBtn._wnCloseTex:SetVertexColor(closeR, closeG, closeB)
         end
-        collapseTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
-        gearTex:SetVertexColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3])
+        ApplyTrackerUtilityIconStyle(collapseTex, false)
+        ApplyTrackerUtilityIconStyle(gearTex, false)
     end
 
     -- â”€â”€ Custom themed category dropdown â”€â”€
@@ -2457,6 +2526,19 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
     end
 
+    -- Live drag frame: cheap reflow ONLY (header + scroll-child width + row stack). The heavy
+    -- SyncTrackerScrollBar (bar-column re-anchor + viewport chrome re-apply + deferred ticks) and any
+    -- card rebuild are deferred to mouse-up (onCommit) — running them per frame tanked FPS while resizing.
+    local function TrackerLiveResizeReflow(fr)
+        if fr._plansTrackerHeaderShell then
+            fr._plansTrackerHeaderShell:SetWidth(math.max(1, fr:GetWidth()))
+        end
+        if scrollChild then
+            scrollChild:SetWidth(GetTrackerContentColumnWidth(fr))
+        end
+        TrackerLayoutRowStack()
+    end
+
     resizer:SetScript("OnMouseUp", function()
         frame:StopMovingOrSizing()
         SavePosition(frame)
@@ -2475,7 +2557,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
     if LC and LC.RegisterSatelliteFrame then
         LC:RegisterSatelliteFrame(frame, {
             onLive = function(fr)
-                TrackerSatelliteLiveLayout(fr, true)
+                TrackerLiveResizeReflow(fr)
             end,
             onCommit = function()
                 RefreshTrackerContent()
@@ -2483,7 +2565,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
         })
     else
         frame:SetScript("OnSizeChanged", function()
-            TrackerSatelliteLiveLayout(frame, true)
+            TrackerLiveResizeReflow(frame)
         end)
     end
 

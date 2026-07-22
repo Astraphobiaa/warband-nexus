@@ -152,7 +152,11 @@ local function AddLabelOnlyRow(parent, y, iconPath, labelKey, labelFallback, row
     labelFs:SetWordWrap(false)
     local gr, gg, gb = GoldRGB()
     labelFs:SetTextColor(gr, gg, gb, 1)
-    labelFs:SetText((L(labelKey, labelFallback) or labelFallback) .. ":")
+    -- Some labels come from Blizzard globals that already end in ":" (e.g. MAIL_SUBJECT_LABEL = "Subject:"),
+    -- so strip any trailing colon/space before adding exactly one -- otherwise it renders "Subject::".
+    local labelText = L(labelKey, labelFallback) or labelFallback or ""
+    labelText = labelText:gsub("[%s:]+$", "")
+    labelFs:SetText(labelText .. ":")
 
     local usedH = max(LAYOUT.ROW_MIN_H, (labelFs.GetStringHeight and labelFs:GetStringHeight()) or LAYOUT.ROW_MIN_H)
     row:SetHeight(usedH)
@@ -179,7 +183,11 @@ local function AddFieldRow(parent, y, iconPath, labelKey, labelFallback, value, 
     labelFs:SetWordWrap(false)
     local gr, gg, gb = GoldRGB()
     labelFs:SetTextColor(gr, gg, gb, 1)
-    labelFs:SetText((L(labelKey, labelFallback) or labelFallback) .. ":")
+    -- Some labels come from Blizzard globals that already end in ":" (e.g. MAIL_SUBJECT_LABEL = "Subject:"),
+    -- so strip any trailing colon/space before adding exactly one -- otherwise it renders "Subject::".
+    local labelText = L(labelKey, labelFallback) or labelFallback or ""
+    labelText = labelText:gsub("[%s:]+$", "")
+    labelFs:SetText(labelText .. ":")
 
     local valueFs = FontManager:CreateFontString(row, "body", "OVERLAY")
     valueFs:SetPoint("TOPLEFT", labelFs, "TOPRIGHT", LAYOUT.TEXT_GAP, 0)
@@ -602,6 +610,23 @@ function WarbandNexus:ShowMailDetailsPopup(char)
         Factory:SyncScrollBarColumnToViewport(scroll, scrollBarColumn, { width = SCROLLBAR_COL_W, gap = scrollGap })
     elseif scroll.ScrollBar and Factory.PositionScrollBarInContainer then
         Factory:PositionScrollBarInContainer(scroll.ScrollBar, scrollBarColumn, 0)
+    end
+
+    -- Fixed viewport border framing the scroll area (and its scrollbar lane). Parented to
+    -- contentFrame -- NOT the scroll child -- so it stays put while the messages scroll inside it.
+    if ApplyVisuals then
+        local vpBorder = contentFrame._wnMailViewportBorder
+        if not vpBorder then
+            vpBorder = CreateFrame("Frame", nil, contentFrame)
+            contentFrame._wnMailViewportBorder = vpBorder
+        end
+        vpBorder:ClearAllPoints()
+        vpBorder:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", LAYOUT.PAD - 3, -(scrollTop - 3))
+        vpBorder:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -(LAYOUT.PAD - 3), scrollBottom - 3)
+        vpBorder:SetFrameLevel((scroll:GetFrameLevel() or 0) + 6)
+        if vpBorder.EnableMouse then vpBorder:EnableMouse(false) end
+        ApplyVisuals(vpBorder, { 0, 0, 0, 0 }, ItemCardBorder())
+        vpBorder:Show()
     end
 
     local cardW = ResolveScrollChildWidth(contentFrame)

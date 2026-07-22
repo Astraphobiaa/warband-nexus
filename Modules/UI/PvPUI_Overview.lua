@@ -923,8 +923,14 @@ local function EnsurePvpSectionShell(WN, bundle, parent, profile, opts)
     if expandKey then
         local existing = bundle.pvpSectionShells[expandKey]
         if existing and existing.body and existing.header then
+            -- Reused shells must re-sync width: rows resize every paint (EnsureOverviewRow SetSize),
+            -- but a header/body left at its creation width stays stale after a window resize.
+            local stackW = opts.stackWidth
             existing.header:SetParent(parent)
             existing.header:ClearAllPoints()
+            if stackW and existing.header.SetWidth then
+                existing.header:SetWidth(math.max(1, stackW))
+            end
             if opts.layoutTailFrame then
                 existing.header:SetPoint("TOPLEFT", opts.layoutTailFrame, "BOTTOMLEFT", 0, -4)
             else
@@ -933,6 +939,9 @@ local function EnsurePvpSectionShell(WN, bundle, parent, profile, opts)
             existing.header:Show()
             existing.body:SetParent(parent)
             existing.body:ClearAllPoints()
+            if stackW and existing.body.SetWidth then
+                existing.body:SetWidth(math.max(1, stackW))
+            end
             existing.body:SetPoint("TOPLEFT", existing.header, "BOTTOMLEFT", 0, 0)
             existing.body._pvpRowsOrdered = {}
             existing.body:Show()

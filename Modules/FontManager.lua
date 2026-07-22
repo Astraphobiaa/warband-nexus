@@ -518,11 +518,12 @@ local DEFAULT_LSM_KEY = "Expressway"
 -- Languages whose script the default/user font may not render. When such a language is
 -- the active interface language (db.profile.languageOverride) and the user has not chosen
 -- a non-default font, force this bundled font (LSM key). Extend for other scripts.
--- Turkish uses "Expressway TR" = Expressway + the İ glyph, under a NEW filename so WoW rasterizes
--- it fresh on /reload (overwriting Expressway.ttf would need a full client restart because WoW
--- caches loaded fonts for the session). Same narrow metrics as Expressway → no truncation.
+-- Turkish uses "Noto Sans": full Turkish / Latin-Extended coverage (İ, ş, ğ, ı, ç, ö, ü). The older
+-- "Expressway TR" only added the İ glyph on top of Expressway, so the remaining Turkish letters
+-- (ş, ğ, ı, …) rendered as missing glyphs — including in tooltips. Noto Sans is a touch wider than
+-- Expressway; if any tight column truncates in Turkish, widen that column rather than reverting.
 local LOCALE_FONT = {
-    trTR = "Expressway TR",
+    trTR = "Noto Sans",
 }
 
 -- Swap in the locale font when the active language needs it and the user kept the default

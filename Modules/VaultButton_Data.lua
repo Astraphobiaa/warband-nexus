@@ -210,10 +210,20 @@ function ns.CharHasClaimableVaultReward(charKey)
                 return false
             end
         end
+        local liveReady = false
         if WarbandNexus and WarbandNexus.HasUnclaimedVaultRewards then
-            return WarbandNexus:HasUnclaimedVaultRewards() == true
+            liveReady = WarbandNexus:HasUnclaimedVaultRewards() == true
         end
-        return false
+        -- Heal a stale cached `true` for the LOGGED-IN character the moment we see the live API say
+        -- "not ready". Background characters are counted from the cached flag + earned-slot heuristic
+        -- (the live API only works for the current char), so a stale `true` left here makes this
+        -- character over-count in the badge as soon as you switch away — the reported "count changes per
+        -- character" bug. HealStaleVaultRewardsCache also stamps claimed-this-week, so the background
+        -- path returns early (no auto-flip) for it.
+        if not liveReady and WarbandNexus and WarbandNexus.HealStaleVaultRewardsCache then
+            WarbandNexus:HealStaleVaultRewardsCache(charKey)
+        end
+        return liveReady
     end
     if rewardData and rewardData.hasAvailableRewards == true then
         return true
@@ -689,6 +699,31 @@ end
 
 local VAULT_TRACKER_SLOTS_PER_COL = 3
 
+--- Re-layout a column's sub-cells. `fullSpan` gives cell 1 the entire column so a word label
+--- ("Ready") has room; otherwise the three equal glyph cells are restored. Module-level (not a
+--- closure inside the painter) because this runs per row on every tracker refresh.
+function M.LayoutVaultColumnCells(cellGroup, fullSpan)
+    local fses, geom, row = cellGroup.fses, cellGroup.slotGeom, cellGroup.row
+    if not fses or not geom or not row then return end
+    if fullSpan then
+        local fs = fses[1]
+        if fs then
+            fs:ClearAllPoints()
+            fs:SetPoint("TOPLEFT", row, "TOPLEFT", cellGroup.baseX or geom[1].x, 0)
+            fs:SetSize(cellGroup.colWidth or geom[1].w, ROW_H)
+        end
+        return
+    end
+    for i = 1, VAULT_TRACKER_SLOTS_PER_COL do
+        local g = geom[i]
+        if fses[i] and g then
+            fses[i]:ClearAllPoints()
+            fses[i]:SetPoint("TOPLEFT", row, "TOPLEFT", g.x, 0)
+            fses[i]:SetSize(g.w, ROW_H)
+        end
+    end
+end
+
 function M.PaintVaultTrackerColumnCells(cellGroup, opts)
     opts = opts or {}
     local fses = cellGroup.fses
@@ -708,12 +743,17 @@ function M.PaintVaultTrackerColumnCells(cellGroup, opts)
     end
 
     if bindData.vaultLootClaimable then
-        if fses[2] and fses[2].SetText then
+        -- Give the label the whole column. It used to go into the middle sub-cell, which is only
+        -- a third of the column (24px at the default 72px width), so "Ready" rendered as "Re...".
+        LayoutVaultColumnCells(cellGroup, true)
+        if fses[1] and fses[1].SetText then
             local readyLabel = (ns.L and ns.L["VAULT_READY_TO_CLAIM"]) or "Ready"
-            fses[2]:SetText("|cff44ff44" .. readyLabel .. "|r")
+            fses[1]:SetText("|cff44ff44" .. readyLabel .. "|r")
         end
         return
     end
+    -- Not claimable: restore the three equal glyph cells (an earlier paint may have spanned them).
+    LayoutVaultColumnCells(cellGroup, false)
 
     local nextProg, nextThresh = GetVaultColumnNextProgress(slots)
     if shiftHeld and nextThresh and nextThresh > 0 then
@@ -838,6 +878,9 @@ function ns.UI_BindVaultColumnCells(row, baseX, colWidth, bindData)
     local slotW = math.floor(colWidth / VAULT_TRACKER_SLOTS_PER_COL)
     local extra = colWidth - (slotW * VAULT_TRACKER_SLOTS_PER_COL)
     local fses = {}
+    -- Remember each sub-cell's slot geometry. A claimable vault paints one label across the WHOLE
+    -- column instead of the three glyph cells, so the painter needs to restore this split.
+    local slotGeom = {}
     local offset = baseX
     for i = 1, VAULT_TRACKER_SLOTS_PER_COL do
         local w = slotW + ((i == VAULT_TRACKER_SLOTS_PER_COL) and extra or 0)
@@ -849,9 +892,17 @@ function ns.UI_BindVaultColumnCells(row, baseX, colWidth, bindData)
         if fs.SetWordWrap then fs:SetWordWrap(false) end
         if fs.SetMaxLines then fs:SetMaxLines(1) end
         fses[i] = fs
+        slotGeom[i] = { x = offset, w = w }
         offset = offset + w
     end
-    local cellGroup = { fses = fses, data = bindData }
+    local cellGroup = {
+        fses = fses,
+        data = bindData,
+        row = row,
+        baseX = baseX,
+        colWidth = colWidth,
+        slotGeom = slotGeom,
+    }
     S.vaultColumnCellBindings[fses[1]] = cellGroup
     PaintVaultTrackerColumnCells(cellGroup, { shiftHeld = IsShiftKeyDown and IsShiftKeyDown() })
 end
@@ -880,25 +931,32 @@ function M.BuildCharList()
     local settings   = GetSettings()
     local result     = {}
     for charKey, charData in pairs(characters) do
-        local isReady = ns.CharHasClaimableVaultReward(charKey) == true
-        local isPending  = not isReady and HasAnyProgress(charKey)
-        local bounty = GetBountyStatus(charKey)
-        if isReady or isPending or (settings.includeBountyOnly and bounty == true) then
-            table.insert(result, {
-                charKey   = charKey,
-                name      = charData.name or charKey,
-                realm     = charData.realm or "",
-                classFile = charData.classFile or "WARRIOR",
-                itemLevel = charData.itemLevel or 0,
-                isReady   = isReady,
-                isPending = isPending,
-                isCurrent = CharKeysMatch(charKey, currentKey),
-                bounty    = bounty,
-                voidcore  = GetVoidcoreData(charKey),
-                manaflux  = GetManafluxData(charKey),
-                gildedStash = GetGildedStashData(charKey),
-                slots     = CountReadySlots(charKey),
-            })
+        -- Untracked characters are Characters-tab only: never walk their (possibly stale) vault
+        -- rows here. This also keeps the badge/table sweep O(tracked) instead of O(all stored
+        -- characters) -- the cause of the lag on accounts with many untracked alts, where each
+        -- extra row otherwise paid several pveCache scans (CharHasClaimableVaultReward +
+        -- HasAnyProgress + GetBountyStatus) before being discarded.
+        if type(charData) == "table" and charData.isTracked == true then
+            local isReady = ns.CharHasClaimableVaultReward(charKey) == true
+            local isPending  = not isReady and HasAnyProgress(charKey)
+            local bounty = GetBountyStatus(charKey)
+            if isReady or isPending or (settings.includeBountyOnly and bounty == true) then
+                table.insert(result, {
+                    charKey   = charKey,
+                    name      = charData.name or charKey,
+                    realm     = charData.realm or "",
+                    classFile = charData.classFile or "WARRIOR",
+                    itemLevel = charData.itemLevel or 0,
+                    isReady   = isReady,
+                    isPending = isPending,
+                    isCurrent = CharKeysMatch(charKey, currentKey),
+                    bounty    = bounty,
+                    voidcore  = GetVoidcoreData(charKey),
+                    manaflux  = GetManafluxData(charKey),
+                    gildedStash = GetGildedStashData(charKey),
+                    slots     = CountReadySlots(charKey),
+                })
+            end
         end
     end
     table.sort(result, function(a, b)
@@ -909,11 +967,61 @@ function M.BuildCharList()
     return result
 end
 
-function M.CountReady()
-    local n = 0
-    for _, e in ipairs(BuildCharList()) do
-        if e.isReady then n = n + 1 end
+-- ---------------------------------------------------------------------------
+-- Vault snapshot -- the single source of truth for "how many characters have an
+-- unclaimed Great Vault reward".
+--
+-- BuildCharList walks every tracked roster row against the pveCache buckets. Four consumers
+-- (badge count, button visibility, tracker table, tooltips) each used to run their OWN sweep at
+-- whatever moment they happened to redraw, so they could disagree with each other: opening the
+-- tracker refreshed the table from current data while the badge kept the number it had rendered
+-- earlier -- the "badge says 3, table lists 2" bug. Everything now reads one memoized snapshot,
+-- rebuilt only when the underlying data actually changes, which also collapses those four
+-- sweeps into one.
+-- ---------------------------------------------------------------------------
+local snapshotList, snapshotReady, snapshotWeekId
+local snapshotValid = false
+
+--- Identity of the current weekly reset period. It changes the moment the weekly reset passes,
+--- so a snapshot taken last week can never keep reporting that a character has nothing waiting.
+local function CurrentVaultWeekId()
+    if not (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) then return 0 end
+    local ok, secs = pcall(C_DateAndTime.GetSecondsUntilWeeklyReset)
+    if not ok or type(secs) ~= "number" then return 0 end
+    -- Epoch of the upcoming reset, floored to the minute so clock jitter does not churn it.
+    return math.floor(((GetServerTime() or 0) + secs) / 60)
+end
+
+--- Drop the memoized snapshot. Call this after ANY write that can change vault state (cache
+--- refresh, claim, roster change); the next read rebuilds it.
+function M.InvalidateVaultSnapshot()
+    snapshotValid = false
+end
+
+--- Authoritative vault roster. Returns (list, readyCount) -- every consumer must use this
+--- instead of calling BuildCharList directly, otherwise it can drift from the badge again.
+function M.GetVaultCharList()
+    local weekId = CurrentVaultWeekId()
+    if snapshotValid and snapshotWeekId ~= weekId then
+        snapshotValid = false
     end
+    if not snapshotValid then
+        snapshotList = M.BuildCharList()
+        local n = 0
+        for i = 1, #snapshotList do
+            if snapshotList[i].isReady then n = n + 1 end
+        end
+        snapshotReady = n
+        snapshotWeekId = weekId
+        snapshotValid = true
+    end
+    return snapshotList, snapshotReady
+end
+
+--- Characters with an unclaimed Great Vault reward. Claiming drops a character out of the list,
+--- so the count falls on its own; 0 means the badge is hidden entirely.
+function M.CountReady()
+    local _, n = M.GetVaultCharList()
     return n
 end
 

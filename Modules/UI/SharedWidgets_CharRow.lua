@@ -34,35 +34,43 @@ local CHAR_ROW_COLUMNS = {
         spacing = 15,
         total = 115,
     },
+    -- `min` = readability floor for flex columns: narrow viewports shrink these toward min
+    -- (proportional) before the horizontal scrollbar takes over.
     guild = {
         width = 130,
         spacing = 15,
         total = 145,
+        min = 60,
     },
     level = {
         width = 82,
         spacing = 15,
         total = 97,
+        min = 70,   -- "Zzz 150.00%" rested line
     },
     itemLevel = {
         width = 75,
         spacing = 15,
         total = 90,
+        min = 64,   -- "iLvl 288"
     },
     gold = {
         width = 190,
         spacing = 15,
         total = 205,
+        min = 150,  -- three coin groups at FormatMoney's 12-char cap
     },
     professions = {
         width = 150,
         spacing = 0,
         total = 150,
+        min = 128,  -- 3 icons x 39 + 2 x 5 gaps
     },
     mythicKey = {
         width = 120,
         spacing = 15,
         total = 135,
+        min = 96,   -- icon + "+10 - AD"
     },
     mail = {
         width = 36,
@@ -163,17 +171,61 @@ local function ComputeCharRowGuildColumnWidth(listRowW, measuredGuildW)
     local maxGuild = (listRowW or 800) - guildOffset - middleW - railW - 4
     local gCol = CHAR_ROW_COLUMNS.guild or {}
     local measured = measuredGuildW or gCol.width or 130
-    return math.min(measured, math.max(60, maxGuild))
+    return math.min(measured, math.max(gCol.min or 60, maxGuild))
 end
 
-local function ComputeCharactersMinScrollWidth(_addon, guildColW)
-    if GetCharRowTotalWidthForGuild then
-        return math.max(720, GetCharRowTotalWidthForGuild(guildColW))
+local CHAR_ROW_FLEX_ORDER = { "level", "itemLevel", "gold", "professions", "mythicKey" }
+
+--- Effective column widths for a given row width. At or above the ideal total every column
+--- keeps its ideal width; below it, guild compresses first (measured cap), then the flex pool
+--- shrinks proportionally toward each column's `min`. Offsets stay chained in the callers.
+---@param rowW number|nil Row paint width
+---@param measuredGuildW number|nil Widest guild name measured for the roster
+---@return table effWidths { guild, level, itemLevel, gold, professions, mythicKey }
+local function ComputeCharRowFlexColumns(rowW, measuredGuildW)
+    local c = CHAR_ROW_COLUMNS
+    local out = {
+        guild = ComputeCharRowGuildColumnWidth(rowW, measuredGuildW),
+        level = c.level.width,
+        itemLevel = c.itemLevel.width,
+        gold = c.gold.width,
+        professions = c.professions.width,
+        mythicKey = c.mythicKey.width,
+    }
+    if not rowW or rowW < 1 then return out end
+    local deficit = GetCharRowTotalWidthForGuild(out.guild) - rowW
+    if deficit <= 0 then return out end
+    local slack = 0
+    for i = 1, #CHAR_ROW_FLEX_ORDER do
+        local col = c[CHAR_ROW_FLEX_ORDER[i]]
+        slack = slack + math.max(0, col.width - (col.min or col.width))
     end
-    if GetCharRowTotalWidth then
-        return math.max(720, GetCharRowTotalWidth())
+    if slack <= 0 then return out end
+    local ratio = math.min(1, deficit / slack)
+    for i = 1, #CHAR_ROW_FLEX_ORDER do
+        local key = CHAR_ROW_FLEX_ORDER[i]
+        local col = c[key]
+        local give = math.max(0, col.width - (col.min or col.width)) * ratio
+        out[key] = math.floor(col.width - give + 0.5)
     end
-    return 1100
+    return out
+end
+
+local function GetCharRowTotalWidthAtMinimums()
+    local width = 10
+    for oi = 1, #CHAR_ROW_COLUMN_ORDER do
+        local col = CHAR_ROW_COLUMNS[CHAR_ROW_COLUMN_ORDER[oi]]
+        local w = (col.min or col.width) + (col.spacing or 0)
+        width = width + math.min(col.total, w)
+    end
+    return width + 10
+end
+
+local function ComputeCharactersMinScrollWidth(_addon, _guildColW)
+    -- Flex columns absorb the difference down to their minimums; only below this floor does
+    -- the horizontal scrollbar take over. Ideal widths must NOT drive the floor (that pinned
+    -- the tab at ~1350px and broke responsive shrink after a window resize).
+    return math.max(720, GetCharRowTotalWidthAtMinimums())
 end
 
 local function ResolveCharactersTabRowWidth(mainFrame, scrollParent, metrics, guildColW)
@@ -251,4 +303,5 @@ ns.UI_CHAR_ROW_RIGHT_MARGIN = CHAR_ROW_RIGHT_MARGIN
 ns.UI_CHAR_ROW_RIGHT_GAP = CHAR_ROW_RIGHT_GAP
 ns.UI_ResolveCharactersTabRowWidth = ResolveCharactersTabRowWidth
 ns.UI_ComputeCharactersMinScrollWidth = ComputeCharactersMinScrollWidth
+ns.UI_ComputeCharRowFlexColumns = ComputeCharRowFlexColumns
 ns.UI_SyncGridColumnDividers = SyncGridColumnDividers

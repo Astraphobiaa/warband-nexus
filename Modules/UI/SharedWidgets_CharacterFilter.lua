@@ -762,6 +762,7 @@ function ns.UI_BuildCharacterSortOptions()
     out[#out + 1] = { key = "ilvl", label = SortOptionLabel("SORT_MODE_ILVL", "Item Level (Highest)") }
     out[#out + 1] = { key = "gold", label = SortOptionLabel("SORT_MODE_GOLD", "Gold (Highest)") }
     out[#out + 1] = { key = "realm", label = SortOptionLabel("SORT_MODE_REALM", "Realm (A-Z)") }
+    out[#out + 1] = { key = "guild", label = SortOptionLabel("SORT_MODE_GUILD", "Guild (A-Z)") }
     return out
 end
 
@@ -777,6 +778,7 @@ function ns.UI_BuildPvpOverviewSortOptions()
     out[#out + 1] = { key = "ilvl", label = SortOptionLabel("SORT_MODE_ILVL", "Item Level (Highest)") }
     out[#out + 1] = { key = "gold", label = SortOptionLabel("SORT_MODE_GOLD", "Gold (Highest)") }
     out[#out + 1] = { key = "realm", label = SortOptionLabel("SORT_MODE_REALM", "Realm (A-Z)") }
+    out[#out + 1] = { key = "guild", label = SortOptionLabel("SORT_MODE_GUILD", "Guild (A-Z)") }
     return out
 end
 

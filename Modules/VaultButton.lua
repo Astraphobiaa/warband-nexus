@@ -707,6 +707,11 @@ function M.ScheduleDataRefresh()
     pendingDataRefresh = true
     C_Timer.After(0.1, function()
         pendingDataRefresh = false
+        -- Vault state may have changed underneath us: drop the memoized snapshot so the badge,
+        -- the tracker table and the tooltips all rebuild from the same fresh sweep this pass.
+        if M.InvalidateVaultSnapshot then
+            M.InvalidateVaultSnapshot()
+        end
         if M.UpdateBadge then
             M.UpdateBadge()
         elseif UpdateBadge then

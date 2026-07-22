@@ -186,9 +186,10 @@ local function WriteVaultRewardsCache(charKey, rewardData)
     gv.rewards[charKey] = rewardData
 end
 
---- True when the logged-in character has unclaimed Great Vault loot for the current reward period.
---- Uses HasAvailableRewards + AreRewardsForCurrentRewardPeriod; does not require CanClaimRewards
---- (false when the player must travel to the Great Vault, matching Blizzard's unclaimed prompt).
+--- True when the logged-in character has ANY unclaimed Great Vault loot waiting -- including loot
+--- earned in an earlier reward period, which stays in the chest and stays claimable.
+--- Uses HasAvailableRewards only; does not require CanClaimRewards (that is false whenever the
+--- player still has to travel to the Great Vault, matching Blizzard's unclaimed prompt).
 ---@return boolean
 function ns.WeeklyVaultHasPendingRewards()
     if ns._vaultSelfTestOverridePending == true then
@@ -204,13 +205,33 @@ function ns.WeeklyVaultHasPendingRewards()
     if not ok or not has then
         return false
     end
-    if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
-        local okP, periodCurrent = pcall(C_WeeklyRewards.AreRewardsForCurrentRewardPeriod)
-        if okP and periodCurrent == false then
-            return false
-        end
-    end
+    -- Rewards from an OLDER reward period are still sitting in the chest and are still claimable.
+    -- Blizzard's own vault frame proves it: WeeklyRewardsMixin:UpdatePreviousClaim shows
+    -- PreviousRewardNotification for exactly `HasAvailableRewards() and not
+    -- AreRewardsForCurrentRewardPeriod()`. This used to early-return false in that case, which
+    -- hid the vault of anyone who left it unclaimed for a week or more -- and worse, let the cache
+    -- heal stamp them "claimed this week", hiding it permanently from their other characters too.
+    -- Use ns.WeeklyVaultRewardsAreFromPreviousPeriod() when the age of the loot matters.
     return true
+end
+
+--- True when the loot waiting in the vault was earned in an EARLIER reward period (still
+--- claimable; Blizzard flags it with its own "previous reward" notice). Label/diagnostic use only
+--- -- never gate "is something waiting" on this.
+---@return boolean
+function ns.WeeklyVaultRewardsAreFromPreviousPeriod()
+    if not C_WeeklyRewards or not C_WeeklyRewards.HasAvailableRewards then
+        return false
+    end
+    local ok, has = pcall(C_WeeklyRewards.HasAvailableRewards)
+    if not ok or not has then
+        return false
+    end
+    if not C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
+        return false
+    end
+    local okP, periodCurrent = pcall(C_WeeklyRewards.AreRewardsForCurrentRewardPeriod)
+    return okP and periodCurrent == false
 end
 
 --- True when vault rewards can be claimed at the current location (vault frame / NPC proximity).
@@ -2454,12 +2475,50 @@ end
 
 -- VAULT CLAIM / KEYSTONE SYNC (Easy Access, PvE tab, Vault Tracker)
 
+-- Blizzard only asks the server to resend Great Vault data when the Great Vault window opens
+-- (WeeklyRewardsMixin:OnShow calls C_WeeklyRewards.OnUIInteract). Until that happens the live
+-- C_WeeklyRewards state stays whatever it was at login -- which is why the Easy Access badge used
+-- to require a visit to that screen before it noticed a claimed or newly-filled vault. We make the
+-- same call ourselves on the events that can change vault state. Throttled: it is a server
+-- round-trip and several of those events burst (UPDATE_INSTANCE_INFO repeats while zoning).
+local lastWeeklyVaultPoke = 0
+local WEEKLY_VAULT_POKE_THROTTLE = 2.0
+
+local function PokeWeeklyVaultServer()
+    if not (C_WeeklyRewards and C_WeeklyRewards.OnUIInteract) then return end
+    local now = (GetTime and GetTime()) or 0
+    if lastWeeklyVaultPoke > 0 and (now - lastWeeklyVaultPoke) < WEEKLY_VAULT_POKE_THROTTLE then
+        return
+    end
+    lastWeeklyVaultPoke = now
+    pcall(C_WeeklyRewards.OnUIInteract)
+end
+
+---Ask the server to resend Great Vault data so the badge can update without the player having to
+---open the Great Vault. The reply arrives as WEEKLY_REWARDS_UPDATE, which already refreshes the
+---cache and the badge.
+---@param delay number|nil seconds to wait first (let the server settle after a claim)
+function WarbandNexus:RequestWeeklyVaultRefresh(delay)
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then return end
+    if delay and delay > 0 then
+        C_Timer.After(delay, PokeWeeklyVaultServer)
+    else
+        PokeWeeklyVaultServer()
+    end
+end
+
 ---Redraw Easy Access badge / tracker immediately (not gated on main window visibility).
 function WarbandNexus:NotifyVaultEasyAccessRefresh()
     local VB = ns.VaultButton
     if not VB then return end
     if VB.BuildButton and not (VB.state and VB.state.badge) then
         VB.BuildButton()
+    end
+    -- This runs right after a claim / keystone write, so the memoized vault snapshot is stale by
+    -- definition. Invalidate BEFORE the immediate UpdateBadge below, otherwise the badge would
+    -- re-render the pre-claim count and only correct itself on the deferred refresh.
+    if VB.InvalidateVaultSnapshot then
+        VB.InvalidateVaultSnapshot()
     end
     if VB.UpdateBadge then
         VB.UpdateBadge()
@@ -2475,7 +2534,14 @@ local function NotifyVaultEasyAccessRefresh()
     end
 end
 
----When live API reports no pending vault but SV still has hasAvailableRewards=true, heal the row.
+---Persist "this character's vault is not waiting" while we are logged into them, so the row cannot
+---be resurrected once they drop into the background.
+---
+---CharHasClaimableVaultReward has TWO ways to call a background character claimable: the cached
+---`hasAvailableRewards` flag, and the earned-slots + reset-crossed heuristic. This used to heal only
+---the first, so a character that qualified via the heuristic never got a claim stamp -- it read
+---correctly from the live API while you played it, then went back to "reward waiting" the moment you
+---switched away, forever. Stamp the claim whenever EITHER path would still report it claimable.
 function WarbandNexus:HealStaleVaultRewardsCache(charKey)
     if not charKey or not self.db or not self.db.global or not self.db.global.pveCache then
         return
@@ -2484,22 +2550,102 @@ function WarbandNexus:HealStaleVaultRewardsCache(charKey)
     if not charKey or not IsSessionPvECharacter(charKey) then
         return
     end
+    -- Never stamp "claimed" from live data the server has not sent yet. Before
+    -- WEEKLY_REWARDS_UPDATE lands, HasAvailableRewards() reports false even for a vault that IS
+    -- waiting, and stamping that would hide a real reward for the rest of the week.
+    if not vaultDataFreshThisSession then
+        return
+    end
     if ns.WeeklyVaultHasPendingRewards() then
         return
     end
     local rewardsTable = self.db.global.pveCache.greatVault and self.db.global.pveCache.greatVault.rewards
     local row = LookupVaultRewardsEntry(rewardsTable, charKey)
-    if not row or row.hasAvailableRewards ~= true then
+    -- Already stamped for this reward period: nothing to do.
+    if row and ns.VaultRewardsClaimedForCurrentWeek and ns.VaultRewardsClaimedForCurrentWeek(row) then
+        return
+    end
+    local flagSaysReady = (row and row.hasAvailableRewards == true) or false
+    local heuristicSaysReady = (ns.CountEarnedVaultSlots and ns.VaultResetCrossedFor
+        and (ns.CountEarnedVaultSlots(charKey) or 0) > 0
+        and ns.VaultResetCrossedFor(charKey)) or false
+    if not flagSaysReady and not heuristicSaysReady then
         return
     end
     local stamp = time()
+    local currentWeekStart = GetCurrentWeeklyResetStartTime()
+    -- The stamp MUST describe the current reward period. Carrying an older claimedResetTime /
+    -- claimedAt forward (what this used to do whenever the row already had one) re-wrote last
+    -- week's stamp verbatim, so VaultRewardsClaimedForCurrentWeek stayed false and the
+    -- earned-slots heuristic kept reporting the character as "reward waiting" from every other
+    -- character -- the heal ran every time and changed nothing.
+    local priorClaimedAt = (row and tonumber(row.claimedAt)) or 0
+    local claimedAt = stamp
+    if currentWeekStart and priorClaimedAt >= currentWeekStart then
+        claimedAt = priorClaimedAt  -- genuine claim already made inside this period: keep its time
+    end
     WriteVaultRewardsCache(charKey, {
         hasAvailableRewards = false,
         lastUpdate = stamp,
-        claimedAt = tonumber(row.claimedAt) or stamp,
-        claimedResetTime = tonumber(row.claimedResetTime) or GetCurrentWeeklyResetStartTime(),
+        claimedAt = claimedAt,
+        claimedResetTime = currentWeekStart,
     })
     self:SavePvECache()
+end
+
+---Print exactly why each tracked character is (or is not) counted as having an unclaimed Great
+---Vault. Run it on the character whose vault you just looted, then on another character, and
+---compare: the row stamps and the two "claimable" paths show which one is keeping it counted.
+function WarbandNexus:PrintVaultDiagnostics()
+    local pveCache = self.db and self.db.global and self.db.global.pveCache
+    if not pveCache then
+        self:Print("|cffff6600[WN Vault]|r no pveCache.")
+        return
+    end
+    local resetStart = GetCurrentWeeklyResetStartTime()
+    self:Print(string.format("|cff9370DB[WN Vault]|r session=%s dataFresh=%s weekStart=%s",
+        tostring(GetSessionCanonicalPvEKey()), tostring(vaultDataFreshThisSession), tostring(resetStart)))
+
+    local liveHas, livePeriod = "n/a", "n/a"
+    if C_WeeklyRewards then
+        if C_WeeklyRewards.HasAvailableRewards then
+            local ok, v = pcall(C_WeeklyRewards.HasAvailableRewards)
+            liveHas = ok and tostring(v) or "err"
+        end
+        if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
+            local ok, v = pcall(C_WeeklyRewards.AreRewardsForCurrentRewardPeriod)
+            livePeriod = ok and tostring(v) or "err"
+        end
+    end
+    self:Print(string.format("  live: hasAvailable=%s currentPeriod=%s pending=%s fromPrevPeriod=%s",
+        liveHas, livePeriod, tostring(ns.WeeklyVaultHasPendingRewards()),
+        tostring(ns.WeeklyVaultRewardsAreFromPreviousPeriod
+            and ns.WeeklyVaultRewardsAreFromPreviousPeriod())))
+
+    local characters = (self.db.global and self.db.global.characters) or {}
+    local rewards = pveCache.greatVault and pveCache.greatVault.rewards
+    for rosterKey, charData in pairs(characters) do
+        if type(charData) == "table" and charData.isTracked == true then
+            local row = rewards and LookupVaultRewardsEntry(rewards, rosterKey)
+            local claimedWeek = row and ns.VaultRewardsClaimedForCurrentWeek
+                and ns.VaultRewardsClaimedForCurrentWeek(row)
+            local earned = (ns.CountEarnedVaultSlots and ns.CountEarnedVaultSlots(rosterKey)) or 0
+            local crossed = ns.VaultResetCrossedFor and ns.VaultResetCrossedFor(rosterKey)
+            local verdict = ns.CharHasClaimableVaultReward and ns.CharHasClaimableVaultReward(rosterKey)
+            self:Print(string.format("|cffffcc00%s|r canon=%s isSession=%s",
+                tostring(charData.name or rosterKey), tostring(CanonicalizePvEKey(rosterKey)),
+                tostring(IsSessionPvECharacter(rosterKey))))
+            if row then
+                self:Print(string.format("   row: has=%s claimedAt=%s claimedReset=%s claimedThisWeek=%s",
+                    tostring(row.hasAvailableRewards), tostring(row.claimedAt),
+                    tostring(row.claimedResetTime), tostring(claimedWeek)))
+            else
+                self:Print("   row: <none>")
+            end
+            self:Print(string.format("   earnedSlots=%s resetCrossed=%s  => CLAIMABLE=%s",
+                tostring(earned), tostring(crossed), tostring(verdict)))
+        end
+    end
 end
 
 ---Toast only on false→true claimable transition (not after claim clears the chest).
@@ -2782,7 +2928,11 @@ function WarbandNexus:RegisterPvECacheEvents()
         
         -- Then update with new data
         ThrottledPvEUpdate()
-        
+
+        -- Weekly reset just rolled over: last week's vault is now claimable, so pull fresh vault
+        -- data instead of waiting for the player to open the Great Vault.
+        WarbandNexus:RequestWeeklyVaultRefresh()
+
         -- Also refresh keystone detection (new weekly key may be in bags)
         if WarbandNexus.RequestKeystoneRefresh then
             WarbandNexus:RequestKeystoneRefresh("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", true)
@@ -2808,6 +2958,10 @@ function WarbandNexus:RegisterPvECacheEvents()
             WarbandNexus:RefreshVaultClaimState(key)
         end
         NotifyVaultEasyAccessRefresh()
+        -- Re-poke the server after the claim settles: without this the live C_WeeklyRewards state
+        -- still reports the pre-claim vault, so the badge kept counting a vault already looted
+        -- until the player reopened the Great Vault.
+        WarbandNexus:RequestWeeklyVaultRefresh(0.5)
         -- Keystone API can lag behind the vault UI by a few frames after a key reward.
         RefreshVaultRewardsAfterItemChange(0.2)
         RefreshVaultRewardsAfterItemChange(0.6)
@@ -2817,6 +2971,8 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Raid lockout events
     self:RegisterEvent("UPDATE_INSTANCE_INFO", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] UPDATE_INSTANCE_INFO triggered")
+        -- A raid boss kill can fill a vault slot; ask for fresh vault data too (throttled).
+        WarbandNexus:RequestWeeklyVaultRefresh()
         ThrottledPvEUpdate()
     end)
     
@@ -2824,6 +2980,8 @@ function WarbandNexus:RegisterPvECacheEvents()
     pcall(function()
         self:RegisterEvent("DELVES_ACCOUNT_DATA_ELEMENT_CHANGED", function()
             DebugPrint("|cff9370DB[PvECache]|r [PvE Event] DELVES_ACCOUNT_DATA_ELEMENT_CHANGED triggered")
+            -- Delve completion can fill the world vault slot.
+            WarbandNexus:RequestWeeklyVaultRefresh()
             ThrottledPvEUpdate()
         end)
     end)
@@ -2890,7 +3048,16 @@ function WarbandNexus:_OnVaultDataReceivedBody()
     self:UpdateCharacterKeystone(charKey)
     self:UpdateMythicPlusBestRuns(charKey)
     self:UpdateGreatVaultRewards(charKey)
-    
+
+    -- The server has just confirmed this character's vault state (this handler only runs on
+    -- WEEKLY_REWARDS_UPDATE), so persist "nothing waiting" right here. Previously that fact was
+    -- only written if the badge happened to recompute while this character was logged in, so a
+    -- character whose vault was already looted went straight back to reporting an unclaimed
+    -- reward the moment you switched to another character.
+    if IsSessionPvECharacter(charKey) and self.HealStaleVaultRewardsCache then
+        self:HealStaleVaultRewardsCache(charKey)
+    end
+
     -- Update timestamp (data already in DB)
     self:SavePvECache()
     
@@ -2906,6 +3073,14 @@ end
 ---Sync vault data from VaultScanner to PvECacheService
 function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     if not vaultSlots or type(vaultSlots) ~= "table" then
+        return
+    end
+    -- GUARD: never persist vault data for an untracked character. VaultScanner registers
+    -- PLAYER_ENTERING_WORLD / WEEKLY_REWARDS_UPDATE unconditionally, so it fires on every login --
+    -- but untracked characters must stay Characters-tab only, with no per-character vault rows in
+    -- SavedVariables. This mirrors the tracked-gate every sibling PvE writer already has
+    -- (UpdatePvEData / UpdateCharacterKeystone / UpdateGreatVaultRewards).
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
     -- Never sync an empty slot list into SavedVariables: callers should use

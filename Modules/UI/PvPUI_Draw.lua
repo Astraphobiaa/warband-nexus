@@ -15,6 +15,8 @@ function M.DrawTab(parent)
     local width = (metrics and metrics.contentWidth)
         or (M.ns.UI_ResolveMainTabContentWidth and M.ns.UI_ResolveMainTabContentWidth(mf, parent))
         or (parent:GetWidth() or 600)
+    -- Dashboard cards (progress bars, rated brackets, recent matches) size to the VIEWPORT so they
+    -- stay fully visible; only the roster table below scrolls horizontally for its dense columns.
 
     local chrome = M.ns.UI_BeginTabChromeLayout and M.ns.UI_BeginTabChromeLayout(mf)
     local fixedHeader = mf and mf.fixedHeader

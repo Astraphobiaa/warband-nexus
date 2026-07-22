@@ -390,6 +390,14 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             return
         end
+        if subLower == "diag" or subLower == "diagnostics" then
+            if addon.PrintVaultDiagnostics then
+                addon:PrintVaultDiagnostics()
+            else
+                addon:Print("|cffff6600[WN]|r Vault diagnostics unavailable.")
+            end
+            return
+        end
         if subLower == "simulate" then
             if thirdLower == "ready" then
                 if addon.SimulateVaultReadyForTest then
@@ -410,7 +418,7 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cffff6600Usage:|r /wn vault simulate ready | claim | clear")
             return
         end
-        addon:Print("|cffff6600Usage:|r /wn vault test | simulate ready | claim | clear")
+        addon:Print("|cffff6600Usage:|r /wn vault diag | test | simulate ready | claim | clear")
         return
 
     elseif cmd == "pvp" then

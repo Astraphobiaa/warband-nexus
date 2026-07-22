@@ -324,14 +324,20 @@ local UI_SPACING = {
         TRY_COUNT_POPUP_HEADER_HEIGHT = 32,
         --- `RecipeCompanionWindow`: draggable title band (narrower than `HEADER_BAR_HEIGHT`).
         RECIPE_COMPANION_HEADER_HEIGHT = 32,
-        --- Floating To-Do List tracker title band (compact; not main-shell NAV_BAR_HEIGHT).
-        PLANS_TRACKER_HEADER_HEIGHT = 28,
+        --- Floating To-Do List tracker title band (matches the main window HEADER_BAR_HEIGHT so the
+        --- header layout — full-width band, 34px icon, 28px utility buttons — mirrors the main shell).
+        PLANS_TRACKER_HEADER_HEIGHT = 40,
+        --- Dark-mode tracker title band: accentDark lifted toward accent by this blend factor.
+        PLANS_TRACKER_HEADER_ACCENT_BLEND = 0.30,
         --- Scroll viewport rim: keep first/last cards off content-area top/bottom edges.
         PLANS_TRACKER_VIEWPORT_PAD_TOP = 16,
         PLANS_TRACKER_VIEWPORT_PAD_BOTTOM = 16,
-        --- Inside scroll child (clip rect): extra breathing room when scrolled to ends.
-        PLANS_TRACKER_SCROLL_CONTENT_PAD_TOP = 10,
-        PLANS_TRACKER_SCROLL_CONTENT_PAD_BOTTOM = 10,
+        --- Inside scroll child (clip rect): 0 keeps first/last cards flush with the scrollbar
+        --- column ends (breathing room comes from the viewport shell pads above).
+        PLANS_TRACKER_SCROLL_CONTENT_PAD_TOP = 0,
+        PLANS_TRACKER_SCROLL_CONTENT_PAD_BOTTOM = 0,
+        --- Modern: gap between the fixed viewport border stroke and the scrolling cards/bar lane.
+        PLANS_TRACKER_VIEWPORT_INNER_INSET = 5,
         --- Root shell: flat fill only (no tooltip 9-slice edge).
         MAIN_FRAME_BACKDROP = {
             bgFile = "Interface\\Buttons\\WHITE8x8",

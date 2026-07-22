@@ -539,6 +539,10 @@ function CharacterService:RemoveCharacterSubsidiaryKeys(addon, charKey)
     removed = removed + PurgeCharKeyedEntries(g.statisticSnapshots, charKey)
     removed = removed + PurgeCharKeyedEntries(g.personalBanks, charKey)
     removed = removed + PurgeCharKeyedEntries(g.itemStorage, charKey)
+    -- PvP stores are per-character keyed like the buckets above; without these they orphaned in
+    -- SavedVariables forever after a character was deleted.
+    removed = removed + PurgeCharKeyedEntries(g.pvpProgress, charKey)
+    removed = removed + PurgeCharKeyedEntries(g.pvpMatches, charKey)
 
     local pc = g.pveCache
     if type(pc) == "table" then
@@ -1157,6 +1161,7 @@ CharacterService.VALID_CHARACTER_SORT_KEYS = {
     ilvl = true,
     gold = true,
     realm = true,
+    guild = true,
     pvpRating = true,
 }
 
@@ -1235,6 +1240,19 @@ function CharacterService:CompareCharactersBySortKey(a, b, sortKey, opts)
         local rb = CharSortSafeLower(b.realm)
         if ra ~= rb then
             return ra < rb
+        end
+        return compareName(a, b)
+    elseif sortKey == "guild" then
+        local ga = CharSortSafeLower(a.guildName)
+        local gb = CharSortSafeLower(b.guildName)
+        -- Guildless characters go to the end instead of leading the list with blank names.
+        local aNoGuild = (ga == "")
+        local bNoGuild = (gb == "")
+        if aNoGuild ~= bNoGuild then
+            return bNoGuild
+        end
+        if ga ~= gb then
+            return ga < gb
         end
         return compareName(a, b)
     elseif sortKey == "pvpRating" then

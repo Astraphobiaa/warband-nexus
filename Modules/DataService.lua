@@ -1700,11 +1700,9 @@ function WarbandNexus:CollectPvEData()
     if ns.WeeklyVaultHasPendingRewards then
         pve.hasUnclaimedRewards = ns.WeeklyVaultHasPendingRewards()
     elseif C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-        local has = C_WeeklyRewards.HasAvailableRewards()
-        if has and C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and not C_WeeklyRewards.AreRewardsForCurrentRewardPeriod() then
-            has = false
-        end
-        pve.hasUnclaimedRewards = has
+        -- No AreRewardsForCurrentRewardPeriod gate: loot earned in an earlier reward period is
+        -- still in the chest and still claimable, so it must keep counting as unclaimed.
+        pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards() and true or false
     else
         pve.hasUnclaimedRewards = false
     end
@@ -1845,7 +1843,14 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
     if not ns.Utilities:IsModuleEnabled("pve") then
         return
     end
-    
+    -- GUARD: untracked characters are Characters-tab only. Without this, re-enabling the PvE
+    -- module while logged into an untracked character ran the full staged scan and persisted
+    -- vault activities / M+ keystones / lockouts through ImportLegacyPvEData, which has no gate
+    -- of its own -- bypassing the tracked-gate on UpdatePvEData and SyncVaultDataFromScanner.
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+
     -- Reset cancelled flag
     ns.PvELoadingState.cancelled = false
     
@@ -1905,11 +1910,9 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
         if ns.WeeklyVaultHasPendingRewards then
             pve.hasUnclaimedRewards = ns.WeeklyVaultHasPendingRewards()
         elseif C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-            local has = C_WeeklyRewards.HasAvailableRewards()
-            if has and C_WeeklyRewards.AreRewardsForCurrentRewardPeriod and not C_WeeklyRewards.AreRewardsForCurrentRewardPeriod() then
-                has = false
-            end
-            pve.hasUnclaimedRewards = has
+            -- No AreRewardsForCurrentRewardPeriod gate: loot earned in an earlier reward period is
+            -- still in the chest and still claimable, so it must keep counting as unclaimed.
+            pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards() and true or false
         end
         
         -- Update progress

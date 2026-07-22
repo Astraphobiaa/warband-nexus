@@ -409,7 +409,7 @@ local RefreshTable = function()
     local VF = ns.UI.Factory
     local tableW = GetTableWidth()
     local content = S.tableContent
-    local list    = BuildCharList()
+    local list    = GetVaultCharList()
 
     for _, row in ipairs(S.rows) do row:Hide() end
     S.rows = {}
@@ -658,7 +658,8 @@ local RefreshTable = function()
 
     S.tableFrame:SetSize(tableW, totalH)
     S.tableScroll:SetVerticalScroll(0)
-    content:SetWidth(M.VBGetEasyAccessScrollChildWidth(tableW - inset * 2, true))
+    -- `inset` was an undeclared global here (nil): the local lives only in the empty-list branch above.
+    content:SetWidth(M.VBGetEasyAccessScrollChildWidth(tableW - bodyLay.inset * 2, true))
     VBSyncVaultTableScrollBar(list, content, contentH)
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
@@ -675,6 +676,11 @@ function M.ToggleTable()
         HideTable()
     else
         HideSavedInstances()
+        -- Re-render the badge from the current snapshot BEFORE the table draws. Opening the
+        -- tracker used to refresh only the table, so a badge rendered before the last data
+        -- change kept showing the old number next to a freshly-correct table. The table is not
+        -- shown yet at this point, so UpdateBadge does not redraw it a second time.
+        UpdateBadge()
         RefreshTable()
         if S.tableFrame and S.button then
             S.tableFrame:ClearAllPoints()
@@ -695,6 +701,8 @@ end
 
 function M.ShowQuickView(anchor)
     HideAllPanels()
+    -- Same reason as ToggleTable: keep the badge and the list on one snapshot.
+    UpdateBadge()
     RefreshTable()
     if S.tableFrame and (anchor or S.button) then
         anchor = anchor or S.button

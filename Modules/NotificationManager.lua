@@ -1733,12 +1733,9 @@ function WarbandNexus:HasUnclaimedVaultRewards()
     if not okHas or not hasAvail then
         return false
     end
-    if C_WeeklyRewards.AreRewardsForCurrentRewardPeriod then
-        local okCur, isCurrent = pcall(C_WeeklyRewards.AreRewardsForCurrentRewardPeriod)
-        if not okCur or not isCurrent then
-            return false
-        end
-    end
+    -- No AreRewardsForCurrentRewardPeriod gate here: loot earned in an earlier reward period is
+    -- still in the chest and still claimable (Blizzard shows its own "previous reward" notice for
+    -- that case), so a vault left unclaimed for a week or more must still count as unclaimed.
     return true
 end
 

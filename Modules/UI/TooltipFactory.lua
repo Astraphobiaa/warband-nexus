@@ -524,8 +524,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         
         line:Show()
         table.insert(self.lines, line)
-        table.insert(self.allLines, {type = "single", element = line})
-        
+        table.insert(self.allLines, {type = "single", element = line, wrap = wrap and true or false})
+
         RequestLayout(self)
     end
     
@@ -550,7 +550,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             ApplyTooltipInk(dLine.right, rightText, rR, rG, rB)
         end
         dLine.right:SetJustifyH("RIGHT")
-        
+        -- Long values (e.g. an achievement reward sentence) wrap instead of stretching the tooltip
+        -- off-screen; short values are unaffected (they still sit right-aligned on one line).
+        dLine.right:SetWordWrap(true)
+        dLine.right:SetNonSpaceWrap(false)
+        dLine.right:SetMaxLines(0)
+
         dLine.left:Show()
         dLine.right:Show()
         
@@ -805,10 +810,16 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             if headerW > maxContentW then maxContentW = headerW end
         end
         
-        -- Measure description
+        -- Wrappable text must not stretch the tooltip: cap its width contribution so it wraps within
+        -- MAX_WIDTH instead of growing the frame toward WIDTH_CAP_TOP and running off-screen. Only
+        -- non-wrapping content (grids, wrap=false lines) may drive the frame past MAX_WIDTH.
+        local wrapContentCap = MAX_WIDTH - padding * 2
+
+        -- Measure description (always wraps)
         if self.descLine and self.descLine:IsShown() then
             self.descLine:SetWidth(0)
             local dw = self.descLine:GetStringWidth() or 0
+            if dw > wrapContentCap then dw = wrapContentCap end
             local descHeaderW = dw + (self.hasIcon and (ICON_SIZE + ICON_PADDING) or 0)
             if descHeaderW > maxContentW then maxContentW = descHeaderW end
             if dw > maxContentW then maxContentW = dw end
@@ -840,6 +851,11 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             if lineData.type == "single" then
                 lineData.element:SetWidth(0)
                 local lw = lineData.element:GetStringWidth() or 0
+                -- Wrappable body lines (e.g. a long achievement description) wrap within MAX_WIDTH
+                -- rather than stretching the whole tooltip off the edge of the screen.
+                if lineData.wrap and lw > wrapContentCap then
+                    lw = wrapContentCap
+                end
                 if lw > maxContentW then maxContentW = lw end
             elseif lineData.type == "centered" or lineData.type == "section_label" then
                 lineData.element:SetWidth(0)
@@ -849,6 +865,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 lineData.element.left:SetWidth(0)
                 lineData.element.right:SetWidth(0)
                 local lw = (lineData.element.left:GetStringWidth() or 0) + (lineData.element.right:GetStringWidth() or 0) + 20
+                -- Right value wraps (AddDoubleLine), so a long one must not stretch the tooltip past
+                -- MAX_WIDTH; it wraps within the bounded right column instead (see Phase 2 anchoring).
+                if lw > wrapContentCap then lw = wrapContentCap end
                 if lw > maxContentW then maxContentW = lw end
                 if lineData.balanced then
                     maxBalancedLeft = math.max(maxBalancedLeft, lineData.element.left:GetStringWidth() or 0)
@@ -1047,9 +1066,17 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 if lineData.balanced and self._balancedSplit then
                     dLine.right:SetJustifyH("LEFT")
                     dLine.right:SetPoint("TOPLEFT", self, "TOPLEFT", self._balancedSplit, yOffset)
+                    dLine.right:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yOffset)
                 else
                     dLine.right:SetJustifyH("RIGHT")
                     dLine.right:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yOffset)
+                    -- Bound the left edge (after the label) so a long value wraps within the tooltip
+                    -- instead of spilling past it. Guard against a label so wide no room remains.
+                    local leftW = dLine.left:GetStringWidth() or 0
+                    local rightLeftX = padding + leftW + 12
+                    if rightLeftX < computedWidth - padding - 40 then
+                        dLine.right:SetPoint("TOPLEFT", self, "TOPLEFT", rightLeftX, yOffset)
+                    end
                 end
                 
                 local lineHeight = math.max(dLine.left:GetHeight(), dLine.right:GetHeight())

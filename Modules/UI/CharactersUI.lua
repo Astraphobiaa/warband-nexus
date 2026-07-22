@@ -420,7 +420,22 @@ local function RelayoutCharactersGoldCards(scrollChild, contentWidth, mf)
     if not scrollChild then return false end
     local bundle = scrollChild._wnCharsGoldBundle
     if not bundle then return false end
-    local hostW = contentWidth or 0
+    -- Cards occupy the same [side .. side+rowWidth] band as rows/sections. The geometry carves
+    -- left+right margins out of hostW, so add them back onto the row draw width (matches the
+    -- initial draw); passing the raw row width leaves the cards inset from the section headers.
+    local hostW = 0
+    if ns.UI_ResolveCharactersTabRowWidth then
+        local addon = ns.WarbandNexus
+        local rowScrollW = ns.UI_ResolveCharactersTabRowWidth(mf, scrollChild, nil, addon and addon._charListMaxGuildWidth) or 0
+        if rowScrollW > 0 then
+            local marginPair = (bundle.leftMargin or 0) + (bundle.rightMargin or 0)
+            if marginPair <= 0 then
+                marginPair = 2 * ((ns.UI_GetTabSideMargin and ns.UI_GetTabSideMargin()) or 12)
+            end
+            hostW = rowScrollW + marginPair
+        end
+    end
+    if hostW < 1 then hostW = contentWidth or 0 end
     if hostW < 1 and mf and ns.UI_GetMainTabViewportWidth then
         hostW = ns.UI_GetMainTabViewportWidth(mf)
     elseif hostW < 1 and mf and ns.UI_GetMainScrollContentWidth then
@@ -442,16 +457,22 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         end
     end
     local addon = WarbandNexus
-    local guildColW = addon._charsListStableGuildColW or addon._charListMaxGuildWidth
-    if ns.UI_ComputeCharRowGuildColumnWidth and addon._charListMaxGuildWidth then
+    -- Flex layout: guild + middle-block columns shrink toward their minimums on narrow rows
+    -- (single source: UI_ComputeCharRowFlexColumns; DrawCharacterRow chains the same widths).
+    local flexCols = ns.UI_ComputeCharRowFlexColumns
+        and ns.UI_ComputeCharRowFlexColumns(rowW, addon._charListMaxGuildWidth) or nil
+    local guildColW = (flexCols and flexCols.guild)
+        or addon._charsListStableGuildColW or addon._charListMaxGuildWidth
+    if not flexCols and ns.UI_ComputeCharRowGuildColumnWidth and addon._charListMaxGuildWidth then
         local newGuildW = ns.UI_ComputeCharRowGuildColumnWidth(rowW, addon._charListMaxGuildWidth)
         if newGuildW and newGuildW > 0 then
             guildColW = newGuildW
-            addon._charsListStableGuildColW = newGuildW
         end
     end
+    if guildColW and guildColW > 0 then
+        addon._charsListStableGuildColW = guildColW
+    end
 
-    local nameOffset = GetColumnOffset("name")
     local guildOffset = GetColumnOffset("guild")
     local guildSpacing = (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.spacing) or 15
     local rowH = row:GetHeight() or 46
@@ -465,9 +486,10 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
 
     local guildTotal = guildColW + guildSpacing
     local levelOffset = guildOffset + guildTotal
-    local levelColW = CHAR_ROW_COLUMNS.level.width
+    local levelColW = (flexCols and flexCols.level) or CHAR_ROW_COLUMNS.level.width
 
     if row.levelText then
+        row.levelText:SetWidth(levelColW)
         row.levelText:ClearAllPoints()
         if row.levelRestedText and row.levelRestedText:IsShown() then
             row.levelText:SetPoint("TOP", row, "TOPLEFT", levelOffset + (levelColW / 2), -7)
@@ -475,20 +497,28 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
             row.levelText:SetPoint("LEFT", levelOffset, 0)
         end
     end
+    if row.levelRestedText then
+        row.levelRestedText:SetWidth(levelColW)
+    end
 
-    local itemLevelOffset = levelOffset + (CHAR_ROW_COLUMNS.level.total or 97)
+    local itemLevelW = (flexCols and flexCols.itemLevel) or CHAR_ROW_COLUMNS.itemLevel.width
+    local itemLevelOffset = levelOffset + levelColW + (CHAR_ROW_COLUMNS.level.spacing or 15)
     if row.itemLevelText then
+        row.itemLevelText:SetWidth(itemLevelW)
         row.itemLevelText:ClearAllPoints()
         row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
     end
 
-    local goldOffset = itemLevelOffset + (CHAR_ROW_COLUMNS.itemLevel.total or 90)
+    local goldW = (flexCols and flexCols.gold) or CHAR_ROW_COLUMNS.gold.width
+    local goldOffset = itemLevelOffset + itemLevelW + (CHAR_ROW_COLUMNS.itemLevel.spacing or 15)
     if row.goldText then
+        row.goldText:SetWidth(goldW)
         row.goldText:ClearAllPoints()
         row.goldText:SetPoint("LEFT", goldOffset, 0)
     end
 
-    local profOffset = goldOffset + (CHAR_ROW_COLUMNS.gold.total or 205)
+    local profW = (flexCols and flexCols.professions) or CHAR_ROW_COLUMNS.professions.width
+    local profOffset = goldOffset + goldW + (CHAR_ROW_COLUMNS.gold.spacing or 15)
     if row.profIcons then
         local shown = {}
         for i = 1, #row.profIcons do
@@ -501,9 +531,8 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         if numProfs > 0 then
             local iconSize = 39
             local iconSpacing = 5
-            local profColumnWidth = CHAR_ROW_COLUMNS.professions.width
             local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)
-            local leftPadding = (profColumnWidth - totalIconWidth) / 2
+            local leftPadding = (profW - totalIconWidth) / 2
             local currentProfX = profOffset + leftPadding
             for i = 1, numProfs do
                 local pFrame = shown[i]
@@ -514,12 +543,14 @@ local function ApplyCharacterRowInteriorLayout(row, rowW)
         end
     end
 
-    local mythicKeyOffset = profOffset + (CHAR_ROW_COLUMNS.professions.total or 150)
+    local mythicKeyW = (flexCols and flexCols.mythicKey) or CHAR_ROW_COLUMNS.mythicKey.width
+    local mythicKeyOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
     if row.keystoneIcon then
         row.keystoneIcon:ClearAllPoints()
         row.keystoneIcon:SetPoint("LEFT", mythicKeyOffset + 5, 0)
     end
     if row.keystoneText then
+        row.keystoneText:SetWidth(math.max(30, mythicKeyW - 30))
         row.keystoneText:ClearAllPoints()
         row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)
     end
@@ -1071,15 +1102,25 @@ function WarbandNexus:DrawCharacterList(parent)
     local warbandBankGold = ns.Utilities:GetWarbandBankMoney() or 0
     local totalWithWarband = totalCharGold + warbandBankGold
     
-    -- Three equal gold summary cards (full scroll width; stack vertically when narrow).
+    -- Three equal gold summary cards must occupy the SAME [side .. side+rowWidth] band as the
+    -- section headers and character rows. The card layout carves leftMargin+rightMargin out of
+    -- hostW and splits the remainder three ways, so hostW = rowDrawWidth + those two margins;
+    -- passing the raw row width left the cards 2*side too narrow (visibly inset from the headers).
     local leftMargin = contentSide
     local rightMargin = contentSide
     local cardSpacing = 10
-    local hostW = (metrics and metrics.contentWidth)
-        or (mf and ns.UI_GetMainTabViewportWidth and ns.UI_GetMainTabViewportWidth(mf))
-        or (parent.GetWidth and parent:GetWidth())
-        or width
-        or 600
+    local rowScrollW = ns.UI_ResolveCharactersTabRowWidth
+        and ns.UI_ResolveCharactersTabRowWidth(mf, parent, metrics, self._charListMaxGuildWidth)
+    local hostW
+    if rowScrollW and rowScrollW > 0 then
+        hostW = rowScrollW + leftMargin + rightMargin
+    else
+        hostW = (metrics and metrics.contentWidth)
+            or (mf and ns.UI_GetMainTabViewportWidth and ns.UI_GetMainTabViewportWidth(mf))
+            or (parent.GetWidth and parent:GetWidth())
+            or width
+            or 600
+    end
     local gm = ComputeCharactersGoldCardMetrics(hostW, leftMargin, rightMargin, cardSpacing)
     local stackGoldCards = gm.stackGoldCards
     local stackGoldTokenInCard3 = gm.stackGoldTokenInCard3
@@ -1537,8 +1578,12 @@ function WarbandNexus:DrawCharacterList(parent)
     end
     local sectionStackW = math.max(1, rowDrawWidth or width or 1)
     parent._charsSectionStackW = sectionStackW
-    if mf and ns.UI_ComputeCharactersMinScrollWidth then
-        mf._charsMinScrollWidth = ns.UI_ComputeCharactersMinScrollWidth(self, self._charListMaxGuildWidth)
+    if mf then
+        -- scrollChild floor must be the OUTER width: rows/headers/gold anchor at contentSide and span
+        -- sectionStackW, so the scroll content needs contentSide on BOTH sides (matches PvE/PvP/Prof/Gear,
+        -- whose min-scroll widths already include 2*side). Without this the right margin collapses and the
+        -- list runs under the vertical scrollbar lane.
+        mf._charsMinScrollWidth = math.max(1, sectionStackW + contentSide * 2)
     end
     if ns.UI_ComputeCharRowGuildColumnWidth then
         self._charsListStableGuildColW = ns.UI_ComputeCharRowGuildColumnWidth(rowDrawWidth, self._charListMaxGuildWidth)
@@ -2215,7 +2260,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- COLUMN: Guild — after mail column; width from max guild name; text centered before Level
     local guildOffset = GetColumnOffset("guild")
-    local guildColW = self._charsListStableGuildColW
+    -- Flex columns: same resolver as ApplyCharacterRowInteriorLayout so first paint and
+    -- resize relayout agree on effective widths (narrow rows shrink toward column minimums).
+    local flexCols = ns.UI_ComputeCharRowFlexColumns
+        and ns.UI_ComputeCharRowFlexColumns(width, self._charListMaxGuildWidth) or nil
+    local guildColW = (flexCols and flexCols.guild)
+        or self._charsListStableGuildColW
         or self._charListMaxGuildWidth
         or (CHAR_ROW_COLUMNS.guild and CHAR_ROW_COLUMNS.guild.width)
         or 130
@@ -2240,22 +2290,22 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Level column: level + rested line (DB-driven).
     local guildTotal = guildColW + guildSpacing
     local levelOffset = guildOffset + guildTotal
-    local levelColW = CHAR_ROW_COLUMNS.level.width
+    local levelColW = (flexCols and flexCols.level) or CHAR_ROW_COLUMNS.level.width
     if not row.levelText then
         row.levelText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.levelText:SetWidth(levelColW)
         row.levelText:SetJustifyH("CENTER")
         row.levelText:SetWordWrap(false)
         row.levelText:SetMaxLines(1)
     end
+    row.levelText:SetWidth(levelColW)
 
     if not row.levelRestedText then
         row.levelRestedText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        row.levelRestedText:SetWidth(levelColW)
         row.levelRestedText:SetJustifyH("CENTER")
         row.levelRestedText:SetWordWrap(false)
         row.levelRestedText:SetMaxLines(1)
     end
+    row.levelRestedText:SetWidth(levelColW)
 
     local restedState = self.GetCharacterRestedState and self:GetCharacterRestedState(char)
     local maxPlayerLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 80
@@ -2293,13 +2343,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if row.levelRestedHitFrame then row.levelRestedHitFrame:Hide() end
 
     -- COLUMN: Item Level (dynamic offset, chained from level column)
-    local itemLevelOffset = levelOffset + (CHAR_ROW_COLUMNS.level.total or 97)
+    local itemLevelW = (flexCols and flexCols.itemLevel) or CHAR_ROW_COLUMNS.itemLevel.width
+    local itemLevelOffset = levelOffset + levelColW + (CHAR_ROW_COLUMNS.level.spacing or 15)
     if not row.itemLevelText then
         row.itemLevelText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.itemLevelText:SetWidth(CHAR_ROW_COLUMNS.itemLevel.width)
         row.itemLevelText:SetJustifyH("CENTER")
         row.itemLevelText:SetMaxLines(1)  -- Single line only
     end
+    row.itemLevelText:SetWidth(itemLevelW)
     row.itemLevelText:ClearAllPoints()
     row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
     local itemLevel = char.itemLevel or 0
@@ -2311,13 +2362,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     PresentFS(row.itemLevelText)
     
     -- COLUMN 8: Gold (dynamic offset, chained from itemLevel column)
-    local goldOffset = itemLevelOffset + (CHAR_ROW_COLUMNS.itemLevel.total or 90)
+    local goldW = (flexCols and flexCols.gold) or CHAR_ROW_COLUMNS.gold.width
+    local goldOffset = itemLevelOffset + itemLevelW + (CHAR_ROW_COLUMNS.itemLevel.spacing or 15)
     if not row.goldText then
         row.goldText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.goldText:SetWidth(CHAR_ROW_COLUMNS.gold.width)
         row.goldText:SetJustifyH("RIGHT")
         row.goldText:SetMaxLines(1)  -- Single line only
     end
+    row.goldText:SetWidth(goldW)
     row.goldText:ClearAllPoints()
     row.goldText:SetPoint("LEFT", goldOffset, 0)
     local totalCopper = isCurrent and ns.Utilities.GetLiveCharacterMoneyCopper
@@ -2327,7 +2379,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     PresentFS(row.goldText)
     
     -- COLUMN 9: Professions (dynamic offset, chained from gold column)
-    local profOffset = goldOffset + (CHAR_ROW_COLUMNS.gold.total or 205)
+    local profW = (flexCols and flexCols.professions) or CHAR_ROW_COLUMNS.professions.width
+    local profOffset = goldOffset + goldW + (CHAR_ROW_COLUMNS.gold.spacing or 15)
     if not row.profIcons then row.profIcons = {} end
     
     -- Hide all existing profession icons first
@@ -2349,10 +2402,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
         
         -- Calculate centered starting position (within column content area, excluding right spacing)
-        local profColumnWidth = CHAR_ROW_COLUMNS.professions.width  -- Content width only
         local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)
-        -- Center the icons within the column width
-        local leftPadding = (profColumnWidth - totalIconWidth) / 2
+        -- Center the icons within the effective (flex) column width
+        local leftPadding = (profW - totalIconWidth) / 2
         local currentProfX = profOffset + leftPadding
         
         local charKey = GetCharKey(char)
@@ -2650,8 +2702,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     -- COLUMN 10: Mythic Keystone (dynamic offset, chained from professions column)
-    local mythicKeyOffset = profOffset + (CHAR_ROW_COLUMNS.professions.total or 150)
-    
+    local mythicKeyW = (flexCols and flexCols.mythicKey) or CHAR_ROW_COLUMNS.mythicKey.width
+    local mythicKeyOffset = profOffset + profW + (CHAR_ROW_COLUMNS.professions.spacing or 0)
+
     -- Create keystone icon (shared for has-key and no-key)
     if not row.keystoneIcon then
         row.keystoneIcon = row:CreateTexture(nil, "ARTWORK")
@@ -2672,12 +2725,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Create keystone text (shared for has-key and no-key)
     if not row.keystoneText then
         row.keystoneText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        row.keystoneText:SetWidth(CHAR_ROW_COLUMNS.mythicKey.width - 30)
         row.keystoneText:SetJustifyH("LEFT")
         row.keystoneText:SetWordWrap(false)
         row.keystoneText:SetNonSpaceWrap(false)  -- Prevent long word overflow
         row.keystoneText:SetMaxLines(1)  -- Single line only
     end
+    row.keystoneText:SetWidth(math.max(30, mythicKeyW - 30))
     row.keystoneText:ClearAllPoints()
     row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)  -- Icon(24) + gap(5) + padding(5)
     

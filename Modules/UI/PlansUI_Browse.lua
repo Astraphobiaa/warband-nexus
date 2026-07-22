@@ -1640,13 +1640,21 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local gridW = ResolvePlansContentWidth(parent, width)
     -- `parent` is the browse results container (already inset to match the search bar).
     local browseGridOpts = { padH = 0 }
+    -- Adaptive columns: fit as many comfortable-width cards as the content allows (2..4) so wide
+    -- windows use the space instead of stretching two cards across the whole width. The virtualized
+    -- painter already keys off st.cols, so only the column COUNT and the row math change here.
+    local BROWSE_MIN_CARD_W = 300
+    local BROWSE_MAX_COLS = 4
+    local browseSpacing = (PCM and (PCM.todoListCardGap or PCM.gridSpacing)) or 8
+    local browseCols = math.floor((gridW + browseSpacing) / (BROWSE_MIN_CARD_W + browseSpacing))
+    browseCols = math.max(2, math.min(BROWSE_MAX_COLS, browseCols))
     local cardWidth, cardSpacing, gridPadH
     if ns.UI_PlansCardGridLayout then
-        cardWidth, cardSpacing, gridPadH = ns.UI_PlansCardGridLayout(gridW, 2, browseGridOpts)
+        cardWidth, cardSpacing, gridPadH = ns.UI_PlansCardGridLayout(gridW, browseCols, browseGridOpts)
     else
         cardSpacing = (PCM and PCM.gridSpacing) or 8
         gridPadH = 0
-        cardWidth = math.max(100, (gridW - cardSpacing) / 2)
+        cardWidth = math.max(100, (gridW - cardSpacing * (browseCols - 1)) / browseCols)
     end
     local todoHeaderH = ns.UI_PlansTodoExpandableHeaderHeight and ns.UI_PlansTodoExpandableHeaderHeight(gridW) or 78
     parent._plansBrowseLayoutManager = nil
@@ -1655,8 +1663,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local browseExpanded = ns._plansBrowseExpanded
     local browserTryTypes = { mount = true, pet = true, toy = true, illusion = true }
 
-    -- Uniform 2-column grid metrics. Browse cards are canExpand=false, so every card is exactly `cardH`
-    -- tall — no per-card measurement, the grid is pure index math.
+    -- Uniform grid metrics (browseCols columns). Browse cards are canExpand=false, so every card is
+    -- exactly `cardH` tall — no per-card measurement, the grid is pure index math.
     local cardH = (ns.UI_PlansTodoFixedCollapsedHeight and ns.UI_PlansTodoFixedCollapsedHeight(true)) or todoHeaderH
     local stride = cardH + cardSpacing
     local colStride = cardWidth + cardSpacing
@@ -1682,7 +1690,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         parent._wnBrowseTruncFS:Hide()
     end
 
-    local totalRows = math.ceil(resultsToRender / 2)
+    local totalRows = math.ceil(resultsToRender / browseCols)
     local fullContentH = gridTop + totalRows * stride + 10
 
     -- Publish the active grid descriptor; the scroll hook + this call paint only the visible window.
@@ -1690,7 +1698,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     st.host = parent
     st.results = results
     st.count = resultsToRender
-    st.cols = 2
+    st.cols = browseCols
     st.cardWidth = cardWidth
     st.colStride = colStride
     st.stride = stride

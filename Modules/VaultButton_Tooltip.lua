@@ -45,7 +45,7 @@ function M.ShowBadgeTooltip(anchor)
             text = EAL("EA_TOOLTIP_SUMMARY_READY_COUNT", "%d ready to claim", count),
             color = { 0.35, 0.9, 0.4 },
         }
-        local list = BuildCharList()
+        local list = GetVaultCharList()
         local shown = 0
         for i = 1, #list do
             local e = list[i]
@@ -517,7 +517,7 @@ function M.AppendWarbandVaultSummaryLines(lines)
     if not ShowEasyAccessDisplay("tooltipVault") then
         return
     end
-    local list = BuildCharList()
+    local list = GetVaultCharList()
     if #list == 0 then
         lines[#lines + 1] = {
             text = EAL("EA_TOOLTIP_NO_WARBAND_VAULT", "No tracked vault activity this week."),

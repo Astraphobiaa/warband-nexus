@@ -71,7 +71,7 @@ M.COL_BOUNTY = 46   -- Trovehunter's Bounty (done/not)
 M.COL_VOIDCORE = 58   -- Nebulous Voidcore (current/seasonMax)
 M.COL_MANAFLUX = 58   -- Dawnlight Manaflux (current held)
 M.COL_STASH = 58   -- Gilded Stashes (current/max)
-M.COL_STATUS = 110
+M.COL_STATUS = 136   -- fit the longest status label ("Ready to Claim") without truncation
 
 M.TRACK_ICONS = {
     raids      = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
@@ -143,8 +143,12 @@ function M.VBGetFrameContentInset()
             return left
         end
     end
+    -- Floating easy-access windows (Vault Table, Saved Instances, To-Do tracker) draw their OWN border
+    -- chrome and have no separate viewport border like the main shell, so their content needs a positive
+    -- inset. MAIN_SHELL.FRAME_CONTENT_INSET is 0 for the main window (its viewport border handles the gap);
+    -- inheriting that here made list rows / headers sit flush under this window's border. Clamp positive.
     local ms = ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL or {}
-    return ms.FRAME_CONTENT_INSET or 2
+    return math.max(6, ms.FRAME_CONTENT_INSET or 0)
 end
 
 function M.VBIsClassicChrome()
@@ -419,7 +423,7 @@ function M.VBGetEasyAccessBodyLayout()
 end
 
 --- Saved Instances body insets — mirror Vault Tracker table (shell inset + scroll bar column inside host).
-M.SAVED_INSTANCES_LAYOUT_VERSION = 4
+M.SAVED_INSTANCES_LAYOUT_VERSION = 5
 function M.VBGetSavedInstancesLayout()
     local body = M.VBGetEasyAccessBodyLayout()
     return {
@@ -841,7 +845,11 @@ function M.GetTableWidth()
     if columns.manaflux == true then optionalWidth = optionalWidth + COL_MANAFLUX end
     if columns.gildedStash == true then optionalWidth = optionalWidth + COL_STASH end
     local inset = VBGetFrameContentInset()
-    return inset * 2 + COL_NAME + COL_ILVL + categoryWidth + optionalWidth + COL_STATUS
+    -- The scroll body reserves a vertical-scrollbar lane on the right (scroll is anchored
+    -- scrollHost - sbLane), so the row area is sbLane narrower than the host. Without adding it here
+    -- the window was exactly one lane too narrow and the last column (Status) was clipped.
+    local sbLane = (ns.UI_GetVerticalScrollbarLaneReserve and ns.UI_GetVerticalScrollbarLaneReserve()) or 28
+    return inset * 2 + sbLane + COL_NAME + COL_ILVL + categoryWidth + optionalWidth + COL_STATUS
 end
 
 function M.GetPveCache()
