@@ -14,7 +14,7 @@ local Constants = {
     -- Update this whenever you update the TOC version!
     -- Suffixes like -beta1 are OK; What's New resolves CHANGELOG_V<x><y><z> from the numeric triple only.
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "3.3.5",
+    ADDON_VERSION = "3.3.6",
     -- Shown next to version in the What's New / changelog popup title
     ADDON_RELEASE_DATE = "2026-07-22",
 

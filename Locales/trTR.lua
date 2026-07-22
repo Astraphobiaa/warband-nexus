@@ -2181,7 +2181,7 @@ L["SOURCE_TYPE_PVP"] = "PvP"
 L["DIFFICULTY_NORMAL"] = "Normal"
 L["DIFFICULTY_HEROIC"] = "Heroic"
 L["DIFFICULTY_MYTHIC"] = "Mythic"
-L["CHANGELOG_V335"] = [=[v3.3.5 (2026-07-22)
+L["CHANGELOG_V336"] = [=[v3.3.6 (2026-07-22)
 
 Added:
 - Added a "Guild (A-Z)" option to Sort By, on both the Characters list and the PvP overview. Characters without a guild are listed last.
