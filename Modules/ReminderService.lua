@@ -1759,7 +1759,6 @@ local zoneReminderDeferredTransit = false
 local calendarResetReminderTimer = nil
 local reminderPlanRescheduleTimer = nil
 local pendingReminderLocationPlanIDs = {}
-local reminderPlanRescheduleDeferredTransit = false
 --- Coalesce rapid reminder config writes (Set Alert toggles, bulk UI) per WN-PERF.
 local REMINDER_PLAN_RESCHEDULE_DEBOUNCE = 0.25
 local OnLoginRemindersCheck
@@ -1788,7 +1787,8 @@ local function RequestReminderScheduleCoalesced(planID)
         -- location memo or re-fire unrelated plans that the player has not re-entered.
         -- A real zone transition already covers every matching plan and must win over the
         -- narrower config-save pass, otherwise the target can fire twice or peers can be skipped.
-        if RunZoneOrInstanceChangedNow and next(changedPlanIDs) and not zoneChangeTimer then
+        if RunZoneOrInstanceChangedNow and next(changedPlanIDs)
+            and not zoneChangeTimer and not zoneReminderDeferredTransit then
             RunZoneOrInstanceChangedNow(changedPlanIDs)
         end
     end
@@ -1863,21 +1863,17 @@ ScheduleCalendarResetReminderTimer = function()
 end
 
 RunZoneOrInstanceChangedNow = function(planIDFilter)
-    if SafeIsPlayerAirborneTransit() then
-        if planIDFilter then
-            for planID in pairs(planIDFilter) do
-                pendingReminderLocationPlanIDs[planID] = true
-            end
-            reminderPlanRescheduleDeferredTransit = true
-        else
-            zoneReminderDeferredTransit = true
-        end
+    -- Full zone scans wait until transit ends. A config-save pass is already narrowed to
+    -- explicit plan IDs, so it is safe to evaluate immediately and cannot be stranded aloft.
+    if not planIDFilter and SafeIsPlayerAirborneTransit() then
+        zoneReminderDeferredTransit = true
         return
     end
-    if planIDFilter then
-        reminderPlanRescheduleDeferredTransit = false
-    else
+    if not planIDFilter then
         zoneReminderDeferredTransit = false
+        -- A completed full location pass supersedes config-save work that is still queued.
+        -- Its timer may continue to run the cheap calendar reschedule, but has no location IDs.
+        pendingReminderLocationPlanIDs = {}
     end
 
     local P = ns.Profiler
@@ -1947,7 +1943,6 @@ function WarbandNexus:InitializeReminderService()
         reminderPlanRescheduleTimer = nil
     end
     pendingReminderLocationPlanIDs = {}
-    reminderPlanRescheduleDeferredTransit = false
     CancelCalendarResetReminderTimer()
 
     self.db.global.reminderSettings = self.db.global.reminderSettings or {
@@ -1972,11 +1967,7 @@ function WarbandNexus:InitializeReminderService()
                 zoneReminderDeferredTransit = false
                 -- The full location pass includes any config changes queued in transit.
                 pendingReminderLocationPlanIDs = {}
-                reminderPlanRescheduleDeferredTransit = false
                 OnZoneOrInstanceChanged()
-            elseif reminderPlanRescheduleDeferredTransit then
-                reminderPlanRescheduleDeferredTransit = false
-                RequestReminderScheduleCoalesced()
             end
         end)
         local function OnPlayerEnteringWorldReminders()
