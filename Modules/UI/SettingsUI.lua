@@ -1835,6 +1835,22 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             end,
         }, cy)
 
+        -- Turkish-only note. The bundled Noto Sans covers Turkish, but a user who kept a custom
+        -- font (ApplyLocaleFont respects an explicit non-default choice) can still hit missing
+        -- glyphs, so point them at fonts that render the full set. Shown for an explicit trTR
+        -- selection only, matching when the locale font swap applies.
+        if (WarbandNexus.db.profile.languageOverride or "auto") == "trTR" then
+            local trFontHint = FontManager:CreateFontString(inner, "body", "OVERLAY")
+            trFontHint:SetPoint("TOPLEFT", 0, cy)
+            trFontHint:SetWidth(iw)
+            trFontHint:SetJustifyH("LEFT")
+            trFontHint:SetWordWrap(true)
+            trFontHint:SetText((ns.L and ns.L["LANGUAGE_TR_FONT_HINT"])
+                or "If Turkish characters do not display correctly, try a different font such as Exo or Arial.")
+            ns.UI_SetTextColorRole(trFontHint, "Muted")
+            cy = cy - math.max(18, trFontHint:GetStringHeight()) - GetHeaderToolbarGap()
+        end
+
         -- Keybinding row (fixed label column + controls)
         local labelColW = math.min(170, math.floor(iw * 0.34))
         local keybindTitle = (ns.L and ns.L["KEYBINDING"]) or "Keybinding"

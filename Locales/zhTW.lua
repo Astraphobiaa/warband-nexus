@@ -612,6 +612,7 @@ L["CURRENT_LANGUAGE"] = "目前語言："
 L["LANGUAGE_TOOLTIP"] = "插件自動使用你的 WoW 遊戲用戶端語言。要變更，請更新你的戰網設定。"
 L["LANGUAGE_SELECT_LABEL"] = "語言"
 L["LANGUAGE_SELECT_DESC"] = "選擇插件介面語言。自動會跟隨你的 WoW 遊戲用戶端。部分遊戲術語會保持用戶端語言。"
+L["LANGUAGE_TR_FONT_HINT"] = "如果土耳其語字元顯示不正常，可以嘗試 Exo、Arial 等其他字型。"
 L["LANGUAGE_AUTO"] = "自動（遊戲用戶端）"
 L["LANGUAGE_RELOAD_NOTICE"] = "語言變更將在重新載入介面後生效。"
 L["NOTIFICATION_DURATION"] = "通知持續時間"
@@ -1159,6 +1160,7 @@ L["CHANGELOG_V335"] = [=[v3.3.5 (2026-07-22)
 
 Added:
 - Added a "Guild (A-Z)" option to Sort By, on both the Characters list and the PvP overview. Characters without a guild are listed last.
+- Selecting Turkish as the addon language now shows a note in Settings: if any Turkish letters do not render with your chosen font, try a different one such as Exo or Arial.
 
 Updated:
 - To-Do plan tooltips are now compact: they show the plan's name and description instead of listing every achievement criterion (the card already shows the overall progress).

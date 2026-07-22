@@ -30,6 +30,7 @@ local L = ns.LOCALES.trTR
 -- Language selector (Settings)
 L["LANGUAGE_SELECT_LABEL"] = "Dil"
 L["LANGUAGE_SELECT_DESC"] = "Eklenti arayüz dilini seçin. Otomatik seçenek WoW oyun istemcinizi izler. Bazı oyun terimleri istemci dilinde kalır."
+L["LANGUAGE_TR_FONT_HINT"] = "Türkçe karakter sorunlarında Exo, Arial, vb. farklı yazı tiplerini deneyebilirsiniz."
 L["LANGUAGE_AUTO"] = "Otomatik (Oyun İstemcisi)"
 L["LANGUAGE_RELOAD_NOTICE"] = "Dil değişikliği, arayüz yeniden yüklendikten sonra uygulanır."
 
@@ -2184,6 +2185,7 @@ L["CHANGELOG_V335"] = [=[v3.3.5 (2026-07-22)
 
 Added:
 - Added a "Guild (A-Z)" option to Sort By, on both the Characters list and the PvP overview. Characters without a guild are listed last.
+- Selecting Turkish as the addon language now shows a note in Settings: if any Turkish letters do not render with your chosen font, try a different one such as Exo or Arial.
 
 Updated:
 - To-Do plan tooltips are now compact: they show the plan's name and description instead of listing every achievement criterion (the card already shows the overall progress).

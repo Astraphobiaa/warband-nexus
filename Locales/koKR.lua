@@ -612,6 +612,7 @@ L["CURRENT_LANGUAGE"] = "현재 언어:"
 L["LANGUAGE_TOOLTIP"] = "애드온은 WoW 게임 클라이언트의 언어를 자동으로 사용합니다. 변경하려면 Battle.net 설정을 업데이트하세요."
 L["LANGUAGE_SELECT_LABEL"] = "언어"
 L["LANGUAGE_SELECT_DESC"] = "애드온 인터페이스 언어를 선택하세요. 자동은 WoW 게임 클라이언트를 따릅니다. 일부 게임 용어는 클라이언트 언어로 유지됩니다."
+L["LANGUAGE_TR_FONT_HINT"] = "터키어 문자가 제대로 표시되지 않으면 Exo, Arial 등 다른 글꼴을 사용해 보세요."
 L["LANGUAGE_AUTO"] = "자동 (게임 클라이언트)"
 L["LANGUAGE_RELOAD_NOTICE"] = "언어 변경은 UI 재불러오기 후 적용됩니다."
 L["NOTIFICATION_DURATION"] = "알림 지속 시간"
@@ -1159,6 +1160,7 @@ L["CHANGELOG_V335"] = [=[v3.3.5 (2026-07-22)
 
 Added:
 - Added a "Guild (A-Z)" option to Sort By, on both the Characters list and the PvP overview. Characters without a guild are listed last.
+- Selecting Turkish as the addon language now shows a note in Settings: if any Turkish letters do not render with your chosen font, try a different one such as Exo or Arial.
 
 Updated:
 - To-Do plan tooltips are now compact: they show the plan's name and description instead of listing every achievement criterion (the card already shows the overall progress).
