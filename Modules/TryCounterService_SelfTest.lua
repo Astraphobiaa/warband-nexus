@@ -14,13 +14,20 @@ local V = RT and RT.vars
 local format = string.format
 local wipe = wipe
 local GetTime = GetTime
+local pairs = pairs
+local issecretvalue = issecretvalue
+local GetInstanceInfo = GetInstanceInfo
+local strsplit = strsplit
+local VENGEANCES_REINS_ITEM_ID = 186642
 
 assert(Fns and RT and V and WarbandNexus, "TryCounterService_SelfTest: load TryCounterService.lua first")
 
 local FAKE_ITEM_ID = TC.SELF_TEST_FAKE_ITEM_ID or 987654321
 local SYLVANAS_NPC_ID = 175732
 local SYLVANAS_ENCOUNTER_ID = 2435
-local SYLVANAS_CHEST_OBJECT_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 368304
+local SYLVANAS_CHEST_OBJECT_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 369898
+-- Read from the shared constant so the probe exercises the shipped instance id, not a copy.
+local SANCTUM_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 2450
 
 local function fakeDrop()
     return { type = "item", itemID = FAKE_ITEM_ID, repeatable = true, name = "TC Self Test Token" }
@@ -854,6 +861,136 @@ function WarbandNexus:RunTryCounterSelfTest()
         if Fns.ShouldDeferLootOutcomeUntilClose("closed") ~= false then error("expected false") end
     end)
 
+    -- Constants live in TryCounterService_Shared.lua, rows in CollectibleSourceDB.lua. The older
+    -- probes build their fixtures FROM those same constants, so a wrong id passed anyway. These
+    -- cross-check the three files against each other and against the live client instead.
+    section("Data integrity (constants vs runtime DB)")
+    probe("array-level difficultyIDs survives CopyDropArray into npcDropDB", function()
+        local src = ns.CollectibleSourceDB
+        if not src then error("CollectibleSourceDB missing") end
+        -- Two distinct invariants. Only the second is this probe's contract:
+        --   (a) is the row present in npcDropDB at all   -> reported, not asserted
+        --   (b) if present, did difficultyIDs survive     -> hard failure (the CopyDropArray bug)
+        -- MergeTrackDB deletes a whole npcDropDB row when the user untracks its last drop
+        -- (trackDB.disabled, key "npc:<sourceID>:<itemID>"). That absence is intended, not a copy
+        -- failure, so those npcIDs are excluded before anything is reported.
+        local userDisabled = {}
+        local trackDB = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.trackDB
+        if trackDB and type(trackDB.disabled) == "table" and strsplit then
+            for key in pairs(trackDB.disabled) do
+                if type(key) == "string" then
+                    local sourceType, sourceID = strsplit(":", key)
+                    if sourceType == "npc" then
+                        local nid = tonumber(sourceID)
+                        if nid then userDisabled[nid] = true end
+                    end
+                end
+            end
+        end
+        local checked, absent = 0, {}
+        local seen = {}
+        local function scan(bucket)
+            if type(bucket) ~= "table" then return end
+            for npcID, row in pairs(bucket) do
+                if not seen[npcID] and type(row) == "table"
+                    and type(row.difficultyIDs) == "table" and #row.difficultyIDs > 0 then
+                    seen[npcID] = true
+                    local runtime = RT.npcDropDB and RT.npcDropDB[npcID]
+                    if not runtime then
+                        if not userDisabled[npcID] then
+                            absent[#absent + 1] = npcID
+                        end
+                    elseif type(runtime.difficultyIDs) ~= "table" or #runtime.difficultyIDs == 0 then
+                        error("npc " .. tostring(npcID) .. " lost difficultyIDs between DB and runtime copy")
+                    else
+                        checked = checked + 1
+                    end
+                end
+            end
+        end
+        scan(src.npcs)
+        scan(src.legacyNpcs)
+        if #absent > 0 then
+            local dbCount, rtCount = 0, 0
+            for _ in pairs(src.npcs or {}) do dbCount = dbCount + 1 end
+            for _ in pairs(RT.npcDropDB or {}) do rtCount = rtCount + 1 end
+            lineWarn(format("%d whitelist npc(s) absent from npcDropDB (first: %s) - db.npcs=%d npcDropDB=%d",
+                #absent, tostring(absent[1]), dbCount, rtCount))
+        end
+        if checked == 0 and #absent == 0 then
+            lineWarn("no difficultyIDs rows in the DB - whitelist copy path unverified")
+        end
+    end)
+    probe("slot outcome rules resolve to eligible boss drop rows", function()
+        local rules = RT.instanceBossSlotOutcomeRules
+        if type(rules) ~= "table" or #rules == 0 then error("no instanceBossSlotOutcomeRules loaded") end
+        for i = 1, #rules do
+            local r = rules[i]
+            local nid = r and r.bossNpcID
+            if type(nid) ~= "number" then error("rule " .. i .. ": bossNpcID missing") end
+            if type(r.templateInstanceID) ~= "number" then
+                error("rule " .. i .. ": templateInstanceID missing")
+            end
+            if not RT.npcDropDB[nid] then
+                error("rule " .. i .. ": bossNpcID " .. nid .. " has no npcDropDB row")
+            end
+            if not RT.tryCounterNpcEligible[nid] then
+                error("rule " .. i .. ": bossNpcID " .. nid .. " is not try-counter eligible")
+            end
+        end
+    end)
+    probe("Sylvanas chest constant points at an objectDropDB row holding the mount", function()
+        local oid = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID
+        if type(oid) ~= "number" then error("chest object constant missing") end
+        local row = RT.objectDropDB and RT.objectDropDB[oid]
+        if not row then error("objectDropDB has no row for object " .. tostring(oid)) end
+        local found = false
+        for i = 1, #row do
+            local d = row[i]
+            if type(d) == "table" and d.type == "mount" and d.itemID == VENGEANCES_REINS_ITEM_ID then
+                found = true
+                break
+            end
+        end
+        if not found then
+            error("object " .. tostring(oid) .. " row does not contain Vengeance's Reins ("
+                .. VENGEANCES_REINS_ITEM_ID .. ")")
+        end
+    end)
+    probe("slot rule template id agrees with the live instance (when its boss is here)", function()
+        local rules = RT.instanceBossSlotOutcomeRules or {}
+        if #rules == 0 then error("no slot rules loaded") end
+        local _, instType, diff, _, _, _, _, tmpl = GetInstanceInfo()
+        if issecretvalue and instType and issecretvalue(instType) then instType = nil end
+        if issecretvalue and diff and issecretvalue(diff) then diff = nil end
+        if issecretvalue and tmpl and issecretvalue(tmpl) then tmpl = nil end
+        if not tmpl then
+            lineWarn("live instance template unavailable (outside an instance, or secret) - check skipped")
+            return
+        end
+        WN:Print(format("|cff888888[WN-TC-Test] INFO|r live instance: type=%s difficulty=%s template=%s",
+            tostring(instType), tostring(diff), tostring(tmpl)))
+        for i = 1, #rules do
+            local r = rules[i]
+            local nid = r and r.bossNpcID
+            -- Lua 5.1: `nid and Fn()` truncates to one return, so guard the call separately.
+            local killData
+            if nid then
+                local _, kd = Fns.GetFreshEncounterKillForNpc(nid)
+                killData = kd
+            end
+            local encCache = RT.currentEncounterCache
+            local cacheHit = nid and encCache and encCache.encounterID
+                and Fns.GetEncounterIDForNpcID(nid) == encCache.encounterID
+            -- Only adjudicate when this rule's boss demonstrably belongs to the instance we are
+            -- standing in; otherwise a different raid at the same difficulty would false-fail.
+            if (killData or cacheHit) and r.templateInstanceID ~= tmpl then
+                error(format("rule %d (boss %s) expects template %s, this instance reports %s",
+                    i, tostring(nid), tostring(r.templateInstanceID), tostring(tmpl)))
+            end
+        end
+    end)
+
     -- ── Summary ───────────────────────────────────────────────────────
     if Fns.SetTryCounterSelfTestSyncMiss then
         Fns.SetTryCounterSelfTestSyncMiss(false)
@@ -941,7 +1078,7 @@ function WarbandNexus:RunTryCounterSylvanasSelfTest()
                 local old = WN:GetTryCount("item", FAKE_ITEM_ID)
                 if Fns.SetTryCounterSelfTestSlotOutcomeEnv then
                     Fns.SetTryCounterSelfTestSlotOutcomeEnv({
-                        instance = { instanceType = "raid", difficulty = 16, templateInstanceID = 1193 },
+                        instance = { instanceType = "raid", difficulty = 16, templateInstanceID = SANCTUM_TEMPLATE_INSTANCE_ID },
                         bossTrackable = { [SYLVANAS_NPC_ID] = { drop } },
                     })
                 end

@@ -210,6 +210,9 @@ function Fns.PruneStatisticSnapshotsOrphanKeys()
         end
         if not owned then
             snaps[ck] = nil
+            if type(db.tryCounterStatSeedAt) == "table" then
+                db.tryCounterStatSeedAt[ck] = nil
+            end
             removed = removed + 1
         end
     end
@@ -437,6 +440,7 @@ function Fns.SeedFromStatistics(opts)
 
     local queueIdx = 1
     local seeded = 0
+    local anyReadable = false
     local unresolvedDrops = {}
 
     local function ProcessBatch()
@@ -484,11 +488,13 @@ function Fns.SeedFromStatistics(opts)
             if entry.bucket then
                 local b = entry.bucket
                 local thisCharTotal, hadReadable = Fns.SumStatisticTotalsFromIds(b.statIds)
+                if hadReadable then anyReadable = true end
                 for di = 1, #b.drops do
                     ProcessBatchDrop(b.drops[di], thisCharTotal, hadReadable, nil)
                 end
             else
                 local thisCharTotal, hadReadable = Fns.SumStatisticTotalsFromIds(entry.statIds)
+                if hadReadable then anyReadable = true end
                 ProcessBatchDrop(entry.drop, thisCharTotal, hadReadable, entry.npcStatIds)
             end
 
@@ -502,6 +508,15 @@ function Fns.SeedFromStatistics(opts)
 
         if P and seedLabel then P:StopAsync(seedLabel) end
         if LT then LT:Complete("trycounts") end
+        -- Stamp the successful read so DF.IsTryCounterStatisticsWarm can expire it (self-healing seed).
+        -- Only when at least one statistic was actually readable: GetStatistic can return secret or
+        -- "--" values, and stamping a failed pass would lock the character out of retries for a day.
+        -- seeded == 0 is NOT failure (a repeat pass that changed nothing is a healthy read).
+        local dbG = anyReadable and WarbandNexus.db and WarbandNexus.db.global
+        if dbG then
+            dbG.tryCounterStatSeedAt = dbG.tryCounterStatSeedAt or {}
+            dbG.tryCounterStatSeedAt[charKey] = (time and time()) or 0
+        end
         if seeded > 0 then
             WarbandNexus:Debug("TryCounter: Seeded %d entries from WoW Statistics (char: %s)", seeded, charKey)
             if WarbandNexus.SendMessage then
@@ -709,10 +724,26 @@ function Fns.ReseedStatisticsForPendingRuntimeNpcs(options)
     local dropCount = 0
     local prevByNpc = {}
 
+    -- ENCOUNTER_END may hand us a secret difficultyID with a cold ENCOUNTER_START cache, leaving
+    -- entry.difficultyID nil. FilterDropsByDifficulty fails closed on nil, so a Mythic-gated drop
+    -- (Sylvanas) would silently count nothing. Resolve live, same as ScheduleEncounterLootlessMissFallback.
+    local liveDiffResolved, liveDiff = false, nil
+    local function EncounterDifficultyForEntry(entry)
+        local d = type(entry) == "table" and entry.difficultyID or nil
+        if d then return d end
+        if not liveDiffResolved then
+            liveDiffResolved = true
+            local inInst = IsInInstance()
+            if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+            liveDiff = Fns.ResolveEncounterDifficultyForLootGating(inInst, nil, nil)
+        end
+        return liveDiff
+    end
+
     for npcID, entry in pairs(RT.pendingRuntimeStatNpcIds) do
         local npcData = RT.npcDropDB and RT.npcDropDB[npcID]
         if npcData and Fns.NpcEntryHasStatisticIds(npcData) then
-            local encDiff = type(entry) == "table" and entry.difficultyID or nil
+            local encDiff = EncounterDifficultyForEntry(entry)
             local trackable = Fns.FilterDropsByDifficulty(npcData, encDiff)
             local maxPrev = 0
             for idx = 1, #trackable do
@@ -773,9 +804,9 @@ function Fns.ReseedStatisticsForPendingRuntimeNpcs(options)
 
     for npcID, prevMax in pairs(prevByNpc) do
         local npcData = RT.npcDropDB and RT.npcDropDB[npcID]
-        local encDiff = nil
-        local entry = RT.pendingRuntimeStatNpcIds[npcID]
-        if type(entry) == "table" then encDiff = entry.difficultyID end
+        -- Same resolution as the collect loop above, or the two trackable lists diverge and the
+        -- pending-NPC clear below stops matching what was actually counted.
+        local encDiff = EncounterDifficultyForEntry(RT.pendingRuntimeStatNpcIds[npcID])
         local trackable = npcData and Fns.FilterDropsByDifficulty(npcData, encDiff) or {}
         local maxNew = 0
         for idx = 1, #trackable do

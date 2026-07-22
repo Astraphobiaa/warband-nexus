@@ -340,8 +340,9 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     end
 
     -- ENCOUNTER_START cache is consumed by this end event — clear for next pull.
-    -- Kept brief grace window (2s) so late CHAT_MSG_LOOT / delayed fallbacks can still read the
-    -- non-secret difficulty/name. After that we reset to avoid leaking into subsequent pulls.
+    -- Grace window (300s) so late CHAT_MSG_LOOT / delayed fallbacks can still read the non-secret
+    -- difficulty/name across long post-kill cinematics (Sylvanas Mythic). After that we reset to
+    -- avoid leaking into subsequent pulls.
     local graceTimer = RT.currentEncounterCache._graceTimer
     if graceTimer then graceTimer:Cancel() end
     RT.currentEncounterCache._graceTimer = C_Timer.NewTimer(300, function()

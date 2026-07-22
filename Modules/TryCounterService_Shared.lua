@@ -19,9 +19,13 @@ TC.PROCESSED_GUID_TTL = 300
 TC.MERGED_LOOT_TRY_DEDUP_TTL = 600
 TC.CLEANUP_INTERVAL = 60
 TC.ENCOUNTER_OBJECT_TTL = 300
-TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID = 1193
+-- GetInstanceInfo()[8] map instanceID for Sanctum of Domination (warcraft.wiki.gg/wiki/InstanceID).
+-- NOT the Encounter Journal instance id (1193); GetInstanceInfo never returns that value.
+TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID = 2450
 TC.RAID_MYTHIC_DIFFICULTY_ID = 16
-TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = 368304
+-- Domination-Etched Treasure Cache: spawns on the Crucible platform after the Sylvanas cinematic.
+-- 368304 ("Damaged Binding") was wrong and never matched a loot source.
+TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = 369898
 
 function TC.TryChat(message)
     local WarbandNexus = ns.WarbandNexus

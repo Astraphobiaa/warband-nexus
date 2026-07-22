@@ -243,7 +243,7 @@ ns.CollectibleSourceDB = {
     --- Fields: templateInstanceID = GetInstanceInfo()[8]; instanceType = "raid"|"party"; difficultyIDs = {16,...};
     --- bossNpcID = journal NPC id matching npcDropDB; encounterJournalID optional fallback when encounterDB has no row.
     instanceBossSlotOutcomeRules = {
-        { templateInstanceID = 1193, instanceType = "raid", difficultyIDs = { 16 }, bossNpcID = 175732, encounterJournalID = 2435 }, -- Sylvanas — SoD Mythic
+        { templateInstanceID = 2450, instanceType = "raid", difficultyIDs = { 16 }, bossNpcID = 175732, encounterJournalID = 2435 }, -- Sylvanas — SoD Mythic
     },
     -- Single source of truth for new entries. Add here only; see header "HOW TO ADD".
     sources = {
@@ -370,8 +370,10 @@ ns.CollectibleSourceDB = {
           drops = { { type = "mount", itemID = 87777, name = "Reins of the Astral Cloud Serpent" } },
         },
         -- Shadowlands
-        { sourceType = "object", objectID = 368304,  -- Sylvanas's Chest (Sanctum of Domination Mythic)
-          drops = { { type = "mount", itemID = 186642, name = "Vengeance's Reins" } },
+        { sourceType = "object", objectID = 369898,  -- Domination-Etched Treasure Cache (Sanctum of Domination, post-Sylvanas)
+          -- Chest spawns on every difficulty; the mount is Mythic-only, so gate the drop itself
+          -- (object rows have no NPC-level dropDifficulty channel in MergeDropArray).
+          drops = { { type = "mount", itemID = 186642, name = "Vengeance's Reins", dropDifficulty = "Mythic" } },
         },
         -- Dragonflight
         { sourceType = "object", objectID = 376587,  -- Expedition Scout's Pack (Dragon Isles - rare event)
@@ -2165,10 +2167,11 @@ local function CopyDropArray(drops)
     end
     if drops.statisticIds then copy.statisticIds = drops.statisticIds end
     if drops.dropDifficulty then copy.dropDifficulty = drops.dropDifficulty end
+    if drops.difficultyIDs then copy.difficultyIDs = drops.difficultyIDs end
     return copy
 end
 
-local function MergeDropArray(target, incoming, statisticIds, dropDifficulty)
+local function MergeDropArray(target, incoming, statisticIds, dropDifficulty, difficultyIDs)
     if type(target) ~= "table" or type(incoming) ~= "table" then return end
     local seen = {}
     for i = 1, #target do
@@ -2189,6 +2192,7 @@ local function MergeDropArray(target, incoming, statisticIds, dropDifficulty)
     end
     if statisticIds and not target.statisticIds then target.statisticIds = statisticIds end
     if dropDifficulty and not target.dropDifficulty then target.dropDifficulty = dropDifficulty end
+    if difficultyIDs and not target.difficultyIDs then target.difficultyIDs = difficultyIDs end
 end
 
 local function ForEachID(source, singleKey, listKey, fn)
@@ -2226,14 +2230,14 @@ local function ApplyTypedSources(db)
                 local npcID = tonumber(source.npcID or source.id)
                 if npcID and drops then
                     local target = db.npcs[npcID] or {}
-                    MergeDropArray(target, drops, source.statisticIds, source.dropDifficulty)
+                    MergeDropArray(target, drops, source.statisticIds, source.dropDifficulty, source.difficultyIDs)
                     db.npcs[npcID] = target
                 end
             elseif sourceType == "world_rare" then
                 local npcID = tonumber(source.npcID or source.id)
                 if npcID and drops then
                     local rareTarget = db.rares[npcID] or {}
-                    MergeDropArray(rareTarget, drops, source.statisticIds, source.dropDifficulty)
+                    MergeDropArray(rareTarget, drops, source.statisticIds, source.dropDifficulty, source.difficultyIDs)
                     db.rares[npcID] = rareTarget
                 end
             elseif sourceType == "object" then
@@ -2317,7 +2321,7 @@ local function MergeLegacyNpcs(db)
     for npcID, data in pairs(db.legacyNpcs) do
         if type(data) == "table" then
             local target = db.npcs[npcID] or {}
-            MergeDropArray(target, data, data.statisticIds, data.dropDifficulty)
+            MergeDropArray(target, data, data.statisticIds, data.dropDifficulty, data.difficultyIDs)
             db.npcs[npcID] = target
         end
     end

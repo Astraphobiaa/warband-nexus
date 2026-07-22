@@ -84,14 +84,28 @@ function DF.IsCharacterRowWarm(charData)
     return false
 end
 
---- Try Counter statistics snapshots exist for this character (skip login SeedFromStatistics).
+--- Re-read WoW Statistics when the stored seed stamp is older than this (seconds).
+--- GetStatistic is the authoritative try-count source for stat-backed bosses (raid/dungeon
+--- mounts). The old gate was "seeded once, ever" — so a live increment lost to a secret
+--- difficulty, a long cinematic, or an expired encounter TTL could never be repaired by a
+--- relog. A daily re-read makes the counter self-healing without login-time scan cost.
+DF.TRYCOUNTER_STATISTICS_MAX_AGE = 24 * 60 * 60
+
+--- Try Counter statistics are warm for this character (skip login SeedFromStatistics).
+--- Profiles seeded before the stamp existed have no timestamp and re-seed once.
 ---@param dbGlobal table|nil db.global
 ---@param charKey string|nil
+---@param nowEpoch number|nil server epoch override (tests); defaults to time()
 ---@return boolean
-function DF.IsTryCounterStatisticsWarm(dbGlobal, charKey)
+function DF.IsTryCounterStatisticsWarm(dbGlobal, charKey, nowEpoch)
     if not dbGlobal or not charKey or charKey == "" then return false end
     local tc = dbGlobal.tryCounts
     if not DF.HasTableRows(tc) then return false end
+    local seedStamps = dbGlobal.tryCounterStatSeedAt
+    local seededAt = type(seedStamps) == "table" and tonumber(seedStamps[charKey]) or nil
+    if not seededAt then return false end
+    local now = tonumber(nowEpoch) or (time and time()) or 0
+    if now > 0 and (now - seededAt) >= DF.TRYCOUNTER_STATISTICS_MAX_AGE then return false end
     local snaps = dbGlobal.statisticSnapshots
     if not snaps or not snaps[charKey] or not next(snaps[charKey]) then return false end
     return true

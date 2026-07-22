@@ -25,8 +25,8 @@ local pairs = pairs
 -- DB tables reassigned in LoadRuntimeSourceTables — always read RT.* (never snapshot at load).
 local RECENT_KILL_TTL = TC.RECENT_KILL_TTL or 15
 local RAID_MYTHIC_DIFFICULTY_ID = TC.RAID_MYTHIC_DIFFICULTY_ID or 16
-local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 1193
-local SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 368304
+local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 2450
+local SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 369898
 
 --- True when npc drop array (or questStarters) contains any itemID in itemIdSet.
 function Fns.NpcDropEntryContainsAnyItemSet(npcData, itemIdSet)

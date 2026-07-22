@@ -72,9 +72,9 @@ local function TrimGuidParseCachesIfOversized()
     trim(guidObjectIDCache)
 end
 local ENCOUNTER_OBJECT_TTL = TC.ENCOUNTER_OBJECT_TTL or 300
-local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 1193
+local SANCTUM_RAID_TEMPLATE_INSTANCE_ID = TC.SANCTUM_RAID_TEMPLATE_INSTANCE_ID or 2450
 local RAID_MYTHIC_DIFFICULTY_ID = TC.RAID_MYTHIC_DIFFICULTY_ID or 16
-local SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 368304
+local SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID = TC.SYLVANAS_MYTHIC_CHEST_OBJECT_ROW_ID or 369898
 
 Fns.TryChat = TC.TryChat
 Fns.BuildObtainedChat = TC.BuildObtainedChat
@@ -854,6 +854,9 @@ function Fns.CopyDropArray(drops)
     end
     if drops.statisticIds then copy.statisticIds = drops.statisticIds end
     if drops.dropDifficulty then copy.dropDifficulty = drops.dropDifficulty end
+    -- FilterDropsByDifficulty reads drops.difficultyIDs; without this the array-level whitelist
+    -- (e.g. npc 214650 raid-only { 16 }) never reaches runtime and M+ kills leak into raid mounts.
+    if drops.difficultyIDs then copy.difficultyIDs = drops.difficultyIDs end
     return copy
 end
 
@@ -4686,7 +4689,11 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     Fns.GetSafeMapID()
 
     local inInstance, instanceType = IsInInstance()
-    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    -- Midnight: IsInInstance() can return a secret value mid-transition (post-encounter cinematics,
+    -- in-instance phase hops). The block below is destructive - it wipes every pending encounter kill.
+    -- "Unknown" must not be treated as "left the instance", or a boss killed before a long cutscene
+    -- loses its recentKills row and its chest can no longer be attributed (Sylvanas Mythic).
+    if issecretvalue and inInstance and issecretvalue(inInstance) then return end
     if issecretvalue and instanceType and issecretvalue(instanceType) then instanceType = nil end
     if not inInstance then
         tryCounterInstanceDiffCache.instanceID = nil
