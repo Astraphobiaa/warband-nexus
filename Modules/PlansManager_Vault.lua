@@ -282,7 +282,8 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
         dungeonCount = plan.progress and plan.progress.dungeonCount or 0,
         raidBossCount = plan.progress and plan.progress.raidBossCount or 0,
         worldActivityCount = plan.progress and plan.progress.worldActivityCount or 0,
-        specialAssignmentCount = plan.progress and plan.progress.specialAssignmentCount or 0
+        specialAssignmentCount = plan.progress and plan.progress.specialAssignmentCount or 0,
+        specialAssignmentTotal = plan.progress and plan.progress.specialAssignmentTotal or 2,
     }
     
     if IsDebugModeEnabled and IsDebugModeEnabled() then
@@ -299,7 +300,22 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
     plan.progress.specialAssignmentTotal = currentProgress.specialAssignmentTotal or 2
     
     -- Update slot completions and check for newly completed slots
-    self:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress)
+    local slotStateChanged = self:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress) == true
+    local progressChanged = oldProgress.dungeonCount ~= plan.progress.dungeonCount
+        or oldProgress.raidBossCount ~= plan.progress.raidBossCount
+        or oldProgress.worldActivityCount ~= plan.progress.worldActivityCount
+        or oldProgress.specialAssignmentCount ~= plan.progress.specialAssignmentCount
+        or oldProgress.specialAssignmentTotal ~= plan.progress.specialAssignmentTotal
+
+    -- PlansUI caches rendered cards by a plan-data epoch. PvE updates mutate this plan only after
+    -- WN_PVE_UPDATED has already been dispatched, so publish the post-mutation state explicitly.
+    if progressChanged or slotStateChanged then
+        self:SendMessage(E.PLANS_UPDATED, {
+            action = "weekly_progress_updated",
+            planID = plan.id,
+            planType = plan.type,
+        })
+    end
 
     if planId then
         self._wnVaultPlanPostLoginSyncDone[planId] = true
@@ -314,11 +330,12 @@ end
 ]]
 function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress)
     if not plan or not plan.slots then
-        return
+        return false
     end
     
     local newlyCompletedSlots = {}
     local newlyCompletedCheckpoints = {}
+    local slotStateChanged = false
 
     -- Only toast for categories the user enabled on the weekly vault card (trackedSlots).
     local ts = plan.trackedSlots
@@ -339,6 +356,7 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
         if not slot.manualOverride then
             local wasCompleted = slot.completed
             slot.completed = plan.progress.dungeonCount >= slot.threshold
+            if slot.completed ~= wasCompleted then slotStateChanged = true end
             
             -- Check if newly completed
             if slot.completed and not wasCompleted and vaultCategoryNotifies("dungeon") then
@@ -363,6 +381,7 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
         if not slot.manualOverride then
             local wasCompleted = slot.completed
             slot.completed = plan.progress.raidBossCount >= slot.threshold
+            if slot.completed ~= wasCompleted then slotStateChanged = true end
             
             -- Check if newly completed
             if slot.completed and not wasCompleted and vaultCategoryNotifies("raid") then
@@ -387,6 +406,7 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
         if not slot.manualOverride then
             local wasCompleted = slot.completed
             slot.completed = plan.progress.worldActivityCount >= slot.threshold
+            if slot.completed ~= wasCompleted then slotStateChanged = true end
             
             -- Check if newly completed
             if slot.completed and not wasCompleted and vaultCategoryNotifies("world") then
@@ -413,6 +433,7 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             if not slot.manualOverride then
                 local wasCompleted = slot.completed
                 slot.completed = (plan.progress.specialAssignmentCount or 0) >= slot.threshold
+                if slot.completed ~= wasCompleted then slotStateChanged = true end
                 if slot.completed and not wasCompleted and vaultCategoryNotifies("specialAssignment") then
                     table.insert(newlyCompletedSlots, {category = "specialAssignment", index = i, threshold = slot.threshold})
                 end
@@ -481,6 +502,7 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     -- Mark plan as completed if all slots are done
     local wasFullyCompleted = plan.fullyCompleted
     plan.fullyCompleted = allCompleted
+    if plan.fullyCompleted ~= wasFullyCompleted then slotStateChanged = true end
     
     -- Show completion notification if just completed (only when at least one vault row is tracked)
     if not skipNotifications and plan.fullyCompleted and not wasFullyCompleted then
@@ -491,6 +513,7 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             self:ShowWeeklyPlanCompletionNotification(plan.characterName)
         end
     end
+    return slotStateChanged
 end
 
 --[[
