@@ -306,10 +306,22 @@ function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
         or oldProgress.worldActivityCount ~= plan.progress.worldActivityCount
         or oldProgress.specialAssignmentCount ~= plan.progress.specialAssignmentCount
         or oldProgress.specialAssignmentTotal ~= plan.progress.specialAssignmentTotal
+    local vaultLootStateChanged = false
+    if planId then
+        self._wnVaultPlanLootReadyById = self._wnVaultPlanLootReadyById or {}
+        local vaultLootReady = false
+        if self.HasUnclaimedVaultRewards then
+            local ok, ready = pcall(self.HasUnclaimedVaultRewards, self)
+            vaultLootReady = ok and ready == true
+        end
+        local previous = self._wnVaultPlanLootReadyById[planId]
+        vaultLootStateChanged = previous == nil or previous ~= vaultLootReady
+        self._wnVaultPlanLootReadyById[planId] = vaultLootReady
+    end
 
     -- PlansUI caches rendered cards by a plan-data epoch. PvE updates mutate this plan only after
     -- WN_PVE_UPDATED has already been dispatched, so publish the post-mutation state explicitly.
-    if progressChanged or slotStateChanged then
+    if progressChanged or slotStateChanged or vaultLootStateChanged then
         self:SendMessage(E.PLANS_UPDATED, {
             action = "weekly_progress_updated",
             planID = plan.id,
@@ -754,6 +766,7 @@ end
 ]]
 function WarbandNexus:OnVaultPlanSessionReset()
     self._wnVaultPlanPostLoginSyncDone = {}
+    self._wnVaultPlanLootReadyById = {}
     if self._wnVaultPlanCheckTimer then
         self._wnVaultPlanCheckTimer:Cancel()
         self._wnVaultPlanCheckTimer = nil
