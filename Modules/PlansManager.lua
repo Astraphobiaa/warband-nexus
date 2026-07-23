@@ -327,6 +327,11 @@ function WarbandNexus:InitializePlanTracking()
             WarbandNexus:_DeferVaultPlanCheckFromPvE()
         end
     end)
+    -- Registration is intentionally late in startup; catch up if the initial server response
+    -- arrived before this listener was installed.
+    if self._DeferVaultPlanCheckFromPvE then
+        self:_DeferVaultPlanCheckFromPvE()
+    end
     -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed)
     self:RegisterEvent("ENCOUNTER_END", "OnPvEUpdateCheckPlans")
     

@@ -1673,8 +1673,8 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end)
     end
     
-    -- Core P3 (T+6.5s): Plan tracking — lowest priority, initial login only
-    if isInitialLogin then
+    -- Core P3 (T+6.5s): Plan tracking — lowest priority, once per login or UI reload
+    if isInitialLogin or isReloadingUi then
         C_Timer.After(6.5, function()
             local SafeInit = ns.InitializationService and ns.InitializationService.SafeInit
             if SafeInit then
