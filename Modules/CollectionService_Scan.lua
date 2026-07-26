@@ -46,10 +46,21 @@ end
 -- ScanBagsForNewCollectibles call (hot path on BAG_UPDATE / CHAT_MSG_LOOT).
 local scanCtx = {}
 
+local function ContainerValueIsSecret(value)
+    if value == nil or not issecretvalue then return false end
+    return issecretvalue(value) and true or false
+end
+
+local function ContainerSlotLooksSecret(itemInfo)
+    if not itemInfo then return false end
+    return ContainerValueIsSecret(itemInfo.itemID) or ContainerValueIsSecret(itemInfo.hyperlink)
+end
+
 -- SECURITY: container itemIDs can be secret values on addon-restricted maps
 -- (delves / dungeons / raids on Midnight 12.0+). We must not compare, index,
 -- or pass a secret to GetItemInfoInstant / CheckNewCollectible, so skip the
--- slot entirely. Mirrors the CHAT_MSG_LOOT guards in InstallBagScanListener.
+-- slot for *detection*. The previous baseline for that slot MUST be preserved,
+-- otherwise the next readable scan treats every bag collectible as brand-new.
 local function FillBagSlotsFromItemsCache(bagID)
     local snaps = scanCtx.itemsCacheSnaps
     local snap = snaps and snaps[bagID]
@@ -57,14 +68,49 @@ local function FillBagSlotsFromItemsCache(bagID)
         return false
     end
     local current = scanCtx.currentBagContents
+    local previous = scanCtx.previousBagContents
     local bagNums = scanCtx.currentBagNums
     for slotKey, itemID in pairs(snap.slots) do
-        if not (issecretvalue and issecretvalue(itemID)) then
+        if ContainerValueIsSecret(itemID) then
+            local prev = previous and previous[slotKey]
+            if prev ~= nil then
+                current[slotKey] = prev
+                bagNums[slotKey] = bagID
+            end
+            scanCtx.sawSecretSlots = true
+        else
             current[slotKey] = itemID
             bagNums[slotKey] = bagID
         end
     end
     return true
+end
+
+-- ItemsCache snapshots omit secret slots entirely. After a fill/live scan, restore any
+-- previous baseline entry whose live slot is still occupied but unreadable.
+local function PreserveSecretOccupiedPreviousSlots(bagID)
+    local previous = scanCtx.previousBagContents
+    local current = scanCtx.currentBagContents
+    local bagNums = scanCtx.currentBagNums
+    local prevNums = scanCtx.previousBagNums
+    if not previous or not current then return end
+    for slotKey, prevID in pairs(previous) do
+        if current[slotKey] == nil then
+            local bagNum = prevNums and prevNums[slotKey]
+            if bagNum == nil then bagNum = tonumber(slotKey:match("^(%d+)")) end
+            if bagNum == bagID then
+                local slotID = tonumber(slotKey:match("_(%d+)$"))
+                if slotID then
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                    if ContainerSlotLooksSecret(itemInfo) then
+                        current[slotKey] = prevID
+                        bagNums[slotKey] = bagID
+                        scanCtx.sawSecretSlots = true
+                    end
+                end
+            end
+        end
+    end
 end
 
 local function ScanBagSlotsLive(bagID)
@@ -79,8 +125,15 @@ local function ScanBagSlotsLive(bagID)
         local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
         if itemInfo and itemInfo.itemID then
             local itemID = itemInfo.itemID
-            if not (issecretvalue and issecretvalue(itemID)) then
-                local slotKey = bagID .. "_" .. slotID
+            local slotKey = bagID .. "_" .. slotID
+            if ContainerValueIsSecret(itemID) or ContainerValueIsSecret(itemInfo.hyperlink) then
+                local prev = previous and previous[slotKey]
+                if prev ~= nil then
+                    current[slotKey] = prev
+                    bagNums[slotKey] = bagID
+                end
+                scanCtx.sawSecretSlots = true
+            else
                 current[slotKey] = itemID
                 bagNums[slotKey] = bagID
                 if not previous[slotKey] or previous[slotKey] ~= itemID then
@@ -132,7 +185,7 @@ local function DiffBagSlotsFromItemsCache(bagID)
     local pending = scanCtx.pendingRetryItems
     local newCollectibles = scanCtx.newCollectibles
     for slotKey, itemID in pairs(snap.slots) do
-        if not (issecretvalue and issecretvalue(itemID)) then
+        if not ContainerValueIsSecret(itemID) then
             if not previous[slotKey] or previous[slotKey] ~= itemID then
                 local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
                 if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
@@ -174,22 +227,27 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
     local itemsCacheSnaps = ns.ItemsCacheBagSnapshots
 
     scanCtx.previousBagContents = previousBagContents
+    scanCtx.previousBagNums = previousBagNums
     scanCtx.pendingRetryItems = pendingRetryItems
     scanCtx.currentBagContents = currentBagContents
     scanCtx.currentBagNums = currentBagNums
     scanCtx.newCollectibles = newCollectibles
     scanCtx.itemsCacheSnaps = itemsCacheSnaps
     scanCtx.snapNow = GetTime()
+    scanCtx.sawSecretSlots = false
 
     if not Scan.isInitialized then
+        local secretBlocked = false
         for bagID = 0, 4 do
             local numSlots = C_Container.GetContainerNumSlots(bagID)
             if numSlots then
                 for slotID = 1, numSlots do
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                    if itemInfo and itemInfo.itemID then
-                        local itemID = itemInfo.itemID
-                        if not (issecretvalue and issecretvalue(itemID)) then
+                    if itemInfo and (itemInfo.itemID or itemInfo.hyperlink) then
+                        if ContainerSlotLooksSecret(itemInfo) then
+                            secretBlocked = true
+                        elseif itemInfo.itemID then
+                            local itemID = itemInfo.itemID
                             local slotKey = bagID .. "_" .. slotID
                             currentBagContents[slotKey] = itemID
                             currentBagNums[slotKey] = bagID
@@ -197,6 +255,13 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
                     end
                 end
             end
+        end
+
+        -- Login/reload inside a restricted map can secret every bag slot. Finalizing an empty
+        -- baseline here would toast every bag collectible as "new" once IDs become readable.
+        if secretBlocked then
+            DebugPrint("|cff9370DB[WN CollectionService]|r Bag scan baseline deferred (secret container values)")
+            return nil
         end
 
         Scan.previousBagContents = currentBagContents
@@ -246,6 +311,7 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
             else
                 ScanBagSlotsLive(bagID)
             end
+            PreserveSecretOccupiedPreviousSlots(bagID)
         end
     end
 
