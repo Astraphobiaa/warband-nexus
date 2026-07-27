@@ -621,6 +621,8 @@ local CACHE_VERSION = Constants.PVE_CACHE_VERSION
 local UPDATE_THROTTLE = Constants.THROTTLE.SHARED_RARE
 local GreatVaultActivityHasRows
 local GreatVaultActivityHasCompletedRows
+local ShouldPreserveCompletedVaultRows
+local LegacyGreatVaultArrayHasCompleted
 
 ---Midnight-safe quest completion check (pcall + secret guard).
 ---@return boolean
@@ -1360,10 +1362,8 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
         and self.db.global.pveCache.greatVault.rewards[charKey]
     local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
     local previousActivities = self.db.global.pveCache.greatVault.activities[charKey]
-    local hadCompletedVaultRows = GreatVaultActivityHasCompletedRows(previousActivities)
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
-    local storedBeforeReset = previousResetTime and previousActivities and (tonumber(previousActivities.lastUpdate) or 0) < previousResetTime
     local incomingCompletedRows = false
     for i = 1, #activities do
         local activity = activities[i]
@@ -1374,13 +1374,15 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
             break
         end
     end
-    if hadCompletedVaultRows and storedBeforeReset and not rewardClaimedThisReset and not incomingCompletedRows then
+    local preserveRows, markPostReset = ShouldPreserveCompletedVaultRows(
+        previousActivities, incomingCompletedRows, rewardClaimedThisReset, previousResetTime)
+    if preserveRows then
         PvECacheUserDebug(
-            "greatVault: preserve pre-reset completed rows key=%s incomingComplete=no",
-            tostring(charKey))
+            "greatVault: preserve completed rows key=%s incomingComplete=no postReset=%s",
+            tostring(charKey), markPostReset and "yes" or "no")
         -- Mark as post-reset so PveUI shows this week's 0 progress while vault button
         -- still knows there's an unclaimed chest sitting from last week.
-        if previousActivities then
+        if markPostReset and previousActivities then
             previousActivities.isPostReset = true
         end
         return
@@ -2218,6 +2220,41 @@ GreatVaultActivityHasCompletedRows = function(bucket)
     return false
 end
 
+---Keep completed vault rows when an incoming snapshot has none (post-reset chest + mid-week API races).
+---Does not mix current-week incomplete progress into a preserved last-week bucket — callers return early.
+---@param prevBucket table|nil
+---@param incomingHasCompleted boolean
+---@param rewardClaimedThisReset boolean|nil
+---@param previousResetTime number|nil
+---@return boolean preserve
+---@return boolean markPostReset
+ShouldPreserveCompletedVaultRows = function(prevBucket, incomingHasCompleted, rewardClaimedThisReset, previousResetTime)
+    if not GreatVaultActivityHasCompletedRows(prevBucket) then
+        return false, false
+    end
+    if rewardClaimedThisReset or incomingHasCompleted then
+        return false, false
+    end
+    local storedBeforeReset = previousResetTime and (tonumber(prevBucket.lastUpdate) or 0) < previousResetTime
+    return true, storedBeforeReset and true or false
+end
+
+---True when a flat CollectPvEData greatVault array has any completed slot.
+---@param legacyArr table|nil
+---@return boolean
+LegacyGreatVaultArrayHasCompleted = function(legacyArr)
+    if type(legacyArr) ~= "table" then return false end
+    for i = 1, #legacyArr do
+        local activity = legacyArr[i]
+        local progress = activity and tonumber(activity.progress) or 0
+        local threshold = activity and tonumber(activity.threshold) or 0
+        if threshold > 0 and progress >= threshold then
+            return true
+        end
+    end
+    return false
+end
+
 ---Import legacy PvE data for a specific character into pveCache.
 ---Used by DatabaseOptimizer migration and UpdatePvEDataV2 fallback.
 ---Maps the old DataService progress format → PvECacheService structure.
@@ -2341,14 +2378,44 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
     -- ── Great Vault ──
     if legacyData.greatVault then
         local prevVault = pc.greatVault.activities and pc.greatVault.activities[charKey]
+        local previousResetTime = GetCurrentWeeklyResetStartTime()
+        local rewardData = pc.greatVault.rewards and pc.greatVault.rewards[charKey]
+        local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
+        local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime
+            and rewardClaimedResetTime >= previousResetTime
+        local incomingCompleted = LegacyGreatVaultArrayHasCompleted(legacyData.greatVault)
+        local preserveRows, markPostReset = ShouldPreserveCompletedVaultRows(
+            prevVault, incomingCompleted, rewardClaimedThisReset, previousResetTime)
+
+        local skipVaultReplace = false
         if #legacyData.greatVault == 0 and GreatVaultActivityHasRows(prevVault) then
+            -- CollectPvEData / staggered stage can hand an empty array before the weekly API hydrates.
+            skipVaultReplace = true
             if IsDebugModeEnabled and IsDebugModeEnabled() then
                 DebugPrint(string.format("|cff9370DB[PvECache]|r ImportLegacyPvEData: skip empty greatVault for %s (keeping cache)", charKey))
             end
             PvECacheUserDebug(
                 "import: SKIP greatVault (legacy [] but cache had rows) key=%s — vault preserved",
                 tostring(charKey))
-        else
+        elseif preserveRows then
+            -- Non-empty current-week zero-progress arrays used to REPLACE preserved post-reset
+            -- completed rows (and mid-week completed rows during an API race). SaveCharacter →
+            -- CollectPvEData → ImportLegacyPvEData hit this every full save after weekly reset.
+            skipVaultReplace = true
+            if markPostReset and prevVault then
+                prevVault.isPostReset = true
+            end
+            if IsDebugModeEnabled and IsDebugModeEnabled() then
+                DebugPrint(string.format(
+                    "|cff9370DB[PvECache]|r ImportLegacyPvEData: skip zero-progress greatVault for %s (keeping completed cache)",
+                    charKey))
+            end
+            PvECacheUserDebug(
+                "import: SKIP greatVault (incoming incomplete, cache had completed) key=%s postReset=%s — vault preserved",
+                tostring(charKey), markPostReset and "yes" or "no")
+        end
+
+        if not skipVaultReplace then
         pc.greatVault.activities = pc.greatVault.activities or {}
         local vaultData = { raids = {}, mythicPlus = {}, pvp = {}, world = {}, lastUpdate = time() }
         
@@ -2375,19 +2442,20 @@ function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
         
         pc.greatVault.activities[charKey] = vaultData
         
-        -- Unclaimed rewards
+        PvECacheUserDebug(
+            "import: greatVault APPLIED key=%s raid=%d mPlus=%d world=%d pvp=%d unclaimed=%s",
+            tostring(charKey),
+            #vaultData.raids, #vaultData.mythicPlus, #vaultData.world, #vaultData.pvp,
+            legacyData.hasUnclaimedRewards and "yes" or "no")
+        end
+
+        -- Unclaimed rewards flag can still advance while activities are preserved.
         if legacyData.hasUnclaimedRewards then
             pc.greatVault.rewards = pc.greatVault.rewards or {}
             pc.greatVault.rewards[charKey] = {
                 hasAvailableRewards = true,
                 lastUpdate = time(),
             }
-        end
-        PvECacheUserDebug(
-            "import: greatVault APPLIED key=%s raid=%d mPlus=%d world=%d pvp=%d unclaimed=%s",
-            tostring(charKey),
-            #vaultData.raids, #vaultData.mythicPlus, #vaultData.world, #vaultData.pvp,
-            legacyData.hasUnclaimedRewards and "yes" or "no")
         end
     end
     
@@ -3154,13 +3222,11 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
         or (backupMythicPlus and #backupMythicPlus > 0)
         or (backupPvp and #backupPvp > 0)
         or (backupWorld and #backupWorld > 0)
-    local hadCompletedVaultRows = GreatVaultActivityHasCompletedRows(activities)
     local previousResetTime = GetCurrentWeeklyResetStartTime()
     local rewardData = self.db.global.pveCache.greatVault.rewards
         and self.db.global.pveCache.greatVault.rewards[charKey]
     local rewardClaimedResetTime = rewardData and tonumber(rewardData.claimedResetTime) or nil
     local rewardClaimedThisReset = rewardClaimedResetTime and previousResetTime and rewardClaimedResetTime >= previousResetTime
-    local storedBeforeReset = previousResetTime and (tonumber(activities.lastUpdate) or 0) < previousResetTime
     local incomingCompletedRows = false
     for i = 1, #vaultSlots do
         local slot = vaultSlots[i]
@@ -3171,13 +3237,17 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
             break
         end
     end
-    if hadCompletedVaultRows and storedBeforeReset and not rewardClaimedThisReset and not incomingCompletedRows then
+    local preserveRows, markPostReset = ShouldPreserveCompletedVaultRows(
+        activities, incomingCompletedRows, rewardClaimedThisReset, previousResetTime)
+    if preserveRows then
         PvECacheUserDebug(
-            "scanner: preserve pre-reset completed vault rows key=%s incomingComplete=no",
-            tostring(charKey))
+            "scanner: preserve completed vault rows key=%s incomingComplete=no postReset=%s",
+            tostring(charKey), markPostReset and "yes" or "no")
         -- Mark as post-reset so PveUI shows this week's 0 progress while vault button
         -- still knows there's an unclaimed chest sitting from last week.
-        activities.isPostReset = true
+        if markPostReset then
+            activities.isPostReset = true
+        end
         return
     end
     
