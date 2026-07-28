@@ -439,6 +439,12 @@ function CommandService:HandleSlashCommand(addon, input)
             end
             return
         elseif subLower == "inject" then
+            -- Injection writes db.global.pvpMatches; refuse while the module is off so a
+            -- disabled PvP module never gains rows.
+            if ns.PvPService and ns.PvPService.IsModuleEnabled and not ns.PvPService.IsModuleEnabled() then
+                addon:Print("|cffff6600[WN-PvP]|r PvP module is disabled (Settings > Modules) — nothing injected.")
+                return
+            end
             if ns.PvPService and ns.PvPService.InjectSelfTestMatchSuite then
                 local entries = ns.PvPService:InjectSelfTestMatchSuite()
                 local n = entries and #entries or 0

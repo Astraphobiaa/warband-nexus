@@ -101,6 +101,20 @@ function ns.SettingsUI.AppendModulesPanel(ctx)
                 end,
             },
             {
+                key = "pvp",
+                label = (ns.L and ns.L["MODULE_PVP"]) or "PvP",
+                tooltip = (ns.L and ns.L["MODULE_PVP_DESC"]) or "Track rated brackets, honor progress, and match history. Disabling stops all PvP data collection.",
+                get = function() return WarbandNexus.db.profile.modulesEnabled.pvp ~= false end,
+                set = function(value)
+                    if WarbandNexus.SetPvPModuleEnabled then
+                        WarbandNexus:SetPvPModuleEnabled(value)
+                    else
+                        WarbandNexus.db.profile.modulesEnabled.pvp = value
+                        WarbandNexus:SendMessage(E.MODULE_TOGGLED, "pvp", value)
+                    end
+                end,
+            },
+            {
                 key = "plans",
                 label = (ns.L and ns.L["MODULE_PLANS"]) or "Plans",
                 tooltip = (ns.L and ns.L["MODULE_PLANS_DESC"]) or "Track personal goals for mounts, pets, toys, achievements, and custom tasks",

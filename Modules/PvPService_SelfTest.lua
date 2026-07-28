@@ -33,6 +33,17 @@ function WarbandNexus:RunPvPSelfTest()
 
     WarbandNexus:Print("|cff00ccff[WN-PvP-Test]|r API -> DB -> UI pipeline smoke test")
 
+    -- With the module off the service writes nothing by design; the DB probes below would
+    -- report false failures, so stop here instead of reporting a broken pipeline.
+    if PvPService.IsModuleEnabled and not PvPService.IsModuleEnabled() then
+        WarbandNexus:Print("[WN-PvP-Test] " .. WARN .. " PvP module disabled (Settings > Modules) — no data is collected. Enable it and re-run.")
+        return
+    end
+    if ns.CharacterService and not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+        WarbandNexus:Print("[WN-PvP-Test] " .. WARN .. " This character is untracked — PvP collection is skipped for it by design. Track it and re-run.")
+        return
+    end
+
     tally(probe("PvPService table loaded", function()
         assert(PvPService.RATED_BRACKETS and #PvPService.RATED_BRACKETS >= 5)
     end))

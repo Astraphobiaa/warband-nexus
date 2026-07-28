@@ -135,7 +135,8 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
 
     AddText((ns.L and ns.L["ABOUT_PATREON_SUPPORTERS"]) or "Patreon Supporters", "title", { ar, ag, ab }, 6, true)
     local patreonR, patreonG, patreonB = SemanticGoldRGB()
-    AddText((ns.L and ns.L["ABOUT_PATREON_SUPPORTER_1"]) or "Melissa CD", "body", { patreonR, patreonG, patreonB }, 20, true)
+    AddText((ns.L and ns.L["ABOUT_PATREON_SUPPORTER_1"]) or "Melissa CD", "body", { patreonR, patreonG, patreonB }, 6, true)
+    AddText((ns.L and ns.L["ABOUT_PATREON_SUPPORTER_2"]) or "Bedroom", "body", { patreonR, patreonG, patreonB }, 20, true)
 
     AddText((ns.L and ns.L["INFO_FEATURES_SECTION_TITLE"]) or "Features overview", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 14, true)
     AddText((ns.L and ns.L["ADDON_OVERVIEW_TITLE"]) or "AddOn Overview", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 6)
@@ -161,6 +162,9 @@ function ns.UI_PaintAboutContent(parent, innerWidth, opts)
 
     AddText((ns.L and ns.L["INFO_TAB_PVE"]) or "PvE", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
     AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault progress with next-tier indicators, Mythic+ scores and keys, keystone affixes, dungeon history, and upgrade currency across all characters.", "body", nil, 10)
+
+    AddText((ns.L and ns.L["INFO_TAB_PVP"]) or "PvP", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
+    AddText((ns.L and ns.L["PVP_DESC"]) or "Compare rated brackets across your warband: 2v2, 3v3, Solo Shuffle, Blitz, and Rated BG ratings with weekly and seasonal win records. Tracks honor level, Honor and Conquest caps, recent match history with rating changes, and the active brawl.", "body", nil, 10)
 
     AddText((ns.L and ns.L["INFO_TAB_PROFESSIONS"]) or "Professions", "title", { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] }, 5)
     AddText((ns.L and ns.L["PROFESSIONS_INFO_DESC"]) or "See every tracked character's crafting professions in one sortable grid: skill level, equipped tools, concentration and recharge, knowledge points, recipe coverage, and weekly knowledge progress. Data updates when you open each character's profession panel (default K). While a profession window stays open, Recipe Companion shows how many of each reagent you carry in bags.", "body", nil, 10)

@@ -506,6 +506,8 @@ local function ProcessNotificationQueue()
         WarbandNexus:ShowUpdateNotification(notification.data)
     elseif notification.type == "vault" then
         WarbandNexus:ShowVaultReminder(notification.data)
+    elseif notification.type == "mail" then
+        WarbandNexus:ShowExpiringMailReminder()
     end
     
     -- Schedule next notification (2 second delay)
@@ -536,6 +538,7 @@ local CATEGORY_ICONS = {
     title = "Interface\\Icons\\INV_Scroll_11",
     plan = "Interface\\Icons\\INV_Misc_Note_06",
     vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
+    mail = "Interface\\Icons\\INV_Letter_15",
     reputation = "Interface\\Icons\\INV_Scroll_11",
     quest = "Interface\\Icons\\INV_Misc_Map_01",
     item = "Interface\\Icons\\INV_Misc_Bag_10",
@@ -1829,6 +1832,21 @@ function WarbandNexus:CheckNotificationsOnLogin()
         end)
     end
     
+    -- 3. Mail about to expire on any tracked character. Delayed past the
+    -- PLAYER_ENTERING_WORLD mail scan (2s + 0.3s debounce) so this character's own inbox is
+    -- counted with fresh data; alts contribute from their stored snapshots. Queued late, so
+    -- it drives the queue itself rather than relying on the 0.5s/1.5s pumps below.
+    if notifs.showMailReminder ~= false then
+        C_Timer.After(3.5, function()
+            local MS = ns.MailSnapshot
+            if not (WarbandNexus and MS and MS.GetExpiringMailSummary) then return end
+            local count = MS.GetExpiringMailSummary(WarbandNexus)
+            if not count or count < 1 then return end
+            QueueNotification({ type = "mail" })
+            ProcessNotificationQueue()
+        end)
+    end
+
     -- Process queue with minimal delay (update notification is immediately queued)
     if HasPendingNotifications() then
         C_Timer.After(0.5, ProcessNotificationQueue)
@@ -2049,6 +2067,8 @@ function WarbandNexus:CanShowToast(channel, lootType)
         return true
     elseif channel == "vault" then
         return db.showVaultReminder ~= false
+    elseif channel == "mail" then
+        return db.showMailReminder ~= false
     elseif channel == "reminder" then
         return db.showPlanReminderToast ~= false
     end
@@ -3368,6 +3388,37 @@ function WarbandNexus:OnQuestCompleted(event, data)
     self:Notify("quest", cat.name .. " - " .. data.characterName, nil, {
         iconAtlas = cat.atlas,
         action = data.questTitle .. " " .. ((ns.L and ns.L["QUEST_COMPLETED_SUFFIX"]) or "Completed"),
+    })
+end
+
+---Login reminder for mail that is about to expire (a week or less left) on any tracked
+---character. Reads persisted snapshots only, so alts count without opening their mailbox.
+---@return boolean shown
+function WarbandNexus:ShowExpiringMailReminder()
+    if not self:CanShowToast("mail") then return false end
+    local MS = ns.MailSnapshot
+    if not (MS and MS.GetExpiringMailSummary) then return false end
+
+    local count, soonestLeft, soonestName = MS.GetExpiringMailSummary(self)
+    if not count or count < 1 then return false end
+
+    local L = ns.L
+    local timeText = soonestLeft and MS.FormatMailTimeRemaining and MS.FormatMailTimeRemaining(time() + soonestLeft)
+    local action
+    if timeText then
+        action = string.format((L and L["MAIL_REMINDER_ACTION"]) or "You have %d mail(s) expiring, soonest in %s",
+            count, timeText)
+    else
+        action = string.format((L and L["MAIL_REMINDER_ACTION_SIMPLE"]) or "You have %d mail(s) expiring soon", count)
+    end
+    -- Name the owner so an alt's inbox is actionable from the toast alone.
+    local title = (L and L["MAIL_REMINDER_TITLE"]) or "Mail Expiring Soon!"
+    if soonestName and soonestName ~= "" and not (issecretvalue and issecretvalue(soonestName)) then
+        title = title .. " - " .. soonestName
+    end
+
+    return self:Notify("mail", title, CATEGORY_ICONS.mail, {
+        action = action,
     })
 end
 

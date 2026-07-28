@@ -109,6 +109,22 @@ local function IsCurrentCharacterTracked()
     return (ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)) == true
 end
 
+-- Module gate: with PvP off, this service does nothing at all -- its five events are
+-- unregistered (SetEventsRegistered) and every write path below bails, so no API call,
+-- no db.global.pvp* row and no WN_PVP_UPDATED emit happens. Re-enabling re-registers
+-- and re-seeds via OnModuleToggled.
+local function IsPvPModuleEnabled()
+    local U = ns.Utilities
+    if not (U and U.IsModuleEnabled) then return true end
+    return U:IsModuleEnabled("pvp")
+end
+PvPService.IsModuleEnabled = IsPvPModuleEnabled
+
+-- Collection is allowed only for a tracked character with the module on.
+local function CanCollect()
+    return IsPvPModuleEnabled() and IsCurrentCharacterTracked()
+end
+
 local function EmitUpdated()
     if WarbandNexus and WarbandNexus.SendMessage and ns.Constants and ns.Constants.EVENTS then
         WarbandNexus:SendMessage(ns.Constants.EVENTS.PVP_UPDATED)
@@ -141,9 +157,9 @@ end
 -- SNAPSHOTS (rated brackets + honor) — persist, then emit.
 
 function PvPService:SnapshotRatedInfo(skipEmit)
+    if not CanCollect() then return end
     local charKey = GetCharKey()
     if not charKey then return end
-    if not IsCurrentCharacterTracked() then return end
     local store = GetProgressStore(charKey)
     if not store then return end
 
@@ -195,6 +211,7 @@ end
 
 -- Ask the server for fresh rated stats; reply lands as PVP_RATED_STATS_UPDATE.
 function PvPService:RequestRatedRefresh()
+    if not CanCollect() then return end
     if RequestRatedInfo then
         pcall(RequestRatedInfo)
     end
@@ -237,9 +254,9 @@ function PvPService:GetTierLabel(tierID)
 end
 
 function PvPService:SnapshotHonor(skipEmit)
+    if not CanCollect() then return end
     local charKey = GetCharKey()
     if not charKey then return end
-    if not IsCurrentCharacterTracked() then return end
     local store = GetProgressStore(charKey)
     if not store then return end
 
@@ -310,9 +327,9 @@ local function BumpAggregate(bucket, modeKey, won)
 end
 
 function PvPService:OnMatchComplete(winner, duration)
+    if not CanCollect() then return end
     local charKey = GetCharKey()
     if not charKey then return end
-    if not IsCurrentCharacterTracked() then return end
     local matches = GetMatchStore(charKey)
     if not matches then return end
 
@@ -494,7 +511,9 @@ function PvPService:GetWarbandOverview()
 
     for i = 1, #characters do
         local char = characters[i]
-        local charKey = ResolveRosterCharKey(char)
+        -- Untracked characters are Characters-tab only: no PvP data is collected for them,
+        -- so they never join the roster table (and cost no row build here).
+        local charKey = (char.isTracked ~= false) and ResolveRosterCharKey(char) or nil
         local store = charKey and progress[charKey] or nil
         if charKey and not seen[charKey] then
             seen[charKey] = true
@@ -696,6 +715,8 @@ function PvPService:PrintDiagnostics(addon)
         return
     end
     addon:Print("  charKey: " .. tostring(charKey))
+    addon:Print("  module: " .. (IsPvPModuleEnabled() and "|cff00ff00enabled|r" or "|cffff9900disabled|r (no collection)"))
+    addon:Print("  tracked: " .. (IsCurrentCharacterTracked() and "|cff00ff00yes|r" or "|cffff9900no|r (no collection)"))
 
     if not self._initialized then
         addon:Print("  |cffff9900WARN|r PvPService not initialized yet")
@@ -766,10 +787,11 @@ local function PurgeUnknownMatchNoise(matches)
 end
 
 local function OnLogin()
+    if not CanCollect() then return end
     local charKey = GetCharKey()
     -- Tracked-only: GetMatchStore auto-creates the per-character row, so calling it for an
     -- untracked character would seed db.global.pvpMatches[key] on every login.
-    if charKey and not sessionStarted and IsCurrentCharacterTracked() then
+    if charKey and not sessionStarted then
         sessionStarted = true
         local matches = GetMatchStore(charKey)
         if matches then
@@ -787,28 +809,67 @@ local function OnLogin()
     end)
 end
 
+-- PvPService is the sole owner of these five events (no other module listens), so the
+-- module toggle can unregister them outright instead of guarding handler bodies only.
+local PVP_EVENT_HANDLERS = {
+    PVP_MATCH_COMPLETE = function(_, winner, duration)
+        PvPService:OnMatchComplete(winner, duration)
+    end,
+    -- Pre-match snapshot so post-match deltas have a baseline.
+    PVP_MATCH_ACTIVE = function()
+        PvPService:SnapshotRatedInfo(true)
+    end,
+    HONOR_XP_UPDATE = function()
+        PvPService:SnapshotHonor()
+    end,
+    HONOR_LEVEL_UPDATE = function()
+        PvPService:SnapshotHonor()
+    end,
+    -- Server replies to RequestRatedInfo() land here (wiki: API_RequestRatedInfo).
+    PVP_RATED_STATS_UPDATE = function()
+        PvPService:SnapshotRatedInfo()
+    end,
+}
+
+local eventsRegistered = false
+
+---Register or unregister the PvP event set. Idempotent.
+function PvPService:SetEventsRegistered(on)
+    if not (WarbandNexus and WarbandNexus.RegisterEvent) then return end
+    on = on and true or false
+    if on == eventsRegistered then return end
+    eventsRegistered = on
+    for event, handler in pairs(PVP_EVENT_HANDLERS) do
+        if on then
+            WarbandNexus.RegisterEvent(PvPEvents, event, handler)
+        else
+            WarbandNexus.UnregisterEvent(PvPEvents, event)
+        end
+    end
+end
+
+---Settings > Modules toggled PvP: drop or restore the whole pipeline (ModuleManager delegate).
+function PvPService:OnModuleToggled(enabled)
+    if not self._initialized then
+        -- Toggled before PLAYER_LOGIN: Initialize() will pick up the new state.
+        return
+    end
+    self:SetEventsRegistered(enabled)
+    if not enabled then return end
+    -- Re-enabled mid-session: login seeding already ran (or was skipped), so re-seed now.
+    self:RequestRatedRefresh()
+    C_Timer.After(1, function()
+        PvPService:SnapshotRatedInfo(true)
+        PvPService:SnapshotHonor(false)
+    end)
+end
+
 function PvPService:Initialize()
     if self._initialized then return end
     if not (WarbandNexus and WarbandNexus.RegisterEvent) then return end
     self._initialized = true
 
-    WarbandNexus.RegisterEvent(PvPEvents, "PVP_MATCH_COMPLETE", function(_, winner, duration)
-        PvPService:OnMatchComplete(winner, duration)
-    end)
-    WarbandNexus.RegisterEvent(PvPEvents, "PVP_MATCH_ACTIVE", function()
-        -- Pre-match snapshot so post-match deltas have a baseline.
-        PvPService:SnapshotRatedInfo(true)
-    end)
-    WarbandNexus.RegisterEvent(PvPEvents, "HONOR_XP_UPDATE", function()
-        PvPService:SnapshotHonor()
-    end)
-    WarbandNexus.RegisterEvent(PvPEvents, "HONOR_LEVEL_UPDATE", function()
-        PvPService:SnapshotHonor()
-    end)
-    -- Server replies to RequestRatedInfo() land here (wiki: API_RequestRatedInfo).
-    WarbandNexus.RegisterEvent(PvPEvents, "PVP_RATED_STATS_UPDATE", function()
-        PvPService:SnapshotRatedInfo()
-    end)
+    self:SetEventsRegistered(IsPvPModuleEnabled())
 
     OnLogin()
 end

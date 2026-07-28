@@ -133,11 +133,10 @@ function ns.UI_RefreshHeaderUtilityIcons(mainFrame)
     if mainFrame.reloadDebugBtn and mainFrame.reloadDebugBtn._wnUtilityIcon then
         apply(mainFrame.reloadDebugBtn._wnUtilityIcon, false)
     end
-    if mainFrame.patreonBtn and mainFrame.patreonBtn._wnUtilityIcon then
-        apply(mainFrame.patreonBtn._wnUtilityIcon, false)
-    end
-    if mainFrame.discordBtn and mainFrame.discordBtn._wnUtilityIcon then
-        apply(mainFrame.discordBtn._wnUtilityIcon, false)
+    -- Rail community links follow the nav-rail icon language, not the header utility style.
+    if ns.UI_ApplyNavRailLinkChrome then
+        ns.UI_ApplyNavRailLinkChrome(mainFrame.navDiscordBtn, false)
+        ns.UI_ApplyNavRailLinkChrome(mainFrame.navPatreonBtn, false)
     end
     if mainFrame.statusIcon then
         if ns.UI_IsLightMode and ns.UI_IsLightMode() then
@@ -223,7 +222,10 @@ local function RefreshMainShellChrome(mainFrame)
         for _, btn in pairs(mainFrame.tabButtons) do
             local sep = btn and btn._wnRailSepAbove
             if sep and sep.SetColorTexture then
-                sep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1)
+                -- Repaints an existing rail separator on theme change. divColor already
+                -- comes from the theme; CreateThemeDivider builds a new Frame and so
+                -- cannot recolor a live Texture.
+                sep:SetColorTexture(divColor[1], divColor[2], divColor[3], divColor[4] or 1) -- WN_CHROME_ALLOW
             end
         end
     end
@@ -285,12 +287,6 @@ local function RefreshMainShellChrome(mainFrame)
         if mainFrame.reloadDebugBtn and ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(mainFrame.reloadDebugBtn) then
             local hover = ns.UI_GetControlChromeHoverBackdrop and ns.UI_GetControlChromeHoverBackdrop() or closeIdle
             ns.UI_ApplyVisuals(mainFrame.reloadDebugBtn, hover, utilBorder)
-        end
-        if mainFrame.patreonBtn and ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(mainFrame.patreonBtn) then
-            ns.UI_ApplyVisuals(mainFrame.patreonBtn, closeIdle, utilBorder)
-        end
-        if mainFrame.discordBtn and ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(mainFrame.discordBtn) then
-            ns.UI_ApplyVisuals(mainFrame.discordBtn, closeIdle, utilBorder)
         end
     end
     if ns.UI_ApplyMainShellLayout then
@@ -1723,6 +1719,7 @@ end
 local TAB_TO_MODULE = {
     items = "items",
     pve = "pve",
+    pvp = "pvp",
     reputations = "reputations",
     currency = "currencies",
     professions = "professions",
@@ -1787,7 +1784,9 @@ local function UpdateTabVisibility(f)
                             sep = railHost:CreateTexture(nil, "ARTWORK")
                             btn._wnRailSepAbove = sep
                         end
-                        sep:SetColorTexture(sepColor[1], sepColor[2], sepColor[3], sepColor[4] or 1)
+                        -- Pooled per-button rail separator; sepColor is theme-sourced and
+                        -- the texture is repainted by the theme pass above.
+                        sep:SetColorTexture(sepColor[1], sepColor[2], sepColor[3], sepColor[4] or 1) -- WN_CHROME_ALLOW
                         sep:SetHeight(sepH)
                         sep:ClearAllPoints()
                         sep:SetPoint("LEFT", railHost, "LEFT", railPad, 0)

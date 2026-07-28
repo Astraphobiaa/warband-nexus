@@ -763,7 +763,9 @@ local function EnsureRecentOutcomeStripe(bundle, idx, card, rowY, outcome)
     local rowCenterY = -rowY - (ROW_H * 0.5)
     stripe:SetPoint("LEFT", card, "TOPLEFT", CARD_PAD + RECENT_OUTCOME_STRIPE_INSET, rowCenterY)
     local cr, cg, cb, ca = OutcomeStripeColor(outcome)
-    stripe:SetColorTexture(cr, cg, cb, ca or 1)
+    -- Not chrome: this is the win/loss status bar for a match row, so its colour is
+    -- semantic rather than a theme divider. Flagged only by the `stripe` name.
+    stripe:SetColorTexture(cr, cg, cb, ca or 1) -- WN_CHROME_ALLOW
     stripe:Show()
     return stripe
 end

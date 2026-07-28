@@ -316,7 +316,7 @@ local function PopulateContentBody(self, forceRepaint)
     local height
     local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
     local trackedOnlyTabs = {
-        items = true, pve = true, reputations = true,
+        items = true, pve = true, pvp = true, reputations = true,
         currency = true, professions = true, gear = true, collections = true,
         plans = true, stats = true,
     }

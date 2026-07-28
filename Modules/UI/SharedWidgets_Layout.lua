@@ -284,6 +284,9 @@ local UI_SPACING = {
         NAV_RAIL_SCROLL_BOTTOM_GAP = 6,
         NAV_RAIL_SETTINGS_SEP_GAP = 4,
         NAV_RAIL_FOOTER_BTN_GAP = 4,
+        --- Community link row (Discord / Patreon) below the About button.
+        NAV_RAIL_FOOTER_LINK_ROW_H = 32,
+        NAV_RAIL_FOOTER_LINK_GAP = 4,
         NAV_RAIL_SETTINGS_BOTTOM_PAD = 6,
         --- In-content settings category column (right of main rail).
         SETTINGS_NAV_WIDTH = 160,

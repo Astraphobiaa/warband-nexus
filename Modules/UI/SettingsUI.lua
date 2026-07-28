@@ -2657,6 +2657,14 @@ local function BuildSettings(parent, containerWidth, layoutOpts)
             set = function(value) WarbandNexus.db.profile.notifications.showVaultReminder = value end,
         },
         {
+            key = "mailReminder",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["MAIL_REMINDER"]) or "Mail Expiry Reminder",
+            tooltip = (ns.L and ns.L["MAIL_REMINDER_TOOLTIP"]) or "Show a reminder popup on login when mail on any tracked character expires within a week. The envelope icon on the Characters tab turns orange in the last week and red in the last day.",
+            get = function() return WarbandNexus.db.profile.notifications.showMailReminder ~= false end,
+            set = function(value) WarbandNexus.db.profile.notifications.showMailReminder = value end,
+        },
+        {
             key = "planReminderToast",
             parentKey = "enabled",
             label = (ns.L and ns.L["CONFIG_PLAN_REMINDER_TOAST"]) or "To-Do reminder popups",

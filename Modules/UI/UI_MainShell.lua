@@ -56,6 +56,123 @@ local _uiChildEnumScratch = B._uiChildEnumScratch
 local _uiRegionEnumScratch = B._uiRegionEnumScratch
 local WarbandNexus = ns.WarbandNexus
 
+-- COMMUNITY LINKS (nav rail footer, under Settings / About)
+local DISCORD_URL = "https://discord.gg/warbandnexus"
+local PATREON_URL = "https://patreon.com/warbandnexus?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
+
+--- Fill + icon tint + hover feedback for a rail link button (re-applied on theme refresh).
+--- Deliberately uses the nav-rail language, not the full-color header utility style: these
+--- sit among monochrome rail glyphs, and brand-colored logos read as foreign chips.
+---@param btn Button|nil
+---@param isHover boolean|nil
+function ns.UI_ApplyNavRailLinkChrome(btn, isHover)
+    if not btn or not btn._wnLinkIcon then return end
+    -- Same flat idle fill the rail category buttons use (subtle grey row, no border).
+    if ns.UI_ApplyBorderlessSurface and ns.UI_GetNavRailIdleBackdrop then
+        ns.UI_ApplyBorderlessSurface(btn, ns.UI_GetNavRailIdleBackdrop(), { surfaceTier = "rowOdd" })
+    end
+    if ns.UI_ApplyNavTabIconStyle then
+        ns.UI_ApplyNavTabIconStyle(btn._wnLinkIcon, isHover and true or false, { rail = true })
+    end
+    if ns.UI_ApplyNavButtonHighlight then
+        ns.UI_ApplyNavButtonHighlight(btn)
+    end
+end
+local ApplyNavRailLinkChrome = ns.UI_ApplyNavRailLinkChrome
+
+--- Icon-only rail footer button whose click reveals a focused, pre-selected URL box.
+--- The rail is too narrow for the URL, so the box floats to the right of the button.
+---@param parent Frame nav rail footer
+---@param cfg table `{ icon, tooltip, hint, url, copyWidth, copyParent }`
+---@return Button btn
+local function CreateNavRailLinkButton(parent, cfg)
+    -- No border: the fill comes from ApplyNavRailLinkChrome (flat rail idle surface), so an
+    -- accent-bordered chip would be the loudest thing in the rail.
+    local btn
+    if ns.UI.Factory and ns.UI.Factory.CreateButton then
+        btn = ns.UI.Factory:CreateButton(parent, 24, 24, true)
+    else
+        btn = CreateFrame("Button", nil, parent)
+        btn:SetSize(24, 24)
+    end
+    btn._wnNavRailIcon = true
+
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("CENTER")
+    local iconSize = (ns.UI_LAYOUT and ns.UI_LAYOUT.MAIN_SHELL
+        and ns.UI_LAYOUT.MAIN_SHELL.RAIL_TAB_ICON_SIZE) or 22
+    icon:SetSize(iconSize, iconSize)
+    icon:SetTexture(cfg.icon)
+    icon:SetTexCoord(0, 1, 0, 1)
+    icon._wnNavRailIcon = true
+    btn._wnLinkIcon = icon
+    ApplyNavRailLinkChrome(btn, false)
+
+    -- The nav rail sets SetClipsChildren(true), so the URL box must hang off a frame outside
+    -- the rail (the window shell) or it gets clipped at the rail edge.
+    local copyFrame = CreateFrame("Frame", nil, cfg.copyParent or btn, "BackdropTemplate")
+    copyFrame:SetSize(cfg.copyWidth or 440, 28)
+    copyFrame:SetPoint("BOTTOMLEFT", btn, "BOTTOMRIGHT", 6, 0)
+    copyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    copyFrame:SetFrameLevel(500)
+    if ns.UI_ApplyHeaderCopyUrlShell then
+        ns.UI_ApplyHeaderCopyUrlShell(copyFrame)
+    end
+    copyFrame:Hide()
+    btn._wnLinkCopyFrame = copyFrame
+
+    local box = CreateFrame("EditBox", nil, copyFrame)
+    box:SetPoint("TOPLEFT", 6, -4)
+    box:SetPoint("BOTTOMRIGHT", -6, 4)
+    box:SetAutoFocus(false)
+    box:SetFontObject(ChatFontNormal) -- required initial FontObject
+    if ns.FontManager then
+        ns.FontManager:RegisterManagedEditBox(box)
+        ns.FontManager:ApplyFontToEditBox(box)
+    end
+    box:SetText(cfg.url)
+    box:SetCursorPosition(0)
+    box:SetScript("OnEscapePressed", function() copyFrame:Hide() end)
+    box:SetScript("OnEditFocusGained", function(selfBox) selfBox:HighlightText() end)
+    box:SetScript("OnKeyDown", function(_, key)
+        if key == "C" and IsControlKeyDown() then
+            C_Timer.After(0.1, function() copyFrame:Hide() end)
+        end
+    end)
+
+    btn:SetScript("OnEnter", function(selfBtn)
+        ApplyNavRailLinkChrome(selfBtn, true)
+        -- The URL box occupies the space directly right of the button, so the tooltip goes
+        -- above it (ANCHOR_RIGHT put the two on top of each other), and is suppressed while
+        -- the box is open -- its hint is about opening a box that is already open.
+        if copyFrame:IsShown() then return end
+        GameTooltip:SetOwner(selfBtn, "ANCHOR_TOPRIGHT")
+        GameTooltip:SetText(cfg.tooltip, 1, 1, 1)
+        GameTooltip:AddLine(cfg.hint, 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function(selfBtn)
+        ApplyNavRailLinkChrome(selfBtn, false)
+        GameTooltip:Hide()
+    end)
+    btn:SetScript("OnClick", function()
+        if copyFrame:IsShown() then
+            copyFrame:Hide()
+            return
+        end
+        local sibling = btn._wnSiblingCopyFrame
+        if sibling and sibling:IsShown() then sibling:Hide() end
+        -- Cursor is still on the button, so OnEnter will not re-run to clear the tooltip.
+        GameTooltip:Hide()
+        box:SetText(cfg.url)
+        copyFrame:Show()
+        box:SetFocus()
+        box:HighlightText()
+    end)
+
+    return btn
+end
+
 function ns.UIShell.CreateMainWindow(self)
     local mainFrame = S.getMainFrame()
     -- ZOMBIE FRAME CLEANUP: Check for orphaned frames from failed initialization
@@ -435,170 +552,13 @@ function ns.UIShell.CreateMainWindow(self)
     end)
     f.reloadDebugBtn = reloadDebugBtn
 
-    -- Utility buttons in header (left of Close) so nav row is tabs-only and never overlaps when minimized
-    local DISCORD_URL = "https://discord.gg/warbandnexus"
-    local PATREON_URL = "https://patreon.com/warbandnexus?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink"
-    local discordCopyFrame, discordCopyBox, patreonCopyFrame, patreonCopyBox
-    local patreonBtn = CreateFrame("Button", nil, header)
-    patreonBtn:SetSize(30, 30)
-    patreonBtn:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -6, 0)
-    patreonBtn._wnSkipCustomChrome = true
-    if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(patreonBtn) and ns.UI_ApplyVisuals then
-        local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
-        ns.UI_ApplyVisuals(patreonBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
-    end
-    local patreonIcon = patreonBtn:CreateTexture(nil, "ARTWORK")
-    patreonIcon:SetAllPoints()
-    patreonIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\donateicon.png")
-    patreonIcon:SetTexCoord(0, 1, 0, 1)
-    patreonIcon:SetVertexColor(1, 1, 1, 1)
-    patreonBtn._wnUtilityIcon = patreonIcon
-    if ns.UI_ApplyHeaderUtilityIconStyle then
-        ns.UI_ApplyHeaderUtilityIconStyle(patreonIcon, false)
-    end
-    patreonCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
-    patreonCopyFrame:SetSize(440, 28)
-    patreonCopyFrame:SetPoint("TOPRIGHT", patreonBtn, "BOTTOMRIGHT", 0, -4)
-    patreonCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    patreonCopyFrame:SetFrameLevel(500)
-    if ns.UI_ApplyHeaderCopyUrlShell then
-        ns.UI_ApplyHeaderCopyUrlShell(patreonCopyFrame)
-    end
-    patreonCopyFrame:Hide()
-    patreonCopyBox = CreateFrame("EditBox", nil, patreonCopyFrame)
-    patreonCopyBox:SetPoint("TOPLEFT", 6, -4)
-    patreonCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
-    patreonCopyBox:SetAutoFocus(false)
-    patreonCopyBox:SetFontObject(ChatFontNormal)
-    if ns.FontManager then
-        ns.FontManager:RegisterManagedEditBox(patreonCopyBox)
-        ns.FontManager:ApplyFontToEditBox(patreonCopyBox)
-    end
-    patreonCopyBox:SetText(PATREON_URL)
-    patreonCopyBox:SetCursorPosition(0)
-    patreonCopyBox:SetScript("OnEscapePressed", function() patreonCopyFrame:Hide() end)
-    patreonCopyBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    patreonCopyBox:SetScript("OnKeyDown", function(self, key)
-        if key == "C" and IsControlKeyDown() then
-            C_Timer.After(0.1, function() patreonCopyFrame:Hide() end)
-        end
-    end)
-    patreonBtn:SetScript("OnEnter", function()
-        if ns.UI_ApplyHeaderUtilityIconStyle then
-            ns.UI_ApplyHeaderUtilityIconStyle(patreonIcon, true)
-        else
-            patreonIcon:SetAlpha(0.75)
-        end
-        GameTooltip:SetOwner(patreonBtn, "ANCHOR_BOTTOM")
-        GameTooltip:SetText((ns.L and ns.L["PATREON_TOOLTIP"]) or "Warband Nexus on Patreon", 1, 1, 1)
-        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY_LINK"]) or "Click to copy link", 0.6, 0.6, 0.6)
-        GameTooltip:Show()
-    end)
-    patreonBtn:SetScript("OnLeave", function()
-        if ns.UI_ApplyHeaderUtilityIconStyle then
-            ns.UI_ApplyHeaderUtilityIconStyle(patreonIcon, false)
-        else
-            patreonIcon:SetAlpha(1.0)
-        end
-        GameTooltip:Hide()
-    end)
-    patreonBtn:SetScript("OnClick", function()
-        if patreonCopyFrame:IsShown() then
-            patreonCopyFrame:Hide()
-            return
-        end
-        if discordCopyFrame and discordCopyFrame:IsShown() then
-            discordCopyFrame:Hide()
-        end
-        patreonCopyBox:SetText(PATREON_URL)
-        patreonCopyFrame:Show()
-        patreonCopyBox:SetFocus()
-        patreonCopyBox:HighlightText()
-    end)
-    f.patreonBtn = patreonBtn
+    -- Discord / Patreon links live in the About tab (ns.UI_PaintAboutContent), not the header:
+    -- one home per action, and the header stays close + debug-reload only.
 
-    local discordBtn = CreateFrame("Button", nil, header)
-    f.discordBtn = discordBtn
-    discordBtn:SetSize(30, 30)
-    discordBtn:SetPoint("RIGHT", patreonBtn, "LEFT", -6, 0)
-    discordBtn._wnSkipCustomChrome = true
-    if ns.UI_CanApplyCustomChrome and ns.UI_CanApplyCustomChrome(discordBtn) and ns.UI_ApplyVisuals then
-        local closeIdle = ns.UI_GetCloseButtonBackdrop and ns.UI_GetCloseButtonBackdrop() or { 0.15, 0.15, 0.15, 0.9 }
-        ns.UI_ApplyVisuals(discordBtn, closeIdle, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
-    end
-    local discordIcon = discordBtn:CreateTexture(nil, "ARTWORK")
-    discordIcon:SetAllPoints()
-    discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
-    discordIcon:SetTexCoord(0, 1, 0, 1)
-    discordIcon:SetVertexColor(1, 1, 1, 1)
-    discordBtn._wnUtilityIcon = discordIcon
-    if ns.UI_ApplyHeaderUtilityIconStyle then
-        ns.UI_ApplyHeaderUtilityIconStyle(discordIcon, false)
-    end
-    discordCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
-    discordCopyFrame:SetSize(240, 28)
-    discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
-    discordCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    discordCopyFrame:SetFrameLevel(500)
-    if ns.UI_ApplyHeaderCopyUrlShell then
-        ns.UI_ApplyHeaderCopyUrlShell(discordCopyFrame)
-    end
-    discordCopyFrame:Hide()
-    discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
-    discordCopyBox:SetPoint("TOPLEFT", 6, -4)
-    discordCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
-    discordCopyBox:SetAutoFocus(false)
-    discordCopyBox:SetFontObject(ChatFontNormal) -- required initial FontObject
-    if ns.FontManager then
-        ns.FontManager:RegisterManagedEditBox(discordCopyBox)
-        ns.FontManager:ApplyFontToEditBox(discordCopyBox)
-    end
-    discordCopyBox:SetText(DISCORD_URL)
-    discordCopyBox:SetCursorPosition(0)
-    discordCopyBox:SetScript("OnEscapePressed", function() discordCopyFrame:Hide() end)
-    discordCopyBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    discordCopyBox:SetScript("OnKeyDown", function(self, key)
-        if key == "C" and IsControlKeyDown() then
-            C_Timer.After(0.1, function() discordCopyFrame:Hide() end)
-        end
-    end)
-    discordBtn:SetScript("OnEnter", function(self)
-        if ns.UI_ApplyHeaderUtilityIconStyle then
-            ns.UI_ApplyHeaderUtilityIconStyle(discordIcon, true)
-        else
-            discordIcon:SetAlpha(0.75)
-        end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText((ns.L and ns.L["DISCORD_TOOLTIP"]) or "Warband Nexus Discord", 1, 1, 1)
-        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
-        GameTooltip:Show()
-    end)
-    discordBtn:SetScript("OnLeave", function()
-        if ns.UI_ApplyHeaderUtilityIconStyle then
-            ns.UI_ApplyHeaderUtilityIconStyle(discordIcon, false)
-        else
-            discordIcon:SetAlpha(1.0)
-        end
-        GameTooltip:Hide()
-    end)
-    discordBtn:SetScript("OnClick", function()
-        if discordCopyFrame:IsShown() then
-            discordCopyFrame:Hide()
-            return
-        end
-        if patreonCopyFrame and patreonCopyFrame:IsShown() then
-            patreonCopyFrame:Hide()
-        end
-        discordCopyBox:SetText(DISCORD_URL)
-        discordCopyFrame:Show()
-        discordCopyBox:SetFocus()
-        discordCopyBox:HighlightText()
-    end)
-
-    -- Tracking status: compact chip (accent rail + icon + single-line label), immediately left of Discord
+    -- Tracking status: compact chip (accent rail + icon + single-line label), left of the header utility slot
     local trackingChip = CreateFrame("Frame", nil, header)
     trackingChip:SetHeight(30)
-    trackingChip:SetPoint("RIGHT", discordBtn, "LEFT", -8, 0)
+    trackingChip:SetPoint("RIGHT", reloadDebugBtn, "LEFT", -8, 0)
 
     local trackingAccent = trackingChip:CreateTexture(nil, "ARTWORK", nil, 1)
     trackingAccent:SetWidth(3)
@@ -707,7 +667,10 @@ function ns.UIShell.CreateMainWindow(self)
         end
         local railDivider = navRail:CreateTexture(nil, "OVERLAY")
         local div = (ns.UI_GetNavRailDividerColor and ns.UI_GetNavRailDividerColor()) or { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1 }
-        railDivider:SetColorTexture(div[1], div[2], div[3], div[4] or 1)
+        -- Nav rail edge texture: div is theme-sourced above, and the shell repaints it
+        -- on theme change. CreateThemeDivider returns a Frame, which this anchor-to-edge
+        -- overlay cannot use.
+        railDivider:SetColorTexture(div[1], div[2], div[3], div[4] or 1) -- WN_CHROME_ALLOW
         railDivider:SetWidth(1)
         railDivider:SetPoint("TOPRIGHT", navRail, "TOPRIGHT", 0, 0)
         railDivider:SetPoint("BOTTOMRIGHT", navRail, "BOTTOMRIGHT", 0, 0)
@@ -735,7 +698,10 @@ function ns.UIShell.CreateMainWindow(self)
         local sepGap = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_SEP_GAP or 4
         local settingsBottomPad = MAIN_SHELL_LAYOUT.NAV_RAIL_SETTINGS_BOTTOM_PAD or railPad
         local footerBtnGap = MAIN_SHELL_LAYOUT.NAV_RAIL_FOOTER_BTN_GAP or 4
-        local railFooterH = sepH + sepGap + RAIL_TAB_H + footerBtnGap + RAIL_TAB_H + settingsBottomPad
+        local footerLinkRowH = MAIN_SHELL_LAYOUT.NAV_RAIL_FOOTER_LINK_ROW_H or 28
+        -- rule + Settings + About + community link row (Discord / Patreon)
+        local railFooterH = sepH + sepGap + RAIL_TAB_H + footerBtnGap + RAIL_TAB_H
+            + footerBtnGap + footerLinkRowH + settingsBottomPad
         f._wnNavRailFooterH = railFooterH
         local navRailFooter = CreateFrame("Frame", nil, navRail)
         navRailFooter:SetHeight(railFooterH)
@@ -1315,6 +1281,67 @@ function ns.UIShell.CreateMainWindow(self)
             ActivateMainTab("about", { persistLastTab = false })
         end)
         WireMainNavTabButtonUX(aboutBtn, aboutTooltip, nil)
+
+        -- Community links: one compact row of two icon buttons under About. Icon-only so the
+        -- row reads the same in the compact rail, where tab labels are hidden.
+        local footerLinkRowH = MAIN_SHELL_LAYOUT.NAV_RAIL_FOOTER_LINK_ROW_H or 28
+        local footerLinkGap = MAIN_SHELL_LAYOUT.NAV_RAIL_FOOTER_LINK_GAP or 4
+        local linkRow = CreateFrame("Frame", nil, f.navRailFooter)
+        linkRow:SetHeight(footerLinkRowH)
+        linkRow:SetPoint("TOPLEFT", aboutBtn, "BOTTOMLEFT", 0, -footerBtnGap)
+        linkRow:SetPoint("TOPRIGHT", aboutBtn, "BOTTOMRIGHT", 0, -footerBtnGap)
+        f._wnNavRailLinkRow = linkRow
+
+        -- Built once and reused across rail rebuilds (compact/layout toggles): the URL boxes
+        -- register with FontManager's managed-EditBox list, which never drops live frames.
+        local linkCache = f._wnNavRailLinkBtns
+        if not linkCache then
+            linkCache = {}
+            f._wnNavRailLinkBtns = linkCache
+            linkCache.discord = CreateNavRailLinkButton(linkRow, {
+                icon = "Interface\\AddOns\\WarbandNexus\\Media\\discord.tga",
+                tooltip = (ns.L and ns.L["DISCORD_TOOLTIP"]) or "Warband Nexus Discord",
+                hint = (ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link",
+                url = DISCORD_URL,
+                copyWidth = 240,
+                copyParent = f,
+            })
+            linkCache.patreon = CreateNavRailLinkButton(linkRow, {
+                icon = "Interface\\AddOns\\WarbandNexus\\Media\\donateicon.png",
+                tooltip = (ns.L and ns.L["PATREON_TOOLTIP"]) or "Warband Nexus on Patreon",
+                -- NOT CLICK_TO_COPY_LINK: that string is Wowhead-specific.
+                hint = (ns.L and ns.L["CLICK_TO_COPY_URL"]) or "Click to copy the link",
+                url = PATREON_URL,
+                copyWidth = 440,
+                copyParent = f,
+            })
+            -- Opening one URL box closes the other.
+            linkCache.discord._wnSiblingCopyFrame = linkCache.patreon._wnLinkCopyFrame
+            linkCache.patreon._wnSiblingCopyFrame = linkCache.discord._wnLinkCopyFrame
+        end
+
+        local discordBtn, patreonBtn = linkCache.discord, linkCache.patreon
+        discordBtn:SetParent(linkRow)
+        patreonBtn:SetParent(linkRow)
+        discordBtn:Show()
+        patreonBtn:Show()
+        ApplyNavRailLinkChrome(discordBtn, false)
+        ApplyNavRailLinkChrome(patreonBtn, false)
+
+        -- Two equal halves of the rail content width, centered in each half.
+        discordBtn:ClearAllPoints()
+        discordBtn:SetPoint("TOP", linkRow, "TOP", 0, 0)
+        discordBtn:SetPoint("BOTTOM", linkRow, "BOTTOM", 0, 0)
+        discordBtn:SetPoint("LEFT", linkRow, "LEFT", 0, 0)
+        discordBtn:SetPoint("RIGHT", linkRow, "CENTER", -math.floor(footerLinkGap / 2), 0)
+        patreonBtn:ClearAllPoints()
+        patreonBtn:SetPoint("TOP", linkRow, "TOP", 0, 0)
+        patreonBtn:SetPoint("BOTTOM", linkRow, "BOTTOM", 0, 0)
+        patreonBtn:SetPoint("LEFT", linkRow, "CENTER", math.ceil(footerLinkGap / 2), 0)
+        patreonBtn:SetPoint("RIGHT", linkRow, "RIGHT", 0, 0)
+
+        f.navDiscordBtn = discordBtn
+        f.navPatreonBtn = patreonBtn
     elseif navLayoutMode == "top" then
         local navBarH = nav:GetHeight() or MAIN_SHELL_LAYOUT.NAV_BAR_HEIGHT or 36
         local settingsBtn = CreateTabButton(nav, settingsLabel, "settings")
@@ -1351,6 +1378,28 @@ function ns.UIShell.CreateMainWindow(self)
             f._wnNavRailSettingsAboutSep:Hide()
             f._wnNavRailSettingsAboutSep = nil
         end
+        -- Link buttons are cached on `f` and re-parented on rebuild, so only park them here:
+        -- hide the open URL box and detach from the row that is about to go away.
+        local linkCache = f._wnNavRailLinkBtns
+        if linkCache then
+            local names = { "discord", "patreon" }
+            for i = 1, #names do
+                local linkBtn = linkCache[names[i]]
+                if linkBtn then
+                    if linkBtn._wnLinkCopyFrame then linkBtn._wnLinkCopyFrame:Hide() end
+                    linkBtn:Hide()
+                    linkBtn:ClearAllPoints()
+                end
+            end
+        end
+        if f._wnNavRailLinkRow then
+            f._wnNavRailLinkRow:Hide()
+            f._wnNavRailLinkRow:ClearAllPoints()
+            f._wnNavRailLinkRow:SetParent(nil)
+            f._wnNavRailLinkRow = nil
+        end
+        f.navDiscordBtn = nil
+        f.navPatreonBtn = nil
     end
 
     BuildMainNavTabStrip()
@@ -2032,19 +2081,21 @@ function ns.UIShell.CreateMainWindow(self)
     end)
 
     --- Show/hide header Reload button when debug mode is on (boolean or legacy SavedVars `1`; matches ProfileFlagOn / Settings toggles).
+    --- The tracking chip is the leftmost header element, so it takes over the reload slot when
+    --- debug is off (a hidden frame still holds its anchor and would leave a dead gap).
     function f:SyncMainHeaderDebugReloadLayout()
         local reloadBtn = self.reloadDebugBtn
-        local patreonBtn = self.patreonBtn
+        local chip = self.trackingChip
         local clsBtn = self.closeBtn
-        if not patreonBtn or not clsBtn then return end
+        if not chip or not clsBtn then return end
         local p = WarbandNexus.db and WarbandNexus.db.profile
         local show = p and ProfileFlagOn(p.debugMode)
         if reloadBtn then reloadBtn:SetShown(show) end
-        patreonBtn:ClearAllPoints()
+        chip:ClearAllPoints()
         if show and reloadBtn then
-            patreonBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -6, 0)
+            chip:SetPoint("RIGHT", reloadBtn, "LEFT", -8, 0)
         else
-            patreonBtn:SetPoint("RIGHT", clsBtn, "LEFT", -6, 0)
+            chip:SetPoint("RIGHT", clsBtn, "LEFT", -8, 0)
         end
     end
     f:SyncMainHeaderDebugReloadLayout()

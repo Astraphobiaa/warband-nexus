@@ -276,6 +276,88 @@ function M.ResolveMessageExpiresAt(msg, scannedAt)
     return nil
 end
 
+-- MAIL EXPIRY REMINDER
+-- Buckets for the envelope tint / countdown color. WoW deletes mail 30 days after it
+-- arrives (wiki: GetInboxHeaderInfo daysLeft), so the shortest remaining time in an inbox
+-- is what the reminder reports.
+local MAIL_REMINDER_WEEK = 7 * 86400
+local MAIL_REMINDER_DAY = 86400
+
+--- Reminder bucket for a remaining-time value, in seconds.
+---@return string|nil "safe" (over 1 week) | "soon" (1 day..1 week) | "urgent" (under 1 day) | "expired"
+function M.GetMailReminderLevel(secondsLeft)
+    if type(secondsLeft) ~= "number" then return nil end
+    if secondsLeft <= 0 then return "expired" end
+    if secondsLeft < MAIL_REMINDER_DAY then return "urgent" end
+    if secondsLeft <= MAIL_REMINDER_WEEK then return "soon" end
+    return "safe"
+end
+
+--- Soonest expiry across a character's snapshot messages.
+---@return number|nil expiresAt, number|nil secondsLeft
+function M.GetSoonestMailExpiry(char)
+    local snap = char and char.mailSnapshot
+    local messages = snap and snap.messages
+    if not messages then return nil end
+    local scannedAt = snap.scannedAt
+    local soonest
+    for i = 1, #messages do
+        local at = M.ResolveMessageExpiresAt(messages[i], scannedAt)
+        if at and (not soonest or at < soonest) then
+            soonest = at
+        end
+    end
+    if not soonest then return nil end
+    return soonest, soonest - time()
+end
+
+--- Reminder level for a whole inbox. nil when no dated mail is known (pending-only flag
+--- or an alt that has never opened its mailbox) — callers leave the icon untinted then.
+---@return string|nil level, number|nil expiresAt, number|nil secondsLeft
+function M.GetCharacterMailReminderLevel(char)
+    local expiresAt, secondsLeft = M.GetSoonestMailExpiry(char)
+    if not expiresAt then return nil end
+    return M.GetMailReminderLevel(secondsLeft), expiresAt, secondsLeft
+end
+
+--- Warband-wide rollup of mail that is close to expiring, for the login reminder toast.
+--- Counts every message already in the "soon" or "urgent" bucket (a week or less left)
+--- across tracked characters. Untracked characters carry no mail snapshot, so they never
+--- contribute here. Reads persisted snapshots only — no API calls, no mailbox needed.
+---@param addon table WarbandNexus
+---@return number count, number|nil soonestSecondsLeft, string|nil soonestCharName
+function M.GetExpiringMailSummary(addon)
+    local db = addon and addon.db
+    local characters = db and db.global and db.global.characters
+    if not characters then return 0 end
+
+    local count, soonestLeft, soonestName = 0, nil, nil
+    for _, char in pairs(characters) do
+        if type(char) == "table" and char.isTracked ~= false then
+            local snap = char.mailSnapshot
+            local messages = snap and snap.messages
+            if messages then
+                local scannedAt = snap.scannedAt
+                for i = 1, #messages do
+                    local at = M.ResolveMessageExpiresAt(messages[i], scannedAt)
+                    if at then
+                        local left = at - time()
+                        local level = M.GetMailReminderLevel(left)
+                        if level == "soon" or level == "urgent" or level == "expired" then
+                            count = count + 1
+                            if not soonestLeft or left < soonestLeft then
+                                soonestLeft = left
+                                soonestName = char.name
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return count, soonestLeft, soonestName
+end
+
 --- Compact mail expiry: largest unit only — `28D`, then `14H`, then `59M` (wiki: daysLeft is fractional days).
 function M.FormatMailTimeRemaining(expiresAt)
     if not expiresAt or type(expiresAt) ~= "number" then return nil end
@@ -737,11 +819,17 @@ local function AppendMailMessageBlock(lines, msg, opts)
     local expiresAt = M.ResolveMessageExpiresAt(msg, scannedAt)
     local timeText = expiresAt and M.FormatMailTimeRemaining(expiresAt)
     local bright = TooltipBrightColor()
+    -- Countdown carries the same reminder tint as the Characters-tab envelope.
+    local timeColor = bright
+    if expiresAt and ns.UI_GetMailReminderColor then
+        local r, g, b = ns.UI_GetMailReminderColor(M.GetMailReminderLevel(expiresAt - time()))
+        if r then timeColor = { r, g, b } end
+    end
     lines[#lines + 1] = {
         left = M.FormatMailIndexLabel(mailIndex),
         right = timeText or " ",
         leftColor = bright,
-        rightColor = bright,
+        rightColor = timeColor,
     }
 
     local sender = M.ResolveDisplaySender(msg)

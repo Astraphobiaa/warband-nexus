@@ -450,6 +450,12 @@ local function BuildMessageCard(scrollChild, msg, mailIndex, cardW, yTop, scanne
         timeFs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -LAYOUT.CARD_PAD, y)
         timeFs:SetJustifyH("RIGHT")
         SetRole(timeFs, "Bright")
+        -- Same reminder tint as the Characters-tab envelope: green > 1 week, orange within
+        -- the last week, red inside the last day.
+        if ns.UI_GetMailReminderColor and MailSnapshot and MailSnapshot.GetMailReminderLevel then
+            local r, g, b = ns.UI_GetMailReminderColor(MailSnapshot.GetMailReminderLevel(expiresAt - time()))
+            if r then timeFs:SetTextColor(r, g, b) end
+        end
         timeFs:SetText(timeText)
     end
 

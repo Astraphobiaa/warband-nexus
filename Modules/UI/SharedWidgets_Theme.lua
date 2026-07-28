@@ -1398,6 +1398,23 @@ function ThemeAPI.GetSemanticOrangeColor()
 end
 ns.UI_GetSemanticOrangeColor = ThemeAPI.GetSemanticOrangeColor
 
+--- Mail expiry reminder tint for a bucket from `MailSnapshot.GetMailReminderLevel`:
+--- green over a week left, orange within the last week, red inside the last day.
+--- Returns nil for an unknown bucket so callers keep the untinted icon.
+---@param level string|nil "safe" | "soon" | "urgent" | "expired"
+---@return number|nil r, number g, number b, number a
+function ThemeAPI.GetMailReminderColor(level)
+    if level == "safe" then
+        return ThemeAPI.GetSemanticGreenColor()
+    elseif level == "soon" then
+        return ThemeAPI.GetSemanticOrangeColor()
+    elseif level == "urgent" or level == "expired" then
+        return ThemeAPI.GetSemanticRedColor()
+    end
+    return nil
+end
+ns.UI_GetMailReminderColor = ThemeAPI.GetMailReminderColor
+
 --- Items tab stats bar segment colors (semantic by sub-tab; readable in light mode).
 ---@param context string "warband" | "guild" | "inventory" | "personal"
 ---@return string six-digit RRGGBB (no `|cff`)

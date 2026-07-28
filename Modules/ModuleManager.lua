@@ -118,6 +118,27 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
 end
 
 --[[
+    Enable/disable PvP module
+    PvPService owns PVP_MATCH_COMPLETE / PVP_MATCH_ACTIVE / HONOR_* / PVP_RATED_STATS_UPDATE
+    exclusively, so disabling unregisters them outright: no API calls, no db writes, no emits.
+    @param enabled boolean - True to enable, false to disable
+]]
+function WarbandNexus:SetPvPModuleEnabled(enabled)
+    if not self.db or not self.db.profile then return end
+
+    self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+    self.db.profile.modulesEnabled.pvp = enabled
+
+    -- Service owns event registration + re-seed on enable (UI never drives collection).
+    if ns.PvPService and ns.PvPService.OnModuleToggled then
+        ns.PvPService:OnModuleToggled(enabled)
+    end
+
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage(E.MODULE_TOGGLED, "pvp", enabled)
+end
+
+--[[
     Enable/disable Plans module
     @param enabled boolean - True to enable, false to disable
 ]]

@@ -690,6 +690,27 @@ local function ApplyPendingMailIconTexture(tex)
     tex:SetTexture("Interface/Minimap/Tracking/Mailbox")
 end
 
+---Expiry reminder tint on the envelope: green over a week left, orange within the last
+---week, red inside the last day. Mail with no known expiry (pending-only flag, or an alt
+---whose mailbox was never opened) stays untinted rather than guessing an urgency.
+local function ApplyMailReminderTint(tex, char)
+    if not tex then return end
+    local MS = ns.MailSnapshot
+    local level
+    if MS and MS.GetCharacterMailReminderLevel then
+        level = MS.GetCharacterMailReminderLevel(char)
+    end
+    local r, g, b
+    if level and ns.UI_GetMailReminderColor then
+        r, g, b = ns.UI_GetMailReminderColor(level)
+    end
+    if r then
+        tex:SetVertexColor(r, g, b, 1)
+    else
+        tex:SetVertexColor(1, 1, 1, 1)
+    end
+end
+
 local MAIL_COL_BTN_SIZE = 34
 local MAIL_COL_ICON_SIZE = 26
 local MAIL_TOOLTIP_STABLE_WIDTH = 380
@@ -768,6 +789,7 @@ local function SetupCharacterMailColumn(row, char, mailOffset, isCurrent)
     end
 
     ApplyPendingMailIconTexture(row.mailBtn.icon)
+    ApplyMailReminderTint(row.mailBtn.icon, char)
     local mailColW = CHAR_ROW_COLUMNS.mail and CHAR_ROW_COLUMNS.mail.width or 36
     row.mailBtn:ClearAllPoints()
     row.mailBtn:SetPoint("LEFT", mailOffset + math.max(0, (mailColW - MAIL_COL_BTN_SIZE) / 2), 0)

@@ -59,6 +59,11 @@ local TYPE_CHROME = {
         labelKey = "TOAST_CAT_REPUTATION",
         defaultLabel = "Renown",
     },
+    mail = {
+        accent = { 0.70, 0.56, 0.40 },
+        labelKey = "TOAST_CAT_MAIL",
+        defaultLabel = "Mail",
+    },
     quest = {
         accent = { 0.72, 0.64, 0.42 },
         labelKey = "TOAST_CAT_QUEST",
