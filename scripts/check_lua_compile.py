@@ -19,10 +19,12 @@ newer luac still catches syntax errors and the chunk ceilings, but it ACCEPTS
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -51,10 +53,13 @@ def find_luac() -> tuple[str | None, str]:
         if not path:
             continue
         try:
-            proc = subprocess.run([path, "-v"], capture_output=True, text=True, timeout=15)
+            # Bytes, not text=True: decoding a compiler's own output under the
+            # wrong assumption is what took this gate down once already.
+            proc = subprocess.run([path, "-v"], capture_output=True, timeout=15)
         except (OSError, subprocess.SubprocessError):
             continue
-        banner = (proc.stdout or proc.stderr or "").strip().splitlines()
+        raw = (proc.stdout or proc.stderr or b"").decode("utf-8", errors="replace")
+        banner = raw.strip().splitlines()
         return path, banner[0] if banner else "unknown version"
     return None, ""
 
@@ -84,6 +89,53 @@ def exact_case_exists(rel: str) -> bool:
             return False
         current = current / part
     return current.is_file()
+
+
+def rel_display(path: Path) -> str:
+    """Repo-relative path for messages, tolerating a path outside ROOT."""
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def compile_one(luac: str, path: Path) -> tuple[int, str]:
+    """Parse-check one file. Returns (returncode, message).
+
+    Two things this has to survive:
+
+    - A UTF-8 BOM. Reference Lua 5.1 does not skip one, so luac5.1 rejects every
+      BOM-prefixed file with a bogus syntax error, while Lua 5.2+ and the game's
+      own loader accept it -- the addon demonstrably runs with these files. So
+      strip the BOM for the parse rather than report ~29 false failures.
+      check_satellite_bind.py is the gate that reports BOM presence itself.
+    - Non-UTF-8 bytes in luac's own output. It quotes the offending source bytes
+      back at you, so decoding its stderr with text=True raised UnicodeDecodeError
+      and took the whole gate down instead of reporting the file.
+    """
+    data = path.read_bytes()
+    target, tmp_name = path, None
+    if data.startswith(b"\xef\xbb\xbf"):
+        tmp = tempfile.NamedTemporaryFile(suffix=".lua", delete=False)
+        try:
+            tmp.write(data[3:])
+        finally:
+            tmp.close()
+        tmp_name = tmp.name
+        target = Path(tmp_name)
+    try:
+        proc = subprocess.run([luac, "-p", str(target)], capture_output=True)
+        raw = proc.stderr or proc.stdout or b""
+        message = raw.decode("utf-8", errors="replace").strip()
+        if tmp_name:
+            message = message.replace(str(target), rel_display(path))
+        return proc.returncode, message
+    finally:
+        if tmp_name:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
 
 
 def scan_lua52(path: Path) -> list[tuple[int, str]]:
@@ -147,9 +199,8 @@ def main() -> int:
 
     compiled = 0
     for path in targets:
-        proc = subprocess.run([luac, "-p", str(path)], capture_output=True, text=True)
-        if proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout or "").strip()
+        code, detail = compile_one(luac, path)
+        if code != 0:
             errors.append(f"{path.relative_to(ROOT).as_posix()}: {detail}")
         else:
             compiled += 1
