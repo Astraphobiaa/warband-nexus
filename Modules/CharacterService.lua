@@ -18,18 +18,28 @@ local DebugPrint = ns.DebugPrint
 local CharacterService = {}
 ns.CharacterService = CharacterService
 
---- Key used in `profile.characterGroupAssignments` (canonical when Utilities is available).
-local function AssignKeyFromCharKey(charKey)
-    if not charKey or charKey == "" then return nil end
-    local GetCanon = ns.Utilities and ns.Utilities.GetCanonicalCharacterKey
-    if not GetCanon then return charKey end
-    local c = GetCanon(charKey)
-    if c and c ~= "" then
-        return c
+--- Canonical storage key for an inbound character key; falls back to the raw key when the roster
+--- cannot resolve it. `GetCanonicalCharacterKey` is a `:` method - calling it as a plain function
+--- passes the key as `self` and silently returns nil, which used to defeat every canonical lookup.
+local function CanonCharKey(charKey)
+    if not charKey or charKey == "" then return charKey end
+    local U = ns.Utilities
+    if not U or not U.GetCanonicalCharacterKey then return charKey end
+    local canon = U:GetCanonicalCharacterKey(charKey)
+    if canon and canon ~= "" then
+        return canon
     end
     return charKey
 end
 
+--- Key used in `profile.characterGroupAssignments` (canonical when Utilities is available).
+local function AssignKeyFromCharKey(charKey)
+    if not charKey or charKey == "" then return nil end
+    return CanonCharKey(charKey)
+end
+
+--- Clear every assignment alias for `charKey` (raw, canonical, and any legacy key that resolves to
+--- the same character) so an unfavorite later cannot resurrect a stale section.
 local function ClearBothAssignKeys(assign, charKey)
     if not assign or not charKey or charKey == "" then return end
     local k1 = charKey
@@ -37,6 +47,12 @@ local function ClearBothAssignKeys(assign, charKey)
     assign[k1] = nil
     if k2 and k2 ~= k1 then
         assign[k2] = nil
+    end
+    local canon = k2 or k1
+    for k in pairs(assign) do
+        if k ~= k1 and k ~= k2 and CanonCharKey(k) == canon then
+            assign[k] = nil
+        end
     end
 end
 
@@ -741,15 +757,21 @@ end
 
 -- FAVORITE CHARACTERS
 
----Check if a character is marked as favorite
+---Check if a character is marked as favorite.
+---Stored entries may be aliases (a row favorited as "Name-Realm" before the GUID re-key), so an
+---exact miss falls back to a canonical comparison. Characters / PvE / PvP / Professions all route
+---through here and must return the same answer for the same character.
 ---@param addon table The WarbandNexus addon instance
----@param characterKey string Character key ("Name-Realm")
+---@param characterKey string Character key (GUID or "Name-Realm")
 ---@return boolean Whether the character is a favorite
 function CharacterService:IsFavoriteCharacter(addon, characterKey)
-    if not addon.db or not addon.db.global or not addon.db.global.favoriteCharacters then
+    if not addon or not addon.db or not addon.db.global or not addon.db.global.favoriteCharacters then
         return false
     end
-    
+    if not characterKey or characterKey == "" then
+        return false
+    end
+
     local favs = addon.db.global.favoriteCharacters
     for fi = 1, #favs do
         local favKey = favs[fi]
@@ -757,7 +779,18 @@ function CharacterService:IsFavoriteCharacter(addon, characterKey)
             return true
         end
     end
-    
+
+    local canon = CanonCharKey(characterKey)
+    if not canon or canon == "" then
+        return false
+    end
+    for fi = 1, #favs do
+        local favKey = favs[fi]
+        if favKey and favKey ~= "" and CanonCharKey(favKey) == canon then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -809,37 +842,42 @@ end
 
 ---Toggle favorite status for a character
 ---@param addon table The WarbandNexus addon instance
----@param characterKey string Character key ("Name-Realm")
+---@param characterKey string Character key (GUID or "Name-Realm")
 ---@return boolean New favorite status
 function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
     if not addon.db or not addon.db.global then
         return false
     end
 
-    local U = ns.Utilities
-    if U and U.GetCanonicalCharacterKey and characterKey then
-        characterKey = U:GetCanonicalCharacterKey(characterKey) or characterKey
+    if not characterKey or characterKey == "" then
+        return false
     end
-    
+    characterKey = CanonCharKey(characterKey)
+
     -- Initialize if needed
     if not addon.db.global.favoriteCharacters then
         addon.db.global.favoriteCharacters = {}
     end
-    
+
     local favorites = addon.db.global.favoriteCharacters
     local isFavorite = self:IsFavoriteCharacter(addon, characterKey)
-    
+
     if isFavorite then
-        -- Remove from favorites
-        for i = 1, #favorites do
+        -- Drop every stored alias for this character, not just an exact match: a stale "Name-Realm"
+        -- entry left behind by an exact-match removal kept the row pinned to Favorites forever while
+        -- the star appeared to do nothing.
+        local removed = false
+        for i = #favorites, 1, -1 do
             local favKey = favorites[i]
-            if favKey == characterKey then
-                table.remove(favorites, i)
-                addon:Print("|cffffff00" .. ((ns.L and ns.L["REMOVED_FROM_FAVORITES"]) or "Removed from favorites:") .. "|r " .. characterKey)
-                if addon.SendMessage then
-                    addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
-                end
-                break
+            if favKey == characterKey or (favKey and favKey ~= "" and CanonCharKey(favKey) == characterKey) then
+                tremove(favorites, i)
+                removed = true
+            end
+        end
+        if removed then
+            addon:Print("|cffffff00" .. ((ns.L and ns.L["REMOVED_FROM_FAVORITES"]) or "Removed from favorites:") .. "|r " .. characterKey)
+            if addon.SendMessage then
+                addon:SendMessage(E.CHARACTER_UPDATED, { charKey = characterKey, dataType = "favorite" })
             end
         end
         return false

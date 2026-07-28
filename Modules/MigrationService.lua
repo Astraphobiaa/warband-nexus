@@ -297,7 +297,7 @@ end
 -- New users are unaffected (they start with empty DB + defaults).
 local CURRENT_SCHEMA_VERSION = 13
 --- Bump when adding a new one-shot Migrate* call to RunMigrations (invalidates fast path).
-local MIGRATION_FAST_PATH_REVISION = 4
+local MIGRATION_FAST_PATH_REVISION = 5
 
 ---Run all database migrations. Returns true if a full schema reset was performed.
 ---@param db table AceDB instance
@@ -349,6 +349,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateDropLegacyCollectionDataV1(db)
     self:MigratePruneRedundantCollectionCacheV1(db)
     self:MigratePruneAceCharLegacyBagItemsV1(db)
+    self:MigrateNormalizeCharacterKeyPrefsV1(db)
     self:FinalizeGuidOnlySubsidiaryV1(db)
     if db.global then
         db.global._wnMigrationFastPathRev = MIGRATION_FAST_PATH_REVISION
@@ -365,6 +366,66 @@ function MigrationService:FinalizeGuidOnlySubsidiaryV1(db)
         if DebugPrint then
             DebugPrint("|cff9370DB[WN Migration]|r guidOnlySubsidiaryV1: subsidiary I/O is GUID-canonical")
         end
+    end
+end
+
+--- Canonicalize `global.favoriteCharacters` and `profile.characterGroupAssignments`.
+--- Both stores held raw inbound keys, so the same character could sit in favorites as "Name-Realm"
+--- while every lookup asked for its GUID: the star could never remove the stale entry and the row
+--- stayed pinned to Favorites instead of moving to its custom section. Runs after the roster re-key
+--- migrations so `GetCanonicalCharacterKey` already resolves to final storage keys.
+---@param db table AceDB root
+function MigrationService:MigrateNormalizeCharacterKeyPrefsV1(db)
+    if not db or not db.global then return end
+    local favDone = db.global.favoriteKeyNormalizeV1
+    -- Assignments live per profile, so the flag does too: each profile normalizes when it loads.
+    local assignDone = not db.profile or db.profile.groupAssignKeyNormalizeV1
+    if favDone and assignDone then return end
+    local Utilities = ns.Utilities
+    if not Utilities or not Utilities.GetCanonicalCharacterKey then return end
+    local function canon(k)
+        if type(k) ~= "string" or k == "" then return nil end
+        return Utilities:GetCanonicalCharacterKey(k) or k
+    end
+
+    local favChanged = 0
+    if not favDone then
+        local favs = db.global.favoriteCharacters
+        if type(favs) == "table" then
+            local normalized, seen = {}, {}
+            for i = 1, #favs do
+                local key = canon(favs[i])
+                if key and not seen[key] then
+                    seen[key] = true
+                    normalized[#normalized + 1] = key
+                end
+            end
+            favChanged = #favs - #normalized
+            db.global.favoriteCharacters = normalized
+        end
+        db.global.favoriteKeyNormalizeV1 = true
+    end
+
+    local assignChanged = 0
+    if not assignDone then
+        local assign = db.profile.characterGroupAssignments
+        if type(assign) == "table" then
+            local normalized = {}
+            for rawKey, groupId in pairs(assign) do
+                local key = canon(rawKey)
+                if key and groupId then
+                    if key ~= rawKey then assignChanged = assignChanged + 1 end
+                    normalized[key] = groupId
+                end
+            end
+            db.profile.characterGroupAssignments = normalized
+        end
+        db.profile.groupAssignKeyNormalizeV1 = true
+    end
+
+    if DebugPrint and (favChanged > 0 or assignChanged > 0) then
+        DebugPrint("|cff9370DB[WN Migration]|r normalizeCharacterKeyPrefsV1: favorites merged="
+            .. favChanged .. " assignments re-keyed=" .. assignChanged)
     end
 end
 

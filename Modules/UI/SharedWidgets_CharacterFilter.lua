@@ -671,14 +671,16 @@ function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onD
     ns.CharacterService:EnsureCustomCharacterSectionsProfile(profile)
     local L = ns.L
     local rows = {}
-    local assignedGroupId = profile.characterGroupAssignments and profile.characterGroupAssignments[charKey]
+    local addon = _G.WarbandNexus or ns.WarbandNexus
+    -- Resolve through the service: raw indexing misses assignments stored under the canonical key.
+    local assignedGroupId = ns.CharacterService:GetCharacterCustomSectionId(addon, charKey)
     if assignedGroupId then
         rows[#rows + 1] = {
             label = (L and L["CUSTOM_HEADER_REMOVE_ASSIGN"]) or "Remove from custom header",
             selected = false,
             noRadio = true,
             onPick = function()
-                ns.CharacterService:SetCharacterCustomSection(_G.WarbandNexus or ns.WarbandNexus, charKey, nil)
+                ns.CharacterService:SetCharacterCustomSection(addon, charKey, nil)
             end,
         }
     end
@@ -687,9 +689,9 @@ function ns.UI_ShowCharacterSectionAssignMenu(anchorFrame, charKey, profile, onD
         local g = groups[i]
         rows[#rows + 1] = {
             label = g.name or g.id,
-            selected = (profile.characterGroupAssignments[charKey] == g.id),
+            selected = (assignedGroupId == g.id),
             onPick = function()
-                ns.CharacterService:SetCharacterCustomSection(_G.WarbandNexus or ns.WarbandNexus, charKey, g.id)
+                ns.CharacterService:SetCharacterCustomSection(addon, charKey, g.id)
             end,
         }
     end
