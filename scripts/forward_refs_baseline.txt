@@ -1,0 +1,29 @@
+# Known forward references, one `path|symbol` per line.
+# The gate fails only on findings NOT listed here, so new regressions
+# break CI while this backlog is burned down. Each entry is a real Lua
+# 5.1 trap: the name compiles to a nil global at its call site.
+# Fix one by moving the helper above its first caller (or forward-
+# declaring it), then rerun with --update-baseline to drop the line.
+# Never add entries by hand to silence a new finding.
+Modules/FontManager.lua|ResolveInkOutlineOpts
+Modules/GearService.lua|MergeGearDataBucket
+Modules/GearService.lua|ShouldUseLegacyGearDataBucket
+Modules/MigrationService.lua|BuildSubsidiaryAliasRenames
+Modules/MigrationService.lua|BuildSubsidiaryOrphanRenames
+Modules/TryCounterService.lua|emitFn
+Modules/UI.lua|StopCustomResize
+Modules/UI.lua|UpdateScrollLayout
+Modules/UI.lua|UpdateTabButtonStates
+Modules/UI/CurrencyUI.lua|SemanticColorHex
+Modules/UI/CurrencyUI.lua|ThemeTextHex
+Modules/UI/GearUI.lua|GetSelectedCharKey
+Modules/UI/ItemsUI.lua|ApplyItemRowInteriorLayout
+Modules/UI/ItemsUI.lua|ShowItemsResultsEmptyState
+Modules/UI/PlanCardFactory_Expanded.lua|expandCallback
+Modules/UI/ReputationUI.lua|IsExpanded
+Modules/UI/ReputationUI.lua|ToggleExpand
+Modules/UI/SettingsUI.lua|closePositionGhosts
+Modules/UI/SharedWidgets.lua|RefreshAccentStripes
+Modules/UI/UI_MainShell.lua|SchedulePopulateContent
+Modules/VaultButton_Table.lua|HideTable
+Modules/VaultButton_Table.lua|RefreshTable

@@ -1,0 +1,66 @@
+name: Quality
+
+# Runs the gates on every push and PR. Before this existed the only automated
+# check was preflight_release.py on `push: tags`, which fires after the tag has
+# already been created -- a failure there means deleting and re-tagging. Catching
+# the same problems here keeps the tag path clean.
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: Static gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The game runs Lua 5.1, so the 5.1 compiler is the faithful check for
+      # syntax errors and the 200-local / 60-upvalue chunk ceilings. Developer
+      # machines often only have a newer luac, which accepts 5.2+ syntax the game
+      # rejects; on CI we pin the real thing.
+      # lua5.1 lives in universe and has been dropped from some newer archives,
+      # so fall back rather than failing the run: check_lua_compile.py detects the
+      # version, says which one it used, and covers the 5.2+ gap by scanning.
+      - name: Install Lua
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 || sudo apt-get install -y lua5.4
+
+      - name: Lua compiles + TOC integrity
+        run: python scripts/check_lua_compile.py
+
+      - name: Forward-reference audit
+        run: python scripts/audit_lua_forward_refs.py
+
+      - name: UI chrome bypass
+        run: python scripts/check_ui_chrome_bypass.py
+
+      - name: Locale quality
+        run: python scripts/check_locale_quality.py
+
+      - name: Module split wiring
+        run: python scripts/check_split_wiring.py
+
+      - name: Satellite bind
+        run: python scripts/check_satellite_bind.py
+
+      - name: Locale parity, version sync, changelog keys
+        run: python .github/scripts/preflight_release.py

@@ -78,6 +78,12 @@ def ns_l_orphans() -> set[str]:
 
 
 def main() -> int:
+    # Release gate: it echoes locale keys and changelog text, so a legacy console
+    # codepage could abort it with UnicodeEncodeError right before a tag push.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     errors: list[str] = []
     warnings: list[str] = []
 

@@ -68,6 +68,16 @@ WarbandNexus/
 !.github/state/
 .github/scripts/__pycache__/
 
+# Quality gates run by .github/workflows/quality.yml -- must be committed or CI
+# has nothing to run. Excluded from the player zip via .pkgmeta.
+!scripts/
+!scripts/**
+scripts/__pycache__/
+
+# Agent/contributor instructions. Tracked so a fresh clone carries the rules;
+# excluded from the player zip via .pkgmeta.
+!CLAUDE.md
+
 !WarbandNexus.toc
 !Core.lua
 !Config.lua
@@ -77,7 +87,7 @@ WarbandNexus/
 !CHANGELOG.md
 !DESCRIPTION.md
 !docs/
-!docs/PROJECT-OPS-TODOS.md
+!docs/**
 
 !Modules/
 !Modules/**

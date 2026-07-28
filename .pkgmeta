@@ -13,3 +13,8 @@ ignore:
   - libs/LibDBIcon-1.0.toc
   - Locales/.locale_translate_cache.json
   - .github
+  # Maintainer-only: quality gates and agent instructions are tracked in git
+  # (so CI can run them) but must never reach the player zip.
+  - scripts
+  - docs
+  - CLAUDE.md
